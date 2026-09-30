@@ -128,10 +128,10 @@ class FakeMG5Cmd(object):
 class TestReweightGenerationFoldsCrossings(unittest.TestCase):
     """The reweight generates its own matrix elements from the proc card lines,
     and reads a crossed subprocess folded onto its base (build_cross_resolve).
-    Crossing is OFF by default for a generation and a proc card line carries no
-    --use_crossing unless the user gave one, so the reweight has to ask for the
-    folding itself: without it every crossed subprocess got an rw_me matrix
-    element -- a generation and a compilation -- of its own."""
+    A proc card line carries no --use_crossing unless the user gave one, so the
+    reweight states its own choice rather than leaning on the default of a
+    generation: folded, except in the modes that need every crossed subprocess
+    as an rw_me matrix element of its own."""
 
     def setUp(self):
         self.obj = rwgt_interface.ReweightInterface.__new__(
@@ -197,13 +197,33 @@ class TestReweightGenerationFoldsCrossings(unittest.TestCase):
                 self.generate(['p p > w+ j', 'p p > w+ j j %s' % flag]),
                 ['p p > w+ j', 'p p > w+ j j %s' % flag])
 
-    def test_perturbative_definition_is_left_alone(self):
-        """the LO lines derived from a [...] definition carry no flag, and would
-        inherit a True from an earlier tree line of the same definition."""
+    def test_perturbative_definition_is_not_folded(self):
+        """the reweight reads the LO lines of a [...] definition unfolded, and
+        the EW Sudakov output is no folding format: with crossing on by default
+        for a generation, both have to say so."""
         self.assertEqual(self.obj.tree_crossing_flag(
-            ['p p > w+ j', 'p p > w+ j [QCD]']), '')
+            ['p p > w+ j', 'p p > w+ j [QCD]']), ' --use_crossing=False')
         self.obj.inc_sudakov = True
-        self.assertEqual(self.obj.tree_crossing_flag(['p p > t t~']), '')
+        self.assertEqual(self.obj.tree_crossing_flag(['p p > t t~']),
+                         ' --use_crossing=False')
+
+    def test_lo_lines_of_a_perturbative_definition_get_the_flag(self):
+        """get_LO_definition_from_NLO returns define and add process lines:
+        the tree add process lines get the flag, the define and the [...] lines
+        (loop path, which reads no --use_crossing) do not."""
+        lines = ('define pert_QCD = g u;'
+                 'add process p p > z pert_QCD --no_warning=duplicate;'
+                 'add process p p > z [LOonly=QCD] --ewsudakov;')
+        self.assertEqual(
+            rwgt_interface.ReweightInterface.with_crossing_flag(
+                lines, ' --use_crossing=False'),
+            'define pert_QCD = g u;'
+            'add process p p > z pert_QCD --no_warning=duplicate '
+            '--use_crossing=False ;'
+            'add process p p > z [LOonly=QCD] --ewsudakov;')
+        self.assertEqual(
+            rwgt_interface.ReweightInterface.with_crossing_flag(lines, ''),
+            lines)
 
 
 class FakeOutputMG5Cmd(FakeMG5Cmd):

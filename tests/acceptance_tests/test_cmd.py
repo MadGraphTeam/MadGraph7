@@ -988,9 +988,9 @@ class TestCmdShell2(unittest.TestCase,
             shutil.rmtree(self.out_dir)
         os.makedirs(self.out_dir)
 
-        # Both states are pinned: crossing is OFF by default (madspace does
-        # not support it yet), and this test is precisely about the
-        # difference between the two, so neither arm may inherit it.
+        # Both states are pinned: this test is precisely about the difference
+        # between the two, so neither arm may inherit the shipped default
+        # (TestCrossingProductDefault tests that one).
         crossed = build('--use_crossing=True', 'crossed')
         plain = build('--use_crossing=False', 'plain')
 

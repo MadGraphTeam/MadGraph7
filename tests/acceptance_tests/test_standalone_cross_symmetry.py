@@ -343,11 +343,12 @@ print('DENSITY_JSON ' + json.dumps(out))
 def _pin_crossing(options, on=True):
     """Return `options` with the crossing choice stated explicitly.
 
-    Crossing is OFF by default in MG5 (madspace does not support it yet). This
-    suite is *about* crossing, so nothing in it may lean on the shipped default
-    in either direction: a caller that already passed --use_crossing=... keeps
-    its choice, everyone else gets it pinned here. Flipping the product default
-    must never silently turn one of these tests into a test of the other mode.
+    This suite is *about* crossing, so nothing in it may lean on the shipped
+    default (on) in either direction: a caller that already passed
+    --use_crossing=... keeps its choice, everyone else gets it pinned here.
+    Flipping the product default must never silently turn one of these tests
+    into a test of the other mode; TestCrossingProductDefault is the one place
+    that reads the default itself.
     """
     if '--use_crossing' in options:
         return options
@@ -3585,6 +3586,40 @@ class TestMg7FoldedCrossing(unittest.TestCase):
         self.assertLess(abs(x1 - x2), 4 * math.sqrt(e1 ** 2 + e2 ** 2) + 1e-12,
                         'folded %s +- %s vs expanded %s +- %s'
                         % (x1, e1, x2, e2))
+
+
+class TestCrossingProductDefault(unittest.TestCase):
+    """The ONE test of the shipped default: crossing is on unless the user asks
+    otherwise. Every other test of this suite pins its choice (_pin_crossing),
+    so none of them can tell."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='cross_default_')
+
+    def tearDown(self):
+        if os.path.isdir(self.tmpdir):
+            shutil.rmtree(self.tmpdir)
+
+    def _subprocesses(self, options, name):
+        cmd = cmd_interface.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('set automatic_html_opening False')
+        cmd.exec_cmd('import model sm')
+        cmd.exec_cmd(('generate p p > j j QCD=0 %s' % options).strip())
+        out = pjoin(self.tmpdir, name)
+        cmd.exec_cmd('output standalone_fortran %s -f' % out)
+        return cmd, sorted(d for d in os.listdir(pjoin(out, 'SubProcesses'))
+                           if d.startswith('P'))
+
+    def test_crossing_is_on_by_default(self):
+        cmd, bare = self._subprocesses('', 'bare')
+        self.assertTrue(cmd._use_crossing)
+        self.assertTrue(cmd.output_uses_crossing())
+        _, on = self._subprocesses('--use_crossing=True', 'on')
+        _, off = self._subprocesses('--use_crossing=False', 'off')
+        self.assertEqual(bare, on)
+        # guard the guard: the two choices really differ for this process
+        self.assertLess(len(on), len(off), 'p p > j j QCD=0 folded nothing')
 
 
 class TestCrossingPartition(unittest.TestCase):

@@ -3257,7 +3257,7 @@ class ProcessExporterCPP(VirtualExporter):
         process_exporter_cpp = self.oneprocessclass(matrix_element,cpp_helas_call_writer)
 
         # Enable the crossing machinery for standalone_cpp when the process was
-        # generated with --use_crossing (default OFF) and the process does not
+        # generated with --use_crossing (default on) and the process does not
         # pin a specific s-channel (which a crossing would not preserve). Only a
         # single-ME directory carries the flavor tables the crossing needs.
         # The crossing table holds the recorded crossings -- none survive to a
@@ -3269,7 +3269,7 @@ class ProcessExporterCPP(VirtualExporter):
             ).lower() == 'all'
         process_exporter_cpp.use_crossing = bool(
             getattr(self, 'supports_crossing', False)
-            and self.opt.get('use_crossing', False)
+            and self.opt.get('use_crossing', True)
             and len(process_exporter_cpp.matrix_elements) == 1
             and (('crossed_processes' in me0 and me0.get('crossed_processes'))
                  or process_exporter_cpp.crossing_table_all)
@@ -3715,7 +3715,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
         )
 
         # Enable the crossing machinery (extended flavor id) when the process was
-        # generated with --use_crossing (default OFF), the matrix element really
+        # generated with --use_crossing (default on), the matrix element really
         # folds a crossed subprocess in, and the process does not pin a specific
         # s-channel (which a crossing would not preserve). Only a single-ME
         # directory carries the flavor tables the crossing needs. When off,
@@ -3739,7 +3739,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
             ).lower() == 'all' and getattr(self, 'format_name', None) != 'mg7'
         process_exporter_mg7.use_crossing = bool(
             getattr(self, 'supports_crossing', False)
-            and self.opt.get('use_crossing', False)
+            and self.opt.get('use_crossing', True)
             and len(process_exporter_mg7.matrix_elements) == 1
             and (('crossed_processes' in me0 and me0.get('crossed_processes'))
                  or process_exporter_mg7.crossing_table_all)

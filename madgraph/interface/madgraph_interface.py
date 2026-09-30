@@ -628,7 +628,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --hel_recycling=False: [madevent] forbids helicity recycling optimization")
         logger.info("      --mask=False: [madevent|standalone_fortran] disable flavor-mask optimization for grouped/merged flavors (default:True).")
         logger.info("      --prefix=int|proc: [standalone_fortran] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
-        logger.info("      --use_crossing=True: [standalone_fortran|standalone|mg7] write this output WITH the crossing machinery (off by default). mg7 then evaluates each crossed subprocess with the library of its base (cpu/simd only: a GPU run refuses such an output). Left off, the crossed subprocesses folded onto their base at generation are written back as their own directories.")
+        logger.info("      --use_crossing=False: [standalone_fortran|standalone|mg7|madevent] write this output WITHOUT the crossing machinery (on by default, as on the generate line): the crossed subprocesses folded onto their base at generation are written back as their own directories. With it, mg7 evaluates each crossed subprocess with the library of its base (cpu, simd and GPU).")
         logger.info("      --crossing_table=all: [standalone_fortran|standalone] with the crossing machinery, let the extended flavor index also reach every applicable crossing (each choice of the legs that start in the initial state), not only the crossed subprocesses the generation folded -- e.g. for a single generated process, which folds none.")
         logger.info("   Examples:",'$MG:color:GREEN')
         logger.info("       output",'$MG:color:GREEN')
@@ -789,6 +789,10 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > allowed coupling operator are: \"==\", \"=\", \"<=\" and \">\".")
         logger.info("    \"==\" request exactly that number of coupling while \"=\" is interpreted as \"<=\".")
         logger.info(" > To generate a second process use the \"add process\" command")
+        logger.info(" > Crossing symmetry is used by default: a subprocess that is a crossing of")
+        logger.info("   another one (u g > u g of u u~ > g g) is evaluated with the matrix element")
+        logger.info("   of its base. Append --use_crossing=False to generate every subprocess on")
+        logger.info("   its own (on any line of the definition, it applies to the whole definition).")
         logger.info("Decay chain syntax:",'$MG:BOLD')
         logger.info(" o core process, decay1, (decay2, (decay2', ...)), ...  etc")
         logger.info(" o Example: generate p p > t~ t QED=0, (t~ > W- b~, W- > l- vl~), t > j j b @2",'$MG:color:GREEN')
@@ -3746,16 +3750,19 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _curr_helas_model = None
     _curr_exporter = None
     _second_exporter = None
-    # UI flag --use_crossing; see do_add. DEFAULT OFF: madspace does not
-    # support crossing yet, so the shipped default must be the un-crossed
-    # output for every mode. Pass --use_crossing=True to opt in.
-    _use_crossing = False
+    # UI flag --use_crossing; see do_add. DEFAULT ON: the crossed subprocesses
+    # are recorded on their base at generation and reached through its
+    # crossing-aware matrix element (the fortran/C++ standalone and mg7 fold
+    # them, madevent expands them and shares the base matrix element through
+    # its router; any other output expands them), and --use_crossing=False
+    # gives the complete un-crossed output.
+    _use_crossing = True
     # Sticky: an explicit --use_crossing=False on ANY line of the current
     # process definition keeps it off, even if a later line asks for it.
     _use_crossing_off = False
     # Same flag on the output line, for the output being written (see do_output).
     # do_output sets it on every call, so it can never leak to the next output.
-    _output_use_crossing = False
+    _output_use_crossing = True
     # _crossing_fold_signature() of the output _curr_matrix_elements were built
     # for (None: not built by _export). Recorded crossings come out folded or
     # expanded depending on it, so an output asking for the other answer must
@@ -3939,9 +3946,9 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
             standalone_only = True
             args.remove('--standalone')
 
-        # Crossing symmetry is OFF by default (madspace does not support it
-        # yet). --use_crossing (bare) or --use_crossing=True turns it on,
-        # --use_crossing=False is the default. --standalone does not affect it.
+        # Crossing symmetry is ON by default. --use_crossing (bare) or
+        # --use_crossing=True asks for it, --use_crossing=False turns it off for
+        # the whole definition. --standalone does not affect it.
         use_crossing = self.pop_use_crossing_flag(args)
         # The flag has to be popped HERE, before check_add sees `args`, but it
         # is resolved into self._use_crossing further down -- after check_add.
@@ -3953,13 +3960,13 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         if args[0] == 'model':
             return self.add_model(args[1:])
 
-        # Resolve what THIS line means for the definition as a whole. With the
-        # default off, the old `and` accumulator below could never be lifted
-        # (False and True is False), so an explicit --use_crossing=True was
-        # silently ignored. Instead: an explicit True switches it on, an
-        # explicit False switches it off for good (a multi-line definition must
-        # not end up half crossed), and a line with no flag inherits what the
-        # definition already chose -- which starts off.
+        # Resolve what THIS line means for the definition as a whole. (With the
+        # default off, an `and` accumulator could never be lifted -- False and
+        # True is False -- so an explicit --use_crossing=True was silently
+        # ignored.) Instead: an explicit True switches it on, an explicit False
+        # switches it off for good (a multi-line definition must not end up
+        # half crossed), and a line with no flag inherits what the definition
+        # already chose -- which starts on.
         #
         # AFTER check_add, and that is load-bearing: with no model imported yet
         # check_generate imports the Standard Model for the user, and do_import
@@ -6062,9 +6069,9 @@ This implies that with decay chains:
         # interfaces have their own do_output which does not, so give it the
         # same lifetime as the generate-line flag rather than leaving the last
         # output's choice behind.
-        self._use_crossing = False
+        self._use_crossing = True
         self._use_crossing_off = False
-        self._output_use_crossing = False
+        self._output_use_crossing = True
         # Reset _done_export, since we have new process
         self._done_export = False
         # Also reset _export_format and _export_dir

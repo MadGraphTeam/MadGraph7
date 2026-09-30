@@ -997,13 +997,14 @@ jobs:
       # Generated code / python objects only, no compilation: the crossing
       # partition, the multi-channel config map (a mis-paired map leaves every
       # ME and the cross section correct and only degrades the sampling, so no
-      # xsec comparison catches it), the colour-flow code, and the outputs
-      # that cannot decode a crossing.
-      - name: "crossing: partition / config map / colour-flow code / unsupported outputs"
+      # xsec comparison catches it), the colour-flow code, the outputs
+      # that cannot decode a crossing, the independence of an output from the
+      # outputs written before it, and the shipped default (crossing on).
+      - name: "crossing: partition / config map / colour-flow code / unsupported outputs / output order / default"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py -pA TestCrossingPartition TestCrossingConfigMap TestColorFlowCode TestCrossingUnsupportedOutput -t0 -l INFO
+            ./tests/test_manager.py -pA TestCrossingPartition TestCrossingConfigMap TestColorFlowCode TestCrossingUnsupportedOutput TestCrossingOutputOrder TestCrossingProductDefault -t0 -l INFO
 
       # ---- crossing, fortran standalone ----
       # A crossed SMATRIX call must reproduce the process it crosses into, the

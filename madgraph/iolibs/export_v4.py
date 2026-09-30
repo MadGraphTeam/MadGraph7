@@ -1443,7 +1443,7 @@ C
     def _check_crossing_support(self):
         """Note that this output cannot read folded crossings.
 
-        `--use_crossing` (OFF by default) tells the generation not to write out
+        `--use_crossing` (on by default) tells the generation not to write out
         the crossed subprocesses separately, because the matrix element is
         expected to reach them through an extended FLAV_IDX instead. Only the
         folding-capable standalone backends implement that decoding.
@@ -1462,7 +1462,7 @@ C
 
         if self.supports_crossing:
             return
-        if not self.opt.get('use_crossing', False):
+        if not self.opt.get('use_crossing', True):
             return
         logger.debug("The '%s' output does not read folded crossings; any "
                      "recorded crossed subprocess will be expanded back into "
@@ -3468,7 +3468,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
         The extended FLAV_IDX (a flavor *and* a crossing) and everything
         decoding it are only written out when the process was generated with
-        --use_crossing=True (NOT the default) *and* the process definition pins no
+        --use_crossing=True (the default) *and* the process definition pins no
         specific s-channel (see breaks_crossing_symmetry). Otherwise the
         crossed subprocesses are generated as separate matrix elements instead,
         so the crossing machinery would be dead code: the tables, the
@@ -4812,7 +4812,7 @@ C     crossing carried by FLAV_IDX moves across.
         crosses to a SINGLE base matrix element is routed; anything else keeps its
         own matrix element (so the sharing is always a clean whole-ME reuse).
         """
-        if not self.opt.get('use_crossing', False):
+        if not self.opt.get('use_crossing', True):
             return {}
         # Consider only groups whose every member is a within-group BASE (no
         # router). A group that ALREADY has within-group crossing routing (the
@@ -8242,10 +8242,10 @@ C       so this also stays correct for split-order processes.
 
         if 'sa_symmetry' not in self.opt:
             self.opt['sa_symmetry']=False
-        # --use_crossing of the generate command (default OFF, see
+        # --use_crossing of the generate command (default on, see
         # MadGraphCmd._use_crossing); see fill_crossing_replace_dict.
         if 'use_crossing' not in self.opt:
-            self.opt['use_crossing']=False
+            self.opt['use_crossing']=True
 
         # Helicity-recycling standalone (--hel_recycling): reuse the madevent
         # DAG rewriter. The helas_calls / jamp_lines are produced in the
@@ -9228,7 +9228,7 @@ C       so this also stays correct for split-order processes.
         used next to their signed PDGs (GET_PDG_FOR_FLAVOR). Beam-swapped
         partners are shown once.
         """
-        use_crossing = self.opt.get('use_crossing', False) and \
+        use_crossing = self.opt.get('use_crossing', True) and \
             not any(self.breaks_crossing_symmetry(proc)
                     for proc in matrix_element.get('processes'))
         if not use_crossing:
@@ -11264,7 +11264,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         # specific s-channel has its crossings generated separately, so it stays
         # on the plain path. When off the fills reproduce the historical code.
         me_use_crossing = (
-            self.opt.get('use_crossing', False)
+            self.opt.get('use_crossing', True)
             and self.matrix_file == 'matrix_madevent_group_v4.inc'
             and not any(self.breaks_crossing_symmetry(proc)
                         for proc in matrix_element.get('processes')))
@@ -14118,7 +14118,7 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         # light router matrix<i>.f that dispatches to the base SMATRIX with the
         # crossed FLAV_IDX (see partition_crossing_classes / the router template).
         group_use_crossing = (
-            self.opt.get('use_crossing', False)
+            self.opt.get('use_crossing', True)
             and not any(self.breaks_crossing_symmetry(proc)
                         for me in matrix_elements
                         for proc in me.get('processes')))

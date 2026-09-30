@@ -1993,13 +1993,13 @@ class ReweightInterface(extended_cmd.Cmd):
         `processes` when the reweight generates its own matrix elements (see
         create_standalone_tree_directory).
 
-        Crossing is off by default for a generation, and the proc card replays
-        no flag unless the user gave one, so without ' --use_crossing=True' every
-        crossed subprocess would get a matrix element -- a generation and a
-        compilation -- of its own. The reweight reads them folded instead
-        (build_cross_resolve), except in the modes that need the crossed
-        subprocesses back as separate entries, which get ' --use_crossing=False'
-        (appended last, so it also overrides a True replayed from the card):
+        The reweight reads the crossed subprocesses folded (build_cross_resolve),
+        so that they cost neither a generation nor a compilation of their own:
+        ' --use_crossing=True', which is also the default of a generation, but
+        stated so that the reweight does not depend on it. The modes that need
+        the crossed subprocesses back as separate entries get
+        ' --use_crossing=False' (appended last, so it also overrides a True
+        replayed from the card):
          - 'keep_ordering' promises that the events are written in the matrix
            element's own leg order, which makes the id_to_path key
            order-sensitive; a folded crossing has no directory and hence no
@@ -2011,26 +2011,43 @@ class ReweightInterface(extended_cmd.Cmd):
          - 'use_eventid' hands the event's process id to SMATRIXHEL, while the
            folded entry point SMATRIXHEL_IDX takes none: a crossed event would
            silently be given the first matching matrix element instead.
-        Nothing is appended, leaving the generation as the lines ask, when:
-         - a line already carries --use_crossing: the proc card replays the
-           user's own choice, and an explicit False is sticky for the whole
-           definition (see MadGraphCmd.do_add), so it is respected as is.
-         - a perturbative ([...]) definition is among `processes`: its LO lines
-           (get_LO_definition_from_NLO) carry no flag and would inherit a True
-           set by an earlier tree line of the same definition.
-         - the EW Sudakov output (ewsudakovsa) is written: it is no folding
-           format, so the folded crossings would only be expanded back.
+        So do, whatever the card says:
+         - a perturbative ([...]) definition among `processes`: the reweight
+           reads its LO lines (get_LO_definition_from_NLO) unfolded, and
+           create_standalone_tree_directory appends the flag to them as well
+           (the [...] lines themselves are never crossed);
+         - the EW Sudakov output (ewsudakovsa): it is no folding format, so the
+           folded crossings would only be expanded back.
+        Nothing is appended, leaving the generation as the lines ask, when a
+        line already carries --use_crossing: the proc card replays the user's
+        own choice, and an explicit False is sticky for the whole definition
+        (see MadGraphCmd.do_add), so it is respected as is.
         A folded generation whose crossing records come out incomplete is
         redone unfolded afterwards (see create_standalone_tree_directory).
         """
         if self.keep_ordering or self.flag_density_matrix or self.use_eventid:
             return ' --use_crossing=False'
         if self.inc_sudakov or any('[' in proc for proc in processes):
-            return ''
+            return ' --use_crossing=False'''
         if any(arg == '--use_crossing' or arg.startswith('--use_crossing=')
                for proc in processes for arg in proc.split()):
             return ''
         return ' --use_crossing=True'
+
+    @staticmethod
+    def with_crossing_flag(commandline, xflag):
+        """`commandline` (';'-separated commands, get_LO_definition_from_NLO)
+        with `xflag` appended to every tree 'add process' line: the others
+        (define, and the [...] lines, which take the loop path and read no
+        --use_crossing) are left as they are."""
+        if not xflag:
+            return commandline
+        out = []
+        for command in commandline.split(';'):
+            if command.strip().startswith('add process') and '[' not in command:
+                command = command.rstrip() + xflag + ' '
+            out.append(command)
+        return ';'.join(out)
 
     @misc.mute_logger()
     def create_standalone_tree_directory(self, data ,second=False):
@@ -2049,13 +2066,13 @@ class ReweightInterface(extended_cmd.Cmd):
         start = time.time()
         # The reweight matches each event's flavor to a subprocess matrix
         # element (id_to_path), and reaches a FOLDED crossed subprocess through
-        # the base's crossing-aware SMATRIX (see build_cross_resolve). Crossing
-        # is off by default for a generation, so the reweight asks for the
-        # folding itself: the crossed subprocesses then cost neither a
-        # generation nor a compilation. See tree_crossing_flag for the modes
-        # that cannot fold, and for the explicit choice it leaves alone.
-        # Perturbative (NLO / ewsudakov [...]) definitions are left untouched:
-        # the flag must not land inside their option-laden line.
+        # the base's crossing-aware SMATRIX (see build_cross_resolve), so it
+        # asks for the folding itself: the crossed subprocesses then cost
+        # neither a generation nor a compilation. See tree_crossing_flag for the
+        # modes that cannot fold, and for the explicit choice it leaves alone.
+        # The flag goes on every tree line, the LO lines of a perturbative
+        # definition included, but never inside a [...] line: those take the
+        # loop path (never crossed), which reads no --use_crossing.
         xflag = self.tree_crossing_flag(data['processes'])
         commandline=''
         for i,proc in enumerate(data['processes']):
@@ -2065,12 +2082,13 @@ class ReweightInterface(extended_cmd.Cmd):
                 has_nlo = True
                 if self.banner.get('run_card','ickkw') == 3:
                     if len(proc) == min([len(p.strip()) for p in data['processes']]):
-                        commandline += self.get_LO_definition_from_NLO(proc, self.model, ewsudakov=self.inc_sudakov)
+                        lo_lines = self.get_LO_definition_from_NLO(proc, self.model, ewsudakov=self.inc_sudakov)
                     else:
-                        commandline += self.get_LO_definition_from_NLO(proc,
+                        lo_lines = self.get_LO_definition_from_NLO(proc,
                                                     self.model, real_only=True, ewsudakov=self.inc_sudakov)
                 else:
-                    commandline += self.get_LO_definition_from_NLO(proc, self.model, ewsudakov=self.inc_sudakov)
+                    lo_lines = self.get_LO_definition_from_NLO(proc, self.model, ewsudakov=self.inc_sudakov)
+                commandline += self.with_crossing_flag(lo_lines, xflag)
         commandline = commandline.replace('add process', 'generate',1)
         logger.info(commandline)
         try:
