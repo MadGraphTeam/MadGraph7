@@ -2741,6 +2741,30 @@ class MultiProcess(base_objects.PhysicsObject):
                         # No crossing found, just continue
                         pass
                     else:
+                        if this_merge == 'record':
+                            # the base whose merged legs allow every flavor of
+                            # this process's legs (crossing_flavor_pairing);
+                            # without one, reuse the diagrams instead
+                            record = None
+                            for index, key in enumerate(success_procs):
+                                if key != sorted_legs or \
+                                        'loop_diagrams' in amplitudes[index]:
+                                    continue
+                                pairing = MultiProcess.crossing_flavor_pairing(
+                                    amplitudes[index].get('process').get('legs'),
+                                    legs, model)
+                                if pairing is not None:
+                                    record = (index, pairing)
+                                    break
+                            if record is None:
+                                this_merge = False
+                                logger.info(
+                                    "Crossed process %s not recorded on %s: "
+                                    "its merged legs allow other flavors; "
+                                    "reuse diagrams." % (
+                                        process.base_string(),
+                                        amplitudes[crossed_index].get(
+                                            'process').base_string()))
                         if not this_merge:
                             # Found crossing - reuse amplitude
                             amplitude = MultiProcess.cross_amplitude(\
@@ -2760,13 +2784,13 @@ class MultiProcess(base_objects.PhysicsObject):
                             # base so the exporter can still reach it through the
                             # base's crossing-aware SMATRIX (its partonic
                             # contribution is not lost, unlike merge_crossing=True).
-                            amplitudes[crossed_index].get('crossed_processes')\
-                                .append((process, permutations[crossed_index],
-                                         permutation))
+                            index, (base_perm, crossed_perm) = record
+                            amplitudes[index].get('crossed_processes')\
+                                .append((process, base_perm, crossed_perm))
                             logger.info("Crossed process %s recorded on %s "
                                         "(not generated)." %
                                         (process.base_string(),
-                                         amplitudes[crossed_index].get('process')
+                                         amplitudes[index].get('process')
                                          .base_string()))
                         else:
                             logger.info("Crossed process found for %s, do not generate diagrams." % \
@@ -3002,6 +3026,66 @@ class MultiProcess(base_objects.PhysicsObject):
 
         # If no valid processes found with nfinal-1 couplings, return maximal
         return {coupling: max_order_now}
+
+    @staticmethod
+    def crossing_flavor_pairing(base_legs, crossed_legs, model):
+        """How the legs of a process recorded as a crossing of a base pair up
+        (merge_crossing='record'): (base_perm, crossed_perm), 1-based leg
+        numbers aligned pairwise like the `permutation` of
+        generate_multi_amplitudes, or None when the crossing cannot be
+        recorded.
+
+        The crossing lookup matches the legs read all outgoing by their id
+        alone, but a merged leg (81 = the light quarks) of a restricted
+        multiparticle only takes some of the merged flavors (Leg 'flavor',
+        empty for all of them). The base's matrix element then only has the
+        rows its own restrictions allow, and a crossed row is one of its rows
+        crossed only if each crossed leg is paired with a base leg of the same
+        id whose flavors CONTAIN its own: with `define p = g u d u~ d~`,
+        `p p > j j` records q q~ > q q~ on q q > q q by the ids, but its
+        u u~ > c c~ would need the base's initial quark to be a c. Recorded,
+        such a crossing loses rows (an mg7 output cannot serve it at all);
+        None sends it back to a matrix element of its own.
+
+        When no leg is restricted the pairing is the id order (the
+        `permutation` of both processes), exactly as before."""
+        merged = model.get('merged_particles') or {}
+
+        def flavors(leg):
+            flavor = leg.get('flavor') if 'flavor' in leg else None
+            group = merged.get(abs(leg.get('id')))
+            if group is None or not flavor:
+                return None
+            flavor = frozenset(abs(f) for f in flavor)
+            return None if flavor >= frozenset(group) else flavor
+
+        def contains(base, crossed):
+            return base is None or (crossed is not None and crossed <= base)
+
+        def slots(legs):
+            ids = base_objects.LegList(legs).get_outgoing_id_list(model)
+            return [(pid, i + 1, flavors(leg))
+                    for i, (pid, leg) in enumerate(zip(ids, legs))]
+
+        base, crossed = slots(base_legs), slots(crossed_legs)
+        if sorted(p for p, _, _ in base) != sorted(p for p, _, _ in crossed):
+            return None
+        if all(f is None for _, _, f in base + crossed):
+            return ([i for _, i in sorted((p, i) for p, i, _ in base)],
+                    [i for _, i in sorted((p, i) for p, i, _ in crossed)])
+        base_perm, crossed_perm = [], []
+        for pid in sorted(set(p for p, _, _ in base)):
+            base_group = [(i, f) for p, i, f in base if p == pid]
+            crossed_group = [(i, f) for p, i, f in crossed if p == pid]
+            for order in itertools.permutations(crossed_group):
+                if all(contains(bf, cf) for (_, bf), (_, cf)
+                       in zip(base_group, order)):
+                    break
+            else:
+                return None
+            base_perm.extend(i for i, _ in base_group)
+            crossed_perm.extend(i for i, _ in order)
+        return base_perm, crossed_perm
 
     @staticmethod
     def cross_amplitude(amplitude, process, org_perm, new_perm):

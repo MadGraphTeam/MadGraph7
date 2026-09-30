@@ -208,8 +208,18 @@ class VirtualExporter(object):
     # True when the format also needs a color flow per event: the trace basis
     # is then built next to the DDM one, and the trace JAMPs are obtained from
     # the DDM ones through the Kleiss-Kuijf relations.
+    folds_decay_chain_crossings = True
+    # For a folding format (MadGraphCmd._crossing_folding_formats): whether
+    # the crossings recorded inside a decay chain are folded as well, or the
+    # chain is regenerated without them.
 
     default_vector_size = 0
+
+    def crossing_foldable(self, amplitude, record):
+        """For a folding format: whether the crossing `record` = (process,
+        base_perm, crossed_perm) recorded on `amplitude` can be folded into
+        its base. One it cannot is expanded into a subprocess of its own."""
+        return True
     
     
     def __init__(self, dir_path = "", opt=None):
@@ -18489,9 +18499,13 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
                # --use_crossing of the generate/add process command, and of the
                # output command for this output: when off, the standalone
                # matrix.f is written without any crossing machinery (see
-               # ProcessExporterFortranSA.write_matrix_element_v4).
-               'use_crossing': getattr(cmd, '_use_crossing', True)
-                               and getattr(cmd, '_output_use_crossing', True),
+               # ProcessExporterFortranSA.write_matrix_element_v4). The
+               # interface folds the recorded crossings on the same answer
+               # (MadGraphCmd.output_uses_crossing).
+               'use_crossing': cmd.output_uses_crossing()
+                               if hasattr(cmd, 'output_uses_crossing') else
+                               (getattr(cmd, '_use_crossing', True)
+                                and getattr(cmd, '_output_use_crossing', True)),
                'model': cmd._curr_model.get('name'),
                'v5_model': False if cmd._model_v4_path else True,
                'running': cmd._curr_model.get('running_elements'),

@@ -1,11 +1,17 @@
 import json
+import logging
 import os
 from collections import defaultdict
 
+from madgraph import MadGraph5Error
 from madgraph.various.diagram_symmetry import find_symmetry, IdentifySGConfigTag
 from madgraph.iolibs import export_cpp
+from madgraph.iolibs import crossing_table
 from madgraph.iolibs.group_subprocs import IdentifyConfigTag
+from madgraph.core import diagram_generation, helas_objects
 from madgraph.core.diagram_generation import DiagramTag
+
+logger = logging.getLogger('madgraph.export_mg7')
 
 class IdentifyTopologyTag(IdentifyConfigTag):
     """ Like IndentifyConfigTag, but ignores spin and color """
@@ -57,6 +63,12 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
 
     def __init__(self, matrix_element, cpp_helas_call_writer, merge_same_topologies=True):
         super().__init__(matrix_element, cpp_helas_call_writer)
+        self.init_subprocess_metadata(matrix_element, merge_same_topologies)
+
+    def init_subprocess_metadata(self, matrix_element, merge_same_topologies=True):
+        """Everything get_subprocess_info reads: the channels, flavors and
+        colour flows of `matrix_element` (no C++ is involved, see
+        SubprocessMetadataMG7)."""
         self.matrix_element = matrix_element
         self.name = f"P{matrix_element.get('processes')[0].shell_string()}"
         self.model = self.matrix_element.get("processes")[0].get("model")
@@ -297,6 +309,9 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 for diag_tuple in flow_basis[col_basis_elem]:
                     if diag_tuple[4] - diag_tuple[5] == max_Nc:
                         diag_jamps[diag_tuple[0]].append(ijamp)
+            # kept for the crossed subprocesses, which pick their colour flow
+            # in this basis (get_crossed_subprocess_info)
+            self.diag_jamps = diag_jamps
 
         self.channels = []
         # Index-aligned with self.channels; kept separate (not serialized --
@@ -428,21 +443,30 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         return codes, {"color": [l + 1 for l in colslots],
                        "acolor": [l + 1 for l in acolslots]}
 
+    def get_color_flow_dicts(self):
+        """(flows, legs): one {leg number: (colour, anticolour)} dict per
+        colour flow, in the order the flow index counts them, over the
+        external legs `legs`; flows is None without a colour basis."""
+        legs = self.process.get_legs_with_decays()
+        if not self.color_basis:
+            return None, legs
+        n_initial = self.matrix_element.get_nexternal_ninitial()[1]
+        # First build a color representation dictionnary
+        repr_dict = {}
+        for leg in legs:
+            repr_dict[leg.get("number")] = self.model.get_particle(
+                leg.get("id")
+            ).get_color() * (-1) ** (1 + leg.get("state"))
+        # Get the list of color flows. This is about color flows, so
+        # always the trace basis, even when the color sum runs on the DDM
+        # one.
+        return self.color_flow_basis.\
+            color_flow_decomposition(repr_dict, n_initial), legs
+
     def get_subprocess_info(self, proc_dir, lib_me_path):
         n_external, n_initial = self.matrix_element.get_nexternal_ninitial()
-        if self.color_basis:
-            # First build a color representation dictionnary
-            repr_dict = {}
-            legs = self.process.get_legs_with_decays()
-            for leg in legs:
-                repr_dict[leg.get("number")] = self.model.get_particle(
-                    leg.get("id")
-                ).get_color() * (-1) ** (1 + leg.get("state"))
-            # Get the list of color flows. This is about color flows, so
-            # always the trace basis, even when the color sum runs on the DDM
-            # one.
-            color_flow_dicts = self.color_flow_basis.\
-                               color_flow_decomposition(repr_dict, n_initial)
+        color_flow_dicts, legs = self.get_color_flow_dicts()
+        if color_flow_dicts is not None:
             # And output them properly
             color_flows = [
                 [[color_flow_dict[leg.get("number")][i] for i in [0, 1]] for leg in legs]
@@ -539,3 +563,404 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             self.diagram_tags,
             self.subprocess_class,
         )
+
+    # ------------------------------------------------------------------
+    # Crossed subprocesses folded into this matrix element
+    # ------------------------------------------------------------------
+    @staticmethod
+    def crossing_keeps_helicity_states(base_process, crossed_process):
+        """Whether every slot of `crossed_process` keeps the helicity states
+        of the same slot of `base_process`.
+
+        For a crossed event the backend reports the BASE helicity row whose
+        configuration equals the crossed one, slot by slot (selected_hel_code
+        in backend/<variant>/SigmaKin.cc), and the entry indexes the base
+        helicity table with it. A slot whose crossed particle has a state the
+        base slot does not know -- a massive vector moved into a fermion
+        slot -- has no such row, so its helicity would come out wrong."""
+        model = base_process.get('model')
+
+        def states(process):
+            return [set(model.get_particle(leg.get('id')).get_helicity_states())
+                    for leg in process.get_legs_with_decays()]
+        base, crossed = states(base_process), states(crossed_process)
+        return len(base) == len(crossed) and \
+            all(c <= b for b, c in zip(base, crossed))
+
+    def class_diagram_validity(self):
+        """Per flavor class (the FLAV half of an extended id), the positions
+        of the diagrams that have that flavor."""
+        diagrams = self.matrix_element.get('diagrams')
+        return [set(i for i, diag in enumerate(diagrams)
+                    if diag.has_flavor(tuple(flavors[0])))
+                for flavors in self.all_flavors]
+
+    def canonical_propagator(self, subset, pdg):
+        """A propagator as (the canonical one of its two external-leg subsets,
+        the PDG of the particle flowing into that subset), every external leg
+        read as outgoing (an incoming particle is its outgoing antiparticle)."""
+        nx = len(self.edge_names)
+        rest = frozenset(range(1, nx + 1)) - subset
+        if (len(subset), sorted(subset)) <= (len(rest), sorted(rest)):
+            return subset, pdg
+        if getattr(self, '_anti', None) is None:
+            self._anti = crossing_table.make_anti(self.model)
+        return rest, self._anti(pdg)
+
+    def diagram_signatures(self):
+        """Per diagram position, its propagators (canonical_propagator). Read
+        with all the legs outgoing, the diagrams of a process and of its
+        crossings are the same graphs, only the external legs are renamed;
+        so the signature is crossing covariant, W+ and W- exchanges -- the
+        same propagators up to the particle -- included.
+
+        MadGraph records, on the leg a vertex creates, the particle flowing
+        into the legs it combines (in the all-outgoing reading: the u d~ pair
+        of u d~ > w+ is joined by a w-, the one flowing into {u, d~})."""
+        signatures = []
+        for diagram in self.diagrams:
+            subsets, props = {}, []
+            for vertex in diagram.get('vertices')[:-1]:
+                legs = vertex.get('legs')
+                subset = frozenset().union(*[
+                    subsets.get(leg.get('number'),
+                                frozenset([leg.get('number')]))
+                    for leg in legs[:-1]])
+                subsets[legs[-1].get('number')] = subset
+                props.append(self.canonical_propagator(subset,
+                                                       legs[-1].get('id')))
+            signatures.append(frozenset(props))
+        return signatures
+
+    def crossed_diagram_map(self, crossed_signatures, base_signatures, D):
+        """The position of the base diagram each crossed diagram is when
+        crossed leg k is fed to base slot D[k] -- the one with the same
+        propagators (diagram_signatures) -- or None. The backend fills the
+        base's amp2 at the crossed momenta, so this is the amp2 slot of each
+        crossed diagram.
+
+        A crossed diagram with no counterpart is one the rows served by D
+        never need: a flavor-merged base keeps only the diagrams its own
+        flavors use, and a row reaches the others through another D (of the
+        u-channel w+ and w- of q q > q q only the one of the flavor order the
+        base keeps survives; its crossings need both, one per row). Several
+        base diagrams with the same signature are interchangeable (same
+        propagators, same particles); the one at the same position is taken
+        first."""
+        by_signature = defaultdict(list)
+        for b, sig in enumerate(base_signatures):
+            by_signature[sig].append(b)
+        used = set()
+        cmap = []
+        for i, sig in enumerate(crossed_signatures):
+            sig = frozenset(self.canonical_propagator(
+                                frozenset(D[l - 1] + 1 for l in subset), pdg)
+                            for (subset, pdg) in sig)
+            options = [b for b in by_signature.get(sig, []) if b not in used]
+            if not options:
+                cmap.append(None)
+                continue
+            b = i if i in options else options[0]
+            used.add(b)
+            cmap.append(b)
+        return cmap
+
+    def crossed_matrix_element(self, record):
+        """The matrix element of the crossed process of `record` = (process,
+        base_perm, crossed_perm), built for its metadata only: what an
+        expanded output would have generated for it (cross_amplitude on this
+        base, the merged-flavor trimming of HelasMultiProcess), without the
+        colour basis this entry takes from the base."""
+        proc, base_perm, crossed_perm = record
+        # the amplitude the matrix element was built from, which the
+        # expansion crosses too (the rebuilt base_amplitude would lose the
+        # merged-flavor content of the vertices, see HelasMatrixElement)
+        base = getattr(self.matrix_element, 'crossing_amplitude', None)
+        if base is None:
+            base = self.matrix_element.get('base_amplitude')
+        amplitude = diagram_generation.MultiProcess.cross_amplitude(
+            base, proc, base_perm, crossed_perm)
+        if 'crossed_processes' in amplitude:
+            amplitude.set('crossed_processes', [])
+        matrix_element = helas_objects.HelasMatrixElement(amplitude,
+                                                          gen_color=False)
+        matrix_element.get_external_flavors()
+        matrix_element.set('base_amplitude',
+                           matrix_element.get_base_amplitude())
+        return matrix_element
+
+    def get_crossing_table(self, matrix_element):
+        """The crossing table the C++ of this matrix element is written from
+        (ProcessTables.h, flavorPDG): the one prepare_crossed_subprocesses
+        built for the subprocesses.json entries when there is one, so the two
+        agree on every row K."""
+        table = getattr(self, 'targeted_crossing_table', None)
+        if table is not None and matrix_element is self.matrix_element:
+            return table
+        return super().get_crossing_table(matrix_element)
+
+    def prepare_crossed_subprocesses(self, merge_same_topologies=True,
+                                     collect_mirror=True):
+        """Build, before any file of this matrix element is written, the
+        subprocesses.json entries of the crossed subprocesses folded into it
+        (merge_crossing='record'), and the crossing table they are evaluated
+        with; get_crossed_subprocess_info then only gives them their paths.
+
+        Per recorded crossed process: a matrix element of its own for its
+        metadata (crossed_matrix_element) -- what an expanded output would
+        have integrated -- and the crossing table serving each of its flavor
+        rows in its own slot order (crossing_table.build_table with target
+        rows), which then is the table of this output (get_crossing_table, so
+        ProcessTables.h agrees with the entries on every row K).
+
+        Record mode stores a crossing and its beam swap as two records; an
+        expanded output folds the second into the first's mirror
+        (has_mirror_process) when it collects mirrors (`collect_mirror`, the
+        group_subprocesses option), and so is it here: the first gets mirror,
+        the second no entry (and no row). Otherwise both get entries of their
+        own, as the expanded output writes both.
+
+        Every consistency check of the entries runs here, so that an entry
+        which cannot be written stops the output before this directory is."""
+        from madgraph.iolibs.export_v4 import ProcessExporterFortran
+        me = self.matrix_element
+        records = list(me.get('crossed_processes')) \
+            if 'crossed_processes' in me else []
+        n_initial = self.n_initial
+        base_process = me.get('processes')[0]
+
+        def key(row):
+            return crossing_table.physical_key(row, n_initial)
+
+        def swapped(k):
+            return ((k[0][1], k[0][0]), k[1])
+
+        crossed = []
+        for record in records:
+            name = record[0].base_string()
+            if not self.crossing_keeps_helicity_states(base_process, record[0]):
+                raise MadGraph5Error(
+                    'crossed process %s moves a leg into a slot of %s with '
+                    'other helicity states: it should have been expanded '
+                    '(crossing_foldable)' % (name, self.name))
+            xme = self.crossed_matrix_element(record)
+            xmeta = SubprocessMetadataMG7(xme, merge_same_topologies)
+            xinfo, xtags, xclass = xmeta.get_subprocess_info(None, None)
+            cover = set()
+            for flavor in xinfo['flavors']:
+                for option in flavor['options']:
+                    cover.add(key(option))
+                    if flavor['mirror']:
+                        cover.add(swapped(key(option)))
+            crossed.append({'name': name, 'xmeta': xmeta,
+                            'xinfo': xinfo, 'xtags': xtags, 'xclass': xclass,
+                            'cover': cover})
+
+        mirrored, skipped = set(), set()
+        if n_initial == 2 and collect_mirror:
+            for r, entry in enumerate(crossed):
+                if r in skipped or not entry['cover']:
+                    continue
+                target = set(swapped(k) for k in entry['cover'])
+                if target & entry['cover']:
+                    continue
+                for r2 in range(r + 1, len(crossed)):
+                    if r2 not in skipped and crossed[r2]['cover'] == target:
+                        mirrored.add(r)
+                        skipped.add(r2)
+                        break
+
+        inputs = ProcessExporterFortran.crossing_table_inputs(self, me)
+        table_records = []
+        for r, (proc, dep, seed) in enumerate(inputs['records']):
+            targets = [] if r in skipped else \
+                [tuple(option) for flavor in crossed[r]['xinfo']['flavors']
+                 for option in flavor['options']]
+            table_records.append((proc, dep, seed, targets))
+        table = crossing_table.build_table(
+            inputs['nexternal'], inputs['ninitial'], inputs['labels'],
+            ProcessExporterFortran.crossing_base_entries(self, me, 'classes'),
+            table_records, inputs['model'], fixed=inputs['fixed'])
+        for r, record in enumerate(table.records):
+            if r not in skipped and not record.complete():
+                raise MadGraph5Error(
+                    'the crossing table of %s cannot serve the crossed process '
+                    '%s as it comes (%s): output it with --use_crossing=False'
+                    % (self.name, crossed[r]['name'],
+                       record.unserved[:3] or 'nothing served'))
+        self.targeted_crossing_table = table
+        self.crossed_entries = [
+            entry for r, xentry in enumerate(crossed) if r not in skipped
+            for entry in self.crossed_entries_of(xentry, table.records[r],
+                                                 r in mirrored)]
+
+    def crossed_entries_of(self, xentry, record, mirrored):
+        """The entries of one crossed process (prepare_crossed_subprocesses):
+        one per crossing-table row K serving it, as (info, diagram_tags,
+        subprocess_class) like get_subprocess_info, without the paths.
+
+        A crossed entry is evaluated by THIS library -- same me_path, flavor
+        index the extended id K*nflav + flav of the crossing-table row K that
+        serves it. The backend gathers the momenta through the row and hands
+        everything back in the BASE numbering: the diagram amp2 (the diagram
+        it selects is a base one), the colour-flow index and the helicity code.
+        So the entry is written in that numbering too:
+
+          - incoming/outgoing, the flavor rows (in their slot order) and their
+            mirror, the channels (topologies, symmetric-diagram permutations,
+            propagator pdgs), pdg_color_types and qcd_power are the crossed
+            process's own, as an expanded output writes them; each channel
+            diagram is then renumbered to the base diagram it is under the row
+            (crossed_diagram_map), and its active flavors / colours are the
+            base's for that diagram;
+          - color_flows is indexed by the BASE flow, each flow crossed onto the
+            crossed legs (colour <-> anticolour for a leg changing side);
+          - helicities is the base table (crossing_keeps_helicity_states);
+          - diagram_count is the base's: the length of the amp2 array.
+
+        One entry per row K: the diagram renumbering depends on it."""
+        table = self.targeted_crossing_table
+        n_external = self.matrix_element.get_nexternal_ninitial()[0]
+        n_initial = self.n_initial
+        nflav = len(self.matrix_element.get_external_flavors_with_iden())
+        base_flows, _ = self.get_color_flow_dicts()
+        validity = self.class_diagram_validity()
+        base_signatures = self.diagram_signatures()
+        base_channel = set(diag['diagram'] for channel in self.channels
+                           for diag in channel['diagrams'])
+        name, xinfo, xtags = xentry['name'], xentry['xinfo'], xentry['xtags']
+        xmeta = xentry['xmeta']
+        xlegs = xmeta.process.get_legs_with_decays()
+        xsignatures = xmeta.diagram_signatures()
+        served = dict((tuple(a.pdgs), a) for a in record.assignments)
+
+        # the flavor rows of each row K, grouped by (extended id, initial
+        # state) -- one per flavor of the base -- in the order of the crossed
+        # process's own flavors
+        by_row = {}
+        for flavor in xinfo['flavors']:
+            for option in flavor['options']:
+                a = served[tuple(option)]
+                mirror = flavor['mirror'] or (
+                    mirrored and option[0] != option[1])
+                group = (a.index(nflav), tuple(option[:n_initial]), mirror)
+                groups = by_row.setdefault(a.K, {})
+                groups.setdefault(group, (a.flav, []))[1].append(list(option))
+
+        entries = []
+        for K in sorted(by_row):
+            perm = table[K]
+            cmap = self.crossed_diagram_map(xsignatures, base_signatures,
+                                            perm.D)
+            flavors = [{"index": index, "options": options, "mirror": mirror}
+                       for (index, _, mirror), (_, options)
+                       in by_row[K].items()]
+            flavor_classes = [flav for flav, _ in by_row[K].values()]
+
+            channels, tags = [], []
+            for channel, channel_tags in zip(xinfo['channels'], xtags):
+                diagrams, diagram_tags = [], []
+                for diag, tag in zip(channel['diagrams'], channel_tags):
+                    b = cmap[diag['diagram']]
+                    # a diagram these rows never need (no counterpart, or none
+                    # of their flavors has it) gets no channel here
+                    active = [] if b is None else \
+                        [f for f, c in enumerate(flavor_classes)
+                         if b in validity[c]]
+                    if not active:
+                        continue
+                    diag = dict(diag)
+                    diag['diagram'] = b
+                    diag['active_flavors'] = active
+                    diag['active_colors'] = list(self.diag_jamps[b]) \
+                        if self.color_basis else [0]
+                    diagrams.append(diag)
+                    diagram_tags.append(tag)
+                if diagrams:
+                    channel = dict(channel)
+                    channel['diagrams'] = diagrams
+                    channels.append(channel)
+                    tags.append(diagram_tags)
+
+            # The backend picks the event's diagram among the base's channel
+            # diagrams, by their amp2: each one these rows can fill needs a
+            # channel here, or the event has none to be written with (and its
+            # flavor none to be sampled in).
+            needed = set(b for c in flavor_classes for b in validity[c]) \
+                & base_channel
+            reached = set(diag['diagram'] for channel in channels
+                          for diag in channel['diagrams'])
+            sampled = set(f for channel in channels
+                          for diag in channel['diagrams']
+                          for f in diag['active_flavors'])
+            if needed - reached or len(sampled) != len(flavors):
+                raise MadGraph5Error(
+                    'crossed process %s (row %d of %s): the base diagrams %s '
+                    'have no channel of its own and %d of its %d flavor groups '
+                    'none at all; output it with --use_crossing=False'
+                    % (name, K, self.name, sorted(needed - reached),
+                       len(flavors) - len(sampled), len(flavors)))
+
+            if base_flows is not None:
+                flow_dicts = []
+                for flow in base_flows:
+                    crossed_flow = {}
+                    for k in range(len(perm.D)):
+                        colour, acolour = flow[perm.D[k] + 1]
+                        if perm.SD[k] == -1:
+                            colour, acolour = acolour, colour
+                        crossed_flow[k + 1] = (colour, acolour)
+                    flow_dicts.append(crossed_flow)
+                color_flows = [
+                    [list(flow[leg.get('number')]) for leg in xlegs]
+                    for flow in flow_dicts]
+                color_codes, color_slots = self.get_color_code_tables(
+                    flow_dicts, xlegs)
+            else:
+                color_flows = [[[0, 0]] * n_external]
+                color_codes = color_slots = None
+
+            info = dict(xinfo)
+            info.update({
+                "channels": channels,
+                "flavors": flavors,
+                "color_flows": color_flows,
+                "color_codes": color_codes,
+                "color_slots": color_slots,
+                "diagram_count": len(self.diagrams),
+                "helicities": list(self.matrix_element.get_helicity_matrix()),
+            })
+            entries.append((K, info, tags, xentry['xclass']))
+            logger.debug('%s: crossed subprocess %s folded in (row %d, '
+                         '%d flavor(s)%s)', self.name, name, K, len(flavors),
+                         ', mirrored' if mirrored else '')
+        return entries
+
+    def get_crossed_subprocess_info(self, proc_dir, lib_me_path):
+        """The subprocesses.json entries of the crossed subprocesses folded into
+        this matrix element (prepare_crossed_subprocesses built them), as a
+        list of (info, diagram_tags, subprocess_class) like
+        get_subprocess_info, evaluated by the library `lib_me_path` of the
+        directory `proc_dir`."""
+        entries = []
+        for K, info, tags, sclass in getattr(self, 'crossed_entries', []):
+            info = dict(info)
+            info.update({
+                "me_path": lib_me_path,
+                "path": proc_dir,
+                # evaluated by the library of `base` at crossing-table row
+                # `row` (the GPU backend cannot, see launch.py)
+                "crossing": {"base": proc_dir, "row": K},
+            })
+            entries.append((info, tags, sclass))
+        return entries
+
+
+class SubprocessMetadataMG7(OneProcessExporterMG7):
+    """The subprocesses.json metadata of a matrix element that gets no C++ of
+    its own: a crossed subprocess folded into its base
+    (OneProcessExporterMG7.get_crossed_subprocess_info)."""
+
+    def __init__(self, matrix_element, merge_same_topologies=True):
+        # deliberately not OneProcessExporterCPP.__init__: nothing is written
+        self.init_subprocess_metadata(matrix_element, merge_same_topologies)

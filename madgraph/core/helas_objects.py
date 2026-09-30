@@ -4180,6 +4180,13 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 'base_amplitude', 'has_mirror_process',
                 'crossed_processes']
 
+    def has_recorded_crossings(self):
+        """True if crossed processes are folded into this matrix element
+        (merge_crossing='record'): it must then not be combined into another
+        one, which would keep its processes only."""
+        return bool('crossed_processes' in self and
+                    self['crossed_processes'])
+
     # Enhanced get function
     def get(self, name):
         """Get the value of the property name."""
@@ -4207,6 +4214,14 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                         amplitude.get('crossed_processes'):
                     self.set('crossed_processes',
                              list(amplitude.get('crossed_processes')))
+                    # What the crossed processes are crossed from, for an
+                    # exporter that needs their diagrams (the mg7 entries of
+                    # export_mg7.get_crossed_subprocess_info): the amplitude
+                    # itself, as the expansion crosses it. get_base_amplitude
+                    # rebuilds the diagrams from the wavefunctions and loses
+                    # the merged-flavor content of their vertices (the crossed
+                    # q q~ > q q~ of q q > q q at QCD=0 lost u c~ > d s~).
+                    self.crossing_amplitude = amplitude
                 self.generate_helas_diagrams(amplitude, optimization, decay_ids)
                 self.calculate_fermionfactors()
                 self.calculate_identical_particle_factor()
@@ -7677,6 +7692,11 @@ class HelasDecayChainProcess(base_objects.PhysicsObject):
                 try:
                     if not combine:
                         raise ValueError
+                    # A matrix element carrying recorded crossings keeps its
+                    # own place, as in HelasMultiProcess.generate_matrix_elements:
+                    # combined, only its processes would survive.
+                    if matrix_element.has_recorded_crossings():
+                        raise ValueError
                     # If an identical matrix element is already in the list,
                     # then simply add this process to the list of
                     # processes for that matrix element
@@ -7955,6 +7975,9 @@ class HelasMultiProcess(base_objects.PhysicsObject):
                     try:
                         if not combine:
                             raise ValueError
+                        # Recorded crossings: see the plain amplitude below.
+                        if matrix_element.has_recorded_crossings():
+                            raise ValueError
                         me_index = amplitude_tags.index(amplitude_tag)
                     except ValueError:
                         # Create matrix element for this amplitude
@@ -7988,6 +8011,15 @@ class HelasMultiProcess(base_objects.PhysicsObject):
                 # they have the same matrix element
                 amplitude_tag = IdentifyMETag.create_tag(amplitude)
                 try:
+                    # An amplitude carrying recorded crossings
+                    # (merge_crossing='record') keeps a matrix element of its
+                    # own: combined into another one, only its process would
+                    # survive, and a folding output would silently lose the
+                    # crossed subprocesses it stands for (g g > c c~ recording
+                    # g c > g c, with apply_flavor_grouping False).
+                    if 'crossed_processes' in amplitude and \
+                            amplitude.get('crossed_processes'):
+                        raise ValueError
                     me_index = amplitude_tags.index(amplitude_tag)
                 except ValueError:
                     # Create matrix element for this amplitude

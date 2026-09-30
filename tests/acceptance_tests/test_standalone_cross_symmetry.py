@@ -1730,6 +1730,44 @@ print("F2PY_PDG_OK")
                 self._assert_decay_crossing(base, base_line, ref_line, perm,
                                             pdgs)
 
+    def test_decay_chain_crossings_survive_matrix_element_combination(self):
+        """Identical decay-chain matrix elements must not merge their records.
+
+        Without flavor grouping, g c > z c, z > e+ e- has the matrix element of
+        g u > z u, z > e+ e-, and the decay-chain combination used to fold it
+        into the u one, keeping its processes only: the crossings recorded on
+        it (c c~ > z g, g c~ > z c~, ...) were then in no crossing table. The
+        c directory must be written, and serve them.
+        """
+        outdir = pjoin(self.tmpdir, 'Proc_dc_nogroup')
+        self.cmd.exec_cmd('set automatic_html_opening False')
+        self.cmd.exec_cmd('set group_subprocesses False')
+        self.cmd.exec_cmd('set apply_flavor_grouping False')
+        self.cmd.exec_cmd('import model sm')
+        self.cmd.exec_cmd('generate p p > z j, z > e+ e- %s' % _pin_crossing(''))
+        self.cmd.exec_cmd('output standalone_fortran %s -f' % outdir)
+        subproc = pjoin(outdir, 'SubProcesses')
+        pdirs = sorted(name for name in os.listdir(subproc)
+                       if name.startswith('P'))
+        self.assertEqual([name.split('_', 1)[1] for name in pdirs],
+                         ['gc_zc_z_epem', 'gd_zd_z_epem', 'gs_zs_z_epem',
+                          'gu_zu_z_epem'])
+        base_line = 'g c > z c, z > e+ e-'
+        base = pjoin(subproc, pdirs[0])
+        self._write_driver(base)
+        self._build(base)
+        # base leaves [g,c,e+,e-,c]; the recorded crossings, not every
+        # applicable row (no --crossing_table=all).
+        cases = [
+            ((1, 4, 2, 3, 0), 'c c~ > z g, z > e+ e-', (4, -4, -11, 11, 21)),
+            ((0, 4, 2, 3, 1), 'g c~ > z c~, z > e+ e-',
+             (21, -4, -11, 11, -4)),
+        ]
+        for perm, ref_line, pdgs in cases:
+            with self.subTest(perm=perm):
+                self._assert_decay_crossing(base, base_line, ref_line, perm,
+                                            pdgs)
+
 
 class TestGoodHelCParityDedup(unittest.TestCase):
     """The C-parity de-duplication of the helicity sum must be transparent.
@@ -3143,13 +3181,15 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
                          'a crossing-on output folding nothing differs from '
                          'the --use_crossing=False one')
 
-    def test_mg7_output_drops_the_machinery(self):
-        """`output mg7` never gets the crossing machinery.
+    def test_mg7_output_folds_the_crossings(self):
+        """`output mg7` folds the crossings recorded at generation.
 
-        mg7 is not a folding format: the crossings recorded at generation are
-        given back as subprocesses of their own before the exporter runs, so no
-        directory records one and each must be written on the plain path, even
-        with --use_crossing=True (the case the flag-only gate got wrong).
+        mg7 is a folding format: each crossed subprocess gets a subprocesses.json
+        entry of its own, evaluated by its base's library at the extended
+        flavor id (TestMg7FoldedCrossing has the physics). The base directory is
+        written with the machinery, and nothing else is written for the
+        crossings -- not the plain path the flag-only gate once got wrong, and
+        no directory of their own either.
         """
         outdir = pjoin(self.tmpdir, 'mg7_on')
         cmd = cmd_interface.MasterCmd()
@@ -3161,20 +3201,414 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         cmd.exec_cmd('define xq = u u~')
         cmd.exec_cmd('generate xq xq > xq xq --use_crossing=True')
         # Guard the guard: the generation must really have folded crossings,
-        # or there would be nothing for the output to expand.
+        # or there would be nothing for the output to fold.
         self.assertTrue(any(amp.get('crossed_processes')
                             for amp in cmd._curr_amps),
                         'xq xq > xq xq folded no crossing at generation')
         cmd.exec_cmd('output mg7 %s -f' % outdir)
 
         subproc_root = pjoin(outdir, 'SubProcesses')
-        pdirs = [pjoin(subproc_root, d) for d in sorted(os.listdir(subproc_root))
+        pdirs = [d for d in sorted(os.listdir(subproc_root))
                  if d.startswith('P') and os.path.isdir(pjoin(subproc_root, d))]
-        self.assertGreater(len(pdirs), 1,
-                           'the folded crossings did not come back as '
-                           'directories of their own: %s' % pdirs)
-        for pdir in pdirs:
-            self._assert_plain_path(pdir, os.path.basename(pdir))
+        with open(pjoin(subproc_root, 'subprocesses.json')) as fsock:
+            entries = json.load(fsock)
+        crossed = [e for e in entries if e.get('crossing')]
+        self.assertTrue(crossed, 'no crossed subprocess entry was written')
+        bases = set(e['crossing']['base'] for e in crossed)
+        for base in bases:
+            self.assertIn(os.path.basename(base), pdirs)
+        self.assertEqual(len(pdirs), len(entries) - len(crossed),
+                         'a crossed subprocess got a directory of its own: %s'
+                         % pdirs)
+        for base in bases:
+            with open(pjoin(outdir, base, 'ProcessTables.h')) as fsock:
+                self.assertTrue('use_crossing = true' in fsock.read(),
+                                '%s folds crossings without the machinery'
+                                % base)
+
+
+class TestMg7FoldedCrossing(unittest.TestCase):
+    """`output mg7` folds the crossings recorded at generation.
+
+    Each crossed subprocess becomes a subprocesses.json entry of its own,
+    evaluated by its base's library at the extended flavor id K*nflav + flav
+    (export_mg7.OneProcessExporterMG7.get_crossed_subprocess_info): what it
+    integrates must be exactly what the expanded output (--use_crossing=False
+    on the output line, same generation) integrates, down to the slot order of
+    every flavor row and the channels. The structure checks need no runtime;
+    the cross-section ones need madspace and LHAPDF and skip without them.
+    """
+
+    debugging = getattr(unittest, 'debug', False)
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='cross_mg7fold_')
+
+    def tearDown(self):
+        if not self.debugging and os.path.isdir(self.tmpdir):
+            shutil.rmtree(self.tmpdir)
+
+    def _outputs(self, process, name, defines=(), setup=()):
+        """Generate `process` with the crossing recorded and write it twice:
+        folded (`output mg7`) and expanded (`output mg7 --use_crossing=False`).
+        Returns the two output directories."""
+        cmd = cmd_interface.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('set automatic_html_opening False')
+        cmd.exec_cmd('set apply_flavor_grouping True')
+        for line in setup:
+            cmd.exec_cmd(line)
+        cmd.exec_cmd('import model sm')
+        for define in defines:
+            cmd.exec_cmd('define %s' % define)
+        cmd.exec_cmd('generate %s --use_crossing=True' % process)
+        self.assertTrue(cmd._has_recorded_crossings(cmd._curr_amps),
+                        '%s folded no crossing at generation' % process)
+        folded = pjoin(self.tmpdir, name + '_folded')
+        expanded = pjoin(self.tmpdir, name + '_expanded')
+        cmd.exec_cmd('output mg7 %s -f' % folded)
+        cmd.exec_cmd('output mg7 %s -f --use_crossing=False' % expanded)
+        return folded, expanded
+
+    @staticmethod
+    def _entries(outdir):
+        with open(pjoin(outdir, 'SubProcesses', 'subprocesses.json')) as fsock:
+            return json.load(fsock)
+
+    @staticmethod
+    def _pdirs(outdir):
+        root = pjoin(outdir, 'SubProcesses')
+        return [d for d in sorted(os.listdir(root))
+                if d.startswith('P') and os.path.isdir(pjoin(root, d))]
+
+    @staticmethod
+    def _rows(entries):
+        """Every (slot-ordered flavor row, mirror) the entries integrate."""
+        return sorted((tuple(option), bool(flavor['mirror']))
+                      for entry in entries for flavor in entry['flavors']
+                      for option in flavor['options'])
+
+    @staticmethod
+    def _nflav(outdir, base):
+        with open(pjoin(outdir, base, 'ProcessData.h')) as fsock:
+            match = re.search(r'nmaxflavor\s*=\s*(\d+)', fsock.read())
+        return int(match.group(1))
+
+    @staticmethod
+    def _topologies(entries):
+        """The channel diagrams of `entries` as the phase space sees them:
+        (topology, permutation, propagator pdgs), diagram numbers aside (a
+        crossed entry numbers them as its base). Per diagram, not per channel:
+        the entry of one crossing-table row keeps only the diagrams its
+        flavors have."""
+        return sorted(set(
+            (json.dumps(c['propagators']), json.dumps(c['vertices']),
+             json.dumps(c['on_shell_propagators']),
+             json.dumps(d['permutation']), json.dumps(d['propagator_pdgs']))
+            for e in entries for c in e['channels'] for d in c['diagrams']))
+
+    @staticmethod
+    def _flows(entries):
+        """The colour flows of `entries`, their labels renumbered in order of
+        appearance (a crossed flow keeps its base's labels)."""
+        def canonical(flow):
+            labels = {}
+            return json.dumps([[labels.setdefault(c, 501 + len(labels))
+                                if c else 0 for c in leg] for leg in flow])
+        return sorted(set(canonical(flow) for e in entries
+                          for flow in e['color_flows']))
+
+    def _check_folding(self, folded, expanded):
+        """The folded output integrates what the expanded one does: per
+        crossed process, the same flavor rows (slot order and mirror
+        included), helicities, colour flows and channels as the expanded
+        output's own entries for it, evaluated by its base's library; and the
+        expanded directories carry no crossing machinery."""
+        fentries, eentries = self._entries(folded), self._entries(expanded)
+        crossed = [e for e in fentries if e.get('crossing')]
+        self.assertTrue(crossed, 'no crossed subprocess entry was written')
+        self.assertEqual(self._rows(fentries), self._rows(eentries),
+                         'the folded output does not integrate the flavor '
+                         'rows of the expanded one')
+        self.assertEqual(len(self._pdirs(folded)),
+                         len(fentries) - len(crossed),
+                         'a crossed subprocess got a directory of its own')
+        for pdir in self._pdirs(expanded):
+            path = pjoin(expanded, 'SubProcesses', pdir)
+            with open(pjoin(path, 'ProcessTables.h')) as fsock:
+                self.assertTrue('use_crossing = false' in fsock.read(),
+                                'expanded %s has the crossing machinery' % pdir)
+            self.assertFalse(os.path.exists(pjoin(path, 'crossing_demo.dat')))
+
+        def process(entry):
+            return (tuple(entry['incoming']), tuple(entry['outgoing']))
+        for key in sorted(set(process(e) for e in crossed)):
+            mine = [e for e in crossed if process(e) == key]
+            theirs = [e for e in eentries if process(e) == key]
+            self.assertTrue(theirs, 'the expanded output has no %s' % (key,))
+            self.assertEqual(self._rows(mine), self._rows(theirs), key)
+            self.assertEqual(
+                sorted(set(tuple(h) for e in mine for h in e['helicities'])),
+                sorted(set(tuple(h) for e in theirs for h in e['helicities'])),
+                '%s: not the helicities of the expanded output' % (key,))
+            self.assertEqual(self._flows(mine), self._flows(theirs),
+                             '%s: not the colour flows of the expanded output'
+                             % (key,))
+            self.assertEqual(self._topologies(mine), self._topologies(theirs),
+                             '%s: not the channels of the expanded output'
+                             % (key,))
+
+        bases = dict((e['path'], e) for e in fentries if not e.get('crossing'))
+        for entry in crossed:
+            base = bases[entry['crossing']['base']]
+            self.assertEqual(entry['me_path'], base['me_path'])
+            self.assertEqual(entry['diagram_count'], base['diagram_count'])
+            nflav = self._nflav(folded, base['path'])
+            row = entry['crossing']['row']
+            self.assertGreater(row, 0)
+            for flavor in entry['flavors']:
+                self.assertEqual(flavor['index'] // nflav, row,
+                                 'flavor index %d is not on crossing row %d'
+                                 % (flavor['index'], row))
+            self.assertTrue(entry['channels'])
+            for channel in entry['channels']:
+                for diag in channel['diagrams']:
+                    self.assertTrue(0 <= diag['diagram'] < base['diagram_count'])
+                    self.assertTrue(diag['active_flavors'])
+                    self.assertTrue(all(0 <= f < len(entry['flavors'])
+                                        for f in diag['active_flavors']))
+            self.assertEqual(len(entry['color_flows']),
+                             len(base['color_flows']),
+                             'the colour flows are not indexed by the base flow')
+            with open(pjoin(folded, base['path'], 'ProcessTables.h')) as fsock:
+                self.assertTrue('use_crossing = true' in fsock.read())
+        return fentries, eentries, crossed
+
+    def test_w_jet_entries_match_the_expanded_output(self):
+        """p p > w+ j: one directory folding two crossed entries (each the
+        mirror of its recorded beam swap), whose channels, colour flows and
+        flavor rows are those of the expanded output's own directories."""
+        folded, expanded = self._outputs('p p > w+ j', 'wj')
+        fentries, eentries, crossed = self._check_folding(folded, expanded)
+        self.assertEqual(len(self._pdirs(folded)), 1)
+        self.assertEqual(len(crossed), 2)
+        for entry in crossed:
+            same = [e for e in eentries
+                    if (e['incoming'], e['outgoing']) ==
+                    (entry['incoming'], entry['outgoing'])]
+            self.assertEqual(len(same), 1)
+            other = same[0]
+            self.assertEqual(self._rows([entry]), self._rows([other]))
+            self.assertEqual(entry['color_flows'], other['color_flows'])
+            self.assertEqual(sorted(map(tuple, entry['helicities'])),
+                             sorted(map(tuple, other['helicities'])))
+            topology = lambda e: [(c['propagators'], c['vertices'],
+                                   c['on_shell_propagators'],
+                                   [(d['permutation'], d['propagator_pdgs'])
+                                    for d in c['diagrams']])
+                                  for c in e['channels']]
+            self.assertEqual(topology(entry), topology(other))
+
+    def test_ungrouped_beam_swaps_keep_entries_of_their_own(self):
+        """set group_subprocesses False: the expanded output collects no
+        mirror, so the beam swap of a crossed process (and the base's own,
+        Q g > w+ Q, recorded as a crossing) is an entry of its own there. The
+        folded output used to pair them into one mirrored entry all the same:
+        the same partonic processes, laid out as no expanded output is."""
+        folded, expanded = self._outputs(
+            'p p > w+ j', 'wj_nogroup',
+            setup=('set group_subprocesses False',))
+        fentries, _, _ = self._check_folding(folded, expanded)
+        self.assertFalse([flavor for entry in fentries
+                          for flavor in entry['flavors'] if flavor['mirror']])
+
+    def test_identical_final_antiquarks_keep_their_slot_order(self):
+        """p p > w+ j j: q~ q~ > w+ q~ q~ has identical final antiquarks, and
+        a crossing-table row serving the right physical process with those two
+        swapped makes the base fill the amp2 of diagrams the crossed process
+        does not have in that order -- the selected diagram then has no
+        channel and the LHE writer gives up ("Diagram index out of range").
+        The rows are served as the crossed process lists them instead."""
+        folded, expanded = self._outputs('p p > w+ j j', 'wjj')
+        self._check_folding(folded, expanded)
+
+    def test_electroweak_dijet(self):
+        """p p > j j QCD=0: the w+ and w- exchanges are the same propagators
+        up to the particle; the crossed diagrams must find their own."""
+        folded, expanded = self._outputs('p p > j j QCD=0', 'jjew')
+        self._check_folding(folded, expanded)
+
+    def test_crossing_moving_a_z_into_a_gluon_slot_is_expanded(self):
+        """q x > q x (x = g z): of the crossings recorded on u g > u z, the
+        one keeping every slot's helicity states (u~ g > u~ z) is folded, the
+        ones moving the z into the gluon slot (u z > u g, u~ z > u~ g) cannot
+        reuse the base helicity table and get a directory of their own."""
+        folded, expanded = self._outputs('q x > q x QED=1 QCD=1', 'zg',
+                                         defines=('q = u u~', 'x = g z'))
+        fentries = self._entries(folded)
+        self.assertEqual(self._rows(fentries),
+                         self._rows(self._entries(expanded)))
+        crossed = [e for e in fentries if e.get('crossing')]
+        self.assertEqual([(e['incoming'], e['outgoing']) for e in crossed],
+                         [([-81, 21], [-81, 23])])
+        self.assertEqual(len(self._pdirs(folded)), 3)
+
+    def test_decay_chain_crossings_are_expanded(self):
+        """p p > z j, z > e+ e-: the crossings recorded inside a decay chain
+        are expanded (folds_decay_chain_crossings)."""
+        folded, expanded = self._outputs('p p > z j, z > e+ e-', 'zdecay')
+        fentries = self._entries(folded)
+        self.assertFalse([e for e in fentries if e.get('crossing')])
+        self.assertEqual(self._rows(fentries),
+                         self._rows(self._entries(expanded)))
+        self.assertEqual(self._pdirs(folded), self._pdirs(expanded))
+
+    def _session(self, *lines):
+        cmd = cmd_interface.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('set automatic_html_opening False')
+        cmd.exec_cmd('set apply_flavor_grouping True')
+        cmd.exec_cmd('import model sm')
+        for line in lines:
+            cmd.exec_cmd(line)
+        return cmd
+
+    def test_crossing_turned_off_on_a_later_line_expands(self):
+        """`add process ... --use_crossing=False` turns the crossing machinery
+        off for the whole definition, while the `generate ... --use_crossing=
+        True` line before it has recorded its crossings: they must come back
+        as subprocesses of their own. The interface used to fold them (it only
+        asked the output line) and the exporter, without the machinery, wrote
+        them nowhere: q q~ > w+ g and g q~ > w+ q~ were missing from
+        subprocesses.json and the cross section came out 30% low."""
+        cmd = self._session('generate p p > w+ j --use_crossing=True',
+                            'add process p p > w- j --use_crossing=False')
+        self.assertTrue(cmd._has_recorded_crossings(cmd._curr_amps))
+        self.assertFalse(cmd.output_uses_crossing())
+        mixed = pjoin(self.tmpdir, 'mixed')
+        cmd.exec_cmd('output mg7 %s -f --noeps=True' % mixed)
+        reference = pjoin(self.tmpdir, 'mixed_reference')
+        self._session('generate p p > w+ j --use_crossing=False',
+                      'add process p p > w- j --use_crossing=False').exec_cmd(
+            'output mg7 %s -f --noeps=True' % reference)
+        entries = self._entries(mixed)
+        self.assertFalse([e for e in entries if e.get('crossing')])
+        self.assertEqual(self._rows(entries),
+                         self._rows(self._entries(reference)))
+        self.assertEqual(self._pdirs(mixed), self._pdirs(reference))
+
+    def test_restricted_multiparticle_records_servable_crossings(self):
+        """define p = g u d u~ d~; p p > j j: the generator matched crossings
+        by the merged ids alone and recorded q q~ > q q~ on the u/d-only
+        q q > q q, whose rows cannot give its u u~ > c c~ -- output mg7 then
+        stopped half-written. A crossing is recorded only when each of its
+        legs keeps within the flavors of the base leg it is paired with: the
+        gluon-initiated crossings of g g > q q~ still fold, q q~ > q q~ and
+        q~ q~ > q~ q~ are matrix elements of their own, and the output
+        integrates what the expanded one does."""
+        folded, expanded = self._outputs('p p > j j', 'restricted',
+                                         defines=('p = g u d u~ d~',))
+        self._check_folding(folded, expanded)
+        crossed = set((tuple(e['incoming']), tuple(e['outgoing']))
+                      for e in self._entries(folded) if e.get('crossing'))
+        self.assertIn(((21, 81), (21, 81)), crossed)
+        self.assertNotIn(((81, -81), (81, -81)), crossed)
+        self.assertTrue([d for d in self._pdirs(folded)
+                         if d.endswith('_QQx_QQx')], self._pdirs(folded))
+
+    # ------------------------------------------------------------------
+    # runtime
+    # ------------------------------------------------------------------
+    def _generate_events(self, outdir, datadir, device=None, events=20000):
+        """Run bin/generate_events with a fixed seed, no systematics; returns
+        (returncode, info.json 'process' or None, log text)."""
+        import glob
+        from tests.acceptance_tests.test_cmd_madevent import _set_toml_key
+        toml = pjoin(outdir, 'Cards', 'run_card.toml')
+        with open(toml) as fsock:
+            text = fsock.read()
+        text = re.sub(r'(?m)^seed = -?\d+', 'seed = 4242', text)
+        text = re.sub(r'(?m)^events = \d+', 'events = %d' % events, text)
+        text = _set_toml_key(text, 'systematics', 'enable', 'false')
+        if device:
+            text = re.sub(r'(?m)^device = .*$', 'device = ["%s"]' % device,
+                          text)
+        with open(toml, 'w') as fsock:
+            fsock.write(text)
+        env = dict(os.environ, LHAPDF_DATA_PATH=datadir)
+        log = pjoin(outdir, 'generate_events.log')
+        with open(log, 'w') as fsock:
+            ret = subprocess.call(
+                [sys.executable, pjoin(outdir, 'bin', 'generate_events'), '-f'],
+                cwd=outdir, env=env, stdout=fsock, stderr=subprocess.STDOUT)
+        with open(log) as fsock:
+            text = fsock.read()
+        infos = sorted(glob.glob(pjoin(outdir, 'Events', '*', 'info.json')))
+        info = json.load(open(infos[-1]))['process'] if infos else None
+        return ret, info, text
+
+    def _datadir(self):
+        from tests.acceptance_tests.test_cmd_madevent import \
+            _mg7_datadir_or_skip
+        return _mg7_datadir_or_skip(self)
+
+    def test_folded_cross_section_matches_expanded(self):
+        """p p > w+ j: the folded and the expanded outputs integrate the same
+        subprocesses with the same channels, so with the same seed they agree
+        (to the last digits, in fact); asked here within the errors."""
+        datadir = self._datadir()
+        folded, expanded = self._outputs('p p > w+ j', 'wjxs')
+        results = []
+        for outdir in (folded, expanded):
+            ret, info, log = self._generate_events(outdir, datadir)
+            self.assertEqual(ret, 0, log[-2000:])
+            self.assertTrue(info, 'no info.json in %s' % outdir)
+            self.assertNotIn('Traceback', log)
+            results.append((float(info['mean']), float(info['error'])))
+        (x1, e1), (x2, e2) = results
+        self.assertLess(abs(x1 - x2), 4 * math.sqrt(e1 ** 2 + e2 ** 2) + 1e-12,
+                        'folded %s +- %s vs expanded %s +- %s'
+                        % (x1, e1, x2, e2))
+
+    def test_gpu_device_refuses_folded_crossings(self):
+        """The GPU backend cannot evaluate an extended flavor id: a run of a
+        folded output on it stops before building anything, and says why."""
+        datadir = self._datadir()
+        folded, _ = self._outputs('p p > w+ j', 'wjgpu')
+        ret, info, log = self._generate_events(folded, datadir, device='cuda')
+        self.assertNotEqual(ret, 0, 'the refused run exited with status 0')
+        self.assertIn('--use_crossing=False', log)
+        self.assertIn('does not support', log)
+        self.assertIsNone(info)
+
+    def test_gridpack_gpu_device_refuses_folded_crossings(self):
+        """A gridpack saved from a cpu run of a folded output, run with
+        --device cuda: the gridpack runner has no subprocesses.json, so
+        data.json counts the crossed subprocesses and it refuses as
+        bin/generate_events does, before making a run directory."""
+        from tests.acceptance_tests.test_cmd_madevent import _set_toml_key
+        import glob
+        datadir = self._datadir()
+        folded, _ = self._outputs('p p > w+ j', 'wjgridpack')
+        toml = pjoin(folded, 'Cards', 'run_card.toml')
+        with open(toml) as fsock:
+            text = fsock.read()
+        with open(toml, 'w') as fsock:
+            fsock.write(_set_toml_key(text, 'gridpack', 'save_gridpack', 'true'))
+        ret, _, log = self._generate_events(folded, datadir, events=1000)
+        self.assertEqual(ret, 0, log[-2000:])
+        gridpacks = glob.glob(pjoin(folded, 'Events', '*', 'gridpack'))
+        self.assertEqual(len(gridpacks), 1, 'no gridpack was saved')
+        env = dict(os.environ, LHAPDF_DATA_PATH=datadir)
+        run = subprocess.run(
+            [sys.executable, pjoin(gridpacks[0], 'bin', 'generate_events'),
+             '--device', 'cuda', '--events', '100'],
+            cwd=gridpacks[0], env=env, capture_output=True, text=True)
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn('--use_crossing=False', run.stderr)
+        self.assertIn('does not support', run.stderr)
+        self.assertFalse(glob.glob(pjoin(gridpacks[0], 'Events', '*')),
+                         'the refused gridpack run made a run directory')
 
 
 class TestCrossingPartition(unittest.TestCase):

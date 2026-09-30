@@ -50,6 +50,22 @@ def resolve_seed(seed: int) -> int:
     return seed
 
 
+def check_crossed_devices(device_names, crossed) -> None:
+    """The gridpack twin of launch.MadgraphProcess.check_crossed_devices:
+    `crossed` subprocesses (data.json) are evaluated by the library of their
+    base at an extended flavor index, which only the cpu/simd backends
+    implement. Stop before any device is set up."""
+    gpu = sorted(set(name.split(":")[0] for name in device_names
+                     if name.split(":")[0] != "cpu"))
+    if crossed and gpu:
+        sys.exit(
+            f"{crossed} subprocess(es) of this gridpack are crossings evaluated "
+            f"by the library of their base (--use_crossing=True), which the "
+            f"{', '.join(gpu)} backend does not support: run on cpu, or output "
+            f"the process again with --use_crossing=False"
+        )
+
+
 def build_lhe_meta(event_generator, seed: int, systematics=None):
     """The LHE header/<init> metadata of this gridpack run: the cards, beams
     and PDF the gridpack was made with (data/lhe_meta.json), with the cross
@@ -146,6 +162,11 @@ def main() -> None:
     parser.add_argument("--gpu_batch_size", type=int, default=gen_args["gpu_batch_size"])
     args = parser.parse_args()
     seed = resolve_seed(args.seed)
+    device_names = args.device if args.device else run_args["device"]
+    if not isinstance(device_names, list):
+        device_names = [device_names]
+    check_crossed_devices(device_names,
+                          madspace_data.get("crossed_subprocesses", 0))
 
     # initialize event directory
     run_name = args.run_name
@@ -166,7 +187,6 @@ def main() -> None:
             run_index += 1
 
     # initialize context
-    device_names = args.device if args.device else run_args["device"]
     cpu_mode = run_args["cpu_mode"]
     contexts = []
     backends = []

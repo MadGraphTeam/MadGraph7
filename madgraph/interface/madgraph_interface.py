@@ -628,7 +628,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --hel_recycling=False: [madevent] forbids helicity recycling optimization")
         logger.info("      --mask=False: [madevent|standalone_fortran] disable flavor-mask optimization for grouped/merged flavors (default:True).")
         logger.info("      --prefix=int|proc: [standalone_fortran] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
-        logger.info("      --use_crossing=True: [standalone_fortran|standalone] write this output WITH the crossing machinery (off by default: madspace does not support crossing yet). Left off, the crossed subprocesses folded onto their base at generation are written back as their own directories.")
+        logger.info("      --use_crossing=True: [standalone_fortran|standalone|mg7] write this output WITH the crossing machinery (off by default). mg7 then evaluates each crossed subprocess with the library of its base (cpu/simd only: a GPU run refuses such an output). Left off, the crossed subprocesses folded onto their base at generation are written back as their own directories.")
         logger.info("      --crossing_table=all: [standalone_fortran|standalone] with the crossing machinery, let the extended flavor index also reach every applicable crossing (each choice of the legs that start in the initial state), not only the crossed subprocesses the generation folded -- e.g. for a single generated process, which folds none.")
         logger.info("   Examples:",'$MG:color:GREEN')
         logger.info("       output",'$MG:color:GREEN')
@@ -3613,8 +3613,14 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     # 'standalone_rw' is the reweight's own output: its python driver resolves a
     # crossed event through the generated GET_PDG_FOR_FLAVOR entry points (see
     # reweight_interface.ReweightInterface.build_cross_resolve).
+    # 'mg7' (madspace) writes one subprocesses.json entry per crossed
+    # subprocess, pointing at its base's library with the extended flavor id
+    # (export_mg7.OneProcessExporterMG7.get_crossed_subprocess_info); the
+    # crossings it cannot represent, and those recorded inside a decay chain,
+    # are expanded (the exporter's crossing_foldable /
+    # folds_decay_chain_crossings).
     _crossing_folding_formats = ('standalone_fortran', 'standalone',
-                                 'standalone_rw')
+                                 'standalone_rw', 'mg7')
     _set_options = ['group_subprocesses',
                     'ignore_six_quark_processes',
                     'stdout_level',
@@ -3750,7 +3756,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     # Same flag on the output line, for the output being written (see do_output).
     # do_output sets it on every call, so it can never leak to the next output.
     _output_use_crossing = False
-    # _output_folds_crossings() of the output _curr_matrix_elements were built
+    # _crossing_fold_signature() of the output _curr_matrix_elements were built
     # for (None: not built by _export). Recorded crossings come out folded or
     # expanded depending on it, so an output asking for the other answer must
     # not reuse them; see generate_matrix_elements in _export.
@@ -12437,16 +12443,53 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # Reset _export_dir, so we don't overwrite by mistake later
         self._export_dir = None
 
-    def _output_folds_crossings(self):
+    def output_uses_crossing(self):
+        """Whether the output being written gets the crossing machinery: the
+        generation asked for it (--use_crossing of generate / add process,
+        sticky off, see do_add) and the output line did not refuse it. This is
+        the use_crossing option the exporter factories (ExportV4Factory,
+        ExportCPPFactory) hand the exporters."""
+        return bool(getattr(self, '_use_crossing', True) and
+                    getattr(self, '_output_use_crossing', True))
+
+    def _output_folds_crossings(self, decay_chains=False):
         """True if the output being written consumes the recorded crossings.
 
-        Only the folding-capable standalone backends do, and only when this
-        output asked for the crossing machinery: --use_crossing=False on the
-        output line drops that machinery, so the crossings have to come back as
-        explicit subprocesses just like for a non-folding backend.
+        Only the folding-capable backends do, and only when this output gets
+        the crossing machinery (output_uses_crossing): --use_crossing=False on
+        the output line, or on any line of the generation, drops it, so the
+        crossings have to come back as explicit subprocesses just like for a
+        non-folding backend. Asking the output line alone left the crossings
+        recorded by an earlier `generate ... --use_crossing=True` neither
+        expanded nor written once a later `add process ... --use_crossing=False`
+        (or a `load processes` in a new session) turned the machinery off.
+
+        With `decay_chains`, the question is asked for the crossings recorded
+        inside a decay chain, which a folding backend may still not read (the
+        mg7 one: folds_decay_chain_crossings on the exporter).
         """
-        return self._export_format in self._crossing_folding_formats and \
-            getattr(self, '_output_use_crossing', True)
+        folds = self._export_format in self._crossing_folding_formats and \
+            self.output_uses_crossing()
+        if folds and decay_chains:
+            folds = getattr(self._curr_exporter,
+                            'folds_decay_chain_crossings', True)
+        return folds
+
+    def _crossing_foldable(self, amp, record):
+        """Whether the folding output being written can fold the recorded
+        crossing `record` of `amp` into its base: the exporter decides
+        (crossing_foldable), a crossing it refuses is expanded instead."""
+        check = getattr(self._curr_exporter, 'crossing_foldable', None)
+        return True if check is None else bool(check(amp, record))
+
+    def _crossing_fold_signature(self):
+        """What the matrix elements built for this output depend on, as far
+        as the recorded crossings go: folded or expanded, the decay chains'
+        answer, and -- since which crossings fold is the exporter's call --
+        the format."""
+        folds = self._output_folds_crossings()
+        return (folds, self._output_folds_crossings(decay_chains=True),
+                self._export_format if folds else None)
 
     def _crossing_needs_expansion(self, amps):
         """True if `amps` carry folded crossings the current output cannot read.
@@ -12470,7 +12513,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                    and amp.get('crossed_processes')]
         if not crossed:
             return False
-        return not self._output_folds_crossings()
+        if not self._output_folds_crossings():
+            return True
+        # a folding output may still refuse some of them (crossing_foldable)
+        return any(not self._crossing_foldable(amp, record)
+                   for amp in crossed for record in amp.get('crossed_processes'))
 
     def _expand_recorded_crossings(self, amps):
         """Expand each amplitude's recorded crossings back into separate
@@ -12494,6 +12541,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         mirror in place made every later output depend on this one -- a
         standalone_fortran written after a madevent one, from the same
         generation, folded nothing.
+
+        A folding output expands only the crossings its exporter refuses to
+        fold (crossing_foldable); the others stay recorded on the base copy.
         """
         if self.options['group_subprocesses'] == 'Auto':
             collect_mirror = True
@@ -12503,18 +12553,25 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         def _fastproc(amp):
             return tuple(l.get('id') for l in amp.get('process').get('legs'))
 
-        originals = [(amp, amp.get('crossed_processes')
-                      if 'crossed_processes' in amp else [])
-                     for amp in amps]
+        folds = self._output_folds_crossings()
+        originals = []
+        for amp in amps:
+            crossed = amp.get('crossed_processes') \
+                if 'crossed_processes' in amp else []
+            kept = [record for record in crossed
+                    if folds and self._crossing_foldable(amp, record)]
+            originals.append((amp, [record for record in crossed
+                                    if not any(record is k for k in kept)],
+                              kept))
         expanded = diagram_generation.AmplitudeList()
         seen = {}   # fast_proc -> amplitude, for mirror fold
-        for amp, _crossed in originals:
+        for amp, _crossed, kept in originals:
             amp = copy.copy(amp)
             if 'crossed_processes' in amp:
-                amp.set('crossed_processes', [])
+                amp.set('crossed_processes', kept)
             expanded.append(amp)
             seen[_fastproc(amp)] = amp
-        for amp, crossed in originals:
+        for amp, crossed, _kept in originals:
             for (proc, base_perm, cross_perm) in crossed:
                 xamp = diagram_generation.MultiProcess.\
                     cross_amplitude(amp, proc, base_perm, cross_perm)
@@ -12593,7 +12650,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             [amp for amp in self._curr_amps
              if not isinstance(amp, diagram_generation.DecayChainAmplitude)])
 
-        dc_crossed = not self._output_folds_crossings() and \
+        dc_crossed = not self._output_folds_crossings(decay_chains=True) and \
             self._has_recorded_crossings(dc_amps)
         expand_non_dc = self._crossing_needs_expansion(non_dc_amps)
         if not dc_crossed and not expand_non_dc:
@@ -12738,7 +12795,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # before it -- a madevent output after a standalone_fortran one
             # dropped every crossed subprocess, a standalone_fortran after a
             # madevent one folded nothing. Rebuild them instead.
-            folds_crossings = self._output_folds_crossings()
+            folds_crossings = self._crossing_fold_signature()
             if self._curr_matrix_elements.get_matrix_elements() and \
                     self._curr_me_folds_crossings != folds_crossings and \
                     self._has_recorded_crossings(self._curr_amps):
@@ -12805,7 +12862,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                         non_dc_amps = \
                             self._expand_recorded_crossings(non_dc_amps)
 
-                    if not self._output_folds_crossings():
+                    if not self._output_folds_crossings(decay_chains=True):
                         # Decay chains: the crossing dedup (folding the crossed
                         # decay-chain subprocesses into the base's crossing-aware
                         # SMATRIX) is implemented for the standalone backends only.

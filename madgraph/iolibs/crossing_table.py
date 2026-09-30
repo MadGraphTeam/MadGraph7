@@ -137,7 +137,7 @@ class CrossingRecord(object):
     """The crossed subprocesses a recorded process (merge_crossing='record')
     resolves to: every physical row, each served by exactly one assignment."""
 
-    __slots__ = ('process', 'labels', 'assignments', 'truncated')
+    __slots__ = ('process', 'labels', 'assignments', 'truncated', 'unserved')
 
     def __init__(self, process, labels):
         self.process = process
@@ -145,11 +145,15 @@ class CrossingRecord(object):
         self.assignments = []
         # the permutation enumeration hit MAX_BIJECTIONS: rows may be missing
         self.truncated = False
+        # the target rows (build_table) no permutation serves
+        self.unserved = []
 
     def complete(self):
         """Whether the record may be trusted to serve every physical row of
-        its process: it got a row, and the search for them was not cut."""
-        return bool(self.assignments) and not self.truncated
+        its process: it got a row, the search for them was not cut, and no
+        row it was asked for is left unserved."""
+        return bool(self.assignments) and not self.truncated and \
+            not self.unserved
 
     def ids(self, nflav, one_based=False):
         """The distinct extended flavor indices serving this record, in the
@@ -474,13 +478,24 @@ def build_table(nexternal, ninitial, base_labels, base_entries, records,
                     class);
     records      -- [(process, dep_labels, seed_D)] the recorded crossed
                     processes, their leg ids in their own order (decays
-                    expanded to leaves) and the diagram pairing (or None);
+                    expanded to leaves) and the diagram pairing (or None); a
+                    fourth element, when not None, lists the TARGET rows of
+                    the record -- see below;
     fixed        -- slots that no crossing moves (decay-block leaves);
     all_applicable -- also add every applicable_perms() row.
 
     Every physical row of every record is served by exactly one assignment.
     Rows already in the table are preferred, then the recorded pairing, then
-    the other label-consistent permutations in lexicographic order."""
+    the other label-consistent permutations in lexicographic order.
+
+    A record with target rows is served exactly those, each in its own slot
+    order (solve_row): a consumer that passes the momenta of a crossed
+    process in a given order -- the mg7 subprocess entries, whose channels
+    are the crossed process's own -- must get a row feeding its slots as they
+    come, not merely one serving the same physical process (the two identical
+    final antiquarks of q~ q~ > w+ q~ q~ swapped: the base then fills the
+    amp2 of diagrams the crossed process does not have in that order). A
+    target no permutation serves is listed in the record's `unserved`."""
     anti = make_anti(model)
     leg_matches = make_leg_matches(model)
     table = CrossingTable(nexternal, ninitial)
@@ -492,10 +507,29 @@ def build_table(nexternal, ninitial, base_labels, base_entries, records,
         return leg_matches(dep_label, base_label) or \
             leg_matches(base_label, dep_label)
 
-    for (process, dep_labels, seed) in records:
+    for entry in records:
+        process, dep_labels, seed = entry[:3]
+        targets = entry[3] if len(entry) > 3 else None
         record = CrossingRecord(process, dep_labels)
         table.records.append(record)
         if len(dep_labels) != nexternal:
+            continue
+        if targets is not None:
+            for target in targets:
+                prefer = [row.D for K, row in enumerate(table.rows)
+                          if K not in table.invalid]
+                if seed is not None:
+                    prefer.append(tuple(seed))
+                hit = solve_row(target, base_labels, base_entries, ninitial,
+                                model, fixed=fixed, prefer=prefer)
+                if hit is None:
+                    record.unserved.append(tuple(target))
+                    continue
+                perm, flav = hit
+                K = table.find(perm)
+                if K is None:
+                    K = table.add(perm)
+                record.assignments.append(CrossingAssignment(K, flav, target))
             continue
         state = {}
         candidates = list(iter_bijections(dep_labels, base_labels, ninitial,

@@ -3667,6 +3667,14 @@ class ProcessExporterMG7(ProcessExporterCPP):
     """ Extends the standalone CPP exporter to add files needed to run madevent7 / madnis """
 
     supports_crossing = False
+    # Whether this output writes SubProcesses/subprocesses.json (and thus the
+    # entries of the crossed subprocesses folded into a base)
+    writes_subprocess_info = True
+    # The crossings recorded inside a decay chain are expanded: the entry of a
+    # crossed decay chain would need its production crossed and its decays
+    # re-attached (see MadGraphCmd._output_folds_crossings)
+    folds_decay_chain_crossings = False
+
     s= _file_path + 'iolibs/template_files/'
     dirs_to_create = ['bin', 'src', 'lib', 'Cards', 'SubProcesses']
     # mg7_v5 builds api.so in the P* folders (instead of the standalone_cpp
@@ -3685,6 +3693,16 @@ class ProcessExporterMG7(ProcessExporterCPP):
         self.me_lib_format = args[1].get("me_lib_format", None)
         self.process_info = []
         self.merged_subprocesses = defaultdict(list)
+
+    def crossing_foldable(self, amplitude, record):
+        """A recorded crossing can be folded into its base's library only if
+        every slot keeps its set of helicity states (the entry reuses the
+        base helicity table, see OneProcessExporterMG7.
+        crossing_keeps_helicity_states); any other is expanded into a
+        subprocess of its own."""
+        from madgraph.iolibs.export_mg7 import OneProcessExporterMG7
+        return OneProcessExporterMG7.crossing_keeps_helicity_states(
+            amplitude.get('process'), record[0])
 
     def generate_subprocess_directory(
         self, matrix_element, cpp_helas_call_writer, proc_number=None
@@ -3706,10 +3724,11 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # good-helicity scan and the runtime guard accept the recorded codes and
         # the identity only, so with nothing recorded the machinery (per-state
         # external blend, per-event momentum gather, cNGoodMaxCross loop) could
-        # only ever run the identity -- pure overhead. That is every directory
-        # of 'output mg7' (not a folding format: its crossings were expanded
-        # back into subprocesses of their own) and every base that folds
-        # nothing (g g > t t~ g g g).
+        # only ever run the identity -- pure overhead. That is every base that
+        # folds nothing (g g > t t~ g g g), and every directory of an `output
+        # mg7` whose crossings were expanded back into subprocesses of their own
+        # (--use_crossing=False on the output line, a decay chain, a crossing
+        # crossing_foldable refuses).
         # --crossing_table=all on the output line also gives the table every
         # applicable crossing (a standalone user asking for an arbitrary one),
         # which is then reason enough for the machinery -- not for `output
@@ -3726,6 +3745,22 @@ class ProcessExporterMG7(ProcessExporterCPP):
                  or process_exporter_mg7.crossing_table_all)
             and not ProcessExporterFortran.breaks_crossing_symmetry(
                 me0.get('processes')[0]))
+        # mg7 folds the crossed subprocesses into subprocesses.json entries
+        # evaluated by this library: their entries, and the crossing table
+        # serving their rows as they come, are built and checked before
+        # anything of this directory is written -- the C++ is written from
+        # that table (see prepare_crossed_subprocesses)
+        folds_entries = process_exporter_mg7.use_crossing and \
+            self.writes_subprocess_info and \
+            bool(me0.get('crossed_processes'))
+        if folds_entries:
+            # the beam swaps are paired into a mirror as the expansion pairs
+            # them (MadGraphCmd._expand_recorded_crossings)
+            group = self.opt.get('group_subprocesses', 'Auto')
+            process_exporter_mg7.prepare_crossed_subprocesses(
+                merge_same_topologies=self.opt.get('merge_same_topologies',
+                                                   True),
+                collect_mirror=group == 'Auto' or bool(group))
 
         # Create the directory PN_xx_xxxxx in the specified path
         proc_dir_name = process_exporter_mg7.name
@@ -3763,6 +3798,22 @@ class ProcessExporterMG7(ProcessExporterCPP):
             (len(self.process_info), diagram_tags)
         )
         self.process_info.append(subproc_info)
+
+        # The crossed subprocesses folded into this matrix element (mg7 is a
+        # folding format, see MadGraphCmd._crossing_folding_formats): one more
+        # entry each, evaluated by this same library at its extended flavor
+        # id, so they get no directory of their own.
+        if folds_entries:
+            crossed = process_exporter_mg7.get_crossed_subprocess_info(
+                rel_dirpath, me_lib_path)
+            for info, tags, sclass in crossed:
+                self.merged_subprocesses[sclass].append(
+                    (len(self.process_info), tags))
+                self.process_info.append(info)
+            if crossed:
+                logger.info('%s: %d crossed subprocess entr%s folded in',
+                            proc_dir_name, len(crossed),
+                            'y' if len(crossed) == 1 else 'ies')
 
     def copy_template(self, model):
         super().copy_template(model)
@@ -3907,7 +3958,34 @@ class ProcessExporterMG7(ProcessExporterCPP):
             })
         return merged_subproc_info
 
+    def check_crossed_coverage(self):
+        """A crossed subprocess entry must not integrate a partonic process
+        (initial legs in order, final ones as a set) that another entry --
+        mirrored initial state included -- integrates already: it would be
+        counted twice. The folding is built so that this cannot happen
+        (get_crossed_subprocess_info); refuse the output if it does."""
+        def key(row, n_in):
+            return (tuple(row[:n_in]), tuple(sorted(row[n_in:])))
+        owner = {}
+        for info in sorted(self.process_info, key=lambda i: 'crossing' in i):
+            n_in = len(info['incoming'])
+            for flavor in info['flavors']:
+                for row in flavor['options']:
+                    keys = [key(row, n_in)]
+                    if flavor['mirror']:
+                        keys.append(key([row[1], row[0]] + list(row[2:]), n_in))
+                    for k in keys:
+                        other = owner.setdefault(k, info)
+                        if other is not info and 'crossing' in info:
+                            raise MadGraph5Error(
+                                'the crossed subprocess %s > %s folded into %s '
+                                'also belongs to %s: output with '
+                                '--use_crossing=False' % (
+                                    k[0], k[1], info['path'], other['path']))
+
     def finalize(self, matrix_elements=None, history='', *args, **kwargs):
+        if any('crossing' in info for info in self.process_info):
+            self.check_crossed_coverage()
         file_name = os.path.normpath(os.path.join(
             self.dir_path, "SubProcesses", "subprocesses.json"
         ))
@@ -4047,6 +4125,11 @@ class ProcessExporterMG7(ProcessExporterCPP):
             processes = None
 
         if processes:
+            # the crossed subprocesses folded into a base (merge_crossing=
+            # 'record') are processes of this output as well
+            processes = [list(procs) + self.folded_crossed_processes(me)
+                         for procs, me in zip(processes, self.me_list(
+                             matrix_elements))]
             run_card.create_default_for_process(self.proc_characteristic,
                                                 history, processes)
             # persist the model so the runtime can reload it: to compute the
@@ -4065,6 +4148,25 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # can offer "set <param> default" (mirrors run_card_default.dat at LO).
         run_card.write(pjoin(self.dir_path, 'Cards', 'run_card_default.toml'),
                        template=template)
+
+    @staticmethod
+    def me_list(matrix_elements):
+        """The matrix elements of `matrix_elements` (a SubProcessGroupList or
+        a HelasMultiProcess), in the order create_run_card lists them."""
+        if isinstance(matrix_elements, group_subprocs.SubProcessGroupList):
+            return [me for megroup in matrix_elements
+                    for me in megroup['matrix_elements']]
+        return list(matrix_elements['matrix_elements']) \
+            if matrix_elements else []
+
+    @staticmethod
+    def folded_crossed_processes(matrix_element):
+        """The crossed processes folded into `matrix_element` (their entries
+        are written by get_crossed_subprocess_info); none once expanded."""
+        if 'crossed_processes' not in matrix_element:
+            return []
+        return [proc for proc, _, _ in
+                matrix_element.get('crossed_processes') or []]
 
     def create_proc_characteristics(self, matrix_elements):
         """Populate and write SubProcesses/proc_characteristics. This is the
@@ -4090,6 +4192,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
             pc['nexternal'] = max(pc['nexternal'], nexternal)
             pc['ninitial'] = ninitial
             procs.extend(me.get('processes'))
+            procs.extend(self.folded_crossed_processes(me))
             # power of alpha_s in |M|^2 = QCD coupling order of the amplitude;
             # collect it over every diagram so we can tell whether it is uniform.
             # Never let this break the output: on any surprise just fall back to
@@ -4133,10 +4236,14 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     opt['output_options'] = cmd_options
     # --use_crossing of the generate/add process command, and of the output
     # command for this output (both default on). Only the exporters that set
-    # supports_crossing (the madmatrix standalone) read this
-    # key; the others ignore it.
-    opt['use_crossing'] = getattr(cmd, '_use_crossing', True) \
-                          and getattr(cmd, '_output_use_crossing', True)
+    # supports_crossing (the madmatrix standalone and mg7) read this key; the
+    # others ignore it. The interface folds the recorded crossings on the same
+    # answer (MadGraphCmd.output_uses_crossing), so the two cannot disagree.
+    if hasattr(cmd, 'output_uses_crossing'):
+        opt['use_crossing'] = cmd.output_uses_crossing()
+    else:
+        opt['use_crossing'] = getattr(cmd, '_use_crossing', True) \
+                              and getattr(cmd, '_output_use_crossing', True)
     cformat = cmd._export_format
 
     # No C++ exporter has a MadLoop backend (the mg7 one cannot even index the
