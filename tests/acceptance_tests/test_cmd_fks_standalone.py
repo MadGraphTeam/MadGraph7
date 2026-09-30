@@ -1145,6 +1145,28 @@ class TestFKSStandalone(unittest.TestCase):
         self.assertIn('P0_QQx_ttx', names)
         self.assertIn('P0_QxQ_ttx', names)
 
+    def test_fks_standalone_limits_pp_wpj_mixed(self):
+        """soft and collinear limits of the mixed QCD/QED expansion of
+        p p > w+ j [real=QCD QED] (grouped): every split order of every born
+        dir must pass. This covers the charge-linked soft-photon counterterm
+        and the initial-state q -> q + g/gamma limits whose photon-Born
+        counterterm is the extra counterterm (born_cnt_*.f)."""
+        model = pjoin(MG5DIR, 'tests', 'input_files', 'LoopSMEWTest')
+        path = pjoin(self.tmpdir, 'pp_wpj_mixed_limits')
+        cmd = self._new_cmd()
+        self._run(cmd, 'set nlo_mixed_expansion True --no_save')
+        self._run(cmd, 'set apply_flavor_grouping True --no_save')
+        self._run(cmd, 'import model %s' % model)
+        self._run(cmd, 'generate p p > w+ j QED^2=4 QCD^2=4 '
+                       '[real=QCD QED]')
+        self._run(cmd, 'output standalone_fortran --fks --limits %s -f' %
+                  path)
+        self._run(cmd, 'launch %s -f' % path)
+        born_dirs = self._assert_limits_passed(path)
+        names = [os.path.basename(d) for d in born_dirs]
+        for name in ('P0_gQ_wpQ', 'P0_aQ_wpQ', 'P0_QQx_wpg', 'P0_QQx_wpa'):
+            self.assertIn(name, names)
+
 
 if __name__ == '__main__':
     unittest.main()
