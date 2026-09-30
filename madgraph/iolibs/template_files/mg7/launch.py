@@ -249,7 +249,6 @@ class MadgraphProcess:
         self.param_card = ParamCard(self.param_card_path)
         with open(os.path.join("SubProcesses", "subprocesses.json")) as f:
             self.subprocess_data = json.load(f)
-        self.check_crossed_devices()
         if self.run_card["phasespace"]["merge_subprocesses"]:
             with open(os.path.join("SubProcesses", "merged_subprocesses.json")) as f:
                 self.merged_subprocess_data = json.load(f)
@@ -257,27 +256,6 @@ class MadgraphProcess:
             self.merged_subprocess_data = None
 
         self.init_decay_mode()
-
-    def check_crossed_devices(self) -> None:
-        """A crossed subprocess (--use_crossing=True) is evaluated by the
-        library of its base at an extended flavor index, which only the
-        cpu/simd backends implement (the GPU one refuses the batch): say so
-        before any device is set up or anything is built."""
-        crossed = [meta for meta in self.subprocess_data if meta.get("crossing")]
-        device_names = self.run_card["run"]["device"]
-        if not isinstance(device_names, list):
-            device_names = [device_names]
-        gpu = sorted(set(
-            device_type_of(name) for name in device_names
-            if device_type_of(name) != "cpu"
-        ))
-        if crossed and gpu:
-            raise ValueError(
-                f"{len(crossed)} subprocess(es) of this output are crossings "
-                f"evaluated by the library of their base (--use_crossing=True), "
-                f"which the {', '.join(gpu)} backend does not support: run on "
-                f"cpu, or output the process again with --use_crossing=False"
-            )
 
     def init_decay_mode(self) -> None:
         """Decide whether this directory is a decay (1 -> n) or a collision.
@@ -1875,10 +1853,6 @@ class MadgraphProcess:
             "channels": channel_files,
             "matrix_elements": matrix_elements,
             "source_hash": ms.SOURCE_HASH,
-            # the gridpack runner refuses a GPU device for these, as
-            # check_crossed_devices does here (it has no subprocesses.json)
-            "crossed_subprocesses": sum(
-                1 for meta in self.subprocess_data if meta.get("crossing")),
         }
         with open(os.path.join(data_path, "data.json"), "w") as f:
             json.dump(data, f)

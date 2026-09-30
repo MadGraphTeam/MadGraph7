@@ -792,8 +792,7 @@ namespace
     // The exporter lists their extended flavor ids in crossing_demo.dat; show
     // each at the RAMBO point generated for ITS OWN mass permutation (the crossed
     // legs carry the same particles as the base, relabelled, so the crossed
-    // masses are a permutation of the base masses). CPU/SIMD only: crossing is
-    // not implemented on GPU, whose umami_matrix_element refuses these ids.
+    // masses are a permutation of the base masses).
     {
       std::vector<unsigned int> demo_ids;
       std::ifstream fdemo( "crossing_demo.dat" );
@@ -804,10 +803,6 @@ namespace
         std::cout << std::endl
                   << " Crossed processes folded into this matrix element:"
                   << std::endl;
-#ifdef MGONGPUCPP_GPUIMPL
-        std::cout << " not evaluated: crossing is not supported by the GPU backend"
-                  << " (run the cpu/simd build of check_sa.exe)" << std::endl;
-#else
         for( unsigned int fid : demo_ids )
         {
           // Crossed masses: base mass of the leg carrying the same |PDG|.
@@ -831,8 +826,15 @@ namespace
           std::fill( flvVec.begin(), flvVec.end(), fid );
           UmamiInputKey in_keys[3] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_ALPHA_S };
           UmamiOutputKey out_keys[1] = { UMAMI_OUT_MATRIX_ELEMENT };
+#ifdef MGONGPUCPP_GPUIMPL
+          gpuMemcpy( devUmamiMomenta.data(), umamiMomenta.data(), umamiMomenta.size() * sizeof( double ), gpuMemcpyHostToDevice );
+          gpuMemcpy( devFlv.data(), flvVec.data(), nevt * sizeof( unsigned int ), gpuMemcpyHostToDevice );
+          const void* inputs[3] = { devUmamiMomenta.data(), devFlv.data(), devAlphaS.data() };
+          void* outputs[1] = { devUmamiMEs.data() };
+#else
           const void* inputs[3] = { umamiMomenta.data(), flvVec.data(), alphasVec.data() };
           void* outputs[1] = { umamiMEs.data() };
+#endif
           UmamiStatus xst = umami_matrix_element(
             umami_handle, nevt, nevt, 0, 3, in_keys, inputs, 1, out_keys, outputs );
           if( xst != UMAMI_SUCCESS )
@@ -840,7 +842,12 @@ namespace
             std::cerr << "ERROR! crossed umami_matrix_element failed (flavorID=" << fid << ")" << std::endl;
             continue;
           }
+#ifdef MGONGPUCPP_GPUIMPL
+          gpuMemcpy( hstUmamiMEs.data(), devUmamiMEs.data(), nevt * sizeof( double ), gpuMemcpyDeviceToHost );
+          const double* xmes = hstUmamiMEs.data();
+#else
           const double* xmes = umamiMEs.data();
+#endif
           std::cout << std::endl << " flavorID " << fid << std::endl
                     << "   PDG            E              px              py              pz" << std::endl;
           for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
@@ -856,7 +863,6 @@ namespace
                     << std::defaultfloat
                     << std::string( SEP79, '-' ) << std::endl;
         }
-#endif
       }
     }
 

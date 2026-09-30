@@ -3545,8 +3545,19 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         positive energy preserved) and record the per-event NSF sign flips
         (icsign). The momentum sign flip of a leg changing side is applied
         through the NSF flag inside the HELAS routines (see
-        _crossing_external_block)."""
-        return """#ifndef MGONGPUCPP_GPUIMPL
+        _crossing_external_block).
+
+        GPU: one event per thread, so the row is read once, and each external
+        call reads its momentum straight from the input slot xperm[s] with the
+        NSF sign times xic[s] -- no gather buffer, no blend."""
+        return """#ifdef MGONGPUCPP_GPUIMPL
+      // === CROSSING SYMMETRY (GPU): this event's crossing-table row ===
+      // (cross_gather, the base-slot view): base slot s reads the momentum of
+      // input slot xperm[s], NSF sign times xic[s]. A row out of range gathers
+      // the identity; the event's |M|^2 is then 0 (normalise_output).
+      int xperm[npar], xic[npar];
+      cross_gather( (int)( iflavor_ext / (unsigned int)nmaxflavor ), xperm, xic );
+#else
       // === CROSSING SYMMETRY: per-event momentum permutation (NOT vectorized) ===
       // Each event's crossing-table row (cross_gather, the base-slot view):
       // base slot s takes the momentum of input slot xperm[s], NSF sign xic[s].
@@ -3606,7 +3617,9 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         its crossing's last good helicity (a padding row, every mask 0) must
         keep its momentum, or it evaluates 0/0 propagators and returns NaN
         instead of an exact zero. get_amp downstream stays fully SIMD. Scalars
-        carry no helicity, so their block is the plain NSF blend. GPU unchanged."""
+        carry no helicity, so their block is the plain NSF blend. GPU: one
+        event per thread, a direct call on the input slot xperm[s] (see
+        _crossing_preamble)."""
         routine = helas_call_writers.HelasCallWriter.mother_dict[
             argument.get_spin_state_number()].lower()
         routine = routine + 'x' * (6 - len(routine))
@@ -3675,10 +3688,17 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             lines.append('          } }')
             lines.append('        aloha_obj[%d].flv_index = aloha_x[0].flv_index; }' % me)
         lines.append('#else')
-        # GPU: crossing not implemented; emit the plain (identity) external call
-        # so the file still compiles for GPU (only CPU/SIMD is validated).
-        gpu = self.get_external(wf, argument, _no_crossing=True)
-        lines.append(gpu.rstrip('\n'))
+        # GPU: one event per thread. Its crossing-table row was read by the
+        # preamble: base slot s takes the momentum of input slot xperm[s] (the
+        # ipar argument), charge conjugated through the NSF sign when xic[s] is
+        # -1; ihel is the thread's own good helicity row (calculate_jamps).
+        if spin == 1:
+            gpu = '%s( momenta, %+d * xic[%d], cFlavors[iflavor][%d], aloha_obj[%d], xperm[%d] );' % \
+                  (routine, nsf, s, s, me, s)
+        else:
+            gpu = '%s( momenta, m_pars->%s, cHel[ihel][%d], %+d * xic[%d], cFlavors[iflavor][%d], aloha_obj[%d], xperm[%d] );' % \
+                  (routine, mass, s, nsf, s, s, me, s)
+        lines.append('      ' + self.format_coupling(gpu))
         lines.append('#endif\n')
         return '\n'.join(lines)
 
@@ -3688,8 +3708,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     # [=> GPUFOHelasCallWriter.get_external is called by GPUFOHelasCallWriter.generate_helas_call]
     # [GPUFOHelasCallWriter.generate_helas_call is called by UFOHelasCallWriter.get_wavefunction_call/get_amplitude_call]
     first_get_external = True
-    def get_external(self, wf, argument, _no_crossing=False):
-        if getattr(self, 'use_crossing_ic', False) and not _no_crossing:
+    def get_external(self, wf, argument):
+        if getattr(self, 'use_crossing_ic', False):
             return self._crossing_external_block(wf, argument)
         line = self.get_external_line(wf, argument)
         split_line = line.split(',')

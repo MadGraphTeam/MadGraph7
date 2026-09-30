@@ -72,10 +72,6 @@ on:
         description: 'Keep the run directory on the cluster even if every job succeeds'
         type: boolean
         default: false
-      gpu_crossing:
-        description: 'The GPU backend evaluates crossed flavor ids (crossing_folding then expects folded = expanded on the GPU, not a refusal)'
-        type: boolean
-        default: false
 
 env:
   RUN_TAG: mg7-run-${{ github.run_id }}-${{ github.run_attempt }}
@@ -201,7 +197,6 @@ jobs:
       GPU_ARCH: ${{ inputs.gpu_arch }}
       NEVENTS: ${{ inputs.nevents }}
       PDF_SET: ${{ inputs.pdf_set }}
-      GPU_CROSSING: ${{ inputs.gpu_crossing && '1' || '0' }}
       VENV: ${{ needs.build_madspace.outputs.venv }}
       MADSPACE_PREFIX: ${{ needs.build_madspace.outputs.madspace_prefix }}
     steps:

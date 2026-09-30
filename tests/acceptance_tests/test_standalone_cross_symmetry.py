@@ -3098,18 +3098,20 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
                              '%s must NOT survive --use_crossing=False on the '
                              'output line' % token)
 
-    def test_gpu_backend_refuses_crossed_flavor_ids(self):
-        """The GPU backend has no crossing: an extended flavor id must fail
-        loudly there, never come back as the base |M|^2 at uncrossed momenta.
+    def test_gpu_backend_crosses_flavor_ids(self):
+        """The GPU backend evaluates an extended flavor id as its crossing,
+        as the cpu/simd ones do.
 
-        It used to: calculate_jamps reduced the id modulo nmaxflavor (the base
-        flavor, evaluated with the plain external calls), and normalise_output
-        handed the raw id to broken_symmetry_factor, which then read cFlavors
-        past its nmaxflavor rows. No CUDA/HIP toolchain runs in this suite, so
-        this checks the SHIPPED gpu source rather than its behaviour: the device
-        counts the out-of-range ids and umami_matrix_element refuses the batch,
-        the kernels never index a flavor table with a raw event id and give such
-        an event a NaN |M|^2, and check_sa's crossing demo is left to cpu/simd."""
+        It used to refuse them (umami_matrix_element counted the ids past
+        nmaxflavor and returned UMAMI_ERROR_UNSUPPORTED_INPUT): a folded output
+        could not run on a GPU, nor a gridpack made from one on cpu. No
+        CUDA/HIP toolchain runs in this suite, so this checks the SHIPPED gpu
+        source; the GPU CI (crossing_folding) checks the behaviour. Each GPU
+        external call must read its momentum from the input slot of the
+        thread's crossing row (xperm) with the base NSF sign of the cpu block
+        above it times xic; calculate_jamps evaluates the thread's own
+        crossing's good helicity, and the denominator and the reported
+        helicity are the crossed ones."""
         # a base that really folds crossings: one folding nothing is written
         # on the plain path (use_crossing = false)
         pdir = self._output_folded_gg_qqx('ggqqx_gpu')
@@ -3120,24 +3122,41 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
             sigmakin = fsock.read()
         with open(pjoin(pdir, 'check_sa.cc')) as fsock:
             check_sa = fsock.read()
+        with open(pjoin(pdir, 'EvaluateDiagrams.inc')) as fsock:
+            diagrams = fsock.read()
 
         # assertTrue rather than assertIn/assertRegex: those print the whole file
-        self.assertTrue('atomicAdd( n_bad_flavors, 1u )' in umami,
-                        'copy_inputs does not count the out-of-range flavor ids')
         self.assertTrue(re.search(
-            r'crossing is not supported by the GPU backend;[^;]*'
-            r'--use_crossing=False[^;]*;[^}]*return UMAMI_ERROR_UNSUPPORTED_INPUT;',
-            umami), 'umami_matrix_element does not refuse a crossed flavor id')
-        self.assertFalse('% (unsigned int)nmaxflavor' in sigmakin,
-                         'calculate_jamps evaluates a crossed id as its base flavor')
-        self.assertFalse('broken_symmetry_factor( iflavorVec[ievt] )' in sigmakin,
-                         'normalise_output indexes cFlavors with the raw flavor id')
-        self.assertTrue('allMEs[ievt] = (fptype)nan( "" );' in sigmakin,
-                        'an out-of-range flavor id does not get a NaN |M|^2')
-        self.assertTrue(re.search(
-            r'#ifdef MGONGPUCPP_GPUIMPL\n[^#]*not supported by the GPU backend'
-            r'[^#]*#else\n\s*for\( unsigned int fid : demo_ids \)', check_sa),
-            'check_sa runs the crossing demo on a GPU build')
+            r'#ifdef MGONGPUCPP_GPUIMPL\n[^#]*int xperm\[npar\], xic\[npar\];\s*'
+            r'cross_gather\( \(int\)\( iflavor_ext / \(unsigned int\)nmaxflavor \), xperm, xic \);',
+            diagrams), 'EvaluateDiagrams.inc reads no crossing row on the GPU')
+        # every crossed external block: cpu blend first, then the GPU call
+        blocks = re.findall(
+            r'(\w+xxxx)<M_ACCESS, W_ACCESS>\( xmom, [^;]*?, ([+-]\d), cFlavors\[iflavor\]\[(\d+)\], aloha_x\[0\]'
+            r'.*?#else\n\s*(\w+xxxx)<M_ACCESS, W_ACCESS>\( momenta, ([^;]*)\);\n#endif',
+            diagrams, re.S)
+        self.assertTrue(blocks, 'no crossed external call found')
+        for routine, sign, slot, gpu_routine, gpu_args in blocks:
+            self.assertEqual(gpu_routine, routine)
+            self.assertTrue(gpu_args.strip().endswith('xperm[%s]' % slot) and
+                            ('%s * xic[%s]' % (sign, slot)) in gpu_args,
+                            'GPU %s of slot %s is not crossed: %s'
+                            % (routine, slot, gpu_args))
+        self.assertTrue('ihel = crossed_hel_row( ihel, iflavor_ext );' in sigmakin,
+                        'calculate_jamps does not evaluate the crossing\'s own helicity')
+        self.assertTrue('iflavor_ext % (unsigned int)nmaxflavor' in sigmakin,
+                        'the flavor tables are not indexed by the base flavor')
+        self.assertTrue('/ ( (fptype)spincol_cross( dcr ) * (fptype)ident_cross( dcr, dfl ) )'
+                        in sigmakin, 'normalise_output keeps the base denominator')
+        self.assertTrue('allselhel[ievt] = selected_hel_code( row, iflavorVec[ievt] );'
+                        in sigmakin, 'the reported helicity is not the crossed code')
+        self.assertTrue('const bool validFlavor = use_crossing || fid < (unsigned int)nmaxflavor;'
+                        in sigmakin, 'a crossing build gives a crossed id a NaN')
+        self.assertFalse('n_bad_flavors' in umami or 'UMAMI_ERROR_UNSUPPORTED_INPUT;' in
+                         umami.split('copy_inputs<<<')[1].split('sigmaKin(')[0],
+                         'umami_matrix_element still refuses crossed flavor ids')
+        self.assertFalse('not supported by the GPU backend' in check_sa,
+                         'check_sa skips the crossing demo on a GPU build')
 
     def _assert_plain_path(self, pdir, label):
         """`pdir` was written without the crossing machinery."""
@@ -3519,7 +3538,7 @@ class TestMg7FoldedCrossing(unittest.TestCase):
     # ------------------------------------------------------------------
     # runtime
     # ------------------------------------------------------------------
-    def _generate_events(self, outdir, datadir, device=None, events=20000):
+    def _generate_events(self, outdir, datadir, events=20000):
         """Run bin/generate_events with a fixed seed, no systematics; returns
         (returncode, info.json 'process' or None, log text)."""
         import glob
@@ -3530,9 +3549,6 @@ class TestMg7FoldedCrossing(unittest.TestCase):
         text = re.sub(r'(?m)^seed = -?\d+', 'seed = 4242', text)
         text = re.sub(r'(?m)^events = \d+', 'events = %d' % events, text)
         text = _set_toml_key(text, 'systematics', 'enable', 'false')
-        if device:
-            text = re.sub(r'(?m)^device = .*$', 'device = ["%s"]' % device,
-                          text)
         with open(toml, 'w') as fsock:
             fsock.write(text)
         env = dict(os.environ, LHAPDF_DATA_PATH=datadir)
@@ -3569,46 +3585,6 @@ class TestMg7FoldedCrossing(unittest.TestCase):
         self.assertLess(abs(x1 - x2), 4 * math.sqrt(e1 ** 2 + e2 ** 2) + 1e-12,
                         'folded %s +- %s vs expanded %s +- %s'
                         % (x1, e1, x2, e2))
-
-    def test_gpu_device_refuses_folded_crossings(self):
-        """The GPU backend cannot evaluate an extended flavor id: a run of a
-        folded output on it stops before building anything, and says why."""
-        datadir = self._datadir()
-        folded, _ = self._outputs('p p > w+ j', 'wjgpu')
-        ret, info, log = self._generate_events(folded, datadir, device='cuda')
-        self.assertNotEqual(ret, 0, 'the refused run exited with status 0')
-        self.assertIn('--use_crossing=False', log)
-        self.assertIn('does not support', log)
-        self.assertIsNone(info)
-
-    def test_gridpack_gpu_device_refuses_folded_crossings(self):
-        """A gridpack saved from a cpu run of a folded output, run with
-        --device cuda: the gridpack runner has no subprocesses.json, so
-        data.json counts the crossed subprocesses and it refuses as
-        bin/generate_events does, before making a run directory."""
-        from tests.acceptance_tests.test_cmd_madevent import _set_toml_key
-        import glob
-        datadir = self._datadir()
-        folded, _ = self._outputs('p p > w+ j', 'wjgridpack')
-        toml = pjoin(folded, 'Cards', 'run_card.toml')
-        with open(toml) as fsock:
-            text = fsock.read()
-        with open(toml, 'w') as fsock:
-            fsock.write(_set_toml_key(text, 'gridpack', 'save_gridpack', 'true'))
-        ret, _, log = self._generate_events(folded, datadir, events=1000)
-        self.assertEqual(ret, 0, log[-2000:])
-        gridpacks = glob.glob(pjoin(folded, 'Events', '*', 'gridpack'))
-        self.assertEqual(len(gridpacks), 1, 'no gridpack was saved')
-        env = dict(os.environ, LHAPDF_DATA_PATH=datadir)
-        run = subprocess.run(
-            [sys.executable, pjoin(gridpacks[0], 'bin', 'generate_events'),
-             '--device', 'cuda', '--events', '100'],
-            cwd=gridpacks[0], env=env, capture_output=True, text=True)
-        self.assertNotEqual(run.returncode, 0)
-        self.assertIn('--use_crossing=False', run.stderr)
-        self.assertIn('does not support', run.stderr)
-        self.assertFalse(glob.glob(pjoin(gridpacks[0], 'Events', '*')),
-                         'the refused gridpack run made a run directory')
 
 
 class TestCrossingPartition(unittest.TestCase):

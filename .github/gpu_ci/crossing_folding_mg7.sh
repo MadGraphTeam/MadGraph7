@@ -6,24 +6,19 @@
 # own). Same seed everywhere, so the cpu runs of the two agree to the last digit.
 #
 # Checks, in this order (the gpu runs build the gpu libraries the gridpacks then ship):
-#   exp_gpu      EXP on $BACKEND                                       runs
-#   exp_cpu      EXP on cpu, saving a gridpack                         = exp_gpu
-#   fold_gpu     FOLD on $BACKEND        GPU_CROSSING=0: refused, exit != 0, says why
-#                                        GPU_CROSSING=1: runs, = exp_gpu
-#   fold_cpu     FOLD on cpu, saving a gridpack                        = exp_cpu
-#   gp_exp_gpu   the cpu-made EXP gridpack on $BACKEND                 = exp_cpu
-#   gp_fold_gpu  the cpu-made FOLD gridpack on $BACKEND
-#                                        GPU_CROSSING=0: refused before any run directory
-#                                        GPU_CROSSING=1: runs, = fold_cpu
-# "=" is agreement within 4 combined standard deviations.
+#   exp_gpu      EXP on $BACKEND
+#   exp_cpu      EXP on cpu, saving a gridpack                  = exp_gpu
+#   fold_gpu     FOLD on $BACKEND                               = exp_gpu
+#   fold_cpu     FOLD on cpu, saving a gridpack                 = exp_cpu
+#   gp_exp_gpu   the cpu-made EXP gridpack on $BACKEND          = exp_cpu
+#   gp_fold_gpu  the cpu-made FOLD gridpack on $BACKEND         = fold_cpu
+# "=" is agreement within 4 combined standard deviations; each run must succeed.
 # Environment: as pp_ttx_mg7.sh (BACKEND, MODULES, GPU_ARCH, VENV, MADSPACE_PREFIX,
-# WORKDIR, NEVENTS, PDF_SET, CACHE_DIR), plus
-#   GPU_CROSSING  1 once the GPU backend evaluates crossed flavor ids (Phase 1b), else 0
+# WORKDIR, NEVENTS, PDF_SET, CACHE_DIR).
 set -eo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
 section() { echo; echo "=================== $* ($(date +%T))"; }
-GPU_CROSSING=${GPU_CROSSING:-0}
 SEED=4242
 
 section "Environment"
@@ -116,19 +111,6 @@ expect_runs() {
     fi
 }
 
-# expect_refused NAME EXIT LOG [DIR_THAT_MUST_STAY_EMPTY]
-expect_refused() {
-    if [ "$2" -eq 0 ]; then
-        record "$1" FAIL "exit 0: the $BACKEND run of folded crossings was not refused"
-    elif ! grep -q 'does not support' "$3" || ! grep -q -- '--use_crossing=False' "$3"; then
-        record "$1" FAIL "exit $2 without the crossing refusal message (see $3)"
-    elif [ -n "$4" ] && [ -n "$(ls -A "$4" 2> /dev/null)" ]; then
-        record "$1" FAIL "refused, but made a run directory in $4"
-    else
-        record "$1" PASS "refused (exit $2)"
-    fi
-}
-
 START=$SECONDS
 section "EXP on $BACKEND"
 ret=$(run EXP "$BACKEND" exp_gpu false)
@@ -140,11 +122,7 @@ expect_runs exp_cpu "$ret" EXP exp_cpu exp_gpu "$X_exp_gpu"
 
 section "FOLD on $BACKEND"
 ret=$(run FOLD "$BACKEND" fold_gpu false)
-if [ "$GPU_CROSSING" = 1 ]; then
-    expect_runs fold_gpu "$ret" FOLD fold_gpu exp_gpu "$X_exp_gpu"
-else
-    expect_refused fold_gpu "$ret" fold_gpu.log
-fi
+expect_runs fold_gpu "$ret" FOLD fold_gpu exp_gpu "$X_exp_gpu"
 
 section "FOLD on cpu (saving a gridpack)"
 ret=$(run FOLD cpu fold_cpu true)
@@ -165,11 +143,7 @@ if [ -z "$GP" ]; then
     record gp_fold_gpu FAIL "no gridpack saved by fold_cpu"
 else
     ret=$(run_gridpack "$GP" gp_fold_gpu)
-    if [ "$GPU_CROSSING" = 1 ]; then
-        expect_runs gp_fold_gpu "$ret" "$GP" gp_fold_gpu fold_cpu "$X_fold_cpu"
-    else
-        expect_refused gp_fold_gpu "$ret" gp_fold_gpu.log "$GP/Events"
-    fi
+    expect_runs gp_fold_gpu "$ret" "$GP" gp_fold_gpu fold_cpu "$X_fold_cpu"
 fi
 WALLTIME=$((SECONDS - START))
 
@@ -177,7 +151,6 @@ cat > summary.txt << EOF
 node=$(hostname)
 gpu=${GPU_NAME:-unknown}
 backend=$BACKEND
-gpu_crossing=$GPU_CROSSING
 crossed_entries=$NCROSSED
 events=$NEVENTS
 walltime=${WALLTIME}s
