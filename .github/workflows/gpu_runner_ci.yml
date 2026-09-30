@@ -6,6 +6,8 @@
 #                                   sbatch the runner on the GPU partition, wait until online
 #   build_madspace  cluster runner  madspace with the CUDA/HIP backend (cached on the cluster)
 #   pp_ttx          cluster runner  p p > t t~ with mg7 on the GPU
+#   crossing_folding cluster runner p p > w+ j folded (--use_crossing=True) vs expanded,
+#                                   on the GPU and on cpu, and their cpu-made gridpacks
 #   ...             cluster runner  more CI jobs: same runs-on, and add them to stop_runner's needs
 #   stop_runner     cluster runner  clean up and end the allocation (no ssh key needed)
 #
@@ -68,6 +70,10 @@ on:
         default: 'NNPDF23_lo_as_0130_qed'
       keep_workdir:
         description: 'Keep the run directory on the cluster even if every job succeeds'
+        type: boolean
+        default: false
+      gpu_crossing:
+        description: 'The GPU backend evaluates crossed flavor ids (crossing_folding then expects folded = expanded on the GPU, not a refusal)'
         type: boolean
         default: false
 
@@ -182,9 +188,59 @@ jobs:
           path: results/
           if-no-files-found: warn
 
+  crossing_folding:
+    needs: build_madspace
+    runs-on: [self-hosted, "${{ inputs.runner_label }}"]
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash -l -eo pipefail {0}
+    env:
+      BACKEND: ${{ inputs.backend }}
+      MODULES: ${{ inputs.modules }}
+      GPU_ARCH: ${{ inputs.gpu_arch }}
+      NEVENTS: ${{ inputs.nevents }}
+      PDF_SET: ${{ inputs.pdf_set }}
+      GPU_CROSSING: ${{ inputs.gpu_crossing && '1' || '0' }}
+      VENV: ${{ needs.build_madspace.outputs.venv }}
+      MADSPACE_PREFIX: ${{ needs.build_madspace.outputs.madspace_prefix }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: run directory
+        run: echo "WORKDIR=${GLOBALSCRATCH:-$HOME}/mg7-gpu-ci/runs/$RUN_TAG/crossing_folding" >> "$GITHUB_ENV"
+      - name: p p > w+ j folded and expanded, on the GPU and on cpu
+        run: .github/gpu_ci/crossing_folding_mg7.sh
+      - name: collect logs and cards
+        if: always()
+        run: |
+          mkdir -p results
+          (cd "$WORKDIR" && tar -cf - --ignore-failed-read summary.txt results.txt wj.mg7 output.log *.log \
+              FOLD/Cards EXP/Cards FOLD/SubProcesses/subprocesses.json EXP/SubProcesses/subprocesses.json \
+              FOLD/Events/*/info.json EXP/Events/*/info.json 2> /dev/null) | tar -xf - -C results || true
+          find results -type f | sort
+      - name: job summary
+        if: always()
+        run: |
+          {
+            echo "### crossing folding on ${{ inputs.cluster }} ($BACKEND)"
+            if [ -f results/summary.txt ]; then
+              echo "| | |"
+              echo "|---|---|"
+              sed 's/^\([^=]*\)=\(.*\)$/| \1 | \2 |/' results/summary.txt
+            else
+              echo "No summary.txt: the job stopped early, see the log of the crossing step."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpu-crossing_folding-${{ inputs.cluster }}-${{ inputs.backend }}
+          path: results/
+          if-no-files-found: warn
+
   stop_runner:
     # must list every job that runs on the self-hosted runner
-    needs: [start_runner, build_madspace, pp_ttx]
+    needs: [start_runner, build_madspace, pp_ttx, crossing_folding]
     if: always() && needs.start_runner.result == 'success'
     runs-on: [self-hosted, "${{ inputs.runner_label }}"]
     defaults:

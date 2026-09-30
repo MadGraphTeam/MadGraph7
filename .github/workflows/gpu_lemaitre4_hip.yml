@@ -2,13 +2,17 @@
 # all in one Slurm allocation through the self-hosted runner 'lemaitre4-apu'.
 # Runs on every push to main and from the Actions tab ("Run workflow"), where the module
 # list (ROCm/GCC/Python versions) and the other inputs can be chosen.
+# Also on every push to claude/fortran-cross-symmetry-3f13f3 (crossing on the GPU,
+# docs/crossing_default_true_plan.md Phase 1a): that branch is in the deployment-branch
+# policy of the `ceci-gpu` environment and only its owner can update it (ruleset
+# "Lemaitre4"). Remove it here, from the policy and the ruleset before the merge.
 # Setup and security model: .github/gpu_ci/README.md.
 
 name: GPU CI (lemaitre4, HIP)
 
 on:
   push:
-    branches: [main]
+    branches: [main, claude/fortran-cross-symmetry-3f13f3]
     paths-ignore:
       - 'docs/**'
   workflow_dispatch:
@@ -63,6 +67,8 @@ jobs:
       time_limit: ${{ inputs.time_limit || '02:00:00' }}
       extra_sbatch: ${{ inputs.extra_sbatch }}
       keep_workdir: ${{ inputs.keep_workdir || false }}
+      # the GPU backend does not evaluate crossed flavor ids yet (Phase 1b)
+      gpu_crossing: false
     # needed for the called workflow to see the CECI_KEY secret of its `ceci-gpu`
     # environment (the repository itself has no other secrets)
     secrets: inherit
