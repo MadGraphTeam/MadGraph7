@@ -14,14 +14,17 @@
 #   <tag>_fold_cpu     FOLD on cpu                                 = <tag>_exp_cpu
 #   <tag>_gp_exp_gpu   the cpu-made EXP gridpack on $BACKEND       = <tag>_exp_cpu
 #   <tag>_gp_fold_gpu  the cpu-made FOLD gridpack on $BACKEND      = <tag>_fold_cpu
-# "=" is agreement within 4 combined standard deviations; each run must succeed.
+# "=" is agreement within 4 combined standard deviations; each run must succeed, within
+# RUN_TIMEOUT seconds (default 1200): a hung run fails alone instead of taking the
+# whole allocation with it.
 # Environment: as pp_ttx_mg7.sh (BACKEND, MODULES, GPU_ARCH, VENV, MADSPACE_PREFIX,
-# WORKDIR, NEVENTS, PDF_SET, CACHE_DIR).
+# WORKDIR, NEVENTS, PDF_SET, CACHE_DIR), plus RUN_TIMEOUT.
 set -eo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
 section() { echo; echo "=================== $* ($(date +%T))"; }
 SEED=4242
+RUN_TIMEOUT=${RUN_TIMEOUT:-1200}
 
 section "Environment"
 source "$HERE/mg7_run_env.sh"
@@ -72,14 +75,14 @@ run() {
         systematics.enable=false gridpack.save_gridpack=$4 > "$3.log" 2>&1 \
         || { echo 99; return; }
     local ret=0
-    (cd "$1" && python3 bin/generate_events -f) >> "$3.log" 2>&1 || ret=$?
+    (cd "$1" && timeout "$RUN_TIMEOUT" python3 bin/generate_events -f) >> "$3.log" 2>&1 || ret=$?
     echo $ret
 }
 
 # run_gridpack GRIDPACK RUN_NAME: the gridpack on $BACKEND; prints its exit status
 run_gridpack() {
     local ret=0
-    (cd "$1" && python3 bin/generate_events --device "$BACKEND" --seed $SEED \
+    (cd "$1" && timeout "$RUN_TIMEOUT" python3 bin/generate_events --device "$BACKEND" --seed $SEED \
          --run_name "$2" --events "$NEVENTS") > "$2.log" 2>&1 || ret=$?
     echo $ret
 }
@@ -89,8 +92,13 @@ expect_runs() {
     local name=$1 ret=$2 x
     x=$(xsec "$3" "$4")
     eval "X_$name=\"$x\""
-    if [ "$ret" -ne 0 ] || [ -z "$x" ]; then
+    if [ "$ret" -eq 124 ]; then
+        record "$name" FAIL "timed out after ${RUN_TIMEOUT}s (see $name.log)"
+    elif [ "$ret" -ne 0 ] || [ -z "$x" ]; then
         record "$name" FAIL "exit $ret, cross section '${x:-none}' (see $name.log)"
+    elif [ -n "$5" ] && [ -z "$6" ]; then
+        # the reference run failed, and is recorded as such
+        record "$name" PASS "$x (not compared: $5 has no cross section)"
     elif [ -n "$5" ] && ! agree "$x" "$6"; then
         record "$name" FAIL "$x differs from $5 ($6)"
     else
