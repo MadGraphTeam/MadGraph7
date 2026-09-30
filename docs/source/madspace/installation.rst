@@ -34,7 +34,8 @@ Run ``python madspace/install.py --help`` for the full list of options. The opti
 the last build are remembered, so ``--source --system -y`` rebuilds with the same
 settings. A flag given on the command line still wins over them, per option, so
 ``--source --system -y --cuda --cuda-arch 80`` rebuilds the remembered configuration
-with CUDA added.
+with CUDA added. They are stored in ``madspace/install_settings.json``; delete it to go
+back to the defaults.
 
 The build directory ``madspace/build`` is kept between builds, so you can run ``make``
 there directly for faster incremental builds during development. Note that this does not

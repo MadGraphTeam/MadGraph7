@@ -252,6 +252,27 @@ class TestMainSourceBuildCommand(unittest.TestCase):
         self.assertNotIn('-Ccmake.define.ENABLE_CUDA=ON', cmd)
         self.assertEqual(written['cuda_arch'], '80')
 
+    def test_a_failed_clean_build_keeps_the_settings_for_the_retry(self):
+        # --clean has removed install/, so the retry finds no previous
+        # installation: the saved settings must be used all the same
+        install.save_settings(GPU_SAVED)
+        with mock.patch.object(install, 'run', side_effect=SystemExit(1)), \
+                contextlib.redirect_stdout(io.StringIO()), \
+                self.assertRaises(SystemExit):
+            install.main(['--source', '--yes', '--clean'])
+        self.assertFalse(self.install_dir.exists())
+        cmd, _, _ = self.main({}, '--source', '--yes')
+        self.assertIn('-Ccmake.define.ENABLE_CUDA=ON', cmd)
+        self.assertIn('-Ccmake.define.CMAKE_CUDA_ARCHITECTURES=86', cmd)
+
+    def test_system_build_reuses_the_saved_settings(self):
+        # --system installs into site-packages, so install/ never exists
+        shutil.rmtree(self.install_dir)
+        cmd, _, _ = self.main(GPU_SAVED, '--source', '--system', '--yes')
+        self.assertIn('-Ccmake.define.ENABLE_CUDA=ON', cmd)
+        self.assertIn('-Ccmake.define.CMAKE_CUDA_ARCHITECTURES=86', cmd)
+        self.assertNotIn('--target=%s' % self.install_dir, cmd)
+
     def test_a_plain_rebuild_keeps_the_build_tree(self):
         # the incremental build tree is what makes a rebuild fast: only an
         # explicit --clean may remove it

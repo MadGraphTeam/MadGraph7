@@ -784,10 +784,11 @@ def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     _set_noninteractive(args.yes)
 
-    # Load saved settings when a previous installation is present. This comes
-    # before --clean on purpose: the settings describe how the user wants
-    # madspace built, and starting the build over is not a reason to forget it.
-    saved = load_settings() if (INSTALL_DIR / "madspace").is_dir() else {}
+    # The saved settings describe how the user wants madspace built, so they
+    # are read whether or not install/ holds a previous installation: it never
+    # does under --system, nor after a --clean whose rebuild failed. Read
+    # before --clean on purpose, since the legacy location is inside build/.
+    saved = load_settings()
 
     if args.clean:
         clean_install_dirs()
