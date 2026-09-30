@@ -14,6 +14,11 @@
 #   <tag>_fold_cpu     FOLD on cpu                                 = <tag>_exp_cpu
 #   <tag>_gp_exp_gpu   the cpu-made EXP gridpack on $BACKEND       = <tag>_exp_cpu
 #   <tag>_gp_fold_gpu  the cpu-made FOLD gridpack on $BACKEND      = <tag>_fold_cpu
+# and, per process <tag> of STANDALONE (p p > w+ j j, p p > j j), at one fixed phase-space
+# point with no Monte-Carlo noise: every matrix element check_sa.exe prints (every base
+# flavor, every crossing folded in) must agree between its $BACKEND and cpu builds, in
+# double precision, to 1e-10 -- for the folded and the expanded standalone output:
+#   <tag>_sa_fold_<P dir>, <tag>_sa_exp_<P dir>
 # "=" is agreement within 4 combined standard deviations; each run must succeed, within
 # RUN_TIMEOUT seconds (default 1200): a hung run fails alone instead of taking the
 # whole allocation with it.
@@ -155,11 +160,66 @@ EOF
     done
 }
 
+# check_sa_devices TAG KIND DIR: check_sa.exe of every P dir of the standalone output DIR,
+# built for $BACKEND and for cpu (FPTYPE=d), must print the same matrix elements
+check_sa_devices() {
+    local tag=$1 kind=$2 out=$3 pdir name dev ret worst gpu=$BACKEND
+    # (BACKEND=cpu, the laptop try-out of this script, is no madmatrix backend)
+    if [ "$gpu" = cpu ]; then gpu=scalar; fi
+    for pdir in "$out"/SubProcesses/P*/; do
+        name=${tag}_sa_${kind}_$(basename "$pdir")
+        for dev in "$gpu" scalar; do
+            ret=0
+            (cd "$pdir" && make -j"${SLURM_CPUS_PER_TASK:-4}" BACKEND=$dev FPTYPE=d check_sa.exe \
+                 && timeout "$RUN_TIMEOUT" ./check_sa.exe) > "$name.$dev.log" 2>&1 || ret=$?
+            if [ "$ret" -ne 0 ]; then
+                record "$name" FAIL "check_sa.exe on $dev: exit $ret (see $name.$dev.log)"
+                continue 2
+            fi
+        done
+        worst=$(python3 - "$name.$gpu.log" "$name.scalar.log" << 'EOF'
+import re, sys
+def values(path):
+    return [float(v) for v in re.findall(r'^ *Matrix element = (\S+) GeV', open(path).read(), re.M)]
+gpu, cpu = values(sys.argv[1]), values(sys.argv[2])
+if not gpu or len(gpu) != len(cpu):
+    print('count %d vs %d' % (len(gpu), len(cpu)))
+else:
+    print('%.3g %d' % (max(abs(a - b) / max(abs(a), abs(b), 1e-300) for a, b in zip(gpu, cpu)), len(gpu)))
+EOF
+)
+        case $worst in
+            count*) record "$name" FAIL "matrix elements printed: $worst" ;;
+            *) if python3 -c "import sys; sys.exit(0 if float(sys.argv[1]) <= 1e-10 else 1)" "${worst% *}"; then
+                   record "$name" PASS "${worst#* } matrix elements, max relative difference ${worst% *}"
+               else
+                   record "$name" FAIL "${worst#* } matrix elements, max relative difference ${worst% *} > 1e-10"
+               fi ;;
+        esac
+    done
+}
+
+# check_standalone TAG PROCESS: folded and expanded standalone outputs, $BACKEND vs cpu
+check_standalone() {
+    local tag=$1 proc=$2
+    section "$tag: standalone check_sa, $BACKEND vs cpu"
+    cat > "${tag}_sa.mg7" << EOF
+generate $proc --use_crossing=True
+output standalone SA_FOLD_$tag
+output standalone SA_EXP_$tag --use_crossing=False
+EOF
+    python3 "$REPO/bin/madgraph" "${tag}_sa.mg7" > "${tag}_sa_output.log" 2>&1 || true
+    check_sa_devices "$tag" fold "SA_FOLD_$tag"
+    check_sa_devices "$tag" exp "SA_EXP_$tag"
+}
+
 START=$SECONDS
 CROSSED=
 check_process wj 'p p > w+ j' true
 check_process jj 'p p > j j' false
 check_process wjj 'p p > w+ j j' false
+check_standalone wjj 'p p > w+ j j'
+check_standalone jj 'p p > j j'
 WALLTIME=$((SECONDS - START))
 
 cat > summary.txt << EOF
