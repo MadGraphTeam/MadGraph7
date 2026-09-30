@@ -47,10 +47,7 @@ vendored OpenBLAS from scratch::
 
     python madspace/install.py --source --system --clean
 
-The remembered options are kept: they are stored outside both directories. The installer
-also wipes the build tree on its own in the cases where reusing it cannot work, such as a
-build configured with a compiler or a Python interpreter that is no longer the current
-one.
+The remembered options are kept: they are stored outside both directories.
 
 Installation for MadGraph7
 --------------------------

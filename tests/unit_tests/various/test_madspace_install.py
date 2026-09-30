@@ -26,9 +26,7 @@ import contextlib
 import importlib.util
 import io
 import json
-import os
 import shutil
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -194,13 +192,6 @@ class TestMainSourceBuildCommand(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    def write_cmake_cache(self, python):
-        (self.build_dir / 'CMakeCache.txt').write_text(
-            '# This is the CMakeCache file.\n'
-            'CMAKE_BUILD_TYPE:STRING=Release\n'
-            '//The Python executable\n'
-            'Python_EXECUTABLE:PATH=%s\n' % python)
-
     def main(self, saved, *argv):
         if saved:
             install.save_settings(saved)
@@ -263,19 +254,10 @@ class TestMainSourceBuildCommand(unittest.TestCase):
 
     def test_a_plain_rebuild_keeps_the_build_tree(self):
         # the incremental build tree is what makes a rebuild fast: only an
-        # explicit --clean or a provably stale cache may remove it
-        self.write_cmake_cache(python=sys.executable)
+        # explicit --clean may remove it
         self.main(CPU_SAVED, '--source', '--yes')
         self.assertTrue(self.build_dir.is_dir())
         self.assertTrue(self.install_dir.is_dir())
-
-    def test_stale_cache_wipes_the_build_tree_only(self):
-        self.write_cmake_cache(python='/nonexistent/python3')
-        _, _, out = self.main(CPU_SAVED, '--source', '--yes')
-        self.assertFalse(self.build_dir.exists())
-        self.assertTrue(self.install_dir.is_dir())
-        self.assertIn('cannot be reused', out)
-        self.assertIn('Python interpreter changed', out)
 
     def test_arch_without_backend_warns(self):
         cmd, _, out = self.main(CPU_SAVED, '--source', '--yes',
@@ -293,7 +275,7 @@ class TestSettingsFileLocation(unittest.TestCase):
 
 
 class TestCleanAndSettingsFile(unittest.TestCase):
-    """clean_install_dirs / load_settings / stale_build_reason on real files."""
+    """clean_install_dirs / load_settings on real files."""
 
     def setUp(self):
         self.tmpdir = Path(tempfile.mkdtemp(prefix='mg7_madspace_clean_'))
@@ -316,20 +298,15 @@ class TestCleanAndSettingsFile(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    def clean(self, **kwargs):
+    def clean(self):
         with contextlib.redirect_stdout(io.StringIO()):
-            return install.clean_install_dirs(**kwargs)
+            return install.clean_install_dirs()
 
     def test_removes_both_directories(self):
         removed = self.clean()
         self.assertEqual(set(removed), {self.build_dir, self.install_dir})
         self.assertFalse(self.build_dir.exists())
         self.assertFalse(self.install_dir.exists())
-
-    def test_build_only_keeps_the_install(self):
-        self.assertEqual(self.clean(build_only=True), [self.build_dir])
-        self.assertFalse(self.build_dir.exists())
-        self.assertTrue(self.install_dir.is_dir())
 
     def test_missing_directories_are_not_an_error(self):
         self.clean()
@@ -352,45 +329,6 @@ class TestCleanAndSettingsFile(unittest.TestCase):
 
     def test_no_settings_anywhere(self):
         self.assertEqual(install.load_settings(), {})
-
-    def test_read_cmake_cache_skips_comments(self):
-        (self.build_dir / 'CMakeCache.txt').write_text(
-            '# a comment\n'
-            '//a description\n'
-            '\n'
-            'CMAKE_CXX_COMPILER:STRING=/usr/bin/clang++\n'
-            'CMAKE_CXX_COMPILER-ADVANCED:INTERNAL=1\n'
-            'ENABLE_CUDA:BOOL=ON\n')
-        entries = install.read_cmake_cache(self.build_dir / 'CMakeCache.txt')
-        self.assertEqual(entries['CMAKE_CXX_COMPILER'], '/usr/bin/clang++')
-        self.assertEqual(entries['ENABLE_CUDA'], 'ON')
-        self.assertNotIn('# a comment', entries)
-
-    def test_no_cache_is_not_stale(self):
-        self.assertIsNone(install.stale_build_reason())
-        self.assertIsNone(install.stale_build_reason(self.tmpdir / 'gone'))
-
-    def test_same_interpreter_is_not_stale(self):
-        (self.build_dir / 'CMakeCache.txt').write_text(
-            'Python_EXECUTABLE:PATH=%s\n' % sys.executable)
-        self.assertIsNone(install.stale_build_reason())
-
-    def test_moved_interpreter_is_stale(self):
-        (self.build_dir / 'CMakeCache.txt').write_text(
-            'Python_EXECUTABLE:PATH=/nonexistent/venv/bin/python3\n')
-        self.assertIn('Python interpreter changed', install.stale_build_reason())
-
-    def test_compiler_only_compared_when_CC_or_CXX_is_set(self):
-        (self.build_dir / 'CMakeCache.txt').write_text(
-            'CMAKE_CXX_COMPILER:STRING=/usr/bin/clang++\n')
-        with mock.patch.dict(os.environ, {}, clear=False):
-            os.environ.pop('CXX', None)
-            # CMake picked that compiler on its own: not ours to second-guess
-            self.assertIsNone(install.stale_build_reason())
-            os.environ['CXX'] = '/usr/bin/clang++'
-            self.assertIsNone(install.stale_build_reason())
-            os.environ['CXX'] = '/nonexistent/bin/g++-14'
-            self.assertIn('C++ compiler changed', install.stale_build_reason())
 
 
 if __name__ == '__main__':

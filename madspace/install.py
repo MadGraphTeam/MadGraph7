@@ -602,75 +602,19 @@ def save_settings(settings: dict) -> None:
 #
 # A rebuild is normally incremental: the CMake tree in build/ is what makes it
 # take seconds instead of recompiling madspace and its vendored OpenBLAS from
-# scratch, so it is kept unless there is a reason not to. --clean is that
-# reason made explicit; stale_build_reason finds the cases where reusing the
-# tree cannot work at all.
+# scratch, so it is kept unless the user asks otherwise with --clean.
 
 
-def clean_install_dirs(build_only: bool = False) -> list[Path]:
-    """Delete the CMake build tree, and the install directory unless
-    *build_only*. Returns the directories that were actually removed."""
+def clean_install_dirs() -> list[Path]:
+    """Delete the CMake build tree and the install directory. Returns the
+    directories that were actually removed."""
     removed = []
-    for target in [BUILD_DIR] if build_only else [BUILD_DIR, INSTALL_DIR]:
+    for target in (BUILD_DIR, INSTALL_DIR):
         if target.is_dir():
             shutil.rmtree(target)
             print(f"Removed {target}")
             removed.append(target)
     return removed
-
-
-def read_cmake_cache(path: Path) -> dict[str, str]:
-    """The CMakeCache.txt entries as {name: value}, or {} when unreadable."""
-    entries: dict[str, str] = {}
-    try:
-        text = path.read_text(errors="replace")
-    except OSError:
-        return entries
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith(("#", "//")):
-            continue
-        key, sep, value = line.partition("=")
-        name = key.partition(":")[0]
-        if sep and name:
-            entries[name] = value
-    return entries
-
-
-def _same_program(cached: str, current: str) -> bool:
-    if cached == current:
-        return True
-    resolved = shutil.which(current) or current
-    return os.path.realpath(resolved) == os.path.realpath(cached)
-
-
-def stale_build_reason(build_dir: Path | None = None) -> str | None:
-    """Why the existing build tree cannot be reused, or None.
-
-    CMakeCache.txt pins the compilers and the interpreter of the first
-    configure. Changing a compiler makes CMake stop with "you have changed
-    variables that require your cache to be deleted", and a moved interpreter
-    leaves the cached Python paths pointing at an environment that is no
-    longer there; neither is repairable by reconfiguring in place. Everything
-    CMake *can* pick up on its own is deliberately not reported here -- this
-    must not turn ordinary rebuilds into full ones. The compilers are only
-    compared when CC/CXX name them explicitly: without those, CMake runs its
-    own search and the cached path is not something to second-guess.
-    """
-    cache = (build_dir or BUILD_DIR) / "CMakeCache.txt"
-    entries = read_cmake_cache(cache)
-    if not entries:
-        return None
-    checks = (
-        ("CMAKE_CXX_COMPILER", os.environ.get("CXX"), "C++ compiler"),
-        ("CMAKE_C_COMPILER", os.environ.get("CC"), "C compiler"),
-        ("Python_EXECUTABLE", sys.executable, "Python interpreter"),
-    )
-    for key, current, label in checks:
-        cached = entries.get(key)
-        if cached and current and not _same_program(cached, current):
-            return f"the {label} changed ({cached} -> {current})"
-    return None
 
 
 # Main
@@ -1006,10 +950,6 @@ def main(argv: list[str] | None = None) -> None:
     if enable_docs:
         cmd.append("-Ccmake.define.ENABLE_DOCS=ON")
     cmd.append(f"-Ccmake.build-type={build_type}")
-
-    if not args.clean and (reason := stale_build_reason()):
-        print(f"\nThe existing build tree cannot be reused: {reason}.")
-        clean_install_dirs(build_only=True)
 
     env = install_build_deps(system=args.system)
     env = set_build_parallelism(env, args.jobs)
