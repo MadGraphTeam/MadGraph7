@@ -6,8 +6,8 @@
 #                                   sbatch the runner on the GPU partition, wait until online
 #   build_madspace  cluster runner  madspace with the CUDA/HIP backend (cached on the cluster)
 #   pp_ttx          cluster runner  p p > t t~ with mg7 on the GPU
-#   crossing_folding cluster runner p p > w+ j folded (--use_crossing=True) vs expanded,
-#                                   on the GPU and on cpu, and their cpu-made gridpacks
+#   crossing_folding cluster runner p p > w+ j, j j, w+ j j folded (--use_crossing=True) vs
+#                                   expanded, on the GPU and on cpu; cpu-made gridpacks (w+ j)
 #   ...             cluster runner  more CI jobs: same runs-on, and add them to stop_runner's needs
 #   stop_runner     cluster runner  clean up and end the allocation (no ssh key needed)
 #
@@ -203,15 +203,15 @@ jobs:
       - uses: actions/checkout@v5
       - name: run directory
         run: echo "WORKDIR=${GLOBALSCRATCH:-$HOME}/mg7-gpu-ci/runs/$RUN_TAG/crossing_folding" >> "$GITHUB_ENV"
-      - name: p p > w+ j folded and expanded, on the GPU and on cpu
+      - name: folded and expanded outputs, on the GPU and on cpu
         run: .github/gpu_ci/crossing_folding_mg7.sh
       - name: collect logs and cards
         if: always()
         run: |
           mkdir -p results
-          (cd "$WORKDIR" && tar -cf - --ignore-failed-read summary.txt results.txt wj.mg7 output.log *.log \
-              FOLD/Cards EXP/Cards FOLD/SubProcesses/subprocesses.json EXP/SubProcesses/subprocesses.json \
-              FOLD/Events/*/info.json EXP/Events/*/info.json 2> /dev/null) | tar -xf - -C results || true
+          (cd "$WORKDIR" && tar -cf - --ignore-failed-read summary.txt results.txt *.mg7 *.log \
+              FOLD_*/Cards EXP_*/Cards FOLD_*/SubProcesses/subprocesses.json EXP_*/SubProcesses/subprocesses.json \
+              FOLD_*/Events/*/info.json EXP_*/Events/*/info.json 2> /dev/null) | tar -xf - -C results || true
           find results -type f | sort
       - name: job summary
         if: always()

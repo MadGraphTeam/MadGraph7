@@ -1,17 +1,19 @@
 #!/bin/bash -l
 # Runs on the self-hosted runner (GPU node): job crossing_folding of gpu_runner_ci.yml.
-# One generation of p p > w+ j --use_crossing=True, written twice by `output mg7`: FOLD
-# (the crossed subprocesses are subprocesses.json entries evaluated by their base's
-# library at an extended flavor id) and EXP (--use_crossing=False, every subprocess its
-# own). Same seed everywhere, so the cpu runs of the two agree to the last digit.
+# Per process (p p > w+ j, p p > j j, p p > w+ j j): one generation --use_crossing=True,
+# written twice by `output mg7`: FOLD_<tag> (the crossed subprocesses are
+# subprocesses.json entries evaluated by their base's library at an extended flavor id)
+# and EXP_<tag> (--use_crossing=False, every subprocess its own). Same seed everywhere,
+# so the runs of the two on one device agree to the last digit.
 #
-# Checks, in this order (the gpu runs build the gpu libraries the gridpacks then ship):
-#   exp_gpu      EXP on $BACKEND
-#   exp_cpu      EXP on cpu, saving a gridpack                  = exp_gpu
-#   fold_gpu     FOLD on $BACKEND                               = exp_gpu
-#   fold_cpu     FOLD on cpu, saving a gridpack                 = exp_cpu
-#   gp_exp_gpu   the cpu-made EXP gridpack on $BACKEND          = exp_cpu
-#   gp_fold_gpu  the cpu-made FOLD gridpack on $BACKEND         = fold_cpu
+# Checks, per process <tag>, in this order (the gpu runs build the gpu libraries the
+# gridpacks then ship; the gridpacks for the first process only):
+#   <tag>_exp_gpu      EXP on $BACKEND
+#   <tag>_exp_cpu      EXP on cpu                                  = <tag>_exp_gpu
+#   <tag>_fold_gpu     FOLD on $BACKEND                            = <tag>_exp_gpu
+#   <tag>_fold_cpu     FOLD on cpu                                 = <tag>_exp_cpu
+#   <tag>_gp_exp_gpu   the cpu-made EXP gridpack on $BACKEND       = <tag>_exp_cpu
+#   <tag>_gp_fold_gpu  the cpu-made FOLD gridpack on $BACKEND      = <tag>_fold_cpu
 # "=" is agreement within 4 combined standard deviations; each run must succeed.
 # Environment: as pp_ttx_mg7.sh (BACKEND, MODULES, GPU_ARCH, VENV, MADSPACE_PREFIX,
 # WORKDIR, NEVENTS, PDF_SET, CACHE_DIR).
@@ -24,24 +26,9 @@ SEED=4242
 section "Environment"
 source "$HERE/mg7_run_env.sh"
 
-section "Generating p p > w+ j (folded and expanded)"
 rm -rf "$WORKDIR"
 mkdir -p "$WORKDIR"
 cd "$WORKDIR"
-cat > wj.mg7 << EOF
-generate p p > w+ j --use_crossing=True
-output mg7 FOLD
-output mg7 EXP --use_crossing=False
-EOF
-cat wj.mg7
-python3 "$REPO/bin/madgraph" wj.mg7 2>&1 | tee output.log
-NCROSSED=$(python3 -c 'import json, sys; print(sum(1 for e in json.load(open(sys.argv[1])) if e.get("crossing")))' \
-               FOLD/SubProcesses/subprocesses.json)
-echo "FOLD: $NCROSSED crossed subprocess entries"
-if [ "$NCROSSED" -eq 0 ]; then
-    echo "::error::output mg7 folded no crossing: nothing to test"
-    exit 1
-fi
 
 STATUS=0
 RESULTS=results.txt
@@ -111,47 +98,67 @@ expect_runs() {
     fi
 }
 
+# check_process TAG PROCESS GRIDPACKS: the checks above for one process
+check_process() {
+    local tag=$1 proc=$2 gridpacks=$3 fold=FOLD_$1 exp=EXP_$1 ret n gp
+    section "Generating $proc (folded and expanded)"
+    cat > "$tag.mg7" << EOF
+generate $proc --use_crossing=True
+output mg7 $fold
+output mg7 $exp --use_crossing=False
+EOF
+    cat "$tag.mg7"
+    python3 "$REPO/bin/madgraph" "$tag.mg7" > "${tag}_output.log" 2>&1 || true
+    n=$(python3 -c 'import json, sys; print(sum(1 for e in json.load(open(sys.argv[1])) if e.get("crossing")))' \
+            "$fold/SubProcesses/subprocesses.json" 2> /dev/null || echo 0)
+    CROSSED="$CROSSED $tag:$n"
+    if [ "$n" -eq 0 ]; then
+        record "${tag}_output" FAIL "output mg7 folded no crossing (see ${tag}_output.log)"
+        return
+    fi
+    echo "$fold: $n crossed subprocess entries"
+
+    section "$tag: EXP on $BACKEND"
+    ret=$(run "$exp" "$BACKEND" "${tag}_exp_gpu" false)
+    expect_runs "${tag}_exp_gpu" "$ret" "$exp" "${tag}_exp_gpu"
+    section "$tag: EXP on cpu"
+    ret=$(run "$exp" cpu "${tag}_exp_cpu" "$gridpacks")
+    expect_runs "${tag}_exp_cpu" "$ret" "$exp" "${tag}_exp_cpu" "${tag}_exp_gpu" "$(eval echo \$X_${tag}_exp_gpu)"
+    section "$tag: FOLD on $BACKEND"
+    ret=$(run "$fold" "$BACKEND" "${tag}_fold_gpu" false)
+    expect_runs "${tag}_fold_gpu" "$ret" "$fold" "${tag}_fold_gpu" "${tag}_exp_gpu" "$(eval echo \$X_${tag}_exp_gpu)"
+    section "$tag: FOLD on cpu"
+    ret=$(run "$fold" cpu "${tag}_fold_cpu" "$gridpacks")
+    expect_runs "${tag}_fold_cpu" "$ret" "$fold" "${tag}_fold_cpu" "${tag}_exp_cpu" "$(eval echo \$X_${tag}_exp_cpu)"
+    [ "$gridpacks" = true ] || return 0
+
+    local kind dir
+    for kind in exp fold; do
+        if [ "$kind" = exp ]; then dir=$exp; else dir=$fold; fi
+        section "$tag: cpu-made $dir gridpack on $BACKEND"
+        gp=$(ls -d "$dir"/Events/"${tag}_${kind}_cpu"_*/gridpack 2> /dev/null | sed -n 1p || true)
+        if [ -z "$gp" ]; then
+            record "${tag}_gp_${kind}_gpu" FAIL "no gridpack saved by ${tag}_${kind}_cpu"
+            continue
+        fi
+        ret=$(run_gridpack "$gp" "${tag}_gp_${kind}_gpu")
+        expect_runs "${tag}_gp_${kind}_gpu" "$ret" "$gp" "${tag}_gp_${kind}_gpu" \
+            "${tag}_${kind}_cpu" "$(eval echo \$X_${tag}_${kind}_cpu)"
+    done
+}
+
 START=$SECONDS
-section "EXP on $BACKEND"
-ret=$(run EXP "$BACKEND" exp_gpu false)
-expect_runs exp_gpu "$ret" EXP exp_gpu
-
-section "EXP on cpu (saving a gridpack)"
-ret=$(run EXP cpu exp_cpu true)
-expect_runs exp_cpu "$ret" EXP exp_cpu exp_gpu "$X_exp_gpu"
-
-section "FOLD on $BACKEND"
-ret=$(run FOLD "$BACKEND" fold_gpu false)
-expect_runs fold_gpu "$ret" FOLD fold_gpu exp_gpu "$X_exp_gpu"
-
-section "FOLD on cpu (saving a gridpack)"
-ret=$(run FOLD cpu fold_cpu true)
-expect_runs fold_cpu "$ret" FOLD fold_cpu exp_cpu "$X_exp_cpu"
-
-section "cpu-made EXP gridpack on $BACKEND"
-GP=$(ls -d EXP/Events/exp_cpu_*/gridpack 2> /dev/null | sed -n 1p || true)
-if [ -z "$GP" ]; then
-    record gp_exp_gpu FAIL "no gridpack saved by exp_cpu"
-else
-    ret=$(run_gridpack "$GP" gp_exp_gpu)
-    expect_runs gp_exp_gpu "$ret" "$GP" gp_exp_gpu exp_cpu "$X_exp_cpu"
-fi
-
-section "cpu-made FOLD gridpack on $BACKEND"
-GP=$(ls -d FOLD/Events/fold_cpu_*/gridpack 2> /dev/null | sed -n 1p || true)
-if [ -z "$GP" ]; then
-    record gp_fold_gpu FAIL "no gridpack saved by fold_cpu"
-else
-    ret=$(run_gridpack "$GP" gp_fold_gpu)
-    expect_runs gp_fold_gpu "$ret" "$GP" gp_fold_gpu fold_cpu "$X_fold_cpu"
-fi
+CROSSED=
+check_process wj 'p p > w+ j' true
+check_process jj 'p p > j j' false
+check_process wjj 'p p > w+ j j' false
 WALLTIME=$((SECONDS - START))
 
 cat > summary.txt << EOF
 node=$(hostname)
 gpu=${GPU_NAME:-unknown}
 backend=$BACKEND
-crossed_entries=$NCROSSED
+crossed_entries=${CROSSED# }
 events=$NEVENTS
 walltime=${WALLTIME}s
 EOF
