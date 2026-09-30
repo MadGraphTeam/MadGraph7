@@ -404,42 +404,126 @@ c     upper tail on [yhi, 1]
       end
 
 
-      subroutine bw_window_cdf(pole,width,wlo,whi,wfac,a0,f1,f2,tot,c)
+      subroutine bw_window_segments(pole,width,wlo,whi,wfac,nseg,sa,sb,
+     &     st,sm,c,tot)
 c**********************************************************************
-c     Normalisation of the flat-window Breit-Wigner density on [0,1]:
-c     g(y) = 1/((y-pole)^2+width^2) outside [wlo,whi] and the constant
-c     c = wfac * (mean of g at the two window edges) inside.
-c     F(y) is its primitive with F(0)=0: f1=F(wlo), f2=F(whi), tot=F(1).
-c     a0 = atan(-pole/width)/width is the offset of the arctan primitive.
+c     Segments of the $-excluded Breit-Wigner density on [0,1]: outside
+c     the window [wlo,whi] it is the resonance density with 1/|y-pole|
+c     tails of bwtail_setup (arctan core |y-pole| < bwk*width, continuous
+c     1/|y-pole| outside), inside the window the constant c = wfac * (mean
+c     of that density at the two window edges). Segment k is [sa(k),sb(k)]
+c     of type st(k) (1 lower tail, 2 core, 3 upper tail, 4 window) and
+c     mass sm(k); tot is the total mass.
 c**********************************************************************
       implicit none
-      double precision pole,width,wlo,whi,wfac,a0,f1,f2,tot,c
-      double precision ga,gb
-      a0 = atan(-pole/width)/width
-      ga = 1d0/((wlo-pole)**2+width**2)
-      gb = 1d0/((whi-pole)**2+width**2)
-      c = wfac*0.5d0*(ga+gb)
-      f1 = atan((wlo-pole)/width)/width - a0
-      f2 = f1 + c*(whi-wlo)
-      tot = f2 + atan((1d0-pole)/width)/width
-     &     - atan((whi-pole)/width)/width
+      double precision pole,width,wlo,whi,wfac,c,tot
+      integer nseg, st(6)
+      double precision sa(6), sb(6), sm(6)
+      double precision bwk
+      parameter (bwk=15d0)
+      double precision cc, ylo, yhi, bp(6), tmp, a, b, mid
+      double precision bw_tail_density
+      integer i, j, nb, t
+      cc = bwk/(width*(bwk*bwk+1d0))
+      ylo = pole-bwk*width
+      yhi = pole+bwk*width
+      c = wfac*0.5d0*(bw_tail_density(pole,width,wlo)
+     &     + bw_tail_density(pole,width,whi))
+c     sorted break points inside [0,1]
+      nb = 2
+      bp(1) = 0d0
+      bp(2) = 1d0
+      do i=1,4
+         if (i.eq.1) tmp = ylo
+         if (i.eq.2) tmp = yhi
+         if (i.eq.3) tmp = wlo
+         if (i.eq.4) tmp = whi
+         if (tmp.gt.0d0 .and. tmp.lt.1d0) then
+            nb = nb+1
+            bp(nb) = tmp
+         endif
+      enddo
+      do i=2,nb
+         tmp = bp(i)
+         j = i-1
+         do while (j.ge.1)
+            if (bp(j).le.tmp) exit
+            bp(j+1) = bp(j)
+            j = j-1
+         enddo
+         bp(j+1) = tmp
+      enddo
+      nseg = 0
+      tot = 0d0
+      do i=1,nb-1
+         a = bp(i)
+         b = bp(i+1)
+         if (b.le.a) cycle
+         mid = 0.5d0*(a+b)
+         if (mid.gt.wlo .and. mid.lt.whi) then
+            t = 4
+         elseif (mid.lt.ylo) then
+            t = 1
+         elseif (mid.gt.yhi) then
+            t = 3
+         else
+            t = 2
+         endif
+         nseg = nseg+1
+         sa(nseg) = a
+         sb(nseg) = b
+         st(nseg) = t
+         if (t.eq.1) then
+            sm(nseg) = cc*log((pole-a)/(pole-b))
+         elseif (t.eq.3) then
+            sm(nseg) = cc*log((b-pole)/(a-pole))
+         elseif (t.eq.2) then
+            sm(nseg) = (atan((b-pole)/width)-atan((a-pole)/width))/width
+         else
+            sm(nseg) = c*(b-a)
+         endif
+         tot = tot + sm(nseg)
+      enddo
+      end
+
+
+      double precision function bw_tail_density(pole,width,y)
+c**********************************************************************
+c     unnormalised density of the Breit-Wigner map with 1/|y-pole| tails
+c     (see bwtail_setup): 1/((y-pole)^2+width^2) for |y-pole| < bwk*width
+c**********************************************************************
+      implicit none
+      double precision pole,width,y
+      double precision bwk
+      parameter (bwk=15d0)
+      if (abs(y-pole).le.bwk*width) then
+         bw_tail_density = 1d0/((y-pole)**2+width**2)
+      else
+         bw_tail_density = bwk/(width*(bwk*bwk+1d0))/abs(y-pole)
+      endif
       end
 
 
       subroutine transpole_win(pole1,width1,wlo1,whi1,wfac,x,y,jac)
 c**********************************************************************
 c     As transpole for a B.W. (pole>0) but for a $-excluded propagator:
-c     the density is the B.W. outside the window [wlo,whi] (in the same
-c     s/stot units as pole) and flat inside, at the mean of the two edge
-c     values times wfac, so that the excluded pole region is not
-c     oversampled (wfac=0: not sampled at all).
-c     Same scheme as madspace's flat_window_breit_wigner_invariant.
+c     outside the window [wlo,whi] (in the same s/stot units as pole) the
+c     density is that of the Breit-Wigner map with 1/|y-pole| tails
+c     (the off-shell tail of a resonance falls like 1/s, see transpole),
+c     inside it is flat, at the mean of the two edge values times wfac,
+c     so that the excluded pole region is not oversampled (wfac=0: not
+c     sampled at all).
 c**********************************************************************
       implicit none
       double precision pole1,width1,wlo1,whi1,wfac,x,y,jac
-      double precision pole,width,wlo,whi,a0,f1,f2,tot,c,u,g
+      double precision pole,width,wlo,whi,c,tot,u,g
+      integer nseg, st(6), k
+      double precision sa(6), sb(6), sm(6)
+      double precision bwk
+      parameter (bwk=15d0)
       double precision small_width_treatment
       common/narrow_width/small_width_treatment
+      double precision bw_tail_density
 
       pole = pole1
       width = width1
@@ -453,17 +537,34 @@ c**********************************************************************
          call transpole(pole1,width1,x,y,jac)
          return
       endif
-      call bw_window_cdf(pole,width,wlo,whi,wfac,a0,f1,f2,tot,c)
+      call bw_window_segments(pole,width,wlo,whi,wfac,nseg,sa,sb,st,sm,
+     &     c,tot)
       u = x*tot
-      if (u.lt.f1) then
-         y = pole + width*tan(width*(u+a0))
-         g = 1d0/((y-pole)**2+width**2)
-      elseif (u.lt.f2) then
-         y = wlo + (u-f1)/c
+      k = 1
+      do while (k.lt.nseg .and. u.ge.sm(k))
+         u = u - sm(k)
+         k = k+1
+      enddo
+      if (st(k).eq.4 .and. sm(k).le.0d0) then
+c        empty window: only reached at the boundary, stay on its edge
+         y = sa(k)
+         jac = 0d0
+         return
+      endif
+      if (st(k).eq.1) then
+         y = pole - (pole-sa(k))*exp(-u*width*(bwk*bwk+1d0)/bwk)
+      elseif (st(k).eq.3) then
+         y = pole + (sa(k)-pole)*exp(u*width*(bwk*bwk+1d0)/bwk)
+      elseif (st(k).eq.2) then
+         y = pole + width*tan(atan((sa(k)-pole)/width) + u*width)
+      else
+         y = sa(k) + u/c
+      endif
+      y = min(max(y,sa(k)),sb(k))
+      if (st(k).eq.4) then
          g = c
       else
-         y = pole + width*tan(width*(u-f2+atan((whi-pole)/width)/width))
-         g = 1d0/((y-pole)**2+width**2)
+         g = bw_tail_density(pole,width,y)
       endif
       jac = jac*tot/g
       end
@@ -476,9 +577,14 @@ c     jac by dy/dx.
 c**********************************************************************
       implicit none
       double precision pole1,width1,wlo1,whi1,wfac,x,y,jac
-      double precision pole,width,wlo,whi,a0,f1,f2,tot,c,g
+      double precision pole,width,wlo,whi,c,tot,u,g,yy
+      integer nseg, st(6), k
+      double precision sa(6), sb(6), sm(6)
+      double precision bwk
+      parameter (bwk=15d0)
       double precision small_width_treatment
       common/narrow_width/small_width_treatment
+      double precision bw_tail_density
 
       pole = pole1
       width = width1
@@ -492,21 +598,33 @@ c**********************************************************************
          call untranspole(pole1,width1,x,y,jac)
          return
       endif
-      call bw_window_cdf(pole,width,wlo,whi,wfac,a0,f1,f2,tot,c)
-      if (y.lt.wlo) then
-         x = (atan((y-pole)/width)/width - a0)/tot
-         g = 1d0/((y-pole)**2+width**2)
-      elseif (y.le.whi) then
-         x = (f1 + c*(y-wlo))/tot
+      call bw_window_segments(pole,width,wlo,whi,wfac,nseg,sa,sb,st,sm,
+     &     c,tot)
+      yy = min(max(y,0d0),1d0)
+      u = 0d0
+      k = 1
+      do while (k.lt.nseg .and. yy.gt.sb(k))
+         u = u + sm(k)
+         k = k+1
+      enddo
+      if (st(k).eq.1) then
+         u = u + bwk/(width*(bwk*bwk+1d0))*log((pole-sa(k))/(pole-yy))
+         g = bw_tail_density(pole,width,yy)
+      elseif (st(k).eq.3) then
+         u = u + bwk/(width*(bwk*bwk+1d0))*log((yy-pole)/(sa(k)-pole))
+         g = bw_tail_density(pole,width,yy)
+      elseif (st(k).eq.2) then
+         u = u + (atan((yy-pole)/width)-atan((sa(k)-pole)/width))/width
+         g = bw_tail_density(pole,width,yy)
+      else
+         u = u + c*(yy-sa(k))
          g = c
          if (c.le.0d0) then
+            x = u/tot
             jac = 0d0
             return
          endif
-      else
-         x = (f2 + atan((y-pole)/width)/width
-     &        - atan((whi-pole)/width)/width)/tot
-         g = 1d0/((y-pole)**2+width**2)
       endif
+      x = u/tot
       jac = jac*tot/g
       end
