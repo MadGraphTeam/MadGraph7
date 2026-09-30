@@ -201,6 +201,7 @@ class TestCmdShell1(unittest.TestCase):
                     'color_basis': 'auto',
                     'gauge': 'unitary',
                     'output_dependencies': 'external',
+                    'plain': False,
                     'dmtcp': None,
                     'lhapdf': 'lhapdf-config',
                     'lhapdf_py2': None,

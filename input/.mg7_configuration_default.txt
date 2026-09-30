@@ -104,8 +104,11 @@
 #! A question is always asked before any update
 # auto_update = 7
 
+#! Disable coloured output (equivalent to ./bin/madgraph --plain)
+# plain = False
+
 ################################################################################
-#  INFO FOR MADEVENT / aMC@NLO 
+#  INFO FOR MADEVENT / aMC@NLO
 ################################################################################
 # If this file is in a MADEVENT Template. 'main directory' is the directory
 # containing the SubProcesses directory. Otherwise this is the MadGraph7 main

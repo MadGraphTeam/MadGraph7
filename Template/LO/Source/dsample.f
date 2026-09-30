@@ -1393,6 +1393,8 @@ c
       logical bwtail(maxinvar), use_bwtail
       common/to_bwtail/bwtail
       common/to_bwtail_on/use_bwtail
+      double precision      swinlo(maxinvar),swinhi(maxinvar),swinc(maxinvar)
+      common/to_bw_window/  swinlo        ,swinhi        ,swinc
 
       integer nzoom
       double precision  tx(1:3,maxinvar)
@@ -1498,9 +1500,14 @@ c         write(*,*) "pole, width",ij,spole(ij),swidth(ij)
          if (swidth(ij) .gt. 0d0) then
 c            write(*,*) 'Tranpole called',ij,swidth(ij)
             y = x                             !Takes uniform y and returns
+            if (spole(ij).gt.0d0.and.swinhi(ij).gt.0d0) then
+               call transpole_win(spole(ij),swidth(ij),swinlo(ij),
+     &              swinhi(ij),swinc(ij),y,x,wgt)
+            else
             use_bwtail = bwtail(ij)
             call transpole(spole(ij),swidth(ij),y,x,wgt) !x on BW pole or 1/x 
             use_bwtail = .false.
+            endif
          endif
       endif
 c
@@ -1884,6 +1891,8 @@ c      common /to_fx/   fx
       logical bwtail(maxinvar), use_bwtail
       common/to_bwtail/bwtail
       common/to_bwtail_on/use_bwtail
+      double precision      swinlo(maxinvar),swinhi(maxinvar),swinc(maxinvar)
+      common/to_bw_window/  swinlo        ,swinhi        ,swinc
       
       integer                   neventswritten
       common /to_eventswritten/ neventswritten
@@ -2048,10 +2057,16 @@ c
                if (j .gt. 0) then
                   if (swidth(j) .gt. 0d0) then
                      ddumb=0d0
+                     if (spole(j).gt.0d0.and.swinhi(j).gt.0d0) then
+                        call untranspole_win(spole(j),swidth(j),
+     &                    swinlo(j),swinhi(j),swinc(j),point(j),point(j),
+     &                    ddumb)
+                     else
                      use_bwtail = bwtail(j)
                      call untranspole(spole(j),swidth(j),
      &                    point(j),point(j),ddumb)
                      use_bwtail = .false.
+                     endif
                      if (point(j) .lt. 0d0) then
                         print*,'Warning point<0',j,point(j)
                      endif
@@ -2774,21 +2789,29 @@ c
       logical bwtail(maxinvar), use_bwtail
       common/to_bwtail/bwtail
       common/to_bwtail_on/use_bwtail
+      double precision      swinlo(maxinvar),swinhi(maxinvar),swinc(maxinvar)
+      common/to_bw_window/  swinlo        ,swinhi        ,swinc
 c
 c     Data
 c
       data spole,swidth/maxinvar*0d0,maxinvar*0d0/
       data bwtail/maxinvar*.false./
       data use_bwtail/.false./
+      data swinlo,swinhi,swinc/maxinvar*0d0,maxinvar*0d0,maxinvar*1d0/
 c-----
 c  Begin Code
 c-----
       bwjac = 1d0
       if (j .gt. 0) then
          if (swidth(j) .gt. 0d0) then
+            if (spole(j).gt.0d0.and.swinhi(j).gt.0d0) then
+               call untranspole_win(spole(j),swidth(j),swinlo(j),
+     &              swinhi(j),swinc(j),x,y,bwjac)
+            else
             use_bwtail = bwtail(j)
             call  untranspole(spole(j),swidth(j),x,y,bwjac)
             use_bwtail = .false.
+            endif
          else
             x=y
          endif

@@ -1975,9 +1975,10 @@ class ReweightInterface(extended_cmd.Cmd):
             misc.sprint(type(error))
             raise
         
-        commandline = 'output %s %s --prefix=int --prefixf2py=%s' % (self.sa_class, pjoin(path_me,data['paths'][0]), self.nb_rw)
         self.path2prefix[pjoin(path_me,data['paths'][0])] = self.nb_rw
         self.nb_rw += 1
+        # no --prefixf2py for the tree output: rw_me and rw_me_<N> are kept
+        # apart by the name of their shared library (see compile_SubProcess_dir)
         commandline = 'output %s %s --prefix=int --density=1' % (self.sa_class, pjoin(path_me,data['paths'][0]))
         if self.inc_sudakov:
             # in this case, the sudakov output format has to be changed
@@ -2400,18 +2401,24 @@ class ReweightInterface(extended_cmd.Cmd):
             nb_core = self.mother.options['nb_core'] if self.mother.options['run_mode'] !=0 else 1
         else:
             nb_core = 1
+        # rw_me and rw_me_<N> are loaded in the same process: their shared
+        # library (liball<PROCNAME>_<MENUM>me) needs a distinct name, otherwise
+        # the loader hands the second f2py module the first library.
+        # The leading '_' keeps it different from the liball<dir>_<N>me.so
+        # name that load_module tries to preload with RTLD_GLOBAL.
+        procname = 'PROCNAME=_%s' % os.path.basename(os.path.dirname(os.path.normpath(Sdir)))
         os.environ['MENUM'] = '2'
         try: 
-            misc.compile(['all_matrix2py.so'], cwd=Sdir, nb_core=nb_core)
+            misc.compile([procname, 'all_matrix2py.so'], cwd=Sdir, nb_core=nb_core)
         except Exception as e:
-            misc.compile(['all_matrix2py.so'], cwd=Sdir, nb_core=1)
+            misc.compile([procname, 'all_matrix2py.so'], cwd=Sdir, nb_core=1)
 
         if not (self.second_model or self.second_process or self.dedicated_path):
             os.environ['MENUM'] = '3'
             try:
-                misc.compile(['all_matrix3py.so'], cwd=Sdir, nb_core=nb_core)
+                misc.compile([procname, 'all_matrix3py.so'], cwd=Sdir, nb_core=nb_core)
             except Exception as e:
-                misc.compile(['all_matrix3py.so'], cwd=Sdir, nb_core=1)
+                misc.compile([procname, 'all_matrix3py.so'], cwd=Sdir, nb_core=1)
                 
 
     def load_module(self, metag=1):
