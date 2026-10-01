@@ -65,15 +65,19 @@ namespace madmatrix
   // K*nmaxflavor + flav, K a row of the crossing table. One event per thread:
   // calculate_jamps reads the thread's row once (the preamble of
   // EvaluateDiagrams.inc), and evaluates the ighel-th good helicity of ITS
-  // crossing (dcGoodHelOfCross, scanned per crossing in sigmaKin_getGoodHel);
+  // crossing (scanned per crossing in sigmaKin_getGoodHel, see crossed_hel_row);
   // a thread past its crossing's last good helicity adds an exact zero. The
   // helicity loop runs up to the longest list (cNGoodLoop). No C-parity
   // de-duplication on the GPU. With crossing off, cNcross is 1 and every
   // crossing branch below is discarded at compile time.
+  // The good helicities of a crossing are a bit mask over the helicity rows,
+  // not a list of rows: ncross*ncomb ints overflow the 64 KB of constant memory
+  // with --crossing_table=all on 7-8 legs (u u~ > z z z g g: 72.6 KB), the mask
+  // is 32 times smaller.
   constexpr int cNcross = use_crossing ? ProcessTables::ncross : 1;
-  __device__ __constant__ int dcGoodHelOfCross[cNcross][ncomb];
+  constexpr int cNHelWords = ( ncomb + 31 ) / 32;
+  __device__ __constant__ unsigned int dcGoodHelMaskOfCross[cNcross][cNHelWords];
   __device__ __constant__ int dcNGoodPerCross[cNcross];
-  static int cGoodHelOfCross[cNcross][ncomb];
   static int cNGoodPerCross[cNcross];
   static int cNGoodLoop; // helicity-loop bound: cNGoodHel, or the longest per-crossing list
   __device__ __constant__ fptype cIPC[nIPC > 0 ? nIPC * 2 : 1];
@@ -205,12 +209,26 @@ namespace madmatrix
   }
 
   // The helicity row of the ighel-th good helicity of this flavor id's
-  // crossing; -1 past the end of its list, or for a row out of the table.
+  // crossing (the ighel-th set bit of its mask); -1 past the end of its list,
+  // or for a row out of the table.
   __device__ inline int
   crossed_hel_row( int ighel, unsigned int flavor_id )
   {
     const unsigned int cross = flavor_id / (unsigned int)nmaxflavor;
-    return ( cross < (unsigned int)cNcross && ighel < dcNGoodPerCross[cross] ) ? dcGoodHelOfCross[cross][ighel] : -1;
+    if( cross >= (unsigned int)cNcross || ighel < 0 || ighel >= dcNGoodPerCross[cross] ) return -1;
+    int left = ighel;
+    for( int w = 0; w < cNHelWords; w++ )
+    {
+      unsigned int bits = dcGoodHelMaskOfCross[cross][w];
+      const int nbits = __popc( bits );
+      if( left < nbits )
+      {
+        for( ; left > 0; left-- ) bits &= bits - 1; // drop the lower set bits
+        return w * 32 + __ffs( bits ) - 1;
+      }
+      left -= nbits;
+    }
+    return -1;
   }
 
   //--------------------------------------------------------------------------
@@ -488,15 +506,20 @@ namespace madmatrix
     gpuFree( devFlavorVec );
     if constexpr( use_crossing )
     {
+      static unsigned int goodMask[cNcross][cNHelWords];
       for( int c = 0; c < cNcross; c++ )
       {
         int n = 0;
-        for( int h = 0; h < ncomb; h++ ) cGoodHelOfCross[c][h] = 0;
+        for( int w = 0; w < cNHelWords; w++ ) goodMask[c][w] = 0;
         for( int h = 0; h < ncomb; h++ )
-          if( goodPerCross[c][h] ) cGoodHelOfCross[c][n++] = h;
+          if( goodPerCross[c][h] )
+          {
+            goodMask[c][h / 32] |= 1u << ( h % 32 );
+            n++;
+          }
         cNGoodPerCross[c] = n;
       }
-      gpuMemcpyToSymbol( dcGoodHelOfCross, cGoodHelOfCross, cNcross * ncomb * sizeof( int ) );
+      gpuMemcpyToSymbol( dcGoodHelMaskOfCross, goodMask, cNcross * cNHelWords * sizeof( unsigned int ) );
       gpuMemcpyToSymbol( dcNGoodPerCross, cNGoodPerCross, cNcross * sizeof( int ) );
     }
   }
