@@ -99,6 +99,13 @@ EFF_TOL = float(os.environ.get('MADSPIN_TEST_EFF_TOL', '0.15'))
 # random streams alone. The event count and the cross-section of that test
 # stay exact.
 MULTICORE_EFF_TOL = float(os.environ.get('MADSPIN_TEST_MULTICORE_EFF_TOL', '0.3'))
+# madspin_density vs [full_decay_chain, PA_density]: the efficiencies are
+# 1/(trials per event) set by each mode's maximum-weight estimate, which
+# scatters with the seed. On p p > t t~ (seeds 42-44, this code and the one
+# before it) madspin_density spans 0.22-0.33 and PA_density 0.135-0.33, and
+# madspin_density lands up to 0.075 above the larger of the two: a 0.05 slack
+# fails on the seed alone (CI seed 42: 0.216 against a 0.197 bound).
+MADSPIN_DENSITY_SLACK = float(os.environ.get('MADSPIN_TEST_DENSITY_SLACK', '0.1'))
 
 # Number of cores exercised by test_short_madspin_multicore (the process-
 # parallel unweighting path is enabled for nb_core > 1).
@@ -234,6 +241,7 @@ class MadSpinFactoryTest(_MadSpinFactoryBase):
         assert_efficiency_ordering(
             self, results,
             close_rel_tol=EFF_TOL,
+            madspin_density_slack=MADSPIN_DENSITY_SLACK,
         )
 
     # ==================================================================
