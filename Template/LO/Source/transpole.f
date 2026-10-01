@@ -33,11 +33,6 @@ c     small width treatment
 c
       double precision small_width_treatment
       common/narrow_width/small_width_treatment
-      double precision bwi_l,bwi_w,bwi_u,bwc,bwza,bwzb,bwu
-      logical use_bwtail
-      common/to_bwtail_on/use_bwtail
-      double precision bwk
-      parameter (bwk=15d0)
 c-----
 c  Begin Code
 c-----
@@ -51,46 +46,24 @@ c-----
             jac = jac * width/width1
          endif
 
-c        Breit-Wigner (arctan) map inside |y-pole| < bwk*width, and 1/|y-pole|
-c        (log) tails outside, the density continuous at the boundaries: the
-c        BW density falls like 1/y^2 while a vector resonance decaying to
-c        massless fermions falls like 1/y, so the tails get the right density.
-c        Only for resonances free to go off shell (use_bwtail, set by dsample);
-c        a forced or required on-shell one keeps the plain arctan map
-         if (use_bwtail) then
-            call bwtail_setup(pole,width,bwi_l,bwi_w,bwi_u,bwc,bwza,bwzb)
-            bwu = x*(bwi_l+bwi_w+bwi_u)
-            if (bwu .lt. bwi_l) then
-               y = pole - pole*exp(-bwu/bwc)
-               jac = jac*(bwi_l+bwi_w+bwi_u)*(pole-y)/bwc
-            elseif (bwu .lt. bwi_l+bwi_w) then
-               z = bwza + (bwu-bwi_l)*width
-               y = pole + width*tan(z)
-               jac = jac*(bwi_l+bwi_w+bwi_u)*((y-pole)**2+width**2)
-            else
-               y = pole + bwk*width*exp((bwu-bwi_l-bwi_w)/bwc)
-               jac = jac*(bwi_l+bwi_w+bwi_u)*(y-pole)/bwc
-            endif
+         zmin = atan((-pole)/width)/width
+         zmax = atan((1d0-pole)/width)/width
+         if (x .gt. del .and. x .lt. 1d0-del) then
+            z = zmin+(zmax-zmin)*x
+            y = pole+width*tan(width*z)
+            jac = jac *(width/cos(width*z))**2*(zmax-zmin)
+         elseif (x .lt. del) then
+            xmin = 0d0
+            z    = zmin+(zmax-zmin)*del
+            xmax = pole+width*tan(width*z)
+            y = xmin+x*(xmax-xmin)/del
+            jac = jac*(xmax-xmin)/del
          else
-            zmin = atan((-pole)/width)/width
-            zmax = atan((1d0-pole)/width)/width
-            if (x .gt. del .and. x .lt. 1d0-del) then
-               z = zmin+(zmax-zmin)*x
-               y = pole+width*tan(width*z)
-               jac = jac *(width/cos(width*z))**2*(zmax-zmin)
-            elseif (x .lt. del) then
-               xmin = 0d0
-               z    = zmin+(zmax-zmin)*del
-               xmax = pole+width*tan(width*z)
-               y = xmin+x*(xmax-xmin)/del
-               jac = jac*(xmax-xmin)/del
-            else
-               xmax = 1d0
-               z    = zmin+(zmax-zmin)*(1d0-del)
-               xmin = pole+width*tan(width*z)
-               y = xmin+(x+del-1d0)*(xmax-xmin)/del
-               jac = jac*(xmax-xmin)/del
-            endif
+            xmax = 1d0
+            z    = zmin+(zmax-zmin)*(1d0-del)
+            xmin = pole+width*tan(width*z)
+            y = xmin+(x+del-1d0)*(xmax-xmin)/del
+            jac = jac*(xmax-xmin)/del
          endif
       elseif(pole .gt. -1d0) then       !1/sqrt(x^2+width^2) t-channel
          if (x .gt. .5d0) then          !Don't do anything here t>0
@@ -218,11 +191,6 @@ c     small width treatment
 c
       double precision small_width_treatment
       common/narrow_width/small_width_treatment
-      double precision bwi_l,bwi_w,bwi_u,bwc,bwza,bwzb,bwu
-      logical use_bwtail
-      common/to_bwtail_on/use_bwtail
-      double precision bwk
-      parameter (bwk=15d0)
 c
 c     Local
 c
@@ -242,56 +210,40 @@ c-----
             width = pole * small_width_treatment
             jac = jac * width/width1
          endif
-         if (use_bwtail) then
-            call bwtail_setup(pole,width,bwi_l,bwi_w,bwi_u,bwc,bwza,bwzb)
-            if (y .lt. pole-bwk*width) then
-               bwu = bwc*log(pole/(pole-y))
-               jac = jac*(bwi_l+bwi_w+bwi_u)*(pole-y)/bwc
-            elseif (y .le. pole+bwk*width) then
-               z = atan((y-pole)/width)
-               bwu = bwi_l + (z-bwza)/width
-               jac = jac*(bwi_l+bwi_w+bwi_u)*((y-pole)**2+width**2)
+         zmin = atan((-pole)/width)/width
+         zmax = atan((1d0-pole)/width)/width
+         z = atan((y-pole)/width)/width
+         x = (z-zmin)/(zmax-zmin)
+         if (x .le. del) then
+            xmin = 0d0
+            z    = zmin+(zmax-zmin)*del
+            xmax = pole+width*tan(width*z)
+            if(xmin.lt.xmax) then
+               x = (y-xmin)*del/(xmax-xmin)
             else
-               bwu = bwi_l + bwi_w + bwc*log((y-pole)/(bwk*width))
-               jac = jac*(bwi_l+bwi_w+bwi_u)*(y-pole)/bwc
+               x=xmin
             endif
-            x = bwu/(bwi_l+bwi_w+bwi_u)
-         else
-            zmin = atan((-pole)/width)/width
-            zmax = atan((1d0-pole)/width)/width
-            z = atan((y-pole)/width)/width
-            x = (z-zmin)/(zmax-zmin)
-            if (x .le. del) then
-               xmin = 0d0
-               z    = zmin+(zmax-zmin)*del
-               xmax = pole+width*tan(width*z)
-               if(xmin.lt.xmax) then
-                  x = (y-xmin)*del/(xmax-xmin)
-               else
-                  x=xmin
-               endif
-               jac = jac*(xmax-xmin)/del
-            elseif (x .ge. 1d0-del) then
-               xmax = 1d0
-               z    = zmin+(zmax-zmin)*(1d0-del)
-               xmin = pole+width*tan(width*z)
-               if(xmin.lt.xmax) then
-                  x = (y-xmin)*del/(xmax-xmin)-del+1d0
-               else
-                  x=xmin
-               endif
-               jac = jac*(xmax-xmin)/del
+            jac = jac*(xmax-xmin)/del
+         elseif (x .ge. 1d0-del) then
+            xmax = 1d0
+            z    = zmin+(zmax-zmin)*(1d0-del)
+            xmin = pole+width*tan(width*z)
+            if(xmin.lt.xmax) then
+               x = (y-xmin)*del/(xmax-xmin)-del+1d0
+            else
+               x=xmin
+            endif
+            jac = jac*(xmax-xmin)/del
 c RF (2014/07/07): code is not protected against this special case. In this case,
 c simply set x to 1 and the jac to zero so that this PS point will not
 c contribute (but you do get the correct xbin_min and xbin_max in
 c sample_get_x)
-               if (y.eq.xgmax .and. xmin.ge.xgmax) then
-                  x=1d0
-                  jac=0d0
-               endif
-            else
-               jac = jac *(width/cos(width*z))**2*(zmax-zmin)
+            if (y.eq.xgmax .and. xmin.ge.xgmax) then
+               x=1d0
+               jac=0d0
             endif
+         else
+            jac = jac *(width/cos(width*z))**2*(zmax-zmin)
          endif
 c-------
 c    tjs 3/5/2011  Perform 1/x transformation  using y=xo^(1-x)
@@ -376,6 +328,92 @@ c            y = xmin+(x+del-1d0)*(xmax-xmin)/del
          endif
       endif
       end
+
+      subroutine transpole_tail(pole1,width1,x,y,jac)
+c**********************************************************************
+c     As transpole for a B.W. (pole>0), for a resonance free to go off
+c     shell: the arctan map inside |y-pole| < bwk*width and 1/|y-pole|
+c     (logarithmic) tails outside, the density continuous at the
+c     boundaries (see bwtail_setup). The B.W. density falls like 1/y^2
+c     while a vector resonance decaying to massless fermions falls like
+c     1/y, so the plain arctan map leaves its off-shell tail with weights
+c     growing like y.
+c**********************************************************************
+      implicit none
+      double precision pole1,width1,x,y,jac
+      double precision pole,width,z
+      double precision bwi_l,bwi_w,bwi_u,bwc,bwza,bwzb,bwu
+      double precision bwk
+      parameter (bwk=15d0)
+      double precision small_width_treatment
+      common/narrow_width/small_width_treatment
+
+      if (pole1 .le. 0d0) then
+         call transpole(pole1,width1,x,y,jac)
+         return
+      endif
+      pole = pole1
+      width = width1
+      if (width.lt.pole*small_width_treatment)then
+         width = pole * small_width_treatment
+         jac = jac * width/width1
+      endif
+      call bwtail_setup(pole,width,bwi_l,bwi_w,bwi_u,bwc,bwza,bwzb)
+      bwu = x*(bwi_l+bwi_w+bwi_u)
+      if (bwu .lt. bwi_l) then
+         y = pole - pole*exp(-bwu/bwc)
+         jac = jac*(bwi_l+bwi_w+bwi_u)*(pole-y)/bwc
+      elseif (bwu .lt. bwi_l+bwi_w) then
+         z = bwza + (bwu-bwi_l)*width
+         y = pole + width*tan(z)
+         jac = jac*(bwi_l+bwi_w+bwi_u)*((y-pole)**2+width**2)
+      else
+         y = pole + bwk*width*exp((bwu-bwi_l-bwi_w)/bwc)
+         jac = jac*(bwi_l+bwi_w+bwi_u)*(y-pole)/bwc
+      endif
+      end
+
+
+      subroutine untranspole_tail(pole1,width1,x,y1,jac)
+c**********************************************************************
+c     Inverse of transpole_tail: returns the x giving y1, and multiplies
+c     jac by dy/dx.
+c**********************************************************************
+      implicit none
+      double precision pole1,width1,x,y1,jac
+      double precision pole,width,y,z
+      double precision bwi_l,bwi_w,bwi_u,bwc,bwza,bwzb,bwu
+      double precision bwk
+      parameter (bwk=15d0)
+      double precision small_width_treatment
+      common/narrow_width/small_width_treatment
+
+      if (pole1 .le. 0d0) then
+         call untranspole(pole1,width1,x,y1,jac)
+         return
+      endif
+      pole = pole1
+      width = width1
+      y = y1
+      if (width.lt.pole*small_width_treatment)then
+         width = pole * small_width_treatment
+         jac = jac * width/width1
+      endif
+      call bwtail_setup(pole,width,bwi_l,bwi_w,bwi_u,bwc,bwza,bwzb)
+      if (y .lt. pole-bwk*width) then
+         bwu = bwc*log(pole/(pole-y))
+         jac = jac*(bwi_l+bwi_w+bwi_u)*(pole-y)/bwc
+      elseif (y .le. pole+bwk*width) then
+         z = atan((y-pole)/width)
+         bwu = bwi_l + (z-bwza)/width
+         jac = jac*(bwi_l+bwi_w+bwi_u)*((y-pole)**2+width**2)
+      else
+         bwu = bwi_l + bwi_w + bwc*log((y-pole)/(bwk*width))
+         jac = jac*(bwi_l+bwi_w+bwi_u)*(y-pole)/bwc
+      endif
+      x = bwu/(bwi_l+bwi_w+bwi_u)
+      end
+
 
       subroutine bwtail_setup(pole,width,bwi_l,bwi_w,bwi_u,bwc,bwza,bwzb)
 c**********************************************************************
@@ -534,7 +572,7 @@ c**********************************************************************
       wlo = max(wlo1,0d0)
       whi = min(whi1,1d0)
       if (wlo.ge.whi) then
-         call transpole(pole1,width1,x,y,jac)
+         call transpole_tail(pole1,width1,x,y,jac)
          return
       endif
       call bw_window_segments(pole,width,wlo,whi,wfac,nseg,sa,sb,st,sm,
@@ -595,7 +633,7 @@ c**********************************************************************
       wlo = max(wlo1,0d0)
       whi = min(whi1,1d0)
       if (wlo.ge.whi) then
-         call untranspole(pole1,width1,x,y,jac)
+         call untranspole_tail(pole1,width1,x,y,jac)
          return
       endif
       call bw_window_segments(pole,width,wlo,whi,wfac,nseg,sa,sb,st,sm,

@@ -1390,9 +1390,9 @@ c
 
       double precision      spole(maxinvar),swidth(maxinvar),bwjac
       common/to_brietwigner/spole        ,swidth        ,bwjac
-      logical bwtail(maxinvar), use_bwtail
+c     dimension sampled with the Breit-Wigner map with 1/s tails (myamp.f)
+      logical bwtail(maxinvar)
       common/to_bwtail/bwtail
-      common/to_bwtail_on/use_bwtail
       double precision      swinlo(maxinvar),swinhi(maxinvar),swinc(maxinvar)
       common/to_bw_window/  swinlo        ,swinhi        ,swinc
 
@@ -1504,9 +1504,11 @@ c            write(*,*) 'Tranpole called',ij,swidth(ij)
                call transpole_win(spole(ij),swidth(ij),swinlo(ij),
      &              swinhi(ij),swinc(ij),y,x,wgt)
             else
-            use_bwtail = bwtail(ij)
+            if (bwtail(ij)) then
+            call transpole_tail(spole(ij),swidth(ij),y,x,wgt) !B.W. with 1/s tails
+            else
             call transpole(spole(ij),swidth(ij),y,x,wgt) !x on BW pole or 1/x 
-            use_bwtail = .false.
+            endif
             endif
          endif
       endif
@@ -1579,9 +1581,9 @@ c
       common /to_random/ituple
       double precision      spole(maxinvar),swidth(maxinvar),bwjac
       common/to_brietwigner/spole        ,swidth        ,bwjac
-      logical bwtail(maxinvar), use_bwtail
+c     dimension sampled with the Breit-Wigner map with 1/s tails (myamp.f)
+      logical bwtail(maxinvar)
       common/to_bwtail/bwtail
-      common/to_bwtail_on/use_bwtail
 
 c-----
 c  Begin Code
@@ -1888,9 +1890,9 @@ c      common /to_fx/   fx
       common/to_mconfig2/psect          ,alpha
       double precision      spole(maxinvar),swidth(maxinvar),bwjac
       common/to_brietwigner/spole        ,swidth        ,bwjac
-      logical bwtail(maxinvar), use_bwtail
+c     dimension sampled with the Breit-Wigner map with 1/s tails (myamp.f)
+      logical bwtail(maxinvar)
       common/to_bwtail/bwtail
-      common/to_bwtail_on/use_bwtail
       double precision      swinlo(maxinvar),swinhi(maxinvar),swinc(maxinvar)
       common/to_bw_window/  swinlo        ,swinhi        ,swinc
       
@@ -2062,10 +2064,13 @@ c
      &                    swinlo(j),swinhi(j),swinc(j),point(j),point(j),
      &                    ddumb)
                      else
-                     use_bwtail = bwtail(j)
+                     if (bwtail(j)) then
+                     call untranspole_tail(spole(j),swidth(j),
+     &                    point(j),point(j),ddumb)
+                     else
                      call untranspole(spole(j),swidth(j),
      &                    point(j),point(j),ddumb)
-                     use_bwtail = .false.
+                     endif
                      endif
                      if (point(j) .lt. 0d0) then
                         print*,'Warning point<0',j,point(j)
@@ -2786,9 +2791,9 @@ c
       common /data_grid/ grid
       double precision      spole(maxinvar),swidth(maxinvar),bwjac
       common/to_brietwigner/spole        ,swidth        ,bwjac
-      logical bwtail(maxinvar), use_bwtail
+c     dimension sampled with the Breit-Wigner map with 1/s tails (myamp.f)
+      logical bwtail(maxinvar)
       common/to_bwtail/bwtail
-      common/to_bwtail_on/use_bwtail
       double precision      swinlo(maxinvar),swinhi(maxinvar),swinc(maxinvar)
       common/to_bw_window/  swinlo        ,swinhi        ,swinc
 c
@@ -2796,7 +2801,6 @@ c     Data
 c
       data spole,swidth/maxinvar*0d0,maxinvar*0d0/
       data bwtail/maxinvar*.false./
-      data use_bwtail/.false./
       data swinlo,swinhi,swinc/maxinvar*0d0,maxinvar*0d0,maxinvar*1d0/
 c-----
 c  Begin Code
@@ -2808,9 +2812,11 @@ c-----
                call untranspole_win(spole(j),swidth(j),swinlo(j),
      &              swinhi(j),swinc(j),x,y,bwjac)
             else
-            use_bwtail = bwtail(j)
+            if (bwtail(j)) then
+            call  untranspole_tail(spole(j),swidth(j),x,y,bwjac)
+            else
             call  untranspole(spole(j),swidth(j),x,y,bwjac)
-            use_bwtail = .false.
+            endif
             endif
          else
             x=y
