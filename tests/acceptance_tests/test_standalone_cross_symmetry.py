@@ -1551,6 +1551,61 @@ print("F2PY_PDG_OK")
         self.assertIn('F2PY_PDG_OK', output,
                       'PDG wrapper probe failed:\n%s' % output)
 
+    def test_all_matrix_pdg_dispatch_reaches_folded_crossings(self):
+        """The combined f2py module (--prefix=int) selects a process by its
+        PDG codes (smatrixhel). A crossed subprocess folded onto its base has
+        no PDG branch of its own, and used to come back as 0 with no error --
+        u d~ > w+ g of p p > w+ j, now that crossing is on by default. It must
+        give what the --use_crossing=False output gives."""
+        outs = {}
+        for name, options in (('on', ''), ('off', ' --use_crossing=False')):
+            out = pjoin(self.tmpdir, 'all_matrix_' + name)
+            self.cmd.exec_cmd('set automatic_html_opening False')
+            self.cmd.exec_cmd('import model sm')
+            self.cmd.exec_cmd('generate p p > w+ j --use_crossing=True')
+            self.cmd.exec_cmd('output standalone_fortran %s -f --prefix=int%s'
+                              % (out, options))
+            sub = pjoin(out, 'SubProcesses')
+            with open(os.devnull, 'w') as devnull:
+                retcode = subprocess.call(['make', 'f2py'], cwd=sub,
+                                          stdout=devnull, stderr=devnull)
+            if retcode != 0 or not [n for n in os.listdir(sub)
+                                    if n.startswith('all_matrix2py')]:
+                raise unittest.SkipTest('could not build all_matrix2py')
+            outs[name] = out
+        self.assertEqual(len([d for d in os.listdir(pjoin(outs['on'],
+                              'SubProcesses')) if d.startswith('P')]), 1,
+                         'p p > w+ j folded nothing')
+        script = '''
+import sys, os, math, numpy as np
+sub = os.path.join(sys.argv[1], 'SubProcesses')
+sys.path.insert(0, sub)
+import all_matrix2py as m
+m.initialise(os.path.join(sys.argv[1], 'Cards', 'param_card.dat'))
+E, mw, c = 500.0, 80.419, 0.3
+e3 = (4 * E * E + mw * mw) / (4 * E); q = math.sqrt(e3 * e3 - mw * mw)
+s = math.sqrt(1 - c * c)
+P = np.array([[E, 0, 0, E], [E, 0, 0, -E], [e3, q * s, 0, q * c],
+              [2 * E - e3, -q * s, 0, -q * c]]).T
+for pdgs in ([21, 2, 24, 1], [2, -1, 24, 21], [21, -1, 24, -2]):
+    print('ME %r' % m.smatrixhel(pdgs, -1, P, 0.118, 0, -1))
+'''
+        values = {}
+        for name, out in outs.items():
+            path = pjoin(self.tmpdir, 'probe_%s.py' % name)
+            with open(path, 'w') as fsock:
+                fsock.write(script)
+            output = subprocess.Popen(
+                [sys.executable, path, out], stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT).communicate()[0].decode()
+            values[name] = [float(v) for v in re.findall(r'^ME (\S+)$',
+                                                          output, re.M)]
+            self.assertEqual(len(values[name]), 3, output)
+        for on, off in zip(values['on'], values['off']):
+            self.assertGreater(off, 0.0)
+            self.assertLessEqual(abs(on - off), 1e-10 * off,
+                                 (values['on'], values['off']))
+
     def _assert_goodhel_relation(self, process, name, ninitial, npts=16):
         """Compiled-module check of the GHREMAP good-helicity relation.
 
@@ -3536,6 +3591,28 @@ class TestMg7FoldedCrossing(unittest.TestCase):
         self.assertTrue([d for d in self._pdirs(folded)
                          if d.endswith('_QQx_QQx')], self._pdirs(folded))
 
+    def test_reused_crossing_owns_its_records(self):
+        """define p = g u d u~ d~; p p > w+ j: g Qx > w+ Qx cannot be recorded
+        on g Q > w+ Q (its restricted legs), so it reuses the diagrams through
+        cross_amplitude -- a shallow copy that kept the base's crossed_processes
+        list. The two amplitudes then shared the base's records (with the
+        base's leg order) and output mg7 / madevent died in HelasMatrixElement.
+        Each amplitude must own its records, and the folded output must
+        integrate what the expanded one does."""
+        cmd = self._session('define p = g u d u~ d~',
+                            'generate p p > w+ j --use_crossing=True')
+        lists = [amp.get('crossed_processes') for amp in cmd._curr_amps]
+        self.assertEqual(len(set(map(id, lists))), len(lists),
+                         'amplitudes share a crossed_processes list')
+        folded = pjoin(self.tmpdir, 'reused_folded')
+        expanded = pjoin(self.tmpdir, 'reused_expanded')
+        cmd.exec_cmd('output mg7 %s -f --noeps=True' % folded)
+        cmd.exec_cmd('output mg7 %s -f --noeps=True --use_crossing=False'
+                     % expanded)
+        self._check_folding(folded, expanded)
+        cmd.exec_cmd('output madevent %s -f --noeps=True'
+                     % pjoin(self.tmpdir, 'reused_madevent'))
+
     # ------------------------------------------------------------------
     # runtime
     # ------------------------------------------------------------------
@@ -3620,6 +3697,26 @@ class TestCrossingProductDefault(unittest.TestCase):
         self.assertEqual(bare, on)
         # guard the guard: the two choices really differ for this process
         self.assertLess(len(on), len(off), 'p p > j j QCD=0 folded nothing')
+
+    def test_madevent_tags_the_beams_a_crossing_moves(self):
+        """A default madevent e- p > e- j shares matrix elements across
+        crossings of the proton side only. The beam-polarisation / EVA refusal
+        (check_card_consistency) reads per-beam tags, so a polarised electron
+        beam -- standard for DIS -- is not refused: only beam 2 is tagged."""
+        cmd = cmd_interface.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('set automatic_html_opening False')
+        cmd.exec_cmd('import model sm')
+        cmd.exec_cmd('generate e- p > e- j')
+        out = pjoin(self.tmpdir, 'ep')
+        cmd.exec_cmd('output madevent %s -f --noeps=True' % out)
+        import madgraph.various.banner as banner_mod
+        lim = banner_mod.ProcCharacteristic(
+            pjoin(out, 'SubProcesses', 'proc_characteristics'))['limitations']
+        self.assertIn('crossing', lim)
+        self.assertIn('crossing_beams', lim)
+        self.assertIn('crossing_moves_beam2', lim)
+        self.assertNotIn('crossing_moves_beam1', lim)
 
 
 class TestCrossingPartition(unittest.TestCase):

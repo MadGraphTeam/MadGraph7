@@ -1429,8 +1429,34 @@ C
     # Create the proc_characteristic file passing information to the run_interface
     #===========================================================================
     def create_proc_charac(self, matrix_elements=None, history="", **opts):
-        
+
+        limitations = self.proc_characteristic['limitations']
+        if 'crossing' in limitations:
+            # Which beams a shared (crossed) matrix element moves: the POL
+            # weight of a beam reads the helicity of ITS base slot, so it is
+            # only ill-defined when some routed crossing feeds that beam's leg
+            # to another slot (e- p > e- j moves the proton side only). The
+            # 'crossing_beams' marker tells check_card_consistency that the
+            # per-beam tags are complete (an older output has 'crossing' alone).
+            for beam in self.crossing_moved_beams():
+                tag = 'crossing_moves_beam%d' % beam
+                if tag not in limitations:
+                    limitations.append(tag)
+            if 'crossing_beams' not in limitations:
+                limitations.append('crossing_beams')
         self.proc_characteristic.write(pjoin(self.dir_path, 'SubProcesses', 'proc_characteristics'))
+
+    def crossing_moved_beams(self):
+        """The 1-based beams whose incoming leg some committed madevent crossing
+        row feeds to another slot of its base matrix element (D[b] != b)."""
+        moved = set()
+        for table in getattr(self, '_madevent_tables', {}).values():
+            for K in range(1, len(table)):
+                if not table.valid(K):
+                    continue
+                D = table[K].D
+                moved.update(b + 1 for b in range(table.ninitial) if D[b] != b)
+        return sorted(moved)
 
     #===========================================================================
     # write_matrix_element_v4
@@ -7480,6 +7506,10 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         text = []
         smtext = []
         smatrixhel_prefixes = set()
+        # The matrix elements a crossed subprocess is folded into (see
+        # crossed_smatrixhel_routine): their PDG chains get an `else` branch
+        # trying the folded crossings before giving up on the PDG codes.
+        crossed_next = self.crossed_smatrixhel_nexternal()
 
         for n_ext in range(min_nexternal, max_nexternal+1):
             current_id = [ids[0] for ids in allids if len(ids[0])==n_ext]
@@ -7523,6 +7553,10 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                 smtext.append(' call %ssmatrixhel(%s, nhel, %sget_flavor_index(flavor), ans)'
                               % (prefix, momenta, prefix))
             text.append(' endif')
+            if n_ext in crossed_next:
+                smtext.append(' else')
+                smtext.append(' call %(f2py_prefix)sf77_crossed_smatrixhel('
+                              'opdgs, procid, npdg, p, nhel, ans)')
             smtext.append(' endif')
         #close the function
         if min_nexternal != max_nexternal:
@@ -7640,8 +7674,18 @@ C       so this also stays correct for split-order processes.
         #misc.sprint(all_iden)
 
 
+        if crossed_next:
+            crossed_decl = '  integer opdgs(%i)' % max_nexternal
+            crossed_copy = '  do i = 1, npdg\n   opdgs(i) = pdgs(i)\n  enddo'
+            crossed_routine = self.crossed_smatrixhel_routine(f2py_prefix,
+                                                              max_nexternal)
+        else:
+            crossed_decl = crossed_copy = crossed_routine = ''
         formatting = {'python_information':'\n'.join(info), 
-                          'smatrixhel': '\n'.join(smtext),
+                          'smatrixhel': '\n'.join(smtext) % {'f2py_prefix': f2py_prefix},
+                          'crossed_pdgs_decl': crossed_decl,
+                          'crossed_pdgs_copy': crossed_copy,
+                          'crossed_smatrixhel': crossed_routine,
                           'smatrixhel_idx': '\n'.join(idxtext),
                           'flavor_index_decl': flavor_index_decl,
                           'maxpart': max_nexternal,
@@ -7697,6 +7741,71 @@ C       so this also stays correct for split-order processes.
                     fsock.write(open(wpath).read())
 
         self.write_crossing_records()
+
+    def crossed_smatrixhel_prefixes(self):
+        """{proc_prefix: (nexternal, nflav, recorded rows K, process ids)} of
+        the matrix elements a crossed subprocess was folded into."""
+        out = {}
+        for (pdgs, pid), info in self.prefix_info.items():
+            rows = self.crossing_records.get(info[0], ((), True, {}))[0]
+            if not rows or len(info) < 6:
+                continue
+            entry = out.setdefault(info[0], (len(pdgs), info[5], list(rows),
+                                             set()))
+            entry[3].add(pid)
+        return out
+
+    def crossed_smatrixhel_nexternal(self):
+        return set(v[0] for v in self.crossed_smatrixhel_prefixes().values())
+
+    def crossed_smatrixhel_routine(self, f2py_prefix, maxpart):
+        """F77_CROSSED_SMATRIXHEL: the PDG entry of a FOLDED crossed subprocess.
+
+        A crossed subprocess folded onto its base (merge_crossing='record') has
+        no PDG branch of its own in f77_smatrixhel -- that is what folding
+        means -- so a caller selecting it by its PDG codes used to get the
+        unset ANS (0 through f2py). It is evaluated by its base at an extended
+        FLAV_IDX = K*NFLAV + FLAV, K one of the crossing-table rows the
+        generation recorded (crossing_records); GET_PDG_FOR_FLAVOR names the
+        process of each such index in its own slot order, so the one asked
+        for is found by comparing the signed PDG codes. Legs must come in an
+        order the crossing table serves (GET_PDG_FOR_FLAVOR's), as for the
+        base entries without the flavor-order repair; otherwise ANS = 0."""
+        lines = ['      subroutine %sf77_crossed_smatrixhel(pdgs, procid, npdg,'
+                 ' p, nhel, ans)' % f2py_prefix,
+                 '      implicit none',
+                 '      integer npdg, procid, nhel',
+                 '      integer pdgs(npdg)',
+                 '      double precision p(0:3,npdg), ans',
+                 '      integer xpdgs(%i), ik, f, j, idx' % maxpart,
+                 '      logical same']
+        data, body = [], []
+        for prefix, (nexternal, nflav, rows, pids) in \
+                sorted(self.crossed_smatrixhel_prefixes().items()):
+            lines.append('      integer %sxrows(%i)' % (prefix, len(rows)))
+            data.append('      data %sxrows /%s/' % (
+                prefix, ','.join('%i' % K for K in rows)))
+            procs = ''.join('.or.procid.eq.%i' % pid for pid in sorted(pids))
+            body += [
+                '      if (npdg.eq.%i.and.(procid.le.0%s)) then' % (nexternal,
+                                                                    procs),
+                '        do ik = 1, %i' % len(rows),
+                '          do f = 1, %i' % nflav,
+                '            idx = %sxrows(ik)*%i + f' % (prefix, nflav),
+                '            call %sget_pdg_for_flavor(idx, xpdgs)' % prefix,
+                '            same = .true.',
+                '            do j = 1, npdg',
+                '              if (xpdgs(j).ne.pdgs(j)) same = .false.',
+                '            enddo',
+                '            if (same) then',
+                '              call %ssmatrixhel(p, nhel, idx, ans)' % prefix,
+                '              return',
+                '            endif',
+                '          enddo',
+                '        enddo',
+                '      endif']
+        return '\n'.join(lines + data + ['      ans = 0d0'] + body +
+                         ['      return', '      end'])
 
     def write_crossing_records(self):
         """List the folded crossed subprocesses for the python consumers of the

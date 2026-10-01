@@ -3108,6 +3108,12 @@ class MultiProcess(base_objects.PhysicsObject):
 
         # Make sure to reset mirror process
         new_amp.set('has_mirror_process', False)
+        # The copy is shallow: without a list of its own, the crossed amplitude
+        # would share (and receive) the crossings recorded on its base, with
+        # the base's leg order -- define p = g u d u~ d~; generate p p > w+ j
+        # then crashed output mg7 / madevent.
+        if 'crossed_processes' in new_amp:
+            new_amp.set('crossed_processes', [])
         
         return new_amp
         

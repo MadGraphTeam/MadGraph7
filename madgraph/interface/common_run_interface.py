@@ -7282,25 +7282,40 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                     raise InvalidCmd("dressed lepton mode is not available for this process (see warning associated to the code generation to understand why)")
 
             if 'crossing' in proc_charac['limitations']:
-                # Crossing reuses one matrix element across physically distinct
-                # (crossed) initial states, so a per-beam property is ambiguous.
-                if self.run_card['polbeam1'] or self.run_card['polbeam2']:
+                # Crossing reuses one matrix element across crossed initial
+                # states. A per-beam property is only ambiguous for a beam whose
+                # incoming leg a crossing moves to another slot of the shared
+                # matrix element (the POL weight reads the base slot's helicity);
+                # an output from before the per-beam tags ('crossing_beams')
+                # counts every beam as moved.
+                lim = proc_charac['limitations']
+                moved = [b for b in (1, 2)
+                         if 'crossing_beams' not in lim or
+                         'crossing_moves_beam%d' % b in lim]
+                pol = [b for b in moved if self.run_card['polbeam%d' % b]]
+                if pol:
                     raise InvalidCmd(
                         "Beam polarisation is not compatible with crossing symmetry:\n"
                         "this process reuses a matrix element across crossed initial\n"
-                        "states, for which a per-beam polarisation is ill-defined.\n"
-                        "Regenerate the process with crossing disabled, e.g.\n"
+                        "states that move the leg of beam %s, for which a per-beam\n"
+                        "polarisation is ill-defined. Regenerate the process with\n"
+                        "crossing disabled, e.g.\n"
                         "  generate <process> --use_crossing=False\n"
-                        "and 'output' again, to run polarised beams.")
-                if 'eva' in (self.run_card['pdlabel'],
-                             self.run_card['pdlabel1'], self.run_card['pdlabel2']):
+                        "and 'output' again, to run polarised beams."
+                        % ' and '.join(map(str, pol)))
+                eva = [b for b in moved if 'eva' in (self.run_card['pdlabel'],
+                                                     self.run_card['pdlabel%d' % b])]
+                if eva:
                     raise InvalidCmd(
                         "The EVA luminosity is not compatible with crossing symmetry:\n"
                         "this process reuses a matrix element across crossed initial\n"
-                        "states, for which the per-beam EVA density is ill-defined.\n"
-                        "Regenerate the process with crossing disabled, e.g.\n"
-                        "  generate <process> --use_crossing=False\n"
-                        "and 'output' again, to use EVA.")
+                        "states that move the leg of beam %s, for which the per-beam\n"
+                        "EVA density is ill-defined. EVA needs a process generated\n"
+                        "with\n"
+                        "  set group_subprocesses False\n"
+                        "(the ungrouped output shares no matrix element across\n"
+                        "crossings) before 'generate' and 'output'."
+                        % ' and '.join(map(str, eva)))
             #
             if 'fix_scale' in proc_charac['limitations']:
                 if not self.run_card['fixed_fac_scale'] or not self.run_card['fixed_ren_scale']:

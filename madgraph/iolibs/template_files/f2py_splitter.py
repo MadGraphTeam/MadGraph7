@@ -19,6 +19,7 @@ CF2PY double precision, intent(in) :: SCALE2
   double precision ANS, ALPHAS, PI,SCALE2
   integer flavor(%(maxpart)i),I
 %(flavor_index_decl)s
+%(crossed_pdgs_decl)s
   include 'coupl.inc'
   
   
@@ -30,12 +31,15 @@ CF2PY double precision, intent(in) :: SCALE2
        CALL UPDATE_AS_PARAM2(scale2, ALPHAS)
   endif
 
+%(crossed_pdgs_copy)s
 %(flavormapping)s
 
 %(smatrixhel)s
 
       return
       end
+
+%(crossed_smatrixhel)s
 
   subroutine %(f2py_prefix)sf77_smatrixhel_idx(procindex, flav_idx, npdg, p, ALPHAS, SCALE2, nhel, ANS)
   use model_object
