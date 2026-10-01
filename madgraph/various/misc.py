@@ -1743,6 +1743,218 @@ def get_HEPTools_location_setter(HEPToolsDir,type):
     else:
         return ''
 
+def find_pythia8_main164(pythia8_path):
+    """Locate main164, the Pythia8 example program used to shower LO events.
+    Returns (executable, examples_dir): executable is None if main164 is not
+    compiled, examples_dir is None if main164.cc cannot be found either."""
+
+    examples_dir = None
+    for examples in (pjoin(pythia8_path, 'share', 'Pythia8', 'examples'),
+                     pjoin(pythia8_path, 'examples')):
+        executable = pjoin(examples, 'main164')
+        if os.path.isfile(executable) and os.access(executable, os.X_OK):
+            return executable, examples
+        if examples_dir is None and os.path.isfile(pjoin(examples, 'main164.cc')):
+            examples_dir = examples
+    return None, examples_dir
+
+def pythia8_hepmc_version(examples_dir):
+    """The HepMC version (2 or 3) main164 is compiled against with the
+    configuration of this Pythia8 examples directory (main164.cc takes HepMC3
+    when both are enabled), None if neither is."""
+
+    use = {}
+    for makefile_inc in (pjoin(examples_dir, 'Makefile.inc'),
+                         pjoin(examples_dir, os.pardir, 'Makefile.inc')):
+        if os.path.isfile(makefile_inc):
+            for line in open(makefile_inc):
+                match = re.match(r'\s*HEPMC([23])_USE\s*=\s*(\S+)', line)
+                if match:
+                    use[int(match.group(1))] = match.group(2).lower() == 'true'
+            break
+    for version in (3, 2):
+        if use.get(version):
+            return version
+    return None
+
+def find_hepmc(version, candidates=()):
+    """Return (prefix, libdir) of a HepMC<version> installation (version 2 or
+    3), trying the candidate prefixes and then HepMC3-config, or None."""
+
+    if version == 3:
+        header, library, config = pjoin('HepMC3', 'GenEvent.h'), 'libHepMC3', 'HepMC3-config'
+    else:
+        header, library, config = pjoin('HepMC', 'GenEvent.h'), 'libHepMC', 'HepMC-config'
+    candidates = list(candidates)
+    if which(config):
+        candidates.append(os.path.dirname(os.path.dirname(os.path.realpath(which(config)))))
+    for prefix in candidates:
+        if not prefix or not os.path.isfile(pjoin(prefix, 'include', header)):
+            continue
+        for libdir in ('lib', 'lib64'):
+            if glob('%s.*' % library, pjoin(prefix, libdir)):
+                return os.path.realpath(prefix), os.path.realpath(pjoin(prefix, libdir))
+    return None
+
+def get_pythia8_hepmc_flags(pythia8_path, hepmc_version, hepmc_paths=()):
+    """Compiler flags (-I, -L, -rpath, -l) linking a program that uses Pythia8
+    to HepMC<hepmc_version> (2 or 3): the HepMC setup of Pythia8 if it has
+    that version, else the installation found in hepmc_paths or next to Pythia8."""
+
+    config = pjoin(pythia8_path, 'bin', 'pythia8-config')
+    if os.path.isfile(config):
+        try:
+            out = subprocess.Popen([config, '--hepmc%d' % hepmc_version],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0]
+            out = out.decode(errors='ignore').strip()
+        except OSError:
+            out = ''
+        if out:
+            return out
+    default = 'hepmc3' if hepmc_version == 3 else 'hepmc'
+    hepmc = find_hepmc(hepmc_version, list(hepmc_paths) + [pjoin(pythia8_path, os.pardir, default)])
+    if not hepmc:
+        raise MadGraph5Error('No HepMC%d installation was found (it can be ' % hepmc_version +
+                             "installed with 'install %s')." % default)
+    prefix, libdir = hepmc
+    return '-I%s -L%s -Wl,-rpath,%s -l%s' % (pjoin(prefix, 'include'), libdir, libdir,
+                                             'HepMC3' if hepmc_version == 3 else 'HepMC')
+
+def get_pythia8_main164(pythia8_path, fallback_dir=None, hepmc_version=None,
+                        hepmc_paths=()):
+    """Return the path of a compiled main164, compiling it if needed.
+
+    main164 is built in the Pythia8 examples directory with the Makefile that
+    Pythia8 configured there. If that directory is read-only (e.g. a central
+    installation), main164.cc and the Makefiles are copied to fallback_dir and
+    main164 is built there instead.
+
+    main164 writes its events in the format of the HepMC library it is linked
+    to. If hepmc_version (2 or 3) differs from the one Pythia8 was configured
+    with, a dedicated main164 is built against the HepMC installation found in
+    hepmc_paths or next to Pythia8: in <examples>/main164_hepmc<version>, so
+    that it is shared by all processes, or in <fallback_dir>_hepmc<version>
+    if the examples directory is read-only."""
+
+    executable, examples = find_pythia8_main164(pythia8_path)
+    if not examples:
+        raise MadGraph5Error('main164.cc cannot be found in the Pythia8 ' +
+            'installation %s, so that Pythia8 cannot be used.' % pythia8_path)
+    pythia8_stamp = os.path.realpath(pythia8_path)
+
+    if hepmc_version and hepmc_version != pythia8_hepmc_version(examples):
+        if not os.path.isfile(pjoin(examples, 'main164.cc')):
+            raise MadGraph5Error('main164.cc cannot be found in %s, so that ' % examples +
+                                 'main164 cannot be compiled for HepMC%d.' % hepmc_version)
+        default = 'hepmc3' if hepmc_version == 3 else 'hepmc'
+        hepmc = find_hepmc(hepmc_version, list(hepmc_paths) +
+                           [pjoin(pythia8_path, os.pardir, default)])
+        if not hepmc:
+            raise MadGraph5Error('Pythia8 cannot write HepMC%d: ' % hepmc_version +
+                'no HepMC%d installation was found (it can be installed with ' % hepmc_version +
+                "'install %s'), and Pythia8 was configured with another version." % default)
+        prefix, libdir = hepmc
+        library = 'HepMC3' if hepmc_version == 3 else 'HepMC'
+        # replace the HepMC setup of Pythia8 by the requested one
+        makefile_inc = []
+        for line in open(pjoin(examples, 'Makefile.inc')).read().splitlines():
+            key = line.split('=', 1)[0].strip()
+            if re.match(r'HEPMC[23]_(USE|INCLUDE|LIB)$', key):
+                continue
+            if key == 'CXX_COMMON':
+                line = ' '.join(word for word in line.split(' ')
+                          if word not in ('-DHEPMC2HACK', '-DHEPMC2', '-DHEPMC3'))
+            makefile_inc.append(line)
+        makefile_inc += ['HEPMC%d_USE=false' % (5 - hepmc_version),
+                         'HEPMC%d_USE=true' % hepmc_version,
+                         'HEPMC%d_INCLUDE=-I%s' % (hepmc_version, pjoin(prefix, 'include')),
+                         'HEPMC%d_LIB=-L%s -Wl,-rpath,%s -l%s' % (hepmc_version,
+                                                   libdir, libdir, library)]
+        stamp = '%s\n%s' % (pythia8_stamp, prefix)
+        shared_dir = pjoin(examples, 'main164_hepmc%d' % hepmc_version)
+        local_dir = '%s_hepmc%d' % (fallback_dir, hepmc_version) if fallback_dir else None
+        for build_dir in (shared_dir, local_dir):
+            if build_dir and _pythia8_main164_is_built(build_dir, stamp):
+                return pjoin(build_dir, 'main164')
+        if os.access(examples, os.W_OK):
+            build_dir = shared_dir
+        elif local_dir:
+            build_dir = local_dir
+        else:
+            raise MadGraph5Error('No writable directory to compile main164 ' +
+                                 'for HepMC%d.' % hepmc_version)
+        return _compile_pythia8_main164(examples, build_dir, stamp,
+                                        '\n'.join(makefile_inc) + '\n')
+
+    if executable:
+        return executable
+    if os.access(examples, os.W_OK):
+        return _compile_pythia8_main164(examples, examples)
+    if not fallback_dir:
+        raise MadGraph5Error('main164 is not compiled in the read-only ' +
+            'directory %s. Please compile it with "make main164" there.' % examples)
+    return _compile_pythia8_main164(examples, fallback_dir, pythia8_stamp)
+
+def _pythia8_main164_is_built(build_dir, stamp):
+    """Whether build_dir holds a main164 built with this stamp."""
+
+    stamp_file = pjoin(build_dir, 'BUILD_STAMP')
+    return os.path.isfile(pjoin(build_dir, 'main164')) and \
+           os.path.isfile(stamp_file) and open(stamp_file).read() == stamp
+
+def _compile_pythia8_main164(examples, build_dir, stamp=None, makefile_inc=None):
+    """Compile main164 in build_dir and return its path. If build_dir is not the
+    Pythia8 examples directory, the sources are copied there (with makefile_inc
+    as Makefile.inc if given) and a build made with the same stamp is reused."""
+
+    executable = pjoin(build_dir, 'main164')
+    stamp_file = pjoin(build_dir, 'BUILD_STAMP')
+    if build_dir != examples:
+        if _pythia8_main164_is_built(build_dir, stamp):
+            return executable
+        if os.path.exists(executable):
+            # stale build: make would consider it up to date
+            os.remove(executable)
+        elif not os.path.isdir(build_dir):
+            os.makedirs(build_dir)
+        for name in ('main164.cc', 'Makefile', 'Makefile.inc'):
+            if os.path.isfile(pjoin(examples, name)):
+                shutil.copy(pjoin(examples, name), build_dir)
+        if makefile_inc is not None:
+            with open(pjoin(build_dir, 'Makefile.inc'), 'w') as fsock:
+                fsock.write(makefile_inc)
+
+    # HEPToolsInstaller adds a 'mainMG' rule building main164 with Rivet support
+    target = 'main164'
+    if re.search(r'^mainMG\s*:', open(pjoin(build_dir, 'Makefile')).read(), re.M):
+        target = 'mainMG'
+    logger.info('Compiling main164 from Pythia8 in %s' % build_dir)
+    compile([target], cwd=build_dir, mode='cpp')
+    if not os.path.isfile(executable):
+        raise MadGraph5Error('Compilation of main164 in %s did not produce ' % build_dir +
+                             'an executable, so that Pythia8 cannot be used.')
+    if build_dir != examples:
+        with open(stamp_file, 'w') as fsock:
+            fsock.write(stamp)
+    return executable
+
+def hepmc_file_version(path):
+    """The HepMC version (2 or 3) of a HepMC ASCII file (possibly gzipped),
+    read from its header; None if it cannot be told (e.g. for a fifo)."""
+
+    if not os.path.isfile(path):
+        return None
+    try:
+        with (ziplib.open(path, 'rt') if path.endswith('.gz') else open(path)) as fsock:
+            for _, line in zip(range(10), fsock):
+                if line.startswith('HepMC::Asciiv3') or line.startswith('HepMC::Version 3'):
+                    return 3
+                if line.startswith('HepMC::IO_GenEvent') or line.startswith('HepMC::Version 2'):
+                    return 2
+    except (IOError, OSError, UnicodeDecodeError):
+        pass
+    return None
+
 def get_shell_type():
     """ Try and guess what shell type does the user use."""
     try:

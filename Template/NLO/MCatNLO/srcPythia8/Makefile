@@ -19,6 +19,8 @@ endif
 
 F77=$(FC)
 DEBUG=
+# HepMC2 Fortran I/O library, not needed (nor available) with HepMC3 (-DHEPMC3)
+HEPMCFIO=-lHepMCfio
 FF=$(F77) $(DEBUG)
 
 # Location of directories.
@@ -70,7 +72,7 @@ Pythia83: $(FORFILE) $(PYTHIA8LOCATION)/$(LIBDIR)/libpythia8.a
 	  $(CXX) $(CXXFLAGS) -I$(PYTHIA8LOCATION)/$(INCDIR) \
 	  -I$(TOPDIR)/$(INCDIR) $(INCLOPTION) $@.cc -o Pythia8.exe $(FORFILE) \
 	  -L$(PYTHIA8LOCATION)/$(LIBDIR) -lpythia8 $(LIBGZIP) \
-	  -lHepMCfio $(LIBGFORTRAN) $(HEPMCINCLIB) $(EXTRAPATHS) $(EXTRALIBS) $(STDLIB) \
+	  $(HEPMCFIO) $(LIBGFORTRAN) $(HEPMCINCLIB) $(EXTRAPATHS) $(EXTRALIBS) $(STDLIB) \
 
 .PHONY: clean
 clean:

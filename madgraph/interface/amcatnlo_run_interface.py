@@ -3814,6 +3814,46 @@ RESTART = %(mint_mode)s
         return evt_file[:-3]
 
 
+    def get_pythia8_hepmc_setup(self):
+        """The HepMC version (2 or 3) the Pythia8 shower driver uses, following
+        'hepmc_format' in the shower_card, and the flags linking it to HepMC.
+        With an analysis (ANALYSE) no HepMC file is written: the HepMC3 driver
+        then fills HEPEVT directly from the Pythia8 event record and needs no
+        HepMC library. 'auto' keeps HepMC2 there, whose HEPEVT has another
+        particle ordering (seen by analyses taking the last particle of a kind)."""
+
+        hepmc_format = str(self.shower_card['hepmc_format']).lower()
+        analysis = bool(self.shower_card['analyse'])
+        pythia8_path = self.options['pythia8_path']
+        try:
+            version = subprocess.Popen([pjoin(pythia8_path, 'bin', 'pythia8-config'), '--version'],
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0]
+            pythia83 = float(version.decode(errors='ignore').strip()) >= 8.3
+        except (OSError, ValueError):
+            pythia83 = False
+
+        if hepmc_format != 'auto':
+            versions = [int(hepmc_format[-1])]
+        elif not pythia83:
+            versions = [2]
+        elif analysis:
+            versions = [2, 3]
+        else:
+            versions = [self.get_auto_hepmc_version()]
+            versions.append(5 - versions[0])
+        for i, hepmc_version in enumerate(versions):
+            if hepmc_version == 3 and analysis:
+                return 3, ''
+            try:
+                return hepmc_version, misc.get_pythia8_hepmc_flags(pythia8_path,
+                                  hepmc_version, self.get_hepmc_paths(hepmc_version))
+            except MadGraph5Error as error:
+                if i + 1 == len(versions):
+                    raise aMCatNLOError('The Pythia8 shower cannot use HepMC%d: %s'
+                                        % (hepmc_version, error))
+                logger.warning('%s The Pythia8 shower uses HepMC%d instead.'
+                               % (error, versions[i + 1]))
+
     def run_mcatnlo(self, evt_file, options):
         """runs mcatnlo on the generated event file, to produce showered-events
         """
@@ -3909,10 +3949,12 @@ RESTART = %(mint_mode)s
             extrapaths.append(pjoin(self.options['hepmc_path'], 'lib'))
             self.shower_card['extrapaths'] += ' %s' % pjoin(self.options['hepmc_path'], 'lib')
 
-        # add the HEPMC path of the pythia8 installation
+        # the HepMC version and library the Pythia8 driver is compiled with,
+        # passed to the shower script through banner.dat
         if shower == 'PYTHIA8':
-            hepmc = subprocess.Popen([pjoin(self.options['pythia8_path'], 'bin', 'pythia8-config'), '--hepmc2'],
-                         stdout = subprocess.PIPE).stdout.read().decode(errors='ignore').strip()
+            hepmc_version, hepmc = self.get_pythia8_hepmc_setup()
+            with open(pjoin(self.me_dir, 'MCatNLO', 'banner.dat'), 'a') as fsock:
+                fsock.write('HEPMCVERSION=%d\nHEPMCINCLIB="%s"\n' % (hepmc_version, hepmc))
             #this gives all the flags, i.e.
             #-I/Path/to/HepMC/include -L/Path/to/HepMC/lib -lHepMC
             # we just need the path to the HepMC libraries

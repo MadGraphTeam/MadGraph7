@@ -2850,7 +2850,7 @@ def load_mg5_options(me_dir=None) -> dict:
         'madanalysis5_path': None, 'exrootanalysis_path': None, 'delphes_path': None,
         'rivet_path': None, 'contur_path': None, 'f2py_compiler': None,
         'lhapdf': None, 'lhapdf_py3': None, 'lhapdf_py2': None, 'timeout': 0,
-        'mg5amc_py8_interface_path': None, 'heptools_install_dir': None,
+        'heptools_install_dir': None,
     }
     config_files = []
     base_config = misc.base_config_file()
