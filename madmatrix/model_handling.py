@@ -2832,10 +2832,25 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                    for wf in me.get_external_wavefunctions()]
         hnstate = [len(s) for s in hstates]
         maxhel = max(hnstate) if hnstate else 1
-        states_flat = []
-        for k in range(nexternal):
-            states_flat.extend(hstates[k][i] if i < hnstate[k] else 0
-                               for i in range(maxhel))
+        # Per crossing row K and crossed slot k, the states its code digit runs
+        # over. Slot k carries base leg b = D[k]; its helicity is one of b's
+        # states. When those fit into base slot k's states (every crossing
+        # `output mg7` folds, see OneProcessExporterMG7.
+        # crossing_keeps_helicity_states), slot k keeps base slot k's states:
+        # the code is then the base row whose config equals the crossed one,
+        # which the mg7 LHE writer indexes positionally. A leg moved into a slot
+        # with other states (a z into a quark slot, as u u~ > z g off
+        # u g > u z) runs over its own states instead: base slot k's would have
+        # no digit for its helicity 0.
+        xnhstate, states_flat = [], []
+        for row in table:
+            for k in range(nexternal):
+                b = row.D[k]
+                use = hstates[k] if set(hstates[b]) <= set(hstates[k]) \
+                    else hstates[b]
+                xnhstate.append(len(use))
+                states_flat.extend(use[i] if i < len(use) else 0
+                                   for i in range(maxhel))
 
         tables_text = header + (
             "    constexpr bool use_crossing = true;\n"
@@ -2857,10 +2872,13 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             "    // is resonance-level: the constant ident_resonance, see ident_cross)\n"
             "    __device__ constexpr int countable_tab[ProcessData::npar] = %(countable)s;\n"
             "    constexpr int ident_resonance = %(ident_resonance)d;\n"
-            "    // per-leg helicity states (allow_reverse=True order, see the exporter)\n"
+            "    // per crossing row and slot, the helicity states of the reported\n"
+            "    // (crossed) code: xhel_states[(K*npar+k)*xhel_maxhel + d] is digit d of\n"
+            "    // slot k, the slot's first digit the most significant (allow_reverse=True\n"
+            "    // order, see the exporter). Row 0 is the base helicity table.\n"
             "    constexpr int xhel_maxhel = %(maxhel)d;\n"
-            "    __device__ constexpr int xhel_nhstate[ProcessData::npar] = %(xnhstate)s;\n"
-            "    __device__ constexpr int xhel_states[ProcessData::npar * xhel_maxhel] = %(xstates)s;\n"
+            "    __device__ constexpr int xhel_nhstate[ncross * ProcessData::npar] = %(xnhstate)s;\n"
+            "    __device__ constexpr int xhel_states[ncross * ProcessData::npar * xhel_maxhel] = %(xstates)s;\n"
         ) % {'ncross': len(table),
              'xperm': arr(table.flat('B')), 'xsgn': arr(table.flat('SB')),
              'xpinv': arr(table.flat('D')), 'xsgni': arr(table.flat('SD')),
@@ -2869,7 +2887,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
              'antipid_base': arr(tables['antipid_base']),
              'countable': arr(tables['countable']),
              'ident_resonance': tables['ident_resonance'],
-             'maxhel': maxhel, 'xnhstate': arr(hnstate),
+             'maxhel': maxhel, 'xnhstate': arr(xnhstate),
              'xstates': arr(states_flat)}
 
         # Crossed physical signed PDG per (extended id, leg), like the fortran

@@ -22,18 +22,36 @@ if [ -n "$GPU_ARCH" ]; then
     export MADGRAPH_CUDA_ARCHITECTURE=$GPU_ARCH MADGRAPH_HIP_ARCHITECTURE=$GPU_ARCH
 fi
 
-# madspace goes where the mg7 runtime looks for it: <MadGraph7>/madspace/install
-rm -rf "$REPO/madspace/install"
-ln -s "$MADSPACE_PREFIX" "$REPO/madspace/install"
+# madspace goes where the mg7 runtime looks for it: <MadGraph7>/madspace/install.
+# In the CI the checkout is the runner's own, set up here from scratch. Anywhere else (the
+# BACKEND=cpu try-out in a developer checkout) an in-tree madspace build, or a link to
+# another install, and the developer's configuration files are left alone.
+INSTALL=$REPO/madspace/install
+if [ "$GITHUB_ACTIONS" = true ]; then
+    rm -rf "$INSTALL"
+    ln -s "$MADSPACE_PREFIX" "$INSTALL"
+elif [ ! -e "$INSTALL" ] && [ ! -L "$INSTALL" ]; then
+    ln -s "$MADSPACE_PREFIX" "$INSTALL"
+elif [ "$(cd "$INSTALL" 2> /dev/null && pwd -P)" != "$(cd "$MADSPACE_PREFIX" 2> /dev/null && pwd -P)" ]; then
+    echo "::error::$INSTALL exists and is not MADSPACE_PREFIX=$MADSPACE_PREFIX:" \
+         "set MADSPACE_PREFIX=$INSTALL to use it, or remove it yourself"
+    exit 2
+fi
 # default configuration, as .github/actions/checkout_mg5 does for the other CI jobs
-cp "$REPO/input/.mg7_configuration_default.txt" "$REPO/input/mg7_configuration.txt"
-cp "$REPO/Template/LO/Source/.make_opts" "$REPO/Template/LO/Source/make_opts"
-cat >> "$REPO/input/mg7_configuration.txt" << EOF
+if [ "$GITHUB_ACTIONS" = true ] || [ ! -e "$REPO/input/mg7_configuration.txt" ]; then
+    cp "$REPO/input/.mg7_configuration_default.txt" "$REPO/input/mg7_configuration.txt"
+    cat >> "$REPO/input/mg7_configuration.txt" << EOF
 auto_update = 0
 automatic_html_opening = False
 notification_center = False
 nb_core = ${SLURM_CPUS_PER_TASK:-4}
 EOF
+else
+    echo "Keeping the existing input/mg7_configuration.txt (not a CI run)"
+fi
+if [ "$GITHUB_ACTIONS" = true ] || [ ! -e "$REPO/Template/LO/Source/make_opts" ]; then
+    cp "$REPO/Template/LO/Source/.make_opts" "$REPO/Template/LO/Source/make_opts"
+fi
 
 export LHAPDF_DATA_PATH=$CACHE_DIR/lhapdf
 if [ ! -d "$LHAPDF_DATA_PATH/$PDF_SET" ]; then

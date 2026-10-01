@@ -191,7 +191,7 @@ class TestReweightGenerationFoldsCrossings(unittest.TestCase):
         """an explicit --use_crossing on a proc card line is the user's choice,
         sticky for the whole definition: nothing is added to any line."""
         for flag in ['--use_crossing=False', '--use_crossing=True',
-                     '--use_crossing']:
+                     '--use_crossing', '--no_crossing']:
             self.obj.mg5cmd = FakeMG5Cmd()
             self.assertEqual(
                 self.generate(['p p > w+ j', 'p p > w+ j j %s' % flag]),

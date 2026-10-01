@@ -194,16 +194,17 @@ namespace madmatrix
     for( int k = 0; k < npar; k++ )
     {
       const int val = (int)cHel[base_ihel][xperm[k]];
+      const int slot = xcross * npar + k; // this crossing's own states for slot k
       int d = 0;
-      for( int dd = 0; dd < xhel_nhstate[k]; dd++ )
+      for( int dd = 0; dd < xhel_nhstate[slot]; dd++ )
       {
-        if( xhel_states[k * xhel_maxhel + dd] == val )
+        if( xhel_states[slot * xhel_maxhel + dd] == val )
         {
           d = dd;
           break;
         }
       }
-      code = code * xhel_nhstate[k] + d;
+      code = code * xhel_nhstate[slot] + d;
     }
     return code + 1;
   }

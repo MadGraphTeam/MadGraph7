@@ -159,9 +159,9 @@ namespace madmatrix
   // reported helicity must be the CROSSED code, not the base row: input slot k
   // carries the helicity label of the base leg pinv[k] it is fed to, copied
   // (no sign flip -- the NSF sign lives in IC), and the crossed config is then
-  // ENCODE_HEL'd into the canonical mixed-radix code over the base per-leg
-  // helicity states. Row 0 is the identity (base row+1), so the non-crossing
-  // path is unchanged.
+  // ENCODE_HEL'd into the canonical mixed-radix code over the per-leg
+  // helicity states of the crossing (the base ones, but see below). Row 0 is
+  // the identity (base row+1), so the non-crossing path is unchanged.
   //
   // The digit permute with NO NSF sign flip is the right transform, and it is
   // what mg7 needs: the LHE writer indexes the BASE helicity table POSITIONALLY
@@ -176,13 +176,13 @@ namespace madmatrix
   //
   // xhel_states MUST be the allow_reverse=True per-leg order (see the exporter).
   //
-  // Limitation (shared with the fortran ENCODE_HEL, whose D=1 fallback this
-  // mirrors): a row that lands a leg in a slot with a DIFFERENT set of
-  // helicity states -- e.g. a massive vector moved into a fermion slot, as
-  // the recorded u u~ > z g off u g > u z does -- has no representable base
-  // row, and the lookup falls back to digit 0: the matrix element is exact but
-  // the reported helicity of that leg is not. The crossed entries madspace
-  // will read (Phase 1) need their own helicity table for such rows.
+  // A row that lands a leg in a slot with a DIFFERENT set of helicity states
+  // -- e.g. a massive vector moved into a fermion slot, as the folded
+  // u u~ > z g off u g > u z does -- has no base row with its config: that slot
+  // runs over the states of the leg it carries instead (xhel_states is per
+  // crossing row, see the exporter), so the code is that crossing's own and
+  // decodes with its row of xhel_nhstate/xhel_states. `output mg7` expands such
+  // crossings (crossing_keeps_helicity_states), so its codes stay base rows.
   inline int
   selected_hel_code( int base_ihel, unsigned int flavor_id )
   {
@@ -194,16 +194,17 @@ namespace madmatrix
     for( int k = 0; k < npar; k++ )
     {
       const int val = (int)cHel[base_ihel][xperm[k]];
+      const int slot = xcross * npar + k; // this crossing's own states for slot k
       int d = 0;
-      for( int dd = 0; dd < xhel_nhstate[k]; dd++ )
+      for( int dd = 0; dd < xhel_nhstate[slot]; dd++ )
       {
-        if( xhel_states[k * xhel_maxhel + dd] == val )
+        if( xhel_states[slot * xhel_maxhel + dd] == val )
         {
           d = dd;
           break;
         }
       }
-      code = code * xhel_nhstate[k] + d;
+      code = code * xhel_nhstate[slot] + d;
     }
     return code + 1;
   }

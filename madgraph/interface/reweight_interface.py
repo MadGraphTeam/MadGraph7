@@ -2019,17 +2019,19 @@ class ReweightInterface(extended_cmd.Cmd):
          - the EW Sudakov output (ewsudakovsa): it is no folding format, so the
            folded crossings would only be expanded back.
         Nothing is appended, leaving the generation as the lines ask, when a
-        line already carries --use_crossing: the proc card replays the user's
-        own choice, and an explicit False is sticky for the whole definition
-        (see MadGraphCmd.do_add), so it is respected as is.
+        line already carries --use_crossing, or its deprecated alias
+        --no_crossing: the proc card replays the user's own choice, and an
+        explicit False is sticky for the whole definition (see
+        MadGraphCmd.do_add), so it is respected as is.
         A folded generation whose crossing records come out incomplete is
         redone unfolded afterwards (see create_standalone_tree_directory).
         """
         if self.keep_ordering or self.flag_density_matrix or self.use_eventid:
             return ' --use_crossing=False'
         if self.inc_sudakov or any('[' in proc for proc in processes):
-            return ' --use_crossing=False'''
-        if any(arg == '--use_crossing' or arg.startswith('--use_crossing=')
+            return ' --use_crossing=False'
+        if any(arg in ('--use_crossing', '--no_crossing')
+               or arg.startswith('--use_crossing=')
                for proc in processes for arg in proc.split()):
             return ''
         return ' --use_crossing=True'

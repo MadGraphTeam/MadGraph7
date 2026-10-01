@@ -4157,12 +4157,14 @@ This implies that with decay chains:
             ndiags = sum([amp.get_number_of_diagrams() for \
                               amp in myproc.get('amplitudes')])
             
-            logger.info("%i processes with %i diagrams generated in %0.3f s" % \
-                  (nprocs, ndiags, (cpu_time2 - cpu_time1)))
+            logger.info("%i processes with %i diagrams generated in %0.3f s%s" % \
+                  (nprocs, ndiags, (cpu_time2 - cpu_time1),
+                   self._crossing_summary(myproc.get('amplitudes'))))
             ndiags = sum([amp.get_number_of_diagrams() for \
                               amp in self._curr_amps])
-            logger.info("Total: %i processes with %i diagrams" % \
-                  (len(self._curr_amps), ndiags))        
+            logger.info("Total: %i processes with %i diagrams%s" % \
+                  (len(self._curr_amps), ndiags,
+                   self._crossing_summary(self._curr_amps)))
                 
     def add_model(self, args):
         """merge two model"""
@@ -4529,6 +4531,15 @@ This implies that with decay chains:
         elif args[0] == 'processes':
             for amp in self._curr_amps:
                 print(amp.nice_string_processes())
+                # the crossed processes folded into it (--use_crossing) are no
+                # amplitude of their own, but are part of the generation
+                last = None
+                for base, xproc in self._recorded_crossings([amp]):
+                    if base is not last:
+                        print('  Crossed processes evaluated through %s:'
+                              % base.get('process').base_string())
+                        last = base
+                    print(xproc.nice_string(4))
 
         elif args[0] == 'diagrams_text':
             dirpath, no_open, merge = self._parse_display_output_args(args[1:])
@@ -12593,6 +12604,44 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 expanded.append(xamp)
                 seen[fp] = xamp
         return expanded
+
+    @staticmethod
+    def _recorded_crossings(amps):
+        """The crossed processes recorded on `amps` at generation
+        (merge_crossing='record'), as (amplitude, crossed Process) pairs: a plain
+        amplitude's own `crossed_processes`, a decay chain's inner amplitudes'.
+        A crossing and its beam swap are recorded apart; the swap is left out
+        here, as the mirror of a generated process is (has_mirror_process)."""
+        pairs = []
+        for amp in amps:
+            if isinstance(amp, diagram_generation.DecayChainAmplitude):
+                inner = amp.get('amplitudes')
+            else:
+                inner = [amp]
+            for a in inner:
+                if 'crossed_processes' not in a:
+                    continue
+                seen = set()
+                for record in a.get('crossed_processes'):
+                    xproc = record[0]
+                    initial = xproc.get_initial_ids()
+                    if len(initial) == 2:
+                        key = (tuple(sorted(initial)), tuple(xproc.get_final_ids()))
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                    pairs.append((a, xproc))
+        return pairs
+
+    @classmethod
+    def _crossing_summary(cls, amps):
+        """What the generation summary adds for the crossed processes folded
+        into `amps`: they have no amplitude, hence are not in its counts."""
+        ncross = len(cls._recorded_crossings(amps))
+        if not ncross:
+            return ''
+        return (' (and %i crossed process%s evaluated through them, see '
+                '"display processes")' % (ncross, '' if ncross == 1 else 'es'))
 
     @staticmethod
     def _has_recorded_crossings(amps):

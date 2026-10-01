@@ -17,8 +17,10 @@
 # and, per process <tag> of STANDALONE (p p > w+ j j, p p > j j), at one fixed phase-space
 # point with no Monte-Carlo noise: every matrix element check_sa.exe prints (every base
 # flavor, every crossing folded in) must agree between its $BACKEND and cpu builds, in
-# double precision, to 1e-10 -- for the folded and the expanded standalone output:
-#   <tag>_sa_fold_<P dir>, <tag>_sa_exp_<P dir>
+# double precision, to 1e-10, and none may be NaN -- for the folded and the expanded
+# standalone output, after checking that the folded one did fold (fewer P dirs, crossings
+# to show):
+#   <tag>_sa_output, <tag>_sa_fold_<P dir>, <tag>_sa_exp_<P dir>
 # "=" is agreement within 4 combined standard deviations; each run must succeed, within
 # RUN_TIMEOUT seconds (default 1200): a hung run fails alone instead of taking the
 # whole allocation with it.
@@ -177,19 +179,29 @@ check_sa_devices() {
                 continue 2
             fi
         done
+        # a folded P dir must also show its crossings (check_sa reads crossing_demo.dat)
+        if [ -s "$pdir/crossing_demo.dat" ] \
+               && ! grep -q 'Crossed processes folded into this matrix element' "$name.$gpu.log"; then
+            record "$name" FAIL "check_sa.exe on $gpu shows none of the crossings of crossing_demo.dat"
+            continue
+        fi
         worst=$(python3 - "$name.$gpu.log" "$name.scalar.log" << 'EOF'
-import re, sys
+import math, re, sys
 def values(path):
     return [float(v) for v in re.findall(r'^ *Matrix element = (\S+) GeV', open(path).read(), re.M)]
 gpu, cpu = values(sys.argv[1]), values(sys.argv[2])
 if not gpu or len(gpu) != len(cpu):
     print('count %d vs %d' % (len(gpu), len(cpu)))
+elif not all(math.isfinite(v) for v in gpu + cpu):
+    # max() would drop a NaN after the first term, and report it as agreement
+    print('nonfinite %d of %d' % (sum(not math.isfinite(v) for v in gpu + cpu), 2 * len(gpu)))
 else:
     print('%.3g %d' % (max(abs(a - b) / max(abs(a), abs(b), 1e-300) for a, b in zip(gpu, cpu)), len(gpu)))
 EOF
 )
         case $worst in
             count*) record "$name" FAIL "matrix elements printed: $worst" ;;
+            nonfinite*) record "$name" FAIL "matrix elements that are NaN or infinite: ${worst#nonfinite }" ;;
             *) if python3 -c "import sys; sys.exit(0 if float(sys.argv[1]) <= 1e-10 else 1)" "${worst% *}"; then
                    record "$name" PASS "${worst#* } matrix elements, max relative difference ${worst% *}"
                else
@@ -208,7 +220,23 @@ generate $proc --use_crossing=True
 output standalone SA_FOLD_$tag
 output standalone SA_EXP_$tag --use_crossing=False
 EOF
-    python3 "$REPO/bin/madgraph" "${tag}_sa.mg7" > "${tag}_sa_output.log" 2>&1 || true
+    ret=0
+    python3 "$REPO/bin/madgraph" "${tag}_sa.mg7" > "${tag}_sa_output.log" 2>&1 || ret=$?
+    # The folded output must actually fold: fewer P dirs than the expanded one, and
+    # crossings for check_sa to show. Otherwise its checks would pass on the base
+    # flavors alone.
+    local nfold nexp ndemo
+    nfold=$(ls -d SA_FOLD_"$tag"/SubProcesses/P*/ 2> /dev/null | wc -l)
+    nexp=$(ls -d SA_EXP_"$tag"/SubProcesses/P*/ 2> /dev/null | wc -l)
+    ndemo=$(ls SA_FOLD_"$tag"/SubProcesses/P*/crossing_demo.dat 2> /dev/null | wc -l)
+    if [ "$ret" -ne 0 ] || [ "$nfold" -eq 0 ] || [ "$nexp" -eq 0 ]; then
+        record "${tag}_sa_output" FAIL "output standalone: exit $ret, $nfold folded and $nexp expanded P dirs (see ${tag}_sa_output.log)"
+        return 0
+    elif [ "$nfold" -ge "$nexp" ] || [ "$ndemo" -eq 0 ]; then
+        record "${tag}_sa_output" FAIL "the folded output did not fold: $nfold P dirs (expanded: $nexp), $ndemo with crossings"
+    else
+        record "${tag}_sa_output" PASS "$nfold folded P dirs ($ndemo with crossings), $nexp expanded"
+    fi
     check_sa_devices "$tag" fold "SA_FOLD_$tag"
     check_sa_devices "$tag" exp "SA_EXP_$tag"
 }

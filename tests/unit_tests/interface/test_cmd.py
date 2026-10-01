@@ -24,6 +24,8 @@ import madgraph.interface.extended_cmd as ext_cmd
 import madgraph.various.misc as misc
 import os
 import logging
+import io
+import contextlib
 
 import tests.parallel_tests.test_aloha as test_aloha
 
@@ -962,6 +964,61 @@ class CheckDisplayWithoutProcessTest(unittest.TestCase):
     def test_it_accepts_a_generated_process(self):
         self.cmd.do_generate('e+ e- > mu+ mu-')
         self.cmd.check_display(['processes'])   # must not raise
+
+
+class CrossingDisplayTest(unittest.TestCase):
+    """The crossed processes folded into a base (default --use_crossing) have no
+    amplitude of their own, yet are part of the generation: `display processes`
+    and the generation summary have to show them."""
+
+    def setUp(self):
+        import madgraph.interface.master_interface as cmd
+        self.cmd = cmd.MasterCmd()
+        self.cmd.do_import('model sm')
+
+    def _summary(self, line):
+        said = []
+        logger = logging.getLogger('cmdprint')
+        handler = logging.Handler()
+        handler.emit = lambda record: said.append(record.getMessage())
+        saved = (logger.handlers, logger.propagate, logger.level)
+        logger.handlers, logger.propagate = [handler], False
+        logger.setLevel(logging.INFO)
+        try:
+            self.cmd.exec_cmd(line, errorhandling=False, printcmd=False)
+        finally:
+            (logger.handlers, logger.propagate, logger.level) = saved
+        return [text for text in said if text.startswith('Total:')]
+
+    def _display(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.cmd.do_display('processes')
+        return out.getvalue()
+
+    def test_crossings_are_listed_and_counted(self):
+        total = self._summary('generate p p > w+ j')
+        self.assertEqual(total, ['Total: 1 processes with 2 diagrams (and 2 crossed '
+                                 'processes evaluated through them, see '
+                                 '"display processes")'])
+        text = self._display()
+        self.assertIn('Crossed processes evaluated through g Q > w+ Q:', text)
+        # a crossing and its beam swap are one entry, as a mirror process is
+        self.assertEqual(text.count('    Process: '), 2, text)
+        self.assertIn('_quark _anti_quark > w+ g', text)
+        self.assertIn('g _anti_quark > w+ _anti_quark', text)
+
+    def test_decay_chain_production_crossings(self):
+        self._summary('generate p p > z j, z > e+ e-')
+        text = self._display()
+        self.assertIn('Crossed processes evaluated through g Q > z Q:', text)
+        self.assertEqual(text.count('    Process: '), 2, text)
+
+    def test_nothing_is_added_without_crossing(self):
+        # the 1 + 2 processes the folded generation reports, each its own
+        total = self._summary('generate p p > w+ j --use_crossing=False')
+        self.assertEqual(total, ['Total: 3 processes with 6 diagrams'])
+        self.assertNotIn('Crossed', self._display())
 
 
 class RequiredSChannelErrorTest(unittest.TestCase):

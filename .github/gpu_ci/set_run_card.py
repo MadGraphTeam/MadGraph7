@@ -42,8 +42,10 @@ def main(argv):
         assignments[(section, key)] = value
     with open(argv[1]) as fsock:
         text = fsock.read()
+    # set_keys first: it exits on a missing key, which must leave the card as it was
+    text = set_keys(text, assignments)
     with open(argv[1], 'w') as fsock:
-        fsock.write(set_keys(text, assignments))
+        fsock.write(text)
 
 
 if __name__ == '__main__':
