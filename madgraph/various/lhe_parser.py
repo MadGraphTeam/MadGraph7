@@ -856,6 +856,22 @@ class EventFile(object):
             outfile.write('</LesHouchesEvents>\n')
         return outputpath
 
+    def _weights_above(self, get_wgt, floor, use_fast_second_pass):
+        """sorted abs(wgt) of the events heavier than floor (read-only scan;
+        the random stream is left untouched)"""
+        state = random.getstate()
+        try:
+            self.seek(0)
+            if use_fast_second_pass:
+                wgts = (wgt for _r, _i, wgt, _m in self._iter_raw_events_for_unweight())
+            else:
+                wgts = (get_wgt(event) for event in self)
+            above = sorted(abs(w) for w in wgts if abs(w) > floor)
+        finally:
+            random.setstate(state)
+            self.seek(0)
+        return above
+
     def unweight(self, outputpath, get_wgt=None, max_wgt=0, trunc_error=0,
                  event_target=0, log_level=logging.INFO, normalization='average',
                  keep_overshoot=False, nb_output=1, keep_overweight_weight=False):
@@ -971,6 +987,14 @@ class EventFile(object):
             lha_strategy = (strategy, 1 if curr_strategy > 0 else -1)
         ow_on = False
         nb_below = 1
+        # ow_known: every abs(wgt) above ow_floor (the largest weights of the
+        # initial scan; complete if that scan kept them all). Each pass records
+        # the weights above half its max_wgt, so the overweight excess of the
+        # next pass is exact without an extra read unless max_wgt drops below
+        # ow_floor. There are at most 2*cross/max_wgt of them, about twice the
+        # number of unweighted events.
+        ow_known = all_wgt
+        ow_floor = all_wgt[0] if len(all_wgt) < nb_event else 0
 
         # Do the reweighting (up to 20 times if we have target_event)
         nb_try = 20
@@ -1016,8 +1040,15 @@ class EventFile(object):
                 and any(w > ow_threshold * max_wgt for w in all_wgt)
             ow_excess = 0
             if ow_on:
-                ow_excess = sum(w - max_wgt for w in all_wgt if w > max_wgt)
+                if max_wgt < ow_floor:
+                    # events heavier than max_wgt may be missing from ow_known
+                    ow_floor = 0.5 * max_wgt
+                    ow_known = self._weights_above(get_wgt, ow_floor,
+                                                   use_fast_second_pass)
+                ow_excess = sum(w - max_wgt for w in ow_known if w > max_wgt)
                 ow_norm = 1. - ow_excess / cross['abs']
+            seen_floor = 0.5 * max_wgt
+            seen = [] if (keep_overweight_weight and seen_floor < ow_floor) else None
             ow = (lambda w: ow_norm * max(1., abs(w) / max_wgt)) if ow_on else (lambda w: 1.)
             if keep_overweight_weight and lha_strategy:
                 # a weighted sample must not claim equal weights (strategy 3)
@@ -1041,6 +1072,8 @@ class EventFile(object):
                     r = random.random()
                     if 0 < abs(wgt) < max_wgt:
                         nb_below += 1
+                    if seen is not None and abs(wgt) > seen_floor:
+                        seen.append(abs(wgt))
                     if abs(wgt) < r * max_wgt:
                         continue
                     elif wgt > 0:
@@ -1075,6 +1108,8 @@ class EventFile(object):
                     wgt = get_wgt(event)
                     if 0 < abs(wgt) < max_wgt:
                         nb_below += 1
+                    if seen is not None and abs(wgt) > seen_floor:
+                        seen.append(abs(wgt))
                     if abs(wgt) < r * max_wgt:
                         continue
                     elif wgt > 0:
@@ -1093,7 +1128,9 @@ class EventFile(object):
                             trunc_cross += abs(wgt) - max_wgt
                         if outputpath and (event_target ==0 or keep_overshoot or nb_keep <= event_target):
                             outfiles[nb_keep % nb_output].write(str(event))
-            
+            if seen is not None:
+                ow_known, ow_floor = sorted(seen), seen_floor
+
             if event_target and nb_keep > event_target:
                 if not outputpath:
                     #no outputpath define -> wants only the nb of unweighted events
@@ -1137,24 +1174,11 @@ class EventFile(object):
         logger.log(log_level, "write %i event (efficiency %.2g %%, truncation %.2g %%) after %i iteration(s)", 
           nb_keep, nb_events_unweighted/nb_event*100, trunc_cross/cross['abs']*100, i)
      
-        # every event heavier than max_wgt is kept, so trunc_cross is the exact
-        # overweight excess: correct the normalisation if the estimate (from the
-        # largest weights kept in memory) missed part of it
-        if ow_on and outputpath \
-                and abs(trunc_cross - ow_excess) > 1e-3 * cross['abs']:
-            factor = (1. - trunc_cross / cross['abs']) / (1. - ow_excess / cross['abs'])
-            for path in outpaths:
-                startfile = EventFile(path)
-                tmpname = pjoin(os.path.dirname(path), "wgtcorrected_"+ os.path.basename(path))
-                outfile = EventFile(tmpname, "w")
-                outfile.write(startfile.banner)
-                for event in startfile:
-                    event.wgt = event.wgt * factor
-                    outfile.write(str(event))
-                outfile.write("</LesHouchesEvents>\n")
-                startfile.close()
-                outfile.close()
-                shutil.move(tmpname, path)
+        # every event heavier than max_wgt is kept, so trunc_cross is the
+        # overweight excess the weights were normalised with
+        if ow_on and abs(trunc_cross - ow_excess) > 1e-6 * cross['abs']:
+            logger.warning("overweight excess %s differs from the one used for "
+                           "the normalisation %s", trunc_cross, ow_excess)
 
         #correct the weight in the file if not the correct number of event
         if nb_keep != event_target and hasattr(self, "written_weight") and strategy !=4:

@@ -3407,13 +3407,13 @@ class TestMEfromfile(unittest.TestCase):
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
 
-        # Width : 1.3760e-05 (GeV) for 40k events: mean of 8 seeds, with the
-        # seed-to-seed spread of one run (1.6e-07, 1.1%) as the error. The
-        # weights of this process are heavy-tailed, so the error a run reports
-        # (~7.5e-08) underestimates that spread; the former 1.3303e-05 +- 2.1e-08
-        # was the (x/sigma)^2 average of the refine iterations, biased low by
-        # ~3.5% (the reported cross-section is now the last iteration's mean).
-        self.check_parton_output(cross= 1.3760e-05, error=1.6e-07,target_event=40000)
+        # Width : 1.3760e-05 (GeV) for 40k events: mean of 8 seeds. The former
+        # 1.3303e-05 +- 2.1e-08 was the (x/sigma)^2 average of the refine
+        # iterations, biased low by ~3.5% (the reported cross-section is now the
+        # last iteration's mean). The error is the one a run reports (~7.5e-08):
+        # the 8 seeds lie within 2.5 sigma, the old estimator 4.4-5.8 sigma away.
+        # (The seed-to-seed spread, 1.6e-07, would let the old value pass.)
+        self.check_parton_output(cross= 1.3760e-05, error=tolerance*7.5e-08,target_event=40000)
 
         #
         #  START REAL CODE (3/3)

@@ -399,191 +399,14 @@ c        Write out MadLoop statistics, if any
 
       endif
 c
-c     Now let's check to see if we got all of the events we needed
-c     if not, will give it another try with 5 iterations to set
-c     the grid, and 4 more to try and get the appropriate number of 
-c     unweighted events.
+c     The job stops here: the retry with a fresh grid that followed was
+c     disabled long ago (it only rewrote the same results.dat)
 c
       write(*,*) "Status",accur, cur_it, itmax
-      if (accur .ge. 0d0 .or. cur_it .gt. itmax+3) then
-        return
-      endif
-c     Check for neventswritten and chi2 (JA 8/17/11 lumi*mean xsec)
-      if (neventswritten .gt. -accur*tmean .and. chi2 .lt. 10d0) then
+      if (accur .lt. 0d0 .and. cur_it .le. itmax+3 .and.
+     &     neventswritten .gt. -accur*tmean .and. chi2 .lt. 10d0) then
          write(*,*) "We found enough events",neventswritten, -accur*tmean
-         return
       endif
-      
-c
-c     Need to start from scratch. This is clunky but I'll just
-c     remove the grid, so we are clean
-c
-      goto 200
-      write(*,*) "Trying w/ fresh grid"
-      stop 1 
-      open(unit=25,file='ftn25',status='unknown',err=102)
-      write(25,*) ' '
- 102  close(25)
-
-c
-c     First few iterations will allow the grid to adjust
-c
-c
-c     Reset counters
-c
-      ievent = 0
-      kevent = 0
-      nzoom = 0
-      xzoomfact = 1d0
-
-      ncall = ncall*4 ! / 2**(itmax-2)
-      write(*,*) "Starting w/ ncall = ", ncall
-      itmax = 8
-      call sample_init(ndim,ncall,itmax,ninvar,nconfigs,VECSIZE_USED)
-      do i=1,itmax
-         xmean(i)=0d0
-         xsigma(i)=0d0
-      enddo
-      wgt = 0d0
-      call clear_events
-      call set_peaks
-c
-c     Main Integration Loop
-c
-      iter = 1
-c      itmax = 8
-      itmax_adjust = 5
-      use_cut = 2  !Start adjusting grid
-      do while(iter .le. itmax)
-         if (iter .gt. itmax_adjust .and. use_cut .ne. 0) then
-            use_cut=0           !Fix grid
-            write(*,*) 'Fixing grid'
-         endif
-c
-c     Get integration point
-c
-         call sample_get_config(wgt,iter,ipole)
-         if (iter .le. itmax) then
-            ievent=ievent+1
-            call x_to_f_arg(ndim,ipole,mincfig,maxcfig,ninvar,wgt,x,p)
-            if (pass_point(p)) then
-               xzoomfact = 1d0
-               ! first 0 is for unset flavor
-               ! second 0 is for the mode
-               fx = dsig(p,dummyflavor,wgt,0) !Evaluate function
-               if (xzoomfact .gt. 0d0) then
-                  wgt = wgt*fx*xzoomfact
-               else
-                  wgt = -xzoomfact
-               endif
-               if (wgt .gt. 0d0) call graph_point(p,wgt) !Update graphs
-            else
-               fx =0d0
-               wgt=0d0
-            endif
-            
-            if (nzoom .le. 0) then
-               call sample_put_point(wgt,x(1),iter,ipole,.true.) !Store result
-            else
-               nzoom = nzoom -1
-               ievent=ievent-1
-            endif
-         endif
-         if (wgt .gt. 0d0) kevent=kevent+1    
-199   enddo
-c
-c     All done
-c
-200   open(unit=66,file='results.dat',status='unknown')
-      i=1
-      do while(xmean(i) .ne. 0 .and. i .lt. cur_it)
-         i=i+1
-      enddo
-      cur_it = i
-c     Use the last 3 iterations or cur_it-1 if cur_it-1 >= itmin
-      itsum = min(max(itmin,cur_it-1),3)
-      i = cur_it - itsum
-      if (i .gt. 0) then
-      tmean = 0d0
-      trmean = 0d0
-      tsigma = 0d0
-      tdem = 0d0
-      do while (xmean(i) .ne. 0 .and. i .lt. cur_it)
-         tmean = tmean+xmean(i)*xmean(i)**2/xsigma(i)**2
-         trmean = trmean+xrmean(i)*xmean(i)**2/xsigma(i)**2
-         tdem = tdem+xmean(i)**2/xsigma(i)**2
-         tsigma = tsigma + xmean(i)**2/ xsigma(i)**2
-         i=i+1
-      enddo
-      tmean = tmean/tsigma
-      trmean = trmean/tsigma
-      tsigma= tmean/sqrt(tsigma)
-c      nun = n_unwgted()
-c
-c     tjs 8/7/2007
-c
-      nun = neventswritten
-
-      chi2 = 0d0
-      do i = cur_it-itsum,cur_it-1
-         chi2 = chi2+(xmean(i)-tmean)**2/xsigma(i)**2
-      enddo
-      chi2 = chi2/2d0   !Since using only last 3, n-1=2
-c     A refine job whose last iteration was decided before it was run reports
-c     that iteration alone, as its events are normalised to it: the
-c     (x/sigma)^2 average of the last iterations is biased low when their
-c     weights are heavy-tailed (an iteration that caught a large weight gets
-c     a larger error estimate, hence a smaller weight in the average)
-      if (last_it) then
-         tmean = xmean(cur_it-1)
-         trmean = xrmean(cur_it-1)
-         tsigma = xsigma(cur_it-1)
-         chi2 = 0d0
-      endif
-      write(*,'(a)') '-------------------------------------------------'
-      write(*,'(a)') '---------------------------'
-      write(*,'(a,i3,a,e12.4)') ' Results Last ',itsum,
-     $     ' iters: Integral = ',trmean
-      write(*,'(21x,a,e12.4)') 'Abs integral = ',tmean
-      write(*,'(25x,a,e12.4)') 'Std dev = ',tsigma
-      write(*,'(17x,a,f12.4)') 'Chi**2 per DoF. =',chi2
-      write(*,'(a)') '-------------------------------------------------'
-      write(*,'(a)') '---------------------------'
-
-      if (nun .lt. 0) nun=-nun   !Case when wrote maximun number allowed
-      if (chi2 .gt. 1) tsigma=tsigma*sqrt(chi2)
-c     JA 02/2011 Added twgt to results.dat to allow event generation in
-c     first iteration for gridpack runs +02/2015 maxwgt 
-      if (icor .eq. 0) then
-         write(66,'(3e12.5,2i9,i5,i9,e10.3,e12.5,3e13.5, i9)')tmean,tsigma,0.0,
-     &     kevent, nw, cur_it-1, nun, nun/max(tmean,1d-99), twgt,trmean, 
-     &    maxwgt, th_maxwgt, th_nunwgt
-      else
-         write(66,'(3e12.5,2i9,i5,i9,e10.3,e12.5,3e13.5,i9)')tmean,0.0,tsigma,
-     &     kevent, nw, cur_it-1, nun, nun/max(tmean,1d-99), twgt,trmean,
-     &    maxwgt, th_maxwgt, th_nunwgt
-      endif
-c      do i=1,cur_it-1
-      do i=cur_it-itsum,cur_it-1
-         write(66,'(i4,5e15.5)') i,xmean(i),xsigma(i),xeff(i),xwmax(i),xrmean(i)
-      enddo
-c     Write out MadLoop statistics, if any
-      call output_run_statistics(66)      
-      call output_subprocess_weights(66)
-      flush(66)
-      close(66, status='KEEP')
-      else
-         open(unit=66,file='results.dat',status='unknown')
-         write(66,'(3e12.5,2i9,i5,i9,5e10.3,i9)')0.,0.,0.,kevent,nw,
-     &     1,0,0.,0.,0.,0.,0.,0
-         write(66,'(i4,5e15.5)') 1,0.,0.,0.,0.,0.
-c        Write out MadLoop statistics, if any
-         call output_run_statistics(66)
-         call output_subprocess_weights(66)
-         flush(66)
-         close(66, status='KEEP')
-
-      endif      
 
       end
 
@@ -2541,15 +2364,21 @@ c     standard deviations, so that the job does not end short); its events
 c     are unweighted against that same maximum weight and kept whatever they
 c     contain. Jobs that start from a stored grid (last_on false: gridpack,
 c     MadSpin decays) keep the previous rule.
+c     The request is counted with this iteration's own mean, the estimate the
+c     job reports and normalises the last iteration with: the (x/sigma)^2
+c     average tmeant is biased low with heavy-tailed weights. The decision is
+c     only taken if the next iteration can run (cur_it is its index here).
                last_stop = last_it
                if (last_on .and. .not. last_it .and. cur_it .gt. 2
+     &              .and. cur_it .le. itm
      &              .and. nun .gt. 0 .and.
      &              last_uref .gt. 0d0 .and.
-     &              -accur*tmeant .le. last_cap*dble(nun)) then
+     &              -accur*xmean(cur_it-1) .le. last_cap*dble(nun)) then
                   last_it = .true.
                   last_ufix = last_uref
                   last_lumi = 0d0
-                  last_goal = -accur*tmeant + 3d0*sqrt(-accur*tmeant)
+                  last_goal = -accur*xmean(cur_it-1)
+     &                 + 3d0*sqrt(-accur*xmean(cur_it-1))
 c     room for up to last_cap times the points of this iteration (events was
 c     already doubled for the next one): redo twgt, vol and knt for that size.
 c     It runs at least the usual (doubled) number of points, so that its
