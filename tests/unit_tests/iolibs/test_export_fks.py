@@ -583,6 +583,36 @@ class TestFKSOutput(unittest.TestCase):
         for name, count, text in calls:
             self.assertEqual(count, arity, '%s: %s' % (name, text))
 
+    def test_bornsoftvirtual_recomputes_link_borns(self):
+        """The integrated soft term of bornsoftvirtual evaluates the
+        colour/charge links for nFKSprocess_col_used/_chg_used, whose Born
+        counterterm values (ans_cnt, split orders) differ from those of the
+        configuration passed in. It must recompute them there, as MG5 does
+        with sborn: reusing the passed born_cnt changed the integrated soft
+        term at almost every phase-space point (W+j, mixed QCD/QED), while
+        with the recomputation the integrand equals MG5's point by point."""
+        import re
+        with open(os.path.join(MGCmd.MG5DIR, 'Template', 'NLO',
+                               'SubProcesses', 'fks_singular.f')) as stream:
+            source = stream.read()
+        start = source.index('      subroutine bornsoftvirtual(')
+        body = source[start:source.index('\n      end\n', start)]
+        # the link loop: from the I(reg) comment to restoring nFKSprocess
+        begin = body.index('I(reg) terms')
+        stop = body.index('nFKSprocess = nFKSprocess_save\n', begin)
+        loop = body[begin:stop]
+        code = '\n'.join(line for line in loop.splitlines()
+                         if not re.match(r'[cC*!]', line))
+        chooser = code.index('call fks_inc_chooser()')
+        recompute = code.find('call sborn_amp(p_born', chooser)
+        links = code.index('call sborn_sf_store(', chooser)
+        self.assertNotEqual(recompute, -1,
+                            'the link loop must recompute the Born')
+        self.assertLess(recompute, links)
+        # and the configuration's own Born values are restored afterwards
+        after = body[stop:]
+        self.assertIn('ans_cnt(:,:) = born_cnt(:,:)', after)
+
     def test_tir_library_paths_are_available_at_runtime(self):
         """External TIR shared libraries need an rpath in NLO executables."""
         exporter = object.__new__(export_fks.ProcessExporterFortranFKS)

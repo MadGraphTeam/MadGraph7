@@ -7739,6 +7739,7 @@ C to keep track of the various split orders
       integer iamp
       integer orders(nsplitorders)
       double precision soft_prefactor
+      double precision amp_split_link(amp_split_size), wgt_link
       double precision amp_split_born(amp_split_size)
       double precision amp_split_bsv(amp_split_size)
       double precision amp_split_soft(amp_split_size)
@@ -7972,10 +7973,16 @@ c I(reg) terms, eq 5.5 of FKS
          endif
 C setup the fks i/j info
          call fks_inc_chooser()
-C the following call to born is to setup the goodhel(nfksprocess)
-C ZW: should be removed when initital tests are separated from evaluations
-C         ! calculatedBorn = .false.
-C         ! call sborn_amp(p_born,amp2,jamp2,ret_amp_split,ret_amp_split_cnt,wgt1,ans_cnt,ret_saveamp)
+C The Born counterterm values (ans_cnt and their split orders) depend on
+C the FKS configuration, and the links are evaluated for nFKSprocess_col_used
+C or nFKSprocess_chg_used, not for the configuration whose Born was passed
+C in. Recompute them here, as the original code did with sborn(p_born,wgt1);
+C reusing the passed born_cnt made the integrated soft term differ from MG5
+C at almost every point (W+j, mixed QCD/QED). Temporaries keep the caller's
+C ret_amp_split and the Born weight untouched.
+         calculatedBorn = .false.
+         call sborn_amp(p_born,amp2,jamp2,amp_split_link,ret_amp_split_cnt,
+     &        wgt_link,ans_cnt,ret_saveamp)
          contr=0d0
          do i=1,fks_j_from_i(i_fks,0)
             do j=1,i
@@ -8013,6 +8020,10 @@ c
 C set back the fks i/j info as prior to enter this function
       nFKSprocess = nFKSprocess_save
       call fks_inc_chooser()
+C and the Born values of that configuration (overwritten above)
+      ans_cnt(:,:) = born_cnt(:,:)
+      ret_saveamp(:,:) = born_saveamp(:,:)
+      calculatedBorn = .false.
 
  548  continue
 c Finite part of one-loop corrections
