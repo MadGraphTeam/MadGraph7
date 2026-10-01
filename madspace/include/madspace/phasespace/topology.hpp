@@ -28,6 +28,9 @@ struct Propagator {
     double e_max;
     /// PDG id of the propagating particle.
     int pdg_id;
+    /// Half-width, in units of `width`, of the window where the Breit-Wigner
+    /// sampling is flattened (`$`-excluded propagator); `0` for none.
+    double flat_window = 0.;
 };
 
 /**
@@ -163,6 +166,9 @@ public:
         /// Position in the flat `Diagram::propagators()` list, or
         /// @ref no_propagator; lets callers apply a per-diagram PDG override.
         std::size_t flat_propagator_index;
+        /// Flattened Breit-Wigner window of the propagator, see
+        /// @ref Propagator::flat_window.
+        double flat_window = 0.;
     };
 
     /// Enumerate the sub-channels of a diagram, one per on-shell configuration.
