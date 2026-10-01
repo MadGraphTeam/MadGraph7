@@ -299,6 +299,19 @@ class gensym(object):
                     vals = line.split()
                     if vals:
                         helunion[vals[0]].append([int(x) for x in vals[1:]])
+            # crossgroup_helclass.dat: per crossing base with a massive leg with
+            # spin, the class of each helicity row (rows differing only in the
+            # helicity of massive legs). Such a leg's zeros are frame
+            # dependent: G_base is measured in the base's frame, its crossings
+            # are evaluated in their own, so G_base is closed over each class
+            # before tau is applied below.
+            helclass = {}
+            hc_file = pjoin(Pdir, 'crossgroup_helclass.dat')
+            if os.path.exists(hc_file):
+                for line in open(hc_file):
+                    vals = line.split()
+                    if vals:
+                        helclass[vals[0]] = [int(x) for x in vals[1:]]
 
             for matrix_file in misc.glob('matrix*orig.f', Pdir):
 
@@ -355,6 +368,13 @@ class gensym(object):
                 # the s-channel config, whose AMP2 is exactly zero over the good
                 # helicities, and diluted the colour flow toward 50/50.
                 perms = helunion.get(me_index, [])
+                classes = helclass.get(me_index)
+                if perms and classes:
+                    good_classes = set(classes[h - 1] for h in base_good
+                                       if 0 < h <= len(classes))
+                    base_good = set(h for h, c in enumerate(classes, 1)
+                                    if c in good_classes) | base_good
+                    good_set = set(base_good)
                 for perm in perms:
                     if not all(perm):
                         good_set = set(range(1, len(perm) + 1))

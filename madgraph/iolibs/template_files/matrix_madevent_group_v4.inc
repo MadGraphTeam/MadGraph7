@@ -280,7 +280,7 @@ C     in init_mode the full-sum branch runs every call, so the two coincide.
                      PRINT *, 'Matrix Element/Good Helicity: %(proc_id)s ', i, 'IMIRROR', IMIRROR
 	          ENDIF
 	      ELSE IF (%(me_goodhel_train_guard)s.NOT.GOODHEL(%(me_goodhel_idx)s,%(me_flav_key)s,%(proc_id)s) .AND. (DABS(TS(I)).GT.ANS*LIMHEL/NCOMB)) THEN
-                 GOODHEL(%(me_goodhel_idx)s,%(me_flav_key)s,%(proc_id)s)=.TRUE.
+                 GOODHEL(%(me_goodhel_idx)s,%(me_flav_key)s,%(proc_id)s)=.TRUE.%(me_goodhel_train_class)s
                  NGOOD = NGOOD +1
                  PRINT *,'Added good helicity ',I, 'for process %(proc_id)s flavor ',IFLAV,TS(I)*NCOMB/ANS,' in event ',NTRY(%(me_flav_key)s,%(proc_id)s)
               ENDIF

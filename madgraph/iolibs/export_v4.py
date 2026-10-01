@@ -1031,6 +1031,9 @@ class ProcessExporterFortran(VirtualExporter,
         self._router_base_mes = set()  # id(me) of the within-group (Track A) bases
         self._crossgroup_dirs = []  # (dependent_dir, base_dir) for the parallel makefile
         self._crossgroup_helperms = {}  # base_dir -> {base_proc_id -> [hel perms]}
+        # base_dir -> {base_proc_id -> per-row massive-leg class}, see
+        # write_crossgroup_helunion / massive_helicity_classes
+        self._crossgroup_helclass = {}
         if isinstance(matrix_elements, group_subprocs.SubProcessGroupList):
             # check handling for the polarization
             for m in matrix_elements:
@@ -2901,6 +2904,83 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             lines.append("     & %s%s" % (",".join(seg), tail))
         return "\n".join(lines)
 
+    # --------------------------------------------------------------------------
+    # Helicity zeros of a massive leg under crossing
+    # --------------------------------------------------------------------------
+    # A crossing evaluates the base helicity rows at the crossed process's
+    # kinematics, so the good-helicity sets shared with the base assume that a
+    # row zero for the base is zero for the crossing too (up to tau, the sign
+    # flip of the legs that change side). That holds for a MASSLESS leg, whose
+    # helicity is Lorentz invariant, but not for a massive one with spin: its
+    # helicity states mix under a boost, and the crossed process is evaluated
+    # in its own partonic frame. In u g > u z, four rows are exact zeros in the
+    # u g frame and carry up to 3e-3 of the total once boosted; their tau images
+    # are needed by the crossed u u~ > z g (two of them carry the z's helicity
+    # 0). Summed over a massive leg's helicities, the rows of one massless
+    # configuration are frame invariant, so the safe set is closed over those
+    # helicities: a row is good as soon as a row differing from it only in the
+    # helicity of massive legs is.
+
+    @staticmethod
+    def massive_helicity_legs(matrix_element):
+        """Per external leg (get_helicity_matrix order): True for a massive leg
+        with more than one helicity state -- the legs whose helicity zeros do not
+        survive a change of frame, hence a crossing."""
+        model = matrix_element.get('processes')[0].get('model')
+        legs = []
+        for wf in matrix_element.get_external_wavefunctions():
+            part = model.get_particle(wf.get('pdg_code'))
+            legs.append(str(part.get('mass')).lower() != 'zero'
+                        and len(part.get_helicity_states()) > 1)
+        return legs
+
+    @classmethod
+    def massive_helicity_classes(cls, matrix_element):
+        """1-based class of each helicity row (get_helicity_matrix order): two
+        rows share a class iff they differ only in the helicity of massive legs.
+        None when the process has no such leg (every class is a single row)."""
+        massive = cls.massive_helicity_legs(matrix_element)
+        if not any(massive):
+            return None
+        ids, classes = {}, []
+        for row in matrix_element.get_helicity_matrix():
+            key = tuple(h for h, m in zip(row, massive) if not m)
+            classes.append(ids.setdefault(key, len(ids) + 1))
+        return classes
+
+    @classmethod
+    def massive_helicity_closure_fortran(cls, matrix_element, goodhel, idx,
+                                         nhel='NHEL', indent=18):
+        """(declarations, training) Fortran closing a shared good-helicity
+        filter over the helicity of massive legs. `goodhel` is the filter
+        element with a %s for the row (e.g. 'GOODHEL(%s,FLAV_USE)'), `idx` the
+        row just marked good, `nhel` the NHEL table its rows index. Both are ''
+        for a process without a massive leg with spin."""
+        massive = cls.massive_helicity_legs(matrix_element)
+        if not any(massive):
+            return '', ''
+        pad = ' ' * indent
+        decl = '\n'.join([
+            'C     HMV: the massive legs with spin. Their helicity zeros are frame',
+            'C     dependent, so a crossing (evaluated in its own partonic frame)',
+            'C     can need a row that is zero here: training marks every row',
+            'C     that differs from a good one only in those legs good as well.',
+            '      LOGICAL HMV(NEXTERNAL), HMSAME',
+            '      INTEGER HMJ, HMK',
+            '      DATA HMV /%s/' % ','.join('.TRUE.' if m else '.FALSE.'
+                                            for m in massive)])
+        train = '\n'.join([
+            'C     ... and every row differing from it only in a massive leg (HMV).',
+            pad + 'DO HMJ=1,NCOMB',
+            pad + '  HMSAME=.TRUE.',
+            pad + '  DO HMK=1,NEXTERNAL',
+            pad + '    IF (.NOT.HMV(HMK).AND.%s(HMK,HMJ).NE.%s(HMK,%s)) '
+            'HMSAME=.FALSE.' % (nhel, nhel, idx),
+            pad + '  ENDDO',
+            pad + '  IF (HMSAME) %s=.TRUE.' % (goodhel % 'HMJ'),
+            pad + 'ENDDO'])
+        return decl, train
+
     def _helstate_data(self, matrix_element):
         """Return the Fortran DATA blocks for the canonical helicity
         encoder/decoder that replaces the explicit NHEL config table.
@@ -3565,6 +3645,17 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             (key, value % {'proc_prefix': prefix,
                            'den_factor_line': replace_dict['den_factor_line']})
             for key, value in self.CROSSING_SNIPPETS.items()))
+        # The shared filter is trained by the base and by every crossing: close
+        # it over the helicity of massive legs (massive_helicity_closure_fortran)
+        hm_decl, hm_train = self.massive_helicity_closure_fortran(
+            matrix_element, 'GOODHEL(%s,FLAV_USE)', 'GHIDX', indent=24)
+        if hm_decl:
+            replace_dict['smatrix_cross_decl'] += '\n' + hm_decl
+            train = replace_dict['smatrix_goodhel_train']
+            assert train.endswith('ENDIF')
+            replace_dict['smatrix_goodhel_train'] = (
+                train[:-len('ENDIF')].rstrip(' ') + hm_train + '\n'
+                + ' ' * 20 + 'ENDIF')
         # CROSS_GHIDX (in the crossing routines below) recomputes the crossed
         # -> identity helicity row map at runtime; it needs only the small
         # per-crossing GHFILT flag plus the STATES/NHSTATE the encoder uses (in
@@ -3789,6 +3880,17 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # gets neither -- GET_PDG_FOR_FLAVOR only exists to decode a crossing.
         replace_dict['so_crossing_routines'] = replace_dict['crossing_routines']
         replace_dict['so_pdg_function'] = replace_dict['flavor_pdg_function']
+        # Close the shared filter over the helicity of massive legs, as
+        # fill_crossing_replace_dict does for the default template.
+        hm_decl, hm_train = self.massive_helicity_closure_fortran(
+            matrix_element, 'GOODHEL(%s,FLAV_USE)', 'GHIDX', indent=16)
+        if hm_decl:
+            replace_dict['so_cross_decl'] += '\n' + hm_decl
+            train = replace_dict['so_goodhel_train']
+            assert train.endswith('ENDIF')
+            replace_dict['so_goodhel_train'] = (
+                train[:-len('ENDIF')].rstrip(' ') + hm_train + '\n'
+                + ' ' * 14 + 'ENDIF')
 
     def fill_crossing_replace_dict_me(self, matrix_element, replace_dict,
                                       use_crossing, proc_id, xgrow_map=None):
@@ -3818,6 +3920,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 'me_flav_key': 'IFLAV',
                 'me_goodhel_idx': 'I',
                 'me_goodhel_train_guard': '',
+                'me_goodhel_train_class': '',
                 'smatrix_me_goodhel_or': '',
                 'me_matrix_args': 'P ,NHEL(1,I),IFLAV,I,AMP2, JAMP2, IVEC',
                 'smatrix_me_iden_line':
@@ -4080,6 +4183,17 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             'me_csym_cross_ok': 'CROSSUSE.EQ.0',
             'hel_csym_cross_ok': 'CROSSUSE.EQ.0',
         })
+        # The shared GOODHEL is trained by the base and by every crossing that
+        # reaches it (a within-group router): close it over the helicity of
+        # massive legs (massive_helicity_closure_fortran).
+        hm_decl, hm_train = self.massive_helicity_closure_fortran(
+            matrix_element, 'GOODHEL(%%s,FLAV_USE,%s)' % pid,
+            'MAX(GHIDXA(I),1)', indent=17)
+        # (the hole ends the GOODHEL line, so it brings its own newline)
+        replace_dict['me_goodhel_train_class'] = \
+            ('\n' + hm_train) if hm_train else ''
+        if hm_decl:
+            replace_dict['smatrix_me_cross_decl'] += '\n' + hm_decl
 
     # (decl, decode, apply) for GET_PDG_FOR_FLAVOR without crossing: FLAV_IDX_IN
     # is a bare flavor index, so there is nothing to permute or conjugate.
@@ -11787,6 +11901,27 @@ c of an explicit polarisation in the process
                 with open(pjoin(subproc_path, base_dir,
                                 'crossgroup_helunion.dat'), 'w') as f:
                     f.write('\n'.join(lines) + '\n')
+        # crossgroup_helclass.dat: `<base_proc_id> c1 ... cNCOMB`, the class of
+        # each helicity row of a crossing base with a massive leg with spin
+        # (massive_helicity_classes). G_base comes from the base's own frame,
+        # where a massive leg can have zeros its crossings do not share, so
+        # gen_ximprove closes G_base over each class BEFORE applying tau.
+        for base_dir, per_proc in self._crossgroup_helclass.items():
+            lines = ['%d %s' % (base_proc_id, ' '.join(str(c) for c in classes))
+                     for base_proc_id, classes in sorted(per_proc.items())]
+            if lines:
+                with open(pjoin(subproc_path, base_dir,
+                                'crossgroup_helclass.dat'), 'w') as f:
+                    f.write('\n'.join(lines) + '\n')
+
+    def _record_crossgroup_helclass(self, base_dir, base_proc_id, base_me):
+        """Record the massive-leg helicity classes of a crossing base for
+        crossgroup_helclass.dat (nothing for a base without a massive leg with
+        spin)."""
+        classes = self.massive_helicity_classes(base_me)
+        if classes is not None:
+            self._crossgroup_helclass.setdefault(base_dir, {})[
+                base_proc_id] = classes
 
     def write_crossgroup_parallel_makefile(self, subproc_path):
         """Write SubProcesses/makefile_madevent so every P directory builds with a
@@ -14308,6 +14443,8 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                         subprocdir, {}).setdefault(base_index + 1, [])
                     if pi not in perms:
                         perms.append(pi)
+                    self._record_crossgroup_helclass(
+                        subprocdir, base_index + 1, base_me)
         else:
             crossing_bases, crossing_routing = None, None
         # Per base: {crossing -> (dependent proc_id, dep-diagram -> base-diagram
@@ -14388,6 +14525,8 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                     # the base as crossing-shared for gen_ximprove.
                     if pi not in perms:
                         perms.append(pi)
+                self._record_crossgroup_helclass(
+                    crossgroup['base_dir'], crossgroup['base_proc_id'], base_me)
                 # ncolor for maxflow sizing: crossing preserves the colour basis,
                 # so the dependent's own count is the base's. writer=None writes
                 # nothing, it only returns the flavor/colour bookkeeping.

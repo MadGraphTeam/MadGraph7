@@ -607,13 +607,14 @@ jobs:
 
       # ---- crossing cross sections ----
       # Crossing-routed vs --use_crossing=False, same seed: p p > w+ j, w+ > j j
-      # (decay chain on a crossed production) and p p > t t~ j j (the only
-      # integration of the cross-GROUP router).
-      - name: "crossing: cross-section regressions (decay chain + inclusive)"
+      # (decay chain on a crossed production), p p > t t~ j j (the cross-GROUP
+      # router) and u u~ > z g through u g > u z (a massive leg's frame-dependent
+      # helicity zeros in the recycled optim).
+      - name: "crossing: cross-section regressions (decay chain + inclusive + massive leg)"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py -pA TestMadeventDecayChainCrossing TestMadeventInclusiveCrossingXsec -t0 -l INFO
+            ./tests/test_manager.py -pA TestMadeventDecayChainCrossing TestMadeventInclusiveCrossingXsec TestMadeventMassiveLegCrossingXsec -t0 -l INFO
 
       # ---- folded layout + reweight labels ----
       - name: "crossing: folded subprocesses + merged anti-particle labels in reweight"

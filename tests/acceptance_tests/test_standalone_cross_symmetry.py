@@ -1824,6 +1824,105 @@ for pdgs in ([21, 2, 24, 1], [2, -1, 24, 21], [21, -1, 24, -2]):
                 self._assert_decay_crossing(base, base_line, ref_line, perm,
                                             pdgs)
 
+    # SMATRIX at FLAV_IDX F1 NTRAIN times (training the shared good-helicity
+    # filter at the base point), then once at FLAV_IDX F2 at the crossed point;
+    # stdin: F1 F2 NTRAIN, then the base and the crossed momenta (E px py pz).
+    _TRAINING_DRIVER = '''      PROGRAM TRAINCHECK
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      REAL*8 PB(0:3,NEXTERNAL), PC(0:3,NEXTERNAL), ANS
+      INTEGER I, K, F1, F2, NTRAIN
+      CALL SETPARA('param_card.dat')
+      READ(*,*) F1, F2, NTRAIN
+      DO K=1,NEXTERNAL
+        READ(*,*) (PB(I,K),I=0,3)
+      ENDDO
+      DO K=1,NEXTERNAL
+        READ(*,*) (PC(I,K),I=0,3)
+      ENDDO
+      DO I=1,NTRAIN
+        CALL SMATRIX(PB, F1, ANS)
+      ENDDO
+      CALL SMATRIX(PC, F2, ANS)
+      WRITE(*,'(A,ES24.16)') ' ANS=', ANS
+      END
+'''
+
+    def test_massive_leg_crossing_after_base_training(self):
+        """A crossing whose base has a massive leg survives the base training
+        the shared good-helicity filter first.
+
+        `u b1 > c1 d1` (b1 = g u~, c1 = u z, d1 = z g) folds u u~ > z g onto
+        u g > u z. Four base rows are exact zeros in the u g frame only -- the z
+        is massive, its helicity states mix under a boost -- and their sign-flip
+        images are rows the crossing needs (two carry the z's helicity 0). The
+        filter is shared by every crossing of a flavor, so 40 base calls used
+        to freeze it without them: the crossed matrix element then came out
+        low (-2.2e-4 at this point), while asked first it was exact. Training
+        now closes the filter over the helicity of massive legs (HMV).
+        """
+        outdirs = {}
+        for name, options in (('fold', '--use_crossing=True'),
+                              ('exp', '--use_crossing=False')):
+            outdir = pjoin(self.tmpdir, 'uz_train_%s' % name)
+            self.cmd.exec_cmd('set automatic_html_opening False')
+            self.cmd.exec_cmd('set group_subprocesses False')
+            self.cmd.exec_cmd('import model sm')
+            self.cmd.exec_cmd('define b1 = g u~')
+            self.cmd.exec_cmd('define c1 = u z')
+            self.cmd.exec_cmd('define d1 = z g')
+            self.cmd.exec_cmd('generate u b1 > c1 d1 QED=1 QCD=1 %s' % options)
+            self.cmd.exec_cmd('output standalone_fortran %s -f' % outdir)
+            outdirs[name] = pjoin(outdir, 'SubProcesses')
+
+        def pdir(root, suffix):
+            found = [pjoin(root, d) for d in sorted(os.listdir(root))
+                     if d.startswith('P') and d.endswith(suffix)]
+            self.assertEqual(len(found), 1, '%s: %s' % (suffix, found))
+            return found[0]
+        self.assertFalse(any(d.endswith('_uux_zg')
+                             for d in os.listdir(outdirs['fold'])),
+                         'u u~ > z g was not folded onto u g > u z')
+        fold, exp = pdir(outdirs['fold'], '_ug_uz'), pdir(outdirs['exp'],
+                                                          '_uux_zg')
+        for path in (fold, exp):
+            with open(pjoin(path, 'check_sa.f'), 'w') as fsock:
+                fsock.write(self._TRAINING_DRIVER)
+            self._build(path)
+
+        mz, energy, theta = 91.188, 500.0, 0.25
+        pz = (4 * energy ** 2 - mz ** 2) / (4 * energy)
+        ez = math.sqrt(pz ** 2 + mz ** 2)
+
+        def point(theta, z_slot):
+            sin, cos = math.sin(theta), math.cos(theta)
+            z = (ez, pz * sin, 0, pz * cos)
+            other = (pz, -pz * sin, 0, -pz * cos)
+            final = [z, other] if z_slot == 2 else [other, z]
+            return [(energy, 0, 0, energy), (energy, 0, 0, -energy)] + final
+        base_point = point(1.1, 3)     # u g > u z: the z is leg 4
+        crossed_point = point(theta, 2)  # u u~ > z g: the z is leg 3
+
+        def run(path, f1, f2, ntrain):
+            lines = ['%d %d %d' % (f1, f2, ntrain)] + [
+                ' '.join('%.17e' % x for x in mom)
+                for mom in base_point + crossed_point]
+            out = subprocess.run(['./check'], cwd=path, capture_output=True,
+                                 input='\n'.join(lines) + '\n',
+                                 text=True).stdout
+            match = re.search(r'ANS=\s*(\S+)', out)
+            self.assertTrue(match, 'no ANS from %s:\n%s' % (path, out))
+            return float(match.group(1))
+        reference = run(exp, 1, 1, 0)
+        self.assertGreater(reference, 0.0)
+        # FLAV_IDX 2 = crossing row 1 of the single base flavor
+        for ntrain in (0, 40):
+            with self.subTest(base_calls_first=ntrain):
+                self.assertAlmostEqual(
+                    run(fold, 1, 2, ntrain) / reference, 1.0, delta=1e-10,
+                    msg='the folded u u~ > z g disagrees with its own output '
+                        'after %d base calls' % ntrain)
+
 
 class TestGoodHelCParityDedup(unittest.TestCase):
     """The C-parity de-duplication of the helicity sum must be transparent.
@@ -3301,6 +3400,144 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
                                 '%s folds crossings without the machinery'
                                 % base)
 
+    # Prints the selected helicity code (0-based, as umami reports it) of nevt
+    # events at ONE phase-space point, the helicity random number on a uniform
+    # grid: argv = flavor id, nevt, then npar*(E px py pz).
+    _HEL_DRIVER = r"""
+#include "umami.h"
+#include <cstdio>
+#include <cstdlib>
+#include <vector>
+int main( int argc, char** argv )
+{
+  const unsigned int fid = atoi( argv[1] );
+  const int nevt = atoi( argv[2] );
+  UmamiHandle h = nullptr;
+  if( umami_initialize( &h, "../../Cards/param_card.dat" ) != UMAMI_SUCCESS ) return 2;
+  int npar = 0;
+  umami_get_meta( UMAMI_META_PARTICLE_COUNT, &npar );
+  std::vector<double> mom( (size_t)4 * npar * nevt ), rnd( nevt ), me( nevt ), as( nevt, 0.118 );
+  std::vector<unsigned int> flv( nevt, fid );
+  std::vector<int> hel( nevt, -1 );
+  for( int ip = 0; ip < npar; ip++ )
+    for( int i4 = 0; i4 < 4; i4++ )
+      for( int ie = 0; ie < nevt; ie++ )
+        mom[(size_t)i4 * npar * nevt + (size_t)ip * nevt + ie] = atof( argv[3 + 4 * ip + i4] );
+  for( int ie = 0; ie < nevt; ie++ ) rnd[ie] = ( ie + 0.5 ) / nevt;
+  UmamiInputKey ik[4] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_ALPHA_S, UMAMI_IN_RANDOM_HELICITY };
+  const void* in[4] = { mom.data(), flv.data(), as.data(), rnd.data() };
+  UmamiOutputKey ok[2] = { UMAMI_OUT_MATRIX_ELEMENT, UMAMI_OUT_HELICITY_INDEX };
+  void* out[2] = { me.data(), hel.data() };
+  if( umami_matrix_element( h, nevt, nevt, 0, 4, ik, in, 2, ok, out ) != UMAMI_SUCCESS ) return 3;
+  for( int ie = 0; ie < nevt; ie++ ) printf( "%d\n", hel[ie] );
+  umami_free( h );
+  return 0;
+}
+"""
+
+    def _selected_helicities(self, pdir, flavor_id, momenta, nevt):
+        """Build _HEL_DRIVER as the check_sa.exe of `pdir` and return the codes
+        it reports for `nevt` events at `momenta`."""
+        check = pjoin(pdir, 'check_sa.cc')
+        os.remove(check)   # a link to the shared SubProcesses/check_sa.cc
+        with open(check, 'w') as fsock:
+            fsock.write(self._HEL_DRIVER)
+        with open(os.devnull, 'w') as devnull:
+            rc = subprocess.call(['make', '-j2', 'check_sa.exe'], cwd=pdir,
+                                 stdout=devnull, stderr=subprocess.STDOUT,
+                                 env=dict(os.environ, FPTYPE='d'))
+        if rc != 0:
+            self.skipTest('madmatrix build toolchain unavailable (make failed)')
+        out = subprocess.check_output(
+            ['./check_sa.exe', str(flavor_id), str(nevt)]
+            + ['%.17g' % x for p in momenta for x in p], cwd=pdir).decode()
+        return [int(code) for code in out.split()]
+
+    def test_moved_leg_reports_its_own_helicity(self):
+        """A crossing that moves a leg into a slot with OTHER helicity states
+        reports that leg's helicity right.
+
+        `u b1 > c1 d1` (b1 = g u~, c1 = u z, d1 = z g) folds u u~ > z g onto
+        u g > u z: the z lands in the base's u slot, the g in its z slot. The
+        reported code used to run over the BASE slot's states, which have no
+        digit for the z's helicity 0 (it came out as the u's first state): its
+        longitudinal events were reported transverse. Each crossing row now has
+        its own states (xhel_nhstate/xhel_states), and at one phase-space point
+        and the same random numbers the folded crossing reports every helicity
+        configuration as often as u u~ > z g written on its own does.
+        """
+        outdirs = {}
+        for name, options in (('fold', ''), ('exp', ' --use_crossing=False')):
+            outdir = pjoin(self.tmpdir, 'uz_%s' % name)
+            cmd = cmd_interface.MasterCmd()
+            cmd.no_notification()
+            cmd.exec_cmd('set automatic_html_opening False')
+            cmd.exec_cmd('set group_subprocesses False')
+            cmd.exec_cmd('import model sm')
+            cmd.exec_cmd('define b1 = g u~')
+            cmd.exec_cmd('define c1 = u z')
+            cmd.exec_cmd('define d1 = z g')
+            cmd.exec_cmd('generate u b1 > c1 d1 QED=1 QCD=1 --use_crossing=True')
+            cmd.exec_cmd('output standalone %s -f%s' % (outdir, options))
+            outdirs[name] = pjoin(outdir, 'SubProcesses')
+        def pdirs(root, suffix):
+            return [pjoin(root, d) for d in sorted(os.listdir(root))
+                    if d.startswith('P') and d.endswith(suffix)]
+        self.assertEqual(pdirs(outdirs['fold'], '_uux_zg'), [],
+                         'u u~ > z g was not folded onto u g > u z')
+        (fold,), (exp,) = pdirs(outdirs['fold'], '_ug_uz'), \
+            pdirs(outdirs['exp'], '_uux_zg')
+        with open(pjoin(fold, 'crossing_demo.dat')) as fsock:
+            ids = [int(i) for i in fsock.read().split()]
+        self.assertEqual(len(ids), 1, ids)
+        with open(pjoin(fold, 'ProcessTables.h')) as fsock:
+            tables = fsock.read()
+        maxhel = int(re.search(r'xhel_maxhel = (\d+)', tables).group(1))
+        nmaxflavor = 1
+
+        def table(name):
+            return [int(v) for v in re.search(
+                r'%s\[[^\]]*\] = \{([^}]*)\}' % name, tables).group(1).split(',')]
+        nhstate, states = table('xhel_nhstate'), table('xhel_states')
+        cross = ids[0] // nmaxflavor
+        npar = 4
+
+        def decode(code):
+            config = [0] * npar
+            for k in reversed(range(npar)):
+                n = nhstate[cross * npar + k]
+                config[k] = states[(cross * npar + k) * maxhel + code % n]
+                code //= n
+            return tuple(config)
+        with open(pjoin(exp, 'ProcessData.h')) as fsock:
+            thel = fsock.read().split('tHel')[1].split(';')[0]
+        rows = [tuple(int(v) for v in row) for row in
+                re.findall(r'\{\s*(-?\d+),\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)\s*\}',
+                           thel)]
+
+        # u u~ > z g at sqrt(s) = 1 TeV, theta = 0.7
+        mz, energy, theta = 91.188, 500.0, 0.7
+        pz = (4 * energy ** 2 - mz ** 2) / (4 * energy)
+        ez = math.sqrt(pz ** 2 + mz ** 2)
+        sin, cos = math.sin(theta), math.cos(theta)
+        momenta = [(energy, 0, 0, energy), (energy, 0, 0, -energy),
+                   (ez, pz * sin, 0, pz * cos), (pz, -pz * sin, 0, -pz * cos)]
+        nevt = 20000
+        folded = [decode(c) for c in
+                  self._selected_helicities(fold, ids[0], momenta, nevt)]
+        alone = [rows[c] for c in
+                 self._selected_helicities(exp, 0, momenta, nevt)]
+        longitudinal = sum(1 for config in alone if config[2] == 0)
+        self.assertTrue(longitudinal > 0, 'no longitudinal z at this point')
+        self.assertEqual(sum(1 for config in folded if config[2] == 0),
+                         longitudinal, 'the folded crossing mis-reports the '
+                         'helicity of the z it moved into the u slot')
+        for config in set(folded) | set(alone):
+            self.assertLessEqual(
+                abs(folded.count(config) - alone.count(config)), 2,
+                '%s: reported %d times folded, %d times on its own'
+                % (config, folded.count(config), alone.count(config)))
+
 
 class TestMg7FoldedCrossing(unittest.TestCase):
     """`output mg7` folds the crossings recorded at generation.
@@ -4451,6 +4688,8 @@ class TestMadeventInclusiveCrossingXsec(unittest.TestCase):
     """
 
     PROCESS = 'p p > t t~ j j'
+    # lines written before the generate line (multiparticle definitions)
+    PRELUDE = ''
     NEVENTS = 1000
     SEED = 191919
 
@@ -4467,6 +4706,7 @@ class TestMadeventInclusiveCrossingXsec(unittest.TestCase):
         outdir = pjoin(self.tmpdir, name)
         card = pjoin(self.tmpdir, 'cmd_%s.txt' % name)
         with open(card, 'w') as fsock:
+            fsock.write(self.PRELUDE)
             fsock.write('generate %s %s\n'
                         'output madevent %s -f\n'
                         'launch\n'
@@ -4487,7 +4727,9 @@ class TestMadeventInclusiveCrossingXsec(unittest.TestCase):
 
     @staticmethod
     def _routed_groups(outdir):
-        """The subprocess groups served by a cross-group crossing router."""
+        """The subprocess groups served through a crossing: a within-group
+        router (matrix<i>_router.f) or another group's matrix element
+        (crossgroup.mk)."""
         subproc = pjoin(outdir, 'SubProcesses')
         routed = []
         for name in sorted(os.listdir(subproc)):
@@ -4495,6 +4737,7 @@ class TestMadeventInclusiveCrossingXsec(unittest.TestCase):
             if not name.startswith('P') or not os.path.isdir(pdir):
                 continue
             if any(re.match(r'matrix\d+_router\.f$', entry)
+                   or entry == 'crossgroup.mk'
                    for entry in os.listdir(pdir)):
                 routed.append(name)
         return routed
@@ -4527,6 +4770,58 @@ class TestMadeventInclusiveCrossingXsec(unittest.TestCase):
             'build %r +- %r (groups routed through a crossing: %s)'
             % (self.PROCESS, crossed, err_c, independent, err_i,
                ', '.join(routed)))
+
+
+class TestMadeventMassiveLegCrossingXsec(TestMadeventInclusiveCrossingXsec):
+    """The inclusive cross section of a crossing whose base has a massive leg,
+    with helicity recycling (the default).
+
+    `u b1 > c1 d1` (b1 = g u~, c1 = u z, d1 = z g): u u~ > z g is evaluated by
+    the u g > u z group. The recycled optim of the base is baked over
+    G_base U tau(G_base), but G_base is measured in the u g frame, where four
+    rows are exact zeros only because the z is massive (its helicity states mix
+    under a boost); their tau images are rows u u~ > z g needs. Without closing
+    G_base over the z helicity (crossgroup_helclass.dat) the routed process
+    came out ~16% low -- 1802 +- 3.5 pb against 1914 +- 4.0 pb in total, with
+    the z's helicity-0 share 0.132 instead of 0.227 -- now 1912 +- 3.6 pb.
+    """
+
+    PRELUDE = ('define b1 = g u~\n'
+               'define c1 = u z\n'
+               'define d1 = z g\n')
+    PROCESS = 'u b1 > c1 d1 QED=1 QCD=1'
+    NEVENTS = 2000
+    SEED = 4242
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='cross_mev_uz_')
+
+    def test_inclusive_crossing_xsec_matches(self):
+        super().test_inclusive_crossing_xsec_matches()
+
+    def test_helclass_written_for_the_massive_base(self):
+        """Run-free: the crossing base gets its classes, one per massless
+        configuration of (u, g, u) with the z's three helicities in each."""
+        from madgraph import MG5DIR
+        outdir = pjoin(self.tmpdir, 'out')
+        card = pjoin(self.tmpdir, 'cmd_out.txt')
+        with open(card, 'w') as fsock:
+            fsock.write(self.PRELUDE + 'generate %s --use_crossing=True\n'
+                        'output madevent %s -f\n' % (self.PROCESS, outdir))
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'), card])
+        routed = self._routed_groups(outdir)
+        self.assertEqual(len(routed), 1, routed)
+        bases = [d for d in os.listdir(pjoin(outdir, 'SubProcesses'))
+                 if os.path.exists(pjoin(outdir, 'SubProcesses', d,
+                                         'crossgroup_helclass.dat'))]
+        self.assertEqual(len(bases), 1, bases)
+        with open(pjoin(outdir, 'SubProcesses', bases[0],
+                        'crossgroup_helclass.dat')) as fsock:
+            vals = fsock.read().split()
+        classes = [int(v) for v in vals[1:]]
+        self.assertEqual(len(classes), 24)
+        self.assertEqual(sorted(set(classes)), list(range(1, 9)))
+        self.assertTrue(all(classes.count(c) == 3 for c in set(classes)))
 
 
 class TestColorFlowCode(unittest.TestCase):
