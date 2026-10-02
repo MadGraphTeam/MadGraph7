@@ -288,11 +288,11 @@ if [ $PY8VER == "8.3" ]; then cp -rf $PYTHIA8LOCATION/share/Pythia8/xmldoc $this
 PY8UTIMAKE="PY8UTI="$PY8UTI
 FORFILEMAKE="FORFILE="$PY8UTI
 HEPMCMAKE="HEPMCINCLIB="$HEPMCINCLIB
-LGFORTRANMAKE="LIBGFORTRAN=-lgfortran"
 
-if [ $PY8VER == "8.1" ]; then make Pythia8 "$PY8UTIMAKE" "$FORFILEMAKE" "$LGFORTRANMAKE" "$LIBSMAKE" "$LIBSMAKEP" "$INCLMAKE"; fi
-if [ $PY8VER == "8.2" ]; then make Pythia82 "$PY8UTIMAKE" "$FORFILEMAKE" "$LGFORTRANMAKE" "$LIBSMAKE" "$LIBSMAKEP" "$INCLMAKE" "$HEPMCMAKE"; fi
-if [ $PY8VER == "8.3" ]; then make Pythia83 "$PY8UTIMAKE" "$FORFILEMAKE" "$LGFORTRANMAKE" "$LIBSMAKE" "$LIBSMAKEP" "$INCLMAKE" "$HEPMCMAKE" "$HEPMCFIOMAKE"; fi
+# LIBGFORTRAN (the gfortran runtime) is found by the Makefile itself
+if [ $PY8VER == "8.1" ]; then make Pythia8 "$PY8UTIMAKE" "$FORFILEMAKE" "$LIBSMAKE" "$LIBSMAKEP" "$INCLMAKE"; fi
+if [ $PY8VER == "8.2" ]; then make Pythia82 "$PY8UTIMAKE" "$FORFILEMAKE" "$LIBSMAKE" "$LIBSMAKEP" "$INCLMAKE" "$HEPMCMAKE"; fi
+if [ $PY8VER == "8.3" ]; then make Pythia83 "$PY8UTIMAKE" "$FORFILEMAKE" "$LIBSMAKE" "$LIBSMAKEP" "$INCLMAKE" "$HEPMCMAKE" "$HEPMCFIOMAKE"; fi
 
 cd $thisdir
 if [ ! -f $thisdir/Pythia8.exe ]

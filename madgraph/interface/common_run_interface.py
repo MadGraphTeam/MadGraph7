@@ -7470,7 +7470,11 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 libs , paths = [], []
                 p = misc.subprocess.Popen([executable, '--libs'], stdout=subprocess.PIPE)
                 stdout, _ = p. communicate()
-                libs = [x[2:] for x in stdout.decode(errors='ignore').split() if x.startswith('-l') or paths.append(x[2:])]
+                # -l<lib> and -L<path> only: the -Wl,-rpath,<path> tokens are not
+                # paths (the shower puts EXTRAPATHS on the library path at run time)
+                tokens = stdout.decode(errors='ignore').split()
+                libs = [x[2:] for x in tokens if x.startswith('-l')]
+                paths = [x[2:] for x in tokens if x.startswith('-L')]
                 
                 # Add additional user-defined compilation flags
                 p = misc.subprocess.Popen([executable, '--config'], stdout=subprocess.PIPE)

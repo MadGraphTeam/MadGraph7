@@ -21,6 +21,11 @@ F77=$(FC)
 DEBUG=
 # HepMC2 Fortran I/O library, not needed (nor available) with HepMC3 (-DHEPMC3)
 HEPMCFIO=-lHepMCfio
+# The C++ compiler links the Fortran analysis: ask the Fortran compiler where
+# its runtime library is, as it is not always on the search path of the C++
+# one (e.g. clang with the gfortran of Homebrew gcc on macOS).
+GFORTRAN_LIB:=$(shell $(FC) -print-file-name=libgfortran$(if $(filter Darwin,$(shell uname -s)),.dylib,.so) 2>/dev/null)
+LIBGFORTRAN=$(if $(GFORTRAN_LIB),-L$(dir $(GFORTRAN_LIB)) )-lgfortran
 FF=$(F77) $(DEBUG)
 
 # Location of directories.
