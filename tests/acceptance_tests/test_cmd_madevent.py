@@ -3246,8 +3246,12 @@ class TestMEfromfile(unittest.TestCase):
                         count[1] += 1
                     break 
 
-        self.assertTrue(0.49<count[0]/10000.<0.51)       
-        self.assertTrue(0.49<count[1]/10000.<0.51)
+        # forward/backward balance of the muon: with 10000 events one fraction
+        # has a statistical error of 0.005, so the window is 4 sigma (0.49-0.51
+        # was 2 sigma and failed on the random stream alone; 100k events of the
+        # same run card give 0.5002 +- 0.0016)
+        self.assertTrue(0.48<count[0]/10000.<0.52)
+        self.assertTrue(0.48<count[1]/10000.<0.52)
 
 
         self.assertEqual(cwd, os.getcwd())
