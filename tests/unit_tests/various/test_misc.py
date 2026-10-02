@@ -235,8 +235,72 @@ class TEST_pythia8_main164(unittest.TestCase):
             fsock.write('stale')
         misc.get_pythia8_main164(self.py8, fallback_dir=fallback)
         self.assertIn('echo main164', open(executable).read())
-        self.assertEqual(open(os.path.join(fallback, 'BUILD_STAMP')).read(),
+        self.assertEqual(open(os.path.join(fallback, 'BUILD_STAMP')).read().split('\n')[0],
                          os.path.realpath(self.py8))
+        # rebuilt when Pythia8 is reinstalled at the same place
+        with open(executable, 'w') as fsock:
+            fsock.write('stale')
+        os.chmod(self.examples, 0o755)
+        source = os.path.join(self.examples, 'main164.cc')
+        with open(source, 'a') as fsock:
+            fsock.write('echo reinstalled\n')
+        os.utime(source, (os.path.getmtime(source) + 10,) * 2)
+        os.chmod(self.examples, 0o555)
+        misc.get_pythia8_main164(self.py8, fallback_dir=fallback)
+        self.assertIn('echo reinstalled', open(executable).read())
+
+    def test_too_old_pythia8(self):
+        """Pythia8 < 8.311 has no main164: say that a newer one is needed"""
+
+        bindir = os.path.join(self.py8, 'bin')
+        os.makedirs(bindir)
+        with open(os.path.join(bindir, 'pythia8-config'), 'w') as fsock:
+            fsock.write('#!/bin/sh\n[ "$1" = "--version" ] && echo 8.245\nexit 0\n')
+        os.chmod(os.path.join(bindir, 'pythia8-config'), 0o755)
+        self.assertEqual(misc.get_pythia8_version(self.py8), '8.245')
+        with self.assertRaises(misc.MadGraph5Error) as error:
+            misc.get_pythia8_main164(self.py8)
+        self.assertIn('version 8.245', str(error.exception))
+        self.assertIn('8.311', str(error.exception))
+
+    def test_pythia8_version_from_xmldoc(self):
+        xmldoc = os.path.join(self.py8, 'share', 'Pythia8', 'xmldoc')
+        os.makedirs(xmldoc)
+        with open(os.path.join(xmldoc, 'Version.xml'), 'w') as fsock:
+            fsock.write('<parmfix name="Pythia:versionNumber" default="8.313">\n')
+        self.assertEqual(misc.get_pythia8_version(self.py8), '8.313')
+        self.assertEqual(misc.get_pythia8_version(os.path.join(self.tmpdir, 'none')), None)
+
+    def test_other_hepmc_version_from_a_source_tree(self):
+        """In a built source tree, the examples Makefile takes the library from
+        ../lib; a copy of the examples must be told where it is"""
+
+        source_tree = os.path.join(self.tmpdir, 'pythia8source')
+        examples = os.path.join(source_tree, 'examples')
+        os.makedirs(examples)
+        os.makedirs(os.path.join(source_tree, 'lib'))
+        open(os.path.join(source_tree, 'lib', 'libpythia8.a'), 'w').close()
+        self.examples = examples
+        self.write_sources(hepmc=2)
+        with open(os.path.join(examples, 'Makefile.inc'), 'a') as fsock:
+            fsock.write('PREFIX_LIB=/usr/local/lib\nPREFIX_INCLUDE=/usr/local/include\n')
+        prefix = os.path.realpath(self.make_hepmc(3))
+        executable = misc.get_pythia8_main164(source_tree, hepmc_version=3,
+                                              hepmc_paths=[prefix])
+        makefile_inc = open(os.path.join(os.path.dirname(executable), 'Makefile.inc')).read()
+        self.assertIn('PREFIX_LIB=%s' % os.path.realpath(os.path.join(source_tree, 'lib')),
+                      makefile_inc)
+        self.assertIn('PREFIX_INCLUDE=%s' % os.path.realpath(os.path.join(source_tree, 'include')),
+                      makefile_inc)
+        self.assertNotIn('/usr/local', makefile_inc)
+
+    def test_other_hepmc_version_needs_a_configured_pythia8(self):
+        self.write_sources(hepmc=2)
+        os.remove(os.path.join(self.examples, 'Makefile.inc'))
+        prefix = self.make_hepmc(3)
+        with self.assertRaises(misc.MadGraph5Error) as error:
+            misc.get_pythia8_main164(self.py8, hepmc_version=3, hepmc_paths=[prefix])
+        self.assertIn('Makefile.inc', str(error.exception))
 
     def test_hepmc_version_of_the_pythia8_build(self):
         self.write_sources(hepmc=2)

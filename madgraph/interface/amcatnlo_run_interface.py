@@ -3825,12 +3825,8 @@ RESTART = %(mint_mode)s
         hepmc_format = str(self.shower_card['hepmc_format']).lower()
         analysis = bool(self.shower_card['analyse'])
         pythia8_path = self.options['pythia8_path']
-        try:
-            version = subprocess.Popen([pjoin(pythia8_path, 'bin', 'pythia8-config'), '--version'],
-                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0]
-            pythia83 = float(version.decode(errors='ignore').strip()) >= 8.3
-        except (OSError, ValueError):
-            pythia83 = False
+        version = misc.get_pythia8_version(pythia8_path)
+        pythia83 = version is not None and float(version) >= 8.3
 
         if hepmc_format != 'auto':
             versions = [int(hepmc_format[-1])]
