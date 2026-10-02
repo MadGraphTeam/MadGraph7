@@ -1223,6 +1223,9 @@ c     dimension sampled with the Breit-Wigner map with 1/s tails (myamp.f)
       double precision  tx(1:3,maxinvar)
       common/to_xpoints/tx, nzoom
 
+      logical tsoft(maxinvar)
+      common/to_tsoft/tsoft
+      double precision tsr, tsrho
       data ddum/maxdim*0d0/
       data icount/0/
       data it_warned/0/
@@ -1293,6 +1296,15 @@ c            ddum(j) = tx(2,j)                 !Use last value
          stop
       endif
 
+c     t-channel invariant: denser sampling near the large-|t| edge of the
+c     range allowed for this point (density (1-a)+a/(2 sqrt(1-r)) in its
+c     relative position r)
+      if (tsoft(Minvar(j,ipole)) .and. xbin_max .gt. xbin_min
+     &     .and. nzoom .le. 0) then
+         call tsoft_map((ddum(j)-xbin_min)/(xbin_max-xbin_min),tsr,tsrho)
+         ddum(j) = xbin_min + tsr*(xbin_max-xbin_min)
+         wgt = wgt/tsrho
+      endif
       im = ddum(j)
       if (im.ge.ng)then
          im = ng -1
@@ -2835,4 +2847,22 @@ C     LOCAL
       end
 
 
-
+      subroutine tsoft_map(s, r, rho)
+c**********************************************************************
+c     Position r in [0,1] of a t-channel invariant inside the range allowed
+c     for this point, from s uniform: density rho(r) = (1-a) + a/(2 sqrt(1-r)),
+c     which adds points near the large-|t| edge (r -> 1). That edge moves
+c     with the other variables, so the fixed bins of the grid cannot follow
+c     it: in u u~ > e+ e- g g, the large weights of the channels with two
+c     emissions from one quark line sat there (hard wide-angle gluon pair).
+c     The inverse is closed form: q = sqrt(1-r) solves
+c     (1-a) q^2 + a q + (s-1) = 0.
+c**********************************************************************
+      implicit none
+      double precision s, r, rho, q, a
+      parameter (a=0.5d0)
+      q = (-a + sqrt(a*a + 4d0*(1d0-a)*max(0d0,1d0-s)))/(2d0*(1d0-a))
+      q = min(max(q,1d-300),1d0)
+      r = 1d0 - q*q
+      rho = (1d0-a) + a/(2d0*q)
+      end

@@ -294,6 +294,8 @@ c     go off shell; a forced (decay chain) or required on-shell one is cut
 c     outside its window, where the tails would only add vetoed points
       logical bwtail(maxinvar)
       common/to_bwtail/bwtail
+      logical tsoft(maxinvar)
+      common/to_tsoft/tsoft
 
       double precision real_stot,m1,m2
       common/to_stot/real_stot,m1,m2
@@ -369,6 +371,7 @@ c     Reset variables
       enddo
       do i=1,maxinvar
          bwtail(i)=.false.
+         tsoft(i)=.false.
       enddo
       swinlo(:)=0d0
       swinhi(:)=0d0
@@ -515,6 +518,7 @@ c              endif
             mtot=mtot+xm(i)
 c            write(*,*) 'New mtot',i,mtot,xm(i)
          else                                        !t channel
+            tsoft(-i) = .true.
 c
 c     Check closest to p1
 c
