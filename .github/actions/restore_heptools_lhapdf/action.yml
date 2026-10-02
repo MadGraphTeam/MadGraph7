@@ -10,7 +10,9 @@ runs:
   using: composite
   steps:
     - name: Set cache key
-      run: echo "CACHE_KEY=lhapdf-v2-$ImageOS" >> $GITHUB_ENV && echo "OLD_CACHE_KEY=lhapdf-$ImageOS" >> $GITHUB_ENV
+      # HEPTOOLS_IMAGE selects the python paths below: comparing CACHE_KEY
+      # instead would silently break whenever the key generation is bumped
+      run: echo "CACHE_KEY=lhapdf-v2-$ImageOS" >> $GITHUB_ENV && echo "OLD_CACHE_KEY=lhapdf-$ImageOS" >> $GITHUB_ENV && echo "HEPTOOLS_IMAGE=$ImageOS" >> $GITHUB_ENV
       shell: bash
 
     # Cache keys are generation-suffixed by warm_cache.yml, as
@@ -42,13 +44,13 @@ runs:
       shell: bash
 
     - name: set pythonpath for ubuntu22
-      if: ${{ env.CACHE_KEY  == 'lhapdf-ubuntu22' }}
+      if: ${{ env.HEPTOOLS_IMAGE == 'ubuntu22' }}
       run: |
         echo "PYTHONPATH=$PYTHONPATH:/home/runner/.cache/HEPtools/lhapdf6_py3/lib/python3.10/dist-packages" >> $GITHUB_ENV
       shell: bash 
 
     - name: set pythonpath for ubuntu24
-      if: ${{ env.CACHE_KEY  == 'lhapdf-ubuntu24' }}
+      if: ${{ env.HEPTOOLS_IMAGE == 'ubuntu24' }}
       run: |
         echo "PYTHONPATH=$PYTHONPATH:/home/runner/.cache/HEPtools/lhapdf6_py3/lib/python3.12/dist-packages" >> $GITHUB_ENV
       shell: bash
