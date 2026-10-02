@@ -81,6 +81,9 @@ c            x = .5d0*(1d0-x)
 c-------
 c    tjs 3/5/2011  Perform 1/x transformation  using y=xo^(1-x)
 c-------
+      elseif(pole .eq. -16d0 .and. width .gt. 0d0) then !1/x^2 with a 1/x tail
+         call transpole_tau(width,x,y,jac)
+         return
       elseif(pole .eq. -15d0 .and. width .gt. 0d0) then !1/x   limit of width         
 c         if (x .lt. width) then      !No transformation below cutoff
          xc = width
@@ -248,6 +251,9 @@ c sample_get_x)
 c-------
 c    tjs 3/5/2011  Perform 1/x transformation  using y=xo^(1-x)
 c-------
+      elseif(pole .eq. -16d0 .and. width .gt. 0d0) then !1/x^2 with a 1/x tail
+         call untranspole_tau(width,x,y,jac)
+         return
       elseif(pole .eq. -15d0 .and. width .gt. 0d0) then !1/x   limit of width
          xc = 1d0/(1d0-log(width))
 c         xc = width
@@ -768,6 +774,84 @@ c**********************************************************************
             jac = 0d0
             return
          endif
+      endif
+      x = u/tot
+      jac = jac*tot/g
+      end
+
+
+      subroutine tau_tail_setup(width,y0,c,m0,m1,m2,tot)
+c**********************************************************************
+c     s-hat map with pole=-16: the 1/x^2 map of pole=-2 (uniform below
+c     width, density width/y^2 above) up to y0, the value above which that
+c     map puts a fraction tau_tail_frac of the points, and a 1/y tail
+c     (density c/y, continuous at y0) above it, so that the far tail is
+c     not damped beyond what the grid can correct. m0, m1, m2 are the
+c     masses of the three pieces, tot their sum. With 1% (5% moved too many
+c     points out of the bulk), u u~ > e+ e- g g and p p > w+ w+ j j QCD=0
+c     lose their largest weights (Kish 0.988-0.996 -> 0.996-0.998, and no
+c     more 1000x weight in W+W+jj) and p p > e+ e- is unchanged.
+c**********************************************************************
+      implicit none
+      double precision width,y0,c,m0,m1,m2,tot
+      double precision tau_tail_frac
+      parameter (tau_tail_frac=0.01d0)
+      y0 = width/(tau_tail_frac+width)
+      m0 = width
+      if (y0 .ge. 1d0) then
+         y0 = 1d0
+         c = width
+         m1 = 1d0-width
+         m2 = 0d0
+      else
+         c = width/y0
+         m1 = 1d0-width/y0
+         m2 = c*log(1d0/y0)
+      endif
+      tot = m0+m1+m2
+      end
+
+
+      subroutine transpole_tau(width,x,y,jac)
+c**********************************************************************
+c     forward map of pole=-16 (see tau_tail_setup)
+c**********************************************************************
+      implicit none
+      double precision width,x,y,jac
+      double precision y0,c,m0,m1,m2,tot,u,g
+      call tau_tail_setup(width,y0,c,m0,m1,m2,tot)
+      u = x*tot
+      if (u .lt. m0) then
+         y = u
+         g = 1d0
+      elseif (u .lt. m0+m1) then
+         y = width/(1d0-(u-m0))
+         g = width/(y*y)
+      else
+         y = min(y0*exp((u-m0-m1)/c), 1d0)
+         g = c/y
+      endif
+      jac = jac*tot/g
+      end
+
+
+      subroutine untranspole_tau(width,x,y,jac)
+c**********************************************************************
+c     inverse of transpole_tau: the x giving y, jac multiplied by dy/dx
+c**********************************************************************
+      implicit none
+      double precision width,x,y,jac
+      double precision y0,c,m0,m1,m2,tot,u,g
+      call tau_tail_setup(width,y0,c,m0,m1,m2,tot)
+      if (y .lt. width) then
+         u = y
+         g = 1d0
+      elseif (y .lt. y0) then
+         u = m0 + 1d0 - width/y
+         g = width/(y*y)
+      else
+         u = m0 + m1 + c*log(y/y0)
+         g = c/y
       endif
       x = u/tot
       jac = jac*tot/g
