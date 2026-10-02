@@ -342,6 +342,12 @@ c     maximum weight of this unweighting, for the refine last iteration (dsample
       double precision last_uref, last_ufix, last_lumi, last_goal, last_xnorm
       common /to_refine_last/ last_uref, last_ufix, last_lumi, last_goal,
      &     last_xnorm, last_it
+c     events this unweighting would give at last_uref (dsample, run.inc)
+      double precision last_nref
+      common /to_refine_lastn/ last_nref
+      double precision max_overweight_truncation
+      common/to_overweight/max_overweight_truncation
+      double precision xow
 
 c
 c     external
@@ -391,6 +397,24 @@ c        (unlike the truncation above, whose maximum a single large weight sets)
 c        The events are in units of twgt*fudge (fudge=10 in unwgt): in units of
 c        twgt, i.e. of |wgt|/twgt of a phase-space point
          last_uref = dabs(swgt(max(1,min(nw,int(0.99d0*nw)))))*10d0
+c        with max_overweight_truncation set, the maximum weight is instead the
+c        one above which the events carry that fraction of the cross-section
+c        (as mg7's max_overweight_truncation); last_nref is then the number of
+c        events this iteration gives at that maximum
+         last_nref = 0d0
+         if (max_overweight_truncation .gt. 0d0) then
+            xow = 0d0
+            i = nw
+            do while (i .gt. 1 .and. xow+dabs(swgt(i)) .le.
+     &           max_overweight_truncation*xtot)
+               xow = xow + dabs(swgt(i))
+               i = i-1
+            enddo
+            last_uref = dabs(swgt(i))*10d0
+            do i=1,nw
+               last_nref = last_nref + min(1d0, dabs(swgt(i))*10d0/last_uref)
+            enddo
+         endif
 c        the refine last iteration is unweighted against the maximum weight its
 c        stop was counted with: a large weight it contains stays an overweight
 c        event and does not set the maximum for all the other events of the job

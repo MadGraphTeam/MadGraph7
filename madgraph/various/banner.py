@@ -4696,6 +4696,7 @@ class RunCardLO(RunCard):
         self.add_param('survey_nchannel_per_job', 2, hidden=True, include=False, comment="control how many Channel are integrated inside a single job on cluster/multicore")
         self.add_param('refine_evt_by_job', -1, hidden=True, include=False, comment="control the maximal number of events for the first iteration of the refine (larger means less jobs)")
         self.add_param('disable_multichannel', False, hidden=True, include=False, comment='disable madevent suppressed-amplitude multichannel mode and ignore symfact multiplicative factors in gen_ximprove channel steering')
+        self.add_param('max_overweight_truncation', -1.0, hidden=True, comment="refine: fraction of the cross-section carried by the events heavier than the maximum weight (they keep their weight), as [generation] max_overweight_truncation in mg7. Negative (default): the maximum weight is the 99% quantile of the event weights of the iteration that decides the last one.")
         self.add_param('small_width_treatment', 1e-6, hidden=True, comment="generation where the width is below VALUE times mass will be replace by VALUE times mass for the computation. The cross-section will be corrected assuming NWA. Not used for loop-induced process")
         #hel recycling
         self.add_param('hel_recycling', True, hidden=True, include=False, comment='allowed to deactivate helicity optimization at run-time --code needed to be generated with such optimization--')

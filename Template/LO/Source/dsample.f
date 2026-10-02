@@ -1743,6 +1743,18 @@ c     start from a stored grid (gridpack, MadSpin decays) keep the old stop rule
       integer last_size
       double precision last_cap
       parameter (last_cap=8d0) ! largest last iteration, in units of the deciding one
+      double precision nun_last, cap_last
+      double precision last_cap_ow
+c     largest last iteration with max_overweight_truncation set: its stricter
+c     maximum weight needs more points, and the iteration stops at its goal
+c     anyway, so the cap is only a bound
+      parameter (last_cap_ow=200d0)
+c     events of this iteration at the maximum weight set by
+c     max_overweight_truncation (set in run.inc, see store_events in unwgt.f)
+      double precision last_nref
+      common /to_refine_lastn/ last_nref
+      double precision max_overweight_truncation
+      common/to_overweight/max_overweight_truncation
 
       data prb/maxprb*1d0/
       data fprb/maxfprb*1d0/
@@ -2369,22 +2381,30 @@ c     job reports and normalises the last iteration with: the (x/sigma)^2
 c     average tmeant is biased low with heavy-tailed weights. The decision is
 c     only taken if the next iteration can run (cur_it is its index here).
                last_stop = last_it
+c     with max_overweight_truncation set (store_events), the reach is counted
+c     at the maximum weight the last iteration will use, not at this one's
+               nun_last = dble(nun)
+               cap_last = last_cap
+               if (max_overweight_truncation .gt. 0d0) then
+                  nun_last = last_nref
+                  cap_last = last_cap_ow
+               endif
                if (last_on .and. .not. last_it .and. cur_it .gt. 2
      &              .and. cur_it .le. itm
-     &              .and. nun .gt. 0 .and.
+     &              .and. nun_last .gt. 0d0 .and.
      &              last_uref .gt. 0d0 .and.
-     &              -accur*xmean(cur_it-1) .le. last_cap*dble(nun)) then
+     &              -accur*xmean(cur_it-1) .le. cap_last*nun_last) then
                   last_it = .true.
                   last_ufix = last_uref
                   last_lumi = 0d0
                   last_goal = -accur*xmean(cur_it-1)
      &                 + 3d0*sqrt(-accur*xmean(cur_it-1))
-c     room for up to last_cap times the points of this iteration (events was
+c     room for up to cap_last times the points of this iteration (events was
 c     already doubled for the next one): redo twgt, vol and knt for that size.
 c     It runs at least the usual (doubled) number of points, so that its
 c     cross-section is never less precise than before
                   last_min = events
-                  last_size = int(last_cap*dble(events/2))
+                  last_size = int(cap_last*dble(events/2))
                   twgt = twgt*dble(events)/dble(last_size)
                   events = last_size
                   vol = 1d0/dble(events*itm)
