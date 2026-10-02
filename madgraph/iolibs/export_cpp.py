@@ -3728,7 +3728,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
             for file in self.to_link_in_P:
                 ln('../%s' % file)
 
-        # Generate SVG Feynman diagrams (diagrams.svg + diagrams.json)
+        # Generate SVG Feynman diagrams (diagrams.svgz + diagrams.json.gz)
         if not self.opt.get('output_options', {}).get('noeps') == 'True':
             svg_stem = pjoin(dirpath, 'diagrams')
             model = matrix_element.get('processes')[0].get('model')

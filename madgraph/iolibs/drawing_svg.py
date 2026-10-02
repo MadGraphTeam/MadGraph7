@@ -15,9 +15,10 @@
 
 """Classes for writing SVG files containing Feynman diagrams.
 
-DrawDiagramSVG  - writes one diagram to a single SVG file.
-MultiSVGDiagramDrawer - writes a list of diagrams to a folder of SVG files,
-                        one file per diagram.
+SvgDiagramDrawer      - writes one diagram to a single SVG file.
+MultiSVGDiagramDrawer - writes a list of diagrams to diagrams.svgz (a grid of
+                        all of them) and diagrams.json.gz (one SVG string per
+                        diagram).
 
 The line-drawing routines re-implement in Python the PostScript macros found in
 drawing_eps_header.inc (Fgluon, Fphoton, Ffermion, Fhiggs, Fghost, …) so that
@@ -33,6 +34,7 @@ All SVG helper functions work in SVG canvas pixels.
 from __future__ import division
 from __future__ import absolute_import
 
+import gzip
 import json
 import os
 import math
@@ -76,8 +78,46 @@ def _arrow_svg(mx, my, xl, yl, xt, yt):
     p1 = (mx + xt - xl, my + yt - yl)
     p2 = (mx + xl,      my + yl)
     p3 = (mx - xl - xt, my - yl - yt)
-    pts = ' '.join(f'{p[0]:.2f},{p[1]:.2f}' for p in [p0, p1, p2, p3])
+    pts = ' '.join(f'{_n(p[0])},{_n(p[1])}' for p in [p0, p1, p2, p3])
     return f'<polygon points="{pts}" fill="black" stroke="none"/>\n'
+
+
+# Coordinates are written with one decimal: a tenth of a pixel on a 360-pixel
+# canvas, below what any viewer resolves.
+def _n(v):
+    """A coordinate with one decimal, without a useless trailing '.0' or a
+    negative zero."""
+    text = '%.1f' % v
+    if text.endswith('.0'):
+        text = text[:-2]
+    return '0' if text == '-0' else text
+
+
+def _q(v):
+    """The value the reader gets back from _n(v)."""
+    return round(v, 1)
+
+
+def _bezier_path(starts, segments, stroke='black', width=1.5, dash='',
+                 extra=''):
+    """An SVG <path> from point `starts` through cubic segments, each
+    (control 1, control 2, end) in absolute canvas coordinates.
+
+    Written with relative commands, every point relative to the ROUNDED
+    previous end point: a relative path accumulates its rounding over the
+    segments otherwise, and a gluon has dozens of them."""
+    cx, cy = _q(starts[0]), _q(starts[1])
+    parts = ['M%s %s' % (_n(cx), _n(cy))]
+    for c1, c2, end in segments:
+        ex, ey = _q(end[0]), _q(end[1])
+        parts.append('c%s %s %s %s %s %s' % (
+            _n(_q(c1[0]) - cx), _n(_q(c1[1]) - cy),
+            _n(_q(c2[0]) - cx), _n(_q(c2[1]) - cy),
+            _n(ex - cx), _n(ey - cy)))
+        cx, cy = ex, ey
+    dash_attr = f' stroke-dasharray="{dash}"' if dash else ''
+    return (f'<path d="{"".join(parts)}" stroke="{stroke}"'
+            f' stroke-width="{_n(width)}" fill="none"{dash_attr}{extra}/>\n')
 
 
 def _polyline_svg(pts, stroke='black', width=1.5, dash='', extra=''):
@@ -90,29 +130,50 @@ def _polyline_svg(pts, stroke='black', width=1.5, dash='', extra=''):
     if not pts:
         return ''
     if len(pts) == 1:
-        x, y = pts[0]
-        d = f'M {x:.2f} {y:.2f}'
-    elif len(pts) == 2:
-        d = f'M {pts[0][0]:.2f} {pts[0][1]:.2f} L {pts[1][0]:.2f} {pts[1][1]:.2f}'
-    else:
-        n = len(pts)
-        parts = [f'M {pts[0][0]:.2f} {pts[0][1]:.2f}']
-        for i in range(n - 1):
-            # Catmull-Rom: control points for segment pts[i]→pts[i+1]
-            p0 = pts[i - 1] if i > 0     else pts[i]
-            p1 = pts[i]
-            p2 = pts[i + 1]
-            p3 = pts[i + 2] if i + 2 < n else pts[i + 1]
-            cp1x = p1[0] + (p2[0] - p0[0]) / 6
-            cp1y = p1[1] + (p2[1] - p0[1]) / 6
-            cp2x = p2[0] - (p3[0] - p1[0]) / 6
-            cp2y = p2[1] - (p3[1] - p1[1]) / 6
-            parts.append(f'C {cp1x:.2f} {cp1y:.2f}, {cp2x:.2f} {cp2y:.2f},'
-                          f' {p2[0]:.2f} {p2[1]:.2f}')
-        d = ' '.join(parts)
-    dash_attr = f' stroke-dasharray="{dash}"' if dash else ''
-    return (f'<path d="{d}" stroke="{stroke}" stroke-width="{width:.2f}"'
-            f' fill="none"{dash_attr}{extra}/>\n')
+        return _bezier_path(pts[0], [], stroke, width, dash, extra)
+    n = len(pts)
+    segments = []
+    for i in range(n - 1):
+        # Catmull-Rom: control points for segment pts[i]→pts[i+1]
+        p0 = pts[i - 1] if i > 0     else pts[i]
+        p1 = pts[i]
+        p2 = pts[i + 1]
+        p3 = pts[i + 2] if i + 2 < n else pts[i + 1]
+        segments.append(((p1[0] + (p2[0] - p0[0]) / 6,
+                          p1[1] + (p2[1] - p0[1]) / 6),
+                         (p2[0] - (p3[0] - p1[0]) / 6,
+                          p2[1] - (p3[1] - p1[1]) / 6),
+                         p2))
+    return _bezier_path(pts[0], segments, stroke, width, dash, extra)
+
+
+def _smooth_path(curve, u0, u1, nseg, **path_opts):
+    """An SVG <path> following the parametric `curve(u) -> (x, y)` from u0 to
+    u1 with `nseg` cubic segments: each is the cubic Hermite interpolant of
+    the curve between two samples, with the curve's own tangents (taken by a
+    central difference), i.e. control points at a third of the step along
+    the tangent. For the trigonometric curls and waves two segments per half
+    period follow the curve to a small fraction of a pixel -- a dense
+    polyline needed ten."""
+    h = (u1 - u0) / nseg
+    eps = 1e-4 * h
+
+    def tangent(u):
+        xa, ya = curve(u - eps)
+        xb, yb = curve(u + eps)
+        return (xb - xa) / (2 * eps), (yb - ya) / (2 * eps)
+
+    start = curve(u0)
+    segments = []
+    pa, ta = start, tangent(u0)
+    for k in range(1, nseg + 1):
+        u = u0 + k * h
+        pb, tb = curve(u), tangent(u)
+        segments.append(((pa[0] + ta[0] * h / 3, pa[1] + ta[1] * h / 3),
+                         (pb[0] - tb[0] * h / 3, pb[1] - tb[1] * h / 3),
+                         pb))
+        pa, ta = pb, tb
+    return _bezier_path(start, segments, **path_opts)
 
 
 # --- straight fermion line --------------------------------------------------
@@ -121,7 +182,7 @@ def _svg_fermion(x1, y1, x2, y2):
     """Straight line with arrowhead at mid-point."""
     dist, xl, yl, xt, yt = _basis(x1, y1, x2, y2)
     mx, my = (x1 + x2) / 2, (y1 + y2) / 2
-    out  = f'<line x1="{x1:.2f}" y1="{y1:.2f}" x2="{x2:.2f}" y2="{y2:.2f}"'
+    out  = f'<line x1="{_n(x1)}" y1="{_n(y1)}" x2="{_n(x2)}" y2="{_n(y2)}"'
     out += ' stroke="black" stroke-width="1.5"/>\n'
     out += _arrow_svg(mx, my, xl, yl, xt, yt)
     return out
@@ -129,7 +190,7 @@ def _svg_fermion(x1, y1, x2, y2):
 
 def _svg_scalar(x1, y1, x2, y2):
     """Plain straight line, no arrow (for 'scalar' particles)."""
-    return (f'<line x1="{x1:.2f}" y1="{y1:.2f}" x2="{x2:.2f}" y2="{y2:.2f}"'
+    return (f'<line x1="{_n(x1)}" y1="{_n(y1)}" x2="{_n(x2)}" y2="{_n(y2)}"'
             ' stroke="black" stroke-width="1.5"/>\n')
 
 
@@ -140,9 +201,9 @@ def _svg_higgs(x1, y1, x2, y2):
     dist = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
     n_dashes = max(1, round(dist / (2 * _Fr)))
     dash = dist / (2 * n_dashes)
-    return (f'<line x1="{x1:.2f}" y1="{y1:.2f}" x2="{x2:.2f}" y2="{y2:.2f}"'
+    return (f'<line x1="{_n(x1)}" y1="{_n(y1)}" x2="{_n(x2)}" y2="{_n(y2)}"'
             f' stroke="black" stroke-width="1.5"'
-            f' stroke-dasharray="{dash:.2f},{dash:.2f}"/>\n')
+            f' stroke-dasharray="{_n(dash)},{_n(dash)}"/>\n')
 
 
 # --- dotted line (ghost) ---------------------------------------------------
@@ -157,7 +218,7 @@ def _svg_ghost(x1, y1, x2, y2):
         t = i / n
         cx = x1 + (x2 - x1) * t
         cy = y1 + (y2 - y1) * t
-        out += f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{r_dot:.2f}" fill="black"/>\n'
+        out += f'<circle cx="{_n(cx)}" cy="{_n(cy)}" r="{_n(r_dot)}" fill="black"/>\n'
     mx, my = (x1 + x2) / 2, (y1 + y2) / 2
     out += _arrow_svg(mx, my, xl, yl, xt, yt)
     return out
@@ -170,16 +231,13 @@ def _svg_photon(x1, y1, x2, y2):
     dist, xl, yl, xt, yt = _basis(x1, y1, x2, y2)
     Fn = max(1, round(dist / (2 * _Fr)))
     N = _Fnopoints * Fn   # Fn full waves, Fnopoints steps per wave
-    pts = []
-    for i in range(N * 2 + 1):     # iterate over 2*Fn half-periods
+
+    def curve(i):          # i in [0, 2N]: 2*Fn half-periods
         t = i / (N * 2)
-        px = x1 + (x2 - x1) * t
-        py = y1 + (y2 - y1) * t
         wave = math.sin(i * math.pi / _Fnopoints)
-        px += xt * wave / 2
-        py += yt * wave / 2
-        pts.append((px, py))
-    return _polyline_svg(pts)
+        return (x1 + (x2 - x1) * t + xt * wave / 2,
+                y1 + (y2 - y1) * t + yt * wave / 2)
+    return _smooth_path(curve, 0, 2 * N, 4 * Fn)   # 2 segments per half-period
 
 
 def _svg_photon_half(x1, y1, x2, y2):
@@ -187,16 +245,13 @@ def _svg_photon_half(x1, y1, x2, y2):
     dist, xl, yl, xt, yt = _basis(x1, y1, x2, y2)
     Fn = max(1, round(dist / _Fr))  # twice as many half-periods
     N = _Fnopoints * Fn
-    pts = []
-    for i in range(N + 1):
+
+    def curve(i):          # i in [0, N]: Fn half-periods
         t = i / N
-        px = x1 + (x2 - x1) * t
-        py = y1 + (y2 - y1) * t
         wave = math.sin(i * math.pi / _Fnopoints)
-        px += xt * wave
-        py += yt * wave
-        pts.append((px, py))
-    return _polyline_svg(pts)
+        return (x1 + (x2 - x1) * t + xt * wave,
+                y1 + (y2 - y1) * t + yt * wave)
+    return _smooth_path(curve, 0, N, 2 * Fn)
 
 
 # --- curly line (gluon) ----------------------------------------------------
@@ -208,18 +263,15 @@ def _svg_gluon(x1, y1, x2, y2):
     # Fgluon type=-2: Fn = round(dist/Fr) (half-periods for gluon vs photon)
     Fn = max(2, 2 * round(dist / (2 * _Fr)))   # even number of half-periods
     N = _Fnopoints * Fn
-    pts = []
-    for i in range(N + 1):
+
+    def curve(i):          # i in [0, N]: Fn half-periods
         t = i / N
-        px = x1 + (x2 - x1) * t
-        py = y1 + (y2 - y1) * t
         angle = i * math.pi / _Fnopoints   # π per half-period
-        px += xt * (1 - math.cos(angle))
-        py += yt * (1 - math.cos(angle))
-        px += xl * math.sin(angle)
-        py += yl * math.sin(angle)
-        pts.append((px, py))
-    return _polyline_svg(pts)
+        return (x1 + (x2 - x1) * t + xt * (1 - math.cos(angle))
+                + xl * math.sin(angle),
+                y1 + (y2 - y1) * t + yt * (1 - math.cos(angle))
+                + yl * math.sin(angle))
+    return _smooth_path(curve, 0, N, 2 * Fn)   # 2 segments per half-period
 
 
 # --- arc utilities (for curved/circled loop lines) -------------------------
@@ -289,7 +341,7 @@ def _svg_higgs_arc(x1, y1, x2, y2, e):
     arc_len = r * abs(th2 - th1)
     n_dashes = max(1, round(arc_len / (2 * _Fr)))
     dash = arc_len / (2 * n_dashes)
-    return _polyline_svg(pts, dash=f'{dash:.2f},{dash:.2f}')
+    return _polyline_svg(pts, dash=f'{_n(dash)},{_n(dash)}')
 
 
 # --- curved ghost (Fghostl) ------------------------------------------------
@@ -305,7 +357,7 @@ def _svg_ghost_arc(x1, y1, x2, y2, e):
         th = th1 + (th2 - th1) * i / n_dots
         cx = xc + r * math.cos(th)
         cy = yc + r * math.sin(th)
-        out += f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{r_dot:.2f}" fill="black"/>\n'
+        out += f'<circle cx="{_n(cx)}" cy="{_n(cy)}" r="{_n(r_dot)}" fill="black"/>\n'
     # arrowhead at midpoint
     thc = (th1 + th2) / 2
     mx = xc + r * math.cos(thc)
@@ -327,16 +379,13 @@ def _svg_photon_arc(x1, y1, x2, y2, e):
     arc_len = r * abs(th2 - th1)
     Fn = max(1, round(arc_len / (2 * _Fr)))
     N = _Fnopoints * Fn
-    pts = []
     dth = th2 - th1
-    for i in range(2 * N + 1):
-        t = i / (2 * N)
-        th = th1 + dth * t
-        wave = math.sin(i * math.pi / _Fnopoints) / 2
-        # radial displacement
-        rr = r + wave * _Fr
-        pts.append((xc + rr * math.cos(th), yc + rr * math.sin(th)))
-    return _polyline_svg(pts)
+
+    def curve(i):          # i in [0, 2N]: 2*Fn half-periods
+        th = th1 + dth * i / (2 * N)
+        rr = r + math.sin(i * math.pi / _Fnopoints) / 2 * _Fr   # radial
+        return xc + rr * math.cos(th), yc + rr * math.sin(th)
+    return _smooth_path(curve, 0, 2 * N, 4 * Fn)
 
 
 # --- curved gluon (Fgluonl) ------------------------------------------------
@@ -347,18 +396,16 @@ def _svg_gluon_arc(x1, y1, x2, y2, e):
     arc_len = r * abs(th2 - th1)
     Fn = max(2, 2 * round(arc_len / (2 * _Fr)))
     N = _Fnopoints * Fn
-    pts = []
     dth = th2 - th1
-    for i in range(N + 1):
-        t = i / N
-        th = th1 + dth * t
+
+    def curve(i):          # i in [0, N]: Fn half-periods
+        th = th1 + dth * i / N
         angle = i * math.pi / _Fnopoints
-        loop_r  = (1 - math.cos(angle)) * _Fr   # radial (outward)
-        loop_th = math.sin(angle) * _Fr / r      # tangential (in angle units)
-        rr = r + loop_r
-        pts.append((xc + rr * math.cos(th + loop_th),
-                    yc + rr * math.sin(th + loop_th)))
-    return _polyline_svg(pts)
+        rr = r + (1 - math.cos(angle)) * _Fr       # radial (outward)
+        loop_th = math.sin(angle) * _Fr / r         # tangential (angle units)
+        return (xc + rr * math.cos(th + loop_th),
+                yc + rr * math.sin(th + loop_th))
+    return _smooth_path(curve, 0, N, 2 * Fn)
 
 
 # --- blob (Fblob) ----------------------------------------------------------
@@ -366,7 +413,7 @@ def _svg_gluon_arc(x1, y1, x2, y2, e):
 def _svg_blob(cx, cy, size=1.5):
     """Filled circle for non-QED/QCD vertex blobs."""
     r = size * _Fr
-    return (f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{r:.2f}"'
+    return (f'<circle cx="{_n(cx)}" cy="{_n(cy)}" r="{_n(r)}"'
             ' fill="gray" stroke="black" stroke-width="0.75"/>\n')
 
 
@@ -701,18 +748,24 @@ class SvgDiagramDrawer(draw.DiagramDrawer):
 
 
 # ===========================================================================
-# MultiSVGDiagramDrawer  –  list of diagrams → diagrams.svg + diagrams.json
+# MultiSVGDiagramDrawer  –  list of diagrams → diagrams.svgz + diagrams.json.gz
 # ===========================================================================
 
 class MultiSVGDiagramDrawer(SvgDiagramDrawer):
-    """Write a list of diagrams to two files whose paths share a common stem.
+    """Write a list of diagrams to two gzip-compressed files whose paths share
+    a common stem.
 
     Given *filename* (e.g. ``/path/to/diagrams``):
-      - ``diagrams.svg``  – composite SVG with all diagrams in a grid, each
-                            annotated with its diagram number and coupling orders.
-      - ``diagrams.json`` – JSON array; each entry has ``diagram_number``,
-                            ``orders``, and ``svg`` (the standalone SVG string
-                            for that diagram).
+      - ``diagrams.svgz``    – composite SVG with all diagrams in a grid, each
+                               annotated with its diagram number and coupling
+                               orders (browsers display a .svgz directly).
+      - ``diagrams.json.gz`` – JSON array; each entry has ``diagram_number``,
+                               ``orders``, and ``svg`` (the standalone SVG
+                               string for that diagram).
+
+    A high-multiplicity process has thousands of diagrams per subprocess
+    (p p > 5j: 1.6 GB of plain drawings), hence the compression. It is written
+    with a fixed timestamp, so that the same diagrams give the same bytes.
     """
 
     nb_col = 3          # columns in the composite grid
@@ -749,7 +802,7 @@ class MultiSVGDiagramDrawer(SvgDiagramDrawer):
     # ------------------------------------------------------------------
 
     def draw(self, diagramlist='', opt=None):
-        """Draw all diagrams and write diagrams.svg + diagrams.json."""
+        """Draw all diagrams and write diagrams.svgz + diagrams.json.gz."""
         if diagramlist == '':
             diagramlist = self.diagramlist
         if diagramlist is None:
@@ -804,12 +857,20 @@ class MultiSVGDiagramDrawer(SvgDiagramDrawer):
 
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _write_gz(path, text):
+        """Write `text` gzip-compressed, with mtime 0 (reproducible bytes)."""
+        with open(path, 'wb') as raw:
+            with gzip.GzipFile(filename='', mode='wb', fileobj=raw,
+                               mtime=0) as fp:
+                fp.write(text.encode('utf-8'))
+
     def _write_json(self):
         data = [{'diagram_number': d['number'], 'orders': d['orders'],
                  'svg': d['svg']}
                 for d in self._diagrams]
-        with open(self.filename + '.json', 'w') as fp:
-            json.dump(data, fp, indent=2)
+        self._write_gz(self.filename + '.json.gz',
+                       json.dumps(data, separators=(',', ':')))
 
     def _write_composite_svg(self):
         nb_col   = self.nb_col
@@ -865,5 +926,4 @@ class MultiSVGDiagramDrawer(SvgDiagramDrawer):
 
         lines += ['</g>', '</svg>']
 
-        with open(self.filename + '.svg', 'w') as fp:
-            fp.write('\n'.join(lines))
+        self._write_gz(self.filename + '.svgz', '\n'.join(lines))
