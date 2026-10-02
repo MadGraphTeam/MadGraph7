@@ -155,33 +155,24 @@ namespace madmatrix
   }
 
   // Crossed-event selected helicity code (allselhel). For a crossed event the
-  // reported helicity must be the CROSSED code, not the base row: input slot k
-  // carries the helicity label of the base leg pinv[k] it is fed to, copied
-  // (no sign flip -- the NSF sign lives in IC), and the crossed config is then
-  // ENCODE_HEL'd into the canonical mixed-radix code over the per-leg
-  // helicity states of the crossing (the base ones, but see below). Row 0 is
-  // the identity (base row+1), so the non-crossing path is unchanged.
+  // reported helicity is the CROSSED process's own canonical code, not the
+  // base row: input slot k carries the helicity label of the base leg pinv[k]
+  // it is fed to, copied (no sign flip -- the NSF sign lives in IC), and the
+  // crossed config is then encoded in mixed radix over the crossed process's
+  // own per-leg states (xhel_states row K, see the exporter). That is the code
+  // the expanded output of the crossed process reports, the one the madevent
+  // output writes for a routed event, and the one an `output mg7` crossed entry
+  // decodes with its own helicity table. Row 0 is the identity (base row+1), so
+  // the non-crossing path is unchanged.
   //
-  // The digit permute with NO NSF sign flip is the right transform, and it is
-  // what mg7 needs: the LHE writer indexes the BASE helicity table POSITIONALLY
-  // (export_mg7 ships get_helicity_matrix() as `helicities`, lhe_output.cpp
-  // reads row `helicity_index` slot by slot), so the reported row must be the
-  // base row whose config EQUALS the crossed one -- not the row the lane
-  // evaluated. Validated at runtime against the fortran backend (SMATRIXHEL per
-  // canonical code at the same momenta and the same extended flavor id): for
-  // the recorded crossing of p p > w+ j and for u u~ > g g crossed to
-  // u g > u g, every reported code has a non-zero |M|^2 and the reported
-  // frequencies follow the fortran per-code |M|^2 weights.
+  // The label copy with NO NSF sign flip is the right transform: the crossed
+  // evaluation feeds the leg's helicity value with its NSF flag, which is what
+  // keeps it physical. Validated against the expanded output at one phase-space
+  // point and the same random numbers (test_moved_leg_reports_its_own_helicity:
+  // u u~ > z g folded onto u g > u z, which moves the z into a quark slot), and
+  // for the madevent output on the LHE helicities.
   //
   // xhel_states MUST be the allow_reverse=True per-leg order (see the exporter).
-  //
-  // A row that lands a leg in a slot with a DIFFERENT set of helicity states
-  // -- e.g. a massive vector moved into a fermion slot, as the folded
-  // u u~ > z g off u g > u z does -- has no base row with its config: that slot
-  // runs over the states of the leg it carries instead (xhel_states is per
-  // crossing row, see the exporter), so the code is that crossing's own and
-  // decodes with its row of xhel_nhstate/xhel_states. `output mg7` expands such
-  // crossings (crossing_keeps_helicity_states), so its codes stay base rows.
   inline int
   selected_hel_code( int base_ihel, unsigned int flavor_id )
   {

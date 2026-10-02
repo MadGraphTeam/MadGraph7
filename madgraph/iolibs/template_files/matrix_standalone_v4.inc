@@ -26,7 +26,7 @@ C
 C ----------
 C BEGIN CODE
 C ----------
-      USERHEL=HEL
+%(smatrixhel_userhel)s
       CALL %(proc_prefix)sSMATRIX(P,FLAV_IDX,ANS)
       USERHEL=-1
 
@@ -166,7 +166,7 @@ if (HELRESET) then
          GOODHEL(I,j) = .false.
       enddo
    enddo
-   HELRESET = .false.
+   HELRESET = .false.%(helreset_cross)s
 endif
 
 C ----------
@@ -199,7 +199,7 @@ C     for which some of the spin-2 helicity configurations are zero. But they ar
 C     if the point is boosted on the z-axis. Remember that HELAS helicity amplitudes are no longer
 C     lorentz invariant with expternal spin-2 particles (only the helicity sum is).
 C     For this reason, we simply remove the filterin when there is only three external particles.
-      IF (NEXTERNAL.LE.3) THEN
+      IF (NEXTERNAL.LE.3) THEN%(three_leg_cross)s
         DO IHEL=1,NCOMB
           DO J=1,NFLAV
             GOODHEL(IHEL,J)=.TRUE.

@@ -999,12 +999,14 @@ jobs:
       # ME and the cross section correct and only degrades the sampling, so no
       # xsec comparison catches it), the colour-flow code, the outputs
       # that cannot decode a crossing, the independence of an output from the
-      # outputs written before it, and the shipped default (crossing on).
-      - name: "crossing: partition / config map / colour-flow code / unsupported outputs / output order / default"
+      # outputs written before it, the shipped default (crossing on), and the
+      # helicity code of a crossed subprocess being the crossed process's own in
+      # madevent, madmatrix and mg7 alike.
+      - name: "crossing: partition / config map / colour-flow code / unsupported outputs / output order / default / helicity convention"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py -pA TestCrossingPartition TestCrossingConfigMap TestColorFlowCode TestCrossingUnsupportedOutput TestCrossingOutputOrder TestCrossingProductDefault -t0 -l INFO
+            ./tests/test_manager.py -pA TestCrossingPartition TestCrossingConfigMap TestColorFlowCode TestCrossingUnsupportedOutput TestCrossingOutputOrder TestCrossingProductDefault TestCrossingHelicityConvention TestMadeventAmplitudeChunkCompiles -t0 -l INFO
 
       # ---- crossing, fortran standalone ----
       # A crossed SMATRIX call must reproduce the process it crosses into, the

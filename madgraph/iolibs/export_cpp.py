@@ -1499,16 +1499,6 @@ class OneProcessExporterCPP(object):
         ids_base_init = self._cpp_int_array(tables['ids_base'])
         antipid_base_init = self._cpp_int_array(tables['antipid_base'])
         countable_init = self._cpp_int_array(tables['countable'])
-        # Good-helicity remap: keep only the per-row filterable flag and
-        # resolve the gating identity row at runtime (see cross_ghidx_setup).
-        # Base slot b is evaluated at its own helicity with its NSF flag
-        # flipped where the leg changes side (tau), so a row is filterable when
-        # the in-place sign flip is a bijection of the helicity table.
-        # allow_reverse False so it matches the order helicities[] is emitted in.
-        ghfilt_init = self._cpp_int_array(
-            ProcessExporterFortran.crossing_ghfilt(
-                self, matrix_element, table, allow_reverse=False))
-
         cross_tables_decode = (
             "// Crossing symmetry: flavor_id carries a flavor AND a crossing.\n"
             "//   cross    = flavor_id / nflavors  (a row of the crossing table)\n"
@@ -1519,17 +1509,19 @@ class OneProcessExporterCPP(object):
             "// the crossed initial-state spin*color (spincol_cross) and the\n"
             "// flavor-dependent identical-final-state factor (ident_cross).\n"
             "const int ncross = %(ncross)d;\n"
-            "// ghfilt[cross] = 1 if this row's good-helicity filter is a clean\n"
-            "// bijection of the identity rows, 0 otherwise; the gating identity\n"
-            "// row itself is recomputed per row at runtime (see the\n"
-            "// good-helicity loop).\n"
-            "static const int ghfilt[ncross] = %(ghfilt)s;\n"
             "int cross = flavor_id / nflavors;\n"
             "int flav_use = flavor_id %% nflavors;\n"
             "// No such row: an identically-zero matrix element.\n"
             "if (cross < 0 || cross >= ncross || spincol_cross(cross) == 0)\n"
-            "    return 0.;"
-        ) % {'ncross': ncross, 'ghfilt': ghfilt_init}
+            "    return 0.;\n"
+            "// The good-helicity filter of a crossed index: every crossing is\n"
+            "// scanned at its own kinematics, as madspace does (goodhel stays the\n"
+            "// base's own flavors'). xid is the crossed index, -1 uncrossed.\n"
+            "static bool goodhelx[ncross * nflavors][ncomb] = {};\n"
+            "static int ntryx[ncross * nflavors] = {};\n"
+            "const int xid = cross > 0 ? flavor_id : -1;\n"
+            "if (xid >= 0) ntryx[xid]++;"
+        ) % {'ncross': ncross}
 
         cross_perm_block = (
             "int perm[nexternal];\n"
@@ -1658,51 +1650,19 @@ class OneProcessExporterCPP(object):
             # a crossing permutes/sign-flips the helicities so a base-row flip
             # is not the crossed C-parity partner (crossed flavors: full sum).
             'csym_dedup_ok': 'cross == 0',
-            # The good-helicity filter is shared per flavor but consulted and
-            # trained through the crossing: a crossed row is good iff its
-            # identity counterpart is. Rather than store the whole row map,
-            # recompute the gating identity row here: base slot b evaluates
-            # its own helicity with its NSF flag times ic[b] (tau; perm/ic hold
-            # the base-slot view, cross_gather), so the identity row carrying
-            # the same helas helicities is the one whose entry b is
-            # ic[b]*hel[b]. ghidx = -1 disables the
-            # filter for a non-filterable crossing (ghfilt[cross] == 0: compute
-            # the row, never train). For cross 0 perm/ic are the identity so
-            # ghidx == ihel, exactly the historical filter. The search runs for
-            # every row the full helicity sum visits, i.e. on every call in the
-            # default sum_hel == 0 mode (bar the C-parity partners skipped once
-            # the de-duplication is validated): O(ncomb*nexternal) per row.
-            'cross_ghidx_setup':
-                'int ghidx = -1;\n'
-                '        if (ghfilt[cross]){\n'
-                '            int tgt[nexternal];\n'
-                '            for(int b = 0; b < nexternal; b++){\n'
-                '                tgt[b] = ic[b] * helicities[ihel][b];\n'
-                '            }\n'
-                '            for(int r = 0; r < ncomb; r++){\n'
-                '                bool same = true;\n'
-                '                for(int k = 0; k < nexternal; k++){\n'
-                '                    if (helicities[r][k] != tgt[k]){\n'
-                '                        same = false;\n'
-                '                    }\n'
-                '                }\n'
-                '                if (same){\n'
-                '                    ghidx = r;\n'
-                '                    break;\n'
-                '                }\n'
-                '            }\n'
-                '        }\n'
-                '        ',
+            # Each crossed index has its own filter (goodhelx, scanned at its
+            # own kinematics); the base's own flavors keep goodhel, whose igood
+            # list the C-parity verdict and the sampling mode read.
+            'cross_ghidx_setup': '',
             'cross_goodhel_gate':
-                'ghidx < 0 || goodhel[flav_use][ghidx] || ntry[flav_use] < 2',
-            # igood lists the IDENTITY rows (ghidx), the rows goodhel is keyed
-            # by: the C-parity verdict and the helicity-sampling mode read it
-            # for the uncrossed process only, where a crossed row index would
-            # name the wrong helicity. Filled 0-based.
+                '(xid >= 0 ? (goodhelx[xid][ihel] || ntryx[xid] < 2)'
+                ' : (goodhel[flav_use][ihel] || ntry[flav_use] < 2))',
             'cross_goodhel_train':
-                'if (t != 0. && ghidx >= 0 && !goodhel[flav_use][ghidx]){\n'
-                '                goodhel[flav_use][ghidx]=true;\n'
-                '                igood[flav_use][ngood[flav_use]] = ghidx;\n'
+                'if (t != 0. && xid >= 0){\n'
+                '                goodhelx[xid][ihel] = true;\n'
+                '            } else if (t != 0. && !goodhel[flav_use][ihel]){\n'
+                '                goodhel[flav_use][ihel]=true;\n'
+                '                igood[flav_use][ngood[flav_use]] = ihel;\n'
                 '                ngood[flav_use] ++;\n'
                 '            }',
         }
@@ -3693,16 +3653,6 @@ class ProcessExporterMG7(ProcessExporterCPP):
         self.me_lib_format = args[1].get("me_lib_format", None)
         self.process_info = []
         self.merged_subprocesses = defaultdict(list)
-
-    def crossing_foldable(self, amplitude, record):
-        """A recorded crossing can be folded into its base's library only if
-        every slot keeps its set of helicity states (the entry reuses the
-        base helicity table, see OneProcessExporterMG7.
-        crossing_keeps_helicity_states); any other is expanded into a
-        subprocess of its own."""
-        from madgraph.iolibs.export_mg7 import OneProcessExporterMG7
-        return OneProcessExporterMG7.crossing_keeps_helicity_states(
-            amplitude.get('process'), record[0])
 
     def generate_subprocess_directory(
         self, matrix_element, cpp_helas_call_writer, proc_number=None

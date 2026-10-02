@@ -336,11 +336,6 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
     writes_subprocess_info = False
     folds_decay_chain_crossings = True
 
-    def crossing_foldable(self, amplitude, record):
-        """Every recorded crossing: the standalone user reads the helicity
-        through the extended flavor id, there is no helicity table to keep."""
-        return True
-
     # Each P* directory links madmatrix_standalone.mk (which itself includes
     # madmatrix.mk) as its 'makefile'; both have to be rendered in SubProcesses/
     p_makefiles = ProcessExporterMadMatrix.p_makefiles + ['madmatrix_standalone.mk']

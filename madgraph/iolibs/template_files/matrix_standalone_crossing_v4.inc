@@ -152,9 +152,10 @@ C     TAU, not sigma: the helicity slots are NOT permuted, only sign-flipped,
 C     and the sign is carried by IC above (HELAS builds its spinors from
 C     nhel*nsf). IC stays aligned with the MOMENTA -- it is also the NSF
 C     direction flag -- so slot XK gets P_IN(PERM(XK)) and NHEL_IN(XK), and the
-C     effective helicity is NHEL_IN(XK)*SGN(XK). That is the same map the
-C     recycled optim and the madmatrix lanes can realise, so one good-helicity
-C     filter now describes every backend (see CROSS_GHIDX).
+C     effective helicity is NHEL_IN(XK)*SGN(XK). Row H of the table is thus a
+C     base row evaluated at the crossed kinematics; which rows are non-zero is
+C     scanned per crossing (its own good-helicity filter), and CROSS_HELCODE
+C     gives the crossed process's own code of a row.
       DO XR = 1, NROW
         DO XK = 1, NEXTERNAL
           NHEL(XK,XR) = NHEL_IN(XK,XR)
@@ -297,55 +298,38 @@ C     IDENT_RESONANCE.
       RETURN
       END
 
-      SUBROUTINE %(proc_prefix)sCROSS_GHIDX(CROSS, PERM, SGN, NHELCOL,
-     & GHIDX)
-C     Runtime good-helicity remap: send a crossed helicity row (given by its
-C     BASE-table config NHELCOL and the crossing's SGN from GET_CROSS_PERM) to
-C     the identity row whose shared GOODHEL bit gates it: the base slots are
-C     evaluated at NHELCOL(L)*SGN(L) (tau: sign-flip in place, see
-C     APPLY_CROSSING_TABLE), so that config re-encoded in the canonical
-C     mixed-radix order (the same STATES/NHSTATE the encoder/decoder use) is
-C     the row. GHIDX=0 when the row is not filterable (GHFILT flag: a row that
-C     names no crossing, or a sign flip that is no bijection on the helicity
-C     table); the caller then computes every helicity and never trains. For
-C     CROSS=0 (SGN +1) this returns IHEL, so the uncrossed path is unchanged.
+      SUBROUTINE %(proc_prefix)sCROSS_HELCODE(FLAV_IDX_IN, CODE, BCODE)
+C     BCODE: the base helicity code SMATRIX evaluates for the helicity code CODE of
+C     the process FLAV_IDX_IN names. CODE is that process's OWN canonical code
+C     -- the one its expanded output takes, the one the madevent output writes
+C     for a routed event and the C++ backends report for a crossed one. Input
+C     slot K of the crossed process carries base leg PINV(K) (tau: the helicity
+C     slots are not permuted, the leg keeps its own helicity states, in the same
+C     order), so its digit is the digit of base leg PINV(K). An uncrossed index,
+C     or a CODE < 1 (no helicity requested), comes back unchanged.
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INTEGER    MAXHEL
       PARAMETER (MAXHEL=%(maxhel)d)
-      INTEGER    NCROSS
-      PARAMETER (NCROSS=%(ncross)d)
-      INTEGER CROSS, PERM(NEXTERNAL), SGN(NEXTERNAL)
-      INTEGER NHELCOL(NEXTERNAL), GHIDX
-      INTEGER I, K, D, TGT(NEXTERNAL)
-      INTEGER GHFILT(0:NCROSS-1)
+      INTEGER FLAV_IDX_IN, CODE, BCODE
+      INTEGER PINV(NEXTERNAL), SGNI(NEXTERNAL), XF, I, K, R
+      INTEGER DIG(NEXTERNAL)
       INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
-%(ghfilt_data)s
 %(nhstate_data)s
 %(states_data)s
-      IF (CROSS .LT. 0 .OR. CROSS .GT. NCROSS-1) THEN
-        GHIDX = 0
-        RETURN
-      ENDIF
-      IF (GHFILT(CROSS).EQ.0) THEN
-        GHIDX = 0
-        RETURN
-      ENDIF
-C     TAU: sign-flip in place, no slot permutation -- the gate has to live in
-C     the same space as what APPLY_CROSSING_TABLE actually evaluates.
-      DO K=1,NEXTERNAL
-        TGT(K) = SGN(K)*NHELCOL(K)
+      BCODE = CODE
+      IF (CODE .LT. 1) RETURN
+      CALL %(proc_prefix)sGET_CROSS_PINV(FLAV_IDX_IN, PINV, SGNI, XF)
+      R = CODE - 1
+      DO K = NEXTERNAL, 1, -1
+        DIG(PINV(K)) = MOD(R, NHSTATE(PINV(K)))
+        R = R / NHSTATE(PINV(K))
       ENDDO
-      GHIDX = 0
-      DO K=1,NEXTERNAL
-        DO D=1,NHSTATE(K)
-          IF (STATES(D,K).EQ.TGT(K)) GOTO 7
-        ENDDO
-        D = 1
- 7      CONTINUE
-        GHIDX = GHIDX*NHSTATE(K) + (D-1)
+      R = 0
+      DO K = 1, NEXTERNAL
+        R = R*NHSTATE(K) + DIG(K)
       ENDDO
-      GHIDX = GHIDX + 1
+      BCODE = R + 1
 
       RETURN
       END

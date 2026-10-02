@@ -70,6 +70,7 @@ logger = logging.getLogger('madgraph.stdout.cross_symmetry')
 
 import madgraph
 import madgraph.interface.master_interface as cmd_interface
+import madgraph.various.misc as misc
 
 pjoin = os.path.join
 
@@ -259,12 +260,33 @@ nexternal, ncomb = nhel.shape
 ps = momenta(nexternal, NINITIAL, NPTS, seed=20260721)
 row_of = {tuple(nhel[:, h]): h + 1 for h in range(ncomb)}
 
-def good_set(flav_idx):
+# per base leg, its helicity states in code order (the table is the
+# mixed-radix product, so a leg's values appear in state order)
+leg_states = [[] for _ in range(nexternal)]
+for h in range(ncomb):
+    for b in range(nexternal):
+        if int(nhel[b, h]) not in leg_states[b]:
+            leg_states[b].append(int(nhel[b, h]))
+
+def base_row_of_code(code, D):
+    """SMATRIXHEL takes the crossed process's OWN helicity code at an
+    extended index (CROSS_HELCODE): crossed leg k carries base leg D[k] with
+    its states, so decode over those and put each value in its base slot --
+    the base row the crossing evaluates."""
+    r, cfg = code - 1, [0] * nexternal
+    for k in reversed(range(nexternal)):
+        n = len(leg_states[D[k]])
+        cfg[D[k]] = leg_states[D[k]][r %% n]
+        r //= n
+    return row_of[tuple(cfg)]
+
+def good_set(flav_idx, D=None):
+    """The good BASE rows of an extended index (D: its crossing row)."""
     good = set()
     for P in ps:
         for h in range(1, ncomb + 1):
             if abs(m.py_smatrixhel_idx(P, h, flav_idx)) > 1e-30:
-                good.add(h)
+                good.add(h if D is None else base_row_of_code(h, D))
     return good
 
 g_id = good_set(1)
@@ -294,7 +316,7 @@ for K in range(1, ncross):
         assert hp is not None, 'row %%d: tau is not a row bijection' %% K
         tau[h + 1] = hp
     expected = {tau[h] for h in g_id}
-    g_cr = good_set(flav_idx)
+    g_cr = good_set(flav_idx, D)
     assert g_cr == expected, (
         'row %%d (D=%%s): crossed good-hel %%s != tau(identity) %%s'
         %% (K, D, sorted(g_cr), sorted(expected)))
@@ -1923,6 +1945,49 @@ for pdgs in ([21, 2, 24, 1], [2, -1, 24, 21], [21, -1, 24, -2]):
                     msg='the folded u u~ > z g disagrees with its own output '
                         'after %d base calls' % ntrain)
 
+        # SMATRIXHEL at a crossed index takes the crossed process's OWN code:
+        # code by code, the folded u u~ > z g equals its expanded output
+        # (the base-slot code it used to take matched none of the 24).
+        for path in (fold, exp):
+            with open(pjoin(path, 'check_sa.f'), 'w') as fsock:
+                fsock.write(self._HELCODE_DRIVER)
+            os.remove(pjoin(path, 'check'))
+            self._build(path)
+
+        def per_code(path, flav_idx):
+            lines = ['%d 24' % flav_idx] + [
+                ' '.join('%.17e' % x for x in mom) for mom in crossed_point]
+            out = subprocess.run(['./check'], cwd=path, capture_output=True,
+                                 input='\n'.join(lines) + '\n',
+                                 text=True).stdout
+            return [float(v) for v in re.findall(r'HEL=\s*\d+\s+(\S+)', out)]
+        folded, alone = per_code(fold, 2), per_code(exp, 1)
+        self.assertEqual(len(alone), 24)
+        self.assertEqual(sum(1 for v in alone if v), 12)
+        for code, (a, b) in enumerate(zip(folded, alone), 1):
+            self.assertAlmostEqual(a, b, delta=1e-10 * max(abs(b), 1e-300),
+                                   msg='SMATRIXHEL code %d: folded %r, '
+                                       'expanded %r' % (code, a, b))
+
+    # SMATRIXHEL for every helicity code 1..NCODE at the momenta read from
+    # stdin; stdin: FLAV_IDX NCODE, then the momenta (E px py pz).
+    _HELCODE_DRIVER = '''      PROGRAM HELCODECHECK
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      REAL*8 P(0:3,NEXTERNAL), ANS
+      INTEGER I, K, FLAV_IDX, NCODE
+      CALL SETPARA('param_card.dat')
+      READ(*,*) FLAV_IDX, NCODE
+      DO K=1,NEXTERNAL
+        READ(*,*) (P(I,K),I=0,3)
+      ENDDO
+      DO I=1,NCODE
+        CALL SMATRIXHEL(P, I, FLAV_IDX, ANS)
+        WRITE(*,'(A,I6,1X,ES24.16)') ' HEL=', I, ANS
+      ENDDO
+      END
+'''
+
 
 class TestGoodHelCParityDedup(unittest.TestCase):
     """The C-parity de-duplication of the helicity sum must be transparent.
@@ -3454,17 +3519,20 @@ int main( int argc, char** argv )
         return [int(code) for code in out.split()]
 
     def test_moved_leg_reports_its_own_helicity(self):
-        """A crossing that moves a leg into a slot with OTHER helicity states
-        reports that leg's helicity right.
+        """A crossed event reports the crossed process's OWN helicity code --
+        the code its expanded output reports, and the one the madevent output
+        writes -- also when the crossing moves a leg into a slot with other
+        helicity states.
 
         `u b1 > c1 d1` (b1 = g u~, c1 = u z, d1 = z g) folds u u~ > z g onto
         u g > u z: the z lands in the base's u slot, the g in its z slot. The
-        reported code used to run over the BASE slot's states, which have no
-        digit for the z's helicity 0 (it came out as the u's first state): its
-        longitudinal events were reported transverse. Each crossing row now has
-        its own states (xhel_nhstate/xhel_states), and at one phase-space point
-        and the same random numbers the folded crossing reports every helicity
-        configuration as often as u u~ > z g written on its own does.
+        code once ran over the BASE slot's states, which have no digit for the
+        z's helicity 0 (its longitudinal events came out transverse), and
+        until the madevent convention was adopted it was a base-relative code
+        that only a per-crossing table could decode. At one phase-space point
+        and the same random numbers, the folded crossing now reports every
+        code exactly as often as u u~ > z g written on its own, and the codes
+        decode with the crossed process's own helicity table.
         """
         outdirs = {}
         for name, options in (('fold', ''), ('exp', ' --use_crossing=False')):
@@ -3480,6 +3548,7 @@ int main( int argc, char** argv )
             cmd.exec_cmd('generate u b1 > c1 d1 QED=1 QCD=1 --use_crossing=True')
             cmd.exec_cmd('output standalone %s -f%s' % (outdir, options))
             outdirs[name] = pjoin(outdir, 'SubProcesses')
+
         def pdirs(root, suffix):
             return [pjoin(root, d) for d in sorted(os.listdir(root))
                     if d.startswith('P') and d.endswith(suffix)]
@@ -3490,25 +3559,6 @@ int main( int argc, char** argv )
         with open(pjoin(fold, 'crossing_demo.dat')) as fsock:
             ids = [int(i) for i in fsock.read().split()]
         self.assertEqual(len(ids), 1, ids)
-        with open(pjoin(fold, 'ProcessTables.h')) as fsock:
-            tables = fsock.read()
-        maxhel = int(re.search(r'xhel_maxhel = (\d+)', tables).group(1))
-        nmaxflavor = 1
-
-        def table(name):
-            return [int(v) for v in re.search(
-                r'%s\[[^\]]*\] = \{([^}]*)\}' % name, tables).group(1).split(',')]
-        nhstate, states = table('xhel_nhstate'), table('xhel_states')
-        cross = ids[0] // nmaxflavor
-        npar = 4
-
-        def decode(code):
-            config = [0] * npar
-            for k in reversed(range(npar)):
-                n = nhstate[cross * npar + k]
-                config[k] = states[(cross * npar + k) * maxhel + code % n]
-                code //= n
-            return tuple(config)
         with open(pjoin(exp, 'ProcessData.h')) as fsock:
             thel = fsock.read().split('tHel')[1].split(';')[0]
         rows = [tuple(int(v) for v in row) for row in
@@ -3523,20 +3573,18 @@ int main( int argc, char** argv )
         momenta = [(energy, 0, 0, energy), (energy, 0, 0, -energy),
                    (ez, pz * sin, 0, pz * cos), (pz, -pz * sin, 0, -pz * cos)]
         nevt = 20000
-        folded = [decode(c) for c in
-                  self._selected_helicities(fold, ids[0], momenta, nevt)]
-        alone = [rows[c] for c in
-                 self._selected_helicities(exp, 0, momenta, nevt)]
-        longitudinal = sum(1 for config in alone if config[2] == 0)
+        folded = self._selected_helicities(fold, ids[0], momenta, nevt)
+        alone = self._selected_helicities(exp, 0, momenta, nevt)
+        longitudinal = sum(1 for code in alone if rows[code][2] == 0)
         self.assertTrue(longitudinal > 0, 'no longitudinal z at this point')
-        self.assertEqual(sum(1 for config in folded if config[2] == 0),
+        self.assertEqual(sum(1 for code in folded if rows[code][2] == 0),
                          longitudinal, 'the folded crossing mis-reports the '
                          'helicity of the z it moved into the u slot')
-        for config in set(folded) | set(alone):
+        for code in set(folded) | set(alone):
             self.assertLessEqual(
-                abs(folded.count(config) - alone.count(config)), 2,
-                '%s: reported %d times folded, %d times on its own'
-                % (config, folded.count(config), alone.count(config)))
+                abs(folded.count(code) - alone.count(code)), 2,
+                'code %d %s: reported %d times folded, %d times on its own'
+                % (code, rows[code], folded.count(code), alone.count(code)))
 
 
 class TestMg7FoldedCrossing(unittest.TestCase):
@@ -3750,20 +3798,28 @@ class TestMg7FoldedCrossing(unittest.TestCase):
         folded, expanded = self._outputs('p p > j j QCD=0', 'jjew')
         self._check_folding(folded, expanded)
 
-    def test_crossing_moving_a_z_into_a_gluon_slot_is_expanded(self):
-        """q x > q x (x = g z): of the crossings recorded on u g > u z, the
-        one keeping every slot's helicity states (u~ g > u~ z) is folded, the
-        ones moving the z into the gluon slot (u z > u g, u~ z > u~ g) cannot
-        reuse the base helicity table and get a directory of their own."""
+    def test_crossing_moving_a_z_into_a_gluon_slot_is_folded(self):
+        """q x > q x (x = g z): every crossing recorded on u g > u z is folded,
+        also those moving the z into the gluon slot (u z > u g, u~ z > u~ g).
+        They used to be expanded: the entry reused the BASE helicity table,
+        which has no row for such a crossing. A crossed entry now ships the
+        crossed process's own table and the backend reports that process's own
+        code (TestCrossingHelicityConvention), so each folded entry's table is
+        the one the expanded output writes for the same process."""
         folded, expanded = self._outputs('q x > q x QED=1 QCD=1', 'zg',
                                          defines=('q = u u~', 'x = g z'))
         fentries = self._entries(folded)
-        self.assertEqual(self._rows(fentries),
-                         self._rows(self._entries(expanded)))
+        eentries = self._entries(expanded)
+        self.assertEqual(self._rows(fentries), self._rows(eentries))
         crossed = [e for e in fentries if e.get('crossing')]
-        self.assertEqual([(e['incoming'], e['outgoing']) for e in crossed],
-                         [([-81, 21], [-81, 23])])
-        self.assertEqual(len(self._pdirs(folded)), 3)
+        key = lambda e: (tuple(e['incoming']), tuple(e['outgoing']))
+        self.assertEqual(sorted(key(e) for e in crossed),
+                         [((-81, 21), (-81, 23)), ((-81, 23), (-81, 21)),
+                          ((81, 23), (81, 21))])
+        own = dict((key(e), e['helicities']) for e in eentries)
+        for entry in crossed:
+            self.assertEqual(entry['helicities'], own[key(entry)], key(entry))
+        self.assertEqual(len(self._pdirs(folded)), 1)
 
     def test_decay_chain_crossings_are_expanded(self):
         """p p > z j, z > e+ e-: the crossings recorded inside a decay chain
@@ -4051,120 +4107,6 @@ class TestCrossingPartition(unittest.TestCase):
             self.assertEqual([len(exp.madevent_crossing_table(me))
                               for me in mes], [1] * len(mes))
             self.assertEqual(exp.partition_crossing_classes(mes), before)
-
-
-class TestCrossingRecycledHelicityUnion(unittest.TestCase):
-    """crossgroup_helunion.dat must carry the helicity map the RECYCLED optim can
-    actually realise: the crossing's NSF SIGN flips, with NO slot permutation.
-
-    A crossing base's matrix<b>_optim.f is entered by every member of its class,
-    so gen_ximprove has to bake it over a helicity set that covers them all. The
-    trap is that there are two different base->base helicity maps and only one of
-    them applies here. matrix<b>_optim.f bakes its configs into the HELAS calls
-    and receives only (PUSE, IC): IC carries the crossing's sign flips, and
-    NOTHING carries its slot permutation. So the transform it realises is
-    tau[h][k] = base_row[h][k]*SGN[k], and optim row h is non-zero for the
-    crossing iff tau[h] is good for the base -- the union to bake is
-    G_base U tau(G_base).
-
-    Feeding it the other map instead -- the permuted sigma[h][k] =
-    base_row[h][D[k]]*SD[k] the former GHREMAP used -- looks equally plausible
-    and is silently wrong. It
-    cost -28.5% on the q q~ > q q~ cross section (5.19e6 -> 3.71e6 pb): the
-    routed t-channel subprocess needs 4 of the base's 16 rows and the sigma union
-    supplied 2 of them. Both maps are permutations, both are involutions here,
-    and both give a set that is invariant under themselves, so nothing about the
-    set's shape gives the mistake away -- hence this test on the map itself.
-
-    Run-free (no integration): it checks the generation-time map directly, on the
-    same q q~ > q q~ class whose cross section paid for it.
-    """
-
-    PROCESS = 'q q~ > q q~'
-
-    def _class(self, proc):
-        """(exporter, base matrix element, cross) for a routed crossing of `proc`
-        that moves at least one leg between the initial and the final state."""
-        import madgraph.iolibs.group_subprocs as group_subprocs
-        import madgraph.iolibs.export_v4 as export_v4
-        cmd = cmd_interface.MasterCmd()
-        # apply_flavor_grouping False is the setting that puts q q~ > q q~ in ONE
-        # group of three matrix elements with a crossing router -- and the one
-        # whose cross section the sigma union broke. --no_save keeps it out of the
-        # user's configuration.
-        cmd.run_cmd('set apply_flavor_grouping False --no_save')
-        cmd.run_cmd('import model sm')
-        cmd.run_cmd('define q = u d s c')
-        cmd.run_cmd('define q~ = u~ d~ s~ c~')
-        # As in TestCrossingPartition: route the UNMERGED list, which is what the
-        # madevent output reconstructs before grouping.
-        old = os.environ.get('MG_MERGE_CROSSING')
-        os.environ['MG_MERGE_CROSSING'] = 'off'
-        try:
-            cmd.run_cmd('generate %s --use_crossing=True' % proc)
-        finally:
-            if old is None:
-                os.environ.pop('MG_MERGE_CROSSING', None)
-            else:
-                os.environ['MG_MERGE_CROSSING'] = old
-        groups = group_subprocs.SubProcessGroup.group_amplitudes(
-            cmd._curr_amps, 'madevent')
-        exp = export_v4.ProcessExporterFortranMEGroup()
-        out = []
-        for g in groups:
-            g.generate_matrix_elements()
-            mes = g.get('matrix_elements')
-            bases, routing = exp.partition_crossing_classes(mes, commit=True)
-            for idep, route in enumerate(routing or []):
-                if route is None or idep in bases:
-                    continue
-                for (base_index, iflav) in route:
-                    base_me = mes[base_index]
-                    nflav = len(base_me.get_external_flavors_with_iden())
-                    out.append((exp, base_me, (iflav - 1) // nflav))
-        return out
-
-    def test_helunion_map_is_the_sign_flip_not_the_permutation(self):
-        classes = self._class(self.PROCESS)
-        self.assertTrue(classes,
-                        'no subprocess of %s is routed through a crossing, so '
-                        'this test checks nothing' % self.PROCESS)
-        differs = 0
-        for exp, base_me, cross in classes:
-            bh = [tuple(x) for x in base_me.get_helicity_matrix()]
-            row = exp.madevent_crossing_table(base_me)[cross]
-            nx = len(row.D)
-            perm = list(row.D)
-            # tau flips in place, so its sign is the base-slot one
-            sgn = list(row.SB)
-
-            tau = exp._crossgroup_base_helsignmap(base_me, cross)
-            self.assertIsNotNone(
-                tau, 'tau is not a permutation for cross %d: the helicity states '
-                'of the crossed legs must be closed under negation' % cross)
-
-            # The defining property: tau moves NO helicity between slots. Row
-            # tau[h] is row h with the crossed legs' helicity negated in place.
-            # Baking sigma instead breaks exactly this.
-            for h, row in enumerate(bh, 1):
-                self.assertEqual(
-                    bh[tau[h - 1] - 1],
-                    tuple(row[k] * sgn[k] for k in range(nx)),
-                    'crossgroup_helunion row %d of cross %d is not the pure '
-                    'sign flip: a recycled optim cannot apply a slot '
-                    'permutation' % (h, cross))
-
-            # ... and for a crossing that does move legs across, the permuted
-            # map is a genuinely different one, so getting this wrong is not
-            # academic.
-            sigma = exp._helicity_row_permutation(
-                *exp._crossed_helicity_configs(base_me, cross))
-            if perm != list(range(nx)) and sigma is not None and sigma != tau:
-                differs += 1
-        self.assertTrue(
-            differs,
-            'sigma and tau coincide for every crossing of %s, so this process '
-            'cannot tell the two apart -- pick one that can' % self.PROCESS)
 
 
 class TestCrossingConfigMap(unittest.TestCase):
@@ -4482,36 +4424,6 @@ class TestCrossingRoutesFinalLegReorder(unittest.TestCase):
         self.assertTrue(misaligned, 'every class of Q Q~ > Q Q~ is its ordinal '
                         'physical row: the representative check has no teeth')
 
-    def test_three_cycle_helicity_map_is_the_base_slot_sign_flip(self):
-        """The recycled optim's helicity union for a 3-cycle row must flip the
-        signs of the base slots whose leg changes side (SB), in place. For an
-        involution SB and SD coincide, so only a row like this one pins
-        which of the two _crossgroup_base_helsignmap reads."""
-        groups, exp = self._groups('p p > j j')
-        checked = 0
-        for g in groups:
-            mes = g.get('matrix_elements')
-            bases, routing = exp.partition_crossing_classes(mes, commit=True)
-            for i, route in enumerate(routing):
-                if i in bases:
-                    continue
-                for (b, iflav) in route:
-                    nflav_b = len(mes[b].get_external_flavors_with_iden())
-                    K = (iflav - 1) // nflav_b
-                    row = exp.madevent_crossing_table(mes[b])[K]
-                    if row.SB == row.SD:
-                        continue
-                    bh = [tuple(x) for x in mes[b].get_helicity_matrix()]
-                    tau = exp._crossgroup_base_helsignmap(mes[b], K)
-                    self.assertIsNotNone(tau)
-                    for h, config in enumerate(bh, 1):
-                        self.assertEqual(
-                            bh[tau[h - 1] - 1],
-                            tuple(config[s] * row.SB[s]
-                                  for s in range(len(config))))
-                    checked += 1
-        self.assertTrue(checked, 'no routed row has SB != SD in p p > j j')
-
 
 class TestMadeventCrossingHelicity(unittest.TestCase):
     """End-to-end regression for the crossed-helicity label written to the LHE.
@@ -4668,10 +4580,10 @@ class TestMadeventInclusiveCrossingXsec(unittest.TestCase):
     and the configuration where the crossing router has the most to get wrong.
     With flavor grouping ``p p > t t~ j j`` collapses to five subprocess groups,
     and two of them -- gq_ttxgq and qq_ttxqq -- are served by a cross-GROUP
-    router: they carry a ``matrix<i>_router.f`` (plus ``crossgroup_helunion.dat``
-    and ``crossgroup.mk``) instead of their own matrix element, i.e. their
+    router: they carry a ``crossgroup.mk`` (and their base a
+    ``crossgroup_shared.dat``) instead of their own matrix element, i.e. their
     flavors are evaluated by ANOTHER group's matrix element under a crossing,
-    over the helicity union of the two groups. Nothing else in the suite
+    over the helicity rows both groups' own surveys found. Nothing else in the suite
     integrates that path -- Track B is exercised at the matrix-element level
     only.
 
@@ -4777,13 +4689,15 @@ class TestMadeventMassiveLegCrossingXsec(TestMadeventInclusiveCrossingXsec):
     with helicity recycling (the default).
 
     `u b1 > c1 d1` (b1 = g u~, c1 = u z, d1 = z g): u u~ > z g is evaluated by
-    the u g > u z group. The recycled optim of the base is baked over
-    G_base U tau(G_base), but G_base is measured in the u g frame, where four
-    rows are exact zeros only because the z is massive (its helicity states mix
-    under a boost); their tau images are rows u u~ > z g needs. Without closing
-    G_base over the z helicity (crossgroup_helclass.dat) the routed process
-    came out ~16% low -- 1802 +- 3.5 pb against 1914 +- 4.0 pb in total, with
-    the z's helicity-0 share 0.132 instead of 0.227 -- now 1912 +- 3.6 pb.
+    the u g > u z group. The recycled optim of the base used to be baked over
+    G_base U tau(G_base), the routed rows PREDICTED from the base's zeros. But
+    G_base is measured in the u g frame, where four rows are exact zeros only
+    because the z is massive (its helicity states mix under a boost), and their
+    tau images are rows u u~ > z g needs: the routed process came out ~16% low
+    -- 1802 +- 3.5 pb against 1914 +- 4.0 pb in total, with the z's helicity-0
+    share 0.132 instead of 0.227. The optim now covers the rows the routed
+    directory's own survey found (crossgroup_shared.dat), each crossing scanned
+    for itself as madspace does: 1917 +- 3.5 pb.
     """
 
     PRELUDE = ('define b1 = g u~\n'
@@ -4799,9 +4713,12 @@ class TestMadeventMassiveLegCrossingXsec(TestMadeventInclusiveCrossingXsec):
     def test_inclusive_crossing_xsec_matches(self):
         super().test_inclusive_crossing_xsec_matches()
 
-    def test_helclass_written_for_the_massive_base(self):
-        """Run-free: the crossing base gets its classes, one per massless
-        configuration of (u, g, u) with the z's three helicities in each."""
+    def test_shared_base_lists_its_routed_directory(self):
+        """Run-free: the base u g > u z is marked as shared and names the
+        directory routing through it, whose own helicity survey (u u~ > z g at
+        its own kinematics) gen_ximprove merges into the base's recycled optim
+        -- each crossing scanned for itself, as madspace does, rather than its
+        rows predicted from the base's zeros."""
         from madgraph import MG5DIR
         outdir = pjoin(self.tmpdir, 'out')
         card = pjoin(self.tmpdir, 'cmd_out.txt')
@@ -4811,17 +4728,199 @@ class TestMadeventMassiveLegCrossingXsec(TestMadeventInclusiveCrossingXsec):
         subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'), card])
         routed = self._routed_groups(outdir)
         self.assertEqual(len(routed), 1, routed)
-        bases = [d for d in os.listdir(pjoin(outdir, 'SubProcesses'))
-                 if os.path.exists(pjoin(outdir, 'SubProcesses', d,
-                                         'crossgroup_helclass.dat'))]
+        subproc = pjoin(outdir, 'SubProcesses')
+        bases = [d for d in os.listdir(subproc)
+                 if os.path.exists(pjoin(subproc, d, 'crossgroup_shared.dat'))]
         self.assertEqual(len(bases), 1, bases)
-        with open(pjoin(outdir, 'SubProcesses', bases[0],
-                        'crossgroup_helclass.dat')) as fsock:
-            vals = fsock.read().split()
-        classes = [int(v) for v in vals[1:]]
-        self.assertEqual(len(classes), 24)
-        self.assertEqual(sorted(set(classes)), list(range(1, 9)))
-        self.assertTrue(all(classes.count(c) == 3 for c in set(classes)))
+        with open(pjoin(subproc, bases[0], 'crossgroup_shared.dat')) as fsock:
+            lines = [line.split() for line in fsock if line.strip()]
+        self.assertEqual(lines, [['1'] + routed])
+        # the retired prediction tables are gone
+        for name in ('crossgroup_helunion.dat', 'crossgroup_helclass.dat'):
+            self.assertFalse(os.path.exists(pjoin(subproc, bases[0], name)))
+
+
+class TestMadeventAmplitudeChunkCompiles(unittest.TestCase):
+    """A madevent matrix element whose HELAS call sequence is split into
+    amplitude chunk files (matrix<i>_origamp<k>.f) compiles with crossing off
+    as well as on.
+
+    The chunk routines used to take the crossing's NSF flags IC in every
+    build, and the call in MATRIX passed IC -- which only a matrix element
+    carrying the crossing machinery declares: with --use_crossing=False the
+    chunked matrix element did not compile ("Symbol 'ic' has no IMPLICIT
+    type"). Chunks appear only above amp_chunk_size statements, i.e. for large
+    processes (p p > t t~ j j j, p p > 5j), so a small chunk size forces them
+    on a small process here."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='cross_ampchunk_')
+
+    def tearDown(self):
+        if os.path.isdir(self.tmpdir):
+            shutil.rmtree(self.tmpdir)
+
+    def _compile_chunked(self, use_crossing):
+        outdir = pjoin(self.tmpdir, 'out_%s' % use_crossing)
+        cmd = cmd_interface.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('set automatic_html_opening False')
+        cmd.exec_cmd('import model sm')
+        cmd.exec_cmd('generate p p > w+ j --use_crossing=%s' % use_crossing)
+        cmd.exec_cmd('output madevent %s -f --amp_chunk_size=2' % outdir)
+        with open(os.devnull, 'w') as devnull:
+            subprocess.call(['make'], cwd=pjoin(outdir, 'Source'),
+                            stdout=devnull, stderr=devnull)
+        flags = ['gfortran', '-O2', '-w', '-ffixed-line-length-132', '-I.',
+                 '-I../../Source', '-I../../Source/MODEL',
+                 '-I../../Source/DHELAS']
+        chunked = 0
+        for pdir in sorted(misc.glob('P*', pjoin(outdir, 'SubProcesses'))):
+            chunks = misc.glob('matrix*_origamp*.f', pdir)
+            if not chunks:
+                continue
+            chunked += 1
+            for source in sorted(chunks) + misc.glob('matrix*_orig.f', pdir):
+                if os.path.islink(source):
+                    continue
+                proc = subprocess.run(
+                    flags + ['-c', os.path.basename(source), '-o',
+                             os.devnull], cwd=pdir, capture_output=True,
+                    text=True)
+                self.assertEqual(proc.returncode, 0, '%s does not compile '
+                                 '(--use_crossing=%s):\n%s'
+                                 % (source, use_crossing, proc.stderr[-2000:]))
+        self.assertTrue(chunked, 'no amplitude chunk file was written')
+
+    def test_chunked_matrix_element_compiles_without_crossing(self):
+        if not shutil.which('gfortran'):
+            self.skipTest('no gfortran')
+        self._compile_chunked(False)
+
+    def test_chunked_matrix_element_compiles_with_crossing(self):
+        if not shutil.which('gfortran'):
+            self.skipTest('no gfortran')
+        self._compile_chunked(True)
+
+
+class TestCrossingHelicityConvention(unittest.TestCase):
+    """Every backend labels the helicity of a crossed subprocess with the
+    crossed process's OWN canonical code -- the code its expanded output uses.
+
+    The backends evaluate a crossing on the BASE helicity rows (tau: momenta
+    and NSF flags move into the base slots, the helicity slots do not), so each
+    one needs a table turning that into the crossed process's code:
+
+      * madevent: the routed subprocess relabels the base's selected code
+        through its own state table (XDST/NXDST in auto_dsig<i>.f);
+      * madmatrix (C++ cpu/simd/gpu): selected_hel_code encodes over the
+        per-crossing state table (xhel_nhstate/xhel_states, row K);
+      * mg7: the crossed subprocesses.json entry decodes the reported code with
+        the helicity table it ships;
+      * fortran standalone: SMATRIXHEL at an extended index takes that code
+        (CROSS_HELCODE; checked at run time in
+        test_massive_leg_crossing_after_base_training).
+
+    They used to disagree: the C++ code was the BASE row whose per-slot values
+    equal the crossed configuration, decoded by mg7 against the base table --
+    which is why mg7 had to expand any crossing moving a leg into a slot with
+    other helicity states. Run-free: on `u b1 > c1 d1` (b1 = g u~, c1 = u z,
+    d1 = z g; u u~ > z g folded onto u g > u z, the z moved into a quark slot)
+    the three tables must equal the expanded output's own helicity table, row
+    for row (test_moved_leg_reports_its_own_helicity and
+    TestMadeventMassiveLegCrossingXsec check the events)."""
+
+    PRELUDE = ['define b1 = g u~', 'define c1 = u z', 'define d1 = z g']
+    PROCESS = 'u b1 > c1 d1 QED=1 QCD=1'
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmpdir = tempfile.mkdtemp(prefix='cross_helconv_')
+        cmd = cmd_interface.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('set automatic_html_opening False')
+        cmd.exec_cmd('import model sm')
+        for line in cls.PRELUDE:
+            cmd.exec_cmd(line)
+        cmd.exec_cmd('generate %s --use_crossing=True' % cls.PROCESS)
+        cls.out = {}
+        for name, line in (('madevent', 'output madevent %s -f'),
+                           ('mg7', 'output mg7 %s -f'),
+                           ('cpp', 'output standalone %s -f'),
+                           ('expanded',
+                            'output standalone %s -f --use_crossing=False')):
+            cls.out[name] = pjoin(cls.tmpdir, name)
+            cmd.exec_cmd(line % cls.out[name])
+
+    @classmethod
+    def tearDownClass(cls):
+        if os.path.isdir(cls.tmpdir):
+            shutil.rmtree(cls.tmpdir)
+
+    def pdir(self, name, suffix):
+        root = pjoin(self.out[name], 'SubProcesses')
+        found = [pjoin(root, d) for d in sorted(os.listdir(root))
+                 if d.startswith('P') and d.endswith(suffix)]
+        self.assertEqual(len(found), 1, '%s %s: %s' % (name, suffix, found))
+        return found[0]
+
+    @staticmethod
+    def product(nstates, states, maxhel, offset=0):
+        """The mixed-radix table (first leg most significant) of a state
+        table flattened leg by leg, maxhel entries per leg."""
+        legs = [states[(offset + k) * maxhel:(offset + k) * maxhel + n]
+                for k, n in enumerate(nstates)]
+        return [tuple(row) for row in itertools.product(*legs)]
+
+    def expanded_table(self):
+        with open(pjoin(self.pdir('expanded', '_uux_zg'), 'ProcessData.h')) as f:
+            thel = f.read().split('tHel')[1].split(';')[0]
+        rows = [tuple(int(v) for v in row) for row in re.findall(
+            r'\{\s*(-?\d+),\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)\s*\}', thel)]
+        self.assertEqual(len(rows), 24)
+        return rows
+
+    def test_madmatrix_reports_the_crossed_code(self):
+        fold = self.pdir('cpp', '_ug_uz')
+        with open(pjoin(fold, 'crossing_demo.dat')) as f:
+            [fid] = [int(i) for i in f.read().split()]
+        with open(pjoin(fold, 'ProcessTables.h')) as f:
+            tables = f.read()
+
+        def table(name):
+            return [int(v) for v in re.search(
+                r'%s\[[^\]]*\] = \{([^}]*)\}' % name, tables).group(1).split(',')]
+        maxhel = int(re.search(r'xhel_maxhel = (\d+)', tables).group(1))
+        nh, st = table('xhel_nhstate'), table('xhel_states')
+        K = fid  # a single base flavor: the extended id is the row
+        self.assertEqual(self.product(nh[4 * K:4 * K + 4], st, maxhel, 4 * K),
+                         self.expanded_table())
+
+    def test_mg7_folds_and_ships_the_crossed_table(self):
+        root = pjoin(self.out['mg7'], 'SubProcesses')
+        self.assertFalse(any(d.endswith('_uux_zg') for d in os.listdir(root)),
+                         'output mg7 expanded the crossing that moves the z '
+                         'into a quark slot')
+        with open(pjoin(root, 'subprocesses.json')) as f:
+            entries = json.load(f)
+        crossed = [e for e in entries if e.get('crossing')]
+        self.assertEqual(len(crossed), 1, crossed)
+        self.assertEqual([tuple(r) for r in crossed[0]['helicities']],
+                         self.expanded_table())
+
+    def test_madevent_relabels_into_the_crossed_code(self):
+        routed = self.pdir('madevent', '_qq_zg')
+        self.assertTrue(os.path.exists(pjoin(routed, 'crossgroup.mk')),
+                        'u u~ > z g is not evaluated through u g > u z')
+        text = ''.join(open(f).read()
+                       for f in sorted(misc.glob('auto_dsig*.f', routed)))
+        states = [int(v) for v in
+                  re.search(r'DATA XDST /([^/]*)/', text).group(1).split(',')]
+        nstates = [int(v) for v in
+                   re.search(r'DATA NXDST /([^/]*)/', text).group(1).split(',')]
+        maxhel = len(states) // len(nstates)
+        self.assertEqual(self.product(nstates, states, maxhel),
+                         self.expanded_table())
 
 
 class TestColorFlowCode(unittest.TestCase):
@@ -5733,14 +5832,14 @@ class TestMadeventCrossingBaseColorFlow(unittest.TestCase):
         # The crossing really has to be in play, or this compares two identical
         # builds and passes on anything.
         base = pjoin(crossed, 'SubProcesses', 'P1_gg_qq',
-                     'crossgroup_helunion.dat')
+                     'crossgroup_shared.dat')
         self.assertTrue(
             os.path.exists(base),
             'the default build has no crossing base for g g > u u~ (no %s), so '
             'this test exercises no crossing at all' % os.path.basename(base))
         self.assertFalse(
             os.path.exists(pjoin(plain, 'SubProcesses', 'P1_gg_qq',
-                                 'crossgroup_helunion.dat')),
+                                 'crossgroup_shared.dat')),
             '--use_crossing=False still emitted a crossing base')
 
         ref = helper._topologies(plain, lhe_parser)

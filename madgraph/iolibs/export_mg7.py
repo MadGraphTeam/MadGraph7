@@ -567,26 +567,6 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
     # ------------------------------------------------------------------
     # Crossed subprocesses folded into this matrix element
     # ------------------------------------------------------------------
-    @staticmethod
-    def crossing_keeps_helicity_states(base_process, crossed_process):
-        """Whether every slot of `crossed_process` keeps the helicity states
-        of the same slot of `base_process`.
-
-        For a crossed event the backend reports the BASE helicity row whose
-        configuration equals the crossed one, slot by slot (selected_hel_code
-        in backend/<variant>/SigmaKin.cc), and the entry indexes the base
-        helicity table with it. A slot whose crossed particle has a state the
-        base slot does not know -- a massive vector moved into a fermion
-        slot -- has no such row, so its helicity would come out wrong."""
-        model = base_process.get('model')
-
-        def states(process):
-            return [set(model.get_particle(leg.get('id')).get_helicity_states())
-                    for leg in process.get_legs_with_decays()]
-        base, crossed = states(base_process), states(crossed_process)
-        return len(base) == len(crossed) and \
-            all(c <= b for b, c in zip(base, crossed))
-
     def class_diagram_validity(self):
         """Per flavor class (the FLAV half of an extended id), the positions
         of the diagrams that have that flavor."""
@@ -727,7 +707,6 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         records = list(me.get('crossed_processes')) \
             if 'crossed_processes' in me else []
         n_initial = self.n_initial
-        base_process = me.get('processes')[0]
 
         def key(row):
             return crossing_table.physical_key(row, n_initial)
@@ -738,11 +717,6 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         crossed = []
         for record in records:
             name = record[0].base_string()
-            if not self.crossing_keeps_helicity_states(base_process, record[0]):
-                raise MadGraph5Error(
-                    'crossed process %s moves a leg into a slot of %s with '
-                    'other helicity states: it should have been expanded '
-                    '(crossing_foldable)' % (name, self.name))
             xme = self.crossed_matrix_element(record)
             xmeta = SubprocessMetadataMG7(xme, merge_same_topologies)
             xinfo, xtags, xclass = xmeta.get_subprocess_info(None, None)
@@ -754,7 +728,8 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                         cover.add(swapped(key(option)))
             crossed.append({'name': name, 'xmeta': xmeta,
                             'xinfo': xinfo, 'xtags': xtags, 'xclass': xclass,
-                            'cover': cover})
+                            'cover': cover,
+                            'helicities': list(xme.get_helicity_matrix())})
 
         mirrored, skipped = set(), set()
         if n_initial == 2 and collect_mirror:
@@ -815,7 +790,9 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             base's for that diagram;
           - color_flows is indexed by the BASE flow, each flow crossed onto the
             crossed legs (colour <-> anticolour for a leg changing side);
-          - helicities is the base table (crossing_keeps_helicity_states);
+          - helicities is the crossed process's own table: the backend reports
+            a crossed event's helicity as the crossed process's own canonical
+            code (selected_hel_code), as the madevent output does;
           - diagram_count is the base's: the length of the amp2 array.
 
         One entry per row K: the diagram renumbering depends on it."""
@@ -928,7 +905,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 "color_codes": color_codes,
                 "color_slots": color_slots,
                 "diagram_count": len(self.diagrams),
-                "helicities": list(self.matrix_element.get_helicity_matrix()),
+                "helicities": xentry['helicities'],
             })
             entries.append((K, info, tags, xentry['xclass']))
             logger.debug('%s: crossed subprocess %s folded in (row %d, '

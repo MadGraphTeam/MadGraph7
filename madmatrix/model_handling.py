@@ -2833,21 +2833,18 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         hnstate = [len(s) for s in hstates]
         maxhel = max(hnstate) if hnstate else 1
         # Per crossing row K and crossed slot k, the states its code digit runs
-        # over. Slot k carries base leg b = D[k]; its helicity is one of b's
-        # states. When those fit into base slot k's states (every crossing
-        # `output mg7` folds, see OneProcessExporterMG7.
-        # crossing_keeps_helicity_states), slot k keeps base slot k's states:
-        # the code is then the base row whose config equals the crossed one,
-        # which the mg7 LHE writer indexes positionally. A leg moved into a slot
-        # with other states (a z into a quark slot, as u u~ > z g off
-        # u g > u z) runs over its own states instead: base slot k's would have
-        # no digit for its helicity 0.
+        # over: those of the CROSSED process itself, so that the reported code
+        # is the crossed process's own canonical code -- the one its expanded
+        # output reports, and the one the madevent output writes for a routed
+        # event (export_v4 _crossed_helicity_relabel, its XDST table). Slot k
+        # carries base leg D[k], and an external wavefunction's PDG is the
+        # all-outgoing one, which a crossing leaves alone (a leg changing side
+        # is conjugated twice), so slot k's own states are hstates[D[k]], in
+        # that order. Row 0 is the base's own table.
         xnhstate, states_flat = [], []
         for row in table:
             for k in range(nexternal):
-                b = row.D[k]
-                use = hstates[k] if set(hstates[b]) <= set(hstates[k]) \
-                    else hstates[b]
+                use = hstates[row.D[k]]
                 xnhstate.append(len(use))
                 states_flat.extend(use[i] if i < len(use) else 0
                                    for i in range(maxhel))

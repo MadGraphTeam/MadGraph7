@@ -2785,21 +2785,17 @@ class ReweightInterface(extended_cmd.Cmd):
         `procindex` is the 1-based get_prefix slot the crossing-aware
         SMATRIXHEL_IDX dispatch expects.
 
-        The helicity dictionary is the base one RE-KEYED through the crossing.
-        SMATRIX applies the crossing as tau (APPLY_CROSSING_TABLE): it moves the
-        momenta into the base slots, crossed leg B[b] landing in base slot b,
-        but leaves the NHEL slots where they are, so USERHEL=r evaluates the
-        particle in crossed leg B[b] at the helicity of base row r in slot b.
-        An event with helicities h (crossed leg order) therefore needs the row
-        whose entry b is h[B[b]]. Keying on the base rows read positionally
-        in the crossed leg order -- right while the table was permuted along
-        with the momenta (sigma) -- asks for a different helicity configuration
-        of the crossed process, often an exactly vanishing one.
-
-        Both directions of the row are needed and are NOT interchangeable (a
-        crossing is in general no involution): D[k] is the base leg sitting in
-        crossed leg k (what the PDGs are read through), B = D^-1 the crossed leg
-        landing in base slot b (what the helicity is keyed through)."""
+        The helicity dictionary maps the event's helicities, in the crossed leg
+        order, to the crossed process's OWN helicity code, which is what
+        SMATRIXHEL takes for an extended index (CROSS_HELCODE translates it
+        into the base row it evaluates) -- the same code the expanded output
+        takes, the madevent output writes and the C++ backends report. Crossed
+        leg k carries base leg D[k] with its helicity states in the same order
+        (tau leaves the helicity slots alone), so its digit is that leg's.
+        Keying on the base rows read positionally in the crossed leg order
+        asks for a different helicity configuration of the crossed process,
+        often an exactly vanishing one. D[k] is the base leg sitting in crossed
+        leg k, both for the PDGs and for the helicities."""
         codes = self.get_recorded_crossings(pdir)
         if not codes:
             return
@@ -2829,21 +2825,35 @@ class ReweightInterface(extended_cmd.Cmd):
                     logger.debug('crossing row %s of %s comes without its '
                                  'permutation: skipped' % (cross, prefix))
                     continue
-                B = [0] * nexternal
-                for k, b in enumerate(D):
-                    B[b] = k
+                # per base leg, its helicity states in code order: the base
+                # table is the mixed-radix product, so the values of a leg
+                # appear in state order
+                leg_states = [[] for _ in range(nexternal)]
+                for row, ihel in sorted(
+                        ((r, i) for r, i in hel_dict.get(prefix, {}).items()
+                         if isinstance(r, tuple)), key=lambda x: x[1]):
+                    for b in range(nexternal):
+                        if row[b] not in leg_states[b]:
+                            leg_states[b].append(row[b])
                 # -1 where crossed leg k sits on the other side of the
                 # initial/final line than its base leg D[k]
                 ic = [-1 if ((k < ninitial) != (D[k] < ninitial)) else 1
                       for k in range(nexternal)]
-                # tau: base slot b is evaluated at row entry b and holds
-                # crossed leg B[b] (see the docstring).
+                # The event's helicities (crossed leg order) -> the crossed
+                # process's OWN helicity code, which SMATRIXHEL takes for an
+                # extended index (CROSS_HELCODE): crossed leg k carries base
+                # leg D[k] with its own states, so its digit is that leg's.
                 hel = {}
                 for row, ihel in hel_dict.get(prefix, {}).items():
-                    xrow = [0] * nexternal
-                    for b in range(nexternal):
-                        xrow[B[b]] = row[b]
-                    hel[tuple(xrow)] = ihel
+                    if not isinstance(row, tuple):
+                        hel[row] = ihel        # the 9 -> 0 'unknown' entry
+                        continue
+                    xrow = tuple(row[D[k]] for k in range(nexternal))
+                    code = 0
+                    for k in range(nexternal):
+                        states = leg_states[D[k]]
+                        code = code * len(states) + states.index(row[D[k]])
+                    hel[xrow] = code + 1
                 for flav in range(1, nflav+1):
                     crossed = [int(x) for x in get_pdg(cross*nflav + flav)]
                     if not any(crossed):

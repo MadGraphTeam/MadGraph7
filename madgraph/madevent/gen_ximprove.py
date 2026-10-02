@@ -131,8 +131,18 @@ class gensym(object):
         P_zero_result = []
         nb_tot_proc = len(subproc)
         job_list = {}      
-        
-          
+        # A directory routing through another group's matrix element (Track B
+        # crossing, crossgroup.mk) is surveyed BEFORE the bases: its survey,
+        # which runs the base's matrix element at its own (crossed) kinematics,
+        # gives rows the base's recycled optim has to cover (see
+        # crossgroup_shared.dat below).
+        def routed(subdir):
+            return os.path.exists(pjoin(self.me_dir, 'SubProcesses',
+                                        subdir.strip(), 'crossgroup.mk'))
+        subproc = [d for d in subproc if routed(d)] + \
+                  [d for d in subproc if not routed(d)]
+        surveys = {}
+
         for nb_proc,subdir in enumerate(subproc):
             self.cmd.update_status('Compiling for process %s/%s.' % \
                                (nb_proc+1,nb_tot_proc), level=None)
@@ -226,6 +236,40 @@ class gensym(object):
                         continue
                     all_zampperhel.add(tuple(line.split()[1:4]))
 
+            surveys[subdir] = (set(all_hel), set(all_zamp), set(all_zampperhel))
+
+            # A matrix element shared by a crossing (crossgroup_shared.dat:
+            # `<me index> [P directories routing through it]`): its recycled
+            # optim is entered by every crossing that routes through it, so it
+            # must cover the rows each of them evaluates. Each crossing is
+            # scanned at its own kinematics, as madspace scans each crossing:
+            # a within-group router calls the base inside this very survey, a
+            # cross-group one in its own directory's survey, done first. An
+            # amplitude is only dropped where it vanishes for every caller.
+            shared = {}
+            sh_file = pjoin(Pdir, 'crossgroup_shared.dat')
+            if os.path.exists(sh_file):
+                for line in open(sh_file):
+                    vals = line.split()
+                    if vals:
+                        shared[vals[0]] = vals[1:]
+            for me_index, dep_dirs in shared.items():
+                for dep in dep_dirs:
+                    if dep not in surveys:
+                        raise Exception('%s routes through %s but was not '
+                                        'surveyed first' % (dep, subdir))
+                    d_hel, d_zamp, d_zph = surveys[dep]
+                    mine = set(h for (m, h) in all_hel if m == me_index)
+                    theirs = set(h for (m, h) in d_hel if m == me_index)
+                    all_zamp = set(z for z in all_zamp
+                                   if z[0] != me_index or z in d_zamp)
+                    all_zampperhel = set(
+                        z for z in all_zampperhel
+                        if z[0] != me_index or z[1] not in theirs or z in d_zph
+                    ) | set(z for z in d_zph
+                            if z[0] == me_index and z[1] not in mine)
+                    all_hel |= set((me_index, h) for h in theirs)
+
             if zero_gc and not gensym.done_warning_zero_coupling:
                 gensym.done_warning_zero_coupling = True
                 logger.warning("The optimizer detects that you have coupling evaluated to zero: \n"+\
@@ -285,34 +329,6 @@ class gensym(object):
                 fsock.write(data)        
                 
         
-            # Crossing bases: bake the optim over the UNION good-hel of the
-            # crossing class so one compiled optim serves every crossing that
-            # enters it -- a cross-group dependent in another P directory (Track
-            # B) or a within-group matrix<i>_router.f in this one (Track A).
-            # crossgroup_helunion.dat gives, per base matrix index, base->base
-            # helicity permutations: the dependent for that crossing is good at
-            # helicity h iff perm[h] is good for the base.
-            helunion = collections.defaultdict(list)
-            hu_file = pjoin(Pdir, 'crossgroup_helunion.dat')
-            if os.path.exists(hu_file):
-                for line in open(hu_file):
-                    vals = line.split()
-                    if vals:
-                        helunion[vals[0]].append([int(x) for x in vals[1:]])
-            # crossgroup_helclass.dat: per crossing base with a massive leg with
-            # spin, the class of each helicity row (rows differing only in the
-            # helicity of massive legs). Such a leg's zeros are frame
-            # dependent: G_base is measured in the base's frame, its crossings
-            # are evaluated in their own, so G_base is closed over each class
-            # before tau is applied below.
-            helclass = {}
-            hc_file = pjoin(Pdir, 'crossgroup_helclass.dat')
-            if os.path.exists(hc_file):
-                for line in open(hc_file):
-                    vals = line.split()
-                    if vals:
-                        helclass[vals[0]] = [int(x) for x in vals[1:]]
-
             for matrix_file in misc.glob('matrix*orig.f', Pdir):
 
                 # Track B cross-group crossing: a dependent P directory reuses a
@@ -342,45 +358,10 @@ class gensym(object):
 
                 # Convert to sorted list for reproducibility
                 #good_hels = sorted(list(good_hels))
-                base_good = set(all_good_hels[me_index])
-                good_set = set(base_good)
-                # Crossing base: the shared optim is also evaluated with each
-                # dependent's CROSSED momenta and IC, but the recycled MATRIX
-                # bakes the base's helicity configs (it takes no runtime NHEL), so
-                # the base's own good-hel SUBSET is not the dependent's and
-                # filtering on it alone would bias a crossed dependent. Keep the
-                # UNION over the class: h survives if it is good for the base, or
-                # if some dependent's crossing makes h non-zero, which is exactly
-                # tau[h] good for the base -- tau being the crossing's helicity
-                # SIGN map, the part of the transform IC can carry. The lines of
-                # crossgroup_helunion.dat are those tau (an all-zero row is the
-                # sentinel for "not a clean permutation": keep everything).
-                # Note it must be tau and not the GHREMAP sigma, which also
-                # permutes the slots: matrix<b>_orig.f applies sigma because it
-                # reads NHEL at run time, the recycled optim cannot.
-                # Keeping EVERY config instead is NOT a safe over-approximation.
-                # The recycled K loop also accumulates AMP2 (the single-diagram
-                # multi-channel weights) and JAMP2 (the colour-flow weights) from
-                # every config it keeps, and those are not the gauge-invariant
-                # |M|^2: a config whose |M|^2 vanishes still has non-zero
-                # individual diagrams and JAMPs, so keeping it silently reweights
-                # channel and colour selection. For g g > q q~ that resurrected
-                # the s-channel config, whose AMP2 is exactly zero over the good
-                # helicities, and diluted the colour flow toward 50/50.
-                perms = helunion.get(me_index, [])
-                classes = helclass.get(me_index)
-                if perms and classes:
-                    good_classes = set(classes[h - 1] for h in base_good
-                                       if 0 < h <= len(classes))
-                    base_good = set(h for h, c in enumerate(classes, 1)
-                                    if c in good_classes) | base_good
-                    good_set = set(base_good)
-                for perm in perms:
-                    if not all(perm):
-                        good_set = set(range(1, len(perm) + 1))
-                        break
-                    good_set |= set(h for h, p in enumerate(perm, 1)
-                                    if p in base_good)
+                # The rows of every caller: the survey already merged those of
+                # the crossings sharing this matrix element (see above).
+                good_set = set(all_good_hels[me_index])
+                shared_me = me_index in shared
                 good_hels = [str(x) for x in sorted(good_set)]
 
                 mtext = open(matrix_file).read()
@@ -400,16 +381,16 @@ class gensym(object):
                 # generated -- and reuse the representative's |M|^2 for it. The
                 # reuse indices are the OPTIM's re-indexed positions in good_hels
                 # (helicity indices are renumbered 1..len(good_hels) in the optim).
-                # Still disabled for a crossing-class base (perms): the pairing
-                # is baked at the BASE's re-indexed positions, and a dependent
-                # reads those rows through its own crossing permutation, so the
-                # reuse is not obviously its mirror pairing. That costs only
+                # Still disabled for a matrix element shared by a crossing
+                # (shared_me): the pairing is established for the base's own
+                # flavors only, and a crossing evaluates the same rows at its own
+                # kinematics, so the reuse is not obviously its mirror pairing. That costs only
                 # speed -- both rows of a pair get computed -- and not
                 # correctness, since AMP2/JAMP2 ratios do not depend on WHICH
                 # subset of the good configs is summed (they are the same for a
                 # row and its mirror).
                 csym_reuse_pairs = []
-                if not perms and all_csym[me_index]:
+                if not shared_me and all_csym[me_index]:
                     opt_index = {h: i + 1 for i, h in enumerate(sorted(good_set))}
                     bad_set = set(bad_amps_perhel)
                     for rep, flip in all_csym[me_index]:
@@ -444,12 +425,10 @@ class gensym(object):
                 # the same test the good-hel filter itself is trained on, so each
                 # caller accumulates over exactly its own good set as the
                 # unrecycled path does.
-                # Keyed on perms rather than on the union having grown, because
-                # base_good is not the base's own good set either: the good-hel
-                # scan prints the RAW loop index of matrix<i>_orig.f, which for a
-                # crossed flavor is a row of sigma-space, so a crossing base's
-                # reported set already carries rows that are dead uncrossed.
-                if perms:
+                # Keyed on the matrix element being shared rather than on the
+                # union having grown: a within-group router's rows already come
+                # with the base's own survey.
+                if shared_me:
                     recycler.template_dict['dead_row_if'] = \
                         'IF (TS(%s).NE.0D0) THEN' % recycler.loop_var
                     recycler.template_dict['dead_row_endif'] = 'ENDIF'

@@ -1030,10 +1030,9 @@ class ProcessExporterFortran(VirtualExporter,
         self._crossgroup = {}   # (group_idx, me_idx) -> base info; Track B below
         self._router_base_mes = set()  # id(me) of the within-group (Track A) bases
         self._crossgroup_dirs = []  # (dependent_dir, base_dir) for the parallel makefile
-        self._crossgroup_helperms = {}  # base_dir -> {base_proc_id -> [hel perms]}
-        # base_dir -> {base_proc_id -> per-row massive-leg class}, see
-        # write_crossgroup_helunion / massive_helicity_classes
-        self._crossgroup_helclass = {}
+        # base_dir -> {base_proc_id -> set of the P directories routing through
+        # it from another group}, see write_crossgroup_shared
+        self._crossgroup_shared = {}
         if isinstance(matrix_elements, group_subprocs.SubProcessGroupList):
             # check handling for the polarization
             for m in matrix_elements:
@@ -1076,8 +1075,8 @@ class ProcessExporterFortran(VirtualExporter,
             if self._crossgroup_dirs:
                 self.write_crossgroup_parallel_makefile(
                     pjoin(self.dir_path, 'SubProcesses'))
-            if self._crossgroup_helperms:
-                self.write_crossgroup_helunion(
+            if self._crossgroup_shared:
+                self.write_crossgroup_shared(
                     pjoin(self.dir_path, 'SubProcesses'))
         else:
              # check handling for the polarization
@@ -2904,83 +2903,6 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             lines.append("     & %s%s" % (",".join(seg), tail))
         return "\n".join(lines)
 
-    # --------------------------------------------------------------------------
-    # Helicity zeros of a massive leg under crossing
-    # --------------------------------------------------------------------------
-    # A crossing evaluates the base helicity rows at the crossed process's
-    # kinematics, so the good-helicity sets shared with the base assume that a
-    # row zero for the base is zero for the crossing too (up to tau, the sign
-    # flip of the legs that change side). That holds for a MASSLESS leg, whose
-    # helicity is Lorentz invariant, but not for a massive one with spin: its
-    # helicity states mix under a boost, and the crossed process is evaluated
-    # in its own partonic frame. In u g > u z, four rows are exact zeros in the
-    # u g frame and carry up to 3e-3 of the total once boosted; their tau images
-    # are needed by the crossed u u~ > z g (two of them carry the z's helicity
-    # 0). Summed over a massive leg's helicities, the rows of one massless
-    # configuration are frame invariant, so the safe set is closed over those
-    # helicities: a row is good as soon as a row differing from it only in the
-    # helicity of massive legs is.
-
-    @staticmethod
-    def massive_helicity_legs(matrix_element):
-        """Per external leg (get_helicity_matrix order): True for a massive leg
-        with more than one helicity state -- the legs whose helicity zeros do not
-        survive a change of frame, hence a crossing."""
-        model = matrix_element.get('processes')[0].get('model')
-        legs = []
-        for wf in matrix_element.get_external_wavefunctions():
-            part = model.get_particle(wf.get('pdg_code'))
-            legs.append(str(part.get('mass')).lower() != 'zero'
-                        and len(part.get_helicity_states()) > 1)
-        return legs
-
-    @classmethod
-    def massive_helicity_classes(cls, matrix_element):
-        """1-based class of each helicity row (get_helicity_matrix order): two
-        rows share a class iff they differ only in the helicity of massive legs.
-        None when the process has no such leg (every class is a single row)."""
-        massive = cls.massive_helicity_legs(matrix_element)
-        if not any(massive):
-            return None
-        ids, classes = {}, []
-        for row in matrix_element.get_helicity_matrix():
-            key = tuple(h for h, m in zip(row, massive) if not m)
-            classes.append(ids.setdefault(key, len(ids) + 1))
-        return classes
-
-    @classmethod
-    def massive_helicity_closure_fortran(cls, matrix_element, goodhel, idx,
-                                         nhel='NHEL', indent=18):
-        """(declarations, training) Fortran closing a shared good-helicity
-        filter over the helicity of massive legs. `goodhel` is the filter
-        element with a %s for the row (e.g. 'GOODHEL(%s,FLAV_USE)'), `idx` the
-        row just marked good, `nhel` the NHEL table its rows index. Both are ''
-        for a process without a massive leg with spin."""
-        massive = cls.massive_helicity_legs(matrix_element)
-        if not any(massive):
-            return '', ''
-        pad = ' ' * indent
-        decl = '\n'.join([
-            'C     HMV: the massive legs with spin. Their helicity zeros are frame',
-            'C     dependent, so a crossing (evaluated in its own partonic frame)',
-            'C     can need a row that is zero here: training marks every row',
-            'C     that differs from a good one only in those legs good as well.',
-            '      LOGICAL HMV(NEXTERNAL), HMSAME',
-            '      INTEGER HMJ, HMK',
-            '      DATA HMV /%s/' % ','.join('.TRUE.' if m else '.FALSE.'
-                                            for m in massive)])
-        train = '\n'.join([
-            'C     ... and every row differing from it only in a massive leg (HMV).',
-            pad + 'DO HMJ=1,NCOMB',
-            pad + '  HMSAME=.TRUE.',
-            pad + '  DO HMK=1,NEXTERNAL',
-            pad + '    IF (.NOT.HMV(HMK).AND.%s(HMK,HMJ).NE.%s(HMK,%s)) '
-            'HMSAME=.FALSE.' % (nhel, nhel, idx),
-            pad + '  ENDDO',
-            pad + '  IF (HMSAME) %s=.TRUE.' % (goodhel % 'HMJ'),
-            pad + 'ENDDO'])
-        return decl, train
-
     def _helstate_data(self, matrix_element):
         """Return the Fortran DATA blocks for the canonical helicity
         encoder/decoder that replaces the explicit NHEL config table.
@@ -3588,6 +3510,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
         if not use_crossing:
             replace_dict.update({
+                'smatrixhel_userhel': '      USERHEL=HEL',
+                'helreset_cross': '',
+                'three_leg_cross': '',
                 'crossing_routines': '',
                 'iden_cross_lines': '',
                 'smatrix_cross_decl':
@@ -3641,21 +3566,20 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             self.get_iden_cross_lines(matrix_element)
         replace_dict['ident_resonance'] = \
             self.compute_crossing_tables(matrix_element)['ident_resonance']
+        ncross = len(self.output_crossing_table(matrix_element))
         replace_dict.update(dict(
-            (key, value % {'proc_prefix': prefix,
+            (key, value % {'proc_prefix': prefix, 'ncross': ncross,
                            'den_factor_line': replace_dict['den_factor_line']})
             for key, value in self.CROSSING_SNIPPETS.items()))
-        # The shared filter is trained by the base and by every crossing: close
-        # it over the helicity of massive legs (massive_helicity_closure_fortran)
-        hm_decl, hm_train = self.massive_helicity_closure_fortran(
-            matrix_element, 'GOODHEL(%s,FLAV_USE)', 'GHIDX', indent=24)
-        if hm_decl:
-            replace_dict['smatrix_cross_decl'] += '\n' + hm_decl
-            train = replace_dict['smatrix_goodhel_train']
-            assert train.endswith('ENDIF')
-            replace_dict['smatrix_goodhel_train'] = (
-                train[:-len('ENDIF')].rstrip(' ') + hm_train + '\n'
-                + ' ' * 20 + 'ENDIF')
+        # the per-crossing filter is reset with the plain one, and switched off
+        # with it for a 2->1 process
+        replace_dict['helreset_cross'] = (
+            '\n   NTRYX(:) = 0\n   GOODHELX(:,:) = .false.')
+        replace_dict['three_leg_cross'] = '\n        GOODHELX(:,:) = .TRUE.'
+        # SMATRIXHEL takes the requested process's OWN helicity code; SMATRIX
+        # compares it with the base rows, so translate it once (CROSS_HELCODE).
+        replace_dict['smatrixhel_userhel'] = (
+            '      CALL %(p)sCROSS_HELCODE(FLAV_IDX, HEL, USERHEL)' % {'p': prefix})
         # CROSS_GHIDX (in the crossing routines below) recomputes the crossed
         # -> identity helicity row map at runtime; it needs only the small
         # per-crossing GHFILT flag plus the STATES/NHSTATE the encoder uses (in
@@ -3716,6 +3640,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
         if not use_crossing:
             replace_dict.update({
+                'smatrixhel_userhel': '      USERHEL=HEL',
+                'helreset_cross': '',
+                'three_leg_cross': '',
                 'so_cross_decl': '',
                 'so_entry_guard':
                     '      IF (FLAV_IDX.LT.1 .OR. FLAV_IDX.GT.NFLAV) THEN\n'
@@ -3767,13 +3694,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 '      REAL*8 PUSE(0:3,NEXTERNAL)\n'
                 '      INTEGER NHELUSE(NEXTERNAL,NCOMB)\n'
                 '      INTEGER ICUSE(NEXTERNAL)\n'
-                '      INTEGER DUMFLAV\n'
-                'C     GHIDX is the identity row whose shared GOODHEL bit gates'
-                ' the current\nC     crossed row; XGPERM/XGSGN are the'
-                ' crossing\'s slot permutation and NSF\nC     signs, fetched'
-                ' once per call.\n'
-                '      INTEGER GHIDX\n'
-                '      INTEGER XGPERM(NEXTERNAL), XGSGN(NEXTERNAL), XGDUM'
+                '      INTEGER DUMFLAV'
                 % {'p': prefix},
             # An extended index is legal here; only the lower bound is fixed.
             'so_entry_guard':
@@ -3796,7 +3717,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 ' helicity: it is a\nC     fixed slot permutation, identical'
                 ' for every row, so the whole NHEL table\nC     goes through in'
                 ' one sweep together with the momenta and the NSF flags.\n'
-                '      CALL %(p)sGET_CROSS_PERM(FLAV_IDX, XGPERM, XGSGN, XGDUM)\n'
+                '      IF(USERHEL.EQ.-1) NTRYX(FLAV_IDX)=NTRYX(FLAV_IDX)+1\n'
                 '      IF (CROSSUSE.NE.0) THEN\n'
                 '        CALL %(p)sAPPLY_CROSSING_TABLE(FLAV_IDX, NCOMB, P,'
                 ' NHEL,\n'
@@ -3815,15 +3736,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             'so_csym_ntry': 'NTRY_CSYM',
             'so_dedup_cross': ' .AND. FLAV_IDX.LE.NFLAV',
             'so_goodhel_gate':
-                'C     GOODHEL is shared by every crossing of a flavor, but a'
-                ' crossing permutes\nC     and flips helicities, so CROSS_GHIDX'
-                ' sends crossed row IHEL to the identity\nC     row that gates'
-                ' it. GHIDX=0 means not filterable -> compute it.\n'
-                '           CALL %(p)sCROSS_GHIDX(CROSSUSE, XGPERM, XGSGN,\n'
-                '     &      NHEL(1,IHEL), GHIDX)\n'
-                '           IF (GHIDX.EQ.0 .OR. GOODHEL(GHIDX,FLAV_USE) .OR.'
-                ' NTRY(FLAV_USE) .LT. 20 .OR.USERHEL.NE.-1) THEN'
-                % {'p': prefix},
+                'C     The filter of this extended index: its own scan, its own'
+                ' rows.\n'
+                '           IF (GOODHELX(IHEL,FLAV_IDX) .OR. NTRYX(FLAV_IDX)'
+                ' .LT. 20 .OR.USERHEL.NE.-1) THEN',
             'so_matrix_call':
                 '              IF (CROSSUSE.EQ.0) THEN\n'
                 '                CALL %(p)sMATRIX(P ,NHEL(1,IHEL),JC(1),'
@@ -3833,12 +3749,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 'ICUSE(1), FLAV_USE, T)\n'
                 '              ENDIF' % {'p': prefix},
             'so_goodhel_train':
-                'C     Train the SHARED filter through the same map, so GOODHEL'
-                ' always stores\nC     the identity pattern whatever crossing is'
-                ' being evaluated.\n'
-                '              IF (BUFF .NE. 0D0 .AND. GHIDX.NE.0 .AND. .NOT.'
-                '    GOODHEL(GHIDX,FLAV_USE)) THEN\n'
-                '                GOODHEL(GHIDX,FLAV_USE)=.TRUE.\n'
+                '              IF (BUFF .NE. 0D0 .AND. .NOT.'
+                'GOODHELX(IHEL,FLAV_IDX)) THEN\n'
+                '                GOODHELX(IHEL,FLAV_IDX)=.TRUE.\n'
                 '              ENDIF',
             'so_iden_line':
                 'C     Uncrossed: IDEN carries the representative'
@@ -3880,17 +3793,18 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # gets neither -- GET_PDG_FOR_FLAVOR only exists to decode a crossing.
         replace_dict['so_crossing_routines'] = replace_dict['crossing_routines']
         replace_dict['so_pdg_function'] = replace_dict['flavor_pdg_function']
-        # Close the shared filter over the helicity of massive legs, as
-        # fill_crossing_replace_dict does for the default template.
-        hm_decl, hm_train = self.massive_helicity_closure_fortran(
-            matrix_element, 'GOODHEL(%s,FLAV_USE)', 'GHIDX', indent=16)
-        if hm_decl:
-            replace_dict['so_cross_decl'] += '\n' + hm_decl
-            train = replace_dict['so_goodhel_train']
-            assert train.endswith('ENDIF')
-            replace_dict['so_goodhel_train'] = (
-                train[:-len('ENDIF')].rstrip(' ') + hm_train + '\n'
-                + ' ' * 14 + 'ENDIF')
+        # The per-crossing filter (see CROSSING_SNIPPETS smatrix_cross_decl).
+        replace_dict['so_cross_decl'] += '\n' + (
+            'C     The good-helicity filter of an extended index: every crossing\n'
+            'C     is scanned at its own kinematics (see the default template).\n'
+            '      INTEGER NFLAVX, NGOODHELX\n'
+            '      PARAMETER (NFLAVX=NFLAV*%d)\n'
+            '      PARAMETER (NGOODHELX=NCOMB*NFLAVX)\n'
+            '      INTEGER NTRYX(NFLAVX)\n'
+            '      LOGICAL GOODHELX(NCOMB,NFLAVX)\n'
+            '      DATA NTRYX/NFLAVX*0/\n'
+            '      DATA GOODHELX/NGOODHELX*.FALSE./'
+            % len(self.output_crossing_table(matrix_element)))
 
     def fill_crossing_replace_dict_me(self, matrix_element, replace_dict,
                                       use_crossing, proc_id, xgrow_map=None):
@@ -3918,10 +3832,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                     '\nC     flavor index, there is no crossing to decode.',
                 'smatrix_me_cross_decode': '',
                 'me_flav_key': 'IFLAV',
-                'me_goodhel_idx': 'I',
-                'me_goodhel_train_guard': '',
-                'me_goodhel_train_class': '',
-                'smatrix_me_goodhel_or': '',
+                'me_goodhel_test': 'GOODHEL(I,IFLAV,%s)' % pid,
+                'me_goodhel_ntry': 'NTRY(IFLAV,%s)' % pid,
+                'me_goodhel_set':
+                    '                 GOODHEL(I,IFLAV,%s)=.TRUE.' % pid,
                 'me_matrix_args': 'P ,NHEL(1,I),IFLAV,I,AMP2, JAMP2, IVEC',
                 'smatrix_me_iden_line':
                     '    ANS=ANS/DBLE(IDEN)*BROKEN_SYM%s(FLAVOR_FOR_SYM)' % pid,
@@ -4071,13 +3985,20 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 '      INTEGER NHELUSE(NEXTERNAL,NCOMB)\n'
                 '      INTEGER %(cp)sGET_SPINCOL_CROSS\n'
                 '      INTEGER %(cp)sGET_IDENT_CROSS\n'
-                # runtime good-helicity remap: GHIDXA(I) is the identity row that
-                # gates crossed row I (0 = not filterable), precomputed once per
-                # SMATRIX call from the crossing permutation XGPERM/XGSGN.
-                '      INTEGER GHIDXA(NCOMB), XGPERM(NEXTERNAL)\n'
-                '      INTEGER XGSGN(NEXTERNAL), XGDUM, XGH'
+                # The good-helicity filter of a crossed index: every crossing
+                # is scanned at its own kinematics, as madspace does (GOODHEL
+                # stays the base's own, saved for the refine; this one is
+                # rescanned by each job, over its first MAXTRIES calls).
+                # XGX is the crossed index, 0 for the base's own flavors.
+                '      INTEGER NXFLAV, NXGOOD, XGX\n'
+                '      PARAMETER (NXFLAV=%(nx)d, NXGOOD=NCOMB*NXFLAV)\n'
+                '      LOGICAL GOODHELX(NCOMB,NXFLAV)\n'
+                '      INTEGER NTRYX(NXFLAV)\n'
+                '      DATA GOODHELX/NXGOOD*.FALSE./\n'
+                '      DATA NTRYX/NXFLAV*0/'
                 '%(xg_decl)s'
-                ) % {'nflav': nflav, 'cp': cp, 'xg_decl': xg_decl},
+                ) % {'nflav': nflav, 'cp': cp, 'xg_decl': xg_decl,
+                     'nx': max(1, nflav * (len(table) - 1))},
             # Decode the crossing and build the crossed P/NHEL/IC once, before the
             # helicity loop. An unusable crossing (spin*color = 0) has a zero ME.
             'smatrix_me_cross_decode': (
@@ -4094,30 +4015,27 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 '      ENDDO\n'
                 '      CALL %(cp)sAPPLY_CROSSING_TABLE(IFLAV, NCOMB, P, NHEL,\n'
                 '     &   IC0, PUSE, NHELUSE, IC, FLAV_USE)\n'
-                # Precompute the crossed->identity helicity-row map once (the
-                # crossing permutation does not depend on the row), so the shared
-                # GOODHEL filter (keyed by the reduced FLAV_USE) can gate crossed
-                # rows through it just like the standalone. CROSS=0 gives
-                # GHIDXA(I)=I, i.e. the historical unfiltered-flavor behaviour.
-                '      CALL %(cp)sGET_CROSS_PERM(IFLAV, XGPERM, XGSGN, XGDUM)\n'
-                '      DO XGH=1,NCOMB\n'
-                '        CALL %(cp)sCROSS_GHIDX(CROSSUSE, XGPERM, XGSGN,\n'
-                '     &   NHEL(1,XGH), GHIDXA(XGH))\n'
-                '      ENDDO'
+                '      XGX = 0\n'
+                '      IF (CROSSUSE.NE.0) THEN\n'
+                '        XGX = IFLAV - NFLAV\n'
+                '        NTRYX(XGX) = NTRYX(XGX) + 1\n'
+                '      ENDIF'
                 '%(xg_decode)s'
                 ) % {'cp': cp, 'xg_decode': xg_decode},
             'me_flav_key': 'FLAV_USE',
-            # The shared GOODHEL filter (keyed by the reduced flavor) is gated
-            # and trained through the runtime remap GHIDXA: crossed row I is good
-            # iff identity row GHIDXA(I) is. GHIDXA(I)=0 (non-filterable crossing)
-            # forces the row to be computed (.OR. GHIDXA(I).EQ.0) and never
-            # trained (GHIDXA(I).NE.0 guard). The index is clamped with MAX(...,1)
-            # because the gate reads GOODHEL before the .EQ.0 guard and fortran
-            # does not short-circuit .OR.; the clamped value is only ever read
-            # when GHIDXA(I).EQ.0 already forces the branch true, so it is inert.
-            'me_goodhel_idx': 'MAX(GHIDXA(I),1)',
-            'me_goodhel_train_guard': 'GHIDXA(I).NE.0 .AND. ',
-            'smatrix_me_goodhel_or': ' .OR. GHIDXA(I).EQ.0',
+            # Each crossed index has its own filter (GOODHELX), the base's
+            # own flavors keep GOODHEL: MERGE picks the one of this call.
+            'me_goodhel_test':
+                'MERGE(GOODHELX(I,MAX(XGX,1)),GOODHEL(I,FLAV_USE,%s),'
+                'XGX.GT.0)' % pid,
+            'me_goodhel_ntry':
+                'MERGE(NTRYX(MAX(XGX,1)),NTRY(FLAV_USE,%s),XGX.GT.0)' % pid,
+            'me_goodhel_set': (
+                '                 IF (XGX.GT.0) THEN\n'
+                '                   GOODHELX(I,XGX)=.TRUE.\n'
+                '                 ELSE\n'
+                '                   GOODHEL(I,FLAV_USE,%s)=.TRUE.\n'
+                '                 ENDIF' % pid),
             'me_matrix_args':
                 'PUSE ,NHELUSE(1,I),IC,FLAV_USE,I,AMP2, JAMP2, IVEC',
             # Uncrossed keeps IDEN/BROKEN_SYM; crossed rebuilds the denominator
@@ -4141,10 +4059,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             # recycled MATRIX bakes its helicity set; feeding it the crossed
             # momenta PUSE and IC evaluates that set at the crossed kinematics,
             # which is exactly the crossed ME -- no NHEL table (nor a helicity
-            # remap) is needed here. What the set must BE is the catch: IC carries
-            # the crossing's sign flips but nothing carries its slot permutation,
-            # so the set has to cover tau(G_base) as well (see
-            # write_crossgroup_helunion / _crossgroup_base_helsignmap).
+            # remap) is needed here. What the set must BE is the catch: it has
+            # to cover the rows of every crossing that enters it, which
+            # gen_ximprove takes from their own helicity surveys (see
+            # write_crossgroup_shared).
             'smatrix_hel_cross_decl': (
                 '      INTEGER NFLAV\n'
                 '      PARAMETER (NFLAV=%(nflav)d)\n'
@@ -4183,17 +4101,6 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             'me_csym_cross_ok': 'CROSSUSE.EQ.0',
             'hel_csym_cross_ok': 'CROSSUSE.EQ.0',
         })
-        # The shared GOODHEL is trained by the base and by every crossing that
-        # reaches it (a within-group router): close it over the helicity of
-        # massive legs (massive_helicity_closure_fortran).
-        hm_decl, hm_train = self.massive_helicity_closure_fortran(
-            matrix_element, 'GOODHEL(%%s,FLAV_USE,%s)' % pid,
-            'MAX(GHIDXA(I),1)', indent=17)
-        # (the hole ends the GOODHEL line, so it brings its own newline)
-        replace_dict['me_goodhel_train_class'] = \
-            ('\n' + hm_train) if hm_train else ''
-        if hm_decl:
-            replace_dict['smatrix_me_cross_decl'] += '\n' + hm_decl
 
     # (decl, decode, apply) for GET_PDG_FOR_FLAVOR without crossing: FLAV_IDX_IN
     # is a bare flavor index, so there is nothing to permute or conjugate.
@@ -4280,12 +4187,19 @@ C     requested, so the uncrossed path pays nothing for them.
       INTEGER NHELUSE(NEXTERNAL,NCOMB)
       INTEGER ICUSE(NEXTERNAL)
       INTEGER DUMFLAV
-C     GHIDX is the identity row whose shared GOODHEL bit gates the current
-C     crossed row, recomputed at runtime by CROSS_GHIDX (which owns the small
-C     per-crossing GHFILT flag table); XGPERM/XGSGN are the crossing's slot
-C     permutation and NSF signs, fetched once per call (see smatrix_cross_apply).
-      INTEGER GHIDX
-      INTEGER XGPERM(NEXTERNAL), XGSGN(NEXTERNAL), XGDUM""",
+C     The good-helicity filter of an extended index: every crossing is scanned
+C     at its own kinematics, as the C++ backends do, so its rows are the BASE
+C     rows it really evaluates (no assumption on how the base's zeros carry
+C     over: those of a massive leg depend on the frame). GOODHEL/NTRY above
+C     are those of the plain flavors and only the polarised-leg test reads
+C     them here.
+      INTEGER NFLAVX, NGOODHELX
+      PARAMETER (NFLAVX=NFLAV*%(ncross)d)
+      PARAMETER (NGOODHELX=NCOMB*NFLAVX)
+      INTEGER NTRYX(NFLAVX)
+      LOGICAL GOODHELX(NCOMB,NFLAVX)
+      DATA NTRYX/NFLAVX*0/
+      DATA GOODHELX/NGOODHELX*.FALSE./""",
 
         'smatrix_cross_decode': """C     CROSS = (FLAV_IDX-1)/NFLAV is the crossing to apply. IDENUSE is 0 for a
 C     crossing that cannot be applied, whose matrix element is identically zero.
@@ -4296,10 +4210,7 @@ C     crossing that cannot be applied, whose matrix element is identically zero.
         RETURN
       ENDIF""",
 
-        'smatrix_cross_apply': """C     Fetch the crossing's slot permutation / NSF signs once (the good-helicity
-C     gate below reuses them per helicity via CROSS_GHIDX). Cheap, and the
-C     identity crossing returns the identity permutation.
-      CALL %(proc_prefix)sGET_CROSS_PERM(FLAV_IDX, XGPERM, XGSGN, XGDUM)
+        'smatrix_cross_apply': """      IF(USERHEL.EQ.-1) NTRYX(FLAV_IDX)=NTRYX(FLAV_IDX)+1
 C     Apply the crossing ONCE, here, rather than once per helicity: the
 C     momenta and the NSF/NSV flags move into the base slots in one go (the
 C     crossing-table row is a fixed slot permutation, identical for every
@@ -4311,24 +4222,11 @@ C     arrays straight through, exactly as it did before crossings existed.
      &   JC, PUSE, NHELUSE, ICUSE, DUMFLAV)
       ENDIF""",
 
-        'smatrix_goodhel_gate': """C     The good-helicity filter (GOODHEL) is shared by every crossing of a
-C     flavor, but a crossing flips the helicity of the legs that change side,
-C     so a crossed row and its identity counterpart are different rows.
-C     CROSS_GHIDX sends crossed row IHEL to the identity row that gates it
-C     (tau, the in-place sign flip, recomputed from the config); GHIDX=0 means
-C     the row is not filterable (the flip is no bijection on the helicity
-C     table) so its every helicity is computed. For CROSSUSE=0 it returns
-C     IHEL, exactly the historical gate.
-                CALL %(proc_prefix)sCROSS_GHIDX(CROSSUSE, XGPERM, XGSGN,
-     &           NHEL(1,IHEL), GHIDX)
-                IF (GHIDX.EQ.0 .OR. GOODHEL(GHIDX,FLAV_USE) .OR. NTRY(FLAV_USE).LT.20 .OR. USERHEL.NE.-1) THEN""",
+        'smatrix_goodhel_gate': """C     The filter of this extended index: its own scan, its own rows.
+                IF (GOODHELX(IHEL,FLAV_IDX) .OR. NTRYX(FLAV_IDX).LT.20 .OR. USERHEL.NE.-1) THEN""",
 
-        'smatrix_goodhel_train': """C     Train the SHARED filter through the same map: mark the IDENTITY row
-C     GHIDX good, so GOODHEL always stores the identity pattern whatever
-C     crossing is being evaluated. GHIDX=0 (non-filterable crossing) never
-C     trains. For CROSSUSE=0 GHIDX=IHEL, so this is the historical training.
-                    IF (T .NE. 0D0 .AND. GHIDX.NE.0 .AND. .NOT.GOODHEL(GHIDX,FLAV_USE)) THEN
-                        GOODHEL(GHIDX,FLAV_USE)=.TRUE.
+        'smatrix_goodhel_train': """                    IF (T .NE. 0D0 .AND. .NOT.GOODHELX(IHEL,FLAV_IDX)) THEN
+                        GOODHELX(IHEL,FLAV_IDX)=.TRUE.
                     ENDIF""",
 
         'smatrix_matrix_call': """                    IF (CROSSUSE.EQ.0) THEN
@@ -4687,35 +4585,14 @@ C     crossing carried by FLAV_IDX moves across.
             table = crossing_table.CrossingTable(nexternal, ninitial)
         return table
 
-    def crossing_ghfilt(self, matrix_element, table, allow_reverse=True):
-        """Per-row good-helicity filter flag (CROSS_GHIDX): 1 when the row's
-        sign flip in place (tau, what the matrix element evaluates) maps every
-        helicity row of the table onto a row, 0 otherwise or for a
-        placeholder row."""
-        hel_matrix = [tuple(row) for row in
-                      matrix_element.get_helicity_matrix(allow_reverse)]
-        rows = set(hel_matrix)
-        flags = []
-        for K, perm in enumerate(table):
-            if not table.valid(K):
-                flags.append(0)
-                continue
-            ok = all(tuple(perm.SB[b] * hel[b] for b in range(len(hel)))
-                     in rows for hel in hel_matrix)
-            flags.append(1 if ok else 0)
-        return flags
-
     def crossing_table_replace_dict(self, matrix_element, table,
-                                    spincol=None, ghfilt=None):
+                                    spincol=None):
         """The matrix_standalone_crossing_v4.inc holes carrying `table`."""
         fmt = ProcessExporterFortran.format_integer_data_lines
         if spincol is None:
             spincol_part = ProcessExporterFortran.compute_crossing_tables(
                 self, matrix_element)['spincol_part']
             spincol = table.spincol(spincol_part)
-        if ghfilt is None:
-            ghfilt = ProcessExporterFortran.crossing_ghfilt(
-                self, matrix_element, table)
         return {
             'ncross': len(table),
             'xperm_data': fmt('XPERM', table.flat('B', 1)),
@@ -4725,7 +4602,6 @@ C     crossing carried by FLAV_IDX moves across.
             'xvalid_data': fmt('XVALID', [1 if table.valid(K) else 0
                                           for K in range(len(table))]),
             'xspincol_data': fmt('XSPINCOL', spincol),
-            'ghfilt_data': fmt('GHFILT', ghfilt),
         }
 
     def _diagram_topology_signature(self, me):
@@ -10813,8 +10689,17 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         self.set_amp_chunk_replace_keys(replace_dict)
         template = open(pjoin(_file_path,
             'iolibs/template_files/matrix_madevent_ampchunk_v4.inc')).read()
-        args = ('P,NHEL,IC,IVEC,FLAVOR,W,AMP%s' %
-                replace_dict['amp_chunk_mask_arg'])
+        # the crossing's NSF flags: MATRIX only has them (and the HELAS calls
+        # only read them) when the matrix element carries the crossing
+        # machinery -- passing IC without it left an undeclared IC in MATRIX
+        # and the matrix element did not compile (--use_crossing=False)
+        with_ic = bool(replace_dict.get('me_matrix_ic_param'))
+        replace_dict['chunk_ic_arg'] = 'IC,' if with_ic else ''
+        replace_dict['chunk_ic_decl'] = \
+            '      INTEGER IC(NEXTERNAL)\n' if with_ic else ''
+        args = ('P,NHEL,%sIVEC,FLAVOR,W,AMP%s' %
+                (replace_dict['chunk_ic_arg'],
+                 replace_dict['amp_chunk_mask_arg']))
         driver = ['C     The HELAS call sequence lives in matrix%s_origamp<k>.f, one'
                   % proc_id,
                   'C     subroutine per %d statements, so that the amplitudes can be'
@@ -11825,9 +11710,9 @@ c of an explicit polarisation in the process
         dependents).
 
         With helicity recycling BOTH matrix<b>_orig.o (the full matrix element) and
-        matrix<b>_optim.o are shared: gen_ximprove bakes the base optim over
-        G_base U tau(G_base) of the crossing class (see crossgroup_helunion.dat),
-        so it covers every member. Without recycling the single matrix<b>.o is
+        matrix<b>_optim.o are shared: gen_ximprove bakes the base optim over the
+        rows every member's own helicity survey found (see
+        write_crossgroup_shared), so it covers every member. Without recycling the single matrix<b>.o is
         the full, shareable object."""
         objs = ['matrix%d.o' % base_proc_id]
         if self.opt.get('hel_recycling'):
@@ -11865,63 +11750,29 @@ c of an explicit polarisation in the process
             lines.append('madevent: $(XG_ORIGAMP) $(XG_OPTIMAMP)')
         open('crossgroup.mk', 'w').write('\n'.join(lines) + '\n')
 
-    def write_crossgroup_helunion(self, subproc_path):
-        """Write crossgroup_helunion.dat in each crossing BASE directory. Each
-        line is `<base_proc_id> t1 t2 ... tNCOMB`, the base->base helicity SIGN
-        map tau of one dependent crossing (_crossgroup_base_helsignmap): the
-        recycled optim's row h contributes to that crossing iff tau[h] is good for
-        the base. gen_ximprove reads it and bakes the base optim over the union
-        G_base U tau(G_base) over every line, so a single compiled optim serves
-        every member of the class. An all-zero row is the sentinel for a crossing
-        whose tau is not a clean permutation: keep every config.
+    def write_crossgroup_shared(self, subproc_path):
+        """Write crossgroup_shared.dat in each directory holding a matrix
+        element shared by a crossing: one line `<base_proc_id> [dirs...]` per
+        such base, listing the P directories of the other groups that route
+        through it (none for a within-group router, which calls the base in
+        the base's own directory).
 
-        tau and NOT the GHREMAP sigma (_crossed_helicity_configs, permuted=True).
-        sigma is the transform of matrix<b>_orig.f, which takes NHEL at run time
-        and applies the crossing's slot permutation to it; the recycled
-        matrix<b>_optim.f bakes its configs into the HELAS calls and gets only
-        (PUSE, IC), so the sign flips survive and the permutation does not.
-        Baking the sigma union
-        into the optim drops helicity rows the crossed caller needs -- measured
-        -28.5% on the q q~ > q q~ cross section, where the routed t-channel
-        subprocess got 2 of the 4 rows it needs.
-
-        Both crossing flavours feed this: a Track B cross-group dependent (whose
-        base lives in another P directory) and a Track A within-group router
-        (whose base is a matrix element of the same directory). Either way the
-        recycled optim is entered with crossed momenta, and it bakes its helicity
-        configs -- so pruning it to the base's own good-hel biases the crossed
-        caller."""
-        for base_dir, per_proc in self._crossgroup_helperms.items():
-            lines = []
-            for base_proc_id, perms in sorted(per_proc.items()):
-                for pi in perms:
-                    lines.append('%d %s' % (base_proc_id,
-                                            ' '.join(str(x) for x in pi)))
+        gen_ximprove reads it. With helicity recycling, a shared base's
+        matrix<b>_optim.f bakes its helicity rows and is entered with each
+        crossing's momenta and NSF flags, so it must cover the rows of every
+        caller: the base's own good rows, plus those the surveys of the listed
+        directories found -- each crossing scanned at its own kinematics, as
+        madspace scans each crossing (no prediction from the base's zeros:
+        those of a massive leg depend on the frame). It also turns the C-parity
+        de-duplication off for that base, and gates AMP2/JAMP2 on |M|^2 != 0
+        (rows dead for the caller)."""
+        for base_dir, per_proc in self._crossgroup_shared.items():
+            lines = ['%d%s' % (pid, ''.join(' ' + d for d in sorted(dirs)))
+                     for pid, dirs in sorted(per_proc.items())]
             if lines:
                 with open(pjoin(subproc_path, base_dir,
-                                'crossgroup_helunion.dat'), 'w') as f:
+                                'crossgroup_shared.dat'), 'w') as f:
                     f.write('\n'.join(lines) + '\n')
-        # crossgroup_helclass.dat: `<base_proc_id> c1 ... cNCOMB`, the class of
-        # each helicity row of a crossing base with a massive leg with spin
-        # (massive_helicity_classes). G_base comes from the base's own frame,
-        # where a massive leg can have zeros its crossings do not share, so
-        # gen_ximprove closes G_base over each class BEFORE applying tau.
-        for base_dir, per_proc in self._crossgroup_helclass.items():
-            lines = ['%d %s' % (base_proc_id, ' '.join(str(c) for c in classes))
-                     for base_proc_id, classes in sorted(per_proc.items())]
-            if lines:
-                with open(pjoin(subproc_path, base_dir,
-                                'crossgroup_helclass.dat'), 'w') as f:
-                    f.write('\n'.join(lines) + '\n')
-
-    def _record_crossgroup_helclass(self, base_dir, base_proc_id, base_me):
-        """Record the massive-leg helicity classes of a crossing base for
-        crossgroup_helclass.dat (nothing for a base without a massive leg with
-        spin)."""
-        classes = self.massive_helicity_classes(base_me)
-        if classes is not None:
-            self._crossgroup_helclass.setdefault(base_dir, {})[
-                base_proc_id] = classes
 
     def write_crossgroup_parallel_makefile(self, subproc_path):
         """Write SubProcesses/makefile_madevent so every P directory builds with a
@@ -11957,66 +11808,6 @@ c of an explicit polarisation in the process
     #===========================================================================
     # _dsig_crossgroup_fills
     #===========================================================================
-    def _crossed_helicity_configs(self, base_me, cross, signed=True,
-                                  permuted=True):
-        """The base helicity rows transformed by crossing-table row `cross` of
-        `base_me` (madevent_crossing_table). Two transforms, selected by
-        `permuted`, and getting the wrong one is silent:
-
-        * permuted=False -- tau, the good-hel-set remap of the matrix element:
-          tau[hb][b] = base_row[b]*SB[b], a sign flip in place at the base slots
-          whose leg changes side, with NO slot permutation. That is what the
-          crossed SMATRIX evaluates (APPLY_CROSSING_TABLE moves the momenta and
-          the NSF flags, never NHEL), and all that the recycled
-          matrix<b>_optim.f -- whose helicity configs are baked into the HELAS
-          calls and which takes only (PUSE, IC) at run time -- can realise: optim
-          row hb is non-zero when crossed iff tau[hb] is good for the base, so
-          the shared optim's good-hel union is G_base U tau(G_base). tau is
-          always a clean permutation (each leg's states are closed under
-          negation).
-        * permuted=True -- the event helicity LABEL of the crossed process: its
-          input slot k carries the base leg D[k], whose label is copied,
-          crossed[hb][k] = base_row[D[k]] -- with signed=False, the router's
-          digit permutation (the LHE label is the raw NHEL table value,
-          unwgt.f: jpart(7,i)=nhel(i), never NHEL*IC; multiplying the side flip
-          in double-counts it). signed=True multiplies SD[k] in.
-
-        Returns (base_rows, crossed_rows) as tuples in the base NHEL order."""
-        bh = [tuple(x) for x in base_me.get_helicity_matrix()]
-        row = self.madevent_crossing_table(base_me)[cross]
-        nx = len(row.D)
-        if permuted:
-            P, S = row.D, row.SD
-        else:
-            P, S = list(range(nx)), row.SB
-        if not signed:
-            S = [1] * nx
-        crossed = [tuple(r[P[k]] * S[k] for k in range(nx)) for r in bh]
-        return bh, crossed
-
-    def _helicity_row_permutation(self, bh, crossed):
-        """1-based row permutation pi[hb] = the index whose base NHEL row equals
-        the transformed row of hb, or None if the transform is not a clean
-        permutation of the table."""
-        bhpos = {cfg: i for i, cfg in enumerate(bh)}
-        pi = [bhpos.get(c, -1) for c in crossed]
-        if -1 in pi or sorted(pi) != list(range(len(bh))):
-            return None
-        return [p + 1 for p in pi]
-
-    def _crossgroup_base_helsignmap(self, base_me, cross):
-        """1-based base->base helicity permutation tau of a crossing:
-        tau[hb] = the base index whose NHEL row equals the row of hb with the
-        helicity of every crossed leg negated (SGN, no PERM). This is the
-        transform the recycled matrix<b>_optim.f realises when entered with a
-        crossing's (PUSE, IC): optim row hb is non-zero for that crossing iff
-        tau[hb] is good for the base's own process, so the union good-hel the
-        shared optim must be baked over is G_base U tau(G_base). Returns None if
-        not a clean permutation (only reachable if the helicity table is not
-        closed under negating those legs, e.g. a restricted helicity set)."""
-        return self._helicity_row_permutation(
-            *self._crossed_helicity_configs(base_me, cross, permuted=False))
-
     def _crossgroup_configmap(self, dep_me, base_me, cross):
         """1-based map from a dependent diagram number to the base diagram number
         of the same topology under crossing-table row `cross` of the base. The
@@ -14402,49 +14193,18 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             if crossing_applied and \
                'crossing' not in self.proc_characteristic['limitations']:
                 self.proc_characteristic['limitations'].append('crossing')
-            # Record each router's base->base helicity SIGN map tau, exactly as a
-            # cross-group dependent does (crossgroup_helunion.dat). A router sends
-            # its call into the base SMATRIX, and with helicity recycling that is
-            # the RECYCLED matrix<b>_optim.f, whose helicity configs are baked
-            # into the HELAS calls -- it takes no runtime NHEL, so it cannot apply
-            # the crossing's slot PERMUTATION the way matrix<b>_orig.f does
-            # (CR<b>_APPLY_CROSSING_TABLE permutes NHEL along with the momenta).
-            # It can only apply the NSF sign flips, through IC. tau is exactly
-            # that residual transform, and optim row hb is non-zero for the
-            # crossing iff tau[hb] is good for the base -- so the base's own
-            # good-hel SUBSET is not closed under it, and a pruned optim silently
-            # drops part of the routed process's helicity sum. gen_ximprove bakes
-            # the optim over G_base U tau(G_base) from these lines (and skips the
-            # C-parity de-duplication, whose |M|^2 identity is only established
-            # for cross 0), which is what the Track B path already does.
+            # Mark each base a router sends calls to as shared by a crossing
+            # (crossgroup_shared.dat): with helicity recycling the call enters
+            # the base's matrix<b>_optim.f, whose helicity rows are baked, so they
+            # must cover the router's rows too. Those come from the scan itself:
+            # the router calls the base inside this directory's own helicity
+            # survey, which reports the rows it evaluates under the base's index.
             for idep, route in enumerate(crossing_routing or []):
                 if route is None or idep in crossing_bases:
                     continue
                 for (base_index, iflav) in route:
-                    base_me = matrix_elements[base_index]
-                    nflav_base = len(base_me.get_external_flavors_with_iden())
-                    pi = self._crossgroup_base_helsignmap(
-                        base_me, (iflav - 1) // nflav_base)
-                    if pi is None:
-                        # Not a clean permutation (the crossed legs' helicity
-                        # states are not closed under negation).
-                        # matrix<b>_orig.f has a run-time escape for that --
-                        # GHIDX=0 makes it compute every helicity -- but the
-                        # recycled optim is baked and has none, and we cannot say
-                        # which configs the router needs. The all-zero row is the
-                        # keep-every-config sentinel gen_ximprove understands.
-                        pi = [0] * base_me.get_helicity_combinations()
-                    # An identity tau (the crossing moves no leg between the
-                    # initial and the final state) needs no extra config, but the
-                    # line is still written: a non-empty perms list is also what
-                    # marks this matrix element as shared by a crossing, which
-                    # gen_ximprove needs to keep the C-parity de-duplication off.
-                    perms = self._crossgroup_helperms.setdefault(
-                        subprocdir, {}).setdefault(base_index + 1, [])
-                    if pi not in perms:
-                        perms.append(pi)
-                    self._record_crossgroup_helclass(
-                        subprocdir, base_index + 1, base_me)
+                    self._crossgroup_shared.setdefault(
+                        subprocdir, {}).setdefault(base_index + 1, set())
         else:
             crossing_bases, crossing_routing = None, None
         # Per base: {crossing -> (dependent proc_id, dep-diagram -> base-diagram
@@ -14505,28 +14265,13 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                 self.write_crossgroup_mk(crossgroup['base_dir'],
                                          crossgroup['base_proc_id'])
                 self._crossgroup_dirs.append((subprocdir, crossgroup['base_dir']))
-                # Record this dependent's base->base helicity SIGN map(s) tau so
-                # the base optim can be baked over G_base U tau(G_base) and
-                # shared. tau, not the GHREMAP sigma: the recycled optim gets only
-                # (PUSE, IC) and so realises the sign flips without the slot
-                # permutation -- see _crossgroup_base_helsignmap.
-                base_me = crossgroup['base_me']
-                nflav_base = len(base_me.get_external_flavors_with_iden())
-                perms = self._crossgroup_helperms.setdefault(
+                # Record that this directory routes through the base: its own
+                # helicity survey (which calls the base's matrix element at the
+                # crossed kinematics) gives the rows the base's recycled optim
+                # must also cover (crossgroup_shared.dat, read by gen_ximprove).
+                self._crossgroup_shared.setdefault(
                     crossgroup['base_dir'], {}).setdefault(
-                    crossgroup['base_proc_id'], [])
-                for iflav in crossgroup['flav_idx']:
-                    pi = self._crossgroup_base_helsignmap(
-                        base_me, (iflav - 1) // nflav_base)
-                    if pi is None:
-                        # Keep-every-config sentinel, as in the router branch.
-                        pi = [0] * base_me.get_helicity_combinations()
-                    # An identity tau adds no config, but the line still marks
-                    # the base as crossing-shared for gen_ximprove.
-                    if pi not in perms:
-                        perms.append(pi)
-                self._record_crossgroup_helclass(
-                    crossgroup['base_dir'], crossgroup['base_proc_id'], base_me)
+                    crossgroup['base_proc_id'], set()).add(subprocdir)
                 # ncolor for maxflow sizing: crossing preserves the colour basis,
                 # so the dependent's own count is the base's. writer=None writes
                 # nothing, it only returns the flavor/colour bookkeeping.

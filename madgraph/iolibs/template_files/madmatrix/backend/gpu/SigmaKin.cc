@@ -180,9 +180,9 @@ namespace madmatrix
   }
 
   // Reported (Fortran-indexed) helicity code of the base row `base_ihel`
-  // evaluated for this flavor id: the crossed code for a crossed event, the
-  // row+1 otherwise -- the device copy of backend/cpu selected_hel_code (see
-  // there for why the digits are permuted without an NSF flip).
+  // evaluated for this flavor id: the crossed process's own canonical code for
+  // a crossed event, the row+1 otherwise -- the device copy of backend/cpu
+  // selected_hel_code (see there for the convention).
   __device__ inline int
   selected_hel_code( int base_ihel, unsigned int flavor_id )
   {

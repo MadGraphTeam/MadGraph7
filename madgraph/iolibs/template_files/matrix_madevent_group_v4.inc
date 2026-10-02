@@ -193,7 +193,7 @@ C     FLIP table (CSYM_DONE is local to each SMATRIX<i>).
 !   If HEL_PICKED==-1, this means that calls to other matrix<i> where in initialization mode as well for the helicity.
     IF ((ISHEL.EQ.0.and.ISUM_HEL.eq.0).or.(DS_get_dim_status('Helicity').eq.0).or.(HEL_PICKED.eq.-1)) THEN
       DO I=1,NCOMB
-         IF (GOODHEL(%(me_goodhel_idx)s,%(me_flav_key)s,%(proc_id)s) .OR. NTRY(%(me_flav_key)s,%(proc_id)s).LE.MAXTRIES.or.(ISUM_HEL.NE.0)%(smatrix_me_goodhel_or)s) THEN
+         IF (%(me_goodhel_test)s .OR. %(me_goodhel_ntry)s.LE.MAXTRIES.or.(ISUM_HEL.NE.0)) THEN
 C           Fast phase: skip the higher-index C-parity partner (computed once at
 C           the lower index, counted twice below).
             IF (DEDUP.AND.I.GT.FLIP(I)) CYCLE
@@ -273,14 +273,14 @@ C     in init_mode the full-sum branch runs every call, so the two coincide.
 			CALL DS_SET_GRID_MODE('Helicity','init')
           endif
 	  ELSE
-        IF(NTRY(%(me_flav_key)s,%(proc_id)s).LE.MAXTRIES)THEN
+        IF(%(me_goodhel_ntry)s.LE.MAXTRIES)THEN
            DO I=1,NCOMB
 	      IF(init_mode) THEN
                   IF (DABS(TS(I)).GT.ANS*LIMHEL/NCOMB) THEN
                      PRINT *, 'Matrix Element/Good Helicity: %(proc_id)s ', i, 'IMIRROR', IMIRROR
 	          ENDIF
-	      ELSE IF (%(me_goodhel_train_guard)s.NOT.GOODHEL(%(me_goodhel_idx)s,%(me_flav_key)s,%(proc_id)s) .AND. (DABS(TS(I)).GT.ANS*LIMHEL/NCOMB)) THEN
-                 GOODHEL(%(me_goodhel_idx)s,%(me_flav_key)s,%(proc_id)s)=.TRUE.%(me_goodhel_train_class)s
+	      ELSE IF (.NOT.%(me_goodhel_test)s .AND. (DABS(TS(I)).GT.ANS*LIMHEL/NCOMB)) THEN
+%(me_goodhel_set)s
                  NGOOD = NGOOD +1
                  PRINT *,'Added good helicity ',I, 'for process %(proc_id)s flavor ',IFLAV,TS(I)*NCOMB/ANS,' in event ',NTRY(%(me_flav_key)s,%(proc_id)s)
               ENDIF

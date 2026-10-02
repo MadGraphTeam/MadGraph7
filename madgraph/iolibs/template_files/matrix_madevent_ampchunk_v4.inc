@@ -1,4 +1,4 @@
-      SUBROUTINE ORIGAMP%(proc_id)s_%(chunk_id)s(P,NHEL,IC,IVEC,FLAVOR,W,AMP%(amp_chunk_mask_arg)s)
+      SUBROUTINE ORIGAMP%(proc_id)s_%(chunk_id)s(P,NHEL,%(chunk_ic_arg)sIVEC,FLAVOR,W,AMP%(amp_chunk_mask_arg)s)
 C
 %(process_lines)s
 C
@@ -31,8 +31,7 @@ C ARGUMENTS
 C
       REAL*8 P(0:3,NEXTERNAL)
       INTEGER NHEL(NEXTERNAL)
-      INTEGER IC(NEXTERNAL)
-      INTEGER IVEC
+%(chunk_ic_decl)s      INTEGER IVEC
       INTEGER FLAVOR(NEXTERNAL)
       type(aloha) W(NWAVEFUNCS)
       COMPLEX*16 AMP(NGRAPHS)

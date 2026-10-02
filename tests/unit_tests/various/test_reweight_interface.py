@@ -464,14 +464,15 @@ class FakeCrossingModule(object):
 
 
 class TestFoldedCrossingHelicity(unittest.TestCase):
-    """A folded crossed event is evaluated with USERHEL = a row of the BASE
-    helicity table, and the generated SMATRIX applies the crossing as tau
-    (APPLY_CROSSING_TABLE): the momenta move into the base slots, crossed leg
-    B[b] landing in base slot b, but the NHEL slots stay where they are. The
-    row an event needs has therefore entry b = the event's helicity of crossed
-    leg B[b]. The base dictionary read positionally in the crossed leg order
-    (right while the table was permuted, sigma) picked another configuration:
-    for p p > e+ e- j, with q q~ > e+ e- g folded onto g q > e+ e- q, the third
+    """A folded crossed event is evaluated through SMATRIXHEL at an extended
+    flavor index, which takes the CROSSED process's own helicity code (the code
+    its expanded output takes, the madevent output writes and the C++ backends
+    report): CROSS_HELCODE translates it into the base row the crossing
+    evaluates. The dictionary therefore maps the event's helicities, in the
+    crossed leg order, to that code. It used to map them to the base row
+    instead; read positionally in the crossed leg order (right while the table
+    was permuted, sigma), that picked another configuration: for
+    p p > e+ e- j, with q q~ > e+ e- g folded onto g q > e+ e- q, the third
     event of a madevent sample came out exactly 0 ("Invalid matrix element")."""
 
     def setUp(self):
@@ -489,13 +490,17 @@ class TestFoldedCrossingHelicity(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.path)
 
-    def test_crossed_helicity_row_follows_the_crossing(self):
-        base = dict((row, i + 1) for i, row in
-                    enumerate(itertools.product([-1, 1], repeat=5)))
+    def resolve(self, base, pdgs=(21, 2, -11, 11, 2)):
         cross_data = {}
         self.obj.build_cross_resolve(
-            FakeCrossingModule(), ['m0_'], [[21, 2, -11, 11, 2]],
+            FakeCrossingModule(), ['m0_'], [list(pdgs)],
             {'m0_': base}, self.path, False, cross_data, None)
+        return cross_data
+
+    def test_crossed_helicity_code_is_the_crossed_process_own(self):
+        base = dict((row, i + 1) for i, row in
+                    enumerate(itertools.product([-1, 1], repeat=5)))
+        cross_data = self.resolve(base)
 
         # the crossed subprocess is reached, in its own leg order
         tag = ((-2, 2), (-11, 11, 21))
@@ -504,16 +509,32 @@ class TestFoldedCrossingHelicity(unittest.TestCase):
         self.assertEqual(order, ([2, -2], [-11, 11, 21]))
         self.assertEqual((procindex, flav_idx), (1, 2))
 
-        # u(h1) u~(h2) e+(h3) e-(h4) g(h5): base slot 1 (the gluon) holds
-        # crossed leg 5, base slot 2 (the u) crossed leg 1 and base slot 5
-        # (the final u) crossed leg 2, so the row is (h5, h1, h3, h4, h2) --
-        # reading the row the other way round would give (h2, h5, h3, h4, h1)
+        # u(h1) u~(h2) e+(h3) e-(h4) g(h5): every leg has the states (-1, 1),
+        # so the crossed process's own code of h is its position in the
+        # product table -- not the base row (h5, h1, h3, h4, h2) the crossing
+        # evaluates, which CROSS_HELCODE works out in the fortran
+        own = dict((h, i + 1) for i, h in
+                   enumerate(itertools.product([-1, 1], repeat=5)))
         self.assertEqual(len(hel), 32)
         for h in itertools.product([-1, 1], repeat=5):
-            self.assertEqual(hel[h], base[(h[4], h[0], h[2], h[3], h[1])])
-        # the event of the report: the old keying gave the row whose leg 1
-        # and 5 helicities are swapped, which vanishes for this process
-        self.assertNotEqual(hel[(1, -1, 1, -1, -1)], base[(1, -1, 1, -1, -1)])
+            self.assertEqual(hel[h], own[h])
+
+    def test_digits_follow_the_carried_leg_states(self):
+        """A leg's digit runs over the states of the base leg it carries: with
+        a three-state base leg (here leg 3, the e+ slot made massive-vector
+        like) the crossed leg carrying it gets radix 3."""
+        states = [(-1, 1), (-1, 1), (-1, 0, 1), (-1, 1), (-1, 1)]
+        base = dict((row, i + 1) for i, row in
+                    enumerate(itertools.product(*states)))
+        [(_, _, hel, _, _, _)] = list(self.resolve(base).values())[0]
+        # D = (1, 4, 2, 3, 0): crossed leg k carries base leg D[k]
+        D = (1, 4, 2, 3, 0)
+        own = dict((h, i + 1) for i, h in enumerate(
+            itertools.product(*[states[D[k]] for k in range(5)])))
+        self.assertEqual(len(hel), len(own))
+        for row in base:
+            h = tuple(row[D[k]] for k in range(5))
+            self.assertEqual(hel[h], own[h])
 
 
 if __name__ == '__main__':
