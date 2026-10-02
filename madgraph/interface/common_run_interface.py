@@ -663,6 +663,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                        'hwpp_path': './herwigPP',
                        'thepeg_path': './thepeg',
                        'hepmc_path': './hepmc',
+                       'hepmc3_path': None,
                        'madanalysis5_path': './HEPTools/madanalysis5',
                        'pythia-pgs_path':'./pythia-pgs',
                        'delphes_path':'./Delphes',
@@ -4717,15 +4718,17 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         
 
     def get_hepmc_paths(self, hepmc_version):
-        """Installation prefixes where HepMC<hepmc_version> (2 or 3) may be."""
+        """Installation prefixes where HepMC<hepmc_version> (2 or 3) may be:
+        the hepmc3_path (HepMC3) or hepmc_path (HepMC2) option first."""
 
         hepmc_dir = 'hepmc3' if hepmc_version == 3 else 'hepmc'
-        hepmc_paths = [self.options.get('hepmc_path')]
+        option = 'hepmc3_path' if hepmc_version == 3 else 'hepmc_path'
+        hepmc_paths = [self.options.get(option)]
         if self.options.get('heptools_install_dir'):
             hepmc_paths.append(pjoin(self.options['heptools_install_dir'], hepmc_dir))
         if not MADEVENT:
-            if self.options.get('hepmc_path'):
-                hepmc_paths.append(pjoin(MG5DIR, self.options['hepmc_path']))
+            if self.options.get(option):
+                hepmc_paths.append(pjoin(MG5DIR, self.options[option]))
             hepmc_paths.append(pjoin(MG5DIR, 'HEPTools', hepmc_dir))
         return hepmc_paths
 

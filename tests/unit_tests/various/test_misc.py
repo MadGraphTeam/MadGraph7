@@ -379,6 +379,20 @@ class TEST_pythia8_main164(unittest.TestCase):
         self.assertEqual(misc.get_pythia8_hepmc_flags(self.py8, 3),
                          '-I%s/include -L%s/lib -Wl,-rpath,%s/lib -lHepMC3' % ((prefix,)*3))
 
+    def test_hepmc_paths_use_the_option_of_each_version(self):
+        """hepmc3_path is looked at first for HepMC3, hepmc_path for HepMC2"""
+
+        import madgraph.interface.common_run_interface as common_run
+        class Interface(object):
+            options = {'hepmc_path': '/h2', 'hepmc3_path': '/h3',
+                       'heptools_install_dir': '/heptools'}
+        paths3 = common_run.CommonRunCmd.get_hepmc_paths(Interface(), 3)
+        paths2 = common_run.CommonRunCmd.get_hepmc_paths(Interface(), 2)
+        self.assertEqual(paths3[:2], ['/h3', '/heptools/hepmc3'])
+        self.assertEqual(paths2[:2], ['/h2', '/heptools/hepmc'])
+        self.assertNotIn('/h2', paths3)
+        self.assertNotIn('/h3', paths2)
+
     def test_hepmc_file_version(self):
         import gzip
         hepmc2 = os.path.join(self.tmpdir, 'events.hepmc')
