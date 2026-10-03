@@ -1048,12 +1048,12 @@ class TestForceLHEOutput(unittest.TestCase):
     def test_scan_card_survives(self):
         """A scan value is not a valid RunCardMG7 entry: the card is edited
         as text, and only on its output_format line."""
-        self.edit('e_cm = 13000.0', 'e_cm = "scan:[13000, 14000]"')
+        self.edit('ebeam1 = 6500.0', 'ebeam1 = "scan:[6500, 7000]"')
         self.launch.force_lhe_output_if_needed({})
         self.launch.force_lhe_output_if_needed({'madspin': 'ON'})
         self.assertEqual(self.output_format(), 'lhe')
         with open(self.card) as f:
-            self.assertIn('e_cm = "scan:[13000, 14000]"', f.read())
+            self.assertIn('ebeam1 = "scan:[6500, 7000]"', f.read())
 
     def test_missing_output_format_line(self):
         with open(self.card, 'w') as f:

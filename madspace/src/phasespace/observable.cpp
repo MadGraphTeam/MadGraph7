@@ -33,6 +33,34 @@ int observable_type(Observable::ObservableOption observable) {
     }
 }
 
+bool option_mirror_invariant(Observable::ObservableOption observable) {
+    // The initial-state mirror is the rotation by pi about the x axis
+    // (E, px, py, pz) -> (E, px, -py, -pz). Every case is listed so that a new
+    // observable has to declare which side it falls on.
+    switch (observable) {
+    case Observable::obs_py:        // -> -py
+    case Observable::obs_pz:        // -> -pz
+    case Observable::obs_phi:       // atan2(py, px) -> -phi
+    case Observable::obs_theta:     // -> pi - theta
+    case Observable::obs_y:         // -> -y
+    case Observable::obs_eta:       // -> -eta
+    case Observable::obs_delta_eta: // difference of two flipped etas -> -delta_eta
+    case Observable::obs_delta_phi: // difference of two flipped phis -> -delta_phi
+        return false;
+    case Observable::obs_e:
+    case Observable::obs_px:
+    case Observable::obs_mass:
+    case Observable::obs_pt:
+    case Observable::obs_p_mag:
+    case Observable::obs_y_abs:
+    case Observable::obs_eta_abs:
+    case Observable::obs_delta_r: // sqrt(delta_eta^2 + delta_phi^2): both flip
+    case Observable::obs_pair_mass:
+    case Observable::obs_sqrt_s:
+        return true;
+    }
+}
+
 Value build_observable(
     FunctionBuilder& fb,
     Observable::ObservableOption observable,
@@ -228,6 +256,17 @@ std::tuple<nested_vector2<me_int_t>, nested_vector2<me_int_t>, Type> build_indic
 }
 
 } // namespace
+
+bool Observable::mirror_invariant() const {
+    // An observable that matched no particle is the constant 0, whatever the
+    // orientation: a cut naming a particle this process does not have imposes
+    // nothing, and must not stand in the way of the post-cut mirror.
+    if (not_found()) {
+        return true;
+    }
+    return option_mirror_invariant(_observable) &&
+        (!_order_observable || option_mirror_invariant(_order_observable.value()));
+}
 
 const std::vector<int> Observable::jet_pids{1, 2, 3, 4, -1, -2, -3, -4, 21};
 const std::vector<int> Observable::bottom_pids{-5, 5};

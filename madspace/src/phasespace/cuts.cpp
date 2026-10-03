@@ -39,6 +39,18 @@ Cuts::build_function_impl(FunctionBuilder& fb, const NamedVector<Value>& args) c
     return {{"mask", fb.product(weights)}};
 }
 
+std::vector<std::string> Cuts::non_mirror_invariant_cuts() const {
+    std::vector<std::string> names;
+    for (auto& item : _cut_data) {
+        if (item.observable.mirror_invariant()) {
+            continue;
+        }
+        auto name = item.observable.name();
+        names.push_back(name.empty() ? "(unnamed cut)" : name);
+    }
+    return names;
+}
+
 double Cuts::sqrt_s_min() const {
     double sqrt_s_min = 0.;
     for (auto& item : _cut_data) {
