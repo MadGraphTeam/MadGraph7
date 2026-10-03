@@ -354,6 +354,10 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             vertices = []
             propagators = []
             on_shell_propagators = []
+            # $-excluded s-channels: the matrix element vanishes within
+            # bwcutoff widths of the pole, so the phase space flattens its
+            # Breit-Wigner there (see build_topologies in launch.py)
+            dollar_propagators = []
             diagram_edge_names = dict(self.edge_names)
             diag_vertices = diagram.get("vertices")
             # Index-aligned with `propagators`: both are filled in vertex-list
@@ -376,6 +380,8 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                     )
                     if legs[-1].get("onshell"):
                         on_shell_propagators.append(prop_index)
+                    elif legs[-1].get("onshell") is False:
+                        dollar_propagators.append(prop_index)
                 vertices.append(vertex_props)
 
             chan_index = len(self.channels)
@@ -387,6 +393,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                     "propagators": propagators,
                     "vertices": vertices,
                     "on_shell_propagators": on_shell_propagators,
+                    "dollar_propagators": dollar_propagators,
                     "diagrams": [
                         {
                             "diagram": diagram_index,

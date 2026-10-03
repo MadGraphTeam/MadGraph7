@@ -673,6 +673,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                        'hwpp_path': './herwigPP',
                        'thepeg_path': './thepeg',
                        'hepmc_path': './hepmc',
+                       'hepmc3_path': None,
                        'madanalysis5_path': './HEPTools/madanalysis5',
                        'pythia-pgs_path':'./pythia-pgs',
                        'delphes_path':'./Delphes',
@@ -4734,6 +4735,37 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         return self.deal_multiple_categories(completion, formatting)
         
 
+    def get_hepmc_paths(self, hepmc_version):
+        """Installation prefixes where HepMC<hepmc_version> (2 or 3) may be:
+        the hepmc3_path (HepMC3) or hepmc_path (HepMC2) option first."""
+
+        hepmc_dir = 'hepmc3' if hepmc_version == 3 else 'hepmc'
+        option = 'hepmc3_path' if hepmc_version == 3 else 'hepmc_path'
+        hepmc_paths = [self.options.get(option)]
+        if self.options.get('heptools_install_dir'):
+            hepmc_paths.append(pjoin(self.options['heptools_install_dir'], hepmc_dir))
+        if not MADEVENT:
+            if self.options.get(option):
+                hepmc_paths.append(pjoin(MG5DIR, self.options[option]))
+            hepmc_paths.append(pjoin(MG5DIR, 'HEPTools', hepmc_dir))
+        return hepmc_paths
+
+    def get_auto_hepmc_version(self):
+        """The HepMC version of the shower output when it is set to 'auto':
+        HepMC3, unless a tool run on that output can only read HepMC2."""
+
+        if os.path.exists(pjoin(self.me_dir, 'Cards', 'madanalysis5_hadron_card.dat')):
+            logger.info('The shower writes HepMC2 events, the only HepMC version '+
+                        'that MadAnalysis5 reads.')
+            return 2
+        if os.path.exists(pjoin(self.me_dir, 'Cards', 'delphes_card.dat')) and \
+                self.options.get('delphes_path') and \
+                not os.path.exists(pjoin(self.options['delphes_path'], 'DelphesHepMC3')):
+            logger.info('The shower writes HepMC2 events, since this Delphes cannot '+
+                        'read HepMC3 (no DelphesHepMC3).')
+            return 2
+        return 3
+
     def update_make_opts(self, run_card=None):
         """update the make_opts file writing the environmental variables
         stored in make_opts_var"""
@@ -7493,7 +7525,11 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 libs , paths = [], []
                 p = misc.subprocess.Popen([executable, '--libs'], stdout=subprocess.PIPE)
                 stdout, _ = p. communicate()
-                libs = [x[2:] for x in stdout.decode(errors='ignore').split() if x.startswith('-l') or paths.append(x[2:])]
+                # -l<lib> and -L<path> only: the -Wl,-rpath,<path> tokens are not
+                # paths (the shower puts EXTRAPATHS on the library path at run time)
+                tokens = stdout.decode(errors='ignore').split()
+                libs = [x[2:] for x in tokens if x.startswith('-l')]
+                paths = [x[2:] for x in tokens if x.startswith('-L')]
                 
                 # Add additional user-defined compilation flags
                 p = misc.subprocess.Popen([executable, '--config'], stdout=subprocess.PIPE)

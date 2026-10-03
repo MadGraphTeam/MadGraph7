@@ -448,7 +448,57 @@ class TestMECmdRWGT(unittest.TestCase):
             solutions2.append(rwgt_data['NAME_1'])
             self.assertTrue(misc.equal(rwgt_data['NAME_0'], solutions1[i]))
             self.assertTrue(misc.equal(rwgt_data['NAME_1'], solutions2[i]))
-            
+
+    def test_change_process_second_library(self):
+        """a 'change process' reweight evaluates the new hypothesis with a
+        second library (rw_me_2) loaded next to rw_me in the same python
+        process. Both used to be linked as liball_2me: the dynamic loader
+        then handed rw_me_2's f2py module the already-loaded rw_me library,
+        so the parameter change below was silently lost (ratio exactly 1).
+        The 'change process' weight must match the one of a standard
+        reweight (single library) with the same parameter change.
+        """
+        me_cmd = self.get_MEcmd(pjoin(_pickle_path, 'wj_zj.lhe.gz'))
+
+        def run_reweight(cmd_lines):
+            with open(pjoin(self.run_dir, 'Cards', 'reweight_card.dat'), 'w') as ff:
+                ff.write(cmd_lines)
+            if not self.debugging:
+                with misc.stdchannel_redirected(sys.stdout, os.devnull):
+                    me_cmd.run_cmd('reweight run_01 --from_cards')
+            else:
+                me_cmd.run_cmd('reweight run_01 --from_cards')
+
+        # reference: the parameter change evaluated with rw_me alone
+        run_reweight("""
+        launch --rwgt_name=REF
+        set aEWM1 140
+        """)
+        # same processes as the banner, but through the second library
+        run_reweight("""
+        change process p p > w+ j QCD=1, w+ > e+ ve
+        change process p p > z j QCD=1, Z > e+ e- --add
+        launch --rwgt_name=PROC
+        set aEWM1 140
+        """)
+
+        lhe = lhe_parser.EventFile(pjoin(self.run_dir, 'Events', 'run_01',
+                                         'unweighted_events.lhe.gz'))
+        nb_event = 0
+        nb_changed = 0
+        for i, event in enumerate(lhe):
+            nb_event += 1
+            rwgt_data = event.parse_reweight()
+            self.assertIn('REF', rwgt_data)
+            self.assertIn('PROC', rwgt_data)
+            self.assertTrue(misc.equal(rwgt_data['PROC'], rwgt_data['REF'], 4),
+                            '(event %s) PROC %s != REF %s' % (i, rwgt_data['PROC'], rwgt_data['REF']))
+            if not misc.equal(rwgt_data['PROC'], event.wgt, 6):
+                nb_changed += 1
+        self.assertEqual(nb_event, 5000)
+        # aEWM1 132.5 -> 140 changes every matrix element
+        self.assertEqual(nb_changed, nb_event)
+
 
     def old_test_nlo_reweighting_comb(self):
         """check that nlo reweighting is working.

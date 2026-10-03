@@ -2074,6 +2074,10 @@ class PY8Card(ConfigFile):
         # to indicate that he wants to pipe the output. Or /dev/null to turn the
         # output off.
         self.add_param("HEPMCoutput:file", 'hepmc.gz')
+        # HepMC version of that output: hepmc2, hepmc3, or auto (HepMC3 unless
+        # a tool of the run needs HepMC2). Not a Pythia8 setting: MadGraph7
+        # runs a main164 compiled against the corresponding HepMC library.
+        self.add_param("HEPMCoutput:format", 'auto')
 
         # Hidden parameters always written out
         # ====================================
@@ -2156,7 +2160,7 @@ class PY8Card(ConfigFile):
         self.add_param("PartonLevel:FSRinResonances", True, hidden=True, always_write_to_card=False, comment="Do not allow shower to run from decay product of unstable particle")
         self.add_param("ProcessLevel:resonanceDecays", True, hidden=True, always_write_to_card=False, comment="Do not allow unstable particle to decay.")
 
-        # Parameters only needed for main164 type of run (not pythia8/MG5 interface)
+        # Parameters only needed for main164 type of run
         self.add_param("Main:HepMC", True, hidden=True, always_write_to_card=False,
                        comment="""Specify the type of output to be used by the main164 run. """)
         self.add_param("HepMC:output", 'hepmc.gz', hidden=True, always_write_to_card=False,
@@ -2316,7 +2320,7 @@ class PY8Card(ConfigFile):
             else:
                 return ','.join([PY8Card.pythia8_formatting(arg) for arg in value])
             
-    #change of name convention between MG5 old interface and main164 from Pythia8
+    # parameters of the retired MG5aMC_PY8_interface, and their main164 equivalent
     interface_to_164 = {'HEPMCoutput:file': 'HepMC:output',
                         'SysCalc:fullCutVariation': '!SysCalc:fullCutVariation (not supported with 164)',
                         'SysCalc:qCutList': '!SysCalc:qCutList (not supported with 164)',
@@ -2327,8 +2331,7 @@ class PY8Card(ConfigFile):
 
 
     def write(self, output_file, template, read_subrun=False, 
-                    print_only_visible=False, direct_pythia_input=False, add_missing=True,
-                    use_mg5amc_py8_interface=False):
+                    print_only_visible=False, direct_pythia_input=False, add_missing=True):
         """ Write the card to output_file using a specific template.
         > 'print_only_visible' specifies whether or not the hidden parameters
             should be written out if they are in the hidden_params_to_always_write
@@ -2338,11 +2341,9 @@ class PY8Card(ConfigFile):
           or system_set are commented.
         > If 'add_missing' is False then parameters that should be written_out but are absent
         from the template will not be written out.
-        > use_mg5amc_py8_interface is a flag to indicate that the MadGraph7-PY8 interface is used or not
-          if not used some parameters need to be translated from the old convention to the new one
+        > If 'direct_pythia_input' is true, the parameters named after the
+          retired MG5aMC_PY8_interface are translated to their main164 names.
         """
-
-        self.use_mg5amc_py8_interface = use_mg5amc_py8_interface
 
         # First list the visible parameters
         visible_param = [p for p in self if p.lower() not in self.hidden_param
@@ -2485,8 +2486,7 @@ class PY8Card(ConfigFile):
                 # Just copy parameters which don't need to be specified
                 if param.lower() not in self.params_to_never_write:
 
-                    if not use_mg5amc_py8_interface and direct_pythia_input and \
-                                   param in self.interface_to_164:
+                    if direct_pythia_input and param in self.interface_to_164:
                         param_entry = self.interface_to_164[param.strip()]
                         # special case for HepMC needs two flags
                         if 'HepMC:output' == param_entry:
@@ -2496,7 +2496,11 @@ class PY8Card(ConfigFile):
                         output.write(line)
                 else:
                     output.write('! The following parameter was forced to be commented out by MadGraph7.\n')
-                    output.write('! %s'%line)
+                    if param in self:
+                        # record the value in use, not the one of the template
+                        output.write('! %s = %s\n'%(param, PY8Card.pythia8_formatting(self[param])))
+                    else:
+                        output.write('! %s'%line)
                 # Proceed to next line
                 last_pos = tmpl.tell()
                 line     = tmpl.readline()
@@ -2518,8 +2522,7 @@ class PY8Card(ConfigFile):
                 # then they shouldn't be passed to Pythia
                 template = '!%s=%s'
 
-            if not use_mg5amc_py8_interface and direct_pythia_input and \
-                                   param in self.interface_to_164:
+            if direct_pythia_input and param in self.interface_to_164:
                 param_entry = self.interface_to_164[param]
                 # special case for HepMC needs two flags
                 if 'HepMC:output' == param_entry:
@@ -2528,9 +2531,6 @@ class PY8Card(ConfigFile):
                         self['Main:InternalAnalysis'].lower() == 'on':
                         output.write('InternalAnalysis:output = ./djrs.dat\n')
 
-            #elif param in self.interface_to_164.values() and not direct_pythia_input:
-            #    misc.sprint(use_mg5amc_py8_interface, direct_pythia_input,param)
-            #    raise Exception('The parameter %s is not supported in the MadGraph7-PY8 interface. Please use the new interface.'%param_entry
             output.write(template%(param_entry,
                                   value_entry.replace(value,new_value)))
         
@@ -2575,7 +2575,7 @@ class PY8Card(ConfigFile):
                 comment = '\n'.join('! %s'%c for c in 
                           self.comments[param.lower()].split('\n'))
                 output.write(comment+'\n')
-            if not use_mg5amc_py8_interface and param in self.interface_to_164:
+            if param in self.interface_to_164:
                 continue
             output.write('%s=%s\n'%(param,PY8Card.pythia8_formatting(self[param])))
         
@@ -7816,10 +7816,11 @@ class RunCardMG7(RunCard):
         'drbl': ('bottom-lepton-delta_r', 'min'), 'drblmax': ('bottom-lepton-delta_r', 'max'),
         'drjl': ('jet-lepton-delta_r', 'min'), 'drjlmax': ('jet-lepton-delta_r', 'max'),
         'dral': ('photon-lepton-delta_r', 'min'), 'dralmax': ('photon-lepton-delta_r', 'max'),
-        'mmjj': ('jet-mass', 'min'), 'mmjjmax': ('jet-mass', 'max'),
-        'mmbb': ('bottom-mass', 'min'), 'mmbbmax': ('bottom-mass', 'max'),
-        'mmaa': ('photon-mass', 'min'), 'mmaamax': ('photon-mass', 'max'),
-        'mmll': ('lepton-mass', 'min'), 'mmllmax': ('lepton-mass', 'max'),
+        # pair masses: "<grp>-mass" would be the mass of each single object
+        'mmjj': ('jet-pair_mass', 'min'), 'mmjjmax': ('jet-pair_mass', 'max'),
+        'mmbb': ('bottom-pair_mass', 'min'), 'mmbbmax': ('bottom-pair_mass', 'max'),
+        'mmaa': ('photon-pair_mass', 'min'), 'mmaamax': ('photon-pair_mass', 'max'),
+        'mmll': ('lepton-pair_mass', 'min'), 'mmllmax': ('lepton-pair_mass', 'max'),
         'dsqrt_shat': ('sqrt_s', 'min'), 'dsqrt_shatmax': ('sqrt_s', 'max'),
     }
     # built-in LO pdlabel -> LHAPDF set name

@@ -197,6 +197,10 @@ class ShowerCard(banner.RunCard):
                        py8='qed_shower')
         self.add_param("primordialkt", False, comment="T = enable primordial parton k_T  !ONLY FOR PYTHIA8!",
                         py8='primordialkt')
+        # resolved by amcatnlo_run_interface, which passes the HepMC version
+        # and its compilation flags to the shower script via banner.dat
+        self.add_param("hepmc_format", "auto", comment="HepMC version of the output: auto, hepmc2 or hepmc3 !ONLY FOR PYTHIA8!",
+                       py8='hepmc_format', allowed=['auto', 'hepmc2', 'hepmc3'])
 
         # ME correction
         self.add_param('space_shower_me_corrections', False, comment= "MECs for ISR",
@@ -345,6 +349,9 @@ class ShowerCard(banner.RunCard):
         for key in self:
             value = self[key]
             key = key.lower()
+            if key == 'hepmc_format':
+                # passed to the shower script through banner.dat
+                continue
             if isinstance(value, bool): 
                 # deal with special case for pythia:
                 if key in ['ue_enabled', 'hadronize'] and self.shower == 'PYTHIA6':
