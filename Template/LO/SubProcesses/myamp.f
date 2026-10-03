@@ -289,6 +289,13 @@ c
 
       integer        lbw(0:nexternal)  !Use of B.W.
       common /to_BW/ lbw
+c     Breit-Wigner map with off-shell tails (transpole) for a resonance free to
+c     go off shell; a forced (decay chain) or required on-shell one is cut
+c     outside its window, where the tails would only add vetoed points
+      logical bwtail(maxinvar)
+      common/to_bwtail/bwtail
+      logical tsoft(maxinvar)
+      common/to_tsoft/tsoft
 
       double precision real_stot,m1,m2
       common/to_stot/real_stot,m1,m2
@@ -361,6 +368,10 @@ c     Reset variables
       do i=1,nexternal-2
          spole(i)=0
          swidth(i)=0
+      enddo
+      do i=1,maxinvar
+         bwtail(i)=.false.
+         tsoft(i)=.false.
       enddo
       swinlo(:)=0d0
       swinhi(:)=0d0
@@ -446,6 +457,7 @@ c----
                      write(*,*) 'Setting PDF BW',j,nbw,prmass(i,iconfig)
                      spole(j)=prmass(i,iconfig)*prmass(i,iconfig)/stot
                      swidth(j) = prwidth(i,iconfig)*prmass(i,iconfig)/stot ! keep the real width here (important for the jacobian)
+                     bwtail(j) = gforcebw(i,iconfig).ne.1 .and. lbw(nbw).ne.1
                      if (gforcebw(i,iconfig).eq.2)
      $                  call set_bw_window(j,prmass(i,iconfig),
      $                  prwidth_tmp(i,iconfig),stot)
@@ -456,6 +468,7 @@ c              JA 02/13 Only allow BW if xm below M+5*Gamma
                   write(*,*) 'Setting BW',i,nbw,prmass(i,iconfig)
                   spole(-i)=prmass(i,iconfig)*prmass(i,iconfig)/stot
                   swidth(-i) = prwidth(i,iconfig)*prmass(i,iconfig)/stot ! keep the real width here (important for the jacobian)
+                  bwtail(-i) = gforcebw(i,iconfig).ne.1 .and. lbw(nbw).ne.1
                   if (gforcebw(i,iconfig).eq.2)
      $               call set_bw_window(-i,prmass(i,iconfig),
      $               prwidth_tmp(i,iconfig),stot)
@@ -505,6 +518,7 @@ c              endif
             mtot=mtot+xm(i)
 c            write(*,*) 'New mtot',i,mtot,xm(i)
          else                                        !t channel
+            tsoft(-i) = .true.
 c
 c     Check closest to p1
 c
