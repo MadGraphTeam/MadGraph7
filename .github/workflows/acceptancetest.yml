@@ -490,7 +490,7 @@ jobs:
 
   acceptancetest_bundle_9:
     # former jobs, run one after the other: acceptancetest_75
-    #   acceptancetest_emela2 acceptancetest_88
+    #   acceptancetest_emela2 acceptancetest_88 acceptancetest_decay_nlo
     # Each keeps its own steps, run even when an earlier one failed.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
@@ -519,6 +519,16 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_generate_eett_nlo_qcd_noisr -pA -t0 -l INFO
+
+      # ---- acceptancetest_decay_nlo ----
+      # NLO event generation for a colour-neutral 1->n decay (ninitial==1):
+      # z > j j [QCD] must reproduce the e+ e- > z > j j [QCD] jet spectrum in
+      # the Z rest frame (regression guard for the beamless MC@NLO machinery).
+      - name: "acceptancetest_decay_nlo"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_decay_NLO_zjj_matches_production -pA -t0 -l INFO
 
 
   acceptancetest_bundle_10:
