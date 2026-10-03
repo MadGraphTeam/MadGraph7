@@ -104,6 +104,10 @@ public:
     const nested_vector2<me_int_t>& indices() const { return _indices; }
     /// Whether the tuple momenta are summed before evaluation.
     bool sum_momenta() const { return _sum_momenta; }
+    /// Whether the selection is sorted first (e.g. the leading jet). The
+    /// entries of indices() are then positions in the sorted list, not
+    /// particle indices.
+    bool ordered() const { return _order_observable.has_value(); }
     /// Flat particle-index list for a single ungrouped, unsummed selection;
     /// empty otherwise.
     std::vector<std::size_t> simple_observable_indices() const {

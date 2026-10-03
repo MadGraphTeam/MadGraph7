@@ -91,6 +91,14 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # AV - use a custom OneProcessExporter
     oneprocessclass = model_handling.OneProcessExporterMadMatrix
 
+    # Crossing symmetry (extended flavor id) is supported by the madmatrix /
+    # cudacpp backends, cpu/simd and GPU (gated by --use_crossing, default on,
+    # and by the matrix element recording a crossed subprocess: see
+    # ProcessExporterMG7.generate_subprocess_directory). The MG7 (pure-cpp
+    # mg7_v5) exporter keeps supports_crossing=False. When the machinery is off
+    # the generated output is byte-identical to before.
+    supports_crossing = True
+
     # Information to find the template file that we want to include from madgraph
     # you can include additional file from the plugin directory as well
     # AV - use template files from PLUGINDIR instead of MG5DIR and add gpu/mgOnGpuVectors.h
@@ -320,6 +328,13 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
 
     format_name = 'standalone'
+
+    # No subprocesses.json (see finalize): the crossed subprocesses are reached
+    # through the extended flavor id alone, and the crossings recorded inside
+    # a decay chain fold as well (the standalone crossing tables span the
+    # decay leaves).
+    writes_subprocess_info = False
+    folds_decay_chain_crossings = True
 
     # Each P* directory links madmatrix_standalone.mk (which itself includes
     # madmatrix.mk) as its 'makefile'; both have to be rendered in SubProcesses/

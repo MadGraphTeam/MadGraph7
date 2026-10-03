@@ -294,7 +294,9 @@ namespace madmatrix
                       fptype_sv* MEs_ighel2,           // output: [ncomb] the same for the second neppV page (mixed mode only)
                       const cxtype_sv* ghelAllJamp_sv, // input: jamp_sv[nGoodHel][nParity*ncolor] for all good helicities
                       const int nGoodHel,              // input: number of good helicities
-                      const int ievt0 )                // input: first event number in current C++ event page
+                      const int ievt0,                 // input: first event number in current C++ event page
+                      const fptype* csymExtra,         // input: [neppV] 1 where this lane's C-parity de-duplication is on, 0 otherwise (nullptr: off everywhere)
+                      const fptype* csymExtra2 )       // input: [neppV] the same for the second neppV page (mixed mode only)
   {
     static constexpr auto cfsym = SymmetricNormalizedColorMatrix();
     constexpr int nevtB = nParityCS * neppV; // events covered by one call
@@ -348,26 +350,35 @@ namespace madmatrix
     // event by event choice of helicity needs. The color sum is no longer added
     // to allMEs one helicity at a time, so build those running sums here,
     // starting from whatever allMEs already held (fix #435).
+    // Each helicity is worth (1 + csymExtra) copies: with the C-parity
+    // de-duplication on, the good helicity list was halved to one representative
+    // per mirror pair and the dropped partner has an identical |M|^2, so this is
+    // the batch's counterpart of the scalar loop's doubling step in sigmaKin. The
+    // weight is per lane because the crossing it is decided from is a per-event
+    // property. It has to go on the running sum, not just on the total: the
+    // event by event helicity choice samples MEs_ighel as an (unnormalised) CDF.
     using E_ACCESS = HostAccessMatrixElements; // non-trivial access: buffer includes all events
     for( int ip = 0; ip < nParityCS; ip++ )
     {
       fptype_sv* running = ( ip == 0 ? MEs_ighel : MEs_ighel2 );
+      const fptype* extra = ( ip == 0 ? csymExtra : csymExtra2 );
       fptype* MEsp = E_ACCESS::ieventAccessRecord( allMEs, ievt0 + ip * neppV );
       fptype_sv& MEsp_sv = E_ACCESS::kernelAccess( MEsp );
       for( int ieppV = 0; ieppV < neppV; ieppV++ )
       {
+        const fptype weight = ( extra == nullptr ? (fptype)1 : (fptype)1 + extra[ieppV] );
 #ifdef MGONGPU_CPPSIMD
         fptype sum = MEsp_sv[ieppV];
         for( int ighel = 0; ighel < nGoodHel; ighel++ )
         {
-          sum += MEcol[ighel * nevtB + ip * neppV + ieppV];
+          sum += weight * MEcol[ighel * nevtB + ip * neppV + ieppV];
           running[ighel][ieppV] = sum;
         }
 #else
         fptype sum = MEsp_sv;
         for( int ighel = 0; ighel < nGoodHel; ighel++ )
         {
-          sum += MEcol[ighel * nevtB + ip * neppV + ieppV];
+          sum += weight * MEcol[ighel * nevtB + ip * neppV + ieppV];
           running[ighel] = sum;
         }
 #endif

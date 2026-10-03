@@ -21,6 +21,7 @@ allocation per workflow run, and every CI job of that run executes in it:
 | `start_runner` | GitHub | ssh to the cluster, `sbatch` `runner_batch.sh` on the GPU partition, wait until the runner is online (`remote_start_runner.sh`) |
 | `build_madspace` | cluster | build madspace with `ENABLE_CUDA`/`ENABLE_HIP` for the GPU of the node (`build_madspace_gpu.sh`). The build is kept in `$GLOBALSCRATCH/mg7-gpu-ci/cache` and redone only when the madspace sources, the modules or the GPU architecture change |
 | `pp_ttx` | cluster | `generate p p > t t~`, `output mg7`, `device = ["cuda"]` or `["hip"]` in `run_card.toml`, `bin/generate_events -f`, check the cross section in `info.json` (`pp_ttx_mg7.sh`). The logs and cards are uploaded as an artifact, and the cross section is shown in the run summary |
+| `crossing_folding` | cluster | `p p > w+ j`, `p p > j j` and `p p > w+ j j` generated `--use_crossing=True`, each written folded and `--use_crossing=False` expanded, each run on the GPU and on cpu with one seed, then the cpu-made `p p > w+ j` gridpacks on the GPU (`crossing_folding_mg7.sh`): every run must agree with its counterpart (folded = expanded, GPU = cpu, gridpack = its run) |
 | `stop_runner` | cluster | clean up, then create the stop file: `runner_batch.sh` stops the runner and the allocation ends |
 
 To add a CI job, give it `runs-on: [self-hosted, "${{ inputs.runner_label }}"]` and add it
@@ -49,8 +50,11 @@ repository. Hence:
   `job_started_hook.sh`, compares `GITHUB_RUN_ID` with the run the allocation was started for.
   Any other job fails before its first step: another run, a branch, or a fork PR that
   targets the runner label while it is online.
-* **Cluster files come from `main`.** `runner_batch.sh` and `job_started_hook.sh` are copied to
-  the cluster from `main` at every start, so changing them goes through a reviewed PR.
+* **Cluster files come from the ref of the run.** `runner_batch.sh` and `job_started_hook.sh`
+  are copied to the cluster at every start from the ref that may use the environment: `main`,
+  and while the crossing work needs it, `claude/fortran-cross-symmetry-3f13f3`, which only its
+  owner can update (ruleset "Lemaitre4": no creation, update, deletion or force push by anyone
+  else).
 
 ## One-time setup (repository admin)
 

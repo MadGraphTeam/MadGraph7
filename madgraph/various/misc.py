@@ -2655,7 +2655,10 @@ class EasterEgg(object):
         to_add = []
         ff = open(authors, 'r')
         for line in ff:
-            author, fdate = line.split()
+            data = line.split()
+            if len(data) != 2:
+                continue
+            author, fdate = data
             year, month, day = [int(i) for i in fdate.split('-')]
             if (day, month) == date:
                 to_add.append((author, year))

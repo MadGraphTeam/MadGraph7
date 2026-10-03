@@ -12821,6 +12821,36 @@ class TestDecayChainIdenticalFactor(unittest.TestCase):
         self.assertEqual(self.factor(production, decays), 0.25)
 
 
+class TestWithoutCrossing(unittest.TestCase):
+    """MadSpin replays the proc card's generate lines, so a --use_crossing=True
+    there would fold the crossed subprocesses onto their base, where MadSpin's
+    per-flavor lookup cannot reach them. without_crossing pins it off."""
+
+    def test_replayed_flag_is_overridden(self):
+        line = ('generate p p  > w+* j --use_crossing=True ;'
+                'output standalone_fortran X --prefix=int --density=1 ')
+        self.assertEqual(madspin.without_crossing(line),
+                         'generate p p  > w+* j --use_crossing=False;'
+                         'output standalone_fortran X --prefix=int --density=1 ')
+
+    def test_every_process_line_is_pinned(self):
+        line = ('generate t* > b w+ @0 --no_warning=duplicate;'
+                'add process p p > t t~, (t > b w+, w+ > e+ ve) --use_crossing;'
+                'output standalone_fortran Y -f')
+        pinned = madspin.without_crossing(line).split(';')
+        self.assertEqual(pinned[0], 'generate t* > b w+ @0 '
+                         '--no_warning=duplicate --use_crossing=False')
+        self.assertEqual(pinned[1],
+                         'add process p p > t t~, (t > b w+, w+ > e+ ve) '
+                         '--use_crossing=False')
+        # the output line is not a generation and is left as it is
+        self.assertEqual(pinned[2], 'output standalone_fortran Y -f')
+
+    def test_perturbative_line_is_left_alone(self):
+        line = 'add process p p > t t~ [QCD] ;'
+        self.assertEqual(madspin.without_crossing(line), line)
+
+
 class _DensityBasisModelStub(object):
     """The two things _density_basis asks the model for: a particle's spin, and
     name2pdg (through _pure_interference)."""

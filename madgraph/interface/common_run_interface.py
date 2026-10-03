@@ -227,6 +227,16 @@ class CheckValidForCmd(object):
             # handled (and reported) by do_set: never an error
             return
 
+        # the MG5 'set' history a launch copies in leaves this one out
+        # (extended_cmd.non_runtime_set_options): keep the two in step
+        if args[0] == 'zerowidth_tchannel':
+            raise self.InvalidCmd(
+                "'zerowidth_tchannel' is a generation-time option: the T-channel "
+                "width treatment is now baked into the matrix element (ALOHA) at "
+                "'output' time and cannot be changed at run time. Choose it in MG5 "
+                "before output ('set zerowidth_tchannel True|False') and regenerate "
+                "the process.")
+
         if args[0] not in self._set_options + list(self.options.keys()):
             self.help_set()
             raise self.InvalidCmd('Possible options for set are %s' % \
@@ -2381,6 +2391,14 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     for key, value in cross_sections.items():
                         cross_sections[key] = value / (nb_event+1)
                 lhe.remove()
+                if reweight_mode == 'density':
+                    # each job has written the average density matrix of its own
+                    # chunk of events (and named the file after that chunk). Now
+                    # that the chunks are recombined, re-compute the average over
+                    # the full file --each event carries its own <density> tag--
+                    # and clean up the per chunk files.
+                    reweight_interface.combine_density_matrix(new_args[0], all_lhe,
+                        reweight_card=pjoin(self.me_dir, 'Cards', 'reweight_card.dat'))
                 for key in cross_sections:
                     if key == 'orig' or (key.isdigit() and not (key[0] == '2')):
                         continue
@@ -4770,6 +4788,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                 self.make_opts_var['GLOBAL_FLAG'] = run_card['global_flag']     
             self.make_opts_var['ALOHA_FLAG'] = run_card['aloha_flag']     
             self.make_opts_var['MATRIX_FLAG'] = run_card['matrix_flag']
+            self.make_opts_var['AMP_FLAG'] = run_card['amp_flag']
 
         return self.update_make_opts_full(make_opts, self.make_opts_var)
 
@@ -7293,7 +7312,43 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if 'dressed_ee' in  proc_charac['limitations']:
                 if self.run_card['lpp1'] not in [0,1,-1] or self.run_card['lpp1'] not in [0,1,-1]:
                     raise InvalidCmd("dressed lepton mode is not available for this process (see warning associated to the code generation to understand why)")
-            # 
+
+            if 'crossing' in proc_charac['limitations']:
+                # Crossing reuses one matrix element across crossed initial
+                # states. A per-beam property is only ambiguous for a beam whose
+                # incoming leg a crossing moves to another slot of the shared
+                # matrix element (the POL weight reads the base slot's helicity);
+                # an output from before the per-beam tags ('crossing_beams')
+                # counts every beam as moved.
+                lim = proc_charac['limitations']
+                moved = [b for b in (1, 2)
+                         if 'crossing_beams' not in lim or
+                         'crossing_moves_beam%d' % b in lim]
+                pol = [b for b in moved if self.run_card['polbeam%d' % b]]
+                if pol:
+                    raise InvalidCmd(
+                        "Beam polarisation is not compatible with crossing symmetry:\n"
+                        "this process reuses a matrix element across crossed initial\n"
+                        "states that move the leg of beam %s, for which a per-beam\n"
+                        "polarisation is ill-defined. Regenerate the process with\n"
+                        "crossing disabled, e.g.\n"
+                        "  generate <process> --use_crossing=False\n"
+                        "and 'output' again, to run polarised beams."
+                        % ' and '.join(map(str, pol)))
+                eva = [b for b in moved if 'eva' in (self.run_card['pdlabel'],
+                                                     self.run_card['pdlabel%d' % b])]
+                if eva:
+                    raise InvalidCmd(
+                        "The EVA luminosity is not compatible with crossing symmetry:\n"
+                        "this process reuses a matrix element across crossed initial\n"
+                        "states that move the leg of beam %s, for which the per-beam\n"
+                        "EVA density is ill-defined. EVA needs a process generated\n"
+                        "with\n"
+                        "  set group_subprocesses False\n"
+                        "(the ungrouped output shares no matrix element across\n"
+                        "crossings) before 'generate' and 'output'."
+                        % ' and '.join(map(str, eva)))
+            #
             if 'fix_scale' in proc_charac['limitations']:
                 if not self.run_card['fixed_fac_scale'] or not self.run_card['fixed_ren_scale']:
                     raise InvalidCmd("Your model is identified as having not SM running of the strong coupling.\n"+\

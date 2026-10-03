@@ -193,6 +193,7 @@ jobs:
   acceptancetest_mg7_bundle_2:
     # former jobs, run one after the other: acceptancetest_mg7_fd_gauge
     #   acceptancetest_mg7_madspin_mixed_flavor
+    #   acceptancetest_mg7_crossing_folding
     #   acceptancetest_mg7_flavor_grouping
     #   acceptancetest_mg7_vegas_reproducibility
     #   acceptancetest_mg7_gridpack_reproducibility
@@ -228,6 +229,19 @@ jobs:
             cd $GITHUB_WORKSPACE
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_madspin_mixed_flavor_decay_log_summary_mg7 -pA -t0 -l INFO
+
+      # ---- acceptancetest_mg7_crossing_folding ----
+      # output mg7 folds the crossings recorded at generation into
+      # subprocesses.json entries evaluated by their base's library: each entry
+      # must integrate what the expanded output does (rows, helicities, colour
+      # flows, channels), and the folded and expanded cross sections of
+      # p p > w+ j must agree with the same seed.
+      - name: "acceptancetest_mg7_crossing_folding"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py -pA TestMg7FoldedCrossing -t0 -l INFO
 
       # ---- acceptancetest_mg7_flavor_grouping ----
       # p p > l+ l- must give the same cross-section for all four

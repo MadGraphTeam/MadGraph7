@@ -4708,7 +4708,10 @@ class RunCardLO(RunCard):
         self.add_param('aloha_flag', '', include=False, hidden=True, comment='global fortran compilation flag, suggestion: -ffast-math',
                        fct_mod=(self.make_clean, ('Source/DHELAS'),{}))
         self.add_param('matrix_flag', '', include=False, hidden=True, comment='fortran compilation flag	for the	matrix-element files, suggestion -O3',
-                       fct_mod=(self.make_Ptouch, ('matrix'),{}))        
+                       fct_mod=(self.make_Ptouch, ('matrix'),{}))
+        self.add_param('amp_flag', '', include=False, hidden=True, comment='fortran compilation flag for the amplitude (HELAS call) files split out of the matrix elements; it lands after matrix_flag. -O0 buys about 1.5x on their compile but costs 19%% of the run time at g g > t t~ 3g and 61%% at g g > 5g -- the helicity-recycled sequence is not the flat run of external calls the un-recycled one is -- so it is only worth setting when the compile itself is the problem',
+                       fct_mod=(self.make_Ptouch, ('matrix'),{}))
+        self.add_param('amp_chunk_size', 2000, include=False, hidden=True, comment='number of fortran statements per amplitude file when the helicity-recycled matrix element is split up; 0 keeps the unrolled call sequence inline in matrix<i>_optim.f')
         self.add_param('vector_size', 1, include='vector.inc', hidden=True, comment='lockstep size for parralelism run', 
                        fortran_name='WARP_SIZE', fct_mod=(self.reset_simd,(),{}))
         self.add_param('nb_warp', 1, include='vector.inc', hidden=True, comment='number of warp for parralelism run', 
@@ -7813,10 +7816,11 @@ class RunCardMG7(RunCard):
         'drbl': ('bottom-lepton-delta_r', 'min'), 'drblmax': ('bottom-lepton-delta_r', 'max'),
         'drjl': ('jet-lepton-delta_r', 'min'), 'drjlmax': ('jet-lepton-delta_r', 'max'),
         'dral': ('photon-lepton-delta_r', 'min'), 'dralmax': ('photon-lepton-delta_r', 'max'),
-        'mmjj': ('jet-mass', 'min'), 'mmjjmax': ('jet-mass', 'max'),
-        'mmbb': ('bottom-mass', 'min'), 'mmbbmax': ('bottom-mass', 'max'),
-        'mmaa': ('photon-mass', 'min'), 'mmaamax': ('photon-mass', 'max'),
-        'mmll': ('lepton-mass', 'min'), 'mmllmax': ('lepton-mass', 'max'),
+        # pair masses: "<grp>-mass" would be the mass of each single object
+        'mmjj': ('jet-pair_mass', 'min'), 'mmjjmax': ('jet-pair_mass', 'max'),
+        'mmbb': ('bottom-pair_mass', 'min'), 'mmbbmax': ('bottom-pair_mass', 'max'),
+        'mmaa': ('photon-pair_mass', 'min'), 'mmaamax': ('photon-pair_mass', 'max'),
+        'mmll': ('lepton-pair_mass', 'min'), 'mmllmax': ('lepton-pair_mass', 'max'),
         'dsqrt_shat': ('sqrt_s', 'min'), 'dsqrt_shatmax': ('sqrt_s', 'max'),
     }
     # built-in LO pdlabel -> LHAPDF set name

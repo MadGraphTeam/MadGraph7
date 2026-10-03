@@ -42,6 +42,14 @@ C
       INTEGER PDG_FOR_FLAVOR(NEXTERNAL,MAXFLAVOR)
       INTEGER FLAV_IDX
       INTEGER %(proc_prefix)sGET_FLAVOR_INDEX
+C     Signed per-leg PDG of a crossed process (filled by GET_PDG_FOR_FLAVOR),
+C     the base leg each of its legs is fed from, its masses, its phase-space
+C     point and a per-leg loop index; used only by the crossing-symmetry
+C     demonstration below.
+      INTEGER XPDG(NEXTERNAL)
+      INTEGER XPINV(NEXTERNAL), XSGNI(NEXTERNAL), XDUM
+      REAL*8 XPMASS(NEXTERNAL), XP(0:3,NEXTERNAL), XSQRTS
+      INTEGER XCK
 C
       LOGICAL READPS
 C     
@@ -147,6 +155,8 @@ c
       write (*,*) "-----------------------------------------------------------------------------"
       enddo
 
+%(crossing_example)s
+
       if (%(use_density)s)then
          do I=1, MAXFLAVOR
             write (*,*) "==== density matrix for flavor", I,
@@ -213,8 +223,8 @@ c      density matrix helicity index value for particle
 
 c     The value of alphas is 0 to keep the value of the param_card
 c     The value of mu_r2 is set to 0 but it is a dummy variable at tree-level anyway
-       call %(prefix)sGET_DENSITY(P,  POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, 0d0, 0d0, INTER)
-       
+%(density_call)s
+
        SOL=0
        DO I=1, N_COMB
           DO J = I, N_COMB

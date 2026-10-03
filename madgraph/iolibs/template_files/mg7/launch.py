@@ -3054,6 +3054,13 @@ class MG7Cmd(Cmd):
             if error.code not in (None, 0):
                 logger.error(str(error.code))
 
+    def error_handling(self, error, line):
+        """Report the error as any MG5 command does, and remember that a
+        command failed: bin/generate_events then exits with a non-zero status
+        (main), where the report alone left it at 0."""
+        self.command_failed = True
+        return super().error_handling(error, line)
+
     def do_quit(self, line):
         """Leave the mg7 run interface."""
         return super().do_quit(line)
@@ -4064,4 +4071,7 @@ def main() -> None:
     parser.add_argument("-f", action="store_false", dest="ask_edit_cards")
     args = parser.parse_args()
 
-    MG7Cmd().run_cmd("generate_events" if args.ask_edit_cards else "generate_events -f")
+    cmd = MG7Cmd()
+    cmd.run_cmd("generate_events" if args.ask_edit_cards else "generate_events -f")
+    if getattr(cmd, "command_failed", False):
+        sys.exit(1)
