@@ -76,12 +76,13 @@
 #!  If using a relative path, that starts from the mg5 directory
 # pythia8_path = ./HEPTools/pythia8
 
-#! MG5aMC_PY8_interface path
-#!  Defines the path of the C++ driver file that is used by MadGraph7 to
-#!  steer the Pythia8 shower.
-#!  Can be installed directly from within MadGraph7 with the following command:
-#!     MadGraph7> install mg5amc_py8_interface
-# mg5amc_py8_interface_path = ./HEPTools/MG5aMC_PY8_interface 
+#! HepMC3 path
+#!  Defines the path to the HepMC3 installation directory (the one
+#!  containing the lib and include directories), used when Pythia8 writes
+#!  HepMC3 events while it was built against HepMC2 (hepmc_path below is
+#!  the HepMC2 installation).
+#!  If using a relative path, that starts from the mg5 directory
+# hepmc3_path = ./HEPTools/hepmc3
 
 #! Herwig++/Herwig7 paths
 #!  specify here the paths also to HepMC ant ThePEG
