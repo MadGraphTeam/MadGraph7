@@ -597,11 +597,11 @@ c-----------------------
                 xo = 1d0*smin/stot
             endif
             swidth(i) = xo
-            spole(i)= -16d0    ! 1/s^2 map with a 1/s tail
+            spole(i)= -2.0d0    ! 1/s pole
             write(*,*) "Transforming s_hat 1/s ",i,xo, smin, stot
         else if(smin/stot.gt.spole(i)+bwcutoff*max(swidth(i),  spole(i)*small_width_treatment)) then 
             swidth(i) = smin/stot
-            spole(i) = -16d0
+            spole(i) = -2d0
             write(*,*) "Transforming s_hat 1/s ",i,xo, smin, stot
         else    
             write(*,*) "Transforming s_hat BW ",spole(i), max(swidth(i), spole(i)*small_width_treatment)
