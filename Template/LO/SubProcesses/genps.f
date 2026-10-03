@@ -718,6 +718,8 @@ c     part to it, and that the t-channel propagators must always appear
 c     as the first element, that is itree(1,i)
 c************************************************************************
       implicit none
+      logical msoft
+      common/to_msoft/msoft
 c
 c     Constants
 c      
@@ -901,9 +903,11 @@ c
             jac=-3d0
             return
          endif
+         msoft = .true.
          call sample_get_x(wgt,x(nbranch-1+(-ibranch)*2),
      &        nbranch-1+(-ibranch)*2,iconfig,
      &        smin/stot,smax/stot)
+         msoft = .false.
 
          m(ibranch-1)=dsqrt(max(stot*x(nbranch-1+(-ibranch)*2), 0d0))
 c         write(*,*) 'Using s',nbranch-1+(-ibranch)*2

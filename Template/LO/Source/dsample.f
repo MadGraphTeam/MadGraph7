@@ -1225,8 +1225,13 @@ c     dimension sampled with the Breit-Wigner map with 1/s tails (myamp.f)
 
       logical tsoft(maxinvar)
       common/to_tsoft/tsoft
+c     set by one_tree (genps.f) around the sampling of a t-chain invariant
+c     mass, the mass of the system left after the first t-channel emissions
+      logical msoft
+      common/to_msoft/msoft
       double precision tsr, tsrho
       data ddum/maxdim*0d0/
+      data msoft/.false./
       data icount/0/
       data it_warned/0/
 
@@ -1303,6 +1308,17 @@ c     relative position r)
      &     .and. nzoom .le. 0) then
          call tsoft_map((ddum(j)-xbin_min)/(xbin_max-xbin_min),tsr,tsrho)
          ddum(j) = xbin_min + tsr*(xbin_max-xbin_min)
+         wgt = wgt/tsrho
+      endif
+c     t-chain invariant mass: denser sampling near its threshold (r -> 0),
+c     with the density of tsoft_map mirrored. The threshold moves with the
+c     other variables, so the grid cannot follow it: in p p > w+ w+ j j
+c     QCD=0 the large weights sat there (r ~ 0.04), and in VBF H the
+c     extreme weights (up to 2000x) disappear with it
+      if (msoft .and. xbin_max .gt. xbin_min .and. nzoom .le. 0) then
+         call tsoft_map(1d0-(ddum(j)-xbin_min)/(xbin_max-xbin_min),
+     &        tsr,tsrho)
+         ddum(j) = xbin_min + (1d0-tsr)*(xbin_max-xbin_min)
          wgt = wgt/tsrho
       endif
       im = ddum(j)
