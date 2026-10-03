@@ -215,12 +215,12 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     }
 
     // A cut on the invariant mass of a pair is also a statement about the
-    // phase space, not only about which events to keep afterwards. Where the
-    // pair is exactly what a propagator decays into, the cut is a floor on
-    // that propagator's invariant and can be handed straight to the sampler,
-    // which is the difference between generating the region the cut allows
-    // and throwing away nearly everything generated. The floors are collected
-    // here and applied as the decay chain is walked below.
+    // phase space, not only about which events to keep afterwards. Wherever
+    // both members of the pair come out of the same propagator, the cut is a
+    // floor on that propagator's invariant and can be handed straight to the
+    // sampler, which is the difference between generating the region the cut
+    // allows and throwing away nearly everything generated. The floors are
+    // collected here and applied as the decay chain is walked below.
     constexpr std::size_t no_leaf = static_cast<std::size_t>(-1);
     // Cuts indexes its per-particle tables by outgoing position, counting two
     // incoming particles. A decay topology has one, so the tables cannot be
@@ -255,21 +255,55 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             }
             std::sort(leaves.begin(), leaves.end());
         }
-        // e_min is the propagator's own floor on its invariant mass, and
-        // update_mass_min_max already carries it into every s_min the sampler
-        // uses and into what the parents subtract, so raising it here is all
-        // that is needed for the cut to shape the integration.
-        if (!m_inv_min.empty()) {
-            for (std::size_t d = 0; d < node_leaves.size(); ++d) {
-                const auto& leaves = node_leaves.at(d);
-                if (leaves.size() != 2 || leaves.at(1) >= m_inv_min.size()) {
+    }
+    // The floor a set of final-state particles inherits from the pair cuts.
+    // The pair contributes at least its cut and every other particle at least
+    // its mass, and for future-pointing momenta the invariant mass of a sum is
+    // at least the sum of the invariant masses, so
+    //     m(leaves) >= m_inv_min(i, j) + sum_{k != i, j} m_k
+    // for every cut pair (i, j) among the leaves. Every pair m_inv_min reports
+    // must satisfy its cut (see Cuts::m_inv_min), so the largest of these
+    // bounds holds. A node whose leaves are exactly the pair gets the cut.
+    const auto& out_masses = _topology.outgoing_masses();
+    auto pair_floor = [&](const std::vector<std::size_t>& leaves) {
+        double floor = 0.;
+        double leaf_mass_sum = 0.;
+        for (std::size_t leaf : leaves) {
+            leaf_mass_sum += out_masses.at(leaf);
+        }
+        for (std::size_t a = 0; a < leaves.size(); ++a) {
+            std::size_t i = leaves.at(a);
+            if (i >= m_inv_min.size()) {
+                continue;
+            }
+            for (std::size_t b = a + 1; b < leaves.size(); ++b) {
+                std::size_t j = leaves.at(b);
+                if (j >= m_inv_min.size()) {
                     continue;
                 }
-                double cut = m_inv_min.at(leaves.at(0)).at(leaves.at(1));
-                if (cut > 0.) {
-                    _topology.raise_decay_e_min(d, cut);
+                double cut = m_inv_min.at(i).at(j);
+                if (cut <= 0.) {
+                    continue;
                 }
+                floor = std::max(
+                    floor, cut + leaf_mass_sum - out_masses.at(i) - out_masses.at(j)
+                );
             }
+        }
+        return floor;
+    };
+    // e_min is the propagator's own floor on its invariant mass, and
+    // update_mass_min_max already carries it into every s_min the sampler uses
+    // and into what the parents subtract, so raising it here is all that is
+    // needed for the cut to shape the integration. The root is left to the
+    // luminosity mapping below.
+    for (std::size_t d = 1; d < node_leaves.size(); ++d) {
+        if (_topology.decays().at(d).child_indices.empty()) {
+            continue;
+        }
+        double floor = pair_floor(node_leaves.at(d));
+        if (floor > 0.) {
+            _topology.raise_decay_e_min(d, floor);
         }
     }
 
@@ -280,36 +314,11 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     // nearly all of it away; the Invariant's Jacobian follows the range it is
     // given, so the integral is unchanged and only the efficiency moves.
     //
-    // Two sources of such a floor:
-    //   * a cut on sqrt(s_hat) itself, and
-    //   * a two-particle invariant mass cut that no single propagator carries,
-    //     which still bounds the total: the pair contributes at least the cut
-    //     and everything else at least its mass. The smallest such bound over
-    //     the pairs the cut names is the one that holds whether the cut has to
-    //     be satisfied by all of them or by only one, so it is the safe choice.
-    double sqrt_s_hat_min = _cuts.sqrt_s_min();
-    {
-        const auto& masses = _topology.outgoing_masses();
-        double pair_floor = 0.;
-        for (std::size_t i = 0; i < m_inv_min.size(); ++i) {
-            for (std::size_t j = i + 1; j < m_inv_min.at(i).size(); ++j) {
-                double cut = m_inv_min.at(i).at(j);
-                if (cut <= 0.) {
-                    continue;
-                }
-                double floor = cut;
-                for (std::size_t k = 0; k < masses.size(); ++k) {
-                    if (k != i && k != j) {
-                        floor += masses.at(k);
-                    }
-                }
-                if (pair_floor == 0. || floor < pair_floor) {
-                    pair_floor = floor;
-                }
-            }
-        }
-        sqrt_s_hat_min = std::max(sqrt_s_hat_min, pair_floor);
-    }
+    // Two sources of such a floor: a cut on sqrt(s_hat) itself, and the pair
+    // cuts, every one of which bounds the total exactly as it bounds a
+    // propagator above.
+    double sqrt_s_hat_min =
+        std::max(_cuts.sqrt_s_min(), pair_floor(node_leaves.at(0)));
     // Only the luminosity mapping samples the root virtuality. A leptonic
     // collision has s_hat fixed at s_lab and chili reconstructs it from the
     // momenta it has already generated, so in neither case is there a range to
