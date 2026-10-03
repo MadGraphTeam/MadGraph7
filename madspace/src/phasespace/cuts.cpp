@@ -39,6 +39,21 @@ Cuts::build_function_impl(FunctionBuilder& fb, const NamedVector<Value>& args) c
     return {{"mask", fb.product(weights)}};
 }
 
+namespace {
+
+// The accessors below hand bounds to the phase-space mappings, which apply each
+// one as a hard floor on a fixed particle or pair. That is only right for a
+// bound every selected object has to satisfy: an ordered selection ("the
+// leading jet") names a rank rather than a particle, and with CutMode::any a
+// single object passing is enough, so neither says anything about a given
+// particle unless the selection holds exactly one. Such cuts stay filters.
+bool binds_each_object(const Cuts::CutItem& item, std::size_t object_count) {
+    return !item.observable.ordered() &&
+        (item.mode == Cuts::CutMode::all || object_count == 1);
+}
+
+} // namespace
+
 double Cuts::sqrt_s_min() const {
     double sqrt_s_min = 0.;
     for (auto& item : _cut_data) {
@@ -63,7 +78,11 @@ std::vector<double> Cuts::eta_max() const {
         } else {
             continue;
         }
-        for (std::size_t index : item.observable.simple_observable_indices()) {
+        auto indices = item.observable.simple_observable_indices();
+        if (!binds_each_object(item, indices.size())) {
+            continue;
+        }
+        for (std::size_t index : indices) {
             if (index < 2) {
                 continue;
             }
@@ -82,7 +101,11 @@ std::vector<double> Cuts::pt_min() const {
         if (item.observable.observable() != Observable::obs_pt) {
             continue;
         }
-        for (std::size_t index : item.observable.simple_observable_indices()) {
+        auto indices = item.observable.simple_observable_indices();
+        if (!binds_each_object(item, indices.size())) {
+            continue;
+        }
+        for (std::size_t index : indices) {
             if (index < 2) {
                 continue;
             }
@@ -106,7 +129,11 @@ std::vector<std::vector<double>> Cuts::pairwise_min(
         if (item.observable.observable() != obs) {
             continue;
         }
-        for (auto [i, j] : pairs(item.observable)) {
+        auto item_pairs = pairs(item.observable);
+        if (!binds_each_object(item, item_pairs.size())) {
+            continue;
+        }
+        for (auto [i, j] : item_pairs) {
             if (i < 2 || j < 2) {
                 continue;
             }
@@ -122,15 +149,24 @@ std::vector<std::vector<double>> Cuts::pairwise_min(
 }
 
 std::vector<std::vector<double>> Cuts::m_inv_min() const {
-    // Two ways of asking for the same thing. "mass" with summed momenta is
-    // the mass of the whole selection, which happens to be a pair only when
-    // the selection holds exactly two particles; obs_pair_mass is the genuine
-    // pairwise cut and covers every pair a group can form.
+    // Three ways of asking for the same thing. "mass" with summed momenta is
+    // the mass of the summed selection: with one group ("lepton-sum-mass")
+    // that is a pair only when the group holds exactly two particles, with two
+    // groups ("jet-jet-sum-mass") it is one pair per combination the groups
+    // can form. obs_pair_mass is the genuine pairwise cut and covers every
+    // pair a group can form.
     auto summed = pairwise_min(Observable::obs_mass, [](const Observable& o) {
         std::vector<std::pair<std::size_t, std::size_t>> pairs;
         const auto& idx = o.indices();
-        if (o.sum_momenta() && idx.size() == 1 && idx.at(0).size() == 2) {
+        if (!o.sum_momenta()) {
+            return pairs;
+        }
+        if (idx.size() == 1 && idx.at(0).size() == 2) {
             pairs.emplace_back(idx.at(0).at(0), idx.at(0).at(1));
+        } else if (idx.size() == 2) {
+            for (std::size_t k = 0; k < idx.at(0).size(); ++k) {
+                pairs.emplace_back(idx.at(0).at(k), idx.at(1).at(k));
+            }
         }
         return pairs;
     });

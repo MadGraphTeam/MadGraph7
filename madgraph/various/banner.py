@@ -7813,10 +7813,11 @@ class RunCardMG7(RunCard):
         'drbl': ('bottom-lepton-delta_r', 'min'), 'drblmax': ('bottom-lepton-delta_r', 'max'),
         'drjl': ('jet-lepton-delta_r', 'min'), 'drjlmax': ('jet-lepton-delta_r', 'max'),
         'dral': ('photon-lepton-delta_r', 'min'), 'dralmax': ('photon-lepton-delta_r', 'max'),
-        'mmjj': ('jet-mass', 'min'), 'mmjjmax': ('jet-mass', 'max'),
-        'mmbb': ('bottom-mass', 'min'), 'mmbbmax': ('bottom-mass', 'max'),
-        'mmaa': ('photon-mass', 'min'), 'mmaamax': ('photon-mass', 'max'),
-        'mmll': ('lepton-mass', 'min'), 'mmllmax': ('lepton-mass', 'max'),
+        # pair masses: "<grp>-mass" would be the mass of each single object
+        'mmjj': ('jet-pair_mass', 'min'), 'mmjjmax': ('jet-pair_mass', 'max'),
+        'mmbb': ('bottom-pair_mass', 'min'), 'mmbbmax': ('bottom-pair_mass', 'max'),
+        'mmaa': ('photon-pair_mass', 'min'), 'mmaamax': ('photon-pair_mass', 'max'),
+        'mmll': ('lepton-pair_mass', 'min'), 'mmllmax': ('lepton-pair_mass', 'max'),
         'dsqrt_shat': ('sqrt_s', 'min'), 'dsqrt_shatmax': ('sqrt_s', 'max'),
     }
     # built-in LO pdlabel -> LHAPDF set name

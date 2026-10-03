@@ -68,7 +68,7 @@ Legend for the mapping:
 
 MG7 expresses cuts as `<group>[-<group>]-<observable>.{min,max}` over the groups
 `jet, bottom, lepton, missing, photon` and observables `pt, eta_abs, delta_r,
-mass, sqrt_s`. Mapping of the common LO cuts:
+mass, pair_mass, sqrt_s`. Mapping of the common LO cuts:
 
 | LO parameter(s) | MG7 target | class |
 |---|---|---|
@@ -76,7 +76,8 @@ mass, sqrt_s`. Mapping of the common LO cuts:
 | `misset`/`missetmax` | `missing-pt.min/.max` | [=] |
 | `etaj`, `etab`, `etaa`, `etal` | `<grp>-eta_abs.max` | [~] (LO η-max → eta_abs.max) |
 | `drjj`, `drbb`, `drll`, `draa`, `drbj`, `draj`, `drjl`, `drab`, `drbl`, `dral` (+ `*max`) | `<grp>[-<grp>]-delta_r.min/.max` | [=] |
-| `mmjj`, `mmbb`, `mmaa`, `mmll` (+ `*max`) | `<grp>-mass.min/.max` | [=] |
+| `mmjj`, `mmbb`, `mmaa` (+ `*max`) | `<grp>-pair_mass.min/.max` | [=] |
+| `mmll` (+ `mmllmax`) | `lepton-pair_mass.min/.max` | [~] (LO: same-flavour opposite-sign pairs only; MG7: every lepton pair) |
 | `dsqrt_shat`/`dsqrt_shatmax` | `sqrt_s.min/.max` | [=] |
 
 Cuts that are **not representable** in the current MG7 cut engine ([x] unless noted):

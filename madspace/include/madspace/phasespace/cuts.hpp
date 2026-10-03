@@ -24,7 +24,9 @@ namespace madspace {
  * outgoing particle, with index 0 the first outgoing particle and the two
  * beams excluded. `m_inv_min()` and `dr_min()` are symmetric `n_out * n_out`
  * matrices indexed by outgoing-particle pair. A bound of `0`, or infinity for
- * `eta_max()`, means the cut is inactive.
+ * `eta_max()`, means the cut is inactive. Only bounds that every selected
+ * object must satisfy are reported: an ordered selection (a rank, not a
+ * particle) or a CutMode::any cut over several objects stays a filter.
  *
  * `batch` is the leading batch dimension. `n_particles` counts the incoming and
  * outgoing particles.
