@@ -625,10 +625,21 @@ non-interactive use, for example:</p>
 </div>
 <p>Run <code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">madspace/install.py</span> <span class="pre">--help</span></code> for the full list of options. The options of
 the last build are remembered, so <code class="docutils literal notranslate"><span class="pre">--source</span> <span class="pre">--system</span> <span class="pre">-y</span></code> rebuilds with the same
-settings.</p>
+settings. A flag given on the command line still wins over them, per option, so
+<code class="docutils literal notranslate"><span class="pre">--source</span> <span class="pre">--system</span> <span class="pre">-y</span> <span class="pre">--cuda</span> <span class="pre">--cuda-arch</span> <span class="pre">80</span></code> rebuilds the remembered configuration
+with CUDA added. They are stored in <code class="docutils literal notranslate"><span class="pre">madspace/install_settings.json</span></code>; delete it to go
+back to the defaults.</p>
 <p>The build directory <code class="docutils literal notranslate"><span class="pre">madspace/build</span></code> is kept between builds, so you can run <code class="docutils literal notranslate"><span class="pre">make</span></code>
 there directly for faster incremental builds during development. Note that this does not
 update the Python module itself, for which the install command has to be run again.</p>
+<p>Rebuilds are therefore incremental. <code class="docutils literal notranslate"><span class="pre">--clean</span></code> deletes <code class="docutils literal notranslate"><span class="pre">madspace/build</span></code> and
+<code class="docutils literal notranslate"><span class="pre">madspace/install</span></code> first, for when that build tree is in the way – after a toolchain
+change, say, or a half-finished build – at the price of recompiling MadSpace and its
+vendored OpenBLAS from scratch:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="n">madspace</span><span class="o">/</span><span class="n">install</span><span class="o">.</span><span class="n">py</span> <span class="o">--</span><span class="n">source</span> <span class="o">--</span><span class="n">system</span> <span class="o">--</span><span class="n">clean</span>
+</pre></div>
+</div>
+<p>The remembered options are kept: they are stored outside both directories.</p>
 </section>
 <section id="installation-for-madgraph7">
 <h2>Installation for MadGraph7<a class="headerlink" href="#installation-for-madgraph7" title="Link to this heading">¶</a></h2>
