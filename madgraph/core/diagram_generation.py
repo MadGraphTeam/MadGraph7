@@ -2527,7 +2527,11 @@ class MultiProcess(base_objects.PhysicsObject):
                     if abs(id) in model.get('merged_particles'):
                         for f in islegs_orig[beamid]['flavor']:
                             # multi-particle store the flavor for many id -> need to filter the one we are looking at
-                            if abs(f) in model.get('merged_particles')[abs(id)]:
+                            # (same merged group AND same particle/antiparticle
+                            # sign: in `define qa = u d~` the u belongs to the
+                            # Q leg and the d~ to the Qx one)
+                            if abs(f) in model.get('merged_particles')[abs(id)] \
+                                    and f * id > 0:
                                 flavor.append(-1*f)
                     return flavor
 
@@ -2555,8 +2559,25 @@ class MultiProcess(base_objects.PhysicsObject):
 
             red_fsidlist = set()
 
+            def get_fs_flavor(id, fsleg):
+                flavor = []
+                if abs(id) in model.get('merged_particles'):
+                    for f in fsleg['flavor']:
+                        # multi-particle store the flavor for many id -> need to filter the one we are looking at
+                        # (same merged group AND same particle/antiparticle sign)
+                        if abs(f) in model.get('merged_particles')[abs(id)] \
+                                and f * id > 0:
+                            flavor.append(f)
+                return flavor
+
             for prod in itertools.product(*fsids):
-                tag = zip(prod, polids)
+                # The per-leg flavor restriction is part of the tag: with
+                # `define l+ = u d~` / `define l- = u~ d`, (Q, Qx) restricted to
+                # (u, u~) and (Qx, Q) restricted to (d~, d) are NOT permutations
+                # of each other even though their merged ids are.
+                fsflavors = [tuple(sorted(get_fs_flavor(id, fsleg)))
+                             for id, fsleg in zip(prod, fslegs)]
+                tag = zip(prod, polids, fsflavors)
                 tag = sorted(tag)
                 # Remove double counting between final states
                 if tuple(tag) in red_fsidlist:
@@ -2567,18 +2588,10 @@ class MultiProcess(base_objects.PhysicsObject):
                 leg_list = [copy.copy(leg) for leg in islegs]
                 
                 if not fstags: 
-                    def get_flavor(id, fsleg):
-                        flavor = []
-                        if abs(id) in model.get('merged_particles'):
-                            for f in fsleg['flavor']:
-                                # multi-particle store the flavor for many id -> need to filter the one we are looking at
-                                if abs(f) in model.get('merged_particles')[abs(id)]:
-                                    flavor.append(f)
-                        return flavor
                     leg_list.extend([\
                             base_objects.Leg({'id':id, 'state': True,
                                               'polarization': fsleg['polarization'],
-                                              'flavor': get_flavor(id, fsleg),
+                                              'flavor': get_fs_flavor(id, fsleg),
                                               'onium': fsleg['onium'],
                                               'offshell': fsleg['offshell']}) \
                             for id, fsleg in zip(prod, fslegs)])
@@ -2644,13 +2657,23 @@ class MultiProcess(base_objects.PhysicsObject):
                     mirror_proc = \
                               array.array('i', [fast_proc[1], fast_proc[0]] + \
                                           list(fast_proc[2:]))
-                    try:
-                        mirror_amp = \
-                               amplitudes[non_permuted_procs.index(mirror_proc)]
-                    except Exception:
-                        # Didn't find any mirror process
-                        pass
-                    else:
+                    # The mirror flag means "the same matrix element with
+                    # the beams swapped", so the per-leg flavor restrictions
+                    # of the two beams must swap as well: with `define qa =
+                    # u d~` and `define qb = u~ d`, the mirror of Q Qx > z
+                    # [u u~] is u~ u, not the requested Qx Q > z [d~ d].
+                    mirror_amp = None
+                    for iproc, other_proc in enumerate(non_permuted_procs):
+                        if other_proc != mirror_proc:
+                            continue
+                        other_legs = amplitudes[iproc].get('process').get('legs')
+                        swapped = [other_legs[1], other_legs[0]] + \
+                                  list(other_legs[2:])
+                        if all(sorted(l1.get('flavor')) == sorted(l2.get('flavor'))
+                               for l1, l2 in zip(legs, swapped)):
+                            mirror_amp = amplitudes[iproc]
+                            break
+                    if mirror_amp is not None:
                         # Mirror process found
                         mirror_amp.set('has_mirror_process', True)
                         logger.info("Process %s added to mirror process %s" % \
