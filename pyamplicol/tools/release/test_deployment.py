@@ -151,6 +151,63 @@ for name, required_version in expected.items():
         or archive_info.get("hashes", {}).get("sha256") == expected_hash
     ), name
 
+# Finish CLI children before this process imports Symbolica through pyamplicol.
+# A live parent Symbolica session would consume the restricted thread allowance
+# also needed by those children.
+with tempfile.TemporaryDirectory(prefix="pyamplicol-profiling-campaign-") as raw:
+    campaign = Path(raw).resolve() / "campaign"
+    subprocess.run(
+        (
+            sys.executable,
+            "-I",
+            "-m",
+            "pyamplicol",
+            "profiling-campaign",
+            "copy",
+            str(campaign),
+            "--force",
+        ),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    launcher = campaign / "steer_performance_campaign.py"
+    assert launcher.is_file()
+    assert not (campaign / "pyAmpliCol.pdf").exists()
+    dry_run_command = (
+        sys.executable,
+        "-I",
+        str(launcher),
+        "run",
+        "--dry-run",
+        "--table",
+        "scalar_contact",
+        "--multiplicity",
+        "2",
+        "--generation-engine",
+        "compiled",
+        "--no-color",
+    )
+    dry_run = subprocess.run(
+        dry_run_command,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert dry_run.returncode == 0, (dry_run.stdout, dry_run.stderr)
+    assert "compact retention (default)" in dry_run.stdout
+    retained_dry_run = subprocess.run(
+        (*dry_run_command, "--retain-workspaces"),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert retained_dry_run.returncode == 0, (
+        retained_dry_run.stdout,
+        retained_dry_run.stderr,
+    )
+    assert "full debug workspaces (--retain-workspaces)" in retained_dry_run.stdout
+
 import pyamplicol
 import pyamplicol._rusticol
 from pyamplicol._sdk.config import load_sdk_info
@@ -213,59 +270,6 @@ for relative in (
 ):
     assert package.joinpath(*relative).is_file(), relative
 
-with tempfile.TemporaryDirectory(prefix="pyamplicol-profiling-campaign-") as raw:
-    campaign = Path(raw).resolve() / "campaign"
-    subprocess.run(
-        (
-            sys.executable,
-            "-I",
-            "-m",
-            "pyamplicol",
-            "profiling-campaign",
-            "copy",
-            str(campaign),
-            "--force",
-        ),
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    launcher = campaign / "steer_performance_campaign.py"
-    assert launcher.is_file()
-    assert not (campaign / "pyAmpliCol.pdf").exists()
-    dry_run_command = (
-        sys.executable,
-        "-I",
-        str(launcher),
-        "run",
-        "--dry-run",
-        "--table",
-        "scalar_contact",
-        "--multiplicity",
-        "2",
-        "--generation-engine",
-        "compiled",
-        "--no-color",
-    )
-    dry_run = subprocess.run(
-        dry_run_command,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert dry_run.returncode == 0, (dry_run.stdout, dry_run.stderr)
-    assert "compact retention (default)" in dry_run.stdout
-    retained_dry_run = subprocess.run(
-        (*dry_run_command, "--retain-workspaces"),
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert retained_dry_run.returncode == 0, (
-        retained_dry_run.stdout,
-        retained_dry_run.stderr,
-    )
-    assert "full debug workspaces (--retain-workspaces)" in retained_dry_run.stdout
 print(json.dumps({"mode": mode, "version": version, "sdk_target": sdk.target}))
 """
 )
@@ -285,7 +289,9 @@ original_import = builtins.__import__
 
 def reject_symbolica(name, globals=None, locals=None, fromlist=(), level=0):
     if name == "symbolica" or name.startswith("symbolica."):
-        raise ImportError("Symbolica import blocked by the f64 deployment gate")
+        raise ModuleNotFoundError(
+            "Symbolica import blocked by the f64 deployment gate", name="symbolica"
+        )
     return original_import(name, globals, locals, fromlist, level)
 
 builtins.__import__ = reject_symbolica

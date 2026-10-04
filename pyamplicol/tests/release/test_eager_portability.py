@@ -9,6 +9,7 @@ import subprocess
 import sys
 import zipfile
 from collections.abc import Callable
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
@@ -739,6 +740,85 @@ def test_python_executable_preserves_virtual_environment_symlink(
     assert result.is_symlink()
 
 
+def test_runtime_contracts_do_not_initialize_the_driver_runtime(
+    contracts: portability.RuntimeContracts,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def child(command, **kwargs):
+        assert command[:2] == [sys.executable, "-c"]
+        assert "_runtime_contracts_in_process()" in command[2]
+        assert kwargs["check"] and kwargs["capture_output"]
+        return subprocess.CompletedProcess(command, 0, json.dumps(asdict(contracts)))
+
+    monkeypatch.setattr(portability.subprocess, "run", child)
+    monkeypatch.setattr(
+        portability,
+        "_runtime_contracts_in_process",
+        lambda: pytest.fail("parent must not initialize Symbolica before CLI children"),
+    )
+
+    assert portability._runtime_contracts() == contracts
+
+
+def test_producer_finishes_all_cli_children_before_native_parent_work(
+    tmp_path: Path,
+    contracts: portability.RuntimeContracts,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    children: list[list[str]] = []
+    native_work: list[str] = []
+    monkeypatch.setattr(portability.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(portability.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(portability, "_runtime_contracts", lambda: contracts)
+    monkeypatch.setattr(portability, "_git_commit", lambda: "fixture-commit")
+    monkeypatch.setattr(portability, "_validation_momenta", lambda _artifact: [])
+
+    def child(command, **_kwargs):
+        assert not native_work, "CLI child overlaps a parent Symbolica runtime"
+        children.append(command)
+        if command[3:5] == ["model", "compile"]:
+            _write_bundle(Path(command[6]), contracts, model=command[5])
+
+    def preflight(_bundle):
+        assert len(children) == 4
+        native_work.append("preflight")
+        return 1
+
+    def write_asset(bundle, output, *, identifier="built-in-sm-jit-o2", **_kwargs):
+        assert len(children) == 4
+        native_work.append("write")
+        output.mkdir(parents=True, exist_ok=True)
+        retained = output / f"{identifier}.pyamplicol-model"
+        retained.write_bytes(bundle.read_bytes())
+        return output / f"{identifier}.metadata.json", retained
+
+    def evaluate(_artifact, _momenta):
+        assert len(children) == 4
+        native_work.append("evaluate")
+        return 1 + 0j
+
+    monkeypatch.setattr(portability, "_run", child)
+    monkeypatch.setattr(portability, "_preflight_all_prepared_applications", preflight)
+    monkeypatch.setattr(portability, "_write_source_ready_asset", write_asset)
+    monkeypatch.setattr(portability, "_evaluate_artifact", evaluate)
+
+    report = portability.produce_transfer(
+        tmp_path / "transfer",
+        python=Path(sys.executable),
+        expected_system="Linux",
+        expected_machine="x86_64",
+        asset_mode="release",
+    )
+
+    assert [command[3] for command in children] == [
+        "model", "model", "generate", "generate"
+    ]
+    assert native_work == [
+        "preflight", "write", "preflight", "write", "evaluate", "evaluate"
+    ]
+    assert report["expected"] == {"real": 1.0, "imaginary": 0.0}
+
+
 def test_producer_rejects_an_unexpected_architecture_before_building(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -933,6 +1013,53 @@ def test_consumer_accepts_same_architecture_pack_across_operating_systems(
             expected_system="Darwin",
             expected_machine="AMD64",
         )
+
+
+def test_consumer_finishes_generation_before_native_parent_work(
+    tmp_path: Path,
+    contracts: portability.RuntimeContracts,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transfer = _write_transfer_fixture(
+        tmp_path / "transfer", contracts, architecture="x86_64"
+    )
+    events: list[str] = []
+    monkeypatch.setattr(portability.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(portability.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(portability, "_runtime_contracts", lambda: contracts)
+    monkeypatch.setattr(portability, "_git_commit", lambda: "fixture-commit")
+
+    def child(*_args, **_kwargs):
+        assert not events, "CLI child overlaps a parent Symbolica runtime"
+        events.append("generation")
+
+    def preflight(_bundle):
+        assert events == ["generation"]
+        events.append("preflight")
+        return 1
+
+    def verify(*_args, **_kwargs):
+        events.append("verify")
+        return {}
+
+    def evaluate(*_args):
+        events.append("evaluate")
+        return 1 + 0j
+
+    monkeypatch.setattr(portability, "_run", child)
+    monkeypatch.setattr(portability, "_preflight_all_prepared_applications", preflight)
+    monkeypatch.setattr(portability, "verify_consumer_artifact", verify)
+    monkeypatch.setattr(portability, "_evaluate_artifact", evaluate)
+
+    portability.consume_transfer(
+        transfer,
+        python=Path(sys.executable),
+        report_path=tmp_path / "report.json",
+        expected_system="Linux",
+        expected_machine="x86_64",
+    )
+
+    assert events == ["generation", "preflight", "verify", "evaluate"]
 
 
 def test_compiler_guard_records_and_denies_external_tool_execution() -> None:

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import ast
 import json
 import os
 import subprocess
@@ -43,6 +44,35 @@ def test_installed_smoke_copies_and_dry_runs_the_profiling_campaign() -> None:
     assert '"full debug workspaces (--retain-workspaces)"' in smoke
 
 
+def test_installed_smoke_finishes_cli_children_before_native_imports() -> None:
+    tree = ast.parse(deployment._INSTALLED_SMOKE)
+    native_imports = [
+        node.lineno
+        for node in ast.walk(tree)
+        if (
+            isinstance(node, ast.Import)
+            and any(
+                name.name.split(".")[0] in {"pyamplicol", "symbolica"}
+                for name in node.names
+            )
+        )
+        or (
+            isinstance(node, ast.ImportFrom)
+            and (node.module or "").split(".")[0] in {"pyamplicol", "symbolica"}
+        )
+    ]
+    child_calls = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "subprocess"
+    ]
+    assert native_imports and child_calls
+    assert max(child_calls) < min(native_imports)
+
+
 def test_f64_deployment_smoke_hard_blocks_symbolica() -> None:
     smoke = deployment._SYMBOLICA_FREE_F64_SMOKE
     assert 'os.environ.pop("SYMBOLICA_LICENSE", None)' in smoke
@@ -50,6 +80,20 @@ def test_f64_deployment_smoke_hard_blocks_symbolica() -> None:
     assert 'check.name == "physics-f64"' in smoke
     assert 'name.startswith("symbolica.")' in smoke
     assert "for name in sys.modules" in smoke
+
+
+@pytest.mark.parametrize("name", ["symbolica", "symbolica.core"])
+def test_f64_deployment_import_block_models_an_absent_package(name: str) -> None:
+    hook = next(
+        node
+        for node in ast.parse(deployment._SYMBOLICA_FREE_F64_SMOKE).body
+        if isinstance(node, ast.FunctionDef) and node.name == "reject_symbolica"
+    )
+    namespace = {"original_import": __import__}
+    exec(compile(ast.Module(body=[hook], type_ignores=[]), "<hook>", "exec"), namespace)
+    with pytest.raises(ModuleNotFoundError) as caught:
+        namespace["reject_symbolica"](name)
+    assert caught.value.name == "symbolica"
 
 
 def test_f64_minimal_deployment_requires_symbolica_to_be_absent() -> None:

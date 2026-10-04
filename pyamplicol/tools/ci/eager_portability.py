@@ -130,6 +130,31 @@ _COMPILER_COMMANDS = (
 
 
 def _runtime_contracts() -> RuntimeContracts:
+    # Importing model contracts initializes Symbolica. Keep that import in a
+    # completed child so this driver does not hold a restricted-thread permit
+    # while later CLI children initialize their own Symbolica runtime.
+    script = (
+        "import json, sys\n"
+        "from dataclasses import asdict\n"
+        f"sys.path.insert(0, {str(Path(__file__).resolve().parent)!r})\n"
+        "from eager_portability import _runtime_contracts_in_process\n"
+        "print(json.dumps(asdict(_runtime_contracts_in_process())))\n"
+    )
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=_ROOT,
+            env=_command_environment(),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise PortabilityError("could not read installed runtime contracts") from error
+    return RuntimeContracts(**json.loads(completed.stdout))
+
+
+def _runtime_contracts_in_process() -> RuntimeContracts:
     # Keep imports lazy so clean-checkout release tests can exercise the archive
     # auditor without installing pyAmpliCol or its native dependencies.
     from pyamplicol._internal.versions import (
@@ -510,10 +535,15 @@ def produce_transfer(
     environment = _command_environment()
     asset_output = _source_ready_asset_directory(output, asset_mode)
 
-    with tempfile.TemporaryDirectory(
-        prefix="pyamplicol-eager-portability-pack-",
-        dir=output.parent,
-    ) as raw_bundle:
+    with (
+        tempfile.TemporaryDirectory(
+            prefix="pyamplicol-eager-portability-pack-",
+            dir=output.parent,
+        ) as raw_bundle,
+        tempfile.TemporaryDirectory(
+            prefix="pyamplicol-eager-portability-producer-"
+        ) as raw,
+    ):
         generated_bundle = Path(raw_bundle) / DEFAULT_BUNDLE_NAME
         _run(
             _model_compile_command(python, generated_bundle),
@@ -528,15 +558,6 @@ def produce_transfer(
             raise PortabilityError(
                 "prepared bundle producer version differs from the installed package"
             )
-        audit["preflight_evaluator_count"] = _preflight_all_prepared_applications(
-            generated_bundle
-        )
-        metadata_path, bundle = _write_source_ready_asset(
-            generated_bundle,
-            asset_output,
-            architecture=actual_architecture,
-            asset_mode=asset_mode,
-        )
         generated_heft_bundle = Path(raw_bundle) / HEFT_BUNDLE_NAME
         _run(
             _model_compile_command(
@@ -557,27 +578,13 @@ def produce_transfer(
                 "prepared scalar-HEFT bundle producer version differs from the "
                 "installed package"
             )
-        heft_audit["preflight_evaluator_count"] = _preflight_all_prepared_applications(
-            generated_heft_bundle
-        )
-        heft_metadata_path, heft_bundle = _write_source_ready_asset(
-            generated_heft_bundle,
-            asset_output,
-            architecture=actual_architecture,
-            asset_mode=asset_mode,
-            identifier=HEFT_PACKAGED_MODEL_ID,
-        )
-
-    with tempfile.TemporaryDirectory(
-        prefix="pyamplicol-eager-portability-producer-"
-    ) as raw:
         temporary = Path(raw)
         eager_artifact = temporary / "eager"
         compiled_artifact = temporary / "compiled"
         _run(
             _generation_command(
                 python,
-                model=bundle,
+                model=generated_bundle,
                 output=eager_artifact,
                 execution_mode="eager",
             ),
@@ -591,6 +598,27 @@ def produce_transfer(
                 execution_mode="compiled",
             ),
             environment=environment,
+        )
+        # All CLI children have exited. Native preflight, asset writing, and
+        # evaluation may now initialize Symbolica in this parent process.
+        audit["preflight_evaluator_count"] = _preflight_all_prepared_applications(
+            generated_bundle
+        )
+        metadata_path, bundle = _write_source_ready_asset(
+            generated_bundle,
+            asset_output,
+            architecture=actual_architecture,
+            asset_mode=asset_mode,
+        )
+        heft_audit["preflight_evaluator_count"] = _preflight_all_prepared_applications(
+            generated_heft_bundle
+        )
+        heft_metadata_path, heft_bundle = _write_source_ready_asset(
+            generated_heft_bundle,
+            asset_output,
+            architecture=actual_architecture,
+            asset_mode=asset_mode,
+            identifier=HEFT_PACKAGED_MODEL_ID,
         )
         momenta = _validation_momenta(eager_artifact)
         eager_value = _evaluate_artifact(eager_artifact, momenta)
@@ -1026,12 +1054,6 @@ def consume_transfer(
         raise PortabilityError(
             "transferred bundle producer version differs from the consumer package"
         )
-    preflight_count = _preflight_all_prepared_applications(bundle)
-    if bundle_record.get("preflight_evaluator_count") != preflight_count:
-        raise PortabilityError(
-            "consumer prepared-application preflight count differs from producer"
-        )
-    audit["preflight_evaluator_count"] = preflight_count
     if fixture.get("producer") is None:
         raise PortabilityError("transfer fixture omits producer provenance")
     producer = _object(fixture.get("producer"), "transfer.producer")
@@ -1089,6 +1111,14 @@ def consume_transfer(
                     "consumer eager generation invoked an external compiler/linker:\n"
                     + invocations
                 )
+            # The generation child must exit before parent-side native imports.
+            preflight_count = _preflight_all_prepared_applications(bundle)
+            if bundle_record.get("preflight_evaluator_count") != preflight_count:
+                raise PortabilityError(
+                    "consumer prepared-application preflight count differs "
+                    "from producer"
+                )
+            audit["preflight_evaluator_count"] = preflight_count
             artifact_summary = verify_consumer_artifact(
                 artifact,
                 bundle,
