@@ -7,20 +7,18 @@ parent: "Profiling and Benchmarking"
 
 # Release and Support
 
-pyAmpliCol publishes binary wheels and a source distribution on
-[PyPI](https://pypi.org/project/pyamplicol/). This page is the authoritative
-record of the supported release boundary and explains how to report a problem.
+pyAmpliCol 1.0.0 is the software release accompanying the official arXiv
+publication, *pyAmpliCol: fast tree-level matrix elements*. Binary wheels and a
+source distribution are available on [PyPI](https://pypi.org/project/pyamplicol/).
+This page records the supported release boundary and explains how to report a
+problem.
 
 ## Current release boundary
 
-The `main` branch prepares version `1.0.0`. It is not yet published on PyPI;
-the current published release
-remains `0.2.0`.
-
-Version `0.2.0` is represented by the immutable
-[`v0.2.0` source snapshot](https://github.com/mg5amcnlo/pyamplicol/tree/v0.2.0),
-the [HEFFT GitHub release](https://github.com/mg5amcnlo/pyamplicol/releases/tag/v0.2.0),
-and [PyPI release](https://pypi.org/project/pyamplicol/0.2.0/). Its validated
+Version `1.0.0` is represented by the immutable
+[`v1.0.0` source snapshot](https://github.com/mg5amcnlo/pyamplicol/tree/v1.0.0),
+the [Thus Spoke Compute GitHub release](https://github.com/mg5amcnlo/pyamplicol/releases/tag/v1.0.0),
+and [PyPI release](https://pypi.org/project/pyamplicol/1.0.0/). Its validated
 inventory is one source distribution and three `cp311-abi3` wheels:
 
 - macOS 11 or newer on Apple silicon;
@@ -33,15 +31,11 @@ Python, C11, C++17, Fortran 2008, and Rust 2021 APIs. It also runs a CPython
 3.14 abi3 smoke test, source preflight, and independent Fortran physics oracle.
 Publication uploads these already validated files without rebuilding them.
 
-The upcoming 1.0.0 release uses published Symbolica 3.0.0 and SymJIT 2.26.4, as recorded in
-`dependencies/release-lock.toml` and `Cargo.lock`. No local dependency source
-patches are needed. It pairs with the upcoming ufo-model-loader 1.0.0 release;
-local validation currently uses an explicitly selected, unpublished loader wheel.
-Final release validation requires that loader to be published on PyPI and its
-official wheel metadata recorded in the Python runtime lock. Publication also
-requires validated release assets.
+Version 1.0.0 uses published Symbolica 3.0.0, SymJIT 2.26.4 and
+ufo-model-loader 1.0.0, as recorded in the dependency lockfiles. No local
+dependency source patches or unpublished wheels are needed.
 
-## 1.0.0 (unreleased)
+## 1.0.0 release
 
 Version `1.0.0` preserves exact model constants, colour weights, and
 normalization factors through higher-precision evaluation. It also corrects

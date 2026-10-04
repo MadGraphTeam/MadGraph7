@@ -80,7 +80,7 @@ Use a tagged snapshot when your platform has no compatible wheel or when you
 need a source build:
 
 ```console
-git clone --branch v0.2.0 --depth 1 \
+git clone --branch v1.0.0 --depth 1 \
   https://github.com/mg5amcnlo/pyamplicol.git
 cd pyamplicol
 python -m pip install .
@@ -110,27 +110,21 @@ python -m pip install .
 
 For development from a checkout, `just dev-install` creates a repository-managed
 environment with published Python dependencies from `pyproject.toml`, including
-Symbolica 3.0.0, and the release-mode native build. It does not use an editable
-installation. Building a new release wheel requires a clean Git checkpoint
-and complete release assets; published-dependency mode does not relax these
-publication guards. The upcoming release requires ufo-model-loader 1.0.0,
-which is not yet published on PyPI. Until publication, supply its local wheel:
+Symbolica 3.0.0 and ufo-model-loader 1.0.0, and the release-mode native build with
+published SymJIT 2.26.4. It does not use an editable installation. Building a new
+release wheel requires a clean Git checkpoint and complete release assets;
+published-dependency mode does not relax these publication guards.
 
 ```console
 git clone https://github.com/mg5amcnlo/pyamplicol.git
 cd pyamplicol
-just dev-install --loader-wheel /path/to/ufo_model_loader-1.0.0-py3-none-any.whl
+just dev-install
 PYTHON=.venv/bin/python just dev-test
 ```
 
-The installer does not search for local loader wheels; `--loader-wheel` is an
-explicit dependency-development override. It lets pip resolve the runtime dependencies, then
-replaces published Symbolica and ufo-model-loader without
-resolving dependencies again. This replaces historical source candidates that
-report the same version numbers.
-The examples below omit `--loader-wheel` for brevity; include it until loader
-1.0.0 is published and its official wheel is recorded in the runtime lock.
-Local validation does not establish that publication prerequisite.
+Normal setup uses published PyPI dependencies. For dependency development,
+`--loader-wheel PATH` explicitly selects a local loader wheel; the installer
+does not search for one automatically.
 
 The native build can take several minutes. For a dirty development checkout, add
 `--wheel-directory PATH` to reuse an already-built compatible release wheel,

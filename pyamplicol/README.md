@@ -46,10 +46,10 @@ python -m pip install pyamplicol
 The binary wheels include the Rust runtime and native SDK; wheel users do not
 need a Rust compiler. pyAmpliCol has no LHAPDF dependency.
 
-Build the tagged 0.2.0 source snapshot with:
+Build the tagged 1.0.0 source snapshot with:
 
 ```console
-git clone --branch v0.2.0 --depth 1 https://github.com/mg5amcnlo/pyamplicol.git
+git clone --branch v1.0.0 --depth 1 https://github.com/mg5amcnlo/pyamplicol.git
 cd pyamplicol
 python -m pip install .
 ```
@@ -58,15 +58,14 @@ A source build requires Python 3.11 or newer, Rust 1.89 or newer, and a C/C++
 toolchain. A Fortran compiler is required only for Fortran consumers.
 
 Contributor setup defaults to published Python dependencies from
-`pyproject.toml`, including Symbolica 3.0.0, and the release-mode native build.
+`pyproject.toml`, including Symbolica 3.0.0 and ufo-model-loader 1.0.0, and the
+release-mode native build with published SymJIT 2.26.4.
 Building a new release wheel requires a clean Git checkpoint and complete
 release assets; the dependency mode does not relax publication guards.
-The upcoming 1.0.0 release pairs with ufo-model-loader 1.0.0. Until that loader
-is published on PyPI, contributor setup requires its locally built wheel:
 
 ```console
 nix develop  # optional on Nix/NixOS
-just dev-install --loader-wheel /path/to/ufo_model_loader-1.0.0-py3-none-any.whl
+just dev-install
 PYTHON=.venv/bin/python just dev-test
 ```
 
@@ -75,13 +74,11 @@ The `just dev-install` native build can take several minutes. Use
 For a dirty development checkout, use `--wheel-directory PATH` to reuse an
 already-built compatible release wheel, or `--dependencies-only` to install
 dependencies without building or staging the project; the latter leaves the
-existing native runtime untouched. The installer does not select local loader
-wheels automatically; `--loader-wheel` is an explicit development override, not
-evidence of publication. Once loader 1.0.0 is published and its wheel recorded
-in the runtime lock, omit this option. Editable
-installs are not used. `just dev-test` also includes a fresh release build and
-requires a clean checkpoint; dirty edits can use focused tests against the
-staged native runtime.
+existing native runtime untouched. An optional `--loader-wheel PATH` explicitly
+selects a local wheel for dependency development; normal setup uses PyPI.
+Editable installs are not used. `just dev-test` also includes a fresh release
+build and requires a clean checkpoint; dirty edits can use focused tests against
+the staged native runtime.
 Historical dependency-development machinery remains behind `--candidate`,
 but its pinned APIs are incompatible with the current tensor implementation.
 It needs updated, coherent upstream pins before use; use the published lane
