@@ -44,11 +44,9 @@ not attempt to parse or rewrite Rust source.
 ## Dependency Modes
 
 Release mode reads `dependencies/release-lock.toml` and accepts exact published
-package/crate versions plus SymJIT 2.25.0 from the official
-`siravan/symjit-crate` repository at immutable revision
-`f1c193d301897149de6609f706297b0c97a4f018`. The release lock and canonical
-`Cargo.lock` must name that same repository and full commit. Other Git, path,
-editable, floating, and candidate dependencies are forbidden.
+package/crate versions, including Symbolica 3.0.0 and SymJIT 2.26.4. Canonical
+`Cargo.lock` records standard crates.io resolution and checksums without source
+patches. Git, path, editable, floating, and candidate dependencies are forbidden.
 
 Candidate mode is available only from a full source checkout. It reads the
 repository-only contributor contract and produces explicitly non-publishable
@@ -137,7 +135,7 @@ the package features that verify those payloads against accidental mutation.
 
 One retained source distribution is the source of all release wheels. It must
 build with `python -m pip install .` using release-locked published
-packages/crates plus the official immutable SymJIT Git revision and contain:
+packages/crates and contain:
 
 - Python/Rust/build sources and lockfiles;
 - schemas, tests, examples, user documentation, and release tooling;

@@ -28,7 +28,11 @@ from pyamplicol.models.compiler_entry import (
 from pyamplicol.models.compiler_tensor_ordering import (
     compile_tensor_ordering_metadata,
 )
-from pyamplicol.models.contracts import CompiledModelIR
+from pyamplicol.models.contracts import (
+    CompiledModelIR,
+    CompiledOrientedKernel,
+    CompiledParticleRecord,
+)
 from pyamplicol.models.external_symmetries import (
     _tensor_product_signature,
     derive_external_symmetry_certificates,
@@ -408,6 +412,75 @@ def test_external_kernel_reuse_includes_exact_colour_normalization(external_sm) 
 
     assert annotated[0].evaluation_class != annotated[1].evaluation_class
     assert all(kernel.evaluation_equivalence_verified for kernel in annotated)
+
+
+def test_kernel_equivalence_ignores_mirrored_component_factorization() -> None:
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.models import compiler_symbolica as sym
+
+    sym._ensure_symbolica()
+    registry = symbols.model("factorized-kernel-proof")
+    particles = tuple(
+        CompiledParticleRecord(
+            name=name,
+            antiname=name,
+            pdg_code=index + 1,
+            spin=3,
+            color=1,
+            mass="ZERO",
+            width="ZERO",
+            charge=0.0,
+            quantum_numbers=(("electric_charge", "0"),),
+            ghost_number=0,
+            propagating=True,
+            goldstoneboson=False,
+            propagator=None,
+        )
+        for index, name in enumerate(("a", "b", "out"))
+    )
+    g, h, imaginary = (sym.E(value) for value in ("g", "h", "\U0001d456"))
+    kernels = []
+    for kind, mirrored in enumerate((False, True)):
+        vector_side, spinor_side = ("right", "left") if mirrored else ("left", "right")
+        a, b, d, e = (
+            registry.kernel_component(kind, vector_side, index) for index in range(4)
+        )
+        x, y = (
+            registry.kernel_component(kind, spinor_side, index) for index in range(2)
+        )
+        common = (a - imaginary * b) * x + (d + e) * y
+        # Released Symbolica 3 can retain these different factorizations for
+        # mirrored Z-antifermion kernels.  Both must certify the same operation.
+        expression = (
+            common * g + (a * x - imaginary * b * x + d * y + e * y) * h
+            if mirrored
+            else common * (g + h)
+        )
+        kernels.append(
+            CompiledOrientedKernel(
+                kind=kind,
+                term_id=0,
+                vertex="factorized-mirror",
+                particles=("b", "a", "out") if mirrored else ("a", "b", "out"),
+                source_particle_legs=(1, 0, 2) if mirrored else (0, 1, 2),
+                component_expressions=(expression.to_canonical_string(), "0", "0", "0"),
+                coupling_expression="1",
+                coupling_orders=(),
+                runtime_parameters=(),
+                color_source="1",
+                color_expression="1",
+            )
+        )
+
+    direct, mirrored = _annotate_oriented_kernel_evaluation_equivalence(
+        kernels, particles, (), registry
+    )
+
+    assert direct.evaluation_class == mirrored.evaluation_class
+    assert direct.evaluation_input_order == mirrored.evaluation_input_order[::-1]
+    assert direct.evaluation_factor == mirrored.evaluation_factor == (1.0, 0.0)
+    assert direct.component_expressions == kernels[0].component_expressions
+    assert mirrored.component_expressions == kernels[1].component_expressions
 
 
 def test_tensor_product_signature_alpha_normalizes_contracted_indices() -> None:

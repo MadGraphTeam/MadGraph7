@@ -541,8 +541,6 @@ def test_dependency_snapshot_uses_compact_source_descriptors(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    with provenance.RELEASE_LOCK.open("rb") as stream:
-        release = tomllib.load(stream)
     with provenance.CONTRIBUTOR_LOCK.open("rb") as stream:
         contributor = tomllib.load(stream)
     symbolica_descriptor = {
@@ -550,8 +548,8 @@ def test_dependency_snapshot_uses_compact_source_descriptors(
         "revision": contributor["symbolica"]["candidate_revision"],
     }
     symjit_descriptor = {
-        "url": release["symjit"]["repository"],
-        "revision": release["symjit"]["revision"],
+        "url": contributor["symjit"]["repository"],
+        "revision": contributor["symjit"]["revision"],
     }
     state_path = tmp_path / "install-state.json"
     state_path.write_text(
@@ -583,7 +581,7 @@ def test_dependency_snapshot_uses_compact_source_descriptors(
     assert payloads["dependency:symjit"] == {
         "id": "dependency:symjit",
         "name": "Symjit",
-        "version": release["symjit"]["version"],
+        "version": contributor["symjit"]["candidate_version"],
         "revision": symjit_descriptor["revision"],
         "content_sha256": provenance.canonical_sha256(symjit_descriptor),
         "serialization_abi": "symjit-application-storage-v3",

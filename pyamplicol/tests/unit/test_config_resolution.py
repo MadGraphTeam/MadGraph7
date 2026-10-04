@@ -269,6 +269,17 @@ def test_lc_flow_layout_card_and_dotted_overrides_round_trip() -> None:
     assert resolve_config(tomllib.loads(serialized)).effective == config
 
 
+def test_automatic_fft_card_round_trip_and_direct_override() -> None:
+    card = {"action": "generate", "color": {"accuracy": "full"}}
+    automatic = resolve_config(card).effective
+    assert automatic.color.contraction is ColorContraction.AUTO
+    assert automatic.color.fft_basis is ColorFFTBasis.ADJOINT
+    assert resolve_config(config_to_dict(automatic)).effective == automatic
+    direct = resolve_config(card, overrides=("color.contraction=direct",)).effective
+    assert direct.color.contraction is ColorContraction.DIRECT
+    assert direct.color.fft_basis is ColorFFTBasis.TRACE
+
+
 @pytest.mark.parametrize("fft_basis", tuple(ColorFFTBasis))
 def test_symmetric_group_fft_card_and_dotted_override_round_trip(
     fft_basis: ColorFFTBasis,

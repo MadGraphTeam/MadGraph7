@@ -31,7 +31,6 @@ def _compile_symbolica_outputs(
     *,
     merge_evaluators_strategy: bool,
     verbose_evaluator_build: bool,
-    aliases: Sequence[tuple[Any, Any]] = (),
     functions: Mapping[tuple[Any, tuple[Any, ...]], Any] | None = None,
     real_params: Sequence[int] = (),
     symbolica_settings: SymbolicaEvaluatorSettings | None = None,
@@ -82,7 +81,6 @@ def _compile_symbolica_outputs(
             chunk_input_indices = _chunk_parameter_indices(
                 chunk_outputs,
                 params,
-                aliases=aliases,
                 functions=functions,
             )
             chunk_params = [params[index] for index in chunk_input_indices]
@@ -106,7 +104,6 @@ def _compile_symbolica_outputs(
                     chunk_params,
                     merge_evaluators_strategy=merge_evaluators_strategy,
                     verbose_evaluator_build=verbose_evaluator_build,
-                    aliases=aliases,
                     functions=functions,
                     real_params=chunk_real_params,
                     symbolica_settings=unchunked_settings,
@@ -148,7 +145,6 @@ def _compile_symbolica_outputs(
         verbose=verbose_evaluator_build,
         jit_compile=jit_compile,
     )
-    alias_kwargs = {"aliases": list(aliases)} if aliases else {}
     function_kwargs: dict[str, Any] = {}
     if functions:
         from symbolica import FunctionDefinition
@@ -182,7 +178,6 @@ def _compile_symbolica_outputs(
             evaluator_started = time.perf_counter()
             evaluator = outputs[0].evaluator(
                 params,
-                **alias_kwargs,
                 **function_kwargs,
                 **evaluator_kwargs,
             )
@@ -220,7 +215,6 @@ def _compile_symbolica_outputs(
                 merge_construct_started = time.perf_counter()
                 other = expression.evaluator(
                     params,
-                    **alias_kwargs,
                     **function_kwargs,
                     **evaluator_kwargs,
                 )
@@ -303,7 +297,6 @@ def _compile_symbolica_outputs(
         evaluator = Expression.evaluator_multiple(
             outputs,
             params,
-            **alias_kwargs,
             **function_kwargs,
             **evaluator_kwargs,
         )
@@ -393,13 +386,12 @@ def _chunk_parameter_indices(
     outputs: Sequence[Any],
     params: Sequence[Any],
     *,
-    aliases: Sequence[tuple[Any, Any]] = (),
     functions: Mapping[tuple[Any, tuple[Any, ...]], Any] | None = None,
 ) -> tuple[int, ...]:
     """Return parent parameter indices needed by one output chunk.
 
     Symbolica already exposes structural symbol discovery, including symbols in
-    function arguments.  Function bodies and aliases are included
+    function arguments.  Function bodies are included
     conservatively so a model kernel that closes over a runtime parameter can
     never be under-specified.  Parent ordering is retained to keep generated
     evaluator signatures and real-parameter metadata deterministic.
@@ -408,9 +400,6 @@ def _chunk_parameter_indices(
     used_symbols: set[Any] = set()
     for expression in outputs:
         used_symbols.update(_expression_symbols(expression))
-    for left, right in aliases:
-        used_symbols.update(_expression_symbols(left))
-        used_symbols.update(_expression_symbols(right))
     if functions:
         for body in functions.values():
             used_symbols.update(_expression_symbols(body))

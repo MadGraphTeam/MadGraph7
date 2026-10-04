@@ -520,8 +520,6 @@ def _candidate_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
     )
     with (ROOT / "dependencies" / "contributor-lock.toml").open("rb") as stream:
         contributor = tomllib.load(stream)
-    with (ROOT / "dependencies" / "release-lock.toml").open("rb") as stream:
-        release = tomllib.load(stream)
     sources = {
         "gammaloop": {
             "url": contributor["gammaloop_candidate"]["source_url"],
@@ -540,8 +538,8 @@ def _candidate_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
             "revision": contributor["symbolica"]["community_revision"],
         },
         "symjit": {
-            "url": release["symjit"]["repository"],
-            "revision": release["symjit"]["revision"],
+            "url": contributor["symjit"]["repository"],
+            "revision": contributor["symjit"]["revision"],
         },
     }
     installer_state.write_text(

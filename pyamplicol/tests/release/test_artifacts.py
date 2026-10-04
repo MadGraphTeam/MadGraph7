@@ -1733,7 +1733,7 @@ def test_runtime_requirements_must_agree_with_release_contract(tmp_path: Path) -
             for item in _DEFAULT_REQUIREMENTS
         ],
     )
-    with pytest.raises(ArtifactError, match=r"pin numpy==2\.4\.2 exactly"):
+    with pytest.raises(ArtifactError, match=r"pin numpy==2\.4\.6 exactly"):
         audit_wheel(ordinary_range, mode="release", native_scan=False)
 
     ordinary_range.unlink()
@@ -2103,8 +2103,6 @@ def test_sdist_rejects_extra_symjit_source_ceremony(tmp_path: Path) -> None:
     contract = (
         "[symjit]\n"
         f'version = "{symjit["version"]}"\n'
-        f'repository = "{symjit["repository"]}"\n'
-        f'revision = "{symjit["revision"]}"\n'
     )
     replacement = contract + 'source_url = "https://example.invalid/archive.tar.gz"\n'
     assert lock_text.count(contract) == 1
@@ -2113,7 +2111,7 @@ def test_sdist_rejects_extra_symjit_source_ceremony(tmp_path: Path) -> None:
         extra_files={lock_member: lock_text.replace(contract, replacement).encode()},
     )
 
-    with pytest.raises(ArtifactError, match="immutable SymJIT source contract"):
+    with pytest.raises(ArtifactError, match="published SymJIT version contract"):
         audit_sdist(sdist, mode="release")
 
 
@@ -2121,19 +2119,24 @@ def test_sdist_rejects_mismatched_symjit_cargo_source(tmp_path: Path) -> None:
     symjit = _LOCK["symjit"]
     cargo_lock = (ROOT / "Cargo.lock").read_text(encoding="utf-8")
     expected = (
-        f"git+{symjit['repository']}?rev={symjit['revision']}#{symjit['revision']}"
+        'name = "symjit"\n'
+        f'version = "{symjit["version"]}"\n'
+        'source = "registry+https://github.com/rust-lang/crates.io-index"'
     )
     assert cargo_lock.count(expected) == 1
     mismatched = cargo_lock.replace(
         expected,
-        expected.replace(symjit["revision"], "1" * 40),
+        expected.replace(
+            "registry+https://github.com/rust-lang/crates.io-index",
+            "git+https://example.invalid/symjit",
+        ),
     )
     sdist = _sdist(
         tmp_path,
         extra_files={"Cargo.lock": mismatched.encode("utf-8")},
     )
 
-    with pytest.raises(ArtifactError, match="immutable SymJIT Git dependency"):
+    with pytest.raises(ArtifactError, match="published SymJIT dependency"):
         audit_sdist(sdist, mode="release")
 
 

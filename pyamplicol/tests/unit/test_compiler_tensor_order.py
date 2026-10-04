@@ -40,35 +40,39 @@ class _Argument:
         return self
 
 
-class _Structure:
-    def __init__(self) -> None:
-        self.coordinates = ((0, 0), (0, 1), (1, 0), (1, 1))
-
-    @property
-    def interface(self) -> tuple[_Argument, ...]:
-        return (_Argument("ufo_l_1_4"), _Argument("ufo_l_1_3"))
-
-    def __getitem__(self, index: int) -> tuple[int, int]:
-        return self.coordinates[index]
-
-
-class _Tensor:
-    def __init__(self) -> None:
-        # Storage follows the actual (leg 4, leg 3) structure.
-        self.values = (0, 10, 1, 11)
-        self._structure = _Structure()
-
-    def to_dense(self) -> None:
-        pass
-
-    def structure(self) -> _Structure:
-        return self._structure
+class _DenseTensor:
+    def __init__(
+        self,
+        values: tuple[int, ...],
+        axes: tuple[_Argument, ...],
+        shape: tuple[int, ...],
+    ) -> None:
+        self.values = values
+        self.axes = axes
+        self.shape = shape
 
     def __len__(self) -> int:
         return len(self.values)
 
     def __getitem__(self, index: int) -> int:
         return self.values[index]
+
+
+class _Tensor:
+    def __init__(self) -> None:
+        # Storage follows the actual (leg 4, leg 3) structure.
+        self.values = (0, 10, 1, 11)
+        self.coordinates = ((0, 0), (0, 1), (1, 0), (1, 1))
+        self._axes = (_Argument("ufo_l_1_4"), _Argument("ufo_l_1_3"))
+        self._shape = (2, 2)
+
+    def to_dense(self) -> _DenseTensor:
+        # Released Symbolica returns a new tensor in logical row-major order.
+        values = tuple(
+            value
+            for _, value in sorted(zip(self.coordinates, self.values, strict=True))
+        )
+        return _DenseTensor(values, self._axes, self._shape)
 
 
 def test_dense_tensor_components_follow_physical_ufo_axis_order() -> None:
@@ -84,7 +88,7 @@ def test_dense_tensor_components_follow_physical_ufo_axis_order() -> None:
 
 def test_spenso_tensor_components_preserve_logical_axis_order() -> None:
     from symbolica import E
-    from symbolica.community.spenso import Representation, Tensor, TensorName
+    from symbolica.community.tensor import Representation, Tensor, TensorName
 
     left = Representation.euc(2)("ufo_l_1_3")
     right = Representation.euc(3)("ufo_l_1_4")
@@ -102,15 +106,12 @@ def test_spenso_tensor_components_preserve_logical_axis_order() -> None:
     assert tuple(axis.extent for axis in ordered.ordering.axes) == (2, 3)
 
 
-class _RectangularStructure(_Structure):
-    def __init__(self) -> None:
-        self.coordinates = ((2, 1), (0, 0), (1, 0), (2, 0), (0, 1), (1, 1))
-
-
 class _RectangularTensor(_Tensor):
     def __init__(self) -> None:
+        super().__init__()
         self.values = (12, 0, 1, 2, 10, 11)
-        self._structure = _RectangularStructure()
+        self.coordinates = ((2, 1), (0, 0), (1, 0), (2, 0), (0, 1), (1, 1))
+        self._shape = (3, 2)
 
 
 def test_dense_tensor_components_validate_non_square_cartesian_grid() -> None:
@@ -124,15 +125,11 @@ def test_dense_tensor_components_validate_non_square_cartesian_grid() -> None:
     assert ordered.ordering.canonical_size == 6
 
 
-class _IncompleteStructure(_Structure):
-    def __init__(self) -> None:
-        self.coordinates = ((0, 0), (0, 1), (1, 0))
-
-
 class _IncompleteTensor(_Tensor):
     def __init__(self) -> None:
+        super().__init__()
         self.values = (0, 1, 10)
-        self._structure = _IncompleteStructure()
+        self.coordinates = ((0, 0), (0, 1), (1, 0))
 
 
 def test_dense_tensor_components_reject_incomplete_cartesian_grid() -> None:
@@ -143,26 +140,17 @@ def test_dense_tensor_components_reject_incomplete_cartesian_grid() -> None:
         )
 
 
-class _Spin2Structure:
+class _Spin2Tensor(_Tensor):
     def __init__(self) -> None:
+        super().__init__()
         self.coordinates = tuple(
             reversed(tuple((right, left) for right in range(4) for left in range(4)))
         )
-
-    @property
-    def interface(self) -> tuple[_Argument, ...]:
-        return (_Argument("ufo_l_2_3"), _Argument("ufo_l_1_3"))
-
-    def __getitem__(self, index: int) -> tuple[int, int]:
-        return self.coordinates[index]
-
-
-class _Spin2Tensor(_Tensor):
-    def __init__(self) -> None:
-        self._structure = _Spin2Structure()
         self.values = tuple(
-            left * 4 + right for right, left in self._structure.coordinates
+            left * 4 + right for right, left in self.coordinates
         )
+        self._axes = (_Argument("ufo_l_2_3"), _Argument("ufo_l_1_3"))
+        self._shape = (4, 4)
 
 
 def test_spin2_axis_transpose_and_storage_permutation_canonicalize() -> None:

@@ -69,12 +69,13 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
         LCFlowLayout.TOPOLOGY_REPLAY,
         LCFlowLayout.ALL_FLOW_UNION,
     )
-    assert FIELD_REGISTRY["color.contraction"].default is ColorContraction.DIRECT
+    assert FIELD_REGISTRY["color.contraction"].default is ColorContraction.AUTO
     assert FIELD_REGISTRY["color.contraction"].choices == (
+        ColorContraction.AUTO,
         ColorContraction.DIRECT,
         ColorContraction.SYMMETRIC_GROUP_FFT,
     )
-    assert FIELD_REGISTRY["color.fft_basis"].default is ColorFFTBasis.TRACE
+    assert FIELD_REGISTRY["color.fft_basis"].default is ColorFFTBasis.ADJOINT
     assert FIELD_REGISTRY["color.fft_basis"].choices == tuple(ColorFFTBasis)
     assert FIELD_REGISTRY["evaluator.eager.point_tile_size"].default == 1024
     assert FIELD_REGISTRY["evaluator.eager.workspace_mib"].default == 256
@@ -184,8 +185,10 @@ def test_contract_defaults_are_typed() -> None:
     config = RunConfig(action="evaluate")
     assert config.action is Action.EVALUATE
     assert config.color.accuracy is ColorAccuracy.LC
-    assert config.color.contraction is ColorContraction.DIRECT
-    assert config.color.fft_basis is ColorFFTBasis.TRACE
+    assert config.color.contraction is ColorContraction.AUTO
+    assert config.color.fft_basis is ColorFFTBasis.ADJOINT
+    assert config.resolved_color.contraction is ColorContraction.DIRECT
+    assert config.resolved_color.fft_basis is ColorFFTBasis.TRACE
     assert config.color.lc_flow_layout is LCFlowLayout.TOPOLOGY_REPLAY
     assert config.evaluator.backend is EvaluatorBackend.JIT
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
@@ -307,7 +310,7 @@ def test_symmetric_group_fft_requires_contracted_color_and_supported_lane(
         color=ColorConfig(accuracy="full"),
         evaluator=EvaluatorConfig(execution_mode="compiled"),
     )
-    assert compiled_direct.color.contraction is ColorContraction.DIRECT
+    assert compiled_direct.resolved_color.contraction is ColorContraction.DIRECT
 
     for execution_mode in ("compiled", "eager"):
         with pytest.raises(
@@ -326,12 +329,24 @@ def test_symmetric_group_fft_requires_contracted_color_and_supported_lane(
             )
 
 
-def test_adjoint_basis_requires_fft_contraction() -> None:
-    with pytest.raises(
-        ConfigurationError,
-        match=r"color\.fft_basis='adjoint' requires color\.contraction",
-    ):
-        ColorConfig(accuracy="full", fft_basis="adjoint")
+def test_direct_contraction_ignores_the_default_adjoint_basis() -> None:
+    config = RunConfig(
+        action="generate", color=ColorConfig(accuracy="full", contraction="direct")
+    )
+    assert config.resolved_color.contraction is ColorContraction.DIRECT
+    assert config.resolved_color.fft_basis is ColorFFTBasis.TRACE
+
+
+def test_automatic_color_tracks_python_configuration_overrides() -> None:
+    config = RunConfig(action="generate")
+    full = replace(config, color=replace(config.color, accuracy="full"))
+    assert full.resolved_color.contraction is ColorContraction.AUTO
+    assert full.resolved_color.fft_basis is ColorFFTBasis.ADJOINT
+    compiled = replace(
+        full, evaluator=replace(full.evaluator, execution_mode="compiled")
+    )
+    assert compiled.resolved_color.contraction is ColorContraction.DIRECT
+    assert compiled.resolved_color.fft_basis is ColorFFTBasis.TRACE
 
 
 def test_fft_basis_rejects_unknown_values() -> None:

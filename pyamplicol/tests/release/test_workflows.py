@@ -196,16 +196,22 @@ def test_automatic_tests_cover_generation_config_provenance() -> None:
     assert (
         "group: tests-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}"
     ) in workflow
-    candidate_job = workflow.split(
-        "  candidate-runtime:\n",
+    runtime_job = workflow.split(
+        "  release-runtime:\n",
         maxsplit=1,
     )[1]
-    assert "    if: github.event_name != 'push'\n" in candidate_job
-    assert "    needs: [python-compatibility, source-contracts]\n" in candidate_job
+    assert "    if: github.event_name != 'push'\n" in runtime_job
+    assert "    needs: [python-compatibility, source-contracts]\n" in runtime_job
+    assert "PYAMPLICOL_BUILD_MODE: release" in runtime_job
+    assert "PYAMPLICOL_BUILD_MODE: candidate" not in workflow
+    assert "--candidate" not in runtime_job
+    assert "dependencies/candidate-Cargo.lock" not in runtime_job
+    assert "dependencies/install_dependencies.py" in runtime_job
+    assert "tools/developer/prepare_source_runtime.py" not in runtime_job
     source_contract_job = workflow.split(
         "  source-contracts:\n",
         maxsplit=1,
-    )[1].split("\n  candidate-runtime:\n", maxsplit=1)[0]
+    )[1].split("\n  release-runtime:\n", maxsplit=1)[0]
     assert 'python-version: "3.11"' in source_contract_job
     assert 'python -m pip install "pytest>=8.3,<9"' in source_contract_job
     assert "tests/unit/test_api_requests.py" in source_contract_job
@@ -224,7 +230,7 @@ def test_automatic_tests_cover_generation_config_provenance() -> None:
     assert "tests/unit/test_generation_config_provenance.py" in focused_unit_step
 
 
-def test_candidate_tests_omit_the_manual_eager_performance_campaign() -> None:
+def test_runtime_tests_omit_the_manual_eager_performance_campaign() -> None:
     workflow = (WORKFLOWS / "tests.yml").read_text(encoding="utf-8")
 
     assert "just eager-smoke" not in workflow

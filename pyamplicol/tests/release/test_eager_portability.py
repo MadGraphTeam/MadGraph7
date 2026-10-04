@@ -967,7 +967,7 @@ def test_portability_workflow_transfers_portable_packs() -> None:
         "symjit_compiled_direct.rs",
     ):
         assert workflow.count(f"rust/crates/rusticol-core/src/evaluator/{adapter}") == 2
-    assert "dependencies/contributor-lock.toml" in trigger
+    assert "dependencies/release-lock.toml" in trigger
     assert "src/pyamplicol/evaluators/symbolica*.py" in trigger
     assert workflow.count("eager_portability.py produce") == 1
     assert workflow.count("eager_portability.py consume") == 1
@@ -996,7 +996,11 @@ def test_portability_workflow_transfers_portable_packs() -> None:
     assert "--expected-system ${{ matrix.system }}" in workflow
     assert "--expected-machine ${{ matrix.machine }}" in workflow
     assert workflow.count("tools/ci/memory_watchdog.py --limit-gib 30 --") == 4
-    assert workflow.count("dependencies/install_dependencies.py") == 2
+    assert "dependencies/install_dependencies.py" not in workflow
+    assert workflow.count("prepare_release_prepared_models.py") == 2
+    assert workflow.count("bootstrap-wheel .artifacts/release-prepared-bootstrap") == 2
+    assert workflow.count("python -m venv .venv") == 2
+    assert workflow.count("--asset-mode release") == 1
     assert "--with-legacy-amplicol" not in workflow
     assert "--with-reference-fft" not in workflow
     assert "--without-legacy-amplicol" not in workflow
@@ -1005,8 +1009,11 @@ def test_portability_workflow_transfers_portable_packs() -> None:
     assert "continue-on-error" not in workflow
     assert "publish-pypi" not in workflow
     assert "gh-action-pypi-publish" not in workflow
-    assert "PYAMPLICOL_BUILD_MODE: candidate" in workflow
-    assert workflow.count('PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP: "1"') == 2
+    assert workflow.count("PYAMPLICOL_BUILD_MODE: release") == 2
+    assert "PYAMPLICOL_BUILD_MODE: candidate" not in workflow
+    assert "PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP" not in workflow
+    assert "dependencies/candidate-Cargo.lock" not in workflow
+    assert workflow.count("      - dependencies/release-lock.toml\n") == 2
     assert (
         "actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0" in workflow
     )

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Mapping, Sequence
 from itertools import product
@@ -556,7 +557,7 @@ def _ordered_dense_tensor_components(
 ) -> OrderedComponents:
     """Flatten a dense tensor in explicit physical-index order."""
 
-    tensor.to_dense()
+    tensor = tensor.to_dense()
     expected = tuple(str(label) for label in expected_axis_labels)
     if not expected:
         if len(tensor) != 1:
@@ -566,8 +567,9 @@ def _ordered_dense_tensor_components(
             values=tuple(tensor[index] for index in range(len(tensor))),
         )
 
-    structure = tensor.structure()
-    arguments = tuple(slot.to_expression() for slot in structure.interface)
+    # Component coordinates follow the tensor's logical axes, not its canonical
+    # structure signature, which can put the same axes in a different order.
+    arguments = tuple(slot.to_expression() for slot in tensor.axes)
     actual: list[str] = []
     for argument in arguments:
         source = argument.to_canonical_string()
@@ -584,36 +586,20 @@ def _ordered_dense_tensor_components(
         )
 
     positions = tuple(actual.index(label) for label in expected)
-    by_coordinates: dict[tuple[int, ...], object] = {}
-    for flat_index in range(len(tensor)):
-        coordinates = structure[flat_index]
-        key = tuple(int(coordinates[position]) for position in positions)
-        if key in by_coordinates:
-            raise ValueError(f"tensor result repeats coordinates {key}")
-        by_coordinates[key] = tensor[flat_index]
-    coordinate_ranges: list[tuple[int, ...]] = []
-    for axis in range(len(expected)):
-        coordinates = tuple(sorted({key[axis] for key in by_coordinates}))
-        if coordinates != tuple(range(len(coordinates))):
-            raise ValueError(
-                f"tensor result axis {expected[axis]!r} has non-canonical "
-                f"coordinates {coordinates}"
-            )
-        coordinate_ranges.append(coordinates)
-    canonical_coordinates = tuple(product(*coordinate_ranges))
-    if set(by_coordinates) != set(canonical_coordinates):
-        missing = tuple(
-            coordinates
-            for coordinates in canonical_coordinates
-            if coordinates not in by_coordinates
-        )
+    shape = tuple(int(dimension) for dimension in tensor.shape)
+    if len(shape) != len(actual) or math.prod(shape) != len(tensor):
         raise ValueError(
-            "tensor result does not cover the complete Cartesian component grid: "
-            f"missing={missing}"
+            "tensor result does not cover the complete Cartesian component grid"
         )
+    by_coordinates: dict[tuple[int, ...], object] = {}
+    for flat_index, coordinates in enumerate(product(*(range(size) for size in shape))):
+        key = tuple(int(coordinates[position]) for position in positions)
+        by_coordinates[key] = tensor[flat_index]
+    ordered_shape = tuple(shape[position] for position in positions)
+    canonical_coordinates = product(*(range(size) for size in ordered_shape))
     ordering = identity_ordering_for_materialized_axes(
         expected,
-        tuple(len(values) for values in coordinate_ranges),
+        ordered_shape,
     )
     return OrderedComponents(
         ordering=ordering,

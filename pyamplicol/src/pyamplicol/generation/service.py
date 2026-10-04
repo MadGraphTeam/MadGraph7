@@ -5210,7 +5210,7 @@ class GenerationBackend:
                 prefer_symmetric_group_closure_anchor=(
                     self._run_config is not None
                     and self._run_config.color.contraction.value
-                    == "symmetric-group-fft"
+                    in {"auto", "symmetric-group-fft"}
                 ),
             )
             if selection.selected_color_sector_ids is not None:
@@ -5776,7 +5776,7 @@ class GenerationBackend:
                     coupling_order_limits=prepared.coupling_order_limits,
                     model=model,
                     prefer_symmetric_group_closure_anchor=(
-                        run.color.contraction.value == "symmetric-group-fft"
+                        run.color.contraction.value in {"auto", "symmetric-group-fft"}
                     ),
                     contracted_physical_color_union=True,
                 )
@@ -7753,8 +7753,11 @@ class GenerationBackend:
 
         if (
             self._run_config is None
+            or self._run_config.color.contraction.value == "direct"
             or self._run_config.color.fft_basis.value == "trace"
         ):
+            return "trace"
+        if self._automatic_adjoint_basis_limit(process) is not None:
             return "trace"
         ddm_proven = (
             model is not None
@@ -7767,13 +7770,40 @@ class GenerationBackend:
         )
         return best_general_fft_basis(process, ddm_proven=ddm_proven).actual_basis
 
+    def _automatic_adjoint_basis_limit(self, process: CanonicalProcessIR) -> str | None:
+        """Known representation limits must not make automatic requests fail."""
+
+        run = self._run_config
+        if run is None or run.color.contraction.value != "auto":
+            return None
+        if process.fundamental_labels or process.antifundamental_labels:
+            return None
+        from ..color.adjoint_kernel import MAX_ADJOINT_GLUONS
+
+        labels = tuple(sorted(process.adjoint_labels))
+        if len(labels) > MAX_ADJOINT_GLUONS:
+            return "The adjoint metric size limit requires the original trace basis."
+        reference = self._process_selection.reference_color_order
+        if labels and reference and set(reference) == set(labels):
+            pivot = reference.index(labels[0])
+            if reference[pivot - 1] != labels[-1]:
+                return (
+                    "The requested colour ordering requires the original trace basis."
+                )
+        return None
+
     def _fft_basis_metadata(
         self, color_plan: GenericColorPlan | None
     ) -> dict[str, object]:
         """Expose the actual representation without changing runtime identity."""
 
         run = self._run_config
-        if color_plan is None or run is None or run.color.fft_basis.value != "adjoint":
+        if (
+            color_plan is None
+            or run is None
+            or run.color.contraction.value == "direct"
+            or run.color.fft_basis.value != "adjoint"
+        ):
             return {}
         strategy = best_general_fft_basis(
             color_plan.process, ddm_proven=color_plan.basis == "adjoint"
@@ -7783,7 +7813,10 @@ class GenerationBackend:
                 "requested": "adjoint",
                 "actual_basis": strategy.actual_basis,
                 "name": strategy.name,
-                "reason": strategy.reason,
+                "reason": (
+                    self._automatic_adjoint_basis_limit(color_plan.process)
+                    or strategy.reason
+                ),
                 "permutation_degree": strategy.permutation_degree,
                 "tensor_count": strategy.tensor_count,
             }

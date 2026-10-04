@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+from fractions import Fraction
+
 import pytest
 
 from pyamplicol._internal.physics.symbols import symbols
@@ -60,6 +62,34 @@ def _compiled_particle(
         propagator=None,
         component_dimension=component_dimension,  # type: ignore[arg-type]
     )
+
+
+@pytest.mark.parametrize(
+    ("charge", "exact"),
+    [("2/3", "2/3"), ("-2/6", "-1/3"), ("0", "0"), (1, "1"), (0.5, "1/2")],
+)
+def test_loader_particle_charge_accepts_exact_rationals_and_numbers(
+    charge: object, exact: str,
+) -> None:
+    payload = _particle_payload()
+    payload.pop("quantum_numbers")
+    payload.update(charge=charge, y_charge="-1", y_charge_right="-2")
+
+    particle = _particle(payload)
+
+    assert particle.charge == pytest.approx(float(Fraction(exact)))
+    # Chiral hypercharges are not conserved charges of the whole Dirac particle.
+    assert particle.quantum_numbers == (("electric_charge", exact),)
+
+
+def test_loader_particle_charge_preserves_explicit_flow_metadata() -> None:
+    payload = _particle_payload()
+    payload.update(charge="2/3", quantum_numbers=[["electric_charge", "2/3"]])
+
+    particle = _particle(payload)
+
+    assert particle.charge == pytest.approx(2 / 3)
+    assert particle.quantum_numbers == (("electric_charge", "2/3"),)
 
 
 @pytest.mark.parametrize(

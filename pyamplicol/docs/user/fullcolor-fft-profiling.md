@@ -26,14 +26,18 @@ This workflow is distinct from selecting
 The orchestrator is source-checkout-only. It is intended for a workstation or
 cluster node with explicit CPU, memory, and wall-time budgets.
 
-For ordinary generation, start with `--fft adjoint --color-accuracy full`.
-This adaptively selects certified two-anchor DDM for pure Yang–Mills trees and
-single-insertion HEFT (`HIG = 1`), retains fundamental chains for quarks, and
-uses exact trace tensors where DDM is unproven. Compare the saved
+For ordinary NLC/full recurrence or on-the-fly generation, the defaults
+`contraction="auto"` and `fft_basis="adjoint"` try exact FFT, with direct
+fallback for unsupported plans. Select `--color-accuracy full` to use this
+policy. This adaptively selects certified two-anchor DDM for pure Yang–Mills
+trees and single-insertion HEFT (`HIG = 1`), retains fundamental chains for
+quarks, and uses exact trace tensors where DDM is unproven. Compare the saved
 `fft_basis_selection` as well as the request: requesting adjoint does not imply
-that every process used DDM or gained a smaller basis. Configuration defaults
-remain direct contraction and trace; historical curves retain their saved
-basis settings and must not be relabelled. In the benchmarked pure-gluon family the
+that every process used DDM or gained a smaller basis. LC, compiled/eager
+execution, and correlators retain direct/trace. Use `--color-contraction direct`
+to opt out, or `--fft adjoint` / `--fft trace` to force FFT and retain errors
+for unsupported plans. Historical curves retain their saved basis settings
+and must not be relabelled. In the benchmarked pure-gluon family the
 adjoint basis was faster than trace for six or more external gluons; compare
 setup and warmed runtime separately for other workloads.
 

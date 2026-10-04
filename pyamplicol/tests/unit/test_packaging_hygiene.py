@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / "build_backend"))
 
 import package_version  # noqa: E402
 
-RELEASE_VERSION = "0.2.1"
+RELEASE_VERSION = "1.0.0"
 
 
 def _copy_version_contract(tmp_path: Path) -> Path:
@@ -113,7 +113,8 @@ def test_contributor_lock_has_no_local_symjit_source_or_patch_inventory() -> Non
         encoding="utf-8"
     )
 
-    assert "\n[symjit]\n" not in contributor
+    assert "candidate_version = \"2.26.0\"" in contributor
+    assert "revision = \"530304a07d1be6d5abc80291aa5e92cf28ac5546\"" in contributor
     assert "\npatches =" not in contributor
     assert not tuple((ROOT / "dependencies/patches/symjit").rglob("*.patch"))
 
@@ -152,10 +153,25 @@ def test_dev_install_keeps_all_build_caches_inside_the_workspace() -> None:
         "XDG_CACHE_HOME",
         "PYTHONPYCACHEPREFIX",
     ):
-        assert recipe.count(f'{variable}="$PWD/{{{{dev_cache}}}}/') == 2
+        assert recipe.count(f'{variable}="$PWD/{{{{dev_cache}}}}/') == 1
     assert recipe.count('PYAMPLICOL_CANDIDATE_CACHE_ROOT="$PWD/{{dev_cache}}"') == 1
     assert "*INSTALLER_ARGS" in recipe
     assert "dependencies/install_dependencies.py {{INSTALLER_ARGS}}" in recipe
+    assert "prepare_source_runtime.py" not in recipe
+    assert "PYAMPLICOL_BUILD_MODE=candidate" not in recipe
+
+
+def test_dev_test_defaults_to_release_and_preserves_explicit_candidate_mode() -> None:
+    justfile = (ROOT / "justfile").read_text(encoding="utf-8")
+    assert (
+        'build_mode := env_var_or_default("PYAMPLICOL_BUILD_MODE", "release")'
+        in justfile
+    )
+    recipe = justfile.split("\ndev-test: _source-checkout\n", 1)[1].split("\n\n", 1)[0]
+    assert "PYAMPLICOL_BUILD_MODE={{build_mode}} just source-gate" in recipe
+    assert 'if [ "{{build_mode}}" = candidate ]' in recipe
+    assert "PYAMPLICOL_BUILD_MODE=release just test-deployment" in recipe
+    assert "PYAMPLICOL_BUILD_MODE=candidate just test-deployment-candidate" in recipe
 
 
 @pytest.mark.parametrize(

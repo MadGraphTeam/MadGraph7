@@ -55,7 +55,6 @@ _CANDIDATE_ABIS = {
     "symjit_application": "symjit-application-storage-v3",
     "symjit_plane_application": "pyamplicol-symjit-plane-application-v2",
 }
-_SYMJIT_REPOSITORY = "https://github.com/siravan/symjit-crate.git"
 
 
 @dataclass(frozen=True)
@@ -219,11 +218,7 @@ def _release_contract_issues(lock: dict[str, Any]) -> list[GateIssue]:
         "rust_version",
         "serialization_abi",
     }
-    allowed_symjit = {
-        "version",
-        "repository",
-        "revision",
-    }
+    allowed_symjit = {"version"}
     allowed_loader = {
         "python_distribution",
         "required_version",
@@ -238,18 +233,6 @@ def _release_contract_issues(lock: dict[str, Any]) -> list[GateIssue]:
                 "release-lock-scope",
                 "release dependency sections contain fields outside their approved "
                 "compatibility and source contracts",
-            )
-        )
-    if (
-        symjit.get("repository") != _SYMJIT_REPOSITORY
-        or not isinstance(symjit.get("revision"), str)
-        or _GIT_REVISION.fullmatch(str(symjit["revision"])) is None
-    ):
-        issues.append(
-            GateIssue(
-                "symjit-source-contract",
-                "SymJIT must use the official Git repository and an "
-                "immutable full revision",
             )
         )
     symbolica_name = canonicalize_name(str(symbolica.get("python_distribution", "")))
@@ -286,10 +269,8 @@ def _registry_source_issues(
     *,
     local_crates: set[str],
     prefix: str,
-    exact_git_sources: dict[str, tuple[str, str]] | None = None,
 ) -> list[GateIssue]:
     issues: list[GateIssue] = []
-    exact_git_sources = exact_git_sources or {}
     for package in packages:
         name = str(package.get("name", ""))
         source = package.get("source")
@@ -299,22 +280,6 @@ def _registry_source_issues(
                     GateIssue(
                         f"{prefix}-cargo-local-source",
                         f"local crate {name} unexpectedly has source {source}",
-                    )
-                )
-            continue
-        git_contract = exact_git_sources.get(name)
-        if git_contract is not None:
-            expected_version, expected_source = git_contract
-            if (
-                str(package.get("version")) != expected_version
-                or source != expected_source
-                or package.get("checksum") is not None
-            ):
-                issues.append(
-                    GateIssue(
-                        f"{prefix}-cargo-git-source",
-                        f"Cargo.lock package {name} does not match its exact "
-                        "immutable Git contract",
                     )
                 )
             continue
@@ -348,22 +313,11 @@ def _cargo_manifest_pin_issues(lock: dict[str, Any]) -> list[GateIssue]:
     except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as error:
         return [GateIssue("release-cargo-manifest", f"invalid Cargo manifest: {error}")]
     issues: list[GateIssue] = []
-    root_patch = root.get("patch")
-    expected_patch = {
-        "git": symjit["repository"],
-        "rev": symjit["revision"],
-    }
-    if (
-        not isinstance(root_patch, dict)
-        or not isinstance(root_patch.get("crates-io"), dict)
-        or set(root_patch["crates-io"]) != {"symjit"}
-        or root_patch["crates-io"].get("symjit") != expected_patch
-    ):
+    if root.get("patch"):
         issues.append(
             GateIssue(
                 "release-cargo-patch",
-                "release Cargo.toml must redirect crates.io SymJIT to the exact "
-                "release-lock Git revision",
+                "release Cargo.toml must use published crates without source patches",
             )
         )
     symbolica_version = f"={symbolica['rust_version']}"
@@ -397,8 +351,8 @@ def _cargo_manifest_pin_issues(lock: dict[str, Any]) -> list[GateIssue]:
         issues.append(
             GateIssue(
                 "release-cargo-source",
-                "rusticol-core must require the exact release-lock SymJIT version; "
-                "the workspace patch owns its Git source",
+                "rusticol-core must require the exact release-lock SymJIT version "
+                "from crates.io",
             )
         )
     return issues
@@ -409,32 +363,31 @@ def _release_cargo_lock_issues(lock: dict[str, Any]) -> list[GateIssue]:
         packages = _cargo_packages(CARGO_LOCK_PATH)
     except (OSError, ValueError, tomllib.TOMLDecodeError) as error:
         return [GateIssue("release-cargo-lock", str(error))]
-    symjit = lock.get("symjit", {})
-    symjit_source = (
-        f"git+{symjit.get('repository', '')}?rev={symjit.get('revision', '')}"
-        f"#{symjit.get('revision', '')}"
-    )
     issues = _registry_source_issues(
         packages,
         local_crates=_LOCAL_CRATES,
         prefix="release",
-        exact_git_sources={"symjit": (str(symjit.get("version", "")), symjit_source)},
     )
     symbolica = lock.get("symbolica", {})
-    name = str(symbolica.get("rust_crate", "symbolica"))
-    version = str(symbolica.get("rust_version", ""))
-    matches = [
-        package
-        for package in packages
-        if package.get("name") == name and package.get("version") == version
-    ]
-    if len(matches) != 1 or matches[0].get("source") != _REGISTRY_SOURCE:
-        issues.append(
-            GateIssue(
-                "release-cargo-pin",
-                f"Cargo.lock must resolve published {name}=={version} exactly",
+    for name, version in (
+        (
+            str(symbolica.get("rust_crate", "symbolica")),
+            str(symbolica.get("rust_version", "")),
+        ),
+        ("symjit", str(lock.get("symjit", {}).get("version", ""))),
+    ):
+        matches = [
+            package
+            for package in packages
+            if package.get("name") == name and package.get("version") == version
+        ]
+        if len(matches) != 1 or matches[0].get("source") != _REGISTRY_SOURCE:
+            issues.append(
+                GateIssue(
+                    "release-cargo-pin",
+                    f"Cargo.lock must resolve published {name}=={version} exactly",
+                )
             )
-        )
     return [*issues, *_cargo_manifest_pin_issues(lock)]
 
 
@@ -523,8 +476,8 @@ def _candidate_sources(
             str(contributor["symbolica_integrate"]["revision"]),
         ),
         "symjit": (
-            str(release["symjit"]["repository"]),
-            str(release["symjit"]["revision"]),
+            str(contributor["symjit"]["repository"]),
+            str(contributor["symjit"]["revision"]),
         ),
         "ufo-model-loader": (
             str(contributor["ufo_model_loader"]["source_url"]),
@@ -682,7 +635,7 @@ def _candidate_issues(release_lock: dict[str, Any]) -> list[GateIssue]:
                 "contributor-lock.toml has unexpected candidate ABI identities",
             )
         )
-    if "patches" in contributor or "symjit" in contributor:
+    if "patches" in contributor:
         issues.append(
             GateIssue(
                 "candidate-symjit-patch",
@@ -793,7 +746,7 @@ def _candidate_issues(release_lock: dict[str, Any]) -> list[GateIssue]:
             issues.extend(
                 _symjit_manifest_issues(
                     symjit_checkout / "Cargo.toml",
-                    expected_version=str(release_lock["symjit"]["version"]),
+                    expected_version=str(contributor["symjit"]["candidate_version"]),
                 )
             )
     return [*issues, *_candidate_config_issues(path_overrides)]

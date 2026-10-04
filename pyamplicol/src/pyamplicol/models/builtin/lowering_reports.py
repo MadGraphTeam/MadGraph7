@@ -38,11 +38,11 @@ def build_symbolic_lowering_report(
     model: BuiltinSMModel,
     graph: Any | None = None,
 ) -> SymbolicLoweringReport:
-    """Exercise the real Symbolica/spenso/idenso hooks used by ME lowering.
+    """Exercise the real Symbolica tensor hooks used by ME lowering.
 
     This is intentionally a small, deterministic probe: it validates that the
     model-owned auxiliary four-gluon tensors are registered in spenso and that
-    idenso color simplification is available. It is not the full ME evaluator.
+    symbolic color simplification is available. It is not the full ME evaluator.
     """
 
     tensor_probe = _build_auxiliary_tensor_probe(model)
@@ -211,8 +211,7 @@ def _build_tensor_network_blueprint(
     model: BuiltinSMModel,
     graph: Any,
 ) -> TensorNetworkBlueprint:
-    from symbolica.community.idenso import list_dangling, simplify_color
-    from symbolica.community.spenso import TensorNetwork
+    from symbolica.community.tensor import TensorNetwork, as_tensor
 
     max_interactions_to_build = 96
     max_interactions_to_execute = 40
@@ -271,7 +270,16 @@ def _build_tensor_network_blueprint(
     try:
         builder = _GraphTensorExpressionBuilder(model, graph)
         raw_expression = builder.matrix_element_skeleton()
-        expression = simplify_color(raw_expression)
+        expression = (
+            as_tensor(raw_expression)
+            .simplify_algebra(
+                gamma=False,
+                color=True,
+                contract="none",
+                color_substitute_cof_dimension_invariants=True,
+            )
+            .to_expression()
+        )
         expression_text = _clean_symbolica_string(str(expression))
         if len(graph.interactions) > max_interactions_to_execute:
             return TensorNetworkBlueprint(
@@ -314,7 +322,7 @@ def _build_tensor_network_blueprint(
         scalar = network.result_scalar()
         execution_time_s = time.perf_counter() - start
         executed_text = _clean_symbolica_string(str(scalar))
-        dangling = list_dangling(scalar)
+        dangling = as_tensor(scalar).list_dangling()
         status = "scalar-skeleton" if not dangling else "dangling-indices"
     except (RuntimeError, TypeError, ValueError) as exc:
         return TensorNetworkBlueprint(

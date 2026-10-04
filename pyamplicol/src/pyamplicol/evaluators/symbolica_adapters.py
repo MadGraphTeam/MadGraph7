@@ -38,7 +38,7 @@ from .symbolica_helpers import (
     _evaluate_prepared_complex_profiled,
     _safe_symbol_name,
     _symbolica_evaluator_artifact_manifest,
-    _symbolica_instruction_program,
+    _symbolica_instruction_program_repr,
 )
 from .symbolica_settings import (
     ProgressCallback,
@@ -275,7 +275,7 @@ class _JITSymbolicaEvaluatorAdapter:
                 "pyAmpliCol candidate dependency"
             )
         try:
-            program_repr = repr(_symbolica_instruction_program(instructions()))
+            program_repr = _symbolica_instruction_program_repr(instructions())
         except Exception as error:
             raise NativeEvaluationError(
                 "Symbolica could not export structured evaluator instructions "

@@ -53,7 +53,7 @@ def _as_dirac_current(
 
 class BuiltinSMLoweringMixin:
     def build_tensor_library(self) -> Any:
-        from symbolica.community.spenso import (
+        from symbolica.community.tensor import (
             Representation,
             Tensor,
             TensorLibrary,
@@ -810,7 +810,7 @@ class BuiltinSMLoweringMixin:
         dummy_prefix: str,
     ) -> Any:
         from symbolica import Expression
-        from symbolica.community.spenso import Representation, TensorName
+        from symbolica.community.tensor import Representation, TensorName
 
         mink = Representation.mink(4)
         metric = TensorName.g()

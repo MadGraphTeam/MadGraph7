@@ -142,6 +142,50 @@ def test_trace_scope_does_not_require_the_new_adjoint_certificate():
     )
 
 
+@pytest.mark.parametrize("lane", ("recurrence", "on-the-fly"))
+def test_automatic_default_selects_certified_ddm_and_direct_opt_out_does_not(lane):
+    process = build_process_ir("g g > g g", color_accuracy="full")
+    model = BuiltinSMModel()
+    for contraction, expected in (("auto", "adjoint"), ("direct", "trace")):
+        backend = GenerationBackend(
+            RunConfig(
+                action="generate",
+                color=ColorConfig(accuracy="full", contraction=contraction),
+                evaluator=EvaluatorConfig(execution_mode=lane),
+            ),
+            None,
+        )
+        assert backend._fft_color_basis(process, model) == expected
+        planned = backend._plan_concrete_process(process, model=model)
+        assert ("fft_basis_selection" in planned) is (contraction == "auto")
+
+
+def test_automatic_adjoint_selection_respects_representation_limits():
+    model = BuiltinSMModel()
+    large = build_process_ir("g g > " + " ".join(["g"] * 11), color_accuracy="full")
+    backend = GenerationBackend(
+        RunConfig(action="generate", color=ColorConfig(accuracy="full")), None
+    )
+    assert backend._fft_color_basis(large, model) == "trace"
+    # A valid trace ordering need not preserve the two DDM anchors.
+    process = build_process_ir("g g > g g", color_accuracy="full")
+    config = RunConfig(
+        action="generate",
+        color=ColorConfig(accuracy="full"),
+        process=ProcessConfig(reference_color_order=(1, 2, 4, 3)),
+    )
+    automatic = GenerationBackend(config, None)
+    planned = automatic._plan_concrete_process(process, model=model)
+    assert planned["fft_basis_selection"]["actual_basis"] == "trace"
+    assert "ordering" in planned["fft_basis_selection"]["reason"]
+    forced = GenerationBackend(
+        replace(config, color=replace(config.color, contraction="symmetric-group-fft")),
+        None,
+    )
+    with pytest.raises(ValueError, match="preserve both anchors"):
+        forced._plan_concrete_process(process, model=model)
+
+
 def test_structural_preflight_never_materializes_the_full_trace_domain(monkeypatch):
     original = generation_service.build_color_plan
     probes = []

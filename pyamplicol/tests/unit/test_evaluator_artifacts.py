@@ -32,7 +32,10 @@ from pyamplicol.evaluators.symbolica_adapters import (
     _JITSymbolicaEvaluatorAdapter,
 )
 from pyamplicol.evaluators.symbolica_compile import _chunk_parameter_indices
-from pyamplicol.evaluators.symbolica_helpers import _symbolica_instruction_program
+from pyamplicol.evaluators.symbolica_helpers import (
+    _symbolica_instruction_program,
+    _symbolica_instruction_program_repr,
+)
 from pyamplicol.evaluators.symbolica_settings import SymbolicaEvaluatorSettings
 from pyamplicol.generation.artifact_writer import _evaluator, _stage_evaluator_set
 
@@ -185,6 +188,36 @@ def test_symbolica_instruction_export_rejects_uninlined_functions() -> None:
         NativeEvaluationError, match="inlined Symbolica function bodies"
     ):
         _symbolica_instruction_program(exported)
+
+
+@pytest.mark.parametrize(
+    ("constant", "serialized"),
+    [
+        ("1i", "1\U0001d456"),
+        ("-1i", "-1\U0001d456"),
+        ("1+1i", "1+1\U0001d456"),
+        ("1/3-1i/2", "1/3-1\U0001d456/2"),
+        ("2i/3", "2\U0001d456/3"),
+    ],
+)
+def test_symbolica_instruction_constants_have_explicit_imaginary_coefficients(
+    constant: str, serialized: str
+) -> None:
+    from symbolica import E, Expression, S
+
+    x = S("instruction_constant_x")
+    evaluator = Expression.evaluator_multiple(
+        [E(constant) * x], [x], jit_compile=False, n_cores=1
+    )
+    exported = evaluator.get_instructions()
+    original = repr(exported.constants)
+
+    program = _symbolica_instruction_program_repr(exported)
+
+    assert program == (
+        f"({exported.instructions!r}, {exported.temporary_count}, [{serialized}])"
+    )
+    assert repr(exported.constants) == original
 
 
 def test_jit_artifact_persists_direct_application_and_precision_fallback(

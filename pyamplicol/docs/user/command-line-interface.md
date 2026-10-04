@@ -162,12 +162,16 @@ Other interactions retain their exact trace representation; multi-quark-line
 processes retain fundamental-chain products, not a JO primitive basis.
 The saved `fft_basis_selection` states the requested and actual basis and the
 selection reason. `--fft trace` forces the original representation.
-Both requests preserve `full` or `nlc` accuracy and reject correlations.
+Both requests preserve `full` or `nlc` accuracy; forced adjoint FFT rejects correlations.
 In the benchmarked pure-gluon family the adjoint basis was faster than trace
 for six or more external gluons (3.9x per sample and 4x faster generation at
 ten gluons); at lower multiplicity the two are comparable, so compare warmed
 evaluation and setup costs for other workloads.
-`--color-contraction symmetric-group-fft` remains valid and defaults to trace.
+`--color-contraction symmetric-group-fft` remains valid and defaults to adjoint.
+Without an explicit contraction flag, NLC/full recurrence and on-the-fly
+generation automatically try adaptive adjoint FFT and fall back to direct if
+the FFT plan is unsupported. LC, compiled/eager, and correlated generation
+remain direct/trace. Use `--color-contraction direct` to opt out.
 Do not combine `--fft` and `--color-contraction`; use either spelling. Card
 settings are overridden by dedicated flags, then by ordered `--set` options
 as usual.

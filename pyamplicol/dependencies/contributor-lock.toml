@@ -21,6 +21,11 @@ branch = "main"
 revision = "312cf6aaf4cd1414f6742ad87ce39922c497a0b6"
 release_status = "developer-build-input-only"
 
+[symjit]
+candidate_version = "2.26.0"
+repository = "https://github.com/siravan/symjit-crate.git"
+revision = "530304a07d1be6d5abc80291aa5e92cf28ac5546"
+
 [symbolica_integrate]
 source_url = "https://github.com/symbolica-dev/symbolica-integrate.git"
 # Unmodified upstream main with Symbolica 3.0 support.
@@ -39,9 +44,9 @@ license = "MIT"
 [ufo_model_loader]
 source_url = "https://github.com/alphal00p/ufo_model_loader.git"
 candidate_revision = "70ddee6b416f8c8b340e0d087646d77095c5d24b"
-latest_verified_published_version = "0.1.7"
-published_revision = "f3fda32c5e6a673075c345d74a11f12b83c00015"
-wheel_sha256 = "803ae28141ec4be3189cc62469b88da17ca33907791fe99774c2fe756a45edf7"
+latest_verified_published_version = "0.1.8"
+published_revision = "f5a9f8d2eaff76b99629fc3143952ca4f2425d55"
+wheel_sha256 = "b253942f0a356eacd5fd68b104cacf11039c2391a9ee963107f674fad54f01ef"
 release_status = "verified"
 license = "MIT"
 

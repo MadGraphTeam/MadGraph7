@@ -108,18 +108,39 @@ python -m pip install .
 
 ## Contributor installation
 
-For development from a checkout, use the repository-managed candidate
-environment rather than an editable installation:
+For development from a checkout, `just dev-install` creates a repository-managed
+environment with published Python dependencies from `pyproject.toml`, including
+Symbolica 3.0.0, and the release-mode native build. It does not use an editable
+installation. Building a new release wheel requires a clean Git checkpoint
+and complete release assets; published-dependency mode does not relax these
+publication guards. The upcoming release requires ufo-model-loader 1.0.0,
+which is not yet published on PyPI. Until publication, supply its local wheel:
 
 ```console
 git clone https://github.com/mg5amcnlo/pyamplicol.git
 cd pyamplicol
-just dev-install
+just dev-install --loader-wheel /path/to/ufo_model_loader-1.0.0-py3-none-any.whl
 PYTHON=.venv/bin/python just dev-test
 ```
 
-The first native build can take several minutes. Later invocations reuse the
-workspace-local Cargo cache.
+The installer does not search for local loader wheels; `--loader-wheel` is an
+explicit dependency-development override. It lets pip resolve the runtime dependencies, then
+replaces published Symbolica and ufo-model-loader without
+resolving dependencies again. This replaces historical source candidates that
+report the same version numbers.
+The examples below omit `--loader-wheel` for brevity; include it until loader
+1.0.0 is published and its official wheel is recorded in the runtime lock.
+Local validation does not establish that publication prerequisite.
+
+The native build can take several minutes. For a dirty development checkout, add
+`--wheel-directory PATH` to reuse an already-built compatible release wheel,
+or use `--dependencies-only` to install dependencies without building or
+staging pyAmpliCol, leaving the existing native runtime untouched.
+`--no-build` skips both runtime dependency installation and the project
+build/staging; developer tools and explicitly requested optional references
+may still be set up. `just dev-test` includes a fresh release build and therefore
+also requires a clean checkpoint; dirty edits can use focused Python tests
+against the staged compatible native runtime.
 
 On Nix or NixOS:
 
@@ -130,8 +151,8 @@ PYTHON=.venv/bin/python just dev-test
 ```
 
 The Nix shell supplies Python, Rust, C/C++, Fortran, build libraries, and the
-documentation/PDF tools. `just dev-install` installs the pinned Python and
-native inputs into `.venv`.
+documentation/PDF tools. `just dev-install` prepares the published-dependency
+environment in `.venv` and builds and stages the project in release mode.
 
 The original AmpliCol and Reference FFT repositories are optional profiling
 inputs and are omitted by default. Request either or both explicitly:
@@ -144,8 +165,14 @@ Either opt-in also installs the `fft-profiling` Python extra into `.venv`, so
 the profiling driver and PDF renderer are ready without reinstalling the
 project in editable mode.
 
-> Candidate wheels are deliberately marked non-publishable. Published builds
-> use the release dependency lock and CI workflow instead.
+### Historical candidate mode (opt-in)
+
+The old pinned-source dependency machinery is retained behind `--candidate`,
+but its pinned APIs are incompatible with the current tensor implementation,
+even when the dependencies report the same version numbers. It needs updated,
+coherent upstream pins before use and is not a working current-source setup
+route. Its candidate wheels are non-publishable. Use the published dependency
+lane above; ordinary `just dev-test` uses release mode.
 
 ## Symbolica licensing
 
@@ -194,8 +221,10 @@ make -C artifacts/pp_zjj/API/c run
 
 ### A contributor import says the candidate wheel is stale
 
-The native build inputs changed after the local candidate was staged. Refresh
-the same checkout once:
+The local candidate no longer matches the native build inputs. The historical
+candidate pins are also incompatible with the current tensor implementation;
+rebuilding them is not a supported recovery route. Switch the same checkout to
+the default published-dependency environment:
 
 ```console
 just dev-install

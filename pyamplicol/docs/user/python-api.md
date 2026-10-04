@@ -75,19 +75,17 @@ and the packaged `builtin_sm_heft.toml` card.
 ## Generate with adjoint FFT contraction
 
 The Python API uses the same `RunConfig` and `ColorConfig` fields as TOML and
-the CLI. Start with the explicitly selected adaptive adjoint option; this
-certified pure Yang–Mills example uses the DDM basis:
+the CLI. Defaults `contraction="auto"` and `fft_basis="adjoint"` try adaptive
+exact FFT for NLC/full recurrence and on-the-fly execution, with direct fallback
+for unsupported FFT plans. This certified pure Yang–Mills example uses DDM:
 
 ```python
-from pyamplicol import ColorConfig, ColorFFTBasis, Generator, ModelSource, RunConfig
+from pyamplicol import ColorConfig, Generator, ModelSource, RunConfig
 from pyamplicol.config import EvaluatorConfig
 
 config = RunConfig(
-    color=ColorConfig(
-        accuracy="full",
-        contraction="symmetric-group-fft",
-        fft_basis=ColorFFTBasis.ADJOINT,
-    ),
+    action="generate",
+    color=ColorConfig(accuracy="full"),
     evaluator=EvaluatorConfig(execution_mode="recurrence"),
 )
 result = Generator(config).generate(
@@ -97,11 +95,17 @@ result = Generator(config).generate(
 )
 ```
 
-`fft_basis="adjoint"` is equivalent to the enum value. The configuration default
-remains `"trace"`, which explicitly retains the original representation. Select
-`accuracy="nlc"` for NLC contraction, or
-`execution_mode="on-the-fly"` for a compact OTF artifact. Compiled/eager modes
-and LC accuracy do not support FFT contraction.
+Select `accuracy="nlc"` for NLC contraction, or `execution_mode="on-the-fly"`
+for a compact OTF artifact. The effective configuration can retain `"auto"`
+until per-process selection. LC, compiled/eager execution, and `correlators=`
+use direct contraction and the trace basis under the automatic policy.
+
+Use `ColorConfig(accuracy="full", contraction="direct")` to opt out of FFT;
+direct contraction ignores `fft_basis`. To force FFT and retain errors for
+unsupported plans, set `contraction="symmetric-group-fft"`, optionally with
+`fft_basis="trace"` for the original representation. The string `"adjoint"`
+is equivalent to `ColorFFTBasis.ADJOINT` (imported from `pyamplicol`). Explicit
+FFT does not support compiled/eager modes or LC accuracy.
 
 For certified trees with `n` external gluons, DDM fixes two anchors and reduces
 the trace set from `(n-1)!` orderings to `(n-2)!`, representing the same amplitude.
@@ -111,9 +115,9 @@ fundamental chains or their products, not a newly assumed JO primitive basis;
 uncertified adjoint interactions retain trace tensors. The saved
 `fft_basis_selection` reports `requested`, `actual_basis`, `name`, `reason`,
 `permutation_degree`, and `tensor_count`, making that choice explicit.
-An adjoint request requires FFT contraction and cannot be combined with direct
-contraction or `correlators=`. Runtime totals, resolved helicities and native
-SDK evaluation calls are unchanged. No universal speedup is implied.
+Forced adjoint FFT cannot be combined with `correlators=`. Runtime totals,
+resolved helicities and native SDK evaluation calls are unchanged. No universal
+speedup is implied.
 In the benchmarked pure-gluon family the adjoint basis was faster than trace
 for six or more external gluons (3.9x per sample at ten gluons); benchmark
 other multiplicities and selector workloads.

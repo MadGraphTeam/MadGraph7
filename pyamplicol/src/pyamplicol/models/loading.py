@@ -120,7 +120,7 @@ UFO_TENSOR_HEADS = frozenset(
 
 
 def _require_ufo_model_loader() -> None:
-    """Reject loaders predating the supported Symbolica expression API."""
+    """Reject loaders predating the supported model serialization API."""
 
     installed = _distribution_version("ufo-model-loader", "not installed")
     # The loader publishes three-component release versions. Development and
@@ -128,10 +128,10 @@ def _require_ufo_model_loader() -> None:
     release = re.fullmatch(
         r"(\d+)\.(\d+)\.(\d+)(?:\.post\d+)?(?:\+[\w.-]+)?", installed
     )
-    if release is None or tuple(map(int, release.groups())) < (0, 1, 8):
+    if release is None or tuple(map(int, release.groups())) < (1, 0, 0):
         raise RuntimeError(
-            "UFO model import requires ufo-model-loader release 0.1.8 or newer "
-            f"for the supported Symbolica API; found {installed}. "
+            "UFO model import requires ufo-model-loader release 1.0.0 or newer "
+            f"for the supported model serialization API; found {installed}. "
             "Install the updated loader before importing a UFO model."
         )
 

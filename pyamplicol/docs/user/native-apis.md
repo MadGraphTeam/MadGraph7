@@ -13,16 +13,20 @@ evaluation of the same artifact through the same Rusticol core. C, C++,
 Fortran, and the standalone Rust interface share the public C ABI v1; Python
 uses the wheel's PyO3 binding for these native operations.
 
-FFT basis is a generation-time choice, not a native runtime flag. Start with
-`generate --fft adjoint` or Python's `ColorConfig(accuracy="full",
-contraction="symmetric-group-fft", fft_basis="adjoint")` for adaptive exact-basis
-selection. Certified gluon trees and single-insertion HEFT use DDM; quark
-processes use fundamental chains, while uncertified interactions retain trace.
+FFT basis is a generation-time choice, not a native runtime flag. Generation
+with `--color-accuracy full` or Python's `ColorConfig(accuracy="full")`
+automatically tries adaptive adjoint FFT for recurrence/on-the-fly execution,
+falling back to direct for unsupported FFT plans. Certified gluon trees and
+single-insertion HEFT use DDM; quark processes use fundamental chains, while
+uncertified interactions retain trace.
 The saved `fft_basis_selection` reports the actual representation and reason;
-the configuration default remains trace.
+the defaults are automatic contraction and adaptive adjoint selection.
 C, C++, Fortran and Rust load either generated artifact and use their existing
 total/resolved evaluation calls unchanged. Both FFT choices require NLC/full
-colour in recurrence or on-the-fly mode and do not support correlated generation.
+colour in recurrence or on-the-fly mode. Automatic LC, compiled/eager, and
+correlated generation use direct contraction and trace basis. Select
+`--color-contraction direct` to opt out; `--fft trace` or `--fft adjoint` forces
+FFT and retains unsupported-plan errors. Forced adjoint FFT rejects correlations.
 
 > **Prerequisites:** install a binary wheel as described in [Installation](installation.md),
 > activate that environment, and generate the primary artifact from

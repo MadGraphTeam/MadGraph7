@@ -36,10 +36,7 @@ def published_cargo(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     symbolica = release["symbolica"]
     (tmp_path / "Cargo.toml").write_text(
         "[workspace.dependencies]\n"
-        f'symbolica = {{ version = "={symbolica["rust_version"]}" }}\n'
-        "[patch.crates-io]\n"
-        f'symjit = {{ git = "{symjit["repository"]}", '
-        f'rev = "{symjit["revision"]}" }}\n',
+        f'symbolica = {{ version = "={symbolica["rust_version"]}" }}\n',
         encoding="utf-8",
     )
     core = tmp_path / "rust/crates/rusticol-core/Cargo.toml"
@@ -57,8 +54,7 @@ def published_cargo(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         f'source = "{module._REGISTRY_SOURCE}"\nchecksum = "{"0" * 64}"\n'
         '[[package]]\nname = "symjit"\n'
         f'version = "{symjit["version"]}"\n'
-        f'source = "git+{symjit["repository"]}?rev={symjit["revision"]}'
-        f'#{symjit["revision"]}"\n',
+        f'source = "{module._REGISTRY_SOURCE}"\nchecksum = "{"1" * 64}"\n',
         encoding="utf-8",
     )
     monkeypatch.setattr(module, "ROOT", tmp_path)
@@ -82,21 +78,14 @@ def test_release_contract_is_lean_exact_and_schema_8() -> None:
         "rust_version",
         "serialization_abi",
     }
-    assert set(lock["symjit"]) == {
-        "version",
-        "repository",
-        "revision",
-    }
-    assert lock["symjit"]["version"] == "2.26.0"
-    assert lock["symjit"]["repository"] == "https://github.com/siravan/symjit-crate.git"
-    assert lock["symjit"]["revision"] == "530304a07d1be6d5abc80291aa5e92cf28ac5546"
+    assert lock["symjit"] == {"version": "2.26.4"}
     assert set(lock["ufo_model_loader"]) == {
         "python_distribution",
         "required_version",
     }
 
 
-def test_release_cargo_lock_accepts_registry_crates_and_exact_symjit_git(
+def test_release_cargo_lock_accepts_registry_crates_including_symjit(
     published_cargo,
 ) -> None:
     assert (
@@ -195,7 +184,8 @@ def test_candidate_gate_uses_compact_exact_git_sources_and_rlib_manifest(
     for name in ("graphica", "numerica"):
         (checkouts / "symbolica" / "lib" / name).mkdir(parents=True)
     (source_paths["symjit"] / "Cargo.toml").write_text(
-        f'[package]\nname = "symjit"\nversion = "{release["symjit"]["version"]}"\n\n'
+        '[package]\nname = "symjit"\n'
+        f'version = "{contributor["symjit"]["candidate_version"]}"\n\n'
         '[lib]\ncrate-type = ["rlib"]\n',
         encoding="utf-8",
     )
@@ -283,7 +273,8 @@ def test_candidate_gate_uses_compact_exact_git_sources_and_rlib_manifest(
     }
 
     (source_paths["symjit"] / "Cargo.toml").write_text(
-        f'[package]\nname = "symjit"\nversion = "{release["symjit"]["version"]}"\n\n'
+        '[package]\nname = "symjit"\n'
+        f'version = "{contributor["symjit"]["candidate_version"]}"\n\n'
         '[lib]\ncrate-type = ["rlib", "cdylib"]\n',
         encoding="utf-8",
     )
@@ -292,14 +283,14 @@ def test_candidate_gate_uses_compact_exact_git_sources_and_rlib_manifest(
     }
 
 
-def test_release_contract_rejects_nonofficial_symjit_repository() -> None:
+def test_release_contract_rejects_symjit_git_source_metadata() -> None:
     module = _module()
     release = copy.deepcopy(module._load_lock())
     release["symjit"]["repository"] = (
         "https://github.com/ValentinHirschi/symjit_crate_changes_for_pyamplicol.git"
     )
 
-    assert "symjit-source-contract" in {
+    assert "release-lock-scope" in {
         issue.code for issue in module._release_contract_issues(release)
     }
 

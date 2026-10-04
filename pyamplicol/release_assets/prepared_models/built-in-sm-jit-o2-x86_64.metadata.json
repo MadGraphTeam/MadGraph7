@@ -4,15 +4,15 @@
     "mode": "release"
   },
   "bundle": "built-in-sm-jit-o2-x86_64.pyamplicol-model",
-  "bundle_sha256": "78e8542501cbbb7fbd7603ecb32838e8582eebc8425cbd72adb26a054336ae08",
-  "bundle_size": 7122110,
+  "bundle_sha256": "fcab6d273803d0b0946ef49f8c9761e5d5ad12d8cf740b96b61c89f76e0d2862",
+  "bundle_size": 7124748,
   "dependencies": {
     "symbolica_serialization_abi": "symbolica-bincode2-v1",
-    "symbolica_version": "2.2.0",
+    "symbolica_version": "3.0.0",
     "symjit_application_abi": "symjit-application-storage-v3",
     "symjit_plane_application_abi": "pyamplicol-symjit-plane-application-v2",
-    "symjit_version": "2.22.0",
-    "ufo_model_loader_version": "0.1.7"
+    "symjit_version": "2.26.4",
+    "ufo_model_loader_version": "1.0.0"
   },
   "eager_kernel_abi": "pyamplicol-eager-kernel-v1",
   "id": "built-in-sm-jit-o2",
@@ -22,10 +22,10 @@
   "prepared_model_bundle_schema": 1,
   "producer": {
     "compiled_model_schema": 9,
-    "model_compiler_sha256": "7a30bc28a561f617d3cabae9521f03e2ddd9cf1bc3acc0b6374c56978aee5270",
+    "model_compiler_sha256": "2a3cce12de8775926f302ed07706c45298727ffe690c3379b010012f7a7b77f8",
     "model_compiler_version": 16,
-    "model_source_digest": "acee70fb8497fed76588fcc089ed29c1133b596e84a30b681ff782400ff5928b",
-    "package_version": "0.4.1"
+    "model_source_digest": "db50b0cb34998c1a9f7bf63c2b7a4d80c01f373a00d9bee81372b2d43a506962",
+    "package_version": "1.0.0"
   },
   "schema_version": 1,
   "target": {

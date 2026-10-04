@@ -38,6 +38,7 @@ def test_correlated_settings_are_explicit_and_do_not_change_default_factory() ->
     assert settings.requested.color.accuracy == "lc"
     assert settings.effective.color.accuracy == "lc"
     assert settings.effective.color.contraction == "direct"
+    assert settings.effective.color.fft_basis == "trace"
     assert settings.effective.evaluator.execution_mode == "compiled"
     assert settings.effective.evaluator.jit.compress is True
     assert settings.effective.generation.relation_discovery.mode == "off"
@@ -59,6 +60,8 @@ def test_output_accuracy_is_retained_but_underlying_generation_stays_full(accura
         config, None, declarations=CorrelatorConfig()
     )
     assert backend._run_config.color.accuracy == accuracy
+    assert backend._run_config.color.contraction == "direct"
+    assert backend._run_config.color.fft_basis == "trace"
     assert backend._color_accuracy == "full"
     process = build_process_ir("d d~ > z", color_accuracy="full")
     plan = build_color_plan(process, color_accuracy="full")
@@ -81,7 +84,9 @@ def test_output_accuracy_is_retained_but_underlying_generation_stays_full(accura
 def test_correlated_configuration_preserves_resources_and_existing_clamps() -> None:
     requested = RunConfig(
         action=Action.GENERATE,
-        color=ColorConfig(accuracy="full", contraction="symmetric-group-fft"),
+        color=ColorConfig(
+            accuracy="full", contraction="symmetric-group-fft", fft_basis="trace"
+        ),
         generation=GenerationConfig(
             workers=1,
             validation=GenerationValidationConfig(seed=19, samples=3),
@@ -99,6 +104,15 @@ def test_correlated_configuration_preserves_resources_and_existing_clamps() -> N
     assert resolution.effective.evaluator.backend is effective.evaluator.backend
     assert resolution.effective.color.contraction == "direct"
     assert correlated.correlated_configuration(resolution).clamps == resolution.clamps
+
+
+def test_correlated_configuration_still_rejects_forced_adjoint_fft() -> None:
+    config = RunConfig(
+        action="generate",
+        color=ColorConfig(accuracy="full", contraction="symmetric-group-fft"),
+    )
+    with pytest.raises(ValueError, match="adjoint FFT is not supported"):
+        correlated.correlated_configuration(config)
 
 
 @pytest.mark.parametrize(

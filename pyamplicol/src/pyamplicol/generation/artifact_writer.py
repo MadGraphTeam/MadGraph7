@@ -13,7 +13,7 @@ import re
 import time
 import zipfile
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cache
 from itertools import pairwise
 from pathlib import Path
@@ -391,8 +391,11 @@ class _GenerationConfigProvenance:
         config: GenerationConfig | RunConfig | ConfigResolution | None,
     ) -> _GenerationConfigProvenance:
         if isinstance(config, ConfigResolution):
-            return cls(config.requested, config.effective, config.clamps)
+            effective = replace(config.effective, color=config.effective.resolved_color)
+            return cls(config.requested, effective, config.clamps)
         effective = GenerationConfig() if config is None else config
+        if isinstance(effective, RunConfig):
+            return cls(effective, replace(effective, color=effective.resolved_color))
         return cls(effective, effective)
 
 

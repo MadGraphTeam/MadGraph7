@@ -103,7 +103,7 @@ def test_ufo_standard_cmath_normalization_needs_no_runtime_patch() -> None:
     assert model.parse_python_expression_safe is original_model_parse
 
 
-@pytest.mark.parametrize("version", ["0.1.8", "0.1.9", "0.2.0", "1.0.0", "0.1.8+local"])
+@pytest.mark.parametrize("version", ["1.0.0", "1.0.1", "1.1.0", "1.0.0+local"])
 def test_ufo_loader_accepts_supported_releases(monkeypatch, version: str) -> None:
     monkeypatch.setattr(
         "pyamplicol.models.loading._distribution_version", lambda *_: version
@@ -111,14 +111,14 @@ def test_ufo_loader_accepts_supported_releases(monkeypatch, version: str) -> Non
     _require_ufo_model_loader()
 
 
-@pytest.mark.parametrize("version", ["not installed", "0.1.7", "0.1.8rc1"])
+@pytest.mark.parametrize("version", ["not installed", "0.1.8", "0.2.0", "1.0.0rc1"])
 def test_ufo_loader_rejects_unsupported_versions_before_loading(
     monkeypatch, version: str
 ) -> None:
     monkeypatch.setattr(
         "pyamplicol.models.loading._distribution_version", lambda *_: version
     )
-    with pytest.raises(RuntimeError, match=r"0\.1\.8 or newer"):
+    with pytest.raises(RuntimeError, match=r"1\.0\.0 or newer"):
         _load_external_model(Path("unused.json"), options=ModelCompileOptions())
 
 

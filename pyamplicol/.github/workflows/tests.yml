@@ -81,14 +81,14 @@ jobs:
           tests/unit/test_api_requests.py::test_public_compiled_model_uses_the_canonical_schema
           -q
 
-  candidate-runtime:
-    name: Candidate generation, runtime, and native SDK
+  release-runtime:
+    name: Published-dependency generation, runtime, and native SDK
     if: github.event_name != 'push'
     needs: [python-compatibility, source-contracts]
     runs-on: ubuntu-24.04
     env:
       CARGO_INCREMENTAL: "0"
-      PYAMPLICOL_BUILD_MODE: candidate
+      PYAMPLICOL_BUILD_MODE: release
       PYAMPLICOL_REQUIRE_NATIVE_TESTS: "1"
       PYTHONDONTWRITEBYTECODE: "1"
       SYMBOLICA_HIDE_BANNER: "1"
@@ -102,6 +102,7 @@ jobs:
           cache: pip
           cache-dependency-path: |
             pyproject.toml
+            dependencies/release-lock.toml
             dependencies/contributor-lock.toml
             dependencies/python-runtime-lock.toml
       - uses: dtolnay/rust-toolchain@46511b1c83438f0dd37c02d843619ece5a4abb5b # 1.97.1
@@ -112,7 +113,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: ${{ runner.os }}-cargo-1.97.1-${{ hashFiles('Cargo.lock', 'dependencies/candidate-Cargo.lock', 'dependencies/contributor-lock.toml') }}
+          key: ${{ runner.os }}-cargo-1.97.1-${{ hashFiles('Cargo.lock', 'dependencies/contributor-lock.toml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-1.97.1-
       - name: Install C++17 and Fortran 2008 toolchains
@@ -122,19 +123,13 @@ jobs:
           command -v c++
           command -v gfortran
           command -v make
-      - name: Build the pinned contributor candidate (30 GiB RSS limit)
+      - name: Build and stage the published-dependency runtime (30 GiB RSS limit)
         run: >-
           python tools/ci/memory_watchdog.py --limit-gib 30 --
           python dependencies/install_dependencies.py
-      - name: Stage the candidate runtime for source-tree tests (30 GiB RSS limit)
-        run: >-
-          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
-          .venv/bin/python tools/developer/prepare_source_runtime.py
-          --candidate
-          --wheel-directory .artifacts/candidate
       - name: Run lightweight dependency, typing, and CI-tool checks
         run: |
-          .venv/bin/python tools/release/check_dependencies.py --candidate
+          .venv/bin/python tools/release/check_dependencies.py
           PYTHON="$PWD/.venv/bin/python" just typing
           .venv/bin/python -m ruff check tools/ci tests/unit/test_ci_memory_watchdog.py
       - name: Build and exercise Python, C, C++, Fortran, and Rust APIs (30 GiB RSS limit)
@@ -222,7 +217,7 @@ jobs:
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
           env PYTHON=$PWD/.venv/bin/python just rust-test
-      - name: Exercise installed candidate and checkout-independent examples
+      - name: Exercise installed release runtime and checkout-independent examples
         run: |
           .venv/bin/python -m pyamplicol self-test --json
           .venv/bin/python -m pytest tests/integration/test_examples.py -q

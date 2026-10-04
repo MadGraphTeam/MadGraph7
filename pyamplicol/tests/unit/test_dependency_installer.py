@@ -78,6 +78,8 @@ def test_profiling_references_require_explicit_cli_opt_in() -> None:
     parser = module._parser()
 
     defaults = parser.parse_args([])
+    assert defaults.candidate is False
+    assert defaults.loader_wheel is None
     assert defaults.with_legacy_amplicol is False
     assert defaults.with_reference_fft is False
 
@@ -91,8 +93,28 @@ def test_profiling_references_require_explicit_cli_opt_in() -> None:
     assert "--without-reference-fft" not in help_text
 
 
+def test_published_sources_retain_dashboard_and_optional_references() -> None:
+    module = _module()
+    payload = module._lock()
+    sources = module._developer_sources(
+        payload, with_legacy=False, with_reference_fft=False
+    )
+    assert len(sources) == 1
+    assert sources[0].key == "ratatui-ffi"
+    assert sources[0].url == payload["ratatui"]["ffi_repository"]
+    assert sources[0].revision == payload["ratatui"]["ffi_revision"]
+    assert {
+        source.key
+        for source in module._developer_sources(
+            payload, with_legacy=True, with_reference_fft=True
+        )
+    } == {"ratatui-ffi", "legacy-amplicol", "reference-fft"}
+
+
+@pytest.mark.parametrize("candidate", [False, True])
 def test_installer_wires_only_explicit_reference_opt_ins(
     monkeypatch: pytest.MonkeyPatch,
+    candidate: bool,
 ) -> None:
     module = _module()
     selections: list[dict[str, bool]] = []
@@ -104,6 +126,7 @@ def test_installer_wires_only_explicit_reference_opt_ins(
         return ()
 
     monkeypatch.setattr(module, "_sources", sources)
+    monkeypatch.setattr(module, "_developer_sources", sources)
     for name in (
         "_ensure_just",
         "_configure_sources",
@@ -118,14 +141,14 @@ def test_installer_wires_only_explicit_reference_opt_ins(
         lambda *_args, **kwargs: profiling_extras.append(kwargs["with_fft_profiling"]),
     )
 
-    assert module.main(["--dry-run", "--no-build"]) == 0
-    assert module.main(["--dry-run", "--no-build", "--with-legacy-amplicol"]) == 0
-    assert module.main(["--dry-run", "--no-build", "--with-reference-fft"]) == 0
+    arguments = ["--dry-run", "--no-build", *(["--candidate"] if candidate else [])]
+    assert module.main(arguments) == 0
+    assert module.main([*arguments, "--with-legacy-amplicol"]) == 0
+    assert module.main([*arguments, "--with-reference-fft"]) == 0
     assert (
         module.main(
             [
-                "--dry-run",
-                "--no-build",
+                *arguments,
                 "--with-legacy-amplicol",
                 "--with-reference-fft",
             ]
@@ -168,11 +191,11 @@ def test_ufo_loader_distinguishes_required_and_latest_published_versions() -> No
     module = _module()
     payload = module._lock()
     loader = payload["ufo_model_loader"]
-    assert loader["required_version"] == "0.1.8"
-    assert loader["latest_verified_published_version"] == "0.1.7"
-    assert loader["published_revision"] == ("f3fda32c5e6a673075c345d74a11f12b83c00015")
+    assert loader["required_version"] == "1.0.0"
+    assert loader["latest_verified_published_version"] == "0.1.8"
+    assert loader["published_revision"] == ("f5a9f8d2eaff76b99629fc3143952ca4f2425d55")
     assert loader["wheel_sha256"] == (
-        "803ae28141ec4be3189cc62469b88da17ca33907791fe99774c2fe756a45edf7"
+        "b253942f0a356eacd5fd68b104cacf11039c2391a9ee963107f674fad54f01ef"
     )
     assert loader["release_status"] == "verified"
     assert loader["source_url"] == "https://github.com/alphal00p/ufo_model_loader.git"
@@ -215,7 +238,10 @@ def test_local_source_overrides_replace_managed_dependency_clones(
     payload = module._lock()
     symjit = payload["symjit"]
 
-    assert symjit == module._release_lock()["symjit"]
+    assert symjit == {
+        **module._release_lock()["symjit"],
+        **module._contributor_lock()["symjit"],
+    }
     sources = {
         item.key
         for item in module._sources(
@@ -247,7 +273,9 @@ def test_managed_sources_remain_available_without_explicit_path_overrides(
             module._lock(), with_legacy=False, with_reference_fft=False
         )
     }
-    assert sources["symjit"].revision == module._release_lock()["symjit"]["revision"]
+    assert (
+        sources["symjit"].revision == module._contributor_lock()["symjit"]["revision"]
+    )
     assert (
         sources["ufo-model-loader"].revision
         == (module._contributor_lock()["ufo_model_loader"]["candidate_revision"])
@@ -291,7 +319,7 @@ def test_community_wiring_preserves_dependency_sources(
     symjit.mkdir()
     (symjit / "Cargo.toml").write_text(
         '[package]\nname = "symjit"\n'
-        f'version = "{module._release_lock()["symjit"]["version"]}"\n'
+        f'version = "{module._contributor_lock()["symjit"]["candidate_version"]}"\n'
         '[lib]\ncrate-type = ["rlib"]\n',
         encoding="utf-8",
     )
@@ -619,12 +647,12 @@ def test_contributor_runtime_requirements_use_the_full_hash_locked_closure() -> 
     assert "ufo-model-loader==" not in requirements
     for requirement in (
         "colorama==0.4.6",
-        "numpy==2.4.2",
+        "numpy==2.4.6",
         "prettytable==3.18.0",
-        "progressbar2==4.5.0",
-        "python-utils==4.0.0",
+        "progressbar2==4.6.0",
+        "python-utils==4.1.0",
         "typing-extensions==4.16.0",
-        "wcwidth==0.8.2",
+        "wcwidth==0.9.1",
     ):
         assert requirements.count(requirement) == 1
     assert requirements.count("--hash=sha256:") > 20
@@ -650,7 +678,7 @@ def test_unpublished_ufo_loader_uses_managed_source_without_ignored_checkout(
     assert source.revision == payload["ufo_model_loader"]["candidate_revision"]
     requirements = module._runtime_requirements_text()
     assert "ufo-model-loader==" not in requirements
-    assert "numpy==2.4.2" in requirements
+    assert "numpy==2.4.6" in requirements
 
 
 def test_contributor_tools_reuse_project_build_test_and_docs_requirements() -> None:
@@ -672,7 +700,7 @@ def test_contributor_tools_reuse_project_build_test_and_docs_requirements() -> N
     requirements = module._contributor_python_requirements()
 
     assert requirements == expected
-    assert requirements.count("maturin==1.14.1") == 1
+    assert requirements.count("maturin==1.15.0") == 1
     assert "pypdf>=5,<6" in requirements
 
     profiling_requirements = module._contributor_python_requirements(
@@ -681,8 +709,8 @@ def test_contributor_tools_reuse_project_build_test_and_docs_requirements() -> N
     assert profiling_requirements == tuple(
         dict.fromkeys((*expected, *optional["fft-profiling"]))
     )
-    assert "matplotlib==3.10.8" in profiling_requirements
-    assert "reportlab==4.4.4" in profiling_requirements
+    assert "matplotlib==3.11.2" in profiling_requirements
+    assert "reportlab==4.5.1" in profiling_requirements
 
 
 def test_candidate_dependency_only_build_installs_symbolica_and_managed_ufo_loader(
@@ -772,8 +800,13 @@ def test_candidate_dependency_only_build_installs_symbolica_and_managed_ufo_load
     assert probe[:3] == [python, "-I", "-c"]
     assert probe[-1] == "3.0.0"
     assert "from symbolica import Expression" in probe[3]
-    assert "from symbolica.community.idenso import simplify_color" in probe[3]
-    assert "from symbolica.community.spenso import TensorNetwork" in probe[3]
+    assert (
+        "from symbolica.community.tensor import TensorExpression, TensorNetwork"
+        in probe[3]
+    )
+    assert "TensorExpression.simplify_algebra" in probe[3]
+    assert "update coherent upstream pins" in probe[3]
+    assert "community.idenso" not in probe[3]
     assert environment["SYMBOLICA_HIDE_BANNER"] == "1"
     assert ratatui_payloads == [payload]
     archived = {
@@ -883,10 +916,12 @@ def test_ratatui_sdist_materialization_rejects_unpinned_bytes(
 
 
 @pytest.mark.parametrize("explicit_bootstrap", [None, "1"])
-def test_candidate_project_wheel_does_not_force_asset_bootstrap(
+@pytest.mark.parametrize("mode", ["candidate", "release"])
+def test_project_wheel_uses_selected_mode_without_forcing_asset_bootstrap(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     explicit_bootstrap: str | None,
+    mode: str,
 ) -> None:
     module = _module()
     venv = tmp_path / ".venv"
@@ -913,8 +948,9 @@ def test_candidate_project_wheel_does_not_force_asset_bootstrap(
         )
     monkeypatch.setattr(module, "VENV", venv)
     monkeypatch.setattr(module, "ARTIFACTS", artifacts)
+    monkeypatch.setattr(module, "RELEASE_ARTIFACTS", artifacts)
 
-    module._build_candidate_project_wheel(FakeRunner())
+    module._build_project_wheel(FakeRunner(), mode=mode)
 
     assert len(calls) == 2
     build_command, build_environment = calls[0]
@@ -922,7 +958,7 @@ def test_candidate_project_wheel_does_not_force_asset_bootstrap(
     assert "--no-isolation" in build_command
     assert "--skip-dependency-check" in build_command
     assert build_environment is not None
-    assert build_environment["PYAMPLICOL_BUILD_MODE"] == "candidate"
+    assert build_environment["PYAMPLICOL_BUILD_MODE"] == mode
     install_command, install_environment = calls[1]
     assert install_command[1:4] == ["-m", "pip", "install"]
     assert install_environment is not None
@@ -948,13 +984,18 @@ def test_dependency_only_and_no_build_are_mutually_exclusive() -> None:
         module._parser().parse_args(["--dependencies-only", "--no-build"])
 
 
-def test_dependency_only_cli_skips_the_project_wheel(
+@pytest.mark.parametrize("candidate", [False, True])
+@pytest.mark.parametrize("option", ["--dependencies-only", "--no-build"])
+def test_dependency_options_skip_the_project_wheel(
     monkeypatch: pytest.MonkeyPatch,
+    candidate: bool,
+    option: str,
 ) -> None:
     module = _module()
     payload: dict[str, object] = {}
     monkeypatch.setattr(module, "_lock", lambda: payload)
     monkeypatch.setattr(module, "_sources", lambda *_args, **_kwargs: ())
+    monkeypatch.setattr(module, "_developer_sources", lambda *_args, **_kwargs: ())
     for name in (
         "_ensure_just",
         "_ensure_venv",
@@ -972,12 +1013,174 @@ def test_dependency_only_cli_skips_the_project_wheel(
     )
     monkeypatch.setattr(
         module,
-        "_build_candidate_wheels",
-        lambda *_args: calls.append("dependencies-and-project"),
+        "_install_published_dependencies",
+        lambda *_args, **_kwargs: calls.append("published-dependencies"),
+    )
+    monkeypatch.setattr(
+        module, "_build_ratatui_wheel", lambda *_args: calls.append("ratatui")
+    )
+    monkeypatch.setattr(
+        module, "_build_project_wheel", lambda *_args, **_kwargs: pytest.fail("build")
+    )
+    monkeypatch.setattr(
+        module, "_stage_project_runtime", lambda *_args, **_kwargs: pytest.fail("stage")
     )
 
-    assert module.main(["--dry-run", "--dependencies-only"]) == 0
-    assert calls == ["dependencies"]
+    assert (
+        module.main(
+            [
+                "--dry-run",
+                option,
+                *(["--candidate"] if candidate else []),
+            ]
+        )
+        == 0
+    )
+    expected = ["dependencies"] if candidate else ["published-dependencies", "ratatui"]
+    assert calls == ([] if option == "--no-build" else expected)
+
+
+@pytest.mark.parametrize("with_loader_wheel", [False, True])
+def test_published_dependencies_resolve_then_replace_same_version_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    with_loader_wheel: bool,
+) -> None:
+    module = _module()
+    monkeypatch.setattr(module, "VENV", tmp_path / ".venv")
+    wheel = tmp_path / "ufo_model_loader-1.0.0-py3-none-any.whl"
+    calls: list[list[str]] = []
+
+    class FakeRunner:
+        def run(self, command, **_kwargs):
+            calls.append([str(item) for item in command])
+
+    module._install_published_dependencies(
+        FakeRunner(), loader_wheel=wheel if with_loader_wheel else None
+    )
+    requirements = tomllib.loads(module.PYPROJECT.read_text())["project"][
+        "dependencies"
+    ]
+    selected = [str(wheel)] if with_loader_wheel else []
+    assert calls[0] == [
+        str(module._venv_python()),
+        "-m",
+        "pip",
+        "install",
+        "--upgrade",
+        *requirements,
+        *selected,
+    ]
+    assert calls[1] == [
+        str(module._venv_python()),
+        "-m",
+        "pip",
+        "install",
+        "--force-reinstall",
+        "--no-deps",
+        "--only-binary=:all:",
+        "symbolica==3.0.0",
+        *(selected or ["ufo-model-loader==1.0.0"]),
+    ]
+
+
+@pytest.mark.parametrize("reuse", [False, True])
+@pytest.mark.parametrize("mode", ["release", "candidate"])
+def test_installer_routes_project_and_staging_together(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    reuse: bool,
+    mode: str,
+) -> None:
+    module = _module()
+    monkeypatch.delenv("PYAMPLICOL_BUILD_MODE", raising=False)
+    monkeypatch.setattr(module, "_lock", lambda: {})
+    monkeypatch.setattr(module, "ARTIFACTS", tmp_path / "candidate")
+    monkeypatch.setattr(module, "RELEASE_ARTIFACTS", tmp_path / "release")
+    calls: list[tuple[str, object]] = []
+    for name in ("_ensure_just", "_ensure_venv"):
+        monkeypatch.setattr(module, name, lambda *_args, **_kwargs: None)
+    for name in (
+        "_configure_sources",
+        "_write_cargo_config",
+        "_write_candidate_lock",
+        "_write_state",
+    ):
+        monkeypatch.setattr(
+            module,
+            name,
+            lambda *_args, _name=name, **_kwargs: calls.append((_name, None)),
+        )
+    monkeypatch.setattr(module, "_sources", lambda *_args, **_kwargs: ())
+    monkeypatch.setattr(module, "_developer_sources", lambda *_args, **_kwargs: ())
+    monkeypatch.setattr(
+        module,
+        "_build_candidate_dependency_wheels",
+        lambda *_args: calls.append(("candidate-deps", None)),
+    )
+    monkeypatch.setattr(
+        module,
+        "_install_published_dependencies",
+        lambda *_args, **_kwargs: calls.append(("published-deps", None)),
+    )
+    monkeypatch.setattr(
+        module, "_build_ratatui_wheel", lambda *_args: calls.append(("ratatui", None))
+    )
+    monkeypatch.setattr(
+        module,
+        "_build_project_wheel",
+        lambda _runner, **kwargs: calls.append(("build", kwargs["mode"])),
+    )
+    monkeypatch.setattr(
+        module,
+        "_install_project_wheel",
+        lambda _runner, directory: calls.append(("install", directory)),
+    )
+    monkeypatch.setattr(
+        module,
+        "_stage_project_runtime",
+        lambda _runner, **kwargs: calls.append(("stage", kwargs)),
+    )
+    arguments = ["--dry-run", *(["--candidate"] if mode == "candidate" else [])]
+    directory = tmp_path / mode
+    if reuse:
+        directory = tmp_path / "existing"
+        arguments.extend(("--wheel-directory", str(directory)))
+    assert module.main(arguments) == 0
+    if mode == "release":
+        assert calls[:2] == [("published-deps", None), ("ratatui", None)]
+        assert len(calls) == 4  # No candidate Cargo overlays or candidate state.
+    else:
+        assert ("candidate-deps", None) in calls
+    assert calls[-2] == (("install", directory) if reuse else ("build", mode))
+    assert calls[-1] == ("stage", {"directory": directory, "mode": mode})
+
+
+@pytest.mark.parametrize("mode", ["release", "candidate"])
+def test_source_runtime_stage_reuses_wheel_in_selected_mode(mode: str) -> None:
+    module = _module()
+    calls = []
+
+    class FakeRunner:
+        def run(self, command, **kwargs):
+            calls.append((command, kwargs))
+
+    directory = Path("existing-wheels")
+    module._stage_project_runtime(FakeRunner(), directory=directory, mode=mode)
+    command, options = calls[0]
+    assert command == [
+        module._venv_python(),
+        ROOT / "tools/developer/prepare_source_runtime.py",
+        "--wheel-directory",
+        directory,
+    ]
+    assert options["env"]["PYAMPLICOL_BUILD_MODE"] == mode
+
+
+def test_candidate_mode_rejects_published_loader_override() -> None:
+    module = _module()
+    with pytest.raises(SystemExit):
+        module.main(["--candidate", "--loader-wheel", "loader.whl"])
 
 
 def test_toml_section_replacement_is_idempotent() -> None:
@@ -1159,6 +1362,10 @@ def test_candidate_dependency_projection_rewrites_only_the_isolated_manifest(
                 "rust_version": "2.1.0",
                 "candidate_version": "2.2.0",
             },
+            "symjit": {
+                "version": "2.22.0",
+                "candidate_version": "2.21.0",
+            },
         },
     )
 
@@ -1166,4 +1373,4 @@ def test_candidate_dependency_projection_rewrites_only_the_isolated_manifest(
 
     projected = manifest.read_text(encoding="utf-8")
     assert 'symbolica = { version = "=2.2.0"' in projected
-    assert 'symjit = { version = "=2.22.0"' in projected
+    assert 'symjit = { version = "=2.21.0"' in projected

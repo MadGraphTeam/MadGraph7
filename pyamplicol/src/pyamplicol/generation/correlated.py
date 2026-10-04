@@ -29,6 +29,7 @@ from pyamplicol.color.plan import GenericColorPlan, build_color_plan
 from pyamplicol.config import (
     Action,
     ColorContraction,
+    ColorFFTBasis,
     ConfigClamp,
     ConfigResolution,
     EvaluatorExecutionMode,
@@ -81,7 +82,10 @@ def correlated_configuration(
         clamps = ()
     else:
         raise TypeError("invalid correlated generation configuration")
-    if effective.color.fft_basis.value == "adjoint":
+    if (
+        effective.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
+        and effective.color.fft_basis is ColorFFTBasis.ADJOINT
+    ):
         raise ValueError(
             "adjoint FFT is not supported for correlated matrix elements; "
             "use the direct colour contraction"
@@ -91,6 +95,7 @@ def correlated_configuration(
         color=replace(
             effective.color,
             contraction=ColorContraction.DIRECT,
+            fft_basis=ColorFFTBasis.TRACE,
             lc_flow_layout=LCFlowLayout.TOPOLOGY_REPLAY,
         ),
         evaluator=replace(
@@ -105,6 +110,7 @@ def correlated_configuration(
     )
     paths = (
         "color.contraction",
+        "color.fft_basis",
         "color.lc_flow_layout",
         "evaluator.execution_mode",
         "generation.relation_discovery.mode",

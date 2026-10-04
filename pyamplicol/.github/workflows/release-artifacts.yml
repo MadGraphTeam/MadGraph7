@@ -86,7 +86,7 @@ jobs:
           cache: pip
       - uses: dtolnay/rust-toolchain@46511b1c83438f0dd37c02d843619ece5a4abb5b # 1.97.1
       - name: Install build tools
-        run: python -m pip install "build>=1.2,<2" "maturin==1.14.1"
+        run: python -m pip install "build>=1.2,<2" "maturin==1.15.0"
       - name: Build the one retained sdist
         run: >-
           python tools/ci/memory_watchdog.py --limit-gib 30 --
@@ -137,7 +137,7 @@ jobs:
         run: >-
           python -m pip install
           "build>=1.2,<2"
-          "maturin==1.14.1"
+          "maturin==1.15.0"
           "twine>=6,<7"
       - name: Build and audit from retained sdist
         run: >-
@@ -231,7 +231,7 @@ jobs:
               PY311=/opt/python/cp311-cp311/bin/python
               PY314=/opt/python/cp314-cp314/bin/python
               "$PY311" -m pip install \
-                "build>=1.2,<2" "maturin==1.14.1" "twine>=6,<7"
+                "build>=1.2,<2" "maturin==1.15.0" "twine>=6,<7"
               "$PY311" tools/ci/memory_watchdog.py --limit-gib 30 -- \
                 "$PY311" tools/release/build_release_artifacts.py \
                 --retained-sdist .artifacts/retained/pyamplicol-*.tar.gz \

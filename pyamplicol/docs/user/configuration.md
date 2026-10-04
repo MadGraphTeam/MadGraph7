@@ -169,8 +169,8 @@ assign arbitrary names fixed QCD or electroweak meanings.
 ```toml
 [color]
 accuracy = "lc"                 # lc, nlc, or full
-contraction = "direct"          # direct or symmetric-group-fft
-fft_basis = "trace"              # trace or adjoint; used by FFT contraction
+contraction = "auto"            # auto, direct, or symmetric-group-fft
+fft_basis = "adjoint"           # trace or adjoint; used by FFT contraction
 lc_flow_layout = "topology-replay"
 ```
 
@@ -195,10 +195,16 @@ For contracted NLC/full output, `symmetric-group-fft` evaluates the same exact
 colour interference as `direct` while Fourier-transforming certified
 permutation orbits and retaining all other terms as direct residuals. It is
 available for `recurrence` and `on-the-fly`; compiled/eager execution and LC
-flows deliberately reject it.
+flows deliberately reject explicitly forced FFT.
 
-Start with explicitly selected `fft_basis = "adjoint"` for adaptive exact-basis
-selection. The requested option and the mathematical representation are
+The default `contraction = "auto"` tries FFT for NLC/full recurrence and
+on-the-fly execution, falling back to direct contraction when an FFT plan is
+unsupported. LC, compiled/eager execution, and correlated generation use
+direct contraction and the trace basis. The effective configuration can retain
+`"auto"` until per-process selection.
+
+The default `fft_basis = "adjoint"` enables adaptive exact-basis selection.
+The requested option and the mathematical representation are
 distinct: generation chooses a certified Del Duca–Dixon–Maltoni (DDM) reduction
 where available, and otherwise keeps the exact representation appropriate to
 the process.
@@ -225,10 +231,12 @@ while `name = "fundamental-chain"` or `"fundamental-chain-products"` identifies
 the tensors. The tensor count excludes traversal aliases and is not a rank
 claim at fixed `Nc`. Use these recorded fields when comparing artifacts.
 
-Explicit `fft_basis = "trace"` keeps the original path. It remains the schema
-default, and contraction still defaults to `"direct"`. An adjoint request with
-`contraction = "direct"` is invalid. Correlated generation does not support
-this FFT option; correlations retain their separate direct contraction path.
+Explicit `fft_basis = "trace"` keeps the original FFT representation.
+`contraction = "direct"` opts out of FFT and ignores `fft_basis`. Explicit
+`contraction = "symmetric-group-fft"` forces FFT and retains errors for
+unsupported plans, LC, and compiled/eager execution. Forced adjoint FFT cannot
+be combined with correlated generation; correlations retain their separate
+direct contraction path.
 
 This is an exact contraction algorithm, not an approximation. Its speedup is
 process-dependent: a small certified symmetry subgroup or a residual-dominated
@@ -252,10 +260,12 @@ fft_basis = "adjoint"  # for example, built-in-sm with g g > g g g
 execution_mode = "recurrence"
 ```
 
-Use `execution_mode = "on-the-fly"` for the compact OTF lane. The matching
-CLI shorthand is `--fft adjoint --color-accuracy full`; `--fft trace` selects
-the original trace path. Both require an explicit NLC/full accuracy setting
-(on the command line or in the card).
+This example forces FFT. Omit `contraction` and `fft_basis` to use automatic
+adjoint selection with direct fallback. Use `execution_mode = "on-the-fly"`
+for the compact OTF lane. The matching forced-FFT CLI shorthand is
+`--fft adjoint --color-accuracy full`; `--fft trace` forces the original trace
+path. Both require an explicit NLC/full accuracy setting (on the command line
+or in the card). Use `--color-contraction direct` to opt out.
 
 ## Execution mode and evaluator backend
 

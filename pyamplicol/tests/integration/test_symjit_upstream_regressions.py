@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 """Opt-in, tiny compiler regressions; no pyAmpliCol native build is required.
 
-PYAMPLICOL_RUN_SYMJIT_REGRESSIONS=1 enables the tests against published 2.25.6.
+PYAMPLICOL_RUN_SYMJIT_REGRESSIONS=1 tests the locked published SymJIT version.
 PYAMPLICOL_SYMJIT_SOURCE=/path/to/symjit selects a different source checkout.
 Only test modules are added to a temporary copy: corrective patches are never
 applied. A broken compiler is expected to fail, rather than produce an xfail.
@@ -15,6 +15,7 @@ import platform
 import shutil
 import signal
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -105,10 +106,12 @@ def symjit_manifests(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Pa
     harness = work / "harness" / "Cargo.toml"
     harness.parent.mkdir()
     selected = os.environ.get("PYAMPLICOL_SYMJIT_SOURCE")
+    with (ROOT / "dependencies/release-lock.toml").open("rb") as stream:
+        version = tomllib.load(stream)["symjit"]["version"]
     dependency = (
         f"path={json.dumps(str(Path(selected).expanduser().resolve()))}"
         if selected
-        else 'version="=2.25.6"'
+        else f'version="={version}"'
     )
     harness.write_text(_manifest(dependency))
     metadata = json.loads(_cargo(harness, "metadata", "--format-version", "1"))

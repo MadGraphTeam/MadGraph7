@@ -1,28 +1,61 @@
 # Dependency Modes
 
-pyAmpliCol separates publishable release dependencies from pinned upstream
-sources used for candidate development. Both modes target Symbolica **3.0.0**
-and SymJIT **2.26.0**; candidate builds do not relabel dependency versions or
-modify upstream source files.
+pyAmpliCol defaults to published runtime dependencies and release-mode native
+builds. Historical pinned-source candidate machinery is retained, but its
+upstream pins need a coherent update before use with the current tensor APIs.
+Release mode uses Symbolica **3.0.0** and SymJIT **2.26.4**. Historical candidate
+mode retains SymJIT **2.26.0**; version numbers alone do not establish Python API
+compatibility. Candidate builds do not
+relabel dependency versions or modify upstream source files.
 
 ## Release Mode
 
+`just dev-install` uses pip to resolve the Python runtime dependencies declared
+in the root `pyproject.toml`, then replaces published Symbolica and
+ufo-model-loader without resolving dependencies again. This replaces older
+source candidates reporting the same version. The upcoming release requires
+ufo-model-loader 1.0.0, which is not yet published. Until publication, explicitly
+supply the locally built loader wheel for contributor validation:
+
+```console
+just dev-install --loader-wheel /path/to/ufo_model_loader-1.0.0-py3-none-any.whl
+PYTHON=.venv/bin/python just dev-test
+```
+
+The installer never chooses a local loader wheel automatically; `--loader-wheel`
+is an explicit dependency-development override. Native build and staging use
+the existing release-mode workflow. Building a new release wheel requires a
+clean Git checkpoint and complete release assets; published-dependency mode
+does not relax publication guards. For dirty development checkouts,
+`--wheel-directory PATH` reuses an already-built compatible release wheel, or
+`--dependencies-only` skips the project build and staging while leaving the
+existing native runtime untouched. `--no-build` also skips runtime dependency
+installation.
+Developer tools and explicitly requested optional references may still be
+set up with `--no-build`. No editable installation is used. `just dev-test`
+defaults to release mode and includes a fresh build, so it also requires a clean
+checkpoint. Dirty edits can use focused tests against the staged native runtime.
+The developer dashboard retains its pinned Ratatui 0.4.2 build and FFI checkout
+in both lanes; it is not a core runtime dependency.
+
 Release-equivalent builds use exact published versions. Canonical Cargo
-resolution uses the published Symbolica 3.0.0 crate; its only
-`[patch.crates-io]` entry is SymJIT, pinned to one immutable commit of the
-official `siravan/symjit-crate` repository. `release-lock.toml` records that
-version and revision, and `Cargo.lock` records normal Cargo resolution. The
+resolution uses the published Symbolica 3.0.0 and SymJIT 2.26.4 crates without
+source patches. `release-lock.toml` records those versions, and `Cargo.lock`
+records normal registry resolution and checksums. The
 ordinary locked Cargo build is the dependency check; no local dependency
 patches or release-only source projections are needed.
 
-Python Symbolica 3.0.0 and ufo-model-loader 0.1.8 remain publication blockers:
-their release-wheel entries stay empty until the required releases are
-available. Successful candidate builds do not establish release availability
-or make candidate artifacts publishable.
+Python Symbolica 3.0.0 is published on PyPI. The required ufo-model-loader 1.0.0
+entry has no published wheel recorded in `python-runtime-lock.toml` yet. After
+the loader is uploaded, record its official PyPI wheel metadata before running
+the final release gates. A local wheel is not a published runtime-lock artifact.
+Successful candidate builds do not establish release availability or make
+candidate artifacts publishable.
 
-Prepared models in `src/pyamplicol/assets/prepared_models` are candidate inputs.
-Release pairs live separately in the source-only `release_assets/prepared_models`
-store and are regenerated through the manual `release-prepared-models.yml`
+Prepared models in `src/pyamplicol/assets/prepared_models` are the source-runtime
+inputs. Release pairs use the release-locked dependencies and also
+live in the source-only `release_assets/prepared_models` store and are regenerated
+through the manual `release-prepared-models.yml`
 workflow using `release-lock.toml` and canonical `Cargo.lock`. Its temporary
 bootstrap wheel is non-publishable and omits prepared models and the portable
 self-test fixture. The release overlay installs the release pairs at canonical
@@ -31,11 +64,13 @@ only release payloads. Prepared-pack compatibility uses model/compiler
 identities, storage and plane ABIs, target, and payload hashes—not a separate
 dependency checkout fingerprint.
 
-## Candidate Development Mode
+## Historical Candidate Mode (Opt-in)
 
-`just dev-install` uses unmodified managed checkouts under
-`dependencies/checkouts`, pinned by `contributor-lock.toml` and the SymJIT
-release entry:
+The retained `--candidate` dependency-development machinery selects managed
+checkouts under `dependencies/checkouts`, pinned by `contributor-lock.toml`.
+These historical pins are incompatible with the
+current tensor implementation and must be updated together before use; this
+is not a working current-source setup route. The retained pin table is:
 
 | Dependency | Upstream source | Revision |
 | --- | --- | --- |
@@ -61,14 +96,18 @@ interface; Rusticol owns scheduling, factors, accumulation, fanout, and artifact
 binding. Its plane adapter uses actual row indices and identity output, with
 descriptor lifetime, alignment, aliasing, and mutability checked by the caller.
 
-Candidate mode is for development and physics validation, not PyPI publication.
-Ordinary `just dev-install` builds a complete candidate wheel using the tracked
-prepared-model packs and portable self-test fixture. If a native ABI change
-requires replacing those assets, an explicitly requested bootstrap produces a
-non-publishable recovery wheel that omits both; the installer never selects this
-mode automatically. `--update` moves superseded managed checkouts to their
-pinned revisions; `--reset` archives managed state in the workspace-local
-`.trash` store before recreating it.
+Candidate mode is not for PyPI publication. Its retained test selector,
+`PYAMPLICOL_BUILD_MODE=candidate`, does not make the historical pins compatible.
+The retained build machinery uses the tracked prepared-model packs and
+portable self-test fixture; an explicitly requested bootstrap omits both and
+is non-publishable. Neither bootstrap nor `--update` repairs incompatible
+upstream pins: `--update` only moves managed checkouts to the recorded revisions.
+`--reset` archives managed state in the workspace-local `.trash` store before
+recreating it.
+
+## Optional Profiling References
+
+These opt-ins are independent of the historical candidate machinery.
 
 The original Fortran AmpliCol checkout is optional, developer-only, and used
 only as an independent validation and benchmarking reference. Enable it with

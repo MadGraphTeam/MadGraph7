@@ -577,7 +577,7 @@ def _annotate_oriented_kernel_evaluation_equivalence(
         ] = {}
         for input_order, swap_sides in (((0, 1), False), ((1, 0), True)):
             oriented_components = tuple(
-                _canonicalize_oriented_kernel_component(
+                (
                     _replace_expression_symbols(
                         _remap_kernel_symbols(
                             _sym.E(component),
@@ -589,7 +589,7 @@ def _annotate_oriented_kernel_evaluation_equivalence(
                         derived_couplings,
                     )
                     * coupling
-                )
+                ).expand()
                 for component in kernel.component_expressions
             )
             components_by_input_order[input_order] = oriented_components
@@ -599,10 +599,13 @@ def _annotate_oriented_kernel_evaluation_equivalence(
                 dimensions[2],
             )
             for sign in (1, -1):
+                # Horner/factor collection optimizes evaluation, but is not a
+                # unique algebraic normal form: mirrored kernels can retain
+                # different factorizations of the same coupling polynomial.
+                # Proof identities must use expanded expressions, while the
+                # stored runtime components remain optimized and unchanged.
                 component_strings = tuple(
-                    _canonicalize_oriented_kernel_component(
-                        sign * component
-                    ).to_canonical_string()
+                    (sign * component).expand().to_canonical_string()
                     for component in oriented_components
                 )
                 signature = json.dumps(

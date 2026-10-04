@@ -25,8 +25,7 @@ def build_tensor_network_scalar_bundle(
 ) -> SymbolicaEvaluatorBundle:
     """Build a Symbolica evaluator bundle from the propagated tensor network."""
 
-    from symbolica.community.idenso import simplify_color
-    from symbolica.community.spenso import TensorNetwork
+    from symbolica.community.tensor import TensorNetwork, as_tensor
 
     total_start = time.perf_counter()
     library = model.build_tensor_library()
@@ -36,7 +35,11 @@ def build_tensor_network_scalar_bundle(
     raw_expression = _GraphTensorExpressionBuilder(
         model, graph
     ).matrix_element_skeleton()
-    expression = simplify_color(raw_expression)
+    expression = as_tensor(raw_expression).simplify_algebra(
+        gamma=False,
+        contract="none",
+        color_substitute_cof_dimension_invariants=True,
+    )
     network = TensorNetwork(expression, library)
     reduction_start = time.perf_counter()
     network.execute(library=library)
@@ -142,7 +145,7 @@ def build_interleaved_tensor_network_scalar_bundle(
 
 class _GraphTensorExpressionBuilder:
     def __init__(self, model: BuiltinSMModel, graph: Any) -> None:
-        from symbolica.community.spenso import Representation, TensorName
+        from symbolica.community.tensor import Representation, TensorName
 
         self.model = model
         self.graph = graph
@@ -177,7 +180,7 @@ class _GraphTensorExpressionBuilder:
         *,
         execute_between: bool = True,
     ) -> tuple[Any, dict[str, float | int]]:
-        from symbolica.community.spenso import TensorNetwork
+        from symbolica.community.tensor import TensorNetwork
 
         metadata: dict[str, float | int] = {
             "execution_s": 0.0,
@@ -233,7 +236,7 @@ class _GraphTensorExpressionBuilder:
         execute_between: bool,
         metadata: dict[str, float | int],
     ) -> Any:
-        from symbolica.community.spenso import TensorNetwork, as_tensor
+        from symbolica.community.tensor import TensorNetwork, as_tensor
 
         interactions = self._interactions_by_result.get(_current_key_tuple(current))
         if not interactions:
@@ -363,7 +366,7 @@ class _GraphTensorExpressionBuilder:
         library: Any,
         metadata: dict[str, float | int],
     ) -> Any:
-        from symbolica.community.spenso import TensorNetwork
+        from symbolica.community.tensor import TensorNetwork
 
         start = time.perf_counter()
         network.execute(library=library)
@@ -610,7 +613,7 @@ def _register_parametric_source_currents(
     graph: Any,
     builder: ParamBuilder | None = None,
 ) -> ParamBuilder:
-    from symbolica.community.spenso import Representation
+    from symbolica.community.tensor import Representation
 
     if builder is None:
         builder = ParamBuilder()
@@ -644,7 +647,7 @@ def _register_parametric_current_momenta(
     graph: Any,
     builder: ParamBuilder | None = None,
 ) -> ParamBuilder:
-    from symbolica.community.spenso import Representation, Tensor, TensorName
+    from symbolica.community.tensor import Representation, Tensor, TensorName
 
     if builder is None:
         builder = ParamBuilder()
@@ -815,7 +818,7 @@ def _propagator_lowering_ready(graph: Any) -> bool:
 def _build_auxiliary_tensor_probe(
     model: BuiltinSMModel,
 ) -> TensorNetworkProbe:
-    from symbolica.community.spenso import (
+    from symbolica.community.tensor import (
         Representation,
         TensorName,
         TensorNetwork,
@@ -844,7 +847,7 @@ def _build_auxiliary_tensor_probe(
     network.execute(library=library)
     result = network.result_tensor(library)
     output_size = len(result)
-    structure = result.structure()
+    structure = result.structure
     entries = tuple(complex(result[i]) for i in range(output_size))
     nonzero = tuple(
         (index, value) for index, value in enumerate(entries) if abs(value) > 1.0e-15
@@ -870,24 +873,21 @@ def _build_auxiliary_tensor_probe(
 
 
 def _build_color_probe() -> ColorAlgebraProbe:
-    from symbolica import S
-    from symbolica.community.idenso import simplify_color
-    from symbolica.community.spenso import Representation
+    from symbolica.community.tensor import TensorExpression
 
-    structure_constant = S("spenso::f")
-    adjoint = Representation("coad", 8)
+    structure_constant = TensorExpression.color_f(8)
 
     def color_f(i: int, j: int, k: int) -> Any:
-        return structure_constant(
-            adjoint(i).to_expression(),
-            adjoint(j).to_expression(),
-            adjoint(k).to_expression(),
-        )
+        return structure_constant(i, j, k)
 
     expression = color_f(1, 2, 3) * color_f(3, 2, 1)
-    simplified = simplify_color(expression)
+    simplified = expression.simplify_algebra(
+        gamma=False,
+        contract="none",
+        color_substitute_cof_dimension_invariants=True,
+    )
     return ColorAlgebraProbe(
-        engine="idenso",
+        engine="tensor",
         input_expression=_clean_symbolica_string(str(expression)),
         simplified_expression=_clean_symbolica_string(str(simplified)),
     )

@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import subprocess
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -103,6 +104,33 @@ def _assert_fft_degree(artifact: Path, expected: int) -> None:
     assert color["factorization"]["kind"] == "symmetric-group-fourier"
     assert color["factorization"]["rank"] == expected
     assert color["fft_provenance"]["degree"] == expected
+
+
+@pytest.mark.parametrize("lane", _LANES)
+def test_automatic_fft_default_matches_forced_fft_and_direct(
+    tmp_path: Path, prepared_sm: ModelSource, lane: str
+) -> None:
+    config = _config(
+        lane,
+        "adjoint",
+        selected_helicities=(-1, 1, -1, 1) if lane == "recurrence" else (),
+    )
+    values = {}
+    for method in ("auto", "symmetric-group-fft", "direct"):
+        artifact = tmp_path / method
+        Generator(
+            replace(config, color=ColorConfig(accuracy="full", contraction=method))
+        ).generate("g g > g g", artifact, model=prepared_sm)
+        if method != "direct":
+            _assert_fft_degree(artifact, 2)
+        runtime = Runtime.load(artifact)
+        values[method] = tuple(
+            complex(value) for value in runtime.evaluate(_FOUR_GLUON_POINTS)
+        )
+        del runtime
+    assert any(abs(value) > 0 for value in values["auto"])
+    assert values["auto"] == pytest.approx(values["symmetric-group-fft"], rel=2e-12)
+    assert values["auto"] == pytest.approx(values["direct"], rel=2e-11)
 
 
 @pytest.fixture(scope="module", params=_LANES)

@@ -305,8 +305,7 @@ def _stage_runtime_locked(
     }
     has_selftest = any(name.startswith(selftest_prefix) for name in selected)
     fixture_bootstrap = (
-        mode == "candidate"
-        and build_info.get("publishable") is False
+        build_info.get("publishable") is False
         and build_info.get("selftest_fixture_bootstrap") is True
     )
     if not has_selftest and not fixture_bootstrap:

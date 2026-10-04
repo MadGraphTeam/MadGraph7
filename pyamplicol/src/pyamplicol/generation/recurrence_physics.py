@@ -733,7 +733,7 @@ def build_recurrence_color_contraction(
             color_plan,
             tuple(descriptors),
         )
-    elif contraction == "symmetric-group-fft":
+    elif contraction in {"auto", "symmetric-group-fft"}:
         active_sector_ids = {descriptor.sector_id for descriptor in descriptors}
         contraction_plan = build_symmetric_group_color_contraction_plan(
             color_plan,
@@ -744,6 +744,10 @@ def build_recurrence_color_contraction(
                 set(certified_structural_zero_sector_ids),
             ),
         )
+        if contraction == "auto" and not contraction_plan.supported:
+            contraction_plan = build_color_contraction_plan(
+                color_plan, tuple(descriptors)
+            )
     else:
         raise ValueError(f"unknown color contraction method {contraction!r}")
     if contraction_plan is None or not contraction_plan.supported:
@@ -795,12 +799,14 @@ def build_on_the_fly_color_contraction(
     )
     if contraction == "direct":
         contraction_plan = build_color_contraction_plan(color_plan, descriptors)
-    elif contraction == "symmetric-group-fft":
+    elif contraction in {"auto", "symmetric-group-fft"}:
         contraction_plan = build_symmetric_group_color_contraction_plan(
             color_plan,
             descriptors,
             sector_owner_ids=owner_by_sector,
         )
+        if contraction == "auto" and not contraction_plan.supported:
+            contraction_plan = build_color_contraction_plan(color_plan, descriptors)
     else:
         raise ValueError(f"unknown color contraction method {contraction!r}")
     if contraction_plan is None or not contraction_plan.supported:

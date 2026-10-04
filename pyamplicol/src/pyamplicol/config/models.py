@@ -5,7 +5,7 @@ import math
 import os
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
@@ -36,6 +36,7 @@ class ColorAccuracy(StrEnum):
 
 
 class ColorContraction(StrEnum):
+    AUTO = "auto"
     DIRECT = "direct"
     SYMMETRIC_GROUP_FFT = "symmetric-group-fft"
 
@@ -424,7 +425,7 @@ class ColorConfig:
         metadata=_setting("str", choices=tuple(ColorAccuracy)),
     )
     contraction: ColorContraction = field(
-        default=ColorContraction.DIRECT,
+        default=ColorContraction.AUTO,
         metadata=_setting("str", choices=tuple(ColorContraction)),
     )
     lc_flow_layout: LCFlowLayout = field(
@@ -432,7 +433,7 @@ class ColorConfig:
         metadata=_setting("str", choices=tuple(LCFlowLayout)),
     )
     fft_basis: ColorFFTBasis = field(
-        default=ColorFFTBasis.TRACE,
+        default=ColorFFTBasis.ADJOINT,
         metadata=_setting("str", choices=tuple(ColorFFTBasis)),
     )
 
@@ -473,14 +474,6 @@ class ColorConfig:
             raise ConfigurationError(
                 "color.contraction='symmetric-group-fft' requires "
                 "color.accuracy='nlc' or 'full'"
-            )
-        if (
-            self.fft_basis is ColorFFTBasis.ADJOINT
-            and self.contraction is not ColorContraction.SYMMETRIC_GROUP_FFT
-        ):
-            raise ConfigurationError(
-                "color.fft_basis='adjoint' requires "
-                "color.contraction='symmetric-group-fft'"
             )
 
 
@@ -1105,6 +1098,34 @@ class RunConfig:
                 "color.contraction='symmetric-group-fft' requires "
                 "evaluator.execution_mode='recurrence' or 'on-the-fly'"
             )
+
+    @property
+    def resolved_color(self) -> ColorConfig:
+        """Keep automatic FFT selection only in its supported execution lanes.
+
+        Eligible automatic requests stay automatic until the process-specific
+        colour plan can certify FFT support. An explicit direct request ignores
+        the FFT basis, including its adaptive default.
+        """
+
+        color = self.color
+        if color.contraction is ColorContraction.DIRECT or (
+            color.contraction is ColorContraction.AUTO
+            and (
+                color.accuracy is ColorAccuracy.LC
+                or self.evaluator.execution_mode
+                not in {
+                    EvaluatorExecutionMode.RECURRENCE,
+                    EvaluatorExecutionMode.ON_THE_FLY,
+                }
+            )
+        ):
+            return replace(
+                color,
+                contraction=ColorContraction.DIRECT,
+                fft_basis=ColorFFTBasis.TRACE,
+            )
+        return color
 
 
 __all__ = [

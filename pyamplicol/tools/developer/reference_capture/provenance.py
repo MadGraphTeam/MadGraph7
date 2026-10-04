@@ -302,7 +302,7 @@ def collect_dependency_snapshot(runtime: RuntimeSnapshot) -> DependencySnapshot:
         contributor.get("symbolica"),
         "contributor-lock.symbolica",
     )
-    symjit = as_mapping(release.get("symjit"), "release-lock.symjit")
+    symjit = as_mapping(contributor.get("symjit"), "contributor-lock.symjit")
     loader = {
         **as_mapping(
             release.get("ufo_model_loader"),
@@ -403,7 +403,7 @@ def collect_dependency_snapshot(runtime: RuntimeSnapshot) -> DependencySnapshot:
         {
             "id": "dependency:symjit",
             "name": "Symjit",
-            "version": str(symjit["version"]),
+            "version": str(symjit["candidate_version"]),
             "revision": str(symjit_descriptor["revision"]),
             "content_sha256": canonical_sha256(symjit_descriptor),
             "serialization_abi": str(release_abis["symjit_application"]),

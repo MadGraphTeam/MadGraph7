@@ -74,6 +74,46 @@ def test_generate_accepts_symmetric_group_color_contraction() -> None:
         .effective
     )
     assert config.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
+    assert config.color.fft_basis is ColorFFTBasis.ADJOINT
+
+
+@pytest.mark.parametrize("accuracy", ("lc", "nlc", "full"))
+@pytest.mark.parametrize("execution_mode", tuple(EvaluatorExecutionMode))
+def test_automatic_fft_default_is_limited_to_supported_lanes(
+    accuracy: str, execution_mode: EvaluatorExecutionMode
+) -> None:
+    resolution = parse_cli(
+        (
+            "generate",
+            "--color-accuracy",
+            accuracy,
+            "--execution-mode",
+            execution_mode.value,
+        )
+    ).resolve()
+    assert resolution.requested.color.contraction is ColorContraction.AUTO
+    assert resolution.requested.color.fft_basis is ColorFFTBasis.ADJOINT
+    supported = accuracy != "lc" and execution_mode in {
+        EvaluatorExecutionMode.RECURRENCE,
+        EvaluatorExecutionMode.ON_THE_FLY,
+    }
+    assert resolution.effective.color.contraction is (
+        ColorContraction.AUTO if supported else ColorContraction.DIRECT
+    )
+    assert resolution.effective.color.fft_basis is (
+        ColorFFTBasis.ADJOINT if supported else ColorFFTBasis.TRACE
+    )
+
+
+def test_direct_cli_opt_out_overrides_adaptive_fft_default() -> None:
+    config = (
+        parse_cli(
+            ("generate", "--color-accuracy", "full", "--color-contraction", "direct")
+        )
+        .resolve()
+        .effective
+    )
+    assert config.color.contraction is ColorContraction.DIRECT
     assert config.color.fft_basis is ColorFFTBasis.TRACE
 
 

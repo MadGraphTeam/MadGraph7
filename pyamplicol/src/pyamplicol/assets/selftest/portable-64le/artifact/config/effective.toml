@@ -23,6 +23,7 @@ selected_color_sector_ids = []
 accuracy = "lc"
 contraction = "direct"
 lc_flow_layout = "topology-replay"
+fft_basis = "trace"
 
 [generation]
 output = "."

@@ -17,101 +17,101 @@ dependencies = []
 
 [[packages]]
 distribution = "numpy"
-version = "2.4.2"
+version = "2.4.6"
 license = "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0"
 direct = true
 dependencies = []
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp311-cp311-macosx_10_9_x86_64.whl"
-  sha256 = "e7e88598032542bd49af7c4747541422884219056c268823ef6e5e89851c8825"
+  filename = "numpy-2.4.6-cp311-cp311-macosx_10_9_x86_64.whl"
+  sha256 = "0280e0356c0829a18d9de1cb7eee50ec22ca639878d7240307ca0943d73cd2c4"
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp311-cp311-macosx_11_0_arm64.whl"
-  sha256 = "7edc794af8b36ca37ef5fcb5e0d128c7e0595c7b96a2318d1badb6fcd8ee86b1"
+  filename = "numpy-2.4.6-cp311-cp311-macosx_11_0_arm64.whl"
+  sha256 = "110f8b71aacb688ec69062bb7f6938a0f8acb01b7c1c4beb453c65b6d234584d"
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp311-cp311-macosx_14_0_arm64.whl"
-  sha256 = "6e9f61981ace1360e42737e2bae58b27bf28a1b27e781721047d84bd754d32e7"
+  filename = "numpy-2.4.6-cp311-cp311-macosx_14_0_arm64.whl"
+  sha256 = "4cfe66903cc32a9921a6733d96b19bb6abf310397581bbad89c228f5abaf0ee8"
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp311-cp311-macosx_14_0_x86_64.whl"
-  sha256 = "cb7bbb88aa74908950d979eeaa24dbdf1a865e3c7e45ff0121d8f70387b55f73"
+  filename = "numpy-2.4.6-cp311-cp311-macosx_14_0_x86_64.whl"
+  sha256 = "8155154c7c691289fe18f510b5d4657c68c67989f293f0535a91360392ff6538"
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
-  sha256 = "c02ef4401a506fb60b411467ad501e1429a3487abca4664871d9ae0b46c8ba32"
+  filename = "numpy-2.4.6-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+  sha256 = "89cd468399cfd2504718f0ba50e410dca55a170b61a02ad92bb18c8a65186e93"
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp312-cp312-macosx_10_13_x86_64.whl"
-  sha256 = "21982668592194c609de53ba4933a7471880ccbaadcc52352694a59ecc860b3a"
+  filename = "numpy-2.4.6-cp312-cp312-macosx_10_13_x86_64.whl"
+  sha256 = "001fbb8e08d942dd57599e781f2472269ee7f2755fae407b4f67b2f0b17da3f1"
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp312-cp312-macosx_11_0_arm64.whl"
-  sha256 = "40397bda92382fcec844066efb11f13e1c9a3e2a8e8f318fb72ed8b6db9f60f1"
+  filename = "numpy-2.4.6-cp312-cp312-macosx_11_0_arm64.whl"
+  sha256 = "ebfb099f8dcf083deef3ac1ca4c1503f387cf76296fcb3816b66f5ecb5f54fdb"
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp312-cp312-macosx_14_0_arm64.whl"
-  sha256 = "b3a24467af63c67829bfaa61eecf18d5432d4f11992688537be59ecd6ad32f5e"
+  filename = "numpy-2.4.6-cp312-cp312-macosx_14_0_arm64.whl"
+  sha256 = "3213d622a0283a39a93d188f3cf72b26862df52fbb4ca3697f51705016523d41"
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp312-cp312-macosx_14_0_x86_64.whl"
-  sha256 = "805cc8de9fd6e7a22da5aed858e0ab16be5a4db6c873dde1d7451c541553aa27"
+  filename = "numpy-2.4.6-cp312-cp312-macosx_14_0_x86_64.whl"
+  sha256 = "357cc07a6d7b0b182ff02249616a03742827ebb1277546b5c7cd7f7620a45698"
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
-  sha256 = "9e35d3e0144137d9fdae62912e869136164534d64a169f86438bc9561b6ad49f"
+  filename = "numpy-2.4.6-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+  sha256 = "90f9849678c75fe7afa2d348ac842c168b0a4d3d61919687216dfc547976d853"
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp313-cp313-macosx_10_13_x86_64.whl"
-  sha256 = "25f2059807faea4b077a2b6837391b5d830864b3543627f381821c646f31a63c"
+  filename = "numpy-2.4.6-cp313-cp313-macosx_10_13_x86_64.whl"
+  sha256 = "511dbaf848decaaaf4b4ca48032619fb3138710c4bf7da7617765edad1ef96b0"
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp313-cp313-macosx_11_0_arm64.whl"
-  sha256 = "bd3a7a9f5847d2fb8c2c6d1c862fa109c31a9abeca1a3c2bd5a64572955b2979"
+  filename = "numpy-2.4.6-cp313-cp313-macosx_11_0_arm64.whl"
+  sha256 = "bf162abab1c1a736333192707cef898e735a5ca00f38f27eeedf44b39d9e85eb"
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp313-cp313-macosx_14_0_arm64.whl"
-  sha256 = "8e4549f8a3c6d13d55041925e912bfd834285ef1dd64d6bc7d542583355e2e98"
+  filename = "numpy-2.4.6-cp313-cp313-macosx_14_0_arm64.whl"
+  sha256 = "043191bfa8eab18c776647b62723ac9dddece59743b13f49b2016094129c2b3f"
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp313-cp313-macosx_14_0_x86_64.whl"
-  sha256 = "aea4f66ff44dfddf8c2cffd66ba6538c5ec67d389285292fe428cb2c738c8aef"
+  filename = "numpy-2.4.6-cp313-cp313-macosx_14_0_x86_64.whl"
+  sha256 = "6180d8b35af935aed8ece3a85e0a43f87393ae0ac87c8d2c8bd2c993f7270ef3"
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
-  sha256 = "d0d9b7c93578baafcbc5f0b83eaf17b79d345c6f36917ba0c67f45226911d499"
+  filename = "numpy-2.4.6-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+  sha256 = "a7830bab239b79cda9c08c2da014761cafb48da6150e1da17ac06283f43b6089"
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp314-cp314-macosx_10_15_x86_64.whl"
-  sha256 = "444be170853f1f9d528428eceb55f12918e4fda5d8805480f36a002f1415e09b"
+  filename = "numpy-2.4.6-cp314-cp314-macosx_10_15_x86_64.whl"
+  sha256 = "06ca2f61ec4385a07a6977c55ba998a4466c123642b4a32694d3128fce18c079"
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp314-cp314-macosx_11_0_arm64.whl"
-  sha256 = "d1240d50adff70c2a88217698ca844723068533f3f5c5fa6ee2e3220e3bdb000"
+  filename = "numpy-2.4.6-cp314-cp314-macosx_11_0_arm64.whl"
+  sha256 = "38efbc8de75c7a0fc1ac190162d892787f3f47b57cc291231aafee36b80982b7"
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp314-cp314-macosx_14_0_arm64.whl"
-  sha256 = "7cdde6de52fb6664b00b056341265441192d1291c130e99183ec0d4b110ff8b1"
+  filename = "numpy-2.4.6-cp314-cp314-macosx_14_0_arm64.whl"
+  sha256 = "d581b735e177fdcdce6fed8e7e8880a3fb6ee4e3653a3ac6af01c6f4c03effc5"
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp314-cp314-macosx_14_0_x86_64.whl"
-  sha256 = "cda077c2e5b780200b6b3e09d0b42205a3d1c68f30c6dceb90401c13bff8fe74"
+  filename = "numpy-2.4.6-cp314-cp314-macosx_14_0_x86_64.whl"
+  sha256 = "0a041d3d761dc3c35cc56ce0351506a02bcbc25f7b169f652435141a17db9096"
 
   [[packages.artifacts]]
-  filename = "numpy-2.4.2-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
-  sha256 = "bba37bc29d4d85761deed3954a1bc62be7cf462b9510b51d367b769a8c8df325"
+  filename = "numpy-2.4.6-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+  sha256 = "a2c306dea656c12c68f51f4cea133cbe78ca7435eb28c735eac1d3ebe73be6e8"
 
 [[packages]]
 distribution = "platformdirs"
-version = "4.10.0"
+version = "4.12.2"
 license = "MIT"
 direct = true
 dependencies = []
 
   [[packages.artifacts]]
-  filename = "platformdirs-4.10.0-py3-none-any.whl"
-  sha256 = "fb516cdb12eb0d857d0cd85a7c57cea4d060bee4578d6cf5a14dfdf8cbf8784a"
+  filename = "platformdirs-4.12.2-py3-none-any.whl"
+  sha256 = "29dbf06d96c500bc6bdbce75fb0a14d63279c93b1842f97e72a135b33e856983"
 
 [[packages]]
 distribution = "prettytable"
@@ -126,25 +126,25 @@ dependencies = ["wcwidth"]
 
 [[packages]]
 distribution = "progressbar2"
-version = "4.5.0"
+version = "4.6.0"
 license = "BSD-3-Clause"
 direct = true
 dependencies = ["python-utils"]
 
   [[packages.artifacts]]
-  filename = "progressbar2-4.5.0-py3-none-any.whl"
-  sha256 = "625c94a54e63915b3959355e6d4aacd63a00219e5f3e2b12181b76867bf6f628"
+  filename = "progressbar2-4.6.0-py3-none-any.whl"
+  sha256 = "2d78bdeb1debef92a39dd9042e0689542bd72d6e2f30b13432db371aa9d8ee4e"
 
 [[packages]]
 distribution = "python-utils"
-version = "4.0.0"
+version = "4.1.0"
 license = "BSD-3-Clause"
 direct = false
 dependencies = ["typing-extensions"]
 
   [[packages.artifacts]]
-  filename = "python_utils-4.0.0-py3-none-any.whl"
-  sha256 = "96b969a878bbc147e69db60aac7c618ff97f7e5e03e9d78ade85d764af71faa5"
+  filename = "python_utils-4.1.0-py3-none-any.whl"
+  sha256 = "dd3c041dae1efc1323209a7598d3a4fe1a832d81be10a98846341af929a0119e"
 
 [[packages]]
 distribution = "six"
@@ -163,8 +163,18 @@ version = "3.0.0"
 license = "LicenseRef-Symbolica-Proprietary"
 direct = true
 dependencies = []
-# Pending publication; contributor installs use the pinned development source.
-artifacts = []
+
+  [[packages.artifacts]]
+  filename = "symbolica-3.0.0-cp39-abi3-macosx_10_12_x86_64.whl"
+  sha256 = "b2ea03b9be72a3ebc3fa950d7380b09223084cb5554aa0877c59e12d7749c2a7"
+
+  [[packages.artifacts]]
+  filename = "symbolica-3.0.0-cp39-abi3-macosx_11_0_arm64.whl"
+  sha256 = "6b7414d8d06ac20c92460e0685c794d97afe976968b5fba5cc9562c471b2365d"
+
+  [[packages.artifacts]]
+  filename = "symbolica-3.0.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+  sha256 = "a2977f78d8f40ce3206ba49850cf75f473785a32a9368e6115d059755a48d15e"
 
 [[packages]]
 distribution = "tomli-w"
@@ -190,20 +200,34 @@ dependencies = []
 
 [[packages]]
 distribution = "ufo-model-loader"
-version = "0.1.8"
+version = "1.0.0"
 license = "MIT"
 direct = true
 dependencies = ["symbolica"]
-# Pending publication after Symbolica 3.0; development installs use the checkout.
-artifacts = []
+
+  [[packages.artifacts]]
+  filename = "ufo_model_loader-1.0.0-py3-none-any.whl"
+  sha256 = "4e2e807d6a0d16034a525f80f2a80f4fe17689f7955b27b1118b7595bd56a8eb"
 
 [[packages]]
 distribution = "wcwidth"
-version = "0.8.2"
+version = "0.9.1"
 license = "MIT"
 direct = false
 dependencies = []
 
   [[packages.artifacts]]
-  filename = "wcwidth-0.8.2-py3-none-any.whl"
-  sha256 = "d63947694a0539a1d51e01eda7caf800c291020e6cdd7e28ad7b14dd33ad4f85"
+  filename = "wcwidth-0.9.1-cp310-abi3-macosx_10_9_x86_64.whl"
+  sha256 = "10b00ba23482e352f874d2e8135e7ace9da838646c7dd800566246bbd46125ff"
+
+  [[packages.artifacts]]
+  filename = "wcwidth-0.9.1-cp310-abi3-macosx_11_0_arm64.whl"
+  sha256 = "40d936d72c9bdc10df43f93a8be502bc5024b487259139f66a328722c07f34a9"
+
+  [[packages.artifacts]]
+  filename = "wcwidth-0.9.1-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+  sha256 = "747fb724223f417a17541a95a17c1dac3a8ef9a0cf41684950f0eab191a35f65"
+
+  [[packages.artifacts]]
+  filename = "wcwidth-0.9.1-py3-none-any.whl"
+  sha256 = "e0c3a1c45c5b9550c6919a4449e95f5b177f6e165786376981db8f1addae9b21"

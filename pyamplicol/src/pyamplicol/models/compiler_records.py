@@ -6,6 +6,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
+from fractions import Fraction
 from typing import cast
 
 from .._internal.physics.symbols import ModelSymbolRegistry
@@ -81,10 +82,19 @@ def _particle(
 
 def _particle_record(item: Mapping[str, object]) -> CompiledParticleRecord:
     name = str(item["name"])
-    charge = float(item.get("charge", 0.0))
+    raw_charge = item.get("charge", 0.0)
+    # Loader 1.0 exports exact rational strings; retain them in charge-flow
+    # proofs while keeping the public numerical charge a float.
+    exact_charge = Fraction(raw_charge) if isinstance(raw_charge, str) else None
+    charge = float(exact_charge if exact_charge is not None else raw_charge)
     quantum_numbers = item.get("quantum_numbers")
     if quantum_numbers is None:
-        quantum_numbers = (("electric_charge", _exact_float_expression(charge)),)
+        charge_flow = (
+            str(exact_charge)
+            if exact_charge is not None
+            else _exact_float_expression(charge)
+        )
+        quantum_numbers = (("electric_charge", charge_flow),)
     return CompiledParticleRecord(
         name=name,
         antiname=str(item["antiname"]),

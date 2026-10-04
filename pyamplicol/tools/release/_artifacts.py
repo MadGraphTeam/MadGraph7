@@ -231,11 +231,7 @@ _FORBIDDEN_SDIST_PREFIXES = (
     "dependencies/patches/",
     "release_assets/",
 )
-_RELEASE_SYMJIT_FIELDS = {
-    "version",
-    "repository",
-    "revision",
-}
+_RELEASE_SYMJIT_FIELDS = {"version"}
 _RELEASE_BUILD_INFO_FIELDS = {
     "publishable",
     "schema_version",
@@ -1795,7 +1791,7 @@ def _validate_sdist_inventory(members: set[str]) -> None:
 def _release_sdist_symjit_contract(
     relative_files: Mapping[str, Path],
 ) -> dict[str, str]:
-    """Validate the small immutable SymJIT Git dependency contract."""
+    """Validate the published SymJIT version against ordinary Cargo resolution."""
 
     lock_member = "dependencies/release-lock.toml"
     try:
@@ -1813,13 +1809,10 @@ def _release_sdist_symjit_contract(
             isinstance(symjit.get(field), str) and symjit[field]
             for field in _RELEASE_SYMJIT_FIELDS
         )
-        or re.fullmatch(r"[0-9a-f]{40}", symjit["revision"]) is None
     ):
-        raise ArtifactError("sdist has an invalid immutable SymJIT source contract")
+        raise ArtifactError("sdist has an invalid published SymJIT version contract")
 
-    expected_source = (
-        f"git+{symjit['repository']}?rev={symjit['revision']}#{symjit['revision']}"
-    )
+    expected_source = "registry+https://github.com/rust-lang/crates.io-index"
     try:
         with relative_files["Cargo.lock"].open("rb") as stream:
             cargo_lock = tomllib.load(stream)
@@ -1835,9 +1828,10 @@ def _release_sdist_symjit_contract(
         len(matches) != 1
         or matches[0].get("version") != symjit["version"]
         or matches[0].get("source") != expected_source
+        or re.fullmatch(r"[0-9a-f]{64}", str(matches[0].get("checksum", ""))) is None
     ):
         raise ArtifactError(
-            "sdist Cargo.lock does not use the immutable SymJIT Git dependency"
+            "sdist Cargo.lock does not use the published SymJIT dependency"
         )
     return {field: str(symjit[field]) for field in _RELEASE_SYMJIT_FIELDS}
 

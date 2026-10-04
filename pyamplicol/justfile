@@ -43,7 +43,7 @@ python-integration:
     PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{python}} -m pytest tests/integration -q
 
 # Focused compiler regressions only; no pyAmpliCol/Symbolica build is required.
-# Defaults to published SymJIT 2.25.4; select a checkout with
+# Defaults to the release-lock SymJIT version; select a checkout with
 # PYAMPLICOL_SYMJIT_SOURCE=/absolute/path/to/symjit.
 symjit-regressions:
     PYAMPLICOL_RUN_SYMJIT_REGRESSIONS=1 {{python}} -m pytest tests/integration/test_symjit_upstream_regressions.py -q
@@ -142,23 +142,26 @@ install-wheel PYTHON_ARG="":
     if [[ -z "$selected" ]]; then selected="{{python}}"; fi; \
     {{python}} tools/release/install_wheel.py --python "$selected"
 
-# Install the core candidate environment. External profiling references require
-# `--with-legacy-amplicol` and/or `--with-reference-fft`.
+# Install published dependencies and a release-mode source runtime. Historical
+# source candidates require --candidate; profiling references remain opt-in.
 dev-install *INSTALLER_ARGS: _source-checkout
     mkdir -p {{dev_cache}}/tmp {{dev_cache}}/cargo-home {{dev_cache}}/cargo-target {{dev_cache}}/pip-cache {{dev_cache}}/xdg-cache {{dev_cache}}/python-cache
     TMPDIR="$PWD/{{dev_cache}}/tmp" CARGO_HOME="$PWD/{{dev_cache}}/cargo-home" CARGO_TARGET_DIR="$PWD/{{dev_cache}}/cargo-target" PIP_CACHE_DIR="$PWD/{{dev_cache}}/pip-cache" XDG_CACHE_HOME="$PWD/{{dev_cache}}/xdg-cache" PYTHONPYCACHEPREFIX="$PWD/{{dev_cache}}/python-cache" PYAMPLICOL_CANDIDATE_CACHE_ROOT="$PWD/{{dev_cache}}" {{python}} dependencies/install_dependencies.py {{INSTALLER_ARGS}}
-    TMPDIR="$PWD/{{dev_cache}}/tmp" CARGO_HOME="$PWD/{{dev_cache}}/cargo-home" CARGO_TARGET_DIR="$PWD/{{dev_cache}}/cargo-target" PIP_CACHE_DIR="$PWD/{{dev_cache}}/pip-cache" XDG_CACHE_HOME="$PWD/{{dev_cache}}/xdg-cache" PYTHONPYCACHEPREFIX="$PWD/{{dev_cache}}/python-cache" PYAMPLICOL_BUILD_MODE=candidate {{python}} tools/developer/prepare_source_runtime.py --candidate --wheel-directory .artifacts/candidate
 
 # Report/campaign prerequisite. pyAmpliCol is not released yet, so this keeps
-# the explicit build entrypoint tied to the pinned dev-install environment.
+# the explicit build entrypoint tied to the published-dependency environment.
 dev-build: _source-checkout
     just dev-install
     {{dev_python}} -c 'import pyamplicol; import pyamplicol.api'
     {{dev_python}} src/pyamplicol/_profiling_campaign/result_tables.py validate
 
 dev-test: _source-checkout
-    PYTHON={{dev_python}} PYAMPLICOL_BUILD_MODE=candidate just source-gate
-    PYTHON={{dev_python}} PYAMPLICOL_BUILD_MODE=candidate just test-deployment-candidate
+    PYTHON={{dev_python}} PYAMPLICOL_BUILD_MODE={{build_mode}} just source-gate
+    @if [ "{{build_mode}}" = candidate ]; then \
+        PYTHON={{dev_python}} PYAMPLICOL_BUILD_MODE=candidate just test-deployment-candidate; \
+    else \
+        PYTHON={{dev_python}} PYAMPLICOL_BUILD_MODE=release just test-deployment; \
+    fi
 
 # Bounded built-in-SM eager gate under the 30 GiB memory guard.
 eager-smoke: _source-checkout

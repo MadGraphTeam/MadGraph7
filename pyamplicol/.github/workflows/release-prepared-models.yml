@@ -48,7 +48,7 @@ jobs:
       - name: Verify exact release dependency inputs
         run: python tools/release/check_dependencies.py
       - name: Install pinned build tools
-        run: python -m pip install "maturin==1.14.1" "packaging==26.2"
+        run: python -m pip install "maturin==1.15.0" "packaging==26.3"
       - name: Build the non-publishable release bootstrap wheel
         run: >-
           python tools/ci/memory_watchdog.py --limit-gib 30 --

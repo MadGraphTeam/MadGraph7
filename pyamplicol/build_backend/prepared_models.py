@@ -409,7 +409,7 @@ def _write_packaged_prepared_model_asset(
     if mode == "candidate":
         assert contributor is not None
         symbolica_version = str(contributor["symbolica"]["candidate_version"])
-        symjit_version = str(release["symjit"]["version"])
+        symjit_version = str(contributor["symjit"]["candidate_version"])
     else:
         symbolica_version = _cargo_package_version(overlay, "symbolica")
         symjit_version = _symjit_version(overlay)

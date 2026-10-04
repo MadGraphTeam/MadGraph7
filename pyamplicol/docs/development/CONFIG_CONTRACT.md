@@ -51,8 +51,8 @@ their defaults and use the runtime selectors below.
 ## Color
 
 - `accuracy: lc | nlc | full = lc`
-- `contraction: direct | symmetric-group-fft = direct`
-- `fft_basis: trace | adjoint = trace`
+- `contraction: auto | direct | symmetric-group-fft = auto`
+- `fft_basis: trace | adjoint = adjoint`
 - `lc_flow_layout: topology-replay | all-flow-union = topology-replay`
 
 LC generation always includes complete physical flow coverage. Runtime flow
@@ -61,15 +61,18 @@ topology, replay, and reference-order IDs are not configurable.
 
 `symmetric-group-fft` is an exact contracted-colour reducer for NLC/full
 recurrence and on-the-fly execution. It is rejected for LC, compiled, and eager
-execution. `direct` remains the default.
+execution when explicitly requested. The default `auto` tries FFT in the
+supported lanes, falling back to direct for unsupported process plans; LC,
+compiled/eager, and correlated generation use direct contraction and trace
+basis. Explicit `direct` opts out and ignores `fft_basis`.
 
-`fft_basis = "adjoint"` requests adaptive exact-basis selection and requires
-`contraction = "symmetric-group-fft"`. Certified Yang–Mills trees and certified
-single-insertion scalar HEFT (`HIG = 1`) use two-anchor DDM; quark processes
+`fft_basis = "adjoint"` requests adaptive exact-basis selection with
+`contraction = "auto"` or `"symmetric-group-fft"`. Certified Yang–Mills trees and
+certified single-insertion scalar HEFT (`HIG = 1`) use two-anchor DDM; quark processes
 retain fundamental chains or their products, and uncertified adjoint domains
 retain trace tensors. Singlet domains have one trivial tensor. This does not
 add a JO primitive decomposition or assume identities for arbitrary models.
-Correlated generation remains unsupported.
+Forced adjoint FFT remains unsupported for correlated generation.
 
 For `n` gluons, DDM retains `(n-2)!` ordered amplitudes instead of `(n-1)!`;
 its two-adjoint endpoint case is the single delta tensor. Saved
@@ -80,8 +83,9 @@ chains/products, singlets, and trace tensors. Counts exclude open-line
 traversal aliases and do not assert linear independence at fixed `Nc`.
 
 The CLI `--fft {trace,adjoint}` sets both contraction and basis request without
-changing accuracy. The existing contraction flag and schema retain trace as
-default. `ColorFFTBasis` and `ColorConfig` are public Python exports. Examples
+changing accuracy. Explicit FFT requests retain unsupported-plan errors;
+`--color-contraction symmetric-group-fft` uses adjoint by default.
+`ColorFFTBasis` and `ColorConfig` are public Python exports. Examples
 select the adaptive adjoint option explicitly without implying that every
 process has a smaller basis or faster runtime.
 

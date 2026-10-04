@@ -64,7 +64,7 @@ def test_model_tensors_keep_supported_singlet_projection() -> None:
         (
             "UFO::Gamma(UFO::idx(1,1),UFO::idx(1,2),UFO::idx(1,3))",
             (3, 2, 2),
-            "gamma",
+            "dirac_gamma",
             ("ufo_s_1_3", "ufo_s_1_2", "ufo_l_1_1"),
         ),
         (
@@ -100,8 +100,7 @@ def test_lorentz_tensor_factories_preserve_ufo_index_conventions(
     indices: tuple[str, ...],
 ) -> None:
     from symbolica import E
-    from symbolica.community.idenso import simplify_gamma, simplify_metrics
-    from symbolica.community.spenso import Representation, TensorExpression
+    from symbolica.community.tensor import Representation, TensorExpression
 
     if factory == "metric":
         tensor = TensorExpression.g(Representation.mink(4))
@@ -109,13 +108,54 @@ def test_lorentz_tensor_factories_preserve_ufo_index_conventions(
         tensor = TensorExpression.g(Representation.bis(4))
     else:
         tensor = getattr(TensorExpression, factory)(4)
-    expected = simplify_metrics(
-        simplify_gamma(simplify_metrics(tensor(*indices).to_expression()))
-    )
+    expected = tensor(*indices).simplify_algebra(color=False).to_expression()
 
     normalized = normalize_lorentz_expression(source, spins)
 
     assert E(normalized.expression) == expected
+
+
+def test_lorentz_clifford_contraction_preserves_4d_normalization() -> None:
+    from symbolica import E
+
+    normalized = normalize_lorentz_expression(
+        "UFO::Gamma(UFO::dummy(1),UFO::idx(1,1),UFO::dummy(2))*"
+        "UFO::Gamma(UFO::dummy(1),UFO::dummy(2),UFO::idx(1,2))",
+        (2, 2),
+    )
+    identity = normalize_lorentz_expression(
+        "UFO::Identity(UFO::idx(1,1),UFO::idx(1,2))",
+        (2, 2),
+    )
+
+    assert E(normalized.expression) == 4 * E(identity.expression)
+
+
+def test_color_contraction_substitutes_su3_casimir() -> None:
+    normalized = normalize_color_expression(
+        "UFO::f(1,-1,-2)*UFO::f(2,-1,-2)",
+        (8, 8),
+    )
+
+    assert _materialized_color_components(normalized.expression, (1, 2)) == {
+        (left, right): complex(3 * (left == right))
+        for left in range(8)
+        for right in range(8)
+    }
+
+
+@pytest.mark.parametrize(
+    ("right", "expected"), (("-1,-2,-3", "24"), ("-3,-2,-1", "-24"))
+)
+def test_closed_color_contraction_preserves_structure_constant_sign(
+    right: str, expected: str
+) -> None:
+    normalized = normalize_color_expression(
+        f"UFO::f(-1,-2,-3)*UFO::f({right})",
+        (),
+    )
+
+    assert normalized.expression == expected
 
 
 def test_materialized_adjoint_identity_preserves_physical_axis_order() -> None:
@@ -135,7 +175,7 @@ def test_color_identity_preserves_physical_and_oriented_index_variance(
     representations: tuple[int, int],
 ) -> None:
     from symbolica import E
-    from symbolica.community.spenso import Representation, as_tensor
+    from symbolica.community.tensor import Representation, as_tensor
 
     normalized = normalize_color_expression("UFO::Identity(1,2)", representations)
     fundamental = Representation.cof(3)
@@ -147,7 +187,7 @@ def test_color_identity_preserves_physical_and_oriented_index_variance(
     }
     actual = {
         slot.to_expression().format_plain()
-        for slot in as_tensor(E(normalized.expression)).interface
+        for slot in as_tensor(E(normalized.expression)).axes
     }
 
     assert actual == expected

@@ -1147,7 +1147,8 @@ def test_completed_reproduction_recipe_uses_exact_selectors_and_momenta(
     assert momenta_path.is_relative_to(tmp_path / "campaign_artifacts")
     assert all(
         ".artifacts" not in argument
-        for argument in (*recipe.prepare, *recipe.generate, *recipe.profile)
+        for command in (recipe.prepare, recipe.generate, recipe.profile)
+        for argument in command[1:]
     )
     assert "<" not in " ".join((*recipe.generate, *recipe.profile))
 

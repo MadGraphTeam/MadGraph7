@@ -17,6 +17,7 @@ from pyamplicol.api import Generator, ProcessSet
 from pyamplicol.api.results import GenerationPlan, GenerationResult
 from pyamplicol.cli import run_cli
 from pyamplicol.config import (
+    ColorConfig,
     ConfigResolution,
     EvaluatorConfig,
     EvaluatorOptimizationConfig,
@@ -103,6 +104,57 @@ def test_programmatic_generator_forwards_config_resolution(
     Generator(resolution).plan("d d~ > z")
 
     assert received == [(resolution, None)]
+
+
+@pytest.mark.parametrize("contraction", ("auto", "direct"))
+def test_python_generator_preserves_automatic_fft_and_direct_opt_out(
+    monkeypatch: pytest.MonkeyPatch, contraction: str
+) -> None:
+    config = RunConfig(
+        action="generate", color=ColorConfig(accuracy="full", contraction=contraction)
+    )
+    received = []
+
+    def factory(resolution, _progress):
+        received.append(resolution)
+        return _PlanningBackend(resolution)
+
+    monkeypatch.setattr(service_module, "_generator_factory", factory)
+    monkeypatch.setattr(
+        licensing_module,
+        "detect_symbolica_license",
+        lambda **_kwargs: SymbolicaLicenseState(licensed=True, restricted=False),
+    )
+    Generator(config).plan("g g > g g")
+    assert len(received) == 1
+    assert received[0].effective.color.contraction == contraction
+    assert received[0].effective.color.fft_basis == (
+        "adjoint" if contraction == "auto" else "trace"
+    )
+
+
+@pytest.mark.parametrize("config", (None, GenerationConfig()))
+def test_python_generator_shortcuts_resolve_conditional_color_defaults(
+    monkeypatch: pytest.MonkeyPatch, config
+) -> None:
+    received = []
+
+    def factory(resolution, _progress):
+        received.append(resolution)
+        return _PlanningBackend(resolution)
+
+    monkeypatch.setattr(service_module, "_generator_factory", factory)
+    monkeypatch.setattr(
+        licensing_module,
+        "detect_symbolica_license",
+        lambda **_kwargs: SymbolicaLicenseState(licensed=True, restricted=False),
+    )
+    Generator(config).plan("g g > g g")
+    assert received[0].requested.color.contraction == "auto"
+    assert received[0].requested.color.fft_basis == "adjoint"
+    assert received[0].effective.color.accuracy == "lc"
+    assert received[0].effective.color.contraction == "direct"
+    assert received[0].effective.color.fft_basis == "trace"
 
 
 def test_programmatic_generation_applies_restricted_resource_policy(

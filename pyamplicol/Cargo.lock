@@ -879,7 +879,7 @@ checksum = "6b1e7f9a428571be2dc5bc0505c13fb6bf936822b894ec87abf8a08a4e51742d"
 
 [[package]]
 name = "rusticol-capi"
-version = "0.2.1"
+version = "1.0.0"
 dependencies = [
  "rusticol-core",
  "serde_json",
@@ -887,7 +887,7 @@ dependencies = [
 
 [[package]]
 name = "rusticol-core"
-version = "0.2.1"
+version = "1.0.0"
 dependencies = [
  "bincode",
  "libc",
@@ -905,7 +905,7 @@ dependencies = [
 
 [[package]]
 name = "rusticol-python"
-version = "0.2.1"
+version = "1.0.0"
 dependencies = [
  "flate2",
  "num-bigint",
@@ -1106,8 +1106,9 @@ dependencies = [
 
 [[package]]
 name = "symjit"
-version = "2.26.0"
-source = "git+https://github.com/siravan/symjit-crate.git?rev=530304a07d1be6d5abc80291aa5e92cf28ac5546#530304a07d1be6d5abc80291aa5e92cf28ac5546"
+version = "2.26.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37344a51408baa239bbaa771e40cd908686bffed4f4491ec6bc608e8d248c931"
 dependencies = [
  "ahash",
  "anyhow",

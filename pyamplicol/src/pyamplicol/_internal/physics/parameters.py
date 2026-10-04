@@ -105,7 +105,7 @@ class ParamBuilder:
         role: str,
         real_valued: bool = False,
     ) -> tuple[Any, ...]:
-        from symbolica.community.spenso import Tensor, TensorName
+        from symbolica.community.tensor import Tensor, TensorName
 
         parameter_symbols = self.add_parameter_list(
             head,

@@ -106,6 +106,8 @@ def _generation_config(
         color=ColorConfig(
             accuracy=color_accuracy,
             contraction=color_contraction,
+            # These structural oracles exercise trace-word reflection/replay.
+            fft_basis="trace",
             lc_flow_layout=lc_flow_layout,
         ),
         generation=GenerationConfig(

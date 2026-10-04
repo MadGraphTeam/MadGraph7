@@ -137,6 +137,9 @@ def _generation_config(
         action="generate",
         color=ColorConfig(
             accuracy=color_accuracy,
+            # This suite asserts the direct-contraction artifact structure.
+            # Automatic FFT selection is covered by test_adjoint_fft_runtime.
+            contraction="direct",
             lc_flow_layout=lc_flow_layout,
         ),
         generation=GenerationConfig(
@@ -1191,7 +1194,7 @@ def test_charged_current_alias_uses_native_identity_for_numerical_probes(
     assert lane["requested_mode"] == "certified-reuse"
 
 
-def test_no_relation_certified_reuse_and_explicit_opt_out_emit_identical_recurrence_plan(
+def test_no_relation_reuse_and_opt_out_emit_identical_recurrence_plan(
     tmp_path: Path,
     builtin_sm_recurrence_jit_o2_model: ModelSource,
 ) -> None:

@@ -2,8 +2,8 @@
 
 [build-system]
 requires = [
-  "maturin==1.14.1",
-  "packaging==26.2",
+  "maturin==1.15.0",
+  "packaging==26.3",
 ]
 build-backend = "_pyamplicol_build"
 backend-path = ["build_backend"]
@@ -49,21 +49,21 @@ classifiers = [
 ]
 dependencies = [
   "colorama==0.4.6",
-  "numpy==2.4.2",
-  "platformdirs==4.10.0",
+  "numpy==2.4.6",
+  "platformdirs==4.12.2",
   "prettytable==3.18.0",
-  "progressbar2==4.5.0",
+  "progressbar2==4.6.0",
   "six==1.17.0",
   "symbolica==3.0.0",
   "tomli-w==1.2.0",
-  "ufo-model-loader==0.1.8",
+  "ufo-model-loader==1.0.0",
 ]
 
 [project.optional-dependencies]
 test = [
   "build>=1.2,<2",
   "jsonschema>=4.22,<5",
-  "maturin==1.14.1",
+  "maturin==1.15.0",
   "mypy>=1.13,<2",
   "pytest>=8.3,<9",
   "ruff>=0.9,<1",
@@ -74,8 +74,8 @@ docs = [
   "pypdf>=5,<6",
 ]
 fft-profiling = [
-  "matplotlib==3.10.8",
-  "reportlab==4.4.4",
+  "matplotlib==3.11.2",
+  "reportlab==4.5.1",
 ]
 
 [project.scripts]
@@ -209,6 +209,14 @@ exclude = [
 ]
 show_error_codes = true
 warn_unused_configs = true
+
+# Symbolica 3.0.0's FactorProjector overloads crash mypy 1.20.2. These
+# implementation-only tensor bindings are exercised by numerical tests;
+# keep checking all pyAmpliCol public types and the other Symbolica stubs.
+[[tool.mypy.overrides]]
+module = "symbolica.community.tensor"
+follow_imports = "skip"
+follow_imports_for_stubs = true
 
 [tool.coverage.run]
 source = ["pyamplicol"]

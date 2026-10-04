@@ -57,17 +57,35 @@ python -m pip install .
 A source build requires Python 3.11 or newer, Rust 1.89 or newer, and a C/C++
 toolchain. A Fortran compiler is required only for Fortran consumers.
 
-Contributor setup uses pinned source dependencies and produces explicitly
-non-publishable candidate builds:
+Contributor setup defaults to published Python dependencies from
+`pyproject.toml`, including Symbolica 3.0.0, and the release-mode native build.
+Building a new release wheel requires a clean Git checkpoint and complete
+release assets; the dependency mode does not relax publication guards.
+The upcoming 1.0.0 release pairs with ufo-model-loader 1.0.0. Until that loader
+is published on PyPI, contributor setup requires its locally built wheel:
 
 ```console
 nix develop  # optional on Nix/NixOS
-just dev-install
+just dev-install --loader-wheel /path/to/ufo_model_loader-1.0.0-py3-none-any.whl
 PYTHON=.venv/bin/python just dev-test
 ```
 
-The first `just dev-install` native build can take several minutes. Repeated
-installs reuse the workspace-local Cargo cache and are substantially faster.
+The `just dev-install` native build can take several minutes. Use
+`--wheel-directory PATH` to avoid rebuilding an existing compatible wheel.
+For a dirty development checkout, use `--wheel-directory PATH` to reuse an
+already-built compatible release wheel, or `--dependencies-only` to install
+dependencies without building or staging the project; the latter leaves the
+existing native runtime untouched. The installer does not select local loader
+wheels automatically; `--loader-wheel` is an explicit development override, not
+evidence of publication. Once loader 1.0.0 is published and its wheel recorded
+in the runtime lock, omit this option. Editable
+installs are not used. `just dev-test` also includes a fresh release build and
+requires a clean checkpoint; dirty edits can use focused tests against the
+staged native runtime.
+Historical dependency-development machinery remains behind `--candidate`,
+but its pinned APIs are incompatible with the current tensor implementation.
+It needs updated, coherent upstream pins before use; use the published lane
+for current-source development and tests.
 
 Full installation details are in the
 [documentation](https://mg5amcnlo.github.io/pyamplicol/).
@@ -178,19 +196,22 @@ without constructing it.
 Recurrence, eager, and on-the-fly execution reuse the same prepared model
 kernel bundle.
 
-Contracted NLC/full-colour recurrence and on-the-fly execution can use the
-exact `symmetric-group-fft` colour contraction. Start with
-`--fft adjoint --color-accuracy full` for adaptive exact-basis selection.
+Contracted NLC/full-colour recurrence and on-the-fly execution automatically
+try exact `symmetric-group-fft` colour contraction with adaptive adjoint-basis
+selection, falling back to direct contraction when the FFT plan is unsupported.
+Select `--color-accuracy full` (or `nlc`) to use this default policy.
 Certified pure-gluon Yang–Mills trees and single-insertion HEFT use two-anchor
 DDM tensors: for `n` external gluons, `(n-2)!` ordered amplitudes replace the
 trace basis's `(n-1)!`. Quark processes retain fundamental chains or their
 products; uncertified adjoint processes retain trace tensors. The saved
 `fft_basis_selection` records the actual representation and its reason, so a
-fallback is not presented as a DDM reduction. Use `--fft trace` to keep the
-original representation explicitly. Configuration defaults remain direct
-contraction and trace basis. In the benchmarked pure-gluon family the adjoint
-basis was faster than trace for six or more external gluons, by 3.9x per
-sample with 4x faster generation at ten gluons. See the
+fallback is not presented as a DDM reduction. Configuration defaults are
+`contraction = "auto"` and `fft_basis = "adjoint"`; LC, compiled/eager execution,
+and correlators retain direct contraction and the trace basis. Use
+`--color-contraction direct` to opt out, or `--fft trace` / `--fft adjoint` to
+force FFT with that basis and reject unsupported plans. In the benchmarked
+pure-gluon family the adjoint basis was faster than trace for six or more
+external gluons, by 3.9x per sample with 4x faster generation at ten gluons. See the
 [FFT configuration guide](docs/user/configuration.md#color-accuracy-and-lc-layout).
 FFT transforms certified permutation-orbit blocks and retains unsupported
 terms as exact direct residuals.

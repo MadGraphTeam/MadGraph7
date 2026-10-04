@@ -8,7 +8,7 @@ import sys
 
 _RESTRICTED_MODE_MRE = r"""
 from symbolica import Expression, is_licensed
-from symbolica.community.spenso import (
+from symbolica.community.tensor import (
     Representation,
     Tensor,
     TensorExpression,
@@ -47,9 +47,10 @@ expression = (
 
 network = TensorNetwork(expression, library)
 network.execute(library=library)
-result = network.result_tensor(library)
-result.to_dense()
-print(result[0])
+result = network.result_tensor(library).to_dense()
+expected = Expression.parse("2*a0+2*a5-2*a10-2*a15")
+assert (result[0] - expected).expand().to_canonical_string() == "0"
+print("restricted tensor contraction passed")
 """
 
 
@@ -75,4 +76,4 @@ def test_spenso_sequential_execution_respects_symbolica_restricted_mode() -> Non
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "2.00000000000000*a0+2*a5-2*a10-2*a15" in result.stdout
+    assert "restricted tensor contraction passed" in result.stdout

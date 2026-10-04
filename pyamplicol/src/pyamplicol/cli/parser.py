@@ -276,6 +276,10 @@ def _add_color_options(parser: argparse.ArgumentParser) -> None:
         dest="color.contraction",
         choices=tuple(ColorContraction),
         default=argparse.SUPPRESS,
+        help=(
+            "Default: auto, using adaptive FFT for supported NLC/full recurrence "
+            "or on-the-fly plans and direct otherwise. Select direct to opt out."
+        ),
     )
     contraction.add_argument(
         "--fft",
@@ -283,7 +287,7 @@ def _add_color_options(parser: argparse.ArgumentParser) -> None:
         choices=tuple(ColorFFTBasis),
         default=argparse.SUPPRESS,
         help=(
-            "Use symmetric-group FFT contraction. 'adjoint' selects certified "
+            "Force symmetric-group FFT contraction. 'adjoint' selects certified "
             "DDM where applicable, otherwise exact fundamental chains or an "
             "explicit trace fallback; requires --color-accuracy nlc or full."
         ),

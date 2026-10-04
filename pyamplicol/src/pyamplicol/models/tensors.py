@@ -5,6 +5,7 @@ import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache
+from itertools import product
 from threading import RLock
 from typing import Any
 
@@ -19,9 +20,6 @@ TensorName: Any = None
 TensorNetwork: Any = None
 TensorExpression: Any = None
 as_tensor: Any = None
-simplify_color: Any = None
-simplify_gamma: Any = None
-simplify_metrics: Any = None
 _INDEX_PATTERN: Any = None
 _DUMMY_PATTERN: Any = None
 _WILDCARDS: dict[str, Any] = {}
@@ -32,7 +30,6 @@ _SYMBOLICA_LOCK = RLock()
 def _ensure_symbolica() -> None:
     global E, Expression, Representation, TensorLibrary, TensorName
     global TensorNetwork, TensorExpression, as_tensor
-    global simplify_color, simplify_gamma, simplify_metrics
     global _INDEX_PATTERN, _DUMMY_PATTERN, _WILDCARDS, _SYMBOLICA_READY
 
     if _SYMBOLICA_READY:
@@ -42,17 +39,14 @@ def _ensure_symbolica() -> None:
             return
         from symbolica import E as expression_parser
         from symbolica import Expression as expression_type
-        from symbolica.community.idenso import simplify_color as color_simplifier
-        from symbolica.community.idenso import simplify_gamma as gamma_simplifier
-        from symbolica.community.idenso import simplify_metrics as metric_simplifier
-        from symbolica.community.spenso import Representation as representation_type
-        from symbolica.community.spenso import (
+        from symbolica.community.tensor import Representation as representation_type
+        from symbolica.community.tensor import (
             TensorExpression as tensor_expression_type,
         )
-        from symbolica.community.spenso import TensorLibrary as tensor_library_type
-        from symbolica.community.spenso import TensorName as tensor_name_type
-        from symbolica.community.spenso import TensorNetwork as tensor_network_type
-        from symbolica.community.spenso import as_tensor as tensor_converter
+        from symbolica.community.tensor import TensorLibrary as tensor_library_type
+        from symbolica.community.tensor import TensorName as tensor_name_type
+        from symbolica.community.tensor import TensorNetwork as tensor_network_type
+        from symbolica.community.tensor import as_tensor as tensor_converter
 
         E = expression_parser
         Expression = expression_type
@@ -62,9 +56,6 @@ def _ensure_symbolica() -> None:
         TensorNetwork = tensor_network_type
         TensorExpression = tensor_expression_type
         as_tensor = tensor_converter
-        simplify_color = color_simplifier
-        simplify_gamma = gamma_simplifier
-        simplify_metrics = metric_simplifier
         _INDEX_PATTERN = E("UFO::idx(component_,leg_)")
         _DUMMY_PATTERN = E("UFO::dummy(label_)")
         _WILDCARDS = {name: E(name) for name in ("a_", "b_", "c_", "d_")}
@@ -105,9 +96,7 @@ def normalize_lorentz_expression(
     expression = _replace(expression, "UFO::P(a_)", context.propagator_momentum)
     _reject_residual_ufo_tensors(expression, context="Lorentz expression")
     _reject_indeterminate(expression, context="Lorentz expression")
-    expression = simplify_metrics(expression)
-    expression = simplify_gamma(expression)
-    expression = simplify_metrics(expression)
+    expression = as_tensor(expression).simplify_algebra(color=False).to_expression()
     return NormalizedTensorExpression(
         source=source,
         expression=expression.format_plain(),
@@ -132,10 +121,17 @@ def normalize_color_expression(
     expression = _replace(expression, "UFO::d(a_,b_,c_)", context.symmetric_invariant)
     _reject_residual_ufo_tensors(expression, context="color expression")
     _reject_indeterminate(expression, context="color expression")
-    simplified = simplify_color(expression)
-    # idenso currently rewrites d^{abc} to an abstract trace that spenso does
-    # not materialize. Keep the equivalent explicit generator trace in that
-    # case; all other color expressions retain the simplified form.
+    simplified = (
+        as_tensor(expression)
+        .simplify_algebra(
+            gamma=False,
+            contract="none",
+            color_substitute_cof_dimension_invariants=True,
+        )
+        .to_expression()
+    )
+    # Keep d^{abc} as its explicit generator trace for component projection,
+    # rather than introducing a separate symbolic invariant tensor.
     expression = expression if context.expanded_symmetric_invariant else simplified
     return NormalizedTensorExpression(
         source=source,
@@ -174,7 +170,7 @@ class _LorentzContext:
         self.model_symbols = model_symbols
         self.minkowski = Representation.mink(4)
         self.bispinor = Representation.bis(4)
-        self.gamma_tensor = TensorExpression.gamma(4)
+        self.gamma_tensor = TensorExpression.dirac_gamma(4)
         self.gamma5_tensor = TensorExpression.gamma5(4)
         self.projm_tensor = TensorExpression.projm(4)
         self.projp_tensor = TensorExpression.projp(4)
@@ -316,8 +312,8 @@ class _ColorContext:
         self.color_representations = color_representations
         self.fundamental = Representation.cof(3)
         self.adjoint = Representation.coad(8)
-        self.generator_tensor = TensorExpression.t(8, 3)
-        self.f_tensor = TensorExpression.f(8)
+        self.generator_tensor = TensorExpression.color_t(8, 3)
+        self.f_tensor = TensorExpression.color_f(8)
         self.expanded_symmetric_invariant = False
         self._dummy_index = 0
 
@@ -728,11 +724,9 @@ def _materialized_color_components(
     atom = E(expression)
     network = TensorNetwork(as_tensor(atom) if colored_legs else atom, library)
     network.execute(library=library)
-    tensor = network.result_tensor(library)
-    tensor.to_dense()
-    structure = tensor.structure()
+    tensor = network.result_tensor(library).to_dense()
     axes = []
-    for slot in structure.interface:
+    for slot in tensor.axes:
         argument = slot.to_expression()
         match = re.search(r"ufo_c_([0-9]+)", argument.to_canonical_string())
         if match is None:
@@ -743,11 +737,10 @@ def _materialized_color_components(
             "materialized color tensor open indices do not match its particles"
         )
     result: dict[tuple[int, ...], complex] = {}
-    for flat_index in range(len(tensor)):
-        coordinates = structure[flat_index]
+    for coordinates in product(*(range(dimension) for dimension in tensor.shape)):
         by_leg = {leg: int(coordinates[axis]) for axis, leg in enumerate(axes)}
         key = tuple(by_leg[leg] for leg in colored_legs)
-        result[key] = complex(tensor[flat_index])
+        result[key] = complex(tensor[coordinates])
     return result
 
 

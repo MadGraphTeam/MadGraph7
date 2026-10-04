@@ -76,7 +76,7 @@ MERGE_TOOL = ROOT / "tools" / "developer" / "fft_scaling_final_publication_repor
 PLOT_TOOL = ROOT / "tools" / "developer" / "fft_scaling_study_plots.py"
 PDF_TOOL = ROOT / "tools" / "developer" / "fft_results_summary_pdf.py"
 MADGRAPH_TOOL = ROOT / "tools" / "developer" / "fft_madgraph_selected_runtime.py"
-RENDER_REQUIREMENTS = ("matplotlib==3.10.8", "reportlab==4.4.4")
+RENDER_REQUIREMENTS = ("matplotlib==3.11.2", "reportlab==4.5.1")
 TERMINAL_STATUSES = frozenset({"complete", "complete-with-failures"})
 ORCHESTRATOR_TERMINAL_CELL_STATUSES = frozenset(
     {"measured", "failed", "skipped", "not-applicable"}

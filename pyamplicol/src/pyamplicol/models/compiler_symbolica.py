@@ -34,12 +34,12 @@ def _ensure_symbolica() -> None:
         from symbolica import Expression as expression_type
         from symbolica import Replacement as replacement_type
         from symbolica import S as symbol
-        from symbolica.community.spenso import Representation as representation_type
-        from symbolica.community.spenso import Tensor as tensor_type
-        from symbolica.community.spenso import TensorLibrary as tensor_library_type
-        from symbolica.community.spenso import TensorName as tensor_name_type
-        from symbolica.community.spenso import TensorNetwork as tensor_network_type
-        from symbolica.community.spenso import as_tensor as tensor_expression
+        from symbolica.community.tensor import Representation as representation_type
+        from symbolica.community.tensor import Tensor as tensor_type
+        from symbolica.community.tensor import TensorLibrary as tensor_library_type
+        from symbolica.community.tensor import TensorName as tensor_name_type
+        from symbolica.community.tensor import TensorNetwork as tensor_network_type
+        from symbolica.community.tensor import as_tensor as tensor_expression
 
         E = expression_parser
         S = symbol

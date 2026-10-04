@@ -100,7 +100,7 @@ def test_lightweight_public_exports_do_not_load_model_tooling() -> None:
         assert Generator.__module__ == "pyamplicol.api.services"
         assert Runtime.__module__ == "pyamplicol.api.services"
         assert CorrelatedRequest().color_correlation == "born"
-        assert ColorConfig().fft_basis is ColorFFTBasis.TRACE
+        assert ColorConfig().fft_basis is ColorFFTBasis.ADJOINT
         assert "pyamplicol.models.loading" not in sys.modules
         assert ("symbolica" in sys.modules) == (
             importlib.util.find_spec("symbolica") is not None

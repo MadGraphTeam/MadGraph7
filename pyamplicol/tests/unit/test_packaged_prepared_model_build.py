@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import sys
@@ -26,12 +27,32 @@ with (ROOT / "dependencies" / "release-lock.toml").open("rb") as stream:
     RELEASE_VERSION = str(tomllib.load(stream)["project"]["version"])
 
 
+@pytest.fixture(autouse=True)
+def _synthetic_prepared_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+    # These tests exercise packaging metadata, not archive decoding or native
+    # kernels. Keep their inputs independent of the checked-in candidate packs.
+    def load_bundle(path: Path) -> SimpleNamespace:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        pack = payload["kernel_pack"]
+        pack["kernels"] = tuple(SimpleNamespace(**item) for item in pack["kernels"])
+        payload["kernel_pack"] = SimpleNamespace(**pack)
+        return SimpleNamespace(**payload)
+
+    monkeypatch.setattr(
+        prepared_models_module,
+        "_load_prepared_contract",
+        lambda _path: SimpleNamespace(load_prepared_model_bundle=load_bundle),
+    )
+
+
 def _overlay(tmp_path: Path) -> Path:
     overlay = tmp_path / "overlay"
     shutil.copytree(
         ROOT / "src" / "pyamplicol",
         overlay / "src" / "pyamplicol",
-        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        ignore=shutil.ignore_patterns(
+            "__pycache__", "*.pyc", "*.pyamplicol-model", "*.metadata.json"
+        ),
     )
     dependencies = overlay / "dependencies"
     dependencies.mkdir()
@@ -48,6 +69,7 @@ def _overlay(tmp_path: Path) -> Path:
         ROOT / "dependencies" / "candidate-Cargo.lock",
         overlay / "Cargo.lock",
     )
+    _write_fixture_assets(overlay, mode="candidate")
     package_root = overlay / "src" / "pyamplicol"
     metadata = json.loads(
         (
@@ -78,7 +100,9 @@ def _release_overlay(tmp_path: Path) -> Path:
     shutil.copytree(
         ROOT / "src" / "pyamplicol",
         overlay / "src" / "pyamplicol",
-        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        ignore=shutil.ignore_patterns(
+            "__pycache__", "*.pyc", "*.pyamplicol-model", "*.metadata.json"
+        ),
     )
     dependencies = overlay / "dependencies"
     dependencies.mkdir()
@@ -88,6 +112,7 @@ def _release_overlay(tmp_path: Path) -> Path:
     )
     shutil.copy2(ROOT / "Cargo.toml", overlay / "Cargo.toml")
     shutil.copy2(ROOT / "Cargo.lock", overlay / "Cargo.lock")
+    _write_fixture_assets(overlay, mode="release")
     return overlay
 
 
@@ -105,7 +130,9 @@ def _release_store(overlay: Path) -> Path:
 def _release_bundle(
     overlay: Path,
     package_version: str = RELEASE_VERSION,
-) -> object:
+    *,
+    model_source: str = "built-in-sm",
+) -> SimpleNamespace:
     package_root = overlay / "src" / "pyamplicol"
     compiled_schema = prepared_models_module._literal_assignment(
         package_root / "_internal" / "versions.py",
@@ -116,7 +143,9 @@ def _release_bundle(
         "MODEL_COMPILER_VERSION",
     )
     compiler_digest = "a" * 64
-    source_digest = prepared_models_module._built_in_source_digest(package_root)
+    source_digest = prepared_models_module._built_in_source_digest(
+        package_root, model_source
+    )
     symbolica_abi = prepared_models_module._literal_assignment(
         package_root / "_internal" / "versions.py",
         "SYMBOLICA_SERIALIZATION_ABI",
@@ -133,19 +162,41 @@ def _release_bundle(
         backend="jit",
         dependency_abis={
             "symbolica_serialization": symbolica_abi,
-            "symbolica_version": "3.0.0",
+            "symbolica_version": prepared_models_module._cargo_package_version(
+                overlay, "symbolica"
+            ),
             "symjit_application": symjit_abi,
             "symjit_plane_application": symjit_plane_abi,
         },
-        kernels=(object(),),
-        optimization_settings={"jit_optimization_level": 2},
-        producer={"version": package_version},
+        kernels=(
+            SimpleNamespace(
+                kernel_id="fixture-kernel",
+                f64_evaluator_manifest={
+                    "kind": "symjit-application-evaluator",
+                    "backend": "jit",
+                    "runtime_capability": "symjit.application.complex-f64.v1",
+                    "application_abi": symjit_abi,
+                    "compiler_type": "native",
+                    "translation_mode": "indirect",
+                    "optimization_level": 2,
+                    "word_bits": 64,
+                    "endianness": "little",
+                    "required_defuns": [],
+                },
+            ),
+        ),
+        optimization_settings={"backend": "jit", "jit_optimization_level": 2},
+        producer={
+            "version": package_version,
+            "compiled_model_schema": compiled_schema,
+            "model_compiler_version": compiler_version,
+        },
         provenance={
             "compiled_model_digest": source_digest,
-            "model_name": "built-in-sm",
+            "model_name": model_source,
             "model_source": {
                 "digest": source_digest,
-                "kind": "built-in-sm",
+                "kind": model_source,
             },
         },
         target={
@@ -159,6 +210,7 @@ def _release_bundle(
     return SimpleNamespace(
         backend="jit",
         compiled_model={
+            "model": {"name": model_source},
             "producer": {
                 "compiled_model_schema_version": compiled_schema,
                 "model_compiler_version": compiler_version,
@@ -167,17 +219,89 @@ def _release_bundle(
             },
             "source": {
                 "digest": source_digest,
-                "kind": "built-in-sm",
+                "kind": model_source,
             },
         },
         kernel_pack=pack,
+        manifest={
+            "eager_kernel_abi": prepared_models_module._literal_assignment(
+                package_root / "models/prepared.py", "EAGER_KERNEL_ABI"
+            ),
+            "schema_version": prepared_models_module._literal_assignment(
+                package_root / "models/prepared.py",
+                "PREPARED_MODEL_BUNDLE_SCHEMA_VERSION",
+            ),
+        },
     )
+
+
+def _write_fixture_assets(overlay: Path, *, mode: str) -> None:
+    with (overlay / "dependencies/release-lock.toml").open("rb") as stream:
+        release = tomllib.load(stream)
+    package_version = (
+        f"{RELEASE_VERSION}.dev0+candidate.123456789abc"
+        if mode == "candidate"
+        else RELEASE_VERSION
+    )
+    assets = overlay / "src/pyamplicol/assets/prepared_models"
+    for model_source in ("built-in-sm", "built-in-sm-heft"):
+        bundle = _release_bundle(overlay, package_version, model_source=model_source)
+        payload = json.dumps(bundle, default=vars, sort_keys=True).encode()
+        pack = bundle.kernel_pack
+        producer = bundle.compiled_model["producer"]
+        for architecture in ("aarch64", "x86_64"):
+            identifier = f"{model_source}-jit-o2"
+            stem = f"{identifier}-{architecture}"
+            bundle_name = f"{stem}.pyamplicol-model"
+            metadata = {
+                "backend": "jit",
+                "build_contract": {"mode": mode},
+                "bundle": bundle_name,
+                "bundle_sha256": hashlib.sha256(payload).hexdigest(),
+                "bundle_size": len(payload),
+                "dependencies": {
+                    "symbolica_version": pack.dependency_abis["symbolica_version"],
+                    "symbolica_serialization_abi": pack.dependency_abis[
+                        "symbolica_serialization"
+                    ],
+                    "symjit_application_abi": pack.dependency_abis[
+                        "symjit_application"
+                    ],
+                    "symjit_plane_application_abi": pack.dependency_abis[
+                        "symjit_plane_application"
+                    ],
+                    "symjit_version": prepared_models_module._symjit_version(overlay),
+                    "ufo_model_loader_version": release["ufo_model_loader"][
+                        "required_version"
+                    ],
+                },
+                "eager_kernel_abi": bundle.manifest["eager_kernel_abi"],
+                "id": identifier,
+                "jit_optimization_level": 2,
+                "kernel_count": len(pack.kernels),
+                "model": model_source,
+                "prepared_model_bundle_schema": bundle.manifest["schema_version"],
+                "producer": {
+                    "compiled_model_schema": producer["compiled_model_schema_version"],
+                    "model_compiler_sha256": producer["model_compiler_sha256"],
+                    "model_compiler_version": producer["model_compiler_version"],
+                    "model_source_digest": bundle.compiled_model["source"]["digest"],
+                    "package_version": package_version,
+                },
+                "schema_version": 1,
+                "target": pack.target,
+            }
+            (assets / bundle_name).write_bytes(payload)
+            (assets / f"{stem}.metadata.json").write_text(
+                json.dumps(metadata, sort_keys=True), encoding="utf-8"
+            )
 
 
 def test_source_ready_asset_metadata_is_derived_from_bundle_and_source(
     tmp_path: Path,
 ) -> None:
-    asset_root = ROOT / "src/pyamplicol/assets/prepared_models"
+    overlay = _overlay(tmp_path)
+    asset_root = overlay / "src/pyamplicol/assets/prepared_models"
     source_bundle = asset_root / "built-in-sm-jit-o2-aarch64.pyamplicol-model"
     expected_metadata = json.loads(
         (asset_root / "built-in-sm-jit-o2-aarch64.metadata.json").read_text(
@@ -186,7 +310,7 @@ def test_source_ready_asset_metadata_is_derived_from_bundle_and_source(
     )
 
     metadata_path, bundle_path = write_candidate_packaged_prepared_model_asset(
-        ROOT,
+        overlay,
         source_bundle,
         tmp_path / "prepared",
         architecture="aarch64",
@@ -234,7 +358,7 @@ def test_release_source_ready_asset_uses_only_release_lock_identity(
     assert "native_build_inputs_sha256" not in metadata["producer"]
     assert metadata["producer"]["package_version"] == RELEASE_VERSION
     assert metadata["dependencies"]["symbolica_version"] == "3.0.0"
-    assert metadata["dependencies"]["symjit_version"] == "2.26.0"
+    assert metadata["dependencies"]["symjit_version"] == "2.26.4"
     assert bundle_path.read_bytes() == source_bundle.read_bytes()
 
 
@@ -302,20 +426,8 @@ def test_release_staging_accepts_older_package_producer(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import tomli_w
-
     overlay = _release_overlay(tmp_path)
-    # Isolate producer-version tolerance from the archived publication store.
-    # Use current bundle bytes and a synthetic release contract matching their
-    # actual dependencies; never relabel a binary's dependency versions.
-    store = _release_store(overlay)
-    reference = json.loads(next(store.glob("*.metadata.json")).read_text())
-    lock_path = overlay / "dependencies" / "release-lock.toml"
-    release = tomllib.loads(lock_path.read_text(encoding="utf-8"))
-    release["symbolica"]["python_version"] = reference["dependencies"][
-        "symbolica_version"
-    ]
-    lock_path.write_text(tomli_w.dumps(release), encoding="utf-8")
+    _release_store(overlay)
 
     assert project_release_packaged_prepared_model_store(
         overlay,
@@ -338,13 +450,11 @@ def test_release_staging_accepts_older_package_producer(
         producer = dict(compiled_model["producer"])
         producer["pyamplicol"] = "0.1.0"
         compiled_model["producer"] = producer
-        kernel_pack_payload = bundle.kernel_pack.to_dict()
-        kernel_pack_payload["producer"]["version"] = "0.1.0"
-        kernel_pack = type(bundle.kernel_pack).from_dict(kernel_pack_payload)
+        bundle.kernel_pack.producer["version"] = "0.1.0"
         return SimpleNamespace(
             backend=bundle.backend,
             compiled_model=compiled_model,
-            kernel_pack=kernel_pack,
+            kernel_pack=bundle.kernel_pack,
             manifest=bundle.manifest,
         )
 

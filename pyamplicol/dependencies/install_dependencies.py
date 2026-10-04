@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: 0BSD
-"""Create the isolated pinned contributor environment."""
+"""Create a contributor environment using published dependencies by default."""
 
 from __future__ import annotations
 
@@ -37,6 +37,7 @@ STATE = DEPENDENCIES / "install-state.json"
 CANDIDATE_LOCK = DEPENDENCIES / "candidate-Cargo.lock"
 CARGO_CONFIG = DEPENDENCIES / "candidate-cargo-config.toml"
 ARTIFACTS = ROOT / ".artifacts" / "candidate"
+RELEASE_ARTIFACTS = ROOT / ".artifacts" / "development-release"
 TRASH = ROOT / ".trash"
 
 sys.path.insert(0, str(ROOT / "build_backend"))
@@ -168,11 +169,6 @@ def _sources(
             str(symbolica["community_revision"]),
         ),
         Source(
-            "ratatui-ffi",
-            str(payload["ratatui"]["ffi_repository"]),
-            str(payload["ratatui"]["ffi_revision"]),
-        ),
-        Source(
             "ufo-model-loader",
             str(loader["source_url"]),
             str(loader["candidate_revision"]),
@@ -199,6 +195,34 @@ def _sources(
                 str(integrate["revision"]),
             )
         )
+    sources.extend(
+        _developer_sources(
+            payload, with_legacy=with_legacy, with_reference_fft=with_reference_fft
+        )
+    )
+    return tuple(sources)
+
+
+def _developer_sources(
+    payload: dict[str, Any], *, with_legacy: bool, with_reference_fft: bool
+) -> tuple[Source, ...]:
+    """Keep dashboard tooling independent of the selected runtime dependencies."""
+
+    ratatui = payload["ratatui"]
+    return (
+        Source(
+            "ratatui-ffi", str(ratatui["ffi_repository"]), str(ratatui["ffi_revision"])
+        ),
+        *_reference_sources(
+            payload, with_legacy=with_legacy, with_reference_fft=with_reference_fft
+        ),
+    )
+
+
+def _reference_sources(
+    payload: dict[str, Any], *, with_legacy: bool, with_reference_fft: bool
+) -> tuple[Source, ...]:
+    sources: list[Source] = []
     if with_legacy:
         legacy = payload["legacy_amplicol"]
         sources.append(
@@ -484,7 +508,7 @@ def _configure_source_manifests(runner: Runner) -> None:
         return
     _require_symjit_rlib_manifest(
         symjit / "Cargo.toml",
-        expected_version=str(_release_lock()["symjit"]["version"]),
+        expected_version=str(_contributor_lock()["symjit"]["candidate_version"]),
     )
 
     paths = {
@@ -630,25 +654,13 @@ def _cargo_lock_packages(path: Path) -> list[dict[str, Any]]:
 
 
 def _validate_release_cargo_lock(path: Path) -> None:
-    """Require registry crates plus the exact immutable SymJIT Git revision."""
-
-    symjit = _release_lock()["symjit"]
-    symjit_source = (
-        f"git+{symjit['repository']}?rev={symjit['revision']}#{symjit['revision']}"
-    )
+    """Require ordinary registry resolution for every non-workspace crate."""
     invalid: list[str] = []
     for package in _cargo_lock_packages(path):
         name = str(package.get("name", "<unnamed>"))
         source = package.get("source")
         checksum = package.get("checksum")
         if name in _WORKSPACE_CRATES and source is None and checksum is None:
-            continue
-        if (
-            name == "symjit"
-            and str(package.get("version")) == str(symjit["version"])
-            and source == symjit_source
-            and checksum is None
-        ):
             continue
         if source != _CRATES_IO_SOURCE:
             invalid.append(f"{name} has an unexpected source {source!r}")
@@ -746,6 +758,11 @@ def _rewrite_candidate_requirements(root: Path) -> None:
             str(lock["symbolica"]["rust_version"]),
             str(lock["symbolica"]["candidate_version"]),
         ),
+        (
+            "symjit",
+            str(lock["symjit"]["version"]),
+            str(lock["symjit"]["candidate_version"]),
+        ),
     )
     for dependency, published, candidate in projections:
         pattern = (
@@ -826,7 +843,9 @@ def _venv_bootstrap_python() -> Path:
     return Path(sys.executable)
 
 
-def _ensure_venv(runner: Runner, *, with_fft_profiling: bool) -> None:
+def _ensure_venv(
+    runner: Runner, *, with_fft_profiling: bool, install_runtime: bool = True
+) -> None:
     if not _venv_python().is_file():
         runner.run([_venv_bootstrap_python(), "-m", "venv", VENV])
     python = _venv_python()
@@ -856,6 +875,8 @@ def _ensure_venv(runner: Runner, *, with_fft_profiling: bool) -> None:
         [python, "-m", "pip", "install", "--upgrade", *contributor_tools],
         env=_venv_environment(),
     )
+    if not install_runtime:
+        return
     requirements = _runtime_requirements_text()
     if runner.dry_run:
         print("# install the hash-locked non-candidate Python runtime closure")
@@ -921,8 +942,18 @@ def _verify_candidate_python_dependencies(
             "import sys",
             "import symbolica",
             "from symbolica import Expression",
-            "from symbolica.community.idenso import simplify_color",
-            "from symbolica.community.spenso import TensorNetwork",
+            "try:",
+            "    from symbolica.community.tensor import "
+            "TensorExpression, TensorNetwork",
+            "    TensorExpression.dirac_gamma",
+            "    TensorExpression.color_t",
+            "    TensorExpression.color_f",
+            "    TensorExpression.simplify_algebra",
+            "except (ImportError, AttributeError) as error:",
+            "    raise SystemExit(",
+            '        "Historical candidate dependencies lack the current tensor API; "',
+            '        "update coherent upstream pins before using --candidate."',
+            "    ) from error",
             'actual = version("symbolica")',
             "if actual != sys.argv[1]:",
             "    raise SystemExit(",
@@ -1169,16 +1200,69 @@ def _build_candidate_dependency_wheels(
     _build_ratatui_wheel(runner, payload)
 
 
-def _build_candidate_project_wheel(runner: Runner) -> None:
+def _install_published_dependencies(
+    runner: Runner, *, loader_wheel: Path | None
+) -> None:
+    with PYPROJECT.open("rb") as stream:
+        requirements = tomllib.load(stream)["project"]["dependencies"]
+    loader_arguments = (
+        [str(loader_wheel.expanduser().resolve())] if loader_wheel else []
+    )
     python = _venv_python()
     environment = _venv_environment()
-    project_wheels = ARTIFACTS
+    runner.run(
+        [python, "-m", "pip", "install", "--upgrade", *requirements, *loader_arguments],
+        env=environment,
+    )
+    # Historical candidate builds report the same version as the released wheel.
+    # Replace both published packages (or the explicit loader override) after
+    # resolving dependencies once, including same-version source candidates.
+    symbolica = next(item for item in requirements if item.startswith("symbolica=="))
+    loader = next(
+        item for item in requirements if item.startswith("ufo-model-loader==")
+    )
+    runner.run(
+        [
+            python,
+            "-m",
+            "pip",
+            "install",
+            "--force-reinstall",
+            "--no-deps",
+            "--only-binary=:all:",
+            symbolica,
+            *(loader_arguments or [loader]),
+        ],
+        env=environment,
+    )
+
+
+def _install_project_wheel(runner: Runner, directory: Path) -> None:
+    if not runner.dry_run:
+        runner.run(
+            [
+                _venv_python(),
+                "-m",
+                "pip",
+                "install",
+                "--force-reinstall",
+                "--no-deps",
+                _single_wheel(directory, "pyamplicol"),
+            ],
+            env=_venv_environment(),
+        )
+
+
+def _build_project_wheel(runner: Runner, *, mode: str) -> None:
+    python = _venv_python()
+    environment = _venv_environment()
+    project_wheels = ARTIFACTS if mode == "candidate" else RELEASE_ARTIFACTS
     if not runner.dry_run:
         project_wheels.mkdir(parents=True, exist_ok=True)
 
     build_environment = dict(
         environment,
-        PYAMPLICOL_BUILD_MODE="candidate",
+        PYAMPLICOL_BUILD_MODE=mode,
     )
     if not runner.dry_run:
         _archive_candidate_wheels(project_wheels, "pyamplicol")
@@ -1196,27 +1280,20 @@ def _build_candidate_project_wheel(runner: Runner) -> None:
         cwd=ROOT,
         env=build_environment,
     )
-    if not runner.dry_run:
-        runner.run(
-            [
-                python,
-                "-m",
-                "pip",
-                "install",
-                "--force-reinstall",
-                "--no-deps",
-                _single_wheel(project_wheels, "pyamplicol"),
-            ],
-            env=environment,
-        )
+    _install_project_wheel(runner, project_wheels)
 
 
-def _build_candidate_wheels(
-    runner: Runner,
-    payload: dict[str, Any],
-) -> None:
-    _build_candidate_dependency_wheels(runner, payload)
-    _build_candidate_project_wheel(runner)
+def _stage_project_runtime(runner: Runner, *, directory: Path, mode: str) -> None:
+    runner.run(
+        [
+            _venv_python(),
+            ROOT / "tools/developer/prepare_source_runtime.py",
+            "--wheel-directory",
+            directory,
+        ],
+        cwd=ROOT,
+        env=dict(_venv_environment(), PYAMPLICOL_BUILD_MODE=mode),
+    )
 
 
 def _write_state(
@@ -1280,6 +1357,16 @@ def _write_state(
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--candidate",
+        action="store_true",
+        help="historical dependency development; retained pins need an upstream update",
+    )
+    parser.add_argument(
+        "--loader-wheel",
+        type=Path,
+        help="explicit local ufo-model-loader wheel for dependency development",
+    )
     parser.add_argument("--reset", action="store_true")
     parser.add_argument("--update", action="store_true")
     parser.add_argument(
@@ -1303,21 +1390,36 @@ def _parser() -> argparse.ArgumentParser:
     build_mode.add_argument(
         "--dependencies-only",
         action="store_true",
-        help="build and install pinned candidate Python dependencies, not pyamplicol",
+        help="install Python dependencies without building or staging pyamplicol",
+    )
+    build_mode.add_argument(
+        "--wheel-directory",
+        type=Path,
+        help="install and stage one existing pyamplicol wheel instead of rebuilding it",
     )
     parser.add_argument("--dry-run", action="store_true")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    parser = _parser()
+    args = parser.parse_args(argv)
+    mode = (
+        "candidate"
+        if args.candidate
+        else os.environ.get("PYAMPLICOL_BUILD_MODE", "release")
+    )
+    if mode not in {"candidate", "release"}:
+        parser.error("PYAMPLICOL_BUILD_MODE must be 'candidate' or 'release'")
+    if mode == "candidate" and args.loader_wheel is not None:
+        parser.error("--loader-wheel belongs to the published-dependency lane")
     payload = _lock()
     runner = Runner(dry_run=args.dry_run)
     if args.reset:
         _archive_managed_state(runner)
-    if not args.dry_run:
+    if not args.dry_run and (mode == "candidate" or not args.no_build):
         _require_tools()
-    sources = _sources(
+    sources = (_sources if mode == "candidate" else _developer_sources)(
         payload,
         with_legacy=args.with_legacy_amplicol,
         with_reference_fft=args.with_reference_fft,
@@ -1326,17 +1428,34 @@ def main(argv: Sequence[str] | None = None) -> int:
     _ensure_venv(
         runner,
         with_fft_profiling=(args.with_legacy_amplicol or args.with_reference_fft),
+        install_runtime=mode == "candidate",
     )
     for source in sources:
         _checkout(runner, source, update=args.update)
-    _configure_sources(runner)
-    _write_cargo_config(runner)
-    _write_candidate_lock(runner)
-    _write_state(runner, sources)
-    if args.dependencies_only:
-        _build_candidate_dependency_wheels(runner, payload)
-    elif not args.no_build:
-        _build_candidate_wheels(runner, payload)
+    if mode == "candidate":
+        print(
+            "Historical source-candidate lane: retained pins require a coherent "
+            "upstream update for the current tensor API."
+        )
+        _configure_sources(runner)
+        _write_cargo_config(runner)
+        _write_candidate_lock(runner)
+        _write_state(runner, sources)
+    if not args.no_build:
+        if mode == "candidate":
+            _build_candidate_dependency_wheels(runner, payload)
+        else:
+            _install_published_dependencies(runner, loader_wheel=args.loader_wheel)
+            _build_ratatui_wheel(runner, payload)
+        if not args.dependencies_only:
+            directory = args.wheel_directory
+            if directory is None:
+                directory = ARTIFACTS if mode == "candidate" else RELEASE_ARTIFACTS
+                _build_project_wheel(runner, mode=mode)
+            else:
+                directory = directory.expanduser().resolve()
+                _install_project_wheel(runner, directory)
+            _stage_project_runtime(runner, directory=directory, mode=mode)
     print(f"Contributor environment ready at {VENV}")
     return 0
 

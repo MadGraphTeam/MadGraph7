@@ -170,7 +170,11 @@ def test_candidate_deployment_installs_source_dependencies_by_exact_local_path(
     contributor = tomllib.loads(
         (ROOT / "dependencies/contributor-lock.toml").read_text(encoding="utf-8")
     )
+    release = tomllib.loads(
+        (ROOT / "dependencies/release-lock.toml").read_text(encoding="utf-8")
+    )
     symbolica_version = contributor["symbolica"]["candidate_version"]
+    loader_version = release["ufo_model_loader"]["required_version"]
     symbolica = _dependency_wheel(
         wheelhouse / "symbolica",
         "symbolica",
@@ -186,7 +190,7 @@ def test_candidate_deployment_installs_source_dependencies_by_exact_local_path(
     loader = _dependency_wheel(
         wheelhouse / "ufo-model-loader",
         "ufo-model-loader",
-        "0.1.8",
+        loader_version,
         "py3-none-any",
     )
     commands: list[list[str]] = []
@@ -210,6 +214,7 @@ def test_candidate_deployment_installs_source_dependencies_by_exact_local_path(
         "ufo-model-loader": loader.resolve(),
     }
     assert installation.versions["symbolica"] == symbolica_version
+    assert installation.versions["ufo-model-loader"] == loader_version
     assert len(commands) == 1
     command = commands[0]
     assert "--require-hashes" not in command
@@ -219,7 +224,7 @@ def test_candidate_deployment_installs_source_dependencies_by_exact_local_path(
     assert str(release_symbolica.resolve()) not in command
     assert str(loader.resolve()) in command
     assert not any(item.startswith("ufo-model-loader==") for item in command)
-    assert "numpy==2.4.2" in command
+    assert "numpy==2.4.6" in command
     assert not any(item.startswith("python-utils==") for item in command)
     assert not any(item.startswith("typing-extensions==") for item in command)
     assert not any(item.startswith("wcwidth==") for item in command)

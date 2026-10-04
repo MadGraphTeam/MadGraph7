@@ -40,9 +40,8 @@ DIRECT_TABLE_DESCRIPTOR_ABI = "pyamplicol-eager-plane-table-descriptor-v1"
 _ROOT = Path(__file__).resolve().parents[2]
 with (_ROOT / "dependencies" / "release-lock.toml").open("rb") as _stream:
     _LOCKED_SYMJIT = tomllib.load(_stream)["symjit"]
-DEPENDENCY_REPOSITORY = str(_LOCKED_SYMJIT["repository"])
+DEPENDENCY_SOURCE = "registry+https://github.com/rust-lang/crates.io-index"
 DEPENDENCY_VERSION = str(_LOCKED_SYMJIT["version"])
-DEPENDENCY_REVISION = str(_LOCKED_SYMJIT["revision"])
 
 TARGET_PROCESS = "u u~ > Z+6g"
 TARGET_FLOW = "flow:2,4,5,6,7,8,9,1"
@@ -1734,9 +1733,8 @@ def _validate_dependency(value: object, path: str) -> None:
     _exact_keys(
         dependency,
         {
-            "repository",
+            "source",
             "version",
-            "revision",
             "local_patch_count",
             "direct_application_abi",
             "direct_table_binding_abi",
@@ -1745,9 +1743,8 @@ def _validate_dependency(value: object, path: str) -> None:
         path,
     )
     expected = {
-        "repository": DEPENDENCY_REPOSITORY,
+        "source": DEPENDENCY_SOURCE,
         "version": DEPENDENCY_VERSION,
-        "revision": DEPENDENCY_REVISION,
         "local_patch_count": 0,
         "direct_application_abi": DIRECT_APPLICATION_ABI,
         "direct_table_binding_abi": DIRECT_TABLE_BINDING_ABI,

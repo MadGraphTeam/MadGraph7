@@ -13,7 +13,7 @@ exclude = [
 resolver = "2"
 
 [workspace.package]
-version = "0.2.1"
+version = "1.0.0"
 edition = "2024"
 rust-version = "1.89.0"
 license = "0BSD"
@@ -40,9 +40,6 @@ sha2 = "0.10"
 symbolica = { version = "=3.0.0", default-features = true, features = ["bincode"] }
 thiserror = "2.0"
 wide = "1.7"
-
-[patch.crates-io]
-symjit = { git = "https://github.com/siravan/symjit-crate.git", rev = "530304a07d1be6d5abc80291aa5e92cf28ac5546" }
 
 [profile.release]
 codegen-units = 1

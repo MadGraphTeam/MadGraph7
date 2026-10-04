@@ -229,25 +229,29 @@ def test_source_runtime_stages_one_attested_extension(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("mode", "bootstrap", "publishable", "failure"),
+    ("mode", "bootstrap", "publishable", "release_bootstrap", "failure"),
     (
-        ("candidate", True, False, None),
-        ("candidate", False, False, "no self-test fixture"),
-        ("candidate", True, True, "not marked candidate"),
-        ("release", True, True, "no self-test fixture"),
-        ("release", False, True, "no self-test fixture"),
+        ("candidate", True, False, False, None),
+        ("candidate", False, False, False, "no self-test fixture"),
+        ("candidate", True, True, False, "not marked candidate"),
+        ("release", True, True, False, "no self-test fixture"),
+        ("release", False, True, False, "no self-test fixture"),
+        ("release", True, False, True, None),
     ),
 )
-def test_source_runtime_allows_missing_fixture_only_for_candidate_bootstrap(
+def test_source_runtime_allows_missing_fixture_only_for_nonpublishable_bootstrap(
     tmp_path: Path,
     mode: str,
     bootstrap: bool,
     publishable: bool,
+    release_bootstrap: bool,
     failure: str | None,
 ) -> None:
     module = _module()
     source_root = _source_root(tmp_path)
-    native_digest = module._native_build_inputs_digest(source_root)
+    native_digest = module._native_build_inputs_digest(
+        source_root, normalize_release_cargo_lock=mode == "release"
+    )
     wheel = tmp_path / "pyamplicol-bootstrap.whl"
     _wheel(wheel, native_build_inputs_sha256=native_digest, mode=mode)
     with zipfile.ZipFile(wheel) as archive:
@@ -259,6 +263,8 @@ def test_source_runtime_allows_missing_fixture_only_for_candidate_bootstrap(
     build_info_name = "pyamplicol/_build_info.json"
     payload = json.loads(members.get(build_info_name, b'{"version": "0.1.0"}'))
     payload.update(publishable=publishable, selftest_fixture_bootstrap=bootstrap)
+    if release_bootstrap:
+        payload["release_prepared_model_bootstrap"] = True
     members[build_info_name] = json.dumps(payload).encode()
     with zipfile.ZipFile(wheel, "w") as archive:
         for name, content in members.items():
@@ -282,7 +288,15 @@ def test_source_runtime_allows_missing_fixture_only_for_candidate_bootstrap(
     assert (package / "_rusticol.abi3.so").read_bytes() == b"extension"
     assert (package / "_sdk/lib/librusticol_capi.a").read_bytes() == b"archive"
     assert not (package / "assets/selftest").exists()
-    assert json.loads(build_info.read_text())["selftest_fixture_bootstrap"] is True
+    staged = json.loads(build_info.read_text())
+    assert staged["selftest_fixture_bootstrap"] is True
+    if release_bootstrap:
+        assert staged["publishable"] is False
+        assert staged["release_prepared_model_bootstrap"] is True
+        versions._verify_source_runtime(
+            staged, package_root=package, source_root=source_root
+        )
+        return
 
     (source_root / "rust/crates/example/src/lib.rs").write_text("changed\n")
     with pytest.raises(module.ReleaseError, match="different native sources"):
@@ -766,7 +780,7 @@ def test_native_digest_v2_projects_only_native_pyproject_inputs(
         1,
     ).replace("locked = true", "locked = false", 1)
     packaging_only = packaging_only.replace(
-        '"maturin==1.14.1",\n  "mypy',
+        '"maturin==1.15.0",\n  "mypy',
         '"maturin==9.9.9",\n  "mypy',
         1,
     )
@@ -775,7 +789,7 @@ def test_native_digest_v2_projects_only_native_pyproject_inputs(
     assert versions._native_build_inputs_digest(source_root) == expected
 
     pyproject.write_text(
-        original.replace("maturin==1.14.1", "maturin==1.14.2", 1),
+        original.replace("maturin==1.15.0", "maturin==1.15.1", 1),
         encoding="utf-8",
     )
     pin_changed = identity.native_build_inputs_digest(source_root)
@@ -810,10 +824,10 @@ def test_native_digest_v2_projects_only_native_pyproject_inputs(
 @pytest.mark.parametrize(
     "replacement",
     (
-        "maturin>=1.14.1",
-        "maturin==1.14.1; python_version >= '3.11'",
-        "packaging==26.2",
-        'maturin==1.14.1",\n  "maturin==1.14.1',
+        "maturin>=1.15.0",
+        "maturin==1.15.0; python_version >= '3.11'",
+        "packaging==26.3",
+        'maturin==1.15.0",\n  "maturin==1.15.0',
     ),
 )
 def test_native_digest_rejects_unpinned_or_missing_build_maturin(
@@ -824,7 +838,7 @@ def test_native_digest_rejects_unpinned_or_missing_build_maturin(
     pyproject = source_root / "pyproject.toml"
     pyproject.write_text(
         pyproject.read_text(encoding="utf-8").replace(
-            "maturin==1.14.1",
+            "maturin==1.15.0",
             replacement,
             1,
         ),
@@ -1091,7 +1105,7 @@ def test_candidate_native_digest_ignores_provenance_locks_and_hashes_cargo_lock(
     assert versions._native_build_inputs_digest(source_root) == changed
 
 
-def test_release_native_digest_hashes_the_git_cargo_lock_verbatim(
+def test_release_native_digest_hashes_the_registry_cargo_lock_verbatim(
     tmp_path: Path,
 ) -> None:
     identity = _native_build_identity_module()
@@ -1100,8 +1114,7 @@ def test_release_native_digest_hashes_the_git_cargo_lock_verbatim(
         (ROOT / "dependencies/release-lock.toml").read_text(encoding="utf-8")
     )
     symjit = lock["symjit"]
-    revision = symjit["revision"]
-    source = f"git+{symjit['repository']}?rev={revision}#{revision}"
+    source = "registry+https://github.com/rust-lang/crates.io-index"
     marker = (
         "[[package]]\n"
         'name = "symjit"\n'

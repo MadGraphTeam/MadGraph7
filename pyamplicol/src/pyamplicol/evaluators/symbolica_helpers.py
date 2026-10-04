@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 from collections.abc import Iterable
 from pathlib import Path
@@ -25,6 +26,21 @@ def _symbolica_instruction_program(exported: Any) -> Any:
             "native kernels require inlined Symbolica function bodies"
         )
     return exported.instructions, exported.temporary_count, exported.constants
+
+
+def _symbolica_instruction_program_repr(exported: Any) -> str:
+    """Spell out unit imaginary coefficients for SymJIT's numeric grammar.
+
+    Symbolica omits coefficients of magnitude one before its imaginary-unit
+    glyph, but SymJIT's instruction parser requires them. Keep the exact
+    rational constants and the original evaluator state unchanged.
+    """
+    instructions, temporary_count, constants = _symbolica_instruction_program(exported)
+    serialized_constants = ", ".join(
+        re.sub(r"(?<![0-9])\U0001d456", "1\U0001d456", repr(value))
+        for value in constants
+    )
+    return f"({instructions!r}, {temporary_count}, [{serialized_constants}])"
 
 
 def _complex128_parameter_rows(parameter_rows: Any) -> np.ndarray:

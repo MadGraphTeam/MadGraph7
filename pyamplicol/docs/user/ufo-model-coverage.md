@@ -9,7 +9,7 @@ parent: "Configuration"
 This page is the exact reference of what a generic UFO (or serialized JSON)
 model may contain for pyAmpliCol, what is accepted only under a condition, and
 what is rejected or ignored. Every row was derived from the code of
-pyAmpliCol 0.2.1 with ufo-model-loader 0.1.8 and Symbolica 3.0.0; the paper
+pyAmpliCol 1.0.0 with ufo-model-loader 1.0.0 and Symbolica 3.0.0; the paper
 summarises it in one table. Read
 [Models and Processes](models-and-processes.md) first for the workflow, and
 use `pyamplicol model inspect <source>` to see the issues reported for your
@@ -29,7 +29,7 @@ Status words used below:
 
 | Area | Supported | Rejected or restricted |
 | --- | --- | --- |
-| Input | UFO directories (trusted Python), serialized JSON, compiled IR files, prepared kernel bundles | anything else; ufo-model-loader older than 0.1.8 |
+| Input | UFO directories (trusted Python), serialized JSON, compiled IR files, prepared kernel bundles | anything else; ufo-model-loader older than 1.0.0 |
 | Fields | scalars, Dirac fermions, vectors, massless spin-2 (validated); massive spin-2 (experimental) | Majorana and fermion-number-violating fermions, spin 3/2, higher spins; ghosts and Goldstones only internally |
 | Colour | one SU(3) with 1, 3, 3̄, 8; external coloured legs are triplet fermions or octet vectors | sextets, other groups, N_c other than 3, d^abc, epsilon and sextet tensors |
 | Lorentz | Identity, Gamma, Gamma5, ProjM, ProjP, Sigma, Metric, P; PSlash in propagators | Epsilon, C, IdentityL, form factors, functions outside the registry |
@@ -66,7 +66,7 @@ carry a `ValueError` message instead of a code; they are marked below.
 | Source kinds | supported | `built-in-sm`, `built-in-sm-heft`, a UFO directory containing `__init__.py`, a `.json` model in ufo-model-loader's schema, a compiled IR file `*.pyAmplicol-model.json`, or a prepared bundle `*.pyamplicol-model`. A directory without `__init__.py`, a missing path or unreadable JSON is a `ValueError`. |
 | Built-in selector spelling | conditional | Use `built-in-sm`; the `builtin_sm` spelling is accepted by the config resolver but not by the typed model layer. |
 | UFO Python execution | supported | A UFO directory is imported as Python with your privileges; only load trusted models and prefer the JSON form for automation. During the import the `UFO_SCALARS_MODEL_*` and `UFO_GRAVITY_MODEL_*` environment variables are hidden and no `.pyc` files are written. |
-| ufo-model-loader version | conditional | External UFO and JSON models require an installed release 0.1.8 or newer (development builds are refused with a `RuntimeError`); built-in models do not need it. |
+| ufo-model-loader version | conditional | External UFO and JSON models require an installed release 1.0.0 or newer (development builds are refused with a `RuntimeError`); built-in models do not need it. |
 | Required UFO attributes | conditional | `all_orders`, `all_parameters`, `all_particles`, `all_lorentz`, `all_couplings` and `all_vertices` must exist; `all_propagators`, `all_functions`, `all_form_factors` and `all_CTparameters` are optional; objects of class `CTVertex` are dropped silently. |
 | Serialized JSON schema | conditional | The file must end in `.json` and provide `name`, `restriction`, `orders`, `parameters`, `particles`, `propagators`, `lorentz_structures`, `couplings` and `vertex_rules`. |
 | Loader errors | conditional | Errors raised inside ufo-model-loader (missing restriction file, external parameter without default, malformed JSON) surface as raw Python tracebacks, not as pyAmpliCol `ModelError` messages. |
@@ -177,8 +177,8 @@ carry a `ValueError` message instead of a code; they are marked below.
 | Sector truncation | conditional | `process.max_color_sectors` produces a partial sum marked `selected` with direct contraction and is refused by on-the-fly, FFT and correlators. |
 | Colour-flow selectors | conditional | LC outputs only; NLC and full outputs return one contracted entry per helicity. |
 | `all-flow-union` layout | conditional | LC only, with complete coverage. |
-| FFT contraction | conditional | `symmetric-group-fft` needs `nlc` or `full` with `recurrence` or `on-the-fly` and at most ten permutable gluons whose colour sectors form complete permutation orbits. |
-| Adjoint FFT selection | conditional | `--fft adjoint` adaptively uses DDM for certified Yang–Mills or single-insertion scalar HEFT (`HIG = 1`), fundamental chains/products for quarks, and trace tensors otherwise. Saved `fft_basis_selection` reports the actual representation; no universal DDM or speedup claim. Correlators remain unsupported. |
+| FFT contraction | conditional | Default `contraction="auto"` tries FFT for `nlc` or `full` with `recurrence` or `on-the-fly`, falling back to direct contraction for unsupported plans. FFT needs at most ten permutable gluons whose colour sectors form complete permutation orbits. LC, compiled/eager execution, and correlators retain direct/trace; `--color-contraction direct` opts out. Explicit `--fft trace` or `--fft adjoint` forces FFT and retains unsupported-plan errors. |
+| Adjoint FFT selection | conditional | Default `fft_basis="adjoint"` adaptively uses DDM for certified Yang–Mills or single-insertion scalar HEFT (`HIG = 1`), fundamental chains/products for quarks, and trace tensors otherwise. Saved `fft_basis_selection` reports the actual representation; no universal DDM or speedup claim. Forced adjoint FFT with correlators is rejected; direct contraction ignores the FFT basis. |
 | Shared-trace optimisation | conditional | applied only to pure gauge-boson processes whose Yang-Mills structure the model certificate proves; results are exact either way. |
 | Correlators | conditional | representations 1, 3, -3, 8 from complete full-colour plans in compiled execution. |
 
