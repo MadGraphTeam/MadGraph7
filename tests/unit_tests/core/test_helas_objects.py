@@ -6012,6 +6012,17 @@ class TestAsymmetricFlavorRestriction(unittest.TestCase):
                          if abs(r[1][0]) < 10)
         self.assertEqual(quark_rows, {((23,), (-2, 2)), ((23,), (-1, 1))})
 
+    def test_final_state_asymmetric_multiparticle_no_crossing(self):
+        """Same with --no_crossing (merge_crossing, used by reweight under
+        flavor grouping): z > Qx Q [d~ d] is not covered by z > Q Qx [u u~]
+        and must not be skipped as its crossing."""
+        amps, mes = self.generate('define l+ = e+ mu+ u d~',
+                                  'define l- = e- mu- u~ d',
+                                  'generate z > l+ l- --no_crossing')
+        quark_rows = set(r for r in self.all_rows(mes)
+                         if abs(r[1][0]) < 10)
+        self.assertEqual(quark_rows, {((23,), (-2, 2)), ((23,), (-1, 1))})
+
     def test_final_state_symmetric_multiparticle(self):
         """Control: l+ = e+ mu+ u d stays ONE quark matrix element."""
         amps, mes = self.generate('define l+ = e+ mu+ u d',
@@ -6062,6 +6073,17 @@ class TestAsymmetricFlavorRestriction(unittest.TestCase):
         amps, mes = self.generate('define qq = u d s c d~',
                                   'generate z > qq qq')
         self.assertEqual(self.all_rows(mes), {((23,), (-1, 1))})
+
+    def test_flavorless_me_dropped_uncombined(self):
+        """Uncombined, w+ > u d~ and w+ > c d~ (no allowed flavor in sm)
+        compare equal before trimming; only the flavorless one is dropped."""
+        for line in ('generate w+ > u d~', 'add process w+ > c d~'):
+            self.cmd.exec_cmd(line)
+        amps = self.cmd._curr_amps
+        mes = helas_objects.HelasMultiProcess.generate_matrix_elements(
+            amps, combine_matrix_elements=False)
+        self.assertEqual(len(mes), 1)
+        self.assertEqual(self.rows(mes[0]), {((24,), (-1, 2))})
 
     def test_charge_forbidden_leg_combination(self):
         """w+ > qa qb with qa = u c~, qb = d~ s: the (c~, s) combination

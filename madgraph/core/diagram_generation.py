@@ -2699,7 +2699,13 @@ class MultiProcess(base_objects.PhysicsObject):
                         # No crossing found, just continue
                         pass
                     else:
-                        if not merge_crossing:
+                        # merge_crossing relies on the merged matrix element
+                        # covering every crossing; with a per-leg flavor
+                        # restriction it does not (z > Qx Q [d~ d] from
+                        # `define l+ = u d~` is no crossing of z > Q Qx
+                        # [u u~] flavor-wise), so keep such a process.
+                        if not merge_crossing or \
+                                any(l.get('flavor') for l in legs):
                             # Found crossing - reuse amplitude
                             amplitude = MultiProcess.cross_amplitude(\
                                 amplitudes[crossed_index],
