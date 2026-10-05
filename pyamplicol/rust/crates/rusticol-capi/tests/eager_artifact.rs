@@ -4,8 +4,8 @@ use rusticol_capi::{
     RUSTICOL_STATUS_OK, RusticolRuntimeHandle, rusticol_last_error_message,
     rusticol_runtime_color_id, rusticol_runtime_evaluate_f64,
     rusticol_runtime_evaluate_resolved_f64, rusticol_runtime_execution_mode, rusticol_runtime_free,
-    rusticol_runtime_helicity_id, rusticol_runtime_load, rusticol_runtime_resolved_shape,
-    rusticol_runtime_set_model_parameter,
+    rusticol_runtime_get_model_parameter, rusticol_runtime_helicity_id, rusticol_runtime_load,
+    rusticol_runtime_resolved_shape, rusticol_runtime_set_model_parameter,
 };
 use std::ffi::{CStr, CString, c_char};
 use std::path::Path;
@@ -263,6 +263,19 @@ fn generated_eager_artifact_loads_and_evaluates_through_the_c_abi() {
     let status =
         unsafe { rusticol_runtime_set_model_parameter(handle, parameter.as_ptr(), 0.006, 0.0) };
     assert_eq!(status, RUSTICOL_STATUS_OK, "{}", last_error());
+    let mut current_real = f64::NAN;
+    let mut current_imaginary = f64::NAN;
+    // SAFETY: Both outputs and the parameter name remain live for this call.
+    let status = unsafe {
+        rusticol_runtime_get_model_parameter(
+            handle,
+            parameter.as_ptr(),
+            &mut current_real,
+            &mut current_imaginary,
+        )
+    };
+    assert_eq!(status, RUSTICOL_STATUS_OK, "{}", last_error());
+    assert_eq!((current_real, current_imaginary), (0.006, 0.0));
     // SAFETY: Every input and output buffer remains live and has the declared length.
     let status = unsafe {
         rusticol_runtime_evaluate_f64(

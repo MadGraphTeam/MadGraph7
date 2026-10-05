@@ -132,7 +132,7 @@ jobs:
           .venv/bin/python tools/release/check_dependencies.py
           PYTHON="$PWD/.venv/bin/python" just typing
           .venv/bin/python -m ruff check tools/ci tests/unit/test_ci_memory_watchdog.py
-      - name: Build and exercise Python, C, C++, Fortran, and Rust APIs (30 GiB RSS limit)
+      - name: Build and exercise native APIs and UMAMI shared providers (30 GiB RSS limit)
         env:
           RUST_BACKTRACE: "1"
         # Keep native compiler/panic diagnostics visible even if Python aborts.
@@ -142,6 +142,7 @@ jobs:
           tests/integration/test_multilanguage_api.py
           tests/integration/test_correlated_native_sdk.py
           tests/integration/test_otf_cache_native_sdk.py
+          tests/integration/test_umami_api.py
           -q -s
       - name: Run focused Python unit checks (30 GiB RSS limit)
         run: |
@@ -149,6 +150,7 @@ jobs:
             .venv/bin/python -m pytest \
             tests/unit/test_api_requests.py \
             tests/unit/test_api_bundle.py \
+            tests/unit/test_umami_metadata.py \
             tests/unit/test_benchmarking.py \
             tests/unit/test_adjoint_color_contraction.py \
             tests/unit/test_adjoint_generation_scope.py \

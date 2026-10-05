@@ -183,6 +183,20 @@ _REQUIRED_API_TEMPLATE_MEMBERS = {
     "pyamplicol/assets/api_templates/python/check_standalone.py",
     "pyamplicol/assets/api_templates/rust/Makefile",
     "pyamplicol/assets/api_templates/rust/check_standalone.rs",
+    *(
+        f"pyamplicol/assets/api_templates/umami/{name}"
+        for name in (
+            "Makefile",
+            "README.md",
+            "UMAMI_LICENSE",
+            "umami.h",
+            "umami.c",
+            "umami_provider.h",
+            "umami_driver.c",
+            "umami.exports",
+            "umami.exports.macos",
+        )
+    ),
 }
 _PREPARED_MODEL_WHEEL_PREFIX = "pyamplicol/assets/prepared_models"
 _PREPARED_MODEL_SDIST_PREFIX = "src/pyamplicol/assets/prepared_models"

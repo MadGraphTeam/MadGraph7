@@ -237,6 +237,9 @@ class CompiledProcessArtifact:
         CompiledHelicitySelectorExecutionArtifact, ...
     ] = ()
     color_selector_executions: tuple[CompiledColorSelectorExecutionArtifact, ...] = ()
+    umami_physics: Mapping[str, object] | None = None
+    umami_color_sectors: tuple[Mapping[str, object], ...] = ()
+    umami_structural_keys: Mapping[str, str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -263,6 +266,9 @@ class EagerPlanV3ProcessArtifact:
     dag_summary: Mapping[str, object]
     validation_point: ValidationPointRecord
     generation_filters: Mapping[str, object]
+    umami_physics: Mapping[str, object] | None = None
+    umami_color_sectors: tuple[Mapping[str, object], ...] = ()
+    umami_structural_keys: Mapping[str, str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -302,6 +308,9 @@ class RecurrenceProcessArtifact:
     process_digest: str
     process_support_mask: int = 1
     helicity_selector_companion: RecurrenceHelicitySelectorPlanArtifact | None = None
+    umami_physics: Mapping[str, object] | None = None
+    umami_color_sectors: tuple[Mapping[str, object], ...] = ()
+    umami_structural_keys: Mapping[str, str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -361,6 +370,9 @@ class OnTheFlyProcessArtifact:
     query_construction_threads: int
     validation_point: ValidationPointRecord
     generation_filters: Mapping[str, object]
+    umami_physics: Mapping[str, object] | None = None
+    umami_color_sectors: tuple[Mapping[str, object], ...] = ()
+    umami_structural_keys: Mapping[str, str] | None = None
 
 
 ProcessArtifact = (
@@ -808,6 +820,57 @@ def _write_recurrence_helicity_selector_schedule_roots(
             )
 
 
+def _write_umami_bundle(
+    builder: ArtifactBuilder,
+    *,
+    processes: Sequence[ProcessArtifact],
+    process_records: Sequence[Mapping[str, object]],
+    compiled_model: CompiledModel,
+    grouping: str,
+) -> None:
+    """Add export-only selector tables after runtime physics has been staged."""
+    from ..artifacts.umami import UmamiProcessInput, umami_bundle_payloads
+
+    new_processes = {process.process_id: process for process in processes}
+    inputs = []
+    for record in process_records:
+        identifier = str(record["id"])
+        process = new_processes.get(identifier)
+        physics = (
+            process.umami_physics
+            if process is not None and process.umami_physics is not None
+            else json.loads(
+                builder.staged_path(str(record["physics_path"])).read_text(
+                    encoding="utf-8"
+                )
+            )
+        )
+        inputs.append(
+            UmamiProcessInput(
+                process_id=identifier,
+                expression=str(record["expression"]),
+                color_accuracy=str(record["color_accuracy"]),
+                external_pdgs=tuple(int(pdg) for pdg in record["external_pdgs"]),
+                physics=physics,
+                aliases=tuple(record.get("aliases", ())),
+                color_sectors=() if process is None else process.umami_color_sectors,
+                structural_keys=(
+                    None if process is None else process.umami_structural_keys
+                ),
+            )
+        )
+    for payload in umami_bundle_payloads(
+        processes=inputs, compiled_model=compiled_model.to_dict(), grouping=grouping
+    ):
+        builder.add_bytes(
+            payload.path,
+            payload.content,
+            role=payload.role,
+            media_type=payload.media_type,
+            executable=payload.executable,
+        )
+
+
 def write_schema_v3_artifact(
     destination: str | Path,
     *,
@@ -1017,6 +1080,13 @@ def write_schema_v3_artifact(
         )
         if bundle_requested and hook is not None:
             api_bundle_path = _call_api_bundle_hook(builder, hook, bundle_points)
+            _write_umami_bundle(
+                builder,
+                processes=processes,
+                process_records=process_records,
+                compiled_model=compiled_model,
+                grouping=str(configuration.effective.generation.umami_grouping),
+            )
         evaluator_payload_container = evaluator_payloads.publish()
         source_revision = producer.get("git_revision")
         native_build_inputs_sha256 = producer.get("native_build_inputs_sha256")

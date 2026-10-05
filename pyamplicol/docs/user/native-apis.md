@@ -13,6 +13,11 @@ evaluation of the same artifact through the same Rusticol core. C, C++,
 Fortran, and the standalone Rust interface share the public C ABI v1; Python
 uses the wheel's PyO3 binding for these native operations.
 
+For a shared matrix-element provider that can be loaded by MadSpace or linked
+into another executable, see [UMAMI and MadSpace](umami-api.md). Its generated
+`API/umami` Makefile builds `libumami.so` and a linked standalone driver using
+the same installed Rusticol SDK.
+
 FFT basis is a generation-time choice, not a native runtime flag. Generation
 with `--color-accuracy full` or Python's `ColorConfig(accuracy="full")`
 automatically tries adaptive adjoint FFT for recurrence/on-the-fly execution,
@@ -219,13 +224,15 @@ artifacts/pp_zjj/API/
   rust/check_standalone.rs
   cpp/check_standalone.cpp
   fortran/check_standalone.f90
+  umami/umami_driver.c
+  umami/metadata.json
 ```
 
 The per-language Makefiles place binaries, objects, and Fortran modules in the
 sibling `artifacts/.pyamplicol-api-build/` directory. The integrity-checked
 artifact itself is not modified.
 
-Each driver:
+The ordinary language drivers:
 
 - selects a process by stable ID or expression;
 - accepts an optional JSON kinematic point;
@@ -233,6 +240,10 @@ Each driver:
 - evaluates all resolved components and sums them explicitly;
 - compares the explicit sum with the optimized total;
 - prints either a human result or JSON.
+
+The [UMAMI driver](umami-api.md#generate-and-build) instead demonstrates the
+shared-library ABI and its channel/flavour selectors. Its Makefile places
+libraries and executables outside the artifact in the same way.
 
 ## One process expression in all five languages
 

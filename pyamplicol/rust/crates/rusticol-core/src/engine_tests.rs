@@ -5730,6 +5730,57 @@ fn native_f64_totals_bypass_point_selector_scratch() {
 }
 
 #[test]
+fn current_parameter_values_include_complex_and_derived_slots() {
+    let mut runtime = empty_generic_runtime();
+    runtime.model_parameters = vec![
+        GenericRuntimeModelParameterManifest {
+            name: "aS".into(),
+            kind: "external_parameter".into(),
+            parameter_index: 0,
+            default: 0.118,
+            pdg: None,
+            runtime_name: None,
+            complex_component: None,
+        },
+        GenericRuntimeModelParameterManifest {
+            name: "derived.real".into(),
+            kind: "derived_parameter_component".into(),
+            parameter_index: 1,
+            default: 1.0,
+            pdg: None,
+            runtime_name: Some("derived".into()),
+            complex_component: Some("real".into()),
+        },
+        GenericRuntimeModelParameterManifest {
+            name: "derived.imag".into(),
+            kind: "derived_parameter_component".into(),
+            parameter_index: 2,
+            default: 0.0,
+            pdg: None,
+            runtime_name: Some("derived".into()),
+            complex_component: Some("imag".into()),
+        },
+    ];
+    runtime.model_parameter_values_f64 = vec![0.101, 2.5, -0.75];
+    assert_eq!(
+        runtime.current_model_parameter_value("aS").unwrap(),
+        (0.101, 0.0)
+    );
+    assert_eq!(
+        runtime.current_model_parameter_value("derived").unwrap(),
+        (2.5, -0.75)
+    );
+    assert!(runtime.current_model_parameter_value("unknown").is_err());
+    runtime.model_parameter_values_f64[1] = 7.0;
+    assert_eq!(
+        runtime.current_model_parameter_value("derived").unwrap(),
+        (7.0, -0.75)
+    );
+    runtime.model_parameter_values_f64.truncate(1);
+    assert!(runtime.current_model_parameter_value("derived").is_err());
+}
+
+#[test]
 fn model_parameter_override_batch_is_atomic() {
     let mut runtime = empty_generic_runtime();
     runtime.model_parameter_runtime_slots.insert(

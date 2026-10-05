@@ -989,6 +989,25 @@ def test_required_sdist_keeps_the_portable_source_selftest() -> None:
     } <= members
 
 
+def test_generated_umami_templates_are_required_in_wheel_and_sdist() -> None:
+    resources = {
+        f"pyamplicol/assets/api_templates/umami/{name}"
+        for name in (
+            "Makefile",
+            "README.md",
+            "UMAMI_LICENSE",
+            "umami.h",
+            "umami.c",
+            "umami_provider.h",
+            "umami_driver.c",
+            "umami.exports",
+            "umami.exports.macos",
+        )
+    }
+    assert resources <= set(_REQUIRED_WHEEL_PACKAGE_MEMBERS)
+    assert {f"src/{name}" for name in resources} <= REQUIRED_SDIST_MEMBERS
+
+
 def test_required_sdist_keeps_both_prepared_model_architectures() -> None:
     assert (
         prepared_model_asset_members("src/pyamplicol/assets/prepared_models")
@@ -1330,9 +1349,7 @@ def test_native_scan_requires_short_repository_directory_prefix(
     monkeypatch.setattr(artifacts, "_REPOSITORY_PATH_MARKER", marker)
     monkeypatch.setattr(artifacts, "_FORBIDDEN_PATH_MARKERS", (b"/tmp/", marker))
 
-    artifacts._scan_embedded_paths(
-        {"pyamplicol/_rusticol.abi3.so": b"\x8f/io\x91"}
-    )
+    artifacts._scan_embedded_paths({"pyamplicol/_rusticol.abi3.so": b"\x8f/io\x91"})
     with pytest.raises(ArtifactError, match="non-relocatable path marker '/io/'"):
         artifacts._scan_embedded_paths(
             {"pyamplicol/_rusticol.abi3.so": b"\0/io/source.rs\0"}
@@ -1840,6 +1857,7 @@ def test_wheel_requires_all_package_owned_schema_resources(
         "pyamplicol/_examples/data/pp_zjj_momenta.json",
         "pyamplicol/assets/api_templates/rust/Makefile",
         "pyamplicol/assets/api_templates/rust/check_standalone.rs",
+        "pyamplicol/assets/api_templates/umami/umami.c",
         "pyamplicol/_sdk/rust/rusticol.rs",
     ],
 )
@@ -2100,10 +2118,7 @@ def test_sdist_rejects_extra_symjit_source_ceremony(tmp_path: Path) -> None:
     lock_member = "dependencies/release-lock.toml"
     lock_text = (ROOT / lock_member).read_text(encoding="utf-8")
     symjit = _LOCK["symjit"]
-    contract = (
-        "[symjit]\n"
-        f'version = "{symjit["version"]}"\n'
-    )
+    contract = f'[symjit]\nversion = "{symjit["version"]}"\n'
     replacement = contract + 'source_url = "https://example.invalid/archive.tar.gz"\n'
     assert lock_text.count(contract) == 1
     sdist = _sdist(

@@ -4043,6 +4043,14 @@ class GenerationBackend:
             model_inputs.catalog,
             process_id=process_id,
         )
+        umami_physics = None
+        umami_sectors = ()
+        if run.generation.emit_api_bundle:
+            from ..artifacts.umami_otf import build_umami_on_the_fly_physics
+
+            umami_physics, umami_sectors = build_umami_on_the_fly_physics(
+                public_metadata, expanded.process_ir, projection.seed
+            )
         validation = self._generation_config.validation
         sample_count = (
             validation.samples
@@ -4073,6 +4081,8 @@ class GenerationBackend:
             external_pdgs=tuple(int(leg.pdg) for leg in expanded.process_ir.legs),
             aliases=expanded.aliases,
             physics=public_metadata,
+            umami_physics=umami_physics,
+            umami_color_sectors=umami_sectors,
             runtime_path=runtime_path,
             runtime_size_bytes=runtime_index.file_size,
             runtime_sha256=_file_sha256(runtime_path),
@@ -6151,6 +6161,38 @@ class GenerationBackend:
             required_executor_ids=required_direct_executor_ids,
             runtime_layout_digest=str(inspection_summary["runtime_layout_digest"]),
         )
+        umami_keys = None
+        umami_physics = None
+        umami_sectors = ()
+        if run.generation.emit_api_bundle:
+            umami_sectors = tuple(
+                sector.to_json_dict() for sector in prepared.complete_color_plan.sectors
+            )
+            umami_physics = dict(physics)
+            if str(run.generation.umami_grouping) != "none":
+                from .umami_semantics import recurrence_structural_keys
+
+                umami_keys = recurrence_structural_keys(
+                    exact_sections=output.exact_sections,
+                    runtime_metadata=runtime_metadata,
+                    kernel_pack=model_inputs.bundle.kernel_pack,
+                    ir=model_inputs.bundle.compiled_model["ir"],
+                    physics=physics,
+                    remap=process_remap,
+                    color_contraction_payload=color_contraction_payload,
+                )
+                replay = (
+                    prepared.topology_replay
+                    if isinstance(prepared.topology_replay, LCColorTopologyReplayPlan)
+                    else build_lc_topology_replay_plan(
+                        prepared.complete_color_plan, model
+                    )
+                )
+                if replay is not None:
+                    umami_physics["extensions"] = {
+                        **cast(Mapping[str, object], physics.get("extensions", {})),
+                        "lc_topology_replay": replay.to_json_dict(),
+                    }
         artifact = RecurrenceProcessArtifact(
             process_id=process_name,
             expression=expanded.process_ir.process,
@@ -6161,6 +6203,9 @@ class GenerationBackend:
             ),
             aliases=expanded.aliases,
             physics=physics,
+            umami_physics=umami_physics,
+            umami_color_sectors=umami_sectors,
+            umami_structural_keys=umami_keys,
             recurrence_schedule_path=output.payload_path,
             recurrence_schedule_digest=schedule_digest,
             recurrence_native_schedule_semantic_digest=(
@@ -6497,6 +6542,11 @@ class GenerationBackend:
             external_pdgs=(*ir.initial_pdgs, *ir.final_pdgs),
             aliases=process.expanded.aliases,
             physics=physics,
+            umami_color_sectors=tuple(
+                sector.to_json_dict() for sector in dag.color_plan.sectors
+            )
+            if run.generation.emit_api_bundle
+            else (),
             eager_runtime_path=output.payload_path,
             eager_runtime_size_bytes=output.payload_size_bytes,
             eager_runtime_sha256=output.payload_sha256,
@@ -6838,6 +6888,11 @@ class GenerationBackend:
             external_pdgs=(*ir.initial_pdgs, *ir.final_pdgs),
             aliases=process.compiled.expanded.aliases,
             runtime_schema=process.runtime_schema,
+            umami_color_sectors=tuple(
+                sector.to_json_dict() for sector in dag.color_plan.sectors
+            )
+            if self._generation_config.emit_api_bundle
+            else (),
             stage_manifest=stage_manifest,
             model_parameter_evaluator=model_parameter_evaluator,
             dag_summary={

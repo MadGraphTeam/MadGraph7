@@ -409,6 +409,15 @@ int rusticol_runtime_set_model_parameter(
     double real,
     double imaginary
 );
+/* Read the current value (not its saved default), including derived parameters.
+ * Both output pointers must be non-null and writable for one double.
+ */
+int rusticol_runtime_get_model_parameter(
+    const RusticolRuntimeHandle *handle,
+    const char *name,
+    double *real,
+    double *imaginary
+);
 int rusticol_runtime_set_model_parameters_json(
     RusticolRuntimeHandle *handle,
     const char *path

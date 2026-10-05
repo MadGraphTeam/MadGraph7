@@ -1539,6 +1539,36 @@ pub unsafe extern "C" fn rusticol_runtime_set_model_parameter(
     })
 }
 
+/// Reads a current runtime model parameter, including refreshed derived values.
+///
+/// # Safety
+///
+/// The handle must remain live and shared-accessible; name must be a readable
+/// NUL-terminated string. Both outputs must be writable for one double.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_get_model_parameter(
+    handle: *const RusticolRuntimeHandle,
+    name: *const c_char,
+    real: *mut c_double,
+    imaginary: *mut c_double,
+) -> c_int {
+    guard(|| {
+        if real.is_null() || imaginary.is_null() {
+            return Err(invalid("model parameter outputs must be non-null"));
+        }
+        // SAFETY: The helpers validate the pointer arguments.
+        let handle = unsafe { required_handle(handle) }?;
+        let name = unsafe { required_c_string(name, "model parameter name") }?;
+        let value = handle.runtime.model_parameter_value(name)?;
+        // SAFETY: Non-null output storage is guaranteed by the caller contract.
+        unsafe {
+            *real = value.0;
+            *imaginary = value.1;
+        }
+        Ok(())
+    })
+}
+
 /// Updates runtime model parameters from a JSON file.
 ///
 /// # Safety
@@ -1624,6 +1654,23 @@ mod tests {
         // SAFETY: A null handle is explicitly accepted and reported as an ABI error.
         let status = unsafe { rusticol_runtime_external_count(ptr::null(), &mut count) };
         assert_eq!(status, RUSTICOL_STATUS_INVALID_ARGUMENT);
+    }
+
+    #[test]
+    fn current_parameter_getter_rejects_null_outputs_without_writing() {
+        let name = CString::new("aS").unwrap();
+        let mut value = 42.0;
+        // SAFETY: Null arguments are explicitly validated, the other output is live.
+        let status = unsafe {
+            rusticol_runtime_get_model_parameter(
+                ptr::null(),
+                name.as_ptr(),
+                &mut value,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, RUSTICOL_STATUS_INVALID_ARGUMENT);
+        assert_eq!(value, 42.0);
     }
 
     #[test]
