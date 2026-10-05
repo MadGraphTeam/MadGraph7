@@ -6821,6 +6821,10 @@ class RunCardMG7(RunCard):
                     "(-1 keeps all channels)")
         self.add_toml_param('phasespace', 'invariant_power', 0.7)
         self.add_toml_param('phasespace', 'bw_cutoff', 15)
+        self.add_toml_param('phasespace', 'cut_decays', False,
+            comment="apply the [cuts] to the decay products of on-shell "
+                    "(decay-chain) propagators too; false leaves them uncut, "
+                    "as MadEvent's cut_decays")
         self.add_toml_param('phasespace', 'adaptive_symmetry_sampling', True)
 
         # ----------------------------- [madnis] -----------------------
@@ -7789,6 +7793,7 @@ class RunCardMG7(RunCard):
         'dsqrt_q2fact1': 'beam.fact_scale1',
         'dsqrt_q2fact2': 'beam.fact_scale2',
         'bwcutoff': 'phasespace.bw_cutoff',
+        'cut_decays': 'phasespace.cut_decays',
         'use_syst': 'systematics.enable',
     }
     # LO dynamical_scale_choice (int) -> MG7 string
@@ -7813,11 +7818,13 @@ class RunCardMG7(RunCard):
         'drbl': ('bottom-lepton-delta_r', 'min'), 'drblmax': ('bottom-lepton-delta_r', 'max'),
         'drjl': ('jet-lepton-delta_r', 'min'), 'drjlmax': ('jet-lepton-delta_r', 'max'),
         'dral': ('photon-lepton-delta_r', 'min'), 'dralmax': ('photon-lepton-delta_r', 'max'),
-        # pair masses: "<grp>-mass" would be the mass of each single object
+        # pair masses: "<grp>-mass" would be the mass of each single object.
+        # LO mmll only cuts same-flavour opposite-sign lepton pairs (setcuts.f)
         'mmjj': ('jet-pair_mass', 'min'), 'mmjjmax': ('jet-pair_mass', 'max'),
         'mmbb': ('bottom-pair_mass', 'min'), 'mmbbmax': ('bottom-pair_mass', 'max'),
         'mmaa': ('photon-pair_mass', 'min'), 'mmaamax': ('photon-pair_mass', 'max'),
-        'mmll': ('lepton-pair_mass', 'min'), 'mmllmax': ('lepton-pair_mass', 'max'),
+        'mmll': ('lepton-sfos_pair_mass', 'min'),
+        'mmllmax': ('lepton-sfos_pair_mass', 'max'),
         'dsqrt_shat': ('sqrt_s', 'min'), 'dsqrt_shatmax': ('sqrt_s', 'max'),
     }
     # built-in LO pdlabel -> LHAPDF set name
@@ -7858,7 +7865,7 @@ class RunCardMG7(RunCard):
         'ht2max', 'ht3max', 'ht4max', 'xptj', 'xptb', 'xpta', 'xptl',
         'ptllmin', 'ptllmax', 'mmnl', 'mmnlmax', 'ptheavy', 'ptonium',
         'etaonium', 'ptgmin', 'r0gamma', 'xn', 'epsgamma', 'isoem',
-        'xetamin', 'deltaeta', 'cut_decays',
+        'xetamin', 'deltaeta',
         'pt_min_pdg', 'pt_max_pdg', 'e_min_pdg', 'e_max_pdg', 'eta_min_pdg',
         'eta_max_pdg', 'mxx_min_pdg', 'mxx_only_part_antipart',
         # systematics detail / eva / frame
