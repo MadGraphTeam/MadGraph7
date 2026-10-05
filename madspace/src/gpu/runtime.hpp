@@ -52,6 +52,10 @@ public:
     GpuRandom& rng() { return _rng->get().get(); }
 
 private:
+    struct LastStream {
+        std::optional<gpuStream_t> stream;
+        gpuEvent_t event;
+    };
     struct HeldInputs {
         std::vector<std::pair<gpuEvent_t, TensorVec>> items;
         std::vector<gpuEvent_t> free_events;
@@ -77,7 +81,7 @@ private:
         const std::vector<gpuStream_t>& streams,
         const std::vector<gpuEvent_t>& events
     ) const;
-    void switch_stream(gpuStream_t main_stream, const std::vector<gpuEvent_t>& events);
+    void switch_stream(gpuStream_t main_stream);
     void hold_inputs(const TensorVec& inputs, gpuStream_t stream, bool legacy_caller);
     std::vector<Instruction> _instructions;
     SizeVec _output_indices;
@@ -91,8 +95,7 @@ private:
     ContextPtr _context;
     ThreadResource<std::vector<gpuStream_t>> _streams;
     ThreadResource<std::vector<gpuEvent_t>> _events;
-    ThreadResource<std::optional<gpuStream_t>> _last_stream;
-    std::size_t _stream_switch_event;
+    ThreadResource<LastStream>& _last_stream;
     std::optional<std::size_t> _fork_event;
     std::vector<std::size_t> _join_events;
     std::vector<std::size_t> _backward_wait_events;

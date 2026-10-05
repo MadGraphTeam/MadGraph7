@@ -1522,7 +1522,16 @@ struct StreamGuard {
 GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
     _context(context),
     _input_count(function_arg.inputs().size()),
-    _last_stream(context->thread_pool(), []() { return std::optional<gpuStream_t>{}; }),
+    _last_stream(context->global_resource<LastStream>(
+        "gpu_last_stream",
+        [device = context->device()]() {
+            static_cast<const GpuDevice*>(device)->activate();
+            LastStream last;
+            check_error(gpuEventCreate(&last.event));
+            return last;
+        },
+        [](LastStream& last) { ignore_error(gpuEventDestroy(last.event)); }
+    )),
     _gpublas_handle(context->global_resource<gpublasHandle_t>(
         "gpublas_handle",
         []() {
@@ -1828,7 +1837,6 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
         }
     );
     std::size_t max_event_count = std::max(event_count, backward_event_count);
-    _stream_switch_event = max_event_count++;
     if (stream_count > 1) {
         _fork_event = max_event_count++;
         for (std::size_t stream = 1; stream < stream_count; ++stream) {
@@ -1859,6 +1867,7 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
 
 void GpuRuntime::set_seed(DerivedSeed seed) {
     if (_uses_random) {
+        static_cast<const GpuDevice*>(_context->device())->activate();
         rng().set_seed(seed);
     }
 }
@@ -1940,15 +1949,14 @@ void GpuRuntime::hold_inputs(
     held.items.emplace_back(event, std::move(kept));
 }
 
-// the cublas and curand handles are shared, so a new stream waits for the last one
-void GpuRuntime::switch_stream(
-    gpuStream_t main_stream, const std::vector<gpuEvent_t>& events
-) {
-    auto& last_stream = _last_stream.get();
-    if (last_stream && *last_stream != main_stream) {
-        check_error(gpuStreamWaitEvent(main_stream, events.at(_stream_switch_event)));
+// the runtimes of a context share the cublas handle and the rng, so a new stream
+// waits for the last one
+void GpuRuntime::switch_stream(gpuStream_t main_stream) {
+    auto& last = _last_stream.get();
+    if (last.stream && *last.stream != main_stream) {
+        check_error(gpuStreamWaitEvent(main_stream, last.event));
     }
-    last_stream = main_stream;
+    last.stream = main_stream;
 }
 
 TensorVec GpuRuntime::run(const TensorVec& inputs) {
@@ -1963,7 +1971,7 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) {
         caller && *caller != 0 ? reinterpret_cast<gpuStream_t>(*caller) : streams.at(0);
     auto stream_handle = reinterpret_cast<std::uintptr_t>(main_stream);
     TensorVec outputs;
-    switch_stream(main_stream, events);
+    switch_stream(main_stream);
     if (_uses_random) {
         rng().reseed_if_needed(main_stream);
     }
@@ -1998,11 +2006,11 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) {
         local.reset_on_stream(stream_handle);
     }
     if (caller) {
-        check_error(gpuEventRecord(events.at(_stream_switch_event), main_stream));
+        check_error(gpuEventRecord(_last_stream.get().event, main_stream));
         hold_inputs(inputs, main_stream, *caller == 0);
     } else {
         check_error(gpuStreamSynchronize(main_stream));
-        _last_stream.get().reset();
+        _last_stream.get().stream.reset();
         release_inputs();
     }
     stream_guard.dismissed = true;
@@ -2028,7 +2036,7 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
     gpuStream_t main_stream =
         caller && *caller != 0 ? reinterpret_cast<gpuStream_t>(*caller) : streams.at(0);
     TensorVec outputs;
-    switch_stream(main_stream, events);
+    switch_stream(main_stream);
     if (_uses_random) {
         rng().reseed_if_needed(main_stream);
     }
@@ -2084,11 +2092,11 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
         locals[i].set_stream(caller);
     }
     if (caller) {
-        check_error(gpuEventRecord(events.at(_stream_switch_event), main_stream));
+        check_error(gpuEventRecord(_last_stream.get().event, main_stream));
         hold_inputs(inputs, main_stream, *caller == 0);
     } else {
         check_error(gpuStreamSynchronize(main_stream));
-        _last_stream.get().reset();
+        _last_stream.get().stream.reset();
         release_inputs();
     }
     stream_guard.dismissed = true;
@@ -2110,7 +2118,7 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
     auto caller = caller_stream();
     gpuStream_t main_stream =
         caller && *caller != 0 ? reinterpret_cast<gpuStream_t>(*caller) : streams.at(0);
-    switch_stream(main_stream, events);
+    switch_stream(main_stream);
     MemPool mem_pool(gpu_device, load_pool_size_cache(true, !caller), main_stream);
     StreamGuard stream_guard{main_stream, streams};
     AsyncGpuDevice init_device(gpu_device, main_stream, 0, &mem_pool);
@@ -2184,13 +2192,13 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
     }
     all_global_grads.set_stream(caller);
     if (caller) {
-        check_error(gpuEventRecord(events.at(_stream_switch_event), main_stream));
+        check_error(gpuEventRecord(_last_stream.get().event, main_stream));
         TensorVec held(output_grads);
         held.insert(held.end(), stored_locals.begin(), stored_locals.end());
         hold_inputs(held, main_stream, *caller == 0);
     } else {
         check_error(gpuStreamSynchronize(main_stream));
-        _last_stream.get().reset();
+        _last_stream.get().stream.reset();
         release_inputs();
     }
     stream_guard.dismissed = true;
