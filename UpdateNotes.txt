@@ -5,6 +5,11 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   OM: multi_run: the merge of the runs (merge.pl) is now done in python, 5 to 10
+       times faster. Fix the normalisation for event_norm=sum (the merged sample was
+       N_run times too large) and the <rwgt> weights (systematics/reweighting), which
+       were not rescaled with the central weight. The relative weights of the events
+       (bias, MadSpin, ...) are kept instead of being set to the same unit weight.
    OM: 'import model' now says when the model keeps a mass for u, d, s, e or mu:
        such a mass is negligible at collider energies but brings in Yukawa
        vertices and helicity configurations in every process, and
