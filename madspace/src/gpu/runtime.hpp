@@ -61,9 +61,8 @@ private:
         std::vector<gpuEvent_t> free_events;
     };
 
-    // a cached block can only be handed out again if the call that used it synchronized
     std::vector<std::tuple<std::size_t, std::size_t, Tensor, bool>>
-    load_pool_size_cache(bool backward, bool synchronizes);
+    load_pool_size_cache(bool backward);
     void update_pool_size_cache(
         const std::vector<std::pair<std::size_t, std::size_t>>& total_sizes,
         bool backward
@@ -108,7 +107,6 @@ private:
         _pool_size_cache_backward;
     ThreadResource<TensorVec> _prev_caches;
     ThreadResource<TensorVec> _prev_caches_backward;
-    // last, so it is destroyed first: it waits for the work using the members above
     ThreadResource<HeldInputs> _held_inputs;
 };
 

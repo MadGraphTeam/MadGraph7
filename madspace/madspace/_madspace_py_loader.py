@@ -21,11 +21,9 @@ from ._madspace_py import *
 @contextlib.contextmanager
 def stream(handle):
     """
-    Run the calls on the given cuda stream instead of madspace's own, without
-    synchronizing. Keep it alive until everything madspace handed out has been dropped.
-    Torch inputs already run on torch's current stream; this overrides it, for inputs
-    whose framework does not expose its stream. Inputs are then held until the next
-    call or release_inputs().
+    Run calls in this thread on the given GPU stream without synchronizing, instead of
+    the current stream of the inputs' framework. Inputs are held until a later call or
+    release_inputs() finds their call finished.
     """
     previous = get_stream()
     set_stream(handle)

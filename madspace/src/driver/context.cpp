@@ -123,11 +123,8 @@ MatrixElementApi::MatrixElementApi(
                 }
             }
             return InstanceType(instance, [this, device](void* proc) {
-                try {
-                    device->activate();
-                    _free(proc);
-                } catch (...) {
-                }
+                device->activate();
+                _free(proc);
             });
         },
         std::nullopt,
@@ -406,7 +403,6 @@ void madspace::set_caller_stream(std::optional<std::uintptr_t> stream) {
     if (stream && *stream == 2) {
         throw std::invalid_argument("the per-thread default stream is not supported");
     }
-    // cuda spells the legacy stream 1 and the per-thread one 2, we spell ours 0
     current_caller_stream =
         stream && *stream == 1 ? std::optional<std::uintptr_t>(0) : stream;
 }

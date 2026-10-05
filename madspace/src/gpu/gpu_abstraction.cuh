@@ -1,11 +1,5 @@
 #pragma once
 
-// our lanes are blocking streams, ordered against the legacy stream but not this one
-#if defined(CUDA_API_PER_THREAD_DEFAULT_STREAM) ||                                     \
-    defined(__HIP_API_PER_THREAD_DEFAULT_STREAM__)
-#error "madspace cannot be built with the per-thread default stream"
-#endif
-
 #ifdef __CUDACC__
 
 #include <cub/cub.cuh>

@@ -122,7 +122,10 @@ public:
     }
     ThreadResource(const ThreadResource&) = delete;
     ThreadResource& operator=(const ThreadResource&) = delete;
-    T& get() const { return construct(_resources.at(ThreadPool::thread_index())); }
+    T& get() { return construct(_resources.at(ThreadPool::thread_index())); }
+    const T& get() const {
+        return construct(_resources.at(ThreadPool::thread_index()));
+    }
     void reset() {
         if (_pool) {
             if (_destructor) {

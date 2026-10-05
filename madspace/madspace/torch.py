@@ -36,7 +36,9 @@ class FunctionModule(nn.Module):
         if torch.is_grad_enabled():
             return AutogradWrapper.apply(self, self.dummy, *args)
         else:
-            outputs = self.runtime.call([arg.detach() for arg in args])
+            outputs = self.runtime.call(
+                [arg.detach() if isinstance(arg, torch.Tensor) else arg for arg in args]
+            )
             if len(outputs) == 1:
                 return torch.from_dlpack(outputs[0])
             else:

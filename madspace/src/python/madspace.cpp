@@ -317,7 +317,6 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "__dlpack__",
             &tensor_to_dlpack,
-            py::kw_only(),
             py::arg("stream") = std::nullopt,
             py::arg("max_version") = std::nullopt,
             py::arg("dl_device") = std::nullopt,
@@ -1632,16 +1631,10 @@ PYBIND11_MODULE(_madspace_py, m) {
             "add_data",
             [](DiscreteOptimizer& opt, std::vector<py::object> values_and_counts) {
                 TensorVec input_tensors;
-                std::vector<PyTypeObject*> ordered_producers;
                 for (std::size_t i = 1; auto& input : values_and_counts) {
-                    input_tensors.push_back(dlpack_to_tensor(
-                        input,
-                        i % 2 == 0 ? batch_int : batch_float,
-                        i,
-                        nullptr,
-                        nullptr,
-                        &ordered_producers
-                    ));
+                    input_tensors.push_back(
+                        dlpack_to_tensor(input, i % 2 == 0 ? batch_int : batch_float, i)
+                    );
                     ++i;
                 }
                 opt.add_data(input_tensors);
@@ -1703,17 +1696,11 @@ PYBIND11_MODULE(_madspace_py, m) {
                 TensorVec tensors;
                 tensors.reserve(inputs.size());
                 bool dlpack_version_cache = false;
-                std::vector<PyTypeObject*> ordered_producers;
                 for (std::size_t i = 0;
                      auto [input, type] : zip(inputs, opt.input_types())) {
-                    tensors.push_back(dlpack_to_tensor(
-                        input,
-                        type,
-                        i,
-                        device,
-                        &dlpack_version_cache,
-                        &ordered_producers
-                    ));
+                    tensors.push_back(
+                        dlpack_to_tensor(input, type, i, device, &dlpack_version_cache)
+                    );
                     ++i;
                 }
                 return opt.step(tensors);

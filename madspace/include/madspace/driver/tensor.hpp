@@ -258,8 +258,7 @@ public:
     allocate(std::size_t size, AllocHint hint) const = 0;
     /// Free a pointer returned by @ref allocate.
     virtual void free(void* ptr) const = 0;
-    /// Free a pointer returned by @ref allocate once the work queued on
-    /// `stream` so far is done.
+    /// Free a pointer returned by @ref allocate after the work queued on `stream`.
     virtual void free_on_stream(void* ptr, void* stream) const { free(ptr); }
     /// Make work queued on `to` from now on wait for the work queued on `from`.
     virtual void order_streams(void* from, void* to) const {}
@@ -384,8 +383,7 @@ public:
     }
 
     /// Wraps externally-owned memory with an explicit `stride`, for a
-    /// non-contiguous view onto existing data. `stream`, if given, is the GPU
-    /// stream its owner orders the memory on.
+    /// non-contiguous view onto existing data, ordered on `stream` if given.
     Tensor(
         DataType dtype,
         const Sizes& shape,
@@ -489,12 +487,7 @@ public:
     }
 
     /// Releases this reference; frees the storage once the last one drops.
-    ~Tensor() {
-        try {
-            reset();
-        } catch (...) {
-        }
-    }
+    ~Tensor() { reset(); }
 
     /// Shares the assigned tensor's storage, releasing the previous one.
     Tensor& operator=(const Tensor& other) {
@@ -508,10 +501,7 @@ public:
 
     /// Takes ownership of the assigned tensor's storage.
     Tensor& operator=(Tensor&& other) noexcept {
-        try {
-            reset();
-        } catch (...) {
-        }
+        reset();
         impl = other.impl;
         other.impl = nullptr;
         return *this;
@@ -599,19 +589,14 @@ public:
         check_impl();
         return impl->device;
     }
-    /// The GPU stream the storage is ordered on, if it is known.
+    /// The GPU stream the storage is ordered on, if known.
     std::optional<std::uintptr_t> stream() const {
         return impl == nullptr ? std::nullopt : storage()->stream;
     }
-    /// Set the stream returned by @ref stream; no effect on storage that is not
-    /// stream-ordered.
+    /// Set the stream returned by @ref stream, if the storage is stream-ordered.
     void set_stream(std::optional<std::uintptr_t> stream) {
-        if (impl == nullptr) {
-            return;
-        }
-        TensorImpl* owner = storage();
-        if (owner->stream_ordered && owner->stream != stream) {
-            owner->stream = stream;
+        if (impl != nullptr && storage()->stream_ordered) {
+            storage()->stream = stream;
         }
     }
     /// The single integer value of a scalar `DataType::batch_sizes` tensor.
@@ -651,10 +636,8 @@ public:
         if (impl == nullptr) {
             return;
         }
-        // released before the free, which can throw
-        TensorImpl* owner = impl;
+        impl->reset(device);
         impl = nullptr;
-        owner->reset(device);
     }
 
     /// Releases this reference, freeing stream-ordered storage on `stream`.
@@ -662,9 +645,8 @@ public:
         if (impl == nullptr) {
             return;
         }
-        TensorImpl* owner = impl;
+        impl->reset_on_stream(stream);
         impl = nullptr;
-        owner->reset_on_stream(stream);
     }
 
     /// A single index along `axis`, dropping that dimension.

@@ -324,13 +324,10 @@ ContextPtr default_hip_context(std::size_t index = 0);
 /// Process-wide default context for `device`, created on first call.
 ContextPtr default_device_context(DevicePtr device);
 
-/// GPU stream that runtime calls on this thread run on, without synchronizing.
-/// Empty: madspace's own streams, synchronized before the call returns. 0: the
-/// legacy default stream, which madspace's own streams are ordered against.
+/// GPU stream that runtime calls on this thread run on without synchronizing;
+/// 0 for the legacy default stream.
 std::optional<std::uintptr_t> caller_stream();
-/// Set the stream returned by @ref caller_stream for this thread. CUDA's
-/// spelling 1 for the legacy default stream is accepted, the per-thread
-/// default stream (2) is not.
+/// Set the stream returned by @ref caller_stream for this thread.
 void set_caller_stream(std::optional<std::uintptr_t> stream);
 
 /// `name`, namespaced under `prefix` as `"prefix.name"`; `name` unchanged if

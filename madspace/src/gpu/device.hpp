@@ -3,6 +3,7 @@
 #include "gpu_abstraction.cuh"
 #include "madspace/driver/tensor.hpp"
 
+#include <atomic>
 #include <format>
 
 namespace madspace {
@@ -25,7 +26,6 @@ inline void check_error(gpuError_t error) {
 inline void check_error() { check_error(gpuGetLastError()); }
 
 inline void ignore_error(gpuError_t) {}
-inline void ignore_error(gpublasStatus_t) {}
 
 class GpuDevice : public Device {
 public:
@@ -63,6 +63,8 @@ public:
 
     GpuDevice(const GpuDevice&) = delete;
     GpuDevice& operator=(GpuDevice&) = delete;
+
+    static inline std::atomic<bool> unsynchronized_calls{false};
 
     static const GpuDevice& instance(int index) {
         static std::vector<GpuDevice*> devices = [] {
