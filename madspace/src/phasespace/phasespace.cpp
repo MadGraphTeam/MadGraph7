@@ -2,6 +2,9 @@
 #include "madspace/constants.hpp"
 #include "madspace/util.hpp"
 #include <algorithm>
+#include <cmath>
+#include <limits>
+#include <numeric>
 
 using namespace madspace;
 
@@ -206,11 +209,82 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         std::optional<Invariant> invariant;
     };
     std::vector<DecayInfo> decay_info(_topology.decays().size());
+
+    // The cuts are indexed by the position of a particle in the event the
+    // mapping returns, and that event is the topology's own momenta reordered
+    // by the channel permutation (output[i] = topology[perm[i]], see
+    // permute_momenta). The same mapping serves every permutation, so a bound
+    // is handed to the sampler only in a form that holds for all of them:
+    // the weakest of the per-permutation bounds. Without permutations the
+    // topology order is the event order.
+    //
+    // Cuts indexes its per-particle tables by outgoing position, counting two
+    // incoming particles. A decay topology has one, so the tables cannot be
+    // read against it at all - and a decay has no cuts to apply anyway.
+    constexpr std::size_t no_index = static_cast<std::size_t>(-1);
+    const std::size_t n_in = _topology.incoming_masses().size();
+    const std::size_t n_out = _topology.outgoing_masses().size();
+    const bool read_cuts = n_in == 2;
+    // event_position[p][t]: where permutation p puts the topology's outgoing
+    // particle t, as an outgoing position of the event (no_index if p sends
+    // it to an incoming slot)
+    std::vector<std::vector<std::size_t>> event_position;
+    if (permutations.empty()) {
+        event_position.emplace_back(n_out);
+        std::iota(event_position.back().begin(), event_position.back().end(), 0);
+    }
+    for (const auto& perm : permutations) {
+        auto& position = event_position.emplace_back(n_out, no_index);
+        for (std::size_t i = n_in; i < perm.size(); ++i) {
+            if (perm.at(i) >= n_in && perm.at(i) - n_in < n_out) {
+                position.at(perm.at(i) - n_in) = i - n_in;
+            }
+        }
+    }
+    std::vector<double> cut_pt_min, cut_eta_max;
+    std::vector<std::vector<double>> cut_m_inv_min, cut_dr_min;
+    std::vector<Cuts::PairMassAny> cut_pair_mass_any;
+    if (read_cuts) {
+        cut_pt_min = _cuts.pt_min();
+        cut_eta_max = _cuts.eta_max();
+        cut_m_inv_min = _cuts.m_inv_min();
+        cut_dr_min = _cuts.dr_min();
+        cut_pair_mass_any = _cuts.pair_mass_any_min();
+    }
+    // per-particle and pairwise tables in topology order, valid for every
+    // permutation (an index the cut tables do not cover reads as no cut)
+    auto at_or = [](const std::vector<double>& v, std::size_t i, double none) {
+        return i < v.size() ? v.at(i) : none;
+    };
+    auto pair_at = [](const std::vector<std::vector<double>>& m,
+                      std::size_t i,
+                      std::size_t j) {
+        return i < m.size() && j < m.at(i).size() ? m.at(i).at(j) : 0.;
+    };
+    constexpr double inf = std::numeric_limits<double>::infinity();
+    std::vector<double> topo_pt_min(n_out, inf), topo_eta_max(n_out, 0.);
+    std::vector<std::vector<double>> topo_m_inv_min(n_out, std::vector<double>(n_out, inf));
+    std::vector<std::vector<double>> topo_dr_min(n_out, std::vector<double>(n_out, inf));
+    for (const auto& position : event_position) {
+        for (std::size_t t = 0; t < n_out; ++t) {
+            std::size_t i = position.at(t);
+            topo_pt_min.at(t) = std::min(topo_pt_min.at(t), at_or(cut_pt_min, i, 0.));
+            topo_eta_max.at(t) =
+                std::max(topo_eta_max.at(t), at_or(cut_eta_max, i, inf));
+            for (std::size_t u = 0; u < n_out; ++u) {
+                std::size_t j = position.at(u);
+                topo_m_inv_min.at(t).at(u) =
+                    std::min(topo_m_inv_min.at(t).at(u), pair_at(cut_m_inv_min, i, j));
+                topo_dr_min.at(t).at(u) =
+                    std::min(topo_dr_min.at(t).at(u), pair_at(cut_dr_min, i, j));
+            }
+        }
+    }
     for (auto [index, m_min, pt_min, eta_max] :
          zip(_topology.outgoing_indices(),
              _topology.outgoing_masses(),
-             _cuts.pt_min(),
-             _cuts.eta_max())) {
+             topo_pt_min,
+             topo_eta_max)) {
         decay_info.at(index) = {m_min, pt_min, eta_max, std::nullopt};
     }
 
@@ -219,15 +293,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     // both members of the pair come out of the same propagator, the cut is a
     // floor on that propagator's invariant and can be handed straight to the
     // sampler, which is the difference between generating the region the cut
-    // allows and throwing away nearly everything generated. The floors are
-    // collected here and applied as the decay chain is walked below.
+    // allows and throwing away nearly everything generated.
     constexpr std::size_t no_leaf = static_cast<std::size_t>(-1);
-    // Cuts indexes its per-particle tables by outgoing position, counting two
-    // incoming particles. A decay topology has one, so the tables cannot be
-    // read against it at all - and a decay has no cuts to apply anyway.
-    auto m_inv_min = _topology.incoming_masses().size() == 2
-        ? _cuts.m_inv_min()
-        : std::vector<std::vector<double>>{};
     std::vector<std::vector<std::size_t>> node_leaves(_topology.decays().size());
     {
         std::vector<std::size_t> decay_to_outgoing(
@@ -256,55 +323,113 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             std::sort(leaves.begin(), leaves.end());
         }
     }
-    // The floor a set of final-state particles inherits from the pair cuts.
-    // The pair contributes at least its cut and every other particle at least
-    // its mass, and for future-pointing momenta the invariant mass of a sum is
-    // at least the sum of the invariant masses, so
-    //     m(leaves) >= m_inv_min(i, j) + sum_{k != i, j} m_k
-    // for every cut pair (i, j) among the leaves. Every pair m_inv_min reports
-    // must satisfy its cut (see Cuts::m_inv_min), so the largest of these
-    // bounds holds. A node whose leaves are exactly the pair gets the cut.
+    // The floor a set of final-state particles (topology outgoing positions)
+    // inherits from the pair mass cuts. A pair contributes at least its cut and
+    // every other particle at least its mass, and for future-pointing momenta
+    // the invariant mass of a sum is at least the sum of the invariant masses:
+    //   * a cut every pair must pass (topo_m_inv_min) gives
+    //         m(leaves) >= cut(i, j) + sum_{k != i, j} m_k
+    //     for each cut pair (i, j) among the leaves;
+    //   * a CutMode::any cut, which only one of its pairs has to pass, gives
+    //     the smallest of those bounds over its pairs - provided every one of
+    //     them lies among the leaves, or the passing pair may lie elsewhere.
+    //   * every pair together: expanding (sum p_k)^2 with
+    //     2 p_i.p_j = m_ij^2 - m_i^2 - m_j^2 gives the exact identity
+    //         m(leaves)^2 = sum_{i<j} m_ij^2 - (n - 2) sum_k m_k^2,
+    //     and m_ij is at least its cut and at least m_i + m_j. With several
+    //     cut pairs among the leaves this beats any single pair: four leptons
+    //     with every pair above 50 GeV are at least sqrt(6) * 50 GeV heavy.
+    // Each holds, so the largest is the floor. The any-mode cuts are read per
+    // permutation and the weakest result is kept, like the tables above.
     const auto& out_masses = _topology.outgoing_masses();
     auto pair_floor = [&](const std::vector<std::size_t>& leaves) {
-        double floor = 0.;
         double leaf_mass_sum = 0.;
         for (std::size_t leaf : leaves) {
             leaf_mass_sum += out_masses.at(leaf);
         }
+        auto bound = [&](std::size_t t, std::size_t u, double cut) {
+            return cut + leaf_mass_sum - out_masses.at(t) - out_masses.at(u);
+        };
+        double floor = 0.;
+        double pair_mass2_sum = 0., leaf_mass2_sum = 0.;
+        bool any_cut = false;
+        for (std::size_t leaf : leaves) {
+            leaf_mass2_sum += out_masses.at(leaf) * out_masses.at(leaf);
+        }
         for (std::size_t a = 0; a < leaves.size(); ++a) {
-            std::size_t i = leaves.at(a);
-            if (i >= m_inv_min.size()) {
-                continue;
-            }
             for (std::size_t b = a + 1; b < leaves.size(); ++b) {
-                std::size_t j = leaves.at(b);
-                if (j >= m_inv_min.size()) {
-                    continue;
+                std::size_t t = leaves.at(a), u = leaves.at(b);
+                double cut = topo_m_inv_min.at(t).at(u);
+                double pair_min = out_masses.at(t) + out_masses.at(u);
+                if (cut > 0.) {
+                    any_cut = true;
+                    floor = std::max(floor, bound(t, u, cut));
+                    pair_min = std::max(pair_min, cut);
                 }
-                double cut = m_inv_min.at(i).at(j);
-                if (cut <= 0.) {
-                    continue;
-                }
-                floor = std::max(
-                    floor, cut + leaf_mass_sum - out_masses.at(i) - out_masses.at(j)
-                );
+                pair_mass2_sum += pair_min * pair_min;
             }
         }
-        return floor;
+        if (any_cut && leaves.size() > 2) {
+            double n_other = static_cast<double>(leaves.size()) - 2.;
+            double mass2 = pair_mass2_sum - n_other * leaf_mass2_sum;
+            if (mass2 > 0.) {
+                floor = std::max(floor, std::sqrt(mass2));
+            }
+        }
+        if (cut_pair_mass_any.empty()) {
+            return floor;
+        }
+        double any_floor = inf;
+        for (const auto& position : event_position) {
+            // topology position of every event outgoing position
+            std::vector<std::size_t> topo_of(n_out, no_index);
+            for (std::size_t t = 0; t < n_out; ++t) {
+                if (position.at(t) < n_out) {
+                    topo_of.at(position.at(t)) = t;
+                }
+            }
+            double perm_floor = 0.;
+            for (const auto& item : cut_pair_mass_any) {
+                double item_floor = inf;
+                for (auto [i, j] : item.pairs) {
+                    std::size_t t = i < n_out ? topo_of.at(i) : no_index;
+                    std::size_t u = j < n_out ? topo_of.at(j) : no_index;
+                    if (t == no_index || u == no_index ||
+                        !std::binary_search(leaves.begin(), leaves.end(), t) ||
+                        !std::binary_search(leaves.begin(), leaves.end(), u)) {
+                        item_floor = 0.;
+                        break;
+                    }
+                    item_floor = std::min(item_floor, bound(t, u, item.min));
+                }
+                perm_floor = std::max(perm_floor, item_floor);
+            }
+            any_floor = std::min(any_floor, perm_floor);
+        }
+        return std::max(floor, any_floor);
     };
     // e_min is the propagator's own floor on its invariant mass, and
     // update_mass_min_max already carries it into every s_min the sampler uses
     // and into what the parents subtract, so raising it here is all that is
-    // needed for the cut to shape the integration. The root is left to the
-    // luminosity mapping below.
+    // needed for the cut to shape the integration. A floor at or above the top
+    // of an on-shell window (e_max) leaves the propagator nothing to sample:
+    // the cuts reject the whole channel. It is then not handed on as an
+    // inverted range but reported through empty(), so the channel can be
+    // dropped instead of failing to find a single passing point.
     for (std::size_t d = 1; d < node_leaves.size(); ++d) {
-        if (_topology.decays().at(d).child_indices.empty()) {
+        const auto& decay = _topology.decays().at(d);
+        if (decay.child_indices.empty()) {
             continue;
         }
         double floor = pair_floor(node_leaves.at(d));
-        if (floor > 0.) {
-            _topology.raise_decay_e_min(d, floor);
+        if (floor <= 0.) {
+            continue;
         }
+        if (decay.e_max > 0. && floor >= decay.e_max) {
+            _empty = true;
+            continue;
+        }
+        _topology.raise_decay_e_min(d, floor);
     }
 
     // The same thing one level up: a floor on the total invariant mass of the
@@ -317,14 +442,18 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     // Two sources of such a floor: a cut on sqrt(s_hat) itself, and the pair
     // cuts, every one of which bounds the total exactly as it bounds a
     // propagator above.
-    double sqrt_s_hat_min =
-        std::max(_cuts.sqrt_s_min(), pair_floor(node_leaves.at(0)));
-    // Only the luminosity mapping samples the root virtuality. A leptonic
-    // collision has s_hat fixed at s_lab and chili reconstructs it from the
-    // momenta it has already generated, so in neither case is there a range to
-    // narrow -- the cut stays a filter there. A floor at or above the beam
-    // energy leaves nothing to sample at all, and is left to the filter too
-    // rather than handed on as an empty range.
+    double sqrt_s_hat_min = std::max(
+        read_cuts ? _cuts.sqrt_s_min() : 0., pair_floor(node_leaves.at(0))
+    );
+    // Only the luminosity mapping samples the root virtuality, and the root's
+    // e_min is read nowhere else: build_forward_impl gives the root its s_min
+    // only when it samples it, and the other propagators bound themselves by
+    // the root's mass, never by its floor. A leptonic collision has s_hat fixed
+    // at s_lab and chili reconstructs it from the momenta it has already
+    // generated, so in neither case is there a range to narrow -- the cut
+    // stays a filter there. A floor at or above the beam energy leaves nothing
+    // to sample at all, and is left to the filter too rather than handed on as
+    // an empty range.
     if (_map_luminosity && sqrt_s_hat_min > 0. && sqrt_s_hat_min < _sqrt_s_lab) {
         _topology.raise_decay_e_min(0, sqrt_s_hat_min);
     }
@@ -393,8 +522,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
                     "PhaseSpaceMapping: color_ordered mode requires a color_order"
                 );
             }
-            // Reorder the per-pair cut matrices (indexed by raw outgoing index)
-            // into the child order in which masses/pt are handed to the chain,
+            // Reorder the per-pair cut matrices (indexed by topology outgoing
+            // position) into the child order in which masses/pt are handed to the chain,
             // mirroring the pt_min reordering above. Composite (non-leaf)
             // children carry no pairwise cut.
             const auto& out_idx = topology.outgoing_indices();
@@ -409,8 +538,9 @@ PhaseSpaceMapping::PhaseSpaceMapping(
                     child_to_out.at(a) = std::distance(out_idx.begin(), it);
                 }
             }
-            auto m_inv_full = _cuts.m_inv_min();
-            auto dr_full = _cuts.dr_min();
+            // already in topology order and valid for every permutation
+            const auto& m_inv_full = topo_m_inv_min;
+            const auto& dr_full = topo_dr_min;
             std::size_t nc = child_to_out.size();
             std::vector<std::vector<double>> m_inv_co(nc, std::vector<double>(nc, 0.));
             std::vector<std::vector<double>> dr_co(nc, std::vector<double>(nc, 0.));
