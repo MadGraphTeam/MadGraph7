@@ -1,6 +1,6 @@
 // Copyright (C) 2020-2026 CERN and UCLouvain.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
-// Created originally by: A. Valassi (Jan 2022) for the MG5aMC CUDACPP plugin.
+// Created originally by: A. Valassi (Jan 2022) for the MadGraph7 CUDACPP plugin.
 // Further modified by: J. Teig, A. Valassi (2022-2024).
 // Integrated with the MadGraph7 project in Feb 2026.
 // ----------------------------------------------------------------------------
@@ -12,7 +12,7 @@
 #include "mgOnGpuVectors.h"
 
 #include "constexpr_math.h"
-#include "epoch_process_id.h"
+#include "ProcessData.h"
 #include "valgrind.h"
 
 #include <gtest/gtest.h>
@@ -31,12 +31,8 @@
 
 #define XTESTID( s ) TESTID( s )
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+//One namespace. Split ber backend.
+namespace madmatrix
 {
 #ifdef MGONGPU_CPPSIMD /* clang-format off */
 #define EXPECT_TRUE_sv( cond ) { bool_v mask( cond ); EXPECT_TRUE( maskand( mask ) ); }
@@ -65,11 +61,7 @@ namespace mg5amcCpu
 
 TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testmisc )
 {
-#ifdef MGONGPUCPP_GPUIMPL
-  using namespace mg5amcGpu;
-#else
-  using namespace mg5amcCpu;
-#endif
+  using namespace madmatrix;
 
   //--------------------------------------------------------------------------
 

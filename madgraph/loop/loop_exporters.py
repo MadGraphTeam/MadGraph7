@@ -1,11 +1,11 @@
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -145,7 +145,7 @@ class LoopExporterFortran(object):
                 ln(pjoin(targetPath,'Source','CutTools','includects',file), 
                                                         pjoin(targetPath,'lib'))
             # Make sure it is recompiled at least once. Because for centralized
-            # MG5_aMC installations, it might be that compiler differs.
+            # MadGraph7 installations, it might be that compiler differs.
             # Not necessary anymore because I check the compiler version from
             # the log compiler_version.log generated during CT compilation
             # misc.compile(['cleanCT'], cwd = pjoin(targetPath,'Source'))
@@ -184,7 +184,7 @@ class LoopExporterFortran(object):
                 raise InvalidCmd("Could not find the location of the file"+\
                     " mpmodule.mod in your environment paths.")
             else:
-                logger.info('MG5_aMC is using CutTools installation found at %s.'%\
+                logger.info('MadGraph7 is using CutTools installation found at %s.'%\
                                                          os.path.dirname(CTlib))
                 ln(os.path.join(CTlib),os.path.join(targetPath,'lib'),abspath=True)
                 ln(os.path.join(CTmod),os.path.join(targetPath,'lib'),abspath=True)
@@ -304,12 +304,15 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
                                          self.f2py_matrix_splitter_template)).read()
 
         allids = list(self.prefix_info.keys())
+
         allprefix = [self.prefix_info[key][0] for key in allids]
+        allncomb = [self.prefix_info[key][2] for key in allids]
+        alliden = [self.prefix_info[key][3] for key in allids] 
         min_nexternal = min([len(ids[0]) for ids in allids])
         max_nexternal = max([len(ids[0]) for ids in allids])
 
         info = []
-        for (key,pid), (prefix, tag) in self.prefix_info.items():
+        for (key,pid), (prefix, tag, ncomb, iden) in self.prefix_info.items():
             info.append('#PY %s : %s # %s %s' % (tag, key, prefix, pid))
             
 
@@ -361,6 +364,9 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
 
 
         # Build IDENS entries ONCE per ME slot (must align 1-to-1 with get_pdg_order / allids).
+        all_iden = ''
+        for i, iden in enumerate(alliden, start=1):
+            all_iden += ' idens(%s) = %s \n' % (i, iden)
 
         formatting = {'python_information':'\n'.join(info), 
                     #   'smatrixhel': '\n'.join(text) % {'fct_name': 'smatrixhel(p, nhel, ans)'},
@@ -376,6 +382,7 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
                       'helreset_def' : '\n'.join(helreset_def),
                       'helreset_setup' : '\n'.join(helreset_setup),
                       'f2py_prefix': f2py_prefix,
+                      'idens_value': all_iden,
                       'density_splitter': '\n'.join(text) % {'fct_name': 'GET_DENSITY(P, POS, N_CHANGING, ALLOW_HEL, N_COMB, ALPHAS, SCALE2, INTER)'},
                       }
     
@@ -501,7 +508,7 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
             return file
         
     def convert_model(self, model, wanted_lorentz = [], 
-                                                         wanted_couplings = []):
+                                             wanted_couplings = [], **opts):
         """ Caches the aloha model created here when writing out the aloha 
         fortran subroutine.
         """
@@ -645,7 +652,7 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
                     raise MadGraph5Error("CutTools installation in %s"\
                                  %os.path.realpath(pjoin(libdir, 'libcts.a'))+\
                  " seems to have been compiled with a different compiler than"+\
-                    " the one specified in MG5_aMC. Please recompile CutTools.")
+                    " the one specified in MadGraph7. Please recompile CutTools.")
     
     def cat_coeff(self, ff_number, frac, is_imaginary, Nc_power, Nc_value=3):
         """Concatenate the coefficient information to reduce it to 
@@ -785,7 +792,7 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
                         imag_num=imag_num-buff_num
                     else:
                         imag_num=imag_num+buff_num
-                assert not (real_num!=0 and imag_num!=0), "MadGraph5_aMC@NLO found a "+\
+                assert not (real_num!=0 and imag_num!=0), "MadGraph7 found a "+\
                   "color matrix element which has both a real and imaginary part."
                 if imag_num!=0:
                     assert int(imag_num) == imag_num and int(common_denom) == common_denom
@@ -977,6 +984,30 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         """Generates the entries for the general replacement dictionary used
         for the different output codes for this exporter.The arguments 
         group_number and proc_id are just for the LoopInduced output with MadEvent."""
+
+        # Helper
+        def compute_iden_from_pdgs(ids, ninitial, model):
+            """
+            Helper function to compute denominator factor
+            """
+            def nhel_from_particle(p):
+                spin = int(p.get('spin'))
+                # for massless vectors use 2 helicities not 3
+                mass = p.get('mass')
+                if spin == 3 and (mass == 'ZERO' or str(mass).upper() == 'ZERO'):
+                    return 2
+                return spin
+
+            def color_dim_from_particle(p):
+                # In UFO, color is typically 1, 3, -3, 8, ...
+                return abs(int(p.get('color')))
+
+            incoming = ids[:ninitial]
+            iden = 1
+            for pid in incoming:
+                p = model.get_particle(pid)
+                iden *= nhel_from_particle(p) * color_dim_from_particle(p)
+            return int(iden)
         
         dict={}
         # A general process prefix which appears in front of all MadLooop
@@ -986,10 +1017,14 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         dict['proc_prefix'] = self.get_ME_identifier(matrix_element,
                        group_number = group_number, group_elem_number = proc_id)
 
+        (nexternal, ninitial) = matrix_element.get_nexternal_ninitial()
+
         if 'prefix' in self.cmd_options and self.cmd_options['prefix'] in ['int','proc']:
+            ncomb = matrix_element.get_helicity_combinations()
             for proc in matrix_element.get('processes'):
                 ids = [l.get('id') for l in proc.get('legs_with_decays')]
-                self.prefix_info[tuple(ids),proc.get('id')] = [dict['proc_prefix'], proc.get_tag()]
+                iden = compute_iden_from_pdgs(ids, ninitial, self.model)
+                self.prefix_info[tuple(ids),proc.get('id')] = [dict['proc_prefix'], proc.get_tag(), ncomb, iden]
 
         # The proc_id is used for MadEvent grouping, so none of our concern here
         # and it is simply set to an empty string.        
@@ -1200,10 +1235,12 @@ PARAMETER(MAX_SPIN_EXTERNAL_PARTICLE=%(max_spin_external_particle)d)
 
         writer.writelines(proc_include)
                                 
-    def generate_subprocess_directory(self, matrix_element, fortran_model, second_exporter=None):
+    def generate_subprocess_directory(self, matrix_element, fortran_model,
+                                      me_number=None, second_exporter=None):
         """ To overload the default name for this function such that the correct
         function is used when called from the command interface """
-        
+        # 3rd positional slot is the subprocess number (base-class convention);
+        # loop_interface.ML5export omits it, madgraph_interface.export passes it.
         assert second_exporter is None
         self.unique_id +=1
         return self.generate_loop_subprocess(matrix_element,fortran_model,
@@ -1300,6 +1337,12 @@ p= [[None,]*4]*%d"""%len(curr_proc.get('legs'))
         
         (nexternal,ninitial)=matrix_element.get_nexternal_ninitial()
         replace_dict['ninitial']=ninitial
+
+        # Here we check whether the external particles are on-shell or off-shell
+        base_process_string = matrix_element.get('processes')[0].base_string()
+        particles_process = base_process_string.replace(">", "", 1).split()
+        offshell_or_not = ['.true.' if '*' in elem else '.false.' for elem in particles_process]
+        
         mass_list=matrix_element.get_external_masses()[:-2]
         mp_variable_prefix = check_param_card.ParamCard.mp_prefix
 
@@ -1309,9 +1352,14 @@ p= [[None,]*4]*%d"""%len(curr_proc.get('legs'))
         replace_dict['exp_letter']='e'
         replace_dict['mp_specifier']='_16'
         replace_dict['coupl_inc_name']='mp_coupl.inc'
-        replace_dict['masses_def']='\n'.join(['MASSES(%(i)d)=%(prefix)s%(m)s'\
-                            %{'i':i+1,'m':m, 'prefix':mp_variable_prefix} for \
-                                                  i, m in enumerate(mass_list)])
+        replace_dict['masses_def'] = '\n'
+        for i, m in enumerate(mass_list):
+            if offshell_or_not[i] == '.false.':
+                replace_dict['masses_def'] += f'MASSES({i+1})={mp_variable_prefix}{m}\n'
+            else:
+                replace_dict['masses_def'] += f'MASSES({i+1})=SQRT(ABS(P(0,{i+1})**2-P(1,{i+1})**2-P(2,{i+1})**2-P(3,{i+1})**2))\n'
+        
+        # misc.sprint('\n'.join(['MASSES(%(i)d)=%(prefix)s%(m)s'%{'i':i+1,'m':m, 'prefix':mp_variable_prefix} for i, m in enumerate(mass_list)]))
         
         if self.opt['vector_size']:
             replace_dict['include_vector'] = "include '../../Source/vector.inc'"
@@ -1696,6 +1744,18 @@ C               ENDIF""")%replace_dict
         else:
             replace_dict['born_ct_helas_calls']='\n'.join(born_ct_helas_calls)
             replace_dict[toBeRepaced]='\n'.join(loop_amp_helas_calls)
+
+        #In loop-induced, particles are put onshell to get a better precision on PS points. If we want to study processes with external off-shell particles we need
+        #it to consider the offshell mass m^2 = p^2 to the on-shell mass.
+        #KEEP_OFFSHELL_MASS contains the information based on the generation string of which external particle should be kept off-shell.
+        base_process_string = matrix_element.get('processes')[0].base_string()
+        particles_process = base_process_string.replace(">", "", 1).split()
+        offshell_or_not = ['.true.' if '*' in elem else '.false.' for elem in particles_process]
+        logger.info("Particles with .true. are generated off-shell: " + str(offshell_or_not))
+
+        replace_dict["keep_offshell_mass"] = ""
+        for i in range(len(offshell_or_not)):
+            replace_dict["keep_offshell_mass"] += f"KEEP_OFFSHELL_MASS({i + 1}) = {offshell_or_not[i]}\n"
         
         file = file % replace_dict
 
@@ -1829,7 +1889,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         for tir in self.all_tir:
             tir_dir="%s_dir"%tir
             if tir_dir in self.opt and not self.opt[tir_dir] is None:
-                # Make sure to defer the 'local path' to the current MG5aMC root.
+                # Make sure to defer the 'local path' to the current MadGraph7 root.
                 tir_path = self.opt[tir_dir].strip()
                 if tir_path.startswith('.'):
                     tir_path = os.path.abspath(pjoin(MG5DIR,tir_path))
@@ -1914,7 +1974,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                             to_include = '<Not_found_define_it_yourself>'                
                         tir_include.append('-I %s'%str(to_include))
                         # To be able to easily compile a MadLoop library using
-                        # makefiles built outside of the MG5_aMC framework
+                        # makefiles built outside of the MadGraph7 framework
                         # (such as what is done with the Sherpa interface), we
                         # place here an easy handle on the golem includes
                         name_map = {'golem':'golem95','samurai':'samurai',
@@ -1972,7 +2032,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 (not os.path.isfile(pjoin(libpath,libname))):
                     # WARNING ONLY appears when the libpath is a wrong specific path.
                     logger.warning("The %s reduction library could not be found"%tir_name\
-                                   +" with PATH:%s specified in mg5_configuration.txt."%libpath\
+                                   +" with PATH:%s specified in mg7_configuration.txt."%libpath\
                                    +" It will not be available.")
                 self.tir_available_dict[tir_name]=False
                 return ""
@@ -1987,16 +2047,16 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                         version = None
                     if version is None :
                         logger.warning(
-"Your version of '%s' in \n  %s\nseems too old %sto be compatible with MG5_aMC."
+"Your version of '%s' in \n  %s\nseems too old %sto be compatible with MadGraph7."
 %(tir_name, libpath ,'' if not version else '(v%s) '%version)+
-("\nConsider updating it by hand or using the 'install' function of MG5_aMC." if tir_name!='samurai'
- else "\nAsk the authors for the latest version compatible with MG5_aMC."))
+("\nConsider updating it by hand or using the 'install' function of MadGraph7." if tir_name!='samurai'
+ else "\nAsk the authors for the latest version compatible with MadGraph7."))
         else:
             # self-contained libraries
             if (not isinstance(libpath,str)) or (not os.path.exists(libpath)):
                 # WARNING ONLY appears when the libpath is a wrong specific path.
                 logger.warning("The %s reduction library could not be found"%tir_name\
-                                   +" with PATH:%s specified in mg5_configuration.txt."%libpath\
+                                   +" with PATH:%s specified in mg7_configuration.txt."%libpath\
                                    +" It will not be available.")
                 self.tir_available_dict[tir_name]=False
                 return ""
@@ -2005,8 +2065,8 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             if tir_name in ['pjfry','golem','samurai','ninja','collier']:
                 self.tir_available_dict[tir_name]=False
                 logger.info("When using the 'output_dependencies=internal' "+\
-" MG5_aMC option, the (optional) reduction library %s cannot be employed because"%tir_name+\
-" it is not distributed with the MG5_aMC code so that it cannot be copied locally.")
+" MadGraph7 option, the (optional) reduction library %s cannot be employed because"%tir_name+\
+" it is not distributed with the MadGraph7 code so that it cannot be copied locally.")
                 return ""
             elif tir_name == "iregi":
                 # This is the right paths for IREGI
@@ -2071,7 +2131,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             # his environmental paths
             newlibpath = misc.which_lib(libname)
             if not newlibpath is None:
-                logger.info('MG5_aMC is using %s installation found at %s.'%\
+                logger.info('MadGraph7 is using %s installation found at %s.'%\
                                                           (tir_name,newlibpath)) 
                 # We link the tools below directly to directly where the library is detected
                 if not tir_name in ['pjfry','golem','samurai','ninja','collier']:
@@ -3076,6 +3136,19 @@ PARAMETER (NSQUAREDSO=%d)"""%matrix_element.rep_dict['nSquaredSO'])
             replace_dict['include_vector'] = "include '../../Source/vector.inc'"
         else:
             replace_dict['include_vector'] = '' 
+
+        #In loop-induced, particles are put onshell to get a better precision on PS points. If we want to study processes with external off-shell particles we need
+        #it to consider the offshell mass m^2 = p^2 to the on-shell mass.
+        #KEEP_OFFSHELL_MASS contains the information based on the generation string of which external particle should be kept off-shell.
+        base_process_string = matrix_element.get('processes')[0].base_string()
+        particles_process = base_process_string.replace(">", "", 1).split()
+        offshell_or_not = ['.true.' if '*' in elem else '.false.' for elem in particles_process]
+        logger.info("Particles with .true. are generated off-shell: " + str(offshell_or_not))
+
+        replace_dict["keep_offshell_mass"] = ""
+        for i in range(len(offshell_or_not)):
+            replace_dict["keep_offshell_mass"] += f"KEEP_OFFSHELL_MASS({i + 1}) = {offshell_or_not[i]}\n"
+
         file = file % replace_dict
         number_of_calls = len([call for call in loop_CT_calls if call.find('CALL LOOP') != 0])   
         if writer:
@@ -3119,6 +3192,7 @@ class LoopProcessExporterFortranMatchBox(LoopProcessOptimizedExporterFortranSA,
       
 
     def finalize(self, matrix_element, cmdhistory, MG5options, outputflag):
+
         out = super().finalize(matrix_element, cmdhistory, MG5options, outputflag)
         misc.compile(cwd=pjoin(self.dir_path,'Source','MODEL'))
         return out
@@ -3269,6 +3343,13 @@ class LoopInducedExporterME(LoopProcessOptimizedExporterFortranSA):
         replace_dict['hel_avg_factor'] = matrix_element.get_hel_avg_factor()
         replace_dict['beamone_helavgfactor'], replace_dict['beamtwo_helavgfactor'] =\
                                        matrix_element.get_beams_hel_avg_factor()
+
+        # number of helicity states actually kept for each beam (can be reduced
+        # by an explicit polarisation in the process definition). Used to avoid
+        # applying the beam polarisation of the run_card on top of it.
+        s1, s2 = matrix_element.get_spin_state_initial()
+        replace_dict['nb_spin_state1'] = s1
+        replace_dict['nb_spin_state2'] = s2
 
         # Extract helicity lines
         helicity_lines = self.get_helicity_lines(matrix_element)

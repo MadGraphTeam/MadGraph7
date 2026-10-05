@@ -37,7 +37,7 @@ class WriteALOHA:
 
             
     def __init__(self, abstract_routine, dirpath, options=None):
-        if aloha.loop_mode:
+        if (aloha.loop_mode or aloha.dual_mode):
             self.momentum_size = 4
         else:
             self.momentum_size = 2
@@ -113,7 +113,7 @@ class WriteALOHA:
                                  
     def get_header_txt(self,mode=''): 
         """ Prototype for language specific header""" 
-        raise Exception('THis function should be overwritten')
+        raise Exception('This function should be overwritten')
         return ''
     
     def get_declaration_txt(self):
@@ -489,8 +489,8 @@ class ALOHAWriterForFortran(WriteALOHA):
     else:
         type2def['double'] = 'real*8'
         type2def['complex'] = 'complex*16'
-        
         format = 'd0'
+    type2def['dual'] = 'type(dual)'
     
     def get_fct_format(self, fct):
         """Put the function in the correct format"""
@@ -537,7 +537,10 @@ class ALOHAWriterForFortran(WriteALOHA):
         arguments = [arg for format, arg in self.define_argument_list(couplings)]
         if not self.offshell:
             output = 'vertex'
-            self.declaration.add(('complex','vertex'))
+            if aloha.dual_mode:
+                self.declaration.add(('dual','vertex'))
+            else:
+                self.declaration.add(('complex','vertex'))
         else:
             output = '%(spin)s%(id)d' % {
                      'spin': self.particles[self.outgoing -1],
@@ -575,6 +578,9 @@ class ALOHAWriterForFortran(WriteALOHA):
         out.write('use aloha_object\n')
         if 'M' in self.tag:
             out.write('use model_object\n')
+        if aloha.dual_mode:
+            # the operators on the dual momenta and wavefunction components
+            out.write('use dual_variables\n')
         out.write('implicit none\n')
         # Check if we are in formfactor mode
         if self.has_model_parameter:
@@ -605,6 +611,8 @@ class ALOHAWriterForFortran(WriteALOHA):
         for type, name in self.declaration.tolist():
             if type.startswith('list'):
                 type = type[5:]
+                if aloha.dual_mode and (type == 'complex' or name.startswith('P')):
+                    type = 'dual'
                 #determine the size of the list
                 if name.startswith('FD'):
                     # FD gauge: 5-momentum and gauge direction of the inlined
@@ -654,6 +662,8 @@ class ALOHAWriterForFortran(WriteALOHA):
                 if name in ['COUP', 'COUP1']:
                     out.write(' integer flv_index\n')
             else:
+                if aloha.dual_mode and (name[0] == 'T' or name[0] == 't' or name in ('denom', 'vertex')):
+                    type = 'dual'
                 out.write(' %s %s\n' % (self.type2def[type], name))
                 
         # Add the lines corresponding to the symmetry
@@ -722,7 +732,7 @@ class ALOHAWriterForFortran(WriteALOHA):
             if self.declaration.is_used('P%s' % self.outgoing):
                 self.get_one_momenta_def(self.outgoing, out)
 
-            if "P1T" in self.tag or "P1L" in self.tag:
+            if any(t in self.tag for t in ("P1T","P1TR","P1TL","P1L")):
                 for i in range(1,4):
                     P = "P%s" % (self.outgoing)
                     value = ["1d-30", "0d0", "1d-15"]
@@ -878,6 +888,13 @@ class ALOHAWriterForFortran(WriteALOHA):
         """Formatting the variable name to Fortran format"""
         
         if isinstance(name, aloha_lib.ExtVariable):
+            if name.lower() == 'bwcutoff':
+                # an argument of the $-veto (P1D) routine, not a model
+                # parameter: including the MODEL files for it breaks the
+                # flavour-merged output, whose coupl.inc declares
+                # FLV_COUPLING without the 'use model_object' that only the
+                # M-tagged routines write
+                return name
             # external parameter nothing to do but handling model prefix
             self.has_model_parameter = True
             if name.lower() in ['pi', 'as', 'mu_r', 'aewm1','g','bwcutoff']:
@@ -1642,7 +1659,7 @@ class ALOHAWriterForFortranLoop(ALOHAWriterForFortran):
                 
         # define the resulting momenta
         if self.offshell:
-            if aloha.loop_mode:
+            if (aloha.loop_mode or aloha.dual_mode):
                 size_p = 4
             else:
                 size_p = 2
@@ -1733,6 +1750,10 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_tag=False):
     def myHash(target_string):
         suffix = ''
         if '%(propa)s' in target_string:
+            if len(target_string.replace('%(propa)s',''))<50:
+                # keep the placeholder where it is: it can sit before a
+                # propagator tag (see join_tag)
+                return target_string
             target_string = target_string.replace('%(propa)s','')
             suffix = '%(propa)s'
             
@@ -1740,6 +1761,23 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_tag=False):
             return '%s%s' % (target_string, suffix)
         else:
             return 'ALOHA_%s%s' % (str(hash(target_string.lower())).replace('-','m'), suffix)
+
+    def join_tag(tag, placeholder):
+        # get_routine_name writes the propagator tag LAST, after the
+        # FLV_Coupling 'M' flag that the placeholder expands to: a $-excluded
+        # (P1D) flavour wavefunction is defined as FFV6_2MP1D_3, not
+        # FFV6_2P1DM_3.
+        tag = list(tag) if tag else []
+        if tag and tag[-1].startswith('P'):
+            return ''.join(tag[:-1]) + placeholder + tag[-1]
+        return ''.join(tag) + placeholder
+
+    if tag:
+        # same normalisation as get_routine_name, which sorts the tag before
+        # building the routine name; without it a loop wavefunction that also
+        # carries a conjugation flag is CALLed as FFS4L3C1_2 while ALOHA writes
+        # FFS4C1L3_2.
+        tag.sort()
 
     if tag and any(t.startswith('P') for t in tag[:-1]):
         # propagator need to be the last entry for the tag
@@ -1769,12 +1807,12 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_tag=False):
                 routine += '_%s' % id2
     
     if routine:
-        if tag is not None:
-            routine += ''.join(tag)
         if unknown_tag and outgoing:
-            routine += '%(propa)s'
+            routine += join_tag(tag, '%(propa)s')
         elif unknown_tag:
-            routine += '%(tags)s'
+            routine += join_tag(tag, '%(tags)s')
+        elif tag is not None:
+            routine += ''.join(tag)
         if outgoing is not None:
             return myHash(routine)+'_%s' % outgoing
 #            return routine +'_%s' % outgoing
@@ -1794,8 +1832,16 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_tag=False):
                 addon = ''
             else:
                 name = short_name
-    if unknown_tag:
-        addon += '%(propa)s'
+    if unknown_tag and outgoing:
+        addon = join_tag(tag, '%(propa)s') if tag is not None else addon + '%(propa)s'
+    elif unknown_tag:
+        # For an amplitude (outgoing == 0) the caller fills 'propa' with '' and
+        # puts the FLV_Coupling flag ('M') into 'tags' instead -- see
+        # HelasAmplitude.get_helas_call_dict; a wavefunction gets the flag
+        # through 'propa'. Same convention as the FFV1_2 scheme above, which
+        # has been guarded this way for a while. Without it the call site
+        # emits FFV2_FFS1_0 while ALOHA writes FFV2_FFS1M_0.
+        addon = join_tag(tag, '%(tags)s') if tag is not None else addon + '%(tags)s'
 
 #    if outgoing is not None:
 #        return '_'.join((name,) + tuple(other_names)) + addon + '_%s' % outgoing
@@ -2082,7 +2128,7 @@ class ALOHAWriterForCPP(WriteALOHA):
         if self.offshell:
             energy_pos = out_size -2
             type = self.particles[self.outgoing-1]
-            if aloha.loop_mode:
+            if (aloha.loop_mode or aloha.dual_mode):
                 size_p = 4
             else:
                 size_p = 4
@@ -2106,14 +2152,14 @@ class ALOHAWriterForCPP(WriteALOHA):
         
         type = self.particles[i-1]
         
-        if aloha.loop_mode:
+        if (aloha.loop_mode or aloha.dual_mode):
             template ='P%(i)d[%(j)d] = %(sign)s%(type)s%(i)d[%(nb)d];\n'
         else:
             template ='P%(i)d[%(j)d] = %(sign)s%(type)s%(i)d.p[%(j)d];\n'
 
         nb2 = 0
         for j in range(4):
-            if not aloha.loop_mode:
+            if (not aloha.loop_mode and not aloha.dual_mode):
                 nb = j 
                 if j == 0: 
                     assert not aloha.mp_precision 
@@ -3053,12 +3099,21 @@ class ALOHAWriterForPython(WriteALOHA):
                                              ''.join(p) % dict_energy))
             
             self.get_one_momenta_def(self.outgoing, out)
-            if "P1T" in self.tag or "P1L" in self.tag:
+            if any(t in self.tag for t in ("P1T","P1TR","P1TL","P1L")):
                 for i, value in zip(range(1,4), ("1e-30", "0.0", "1e-15")):
                     out.write("    if abs(P%(P)s[0])*1e-10 > abs(P%(P)s[%(i)s]): P%(P)s[%(i)s] = %(val)s\n"
                               % {"P": self.outgoing, "i": i, "val": value})
 
-               
+            i = self.outgoing
+            if self.declaration.is_used('Tnorm%s' % i):
+                out.write("    Tnorm{0} = (P{0}[1]*P{0}[1]+P{0}[2]*P{0}[2]+P{0}[3]*P{0}[3])**0.5\n".format(i))
+            if self.declaration.is_used('TnormZ%s' % i):
+                out.write("    TnormZ{0} = Tnorm{0} - P{0}[3]\n".format(i))
+            if self.declaration.is_used('FWP%s' % i):
+                out.write("    FWP{0} = (-P{0}[0] + Tnorm{0})**0.5\n".format(i))
+            if self.declaration.is_used('FWM%s' % i):
+                out.write("    FWM{0} = (-P{0}[0] - Tnorm{0})**0.5\n".format(i))
+
         # Returning result
         return out.getvalue()
 

@@ -2,7 +2,7 @@
 #
 # Copyright (c) 2009 The MadGraph Development team and Contributors
 #
-# This file is a part of the MadGraph 5 project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
@@ -4587,7 +4587,7 @@ class IdentifyHelasTag(diagram_generation.DiagramTag):
 
 
         return [((part.get('spin'), part.get('color')),
-                 (leg.get('id'), leg.get('number'), leg.get('state')))]
+                 (leg.get('id'), leg.get('number'), leg.get('state'), leg.get('onium')))]
         
     @staticmethod
     def vertex_id_from_vertex(vertex, last_vertex, model, ninitial):
@@ -4611,6 +4611,7 @@ class IdentifyHelasTag(diagram_generation.DiagramTag):
             return base_objects.Leg({'number':link.links[0][1][1],
                                      'id':link.links[0][1][0],
                                      'state':link.links[0][1][2],
+                                     'onium':link.links[0][1][3],
                                      'onshell':False})
 
         # This shouldn't happen

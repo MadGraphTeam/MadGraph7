@@ -399,7 +399,7 @@ bottleneck. The madevent run is unchanged, same cross section and error.
 
 Everything below is `g g > N g` with the flag off against `speed`, on the
 same machine. Standalone Fortran is the shipped `check` driver looping
-`SMATRIX`; madmatrix is `check_sa.exe perf` built `FPTYPE=d` on `cppsse4`
+`SMATRIX`; madmatrix is `check_sa.exe perf` built `FPTYPE=d` on `cpu_128b`
 (the default mixed precision build rounds the two to the same value and would
 hide any difference). Two runs each, reproducible to about 0.1%.
 
@@ -826,7 +826,7 @@ so `auto` defers the choice to `output`. It works only because the two modes
 differ in nothing but the diagram order, and `slots` is `speed` reversed --
 verified byte for byte: generating in the `speed` order and reversing at
 output time reproduces a native `slots` generation exactly, in both backends,
-and a session going standalone -> standalone_mg7 -> standalone reproduces its
+and a session going standalone_fortran -> standalone -> standalone_fortran reproduces its
 first output for the third.
 
 **The choice comes from the matrix element exporter, not the output format.**

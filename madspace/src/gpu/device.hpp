@@ -15,14 +15,6 @@ inline void check_error(gpublasStatus_t status) {
     }
 }
 
-inline void check_error(gpurandStatus_t status) {
-    if (status != GPURAND_STATUS_SUCCESS) {
-        throw std::runtime_error(
-            std::format("RAND error: error code {}", static_cast<int>(status))
-        );
-    }
-}
-
 inline void check_error(gpuError_t error) {
     if (error != gpuSuccess) {
         const char* error_str = gpuGetErrorString(error);
@@ -34,7 +26,6 @@ inline void check_error() { check_error(gpuGetLastError()); }
 
 inline void ignore_error(gpuError_t) {}
 inline void ignore_error(gpublasStatus_t) {}
-inline void ignore_error(gpurandStatus_t) {}
 
 class GpuDevice : public Device {
 public:

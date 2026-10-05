@@ -47,7 +47,8 @@ Legend for the mapping:
 | `dsqrt_q2fact1`, `dsqrt_q2fact2` | `beam.fact_scale1`, `beam.fact_scale2` | [=] | rename |
 | `fixed_fac_scale` (and `_scale1/_scale2`) | `beam.fixed_fact_scale` | [!] | MG7 has one flag; LO can fix beam 1 and beam 2 independently. |
 | `dynamical_scale_choice` (int) | `beam.dynamical_scale_choice` (str) | [~] | clean int→string table: `1`(ΣEt)→`transverse_energy`, `2`(HT=Σ transverse mass)→`transverse_mass`, `3`(HT/2)→`half_transverse_mass`, `4`(partonic CM energy)→`partonic_energy`. `-1`(CKKW back-clustering, LO default) and `10` have no MG7 equivalent → fall back to MG7 default `half_transverse_mass` [!]; `0`(user hook) → [x]. |
-| `scalefact`, `mue_over_ref`, `mue_ref_fixed`, `fixed_extra_scale` | — | [x] | scale-variation / EW-scale extras: no MG7 field. |
+| `scalefact` | `beam.scale_factor` | [=] | rename; multiplies the dynamical scale only, as in `setscales.f`. |
+| `mue_over_ref`, `mue_ref_fixed`, `fixed_extra_scale` | — | [x] | EW-scale extras: no MG7 field. |
 
 ## 4. Generation / run
 
@@ -112,7 +113,7 @@ Cuts that are **not representable** in the current MG7 cut engine ([x] unless no
   `disable_multichannel`, `hel_recycling/filtering/splitamp/zeroamp`,
   `gridrun`, `gseed`, `issgridfile`, `d`, `xmtcentral`, `mc_grouped_subproc`,
   `fixed_couplings`, `global_flag`, `aloha_flag`, `small_width_treatment`.
-  → MG7 has its **own** engine knobs (`[vegas]`, `[generation]`, `run.devices`,
+  → MG7 has its **own** engine knobs (`[vegas]`, `[generation]`, `run.device`,
   thread pools, `phasespace.mode/t_channel/flat_mode/…`). A few have loose
   analogues (`disable_multichannel`↔`phasespace.mode`, survey settings↔
   `generation.survey_*`/`[vegas]`), but most are **[x] engine-specific** and
@@ -123,7 +124,7 @@ Cuts that are **not representable** in the current MG7 cut engine ([x] unless no
 
 ## 9. MG7-only (no LO source, keep default) — [mg7-only]
 
-`run.devices`, `run.simd_vector_size`, `run.{cpu,gpu,combine}_thread_pool_size`,
+`run.device`, `run.cpu_mode`, `run.simd_vector_size`, `run.{cpu,gpu,combine}_thread_pool_size`,
 `run.output_format`, `run.verbosity`, `run.dummy_matrix_element`,
 `gridpack.{include_source,include_madspace,include_madspace_source}`,
 `generation.{cpu,gpu}_batch_size`,
@@ -140,7 +141,7 @@ simplified_channel_count,decays}`, all of `[madnis]`.
 - Beams: `ebeam1/2`→`e_cm`, `lpp`→`leptonic` (common case).
 - PDF: `lhaid`/`pdlabel`→`pdf` (with a label/id → name table).
 - Scales: `fixed_ren_scale`, `scale`→`ren_scale`, `dsqrt_q2fact1/2`→`fact_scale1/2`,
-  `dynamical_scale_choice` (int→str table), `fixed_fac_scale`.
+  `dynamical_scale_choice` (int→str table), `fixed_fac_scale`, `scalefact`→`scale_factor`.
 - Generation: `nevents`→`events`, `gridpack`, `bwcutoff`, `sde_strategy`,
   `maxjetflavor`→jet multiparticle, `use_syst`→`systematics`.
 - Cuts: pt/eta(max)/deltaR/mass/sqrt_s for jet/bottom/lepton/photon/missing.

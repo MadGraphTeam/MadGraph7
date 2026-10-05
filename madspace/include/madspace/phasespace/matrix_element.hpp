@@ -5,28 +5,72 @@
 
 namespace madspace {
 
+/**
+ * Calls a matrix element through the UMAMI interface.
+ *
+ * UMAMI (Unified MAtrix eleMent Interface) is `madspace`'s uniform way of
+ * calling matrix-element code — currently the cudacpp plugin — for both
+ * integration and event generation [1] (Sec. 3.3 of [2]). Which quantities are
+ * passed and returned is chosen by @p inputs and @p outputs, given as integer
+ * keys so the interface can be extended without breaking binary compatibility.
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Arguments** (a subset, selected by @p inputs)
+ * - `momenta` – `float`, shape `(batch, particle_count, 4)`.
+ * - `alpha_s` – `float`, shape `(batch,)`.
+ * - `flavor`, `helicity`, `diagram`, `channel` – `int`, shape `(batch,)`.
+ * - `random_color`, `random_helicity`, `random_diagram` – `float`, shape
+ *   `(batch,)` (omitted when @p sample_random_inputs draws them internally).
+ *
+ * **Returns** (a subset, selected by @p outputs)
+ * - `matrix_element` – `float`, shape `(batch,)` – the squared matrix element.
+ * - `diagram_amp2` – `float`, shape `(batch, diagram_count)` – per-diagram
+ *   squared amplitudes.
+ * - `color_index`, `helicity_index`, `diagram_index` – `int`, shape `(batch,)` –
+ *   the sampled color, helicity and diagram.
+ *
+ * **References**
+ * - [1] S. Hageböck et al., "Data-parallel leading-order event generation in
+ *   MadGraph5_aMC@NLO", https://arxiv.org/abs/2507.21039
+ * - [2] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895 (Sec. 3.3)
+ */
 class MatrixElement : public FunctionGenerator {
 public:
+    /// A quantity the matrix element can be asked to consume.
     enum MatrixElementInput {
-        momenta_in,
-        alpha_s_in,
-        flavor_in,
-        random_color_in,
-        random_helicity_in,
-        random_diagram_in,
-        helicity_in,
-        channel_in,
-        diagram_in
+        momenta_in,         ///< Final-state momenta.
+        alpha_s_in,         ///< Strong coupling.
+        flavor_in,          ///< Flavour assignment.
+        random_color_in,    ///< Random number for the color draw.
+        random_helicity_in, ///< Random number for the helicity draw.
+        random_diagram_in,  ///< Random number for the diagram draw.
+        helicity_in,        ///< Fixed helicity.
+        channel_in,         ///< Multi-channel index.
+        diagram_in          ///< Fixed diagram.
     };
 
+    /// A quantity the matrix element can be asked to produce.
     enum MatrixElementOutput {
-        matrix_element_out,
-        diagram_amp2_out,
-        color_index_out,
-        helicity_index_out,
-        diagram_index_out
+        matrix_element_out, ///< Squared matrix element.
+        diagram_amp2_out,   ///< Per-diagram squared amplitudes.
+        color_index_out,    ///< Sampled color.
+        helicity_index_out, ///< Sampled helicity.
+        diagram_index_out   ///< Sampled diagram.
     };
 
+    /**
+     * @param matrix_element_index  Index of the matrix element in the plugin.
+     * @param particle_count         Number of external particles.
+     * @param inputs                 Quantities to pass in (default: just
+     *                               `momenta_in`; required in Python).
+     * @param outputs                Quantities to return (default: just
+     *                               `matrix_element_out`; required in Python).
+     * @param diagram_count          Number of Feynman diagrams.
+     * @param sample_random_inputs   If true, the `random_*` inputs are drawn
+     *                               internally instead of being passed in.
+     */
     MatrixElement(
         std::size_t matrix_element_index,
         std::size_t particle_count,
@@ -35,6 +79,14 @@ public:
         std::size_t diagram_count = 1,
         bool sample_random_inputs = false
     );
+    /**
+     * Take @p matrix_element_index, @p particle_count and @p diagram_count from
+     * an already-loaded matrix element.
+     * @param matrix_element_api    The loaded matrix element.
+     * @param inputs                Quantities to pass in.
+     * @param outputs               Quantities to return.
+     * @param sample_random_inputs  See the other constructor.
+     */
     MatrixElement(
         const MatrixElementApi& matrix_element_api,
         const std::vector<MatrixElementInput>& inputs = {momenta_in},
@@ -49,11 +101,18 @@ public:
             matrix_element_api.diagram_count(),
             sample_random_inputs
         ) {};
+    /// Index of the matrix element in the plugin.
     std::size_t matrix_element_index() const { return _matrix_element_index; }
+    /// Number of Feynman diagrams.
     std::size_t diagram_count() const { return _diagram_count; }
+    /// Number of external particles.
     std::size_t particle_count() const { return _particle_count; }
+    /// The configured input quantities.
     const std::vector<MatrixElementInput>& inputs() const { return _inputs; }
+    /// The configured output quantities.
     const std::vector<MatrixElementOutput>& outputs() const { return _outputs; }
+    /// The inputs that must be supplied by the caller (excludes the ones drawn
+    /// internally when @p sample_random_inputs is set).
     std::vector<MatrixElementInput> external_inputs() const;
 
 private:

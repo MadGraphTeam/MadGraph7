@@ -251,11 +251,14 @@ KERNELSPEC void kernel_two_to_two_particle_scattering(
     auto p1_com = scatter_out.first;
     auto det_tmp = scatter_out.second;
     auto p1_rot = rotate<T>(p1_com, pa_com);
-    auto p1_lab = boost<T>(p1_rot, p_tot, 1.);
-    store_mom<T>(p1, p1_lab);
-    for (int i = 0; i < 4; ++i) {
-        p2[i] = p_tot[i] - p1_lab[i];
-    }
+    // p1 and p2 back to back in the rest frame, the softer one boosted on its
+    // mass shell and the other p_tot minus it; see boost_two_body.
+    auto m_tot = sqrt(max(s_tot, EPS2));
+    auto e2_com = 0.5 * (m_tot - (m1 - m2) * (m1 + m2) / m_tot);
+    FourMom<T> p2_rot{max(e2_com, 0.), -p1_rot[1], -p1_rot[2], -p1_rot[3]};
+    auto p_out = boost_two_body<T>(p1_rot, m1 * m1, p2_rot, m2 * m2, p_tot, s_tot);
+    store_mom<T>(p1, p_out.first);
+    store_mom<T>(p2, p_out.second);
     det = det_tmp;
 }
 

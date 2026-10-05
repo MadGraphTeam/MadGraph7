@@ -1771,7 +1771,7 @@ C     -----------------------------------------
 
       integer ids(nexternal)
       integer i,j
-      logical trivial_boost 
+      logical trivial_boost
 
 c     uncompress
       call mapid(frame_id, ids)
@@ -1807,12 +1807,18 @@ c     find the boost momenta --sum of particles--
             enddo
          endif
       enddo
-      do j=1,3	
+      do j=1,3
           Pboost(j) = -1 * Pboost(j)
-      enddo	    
+      enddo
       do i=1, nexternal
          call boostx(p1(0,i), pboost, p2(0,i))
-      enddo   
+      enddo
+
+c     A single selected particle must come out *exactly* at rest, not at
+c     rest to rounding: HELAS switches quantisation axis at exactly zero
+c     three-momentum. See Template/Common/Source/impose_frame_rest.f.
+      call impose_frame_rest(ids, nexternal, p2)
+
       return
       end
 

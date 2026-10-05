@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2012 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2012 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -16,6 +16,8 @@
 
 from __future__ import absolute_import
 import unittest
+import json
+import shutil
 import tempfile
 import madgraph.various.banner as bannermod
 import madgraph.various.misc as misc
@@ -541,7 +543,40 @@ Beams:LHEF='events_ouaf.lhe.gz'
 
 
 
+import re
 import shutil
+class TestRunCardNLOMeFrame(unittest.TestCase):
+    """me_frame is only meaningful for the whole initial state or for
+    final-state particles; a partial initial state must be refused at parse
+    time rather than reaching the generated Fortran."""
+
+    def _card(self, me_frame):
+        run_card = bannermod.RunCardNLO()
+        run_card.set('me_frame', me_frame, user=True)
+        return run_card
+
+    def test_a_single_beam_is_refused(self):
+        # The regression: this used to pass check_validity because only a
+        # *mix* of initial and final legs was tested. A massless beam then
+        # died in get_me_frame_boost with an opaque 'not timelike' stop, and
+        # a massive one silently built the frame the guard means to refuse.
+        for me_frame in ([1], [2]):
+            with self.assertRaises(bannermod.InvalidRunCard):
+                self._card(me_frame).check_validity()
+
+    def test_both_beams_are_the_partonic_cm_and_allowed(self):
+        self._card([1, 2]).check_validity()
+
+    def test_final_state_only_is_allowed(self):
+        self._card([3, 4]).check_validity()
+        self._card([3]).check_validity()
+
+    def test_mixing_initial_and_final_is_refused(self):
+        for me_frame in ([1, 3], [1, 2, 3]):
+            with self.assertRaises(bannermod.InvalidRunCard):
+                self._card(me_frame).check_validity()
+
+
 class TestRunCard(unittest.TestCase):
     """ A class to test the TestConfig functionality """
     # a lot of the funtionality are actually already tested in the child
@@ -650,6 +685,7 @@ class TestRunCard(unittest.TestCase):
         text2 = open(fsock2.name).read()
         self.assertFalse("$RUNNING" in text1)
         self.assertFalse("$RUNNING" in text2)
+        text1 = text1.replace('\n\n\n', '\n')
         text1 = text1.replace('\n \n', '\n')
         text2 = text2.replace('\n \n', '\n')
         self.assertEqual(text1, text2)
@@ -1003,6 +1039,168 @@ c
         self.assertNotIn('CHECK2', new_text)
 
 
+    def test_custom_fcts_uppercase(self):
+        """fortran is case insensitive: a custom_fcts file written in upper case
+           (which is the idiomatic f77 style) has to be accepted, has to be
+           written in the correct file and has to replace --not duplicate--
+           the original routine."""
+
+        custom_contents = """
+      LOGICAL FUNCTION DUMMY_CUTS(P)
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      DOUBLE PRECISION P(0:3,NEXTERNAL)
+      DUMMY_CUTS = .TRUE.
+      CHECKUP
+      RETURN
+      END
+
+      SUBROUTINE USER_UPPER_FCT()
+      IMPLICIT NONE
+      CHECKUSER
+      RETURN
+      END
+        """
+
+        # prepare simplify setup
+        os.mkdir(pjoin(self.tmpdir,'SubProcesses'))
+        import madgraph.iolibs.files as files
+        files.cp(pjoin(MG5DIR,'Template','LO','SubProcesses','dummy_fct.f'), pjoin(self.tmpdir,'SubProcesses'))
+        open(pjoin(self.tmpdir, 'custom'),'w').write(custom_contents)
+
+        LO = bannermod.RunCardLO()
+        # this used to raise InvalidRunCard since the lookup was case sensitive
+        LO.edit_dummy_fct_from_file([pjoin(self.tmpdir, 'custom')], self.tmpdir)
+
+        # the correct file is the one which has been patched
+        self.assertTrue(os.path.exists(pjoin(self.tmpdir,'SubProcesses','dummy_fct.f.orig')))
+        new_text = open(pjoin(self.tmpdir,'SubProcesses','dummy_fct.f')).read()
+        self.assertIn('CHECKUP', new_text)
+        self.assertIn('CHECKUSER', new_text)
+
+        # the original dummy_cuts has to be removed, not duplicated
+        # (otherwise the fortran compiler complains about a duplicated symbol)
+        self.assertEqual(1, len(re.findall(r'FUNCTION\s+DUMMY_CUTS', new_text, re.I)))
+        # the routine we did not overwrite is still there
+        self.assertIn('GET_DUMMY_X1', new_text)
+
+        # and cleaning still works
+        LO.edit_dummy_fct_from_file([], self.tmpdir)
+        self.assertFalse(os.path.exists(pjoin(self.tmpdir,'SubProcesses','dummy_fct.f.orig')))
+        new_text = open(pjoin(self.tmpdir,'SubProcesses','dummy_fct.f')).read()
+        self.assertNotIn('CHECKUP', new_text)
+        self.assertNotIn('CHECKUSER', new_text)
+
+    def test_custom_fcts_unknown_fct(self):
+        """a function which is not allowed to be overwritten has to raise an
+           error which actually names that function"""
+
+        custom_contents = """
+      LOGICAL FUNCTION NOT_A_DUMMY_FCT(P)
+      IMPLICIT NONE
+      NOT_A_DUMMY_FCT = .TRUE.
+      RETURN
+      END
+        """
+
+        os.mkdir(pjoin(self.tmpdir,'SubProcesses'))
+        import madgraph.iolibs.files as files
+        files.cp(pjoin(MG5DIR,'Template','LO','SubProcesses','dummy_fct.f'), pjoin(self.tmpdir,'SubProcesses'))
+        open(pjoin(self.tmpdir, 'custom'),'w').write(custom_contents)
+
+        for card in [bannermod.RunCardLO(), bannermod.RunCardNLO()]:
+            try:
+                card.edit_dummy_fct_from_file([pjoin(self.tmpdir, 'custom')], self.tmpdir)
+            except bannermod.InvalidRunCard as error:
+                # the name of the offending function has to be in the message
+                self.assertIn('NOT_A_DUMMY_FCT', str(error))
+                self.assertNotIn('%s', str(error))
+            else:
+                self.fail('InvalidRunCard should have been raised')
+
+
+    # the custom dynamical scale advertised in the FAQ (answers.launchpad.net/mg5amcnlo/+faq/3325)
+    custom_scale = """
+      double precision function user_dynamical_scale(P)
+      implicit none
+      include 'nexternal.inc'
+      double precision P(0:3, nexternal)
+      include 'run.inc'
+      character*80 temp_scale_id
+      common/ctemp_scale_id/temp_scale_id
+      double precision dot, pt
+      double precision xm2
+      xm2 = dot(P(0,3),P(0,3))
+      user_dynamical_scale = sqrt(xm2 + 0.5d0*(pt(P(0,3))**2 + pt(P(0,4))**2))
+      temp_scale_id = 'CHECKSCALE'
+      return
+      end
+        """
+
+    def test_custom_fcts_vector_inc_lo(self):
+        """a (pre 3.6) LO custom function including run.inc needs vector.inc to
+           be added since run.inc dimensions arrays with VECSIZE_MEMMAX"""
+
+        os.mkdir(pjoin(self.tmpdir,'SubProcesses'))
+        import madgraph.iolibs.files as files
+        files.cp(pjoin(MG5DIR,'Template','LO','SubProcesses','dummy_fct.f'), pjoin(self.tmpdir,'SubProcesses'))
+        open(pjoin(self.tmpdir, 'custom'),'w').write(self.custom_scale)
+
+        LO = bannermod.RunCardLO()
+        LO.edit_dummy_fct_from_file([pjoin(self.tmpdir, 'custom')], self.tmpdir)
+
+        new_text = open(pjoin(self.tmpdir,'SubProcesses','dummy_fct.f')).read()
+        self.assertIn('CHECKSCALE', new_text)
+        fct = new_text[new_text.index('USER_DYNAMICAL_SCALE'):]
+        self.assertIn("INCLUDE 'vector.inc'", fct)
+        # and it has to be included *before* run.inc
+        self.assertLess(fct.index("INCLUDE 'vector.inc'"), fct.index("INCLUDE 'run.inc'"))
+
+    def test_custom_fcts_no_vector_inc_nlo(self):
+        """vector.inc does not exist in a NLO output (and run.inc does not need
+           it there): it must not be added to the user function.
+           see bug #2147417"""
+
+        os.mkdir(pjoin(self.tmpdir,'SubProcesses'))
+        import madgraph.iolibs.files as files
+        files.cp(pjoin(MG5DIR,'Template','NLO','SubProcesses','dummy_fct.f'), pjoin(self.tmpdir,'SubProcesses'))
+        open(pjoin(self.tmpdir, 'custom'),'w').write(self.custom_scale)
+
+        NLO = bannermod.RunCardNLO()
+        NLO.edit_dummy_fct_from_file([pjoin(self.tmpdir, 'custom')], self.tmpdir)
+
+        new_text = open(pjoin(self.tmpdir,'SubProcesses','dummy_fct.f')).read()
+        # the function is correctly written ...
+        self.assertIn('CHECKSCALE', new_text)
+        self.assertIn('USER_DYNAMICAL_SCALE', new_text)
+        # ... but without any include of vector.inc (which does not exist at NLO)
+        self.assertNotIn('vector.inc', new_text.lower())
+
+        # cleaning still works
+        NLO.edit_dummy_fct_from_file([], self.tmpdir)
+        self.assertFalse(os.path.exists(pjoin(self.tmpdir,'SubProcesses','dummy_fct.f.orig')))
+        new_text = open(pjoin(self.tmpdir,'SubProcesses','dummy_fct.f')).read()
+        self.assertNotIn('CHECKSCALE', new_text)
+
+    def test_retro_compatible_mode_selection(self):
+        """the guard on the shipped file: a fix is only applied if the original
+           file does use the corresponding include itself"""
+
+        # the static method itself is unchanged when explicitly asked for the fix
+        lines = ["      double precision function user_dynamical_scale(P)",
+                 "      implicit none",
+                 "      include 'run.inc'",
+                 "      end"]
+        self.assertIn("       include 'vector.inc'",
+                      bannermod.RunCard.retro_compatible_custom_fct(lines, mode=['vector.inc']))
+        # but an empty mode disables every fix
+        self.assertEqual(lines,
+                      bannermod.RunCard.retro_compatible_custom_fct(lines, mode=[]))
+
+        # LO opts-in for the vector.inc fix, NLO does not
+        self.assertIn('vector.inc', bannermod.RunCardLO.retro_compatible_modes)
+        self.assertNotIn('vector.inc', bannermod.RunCardNLO.retro_compatible_modes)
+
     def test_pdlabel_block(self):
         """ check that pdlabel handling is done correctly
             this include that check_validity works as expected for such parameter too """
@@ -1014,9 +1212,13 @@ c
         run_card['lpp2'] = 1
         run_card.check_validity()
         # check that pdlabel is set correctly
-        self.assertEqual(run_card['pdlabel'], 'mixed')
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value
+        # 'mixed'/'nn23lo1': the proton beam now defaults to LHAPDF
+        # (NNPDF40_lo_as_01180), so the pair is eva + lhapdf and the combined
+        # label is the one that links the right library.
+        self.assertEqual(run_card['pdlabel'], 'lhapdf')
         self.assertEqual(run_card['pdlabel1'], 'eva') # since automatically set to eva if lpp=3/4 and pdlabel is lhapdf/nnpdf
-        self.assertEqual(run_card['pdlabel2'], 'nn23lo1')
+        self.assertEqual(run_card['pdlabel2'], 'lhapdf')
         run_card.set('pdlabel', 'lhapdf', user=True) 
         run_card.check_validity()
         self.assertEqual(run_card['pdlabel'], 'lhapdf') #important for linking the correct library
@@ -1035,7 +1237,10 @@ c
         self.assertEqual(run_card['pdlabel'], run_card['pdlabel1'])
         # should now allow assymetric pdlabel here
         run_card.set('pdlabel1','lhapdf', user=True) 
-        run_card.set('pdlabel2', 'nnpdf23lo1', user=True) 
+        # 'nn23lo1' rather than the invalid 'nnpdf23lo1' used before: that one
+        # was rejected and left pdlabel2 at its default, which only differed
+        # from 'lhapdf' while the default was nn23lo1 itself.
+        run_card.set('pdlabel2', 'nn23lo1', user=True) 
         with self.assertRaises(bannermod.InvalidRunCard):
             run_card.check_validity()
         run_card.set('pdlabel2', 'lhapdf', user=True) 
@@ -1163,6 +1368,76 @@ c
         self.assertIn("True = fixed_fac_scale2", f.getvalue())
 
 
+    def test_negative_iseed(self):
+        """Check that a negative iseed is preserved on disk across runs but
+        exported as its absolute value to the Fortran include file. This is
+        verified for both LO and NLO run cards, and for the
+        `reset_iseed_in_run_card` helper used at run time.
+        """
+        import madgraph.interface.common_run_interface as common_run
+
+        for run_card_class in (bannermod.RunCardLO, bannermod.RunCardNLO):
+            # 1. write_include_file must export abs(iseed)
+            run_card = run_card_class()
+            run_card.set('iseed', -42, user=True)
+            f = io.StringIO()
+            run_card.write_include_file(None, output_file=f)
+            content = f.getvalue()
+            self.assertIn("iseed = 42", content)
+            self.assertNotIn("iseed = -42", content)
+
+            # positive value is unchanged
+            run_card = run_card_class()
+            run_card.set('iseed', 7, user=True)
+            f = io.StringIO()
+            run_card.write_include_file(None, output_file=f)
+            self.assertIn("iseed = 7", content := f.getvalue())
+            self.assertNotIn("iseed = -7", content)
+
+            # 2. reset_iseed_in_run_card preserves negative iseed on disk
+            #    but resets a positive iseed to 0
+            me_dir = tempfile.mkdtemp(prefix='amc_iseed_')
+            os.mkdir(pjoin(me_dir, 'Cards'))
+            try:
+                # negative case: must NOT be reset to 0
+                run_card = run_card_class()
+                run_card.set('iseed', -42, user=True)
+                run_card.write(pjoin(me_dir, 'Cards', 'run_card.dat'))
+
+                class FakeCmd:
+                    pass
+                fake = FakeCmd()
+                fake.run_card = run_card
+                fake.me_dir = me_dir
+
+                common_run.CommonRunCmd.reset_iseed_in_run_card(fake)
+                self.assertEqual(run_card['iseed'], -42)
+                # also check the on-disk value
+                reloaded = bannermod.RunCard(pjoin(me_dir, 'Cards', 'run_card.dat'))
+                self.assertEqual(reloaded['iseed'], -42)
+
+                # positive case: must be reset to 0
+                run_card = run_card_class()
+                run_card.set('iseed', 7, user=True)
+                run_card.write(pjoin(me_dir, 'Cards', 'run_card.dat'))
+                fake.run_card = run_card
+                common_run.CommonRunCmd.reset_iseed_in_run_card(fake)
+                self.assertEqual(run_card['iseed'], 0)
+                reloaded = bannermod.RunCard(pjoin(me_dir, 'Cards', 'run_card.dat'))
+                self.assertEqual(reloaded['iseed'], 0)
+
+                # zero case: nothing happens, stays at zero
+                run_card = run_card_class()
+                run_card.set('iseed', 0, user=True)
+                run_card.write(pjoin(me_dir, 'Cards', 'run_card.dat'))
+                fake.run_card = run_card
+                common_run.CommonRunCmd.reset_iseed_in_run_card(fake)
+                self.assertEqual(run_card['iseed'], 0)
+            finally:
+                import shutil
+                shutil.rmtree(me_dir)
+
+
 class TestRunCardMG7(unittest.TestCase):
     """Test the TOML run_card (RunCardMG7) used by the mg7/madnis mode."""
 
@@ -1280,6 +1555,34 @@ class TestRunCardMG7(unittest.TestCase):
             # ren_scale and fact_scale1 share scan-id 1 -> always move together
             self.assertIn((ren, fac), [(91.0, 45.5), (172.0, 86.0)])
 
+    def test_run_card_scan_summary_json(self):
+        """RunCardIterator.write_summary also writes a json summary"""
+        tmpdir = tempfile.mkdtemp()
+        try:
+            events = pjoin(tmpdir, 'Events')
+            for run in ['run_01', 'run_02']:
+                os.makedirs(pjoin(events, run))
+            it = bannermod.RunCardIterator.__new__(bannermod.RunCardIterator)
+            it.param_order = ['run_card#ebeam1']
+            it.cross = [
+                {'run_name': 'run_01', 'bench': [6500.], 'cross(pb)': 2.0, 'error(pb)': 0.1},
+                {'run_name': 'run_02', 'bench': [7000.], 'exception': ValueError('boom')},
+            ]
+            path = pjoin(events, 'scan_run_01.txt')
+            it.write_summary(path)
+            with open(pjoin(events, 'scan_run_01.json')) as fsock:
+                data = json.load(fsock)
+            self.assertEqual(data['scan_parameters'], [{'id': 'run_card#ebeam1'}])
+            self.assertEqual(data['points'][0]['parameters'], {'run_card#ebeam1': 6500.})
+            self.assertEqual(data['points'][0]['results'],
+                             {'cross(pb)': 2.0, 'error(pb)': 0.1})
+            # a point that crashed keeps its error message and has no result
+            self.assertEqual(data['points'][1]['exception'], 'boom')
+            self.assertEqual(data['points'][1]['results'],
+                             {'cross(pb)': None, 'error(pb)': None})
+        finally:
+            shutil.rmtree(tmpdir)
+
     def test_from_LO_conversion(self):
         """RunCardMG7.from_LO ports the supported LO settings and reports the rest"""
         lo = bannermod.RunCardLO()
@@ -1289,6 +1592,7 @@ class TestRunCardMG7(unittest.TestCase):
         lo['ptj'] = 30
         lo['etaj'] = 4.5
         lo['dynamical_scale_choice'] = 3
+        lo['scalefact'] = 0.5
         lo['SDE_strategy'] = 2
         lo['maxjetflavor'] = 5
         lo['xqcut'] = 20          # merging -> not supported
@@ -1298,6 +1602,7 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(mg7['beam']['e_cm'], 13000.0)
         self.assertEqual(mg7['generation']['events'], 25000)
         self.assertEqual(mg7['beam']['dynamical_scale_choice'], 'half_transverse_mass')
+        self.assertEqual(mg7['beam']['scale_factor'], 0.5)
         self.assertEqual(mg7['phasespace']['sde_strategy'], 'denominators')
         self.assertIn(5, mg7['multiparticles']['jet'])
         self.assertEqual(mg7['cuts']['jet-pt'], {'min': 30.0})
@@ -1311,6 +1616,37 @@ class TestRunCardMG7(unittest.TestCase):
         buf = io.StringIO()
         mg7.write(buf, template=self.template)
         tomllib.loads(buf.getvalue())
+
+    def test_int_with_operator_is_not_silently_zero(self):
+        """'ht/4' used to parse as 0, i.e. dynamical_scale_choice = user hook"""
+        fmt = bannermod.ConfigFile.format_variable
+        self.assertEqual(fmt('10/2', int), 5)
+        self.assertEqual(fmt('2*3', int), 6)
+        for bad in ('ht/4', 'foo*2', '4/0'):
+            self.assertRaises(bannermod.InvalidCmd, fmt, bad, int)
+        lo = bannermod.RunCardLO()
+        self.assertRaises(bannermod.InvalidCmd, lo.__setitem__, 'dynamical_scale_choice', 'ht/4')
+        self.assertEqual(lo['dynamical_scale_choice'], -1)
+
+    def test_scale_factor(self):
+        """[beam] scale_factor: default, legacy view, and the fixed-scale warning"""
+        rc = bannermod.RunCardMG7()
+        self.assertEqual(rc['beam']['scale_factor'], 1.0)
+        # legacy 'scalefact' view: the factor, or 1.0 when both scales are fixed
+        rc['beam']['scale_factor'] = 0.25
+        self.assertEqual(rc['scalefact'], 0.25)
+        rc['beam']['fixed_ren_scale'] = True
+        rc['beam']['fixed_fact_scale'] = True
+        self.assertEqual(rc['scalefact'], 1.0)
+        # ... and that combination warns rather than silently doing nothing
+        with self.assertLogs('madevent.cards', level='WARNING') as cm:
+            rc.check_validity()
+        self.assertIn('scale_factor', ' '.join(cm.output))
+        # a non-positive factor is refused
+        rc['beam']['fixed_ren_scale'] = False
+        rc['beam']['fixed_fact_scale'] = False
+        rc['beam']['scale_factor'] = 0.0
+        self.assertRaises(bannermod.InvalidRunCard, rc.check_validity)
 
     def test_defaults_and_section_access(self):
         """default values are accessible through nested-section views"""
@@ -1339,7 +1675,7 @@ class TestRunCardMG7(unittest.TestCase):
         out = io.StringIO()
         rc.write(out, template=self.template)
         data = tomllib.loads(out.getvalue())
-        self.assertEqual(data['run']['output_format'], 'lhe')
+        self.assertEqual(data['run']['output_format'], 'lhe_npy')
         self.assertEqual(data['beam']['e_cm'], 13000.0)
         self.assertIs(data['vegas']['enable'], True)
         self.assertEqual(data['multiparticles']['photon'], [22])
@@ -1383,6 +1719,173 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertIs(rc['beam']['leptonic'], True)
         self.assertEqual(rc['beam']['e_cm'], 1000.0)
         self.assertFalse([k for k in rc['cuts'] if k.startswith('jet')])
+
+
+class FakeParticle(dict):
+    def get(self, key, default=None):
+        return dict.get(self, key, default)
+
+
+class FakeModel(dict):
+    """The little of a model the [histograms] defaults look at."""
+
+    NAMES = {1: 'd', 2: 'u', 5: 'b', 6: 't', 11: 'e-', 13: 'mu-', 21: 'g',
+             22: 'a', 23: 'z', 24: 'w+', 25: 'h'}
+
+    def __init__(self, masses=None):
+        super().__init__(parameter_dict=masses or {'MT': 173.0})
+
+    def get(self, key, default=None):
+        return dict.get(self, key, default)
+
+    def get_particle(self, pdg):
+        pdg = abs(pdg)
+        return FakeParticle(name=self.NAMES.get(pdg, 'x%d' % pdg),
+                            self_antipart=pdg in (21, 22, 23, 25),
+                            mass='MT' if pdg == 6 else 'ZERO')
+
+
+def mg7_proc(initial, final, model=None):
+    """One process, in the shape create_default_for_process is handed."""
+    legs = [{'state': False, 'id': i} for i in initial]
+    legs += [{'state': True, 'id': i} for i in final]
+    return {'legs': legs, 'legs_with_decays': [], 'model': model or FakeModel()}
+
+
+class TestRunCardMG7Histograms(unittest.TestCase):
+    """[histograms]: the default plots written at output time."""
+
+    class PC(dict):
+        def __init__(self, ninitial=2):
+            super().__init__(ninitial=ninitial, loop_induced=False,
+                             colored_pdgs=[])
+
+    def build(self, processes, ninitial=2):
+        rc = bannermod.RunCardMG7()
+        rc.create_default_for_process(self.PC(ninitial), '', processes)
+        return rc
+
+    def test_one_group_per_particle(self):
+        """p p > t t~: the tops get a [multiparticles] group of their own"""
+        rc = self.build([[mg7_proc([21, 21], [6, -6])]])
+        self.assertEqual(rc['multiparticles']['t'], [6, -6])
+        keys = list(rc['histograms'])
+        self.assertEqual(keys, ['t_1-pt', 't_2-pt', 't_1-eta', 't_2-eta',
+                                't_1-t_2-pair_mass', 'sqrt_s', 'weight'])
+        self.assertEqual(rc['histograms']['t_1-pt']['min'], 0.)
+        self.assertGreater(rc['histograms']['t_1-pt']['max'], 0.)
+        self.assertEqual(rc['histograms']['t_1-eta']['min'],
+                         -rc['histograms']['t_1-eta']['max'])
+
+    def test_predefined_group_when_flavours_are_merged(self):
+        """a merged-flavour leg (81/82/83) is histogrammed as its group
+
+        The run time only ever sees the representative of a merged group, so
+        asking for "e" in a `p p > l+ l-` run would select nothing.
+        """
+        rc = self.build([[mg7_proc([81, -81], [82, -82])]])
+        self.assertEqual([k for k in rc['histograms'] if k.endswith('-pt')],
+                         ['lepton_1-pt', 'lepton_2-pt'])
+        self.assertNotIn('e', rc['multiparticles'])
+
+    def test_predefined_group_when_several_members(self):
+        """p p > j j is one 'jet' group, not one group per flavour"""
+        rc = self.build([[mg7_proc([21, 21], [21, 21]),
+                          mg7_proc([21, 21], [1, -1])]])
+        self.assertEqual([k for k in rc['histograms'] if k.endswith('-pt')],
+                         ['jet_1-pt', 'jet_2-pt'])
+
+    def test_group_that_is_a_single_particle(self):
+        """b and a have a group of their own already (bottom, photon)"""
+        rc = self.build([[mg7_proc([21, 21], [5, -5])]])
+        self.assertEqual([k for k in rc['histograms'] if k.endswith('-pt')],
+                         ['bottom_1-pt', 'bottom_2-pt'])
+
+    def test_multiplicity_is_the_smallest_over_processes(self):
+        """an index has to exist in every subprocess, or it is an error there"""
+        rc = self.build([[mg7_proc([21, 21], [6, -6, 21]),
+                          mg7_proc([21, 1], [6, -6, 1])]])
+        keys = [k for k in rc['histograms'] if k.endswith('-pt')]
+        # two tops always, one jet always (never two)
+        self.assertEqual(keys, ['t_1-pt', 't_2-pt', 'jet-pt'])
+
+    def test_decays_are_resolved(self):
+        """p p > z, z > e+ e- plots the leptons, not the z"""
+        proc = mg7_proc([81, -81], [23])
+        proc['legs_with_decays'] = [{'state': False, 'id': 81},
+                                    {'state': False, 'id': -81},
+                                    {'state': True, 'id': 82},
+                                    {'state': True, 'id': -82}]
+        rc = self.build([[proc]])
+        self.assertEqual([k for k in rc['histograms'] if k.endswith('-pt')],
+                         ['lepton_1-pt', 'lepton_2-pt'])
+
+    def test_decay_process_uses_the_decaying_mass(self):
+        """a 1 -> N width has no collider energy to scale the ranges with"""
+        rc = self.build([[mg7_proc([6], [5, 24])]], ninitial=1)
+        self.assertEqual(rc['histograms']['sqrt_s']['max'], 200.)
+        self.assertEqual(rc['histograms']['bottom-pt']['max'], 100.)
+
+    def test_every_pair_gets_an_invariant_mass(self):
+        rc = self.build([[mg7_proc([21, 21], [6, -6, 25])]])
+        pairs = [k for k in rc['histograms'] if k.endswith('-pair_mass')]
+        self.assertEqual(pairs, ['t_1-t_2-pair_mass', 't_1-h-pair_mass',
+                                 't_2-h-pair_mass'])
+
+    def test_hwu_output_is_off_by_default(self):
+        """the HwU file is a second copy of what info.json already has"""
+        rc = self.build([[mg7_proc([21, 21], [6, -6])]])
+        self.assertIs(rc['run']['write_hwu'], False)
+        out = io.StringIO()
+        rc['run']['write_hwu'] = True
+        rc.write(out)
+        self.assertIn('write_hwu = true', out.getvalue())
+        self.assertIs(bannermod.RunCardMG7(out.getvalue())['run']['write_hwu'],
+                      True)
+
+    def test_weight_distribution(self):
+        """'weight' is the reserved key for the event weight itself
+
+        It is binned in units of the cross section, so the range does not
+        depend on the process (an unweighted sample is a spike at 1).
+        """
+        rc = self.build([[mg7_proc([21, 21], [6, -6])]])
+        weight = rc['histograms']['weight']
+        self.assertEqual(weight['min'], 0.)
+        self.assertGreater(weight['max'], 1.)
+
+    def test_round_trip(self):
+        """the generated section survives write() + read()"""
+        rc = self.build([[mg7_proc([21, 21], [6, -6])]])
+        out = io.StringIO()
+        rc.write(out)
+        back = bannermod.RunCardMG7(out.getvalue())
+        self.assertEqual(dict(back['histograms']), dict(rc['histograms']))
+        self.assertEqual(back['multiparticles']['t'], [6, -6])
+
+    def test_remove_and_restore(self):
+        """set histograms OFF / default"""
+        rc = self.build([[mg7_proc([21, 21], [6, -6])]])
+        default = io.StringIO()
+        rc.write(default)
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.toml',
+                                         delete=False) as tmp:
+            tmp.write(default.getvalue())
+            path = tmp.name
+        try:
+            rc.remove_all_histograms()
+            self.assertEqual(dict(rc['histograms']), {})
+            self.assertTrue(rc.restore_default_histograms(path))
+            self.assertIn('t_1-pt', rc['histograms'])
+            self.assertFalse(rc.restore_default_histograms(path + '.missing'))
+        finally:
+            os.remove(path)
+
+    def test_no_process_no_histograms(self):
+        """no crash (and nothing written) without usable process information"""
+        rc = bannermod.RunCardMG7()
+        rc.create_default_for_process(self.PC(), '', [])
+        self.assertEqual(dict(rc['histograms']), {})
 
 
 MadLoopParam = bannermod.MadLoopParam

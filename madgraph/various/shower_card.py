@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2011 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2011 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -197,6 +197,10 @@ class ShowerCard(banner.RunCard):
                        py8='qed_shower')
         self.add_param("primordialkt", False, comment="T = enable primordial parton k_T  !ONLY FOR PYTHIA8!",
                         py8='primordialkt')
+        # resolved by amcatnlo_run_interface, which passes the HepMC version
+        # and its compilation flags to the shower script via banner.dat
+        self.add_param("hepmc_format", "auto", comment="HepMC version of the output: auto, hepmc2 or hepmc3 !ONLY FOR PYTHIA8!",
+                       py8='hepmc_format', allowed=['auto', 'hepmc2', 'hepmc3'])
 
         # ME correction
         self.add_param('space_shower_me_corrections', False, comment= "MECs for ISR",
@@ -345,6 +349,9 @@ class ShowerCard(banner.RunCard):
         for key in self:
             value = self[key]
             key = key.lower()
+            if key == 'hepmc_format':
+                # passed to the shower script through banner.dat
+                continue
             if isinstance(value, bool): 
                 # deal with special case for pythia:
                 if key in ['ue_enabled', 'hadronize'] and self.shower == 'PYTHIA6':

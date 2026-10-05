@@ -68,6 +68,30 @@ void update_mass_min_max(
         current_decay->mass ? current_decay->mass : current_decay->max_mass;
 }
 
+// Masses of the external momenta in the order they are handed to boost_beam,
+// i.e. after the channel permutation. A position whose mass differs between
+// permutations gets -1, and boost_beam reads that mass off the momentum.
+std::vector<double> lab_masses(
+    const Topology& topology, const nested_vector2<me_int_t>& permutations
+) {
+    std::vector<double> masses = topology.incoming_masses();
+    const auto& out = topology.outgoing_masses();
+    masses.insert(masses.end(), out.begin(), out.end());
+    if (permutations.empty()) {
+        return masses;
+    }
+    std::vector<double> result(masses.size());
+    for (std::size_t i = 0; i < masses.size(); ++i) {
+        result.at(i) = masses.at(permutations.at(0).at(i));
+        for (const auto& perm : permutations) {
+            if (masses.at(perm.at(i)) != result.at(i)) {
+                result.at(i) = -1.;
+            }
+        }
+    }
+    return result;
+}
+
 nested_vector2<me_int_t> invert_permutations(nested_vector2<me_int_t> perms_in) {
     nested_vector2<me_int_t> perms_out(perms_in.size());
     for (auto [perm_in, perm_out] : zip(perms_in, perms_out)) {
@@ -134,7 +158,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             NamedVector<Type> in{
                 {"random",
                  batch_float_array(
-                     3 * topology.outgoing_masses().size() - (leptonic ? 4 : 2)
+                     PhaseSpaceMapping::random_dim_for(topology, leptonic)
                  )}
             };
             // Opt-in discrete channel: only declared when the t-channel strategy
@@ -148,7 +172,10 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             }
             return in;
         }(),
-        {{"momenta", batch_four_vec_array(topology.outgoing_masses().size() + 2)},
+        {{"momenta",
+          batch_four_vec_array(
+              topology.outgoing_masses().size() + topology.incoming_masses().size()
+          )},
          {"x1", batch_float},
          {"x2", batch_float}},
         permutations.size() > 1
@@ -156,14 +183,19 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             : NamedVector<Type>{}
     ),
     _topology(topology),
-    _cuts(cuts.value_or(Cuts(topology.outgoing_masses().size() + 2))),
+    _cuts(cuts.value_or(Cuts(
+        topology.outgoing_masses().size() + topology.incoming_masses().size()
+    ))),
     _pi_factors(
         std::pow(2 * PI, 4 - 3 * static_cast<int>(topology.outgoing_masses().size()))
     ),
     _sqrt_s_lab(cm_energy),
     _leptonic(leptonic),
+    // A decay has no beams to sample momentum fractions for: the root
+    // virtuality is fixed at the decaying particle's mass (passed as
+    // cm_energy) and there is no boost into a lab frame.
     _map_luminosity(
-        !leptonic &&
+        !leptonic && !topology.is_decay() &&
         (_topology.t_propagator_count() == 0 ||
          t_channel_mode != PhaseSpaceMapping::chili)
     ),
@@ -180,6 +212,112 @@ PhaseSpaceMapping::PhaseSpaceMapping(
              _cuts.pt_min(),
              _cuts.eta_max())) {
         decay_info.at(index) = {m_min, pt_min, eta_max, std::nullopt};
+    }
+
+    // A cut on the invariant mass of a pair is also a statement about the
+    // phase space, not only about which events to keep afterwards. Where the
+    // pair is exactly what a propagator decays into, the cut is a floor on
+    // that propagator's invariant and can be handed straight to the sampler,
+    // which is the difference between generating the region the cut allows
+    // and throwing away nearly everything generated. The floors are collected
+    // here and applied as the decay chain is walked below.
+    constexpr std::size_t no_leaf = static_cast<std::size_t>(-1);
+    // Cuts indexes its per-particle tables by outgoing position, counting two
+    // incoming particles. A decay topology has one, so the tables cannot be
+    // read against it at all - and a decay has no cuts to apply anyway.
+    auto m_inv_min = _topology.incoming_masses().size() == 2
+        ? _cuts.m_inv_min()
+        : std::vector<std::vector<double>>{};
+    std::vector<std::vector<std::size_t>> node_leaves(_topology.decays().size());
+    {
+        std::vector<std::size_t> decay_to_outgoing(
+            _topology.decays().size(), no_leaf
+        );
+        for (std::size_t out_pos = 0;
+             out_pos < _topology.outgoing_indices().size();
+             ++out_pos) {
+            decay_to_outgoing.at(_topology.outgoing_indices().at(out_pos)) = out_pos;
+        }
+        // children always sit at a higher index than their parent, so one
+        // backwards pass builds every leaf set
+        for (std::size_t d = _topology.decays().size(); d-- > 0;) {
+            const auto& decay = _topology.decays().at(d);
+            auto& leaves = node_leaves.at(d);
+            if (decay.child_indices.empty()) {
+                if (decay_to_outgoing.at(d) != no_leaf) {
+                    leaves.push_back(decay_to_outgoing.at(d));
+                }
+                continue;
+            }
+            for (std::size_t child : decay.child_indices) {
+                const auto& child_leaves = node_leaves.at(child);
+                leaves.insert(leaves.end(), child_leaves.begin(), child_leaves.end());
+            }
+            std::sort(leaves.begin(), leaves.end());
+        }
+        // e_min is the propagator's own floor on its invariant mass, and
+        // update_mass_min_max already carries it into every s_min the sampler
+        // uses and into what the parents subtract, so raising it here is all
+        // that is needed for the cut to shape the integration.
+        if (!m_inv_min.empty()) {
+            for (std::size_t d = 0; d < node_leaves.size(); ++d) {
+                const auto& leaves = node_leaves.at(d);
+                if (leaves.size() != 2 || leaves.at(1) >= m_inv_min.size()) {
+                    continue;
+                }
+                double cut = m_inv_min.at(leaves.at(0)).at(leaves.at(1));
+                if (cut > 0.) {
+                    _topology.raise_decay_e_min(d, cut);
+                }
+            }
+        }
+    }
+
+    // The same thing one level up: a floor on the total invariant mass of the
+    // final state is a floor on the root propagator, which is the s-hat the
+    // luminosity mapping samples. Handing it over is the difference between
+    // sampling the region the cut allows and sampling everything and throwing
+    // nearly all of it away; the Invariant's Jacobian follows the range it is
+    // given, so the integral is unchanged and only the efficiency moves.
+    //
+    // Two sources of such a floor:
+    //   * a cut on sqrt(s_hat) itself, and
+    //   * a two-particle invariant mass cut that no single propagator carries,
+    //     which still bounds the total: the pair contributes at least the cut
+    //     and everything else at least its mass. The smallest such bound over
+    //     the pairs the cut names is the one that holds whether the cut has to
+    //     be satisfied by all of them or by only one, so it is the safe choice.
+    double sqrt_s_hat_min = _cuts.sqrt_s_min();
+    {
+        const auto& masses = _topology.outgoing_masses();
+        double pair_floor = 0.;
+        for (std::size_t i = 0; i < m_inv_min.size(); ++i) {
+            for (std::size_t j = i + 1; j < m_inv_min.at(i).size(); ++j) {
+                double cut = m_inv_min.at(i).at(j);
+                if (cut <= 0.) {
+                    continue;
+                }
+                double floor = cut;
+                for (std::size_t k = 0; k < masses.size(); ++k) {
+                    if (k != i && k != j) {
+                        floor += masses.at(k);
+                    }
+                }
+                if (pair_floor == 0. || floor < pair_floor) {
+                    pair_floor = floor;
+                }
+            }
+        }
+        sqrt_s_hat_min = std::max(sqrt_s_hat_min, pair_floor);
+    }
+    // Only the luminosity mapping samples the root virtuality. A leptonic
+    // collision has s_hat fixed at s_lab and chili reconstructs it from the
+    // momenta it has already generated, so in neither case is there a range to
+    // narrow -- the cut stays a filter there. A floor at or above the beam
+    // energy leaves nothing to sample at all, and is left to the filter too
+    // rather than handed on as an empty range.
+    if (_map_luminosity && sqrt_s_hat_min > 0. && sqrt_s_hat_min < _sqrt_s_lab) {
+        _topology.raise_decay_e_min(0, sqrt_s_hat_min);
     }
     for (auto [decay, info] :
          zip(std::views::reverse(_topology.decays()),
@@ -212,7 +350,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         if (!is_com_decay || _map_luminosity) {
             double mass = decay.width == 0. ? 0. : decay.mass;
             double width = decay.width;
-            info.invariant = Invariant(invariant_power, mass, width);
+            info.invariant =
+                Invariant(invariant_power, mass, width, decay.flat_window);
         }
     }
     for (std::size_t index : _topology.decay_integration_order()) {
@@ -222,13 +361,6 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         }
     }
 
-    double total_mass = 0.;
-    for (std::size_t index : topology.decays().at(0).child_indices) {
-        total_mass += decay_info.at(index).m_min;
-    }
-    double sqrt_s_hat_min = _cuts.sqrt_s_min();
-    double s_hat_min =
-        std::max(total_mass * total_mass, sqrt_s_hat_min * sqrt_s_hat_min);
     if (has_t_channel) {
         // Per-child pt_min (and eta_max), ordered to match the mass conditions
         // handed to the t-channel mapping (leaf children carry their pt cut;
@@ -267,7 +399,6 @@ PhaseSpaceMapping::PhaseSpaceMapping(
                 if (it != out_idx.end()) {
                     child_to_out.at(a) = std::distance(out_idx.begin(), it);
                 }
-                ++a;
             }
             auto m_inv_full = _cuts.m_inv_min();
             auto dr_full = _cuts.dr_min();
@@ -479,7 +610,15 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
             },
             [&](std::monostate) {
                 auto [p1, p2] = fb.com_p_in(sqrt_s_hat);
-                p_ext = {p1, p2};
+                if (_topology.is_decay()) {
+                    // Single incoming particle, at rest in the frame the decay
+                    // products are generated in: p_in = (M, 0, 0, 0), which is
+                    // exactly the sum of the two back-to-back beam momenta
+                    // com_p_in builds for sqrt(s_hat) = M.
+                    p_ext = {fb.add(p1, p2)};
+                } else {
+                    p_ext = {p1, p2};
+                }
             }
         },
         _t_mapping
@@ -533,7 +672,9 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
     }
 
     // boost into correct frame and apply cuts
-    auto p_ext_lab = _map_luminosity ? fb.boost_beam(p_ext_stack, x1, x2) : p_ext_stack;
+    auto p_ext_lab = _map_luminosity
+        ? fb.boost_beam(p_ext_stack, Value(lab_masses(_topology, _permutations)), x1, x2)
+        : p_ext_stack;
     dets.push_back(_cuts.build_function(fb, {p_ext_lab}).at(0));
     auto ps_weight = fb.cut_unphysical(fb.product(dets), p_ext_lab, x1, x2);
     return {{{"momenta", p_ext_lab}, {"x1", x1}, {"x2", x2}}, ps_weight};
@@ -546,7 +687,10 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
 ) const {
     Value p_ext_lab = inputs.at(0), x1 = inputs.at(1), x2 = inputs.at(2);
     Value p_ext_stack =
-        _map_luminosity ? fb.boost_beam_inverse(p_ext_lab, x1, x2) : p_ext_lab;
+        _map_luminosity ? fb.boost_beam_inverse(
+                              p_ext_lab, Value(lab_masses(_topology, _permutations)), x1, x2
+                          )
+                        : p_ext_lab;
 
     // permute momenta if permutations are given
     if (_permutations.size() > 1) {
@@ -570,7 +714,9 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
     for (auto [decay_index, mass, momentum] :
          zip(_topology.outgoing_indices(),
              _topology.outgoing_masses(),
-             std::span(p_ext.begin() + 2, p_ext.end()))) {
+             std::span(
+                 p_ext.begin() + _topology.incoming_masses().size(), p_ext.end()
+             ))) {
         auto& data = decay_data.at(decay_index);
         data.mass = mass;
         data.mass2 = mass * mass;

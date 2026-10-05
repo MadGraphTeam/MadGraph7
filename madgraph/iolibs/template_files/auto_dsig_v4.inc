@@ -202,6 +202,14 @@ C     keeps R>0 after the last valid flavor entry.
              IPSEL=IPSEL+1
              R=R-DABS(PD(IPSEL))/PD(0)
           ENDDO
+C     RANMAR returns exactly 0d0 about once in 2**24 draws -- that is why
+C     ntuple() in Source/ranmar.f redraws while x < 1d-16. R = 0 (or a NaN
+C     PD, which compares false as well) leaves the loop above without ever
+C     entering it, i.e. with IPSEL = 0; write_leshouche then evaluates
+C     idup(i,0,numproc), reads past the start of the array, and writes an
+C     event carrying whatever integers precede it (for a 1 -> 2 decay, the
+C     tail of mothup). R = 0 means "the first flavour", so say so.
+          IF (IPSEL.LT.1) IPSEL = 1
 
       %(start_ipsel_for_IFLAV)s
       IPSEL = IPSEL + IPSEL_SHIFT
@@ -439,6 +447,9 @@ C     Select a flavor combination (need to do here for right sign)
           IPSEL=IPSEL+1
           R=R-DABS(ALl_PD(IPSEL,IVEC))/ALL_PD(0,IVEC)
        ENDDO
+C     .GE. above already covers R = 0; this catches a NaN R (every
+C     comparison false) and IPROC = 0. See the scalar branch.
+       IF (IPSEL.LT.1) IPSEL = 1
        %(get_channel_vec)s
 
 

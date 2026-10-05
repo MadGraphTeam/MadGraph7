@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2024 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2024 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which
+# This file is a part of the MadGraph7 project, an application which
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this
+# It is subject to the MadGraph7 license which should accompany this
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -343,7 +343,21 @@ def configure_mlm(run_dir, xqcut):
     run_card = banner.RunCardLO(run_card_path)
     run_card.set('ickkw', 1, user=True)
     run_card.set('xqcut', xqcut, user=True)
+    # Pin the compiled-in PDF. This harness builds and runs ./madevent by hand
+    # (make in Source, make in the P dir) and never goes through
+    # configure_directory, so nothing links LHAPDF or fills lib/PDFsets. With
+    # the run_card default (pdlabel=lhapdf) the binary is then built against the
+    # internal PDF while the card asks for an LHAPDF set, and the integration
+    # silently returns a zero cross-section. Which PDF is used is irrelevant
+    # here: the test compares apply_flavor_grouping True vs False on the same
+    # one.
+    run_card.set('pdlabel', 'nn23lo1', user=True)
+    run_card.set('lhaid', 230000, user=True)
     run_card.write(run_card_path)
+    # Cards/run_card.dat is not what the binary reads: Source/run_card.inc is,
+    # and nothing regenerates it here (make does not, and configure_directory
+    # never runs), so it would otherwise keep the values from output time.
+    run_card.write_include_file(pjoin(run_dir, 'Source'))
 
 
 def compile_madevent(run_dir, Pdir):

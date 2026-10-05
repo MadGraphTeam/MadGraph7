@@ -7,8 +7,43 @@
 
 namespace madspace {
 
+/**
+ * MadNIS training objective for the adaptive samplers.
+ *
+ * Combines the per-channel integrand and sampling-probability values into the
+ * variance-based loss used to train the @ref Flow and @ref ChannelWeightNetwork
+ * [1]. A dedicated study of `madspace` with MadNIS is left to a future
+ * publication, so this class is described from the code only.
+ *
+ * `batch` is the leading batch dimension. `c` indexes the channels.
+ *
+ * **Arguments**
+ * - `chan<c>_integrand` – `float`, shape `(batch,)` – integrand values.
+ * - `chan<c>_sample_prob` – `float`, shape `(batch,)` – sampling probabilities.
+ * - `chan<c>_cwnet_inputs`, `chan<c>_channel_weight_values` /
+ *   `chan<c>_channel_weight_indices` – present only with a
+ *   @ref ChannelWeightNetwork.
+ *
+ * **Returns**
+ * - `loss` – `float`, scalar – the training loss.
+ * - `abs_means` – `float`, shape `(c,)` – per-channel mean of `|integrand|`.
+ * - `variances` – `float`, shape `(c,)` – per-channel integrand variance.
+ *
+ * **References**
+ * - [1] T. Heimel et al., "MadNIS - Neural multi-channel importance sampling",
+ *   https://arxiv.org/abs/2212.06172
+ */
 class MadnisLoss : public FunctionGenerator {
 public:
+    /**
+     * @param functions                      The per-channel integrands.
+     * @param cwnet                          Optional channel-weight network to
+     *                                       train jointly.
+     * @param softclip_threshold             Soft-clipping threshold on the
+     *                                       loss contribution; `0` disables it.
+     * @param compressed_channel_weight_count Number of channel-weight entries
+     *                                       kept per event.
+     */
     MadnisLoss(
         const std::vector<std::shared_ptr<FunctionGenerator>>& functions,
         const std::optional<ChannelWeightNetwork>& cwnet,

@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -24,6 +24,7 @@ import shutil
 import subprocess
 import string
 import copy
+import errno
 import platform
 
 import madgraph
@@ -114,14 +115,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             misc.copytree(os.path.join(mgme_dir, 'Template', 'NLO'), dir_path, True)
             # misc.copytree since dir_path already exists
             misc.copytree(pjoin(self.mgme_dir, 'Template', 'Common'),dir_path)
-            # Copy plot_card
-            for card in ['plot_card']:
-                if os.path.isfile(pjoin(self.dir_path, 'Cards',card + '.dat')):
-                    try:
-                        shutil.copy(pjoin(self.dir_path, 'Cards', card + '.dat'),
-                                   pjoin(self.dir_path, 'Cards', card + '_default.dat'))
-                    except IOError:
-                        logger.warning("Failed to move " + card + ".dat to default")
             
         elif not os.path.isfile(os.path.join(dir_path, 'TemplateVersion.txt')):
             if not mgme_dir:
@@ -334,8 +327,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 pjoin(self.dir_path,'bin','internal',os.path.basename(cp_file)))
 
     def convert_model(self, model, wanted_lorentz = [], 
-                                                         wanted_couplings = []):
+                                            wanted_couplings = [], **opts):
 
+        # npwave (if any) is deliberately not forwarded: the FKS output has no
+        # dual-number HELAS library.
         super(ProcessExporterFortranFKS,self).convert_model(model, 
                                                wanted_lorentz, wanted_couplings)
         
@@ -467,6 +462,45 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         
         
     #===============================================================================
+    # mkdir_born_dir
+    #===============================================================================
+    def mkdir_born_dir(self, borndir, process):
+        """Create the P<shell_string> directory of one born matrix element.
+
+        shell_string() concatenates particle names and polarization labels
+        with no separator, and every FKS born process carries id 0, so two
+        distinct matrix elements can ask for the same name: 'p p > w+ L{-}'
+        and 'p p > w+{-} L' both give 0_uu_wpLL.  Defence in depth -- replace
+        the opaque FileExistsError with one naming both processes.
+        """
+        # lazy rather than in __init__: this class defines none of its own.
+        if not hasattr(self, 'born_dirs'):
+            # directory name -> the process which claimed it
+            self.born_dirs = {}
+        try:
+            os.mkdir(borndir)
+        except OSError as error:
+            if error.errno != errno.EEXIST:
+                raise
+            # low_mem_multicore_nlo_generation forks: each worker has its own
+            # born_dirs copy, so the previous owner may be unknown here.
+            previous = self.born_dirs.get(borndir)
+            msg = ["Cannot create the subprocess directory '%s' in %s: it already exists." \
+                       % (borndir, os.getcwd()),
+                   "Two different matrix elements are asking for the same directory name.",
+                   "  wants it now : %s" % process.nice_string(prefix=False).strip()]
+            if previous is not None:
+                msg.append("  already there: %s" % previous)
+            else:
+                msg.append("  already there: another matrix element of this output "
+                           "(written by a parallel worker; rerun with "
+                           "'set low_mem_multicore_nlo_generation False' to see which one)")
+            msg.append("This is a name clash, not a duplicated process: "
+                       "Process.shell_string() gave both of them the name '%s'." % borndir)
+            raise MadGraph5Error('\n'.join(msg))
+        self.born_dirs[borndir] = process.nice_string(prefix=False).strip()
+
+    #===============================================================================
     # generate_directories_fks
     #===============================================================================
     def generate_directories_fks(self, matrix_element, fortran_model, me_number,
@@ -494,7 +528,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         #first make and cd the direcrory corresponding to the born process:
         borndir = "P%s" % \
         (matrix_element.born_me.get('processes')[0].shell_string())
-        os.mkdir(borndir)
+        self.mkdir_born_dir(borndir, matrix_element.born_me.get('processes')[0])
         os.chdir(borndir)
         logger.info('Writing files in %s (%d / %d)' % (borndir, me_number + 1, me_ntot))
 
@@ -608,6 +642,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               matrix_element,
                               fortran_model)
 
+        filename = 'frame_info.inc'
+        self.write_frame_info_file(writers.FortranWriter(filename),
+                              matrix_element)
+
         filename = 'maxconfigs.inc'
         self.write_maxconfigs_file(writers.FortranWriter(filename),
                 max(nconfigs,matrix_element.born_me.get_number_of_amplitudes()))
@@ -711,6 +749,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'weight_lines.f',
                      'genps_fks.f',
                      'boostwdir2.f',
+                     'boost_to_frame.f',
                      'madfks_mcatnlo.inc',
                      'open_output_files.f',
                      'open_output_files_dummy.f',
@@ -849,7 +888,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         if res != 0:
             logger.info('The value for lhapdf in the current configuration does not ' + \
                         'correspond to a valid executable.\nPlease set it correctly either in ' + \
-                        'input/mg5_configuration or with "set lhapdf /path/to/lhapdf-config" ' + \
+                        'input/mg7_configuration or with "set lhapdf /path/to/lhapdf-config" ' + \
                         'and regenrate the process. \nTo avoid regeneration, edit the ' + \
                         ('%s/Cards/amcatnlo_configuration.txt file.\n' % self.dir_path ) + \
                         'Note that you can still compile and run aMC@NLO with the built-in PDFs\n')
@@ -1027,7 +1066,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             libStdHep = misc.which_lib('libstdhep.a')
             libFmcfio = misc.which_lib('libFmcfio.a')
             if not libStdHep is None and not libFmcfio is None:
-                logger.info('MG5_aMC is using StdHep installation found at %s.'%\
+                logger.info('MadGraph7 is using StdHep installation found at %s.'%\
                                                      os.path.dirname(libStdHep)) 
                 ln(pjoin(libStdHep),pjoin(self.dir_path, 'MCatNLO', 'lib'),abspath=True)
                 ln(pjoin(libFmcfio),pjoin(self.dir_path, 'MCatNLO', 'lib'),abspath=True)
@@ -1052,7 +1091,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 processes = self.born_processes
             if len(processes)==0:
                 logger.warning(
-"""MG5aMC could not provide to Madanalysis5 the list of processes generated.
+"""MadGraph7 could not provide to Madanalysis5 the list of processes generated.
 As a result, the default card will not be tailored to the process generated.
 This typically happens when using the 'low_mem_multicore_nlo_generation' NLO generation mode.""")
             # For now, simply assign all processes to each proc_defs.
@@ -1745,6 +1784,36 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         lines = "integer max_particles, max_branch\n"
         lines += "parameter (max_particles=%d) \n" % maxparticles
         lines += "parameter (max_branch=max_particles-1)"
+        writer.writelines(lines)
+
+
+    def write_frame_info_file(self, writer, matrix_element):
+        """Write frame_info.inc, the bridge between the me_frame entries of the
+        run_card and the leg positions the fortran actually uses.
+
+        me_frame is given in the numbering of the process as the user wrote it,
+        but sort_proc() reorders and renumbers the born legs, so the two do not
+        coincide. frame_map_born(i) is the user number of the born leg sitting
+        at position i.
+
+        No table is needed for the real emissions: the FKS convention fixes the
+        real->born correspondence in terms of i_fks alone (see set_pdg in
+        chooser_functions.f), so get_frame_mask_real derives it at runtime.
+        """
+        born_legs = matrix_element.born_me.get('processes')[0].get('legs')
+        nexternal_born = len(born_legs)
+
+        user_order = getattr(matrix_element, 'user_leg_order', [])
+        if len(user_order) != nexternal_born:
+            # No recorded ordering (e.g. a matrix element built by hand in the
+            # tests). Fall back to the identity: correct whenever the FKS sort
+            # left the user's ordering alone, which is the common case.
+            user_order = list(range(1, nexternal_born + 1))
+
+        lines = []
+        lines.append("integer frame_map_born(nexternal-1)")
+        lines.append("data frame_map_born /%s/" % \
+                     ','.join('%d' % n for n in user_order))
         writer.writelines(lines)
 
 
@@ -2585,7 +2654,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         replace_dict['pdgs'] = '\n'.join(proc_lines)
         replace_dict['symfin'] = 'Yes'
         content = \
-"#OLE_order written by MadGraph5_aMC@NLO\n\
+"#OLE_order written by MadGraph7\n\
 \n\
 MatrixElementSquareType %(mesq)s\n\
 CorrectionType          %(corr)s\n\
@@ -4719,14 +4788,6 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
             # misc.copytree since dir_path already exists
             misc.copytree(pjoin(self.mgme_dir, 'Template', 'Common'),
                                dir_path)
-            # Copy plot_card
-            for card in ['plot_card']:
-                if os.path.isfile(pjoin(self.dir_path, 'Cards',card + '.dat')):
-                    try:
-                        shutil.copy(pjoin(self.dir_path, 'Cards', card + '.dat'),
-                                   pjoin(self.dir_path, 'Cards', card + '_default.dat'))
-                    except IOError:
-                        logger.warning("Failed to copy " + card + ".dat to default")
 
         elif not os.path.isfile(os.path.join(dir_path, 'TemplateVersion.txt')):
             if not mgme_dir:
@@ -5122,7 +5183,7 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
         #first make and cd the direcrory corresponding to the born process:
         borndir = "P%s" % \
         (matrix_element.born_me.get('processes')[0].shell_string())
-        os.mkdir(borndir)
+        self.mkdir_born_dir(borndir, matrix_element.born_me.get('processes')[0])
         os.chdir(borndir)
         logger.info('Writing files in %s (%d / %d)' % (borndir, me_number + 1, me_ntot))
 

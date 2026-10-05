@@ -24,7 +24,9 @@ c-------------------
 
 c     initialize the pdf set
       call FindPDFPath(LHAPath)
-      CALL SetPDFPath(LHAPath)
+c     pass the path without its blank padding: some versions of the
+c     lhaglue interface keep the padding, making the path unusable
+      CALL SetPDFPath(trim(LHAPath))
       value(1)=lhaid
       parm(1)='DEFAULT'
       if (pdlabel.eq.'emela') then
@@ -69,6 +71,9 @@ c     first try in the current directory
          Inquire(File=LHAPath, exist=exists)
          if(exists)return
       enddo
+c     shared read-only mirror (CVMFS): tried last, so that a local
+c     lib/PDFsets always wins over it
+      %(cvmfs_specific_path)s
 
 c      
 c     getting the path of the executable

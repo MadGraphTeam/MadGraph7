@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2010 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2010 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -26,7 +26,6 @@ import re
 import shutil
 import sys
 import time
-from madgraph.interface.tutorial_text import output
 
 root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
 sys.path.append(root_path)
@@ -390,6 +389,12 @@ in presence of majorana particle/flow violation"""
             expr = self.lorentz_expr
         
         if need_P_sign:
+            # Write P(...)**2 as P(...)*P(...) first: the sign is added as a
+            # bare '-', which binds looser than '**', so -P(-1,id)**2 would be
+            # -(P^2) instead of (-P)^2 = P^2. That flipped the sign of p^2 in
+            # the $ veto (P1D) of every outgoing fermion propagator and
+            # switched the veto off.
+            expr = re.sub(r'\b(P|PSlash)\(([^()]*)\)\*\*2\b', r'\1(\2)*\1(\2)', expr)
             expr = re.sub(r'\b(P|PSlash)\(', r'-\1(', expr)
 
         calc = aloha_parsers.ALOHAExpressionParser()
@@ -598,6 +603,16 @@ in presence of majorana particle/flow violation"""
             denominator = "-1*PVec(-2,id)*PVec(-2,id)*P(-3,id)*P(-3,id) * " + basicPole
         elif propa == "1T": # (pol=-1,1) transverse = -metric + -Theta
             numerator = "-1*PVec(-2,id)*PVec(-2,id) * EPST2(1,id)*EPST2(2,id) + EPST1(1,id)*EPST1(2,id)"
+            denominator = "PVec(-2,id)*PVec(-2,id) * PT(-3,id)*PT(-3,id) * " + basicPole
+        elif propa == "1TR": # (pol=1) transverse helicity +1 = eps(+1) x eps(+1)*
+            # P1T = P1TR + P1TL ; the two circular helicities differ by the
+            # antisymmetric (imaginary) piece i*|p|*(EPST2 x EPST1 - EPST1 x EPST2)
+            numerator = "0.5*(-1*PVec(-2,id)*PVec(-2,id) * EPST2(1,id)*EPST2(2,id) + EPST1(1,id)*EPST1(2,id)" \
+            " + complex(0,1)*Tnorm(id)*(EPST2(1,id)*EPST1(2,id) - EPST1(1,id)*EPST2(2,id)))"
+            denominator = "PVec(-2,id)*PVec(-2,id) * PT(-3,id)*PT(-3,id) * " + basicPole
+        elif propa == "1TL": # (pol=-1) transverse helicity -1 = eps(-1) x eps(-1)*
+            numerator = "0.5*(-1*PVec(-2,id)*PVec(-2,id) * EPST2(1,id)*EPST2(2,id) + EPST1(1,id)*EPST1(2,id)" \
+            " - complex(0,1)*Tnorm(id)*(EPST2(1,id)*EPST1(2,id) - EPST1(1,id)*EPST2(2,id)))"
             denominator = "PVec(-2,id)*PVec(-2,id) * PT(-3,id)*PT(-3,id) * " + basicPole
         elif propa == "1A": # (pol=99) auxiliary
             numerator = "(P(-2,id)*P(-2,id) - Mass(id)**2) * P(1,id) * P(2,id)"
@@ -885,7 +900,22 @@ class AbstractALOHAModel(dict):
         
         if write_dir:
             self.main(write_dir,format=format)
-            
+
+    @classmethod
+    def from_model(cls, model, **opts):
+        """Build the AbstractALOHAModel associated to an already loaded
+        madgraph.core.base_objects.Model. The model name alone is not enough:
+        it can carry a restriction suffix ('sm-no_b_mass') and it does not say
+        where the model was imported from, so a model outside of MG5DIR/models
+        would not be found at all. Use the directory the model was loaded from
+        whenever it is still available."""
+
+        try:
+            model_name = model.get('modelpath')
+        except Exception:
+            model_name = model.get('name')
+        return cls(model_name, **opts)
+
     def main(self, output_dir, format='Fortran'):
         """ Compute if not already compute. 
             Write file in models/MY_MODEL/MY_FORMAT.
@@ -1058,7 +1088,7 @@ class AbstractALOHAModel(dict):
                                 new_props.append(['P0']) 
                             # routine for polarised production
                             if part.spin == 3: # vector
-                                new_props += [['P1L'], ['P1T'], ['P1A']]
+                                new_props += [['P1L'], ['P1T'], ['P1TR'], ['P1TL'], ['P1A']]
                                 if part.mass.name.lower() == 'zero':
                                     new_props.append(['P1PS']) # phase-space gauge 
                             elif part.spin == 2: #fermion
@@ -1223,7 +1253,7 @@ class AbstractALOHAModel(dict):
                         self[(lorentzname, outgoing)].add_combine(list_l_name[1:])
                     continue
 
-                builder = CombineRoutineBuilder(l_lorentz)
+                builder = CombineRoutineBuilder(l_lorentz, self.model)
                                
                 for conjg in request[list_l_name[0]]:
                     #ensure that routines are in rising order (for symetries)

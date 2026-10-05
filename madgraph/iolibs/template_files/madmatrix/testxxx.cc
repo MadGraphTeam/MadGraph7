@@ -1,6 +1,6 @@
 // Copyright (C) 2020-2026 CERN and UCLouvain.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
-// Created originally by: A. Valassi (Apr 2021) for the MG5aMC CUDACPP plugin.
+// Created originally by: A. Valassi (Apr 2021) for the MadGraph7 CUDACPP plugin.
 // Further modified by: J. Teig, A. Valassi (2021-2024).
 // Integrated with the MadGraph7 project in Feb 2026.
 // ----------------------------------------------------------------------------
@@ -14,7 +14,7 @@
 #include "MemoryAccessMomenta.h"
 #include "MemoryAccessWavefunctions.h"
 #include "MemoryBuffers.h"
-#include "epoch_process_id.h"
+#include "ProcessData.h"
 
 #include <gtest/gtest.h>
 
@@ -33,11 +33,7 @@
 
 #define XTESTID( s ) TESTID( s )
 
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+namespace madmatrix
 {
   std::string fpeHandlerMessage = "unknown";
   int fpeHandlerIevt = -1;
@@ -54,11 +50,7 @@ namespace mg5amcCpu
 
 TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
 {
-#ifdef MGONGPUCPP_GPUIMPL
-  using namespace mg5amcGpu;
-#else
-  using namespace mg5amcCpu;
-#endif
+  using namespace madmatrix;
 #ifndef __APPLE__ // test #701 (except on MacOS where feenableexcept is not defined #730)
   auto fpeHandlerDefault = signal( SIGFPE, fpeHandlerTestxxx );
 #endif
@@ -73,9 +65,9 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
   assert( nevt %% neppV == 0 ); // nevt must be a multiple of neppV
   // Fill in the input momenta
 #ifdef MGONGPUCPP_GPUIMPL
-  mg5amcGpu::PinnedHostBufferMomenta hstMomenta( nevt ); // AOSOA[npagM][npar=4][np4=4][neppM]
+  madmatrix::PinnedHostBufferMomenta hstMomenta( nevt ); // AOSOA[npagM][npar=4][np4=4][neppM]
 #else
-  mg5amcCpu::HostBufferMomenta hstMomenta( nevt ); // AOSOA[npagM][npar=4][np4=4][neppM]
+  madmatrix::HostBufferMomenta hstMomenta( nevt ); // AOSOA[npagM][npar=4][np4=4][neppM]
 #endif /* clang-format off */
   // NB NEW TESTS FOR DEBUGGING #701: KEEP TWO SEPARATE SETS (16-SIMD-VECTORS!) OF TESTS FOR M==0 AND M!=0!
   const fptype par0[np4 * nevt] = // AOS[nevt][np4]
@@ -156,8 +148,8 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
     dumpFile.open( dumpFileName, std::ios::trunc );
     dumpFile << "  // Copyright (C) 2020-2024 CERN and UCLouvain." << std::endl
              << "  // Licensed under the GNU Lesser General Public License (version 3 or later)." << std::endl
-             << "  // Created by: A. Valassi (Apr 2021) for the MG5aMC CUDACPP plugin." << std::endl
-             << "  // Further modified by: A. Valassi (2021-2024) for the MG5aMC CUDACPP plugin." << std::endl;
+             << "  // Created by: A. Valassi (Apr 2021) for the MadGraph7 CUDACPP plugin." << std::endl
+             << "  // Further modified by: A. Valassi (2021-2024) for the MadGraph7 CUDACPP plugin." << std::endl;
   }
   // Lambda function for dumping wavefunctions
   auto dumpwf6 = [&]( std::ostream& out, const cxtype_sv wf[6], const char* xxx, int ievt, int nsp, fptype mass )
@@ -317,11 +309,7 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
   {
     for( int ievt = 0; ievt < nevt; ievt++ )
     {
-#ifdef MGONGPUCPP_GPUIMPL
-      using namespace mg5amcGpu;
-#else
-      using namespace mg5amcCpu;
-#endif
+      using namespace madmatrix;
       if( debug )
       {
         std::cout << std::endl;

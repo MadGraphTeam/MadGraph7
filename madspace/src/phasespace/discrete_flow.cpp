@@ -139,13 +139,15 @@ Mapping::Result DiscreteFlow::build_transform(
     };
 }
 
-void DiscreteFlow::initialize_globals(ContextPtr context) const {
+void DiscreteFlow::initialize_globals(
+    ContextPtr context, std::optional<std::uint64_t> seed
+) const {
     if (_first_prob_name) {
         initialize_uniform_probs(
             context, _first_prob_name.value(), _option_counts.at(0)
         );
     }
     for (auto& subnet : _subnets) {
-        subnet.initialize_globals(context);
+        subnet.initialize_globals(context, seed);
     }
 }

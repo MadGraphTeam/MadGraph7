@@ -2,7 +2,7 @@
 # Copyright (C) 2020-2026 CERN and UCLouvain.
 # Licensed under the GNU Lesser General Public License (version 3 or later).
 # Integrated with the MadGraph7 project in Feb 2026.
-"""Standalone driver for the MadGraph7 standalone_mg7 mode.
+"""Standalone driver for the MadGraph7 `output standalone` (madmatrix) mode.
 
 Orchestrates compilation and run of `check_sa.exe matrix` in each SubProcesses/P*/ folder.
 
@@ -17,9 +17,9 @@ import os
 import subprocess
 import sys
 
-BACKENDS = ['cppauto', 'cppnone', 'cppsse4', 'cppavx2', 'cpp512y', 'cpp512z', 'cuda', 'hip']
+BACKENDS = ['auto', 'scalar', 'simd_128', 'simd_256', 'avx512y', 'simd_512', 'cuda', 'hip']
 
-DEFAULT_BACKEND = 'cppauto'
+DEFAULT_BACKEND = 'auto'
 
 
 def list_p_dirs(subproc):

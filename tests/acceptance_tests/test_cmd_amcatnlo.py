@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -126,6 +126,24 @@ class MECmdShell(IOTests.IOTestManager):
         combine = os.path.join(*path)
         return combine.replace(' ',r'\ ')        
     
+    def set_parton_shower(self, shower):
+        """Pin parton_shower in the run card.
+
+        Rewriting a literal 'HERWIG6' only worked while that was the default;
+        the moment it changed, the rewrite became a no-op and the test quietly
+        showered with something other than the one it is named for.
+        """
+
+        path = '%s/Cards/run_card.dat' % self.path
+        with open(path) as handle:
+            card = handle.read()
+        card, count = re.subn(r'^(\s*)\S+(\s*=\s*parton_shower)',
+                              r'\g<1>%s\g<2>' % shower, card, flags=re.M)
+        self.assertEqual(count, 1,
+                         'could not set parton_shower in %s' % path)
+        with open(path, 'w') as handle:
+            handle.write(card)
+
     def do(self, line):
         """ exec a line in the cmd under test """        
         self.cmd_line.exec_cmd(line, errorhandling=False,precmd=True)
@@ -155,6 +173,8 @@ class MECmdShell(IOTests.IOTestManager):
         card = card.replace('EXTRALIBS    = stdhep Fmcfio', 'EXTRALIBS   = fastjet')
         open('%s/Cards/shower_card_default.dat' % self.path, 'w').write(card)
         os.system('cp  %s/Cards/shower_card_default.dat %s/Cards/shower_card.dat'% (self.path, self.path))
+
+        self.set_parton_shower('HERWIG6')
 
         os.system('rm -rf %s/RunWeb' % self.path)
         os.system('rm -rf %s/Events/run_*' % self.path)
@@ -200,8 +220,8 @@ class MECmdShell(IOTests.IOTestManager):
         cmd = os.getcwd()
         self.generate(['p p > e+ ve QED^2=4 QCD^2=0 [QCD] '], 'sm')
         card = open('%s/Cards/run_card_default.dat' % self.path).read()
-        self.assertIn('HERWIG6   = parton_shower', card)
-        card = card.replace('HERWIG6   = parton_shower', 'HERWIGPP   = parton_shower')
+        self.assertIn('PYTHIA8   = parton_shower', card)
+        card = card.replace('PYTHIA8   = parton_shower', 'HERWIGPP   = parton_shower')
         open('%s/Cards/run_card.dat' % self.path, 'w').write(card)
         self.cmd_line.exec_cmd('set  cluster_temp_path /tmp/ --no_save')
         self.do('generate_events -pf')
@@ -225,8 +245,8 @@ class MECmdShell(IOTests.IOTestManager):
         cmd = os.getcwd()
         self.generate(['p p > e+ ve QED^2=4 QCD^2=0 [QCD] '], 'sm')
         card = open('%s/Cards/run_card_default.dat' % self.path).read()
-        self.assertIn('HERWIG6   = parton_shower', card)
-        card = card.replace('HERWIG6   = parton_shower', 'PYTHIA8   = parton_shower')
+        # PYTHIA8 is now the default, so this test only has to keep it
+        self.assertIn('PYTHIA8   = parton_shower', card)
         open('%s/Cards/run_card.dat' % self.path, 'w').write(card)
         self.cmd_line.exec_cmd('set  cluster_temp_path /tmp/ --no_save')
         self.cmd_line.exec_cmd('set  pythia8_path None')
@@ -638,6 +658,7 @@ class MECmdShell(IOTests.IOTestManager):
         """test the param_card created is correct"""
         
         self.generate_production()
+        self.set_parton_shower('HERWIG6')
         cmd = """generate_events aMC@LO
                  set nevents 100
                  """
@@ -647,20 +668,20 @@ class MECmdShell(IOTests.IOTestManager):
         #self.do('generate_events LO -f')        
         
         # test the lhe event file exists
-        self.assertTrue(os.path.exists('%s/Events/run_01_LO/events.lhe.gz' % self.path))
-        self.assertTrue(os.path.exists('%s/Events/run_01_LO/summary.txt' % self.path))
-        self.assertTrue(os.path.exists('%s/Events/run_01_LO/run_01_LO_tag_1_banner.txt' % self.path))
-        self.assertTrue(os.path.exists('%s/Events/run_01_LO/res_0.txt' % self.path))
-        self.assertTrue(os.path.exists('%s/Events/run_01_LO/res_1.txt' % self.path))
-        self.assertTrue(os.path.exists('%s/Events/run_01_LO/alllogs_0.html' % self.path))
-        self.assertTrue(os.path.exists('%s/Events/run_01_LO/alllogs_1.html' % self.path))
-        self.assertTrue(os.path.exists('%s/Events/run_01_LO/alllogs_2.html' % self.path))
+        self.assertTrue(os.path.exists('%s/Events/run_01/events.lhe.gz' % self.path))
+        self.assertTrue(os.path.exists('%s/Events/run_01/summary.txt' % self.path))
+        self.assertTrue(os.path.exists('%s/Events/run_01/run_01_tag_1_banner.txt' % self.path))
+        self.assertTrue(os.path.exists('%s/Events/run_01/res_0.txt' % self.path))
+        self.assertTrue(os.path.exists('%s/Events/run_01/res_1.txt' % self.path))
+        self.assertTrue(os.path.exists('%s/Events/run_01/alllogs_0.html' % self.path))
+        self.assertTrue(os.path.exists('%s/Events/run_01/alllogs_1.html' % self.path))
+        self.assertTrue(os.path.exists('%s/Events/run_01/alllogs_2.html' % self.path))
         # test the hep event file exists
-        self.assertTrue(os.path.exists('%s/Events/run_01_LO/events_HERWIG6_0.hep.gz' % self.path))
+        self.assertTrue(os.path.exists('%s/Events/run_01/events_HERWIG6_0.hep.gz' % self.path))
         # sanity check on the size
         self.assertGreater(
-            os.path.getsize('%s/Events/run_01_LO/events_HERWIG6_0.hep.gz' % self.path),
-            os.path.getsize('%s/Events/run_01_LO/events.lhe.gz' % self.path)
+            os.path.getsize('%s/Events/run_01/events_HERWIG6_0.hep.gz' % self.path),
+            os.path.getsize('%s/Events/run_01/events.lhe.gz' % self.path)
         )
         
 
@@ -671,25 +692,24 @@ class MECmdShell(IOTests.IOTestManager):
         self.generate_production()
 
         #change to py6
-        card = open('%s/Cards/run_card.dat' % self.path).read()
-        open('%s/Cards/run_card.dat' % self.path, 'w').write(card.replace('HERWIG6', 'PYTHIA6Q'))       
+        self.set_parton_shower('PYTHIA6Q')
         self.do('generate_events aMC@LO -f')        
         
         # test the lhe event file exists
-        self.assertTrue(os.path.exists('%s/Events/run_01_LO/events.lhe.gz' % self.path))
-        self.assertTrue(os.path.exists('%s/Events/run_01_LO/summary.txt' % self.path))
-        self.assertTrue(os.path.exists('%s/Events/run_01_LO/run_01_LO_tag_1_banner.txt' % self.path))
-        self.assertTrue(os.path.exists('%s/Events/run_01_LO/res_0.txt' % self.path))
-        self.assertTrue(os.path.exists('%s/Events/run_01_LO/res_1.txt' % self.path))
-        self.assertTrue(os.path.exists('%s/Events/run_01_LO/alllogs_0.html' % self.path))
-        self.assertTrue(os.path.exists('%s/Events/run_01_LO/alllogs_1.html' % self.path))
-        self.assertTrue(os.path.exists('%s/Events/run_01_LO/alllogs_2.html' % self.path))
+        self.assertTrue(os.path.exists('%s/Events/run_01/events.lhe.gz' % self.path))
+        self.assertTrue(os.path.exists('%s/Events/run_01/summary.txt' % self.path))
+        self.assertTrue(os.path.exists('%s/Events/run_01/run_01_tag_1_banner.txt' % self.path))
+        self.assertTrue(os.path.exists('%s/Events/run_01/res_0.txt' % self.path))
+        self.assertTrue(os.path.exists('%s/Events/run_01/res_1.txt' % self.path))
+        self.assertTrue(os.path.exists('%s/Events/run_01/alllogs_0.html' % self.path))
+        self.assertTrue(os.path.exists('%s/Events/run_01/alllogs_1.html' % self.path))
+        self.assertTrue(os.path.exists('%s/Events/run_01/alllogs_2.html' % self.path))
         # test the hep event file exists
-        self.assertTrue(os.path.exists('%s/Events/run_01_LO/events_PYTHIA6Q_0.hep.gz' % self.path))
+        self.assertTrue(os.path.exists('%s/Events/run_01/events_PYTHIA6Q_0.hep.gz' % self.path))
         # sanity check on the size
         self.assertGreater(
-            os.path.getsize('%s/Events/run_01_LO/events_PYTHIA6Q_0.hep.gz' % self.path),
-            os.path.getsize('%s/Events/run_01_LO/events.lhe.gz' % self.path)
+            os.path.getsize('%s/Events/run_01/events_PYTHIA6Q_0.hep.gz' % self.path),
+            os.path.getsize('%s/Events/run_01/events.lhe.gz' % self.path)
         )
 
 
@@ -701,6 +721,7 @@ class MECmdShell(IOTests.IOTestManager):
         self.generate(['p p > e+ ve QED^2=4 QCD^2=0 [QCD]'], 'loop_sm')
         self.assertEqual(cmd, os.getcwd())
         #change splitevent generation
+        self.set_parton_shower('HERWIG6')
         card = open('%s/Cards/run_card.dat' % self.path).read()
         open('%s/Cards/run_card.dat' % self.path, 'w').write(card.replace(' -1 = nevt_job', ' 1000 = nevt_job'))
         self.do('generate_events aMC@NLO -fp')        
@@ -756,6 +777,135 @@ class MECmdShell(IOTests.IOTestManager):
         self.assertTrue(os.path.exists('%s/Events/run_01_LO/alllogs_1.html' % self.path))
 
     
+    @set_global()
+    def test_polarised_nlo_me_frame(self):
+        """Polarised fixed-order NLO in a chosen rest frame.
+
+        p p > z{0} z{0} j [QCD] with me_frame = [3,4], i.e. the matrix
+        elements evaluated in the ZZ rest frame. The Born, the real, every FKS
+        counterterm and the virtual all have to be boosted to the *same*
+        frame, rebuilt from each configuration's own momenta.
+
+        What is actually being tested is check_poles and test_soft_col_limits,
+        which the launch runs on its own and which fail the run if they do not
+        pass. They are the only checks sensitive to this:
+
+          - the infrared poles are proportional to the Born, so any frame
+            mismatch between the Born and the virtual shows up as a per-point
+            constant ratio between the MadFKS and the OLP poles;
+          - the collinear Q term is the same order as the AP term, so a wrong
+            azimuthal phase does not cancel and the soft/collinear ratios
+            plateau off 1.
+
+        A cross-section comparison would not catch either: both were wrong at
+        some point during development while the total stayed plausible.
+        """
+        self.generate('p p > z{0} z{0} j [QCD]', 'loop_sm')
+
+        # Ask for the ZZ rest frame. nn23lo1 rather than lhapdf, since the
+        # python lhapdf bindings are broken under some interpreters and would
+        # fail this test for an unrelated reason; scales fixed so the run is
+        # reproducible; req_acc_fo loose because the assertion is on the
+        # checks, not on the precision of the cross-section.
+        card_path = pjoin(self.path, 'Cards', 'run_card.dat')
+        run_card = banner.RunCardNLO(card_path)
+        run_card.set('me_frame', [3, 4], user=True)
+        run_card.set('pdlabel', 'nn23lo1', user=True)
+        run_card.set('fixed_ren_scale', True, user=True)
+        run_card.set('fixed_fac_scale', True, user=True)
+        run_card.set('mur_ref_fixed', 91.188, user=True)
+        run_card.set('muf_ref_fixed', 91.188, user=True)
+        run_card.set('ptj', 30.0, user=True)
+        run_card.set('etaj', 4.0, user=True)
+        run_card.set('req_acc_fo', 0.05, user=True)
+        run_card.write(card_path)
+
+        self.do('calculate_xsect NLO -f')
+
+        self.assertTrue(os.path.exists('%s/Events/run_01/summary.txt' % self.path))
+
+        # check_poles writes one log per P directory; none may report a
+        # miscancellation. This is the assertion that the frame handling is
+        # consistent between the Born and the virtual.
+        pole_logs = misc.glob(pjoin(self.path, 'SubProcesses', 'P*',
+                                    'check_poles.log'))
+        self.assertTrue(pole_logs, 'check_poles did not run')
+        for log in pole_logs:
+            self.assertNotIn('MISCANCELLATION', open(log).read(),
+                             'poles do not cancel in %s' % log)
+
+    @set_global()
+    def test_polarised_nlo_ps_me_frame(self):
+        """Polarised NLO+PS (MC@NLO matching) in a chosen rest frame.
+
+        p p > z{0} j [QCD] with me_frame = [3], generating events rather than
+        only a cross-section. On top of what the fixed-order test covers this
+        exercises the MC counterterms and the LHE writing, both of which
+        evaluate the Born and must do so in the same frame as everything else.
+
+        Two assertions carry the physics:
+
+          - the total cross-section must stay the fixed-order one, because the
+            MC counterterm cancels between the S and the H event;
+          - the ratio of the *absolute* cross-section to it must not, because
+            that ratio measures how well the MC subtraction cancels locally,
+            which is exactly what the azimuthal phase of the counterterm
+            controls. With the phase left in the partonic c.m. the ratio was
+            2.23; with it in the me_frame it is 2.00.
+
+        p p > z j is the discriminating channel: the azimuthal term is
+        non-zero only for a gluon-mother ISR configuration, so a process whose
+        ISR mothers are all quarks passes with a completely wrong azimuth.
+        """
+        self.generate('p p > z{0} j [QCD]', 'loop_sm')
+
+        # Ask for the Z rest frame. nn23lo1 rather than lhapdf, scales fixed
+        # and the seed pinned so the run is reproducible.
+        card_path = pjoin(self.path, 'Cards', 'run_card.dat')
+        run_card = banner.RunCardNLO(card_path)
+        run_card.set('me_frame', [3], user=True)
+        run_card.set('pdlabel', 'nn23lo1', user=True)
+        run_card.set('fixed_ren_scale', True, user=True)
+        run_card.set('fixed_fac_scale', True, user=True)
+        run_card.set('mur_ref_fixed', 91.188, user=True)
+        run_card.set('muf_ref_fixed', 91.188, user=True)
+        run_card.set('ptj', 30.0, user=True)
+        run_card.set('etaj', 4.0, user=True)
+        run_card.set('nevents', 1000, user=True)
+        run_card.set('req_acc', 0.05, user=True)
+        run_card.set('iseed', 33, user=True)
+        run_card.set('parton_shower', 'PYTHIA8', user=True)
+        run_card.write(card_path)
+
+        # --parton stops before the shower: the shower knows nothing about the
+        # frame, everything under test happens before it.
+        self.do('generate_events aMC@NLO --parton -f')
+
+        # The frame reached the matrix elements: bit 3 set, nothing else.
+        run_inc = open(pjoin(self.path, 'Source', 'run_card.inc')).read()
+        self.assertIn('FRAME_ID = 8', run_inc)
+
+        self.assertTrue(os.path.exists('%s/Events/run_01/events.lhe.gz' % self.path))
+
+        # check_poles and test_ME/test_MC run as part of the launch and would
+        # abort it; assert on the logs anyway so a silent pass is visible.
+        pole_logs = misc.glob(pjoin(self.path, 'SubProcesses', 'P*',
+                                    'check_poles.log'))
+        self.assertTrue(pole_logs, 'check_poles did not run')
+        for log in pole_logs:
+            self.assertNotIn('MISCANCELLATION', open(log).read(),
+                             'poles do not cancel in %s' % log)
+
+        # res_1.txt ends with the absolute cross-section and the cross-section.
+        res = open(pjoin(self.path, 'Events', 'run_01', 'res_1.txt')).read()
+        totals = re.findall(r'([-\d.eE+]+)\s+\+-', res.split('Total ABS')[-1])
+        self.assertEqual(len(totals), 2, 'cannot read the totals from res_1.txt')
+        xsec_abs, xsec = float(totals[0]), float(totals[1])
+        self.assertAlmostEqual(xsec, 2.19e3, delta=1.0e2)
+        self.assertLess(xsec_abs / xsec, 2.15,
+                        'the MC counterterm does not cancel locally enough; '
+                        'its azimuthal phase is probably not in the me_frame')
+
     def test_amcatnlo_from_file(self):
         """ """
         
@@ -774,7 +924,7 @@ class MECmdShell(IOTests.IOTestManager):
             stderr=devnull
 
             
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(_file_path, 'input_files','test_amcatnlo')],
                          cwd=self.tmpdir,
                         stdout=stdout,stderr=stderr)
@@ -792,10 +942,14 @@ class MECmdShell(IOTests.IOTestManager):
         #      Total cross-section: 1.249e+03 +- 3.2e+00 pb        
         cross_section = data[i+4]
         cross_section = float(cross_section.split(':')[1].split('+-')[0])
+        # previously PDF was nn23nlo (lhaid 244600) with this reference value 6675.0
+        # loop_sm gives the b a non-zero mass, so the NLO default here is the
+        # 4-flavour set NNPDF40_nlo_as_01180_nf_4 (lhaid 334700), matching the
+        # b-less proton MG5 already uses for this model.
         try:
-            self.assertAlmostEqual(6675.0, cross_section,delta=50)
+            self.assertAlmostEqual(6936.0, cross_section,delta=50)
         except TypeError:
-            self.assertTrue(cross_section < 6750.0 and cross_section > 6650.0)
+            self.assertTrue(cross_section < 7011.0 and cross_section > 6911.0)
 
         #      Number of events generated: 10000        
         self.assertIn('Number of events generated: 100', data[i+3])
@@ -880,7 +1034,7 @@ class MECmdShell(IOTests.IOTestManager):
         interface = MGCmd.MasterCmd()
         interface.no_notification()
 
-        # skip if eMELA is not known to MG5_aMC
+        # skip if eMELA is not known to MadGraph7
         if not interface.options['eMELA']:
             self.skipTest("Skipping test, eMELA not available")
 
@@ -941,7 +1095,7 @@ class MECmdShell(IOTests.IOTestManager):
         interface = MGCmd.MasterCmd()
         interface.no_notification()
 
-        # skip if eMELA is not known to MG5_aMC
+        # skip if eMELA is not known to MadGraph7
         if not interface.options['eMELA']:
             self.skipTest("Skipping test, eMELA not available")
 
@@ -1002,7 +1156,7 @@ class MECmdShell(IOTests.IOTestManager):
         interface = MGCmd.MasterCmd()
         interface.no_notification()
 
-        # skip if eMELA is not known to MG5_aMC
+        # skip if eMELA is not known to MadGraph7
         if not interface.options['eMELA']:
             self.skipTest("Skipping test, eMELA not available")
 
@@ -1064,7 +1218,7 @@ class MECmdShell(IOTests.IOTestManager):
         interface = MGCmd.MasterCmd()
         interface.no_notification()
 
-        # skip if eMELA is not known to MG5_aMC
+        # skip if eMELA is not known to MadGraph7
         if not interface.options['eMELA']:
             self.skipTest("Skipping test, eMELA not available")
 

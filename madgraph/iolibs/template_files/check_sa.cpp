@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 // Flavor combinations and corresponding PDG codes.
 // %(maxflavor)d flavor combination(s); %(nexternal)d external particles each.
-// These arrays are filled by the MG5_aMC@NLO code generator.
+// These arrays are filled by the MadGraph7 code generator.
 // ---------------------------------------------------------------------------
 static const int maxflavor  = %(maxflavor)d;
 static const int _nexternal = %(nexternal)d;

@@ -28,6 +28,13 @@ include ./aloha_file.inc
 $(LIBDIR)$(LIBRARY): $(BASIC_OBJS) $(ALOHARoutine)
 	$(call CREATELIB, $@, $^)
 
+# The ALOHA routines 'use aloha_object', the module defined by aloha_functions.f
+# ($(BASIC_OBJS)). Order-only, so 'make -j' cannot compile one before the .mod
+# exists. This rule MUST stay below the target above: a bare rule for
+# $(ALOHARoutine) placed first would hijack the default goal, and 'cd DHELAS &&
+# make' would then build the objects but never libdhelas.a.
+$(ALOHARoutine): | $(BASIC_OBJS)
+
 # Shared library (optional)
 $(LIBDIR)$(LIBRARY_SHARED): $(BASIC_OBJS) $(ALOHARoutine)
 	$(FC) -shared -o $@ $^ $(LDFLAGS)

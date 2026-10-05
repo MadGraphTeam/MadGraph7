@@ -1,6 +1,6 @@
 # Copyright (C) 2023-2026 CERN.
 # Licensed under the GNU Lesser General Public License (version 3 or later).
-# Created originally by: Z. Wettersten (Sep 2024) for the MG5aMC CUDACPP plugin.
+# Created originally by: Z. Wettersten (Sep 2024) for the MadGraph7 CUDACPP plugin.
 # Further modified by: Z. Wettersten (2024-2025).
 # Integrated with the MadGraph7 project in Feb 2026.
 
@@ -187,6 +187,8 @@ class TREX_OneProcessExporter(model_handling.OneProcessExporterMadMatrix):
     def generate_process_files(self):
         """Generate mgOnGpuConfig.h, CPPProcess.cc, CPPProcess.h, check_sa.cc, gXXX.cu links"""
         super().generate_process_files()
+        # for TREX for now no /backend
+        self.edit_mgonGPU()
         self.edit_rwgt_header()
         self.edit_rwgt_runner()
         
@@ -202,9 +204,13 @@ class TREX_ProcessExporter(output.ProcessExporterMadMatrix):
     r = PLUGINDIR + '/MadtRex/template_files/'
     m = PLUGINDIR + '/MadtRex/makefiles/'
     from_template = dict(output.ProcessExporterMadMatrix.from_template)
-    from_template['src'] = from_template['src'] + [t+'librex.so', t+'libtearex.so',
-                                                   t+'Rex.h', t+'teaRex.h',
-                                                    r+'rwgt_instance.h', r+'rwgt_instance.cc']
+    # for TREX for now no /backend
+    from_template['src'] = from_template['src'] + output.relative_path_list(
+        output.ProcessExporterMadMatrix.madmatrix_templates,
+        ['mgOnGpuFptypes.h', 'mgOnGpuCxtypes.h', 'mgOnGpuVectors.h', 'constexpr_math.h']
+    ) + [t+'librex.so', t+'libtearex.so',
+        t+'Rex.h', t+'teaRex.h',
+        r+'rwgt_instance.h', r+'rwgt_instance.cc']
     from_template['SubProcesses'] = from_template['SubProcesses'] + [m+'cudacpp_driver.mk',
                                                                      r+'rwgt_instance.h', t+'Rex.h', t+'teaRex.h']
 
@@ -269,7 +275,7 @@ class TREX_ProcessExporter(output.ProcessExporterMadMatrix):
             # Create the process .h and .cc files
             process_exporter_cpp.generate_process_files()
             for file in self.to_link_in_P:
-                files.ln('../%s' % file) 
+                files.ln('../%s' % file)
         return
     
     def export_driver(self):
@@ -312,7 +318,7 @@ class TREX_ReweightInterface(rwgt_interface.ReweightInterface):
         self.param_card = None
         self.reweight_card = []
         self.reweight_names = []
-        self.backend = 'cppauto' # default backend for tRex reweighting
+        self.backend = 'auto' # default backend for tRex reweighting
         self.fptype = 'm' # default floating point type for tRex reweighting
         self.nb_threads = 1
         if self.mother:
@@ -465,7 +471,7 @@ class TREX_ReweightInterface(rwgt_interface.ReweightInterface):
         if len(args) < 2:
             return super().do_change(line)
         if args[0].lower() in ['cudacpp_backend', 'backend']:
-            cudacpp_supported_backends = [ 'cuda', 'hip', 'cpp', 'cppnone', 'cppsse4', 'cppavx2', 'cpp512y', 'cpp512z', 'cppauto' ]
+            cudacpp_supported_backends = [ 'cuda', 'hip', 'scalar', 'simd_128', 'simd_256', 'avx512y', 'simd_512', 'auto' ]
             if args[1].lower() in cudacpp_supported_backends:
                 self.backend = args[1].lower()
                 logger.info("Setting tRex reweighting backend to '%s'" % self.backend)

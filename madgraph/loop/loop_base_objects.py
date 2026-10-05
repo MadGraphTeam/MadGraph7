@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -270,7 +270,7 @@ class LoopDiagram(base_objects.Diagram):
                                             use_FDStructure_ID_for_tag = False):
         """ This function returns what will be used as the 'loop_tag' attribute
         of the ContractedVertex instance in the function 'get_contracted_loop_diagram'.
-        It is important since it is what is used by MG5_aMC to decide
+        It is important since it is what is used by MadGraph7 to decide
         if two processes have *exactly* the same matrix element and can be
         identified. 
         There is no need to characterize the details of the FDStructures attached
@@ -391,7 +391,7 @@ class LoopDiagram(base_objects.Diagram):
                                                               synchronize=False)
 
         contracted_diagram_vertices = base_objects.VertexList()
-        # We give this vertex the special ID -2 so that whenever MG5_aMC tries
+        # We give this vertex the special ID -2 so that whenever MadGraph7 tries
         # to retrieve an information in typically gets from the model interaction
         # it will instead get it from the 'loop_info' provided by the contracted
         # vertex of its corresponding vertex_id in a Tag

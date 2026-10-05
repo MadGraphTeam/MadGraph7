@@ -1,6 +1,6 @@
 // Copyright (C) 2020-2026 CERN and UCLouvain.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
-// Created originally by: A. Valassi (Feb 2024) for the MG5aMC CUDACPP plugin.
+// Created originally by: A. Valassi (Feb 2024) for the MadGraph7 CUDACPP plugin.
 // Further modified by: A. Valassi (2024).
 // Integrated with the MadGraph7 project in Feb 2026.
 
@@ -27,12 +27,8 @@
 #define CONSTEXPRMATHVAR constexpr
 #endif
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+//One namespace. Split ber backend.
+namespace madmatrix
 {
   // Constexpr implementation of sqrt (see https://stackoverflow.com/a/34134071)
   constexpr long double sqrtNewtonRaphson( const long double xx, const long double curr, const long double prev )

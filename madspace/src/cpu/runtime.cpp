@@ -1,6 +1,7 @@
 #include "runtime.hpp"
 
 #include <algorithm>
+#include <memory>
 #include <random>
 #include <ranges>
 #include <tuple>
@@ -712,12 +713,11 @@ void op_random(
     auto& runtime = instruction.runtime;
     device.foreach (
         flat_view.shape[0],
-        [flat_view, &runtime](std::size_t count, std::size_t offset) mutable {
+        [flat_view, &runtime, &device](std::size_t count, std::size_t offset) mutable {
             auto output_view = TensorView<double, 1>(flat_view);
-            std::uniform_real_distribution<double> dist;
             auto& rand_gen = runtime.rand_gen();
             for (std::size_t i = offset; i < offset + count; ++i) {
-                output_view[i] = dist(rand_gen);
+                output_view[i] = rand_gen.generate_double();
             }
         }
     );
@@ -735,12 +735,13 @@ void op_random_int(
     auto& runtime = instruction.runtime;
     device.foreach (
         flat_view.shape[0],
-        [flat_view, max_val, &runtime](std::size_t count, std::size_t offset) mutable {
+        [flat_view, max_val, &runtime, &device](
+            std::size_t count, std::size_t offset
+        ) mutable {
             auto output_view = TensorView<me_int_t, 1>(flat_view);
-            std::uniform_int_distribution<me_int_t> dist(0, max_val - 1);
             auto& rand_gen = runtime.rand_gen();
             for (std::size_t i = offset; i < offset + count; ++i) {
-                output_view[i] = dist(rand_gen);
+                output_view[i] = rand_gen.generate_int(max_val);
             }
         }
     );
@@ -772,6 +773,7 @@ void op_unweight(
          indices_view_flat,
          uw_weights_view_flat,
          &runtime,
+         &device,
          batch_size,
          &indices,
          &uw_weights,
@@ -781,14 +783,14 @@ void op_unweight(
             TensorView<double, 1> max_weight_view(max_weight_view_flat);
             TensorView<me_int_t, 1> indices_view(indices_view_flat);
             TensorView<double, 1> uw_weights_view(uw_weights_view_flat);
-            std::uniform_real_distribution<double> dist;
             auto& rand_gen = runtime.rand_gen();
             std::size_t count = 0;
             for (std::size_t i = 0; i < batch_size; ++i) {
-                double w = weights_view[i], w_max = max_weight_view[i];
-                if (w != 0. && w > dist(rand_gen) * w_max) {
+                double w = weights_view[i], aw = std::abs(w),
+                       w_max = max_weight_view[i];
+                if (aw != 0. && aw > rand_gen.generate_double() * w_max) {
                     indices_view[count] = i;
-                    uw_weights_view[count] = w > w_max ? w : w_max;
+                    uw_weights_view[count] = std::copysign(std::max(aw, w_max), w);
                     ++count;
                 }
             }
@@ -982,13 +984,9 @@ void op_discrete_histogram(
 CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concurrent) :
     _context(context),
     _input_count(function.inputs().size()),
-    _rand_gens(
-        context->thread_pool(),
-        []() {
-            std::random_device rand_device;
-            return std::mt19937(rand_device());
-        }
-    ),
+    _rand_gens(context->global_resource<MixMaxRandom>(
+        "cpu_rand_gen", []() { return MixMaxRandom(); }
+    )),
     _concurrent(concurrent) {
     if (context->device()->device_type() != DeviceType::cpu) {
         throw std::runtime_error("Context has incompatible device");

@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -28,6 +28,7 @@ import optparse
 import time
 import shutil
 import stat
+import tempfile
 import traceback
 import gzip as ziplib
 import io
@@ -51,7 +52,72 @@ logger = logging.getLogger('cmdprint.ext_program')
 logger_stderr = logging.getLogger('madevent.misc')
 pjoin = os.path.join
 misc = locals
-   
+
+#===============================================================================
+# configuration file locations
+#===============================================================================
+CONFIG_NAME = 'mg7_configuration.txt'
+LEGACY_CONFIG_NAME = 'mg5_configuration.txt'
+CONFIG_TEMPLATE_NAME = '.mg7_configuration_default.txt'
+
+def install_config_file(root):
+    """The configuration file of the MadGraph installation rooted at *root*."""
+
+    return pjoin(root, 'input', CONFIG_NAME)
+
+def base_config_file():
+    """The $MADGRAPH_BASE configuration file, or None if that is not set.
+
+    A base directory set up for MadGraph5_aMC@NLO holds mg5_configuration.txt
+    rather than the MadGraph7 name, so fall back to it when only that one is
+    there. With neither present the MadGraph7 name is returned, which is what
+    the callers that create a missing file need.
+    """
+
+    base = os.environ.get('MADGRAPH_BASE')
+    if not base:
+        return None
+    config_path = pjoin(base, CONFIG_NAME)
+    if not os.path.exists(config_path):
+        legacy_path = pjoin(base, LEGACY_CONFIG_NAME)
+        if os.path.exists(legacy_path):
+            return legacy_path
+    return config_path
+
+def user_config_dir(create=False):
+    """MadGraph7's per-user configuration directory.
+
+    MadGraph7's ~/.mg5 is deliberately never consulted: a config file shared
+    between installations is what makes one of them write absolute paths into
+    another one's HEPTools folder. Returns None without HOME or XDG_CONFIG_HOME.
+    """
+
+    xdg = os.environ.get('XDG_CONFIG_HOME')
+    if xdg:
+        path = pjoin(xdg, 'mg7')
+    elif os.environ.get('HOME'):
+        path = pjoin(os.environ['HOME'], '.mg7')
+    else:
+        return None
+    if create:
+        try:
+            os.makedirs(path, exist_ok=True)
+        except OSError as error:
+            logger.warning('could not create %s: %s', path, error)
+            return None
+    return path
+
+def user_config_file(create=False):
+    """MadGraph7's per-user configuration file, or None if it has no home."""
+
+    config_dir = user_config_dir(create=create)
+    return pjoin(config_dir, CONFIG_NAME) if config_dir else None
+
+def mg_root():
+    """The root of this MadGraph installation, deduced from this file."""
+
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 #===============================================================================
 # parse_info_str
 #===============================================================================
@@ -114,7 +180,7 @@ PACKAGE_INFO = {}
 # get_pkg_info
 #===============================================================================
 def get_pkg_info(info_str=None):
-    """Returns the current version information of the MadGraph5_aMC@NLO package, 
+    """Returns the current version information of the MadGraph7 package, 
     as written in the VERSION text file. If the file cannot be found, 
     a dictionary with empty values is returned. As an option, an info
     string can be passed to be read instead of the file content.
@@ -243,14 +309,14 @@ def is_MA5_compatible_with_this_MG5(ma5path):
         return None
     
     if mg5_version < LooseVersion("2.6.1") and ma5_version > LooseVersion("1.6.31"):
-        reason =  "This active MG5aMC version is too old (v%s) for your selected version of MadAnalysis5 (v%s)"%(mg5_version,ma5_version)
-        reason += "\nUpgrade MG5aMC or re-install MA5 from within MG5aMC to fix this compatibility issue."
+        reason =  "This active MadGraph7 version is too old (v%s) for your selected version of MadAnalysis5 (v%s)"%(mg5_version,ma5_version)
+        reason += "\nUpgrade MadGraph7 or re-install MA5 from within MadGraph7 to fix this compatibility issue."
         reason += "\nThe specified version of MadAnalysis5 will not be active in your session."
         return reason
 
     if mg5_version > LooseVersion("2.6.0") and ma5_version < LooseVersion("1.6.32"):
-        reason = "Your selected version of MadAnalysis5 (v%s) is too old for this active version of MG5aMC (v%s)."%(ma5_version,mg5_version)
-        reason += "\nRe-install MA5 from within MG5aMC to fix this compatibility issue."
+        reason = "Your selected version of MadAnalysis5 (v%s) is too old for this active version of MadGraph7 (v%s)."%(ma5_version,mg5_version)
+        reason += "\nRe-install MA5 from within MadGraph7 to fix this compatibility issue."
         reason += "\nThe specified version of MadAnalysis5 will not be active in your session."
         return reason
 
@@ -338,7 +404,7 @@ def has_f2py():
 #===============================================================================
 
 def deactivate_dependence(dependency, cmd=None, log = None):
-    """ Make sure to turn off some dependency of MG5aMC. """
+    """ Make sure to turn off some dependency of MadGraph7. """
     
     def tell(msg):
         if log == 'stdout':
@@ -351,7 +417,7 @@ def deactivate_dependence(dependency, cmd=None, log = None):
         if dependency not in cmd.options:
             return
         if cmd.options[dependency] not in ['None',None,'']:
-            tell("Deactivating MG5_aMC dependency '%s'"%dependency)
+            tell("Deactivating MadGraph7 dependency '%s'"%dependency)
             cmd.options[dependency] = None
 
 def activate_dependence(dependency, cmd=None, log = None, MG5dir=None):
@@ -385,9 +451,13 @@ def activate_dependence(dependency, cmd=None, log = None, MG5dir=None):
         raise MadGraph5Error('Samurai cannot yet be automatically installed.') 
 
     if dependency=='ninja':
+        # the option points to the library directory itself (./HEPTools/lib),
+        # but some installations keep ninja in its own subdirectory, so look
+        # for libninja.a both directly there and one 'lib' level below.
         if cmd.options['ninja'] in ['None',None,''] or\
          (cmd.options['ninja'] == './HEPTools/lib' and not MG5dir is None and\
-         which_lib(pjoin(MG5dir,cmd.options['ninja'],'lib','libninja.a')) is None):
+         all(which_lib(pjoin(MG5dir,cmd.options['ninja'],subdir,'libninja.a'))\
+                                is None for subdir in ['lib',''])):
             tell("Installing ninja...")
             cmd.do_install('ninja')
  
@@ -518,6 +588,65 @@ def copytree(*args, **opts):
     return shutil.copytree(*args, **opts)
 
 #===============================================================================
+# Atomic file replacement
+#===============================================================================
+def atomic_write(path, content):
+    """Write ``content`` to ``path`` so that any concurrent reader sees either
+    the complete old file or the complete new one, but never a truncated one.
+
+    ``open(path, 'w')`` (and therefore ``shutil.copy``) truncates the
+    destination before the first byte is written, so a reader that opens the
+    file in that window gets a short read.  For the files this is used on --
+    ``Source/make_opts`` above all, which is shared by every MG5 process on the
+    machine and re-written by each of them -- that failure is silent: a
+    truncated make_opts still *parses*, so ``make`` falls back to its builtins
+    ($(FC)=f77, no $(libext), no -ffixed-line-length-132) and the build dies
+    much later with unrelated column-72 Fortran errors.
+
+    The temporary file is created in the same directory as the destination:
+    os.replace is only atomic within one filesystem.
+    """
+    path = os.path.abspath(path)
+    dirname = os.path.dirname(path)
+    binary = isinstance(content, bytes)
+    fd, tmp = tempfile.mkstemp(dir=dirname,
+                               prefix='.%s.' % os.path.basename(path),
+                               suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'wb' if binary else 'w') as fsock:
+            fsock.write(content)
+            fsock.flush()
+            os.fsync(fsock.fileno())
+        # mkstemp creates the file 0600; make_opts and friends have to stay
+        # readable by whoever else uses the install.
+        if os.path.exists(path):
+            shutil.copymode(path, tmp)
+        else:
+            os.chmod(tmp, 0o644)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def atomic_copy(src, dst):
+    """``shutil.copy(src, dst)``, but the destination is replaced atomically.
+
+    Like shutil.copy, ``dst`` may be a directory, in which case the basename of
+    ``src`` is used.  See :func:`atomic_write` for why this matters.  The source
+    is read into memory, so this is for configuration-sized files.
+    """
+    if os.path.isdir(dst):
+        dst = os.path.join(dst, os.path.basename(src))
+    with open(src, 'rb') as fsock:
+        content = fsock.read()
+    atomic_write(dst, content)
+    return dst
+
+#===============================================================================
 # Compiler which returns smart output error in case of trouble
 #===============================================================================
 def compile(arg=[], cwd=None, mode='fortran', job_specs = True, nb_core=1 ,**opt):
@@ -587,7 +716,7 @@ def compile(arg=[], cwd=None, mode='fortran', job_specs = True, nb_core=1 ,**opt
                   'is required to compile %s.\nPlease install it and retry.'%cwd)
             else:
                 logger_stderr.error('ERROR, you could not compile %s because'%cwd+\
-             ' your version of gfortran is older than 4.6. MadGraph5_aMC@NLO will carry on,'+\
+             ' your version of gfortran is older than 4.6. MadGraph7 will carry on,'+\
                               ' but will not be able to compile an executable.')
                 return p.returncode
         # Other reason
@@ -1115,7 +1244,7 @@ def mkfifo(fifo_path):
     try:
         os.mkfifo(fifo_path)
     except:
-        raise OSError('MadGraph5_aMCatNLO could not create a fifo file at:\n'+
+        raise OSError('MadGraph7 could not create a fifo file at:\n'+
           '   %s\n'%fifo_path+'Make sure that this file does not exist already'+
           ' and that the file format of the target drive supports fifo file (i.e not NFS).')
 
@@ -1228,28 +1357,48 @@ class TMP_directory(object):
 class TMP_variable(object):
     """replace an attribute of a class with another value for the time of the
        context manager
+
+       A dict is addressed by key instead: TMP_variable(cmd.options, 'foo', 1)
+       swaps cmd.options['foo'], which is where MG5 keeps its own settings.
+
+       Note that the new value is installed by __init__, not by __enter__, so
+       this can also be driven by hand -- construct it to swap, and call
+       __exit__(None, None, None) to restore -- for a scope that is not a
+       single block.
     """
 
     def __init__(self, cls, attribute, value):
 
         self.cls = cls
-        self.attribute = attribute        
+        self.attribute = attribute
+        self.is_dict = isinstance(cls, dict)
         if isinstance(attribute, list):
             self.old_value = []
             for key, onevalue in zip(attribute, value):
-                self.old_value.append(getattr(cls, key))
-                setattr(self.cls, key, onevalue)
+                self.old_value.append(self._get(key))
+                self._set(key, onevalue)
         else:
-            self.old_value = getattr(cls, attribute)
-            setattr(self.cls, self.attribute, value)
-    
+            self.old_value = self._get(attribute)
+            self._set(attribute, value)
+
+    def _get(self, key):
+        if self.is_dict:
+            return self.cls.get(key)
+        return getattr(self.cls, key)
+
+    def _set(self, key, value):
+        if self.is_dict:
+            self.cls[key] = value
+        else:
+            setattr(self.cls, key, value)
+
     def __exit__(self, ctype, value, traceback ):
         
         if isinstance(self.attribute, list):
             for key, old_value in zip(self.attribute, self.old_value):
-                setattr(self.cls, key, old_value)
+                self._set(key, old_value)
         else:
-            setattr(self.cls, self.attribute, self.old_value)
+            self._set(self.attribute, self.old_value)
         
     def __enter__(self):
         return self.old_value 
@@ -1285,7 +1434,11 @@ def gunzip(path, keep=False, stdout=None):
         if stdout:
             os.system('gunzip  %s -c %s > %s' % (options, path, stdout))
         else:
-            os.system('gunzip %s %s' % (options, path)) 
+            # -f: without it gunzip asks "already exists -- do you wish to
+            # overwrite (y or n)?" as soon as the uncompressed file is already
+            # there. Nothing answers that prompt here, so gunzip would silently
+            # decompress nothing and leave a stale file behind.
+            os.system('gunzip -f %s %s' % (options, path))
         return 0
     
     if not stdout:
@@ -1342,7 +1495,17 @@ def configure_gzip(configuration=None):
         if configuration['nb_core'] is not None:
             _gzip_tool_max_cores = configuration['nb_core']
 
-def gzip(path, stdout=None, error=True, forceexternal=False):
+# Compression level for the in-process branch of gzip() below. The gzip module
+# defaults to 9, which is a poor trade here: on a 172 MB LHE, level 9 takes
+# 18.6 s against 4.5 s at level 6, and buys 4% (38.1 MB against 39.7 MB). Level
+# 6 is also what the external tool this function shells out to for large files
+# uses, so the two branches now agree instead of compressing the same data
+# differently depending on its size.
+GZIP_COMPRESSLEVEL = 6
+
+
+def gzip(path, stdout=None, error=True, forceexternal=False,
+         compresslevel=GZIP_COMPRESSLEVEL):
     """ a standard replacement for os.system('gzip %s ' % path)"""
 
     # For large files (>256M), it is faster and safer to use a separate tool.
@@ -1364,8 +1527,11 @@ def gzip(path, stdout=None, error=True, forceexternal=False):
         stdout = "%s.gz" % stdout
 
     try:
-        with ziplib.open(stdout, 'wb') as f:
-            f.write(open(path).read().encode())
+        # Stream it: reading the whole file in as a str and encoding it made a
+        # 172 MB LHE cost two extra full-size copies in memory.
+        with open(path, 'rb') as fsock, \
+             ziplib.open(stdout, 'wb', compresslevel=compresslevel) as f:
+            shutil.copyfileobj(fsock, f, 4 * 1024 * 1024)
     except OverflowError:
         gzip(path, stdout, error=error, forceexternal=True)
     except Exception:
@@ -1433,6 +1599,34 @@ class open_file(object):
                                     ['firefox', 'chrome', 'safari','opera'], 
                                     'web browser')
 
+    # tried in this order when neither the text_editor option nor $EDITOR
+    # names one
+    DEFAULT_TEXT_EDITORS = ['vi', 'emacs', 'vim', 'gedit', 'nano']
+
+    @classmethod
+    def resolve_text_editor(cls, configured=None, quiet=False):
+        """The text editor a card will open in.
+
+        The `text_editor` option if that program exists, else $EDITOR, else the
+        first of DEFAULT_TEXT_EDITORS found on the machine.  With `quiet`, it
+        says nothing and sets nothing -- for telling someone in advance which
+        editor they are about to get.
+        """
+
+        if configured:
+            if which(configured.split()[0]):
+                return configured
+            if not quiet:
+                logger.warning('Specified text editor %s not valid.' % configured)
+        if 'EDITOR' in os.environ:
+            return os.environ['EDITOR']
+        if quiet:
+            for candidate in cls.DEFAULT_TEXT_EDITORS:
+                if which(candidate):
+                    return candidate
+            return None
+        return cls.find_valid(cls.DEFAULT_TEXT_EDITORS, 'text editor')
+
     @classmethod
     def configure_mac(cls, configuration=None):
         """ configure the way to open a file for mac """
@@ -1445,22 +1639,7 @@ class open_file(object):
         for key in configuration:
             if key == 'text_editor':
                 # Treat text editor ONLY text base editor !!
-                if configuration[key]:
-                    program = configuration[key].split()[0]                    
-                    if not which(program):
-                        logger.warning('Specified text editor %s not valid.' % \
-                                                             configuration[key])
-                    else:
-                        # All is good
-                        cls.text_editor = configuration[key]
-                        continue
-                #Need to find a valid default
-                if 'EDITOR' in os.environ:
-                    cls.text_editor = os.environ['EDITOR']
-                else:
-                    cls.text_editor = cls.find_valid(
-                                        ['vi', 'emacs', 'vim', 'gedit', 'nano'],
-                                         'text editor')
+                cls.text_editor = cls.resolve_text_editor(configuration[key])
               
             elif key == 'eps_viewer':
                 if configuration[key]:
@@ -1491,11 +1670,11 @@ class open_file(object):
         for p in possibility:
             if which(p):
                 logger.info('Using default %s \"%s\". ' % (program, p) + \
-                             'Set another one in ./input/mg5_configuration.txt')
+                             'Set another one in ./input/mg7_configuration.txt')
                 return p
         
         logger.info('No valid %s found. ' % program + \
-                                   'Please set in ./input/mg5_configuration.txt')
+                                   'Please set in ./input/mg7_configuration.txt')
         return None
         
         
@@ -1517,7 +1696,7 @@ class open_file(object):
                 _thread.start_new_thread(subprocess.call,(arguments,))
         else:
             logger.warning('Not able to open file %s since no program configured.' % file_path + \
-                                'Please set one in ./input/mg5_configuration.txt')
+                                'Please set one in ./input/mg7_configuration.txt')
 
     def open_mac_program(self, program, file_path):
         """ open a text with the text editor """
@@ -1563,6 +1742,317 @@ def get_HEPTools_location_setter(HEPToolsDir,type):
         return "%s=%s:$%s "%(target_env_var,target_path,target_env_var)
     else:
         return ''
+
+def find_pythia8_main164(pythia8_path):
+    """Locate main164, the Pythia8 example program used to shower LO events.
+    Returns (executable, examples_dir): executable is None if main164 is not
+    compiled, examples_dir is None if main164.cc cannot be found either."""
+
+    examples_dir = None
+    for examples in (pjoin(pythia8_path, 'share', 'Pythia8', 'examples'),
+                     pjoin(pythia8_path, 'examples')):
+        executable = pjoin(examples, 'main164')
+        if os.path.isfile(executable) and os.access(executable, os.X_OK):
+            return executable, examples
+        if examples_dir is None and os.path.isfile(pjoin(examples, 'main164.cc')):
+            examples_dir = examples
+    return None, examples_dir
+
+def get_pythia8_version(pythia8_path):
+    """The version of a Pythia8 installation (e.g. '8.317'), from its
+    pythia8-config or its xmldoc, or None if it cannot be told."""
+
+    try:
+        out = subprocess.Popen([pjoin(pythia8_path, 'bin', 'pythia8-config'), '--version'],
+                       stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0]
+        out = out.decode(errors='ignore').strip()
+        float(out)
+        return out
+    except (OSError, ValueError):
+        pass
+    for xmldoc in (pjoin(pythia8_path, 'share', 'Pythia8', 'xmldoc'),
+                   pjoin(pythia8_path, 'xmldoc')):
+        try:
+            match = re.search(r'"Pythia:versionNumber"\s+default="([\d.]+)"',
+                              open(pjoin(xmldoc, 'Version.xml')).read())
+        except IOError:
+            continue
+        if match:
+            return match.group(1)
+    return None
+
+def _pythia8_makefile_inc(examples_dir):
+    """The Makefile.inc holding the configuration of a Pythia8 examples
+    directory: next to its Makefile (installation, or built source tree), or
+    at the top of a source tree that was configured but not built. None if
+    Pythia8 was not configured."""
+
+    for makefile_inc in (pjoin(examples_dir, 'Makefile.inc'),
+                         pjoin(examples_dir, os.pardir, 'Makefile.inc')):
+        if os.path.isfile(makefile_inc):
+            return makefile_inc
+    return None
+
+def pythia8_hepmc_version(examples_dir):
+    """The HepMC version (2 or 3) main164 is compiled against with the
+    configuration of this Pythia8 examples directory (main164.cc takes HepMC3
+    when both are enabled), None if neither is."""
+
+    use = {}
+    makefile_inc = _pythia8_makefile_inc(examples_dir)
+    if makefile_inc:
+        for line in open(makefile_inc):
+            match = re.match(r'\s*HEPMC([23])_USE\s*=\s*(\S+)', line)
+            if match:
+                use[int(match.group(1))] = match.group(2).lower() == 'true'
+    for version in (3, 2):
+        if use.get(version):
+            return version
+    return None
+
+def find_hepmc(version, candidates=()):
+    """Return (prefix, libdir) of a HepMC<version> installation (version 2 or
+    3), trying the candidate prefixes and then HepMC3-config, or None."""
+
+    if version == 3:
+        header, library, config = pjoin('HepMC3', 'GenEvent.h'), 'libHepMC3', 'HepMC3-config'
+    else:
+        header, library, config = pjoin('HepMC', 'GenEvent.h'), 'libHepMC', 'HepMC-config'
+    candidates = list(candidates)
+    if which(config):
+        candidates.append(os.path.dirname(os.path.dirname(os.path.realpath(which(config)))))
+    for prefix in candidates:
+        if not prefix or not os.path.isfile(pjoin(prefix, 'include', header)):
+            continue
+        for libdir in ('lib', 'lib64'):
+            if glob('%s.*' % library, pjoin(prefix, libdir)):
+                return os.path.realpath(prefix), os.path.realpath(pjoin(prefix, libdir))
+    return None
+
+def get_pythia8_hepmc_flags(pythia8_path, hepmc_version, hepmc_paths=()):
+    """Compiler flags (-I, -L, -rpath, -l) linking a program that uses Pythia8
+    to HepMC<hepmc_version> (2 or 3): the HepMC setup of Pythia8 if it has
+    that version, else the installation found in hepmc_paths or next to Pythia8."""
+
+    config = pjoin(pythia8_path, 'bin', 'pythia8-config')
+    if os.path.isfile(config):
+        try:
+            out = subprocess.Popen([config, '--hepmc%d' % hepmc_version],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0]
+            out = out.decode(errors='ignore').strip()
+        except OSError:
+            out = ''
+        if out:
+            return out
+    default = 'hepmc3' if hepmc_version == 3 else 'hepmc'
+    hepmc = find_hepmc(hepmc_version, list(hepmc_paths) + [pjoin(pythia8_path, os.pardir, default)])
+    if not hepmc:
+        raise MadGraph5Error('No HepMC%d installation was found (it can be ' % hepmc_version +
+                             "installed with 'install %s')." % default)
+    prefix, libdir = hepmc
+    return '-I%s -L%s -Wl,-rpath,%s -l%s' % (pjoin(prefix, 'include'), libdir, libdir,
+                                             'HepMC3' if hepmc_version == 3 else 'HepMC')
+
+def get_pythia8_main164(pythia8_path, fallback_dir=None, hepmc_version=None,
+                        hepmc_paths=()):
+    """Return the path of a compiled main164, compiling it if needed.
+
+    main164 is built in the Pythia8 examples directory with the Makefile that
+    Pythia8 configured there. If that directory is read-only (e.g. a central
+    installation), main164.cc and the Makefiles are copied to fallback_dir and
+    main164 is built there instead.
+
+    main164 writes its events in the format of the HepMC library it is linked
+    to. If hepmc_version (2 or 3) differs from the one Pythia8 was configured
+    with, a dedicated main164 is built against the HepMC installation found in
+    hepmc_paths or next to Pythia8: in <examples>/main164_hepmc<version>, so
+    that it is shared by all processes, or in <fallback_dir>_hepmc<version>
+    if the examples directory is read-only."""
+
+    executable, examples = find_pythia8_main164(pythia8_path)
+    if not examples:
+        version = get_pythia8_version(pythia8_path)
+        if version and float(version) < 8.311:
+            raise MadGraph5Error('The Pythia8 installation %s is version %s. ' % (pythia8_path, version) +
+                'MadGraph7 showers LO events with main164, an example program of Pythia8 '+
+                "that exists since Pythia 8.311: please install a more recent Pythia8 "+
+                "(e.g. with 'install pythia8').")
+        raise MadGraph5Error('main164.cc cannot be found in the Pythia8 installation ' +
+            '%s. MadGraph7 showers LO events with main164, an example program of ' % pythia8_path +
+            "Pythia8 that exists since Pythia 8.311 (it can be installed with 'install pythia8').")
+
+    if hepmc_version and hepmc_version != pythia8_hepmc_version(examples):
+        if not os.path.isfile(pjoin(examples, 'main164.cc')):
+            raise MadGraph5Error('main164.cc cannot be found in %s, so that ' % examples +
+                                 'main164 cannot be compiled for HepMC%d.' % hepmc_version)
+        default = 'hepmc3' if hepmc_version == 3 else 'hepmc'
+        hepmc = find_hepmc(hepmc_version, list(hepmc_paths) +
+                           [pjoin(pythia8_path, os.pardir, default)])
+        if not hepmc:
+            raise MadGraph5Error('Pythia8 cannot write HepMC%d: ' % hepmc_version +
+                'no HepMC%d installation was found (it can be installed with ' % hepmc_version +
+                "'install %s'), and Pythia8 was configured with another version." % default)
+        hepmc = (hepmc_version,) + hepmc
+        stamp = _pythia8_main164_stamp(pythia8_path, examples, hepmc)
+        shared_dir = pjoin(examples, 'main164_hepmc%d' % hepmc_version)
+        local_dir = '%s_hepmc%d' % (fallback_dir, hepmc_version) if fallback_dir else None
+        for build_dir in (shared_dir, local_dir):
+            if build_dir and _pythia8_main164_is_built(build_dir, stamp):
+                return pjoin(build_dir, 'main164')
+        if os.access(examples, os.W_OK):
+            build_dir = shared_dir
+        elif local_dir:
+            build_dir = local_dir
+        else:
+            raise MadGraph5Error('No writable directory to compile main164 ' +
+                                 'for HepMC%d.' % hepmc_version)
+        return _compile_pythia8_main164(examples, build_dir, stamp,
+                                        _pythia8_main164_makefile_inc(examples, hepmc))
+
+    if executable:
+        return executable
+    if os.access(examples, os.W_OK):
+        return _compile_pythia8_main164(examples, examples)
+    if not fallback_dir:
+        raise MadGraph5Error('main164 is not compiled in the read-only ' +
+            'directory %s. Please compile it with "make main164" there.' % examples)
+    stamp = _pythia8_main164_stamp(pythia8_path, examples)
+    if _pythia8_main164_is_built(fallback_dir, stamp):
+        return pjoin(fallback_dir, 'main164')
+    return _compile_pythia8_main164(examples, fallback_dir, stamp,
+                                    _pythia8_main164_makefile_inc(examples))
+
+def _pythia8_lib_include(examples, makefile_inc):
+    """The Pythia8 library and include directories that the examples Makefile
+    uses: those of the source tree for the examples of a built source tree (the
+    Makefile then takes ../lib), PREFIX_LIB and PREFIX_INCLUDE otherwise."""
+
+    if glob('libpythia8.*', pjoin(examples, os.pardir, 'lib')):
+        return (os.path.realpath(pjoin(examples, os.pardir, 'lib')),
+                os.path.realpath(pjoin(examples, os.pardir, 'include')))
+    prefix = {}
+    for line in open(makefile_inc):
+        match = re.match(r'\s*(PREFIX_LIB|PREFIX_INCLUDE)\s*=\s*(\S+)', line)
+        if match:
+            prefix[match.group(1)] = match.group(2)
+    return prefix.get('PREFIX_LIB'), prefix.get('PREFIX_INCLUDE')
+
+def _pythia8_main164_makefile_inc(examples, hepmc=None):
+    """The Makefile.inc of a copy of the Pythia8 examples directory: the
+    configuration of Pythia8, with the location of its library made explicit
+    (the examples Makefile of a source tree finds it as ../lib, which a copy
+    does not have) and, for hepmc = (version, prefix, libdir), its HepMC setup
+    replaced by that one."""
+
+    makefile_inc = _pythia8_makefile_inc(examples)
+    if not makefile_inc:
+        raise MadGraph5Error('No Makefile.inc found for the Pythia8 examples in ' +
+            '%s: Pythia8 must be configured and compiled to be used.' % examples)
+    lines = []
+    for line in open(makefile_inc).read().splitlines():
+        key = line.split('=', 1)[0].strip()
+        if key in ('PREFIX_LIB', 'PREFIX_INCLUDE'):
+            continue
+        if hepmc and re.match(r'HEPMC[23]_(USE|INCLUDE|LIB)$', key):
+            continue
+        if hepmc and key == 'CXX_COMMON':
+            line = ' '.join(word for word in line.split(' ')
+                      if word not in ('-DHEPMC2HACK', '-DHEPMC2', '-DHEPMC3'))
+        lines.append(line)
+    lib, include = _pythia8_lib_include(examples, makefile_inc)
+    if lib:
+        lines.append('PREFIX_LIB=%s' % lib)
+    if include:
+        lines.append('PREFIX_INCLUDE=%s' % include)
+    if hepmc:
+        version, prefix, libdir = hepmc
+        lines += ['HEPMC%d_USE=false' % (5 - version),
+                  'HEPMC%d_USE=true' % version,
+                  'HEPMC%d_INCLUDE=-I%s' % (version, pjoin(prefix, 'include')),
+                  'HEPMC%d_LIB=-L%s -Wl,-rpath,%s -l%s' % (version, libdir, libdir,
+                                              'HepMC3' if version == 3 else 'HepMC')]
+    return '\n'.join(lines) + '\n'
+
+def _pythia8_main164_stamp(pythia8_path, examples, hepmc=None):
+    """What a copied main164 build depends on, so that it is rebuilt when
+    Pythia8 or HepMC is reinstalled or upgraded in place: the path, size and
+    modification time of main164.cc, Makefile.inc and the Pythia8 (and HepMC)
+    libraries."""
+
+    files = [pjoin(examples, 'main164.cc')]
+    makefile_inc = _pythia8_makefile_inc(examples)
+    if makefile_inc:
+        files.append(makefile_inc)
+        lib = _pythia8_lib_include(examples, makefile_inc)[0]
+        if lib:
+            files += sorted(glob('libpythia8.*', lib))
+    if hepmc:
+        version, prefix, libdir = hepmc
+        files += sorted(glob('libHepMC%s.*' % ('3' if version == 3 else ''), libdir))
+    lines = [os.path.realpath(pythia8_path)]
+    for path in files:
+        try:
+            info = os.stat(path)
+            lines.append('%s %d %d' % (os.path.realpath(path), info.st_size, int(info.st_mtime)))
+        except OSError:
+            lines.append('%s missing' % path)
+    return '\n'.join(lines)
+
+def _pythia8_main164_is_built(build_dir, stamp):
+    """Whether build_dir holds a main164 built with this stamp."""
+
+    stamp_file = pjoin(build_dir, 'BUILD_STAMP')
+    return os.path.isfile(pjoin(build_dir, 'main164')) and \
+           os.path.isfile(stamp_file) and open(stamp_file).read() == stamp
+
+def _compile_pythia8_main164(examples, build_dir, stamp=None, makefile_inc=None):
+    """Compile main164 in build_dir and return its path. If build_dir is not the
+    Pythia8 examples directory, main164.cc and the Makefile are copied there,
+    with makefile_inc as Makefile.inc, and the build is stamped."""
+
+    executable = pjoin(build_dir, 'main164')
+    stamp_file = pjoin(build_dir, 'BUILD_STAMP')
+    if build_dir != examples:
+        if os.path.exists(executable):
+            # stale build: make would consider it up to date
+            os.remove(executable)
+        elif not os.path.isdir(build_dir):
+            os.makedirs(build_dir)
+        for name in ('main164.cc', 'Makefile'):
+            shutil.copy(pjoin(examples, name), build_dir)
+        with open(pjoin(build_dir, 'Makefile.inc'), 'w') as fsock:
+            fsock.write(makefile_inc)
+
+    # HEPToolsInstaller adds a 'mainMG' rule building main164 with Rivet support
+    target = 'main164'
+    if re.search(r'^mainMG\s*:', open(pjoin(build_dir, 'Makefile')).read(), re.M):
+        target = 'mainMG'
+    logger.info('Compiling main164 from Pythia8 in %s' % build_dir)
+    compile([target], cwd=build_dir, mode='cpp')
+    if not os.path.isfile(executable):
+        raise MadGraph5Error('Compilation of main164 in %s did not produce ' % build_dir +
+                             'an executable, so that Pythia8 cannot be used.')
+    if build_dir != examples:
+        with open(stamp_file, 'w') as fsock:
+            fsock.write(stamp)
+    return executable
+
+def hepmc_file_version(path):
+    """The HepMC version (2 or 3) of a HepMC ASCII file (possibly gzipped),
+    read from its header; None if it cannot be told (e.g. for a fifo)."""
+
+    if not os.path.isfile(path):
+        return None
+    try:
+        with (ziplib.open(path, 'rt') if path.endswith('.gz') else open(path)) as fsock:
+            for _, line in zip(range(10), fsock):
+                if line.startswith('HepMC::Asciiv3') or line.startswith('HepMC::Version 3'):
+                    return 3
+                if line.startswith('HepMC::IO_GenEvent') or line.startswith('HepMC::Version 2'):
+                    return 2
+    except (IOError, OSError, UnicodeDecodeError):
+        pass
+    return None
 
 def get_shell_type():
     """ Try and guess what shell type does the user use."""
@@ -1645,18 +2135,22 @@ def sprint(*args, **opt):
     except Exception:
         line=''
 
+    no_color = bool(os.environ.get('MG7_NO_COLOR'))
+
     if line:
-        intro = ' %s = \033[0m' % line
+        intro = ' %s = ' % line if no_color else ' %s = \033[0m' % line
     else:
         intro = ''
-    
-    
-    if not use_print:
-        log.log(level, ' '.join([intro]+[str(a) for a in args]) + \
-                   ' \033[1;30m[%s at line %s]\033[0m' % (os.path.basename(filename), lineno))
+
+    if no_color:
+        suffix = ' [%s at line %s]' % (os.path.basename(filename), lineno)
     else:
-        print(' '.join([intro]+[str(a) for a in args]) + \
-                   ' \033[1;30m[%s at line %s]\033[0m' % (os.path.basename(filename), lineno))
+        suffix = ' \033[1;30m[%s at line %s]\033[0m' % (os.path.basename(filename), lineno)
+
+    if not use_print:
+        log.log(level, ' '.join([intro]+[str(a) for a in args]) + suffix)
+    else:
+        print(' '.join([intro]+[str(a) for a in args]) + suffix)
 
     if wait:
         input('press_enter to continue')
@@ -1941,7 +2435,7 @@ class Notification(object):
         elif self.working == "Foundation":
             try:
                 notification = self.NSUserNotification.alloc().init()
-                notification.setTitle_('MadGraph5_aMC@NLO')
+                notification.setTitle_('MadGraph7')
                 notification.setSubtitle_(subtitle)
                 notification.setInformativeText_(info_text)
                 try:
@@ -1955,14 +2449,14 @@ class Notification(object):
         elif self.working=='osascript':
             try:
                 os.system("""
-              osascript -e 'display notification "{}" with title "MadGraph5_aMC@NLO" subtitle "{}"'
+              osascript -e 'display notification "{}" with title "MadGraph7" subtitle "{}"'
               """.format(info_text, subtitle))
             except:
                 pass
 
         elif self.working == 'notify-send':
             try:
-                os.system(""" notify-send "MadGraph5_aMC@NLO" "{}"  &> /dev/null """.format(info_text,subtitle))
+                os.system(""" notify-send "MadGraph7" "{}"  &> /dev/null """.format(info_text,subtitle))
             except:
                 pass
 
@@ -1984,13 +2478,13 @@ class EasterEgg(object):
                    "",
                    'The fish are out of jokes. See you next year for more!'],
 #         'loading': ['Hi %(user)s, You are Loading Madgraph. Please be patient, we are doing the work.'],
-#         'quit': ['Thanks %(user)s for using MadGraph5_aMC@NLO, even on April 1st!']
+#         'quit': ['Thanks %(user)s for using MadGraph7, even on April 1st!']
                }
 
     default_banner_1 =  "************************************************************\n" + \
         "*                                                          *\n" + \
         "*                     W E L C O M E to                     *\n" + \
-        "*              M A D G R A P H 5 _ a M C @ N L O           *\n" + \
+        "*                    M A D G R A P H 7                     *\n" + \
         "*                                                          *\n" + \
         "*                                                          *\n" 
 
@@ -1998,15 +2492,13 @@ class EasterEgg(object):
     default_banner_2 =        "*                                                          *\n" + \
         "%s" + \
         "*                                                          *\n" + \
-        "*    The MadGraph5_aMC@NLO Development Team - Find us at   *\n" + \
+        "*       The MadGraph7 Development Team - Find us at        *\n" + \
         "*              http://madgraph.phys.ucl.ac.be/             *\n" + \
         "*                            and                           *\n" + \
         "*            http://amcatnlo.web.cern.ch/amcatnlo/         *\n" + \
         "*                                                          *\n" + \
         "*               Type 'help' for in-line help.              *\n" + \
-        "*           Type 'tutorial' to learn how MG5 works         *\n" + \
-        "*    Type 'tutorial aMCatNLO' to learn how aMC@NLO works   *\n" + \
-        "*    Type 'tutorial MadLoop' to learn how MadLoop works    *\n" + \
+        "*       Type 'tutorial' to learn how MadGraph7 works       *\n" + \
         "*                                                          *\n" + \
         "************************************************************"
 
@@ -2057,7 +2549,20 @@ class EasterEgg(object):
         "*      '-------'      to obtain cross sections (probably). *\n"
 
 
-    special_banner = {(4,5): May4_banner, (25,5): towel_day_banner, (14,10): Zcommezorglub}
+    # The original MadGraph5 banner (the '5' diagram, now a 7), shown on the
+    # anniversary of the MadGraph 5 paper, arXiv:1106.0522, 2 June 2011.
+    mg5_paper_banner = \
+        "*                 *                       *                *\n" + \
+        "*                   *        * *        *                  *\n" + \
+        "*                     * * * * 7 * * * *                    *\n" + \
+        "*                   *        * *        *                  *\n" + \
+        "*                 *                       *                *\n" + \
+        "*                                                          *\n" + \
+        "*    On this day in 2011 the MadGraph 5 paper appeared.    *\n" + \
+        "*        Happy birthday!   arXiv:1106.0522 [hep-ph]        *\n"
+
+    special_banner = {(4,5): May4_banner, (25,5): towel_day_banner,
+                     (14,10): Zcommezorglub, (2,6): mg5_paper_banner}
 
     
     def __init__(self, msgtype):
@@ -2140,8 +2645,15 @@ class EasterEgg(object):
             return ""
         from madgraph import MG5DIR
         import madgraph.interface.madgraph_interface as madgraph_interface
+        # written by bin/create_release.py, so a git checkout has none.  That is
+        # normal, not a failure: without it there is simply no contributor to
+        # celebrate, and reporting it printed a DEBUG line under every error
+        # message the user got (EasterEgg('error') comes through here).
+        authors = pjoin(MG5DIR, 'input', 'authors.md')
+        if not os.path.exists(authors):
+            return ""
         to_add = []
-        ff = open(pjoin(MG5DIR,'input','authors.md'), 'r')
+        ff = open(authors, 'r')
         for line in ff:
             author, fdate = line.split()
             year, month, day = [int(i) for i in fdate.split('-')]
@@ -2265,16 +2777,17 @@ It has been validated for the last time with version: %s""",
 			   name, '.'.join(str(i) for i in mg5_ver), '.'.join(str(i) for i in val_ver) )
     else:
         if __debug__:
-            logger.error("Plugin %s seems not supported by this version of MG5aMC. Keep it active (please update status)" % name)
+            logger.error("Plugin %s seems not supported by this version of MadGraph7. Keep it active (please update status)" % name)
             plugin_support[name] = True            
         else:
-            logger.error("Plugin %s is not supported by this version of MG5aMC." % name)
+            logger.error("Plugin %s is not supported by this version of MadGraph7." % name)
             plugin_support[name] = False
     return plugin_support[name]
     
 
 #decorator
-def set_global(loop=False, unitary=True, mp=False, cms=False):
+def set_global(loop=False, unitary=True, mp=False, cms=False,
+               dual=0, npwave=(0,)):
     from functools import wraps
     import aloha
     import aloha.aloha_lib as aloha_lib
@@ -2285,10 +2798,15 @@ def set_global(loop=False, unitary=True, mp=False, cms=False):
             old_gauge = aloha.unitary_gauge
             old_mp = aloha.mp_precision
             old_cms = aloha.complex_mass
+            old_dual = aloha.dual_mode
+            # npwave is a list mutated in place, so keep a copy of it
+            old_npwave = list(aloha.npwave)
             aloha.loop_mode = loop
             aloha.unitary_gauge = unitary
             aloha.mp_precision = mp
             aloha.complex_mass = cms
+            aloha.dual_mode = dual
+            aloha.npwave = list(npwave)
             aloha_lib.KERNEL.clean()
             try:
                 out =  f(*args, **opt)
@@ -2297,11 +2815,15 @@ def set_global(loop=False, unitary=True, mp=False, cms=False):
                 aloha.unitary_gauge = old_gauge
                 aloha.mp_precision = old_mp
                 aloha.complex_mass = old_cms
+                aloha.dual_mode = old_dual
+                aloha.npwave = old_npwave
                 raise
             aloha.loop_mode = old_loop
             aloha.unitary_gauge = old_gauge
             aloha.mp_precision = old_mp
             aloha.complex_mass = old_cms
+            aloha.dual_mode = old_dual
+            aloha.npwave = old_npwave
             aloha_lib.KERNEL.clean()
             return out
         return deco_f_set
@@ -2367,6 +2889,180 @@ def from_plugin_import(plugin_path, target_type, keyname=None, warning=False,
     
     
     
+
+#===============================================================================
+# LHAPDF locations
+#===============================================================================
+class LhapdfPaths(collections.namedtuple('LhapdfPaths',
+                                    ['config', 'data_paths', 'download_path'])):
+    """Where LHAPDF lives for one run: the lhapdf-config executable, the
+    directories to search for PDF sets, and the one a missing set may be
+    downloaded into. Any field may be None or empty."""
+
+    def find_set(self, pdf_set):
+        """The first data path holding <pdf_set>/, or None."""
+
+        for base in self.data_paths:
+            if os.path.isdir(pjoin(base, pdf_set)):
+                return base
+        return None
+
+    def with_data_path(self, path):
+        """A copy with *path* first in the search list (used after a download)."""
+
+        return self._replace(
+            data_paths=[path] + [p for p in self.data_paths if p != path])
+
+
+def _tool_executable(value, root):
+    """Turn a configuration value into a usable executable path, or None.
+
+    Accepts an absolute path, a path relative to the MadGraph root
+    ('./HEPTools/...'), and a bare program name looked up on PATH
+    ('lhapdf-config', the shipped default). A trailing '--python=X.Y' is a
+    filter for the 'set' command, not part of the path, so it is dropped.
+    """
+
+    if not value:
+        return None
+    exe = str(value).split()[0].strip('"\'')
+    if exe.lower() in ('none', 'auto'):
+        return None
+    if not os.path.isabs(exe) and (os.sep in exe or exe.startswith('.')):
+        return which(os.path.normpath(pjoin(root, exe))) or which(exe)
+    return which(exe)
+
+
+_lhapdf_datadirs_cache = {}
+def _lhapdf_datadirs(exe):
+    """The PDF-set directories a lhapdf-config reports, in its own order.
+    '--datadir' is the LHAPDF 6 spelling, '--pdfsets-path' the LHAPDF 5 one."""
+
+    if exe not in _lhapdf_datadirs_cache:
+        dirs = []
+        for flag in ('--datadir', '--pdfsets-path'):
+            try:
+                out = subprocess.check_output([exe, flag],
+                                              stderr=subprocess.DEVNULL)
+            except (OSError, subprocess.CalledProcessError):
+                continue
+            out = out.decode(errors='ignore').strip()
+            if out:
+                dirs = [p for p in out.split(os.pathsep) if p]
+                break
+        _lhapdf_datadirs_cache[exe] = dirs
+    return _lhapdf_datadirs_cache[exe]
+
+
+# The LHAPDF sets mirrored on CVMFS. Where it is mounted -- most grid and
+# laboratory clusters -- it is a complete, read-only, node-local copy of the
+# sets, so a set found there needs neither a download nor a transfer to the
+# worker node.
+CVMFS_LHAPDF_PATH = '/cvmfs/sft.cern.ch/lcg/external/lhapdfsets/current'
+
+def get_cvmfs_lhapdf_path(options=None):
+    """Return the CVMFS PDF-set mirror to use, or None.
+
+    The location is configurable ('cvmfs_lhapdf_path'); setting it to None
+    switches the fallback off. A configured path that is not mounted is
+    simply ignored, so the default value is safe on any machine.
+    """
+
+    path = CVMFS_LHAPDF_PATH
+    if options is not None:
+        try:
+            path = options.get('cvmfs_lhapdf_path', CVMFS_LHAPDF_PATH)
+        except AttributeError:
+            pass
+    if not path or str(path).strip().lower() in ('none', 'false', ''):
+        return None
+    path = str(path).strip()
+    return path if os.path.isdir(path) else None
+
+
+def _writable_dir(path):
+    """True if *path* is a writable directory or can be created as one."""
+
+    probe = path
+    while probe and not os.path.isdir(probe):
+        parent = os.path.dirname(probe)
+        if parent == probe:
+            return False
+        probe = parent
+    return os.access(probe, os.W_OK)
+
+
+def resolve_lhapdf(options=None, root=None, use_env=True, create=False):
+    """Locate LHAPDF for a run and return a LhapdfPaths.
+
+    Both the 'launch' command and a standalone bin/generate_events resolve
+    through here, so they cannot disagree about where the PDF sets live.
+    Never raises: a missing or broken LHAPDF just yields empty fields.
+
+    ``options``  an MadGraph7 option mapping; 'lhapdf', 'lhapdf_py3',
+                 'lhapdf_py2', 'heptools_install_dir' and 'mg5_path' are read
+    ``root``     what a relative option value is resolved against
+    ``use_env``  honour $MADGRAPH_LHAPDF_CONFIG and $LHAPDF_DATA_PATH
+    ``create``   create the download directory (only needed before a download)
+    """
+
+    options = options or {}
+    root = root or options.get('mg5_path') or mg_root()
+
+    candidates = []
+    if use_env:
+        candidates.append(os.environ.get('MADGRAPH_LHAPDF_CONFIG'))
+    candidates += [options.get(key)
+                   for key in ('lhapdf', 'lhapdf_py3', 'lhapdf_py2')]
+    candidates.append('lhapdf-config')
+
+    # Accept the first candidate that actually answers a data-directory query;
+    # remember the first one that merely exists in case none of them answers.
+    config, data_dirs, fallback, seen = None, [], None, set()
+    for value in candidates:
+        exe = _tool_executable(value, root)
+        if not exe or exe in seen:
+            continue
+        seen.add(exe)
+        fallback = fallback or exe
+        dirs = _lhapdf_datadirs(exe)
+        if dirs:
+            config, data_dirs = exe, dirs
+            break
+    config = config or fallback
+
+    heptools = options.get('heptools_install_dir') or pjoin('.', 'HEPTools')
+    if not os.path.isabs(heptools):
+        heptools = pjoin(root, heptools)
+
+    search = []
+    if use_env and os.environ.get('LHAPDF_DATA_PATH'):
+        search += os.environ['LHAPDF_DATA_PATH'].split(os.pathsep)
+    search += data_dirs
+    search.append(pjoin(heptools, 'lhapdf_pdfsets'))
+    search.append(pjoin(root, 'lhapdf_pdfsets'))
+    # last resort before a download: the read-only CVMFS mirror. It is never a
+    # download target -- _writable_dir rejects it -- so it only ever spares us
+    # from fetching a set that is already on the machine.
+    cvmfs = get_cvmfs_lhapdf_path(options)
+    if cvmfs:
+        search.append(cvmfs)
+    search = [os.path.abspath(p) for p in search]
+
+    data_paths = []
+    for path in search:
+        if path not in data_paths and os.path.isdir(path):
+            data_paths.append(path)
+
+    download_path = next((p for p in search if _writable_dir(p)), None)
+    if download_path and create:
+        try:
+            os.makedirs(download_path, exist_ok=True)
+        except OSError:
+            download_path = None
+
+    return LhapdfPaths(config, data_paths, download_path)
+
 
 python_lhapdf=None
 def import_python_lhapdf(lhapdfconfig):

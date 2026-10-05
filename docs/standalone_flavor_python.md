@@ -14,9 +14,9 @@ physical flavor combinations. Every standalone entry point therefore takes a
 ## 1. Generate the standalone output
 
 ```
-mg5_aMC
+madgraph
 > generate p p > j j QCD=0
-> output standalone /path/to/MYPROC --prefix=int
+> output standalone_fortran /path/to/MYPROC --prefix=int
 ```
 
 This writes one subprocess directory per group, e.g.
@@ -54,6 +54,24 @@ A flavor can be given in two equivalent ways:
 
 For a non-merged process there is a single flavor: index `1` (or the all-ones
 array).
+
+### Leg ordering inside the table
+
+The table holds one column per *class* of leg orderings, not one per ordering:
+two orderings that differ only by permuting legs inside the initial or inside
+the final state are deduplicated, and only one of them is kept. For
+`q q' > z q q'` the column `(1,2,1,1,2)` (`d u > z d u`) is there and
+`(2,1,1,2,1)` (`u d > z u d`) is not — `GET_FLAVOR_INDEX` returns `0` for the
+second one, and the matrix element is then `0`.
+
+Permuting two such legs is only a renaming of external lines, so moving a leg's
+momentum *and* its flavor together leaves `|M|^2` and the whole density matrix
+unchanged. Calling the per-process `matrix2py` module directly, it is up to you
+to present a tabulated ordering. Going through the multi-process wrapper
+(`SubProcesses/all_matrix.f`, which is what MadSpin and reweighting use)
+nothing is needed: `FLAVOR_ORDER_REPAIR` finds a tabulated ordering and moves
+the momenta with it. The one case it leaves alone is `smatrixhel` asked for a
+single helicity row, since that row names the legs by position.
 
 ---
 
@@ -134,7 +152,7 @@ name-mangling/prefix.
 active), instead of a timing table:
 
 ```
-mg5_aMC
+madgraph
 > launch /path/to/MYPROC --timings=21 --nb_run=0
 ```
 

@@ -4,9 +4,11 @@
 #include "madspace/compgraphs/function.hpp"
 #include "madspace/driver/backend.hpp"
 #include "madspace/driver/tensor.hpp"
+#include "random.cuh"
 
-#include <memory>
+#include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 
 namespace madspace {
@@ -43,10 +45,11 @@ public:
         const std::vector<bool>& eval_grad,
         bool return_contiguous_grads
     ) override;
+    void set_seed(DerivedSeed seed) override;
     void release_inputs() override;
     Context& context() { return *_context; }
     gpublasHandle_t gpublas_handle() { return _gpublas_handle.get(); }
-    gpurandGenerator_t gpurand_generator() { return _gpurand_generator.get(); }
+    GpuRandom& rng() { return _rng->get().get(); }
 
 private:
     struct HeldInputs {
@@ -93,8 +96,9 @@ private:
     std::optional<std::size_t> _fork_event;
     std::vector<std::size_t> _join_events;
     std::vector<std::size_t> _backward_wait_events;
-    ThreadResource<gpublasHandle_t> _gpublas_handle;
-    ThreadResource<gpurandGenerator_t> _gpurand_generator;
+    ThreadResource<gpublasHandle_t>& _gpublas_handle;
+    std::optional<std::reference_wrapper<ThreadResource<GpuRandom>>> _rng;
+    bool _uses_random = false;
     std::atomic<std::shared_ptr<std::unordered_map<std::size_t, std::size_t>>>
         _pool_size_cache;
     std::atomic<std::shared_ptr<std::unordered_map<std::size_t, std::size_t>>>

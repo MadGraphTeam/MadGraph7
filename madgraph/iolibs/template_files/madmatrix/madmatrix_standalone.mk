@@ -2,7 +2,7 @@
 # Licensed under the GNU Lesser General Public License (version 3 or later).
 # Integrated with the MadGraph7 project in Feb 2026.
 #
-# Standalone (standalone_mg7) Makefile.
+# Standalone (`output standalone`, madmatrix) Makefile.
 # Extends the non-standalone (madmatrix) Makefile by including madmatrix.mk and
 # adding a recipe for check_sa.exe (the standalone driver). Running `make` here
 # will build both the process library AND the standalone executable.
@@ -19,10 +19,21 @@ include madmatrix.mk
 #=== Standalone driver (check_sa.exe) configuration
 
 # Standalone-only object files (compiled via the generic %%.o pattern rule from
-# madmatrix.mk).
+# madmatrix.mk; RamboSamplingKernels.cc/CommonRandomNumberKernel.cc are found
+# in ../../src/rambo/ via the vpath in madmatrix.mk
 override standalone_objects = $(BUILDDIR)/RamboSamplingKernels.o \
                               $(BUILDDIR)/CommonRandomNumberKernel.o \
                               $(BUILDDIR)/check_sa.o
+
+# force relink when changing to before compiled backend
+CHECK_SA_BACKEND_MARKER = .check_sa_backend
+check_sa.exe: $(CHECK_SA_BACKEND_MARKER)
+$(CHECK_SA_BACKEND_MARKER): FORCE
+	@if [ ! -f $(CHECK_SA_BACKEND_MARKER) ] || [ "$$(cat $(CHECK_SA_BACKEND_MARKER) 2>/dev/null)" != "$(BACKEND)" ]; then \
+		echo $(BACKEND) > $(CHECK_SA_BACKEND_MARKER); \
+	fi
+.PHONY: FORCE
+FORCE:
 
 # Top-level standalone goal: process lib + standalone driver.
 .PHONY: standalone_all
@@ -35,7 +46,7 @@ standalone_all: all.$(TAG) check_sa.exe
 # code (the AOSOA->SoA transposition kernel).
 ifeq ($(GPUCC),)
 check_sa.exe: $(standalone_objects) $(LIBDIR)/lib$(MADMATRIX_LIB).so $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so
-	$(CXX) -o $@ $(standalone_objects) $(CXXLIBFLAGSRPATH) -L$(LIBDIR) -l$(MADMATRIX_LIB) -l$(MADMATRIX_COMMONLIB) $(BLASLIBFLAGS)
+	$(CXX) -o $@ $(standalone_objects) $(CXXLIBFLAGSRPATH) -L$(LIBDIR) -l$(MADMATRIX_LIB) -l$(MADMATRIX_COMMONLIB) $(BLASLIBFLAGS) $(CPPBLASLIBFLAGS)
 else
 check_sa.exe: $(standalone_objects) $(LIBDIR)/lib$(MADMATRIX_LIB).so $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so
 	$(GPUCC) -o $@ $(standalone_objects) $(GPULIBFLAGSRPATH) -L$(LIBDIR) -l$(MADMATRIX_LIB) -l$(MADMATRIX_COMMONLIB) $(BLASLIBFLAGS)
@@ -49,7 +60,7 @@ clean: clean_standalone
 .PHONY: clean_standalone
 clean_standalone:
 	rm -f $(BUILDDIR)/RamboSamplingKernels.o $(BUILDDIR)/CommonRandomNumberKernel.o $(BUILDDIR)/check_sa.o
-	rm -f check_sa.exe
+	rm -f check_sa.exe $(CHECK_SA_BACKEND_MARKER)
 
 # 'cleanall' from madmatrix.mk also wipes build.* directories, which already
 # covers our standalone objects when USEBUILDDIR=1. We only need to take care

@@ -43,6 +43,8 @@ C
       INTEGER FLAV_IDX
       INTEGER %(proc_prefix)sGET_FLAVOR_INDEX
 C
+      LOGICAL READPS
+C     
 C     EXTERNAL
 C
       REAL*8 DOT
@@ -70,7 +72,7 @@ c     in coupl.inc .
 
 c---  Now use a simple multipurpose PS generator (RAMBO) just to get a 
 c     RANDOM set of four momenta of given masses pmass(i) to be used to evaluate 
-c     the MadGraph5_aMC@NLO matrix-element.       
+c     the MadGraph7 matrix-element.       
 c     Alternatevely, here the user can call or set the four momenta at his will, see below.
 c     	
       ARGC = COMMAND_ARGUMENT_COUNT()
@@ -100,7 +102,21 @@ c---  Allow the energy to be set via command-line argument: ./check <energy> [nb
 
       call printout()
 
-      CALL GET_MOMENTA(SQRTS,PMASS,P)   
+C     If the file PS.input is present in the folder, take the momenta from it, else, generate them with GET_MOMENTA
+      inquire(FILE='PS.input', EXIST=READPS)
+      IF (READPS) THEN
+        OPEN(5, FILE='PS.input', ERR=6, STATUS='OLD',ACTION='READ')
+        DO I=1,NEXTERNAL
+          READ(5,*,END=7) P(0,I),P(1,I),P(2,I),P(3,I)
+        ENDDO
+        GOTO 7
+ 6      CONTINUE
+        STOP 'Could not read the PS.input phase-space point.'
+ 7      CONTINUE
+        CLOSE(5)
+      ELSE
+        CALL GET_MOMENTA(SQRTS,PMASS,P)
+      ENDIF
 c
 c     write the information on the four momenta 
 c
@@ -210,6 +226,12 @@ c     The value of mu_r2 is set to 0 but it is a dummy variable at tree-level an
           ENDDO
        ENDDO
 
+c     The value of the density matrix is written in a file to be more easily accessible
+       OPEN(1, file="Density_matrix.dat", action="write")
+         write(1, *) "Non-normalised density matrix in line format:"
+         write(1, *) INTER
+       CLOSE(1)
+
        return
        END 
       
@@ -224,7 +246,7 @@ C****************************************************************************
 
 
       SUBROUTINE GET_MOMENTA(ENERGY,PMASS,P)
-C---- auxiliary function to change convention between MadGraph5_aMC@NLO and rambo
+C---- auxiliary function to change convention between MadGraph7 and rambo
 c---- four momenta.       
       IMPLICIT NONE
       INCLUDE "nexternal.inc"

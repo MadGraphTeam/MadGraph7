@@ -1,12 +1,12 @@
 #############################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -18,11 +18,13 @@ from __future__ import absolute_import
 import collections
 import fractions
 import inspect
+import cmath
 import logging
 import math
 import os
 import re
 import sys
+import tempfile
 import time
 import collections
 
@@ -47,6 +49,16 @@ import models as ufomodels
 import models.model_reader as model_reader
 logger = logging.getLogger('madgraph.model')
 logger_mod = logging.getLogger('madgraph.model')
+# Importing a model prints hundreds of lines of details at debug level: what
+# the UFO converter defines, and everything the restriction removes or fuses.
+# They are written to a file (see start_model_log) rather than to the screen:
+# with no handler attached and no propagation to 'madgraph.model', the messages
+# are simply dropped.
+logger_details = logging.getLogger('madgraph.model.details')
+logger_details.propagate = False
+logger_details.addHandler(logging.NullHandler())
+# file handler of the import being logged, if any (see start_model_log)
+_model_log_handler = None
 
 root_path = os.path.dirname(os.path.realpath( __file__ ))
 sys.path.append(root_path)
@@ -58,6 +70,41 @@ pjoin = os.path.join
 
 # Suffixes to employ for the various poles of CTparameters
 pole_dict = {-2:'2EPS',-1:'1EPS',0:'FIN'}
+
+def is_symmetric_lorentz_structure(name):
+    """True when the lorentz structure *name* has commuting arguments.
+
+    The answer belongs to the structure itself: the aloha objects carry an
+    is_symmetric attribute, False on FactoryLorentz and set to True by the
+    structures whose arguments may be written in any order (Metric)."""
+
+    structure = getattr(aloha_object, name, None)
+    return bool(getattr(structure, 'is_symmetric', False))
+
+def canonicalize_lorentz_structure(structure):
+    """Sort the arguments of the symmetric functions appearing in *structure*.
+
+    Renumbering the indices of a vertex can reorder the arguments of a
+    symmetric function, so that Metric(3,2) and Metric(2,3) -- the same object
+    -- come out as different strings. Sorting the arguments of the functions
+    known to be symmetric makes the two spellings compare equal, so that only a
+    real disagreement between two definitions is reported.
+
+    Only calls whose arguments are all plain (possibly negative) integer
+    indices are touched, so a nested expression is never rewritten."""
+
+    if not isinstance(structure, str):
+        return structure
+
+    def sort_args(matchobj):
+        name = matchobj.group(1)
+        if not is_symmetric_lorentz_structure(name):
+            return matchobj.group(0)
+        args = [a.strip() for a in matchobj.group(2).split(',')]
+        return '%s(%s)' % (name, ','.join(sorted(args, key=int)))
+
+    return re.sub(r'\b([A-Za-z_]\w*)\(\s*(-?\d+(?:\s*,\s*-?\d+)*)\s*\)',
+                  sort_args, structure)
 
 class UFOImportError(MadGraph5Error):
     """ a error class for wrong import of UFO model""" 
@@ -240,135 +287,434 @@ def get_path_restrict(model_name, restrict=True):
     
     return model_path, restrict_file, restrict_name
 
+def start_model_log(model_dir, model_name):
+    """Write the details of the import of model_name into a file instead of on
+    the screen, and print the path of that file.
+
+    The file goes into the model directory when that directory is writable,
+    into the temporary directory otherwise. Nothing is written -- and nothing
+    is printed -- when the logger is not in debug mode. Return True when this
+    call is the one that opened the file, i.e. when the caller has to close it
+    with stop_model_log."""
+
+    global _model_log_handler
+
+    if _model_log_handler is not None:
+        # an enclosing import is already collecting the details: same file
+        return False
+    # logger_details has no level of its own: it inherits the one of
+    # 'madgraph.model', which is what the user sets with stdout_level. The
+    # handler keeps no level either, so a message that the logger lets through
+    # is written, be it DEBUG or the lower level of the admin debug mode.
+    if not logger_mod.isEnabledFor(logging.DEBUG):
+        return False
+
+    name = '%s_debug.log' % model_name.replace(os.path.sep, '_')
+    paths = []
+    if model_dir and os.access(model_dir, os.W_OK):
+        paths.append(pjoin(model_dir, name))
+    paths.append(pjoin(tempfile.gettempdir(), name))
+
+    for path in paths:
+        try:
+            handler = logging.FileHandler(path, mode='w')
+        except (IOError, OSError):
+            continue
+        break
+    else:
+        logger.info('No writable directory found for the model debug log.')
+        return False
+
+    handler.setFormatter(logging.Formatter('%(message)s'))
+    logger_details.addHandler(handler)
+    _model_log_handler = handler
+    logger.info('Details of the model import are written in %s' % path)
+    return True
+
+def stop_model_log(started=True):
+    """Close the file opened by start_model_log (if this caller opened it)."""
+
+    global _model_log_handler
+
+    if not started or _model_log_handler is None:
+        return
+    logger_details.removeHandler(_model_log_handler)
+    _model_log_handler.close()
+    _model_log_handler = None
+
+# -------------------------------------------------------------------------
+# the two-fermion structures the phase can be read off, as weights on the
+# chiral basis: L/R for a current, P/M for a scalar
+_fermion_terms = {
+    'Gamma(3,2,-1)*ProjM(-1,1)': {'L': 1},
+    'Gamma(3,2,-1)*ProjP(-1,1)': {'R': 1},
+    'Gamma(3,2,1)': {'L': 1, 'R': 1},
+    'ProjP(2,1)': {'P': 1},
+    'ProjM(2,1)': {'M': 1},
+    'Gamma5(2,1)': {'P': 1, 'M': -1},
+    }
+
+_fermion_term_pattern = re.compile(r'([+-]?)(?:(\d+(?:\.\d*)?)\*)?(%s)' % '|'.join(
+    re.escape(term) for term in
+    sorted(_fermion_terms, key=len, reverse=True)))
+
+def parse_fermion_structure(structure):
+    """A two-fermion lorentz structure as weights on the chiral basis, or
+    None when it is not a plain combination of the terms above -- a model
+    writes the neutral current as one structure as often as two
+    (Gamma(3,2,-1)*ProjM(-1,1) + 4*Gamma(3,2,-1)*ProjP(-1,1))."""
+
+    text = structure.replace(' ', '')
+    out, at = {}, 0
+    for match in _fermion_term_pattern.finditer(text):
+        if match.start() != at:
+            return None        # something between the terms we do not know
+        at = match.end()
+        factor = float(match.group(2)) if match.group(2) else 1.
+        if match.group(1) == '-':
+            factor = -factor
+        for key, weight in _fermion_terms[match.group(3)].items():
+            out[key] = out.get(key, 0) + factor * weight
+    if at != len(text) or not out:
+        return None
+    return out
+
+
+# ---------------------------------------------------------------------------
+# What only Feynman and FD gauge can see about a model
+# ---------------------------------------------------------------------------
+# Both gauges use the goldstone couplings, and gauge invariance ties those to
+# the masses the model uses everywhere else.  Unitary gauge never touches them,
+# so a model can carry the mismatch unnoticed for years: a fermion whose Yukawa
+# mass is not the mass it propagates with (heft ships ymb=4.2 against MB=4.7),
+# or a scalar whose coupling to the goldstones does not match its own mass
+# (EWdim6NLO leaks a dim-6 shift into lam).  Either comes out as a `check gauge`
+# disagreement of a few per mil, which reads like a numerical accident.
+#
+# The check runs on the finished model, so it works in both gauges: in Feynman
+# gauge the goldstone sits in its own vertex, in FD gauge the merge has already
+# folded it into the vector's, and either way the two couplings to compare are
+# there.
+
+def goldstone_mass_mismatches(model):
+    """The masses a model's goldstone couplings were built with, wherever they
+    disagree with the mass the particle propagates with.
+
+    Returns a list of (particle name, implied mass, actual mass, mass parameter,
+    what the coupling belongs to); empty when the model is consistent or when
+    nothing could be compared.
+    """
+
+    try:
+        couplings = model.get('coupling_dict')
+        parameters = model.get('parameter_dict')
+    except Exception:
+        return []
+    if not couplings or not parameters:
+        return []
+
+    def value(name):
+        if name.startswith('-'):
+            got = value(name[1:])
+            return None if got is None else -got
+        try:
+            return complex(couplings[name])
+        except Exception:
+            return None
+
+    def mass_of(particle):
+        name = particle.get('mass')
+        if name.lower() == 'zero':
+            return 0.
+        try:
+            return abs(complex(parameters[name]))
+        except Exception:
+            return None
+
+    def structure_of(name):
+        try:
+            lorentz = model.get_lorentz(name)
+        except Exception:
+            return None, None
+        return lorentz.get('structure'), lorentz.get('spins')
+
+    # A vertex can be split over several interactions -- by coupling order, and
+    # by whatever the FFV reshaping left behind -- so the couplings have to be
+    # added up per (particles, orders) before the relation means anything.  Only
+    # the lowest order is checked: an operator may modify the current at higher
+    # order without touching the goldstone, and that is not a mismatch.
+    # In Feynman gauge the goldstone keeps a vertex of its own, so the two
+    # couplings to compare sit apart; in FD gauge the merge has already put them
+    # in one.  Booking a goldstone leg under the vector it belongs to makes the
+    # two gauges look the same from here on.
+    partners = {}
+    for particle in model.get('particles'):
+        if particle.get('type') != 'goldstone':
+            continue
+        vectors = [p for p in model.get('particles')
+                   if p.get('mass') == particle.get('mass') and p.get('spin') == 3]
+        if len(vectors) == 1:
+            partners[abs(particle.get_pdg_code())] = vectors[0]
+
+    def under_vector(particle):
+        vector = partners.get(abs(particle.get_pdg_code()))
+        if vector is None:
+            return particle.get_pdg_code(), particle
+        code = abs(vector.get_pdg_code())
+        return (code if particle.get_pdg_code() > 0 else -code), vector
+
+    groups = {}
+    for inter in model.get('interactions'):
+        legs = inter.get('particles')
+        if len(legs) != 3:
+            continue
+        booked = [under_vector(p) for p in legs]
+        particles = tuple(code for code, _ in booked)
+        orders = tuple(sorted(inter.get('orders').items()))
+        entry = groups.setdefault((particles, orders),
+                                  {'legs': [p for _, p in booked],
+                                   'chiral': {}, 'plain': {}})
+        for (colour, index), name in inter.get('couplings').items():
+            structure, spins = structure_of(inter.get('lorentz')[index])
+            if structure is None:
+                continue
+            coupling = value(name)
+            if coupling is None:
+                continue
+            weights = parse_fermion_structure(structure)
+            if weights is not None:
+                for key, weight in weights.items():
+                    entry['chiral'][key] = entry['chiral'].get(key, 0) \
+                                                        + weight * coupling
+            elif structure in ('1', 'Metric(1,2)'):
+                key = (structure, tuple(spins or ()))
+                entry['plain'][key] = entry['plain'].get(key, 0) + coupling
+
+    lowest = {}
+    for (particles, orders), entry in groups.items():
+        weight = sum(abs(v) for _, v in orders)
+        if particles not in lowest or weight < lowest[particles][0]:
+            lowest[particles] = (weight, entry)
+
+    out = []
+    seen = set()
+
+    def report(particle, implied, actual, source):
+        # one line per particle: the same mass shows up once per goldstone it
+        # couples to, and saying it twice helps nobody
+        key = particle.get('name')
+        if key in seen or actual is None or implied is None:
+            return
+        if actual < 1e-9 and implied < 1e-9:
+            return
+        if abs(implied - actual) <= 1e-6 * max(abs(actual), abs(implied), 1e-30):
+            return
+        seen.add(key)
+        out.append((particle.get('name'), implied, actual,
+                    particle.get('mass'), source))
+
+    for _, (_, entry) in sorted(lowest.items()):
+        legs, chiral, plain = entry['legs'], entry['chiral'], entry['plain']
+
+        # a two-fermion vertex: the goldstone coupling carries the fermion mass,
+        # c(ProjP) = i m1/M cL and c(ProjM) = -i m2/M cL
+        if legs[0].is_fermion() and legs[1].is_fermion() and \
+                            set(chiral) & set('PM') and set(chiral) & set('LR'):
+            vector = legs[2]
+            mass = mass_of(vector)
+            if mass:
+                if vector.get('charge'):
+                    current = abs(chiral.get('L', 0))
+                    pairs = [('P', legs[0]), ('M', legs[1])]
+                else:
+                    current = abs(chiral.get('L', 0) - chiral.get('R', 0))
+                    pairs = [('M', legs[0])]
+                for chirality, fermion in pairs:
+                    if current and abs(chiral.get(chirality, 0)):
+                        report(fermion,
+                               abs(chiral[chirality]) * mass / current,
+                               mass_of(fermion), vector.get('name'))
+
+        # a vector pair and a scalar: the scalar's coupling to the goldstones
+        # carries its own mass.  Any mixing angle sits in both couplings and
+        # cancels in the ratio, so this holds beyond the standard model too.
+        to_goldstones = plain.get(('1', (1, 1, 1)))
+        to_vectors = plain.get(('Metric(1,2)', (3, 3, 1)))
+        if to_goldstones and to_vectors and legs[2].get('spin') == 1 and \
+                    legs[0].get_pdg_code() == legs[1].get_pdg_code():
+            mass = mass_of(legs[0])
+            if mass:
+                report(legs[2],
+                       math.sqrt(abs(to_goldstones) * 2 * mass ** 2
+                                 / abs(to_vectors)),
+                       mass_of(legs[2]), legs[0].get('name'))
+
+    return out
+
+
+def check_goldstone_masses(model):
+    """Warn about every goldstone coupling of the model built with the wrong
+    mass.  Only worth saying in the gauges that use those couplings."""
+
+    for name, implied, actual, parameter, source in \
+                                            goldstone_mass_mismatches(model):
+        gauge = 'FD' if aloha.unitary_gauge == 3 else 'Feynman'
+        if actual < 1e-9:
+            carries = 'but it propagates massless (%s)' % parameter
+            size = 'entirely'
+        else:
+            carries = 'but it propagates with %.6g GeV (%s)' % (actual, parameter)
+            size = 'by about %.1g' % abs(implied / actual - 1)
+        logger.warning(
+            '%s: its goldstone coupling was built with a mass of %.6g GeV, %s. '
+            '%s gauge uses that coupling for the longitudinal %s, so gauge '
+            'invariance is broken %s here -- unitary gauge does not see it, and '
+            '`check gauge` will disagree for any process that has one.',
+            name, implied, carries, gauge, source, size)
+
+
 def import_model(model_name, decay=False, restrict=True, prefix='mdl_',
                                                     complex_mass_scheme = None,
                                                     options={}):
     """ a practical and efficient way to import a model"""
     
     model_path, restrict_file, restrict_name = get_path_restrict(model_name, restrict)
-    
-    #import the FULL model
-    model = import_full_model(model_path, decay, prefix, options=options)
 
-    if os.path.exists(pjoin(model_path, "README")):
-        logger.info("Please read carefully the README of the model file for instructions/restrictions of the model.",'$MG:color:BLACK') 
-    # restore the model name
+    # everything the import prints at debug level (the definitions of the UFO
+    # converter, the details of the restriction) goes to a file, not on screen
+    name = os.path.basename(model_path.rstrip(os.path.sep))
     if restrict_name:
-        model["name"] += '-' + restrict_name
-    
-    # Decide whether complex mass scheme is on or not
-    useCMS = (complex_mass_scheme is None and aloha.complex_mass) or \
-                                                      complex_mass_scheme==True
-    #restrict it if needed       
-    if restrict_file:
-        try:
-            logger.info('Restrict model %s with file %s .' % (model_name, os.path.relpath(restrict_file)))
-        except OSError:
-            # sometimes has trouble with relative path
-            logger.info('Restrict model %s with file %s .' % (model_name, restrict_file))
-            
-        if logger_mod.getEffectiveLevel() > 10:
-            logger.info('Run \"set stdout_level DEBUG\" before import for more information.')
-        # Modify the mother class of the object in order to allow restriction
-        model = RestrictModel(model)
+        name += '-' + restrict_name
+    log_started = start_model_log(model_path, name)
+    try:
+        
+        #import the FULL model
+        model = import_full_model(model_path, decay, prefix, options=options)
 
-        # Change to complex mass scheme if necessary. This must be done BEFORE
-        # the restriction.
-        if useCMS:
-            # We read the param_card a first time so that the function 
-            # change_mass_to_complex_scheme can know if a particle is to
-            # be considered massive or not and with zero width or not.
-            # So we read the restrict card a first time, with the CMS set to
-            # False because we haven't changed the model yet.
-            model.set_parameters_and_couplings(param_card = restrict_file,
-                                                      complex_mass_scheme=False)
+        if os.path.exists(pjoin(model_path, "README")):
+            logger.info("Please read carefully the README of the model file for instructions/restrictions of the model.",'$MG:color:BLACK') 
+        # restore the model name
+        if restrict_name:
+            model["name"] += '-' + restrict_name
+        
+        # Decide whether complex mass scheme is on or not
+        useCMS = (complex_mass_scheme is None and aloha.complex_mass) or \
+                                                          complex_mass_scheme==True
+        #restrict it if needed       
+        if restrict_file:
+            try:
+                logger.info('Restrict model %s with file %s .' % (model_name, os.path.relpath(restrict_file)))
+            except OSError:
+                # sometimes has trouble with relative path
+                logger.info('Restrict model %s with file %s .' % (model_name, restrict_file))
+                
+            # the details of the restriction go to a log file, and only when
+            # the logger is in debug mode: point at the command which reports
+            # them on the screen instead
+            logger.info('Use \'explain_restriction\' to see what that card '
+                        'removes from the model.')
+            # Modify the mother class of the object in order to allow restriction
+            model = RestrictModel(model)
+
+            # Change to complex mass scheme if necessary. This must be done BEFORE
+            # the restriction.
+            if useCMS:
+                # We read the param_card a first time so that the function 
+                # change_mass_to_complex_scheme can know if a particle is to
+                # be considered massive or not and with zero width or not.
+                # So we read the restrict card a first time, with the CMS set to
+                # False because we haven't changed the model yet.
+                model.set_parameters_and_couplings(param_card = restrict_file,
+                                                          complex_mass_scheme=False)
+                if 'allow_qed_cms' in options and options['allow_qed_cms']:
+                    allow_qed = True
+                else:
+                    allow_qed = False
+
+                model.change_mass_to_complex_scheme(toCMS=True, bypass_check=allow_qed)
+            else:
+                # Make sure that the parameter 'CMSParam' of the model is set to 0.0
+                # as it should in order to have the correct NWA renormalization condition.
+                # It might be that the default of the model is CMS.
+                model.change_mass_to_complex_scheme(toCMS=False)
+
+            blocks = model.get_param_block()
+            if model_name == 'mssm' or os.path.basename(model_name) == 'mssm':
+                keep_external=True
+            elif all( b in blocks for b in ['USQMIX', 'SL2', 'MSOFT', 'YE', 'NMIX', 'TU','MSE2','UPMNS']):
+                keep_external=True
+            elif model_name == 'MSSM_SLHA2' or os.path.basename(model_name) == 'MSSM_SLHA2':
+                keep_external=True            
+            else:
+                keep_external=False
+            if keep_external:
+                logger.info('Detect SLHA2 format. keeping restricted parameter in the param_card')
+                
+            model.restrict_model(restrict_file, rm_parameter=not decay,
+               keep_external=keep_external, complex_mass_scheme=complex_mass_scheme)
+            model.path = model_path
+        else:
             if 'allow_qed_cms' in options and options['allow_qed_cms']:
                 allow_qed = True
             else:
                 allow_qed = False
+            # Change to complex mass scheme if necessary
+            if useCMS:
+                model.change_mass_to_complex_scheme(toCMS=True, bypass_check=allow_qed)
+            else:
+                # It might be that the default of the model (i.e. 'CMSParam') is CMS.
+                model.change_mass_to_complex_scheme(toCMS=False, bypass_check=allow_qed)
 
-            model.change_mass_to_complex_scheme(toCMS=True, bypass_check=allow_qed)
-        else:
-            # Make sure that the parameter 'CMSParam' of the model is set to 0.0
-            # as it should in order to have the correct NWA renormalization condition.
-            # It might be that the default of the model is CMS.
-            model.change_mass_to_complex_scheme(toCMS=False)
-
-        blocks = model.get_param_block()
-        if model_name == 'mssm' or os.path.basename(model_name) == 'mssm':
-            keep_external=True
-        elif all( b in blocks for b in ['USQMIX', 'SL2', 'MSOFT', 'YE', 'NMIX', 'TU','MSE2','UPMNS']):
-            keep_external=True
-        elif model_name == 'MSSM_SLHA2' or os.path.basename(model_name) == 'MSSM_SLHA2':
-            keep_external=True            
-        else:
-            keep_external=False
-        if keep_external:
-            logger.info('Detect SLHA2 format. keeping restricted parameter in the param_card')
-            
-        model.restrict_model(restrict_file, rm_parameter=not decay,
-           keep_external=keep_external, complex_mass_scheme=complex_mass_scheme)
-        model.path = model_path
-    else:
-        if 'allow_qed_cms' in options and options['allow_qed_cms']:
-            allow_qed = True
-        else:
-            allow_qed = False
-        # Change to complex mass scheme if necessary
-        if useCMS:
-            model.change_mass_to_complex_scheme(toCMS=True, bypass_check=allow_qed)
-        else:
-            # It might be that the default of the model (i.e. 'CMSParam') is CMS.
-            model.change_mass_to_complex_scheme(toCMS=False, bypass_check=allow_qed)
-
-    # forbid NLO model to use flavor grouping
-    try:
-        perturb = model.get('perturbation_couplings')
-    except Exception:
-        support_flavor = True
-    else:
-        if perturb:
-            support_flavor = False  
-        else:
+        # forbid NLO model to use flavor grouping
+        try:
+            perturb = model.get('perturbation_couplings')
+        except Exception:
             support_flavor = True
-
-    # forbid 4Fermion model to use flavor grouping
-    if any(lor.spins.count(2)>2 for lor in model.get('lorentz')):
-        support_flavor = False
-
-    if options.get('apply_flavor_grouping', True) and support_flavor:
-        logger.info("Apply flavor grouping to the model")
-        if model.get_particle(2).get('mass') != 'ZERO':
-            logger.info('no grouping quark due to massive u quark')
-        elif model.get_particle(3).get('mass') != 'ZERO':
-            model.merge_flavor([1,2])
-        elif model.get_particle(4).get('mass') != 'ZERO':
-            model.merge_flavor([1,2,3])
-        elif model.get_particle(5).get('mass') != 'ZERO':
-            model.merge_flavor([1,2,3,4])
-        elif model.get_particle(6).get('mass') != 'ZERO':
-            model.merge_flavor([1,2,3,4,5])
         else:
-            model.merge_flavor([1,2,3,4,5,6])
-        if model.get_particle(11).get('mass') != 'ZERO':
-            logger.info('no grouping lepton due to massive electron')
-        elif model.get_particle(13).get('mass') != 'ZERO':
-            logger.info('no grouping lepton due to massive muon')
-        elif model.get_particle(15).get('mass') != 'ZERO':
-            model.merge_flavor([11,13])
-        else:
-            model.merge_flavor([11,13,15])
+            if perturb:
+                support_flavor = False  
+            else:
+                support_flavor = True
 
-        if model.get_particle(12).get('mass') != 'ZERO' or \
-            model.get_particle(14).get('mass') != 'ZERO' or \
-            model.get_particle(16).get('mass') != 'ZERO':
-            logger.info('no grouping neutrino due to mass')
-        else:
-            model.merge_flavor([12,14,16])
-        #misc.sprint('W merging')
-        #model.merge_part_antipart(24)  # W+/W-
+        # forbid 4Fermion model to use flavor grouping
+        if any(lor.spins.count(2)>2 for lor in model.get('lorentz')):
+            support_flavor = False
 
-    return model
+        if options.get('apply_flavor_grouping', True) and support_flavor:
+            logger.info("Apply flavor grouping to the model")
+            if model.get_particle(2).get('mass') != 'ZERO':
+                logger.info('no grouping quark due to massive u quark')
+            elif model.get_particle(3).get('mass') != 'ZERO':
+                model.merge_flavor([1,2])
+            elif model.get_particle(4).get('mass') != 'ZERO':
+                model.merge_flavor([1,2,3])
+            elif model.get_particle(5).get('mass') != 'ZERO':
+                model.merge_flavor([1,2,3,4])
+            elif model.get_particle(6).get('mass') != 'ZERO':
+                model.merge_flavor([1,2,3,4,5])
+            else:
+                model.merge_flavor([1,2,3,4,5,6])
+            if model.get_particle(11).get('mass') != 'ZERO':
+                logger.info('no grouping lepton due to massive electron')
+            elif model.get_particle(13).get('mass') != 'ZERO':
+                logger.info('no grouping lepton due to massive muon')
+            elif model.get_particle(15).get('mass') != 'ZERO':
+                model.merge_flavor([11,13])
+            else:
+                model.merge_flavor([11,13,15])
+
+            if model.get_particle(12).get('mass') != 'ZERO' or \
+                model.get_particle(14).get('mass') != 'ZERO' or \
+                model.get_particle(16).get('mass') != 'ZERO':
+                logger.info('no grouping neutrino due to mass')
+            else:
+                model.merge_flavor([12,14,16])
+            #misc.sprint('W merging')
+            #model.merge_part_antipart(24)  # W+/W-
+
+        return model
+    finally:
+        stop_model_log(log_started)
     
 
 _import_once = []
@@ -475,7 +821,7 @@ def import_full_model(model_path, decay=False, prefix='', options={}):
             return model
         
     if (model_path, aloha.unitary_gauge, prefix, decay) in _import_once and not allow_reload:
-        raise MadGraph5Error('This model %s is modified on disk. To reload it you need to quit/relaunch MG5_aMC ' % model_path)
+        raise MadGraph5Error('This model %s is modified on disk. To reload it you need to quit/relaunch MadGraph7 ' % model_path)
      
     # Load basic information
     ufo_model = ufomodels.load_model(model_path, decay)
@@ -513,12 +859,12 @@ def import_full_model(model_path, decay=False, prefix='', options={}):
             elif p and not hasattr(p, 'partial_widths'):
                 p.partial_widths = {}
             # might be None for ghost
-        logger.debug("load width takes %s", time.time()-start)
+        logger_details.debug("load width takes %s", time.time()-start)
     
     if prefix:
         start = time.time()
         model.change_parameter_name_with_prefix()
-        logger.debug("model prefixing  takes %s", time.time()-start)
+        logger_details.debug("model prefixing  takes %s", time.time()-start)
                      
     path = os.path.dirname(os.path.realpath(model_path))
     path = os.path.join(path, model.get('name'))
@@ -547,7 +893,7 @@ class UFOMG5Converter(object):
         if hasattr(model, '__header__'):
             header = model.__header__
             if len(header) > 500 or header.count('\n') > 5:
-                logger.debug("Too long header")
+                logger_details.debug("Too long header")
             else:
                 logger.info("\n"+header)
         else:
@@ -566,6 +912,7 @@ class UFOMG5Converter(object):
             
         self.particles = base_objects.ParticleList()
         self.interactions = base_objects.InteractionList()
+        self.last_interaction_id = 0 # see get_new_interaction_id
         self.non_qcd_gluon_emission = 0 # vertex where a gluon is emitted withou QCD interaction
                                   # only trigger if all particles are of QCD type (not h>gg)
         self.colored_scalar = False # in presence of color scalar particle the running of a_s is modified
@@ -603,6 +950,12 @@ class UFOMG5Converter(object):
             self.model.set('startfromalpha0', startfromalpha)
         else:
             self.model.set('startfromalpha0', False) 
+
+        if hasattr(model, 'dual_mass_scheme'):
+            dual_mass_scheme = bannermod.ConfigFile.format_variable(model.dual_mass_scheme, bool, name="dual_mass_scheme")
+            self.model.set('dual_mass_scheme', dual_mass_scheme)
+        else:
+            self.model.set('dual_mass_scheme', False)
          
         self.ufomodel = model
         self.checked_lor = set()
@@ -679,13 +1032,13 @@ class UFOMG5Converter(object):
         # OrganizeModelExpression only, so that the main() function of this class
         # *must* be run on the UFO to have this change reverted.
         if hasattr(self.ufomodel,'all_CTparameters'):
-            logger.debug('Handling couplings defined with CTparameters...')
+            logger_details.debug('Handling couplings defined with CTparameters...')
             start_treat_coupling = time.time()
             self.treat_couplings(self.ufomodel.all_couplings, 
                                                  self.ufomodel.all_CTparameters)
             tot_time = time.time()-start_treat_coupling
             if tot_time>5.0:
-                logger.debug('... done in %s'%misc.format_time(tot_time))        
+                logger_details.debug('... done in %s'%misc.format_time(tot_time))        
 
         logger.info('load vertices')
         for interaction_info in self.ufomodel.all_vertices:
@@ -705,11 +1058,13 @@ class UFOMG5Converter(object):
                 self.optimise_interaction(interaction)
                 if not interaction['couplings']:
                     self.interactions.remove(interaction)
+            goldstone_phases = self.get_goldstone_phases()
             self.merge_all_goldstone_with_vector()
+            self.apply_goldstone_phases(goldstone_phases)
 
     
         if self.non_qcd_gluon_emission:
-            logger.critical("Model with non QCD emission of gluon (found %i of those).\n  This type of model is not fully supported within MG5aMC.\n"+\
+            logger.critical("Model with non QCD emission of gluon (found %i of those).\n  This type of model is not fully supported within MadGraph7.\n"+\
             "  Restriction on LO dynamical scale and MLM matching/merging can occur for some processes.\n"+\
             "  Use such features with care.", self.non_qcd_gluon_emission)
 
@@ -795,6 +1150,35 @@ class UFOMG5Converter(object):
 
         self.optimise_iden_coup(interaction)
 
+    def refresh_lorentz_info(self):
+        """(Re)sync the lorentz name -> object cache with self.model['lorentz'].
+
+        The cache used to be built once and never updated, but the model keeps
+        growing lorentz structures after the first build: in FD gauge
+        load_model runs a first optimisation pass *before*
+        merge_all_goldstone_with_vector, which then invents structures like
+        SVS5, and add_merge_lorentz/add_lorentz add more as we go.  Looking a
+        name up in a stale snapshot raised KeyError (SMEFTatNLO in FD gauge).
+        """
+
+        if not hasattr(self, 'defined_lorentz_expr'):
+            self.defined_lorentz_expr = {}
+            self.lorentz_info = {}
+            self.lorentz_combine = {}
+        for lor in self.model['lorentz']:
+            name = lor.get('name')
+            if self.lorentz_info.get(name) is not lor:
+                self.lorentz_info[name] = lor
+                self.defined_lorentz_expr[lor.get('structure')] = name
+
+    def get_lorentz_info(self, name):
+        """Return the lorentz object called `name`, or None if the model has no
+        such structure. Refresh the cache before giving up."""
+
+        if not hasattr(self, 'lorentz_info') or self.lorentz_info.get(name) is None:
+            self.refresh_lorentz_info()
+        return self.lorentz_info.get(name)
+
     def optimise_iden_coup(self, interaction):
         #  Check if two couplings have exactly the same definition. 
         #  If so replace one by the other
@@ -838,27 +1222,29 @@ class UFOMG5Converter(object):
         if not optimize:
             return
         
-        if not hasattr(self, 'defined_lorentz_expr'):
-            self.defined_lorentz_expr = {}
-            self.lorentz_info = {}
-            self.lorentz_combine = {}
-            for lor in self.model['lorentz']:
-                self.defined_lorentz_expr[lor.get('structure')] = lor.get('name')
-                self.lorentz_info[lor.get('name')] = lor #(lor.get('structure'), lor.get('spins'))
-        
+        self.refresh_lorentz_info()
+
         for key in to_lor:
             if len(to_lor[key]) == 1:
                 continue
             def get_spin(l):
-                return self.lorentz_info[interaction['lorentz'][l]].get('spins')
-                
-            if any(get_spin(l1) != get_spin(to_lor[key][0]) for l1 in to_lor[key]):
+                info = self.get_lorentz_info(interaction['lorentz'][l])
+                return info.get('spins') if info is not None else None
+
+            spins = [get_spin(l1) for l1 in to_lor[key]]
+            if any(s is None for s in spins):
+                unknown = sorted(set(interaction['lorentz'][l]
+                                     for l, s in zip(to_lor[key], spins) if s is None))
+                logger.warning('unknown lorentz structure(s) %s: skipping the merging of the identical couplings',
+                               ', '.join(unknown))
+                continue
+            if any(s != spins[0] for s in spins):
                 logger.warning('not all same spins for a given interactions')
                 continue 
 
             names = [interaction['lorentz'][i] for i in to_lor[key]]
             names.sort()
-            if self.lorentz_info[names[0]].get('structure') == 'external':
+            if self.get_lorentz_info(names[0]).get('structure') == 'external':
                 continue
             # get name of the new lorentz
             if tuple(names) in self.lorentz_combine:
@@ -1123,6 +1509,329 @@ class UFOMG5Converter(object):
 
 
 
+    # ------------------------------------------------------------------
+    # FD gauge: the phase convention of the goldstone fields
+    # ------------------------------------------------------------------
+    # FD gauge carries the goldstone as the 5th component of its vector, with
+    # the 5-momentum q^A = (q^mu, -i*M) (aloha_writers.get_fd_gauge_txt).  That
+    # fixes the phase of the goldstone field, and a UFO written with another
+    # one is not rejected, it just comes out wrong: 2HDMtII_NLO is off by a
+    # factor i on G+, SMEFTatNLO by a sign on G0.
+    #
+    # Canonical normalisation leaves exactly one phase free per goldstone (a
+    # real one is restricted to +-1), and it can be read off the fermion sector,
+    # where gauge invariance ties the goldstone coupling to the vector one.
+
+    def get_parameter_values(self):
+        """Numerical value of the UFO parameters, for the checks that need a
+        number and not an expression.  Best effort: what does not evaluate is
+        left out and the caller gives up rather than guessing."""
+
+        if hasattr(self, '_parameter_values'):
+            return self._parameter_values
+
+        values = {'cmath': cmath, 'complex': complex, 'pi': cmath.pi}
+        library = getattr(self.ufomodel, 'function_library', None)
+        for name in dir(library):
+            if not name.startswith('_'):
+                entry = getattr(library, name)
+                if callable(entry):
+                    values[name] = entry
+        # ours win: a UFO Function evaluates its body through a bare exec, which
+        # stopped writing to the enclosing locals in python 3.13 (PEP 667), so
+        # the model's own complexconjugate raises NameError on its argument
+        values.update({
+            'complexconjugate': lambda z: complex(z).conjugate(),
+            'conjugate': lambda z: complex(z).conjugate(),
+            're': lambda z: complex(z).real,
+            'im': lambda z: complex(z).imag,
+            'sec': lambda z: 1. / cmath.cos(z),
+            'csc': lambda z: 1. / cmath.sin(z),
+            'cot': lambda z: 1. / cmath.tan(z),
+            'asec': lambda z: cmath.acos(1. / z),
+            'acsc': lambda z: cmath.asin(1. / z),
+            })
+
+        pending = list(self.ufomodel.all_parameters)
+        while pending:
+            left = []
+            for param in pending:
+                try:
+                    if param.nature == 'external':
+                        values[param.name] = complex(param.value)
+                    else:
+                        values[param.name] = complex(eval(param.value, values))
+                except Exception:
+                    left.append(param)
+            if len(left) == len(pending):
+                break   # nothing resolved this round, the rest never will
+            pending = left
+
+        self._parameter_values = values
+        return values
+
+    def get_coupling_value(self, name):
+        """Numerical value of one coupling of the model, or None."""
+
+        if name.startswith('-'):
+            value = self.get_coupling_value(name[1:])
+            return None if value is None else -value
+        if not hasattr(self, '_coupling_values'):
+            self._coupling_values = {}
+            self._coupling_expr = dict(
+                (c.name, c.value) for c in
+                list(self.ufomodel.all_couplings) + self.additional_couplings)
+        if name not in self._coupling_values:
+            try:
+                self._coupling_values[name] = complex(eval(
+                    self._coupling_expr[name], self.get_parameter_values()))
+            except Exception:
+                self._coupling_values[name] = None
+        return self._coupling_values[name]
+
+    def project_fermion_couplings(self, interaction):
+        """Sum the couplings of a two-fermion vertex onto
+        the chiral basis.  None as soon as it uses a structure we do not
+        recognise: the phase is only read off a vertex we fully understand."""
+
+        out = {}
+        for (colour, lor), name in interaction.get('couplings').items():
+            info = self.get_lorentz_info(interaction.get('lorentz')[lor])
+            if info is None:
+                return None
+            weights = parse_fermion_structure(info.get('structure'))
+            if weights is None:
+                return None
+            value = self.get_coupling_value(name)
+            if value is None:
+                return None
+            for key, weight in weights.items():
+                out[key] = out.get(key, 0) + weight * value
+        return out
+
+    def get_fermion_vertices(self, boson):
+        """The vertices of the model that are two fermions and this boson, keyed
+        by the fermion pair.  The projectors of a FFS structure name legs 1 and
+        2, so only a vertex whose first two legs are the fermions is usable."""
+
+        out = {}
+        for inter in self.interactions:
+            if inter.get('type') != 'base':
+                continue
+            parts = inter.get('particles')
+            if len(parts) != 3 or not (parts[0].is_fermion() and parts[1].is_fermion()):
+                continue
+            if abs(parts[2].get_pdg_code()) != abs(boson.get_pdg_code()):
+                continue
+            out.setdefault((parts[0].get_pdg_code(), parts[1].get_pdg_code()),
+                           []).append(inter)
+        return out
+
+    def get_mass_value(self, particle):
+        """Numerical mass of a particle of the model, or None if unknown."""
+
+        name = particle.get('mass')
+        if name.lower() == 'zero':
+            return 0.
+        values = self.get_parameter_values()
+        for candidate in (name, name[4:] if name.startswith('mdl_') else name):
+            if candidate in values:
+                try:
+                    return abs(complex(values[candidate]))
+                except Exception:
+                    return None
+        return None
+
+    def iter_goldstone_fermion_relations(self, goldstone, vector):
+        """Walk the fermion pairs that couple to both the goldstone and its
+        vector, and read the relation gauge invariance imposes between the two.
+
+        For a left-handed current of coupling cL the goldstone carries
+        i/M * (m1 ProjP - m2 ProjM) * cL, and a neutral goldstone carries
+        -i*m/M * (cL - cR) on ProjM - ProjP.  Each match yields the phase the
+        model uses for the goldstone field (the direction of the ratio) and the
+        fermion mass its coupling implies (the modulus), which are two
+        independent things to check.
+
+        Yields (weight, phase, fermion, implied_mass).
+        """
+
+        mass = self.get_mass_value(vector)
+        if not mass:
+            return
+        charged = bool(vector.get('charge'))
+
+        def by_orders(vertices):
+            out = {}
+            for inter in vertices:
+                out.setdefault(tuple(sorted(inter.get('orders').items())),
+                               []).append(inter)
+            return out
+
+        vector_vertices = self.get_fermion_vertices(vector)
+        for pair, vertices in self.get_fermion_vertices(goldstone).items():
+            golds = by_orders(vertices)
+            currents = by_orders(vector_vertices.get(pair, []))
+            shared = [key for key in golds if key in currents and
+                      len(golds[key]) == 1 and len(currents[key]) == 1]
+            if not shared:
+                continue
+            # the lowest order is the gauge piece the relation is about; a model
+            # can modify the current at higher order without touching the
+            # goldstone, so those vertices say nothing about the convention
+            lowest = min(shared, key=lambda orders: sum(abs(v) for _, v in orders))
+            gold_vertex = golds[lowest][0]
+            scalar = self.project_fermion_couplings(gold_vertex)
+            current = self.project_fermion_couplings(currents[lowest][0])
+            if not scalar or not current:
+                continue
+            if set(scalar) - set('PM') or set(current) - set('LR'):
+                continue   # a scalar vertex holding a current, or the reverse:
+                           # not the pair of vertices the relation is about
+            legs = gold_vertex.get('particles')
+            if charged:
+                # a right-handed charged current would need the general relation
+                if abs(current.get('R', 0)) > 1e-10 * (1 + abs(current.get('L', 0))):
+                    continue
+                cL = current.get('L', 0)
+                candidates = [('P', 1j * cL, legs[0]), ('M', -1j * cL, legs[1])]
+            else:
+                candidates = [('M', -1j * (current.get('L', 0) - current.get('R', 0)),
+                               legs[0])]
+
+            # the model holds both orientations of a charged pair, and the
+            # vertex carrying the antiparticle measures the conjugate phase
+            conjugated = legs[2].get_pdg_code() < 0
+
+            for chirality, expected, fermion in candidates:
+                model = scalar.get(chirality, 0)
+                if abs(expected) < 1e-12 or abs(model) < 1e-12:
+                    continue
+                # the direction is the phase convention of the goldstone field;
+                # the modulus is the fermion mass the coupling was built with
+                phase = (expected / abs(expected)) * (abs(model) / model)
+                yield (abs(model),
+                       phase.conjugate() if conjugated else phase,
+                       fermion,
+                       abs(model) * mass / abs(expected))
+
+    def measure_goldstone_phase(self, goldstone, vector):
+        """The phase relating this model's goldstone to the one FD gauge assumes.
+
+        None when the model gives us nothing to read it off -- the caller then
+        leaves the couplings alone rather than guessing.
+        """
+
+        measured = [(weight, phase) for weight, phase, _, _ in
+                    self.iter_goldstone_fermion_relations(goldstone, vector)]
+        if not measured:
+            return None
+
+        # every fermion pair of the model must agree: that consistency is what
+        # says we read a convention rather than a coincidence
+        measured.sort(key=lambda entry: entry[0])
+        phase = measured[-1][1]
+        if any(abs(other - phase) > 1e-6 for _, other in measured):
+            return None
+        # a real goldstone can only be flipped, never rotated
+        if not bool(vector.get('charge')) and abs(phase.imag) > 1e-6:
+            return None
+        return phase
+
+    def get_goldstone_pairs(self):
+        """(goldstone, the vector it belongs to) for every goldstone of the
+        model.  Only usable before merge_all_goldstone_with_vector, which is
+        what consumes the goldstones."""
+
+        out = []
+        for particle in self.particles:
+            if particle.get('type') != 'goldstone':
+                continue
+            vector = [p for p in self.particles
+                      if p.get('mass') == particle.get('mass') and p.get('spin') == 3]
+            if len(vector) == 1:
+                out.append((particle, vector[0]))
+        return out
+
+    def get_goldstone_phases(self):
+        """Phase of every goldstone of the model, keyed by the pdg code of the
+        vector it belongs to.  Must run before merge_all_goldstone_with_vector,
+        which is what consumes the goldstones."""
+
+        phases = {}
+        unknown = []
+        for particle, vector_particle in self.get_goldstone_pairs():
+            vector = [vector_particle]
+            phase = self.measure_goldstone_phase(particle, vector[0])
+            if phase is None:
+                unknown.append(particle.get('name'))
+            elif abs(phase - 1) > 1e-6:
+                logger.info('%s is defined with the phase %s relative to the '
+                            'convention FD gauge assumes; rotating its couplings.',
+                            particle.get('name'), phase)
+                phases[abs(vector[0].get_pdg_code())] = (phase, bool(vector[0].get('charge')))
+        if unknown:
+            logger.warning('Could not check the phase convention of the goldstone(s) %s '
+                           'against FD gauge: no fermion vertex to read it off. Results '
+                           'in FD gauge are only correct if they follow the convention of '
+                           'the SM UFO.', ', '.join(unknown))
+        return phases
+
+    def apply_goldstone_phases(self, phases):
+        """Rotate the merged couplings into the goldstone convention FD gauge
+        assumes.  A structure picks up one factor per goldstone slot, conjugated
+        on the leg carrying the antiparticle, so anything with no net goldstone
+        charge is left untouched."""
+
+        if not phases:
+            return
+        for inter in self.interactions:
+            parts = inter.get('particles')
+            couplings = {}
+            for key, name in inter.get('couplings').items():
+                info = self.get_lorentz_info(inter.get('lorentz')[key[1]])
+                spins = info.get('spins') if info is not None else None
+                factor = 1
+                for i, part in enumerate(parts):
+                    if not spins or i >= len(spins):
+                        break
+                    if spins[i] != 1 or part.get('spin') != 3:
+                        continue
+                    entry = phases.get(abs(part.get_pdg_code()))
+                    if entry is None:
+                        continue
+                    phase, charged = entry
+                    factor *= phase.conjugate() if charged and \
+                                        part.get_pdg_code() < 0 else phase
+                couplings[key] = self.rotate_coupling(name, factor)
+            inter.set('couplings', couplings)
+
+    def rotate_coupling(self, name, factor):
+        """`name` scaled by `factor`, as a coupling of the model."""
+
+        if abs(factor - 1) < 1e-9:
+            return name
+        for exact, text in ((1j, 'complex(0,1)'), (-1j, 'complex(0,-1)'),
+                            (-1, '(-1.)')):
+            if abs(factor - exact) < 1e-9:
+                literal = text
+                break
+        else:
+            literal = 'complex(%.17g,%.17g)' % (factor.real, factor.imag)
+
+        sign, base = ('-', name[1:]) if name.startswith('-') else ('', name)
+        if not hasattr(self, '_rotated_couplings'):
+            self._rotated_couplings = {}
+        if (base, literal) not in self._rotated_couplings:
+            expr = dict((c.name, c.value) for c in
+                        list(self.ufomodel.all_couplings) + self.additional_couplings)
+            order = dict((c.name, c.order) for c in self.ufomodel.all_couplings)
+            new_name = 'GC_FDPH_%d' % (len(self._rotated_couplings) + 1)
+            self.additional_couplings.append(self.add_coupling(
+                '(%s)*(%s)' % (literal, expr[base]), order.get(base, {}), new_name))
+            self._rotated_couplings[(base, literal)] = new_name
+        return sign + self._rotated_couplings[(base, literal)]
+
     def merge_all_goldstone_with_vector(self):
         """For Feynman Diagram gauge need to merge interaction of scalar/boson"""
 
@@ -1220,11 +1929,20 @@ class UFOMG5Converter(object):
             mappings = self.get_identical_goldstone_mapping(gold_vertex,vertex,goldstone, vector)
             for lorentz in list(vertex.get('lorentz')):
                 for mapping in  mappings:
-                    new_lorentz = self.get_symmetric_lorentz(str(lorentz), mapping)
-                    new_lorentz_index = len(vertex.get('lorentz'))
-                    vertex.get('lorentz').append(str(new_lorentz))
+                    new_lorentz = str(self.get_symmetric_lorentz(str(lorentz), mapping))
+                    # two mappings can send different structures onto the same
+                    # image; appending it twice makes the vertex carry that
+                    # contribution twice over (SMEFTatNLO's W+ W+ W- W- held
+                    # one structure three times)
+                    if new_lorentz in vertex.get('lorentz'):
+                        new_lorentz_index = vertex.get('lorentz').index(new_lorentz)
+                    else:
+                        new_lorentz_index = len(vertex.get('lorentz'))
+                        vertex.get('lorentz').append(new_lorentz)
                     for (color, lorentz2), value in list(vertex.get('couplings').items()):
                         if vertex.get('lorentz')[lorentz2] != lorentz:
+                            continue
+                        if (color, new_lorentz_index) in vertex.get('couplings'):
                             continue
                         vertex.get('couplings')[color, new_lorentz_index] = value            
             return vertex
@@ -1285,7 +2003,66 @@ class UFOMG5Converter(object):
                 from madgraph.core.color_algebra import T,f,d,Epsilon,EpsilonBar,K6,K6Bar,T6,Tr
                 all_color[i]= color.ColorString([eval(nc) \
                                     for nc in new_color.split() if nc !='1'])
-        return new_vertex
+        return self.collapse_duplicate_lorentz(new_vertex)
+
+    def sum_couplings(self, first, second):
+        """Name of a coupling worth the sum of the two given ones."""
+
+        expr = {}
+        for c in list(self.ufomodel.all_couplings) + self.additional_couplings:
+            expr[c.name] = c.value
+        order = dict((c.name, c.order) for c in self.ufomodel.all_couplings)
+
+        def term(name):
+            if name.startswith('-'):
+                return '-(%s)' % expr[name[1:]], name[1:]
+            return '(%s)' % expr[name], name
+
+        left, lname = term(first)
+        right, rname = term(second)
+        value = '%s+%s' % (left, right)
+        for c in self.additional_couplings:
+            if c.value == value:
+                return c.name
+        name = 'GC_SUM_%d' % (len(self.additional_couplings) + 1)
+        self.additional_couplings.append(
+            self.add_coupling(value, order.get(lname, order.get(rname, {})), name))
+        return name
+
+    def collapse_duplicate_lorentz(self, vertex):
+        """Collapse repeated lorentz structures of a reordered vertex.
+
+        Permuting the legs of a vertex with identical particles can send two of
+        its structures onto the same one.  Two entries for one structure is not
+        something the goldstone merge can do anything with: it either copies the
+        structure in twice (counting it twice over) or gives up on the whole
+        vertex.  One entry carrying the sum of the couplings says the same
+        thing, and is what the rest of the code expects.
+        """
+
+        all_lor = vertex.get('lorentz')
+        if len(all_lor) == len(set(all_lor)):
+            return vertex
+
+        remap, kept = {}, []
+        for i, lor in enumerate(all_lor):
+            if lor in kept:
+                remap[i] = kept.index(lor)
+            else:
+                remap[i] = len(kept)
+                kept.append(lor)
+
+        couplings = {}
+        for (col, lorentz), value in vertex.get('couplings').items():
+            key = (col, remap[lorentz])
+            if key in couplings:
+                couplings[key] = self.sum_couplings(couplings[key], value)
+            else:
+                couplings[key] = value
+
+        vertex.set('lorentz', kept)
+        vertex.set('couplings', couplings)
+        return vertex
 
 
     @staticmethod
@@ -1378,7 +2155,11 @@ class UFOMG5Converter(object):
                 new_lor = self.add_lorentz(new_name, new_spins, new_expr, formfact=new_formfact)
             except AssertionError:
                 prev_def = [l for l in self.model['lorentz'] if l.name==new_name][0]
-                if prev_def.structure != new_expr:
+                # compare canonicalised forms: the index renumbering above can
+                # reorder the arguments of a symmetric function, and that alone
+                # is not a redefinition (see canonicalize_lorentz_structure)
+                if canonicalize_lorentz_structure(prev_def.structure) != \
+                                     canonicalize_lorentz_structure(new_expr):
                     misc.sprint("WARNING, two different definition for one lorentz name", prev_def.structure, new_expr)
                 new_lor = prev_def
         return new_lor
@@ -1392,12 +2173,25 @@ class UFOMG5Converter(object):
 
         if len(vertex) !=1 :
             for onevertex in vertex:
+                if onevertex.get('orders') != gold_vertex.get('orders'):
+                    continue
                 to_be_done = self.update_vertex_for_goldstone([onevertex], gold_vertex, goldstone, vector)
                 if not to_be_done:
                     return
             return True
                 
         vertex = vertex[0]
+
+        # Only a vertex with the very same coupling orders may absorb this
+        # goldstone vertex.  A merged coupling inherits the orders of its host,
+        # so merging e.g. the QED=2 'a a G- G+' coupling into the NP=2 'a a W+ G-'
+        # vertex hides it from any process generated with NP=0 (SMEFTatNLO lost
+        # 4% on 'a a > w+ w- NP=0' that way).  Returning True tells the caller to
+        # build a standalone vertex instead, which keeps the original orders.
+        # The multi-candidate branch above already filtered on this; the check
+        # matters when a single candidate was found and never looked at.
+        if vertex.get('orders') != gold_vertex.get('orders'):
+            return True
 
         nb_vector = 0
         nb_gold = 0
@@ -1445,22 +2239,35 @@ class UFOMG5Converter(object):
         
         # check now the lorentz structure. Some strategy as for the color
         # But lorentz structure should not repeat in principle...
+        # Work the translation out first and touch `vertex` only once the whole
+        # goldstone vertex is known to fit.  Giving up half way used to leave
+        # the host already carrying part of the couplings *and* tell the caller
+        # to build a standalone vertex with all of them, so what had been
+        # copied was counted twice -- and the lorentz names appended on the way
+        # stayed behind even when nothing used them.
+        new_lorentz = []
         translate_lorentz = {}
+        host_lorentz = vertex.get('lorentz')
         for i, lor in enumerate(gold_vertex.get('lorentz')):
-            if lor in vertex.get('lorentz'):
+            if lor in host_lorentz:
                 #raise Exception("lorentz should not repeat. Please report for investigation.")
-                translate_lorentz[i] = vertex.get('lorentz').index(lor)
+                translate_lorentz[i] = host_lorentz.index(lor)
+            elif lor in new_lorentz:
+                translate_lorentz[i] = len(host_lorentz) + new_lorentz.index(lor)
             else:
-                translate_lorentz[i] = len(vertex.get('lorentz'))
-                vertex.get('lorentz').append(lor)
+                translate_lorentz[i] = len(host_lorentz) + len(new_lorentz)
+                new_lorentz.append(lor)
 
         # now we can add the coupling to the original vertex
+        to_add = {}
         for (color, lorentz), value in gold_vertex.get('couplings').items():
             key = (translate_color[color], translate_lorentz[lorentz])
-            if key in vertex.get('couplings'):
+            if key in vertex.get('couplings') or key in to_add:
                 return True # will include it in a new vertex
-            assert key not in vertex.get('couplings')
-            vertex.get('couplings')[key] = value
+            to_add[key] = value
+
+        host_lorentz.extend(new_lorentz)
+        vertex.get('couplings').update(to_add)
 
 
 
@@ -1537,6 +2344,9 @@ class UFOMG5Converter(object):
     def add_merge_lorentz(self, names):
         """add a lorentz structure which is the sume of the list given above"""
         
+        # the cache can lag behind the model (see refresh_lorentz_info), and a
+        # name picked from a stale cache would collide with an existing one
+        self.refresh_lorentz_info()
         
         #create new_name
         ii = len(names[0])
@@ -2126,6 +2936,22 @@ class UFOMG5Converter(object):
                         self.incoming.append(pdg[i])
                         self.outcoming.append(pdg[i+1])
                      
+    def get_new_interaction_id(self):
+        """Return an interaction id that is not in use yet.
+
+        The id used to be len(self.interactions)+1, which is only unique while
+        nothing is ever removed from that list.  In FD gauge
+        merge_all_goldstone_with_vector removes the goldstone interactions, so
+        the counterterm interactions added afterwards (NLO models) got ids that
+        were still in use; model.get_interaction() then returned the wrong
+        vertex for a diagram (a g g h interaction for an e+ e- Z one, say).
+        """
+
+        if not hasattr(self, 'last_interaction_id'):
+            self.last_interaction_id = max([i.get('id') for i in self.interactions] + [0])
+        self.last_interaction_id += 1
+        return self.last_interaction_id
+
     def add_interaction(self, interaction_info, color_info, type='base', loop_particles=None):            
         """add an interaction in the MG5 model. interaction_info is the 
         UFO vertices information."""
@@ -2202,7 +3028,7 @@ class UFOMG5Converter(object):
                                                (coupling_sign,coupling.name)
                 else:
                     # Initialize a new interaction with a new id tag
-                    interaction = base_objects.Interaction({'id':len(self.interactions)+1})                
+                    interaction = base_objects.Interaction({'id':self.get_new_interaction_id()})                
                     interaction.set('particles', particles)              
                     interaction.set('lorentz', lorentz)
                     interaction.set('couplings', {key: 
@@ -2275,7 +3101,7 @@ class UFOMG5Converter(object):
     def add_coupling(self, expr, order, name):
         """Add a coupling definition to the model """
 
-        logger.debug('MG5 converter defines %s to %s', name, expr)
+        logger_details.debug('MG5 converter defines %s to %s', name, expr)
         assert name not in [c.name for c in self.additional_couplings] + [c.name for c in self.ufomodel.all_couplings]
         #avoid side effect that the instantiate a UFO class update the list of coupling in the model
         # Use the Coupling class's own __globals__ dict directly, because self.ufomodel.object_library
@@ -2300,7 +3126,7 @@ class UFOMG5Converter(object):
         if name is None:
             assert formfact is None
             return self.add_lorentz_create_name(spins, expr)
-        logger.debug('MG5 converter defines %s to %s', name, expr)
+        logger_details.debug('MG5 converter defines %s to %s', name, expr)
         assert name not in [l.name for l in self.model['lorentz']]
 
         if not hasattr(self.ufomodel, 'object_library'):
@@ -2373,22 +3199,22 @@ class UFOMG5Converter(object):
                 elif particle.color in [-3,3]:
                     if particle.pdg_code not in color_info:
                         #try to find it one more time 3 -3 1 might help
-                        logger.debug('fail to find 3/3bar representation: Retry to find it')
+                        logger_details.debug('fail to find 3/3bar representation: Retry to find it')
                         color_info = self.find_color_anti_color_rep(color_info)
                         if particle.pdg_code not in color_info:
-                            logger.debug('Not able to find the 3/3bar rep from the interactions for particle %s' % particle.name)
+                            logger_details.debug('Not able to find the 3/3bar rep from the interactions for particle %s' % particle.name)
                             color_info[particle.pdg_code] = particle.color
                         else:
-                            logger.debug('succeed')
+                            logger_details.debug('succeed')
                     if particle2.pdg_code not in color_info:
                         #try to find it one more time 3 -3 1 might help
-                        logger.debug('fail to find 3/3bar representation: Retry to find it')
+                        logger_details.debug('fail to find 3/3bar representation: Retry to find it')
                         color_info = self.find_color_anti_color_rep(color_info)
                         if particle2.pdg_code not in color_info:
-                            logger.debug('Not able to find the 3/3bar rep from the interactions for particle %s' % particle2.name)
+                            logger_details.debug('Not able to find the 3/3bar rep from the interactions for particle %s' % particle2.name)
                             color_info[particle2.pdg_code] = particle2.color                    
                         else:
-                            logger.debug('succeed')
+                            logger_details.debug('succeed')
                 
                     if color_info[particle.pdg_code] == 3 :
                         output.append(self._pat_id.sub(r'color.T(\g<second>,\g<first>)', term))
@@ -2442,6 +3268,13 @@ class OrganizeModelExpression:
     def __init__(self, model):
     
         self.model = model  # UFOMODEL
+        # track_dependant is a class attribute, and analyze_parameters() extends
+        # it in place ('Gf' for a model without an external aEWM1, then the
+        # running scales). Without this private copy those entries stay on the
+        # class and every model imported later in the same process inherits
+        # them: importing a Gmu model first then makes loop_sm group mdl_MW
+        # under ('aEWM1','Gf') instead of ('aEWM1',).
+        self.track_dependant = list(self.track_dependant)
         self.perturbation_couplings = {}
         try:
             for order in model.all_orders: # Check if it is a loop model or not
@@ -2770,13 +3603,15 @@ class RestrictModel(model_reader.ModelReader):
     def modify_autowidth(self, cards, id):
         self.autowidth.append([int(id[0])])
         return math.log10(2*len(self.autowidth))
-     
+
     def restrict_model(self, param_card, rm_parameter=True, keep_external=False,
                                                       complex_mass_scheme=None):
         """apply the model restriction following param_card.
         rm_parameter defines if the Zero/one parameter are removed or not from
         the model.
-        keep_external if the param_card need to be kept intact
+        keep_external if the param_card need to be kept intact.
+        The details of the restriction are logged on logger_details, i.e. in
+        the file opened by start_model_log.
         """
         
         if self.get('name') == "mssm" and not keep_external:
@@ -2791,9 +3626,15 @@ class RestrictModel(model_reader.ModelReader):
         model_definitions = self.set_parameters_and_couplings(param_card, 
                                         complex_mass_scheme=complex_mass_scheme,
                                         auto_width=self.modify_autowidth)
-        
+
+        # the couplings now have numbers on them, and the restriction has been
+        # folded in, so this is the first point where the goldstone sector can
+        # be held against the masses.  Only the gauges that use it care.
+        if aloha.unitary_gauge in [0, 3]:
+            check_goldstone_masses(self)
+
         # Simplify conditional statements
-        logger.log(self.log_level, 'Simplifying conditional expressions')
+        logger_details.log(self.log_level, 'Simplifying conditional expressions')
         modified_params, modified_couplings = \
             self.detect_conditional_statements_simplifications(model_definitions)
         
@@ -2872,7 +3713,8 @@ class RestrictModel(model_reader.ModelReader):
             self.get('order_hierarchy')
             self.get('expansion_order')
 
-        if os.path.exists(param_card.replace('restrict', 'param')):
+        if isinstance(param_card, str) and \
+                              os.path.exists(param_card.replace('restrict', 'param')):
             path = param_card.replace('restrict', 'param')
             logger.info('default value set as in file %s' % path)
             self.set_parameters_and_couplings(path,
@@ -2941,7 +3783,7 @@ class RestrictModel(model_reader.ModelReader):
                 zero_coupling.append(name)
                 continue
             elif not strict_zero and abs(value) < 1e-13:
-                logger.log(self.log_level, 'coupling with small value %s: %s treated as zero' %
+                logger_details.log(self.log_level, 'coupling with small value %s: %s treated as zero' %
                              (name, value))
                 zero_coupling.append(name)
                 continue
@@ -3045,14 +3887,14 @@ class RestrictModel(model_reader.ModelReader):
         parameter (resp. coupling) instance and b is the simplified expression."""
         
         if modified_params:
-            logger.log(self.log_level, "Conditional expressions are simplified for parameters:")
-            logger.log(self.log_level, ",".join("%s"%param[0].name for param in modified_params))
+            logger_details.log(self.log_level, "Conditional expressions are simplified for parameters:")
+            logger_details.log(self.log_level, ",".join("%s"%param[0].name for param in modified_params))
         for param, new_expr in modified_params:
             param.expr = new_expr
         
         if modified_couplings:
-            logger.log(self.log_level, "Conditional expressions are simplified for couplings:")
-            logger.log(self.log_level, ",".join("%s"%coupl[0].name for coupl in modified_couplings))
+            logger_details.log(self.log_level, "Conditional expressions are simplified for couplings:")
+            logger_details.log(self.log_level, ",".join("%s"%coupl[0].name for coupl in modified_couplings))
         for coupl, new_expr in modified_couplings:
             coupl.expr = new_expr
     
@@ -3092,10 +3934,10 @@ class RestrictModel(model_reader.ModelReader):
         tot_param_time = end_param-start_param
         tot_coupl_time = end_coupl-end_param
         if tot_param_time>5.0:
-            logger.log(self.log_level, "Simplification of conditional statements"+\
+            logger_details.log(self.log_level, "Simplification of conditional statements"+\
               " in parameter expressions done in %s."%misc.format_time(tot_param_time))
         if tot_coupl_time>5.0:
-            logger.log(self.log_level, "Simplification of conditional statements"+\
+            logger_details.log(self.log_level, "Simplification of conditional statements"+\
               " in couplings expressions done in %s."%misc.format_time(tot_coupl_time))
 
         return param_modifications, coupl_modifications
@@ -3176,7 +4018,7 @@ class RestrictModel(model_reader.ModelReader):
         counterterms"""
 
         
-        logger_mod.log(self.log_level, ' Fuse the Following coupling (they have the same value): %s '% \
+        logger_details.log(self.log_level, ' Fuse the Following coupling (they have the same value): %s '% \
                         ', '.join([str(obj) for obj in couplings]))
 
         #names = [name for (name,ratio) in couplings if ratio ==1]
@@ -3220,7 +4062,7 @@ class RestrictModel(model_reader.ModelReader):
         """ merge the identical parameters given in argument.
         keep external force to keep the param_card untouched (up to comment)"""
             
-        logger_mod.log(self.log_level, 'Parameters set to identical values: %s '% \
+        logger_details.log(self.log_level, 'Parameters set to identical values: %s '% \
                  ', '.join(['%s*%s' % (f, obj.name.replace('mdl_','')) for (obj,f) in parameters]))
 
         # Extract external parameters
@@ -3332,11 +4174,11 @@ class RestrictModel(model_reader.ModelReader):
             orders = ['%s=%s' % (order,value) for order,value in vertex['orders'].items()]
                                         
             if not vertex['couplings']:
-                logger_mod.log(self.log_level, 'remove interactions: %s at order: %s' % \
+                logger_details.log(self.log_level, 'remove interactions: %s at order: %s' % \
                                         (' '.join(part_name),', '.join(orders)))
                 self['interactions'].remove(vertex)
             else:
-                logger_mod.log(self.log_level, 'modify interactions: %s at order: %s' % \
+                logger_details.log(self.log_level, 'modify interactions: %s at order: %s' % \
                                 (' '.join(part_name),', '.join(orders)))
 
         # print useful log and clean the empty counterterm values
@@ -3348,12 +4190,12 @@ class RestrictModel(model_reader.ModelReader):
                          for part in pct[1][1]])
                                         
             if not pct[0]['counterterm'][pct[1]]:
-                logger_mod.log(self.log_level, 'remove counterterm of particle %s'%part_name+\
+                logger_details.log(self.log_level, 'remove counterterm of particle %s'%part_name+\
                                  ' with loop particles (%s)'%loop_parts+\
                                  ' perturbing order %s'%order)
                 del pct[0]['counterterm'][pct[1]]
             else:
-                logger_mod.log(self.log_level, 'Modify counterterm of particle %s'%part_name+\
+                logger_details.log(self.log_level, 'Modify counterterm of particle %s'%part_name+\
                                  ' with loop particles (%s)'%loop_parts+\
                                  ' perturbing order %s'%order)  
 
@@ -3502,9 +4344,9 @@ class RestrictModel(model_reader.ModelReader):
             #by pass parameter still in use
             if param in used or \
                   (keep_external and param_info[param]['dep'] == ('external',)):
-                logger_mod.log(self.log_level, 'fix parameter value: %s' % param)
+                logger_details.log(self.log_level, 'fix parameter value: %s' % param)
                 continue 
-            logger_mod.log(self.log_level,'remove parameters: %s' % (param))
+            logger_details.log(self.log_level,'remove parameters: %s' % (param))
             data = self['parameters'][param_info[param]['dep']]
             data.remove(param_info[param]['obj'])
             
@@ -3534,24 +4376,24 @@ class RestrictModel(model_reader.ModelReader):
         if not optimize:
             return
         
-        if not hasattr(self, 'defined_lorentz_expr'):
-            self.defined_lorentz_expr = {}
-            self.lorentz_info = {}
-            self.lorentz_combine = {}
-            for lor in self.get('lorentz'):
-                self.defined_lorentz_expr[lor.get('structure')] = lor.get('name')
-                self.lorentz_info[lor.get('name')] = lor #(lor.get('structure'), lor.get('spins'))
-            
-
+        self.refresh_lorentz_info()
 
         for key in to_lor:
             if len(to_lor[key]) == 1:
                 continue
 
             def get_spin(l):
-                return self.lorentz_info[interaction['lorentz'][l]].get('spins')
+                info = self.get_lorentz_info(interaction['lorentz'][l])
+                return info.get('spins') if info is not None else None
 
-            if any(get_spin(l1[0]) != get_spin(to_lor[key][0][0]) for l1 in to_lor[key]):
+            spins = [get_spin(l1[0]) for l1 in to_lor[key]]
+            if any(s is None for s in spins):
+                unknown = sorted(set(interaction['lorentz'][l[0]]
+                                     for l, s in zip(to_lor[key], spins) if s is None))
+                logger.warning('unknown lorentz structure(s) %s: skipping the merging of the identical couplings',
+                               ', '.join(unknown))
+                continue
+            if any(s != spins[0] for s in spins):
                 logger.warning('not all same spins for a given interactions')
                 continue 
 
@@ -3584,8 +4426,37 @@ class RestrictModel(model_reader.ModelReader):
 
 
 
+    def refresh_lorentz_info(self):
+        """(Re)sync the lorentz name -> object cache with self['lorentz'].
+
+        add_merge_lorentz keeps appending structures to the model, so a cache
+        built once and never updated goes stale (see the twin helper on
+        UFOMG5Converter)."""
+
+        if not hasattr(self, 'defined_lorentz_expr'):
+            self.defined_lorentz_expr = {}
+            self.lorentz_info = {}
+            self.lorentz_combine = {}
+        for lor in self.get('lorentz'):
+            name = lor.get('name')
+            if self.lorentz_info.get(name) is not lor:
+                self.lorentz_info[name] = lor
+                self.defined_lorentz_expr[lor.get('structure')] = name
+
+    def get_lorentz_info(self, name):
+        """Return the lorentz object called `name`, or None if the model has no
+        such structure. Refresh the cache before giving up."""
+
+        if not hasattr(self, 'lorentz_info') or self.lorentz_info.get(name) is None:
+            self.refresh_lorentz_info()
+        return self.lorentz_info.get(name)
+
     def add_merge_lorentz(self, names):
         """add a lorentz structure which is the sume of the list given above"""
+        
+        # the cache can lag behind the model (see refresh_lorentz_info), and a
+        # name picked from a stale cache would collide with an existing one
+        self.refresh_lorentz_info()
         
         #create new_name
         ii = len(names[0])
@@ -3618,8 +4489,9 @@ class RestrictModel(model_reader.ModelReader):
 
 
  
-        new_lor = self.add_lorentz(new_name, spins, new_struct, formfact)
-        self.lorentz_info[new_name] = new_lor
+        # Model.add_lorentz returns None; pick the object back up from the model
+        self.add_lorentz(new_name, spins, new_struct, formfact)
+        self.refresh_lorentz_info()
         
         return new_name
     
@@ -3628,6 +4500,18 @@ class RestrictModel(model_reader.ModelReader):
         new = self['lorentz'][0].__class__(name = name,
                                            spins = spin,
                                            structure = struct)
+        # A UFO Lorentz registers itself in its object_library's all_lorentz: a
+        # module global, cached in sys.modules, that outlives this model.  Left
+        # there, the next import of the same model in the process starts with
+        # this merged structure already defined, grows by it again, and names
+        # its own merged structures one number further on (FFVV1111, then
+        # FFVV1112) -- which is what customize_model's stability check read as
+        # two different restrictions.  UFOMG5Converter.add_lorentz keeps its
+        # structures out of that list too.
+        registered = getattr(sys.modules.get(type(new).__module__),
+                             'all_lorentz', None)
+        if registered is not None:
+            registered[:] = [lor for lor in registered if lor is not new]
         if formfact:
             new.formfactors = formfact
         self['lorentz'].append(new)

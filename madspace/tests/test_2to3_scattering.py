@@ -185,8 +185,9 @@ def test_momentum_conservation(input_points):
     assert p1 + p2 == approx(input_points.p12)
 
 
-def test_inverse(input_points):
-    mapping = ms.TwoToThreeParticleScattering()
+@pytest.mark.parametrize("arcsine", [False, True], ids=["flat s23", "arcsine s23"])
+def test_inverse(input_points, arcsine):
+    mapping = ms.TwoToThreeParticleScattering(arcsine_s23=arcsine)
 
     inputs = [
         input_points.r_choice,
