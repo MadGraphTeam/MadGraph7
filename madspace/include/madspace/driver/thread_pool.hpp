@@ -80,9 +80,16 @@ public:
         std::chrono::milliseconds poll_interval = std::chrono::milliseconds(100)
     );
     // Cancels the jobs submitted but not started yet, waits for *count* further
-    // results and drops them, exceptions included. A long job can check
-    // cancelled() to stop early.
-    void discard(std::size_t count);
+    // results and drops them, exceptions included. A running job checks
+    // cancelled() between its steps to stop early. The wait cannot be cut short
+    // -- the jobs still write into their caller's state -- but *poll* keeps
+    // being called, and the first exception it throws (an abort requested
+    // during the drain) is returned instead of being lost.
+    std::exception_ptr discard(
+        std::size_t count,
+        const std::function<void()>& poll = {},
+        std::chrono::milliseconds poll_interval = std::chrono::milliseconds(100)
+    );
     bool cancelled() const { return _cancelled; }
 
 private:

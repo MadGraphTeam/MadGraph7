@@ -336,7 +336,9 @@ void EventGenerator::survey(std::size_t survey_pass) {
 // ResultQueue::submit), so this can't block on a job that died. If a job threw, or
 // the abort check does while waiting, the other jobs still in flight write into
 // _running_jobs: wait them out and drop the bookkeeping of the aborted run before
-// rethrowing, so the exception unwinds with no job left behind.
+// rethrowing, so the exception unwinds with no job left behind. The running jobs
+// stop at their next cancellation check, and an abort requested while they do
+// takes precedence over the job's own error.
 std::size_t EventGenerator::wait_for_result(std::size_t& in_flight) {
     std::exception_ptr exception;
     try {
@@ -349,10 +351,10 @@ std::size_t EventGenerator::wait_for_result(std::size_t& in_flight) {
     } catch (...) {
         exception = std::current_exception();
     }
-    _result_queue.discard(in_flight);
+    auto aborted = _result_queue.discard(in_flight, _abort_check_function);
     in_flight = 0;
     reset_jobs();
-    std::rethrow_exception(exception);
+    std::rethrow_exception(aborted ? aborted : exception);
 }
 
 void EventGenerator::reset_jobs() {

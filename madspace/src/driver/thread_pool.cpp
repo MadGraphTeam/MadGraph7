@@ -229,10 +229,30 @@ ResultQueue::Result ResultQueue::wait(
     return result;
 }
 
-void ResultQueue::discard(std::size_t count) {
+std::exception_ptr ResultQueue::discard(
+    std::size_t count,
+    const std::function<void()>& poll,
+    std::chrono::milliseconds poll_interval
+) {
     _cancelled = true;
+    std::exception_ptr aborted;
+    // never throws: the drain has to run to completion
+    std::function<void()> guarded_poll;
+    if (poll) {
+        guarded_poll = [&] {
+            if (aborted) {
+                return;
+            }
+            try {
+                poll();
+            } catch (...) {
+                aborted = std::current_exception();
+            }
+        };
+    }
     for (std::size_t i = 0; i < count; ++i) {
-        wait();
+        wait(guarded_poll, poll_interval);
     }
     _cancelled = false;
+    return aborted;
 }
