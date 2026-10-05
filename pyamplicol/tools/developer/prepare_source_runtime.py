@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import platform
@@ -411,14 +412,58 @@ def stage_from_directory(directory: Path, *, mode: str) -> dict[str, object]:
     return stage_runtime(wheel, mode=mode, audit=False)
 
 
+def _runtime_versions():
+    # Import the lightweight verifier directly: importing pyamplicol would
+    # itself reject a stale runtime before we can rebuild it.
+    spec = importlib.util.spec_from_file_location(
+        "_source_runtime_versions", SOURCE_PACKAGE / "_internal" / "versions.py"
+    )
+    if spec is None or spec.loader is None:
+        raise ReleaseError("cannot load the source runtime identity verifier")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def reuse_current_runtime(*, mode: str) -> dict[str, object] | None:
+    """Reuse only the current, completely staged runtime in the requested mode."""
+
+    with _publication_lock(SOURCE_RUNTIME_ROOT):
+        if SOURCE_RUNTIME_STAGING.exists() or not SOURCE_BUILD_INFO.is_file():
+            return None
+        versions = _runtime_versions()
+        try:
+            payload = versions._read_build_info(
+                SOURCE_BUILD_INFO, "source runtime provenance"
+            )
+            contract = payload.get("source_runtime")
+            if not isinstance(contract, dict) or contract.get("mode") != mode:
+                return None
+            version = payload.get("version")
+            if not isinstance(version, str) or not version:
+                return None
+            versions._verify_source_runtime(
+                payload, package_root=SOURCE_PACKAGE, source_root=ROOT
+            )
+        except (OSError, RuntimeError):
+            return None
+        return {"mode": mode, "version": version, "reused": True}
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate", action="store_true")
     parser.add_argument("--python", type=Path, default=Path(sys.executable))
-    parser.add_argument(
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument(
         "--wheel-directory",
         type=Path,
         help="stage an already built local wheel instead of rebuilding it",
+    )
+    source.add_argument(
+        "--reuse-current",
+        action="store_true",
+        help="reuse a matching staged runtime; otherwise build and stage normally",
     )
     return parser
 
@@ -426,11 +471,13 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     mode = build_mode(candidate=args.candidate)
-    report = (
-        stage_from_directory(args.wheel_directory, mode=mode)
-        if args.wheel_directory is not None
-        else build_and_stage(python=args.python, mode=mode)
-    )
+    report = reuse_current_runtime(mode=mode) if args.reuse_current else None
+    if report is None:
+        report = (
+            stage_from_directory(args.wheel_directory, mode=mode)
+            if args.wheel_directory is not None
+            else build_and_stage(python=args.python, mode=mode)
+        )
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
 

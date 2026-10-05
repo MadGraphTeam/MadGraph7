@@ -16,6 +16,11 @@ integration example retains the original seven-section layout, phase-space
 mappings, differential cross section, per-channel VEGAS and optional MadNIS/PDF
 workflow.
 
+The upstream `madspace_interface` branch contains no explicit license file or
+license notice in these two scripts. Their attribution is retained, and this
+repository does not assign them a new 0BSD license. The generated UMAMI header
+has its own separate `UMAMI_LICENSE` notice.
+
 ## Run the complete example
 
 Use an environment containing this version of pyAmpliCol, a C compiler and Make.
@@ -74,6 +79,10 @@ test varies the declared αs parameter event by event when available and checks
 the resulting matrix elements against native pyAmpliCol, including refreshed
 dependent parameters. A sampled helicity label is informational: the returned
 matrix element remains summed over the artifact's available helicities.
+For complete LC coverage in `exact` or `none` mode, it also sums all physical
+contributions at each point and checks that they reconstruct the native LC
+total. Aggressive integration multiplicities are not used in this pointwise
+check.
 
 Mixed process sets can produce multiple fixed-metadata providers. Select one
 explicitly using `--provider p0` (or another ID from the metadata index) and its
@@ -86,7 +95,9 @@ selection.
 The default integration is at fixed partonic centre-of-mass energy 1 TeV, with
 no PDFs and no downloads. All outgoing legs have `pT > 30 GeV`, `|eta| < 6` and
 pairwise `delta R > 0.4`. Masses come from provider metadata; there are no
-built-in particle-category or mass tables. The integration script's `--sqrts`,
+built-in particle-category or mass tables. This scattering example requires two
+massless incoming particles, matching MadSpace's `1/(2 s_hat)` flux; the UMAMI
+provider itself has no such restriction. The integration script's `--sqrts`,
 `--pt-min`, `--eta-max` and `--dr-min` options change these settings. Explicit
 `--cut-pdg ID` selections are available for uncompressed metadata, subject to
 compatible cut masks when sharing a phase-space map.
@@ -119,6 +130,11 @@ example's dynamical scale is used.
   selection, rather than a process-specific AmpliCol library and parameter card.
 - Use current MadSpace call signatures, and derive masses, physical flavours,
   colour orderings and contribution maps from the generated metadata.
+- Bind `FunctionRuntime` explicitly to the one-thread context holding the
+  loaded provider; MadSpace 0.2.1's convenience calls use its global context.
+- Construct MadSpace's matrix-element function with its explicit particle
+  count, avoiding the convenience overload's unconditional diagram-count query.
+  No diagrams are invented for the recursion-based provider.
 - Keep LC colour contributions distinct; full colour is an already contracted
   result and is not evaluated repeatedly as if it were separate colour flows.
 - Retain Rusticol's incoming averages and identical-final-state factors exactly
@@ -130,6 +146,24 @@ example's dynamical scale is used.
   maps without a partition of unity.
 - Use bounded deterministic defaults, finite-result assertions, native numerical
   comparisons, and machine-readable integration results.
+  Both Torch and VEGAS's independent NumPy generator are explicitly seeded.
 
 The standalone SDK and complete UMAMI conventions are documented in the
 project's UMAMI API page and in the generated `API/umami/README.md`.
+
+## Optional grouping acceptance check
+
+```sh
+python umami_example/test_grouping.py
+```
+
+This separately generates the much smaller LC process `g g > g g` in all three
+grouping modes and reuses the same real MadSpace/VEGAS integration code. Its
+cuts are symmetric in the outgoing legs (`pT > 100 GeV`, `|eta| < 6`,
+`delta R > 0.4` at 1 TeV). It requires actual metadata compression and compares
+independent, fixed-seed integral estimates within six combined statistical
+standard errors, with each estimate's relative error below 5%. This is
+stochastic validation, not the authority establishing amplitude equivalences.
+The default is 4096 points per channel after 256/512-point training. Estimates,
+errors, counts and comparisons are retained in
+`.artifacts/umami-grouping/grouping_comparison.json`; `--reuse` skips regeneration.

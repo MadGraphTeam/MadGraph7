@@ -583,6 +583,28 @@ unsafe fn runtime_string(
     })
 }
 
+/// Copies the existing content identity of the authenticated artifact manifest.
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live and available for shared access during the call. If
+/// non-null, `required` must be writable for one `size_t`, and `buffer` must be writable for
+/// `capacity` bytes. A null `buffer` is valid only for a zero-capacity query.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_artifact_id(
+    handle: *const RusticolRuntimeHandle,
+    buffer: *mut c_char,
+    capacity: size_t,
+    required: *mut size_t,
+) -> c_int {
+    // SAFETY: The caller upholds this function's pointer contract.
+    unsafe {
+        runtime_string(handle, buffer, capacity, required, |runtime| {
+            Ok(runtime.artifact_id().to_owned())
+        })
+    }
+}
+
 /// Copies the runtime metadata as JSON.
 ///
 /// # Safety

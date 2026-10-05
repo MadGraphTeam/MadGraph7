@@ -9,6 +9,7 @@ import sys
 import tomllib
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -731,6 +732,115 @@ def test_source_runtime_stages_an_existing_local_wheel_directory(
 
     assert report == {"wheel": wheel.name}
     assert observed == {"path": wheel, "mode": "candidate", "audit": False}
+
+
+@pytest.mark.parametrize("mode", ("candidate", "release"))
+def test_reuse_current_runtime_uses_existing_authoritative_verifier(
+    tmp_path: Path, monkeypatch, mode: str
+) -> None:
+    module = _module()
+    runtime_root = tmp_path / "runtime"
+    runtime_root.mkdir()
+    build_info = runtime_root / "_build_info.json"
+    payload = {"source_runtime": {"mode": mode}, "version": "1.0.0"}
+    build_info.write_text(json.dumps(payload), encoding="utf-8")
+    observed = []
+
+    def verify(value, **kwargs):
+        observed.append((value, kwargs))
+
+    monkeypatch.setattr(module, "SOURCE_RUNTIME_ROOT", runtime_root)
+    monkeypatch.setattr(module, "SOURCE_BUILD_INFO", build_info)
+    monkeypatch.setattr(module, "SOURCE_RUNTIME_STAGING", runtime_root / ".staging")
+    monkeypatch.setattr(
+        module,
+        "_runtime_versions",
+        lambda: SimpleNamespace(
+            _read_build_info=versions._read_build_info,
+            _verify_source_runtime=verify,
+        ),
+    )
+
+    assert module.reuse_current_runtime(mode=mode) == {
+        "mode": mode,
+        "version": "1.0.0",
+        "reused": True,
+    }
+    assert observed == [
+        (payload, {"package_root": module.SOURCE_PACKAGE, "source_root": module.ROOT})
+    ]
+
+
+@pytest.mark.parametrize(
+    "failure", ("mode", "incomplete", "missing", "invalid", "stale")
+)
+def test_reuse_current_runtime_rejects_unusable_staging(
+    tmp_path: Path, monkeypatch, failure: str
+) -> None:
+    module = _module()
+    runtime_root = tmp_path / "runtime"
+    runtime_root.mkdir()
+    build_info = runtime_root / "_build_info.json"
+    payload = {
+        "source_runtime": {"mode": "candidate" if failure == "mode" else "release"},
+        "version": "1.0.0",
+    }
+    if failure != "missing":
+        build_info.write_text(
+            "not json" if failure == "invalid" else json.dumps(payload),
+            encoding="utf-8",
+        )
+    if failure == "incomplete":
+        (runtime_root / ".staging").touch()
+
+    def verify(*args, **kwargs):
+        assert failure == "stale", "invalid staging reached the identity verifier"
+        raise RuntimeError("native inputs changed")
+
+    monkeypatch.setattr(module, "SOURCE_RUNTIME_ROOT", runtime_root)
+    monkeypatch.setattr(module, "SOURCE_BUILD_INFO", build_info)
+    monkeypatch.setattr(module, "SOURCE_RUNTIME_STAGING", runtime_root / ".staging")
+    monkeypatch.setattr(
+        module,
+        "_runtime_versions",
+        lambda: SimpleNamespace(
+            _read_build_info=versions._read_build_info,
+            _verify_source_runtime=verify,
+        ),
+    )
+    assert module.reuse_current_runtime(mode="release") is None
+
+
+@pytest.mark.parametrize(
+    ("reuse_requested", "reuse_available"), ((False, True), (True, True), (True, False))
+)
+def test_source_runtime_main_reuse_is_opt_in_with_build_fallback(
+    monkeypatch, capsys, reuse_requested: bool, reuse_available: bool
+) -> None:
+    module = _module()
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", "release")
+    calls = []
+
+    def reuse(*, mode):
+        calls.append("reuse")
+        assert mode == "release"
+        return {"reused": True} if reuse_available else None
+
+    def build(*, python, mode):
+        calls.append("build")
+        assert mode == "release"
+        return {"wheel": "fresh.whl"}
+
+    monkeypatch.setattr(module, "reuse_current_runtime", reuse)
+    monkeypatch.setattr(module, "build_and_stage", build)
+    assert module.main(["--reuse-current"] if reuse_requested else []) == 0
+    reused = reuse_requested and reuse_available
+    assert calls == (
+        ["reuse"] if reused else ["reuse", "build"] if reuse_requested else ["build"]
+    )
+    assert json.loads(capsys.readouterr().out) == (
+        {"reused": True} if reused else {"wheel": "fresh.whl"}
+    )
 
 
 def test_native_provenance_digest_implementations_match(tmp_path: Path) -> None:

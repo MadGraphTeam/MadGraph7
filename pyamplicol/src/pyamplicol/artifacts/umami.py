@@ -131,7 +131,10 @@ def _permutation(values: Sequence[int], count: int) -> tuple[int, ...]:
 
 
 def _color_flow(
-    word: Sequence[int], external: Sequence[Mapping], particles: Mapping
+    word: Sequence[int],
+    external: Sequence[Mapping],
+    particles: Mapping,
+    sector: Mapping | None = None,
 ) -> list[list[int]]:
     """Assign LHE tags from all-outgoing fundamental chains/adjoint cycles."""
     labels = {int(p["label"]): i for i, p in enumerate(external)}
@@ -153,7 +156,35 @@ def _color_flow(
         )
     result = [[0, 0] for _ in external]
     edge = 501
-    if colored and all(roles[label] == 8 for label in colored):
+    if sector is not None and sector.get("kind") == "open-lines":
+        lines = _records(sector.get("open_color_lines"))
+        chains = [
+            [
+                int(line["fundamental_label"]),
+                *(int(label) for label in line.get("adjoint_labels", ())),
+                int(line["antifundamental_label"]),
+            ]
+            for line in lines
+        ]
+        flattened = [label for chain in chains for label in chain]
+        if sorted(flattened) != sorted(colored):
+            raise ValueError("UMAMI colour-sector lines do not cover the LC word")
+        for chain in chains:
+            if (
+                roles[chain[0]] != 3
+                or roles[chain[-1]] != -3
+                or any(roles[label] != 8 for label in chain[1:-1])
+            ):
+                raise ValueError(
+                    "UMAMI colour-sector endpoints disagree with the model"
+                )
+            result[labels[chain[0]]][0] = edge
+            for label in chain[1:-1]:
+                result[labels[label]] = [edge + 1, edge]
+                edge += 1
+            result[labels[chain[-1]]][1] = edge
+            edge += 1
+    elif colored and all(roles[label] == 8 for label in colored):
         for index, label in enumerate(colored):
             result[labels[label]] = [edge + index, edge + (index - 1) % len(colored)]
     else:
@@ -262,6 +293,7 @@ def build_umami_metadata(
     processes: Sequence[UmamiProcessInput],
     compiled_model: Mapping[str, Any],
     grouping: str = "exact",
+    artifact_id: str | None = None,
 ) -> tuple[dict[str, Any], ...]:
     """Return separate, directly consumable metadata documents per provider."""
     if grouping not in GROUPING_MODES:
@@ -281,10 +313,33 @@ def build_umami_metadata(
             len(external) - incoming
         ):
             raise ValueError("UMAMI requires initial legs before final legs")
+        # The public catalog has already evaluated internal/derived parameters
+        # for the artifact's defaults. Reuse those values instead of adding a
+        # second symbolic evaluator here (the parameter card can omit them).
+        process_defaults = {
+            **defaults,
+            **{
+                str(p["name"]): (
+                    _finite(p["default_real"], "parameter"),
+                    _finite(p.get("default_imaginary", 0.0), "parameter"),
+                )
+                for p in _records(process.physics.get("model_parameters"))
+            },
+        }
         masses = [
-            _mass(particles[pdg], parameters, defaults) for pdg in process.external_pdgs
+            _mass(particles[pdg], parameters, process_defaults)
+            for pdg in process.external_pdgs
         ]
-        signature = (len(external), incoming, process.color_accuracy, tuple(masses))
+        helicity_domain = tuple(
+            tuple(h["values"]) for h in _records(process.physics.get("helicities"))
+        )
+        signature = (
+            len(external),
+            incoming,
+            process.color_accuracy,
+            tuple(masses),
+            helicity_domain,
+        )
         # Alternative selections of the same external process are not additive.
         compatible = next(
             (
@@ -319,6 +374,7 @@ def build_umami_metadata(
                 len(groups) == 1,
             )
         )
+        documents[-1]["provider"]["artifact_id"] = artifact_id
     return tuple(documents)
 
 
@@ -413,6 +469,7 @@ def _build_provider(
                 }
             )
         replay = _safe_replay(process) if grouping != "none" else {}
+        sectors_by_word = {_word(sector): sector for sector in process.color_sectors}
         colors = _records(physics.get("color_components"))
         for color in colors:
             physical_count += 1
@@ -426,7 +483,8 @@ def _build_provider(
                 None
                 if contracted
                 else _intern(
-                    data["color_flows"], _color_flow(word, external, particles)
+                    data["color_flows"],
+                    _color_flow(word, external, particles, sectors_by_word.get(word)),
                 )
             )
             rep_color, perm = replay.get(color_id, (color_id, tuple(identity)))
@@ -525,12 +583,16 @@ def umami_bundle_payloads(
     processes: Sequence[UmamiProcessInput],
     compiled_model: Mapping[str, Any],
     grouping: str = "exact",
+    artifact_id: str | None = None,
 ) -> tuple[ApiBundlePayload, ...]:
     """Create JSON, provider headers and Make variables from one representation."""
     from .umami_c import provider_header
 
     documents = build_umami_metadata(
-        processes=processes, compiled_model=compiled_model, grouping=grouping
+        processes=processes,
+        compiled_model=compiled_model,
+        grouping=grouping,
+        artifact_id=artifact_id,
     )
     payloads = []
     entries = []

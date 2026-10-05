@@ -33,7 +33,7 @@ static bool const required_inputs[UMAMI_INPUT_KEY_COUNT] = {
 };
 static bool const supported_outputs[UMAMI_OUTPUT_KEY_COUNT] = {
     [UMAMI_OUT_MATRIX_ELEMENT] = true,
-    [UMAMI_OUT_COLOR_INDEX] = true,
+    [UMAMI_OUT_COLOR_INDEX] = UMAMI_HAS_COLOR_FLOW,
     [UMAMI_OUT_HELICITY_INDEX] = true,
 };
 
@@ -63,6 +63,17 @@ static UmamiStatus load_process(Instance *instance, size_t process) {
     char accuracy[16];
     status = rusticol_runtime_external_count(runtime, &count);
     bool compatible = status == RUSTICOL_STATUS_OK && count == umami_provider.particle_count;
+    char const *expected_identity = UMAMI_ARTIFACT_ID;
+    if (compatible && expected_identity != NULL) {
+        size_t capacity = strlen(expected_identity) + 1;
+        char *identity = malloc(capacity);
+        if (identity == NULL) compatible = false;
+        else {
+            status = rusticol_runtime_artifact_id(runtime, identity, capacity, &required);
+            compatible = status == RUSTICOL_STATUS_OK && strcmp(identity, expected_identity) == 0;
+            free(identity);
+        }
+    }
     for (size_t j = 0; compatible && j < count; ++j) {
         int32_t pdg = 0;
         status = rusticol_runtime_external_pdg(runtime, j, &pdg);
@@ -75,6 +86,14 @@ static UmamiStatus load_process(Instance *instance, size_t process) {
     if (compatible) {
         status = rusticol_runtime_helicity_count(runtime, &count);
         compatible = status == RUSTICOL_STATUS_OK && count == entry->helicity_count;
+    }
+    for (size_t j = 0; compatible && j < entry->helicity_count; ++j) {
+        size_t capacity = strlen(entry->helicity_ids[j]) + 1;
+        char *identifier = malloc(capacity);
+        if (identifier == NULL) { compatible = false; break; }
+        status = rusticol_runtime_helicity_id(runtime, j, identifier, capacity, &required);
+        compatible = status == RUSTICOL_STATUS_OK && strcmp(identifier, entry->helicity_ids[j]) == 0;
+        free(identifier);
     }
     if (!compatible) {
         (void)rusticol_runtime_free(runtime);
@@ -92,7 +111,9 @@ UmamiStatus umami_get_meta(UmamiMetaKey key, void *result) {
     case UMAMI_META_DEVICE: *(UmamiDevice *)result = UMAMI_DEVICE_CPU; break;
     case UMAMI_META_PARTICLE_COUNT: *(int *)result = (int)umami_provider.particle_count; break;
     case UMAMI_META_HELICITY_COUNT: *(int *)result = (int)umami_provider.helicity_count; break;
-    case UMAMI_META_COLOR_COUNT: *(int *)result = (int)umami_provider.color_count; break;
+    case UMAMI_META_COLOR_COUNT:
+        if (!UMAMI_HAS_COLOR_FLOW) return UMAMI_ERROR_UNSUPPORTED_META;
+        *(int *)result = (int)umami_provider.color_count; break;
     case UMAMI_META_MASSES:
         memcpy(result, umami_provider.masses, umami_provider.particle_count * sizeof(double));
         break;

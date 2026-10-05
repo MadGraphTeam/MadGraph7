@@ -6,6 +6,7 @@ from __future__ import annotations
 import ctypes as ct
 import importlib.util
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -30,6 +31,7 @@ from pyamplicol.config import (
     GenerationRelationDiscoveryConfig,
     GenerationValidationConfig,
     JITConfig,
+    ProcessConfig,
     RunConfig,
 )
 
@@ -98,6 +100,7 @@ class Provider:
     build: Path
     data: dict
     library: object
+    structural_keys: list[dict]
 
     @contextmanager
     def handle(self):
@@ -113,21 +116,42 @@ class Provider:
             assert self.library.umami_free(value) == 0
 
 
-@pytest.fixture(scope="module", params=("lc", "full"))
+@pytest.fixture(
+    scope="module",
+    params=(
+        pytest.param(("lc", "exact", False), id="lc-exact"),
+        pytest.param(("lc", "none", False), id="lc-none"),
+        pytest.param(("lc", "flavour_blind_observables", False), id="lc-integrated"),
+        pytest.param(("full", "exact", False), id="full-exact"),
+        pytest.param(("nlc", "exact", False), id="nlc-exact"),
+        pytest.param(("lc", "exact", True), id="restricted-helicity"),
+        pytest.param(("ufo", "exact", False), id="ufo-scalars"),
+    ),
+)
 def providers(request, tmp_path_factory):
     if importlib.util.find_spec("pyamplicol._rusticol") is None:
         _unavailable("the Rusticol extension has not been built")
     if shutil.which("make") is None or shutil.which(os.environ.get("CC", "cc")) is None:
         _unavailable("UMAMI integration requires make and a C compiler")
     config_executable = _config_executable()
-    root = tmp_path_factory.mktemp("umami-" + request.param)
-    artifact, build = root / "artifact", root / "build"
+    accuracy, grouping, restricted = request.param
+    is_ufo = accuracy == "ufo"
+    if is_ufo:
+        accuracy = "full"
+    root = tmp_path_factory.mktemp("umami-" + accuracy)
+    artifact, build = root / "artifact with spaces", root / "build with spaces"
     config = RunConfig(
         action="generate",
-        color=ColorConfig(accuracy=request.param),
+        process=ProcessConfig(
+            selected_source_helicities={"1": -1, "2": 1, "3": -1, "4": 1}
+            if restricted
+            else {},
+        ),
+        color=ColorConfig(accuracy=accuracy),
         generation=GenerationConfig(
             workers=1,
             emit_api_bundle=True,
+            umami_grouping=grouping,
             relation_discovery=GenerationRelationDiscoveryConfig(mode="off"),
             validation=GenerationValidationConfig(
                 enabled=False, post_build_validation=False
@@ -141,16 +165,41 @@ def providers(request, tmp_path_factory):
     )
     # The massive colour singlet forces a separate fixed-mass provider, while
     # retaining quark colour flow and generic UFO parameter declarations.
-    expressions = (
-        ("g g > g g",) if request.param == "lc" else ("g g > g g", "d d~ > z g")
-    )
-    names = ("gg",) if request.param == "lc" else ("gg", "dd_zg")
-    with packaged_prepared_model_path(BUILTIN_SM_JIT_O2) as prepared_model:
-        Generator(config).generate(
-            ProcessSet.from_expressions(expressions, names=names),
-            artifact,
-            model=ModelSource.from_path(prepared_model),
-        )
+    expressions = ("g g > g g", "d d~ > z g") if accuracy == "full" else ("g g > g g",)
+    names = ("gg", "dd_zg") if accuracy == "full" else ("gg",)
+    from pyamplicol.generation import umami_semantics
+
+    original_keys = umami_semantics.recurrence_structural_keys
+    observed_keys = []
+
+    def record_keys(**kwargs):
+        keys = original_keys(**kwargs)
+        observed_keys.append(keys)
+        return keys
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(umami_semantics, "recurrence_structural_keys", record_keys)
+        if is_ufo:
+            from tests.integration.umami_fixtures import equivalent_scalar_model
+
+            model, requests = equivalent_scalar_model(root / "ufo-source")
+            prepared = model.compile(
+                cache_dir=root / "model-cache",
+                prepared_output=root / "equivalent-scalars.pyamplicol-model",
+                evaluator=config.evaluator,
+            )
+            Generator(config).generate(
+                requests,
+                artifact,
+                model=prepared,
+            )
+        else:
+            with packaged_prepared_model_path(BUILTIN_SM_JIT_O2) as prepared_model:
+                Generator(config).generate(
+                    ProcessSet.from_expressions(expressions, names=names),
+                    artifact,
+                    model=ModelSource.from_path(prepared_model),
+                )
     completed = subprocess.run(
         [
             "make",
@@ -159,6 +208,9 @@ def providers(request, tmp_path_factory):
             f"BUILD_DIR={build}",
             f"RUSTICOL_CONFIG={config_executable}",
         ],
+        env=dict(
+            os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[2] / "src")
+        ),
         capture_output=True,
         text=True,
         timeout=180,
@@ -170,9 +222,26 @@ def providers(request, tmp_path_factory):
     documents = (
         [json.loads(path.read_text()) for path in paths] if paths else [root_metadata]
     )
-    assert len(documents) == len(expressions)
+    assert len(documents) == (1 if is_ufo else len(expressions))
+    if is_ufo:
+        assert documents[0]["provider"]["supports_alpha_s"]
+        assert all(
+            process["alpha_s_parameter"] == "aS"
+            for process in documents[0]["runtime_processes"]
+        )
+    if restricted:
+        assert (
+            documents[0]["runtime_processes"][0]["coverage"]["helicities"] == "selected"
+        )
+        assert len(documents[0]["runtime_processes"][0]["helicity_ids"]) == 1
     return [
-        Provider(artifact, build, data, _library(build / data["provider"]["library"]))
+        Provider(
+            artifact,
+            build,
+            data,
+            _library(build / data["provider"]["library"]),
+            observed_keys,
+        )
         for data in documents
     ]
 
@@ -181,14 +250,22 @@ def _entry(provider, channel=0, flavour=0):
     return provider.data["channels"][channel]["processes"][flavour]["runtime"]
 
 
+def _runtime_point(provider, process_id):
+    lines = (provider.artifact / "API/validation_points.dat").read_text().splitlines()
+    fields = next(line.split() for line in lines[1:] if line.split()[0] == process_id)
+    components = tuple(float(value) for value in fields[2:])
+    assert len(components) == 4 * int(fields[1])
+    return tuple(
+        components[index : index + 4] for index in range(0, len(components), 4)
+    )
+
+
 def _point(provider, entry):
-    runtime = Runtime.load(provider.artifact, process=entry["process_id"])
-    points = runtime.validation_momenta()
-    assert points
+    point = _runtime_point(provider, entry["process_id"])
     # The provider maps physical slots to representative runtime slots.
-    physical = [None] * len(points[0])
+    physical = [None] * len(point)
     for runtime_slot, physical_slot in enumerate(entry["permutation"]):
-        physical[physical_slot] = points[0][runtime_slot]
+        physical[physical_slot] = point[runtime_slot]
     return tuple(physical)
 
 
@@ -234,9 +311,10 @@ def _batch(
         inputs[1] = (ct.c_double * stride)(*alpha_s)
     outputs = {
         0: (ct.c_double * stride)(*[-123.0] * stride),
-        2: (ct.c_int * stride)(*[-123] * stride),
         3: (ct.c_int * stride)(*[-123] * stride),
     }
+    if provider.data["provider"]["color_accuracy"] == "lc":
+        outputs[2] = (ct.c_int * stride)(*[-123] * stride)
     status = provider.library.umami_matrix_element(
         handle,
         stride - offset if count is None else count,
@@ -278,6 +356,10 @@ def test_metadata_capabilities_and_hidden_native_symbols(providers):
         assert provider.library.umami_get_meta(5, masses) == 0
         assert list(masses) == provider.data["provider"]["masses"]
         assert provider.library.umami_get_meta(2, ct.byref(count)) == 6
+        has_color = provider.data["provider"]["color_accuracy"] == "lc"
+        assert provider.library.umami_get_meta(4, ct.byref(count)) == (
+            0 if has_color else 6
+        )
         for operation in ("supported_inputs", "required_inputs", "supported_outputs"):
             values, length = ct.POINTER(ct.c_bool)(), ct.c_int()
             assert (
@@ -303,7 +385,7 @@ def test_metadata_capabilities_and_hidden_native_symbols(providers):
                 assert flags[1] == provider.data["provider"]["supports_alpha_s"]
                 assert not flags[3] and not flags[5] and not flags[6] and not flags[7]
             else:
-                assert flags == [True, False, True, True, False, False]
+                assert flags == [True, False, has_color, True, False, False]
 
 
 def test_all_exported_flavours_match_native_and_preserve_stride(providers):
@@ -327,18 +409,91 @@ def test_all_exported_flavours_match_native_and_preserve_stride(providers):
                     assert outputs[0] == pytest.approx(
                         [-123.0, expected, -123.0], rel=2e-11, abs=1e-15
                     )
-                    assert outputs[2] == [-123, entry["color_index"], -123]
+                    if 2 in outputs:
+                        assert outputs[2] == [-123, entry["color_index"], -123]
                     process = provider.data["runtime_processes"][entry["process_index"]]
                     assert outputs[3] == [-123, len(process["helicity_ids"]) // 2, -123]
 
 
+def test_grouped_members_match_physical_flows_at_asymmetric_point(providers):
+    for provider in providers:
+        reconstructed, complete = {}, {}
+        with provider.handle() as handle:
+            for channel, description in enumerate(provider.data["channels"]):
+                for flavour, exported in enumerate(description["processes"]):
+                    representative = exported["runtime"]
+                    for member in exported["members"]:
+                        runtime = Runtime.load(
+                            provider.artifact, process=member["process_id"]
+                        )
+                        point = (
+                            (
+                                (500, 0, 0, 500),
+                                (500, 0, 0, -500),
+                                (500, 300, 0, 400),
+                                (500, -300, 0, -400),
+                            )
+                            if member["process_id"] == "gg"
+                            else _runtime_point(provider, member["process_id"])
+                        )
+                        selection = (
+                            None
+                            if member["color_id"] is None
+                            else (member["color_id"],)
+                        )
+                        expected = float(
+                            complex(
+                                runtime.evaluate((point,), color_flows=selection)[0]
+                            ).real
+                        )
+                        process_id = member["process_id"]
+                        if process_id not in complete:
+                            complete[process_id] = float(
+                                complex(runtime.evaluate((point,))[0]).real
+                            )
+                        mapped = [None] * len(point)
+                        # Both maps name the same representative runtime slots.
+                        # Test each member at its own physical momenta; do not
+                        # confuse integrated multiplicity with pointwise sum.
+                        for j, slot in enumerate(representative["permutation"]):
+                            mapped[slot] = point[member["runtime"]["permutation"][j]]
+                        status, outputs = _batch(
+                            provider,
+                            handle,
+                            (mapped,),
+                            channel=channel,
+                            flavour=flavour,
+                        )
+                        assert status == 0
+                        assert outputs[0][0] == pytest.approx(
+                            expected, rel=2e-11, abs=1e-15
+                        )
+                        reconstructed[process_id] = (
+                            reconstructed.get(process_id, 0.0)
+                            + outputs[0][0] * member["factor"]
+                        )
+        # Exact/none enumerate contributions directly. For integrated grouping,
+        # the member loop above reconstructs each physical flow at its own
+        # mapped point; an orbit factor alone is not a pointwise estimator.
+        assert reconstructed == pytest.approx(complete, rel=2e-11, abs=1e-15)
+
+
 def test_parameters_event_override_and_independent_concurrent_handles(providers):
     for provider in providers:
-        assert provider.data["provider"]["supports_alpha_s"]
         entry = _entry(provider)
-        name = provider.data["runtime_processes"][entry["process_index"]][
-            "alpha_s_parameter"
-        ]
+        description = provider.data["runtime_processes"][entry["process_index"]]
+        supports_alpha_s = provider.data["provider"]["supports_alpha_s"]
+        name = (
+            description["alpha_s_parameter"]
+            if supports_alpha_s
+            else next(
+                parameter["name"]
+                for parameter in description["parameters"]
+                if parameter["mutable"]
+                and parameter["default_real"] > 0
+                and not parameter.get("is_complex", False)
+            )
+        )
         point = _point(provider, entry)
         with provider.handle() as first, provider.handle() as second:
             original = _parameter(provider, first, name)
@@ -350,16 +505,27 @@ def test_parameters_event_override_and_independent_concurrent_handles(providers)
             )
             assert _parameter(provider, first, name) == changed
             assert _parameter(provider, second, name) == original
+            if entry["process_id"] == "flavour_one":
+                assert _parameter(provider, first, "G") == pytest.approx(
+                    math.sqrt(4 * math.pi * changed)
+                )
             event_values = (original.real * 0.8, original.real * 1.1)
             status, outputs = _batch(
                 provider, first, (point,) * 2, alpha_s=event_values
             )
-            assert status == 0
-            expected = [
-                _expected(provider, entry, point, {name: value})
-                for value in event_values
-            ]
-            assert outputs[0] == pytest.approx(expected, rel=2e-11)
+            if supports_alpha_s:
+                assert status == 0
+                expected = [
+                    _expected(provider, entry, point, {name: value})
+                    for value in event_values
+                ]
+                assert outputs[0] == pytest.approx(expected, rel=2e-11)
+                if entry["process_id"] == "flavour_one":
+                    assert outputs[0][0] / outputs[0][1] == pytest.approx(
+                        (event_values[0] / event_values[1]) ** 2, rel=2e-11
+                    )
+            else:
+                assert status == 3  # No generic alpha_s name may be invented.
             assert _parameter(provider, first, name) == changed
             with ThreadPoolExecutor(max_workers=2) as pool:
                 futures = [
@@ -408,6 +574,55 @@ def test_error_contract_and_zero_count(providers):
             assert _batch(provider, handle, (point,), flavour=-1)[0] == 1
 
 
+def test_rejects_other_valid_artifact_with_identical_external_labels(
+    providers, tmp_path
+):
+    provider = providers[0]
+    if not (
+        provider.data["provider"]["color_accuracy"] == "lc"
+        and provider.data["grouping"]["mode"] == "exact"
+        and provider.data["provider"]["helicity_count"] > 1
+    ):
+        return
+    # A genuinely generated artifact with a different native layout, not a
+    # damaged manifest or a change of SDK grouping alone. Particle/helicity
+    # labels and colour accuracy by themselves cannot protect compiled tables.
+    other = tmp_path / "different native artifact"
+    config = RunConfig(
+        action="generate",
+        color=ColorConfig(accuracy="lc", lc_flow_layout="all-flow-union"),
+        generation=GenerationConfig(
+            workers=1,
+            emit_api_bundle=False,
+            relation_discovery=GenerationRelationDiscoveryConfig(mode="off"),
+            validation=GenerationValidationConfig(
+                enabled=False, post_build_validation=False
+            ),
+        ),
+        evaluator=EvaluatorConfig(
+            execution_mode="recurrence",
+            optimization=EvaluatorOptimizationConfig(cores=1),
+            jit=JITConfig(optimization_level=2),
+        ),
+    )
+    with packaged_prepared_model_path(BUILTIN_SM_JIT_O2) as model:
+        Generator(config).generate(
+            ProcessSet.from_expressions(("g g > g g",), names=("gg",)),
+            other,
+            model=ModelSource.from_path(model),
+        )
+    manifest = json.loads((other / "artifact.json").read_text())
+    assert manifest["artifact_id"] != provider.data["provider"]["artifact_id"]
+    original = Runtime.load(provider.artifact, process="gg")
+    alternate = Runtime.load(other, process="gg")
+    assert alternate.physics.helicity_ids == original.physics.helicity_ids
+    point = _runtime_point(provider, "gg")
+    assert alternate.evaluate((point,)) == pytest.approx(original.evaluate((point,)))
+    invalid = ct.c_void_p(123)
+    assert provider.library.umami_initialize(ct.byref(invalid), os.fsencode(other)) == 1
+    assert invalid.value is None
+
+
 def test_linked_driver_survives_relocation(providers, tmp_path):
     provider = providers[0]
     relocated = tmp_path / "relocated files with spaces"
@@ -436,3 +651,29 @@ def test_linked_driver_survives_relocation(providers, tmp_path):
     assert result["matrix_element"] == pytest.approx(
         _expected(provider, entry, _point(provider, entry)), rel=2e-11
     )
+
+
+def test_real_generation_exercises_structural_proofs(providers):
+    for provider in providers:
+        if (
+            provider.data["provider"]["color_accuracy"] == "lc"
+            and provider.data["grouping"]["mode"] == "exact"
+            and provider.data["provider"]["helicity_count"] > 1
+        ):
+            assert provider.structural_keys and any(provider.structural_keys), (
+                "ordinary gg must exercise structural proofs"
+            )
+        if provider.data["runtime_processes"][0]["id"] == "flavour_one":
+            assert len(provider.structural_keys) == 2
+            assert provider.structural_keys[0]
+            assert provider.structural_keys[0] == provider.structural_keys[1]
+            entries = [
+                entry
+                for channel in provider.data["channels"]
+                for entry in channel["processes"]
+            ]
+            assert len(entries) == 2
+            assert all(
+                entry["runtime"]["process_id"] == "flavour_one" for entry in entries
+            )
+            assert entries[0]["members"][0]["pdgs"] != entries[1]["members"][0]["pdgs"]

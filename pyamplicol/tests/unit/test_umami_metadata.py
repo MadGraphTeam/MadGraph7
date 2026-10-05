@@ -156,12 +156,35 @@ def test_quark_chain_and_singlet_derive_from_model_not_particle_names():
     assert data["color_orders"] == [[1, 3, 0, 2]]
 
 
+def test_two_quark_pairs_use_supplied_sector_lines():
+    p = process(pdgs=(991, -991, 992, -992, 990), words=((2, 5, 4, 3, 1),))
+    sector = {
+        "id": 0,
+        "kind": "open-lines",
+        "word_labels": [2, 5, 4, 3, 1],
+        "open_color_lines": [
+            {"fundamental_label": 3, "adjoint_labels": [], "antifundamental_label": 1},
+            {"fundamental_label": 2, "adjoint_labels": [5], "antifundamental_label": 4},
+        ],
+    }
+    (data,) = export(replace(p, color_sectors=(sector,)))
+    assert data["color_flows"] == [[[501, 0], [0, 502], [501, 0], [0, 503], [503, 502]]]
+    sector["open_color_lines"][0]["antifundamental_label"] = 4
+    with pytest.raises(ValueError, match="cover"):
+        export(replace(p, color_sectors=(sector,)))
+
+
 @pytest.mark.parametrize("accuracy", ["nlc", "full"])
 def test_contracted_color_has_no_fake_flows(accuracy):
     (data,) = export(process(accuracy=accuracy))
     assert data["color_flows"] == []
     assert entries(data)[0]["color_flows"] is None
     assert entries(data)[0]["runtime"]["color_id"] is None
+    payloads = umami_bundle_payloads(
+        processes=[process(accuracy=accuracy)], compiled_model=model()
+    )
+    header = next(p for p in payloads if p.path.endswith("provider_p0.h"))
+    assert b"#define UMAMI_HAS_COLOR_FLOW 0" in header.content
 
 
 def test_fixed_metadata_and_overlapping_selections_split_providers():
@@ -187,6 +210,13 @@ def test_fixed_metadata_and_overlapping_selections_split_providers():
 def test_permuted_duplicate_final_states_are_not_summed_in_one_provider():
     a = process("a", pdgs=(990, 990, 991, -991), words=((3, 1, 2, 4),))
     b = process("b", pdgs=(990, 990, -991, 991), words=((4, 1, 2, 3),))
+    assert len(export(a, b)) == 2
+
+
+def test_distinct_restricted_helicity_domains_require_separate_providers():
+    a = process("a", pdgs=(991, -991, 990, 990), words=((2, 3, 4, 1),))
+    b = process("b", pdgs=(992, -992, 990, 990), words=((2, 3, 4, 1),))
+    b.physics["helicities"][0]["values"] = [-1, 1, 1, 1]
     assert len(export(a, b)) == 2
 
 
@@ -298,6 +328,23 @@ def test_payloads_have_sdk_roles_and_generated_c_matches_json():
     assert payloads["API/umami/metadata.json"].role == "sdk-metadata"
 
 
+def test_provider_reuses_existing_runtime_artifact_identity():
+    payloads = {
+        p.path: p
+        for p in umami_bundle_payloads(
+            processes=[process()],
+            compiled_model=model(),
+            artifact_id="existing-id",
+        )
+    }
+    data = json.loads(payloads["API/umami/metadata.json"].content)
+    assert data["provider"]["artifact_id"] == "existing-id"
+    assert (
+        b'#define UMAMI_ARTIFACT_ID "existing-id"'
+        in payloads["API/umami/provider_p0.h"].content
+    )
+
+
 def test_unknown_grouping_rejected():
     with pytest.raises(ValueError, match="grouping"):
         export(process(), grouping="guess")
@@ -314,6 +361,31 @@ def test_mass_parameter_semantics_not_only_current_value_split_providers():
     assert len(export(a, b, compiled_model=m)) == 2
 
 
+def test_derived_mass_uses_already_resolved_public_default():
+    m = model()
+    m["parameter_defaults"].pop("mass_s")
+    m["ir"]["parameters"][1] = {
+        "name": "mass_s",
+        "nature": "internal",
+        "parameter_type": "real",
+        "expression": "sqrt(strong_input)",
+        "resolved_expression": "sqrt(strong_input)",
+    }
+    p = process(pdgs=(991, -991, 995, 990), words=((2, 4, 1),))
+    p.physics["model_parameters"].append(
+        {
+            "name": "mass_s",
+            "kind": "derived",
+            "default_real": 0.12**0.5,
+            "default_imaginary": 0.0,
+            "mutable": False,
+        }
+    )
+    (data,) = export(p, compiled_model=m)
+    assert data["provider"]["masses"] == [0, 0, 0.12**0.5, 0]
+    assert data["provider"]["mass_parameters"][2] == "sqrt(strong_input)"
+
+
 def test_helicity_equivalences_are_explicit_and_disabled_in_none():
     p = process()
     h = copy.deepcopy(p.physics["helicities"][0])
@@ -326,7 +398,8 @@ def test_helicity_equivalences_are_explicit_and_disabled_in_none():
 
 
 @pytest.mark.parametrize("accuracy,flows", [("lc", 6), ("full", 1)])
-def test_otf_sdk_axes_do_not_change_compact_public_metadata(accuracy, flows):
+@pytest.mark.parametrize("domain", [(-1, 1), (1, -1)])
+def test_otf_sdk_axes_do_not_change_compact_public_metadata(accuracy, flows, domain):
     p = process(accuracy=accuracy)
     compact = {
         k: v
@@ -358,10 +431,7 @@ def test_otf_sdk_axes_do_not_change_compact_public_metadata(accuracy, flows):
         external_sources=tuple(
             SimpleNamespace(
                 public_label=i + 1,
-                source_states=(
-                    SimpleNamespace(public_helicity=-1),
-                    SimpleNamespace(public_helicity=1),
-                ),
+                source_states=tuple(SimpleNamespace(public_helicity=h) for h in domain),
             )
             for i in reversed(range(4))
         )
@@ -369,7 +439,8 @@ def test_otf_sdk_axes_do_not_change_compact_public_metadata(accuracy, flows):
     resolved, sectors = build_umami_on_the_fly_physics(compact, process_ir, seed)
     assert "helicities" not in compact
     assert len(resolved["helicities"]) == 16
-    assert resolved["helicities"][0]["id"] == "h:-1,-1,-1,-1"
+    assert resolved["helicities"][0]["id"] == "h:" + ",".join([f"{domain[0]:+d}"] * 4)
+    assert resolved["helicities"][1]["values"] == [domain[0]] * 3 + [domain[1]]
     assert len(resolved["color_components"]) == flows
     (data,) = export(replace(p, physics=resolved, color_sectors=sectors))
     assert len(entries(data)) == flows

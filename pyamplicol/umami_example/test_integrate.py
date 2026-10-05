@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import madspace as ms
+import numpy as np
 import torch
 import torch.nn as nn
 from _metadata import load_metadata
@@ -58,6 +59,11 @@ class Channel:
 
 def load_channels(path, provider=None):
     data = load_metadata(path, provider)
+    if any(mass != 0.0 for mass in data["provider"]["masses"][:2]):
+        raise ValueError(
+            "this MadSpace scattering example uses massless-beam flux; "
+            "massive incoming particles require a different flux prescription"
+        )
     channels = []
     for ci, ch in enumerate(data["channels"]):
         inits, finals, procs = set(), [], []
@@ -156,10 +162,14 @@ def load_matrix_element(ctx, library, artifact, use_running_alpha_s=False):
         ms.MatrixElement.channel_in,
         ms.MatrixElement.random_helicity_in,
     ]
+    # Avoid the convenience overload's unconditional diagram-count query.
+    # No diagram output is requested or represented by this provider.
     return ms.MatrixElement(
-        api,
+        api.index(),
+        api.particle_count(),
         inputs,
         [ms.MatrixElement.matrix_element_out, ms.MatrixElement.helicity_index_out],
+        diagram_count=0,
     )
 
 
@@ -192,6 +202,7 @@ class ColorOrderedChannel:
         self.random_dim = self.psmap.random_dim()
         self.discrete_dim = self.psmap.discrete_dim()
         self.dim = self.random_dim
+        self.ps_runtime = ms.FunctionRuntime(self.psmap.forward_function(), ctx)
         self.cfg_proc, self.cfg_factor, pid_options = [], [], []
         for iproc, cfgs in enumerate(ch.processes):
             for fac, a, b, final in cfgs:
@@ -222,6 +233,7 @@ class ColorOrderedChannel:
                 True,
                 False,
             )
+            self.dcs_runtime = ms.FunctionRuntime(self.dcs.function(), ctx)
 
     def weight(self, r, disc=None):
         """Keep upstream's ownership of discrete phase-space branch weights."""
@@ -238,7 +250,7 @@ class ColorOrderedChannel:
             inputs = [r, disc]
         else:
             inputs = [r]
-        p, x1, x2, det = self.psmap.map_forward(inputs, context=self.ctx)
+        p, x1, x2, det = self.ps_runtime(*inputs)
         good = torch.isfinite(det) & (det > 0)
         out = torch.zeros(r.shape[0], dtype=det.dtype, device=dev)
         if self.dcs is None:
@@ -255,7 +267,7 @@ class ColorOrderedChannel:
             flavor = torch.full((ng,), self.cfg_proc[c], device=dev, dtype=torch.int32)
             pdf_id = torch.full((ng,), c, device=dev, dtype=torch.int32)
             rnd_hel = torch.rand(ng, device=dev, dtype=dt)
-            res = self.dcs(
+            res = self.dcs_runtime(
                 pg.contiguous(),
                 flavor,
                 chan_id,
@@ -263,7 +275,6 @@ class ColorOrderedChannel:
                 x1g,
                 x2g,
                 pdf_id,
-                context=self.ctx,
             )
             dxs = res[0] if isinstance(res, (tuple, list)) else res
             if not bool(torch.isfinite(dxs).all()):
@@ -360,6 +371,8 @@ def integrate_per_channel(
             loss=stratified_variance_softclip,
         )
         vegas = VegasPreTraining(integrator, bins=16, damping=0.7)
+        # MadNIS gives VEGAS its own NumPy generator, independent of Torch's RNG.
+        vegas.rng = np.random.default_rng(np.random.SeedSequence([seed, c.index]))
         vegas.train(list(training_points), callback=vegas_callback)
         if vegas_only:
             Ii, ei = vegas.integrate(n_points)

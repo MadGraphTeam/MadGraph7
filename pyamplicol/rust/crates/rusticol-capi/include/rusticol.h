@@ -137,6 +137,13 @@ int rusticol_runtime_free(RusticolRuntimeHandle *handle);
 int rusticol_runtime_save(const RusticolRuntimeHandle *handle, const char *path);
 int rusticol_runtime_load_cache(RusticolRuntimeHandle *handle, const char *path);
 
+/* Existing content identity of the loaded, authenticated artifact manifest. */
+int rusticol_runtime_artifact_id(
+    const RusticolRuntimeHandle *handle,
+    char *buffer,
+    size_t capacity,
+    size_t *required
+);
 int rusticol_runtime_metadata_json(
     const RusticolRuntimeHandle *handle,
     char *buffer,

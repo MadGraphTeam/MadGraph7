@@ -168,11 +168,14 @@ def _write_api_bundle(root: Path) -> Path:
 
 def _write_sdk_config(path: Path, marker: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    library = path.parent / "lib-fixture.a"
+    library.write_bytes(b"")
     path.write_text(
         "#!/bin/sh\n"
         'case "$1" in\n'
         f"  --cflags) printf '%s\\n' '-I/{marker}/include' ;;\n"
         f"  --libs) printf '%s\\n' '/{marker}/lib.a' ;;\n"
+        f"  --library) printf '%s\\n' '{library}' ;;\n"
         f"  --fortran-source) printf '%s\\n' '/{marker}/rusticol.f90' ;;\n"
         f"  --rust-source) printf '%s\\n' '/{marker}/rusticol.rs' ;;\n"
         f"  --rustflags) printf '%s\\n' '-L /{marker}' ;;\n"

@@ -38,9 +38,9 @@ def main() -> None:
     me = ctx.load_matrix_element(str(args.library.resolve()), str(artifact))
     n = args.n
     psmap = ms.PhaseSpaceMapping(data["provider"]["masses"], args.sqrts, leptonic=True)
-    p_ext, _x1, _x2, det = psmap.map_forward(
-        [np.random.rand(n, psmap.random_dim())], context=ctx
-    )
+    # Bind the explicit context: v0.2.1 convenience calls use the global context.
+    ps_runtime = ms.FunctionRuntime(psmap.forward_function(), ctx)
+    p_ext, _x1, _x2, det = ps_runtime(np.random.rand(n, psmap.random_dim()))
     if not np.all(np.isfinite(det) & (det > 0)):
         raise AssertionError("phase-space mapping returned a degenerate point")
     inputs = [ms.MatrixElement.momenta_in]
@@ -52,15 +52,21 @@ def main() -> None:
         ms.MatrixElement.channel_in,
         ms.MatrixElement.random_helicity_in,
     ]
+    # The convenience overload queries diagram_count even without diagram
+    # outputs. This recursion provider intentionally has no diagram metadata.
     func = ms.MatrixElement(
-        me,
+        me.index(),
+        me.particle_count(),
         inputs,
         [ms.MatrixElement.matrix_element_out, ms.MatrixElement.helicity_index_out],
+        diagram_count=0,
     )
+    evaluator = ms.FunctionRuntime(func.function(), ctx)
 
     from pyamplicol import Runtime
 
     runtimes = {}
+    physical_sums = {}
     checked = 0
     maximum_error = 0.0
     for channel_index, channel in enumerate(data["channels"]):
@@ -84,7 +90,7 @@ def main() -> None:
             flavors = np.full(n, flavor_index, dtype=np.int32)
             channels = np.full(n, channel_index, dtype=np.int32)
             rnd_hel = np.random.rand(n)
-            amp2, hel = func(*buffers, flavors, channels, rnd_hel, context=ctx)
+            amp2, hel = evaluator(*buffers, flavors, channels, rnd_hel)
 
             native = []
             color_id = spec["color_id"]
@@ -109,10 +115,59 @@ def main() -> None:
                 maximum_error, float(np.max(np.abs(amp2 - native) / scale))
             )
             checked += n
+            if data["provider"]["color_accuracy"] == "lc" and data["grouping"][
+                "mode"
+            ] in ("none", "exact"):
+                # These modes retain every physical contribution at this same
+                # point. Aggressive integration multiplicities do not have
+                # that pointwise meaning and must not enter this check.
+                if len(process["members"]) != 1 or len(process["matrix_elements"]) != 1:
+                    raise AssertionError(
+                        "uncompressed entry must have one physical member"
+                    )
+                member = process["members"][0]
+                original_id = member["process_id"]
+                total, colors = physical_sums.setdefault(original_id, (np.zeros(n), []))
+                total += amp2 * float(process["matrix_elements"][0]["factor"])
+                colors.append(member["color_id"])
+    reconstructed = 0
+    for process_id, (total, colors) in physical_sums.items():
+        if process_id not in runtimes:
+            runtimes[process_id] = Runtime.load(artifact, process=process_id)
+        runtime = runtimes[process_id]
+        if runtime.physics.color_coverage != "complete":
+            continue
+        if len(colors) != len(set(colors)) or set(colors) != set(
+            runtime.physics.color_flow_ids
+        ):
+            raise AssertionError(
+                "UMAMI contributions do not cover physical LC flows once"
+            )
+        default = (
+            None
+            if alpha_name is None
+            else next(
+                p.default_real
+                for p in runtime.physics.model_parameters
+                if p.name == alpha_name
+            )
+        )
+        native_total = []
+        alpha_factors = np.linspace(0.9, 1.1, n)
+        for i, point in enumerate(p_ext):
+            if default is not None:
+                runtime.set_model_parameter(
+                    alpha_name, default * float(alpha_factors[i])
+                )
+            native_total.append(float(complex(runtime.evaluate((point,))[0]).real))
+        np.testing.assert_allclose(total, native_total, rtol=2e-10, atol=1e-25)
+        reconstructed += n
     print(
         f"MadSpace/UMAMI: {checked} values match native pyAmpliCol; "
         f"max relative difference {maximum_error:.3g}"
     )
+    if reconstructed:
+        print(f"LC channel sums reconstruct {reconstructed} native total values")
 
 
 if __name__ == "__main__":

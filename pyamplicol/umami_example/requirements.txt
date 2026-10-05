@@ -1,5 +1,6 @@
 # Optional demonstration dependencies; not pyAmpliCol runtime requirements.
 madspace==0.2.1
 madnis==1.0.0
+vegas>=6.0
 torch>=2.4
 numpy>=1.26

@@ -28,6 +28,8 @@ def provider_header(data: Mapping[str, Any]) -> str:
         "/* Generated from the same records as metadata.json. */",
         '#include "umami_provider.h"',
         f"#define UMAMI_HAS_ALPHA_S {int(provider['supports_alpha_s'])}",
+        f"#define UMAMI_HAS_COLOR_FLOW {int(provider['color_accuracy'] == 'lc')}",
+        f"#define UMAMI_ARTIFACT_ID {_string(provider.get('artifact_id'))}",
         "static const double umami_masses[] = {"
         + ", ".join(_number(v) for v in provider["masses"])
         + "};",

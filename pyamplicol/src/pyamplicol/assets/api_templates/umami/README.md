@@ -40,6 +40,8 @@ input produces only an informational label; it does not sample the matrix elemen
 Explicit helicity selection, random colour selection, diagrams and GPU streams
 are not supported by this adapter. LC rows select physical additive colour flows;
 NLC/full-colour rows use the complete contracted colour result, without a flow.
+These contracted providers do not support colour-count metadata or colour-index
+output; the corresponding capability query reports this explicitly.
 Integration multiplicities in metadata are not silently included in the returned
 matrix element. Consult metadata for restricted coverage and grouping assumptions.
 

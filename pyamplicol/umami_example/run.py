@@ -12,7 +12,9 @@ from pathlib import Path
 from _metadata import load_metadata
 
 
-def generate(artifact: Path, accuracy: str, grouping: str) -> None:
+def generate(
+    artifact: Path, accuracy: str, grouping: str, expression: str = "g g > g g g"
+) -> None:
     from pyamplicol import Generator, ModelSource
     from pyamplicol.config import resolve_config
 
@@ -35,7 +37,7 @@ def generate(artifact: Path, accuracy: str, grouping: str) -> None:
             },
         }
     )
-    Generator(config).generate("g g > g g g", artifact, model=ModelSource.built_in_sm())
+    Generator(config).generate(expression, artifact, model=ModelSource.built_in_sm())
 
 
 def execute(*command: object) -> None:
@@ -77,7 +79,7 @@ def main() -> None:
             "--rusticol-config /absolute/path"
         )
     # Check optional integration dependencies before starting generation.
-    for module in ("madspace", "madnis", "torch"):
+    for module in ("madspace", "madnis", "vegas", "torch"):
         __import__(module)
     directory = args.output.resolve()
     directory.mkdir(parents=True, exist_ok=True)

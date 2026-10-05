@@ -26,7 +26,7 @@ from pyamplicol.artifacts import (
     PayloadRecord,
     load_manifest,
 )
-from pyamplicol.artifacts.manifest import PORTABLE_64LE_TARGET
+from pyamplicol.artifacts.manifest import PORTABLE_64LE_TARGET, compute_artifact_id
 from pyamplicol.artifacts.security import sha256_file
 from pyamplicol.config import (
     ConfigClamp,
@@ -860,7 +860,12 @@ def _write_umami_bundle(
             )
         )
     for payload in umami_bundle_payloads(
-        processes=inputs, compiled_model=compiled_model.to_dict(), grouping=grouping
+        processes=inputs,
+        compiled_model=compiled_model.to_dict(),
+        grouping=grouping,
+        artifact_id=compute_artifact_id(
+            {"payloads": [record.as_dict() for record in builder.payload_records()]}
+        ),
     ):
         builder.add_bytes(
             payload.path,
@@ -1080,13 +1085,6 @@ def write_schema_v3_artifact(
         )
         if bundle_requested and hook is not None:
             api_bundle_path = _call_api_bundle_hook(builder, hook, bundle_points)
-            _write_umami_bundle(
-                builder,
-                processes=processes,
-                process_records=process_records,
-                compiled_model=compiled_model,
-                grouping=str(configuration.effective.generation.umami_grouping),
-            )
         evaluator_payload_container = evaluator_payloads.publish()
         source_revision = producer.get("git_revision")
         native_build_inputs_sha256 = producer.get("native_build_inputs_sha256")
@@ -1165,6 +1163,20 @@ def write_schema_v3_artifact(
         )
         if payload_hook is not None:
             extensions.update(payload_hook(builder))
+        if bundle_requested and hook is not None:
+            _write_umami_bundle(
+                builder,
+                processes=processes,
+                process_records=process_records,
+                compiled_model=compiled_model,
+                grouping=str(
+                    (
+                        configuration.effective
+                        if isinstance(configuration.effective, GenerationConfig)
+                        else configuration.effective.generation
+                    ).umami_grouping
+                ),
+            )
         builder.finalize(
             kind=(
                 "pyamplicol-process"
