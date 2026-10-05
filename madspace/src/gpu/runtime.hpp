@@ -53,7 +53,7 @@ public:
 
 private:
     struct LastStream {
-        std::optional<gpuStream_t> stream;
+        bool pending = false;
         gpuEvent_t event;
     };
     struct HeldInputs {

@@ -610,7 +610,7 @@ public:
             return;
         }
         TensorImpl* owner = storage();
-        if (owner->stream_ordered) {
+        if (owner->stream_ordered && owner->stream != stream) {
             owner->stream = stream;
         }
     }

@@ -1949,14 +1949,13 @@ void GpuRuntime::hold_inputs(
     held.items.emplace_back(event, std::move(kept));
 }
 
-// the runtimes of a context share the cublas handle and the rng, so a new stream
-// waits for the last one
+// the runtimes of a context share the cublas handle and the rng. stream handles can
+// be reused, so a call always waits for the last one that did not synchronize
 void GpuRuntime::switch_stream(gpuStream_t main_stream) {
     auto& last = _last_stream.get();
-    if (last.stream && *last.stream != main_stream) {
+    if (last.pending) {
         check_error(gpuStreamWaitEvent(main_stream, last.event));
     }
-    last.stream = main_stream;
 }
 
 TensorVec GpuRuntime::run(const TensorVec& inputs) {
@@ -2007,10 +2006,11 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) {
     }
     if (caller) {
         check_error(gpuEventRecord(_last_stream.get().event, main_stream));
+        _last_stream.get().pending = true;
         hold_inputs(inputs, main_stream, *caller == 0);
     } else {
         check_error(gpuStreamSynchronize(main_stream));
-        _last_stream.get().stream.reset();
+        _last_stream.get().pending = false;
         release_inputs();
     }
     stream_guard.dismissed = true;
@@ -2093,10 +2093,11 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
     }
     if (caller) {
         check_error(gpuEventRecord(_last_stream.get().event, main_stream));
+        _last_stream.get().pending = true;
         hold_inputs(inputs, main_stream, *caller == 0);
     } else {
         check_error(gpuStreamSynchronize(main_stream));
-        _last_stream.get().stream.reset();
+        _last_stream.get().pending = false;
         release_inputs();
     }
     stream_guard.dismissed = true;
@@ -2193,12 +2194,13 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
     all_global_grads.set_stream(caller);
     if (caller) {
         check_error(gpuEventRecord(_last_stream.get().event, main_stream));
+        _last_stream.get().pending = true;
         TensorVec held(output_grads);
         held.insert(held.end(), stored_locals.begin(), stored_locals.end());
         hold_inputs(held, main_stream, *caller == 0);
     } else {
         check_error(gpuStreamSynchronize(main_stream));
-        _last_stream.get().stream.reset();
+        _last_stream.get().pending = false;
         release_inputs();
     }
     stream_guard.dismissed = true;

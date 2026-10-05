@@ -77,20 +77,26 @@ public:
     ThreadResource(
         ThreadPool& pool,
         std::function<T()> constructor,
-        std::optional<std::function<void(T&)>> destructor = std::nullopt
+        std::optional<std::function<void(T&)>> destructor = std::nullopt,
+        bool lazy = true
     ) :
         _pool(&pool),
         _constructor(std::move(constructor)),
         _destructor(destructor),
-        _listener_id(pool.add_listener([this](std::size_t thread_count) {
+        _listener_id(pool.add_listener([this, lazy](std::size_t thread_count) {
             while (_resources.size() < thread_count) {
                 _resources.emplace_back();
+                if (!lazy) {
+                    construct(_resources.back());
+                }
             }
         })) {
         for (std::size_t i = 0; i == 0 || i < pool.thread_count(); ++i) {
             _resources.emplace_back();
+            if (!lazy || i == 0) {
+                construct(_resources.back());
+            }
         }
-        get();
     }
     ~ThreadResource() {
         reset();
@@ -116,14 +122,7 @@ public:
     }
     ThreadResource(const ThreadResource&) = delete;
     ThreadResource& operator=(const ThreadResource&) = delete;
-    T& get() const {
-        auto& [flag, item] = _resources.at(ThreadPool::thread_index());
-        std::call_once(flag, [&] {
-            std::unique_lock<std::mutex> lock(construction_mutex());
-            item.emplace(_constructor());
-        });
-        return *item;
-    }
+    T& get() const { return construct(_resources.at(ThreadPool::thread_index())); }
     void reset() {
         if (_pool) {
             if (_destructor) {
@@ -138,6 +137,14 @@ public:
     }
 
 private:
+    T& construct(std::pair<std::once_flag, std::optional<T>>& slot) const {
+        auto& [flag, item] = slot;
+        std::call_once(flag, [&] {
+            std::unique_lock<std::mutex> lock(construction_mutex());
+            item.emplace(_constructor());
+        });
+        return *item;
+    }
     static std::mutex& construction_mutex() {
         static std::mutex mutex;
         return mutex;
