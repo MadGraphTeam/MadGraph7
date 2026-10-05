@@ -830,9 +830,11 @@ def _write_umami_bundle(
 ) -> None:
     """Add export-only selector tables after runtime physics has been staged."""
     from ..artifacts.umami import UmamiProcessInput, umami_bundle_payloads
+    from ..artifacts.umami_otf import restore_umami_on_the_fly_input
 
     new_processes = {process.process_id: process for process in processes}
     inputs = []
+    previous_umami = None
     for record in process_records:
         identifier = str(record["id"])
         process = new_processes.get(identifier)
@@ -845,20 +847,47 @@ def _write_umami_bundle(
                 )
             )
         )
-        inputs.append(
-            UmamiProcessInput(
-                process_id=identifier,
-                expression=str(record["expression"]),
-                color_accuracy=str(record["color_accuracy"]),
-                external_pdgs=tuple(int(pdg) for pdg in record["external_pdgs"]),
-                physics=physics,
-                aliases=tuple(record.get("aliases", ())),
-                color_sectors=() if process is None else process.umami_color_sectors,
-                structural_keys=(
-                    None if process is None else process.umami_structural_keys
-                ),
-            )
+        umami_input = UmamiProcessInput(
+            process_id=identifier,
+            expression=str(record["expression"]),
+            color_accuracy=str(record["color_accuracy"]),
+            external_pdgs=tuple(int(pdg) for pdg in record["external_pdgs"]),
+            physics=physics,
+            aliases=tuple(record.get("aliases", ())),
+            color_sectors=() if process is None else process.umami_color_sectors,
+            structural_keys=(
+                None if process is None else process.umami_structural_keys
+            ),
         )
+        if physics.get("kind") == ON_THE_FLY_PUBLIC_METADATA_KIND:
+            # Appended processes retain compact runtime physics. Their previous
+            # SDK already contains every physical selector and colour tag.
+            if previous_umami is None:
+                try:
+                    previous = json.loads(
+                        builder.staged_path("API/umami/metadata.json").read_text(
+                            encoding="utf-8"
+                        )
+                    )
+                    previous_umami = (
+                        [
+                            json.loads(
+                                builder.staged_path(
+                                    "API/umami/" + str(provider["metadata"])
+                                ).read_text(encoding="utf-8")
+                            )
+                            for provider in previous["providers"]
+                        ]
+                        if previous.get("kind") == "pyamplicol-umami-provider-index"
+                        else [previous]
+                    )
+                except FileNotFoundError as exc:
+                    raise ValueError(
+                        "appending this OTF artifact requires its existing UMAMI "
+                        "metadata; regenerate the complete process set"
+                    ) from exc
+            umami_input = restore_umami_on_the_fly_input(umami_input, previous_umami)
+        inputs.append(umami_input)
     for payload in umami_bundle_payloads(
         processes=inputs,
         compiled_model=compiled_model.to_dict(),

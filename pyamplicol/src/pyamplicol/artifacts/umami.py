@@ -33,6 +33,9 @@ class UmamiProcessInput:
     # Keys certify equality of the normalized, available-helicity-summed
     # squared contribution, in this process's external momentum order.
     structural_keys: Mapping[str, str] | None = None
+    # Used when re-exporting an appended compact OTF process: its previous SDK
+    # contains authoritative physical LHE tags, while physics.json stays compact.
+    color_flows: Mapping[str, Sequence[Sequence[int]]] | None = None
 
 
 def _records(value: Any) -> list[Mapping[str, Any]]:
@@ -484,7 +487,11 @@ def _build_provider(
                 if contracted
                 else _intern(
                     data["color_flows"],
-                    _color_flow(word, external, particles, sectors_by_word.get(word)),
+                    [list(pair) for pair in process.color_flows[color_id]]
+                    if process.color_flows is not None
+                    else _color_flow(
+                        word, external, particles, sectors_by_word.get(word)
+                    ),
                 )
             )
             rep_color, perm = replay.get(color_id, (color_id, tuple(identity)))

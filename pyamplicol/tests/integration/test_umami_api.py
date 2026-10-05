@@ -165,8 +165,11 @@ def providers(request, tmp_path_factory):
     )
     # The massive colour singlet forces a separate fixed-mass provider, while
     # retaining quark colour flow and generic UFO parameter declarations.
-    expressions = ("g g > g g", "d d~ > z g") if accuracy == "full" else ("g g > g g",)
-    names = ("gg", "dd_zg") if accuracy == "full" else ("gg",)
+    include_quark = accuracy == "full" or (
+        accuracy == "lc" and grouping == "exact" and not restricted
+    )
+    expressions = ("g g > g g", "d d~ > z g") if include_quark else ("g g > g g",)
+    names = ("gg", "dd_zg") if include_quark else ("gg",)
     from pyamplicol.generation import umami_semantics
 
     original_keys = umami_semantics.recurrence_structural_keys
@@ -360,6 +363,17 @@ def test_metadata_capabilities_and_hidden_native_symbols(providers):
         assert provider.library.umami_get_meta(4, ct.byref(count)) == (
             0 if has_color else 6
         )
+        if has_color and provider.data["runtime_processes"][0]["id"] == "dd_zg":
+            for channel in provider.data["channels"]:
+                for entry in channel["processes"]:
+                    quark, antiquark, boson, gluon = provider.data["color_flows"][
+                        entry["color_flows"]
+                    ]
+                    assert quark[1] == antiquark[0] == 0
+                    assert boson == [0, 0]
+                    assert quark[0] == gluon[0] > 0
+                    assert antiquark[1] == gluon[1] > 0
+                    assert gluon[0] != gluon[1]
         for operation in ("supported_inputs", "required_inputs", "supported_outputs"):
             values, length = ct.POINTER(ct.c_bool)(), ct.c_int()
             assert (

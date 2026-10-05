@@ -103,8 +103,8 @@ umami_free(handle);
 ```
 
 Each handle starts from the saved model defaults and owns independent mutable
-state. Use a separate handle per thread. The provider checks the artifact's
-external states against its generated tables. Metadata is available before
+state. Use a separate handle per thread. The provider checks that the loaded
+artifact matches the one used to generate its tables. Metadata is available before
 initialization because it is compiled into the library.
 
 Momenta have components `(E, px, py, pz)` and UMAMI's column-major layout:

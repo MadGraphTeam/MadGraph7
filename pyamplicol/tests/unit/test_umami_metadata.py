@@ -13,7 +13,10 @@ from pyamplicol.artifacts.umami import (
     build_umami_metadata,
     umami_bundle_payloads,
 )
-from pyamplicol.artifacts.umami_otf import build_umami_on_the_fly_physics
+from pyamplicol.artifacts.umami_otf import (
+    build_umami_on_the_fly_physics,
+    restore_umami_on_the_fly_input,
+)
 from pyamplicol.processes.ir import (
     CanonicalProcessIR,
     ColorEndpointSummary,
@@ -444,3 +447,58 @@ def test_otf_sdk_axes_do_not_change_compact_public_metadata(accuracy, flows, dom
     assert len(resolved["color_components"]) == flows
     (data,) = export(replace(p, physics=resolved, color_sectors=sectors))
     assert len(entries(data)) == flows
+    restored = restore_umami_on_the_fly_input(replace(p, physics=compact), [data])
+    assert export(restored) == (data,)
+    assert "helicities" not in compact
+
+
+def test_otf_append_rejects_ambiguous_old_grouping():
+    p = with_replay()
+    p.physics["helicities"][0]["id"] = "h:+1,+1,+1,+1"
+    (data,) = export(p, grouping="flavour_blind_observables")
+    with pytest.raises(ValueError, match="cannot infer grouped"):
+        restore_umami_on_the_fly_input(p, [data])
+
+
+def test_writer_append_recovers_old_compact_otf_sdk(tmp_path, monkeypatch):
+    from pyamplicol.generation.artifact_writer import _write_umami_bundle
+
+    p = process()
+    p.physics["helicities"][0]["id"] = "h:+1,+1,+1,+1"
+    (data,) = export(p)
+    compact = {
+        k: v
+        for k, v in p.physics.items()
+        if k not in {"helicities", "color_components"}
+    }
+    compact["kind"] = "pyamplicol-on-the-fly-public-metadata"
+    files = {"API/umami/metadata.json": data, "processes/p/physics.json": compact}
+    for path, value in files.items():
+        destination = tmp_path / path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(json.dumps(value), encoding="utf-8")
+    written = {}
+    builder = SimpleNamespace(
+        staged_path=lambda path: tmp_path / path,
+        payload_records=lambda: [],
+        add_bytes=lambda path, content, **kwargs: written.setdefault(path, content),
+    )
+    _write_umami_bundle(
+        builder,
+        processes=(),
+        process_records=[
+            {
+                "id": "p",
+                "expression": "p",
+                "color_accuracy": "lc",
+                "external_pdgs": list(p.external_pdgs),
+                "physics_path": "processes/p/physics.json",
+            }
+        ],
+        compiled_model=SimpleNamespace(to_dict=model),
+        grouping="exact",
+    )
+    recovered = json.loads(written["API/umami/metadata.json"])
+    assert recovered["provider"]["helicity_count"] == 1
+    assert recovered["color_flows"] == data["color_flows"]
+    assert len(entries(recovered)) == 1

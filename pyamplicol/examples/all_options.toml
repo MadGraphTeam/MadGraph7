@@ -86,8 +86,11 @@ output = "artifacts/pp_zjj_all_options"
 mode = "error"
 # generation.workers: Positive integer or "auto". Default auto.
 workers = "auto"
-# generation.emit_api_bundle: Emit root Python/Rust/C++/Fortran API bundle. Default true.
+# generation.emit_api_bundle: Emit Python/Rust/C/C++/Fortran/UMAMI API bundle. Default true.
 emit_api_bundle = true
+# generation.umami_grouping: "exact", "flavour_blind_observables", or "none". Default exact.
+# The compressed mode assumes final-state permutation/flavour-blind observables.
+umami_grouping = "exact"
 [generation.validation]
 # generation.validation.enabled: Run generation validation. Default true.
 enabled = true

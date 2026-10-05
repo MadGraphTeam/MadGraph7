@@ -7,13 +7,15 @@ The expanded tables are SDK payloads only; the runtime seed remains compact.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from itertools import product
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ..generation.on_the_fly_seed import OnTheFlyProcessSeedProjectionV1
     from ..processes.ir import CanonicalProcessIR
+    from .umami import UmamiProcessInput
 
 
 def build_umami_on_the_fly_physics(
@@ -25,10 +27,10 @@ def build_umami_on_the_fly_physics(
     from ..color import build_color_plan
 
     sources = {source.public_label: source for source in seed.external_sources}
+    # Match the native selector's seed-domain order exactly. Its mixed-radix
+    # enumeration, like product(), varies the last public leg fastest.
     domains = [
-        tuple(
-            sorted(state.public_helicity for state in sources[leg.label].source_states)
-        )
+        tuple(state.public_helicity for state in sources[leg.label].source_states)
         for leg in process.legs
     ]
     helicities = []
@@ -81,4 +83,106 @@ def build_umami_on_the_fly_physics(
             "extensions": {},
         },
         sectors,
+    )
+
+
+def restore_umami_on_the_fly_input(
+    process: UmamiProcessInput, documents: Sequence[Mapping[str, Any]]
+) -> UmamiProcessInput:
+    """Recover an old compact process's explicit SDK axes during append.
+
+    OTF exports every physical selector separately, without discovered orbit
+    reductions. Reuse those records and LHE tags verbatim; never infer a missing
+    colour pairing or turn a representative into an integration multiplicity.
+    """
+    matches = [
+        (document, runtime)
+        for document in documents
+        for runtime in document["runtime_processes"]
+        if runtime["id"] == process.process_id
+    ]
+    if len(matches) != 1:
+        raise ValueError("UMAMI append requires the previous OTF process metadata")
+    document, runtime = matches[0]
+    if (
+        tuple(runtime["pdgs"]) != process.external_pdgs
+        or runtime["color_accuracy"] != process.color_accuracy
+    ):
+        raise ValueError("previous UMAMI OTF process identity disagrees with append")
+    helicity_values = {
+        "h:" + ",".join(f"{value:+d}" for value in values): list(values)
+        for values in document["helicities"]
+    }
+    helicities = [
+        {
+            "id": identifier,
+            "index": index,
+            "values": helicity_values[identifier],
+            "computed": True,
+            "representative_id": identifier,
+            "coefficient": 1.0,
+            "structural_zero": False,
+        }
+        for index, identifier in enumerate(runtime["helicity_ids"])
+    ]
+    colors = []
+    flows = {}
+    for channel in document["channels"]:
+        for entry in channel["processes"]:
+            for member in entry["members"]:
+                if member["process_id"] != process.process_id:
+                    continue
+                if len(entry["members"]) != 1:
+                    raise ValueError(
+                        "UMAMI append cannot infer grouped OTF colour tags"
+                    )
+                identifier = member["color_id"]
+                if process.color_accuracy != "lc":
+                    colors.append(
+                        {
+                            "kind": "contracted-color",
+                            "id": "color:contracted",
+                            "index": 0,
+                        }
+                    )
+                    continue
+                if not isinstance(identifier, str) or not identifier.startswith(
+                    "flow:"
+                ):
+                    raise ValueError("previous UMAMI OTF colour selector is invalid")
+                suffix = identifier.removeprefix("flow:")
+                word = (
+                    [] if suffix == "singlet" else [int(v) for v in suffix.split(",")]
+                )
+                tags = document["color_flows"][entry["color_flows"]]
+                if len(tags) != len(process.external_pdgs) or any(
+                    len(pair) != 2 or any(not isinstance(v, int) or v < 0 for v in pair)
+                    for pair in tags
+                ):
+                    raise ValueError("previous UMAMI OTF colour tags are invalid")
+                flows[identifier] = tags
+                colors.append(
+                    {
+                        "kind": "lc-flow",
+                        "id": identifier,
+                        "index": len(colors),
+                        "word": word,
+                        "computed": True,
+                        "representative_id": identifier,
+                        "coefficient": 1.0,
+                    }
+                )
+    if not helicities or not colors or len({c["id"] for c in colors}) != len(colors):
+        raise ValueError("previous UMAMI OTF selectors are empty or repeated")
+    return replace(
+        process,
+        physics={
+            **process.physics,
+            "kind": "pyamplicol-resolved-physics",
+            "helicities": helicities,
+            "color_components": colors,
+            "coverage": dict(runtime["coverage"]),
+            "extensions": {},
+        },
+        color_flows=flows,
     )
