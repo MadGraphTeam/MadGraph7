@@ -384,18 +384,21 @@ public:
     }
 
     /// Wraps externally-owned memory with an explicit `stride`, for a
-    /// non-contiguous view onto existing data.
+    /// non-contiguous view onto existing data. `stream`, if given, is the GPU
+    /// stream its owner orders the memory on.
     Tensor(
         DataType dtype,
         const Sizes& shape,
         const Sizes& stride,
         DevicePtr device,
         void* data,
-        std::function<void()> external_reset
+        std::function<void()> external_reset,
+        std::optional<std::uintptr_t> stream = std::nullopt
     ) :
         impl(new TensorImpl{
             dtype, shape, device, data, false, external_reset, nullptr, 1, stride
         }) {
+        impl->stream = stream;
         std::size_t stride_prod = 1;
         bool first = true;
         impl->contiguous_dims = 0;
@@ -596,7 +599,7 @@ public:
         check_impl();
         return impl->device;
     }
-    /// The GPU stream the storage is freed on, if it is stream-ordered.
+    /// The GPU stream the storage is ordered on, if it is known.
     std::optional<std::uintptr_t> stream() const {
         return impl == nullptr ? std::nullopt : storage()->stream;
     }

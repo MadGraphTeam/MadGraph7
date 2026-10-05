@@ -5,6 +5,7 @@
 #include <format>
 #include <ranges>
 #include <stdexcept>
+#include <unordered_map>
 
 #include "dlpack.h"
 #include "madspace/driver/context.hpp"
@@ -64,6 +65,78 @@ bool orders_whole_stream(PyTypeObject* type) {
     PyObject* obj = reinterpret_cast<PyObject*>(type);
     return obj == torch_types[0].ptr() || obj == torch_types[1].ptr();
 }
+
+const DLPackExchangeAPI* exchange_api(PyTypeObject* type) {
+    static std::unordered_map<PyTypeObject*, const DLPackExchangeAPI*> apis;
+    if (auto search = apis.find(type); search != apis.end()) {
+        return search->second;
+    }
+    py::object capsule = py::getattr(
+        py::handle(reinterpret_cast<PyObject*>(type)),
+        "__dlpack_c_exchange_api__",
+        py::none()
+    );
+    const DLPackExchangeAPI* api = nullptr;
+    if (PyCapsule_IsValid(capsule.ptr(), "dlpack_exchange_api")) {
+        api = static_cast<const DLPackExchangeAPI*>(
+            PyCapsule_GetPointer(capsule.ptr(), "dlpack_exchange_api")
+        );
+        if (api->header.version.major != DLPACK_MAJOR_VERSION) {
+            api = nullptr;
+        }
+    }
+    // the cache keeps the type alive, so its address is never reused
+    Py_INCREF(type);
+    apis[type] = api;
+    return api;
+}
+
+thread_local const DLPackExchangeAPI* stream_producer = nullptr;
+
+struct ProducerStream {
+    bool active = false;
+
+    ProducerStream(const std::vector<py::object>& args, const ContextPtr& context) {
+        if (madspace::caller_stream() ||
+            (context && context->device()->device_type() == DeviceType::cpu)) {
+            return;
+        }
+        for (auto& arg : args) {
+            if (arg.is_none()) {
+                continue;
+            }
+            const DLPackExchangeAPI* api = exchange_api(Py_TYPE(arg.ptr()));
+            if (api == nullptr) {
+                continue;
+            }
+            auto [device_type, device_id] =
+                arg.attr("__dlpack_device__")().cast<std::tuple<int, int>>();
+            if (device_id != 0 || (device_type != kDLCUDA && device_type != kDLROCM)) {
+                continue;
+            }
+            void* stream;
+            if (api->current_work_stream(
+                    static_cast<DLDeviceType>(device_type), device_id, &stream
+                ) != 0) {
+                throw py::error_already_set();
+            }
+            auto handle = reinterpret_cast<std::uintptr_t>(stream);
+            if (handle == 2) {
+                return;
+            }
+            madspace::set_caller_stream(handle);
+            stream_producer = api;
+            active = true;
+            return;
+        }
+    }
+    ~ProducerStream() {
+        if (active) {
+            madspace::set_caller_stream(std::nullopt);
+            stream_producer = nullptr;
+        }
+    }
+};
 
 Runtime* get_runtime(FunctionRuntime& func_runtime, DevicePtr expected_device) {
     Runtime* runtime;
@@ -533,7 +606,12 @@ Tensor madspace_py::dlpack_to_tensor(
                 }
             };
         }
-        ret_tensor = {dtype, shape, stride, device, data_ptr, deleter};
+        std::optional<std::uintptr_t> owner_stream;
+        if (stream_producer != nullptr && device->device_type() != DeviceType::cpu &&
+            exchange_api(producer) == stream_producer) {
+            owner_stream = madspace::caller_stream();
+        }
+        ret_tensor = {dtype, shape, stride, device, data_ptr, deleter, owner_stream};
     }
 
     if (PyCapsule_SetName(
@@ -551,6 +629,7 @@ void FunctionRuntime::release_inputs() {
 }
 
 std::vector<Tensor> FunctionRuntime::call(std::vector<py::object> args) {
+    ProducerStream producer_stream(args, _context);
     auto [inputs, runtime] =
         check_and_convert_args(args, *this, &_dlpack_version_cache);
     return runtime->run(inputs);
@@ -560,6 +639,7 @@ std::tuple<std::vector<Tensor>, std::vector<std::optional<Tensor>>, std::vector<
 FunctionRuntime::call_with_grad(
     const std::vector<py::object>& args, const std::vector<bool>& input_requires_grad
 ) {
+    ProducerStream producer_stream(args, _context);
     auto [inputs, runtime] =
         check_and_convert_args(args, *this, &_dlpack_version_cache);
     auto [outputs, loc_grad, eval_grad] =
@@ -583,6 +663,7 @@ FunctionRuntime::call_backward(
     const std::vector<py::object>& stored_locals,
     const std::vector<bool>& eval_grad
 ) {
+    ProducerStream producer_stream(output_grads, _context);
     DevicePtr expected_device = nullptr;
     std::vector<PyTypeObject*> ordered_producers;
     std::size_t arg_index = 0;

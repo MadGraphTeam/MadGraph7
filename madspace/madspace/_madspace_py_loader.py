@@ -23,6 +23,9 @@ def stream(handle):
     """
     Run the calls on the given cuda stream instead of madspace's own, without
     synchronizing. Keep it alive until everything madspace handed out has been dropped.
+    Torch inputs already run on torch's current stream; this overrides it, for inputs
+    whose framework does not expose its stream. Inputs are then held until the next
+    call or release_inputs().
     """
     previous = get_stream()
     set_stream(handle)
