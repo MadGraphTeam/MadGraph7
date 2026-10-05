@@ -1811,7 +1811,7 @@ c-----
          sigma = 0d0
          chi2 = 0d0
          non_zero = 0
-         vol = 1d0 / dble(events * itm)
+         vol = 1d0 / (dble(events) * dble(itm))
          knt = events
 
          do i=1,maxconfigs
@@ -1843,7 +1843,7 @@ c        Add the current point to the DiscreteSamplerGrid
             sigma = 0d0
             chi2 = 0d0
             non_zero = 0
-            vol = 1d0 / dble(events * itm)
+            vol = 1d0 / (dble(events) * dble(itm))
             knt = events
             do i=1,maxconfigs
                psect(i)=0d0
@@ -1963,7 +1963,7 @@ c         write(*,*) 'allow_update', allow_update, 'nb_pass_cuts', nb_pass_cuts,
            endif
         endif
         endif
-         if (allow_update.and.(non_zero .ge. events .or. (kn .gt. 200*events .and.
+         if (allow_update.and.(non_zero .ge. events .or. (dble(kn) .gt. 200d0*dble(events) .and.
      $        non_zero .gt. 5) .or. (last_it .and. last_lumi .ge. last_goal
      $        .and. non_zero .ge. last_min))) then
 
@@ -2115,7 +2115,7 @@ c------
 c    Here we will double the number of events requested for the next run
 c-----
  23         events = 2 * events
-            vol = 1d0/dble(events*itm)
+            vol = 1d0/(dble(events)*dble(itm))
             knt = events
             if (use_cut.ne.-2) then
                twgt = mean / (dble(itm)*dble(events))
@@ -2430,12 +2430,14 @@ c     at the maximum weight the last iteration will use, not at this one's
 c     room for up to cap_last times the points of this iteration (events was
 c     already doubled for the next one): redo twgt, vol and knt for that size.
 c     It runs at least the usual (doubled) number of points, so that its
-c     cross-section is never less precise than before
+c     cross-section is never less precise than before. The size stays below
+c     1e9 points: events, kn and knt are default integers
                   last_min = events
-                  last_size = int(cap_last*dble(events/2))
+                  last_size = int(min(cap_last*dble(events/2), 1d9))
+                  last_size = max(last_size, last_min)
                   twgt = twgt*dble(events)/dble(last_size)
                   events = last_size
-                  vol = 1d0/dble(events*itm)
+                  vol = 1d0/(dble(events)*dble(itm))
                   knt = events
                   write(*,*) 'Next iteration is the last one: stop it at ',
      &                 last_goal, ' unweighted events'
