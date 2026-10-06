@@ -140,8 +140,12 @@ $multiparticles
 #      sqrt_s is for all outgoing particles)
 # A pair_mass minimum is also used to bound the integration.
 # A sqrt_s minimum bounds it the same way, and so do pt and delta_r minima
-# through the pair masses and sqrt_s they imply. The integral is
-# unaffected either way -- only how much of the sampling is wasted.
+# through the pair masses and sqrt_s they imply. eta_abs maxima bound the
+# rapidity of the partonic system when every final-state particle has one,
+# and with the pt minima they bound the polar angle of an s-channel 2 -> 2
+# and the momentum transfer of the first t-channel scattering.
+# The integral is unaffected either way -- only how much of the sampling is
+# wasted.
 # for all cuts, min or max can be specified
 $cuts
 

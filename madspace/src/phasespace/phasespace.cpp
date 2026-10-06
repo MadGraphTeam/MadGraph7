@@ -183,6 +183,71 @@ std::vector<std::vector<double>> pair_mass_floors(
     }
     return floors;
 }
+
+// The smallest sum_i sqrt(m_i^2 + pt_i^2) the final state can have when every
+// pt_i >= pt_min_i. The beams carry no transverse momentum, so the outgoing
+// transverse momenta add up to zero, and that needs the largest to be no more
+// than the sum of the others. When the cuts alone leave that unsatisfied (one
+// hard cut, little else cut), the others have to make up the deficit, and the
+// cheapest way is to spread it over the massive ones, at equal pt_i / m_i,
+// whose transverse mass grows more slowly than pt; with no massive particle
+// to take it, it costs its full size.
+double min_transverse_mass_sum(
+    const std::vector<double>& masses, const std::vector<double>& pt_min
+) {
+    double sum = 0.;
+    auto transverse_mass = [](double mass, double pt) {
+        return std::sqrt(mass * mass + pt * pt);
+    };
+    for (auto [mass, pt] : zip(masses, pt_min)) {
+        sum += transverse_mass(mass, pt);
+    }
+    if (pt_min.empty()) {
+        return sum;
+    }
+    std::size_t hardest =
+        std::distance(pt_min.begin(), std::max_element(pt_min.begin(), pt_min.end()));
+    double deficit =
+        2. * pt_min.at(hardest) - std::accumulate(pt_min.begin(), pt_min.end(), 0.);
+    if (deficit <= 0.) {
+        return sum;
+    }
+    // raise every massive particle other than the hardest to pt = t m (where
+    // that is more than its cut), with t such that the raises add up to the
+    // deficit
+    std::vector<std::size_t> massive;
+    double mass_sum = 0., massive_pt_sum = 0., t_high = 0.;
+    for (std::size_t i = 0; i < masses.size(); ++i) {
+        if (i != hardest && masses.at(i) > 0.) {
+            massive.push_back(i);
+            mass_sum += masses.at(i);
+            massive_pt_sum += pt_min.at(i);
+            t_high = std::max(t_high, pt_min.at(i) / masses.at(i));
+        }
+    }
+    if (massive.empty()) {
+        return sum + deficit;
+    }
+    auto raised = [&](double t) {
+        double total = 0.;
+        for (std::size_t i : massive) {
+            total += std::max(0., t * masses.at(i) - pt_min.at(i));
+        }
+        return total;
+    };
+    double t_low = 0.;
+    t_high = std::max(t_high, (deficit + massive_pt_sum) / mass_sum);
+    for (int iteration = 0; iteration < 200; ++iteration) {
+        double t = 0.5 * (t_low + t_high);
+        (raised(t) < deficit ? t_low : t_high) = t;
+    }
+    for (std::size_t i : massive) {
+        double pt = std::max(pt_min.at(i), t_low * masses.at(i));
+        sum += transverse_mass(masses.at(i), pt) -
+            transverse_mass(masses.at(i), pt_min.at(i));
+    }
+    return sum;
+}
 } // namespace
 
 PhaseSpaceMapping::PhaseSpaceMapping(
@@ -368,6 +433,32 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             std::sort(leaves.begin(), leaves.end());
         }
     }
+    // A bound on the absolute rapidity of every node whose leaves all have a
+    // pseudorapidity cut, and negative otherwise. A leaf has |y| <= |eta|, and
+    // the rapidity of a sum of momenta, tanh(y) = sum_i m_T,i sinh(y_i) /
+    // sum_i m_T,i cosh(y_i), is a weighted mean of the tanh(y_i), so it never
+    // exceeds the largest |y_i|. This holds for massive particles too.
+    std::vector<double> node_y_max(node_leaves.size(), -1.);
+    for (std::size_t d = 0; d < node_leaves.size(); ++d) {
+        if (node_leaves.at(d).empty()) {
+            continue;
+        }
+        double y_max = 0.;
+        for (std::size_t leaf : node_leaves.at(d)) {
+            double eta_max = topo_eta_max.at(leaf);
+            if (!std::isfinite(eta_max)) {
+                y_max = -1.;
+                break;
+            }
+            y_max = std::max(y_max, eta_max);
+        }
+        node_y_max.at(d) = y_max;
+    }
+    // The rapidity of the partonic system, log(x1 / x2) / 2, is the root's.
+    if (_map_luminosity && read_cuts) {
+        _y_max_lab = node_y_max.at(0);
+    }
+
     // The floor a set of final-state particles (topology outgoing positions)
     // inherits from the pair mass cuts. A pair contributes at least its cut and
     // every other particle at least its mass, and for future-pointing momenta
@@ -506,16 +597,16 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     // centre-of-mass frame sqrt(s_hat) is the sum of the outgoing energies,
     // each at least the transverse mass, and the transverse momenta are the
     // same there as in the lab, so
-    //     sqrt(s_hat) >= sum_i sqrt(m_i^2 + pt_i,min^2).
-    // Without a pt cut this is just the sum of the masses, which the sampler
-    // already respects.
-    if (_map_luminosity && _topology.incoming_masses().size() == 2) {
-        double transverse_mass_sum = 0.;
-        bool has_pt_cut = false;
-        for (auto [mass, pt_min] : zip(_topology.outgoing_masses(), _cuts.pt_min())) {
-            transverse_mass_sum += std::sqrt(mass * mass + pt_min * pt_min);
-            has_pt_cut = has_pt_cut || pt_min > 0.;
-        }
+    //     sqrt(s_hat) >= sum_i sqrt(m_i^2 + pt_i^2),
+    // minimised over pt_i >= pt_i,min with the pt_i adding up to zero
+    // (min_transverse_mass_sum). Without a pt cut this is just the sum of the
+    // masses, which the sampler already respects.
+    if (_map_luminosity && read_cuts) {
+        bool has_pt_cut = std::any_of(
+            topo_pt_min.begin(), topo_pt_min.end(), [](double pt) { return pt > 0.; }
+        );
+        double transverse_mass_sum =
+            min_transverse_mass_sum(_topology.outgoing_masses(), topo_pt_min);
         if (has_pt_cut && transverse_mass_sum < _sqrt_s_lab) {
             _topology.raise_decay_e_min(0, transverse_mass_sum);
         }
@@ -529,7 +620,23 @@ PhaseSpaceMapping::PhaseSpaceMapping(
 
         bool is_com_decay = decay.index == 0;
         if (decay.index != 0 || !has_t_channel) {
-            if (decay.child_indices.size() == 2) {
+            if (decay.child_indices.size() == 2 && is_com_decay && read_cuts) {
+                // The root decays in the partonic centre-of-mass frame, which
+                // is the lab up to a boost along the beam, so the pt cut of a
+                // final-state child and the rapidity bound of any child
+                // restrict its polar angle (TwoBodyDecay). A composite child
+                // has no pt bound of its own.
+                double pt_min = 0.;
+                for (std::size_t child_index : decay.child_indices) {
+                    pt_min = std::max(pt_min, decay_info.at(child_index).pt_min);
+                }
+                _s_decays.push_back(TwoBodyDecay(
+                    true,
+                    pt_min,
+                    node_y_max.at(decay.child_indices.at(0)),
+                    node_y_max.at(decay.child_indices.at(1))
+                ));
+            } else if (decay.child_indices.size() == 2) {
                 _s_decays.push_back(TwoBodyDecay(is_com_decay));
             } else if (decay.child_indices.size() == 3) {
                 _s_decays.push_back(ThreeBodyDecay(is_com_decay));
@@ -566,11 +673,13 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         // Per-child pt_min (and eta_max), ordered to match the mass conditions
         // handed to the t-channel mapping (leaf children carry their pt cut;
         // composite children were reset to 0 above).
-        std::vector<double> eta_max, pt_min;
+        std::vector<double> eta_max, pt_min, y_max;
         for (std::size_t index : topology.decays().at(0).child_indices) {
             auto& info = decay_info.at(index);
             eta_max.push_back(info.eta_max);
             pt_min.push_back(info.pt_min);
+            // rapidity bound of the child, composites included (node_y_max)
+            y_max.push_back(node_y_max.at(index));
         }
         if (t_channel_mode == PhaseSpaceMapping::chili) {
             // |y| <= |eta|, so we can pass y_max = eta_max
@@ -621,18 +730,25 @@ PhaseSpaceMapping::PhaseSpaceMapping(
                         dr_full.at(child_to_out.at(a)).at(child_to_out.at(b));
                 }
             }
+            // The blocks of the chain that scatter the two beams (central 2->2,
+            // double-t, first peel of a single chain) take the rapidity bounds.
             _t_mapping = ColorOrderedMapping(
                 ps_chain_order(topology, color_order),
                 invariant_power,
                 invariant_power,
                 pt_min,
                 m_inv_co,
-                dr_co
+                dr_co,
+                true,
+                y_max
             );
         } else if (t_channel_mode == PhaseSpaceMapping::propagator ||
                    topology.t_propagator_count() < 2) {
+            // The first scattering of the chain is between the two beams in
+            // the partonic centre-of-mass frame, so the rapidity bounds of the
+            // particle it peels and of the recoil narrow its |t| range.
             _t_mapping = TPropagatorMapping(
-                _topology.t_integration_order(), invariant_power, pt_min
+                _topology.t_integration_order(), invariant_power, pt_min, y_max
             );
         } else if (t_channel_mode == PhaseSpaceMapping::rambo) {
             // TODO: add massless special case
@@ -759,7 +875,14 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
     // sample momentum fractions
     auto sqrt_s_hat = root_data.mass.value();
     auto s_hat = root_data.mass2.value();
-    if (_map_luminosity) {
+    if (_map_luminosity && _y_max_lab >= 0.) {
+        auto [x1_new, x2_new, det_x] = fb.r_to_x1x2_window(
+            next_random(), s_hat, _sqrt_s_lab * _sqrt_s_lab, _y_max_lab
+        );
+        x1 = x1_new;
+        x2 = x2_new;
+        dets.push_back(det_x);
+    } else if (_map_luminosity) {
         auto [x1_new, x2_new, det_x] =
             fb.r_to_x1x2(next_random(), s_hat, _sqrt_s_lab * _sqrt_s_lab);
         x1 = x1_new;
@@ -785,9 +908,16 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
                 for (std::size_t index : decay_data.at(0).decay.child_indices) {
                     conds.push_back(decay_data.at(index).mass.value());
                 }
+                using TMapping = std::decay_t<decltype(t_mapping)>;
+                if constexpr (std::is_same_v<TMapping, TPropagatorMapping> ||
+                              std::is_same_v<TMapping, ColorOrderedMapping>) {
+                    if (t_mapping.has_rapidity_window()) {
+                        conds.push_back(x1);
+                        conds.push_back(x2);
+                    }
+                }
                 auto t_result = t_mapping.build_forward(fb, args, conds);
                 std::size_t result_index;
-                using TMapping = std::decay_t<decltype(t_mapping)>;
                 if constexpr (std::is_same_v<TMapping, FastRamboMapping>) {
                     auto [p1, p2] = fb.com_p_in(sqrt_s_hat);
                     p_ext = {p1, p2};
@@ -846,7 +976,12 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
                 if (data.decay.index != 0) {
                     decay_args.push_back(data.momentum.value());
                 }
-                auto k_out = decay_map.build_forward(fb, decay_args, {});
+                // a root decay restricted by the cuts reads the boost to the lab
+                ValueVec decay_conds;
+                if (decay_map.condition_types().size() == 2) {
+                    decay_conds = {x1, x2};
+                }
+                auto k_out = decay_map.build_forward(fb, decay_args, decay_conds);
                 for (auto [child_index, k] : zip(data.decay.child_indices, k_out)) {
                     decay_data.at(child_index).momentum = k;
                 }
@@ -947,7 +1082,11 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
                 for (auto child_index : data.decay.child_indices) {
                     decay_args.push_back(decay_data.at(child_index).momentum.value());
                 }
-                auto decay_out = decay_map.build_inverse(fb, decay_args, {});
+                ValueVec decay_conds;
+                if (decay_map.condition_types().size() == 2) {
+                    decay_conds = {x1, x2};
+                }
+                auto decay_out = decay_map.build_inverse(fb, decay_args, decay_conds);
                 data.computed_mass = decay_out.at(decay_map.random_dim());
                 random_out_reversed.insert(
                     random_out_reversed.end(),
@@ -982,6 +1121,13 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
                     args.push_back(decay_data.at(index).momentum.value());
                     conds.push_back(decay_data.at(index).computed_mass.value());
                 }
+                if constexpr (std::is_same_v<TMapping, TPropagatorMapping> ||
+                              std::is_same_v<TMapping, ColorOrderedMapping>) {
+                    if (t_mapping.has_rapidity_window()) {
+                        conds.push_back(x1);
+                        conds.push_back(x2);
+                    }
+                }
                 auto t_result = t_mapping.build_inverse(fb, args, conds);
                 random_out_reversed.insert(
                     random_out_reversed.end(),
@@ -1000,7 +1146,12 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
         _t_mapping
     );
 
-    if (_map_luminosity) {
+    if (_map_luminosity && _y_max_lab >= 0.) {
+        auto [r, det_x] =
+            fb.x1x2_to_r_window(x1, x2, _sqrt_s_lab * _sqrt_s_lab, _y_max_lab);
+        random_out_reversed.push_back(r);
+        dets.push_back(det_x);
+    } else if (_map_luminosity) {
         auto [r, det_x] = fb.x1x2_to_r(x1, x2, _sqrt_s_lab * _sqrt_s_lab);
         random_out_reversed.push_back(r);
         dets.push_back(det_x);

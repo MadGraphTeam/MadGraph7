@@ -629,7 +629,14 @@ PYBIND11_MODULE(_madspace_py, m) {
         );
 
     py::classh<TwoBodyDecay, Mapping>(m, "TwoBodyDecay", pydoc::doc("TwoBodyDecay"))
-        .def(py::init<bool>(), py::arg("com"), pydoc::doc("TwoBodyDecay::TwoBodyDecay"))
+        .def(
+            py::init<bool, double, double, double>(),
+            py::arg("com"),
+            py::arg("pt_min") = 0.,
+            py::arg("y_max1") = -1.,
+            py::arg("y_max2") = -1.,
+            pydoc::doc("TwoBodyDecay::TwoBodyDecay")
+        )
         .def(
             "random_dim",
             &TwoBodyDecay::random_dim,
@@ -640,18 +647,31 @@ PYBIND11_MODULE(_madspace_py, m) {
         m, "TwoToTwoParticleScattering", pydoc::doc("TwoToTwoParticleScattering")
     )
         .def(
-            py::init<bool, double, double, double, bool>(),
+            py::init<bool, double, double, double, bool, double, double, double>(),
             py::arg("com"),
             py::arg("invariant_power") = 0.,
             py::arg("mass") = 0.,
             py::arg("width") = 0.,
             py::arg("has_cut") = false,
+            py::arg("y_max1") = -1.,
+            py::arg("y_max2") = -1.,
+            py::arg("beam_sign") = 1.,
             pydoc::doc("TwoToTwoParticleScattering::TwoToTwoParticleScattering")
         );
 
     py::classh<DoubleT, Mapping>(m, "DoubleT", pydoc::doc("DoubleT"))
         .def(
-            py::init<double, double, double, double, double, double, bool>(),
+            py::init<
+                double,
+                double,
+                double,
+                double,
+                double,
+                double,
+                bool,
+                double,
+                double,
+                double>(),
             py::arg("t1_invariant_power") = 0.,
             py::arg("t1_mass") = 0.,
             py::arg("t1_width") = 0.,
@@ -659,6 +679,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("t2_mass") = 0.,
             py::arg("t2_width") = 0.,
             py::arg("has_cut") = false,
+            py::arg("y_max1") = -1.,
+            py::arg("y_max2") = -1.,
+            py::arg("beam_sign") = 1.,
             pydoc::doc("DoubleT::DoubleT")
         );
 
@@ -726,10 +749,15 @@ PYBIND11_MODULE(_madspace_py, m) {
         m, "TPropagatorMapping", pydoc::doc("TPropagatorMapping")
     )
         .def(
-            py::init<std::vector<std::size_t>, double, std::vector<double>>(),
+            py::init<
+                std::vector<std::size_t>,
+                double,
+                std::vector<double>,
+                std::vector<double>>(),
             py::arg("integration_order"),
             py::arg("invariant_power") = 0.8,
             py::arg("pt_min") = std::vector<double>{},
+            py::arg("y_max") = std::vector<double>{},
             pydoc::doc("TPropagatorMapping::TPropagatorMapping")
         )
         .def(
@@ -749,7 +777,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::vector<double>,
                 std::vector<std::vector<double>>,
                 std::vector<std::vector<double>>,
-                bool>(),
+                bool,
+                std::vector<double>>(),
             py::arg("color_order"),
             py::arg("t_invariant_power") = 0.8,
             py::arg("s_invariant_power") = 0.8,
@@ -757,6 +786,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("m_inv_min") = std::vector<std::vector<double>>{},
             py::arg("dr_min") = std::vector<std::vector<double>>{},
             py::arg("arcsine_s23") = true,
+            py::arg("y_max") = std::vector<double>{},
             pydoc::doc("ColorOrderedMapping::ColorOrderedMapping")
         )
         .def(
