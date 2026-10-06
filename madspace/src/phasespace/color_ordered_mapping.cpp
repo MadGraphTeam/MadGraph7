@@ -88,62 +88,6 @@ double mat_at(const std::vector<std::vector<double>>& m, std::size_t i, std::siz
     return 0.0;
 }
 
-// Rapidity bounds of the blocks that scatter the two beams (negative: none).
-// A set of particles is bounded by the largest of their bounds when each has
-// one: the rapidity of a sum of momenta is a weighted mean of theirs.
-struct RapidityBounds {
-    // central 2->2: the two sides; double-t: the single particle and the recoil
-    double central1 = -1., central2 = -1.;
-    // first peel of a single chain: the rest of the chain and the peeled one
-    double chain_rest = -1., chain_peeled = -1., chain_beam_sign = 1.;
-    bool active() const {
-        return central1 >= 0. || central2 >= 0. || chain_rest >= 0. ||
-            chain_peeled >= 0.;
-    }
-};
-
-RapidityBounds rapidity_bounds(
-    const std::vector<std::size_t>& color_order, const std::vector<double>& y_max
-) {
-    RapidityBounds bounds;
-    auto [s1, s2] = split_sets_from_color_order(color_order);
-    auto bound_of = [&](auto begin, auto end) {
-        if (begin == end) {
-            return -1.;
-        }
-        double y = 0.;
-        for (auto it = begin; it != end; ++it) {
-            if (*it >= y_max.size() || y_max.at(*it) < 0.) {
-                return -1.;
-            }
-            y = std::max(y, y_max.at(*it));
-        }
-        return y;
-    };
-    if (s1.empty() || s2.empty()) {
-        // the walk of the non-empty set starts from its own beam (beam 1 for
-        // set1, beam 2 for set2) against the other one
-        const auto& s = s1.empty() ? s2 : s1;
-        bounds.chain_peeled = bound_of(s.begin(), s.begin() + 1);
-        bounds.chain_rest = bound_of(s.begin() + 1, s.end());
-        bounds.chain_beam_sign = s1.empty() ? -1. : 1.;
-    } else if ((s1.size() == 1) != (s2.size() == 1)) {
-        const auto& single = s1.size() == 1 ? s1 : s2;
-        const auto& recoil = s1.size() == 1 ? s2 : s1;
-        bounds.central1 = bound_of(single.begin(), single.end());
-        bounds.central2 = bound_of(recoil.begin(), recoil.end());
-    } else {
-        bounds.central1 = bound_of(s1.begin(), s1.end());
-        bounds.central2 = bound_of(s2.begin(), s2.end());
-    }
-    return bounds;
-}
-
-bool is_double_t(const std::vector<std::size_t>& color_order) {
-    auto [s1, s2] = split_sets_from_color_order(color_order);
-    return !(s1.empty() || s2.empty()) && ((s1.size() == 1) != (s2.size() == 1));
-}
-
 // x1, x2 for a block that declared them (two more conditions than given)
 void append_beam_fractions(
     ValueVec& cond, const Mapping& block, const Value& x1, const Value& x2
@@ -215,6 +159,46 @@ double ColorOrderedMapping::cut_floor(const std::vector<std::size_t>& subset) co
     return cut * scaling;
 }
 
+// A set of particles is bounded by the largest of their bounds when each has
+// one: the rapidity of a sum of momenta is a weighted mean of theirs.
+ColorOrderedMapping::RapidityBounds ColorOrderedMapping::rapidity_bounds(
+    const std::vector<std::size_t>& color_order, const std::vector<double>& y_max
+) {
+    RapidityBounds bounds;
+    auto [s1, s2] = split_sets_from_color_order(color_order);
+    auto bound_of = [&](auto begin, auto end) {
+        if (begin == end) {
+            return -1.;
+        }
+        double y = 0.;
+        for (auto it = begin; it != end; ++it) {
+            if (*it >= y_max.size() || y_max.at(*it) < 0.) {
+                return -1.;
+            }
+            y = std::max(y, y_max.at(*it));
+        }
+        return y;
+    };
+    if (s1.empty() || s2.empty()) {
+        // the walk of the non-empty set starts from its own beam (beam 1 for
+        // set1, beam 2 for set2) against the other one
+        const auto& s = s1.empty() ? s2 : s1;
+        bounds.chain_peeled = bound_of(s.begin(), s.begin() + 1);
+        bounds.chain_rest = bound_of(s.begin() + 1, s.end());
+        bounds.chain_beam_sign = s1.empty() ? -1. : 1.;
+    } else if ((s1.size() == 1) != (s2.size() == 1)) {
+        const auto& single = s1.size() == 1 ? s1 : s2;
+        const auto& recoil = s1.size() == 1 ? s2 : s1;
+        bounds.double_t = true;
+        bounds.central1 = bound_of(single.begin(), single.end());
+        bounds.central2 = bound_of(recoil.begin(), recoil.end());
+    } else {
+        bounds.central1 = bound_of(s1.begin(), s1.end());
+        bounds.central2 = bound_of(s2.begin(), s2.end());
+    }
+    return bounds;
+}
+
 ColorOrderedMapping::ColorOrderedMapping(
     const std::vector<std::size_t>& color_order,
     double t_invariant_power,
@@ -224,6 +208,27 @@ ColorOrderedMapping::ColorOrderedMapping(
     const std::vector<std::vector<double>>& dr_min,
     bool arcsine_s23,
     const std::vector<double>& y_max
+) :
+    ColorOrderedMapping(
+        rapidity_bounds(color_order, y_max),
+        color_order,
+        t_invariant_power,
+        s_invariant_power,
+        pt_min,
+        m_inv_min,
+        dr_min,
+        arcsine_s23
+    ) {}
+
+ColorOrderedMapping::ColorOrderedMapping(
+    const RapidityBounds& bounds,
+    const std::vector<std::size_t>& color_order,
+    double t_invariant_power,
+    double s_invariant_power,
+    const std::vector<double>& pt_min,
+    const std::vector<std::vector<double>>& m_inv_min,
+    const std::vector<std::vector<double>>& dr_min,
+    bool arcsine_s23
 ) :
     Mapping(
         "ColorOrderedMapping",
@@ -273,7 +278,7 @@ ColorOrderedMapping::ColorOrderedMapping(
             for (std::size_t i = 0; i < n_out; ++i) {
                 cond_types.push_back(std::format("mass{}", i), batch_float);
             }
-            if (rapidity_bounds(color_order, y_max).active()) {
+            if (bounds.active()) {
                 cond_types.push_back("x1", batch_float);
                 cond_types.push_back("x2", batch_float);
             }
@@ -285,15 +290,15 @@ ColorOrderedMapping::ColorOrderedMapping(
     _m_inv_min(m_inv_min),
     _dr_min(dr_min),
     _has_cut(has_any_cut(pt_min, m_inv_min, dr_min)),
-    _rapidity_window(rapidity_bounds(color_order, y_max).active()),
+    _rapidity_window(bounds.active()),
     _com_scattering(
         true,
         t_invariant_power,
         0.,
         0.,
         has_any_cut(pt_min, m_inv_min, dr_min),
-        is_double_t(color_order) ? -1. : rapidity_bounds(color_order, y_max).central1,
-        is_double_t(color_order) ? -1. : rapidity_bounds(color_order, y_max).central2,
+        bounds.double_t ? -1. : bounds.central1,
+        bounds.double_t ? -1. : bounds.central2,
         1.
     ),
     _lab_scattering(
@@ -305,9 +310,9 @@ ColorOrderedMapping::ColorOrderedMapping(
         0.,
         0.,
         has_any_cut(pt_min, m_inv_min, dr_min),
-        rapidity_bounds(color_order, y_max).chain_rest,
-        rapidity_bounds(color_order, y_max).chain_peeled,
-        rapidity_bounds(color_order, y_max).chain_beam_sign
+        bounds.chain_rest,
+        bounds.chain_peeled,
+        bounds.chain_beam_sign
     ),
     _two_to_three(
         t_invariant_power,
@@ -328,8 +333,8 @@ ColorOrderedMapping::ColorOrderedMapping(
         0.,
         0.,
         has_any_cut(pt_min, m_inv_min, dr_min),
-        is_double_t(color_order) ? rapidity_bounds(color_order, y_max).central1 : -1.,
-        is_double_t(color_order) ? rapidity_bounds(color_order, y_max).central2 : -1.,
+        bounds.double_t ? bounds.central1 : -1.,
+        bounds.double_t ? bounds.central2 : -1.,
         1.
     ) {
     auto [s1, s2] = split_sets_from_color_order(color_order);

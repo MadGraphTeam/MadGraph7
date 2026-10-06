@@ -854,6 +854,22 @@ KERNELSPEC FVal<T> logistic(FVal<T> z) {
     return 1. / (1. + exp(-z));
 }
 
+// exp with its argument kept where the result is finite, so that a product
+// with a vanishing factor stays 0 instead of becoming 0 * inf = NaN
+template <typename T>
+KERNELSPEC FVal<T> bounded_exp(FVal<T> z) {
+    return exp(min(max(z, -700.), 700.));
+}
+
+// Whether a rapidity bound handed to the |t| clamps below is in use: negative
+// means no bound, and so does one of 100 or more, which no momentum a collider
+// event can hold gets near. Dropping it only widens the range, so it stays a
+// consequence of the cuts, and it keeps every exponential below finite.
+template <typename T>
+KERNELSPEC auto rapidity_bound_on(FVal<T> y_max) {
+    return (y_max >= 0.) & (y_max < 100.);
+}
+
 // Narrows the |t| range of a 2 -> 2 scattering pa pb -> p1 p2 whose incoming
 // momenta are the two (massless) beams in the partonic centre-of-mass frame,
 // given bounds on the absolute lab rapidities of the outgoing p1 (y_max1, the
@@ -894,22 +910,25 @@ KERNELSPEC void kernel_t_rapidity_clamp(
     auto b = 0.5 * s - a;
     auto y_boost = beam_sign * 0.5 * log(x1 / x2);
 
-    FVal<T> w_lo = 0.5 * (m2_2 + t_min), w_hi = 0.5 * (m2_2 + t_max);
+    auto on1 = rapidity_bound_on<T>(y_max1), on2 = rapidity_bound_on<T>(y_max2);
+
+    // Each bound on w is turned into one on |t| = 2 w - m2^2 and only then
+    // compared with the input range, which an unused or looser bound therefore
+    // leaves exactly as it was.
+    FVal<T> lo = t_min, hi = t_max;
     // peeled particle: w / (A - w) = exp(2 y_a), increasing in w
-    w_lo =
-        where(y_max2 >= 0., max(w_lo, a * logistic<T>(2. * (-y_max2 - y_boost))), w_lo);
-    w_hi =
-        where(y_max2 >= 0., min(w_hi, a * logistic<T>(2. * (y_max2 - y_boost))), w_hi);
+    auto w_lo2 = a * logistic<T>(2. * (-y_max2 - y_boost));
+    auto w_hi2 = a * logistic<T>(2. * (y_max2 - y_boost));
+    lo = where(on2, max(lo, 2. * w_lo2 - m2_2), lo);
+    hi = where(on2, min(hi, 2. * w_hi2 - m2_2), hi);
     // recoil: (s/2 - w) / (B + w) = exp(z), z = 2 y_a, gives
     // w = (s/2) logistic(-z) - B logistic(z), decreasing in z
     auto z_hi = 2. * (y_max1 - y_boost), z_lo = 2. * (-y_max1 - y_boost);
-    auto w_of_z_hi = 0.5 * s * logistic<T>(-z_hi) - b * logistic<T>(z_hi);
-    auto w_of_z_lo = 0.5 * s * logistic<T>(-z_lo) - b * logistic<T>(z_lo);
-    w_lo = where(y_max1 >= 0., max(w_lo, w_of_z_hi), w_lo);
-    w_hi = where(y_max1 >= 0., min(w_hi, w_of_z_lo), w_hi);
+    auto w_lo1 = 0.5 * s * logistic<T>(-z_hi) - b * logistic<T>(z_hi);
+    auto w_hi1 = 0.5 * s * logistic<T>(-z_lo) - b * logistic<T>(z_lo);
+    lo = where(on1, max(lo, 2. * w_lo1 - m2_2), lo);
+    hi = where(on1, min(hi, 2. * w_hi1 - m2_2), hi);
 
-    auto lo = 2. * w_lo - m2_2;
-    auto hi = 2. * w_hi - m2_2;
     auto ok = hi > lo;
     t_min_out = where(ok, lo, FVal<T>(t_min));
     t_max_out = where(ok, hi, FVal<T>(t_max));
@@ -958,9 +977,11 @@ KERNELSPEC void kernel_t1_rapidity_clamp_doublet(
     auto s = lsquare<T>(p_tot);
     auto m1_2 = m1 * m1;
     auto y_boost = beam_sign * 0.5 * log(x1 / x2);
-    auto e1_lo = exp(2. * (-y_max1 - y_boost)), e1_hi = exp(2. * (y_max1 - y_boost));
-    auto e2_lo = exp(2. * (-y_max2 - y_boost)), e2_hi = exp(2. * (y_max2 - y_boost));
-    auto on1 = y_max1 >= 0., on2 = y_max2 >= 0.;
+    auto e1_lo = bounded_exp<T>(2. * (-y_max1 - y_boost));
+    auto e1_hi = bounded_exp<T>(2. * (y_max1 - y_boost));
+    auto e2_lo = bounded_exp<T>(2. * (-y_max2 - y_boost));
+    auto e2_hi = bounded_exp<T>(2. * (y_max2 - y_boost));
+    auto on1 = rapidity_bound_on<T>(y_max1), on2 = rapidity_bound_on<T>(y_max2);
 
     // the bounds on |t2| as alpha + beta |t1|; an inactive one is replaced by
     // the kinematic bound of the same side
@@ -984,9 +1005,14 @@ KERNELSPEC void kernel_t1_rapidity_clamp_doublet(
 
     FVal<T> lo = t1_min, hi = t1_max;
     auto sqrt_s = sqrt(max(s, EPS));
-    lo = where(on1, max(lo, sqrt_s * etmin_1 * exp(-(y_max1 - y_boost)) - m1_2), lo);
-    hi =
-        where(on2, min(hi, s - m1_2 - sqrt_s * etmin_2 * exp(-(y_max2 - y_boost))), hi);
+    lo = where(
+        on1, max(lo, sqrt_s * etmin_1 * bounded_exp<T>(-(y_max1 - y_boost)) - m1_2), lo
+    );
+    hi = where(
+        on2,
+        min(hi, s - m1_2 - sqrt_s * etmin_2 * bounded_exp<T>(-(y_max2 - y_boost))),
+        hi
+    );
     auto feasible = lo <= hi;
     for (int i = 0; i < 3; ++i) {
         for (int j = 0; j < 3; ++j) {
@@ -999,7 +1025,8 @@ KERNELSPEC void kernel_t1_rapidity_clamp_doublet(
             feasible = feasible & ((slope != 0.) | (rhs >= 0.));
         }
     }
-    auto ok = feasible & (hi > lo);
+    // with no bound in use, the input range stands as it is
+    auto ok = (on1 | on2) & feasible & (hi > lo);
     t1_min_out = where(ok, lo, FVal<T>(t1_min));
     t1_max_out = where(ok, hi, FVal<T>(t1_max));
 }
@@ -1040,20 +1067,22 @@ KERNELSPEC void kernel_t2_rapidity_clamp_doublet(
     auto a1 = 0.5 * (m1_2 + t1_abs);
     auto a2 = 0.5 * s - a1;
 
-    FVal<T> w_lo = 0.5 * (m1_2 + t2_min), w_hi = 0.5 * (m1_2 + t2_max);
-    // p1: w / a1 = exp(2 y_a), increasing in w
-    w_lo = where(y_max1 >= 0., max(w_lo, a1 * exp(2. * (-y_max1 - y_boost))), w_lo);
-    w_hi = where(y_max1 >= 0., min(w_hi, a1 * exp(2. * (y_max1 - y_boost))), w_hi);
-    // p2: (s/2 - w) / a2 = exp(2 y_a), decreasing in w
-    w_lo = where(
-        y_max2 >= 0., max(w_lo, 0.5 * s - a2 * exp(2. * (y_max2 - y_boost))), w_lo
-    );
-    w_hi = where(
-        y_max2 >= 0., min(w_hi, 0.5 * s - a2 * exp(2. * (-y_max2 - y_boost))), w_hi
-    );
+    auto on1 = rapidity_bound_on<T>(y_max1), on2 = rapidity_bound_on<T>(y_max2);
 
-    auto lo = 2. * w_lo - m1_2;
-    auto hi = 2. * w_hi - m1_2;
+    // bounds on w = pb.p1, turned into |t2| = 2 w - m1^2 before they meet the
+    // input range (see t_rapidity_clamp)
+    FVal<T> lo = t2_min, hi = t2_max;
+    // p1: w / a1 = exp(2 y_a), increasing in w
+    auto w_lo1 = a1 * bounded_exp<T>(2. * (-y_max1 - y_boost));
+    auto w_hi1 = a1 * bounded_exp<T>(2. * (y_max1 - y_boost));
+    lo = where(on1, max(lo, 2. * w_lo1 - m1_2), lo);
+    hi = where(on1, min(hi, 2. * w_hi1 - m1_2), hi);
+    // p2: (s/2 - w) / a2 = exp(2 y_a), decreasing in w
+    auto w_lo2 = 0.5 * s - a2 * bounded_exp<T>(2. * (y_max2 - y_boost));
+    auto w_hi2 = 0.5 * s - a2 * bounded_exp<T>(2. * (-y_max2 - y_boost));
+    lo = where(on2, max(lo, 2. * w_lo2 - m1_2), lo);
+    hi = where(on2, min(hi, 2. * w_hi2 - m1_2), hi);
+
     auto ok = hi > lo;
     t2_min_out = where(ok, lo, FVal<T>(t2_min));
     t2_max_out = where(ok, hi, FVal<T>(t2_max));

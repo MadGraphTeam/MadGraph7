@@ -106,6 +106,34 @@ public:
     bool has_rapidity_window() const { return _rapidity_window; }
 
 private:
+    // Rapidity bounds of the blocks that scatter the two beams (negative:
+    // none). central1/central2 are the two sides of the central 2->2, or the
+    // single particle and the recoil of the double-t block; chain_* belong to
+    // the first peel of a single chain.
+    struct RapidityBounds {
+        double central1 = -1., central2 = -1.;
+        double chain_rest = -1., chain_peeled = -1., chain_beam_sign = 1.;
+        bool double_t = false;
+        bool active() const {
+            return central1 >= 0. || central2 >= 0. || chain_rest >= 0. ||
+                chain_peeled >= 0.;
+        }
+    };
+    static RapidityBounds rapidity_bounds(
+        const std::vector<std::size_t>& color_order, const std::vector<double>& y_max
+    );
+    // The public constructor with the rapidity bounds worked out once.
+    ColorOrderedMapping(
+        const RapidityBounds& bounds,
+        const std::vector<std::size_t>& color_order,
+        double t_invariant_power,
+        double s_invariant_power,
+        const std::vector<double>& pt_min,
+        const std::vector<std::vector<double>>& m_inv_min,
+        const std::vector<std::vector<double>>& dr_min,
+        bool arcsine_s23
+    );
+
     Result build_forward_impl(
         FunctionBuilder& fb,
         const NamedVector<Value>& inputs,

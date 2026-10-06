@@ -51,25 +51,6 @@ std::array<double, 3> first_step_rapidity_bounds(
     return {recoil, y_max.at(peeled), side ? 1. : -1.};
 }
 
-TwoToTwoParticleScattering first_scattering(
-    const std::vector<std::size_t>& integration_order,
-    double invariant_power,
-    bool has_cut,
-    const std::vector<double>& y_max
-) {
-    auto [y_recoil, y_peeled, beam_sign] =
-        first_step_rapidity_bounds(integration_order, y_max);
-    return TwoToTwoParticleScattering(
-        true, invariant_power, 0., 0., has_cut, y_recoil, y_peeled, beam_sign
-    );
-}
-
-bool has_first_step_window(
-    const std::vector<std::size_t>& integration_order, const std::vector<double>& y_max
-) {
-    auto bounds = first_step_rapidity_bounds(integration_order, y_max);
-    return bounds.at(0) >= 0. || bounds.at(1) >= 0.;
-}
 } // namespace
 
 TPropagatorMapping::TPropagatorMapping(
@@ -77,6 +58,19 @@ TPropagatorMapping::TPropagatorMapping(
     double invariant_power,
     const std::vector<double>& pt_min,
     const std::vector<double>& y_max
+) :
+    TPropagatorMapping(
+        first_step_rapidity_bounds(integration_order, y_max),
+        integration_order,
+        invariant_power,
+        pt_min
+    ) {}
+
+TPropagatorMapping::TPropagatorMapping(
+    const std::array<double, 3>& first_step_bounds,
+    const std::vector<std::size_t>& integration_order,
+    double invariant_power,
+    const std::vector<double>& pt_min
 ) :
     Mapping(
         "TPropagatorMapping",
@@ -99,7 +93,7 @@ TPropagatorMapping::TPropagatorMapping(
             for (std::size_t i = 0; i < integration_order.size() + 1; ++i) {
                 cond_types.push_back(std::format("mass{}", i), batch_float);
             }
-            if (has_first_step_window(integration_order, y_max)) {
+            if (first_step_bounds.at(0) >= 0. || first_step_bounds.at(1) >= 0.) {
                 cond_types.push_back("x1", batch_float);
                 cond_types.push_back("x2", batch_float);
             }
@@ -109,9 +103,16 @@ TPropagatorMapping::TPropagatorMapping(
     _integration_order(integration_order),
     _pt_min(pt_min),
     _has_cut(has_pt_cut(pt_min)),
-    _rapidity_window(has_first_step_window(integration_order, y_max)),
+    _rapidity_window(first_step_bounds.at(0) >= 0. || first_step_bounds.at(1) >= 0.),
     _com_scattering(
-        first_scattering(integration_order, invariant_power, has_pt_cut(pt_min), y_max)
+        true,
+        invariant_power,
+        0.,
+        0.,
+        has_pt_cut(pt_min),
+        first_step_bounds.at(0),
+        first_step_bounds.at(1),
+        first_step_bounds.at(2)
     ),
     _lab_scattering(false, invariant_power, 0., 0., has_pt_cut(pt_min)) {
     std::size_t next_index_low = 0;

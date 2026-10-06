@@ -150,7 +150,8 @@ public:
      *                        @f$|t|@f$ to the region passing the transverse
      *                        cuts; see @ref Cuts.
      * @param y_max1          Bound on the absolute lab rapidity of
-     *                        `momentum1` (the recoil); negative for none.
+     *                        `momentum1` (the recoil); negative, or 100 and
+     *                        above, for none.
      * @param y_max2          The same for `momentum2`.
      * @param beam_sign       +1 if `momentum_in1` is beam 1 (along +z), -1
      *                        if it is beam 2.
@@ -262,8 +263,8 @@ public:
      *                           momentum transfers to the region passing the
      *                           transverse cuts; see @ref Cuts.
      * @param y_max1             Bound on the absolute lab rapidity of
-     *                           `momentum1` (the single particle); negative
-     *                           for none.
+     *                           `momentum1` (the single particle); negative,
+     *                           or 100 and above, for none.
      * @param y_max2             The same for `momentum2` (the recoil).
      * @param beam_sign          +1 if `momentum_in1` is beam 1 (along +z), -1
      *                           if it is beam 2.

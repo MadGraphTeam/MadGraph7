@@ -638,3 +638,183 @@ def test_double_t_window_alone():
     )
     for a, b in zip(inputs, r):
         assert np.asarray(a) == approx(b, abs=1e-7)
+
+
+# --------------------------------------------------------------------------
+# channel permutations: the windows hold for every permutation
+# --------------------------------------------------------------------------
+#
+# One mapping serves all permutations of a channel (event[i] = topology[perm[i]]),
+# so the bounds it uses are the weakest over the permutations. Here the two
+# outgoing particles swap places between a lepton slot (pt > 10, |eta| < 2.5)
+# and a photon slot (pt > 30, |eta| < 1.5): each topology particle may end up in
+# either, so it only gets pt > 10 and |eta| < 2.5.
+
+LA_PIDS = [2, -2, 11, 22]
+PERMUTATIONS = [[0, 1, 2, 3], [0, 1, 3, 2]]
+
+
+def lepton_photon_cuts(pids=LA_PIDS):
+    return ms.Cuts(
+        lepton_cuts(pids)
+        + [
+            ms.CutItem(O(pids, O.obs_pt, [O.photon_pids]), min=30.0),
+            ms.CutItem(O(pids, O.obs_eta_abs, [O.photon_pids]), max=1.5),
+        ]
+    )
+
+
+def permuted_sample(mapping, index, n, seed):
+    rng = np.random.default_rng(seed)
+    r = rng.random((n, mapping.random_dim()))
+    perm = np.full(n, index, dtype=np.int32)
+    p_ext, x1, x2, det = (np.asarray(a) for a in mapping.map_forward([r], [perm]))
+    ok = np.isfinite(det) & np.all(np.isfinite(p_ext), axis=(1, 2))
+    return r, perm, p_ext, x1, x2, np.where(ok, det, 0.0)
+
+
+@pytest.mark.parametrize("index", [0, 1])
+def test_windows_hold_for_every_permutation(index):
+    """For each permutation: the windows bind (|Y| stays below 2.5, and far
+    more points pass than without them), every event passing the cuts maps
+    back into the unit cube, and the cut-region integral is unchanged."""
+    cuts = lepton_photon_cuts()
+    topology = s_channel_two_body()
+    free = ms.PhaseSpaceMapping(topology, CM_ENERGY, permutations=PERMUTATIONS)
+    windowed = ms.PhaseSpaceMapping(
+        topology, CM_ENERGY, cuts=cuts, permutations=PERMUTATIONS
+    )
+    n = 200_000
+    _, perm, p_free, y1, y2, det_free = permuted_sample(free, index, n, SEED)
+    _, _, p_win, z1, z2, det_win = permuted_sample(windowed, index, n, SEED + 1)
+
+    assert np.abs(beam_rapidity(z1, z2)).max() <= ETA_LEPTON + 1e-9
+    assert np.mean(passes(cuts, p_win)) > np.mean(passes(cuts, p_free)) + 0.1
+
+    keep = passes(cuts, p_free) & (det_free > 0)
+    assert keep.sum() > 1000
+    r_back, _ = windowed.map_inverse(
+        [p_free[keep], y1[keep], y2[keep]], [perm[keep]]
+    )
+    r_back = np.asarray(r_back)
+    assert r_back.min() > -1e-6 and r_back.max() < 1 + 1e-6
+
+    def integral(p_ext, x1, x2, det):
+        w = np.where(passes(cuts, p_ext), det / (CM_ENERGY**2 * x1 * x2), 0.0)
+        return w.mean(), w.std() / math.sqrt(len(w))
+
+    a, ea = integral(p_free, y1, y2, det_free)
+    b, eb = integral(p_win, z1, z2, det_win)
+    assert abs(a - b) < 5.0 * math.hypot(ea, eb)
+
+
+def test_strongest_bounds_would_lose_permuted_events():
+    """The counterpart: windows built from the strongest bounds (the photon
+    slot's for both particles) exclude events that pass the cuts in the swapped
+    permutation, which the test above would catch."""
+    cuts = lepton_photon_cuts()
+    topology = s_channel_two_body()
+    free = ms.PhaseSpaceMapping(topology, CM_ENERGY, permutations=PERMUTATIONS)
+    _, _, p_free, y1, y2, det = permuted_sample(free, 1, 200_000, SEED)
+    keep = passes(cuts, p_free) & (det > 0)
+    too_tight = ms.PhaseSpaceMapping(
+        topology,
+        CM_ENERGY,
+        cuts=ms.Cuts(
+            [
+                ms.CutItem(O(AA_PIDS, O.obs_pt, [O.photon_pids]), min=30.0),
+                ms.CutItem(O(AA_PIDS, O.obs_eta_abs, [O.photon_pids]), max=1.5),
+            ]
+        ),
+    )
+    r_back, _ = too_tight.map_inverse([p_free[keep], y1[keep], y2[keep]], [])
+    r_back = np.asarray(r_back)
+    outside = ~np.all((r_back > -1e-6) & (r_back < 1 + 1e-6), axis=1)
+    assert outside.mean() > 0.01
+
+
+# --------------------------------------------------------------------------
+# leptonic beams: no luminosity, the lab is the partonic frame (Y = 0)
+# --------------------------------------------------------------------------
+
+MUMU_PIDS = [11, -11, 13, -13]
+LEPTONIC_ENERGY = 500.0
+
+
+@pytest.mark.parametrize(
+    "topology", [s_channel_two_body(), t_channel_two_body()], ids=["s", "t"]
+)
+def test_leptonic_windows(topology):
+    """e+ e- > mu+ mu- at fixed energy: the decay-angle window (s channel) or
+    the |t| window (t channel) makes every point pass, the mapping inverts,
+    and every event passing the cuts lies inside the window."""
+    # |eta| < 1 so that the window has something to remove at this energy
+    cuts = ms.Cuts(lepton_cuts(MUMU_PIDS, eta=1.0))
+    n = 50_000
+    windowed = ms.PhaseSpaceMapping(topology, LEPTONIC_ENERGY, leptonic=True, cuts=cuts)
+    free = ms.PhaseSpaceMapping(topology, LEPTONIC_ENERGY, leptonic=True)
+    rng = np.random.default_rng(SEED)
+    r = rng.random((n, windowed.random_dim()))
+    p_ext, _, _, det = (np.asarray(a) for a in windowed.map_forward([r]))
+    assert np.mean(passes(cuts, p_ext)) > 0.999
+    ones = np.ones(n)
+    r_back, det_back = windowed.map_inverse([p_ext, ones, ones], [])
+    assert np.asarray(r_back) == approx(r, abs=1e-9)
+    assert det * np.asarray(det_back) == approx(1.0, rel=1e-9)
+
+    p_free, _, _, det_free = (np.asarray(a) for a in free.map_forward([r]))
+    keep = passes(cuts, p_free) & (det_free > 0)
+    assert 1000 < keep.sum() < 0.9 * n
+    m = int(keep.sum())
+    r_back, _ = windowed.map_inverse([p_free[keep], np.ones(m), np.ones(m)], [])
+    r_back = np.asarray(r_back)
+    assert r_back.min() > -1e-6 and r_back.max() < 1 + 1e-6
+
+
+# --------------------------------------------------------------------------
+# kernel edge cases: huge bounds, and bounds that do not bind
+# --------------------------------------------------------------------------
+
+
+def beam_conditions(n, sqrt_s=500.0, y_boost=0.8):
+    tau = (sqrt_s / CM_ENERGY) ** 2
+    x1 = np.full(n, math.sqrt(tau) * math.exp(y_boost))
+    x2 = np.full(n, math.sqrt(tau) * math.exp(-y_boost))
+    pa = np.tile([sqrt_s / 2, 0.0, 0.0, sqrt_s / 2], (n, 1))
+    pb = np.tile([sqrt_s / 2, 0.0, 0.0, -sqrt_s / 2], (n, 1))
+    return pa, pb, x1, x2
+
+
+@pytest.mark.parametrize("y_max", [100.0, 1e3, 1e6])
+def test_double_t_huge_bound_is_no_bound(y_max):
+    """A rapidity bound of 100 or more is no bound: no exp overflows into
+    0 * inf = NaN, and the momenta are exactly those without a bound."""
+    n = 20_000
+    pa, pb, x1, x2 = beam_conditions(n)
+    rng = np.random.default_rng(SEED)
+    r = [rng.random(n) for _ in range(3)]
+    base = [pa, pb, np.zeros(n), np.zeros(n), np.full(n, 20.0), np.full(n, 40.0)]
+    bounded = ms.DoubleT(0.8, 0.0, 0.0, 0.8, 0.0, 0.0, True, y_max, y_max, 1.0)
+    free = ms.DoubleT(0.8, 0.0, 0.0, 0.8, 0.0, 0.0, True)
+    out_bounded = [np.asarray(a) for a in bounded.map_forward(r, base + [x1, x2])]
+    out_free = [np.asarray(a) for a in free.map_forward(r, base)]
+    for a, b in zip(out_bounded, out_free):
+        assert np.all(np.isfinite(a))
+        assert np.array_equal(a, b)
+
+
+def test_loose_t_bound_leaves_the_range_untouched():
+    """A rapidity bound looser than the kinematics changes nothing at all: the
+    clamp compares in |t| and keeps the input range bit for bit, instead of
+    rebuilding it through pb.k and moving its ends by rounding."""
+    n = 20_000
+    pa, pb, x1, x2 = beam_conditions(n)
+    rng = np.random.default_rng(SEED)
+    r = [rng.random(n) for _ in range(2)]
+    masses = [np.full(n, M_Z), np.zeros(n)]
+    loose = ms.TwoToTwoParticleScattering(True, 0.8, 0.0, 0.0, False, 50.0, 50.0, 1.0)
+    free = ms.TwoToTwoParticleScattering(True, 0.8, 0.0, 0.0, False)
+    out_loose = loose.map_forward(r + masses, [pa, pb, x1, x2])
+    out_free = free.map_forward(r + masses, [pa, pb])
+    for a, b in zip(out_loose, out_free):
+        assert np.array_equal(np.asarray(a), np.asarray(b))

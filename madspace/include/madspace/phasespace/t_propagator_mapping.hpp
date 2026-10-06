@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <vector>
 
 #include "madspace/phasespace/base.hpp"
@@ -83,6 +84,15 @@ public:
     bool has_rapidity_window() const { return _rapidity_window; }
 
 private:
+    // The public constructor with the first scattering's rapidity bounds
+    // {recoil, peeled particle, beam sign} worked out once.
+    TPropagatorMapping(
+        const std::array<double, 3>& first_step_bounds,
+        const std::vector<std::size_t>& integration_order,
+        double invariant_power,
+        const std::vector<double>& pt_min
+    );
+
     Result build_forward_impl(
         FunctionBuilder& fb,
         const NamedVector<Value>& inputs,

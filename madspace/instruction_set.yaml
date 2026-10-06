@@ -1558,10 +1558,10 @@ t_rapidity_clamp:
       desc: "+1 if pa is beam 1, -1 if it is beam 2"
     - name: y_max1
       type: [float]
-      desc: "bound on the absolute lab rapidity of the recoil, negative for none"
+      desc: "bound on the absolute lab rapidity of the recoil, negative or 100 and above for none"
     - name: y_max2
       type: [float]
-      desc: "bound on the absolute lab rapidity of the peeled particle, negative for none"
+      desc: "bound on the absolute lab rapidity of the peeled particle, negative or 100 and above for none"
   outputs:
     - name: t_min_out
       type: [float]
@@ -1608,10 +1608,10 @@ t1_rapidity_clamp_doublet:
       desc: "+1 if pa is beam 1, -1 if it is beam 2"
     - name: y_max1
       type: [float]
-      desc: "bound on the absolute lab rapidity of p1, negative for none"
+      desc: "bound on the absolute lab rapidity of p1, negative or 100 and above for none"
     - name: y_max2
       type: [float]
-      desc: "bound on the absolute lab rapidity of the recoil p2, negative for none"
+      desc: "bound on the absolute lab rapidity of the recoil p2, negative or 100 and above for none"
   outputs:
     - name: t1_min_out
       type: [float]
@@ -1652,10 +1652,10 @@ t2_rapidity_clamp_doublet:
       desc: "+1 if pa is beam 1, -1 if it is beam 2"
     - name: y_max1
       type: [float]
-      desc: "bound on the absolute lab rapidity of p1, negative for none"
+      desc: "bound on the absolute lab rapidity of p1, negative or 100 and above for none"
     - name: y_max2
       type: [float]
-      desc: "bound on the absolute lab rapidity of the recoil p2, negative for none"
+      desc: "bound on the absolute lab rapidity of the recoil p2, negative or 100 and above for none"
   outputs:
     - name: t2_min_out
       type: [float]
