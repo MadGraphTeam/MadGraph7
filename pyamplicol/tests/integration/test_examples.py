@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import io
 import json
-import os
+import runpy
 import shutil
 import subprocess
 import sys
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,35 @@ from pyamplicol.reporting import ProgressSink
 ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES = ROOT / "examples"
 RUN_CARDS = tuple(sorted(EXAMPLES.glob("*.toml")))
+
+
+def _run_example(
+    script: Path, arguments: tuple[str, ...], cwd: Path
+) -> subprocess.CompletedProcess[str]:
+    # This test module already owns a Symbolica session through the public API.
+    # Run the exact script in that session, still from an unrelated directory;
+    # the serialized installed-wheel smoke covers independent Python processes.
+    command = [str(script), *arguments]
+    stdout, stderr = io.StringIO(), io.StringIO()
+    returncode = 0
+    with (
+        pytest.MonkeyPatch.context() as context,
+        redirect_stdout(stdout),
+        redirect_stderr(stderr),
+    ):
+        context.chdir(cwd)
+        context.setattr(sys, "argv", command)
+        try:
+            runpy.run_path(str(script), run_name="__main__")
+        except SystemExit as error:
+            if error.code is None or isinstance(error.code, int):
+                returncode = error.code or 0
+            else:
+                print(error.code, file=sys.stderr)
+                returncode = 1
+    return subprocess.CompletedProcess(
+        command, returncode, stdout.getvalue(), stderr.getvalue()
+    )
 
 
 class _RecordingServices:
@@ -120,22 +150,11 @@ def test_direct_cli_example_resolves_process_set_and_ordered_override(
     tuple(sorted((EXAMPLES / "python").glob("*.py"))),
     ids=lambda path: path.stem,
 )
-def test_python_examples_offer_help_without_native_or_generation_imports(
+def test_python_examples_offer_help_without_running_generation(
     script: Path,
     tmp_path: Path,
 ) -> None:
-    environment = os.environ.copy()
-    environment["PYTHONPATH"] = str(ROOT / "src")
-    environment["PYTHONDONTWRITEBYTECODE"] = "1"
-    completed = subprocess.run(
-        [sys.executable, str(script), "--help"],
-        cwd=tmp_path,
-        env=environment,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
+    completed = _run_example(script, ("--help",), tmp_path)
     assert completed.returncode == 0, completed.stderr
     assert "usage:" in completed.stdout
     assert "schema-v3 artifact writing" not in completed.stderr
@@ -145,19 +164,8 @@ def test_python_examples_offer_help_without_native_or_generation_imports(
 def test_packaged_model_helper_materializes_external_card_inputs(
     tmp_path: Path,
 ) -> None:
-    environment = os.environ.copy()
-    environment["PYTHONPATH"] = str(ROOT / "src")
-    environment["PYTHONDONTWRITEBYTECODE"] = "1"
     script = EXAMPLES / "python/copy_packaged_models.py"
-    completed = subprocess.run(
-        [sys.executable, str(script)],
-        cwd=tmp_path,
-        env=environment,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=20,
-    )
+    completed = _run_example(script, (), tmp_path)
     assert completed.returncode == 0, completed.stderr
     assert Path(completed.stdout.strip()) == tmp_path / "models"
 
