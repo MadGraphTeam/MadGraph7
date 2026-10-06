@@ -62,7 +62,11 @@ def test_api_bundle_has_one_complete_root_layout() -> None:
         if payload.path.endswith("Makefile")
     }
     assert all("/.pyamplicol-api-build/" in text for text in makefiles.values())
-    assert all('cd "$(ARTIFACT_DIR)"' in text for text in makefiles.values())
+    assert all(
+        'cd "$(ARTIFACT_DIR)"' in text
+        for path, text in makefiles.items()
+        if path != "API/umami/Makefile"
+    )
     assert all("API/cpp/check_standalone" not in text for text in makefiles.values())
     assert "CC ?= cc" in makefiles["API/c/Makefile"]
     assert "CXX ?= c++" in makefiles["API/cpp/Makefile"]
@@ -111,6 +115,10 @@ def test_api_bundle_has_one_complete_root_layout() -> None:
     assert "libumami.so" in umami_makefile
     assert '"$(RUSTICOL_CONFIG_PATH)" --cflags' in umami_makefile
     assert '"$(RUSTICOL_CONFIG_PATH)" --libs' in umami_makefile
+    # UMAMI receives the absolute artifact path explicitly. Keep the caller's
+    # working directory so an overridden relative BUILD_DIR remains valid.
+    assert '\t"$(RUN_DRIVER)" "$(ARTIFACT_DIR)" $(ARGS)' in umami_makefile
+    assert 'cd "$(ARTIFACT_DIR)"' not in umami_makefile
 
     c_source = next(
         payload.content.decode("utf-8")
