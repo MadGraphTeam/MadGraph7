@@ -887,6 +887,9 @@ class HelicityRecycler():
         External.num_externals = 0
         External.wavs_same_leg = {}
         External.good_wav_combs = []
+        # read back as NWAVEFUNCS: without the reset a P directory recycled
+        # after a bigger one in the same process inherits its array size
+        External.max_wav_num = 0
 
         Internal.max_wav_num = 0
         Internal.num_internals = 0
