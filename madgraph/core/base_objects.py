@@ -1809,9 +1809,22 @@ class Model(PhysicsObject):
         # Note that we need to support both the case where the interation did not had any flavor index before
         # and the case where it had one from a previous merge (think lepto-quark)
         new_interactions = {} #key is the tuple of the particle 
+        ct_occurrences = {}
         for inter in self.get('interactions')[:]:
             if any(p.get('pdg_code') in ids for p in inter.get('particles')):
                 key = self.get_get_merge_key(inter, ids, new_part)
+                if inter.get('type') != 'base':
+                    # Several internal-flavour contributions can have the
+                    # same merged loop content for one external flavour.
+                    # They are additive even when their couplings coincide.
+                    # Pair occurrences across external flavours, never two
+                    # contributions of the same external flavour.
+                    external_pdgs = tuple(p.get_pdg_code()
+                                          for p in inter.get('particles'))
+                    occurrence_key = key, external_pdgs
+                    occurrence = ct_occurrences.get(occurrence_key, 0)
+                    ct_occurrences[occurrence_key] = occurrence + 1
+                    key += (occurrence,)
                 if key in new_interactions:
                     new_interactions[key].update_flavor(inter, ids, new_part, anti_part)
                     self.get('interactions').remove(inter)

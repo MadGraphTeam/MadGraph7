@@ -1015,6 +1015,59 @@ class ModelTest2(unittest.TestCase):
         self.assertEqual(interaction.get('loop_particles'),
                          [[21, 81], [21, 81], [81], [5]])
 
+    def test_merge_flavor_keeps_additive_counterterms(self):
+        """Different internal flavours are additive, not external partners.
+
+        EW R2 q~q vertices can have separate W+d and W+s contributions.
+        Their merged loop keys coincide, but neither may overwrite the
+        other for a fixed external flavour, even if their couplings agree.
+        """
+        from collections import Counter
+
+        for equal_couplings in (False, True):
+            for reverse in (False, True):
+                with self.subTest(equal_couplings=equal_couplings,
+                                  reverse=reverse):
+                    model = copy.deepcopy(self.model)
+                    model.unmerge_flavors()
+                    interactions = base_objects.InteractionList()
+                    expected = {}
+                    for pdg in (1, 2, 3, 4):
+                        expected[pdg] = Counter()
+                        # Include an uneven multiplicity and a repeated
+                        # coupling/loop entry, not just distinct names.
+                        internal_flavours = [1, 3, 3] if pdg == 2 else [1, 3]
+                        for internal in internal_flavours:
+                            coupling = ('R2_COMMON' if equal_couplings else
+                                        'R2_%d_%d' % (pdg, internal))
+                            expected[pdg][coupling] += 1
+                            interactions.append(base_objects.Interaction({
+                                'id': len(interactions) + 1,
+                                'type': 'R2',
+                                'particles': base_objects.ParticleList([
+                                    model.get_particle(-pdg),
+                                    model.get_particle(pdg)]),
+                                'color': [color.ColorString([color.T(1, 2)])],
+                                'lorentz': ['R2_QQ_3'],
+                                'orders': {'QED': 2},
+                                'loop_particles': [[24, internal]],
+                                'couplings': {(0, 0): coupling}}))
+                    if reverse:
+                        interactions.reverse()
+                    model.set('interactions', interactions)
+                    model.merge_flavor([1, 2, 3, 4])
+                    actual = dict((pdg, Counter()) for pdg in expected)
+                    for interaction in model.get('interactions'):
+                        coupling = interaction.get('couplings')[(0, 0)]
+                        if isinstance(coupling, str):
+                            for pdg in actual:
+                                actual[pdg][coupling] += 1
+                        else:
+                            for flavors, name in coupling.get('flavors').items():
+                                self.assertEqual(flavors[0], flavors[1])
+                                actual[flavors[0]][name] += 1
+                    self.assertEqual(actual, expected)
+
     def test_merge_flavor(self):
         """Check that merging particles is working"""
         
