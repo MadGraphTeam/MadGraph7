@@ -1527,6 +1527,50 @@ t_inv_min_max_cut:
       desc: "upper limit of the momentum transfer"
   desc: "Kinematic limits of the Mandelstam t restricted by transverse-energy cuts. Building block of @ref TwoToTwoParticleScattering; see @ref Cuts."
 
+t_rapidity_clamp:
+  inputs:
+    - name: t_min
+      type: [float]
+      desc: "lower bound of |t|"
+    - name: t_max
+      type: [float]
+      desc: "upper bound of |t|"
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum (a beam, in the partonic centre-of-mass frame)"
+    - name: pb
+      type: [float, 4]
+      desc: "second incoming momentum (the other beam)"
+    - name: m1
+      type: [float]
+      desc: "mass of the first outgoing momentum (the recoil)"
+    - name: m2
+      type: [float]
+      desc: "mass of the second outgoing momentum (the peeled particle)"
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2"
+    - name: beam_sign
+      type: [float]
+      desc: "+1 if pa is beam 1, -1 if it is beam 2"
+    - name: y_max1
+      type: [float]
+      desc: "bound on the absolute lab rapidity of the recoil, negative for none"
+    - name: y_max2
+      type: [float]
+      desc: "bound on the absolute lab rapidity of the peeled particle, negative for none"
+  outputs:
+    - name: t_min_out
+      type: [float]
+      desc: "narrowed lower bound of |t|"
+    - name: t_max_out
+      type: [float]
+      desc: "narrowed upper bound of |t|"
+  desc: "Narrows the |t| range of a beam-beam 2 -> 2 scattering to the values for which both outgoing momenta can satisfy their rapidity bounds. Building block of @ref TwoToTwoParticleScattering."
+
 t_inv_value_and_min_max_cut:
   inputs:
     - name: pa

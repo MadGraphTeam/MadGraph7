@@ -375,3 +375,125 @@ def test_every_passing_event_is_inside_the_windows(topology, cuts):
     assert np.all(np.isfinite(r_back))
     assert r_back.min() > -1e-6 and r_back.max() < 1 + 1e-6
 
+
+
+# --------------------------------------------------------------------------
+# t channel: the first scattering, between the two beams
+# --------------------------------------------------------------------------
+#
+# In the partonic centre-of-mass frame the first scattering of a t-channel
+# chain, pa pb -> R k, has t = (pb - k)^2, which fixes pb.k, while
+# (pa + pb).k follows from the masses, so pa.k is fixed too. The rapidity
+# log(pb.k / pa.k) / 2 of the peeled particle, and that of the recoil R, are
+# then monotonic functions of |t|, and their bounds give an interval of |t|.
+
+AA_PIDS = [2, -2, 22, 22]
+AAG_PIDS = [2, -2, 22, 21, 22]  # a g a along the chain
+ETA_PHOTON = 2.5
+PT_PHOTON = 20.0
+
+
+def t_channel_two_body():
+    return ms.Topology(
+        ms.Diagram(
+            [0.0, 0.0],
+            [0.0, 0.0],
+            [ms.Propagator(0.0, 0.0)],
+            [["i0", "o0", "p0"], ["p0", "i1", "o1"]],
+        )
+    )
+
+
+def t_channel_three_body():
+    """u u~ > a g a (with AAG_PIDS) through two t-channel propagators."""
+    return ms.Topology(
+        ms.Diagram(
+            [0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [ms.Propagator(0.0, 0.0), ms.Propagator(0.0, 0.0)],
+            [["i0", "o0", "p0"], ["p0", "o1", "p1"], ["p1", "i1", "o2"]],
+        )
+    )
+
+
+def photon_cuts(pids, eta=ETA_PHOTON):
+    items = [ms.CutItem(O(pids, O.obs_pt, [O.photon_pids]), min=PT_PHOTON)]
+    if eta is not None:
+        items.append(ms.CutItem(O(pids, O.obs_eta_abs, [O.photon_pids]), max=eta))
+    return items
+
+
+def test_t_channel_every_generated_point_passes():
+    """u u~ > a a through the t channel: with the pt cut (already used for |t|)
+    and now the photons' eta cuts in |t| and in Y, every sampled point
+    passes, while without the cuts handed over many do not."""
+    c = ms.Cuts(photon_cuts(AA_PIDS))
+    topology = t_channel_two_body()
+    _, p_free, _, _, _ = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY))
+    assert np.mean(passes(c, p_free)) < 0.9
+    _, p_ext, _, _, det = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY, cuts=c))
+    assert np.mean(passes(c, p_ext)) > 0.999
+    photons = p_ext[:, 2:4]
+    assert np.abs(eta(photons)).max() <= ETA_PHOTON + 1e-6
+    assert np.abs(eta(photons)).max() > 0.999 * ETA_PHOTON
+
+
+def test_t_channel_round_trip():
+    c = ms.Cuts(photon_cuts(AA_PIDS))
+    mapping = ms.PhaseSpaceMapping(t_channel_two_body(), CM_ENERGY, cuts=c)
+    r, p_ext, x1, x2, det = sample(mapping, n=10_000)
+    keep = det > 0
+    r_back, det_back = mapping.map_inverse([p_ext, x1, x2], [])
+    r_back, det_back = np.asarray(r_back), np.asarray(det_back)
+    assert r_back[keep] == approx(r[keep], abs=1e-7)
+    assert (det * det_back)[keep] == approx(1.0, rel=1e-7)
+
+
+@pytest.mark.parametrize(
+    "topology,cuts",
+    [
+        (t_channel_two_body(), ms.Cuts(photon_cuts(AA_PIDS))),
+        (
+            t_channel_three_body(),
+            ms.Cuts(photon_cuts(AAG_PIDS) + jet_cuts(AAG_PIDS, eta=ETA_JET)),
+        ),
+        # the gluon has no eta cut: only the peeled photon bounds the first |t|
+        (
+            t_channel_three_body(),
+            ms.Cuts(photon_cuts(AAG_PIDS) + jet_cuts(AAG_PIDS, eta=None)),
+        ),
+    ],
+    ids=["aa", "aga", "aga-gluon-uncut"],
+)
+def test_t_channel_window_is_exact(topology, cuts):
+    """Every event passing the cuts lies inside the windows (it maps back into
+    the unit cube), and the integral over the cut region is unchanged."""
+    free = ms.PhaseSpaceMapping(topology, CM_ENERGY)
+    windowed = ms.PhaseSpaceMapping(topology, CM_ENERGY, cuts=cuts)
+    _, p_ext, x1, x2, det = sample(free, n=400_000)
+    keep = passes(cuts, p_ext) & (det > 0)
+    assert keep.sum() > 1000
+    r_back, _ = windowed.map_inverse([p_ext[keep], x1[keep], x2[keep]], [])
+    r_back = np.asarray(r_back)
+    assert np.all(np.isfinite(r_back))
+    assert r_back.min() > -1e-6 and r_back.max() < 1 + 1e-6
+    assert_same_integral(topology, cuts)
+
+
+def test_t_channel_first_step_only_bounds_what_it_peels():
+    """In u u~ > a g a the first scattering peels a photon from one end of the
+    chain; the gluon (no eta cut) makes the recoil unbounded, so the other
+    photon leaves its eta range as often as without the window (the cut
+    removes it), the peeled one only where the eta and pt bounds together
+    leave no |t| at all: the clamp then keeps the full range rather than an
+    empty one, and the cuts reject every such point."""
+    topology = t_channel_three_body()
+    order = topology.t_integration_order
+    peeled = order[0] + (order[0] == len(order) - 1)
+    assert peeled in (0, 2)  # a photon
+    other = 2 - peeled
+    cuts = ms.Cuts(photon_cuts(AAG_PIDS) + jet_cuts(AAG_PIDS, eta=None))
+    _, p_ext, _, _, _ = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY, cuts=cuts))
+    outside = np.abs(eta(p_ext[:, 2:5])) > ETA_PHOTON + 1e-6
+    assert outside[:, peeled].mean() < 0.03
+    assert outside[:, other].mean() > 0.2

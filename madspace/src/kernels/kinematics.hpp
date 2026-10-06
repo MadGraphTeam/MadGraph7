@@ -850,6 +850,72 @@ KERNELSPEC void kernel_t_inv_min_max_cut(
 }
 
 template <typename T>
+KERNELSPEC FVal<T> logistic(FVal<T> z) {
+    return 1. / (1. + exp(-z));
+}
+
+// Narrows the |t| range of a 2 -> 2 scattering pa pb -> p1 p2 whose incoming
+// momenta are the two (massless) beams in the partonic centre-of-mass frame,
+// given bounds on the absolute lab rapidities of the outgoing p1 (y_max1, the
+// recoil) and p2 (y_max2, the peeled particle); negative means no bound.
+// With P = pa + pb and t = (pa - p1)^2 = (pb - p2)^2:
+//   w = pb.p2 = (m2^2 + |t|) / 2,   pa.p2 = A - w,  A = P.p2 = (s + m2^2 - m1^2)/2,
+// and the rapidity of a momentum q along pa is log(pb.q / pa.q) / 2, so
+//   y_a(p2) = log(w / (A - w)) / 2,
+//   y_a(p1) = log((s/2 - w) / (s/2 - A + w)) / 2,
+// both monotonic in w. The lab rapidity along pa is y_a + y_boost, where
+// y_boost = beam_sign * log(x1 / x2) / 2 (beam_sign = +1 if pa is beam 1), and
+// |y_lab| <= y_max turns into an interval of w, hence of |t|. If the clamp
+// would leave nothing, the input range is returned: the cuts then reject
+// every point anyway, and the range stays a valid one to sample.
+template <typename T>
+KERNELSPEC void kernel_t_rapidity_clamp(
+    FIn<T, 0> t_min,
+    FIn<T, 0> t_max,
+    FIn<T, 1> pa,
+    FIn<T, 1> pb,
+    FIn<T, 0> m1,
+    FIn<T, 0> m2,
+    FIn<T, 0> x1,
+    FIn<T, 0> x2,
+    FIn<T, 0> beam_sign,
+    FIn<T, 0> y_max1,
+    FIn<T, 0> y_max2,
+    FOut<T, 0> t_min_out,
+    FOut<T, 0> t_max_out
+) {
+    FourMom<T> p_tot;
+    for (int i = 0; i < 4; ++i) {
+        p_tot[i] = pa[i] + pb[i];
+    }
+    auto s = lsquare<T>(p_tot);
+    auto m1_2 = m1 * m1, m2_2 = m2 * m2;
+    auto a = 0.5 * (s + m2_2 - m1_2);
+    auto b = 0.5 * s - a;
+    auto y_boost = beam_sign * 0.5 * log(x1 / x2);
+
+    FVal<T> w_lo = 0.5 * (m2_2 + t_min), w_hi = 0.5 * (m2_2 + t_max);
+    // peeled particle: w / (A - w) = exp(2 y_a), increasing in w
+    w_lo =
+        where(y_max2 >= 0., max(w_lo, a * logistic<T>(2. * (-y_max2 - y_boost))), w_lo);
+    w_hi =
+        where(y_max2 >= 0., min(w_hi, a * logistic<T>(2. * (y_max2 - y_boost))), w_hi);
+    // recoil: (s/2 - w) / (B + w) = exp(z), z = 2 y_a, gives
+    // w = (s/2) logistic(-z) - B logistic(z), decreasing in z
+    auto z_hi = 2. * (y_max1 - y_boost), z_lo = 2. * (-y_max1 - y_boost);
+    auto w_of_z_hi = 0.5 * s * logistic<T>(-z_hi) - b * logistic<T>(z_hi);
+    auto w_of_z_lo = 0.5 * s * logistic<T>(-z_lo) - b * logistic<T>(z_lo);
+    w_lo = where(y_max1 >= 0., max(w_lo, w_of_z_hi), w_lo);
+    w_hi = where(y_max1 >= 0., min(w_hi, w_of_z_lo), w_hi);
+
+    auto lo = 2. * w_lo - m2_2;
+    auto hi = 2. * w_hi - m2_2;
+    auto ok = hi > lo;
+    t_min_out = where(ok, lo, FVal<T>(t_min));
+    t_max_out = where(ok, hi, FVal<T>(t_max));
+}
+
+template <typename T>
 KERNELSPEC void kernel_t_inv_value_and_min_max_cut(
     FIn<T, 1> pa,
     FIn<T, 1> pb,

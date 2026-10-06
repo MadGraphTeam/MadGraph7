@@ -673,11 +673,13 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         // Per-child pt_min (and eta_max), ordered to match the mass conditions
         // handed to the t-channel mapping (leaf children carry their pt cut;
         // composite children were reset to 0 above).
-        std::vector<double> eta_max, pt_min;
+        std::vector<double> eta_max, pt_min, y_max;
         for (std::size_t index : topology.decays().at(0).child_indices) {
             auto& info = decay_info.at(index);
             eta_max.push_back(info.eta_max);
             pt_min.push_back(info.pt_min);
+            // rapidity bound of the child, composites included (node_y_max)
+            y_max.push_back(node_y_max.at(index));
         }
         if (t_channel_mode == PhaseSpaceMapping::chili) {
             // |y| <= |eta|, so we can pass y_max = eta_max
@@ -738,8 +740,11 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             );
         } else if (t_channel_mode == PhaseSpaceMapping::propagator ||
                    topology.t_propagator_count() < 2) {
+            // The first scattering of the chain is between the two beams in
+            // the partonic centre-of-mass frame, so the rapidity bounds of the
+            // particle it peels and of the recoil narrow its |t| range.
             _t_mapping = TPropagatorMapping(
-                _topology.t_integration_order(), invariant_power, pt_min
+                _topology.t_integration_order(), invariant_power, pt_min, y_max
             );
         } else if (t_channel_mode == PhaseSpaceMapping::rambo) {
             // TODO: add massless special case
@@ -899,9 +904,15 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
                 for (std::size_t index : decay_data.at(0).decay.child_indices) {
                     conds.push_back(decay_data.at(index).mass.value());
                 }
+                using TMapping = std::decay_t<decltype(t_mapping)>;
+                if constexpr (std::is_same_v<TMapping, TPropagatorMapping>) {
+                    if (t_mapping.has_rapidity_window()) {
+                        conds.push_back(x1);
+                        conds.push_back(x2);
+                    }
+                }
                 auto t_result = t_mapping.build_forward(fb, args, conds);
                 std::size_t result_index;
-                using TMapping = std::decay_t<decltype(t_mapping)>;
                 if constexpr (std::is_same_v<TMapping, FastRamboMapping>) {
                     auto [p1, p2] = fb.com_p_in(sqrt_s_hat);
                     p_ext = {p1, p2};
@@ -1104,6 +1115,12 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
                 for (std::size_t index : decay_data.at(0).decay.child_indices) {
                     args.push_back(decay_data.at(index).momentum.value());
                     conds.push_back(decay_data.at(index).computed_mass.value());
+                }
+                if constexpr (std::is_same_v<TMapping, TPropagatorMapping>) {
+                    if (t_mapping.has_rapidity_window()) {
+                        conds.push_back(x1);
+                        conds.push_back(x2);
+                    }
                 }
                 auto t_result = t_mapping.build_inverse(fb, args, conds);
                 random_out_reversed.insert(

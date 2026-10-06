@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "madspace/phasespace/base.hpp"
 #include "madspace/phasespace/invariants.hpp"
 
@@ -145,13 +147,28 @@ public:
      * @param has_cut         If true, the `etmin_*` conditions restrict
      *                        @f$|t|@f$ to the region passing the transverse
      *                        cuts; see @ref Cuts.
+     * @param y_max1          Bound on the absolute lab rapidity of
+     *                        `momentum1` (the recoil); negative for none.
+     * @param y_max2          The same for `momentum2`.
+     * @param beam_sign       +1 if `momentum_in1` is beam 1 (along +z), -1
+     *                        if it is beam 2.
+     *
+     * The rapidity bounds are only valid when the two incoming momenta are
+     * the beams in the partonic centre-of-mass frame (the first step of a
+     * t-channel chain). There t fixes pb.p2 and, with the masses, pa.p2, so
+     * each bound becomes an interval of @f$|t|@f$. With a bound set, the
+     * mapping takes the beam momentum fractions `x1`, `x2` (`float`, shape
+     * `(batch,)`) as two further conditions.
      */
     TwoToTwoParticleScattering(
         bool com,
         double invariant_power = 0,
         double mass = 0,
         double width = 0,
-        bool has_cut = false
+        bool has_cut = false,
+        double y_max1 = -1.,
+        double y_max2 = -1.,
+        double beam_sign = 1.
     );
 
 private:
@@ -166,9 +183,22 @@ private:
         const NamedVector<Value>& conditions
     ) const override;
 
+    std::array<Value, 2> rapidity_clamp(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& conditions,
+        Value t_min,
+        Value t_max,
+        Value m1,
+        Value m2
+    ) const;
+
     bool _com;
     Invariant _invariant;
     bool _has_cut;
+    bool _rapidity_window;
+    double _y_max1;
+    double _y_max2;
+    double _beam_sign;
 };
 
 /**

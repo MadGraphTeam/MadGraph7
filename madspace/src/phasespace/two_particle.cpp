@@ -114,7 +114,14 @@ Mapping::Result TwoBodyDecay::build_inverse_impl(
 }
 
 TwoToTwoParticleScattering::TwoToTwoParticleScattering(
-    bool com, double invariant_power, double mass, double width, bool has_cut
+    bool com,
+    double invariant_power,
+    double mass,
+    double width,
+    bool has_cut,
+    double y_max1,
+    double y_max2,
+    double beam_sign
 ) :
     Mapping(
         "TwoToTwoParticleScattering",
@@ -131,12 +138,48 @@ TwoToTwoParticleScattering::TwoToTwoParticleScattering(
                 cond.push_back("etmin_1", batch_float);
                 cond.push_back("etmin_2", batch_float);
             }
+            if (y_max1 >= 0. || y_max2 >= 0.) {
+                cond.push_back("x1", batch_float);
+                cond.push_back("x2", batch_float);
+            }
             return cond;
         }()
     ),
     _com(com),
     _invariant(invariant_power, mass, width),
-    _has_cut(has_cut) {}
+    _has_cut(has_cut),
+    _rapidity_window(y_max1 >= 0. || y_max2 >= 0.),
+    _y_max1(y_max1),
+    _y_max2(y_max2),
+    _beam_sign(beam_sign) {}
+
+std::array<Value, 2> TwoToTwoParticleScattering::rapidity_clamp(
+    FunctionBuilder& fb,
+    const NamedVector<Value>& conditions,
+    Value t_min,
+    Value t_max,
+    Value m1,
+    Value m2
+) const {
+    if (!_rapidity_window) {
+        return {t_min, t_max};
+    }
+    std::size_t x_index = _has_cut ? 4 : 2;
+    auto [lo, hi] = fb.t_rapidity_clamp(
+        t_min,
+        t_max,
+        conditions.at(0),
+        conditions.at(1),
+        m1,
+        m2,
+        conditions.at(x_index),
+        conditions.at(x_index + 1),
+        _beam_sign,
+        _y_max1,
+        _y_max2
+    );
+    return {lo, hi};
+}
 
 Mapping::Result TwoToTwoParticleScattering::build_forward_impl(
     FunctionBuilder& fb,
@@ -146,9 +189,10 @@ Mapping::Result TwoToTwoParticleScattering::build_forward_impl(
     auto r_phi = inputs.at(0), r_inv = inputs.at(1), m1 = inputs.at(2),
          m2 = inputs.at(3);
     auto p_in1 = conditions.at(0), p_in2 = conditions.at(1);
-    auto [t_min, t_max] = _has_cut
+    auto [t_min_kin, t_max_kin] = _has_cut
         ? fb.t_inv_min_max_cut(p_in1, p_in2, m1, m2, conditions.at(2), conditions.at(3))
         : fb.t_inv_min_max(p_in1, p_in2, m1, m2);
+    auto [t_min, t_max] = rapidity_clamp(fb, conditions, t_min_kin, t_max_kin, m1, m2);
     auto t_result = _invariant.build_forward(fb, {r_inv}, {t_min, t_max});
     auto [p1, p2, det_scatter] = _com
         ? fb.two_to_two_particle_scattering_com(
@@ -169,11 +213,16 @@ Mapping::Result TwoToTwoParticleScattering::build_inverse_impl(
 ) const {
     auto p1 = inputs.at(0), p2 = inputs.at(1);
     auto p_in1 = conditions.at(0), p_in2 = conditions.at(1);
-    auto [t_abs, t_min, t_max] = _has_cut
+    auto [t_abs, t_min_kin, t_max_kin] = _has_cut
         ? fb.t_inv_value_and_min_max_cut(
               p_in1, p_in2, p1, p2, conditions.at(2), conditions.at(3)
           )
         : fb.t_inv_value_and_min_max(p_in1, p_in2, p1, p2);
+    auto [t_min, t_max] = _rapidity_window
+        ? rapidity_clamp(
+              fb, conditions, t_min_kin, t_max_kin, fb.obs_mass(p1), fb.obs_mass(p2)
+          )
+        : std::array<Value, 2>{t_min_kin, t_max_kin};
     auto t_result = _invariant.build_inverse(fb, {t_abs}, {t_min, t_max});
     auto [r_phi, m1, m2, det_scatter] = _com
         ? fb.two_to_two_particle_scattering_com_inverse(p1, p2, p_in1, p_in2)

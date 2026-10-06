@@ -2,6 +2,9 @@
 
 #include "madspace/util.hpp"
 
+#include <algorithm>
+#include <array>
+
 using namespace madspace;
 
 double TPropagatorMapping::pt2(std::size_t i) const {
@@ -19,10 +22,61 @@ static bool has_pt_cut(const std::vector<double>& pt_min) {
     return false;
 }
 
+namespace {
+// The rapidity bounds of the first scattering, which is between the two beams
+// in the partonic centre-of-mass frame: {recoil, peeled particle, beam sign}.
+// The first step peels particle integration_order[0] + side, from beam 1 if
+// side (see the constructor), and the recoil is every other particle, bounded
+// only if each of them is (its rapidity is a weighted mean of theirs).
+std::array<double, 3> first_step_rapidity_bounds(
+    const std::vector<std::size_t>& integration_order, const std::vector<double>& y_max
+) {
+    std::size_t n_out = integration_order.size() + 1;
+    if (integration_order.empty() || y_max.size() != n_out) {
+        return {-1., -1., 1.};
+    }
+    bool side = integration_order.at(0) == integration_order.size() - 1;
+    std::size_t peeled = integration_order.at(0) + side;
+    double recoil = 0.;
+    for (std::size_t i = 0; i < n_out; ++i) {
+        if (i == peeled) {
+            continue;
+        }
+        if (y_max.at(i) < 0.) {
+            recoil = -1.;
+            break;
+        }
+        recoil = std::max(recoil, y_max.at(i));
+    }
+    return {recoil, y_max.at(peeled), side ? 1. : -1.};
+}
+
+TwoToTwoParticleScattering first_scattering(
+    const std::vector<std::size_t>& integration_order,
+    double invariant_power,
+    bool has_cut,
+    const std::vector<double>& y_max
+) {
+    auto [y_recoil, y_peeled, beam_sign] =
+        first_step_rapidity_bounds(integration_order, y_max);
+    return TwoToTwoParticleScattering(
+        true, invariant_power, 0., 0., has_cut, y_recoil, y_peeled, beam_sign
+    );
+}
+
+bool has_first_step_window(
+    const std::vector<std::size_t>& integration_order, const std::vector<double>& y_max
+) {
+    auto bounds = first_step_rapidity_bounds(integration_order, y_max);
+    return bounds.at(0) >= 0. || bounds.at(1) >= 0.;
+}
+} // namespace
+
 TPropagatorMapping::TPropagatorMapping(
     const std::vector<std::size_t>& integration_order,
     double invariant_power,
-    const std::vector<double>& pt_min
+    const std::vector<double>& pt_min,
+    const std::vector<double>& y_max
 ) :
     Mapping(
         "TPropagatorMapping",
@@ -45,13 +99,20 @@ TPropagatorMapping::TPropagatorMapping(
             for (std::size_t i = 0; i < integration_order.size() + 1; ++i) {
                 cond_types.push_back(std::format("mass{}", i), batch_float);
             }
+            if (has_first_step_window(integration_order, y_max)) {
+                cond_types.push_back("x1", batch_float);
+                cond_types.push_back("x2", batch_float);
+            }
             return cond_types;
         }()
     ),
     _integration_order(integration_order),
     _pt_min(pt_min),
     _has_cut(has_pt_cut(pt_min)),
-    _com_scattering(true, invariant_power, 0., 0., has_pt_cut(pt_min)),
+    _rapidity_window(has_first_step_window(integration_order, y_max)),
+    _com_scattering(
+        first_scattering(integration_order, invariant_power, has_pt_cut(pt_min), y_max)
+    ),
     _lab_scattering(false, invariant_power, 0., 0., has_pt_cut(pt_min)) {
     std::size_t next_index_low = 0;
     std::size_t next_index_high = integration_order.size() - 1;
@@ -74,7 +135,9 @@ Mapping::Result TPropagatorMapping::build_forward_impl(
     const NamedVector<Value>& conditions
 ) const {
     Value e_cm = conditions.at(0);
-    ValueVec m_out(conditions.begin() + 1, conditions.end());
+    ValueVec m_out(
+        conditions.begin() + 1, conditions.begin() + 2 + _integration_order.size()
+    );
     auto r = inputs.begin();
     auto next_random = [&]() { return *(r++); };
     ValueVec dets;
@@ -145,6 +208,10 @@ Mapping::Result TPropagatorMapping::build_forward_impl(
             cond.push_back(fb.sub(total_etmin, running_etmin)); // etmin_1 (recoil)
             cond.push_back(etmin_peeled);                       // etmin_2 (peeled)
         }
+        if (&scattering == &_com_scattering && _rapidity_window) {
+            cond.push_back(conditions.at(conditions.size() - 2)); // x1
+            cond.push_back(conditions.at(conditions.size() - 1)); // x2
+        }
         auto ks = scattering.build_forward(
             fb, {next_random(), next_random(), mass_sum, mass}, cond
         );
@@ -168,7 +235,9 @@ Mapping::Result TPropagatorMapping::build_inverse_impl(
     const NamedVector<Value>& conditions
 ) const {
     Value e_cm = conditions.at(0);
-    ValueVec m_out(conditions.begin() + 1, conditions.end());
+    ValueVec m_out(
+        conditions.begin() + 1, conditions.begin() + 2 + _integration_order.size()
+    );
     std::size_t n_out = _integration_order.size() + 1;
     ValueVec random_out;
     ValueVec dets;
@@ -245,6 +314,10 @@ Mapping::Result TPropagatorMapping::build_inverse_impl(
             running_etmin = fb.add(running_etmin, etmin_peeled);
             cond.push_back(fb.sub(total_etmin, running_etmin)); // etmin_1 (recoil)
             cond.push_back(etmin_peeled);                       // etmin_2 (peeled)
+        }
+        if (&scattering == &_com_scattering && _rapidity_window) {
+            cond.push_back(conditions.at(conditions.size() - 2)); // x1
+            cond.push_back(conditions.at(conditions.size() - 1)); // x2
         }
         auto rs = scattering.build_inverse(fb, {k_rest, k}, cond);
         random_out.push_back(rs.at(0));

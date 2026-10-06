@@ -647,12 +647,15 @@ PYBIND11_MODULE(_madspace_py, m) {
         m, "TwoToTwoParticleScattering", pydoc::doc("TwoToTwoParticleScattering")
     )
         .def(
-            py::init<bool, double, double, double, bool>(),
+            py::init<bool, double, double, double, bool, double, double, double>(),
             py::arg("com"),
             py::arg("invariant_power") = 0.,
             py::arg("mass") = 0.,
             py::arg("width") = 0.,
             py::arg("has_cut") = false,
+            py::arg("y_max1") = -1.,
+            py::arg("y_max2") = -1.,
+            py::arg("beam_sign") = 1.,
             pydoc::doc("TwoToTwoParticleScattering::TwoToTwoParticleScattering")
         );
 
@@ -733,10 +736,15 @@ PYBIND11_MODULE(_madspace_py, m) {
         m, "TPropagatorMapping", pydoc::doc("TPropagatorMapping")
     )
         .def(
-            py::init<std::vector<std::size_t>, double, std::vector<double>>(),
+            py::init<
+                std::vector<std::size_t>,
+                double,
+                std::vector<double>,
+                std::vector<double>>(),
             py::arg("integration_order"),
             py::arg("invariant_power") = 0.8,
             py::arg("pt_min") = std::vector<double>{},
+            py::arg("y_max") = std::vector<double>{},
             pydoc::doc("TPropagatorMapping::TPropagatorMapping")
         )
         .def(
