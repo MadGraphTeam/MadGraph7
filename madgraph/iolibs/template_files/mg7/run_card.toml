@@ -119,6 +119,7 @@ combine_channel_threshold = %(phasespace.combine_channel_threshold)s
 drop_qcd_s_channel = %(phasespace.drop_qcd_s_channel)s # -1 keeps all channels, otherwise drop channels without a QCD s-channel resonance once the channel count would exceed this
 invariant_power = %(phasespace.invariant_power)s
 bw_cutoff = %(phasespace.bw_cutoff)s
+cut_decays = %(phasespace.cut_decays)s # false: the [cuts] skip the decay products of on-shell (decay-chain) propagators, as in MadEvent
 adaptive_symmetry_sampling = %(phasespace.adaptive_symmetry_sampling)s
 
 [multiparticles]
@@ -126,7 +127,7 @@ $multiparticles
 
 [cuts]
 # possible groups: jet, bottom, lepton, missing, photon
-# possible observables: pt, eta, dR, mass, pair_mass, sqrt_s
+# possible observables: pt, eta, dR, mass, pair_mass, sfos_pair_mass, sqrt_s
 #     (mass is the mass of one particle. Put "-sum-" before it and the momenta
 #      are added up first: "lepton-sum-mass" is the mass of all the leptons
 #      together, while naming a group per member gives one combination at a
@@ -134,7 +135,9 @@ $multiparticles
 #      "lepton-jet-top-sum-mass" that of a lepton-jet-top triple.
 #      pair_mass is the invariant mass of a pair, taken over every pair the
 #      named groups can form, so "lepton-pair_mass" is the same cut as
-#      "lepton-lepton-sum-mass". sqrt_s is for all outgoing particles)
+#      "lepton-lepton-sum-mass". sfos_pair_mass keeps the same-flavour
+#      opposite-sign pairs only (e+ e-, mu+ mu-), like MadEvent's mmll.
+#      sqrt_s is for all outgoing particles)
 # A pair_mass minimum is also used to bound the integration.
 # A sqrt_s minimum bounds it the same way, and so do pt and delta_r minima
 # through the pair masses and sqrt_s they imply. The integral is

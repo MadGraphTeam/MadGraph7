@@ -1591,6 +1591,9 @@ class TestRunCardMG7(unittest.TestCase):
         lo['nevents'] = 25000
         lo['ptj'] = 30
         lo['etaj'] = 4.5
+        lo['mmjj'] = 200
+        lo['mmll'] = 50
+        lo['cut_decays'] = True
         lo['dynamical_scale_choice'] = 3
         lo['scalefact'] = 0.5
         lo['SDE_strategy'] = 2
@@ -1607,6 +1610,14 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertIn(5, mg7['multiparticles']['jet'])
         self.assertEqual(mg7['cuts']['jet-pt'], {'min': 30.0})
         self.assertEqual(mg7['cuts']['jet-eta_abs'], {'max': 4.5})
+        # a jet-pair mass, not the mass of each jet
+        self.assertEqual(mg7['cuts']['jet-pair_mass'], {'min': 200.0})
+        self.assertNotIn('jet-mass', mg7['cuts'])
+        # same-flavour opposite-sign lepton pairs only, as LO mmll
+        self.assertEqual(mg7['cuts']['lepton-sfos_pair_mass'], {'min': 50.0})
+        self.assertTrue(mg7['phasespace']['cut_decays'])
+        # MadEvent's default: decay products are not cut
+        self.assertFalse(bannermod.RunCardMG7()['phasespace']['cut_decays'])
         # reported as not transferable
         joined = ' '.join(dropped)
         self.assertIn('xqcut', joined)

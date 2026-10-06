@@ -871,6 +871,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"delta_r", Observable::obs_delta_r},
             {"pair_mass", Observable::obs_pair_mass},
             {"sqrt_s", Observable::obs_sqrt_s},
+            {"sfos_pair_mass", Observable::obs_sfos_pair_mass},
         },
         "obs_"
     );
@@ -941,7 +942,19 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("eta_max", &Cuts::eta_max, pydoc::doc("Cuts::eta_max"))
         .def("pt_min", &Cuts::pt_min, pydoc::doc("Cuts::pt_min"))
         .def("m_inv_min", &Cuts::m_inv_min, pydoc::doc("Cuts::m_inv_min"))
-        .def("dr_min", &Cuts::dr_min, pydoc::doc("Cuts::dr_min"));
+        .def("dr_min", &Cuts::dr_min, pydoc::doc("Cuts::dr_min"))
+        .def(
+            "pair_mass_any_min",
+            &Cuts::pair_mass_any_min,
+            pydoc::doc("Cuts::pair_mass_any_min")
+        );
+    py::classh<Cuts::PairMassAny>(cuts, "PairMassAny", pydoc::doc("Cuts::PairMassAny"))
+        .def_readonly(
+            "pairs", &Cuts::PairMassAny::pairs, pydoc::doc("Cuts::PairMassAny::pairs")
+        )
+        .def_readonly(
+            "min", &Cuts::PairMassAny::min, pydoc::doc("Cuts::PairMassAny::min")
+        );
 
     py::classh<ObservableHistograms::HistItem>(
         m, "HistItem", pydoc::doc("ObservableHistograms::HistItem")
@@ -1244,7 +1257,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             "channel_count",
             &PhaseSpaceMapping::channel_count,
             pydoc::doc("PhaseSpaceMapping::channel_count")
-        );
+        )
+        .def("empty", &PhaseSpaceMapping::empty, pydoc::doc("PhaseSpaceMapping::empty"));
 
     py::classh<MultiChannelFunction, FunctionGenerator>(
         m, "MultiChannelFunction", pydoc::doc("MultiChannelFunction")
