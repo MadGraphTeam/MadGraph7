@@ -2098,6 +2098,104 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     _hr_warmups = []
     HR_CALLS_MARK = '//HR_CALLS'
 
+    # One function holding the whole unrolled block is what makes a big process
+    # unbuildable: the compiler's per-function cost is superlinear, so the
+    # recycled block of g g > g g g g in one body takes longer to compile than any
+    # build should. It is cut into ordinary functions of about this many
+    # statements that calculate_all_jamps calls in order (the fix the fortran
+    # recycler applies too); --hel_recycling_chunk=<n> overrides it, 0 keeps the
+    # block in one piece. Below HR_INLINE_MAX statements it stays inline: the
+    # chunks cost about 9% at run time (g g > g g g: 239k -> 218k events/s, the
+    # same with 8 chunks or 38), while its 8148 statements build in 6 s inline.
+    # Above, chunks of 200 build fastest for the same run time (g g > g g g g,
+    # 136510 statements: 29 s, 52 s and 76 s with chunks of 200, 1000 and 3000
+    # for the same run time, against 808 s inline for a run 13% faster).
+    HR_CHUNK_STMTS = 200
+    HR_INLINE_MAX = 15000
+    # What the recycled calls read that is local to calculate_all_jamps. The
+    # chunks live in the same translation unit, so the model tables (cIPD, cIPC,
+    # ...) need no plumbing.
+    HR_CHUNK_STATE = [
+        ('const fptype_momenta* momenta', 'momenta'),
+        ('const fptype* const* COUPs', 'COUPs'),
+        ('const unsigned int iflavor', 'iflavor'),
+        ('ALOHAOBJ* aloha_obj', 'aloha_obj'),
+        ('cxtype_amp_sv* amp_sv', 'amp_sv'),
+        ('fptype_amp* amp_fp', 'amp_fp'),
+        ('ALOHAOBJ& _p1n', '_p1n'),
+        ('cxtype_amp_sv* jampAll_sv', 'jampAll_sv'),
+        ('fptype_amp_sv* numAll_sv', 'numAll_sv'),
+        ('const int iParity', 'iParity'),
+        ('const bool storeChannelWeights', 'storeChannelWeights'),
+        ('const FLV_COUPLING_ARRAY<nIPF, nMF>& flvCOUPs', 'flvCOUPs'),
+        ('const FLV_COUPLING_ARRAY<nDPF, nMF, HostAccessCouplings::flv_stride>&'
+         ' flvCOUPs_dep', 'flvCOUPs_dep'),
+    ]
+    HR_CHUNK_USING = (
+        '    using M_ACCESS [[maybe_unused]] = HostAccessMomenta;\n'
+        '    using W_ACCESS [[maybe_unused]] = HostAccessWavefunctions;\n'
+        '    using A_ACCESS [[maybe_unused]] = HostAccessAmplitudes;\n'
+        '    using CD_ACCESS [[maybe_unused]] = HostAccessCouplings;\n'
+        '    using CI_ACCESS [[maybe_unused]] = HostAccessCouplingsFixed;\n'
+        '    using F_ACCESS [[maybe_unused]] = HostAccessIflavorVec;\n')
+
+    def hel_recycling_chunk_size(self, nstmt):
+        """Statements per chunk for a block of `nstmt` statements (0: inline),
+        from --hel_recycling_chunk if given."""
+        options = getattr(self.helas_call_writer, 'cmd_options', None) or {}
+        if 'hel_recycling_chunk' in options:
+            try:
+                return int(options['hel_recycling_chunk'])
+            except (TypeError, ValueError):
+                logger.warning('--hel_recycling_chunk must be an integer; '
+                               'using the default')
+        return self.HR_CHUNK_STMTS if nstmt > self.HR_INLINE_MAX else 0
+
+    @staticmethod
+    def hr_split_statements(lines, per_chunk):
+        """Cut the calls into groups of about `per_chunk` statements.
+
+        A cut may only fall where nothing is open. Brace depth is not enough to
+        say that: `if( storeChannelWeights )` leaves the depth at zero and its
+        body opens on the NEXT line, so a cut after it would hand the body to
+        another function. The line has to have finished a statement too -- ended
+        with a ';' or a '}'."""
+        chunks, current, depth, count = [], [], 0, 0
+        for line in lines:
+            current.append(line)
+            code = line.split('//')[0].rstrip()
+            depth += code.count('{') - code.count('}')
+            if code.strip():
+                count += 1
+            complete = code.endswith(';') or code.endswith('}')
+            if depth == 0 and complete and count >= per_chunk:
+                chunks.append(current)
+                current, count = [], 0
+        if current:
+            chunks.append(current)
+        return chunks
+
+    def hr_chunk_calls(self, calls):
+        """(chunk definitions, calls to them) for the recycled call block, or
+        ('', calls) when it is small enough to stay inline."""
+        lines = calls.rstrip('\n').split('\n')
+        nstmt = sum(1 for line in lines if line.split('//')[0].strip())
+        per_chunk = self.hel_recycling_chunk_size(nstmt)
+        if per_chunk <= 0 or nstmt <= per_chunk:
+            return '', calls
+        params = ',\n              '.join('[[maybe_unused]] ' + decl
+                                          for decl, _ in self.HR_CHUNK_STATE)
+        args = ', '.join(name for _, name in self.HR_CHUNK_STATE)
+        defs, body = [], []
+        for i, chunk in enumerate(self.hr_split_statements(lines, per_chunk)):
+            # noinline: folding the chunks back into one body is what they avoid
+            defs.append('  __attribute__( ( noinline ) ) static void\n'
+                        '  hr_chunk_%d( %s )\n  {\n%s%s\n  }\n'
+                        % (i, params, self.HR_CHUNK_USING, '\n'.join(chunk)))
+            body.append('      hr_chunk_%d( %s );' % (i, args))
+        logger.debug('hel_recycling: %d statements in %d chunks', nstmt, len(defs))
+        return '\n'.join(defs), '\n'.join(body) + '\n'
+
     @property
     def hel_recycling(self):
         """Whether the output command asked for --hel_recycling=True (off by
@@ -2188,10 +2286,11 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 except OSError:
                     pass
         header, calls = text.split(self.HR_CALLS_MARK, 1)
+        chunks, calls = self.hr_chunk_calls(calls.lstrip('\n'))
         with open(pjoin(self.path, 'HelRecycling.inc'), 'w') as fsock:
-            fsock.write(header)
+            fsock.write(header + '\n' + chunks)
         with open(pjoin(self.path, 'HelRecyclingCalls.inc'), 'w') as fsock:
-            fsock.write(calls.lstrip('\n'))
+            fsock.write(calls)
         return len(kept)
 
     # AV - modify export_cpp.OneProcessExporterCPP method (fix CPPProcess.cc)

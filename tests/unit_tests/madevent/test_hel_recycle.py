@@ -312,3 +312,123 @@ class TestCppAmplitudeSplit(unittest.TestCase):
                                 'aloha_obj[12]', 'aloha_obj[13]'])
         line = self.LINE.replace('FFV1_0', 'TTT1_0')
         self.assertIsNone(self.dialect._p1n_group(line, amps, 0))
+
+
+class TestRecycledChunkBoundaries(unittest.TestCase):
+    """Where the recycled call block may be cut.
+
+    The block goes into ordinary functions so that the compiler is not handed
+    one body of a hundred thousand lines. A cut in the wrong place is not a
+    subtle problem -- it does not compile -- but WHERE the wrong places are is
+    subtle: brace depth alone says nothing about `if( x )`, whose body opens on
+    the next line."""
+
+    def setUp(self):
+        from madmatrix.model_handling import OneProcessExporterMadMatrix
+        self.split = OneProcessExporterMadMatrix.hr_split_statements
+
+    @staticmethod
+    def fold(i):
+        """What one amplitude turns into: the call, a guarded multichannel
+        block, then the color flows"""
+        return ['      FFV1_0<W_ACCESS>( a, b, &amp_fp[0] ); //HRAMP %d' % i,
+                '      if( storeChannelWeights )',
+                '      {',
+                '        numAll_sv[%d] += cxabs2( amp_sv[0] );' % i,
+                '      }',
+                '      jampAll_sv[%d] += amp_sv[0];' % i]
+
+    def assertChunksAreWholeStatements(self, lines, per_chunk):
+        chunks = self.split(lines, per_chunk)
+        self.assertEqual([l for c in chunks for l in c], lines,
+                         'the block must come back out unchanged')
+        for n, chunk in enumerate(chunks):
+            depth = sum(l.count('{') - l.count('}') for l in chunk)
+            self.assertEqual(depth, 0, 'chunk %d leaves a brace open' % n)
+            last = chunk[-1].split('//')[0].rstrip()
+            self.assertTrue(last.endswith(';') or last.endswith('}'),
+                            'chunk %d ends mid-statement: %r' % (n, last))
+        return chunks
+
+    def test_a_guard_is_never_split_from_its_body(self):
+        """`if( storeChannelWeights )` leaves the brace depth at zero, so depth
+        alone would allow a cut between it and the block it guards"""
+
+        lines = sum((self.fold(i) for i in range(6)), [])
+        for per_chunk in range(1, 8):
+            self.assertChunksAreWholeStatements(lines, per_chunk)
+
+    def test_a_braced_group_is_never_split(self):
+        """A P1N group holds declarations its contractions read"""
+
+        lines = ['      {',
+                 '        FFV1P1N_1<W_ACCESS>( a, b, _p1n );',
+                 '        const cxtype_sv* _pt = access( _p1n.w );',
+                 '        { const cxtype_sv* _pw = access( w.w );',
+                 '          amp_sv[0] = _pt[0] * _pw[0]; }',
+                 '      }'] * 4
+        for per_chunk in (1, 2, 3, 5):
+            chunks = self.assertChunksAreWholeStatements(lines, per_chunk)
+            for chunk in chunks:
+                opens = ''.join(chunk).count('{')
+                self.assertEqual(opens, ''.join(chunk).count('}'))
+
+    def test_the_whole_block_survives_every_chunk_size(self):
+        lines = sum((self.fold(i) for i in range(10)), [])
+        for per_chunk in range(1, 30):
+            self.assertChunksAreWholeStatements(lines, per_chunk)
+
+class TestRecycledChunkPolicy(unittest.TestCase):
+    """When the recycled block is cut up at all. Chunks cost run time on a small
+    block and save the build of a big one, so a block stays inline up to
+    HR_INLINE_MAX statements unless --hel_recycling_chunk says otherwise."""
+
+    def setUp(self):
+        from madmatrix.model_handling import OneProcessExporterMadMatrix
+        self.cls = OneProcessExporterMadMatrix
+
+    def exporter(self, options):
+        class Writer(object):
+            cmd_options = options
+        exporter = self.cls.__new__(self.cls)
+        exporter.helas_call_writer = Writer()
+        return exporter
+
+    def test_a_small_block_stays_inline(self):
+        exporter = self.exporter({})
+        self.assertEqual(exporter.hel_recycling_chunk_size(self.cls.HR_INLINE_MAX), 0)
+        self.assertEqual(exporter.hel_recycling_chunk_size(self.cls.HR_INLINE_MAX + 1),
+                         self.cls.HR_CHUNK_STMTS)
+
+    def test_the_option_wins(self):
+        self.assertEqual(self.exporter({'hel_recycling_chunk': '50'})
+                         .hel_recycling_chunk_size(10), 50)
+        self.assertEqual(self.exporter({'hel_recycling_chunk': '0'})
+                         .hel_recycling_chunk_size(10**6), 0)
+
+    def test_chunks_take_the_state_and_are_called_in_order(self):
+        exporter = self.exporter({'hel_recycling_chunk': '2'})
+        calls = '\n'.join('      FFV1_0<W_ACCESS>( a, b, &amp_fp[0] ); //HRAMP %d' % i
+                          for i in range(5)) + '\n'
+        defs, body = exporter.hr_chunk_calls(calls)
+        self.assertEqual(defs.count('noinline'), 3)
+        self.assertEqual([line.split('(')[0].strip() for line in body.split('\n') if line],
+                         ['hr_chunk_0', 'hr_chunk_1', 'hr_chunk_2'])
+        for decl, name in self.cls.HR_CHUNK_STATE:
+            self.assertIn(decl, defs)
+            self.assertIn(name, body)
+        self.assertEqual(self.exporter({}).hr_chunk_calls(calls), ('', calls))
+
+
+class TestHelRecyclingWarmup(unittest.TestCase):
+    """What the probe prints, read back: madevent's helicity-filter protocol."""
+
+    def test_parse(self):
+        from madmatrix.output import ProcessExporterMadMatrixStandalone
+        output = '\n'.join(['Matrix Element/Good Helicity: 1 3',
+                            'Matrix Element/Good Helicity: 1 1',
+                            'HEL/ZEROAMP: 1 3 7',
+                            'HEL/ZEROAMP: 1 1 2',
+                            'Matrix element = 1.0 GeV^-2'])
+        self.assertEqual(ProcessExporterMadMatrixStandalone._parse_hel_warmup(output),
+                         ([1, 3], [(1, 2), (3, 7)]))
