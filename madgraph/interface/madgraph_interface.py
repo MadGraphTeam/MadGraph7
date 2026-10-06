@@ -6468,7 +6468,10 @@ This implies that with decay chains:
                             # If not all merged components are in this multiparticle,
                             # record the present ones as a per-leg flavor restriction
                             # so diagram generation only allows those specific flavors.
-                            if not all(pdg in self._multiparticles[part_name]
+                            # Completeness is checked per sign: `u d s c d~`
+                            # holds every Q but only one Qx.
+                            sign = 1 if pid > 0 else -1
+                            if not all(sign * pdg in self._multiparticles[part_name]
                                        for pdg in self._curr_model.merged_particles[abs(merged_pdg)]):
                                 if pid not in flavor:
                                     flavor.append(pid)

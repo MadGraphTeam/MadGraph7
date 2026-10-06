@@ -2674,8 +2674,14 @@ class MadgraphSubprocess:
             discrete_sym = None
 
         if flavor_count > 1:
+            # the flavor probabilities are conditioned on the PDF prior; a
+            # leptonic process (or a decay) has none, and the Integrand then
+            # passes no condition: declaring one anyway fails to build
+            # ("keys and values must have the same size"), e.g. z > q q~ with
+            # both u- and d-type rows
             discrete_flavor = ms.DiscreteSampler(
-                [flavor_count], f"{prefix}.discrete_flavor", [0]
+                [flavor_count], f"{prefix}.discrete_flavor",
+                [] if self.process.leptonic else [0]
             )
             for context in self.process.contexts:
                 discrete_flavor.initialize_globals(context)
