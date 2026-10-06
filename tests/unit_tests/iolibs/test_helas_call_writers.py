@@ -1245,6 +1245,24 @@ class AxialGaugeReferenceTest(unittest.TestCase):
             'vxxxxxr<M_ACCESS, W_ACCESS>( momenta, 0., cHel[ihel][2], +1, '
             'cFlavors[iflavor][2], aloha_obj[2], 2, 0 );')
 
+    def test_massive_vector_keeps_vxxxxx(self):
+        """Only a vector that got a reference is written as VXXXXXR: the W of
+        u u~ > w+ w- g has none (the shift needs p^2 = 0), while it shares the
+        cached call template of the gluon, which has one"""
+
+        me = self.matrix_element('u u~ > w+ w- g')
+        refs = helas_call_writers.get_axial_gauge_refs(me)
+        self.assertEqual(refs, {5: 1})
+        writer = helas_call_writers.FortranUFOHelasCallWriter(self.model)
+        writer.axial_gauge = True
+        writer.axial_gauge_refs = refs
+        externals = [line for line in writer.get_matrix_element_calls(me)
+                     if line.split('(')[0].endswith(('VXXXXX', 'VXXXXXR'))]
+        self.assertEqual(externals,
+            ['CALL VXXXXX(P(0,3),mdl_MW,NHEL(3),+1,W(3))',
+             'CALL VXXXXX(P(0,4),mdl_MW,NHEL(4),+1,W(4))',
+             'CALL VXXXXXR(P(0,5),ZERO,NHEL(5),+1,P(0,1),W(5))'])
+
     def test_axial_gauge_requested(self):
         """the output option, and its refusal in the FD gauge (no vxxxxxr in
         the five-component HELAS library)"""
