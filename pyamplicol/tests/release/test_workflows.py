@@ -237,6 +237,31 @@ def test_runtime_tests_omit_the_manual_eager_performance_campaign() -> None:
     assert "PYAMPLICOL_EAGER_BUILTIN_PACK" not in workflow
 
 
+def test_restricted_symbolica_check_runs_before_ordinary_test_collection() -> None:
+    module = "tests/integration/test_spenso_restricted_mode.py"
+    workflow = (WORKFLOWS / "tests.yml").read_text(encoding="utf-8")
+    step = workflow.split(
+        "      - name: Run focused generation and runtime integration "
+        "(30 GiB RSS limit)\n",
+        maxsplit=1,
+    )[1].split("\n      - name:", maxsplit=1)[0]
+    commands = step.split(".venv/bin/python -m pytest ")
+    assert len(commands) == 3
+    assert commands[1].startswith(f"{module} -q\n")
+    assert module not in commands[2]
+    assert step.count(MEMORY_WATCHDOG) == 2
+
+    justfile = JUSTFILE.read_text(encoding="utf-8")
+    for name in ("python-integration", "test"):
+        recipe = justfile.split(f"\n{name}:\n", maxsplit=1)[1].split(
+            "\n\n", maxsplit=1
+        )[0]
+        commands = recipe.split("{{python}} -m pytest ")
+        assert len(commands) == 3
+        assert commands[1].startswith(f"{module} -q\n")
+        assert f"--ignore={module}" in commands[2]
+
+
 def test_candidate_and_release_heavy_commands_use_memory_watchdog() -> None:
     candidate = (WORKFLOWS / "candidate.yml").read_text(encoding="utf-8")
     release = (WORKFLOWS / "release-artifacts.yml").read_text(encoding="utf-8")

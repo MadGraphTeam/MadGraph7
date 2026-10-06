@@ -40,7 +40,9 @@ python-release:
     PYTHONPATH="$PWD/src" {{python}} -m pytest tests/release -q
 
 python-integration:
-    PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{python}} -m pytest tests/integration -q
+    # The restricted child needs a parent that has not imported Symbolica.
+    PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{python}} -m pytest tests/integration/test_spenso_restricted_mode.py -q
+    PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{python}} -m pytest tests/integration --ignore=tests/integration/test_spenso_restricted_mode.py -q
 
 # Focused compiler regressions only; no pyAmpliCol/Symbolica build is required.
 # Defaults to the release-lock SymJIT version; select a checkout with
@@ -122,7 +124,8 @@ check:
     just rust-check
 
 test:
-    PYTHONPATH="$PWD/src" {{python}} -m pytest
+    PYTHONPATH="$PWD/src" {{python}} -m pytest tests/integration/test_spenso_restricted_mode.py -q
+    PYTHONPATH="$PWD/src" {{python}} -m pytest --ignore=tests/integration/test_spenso_restricted_mode.py
     just rust-test
 
 sdist:

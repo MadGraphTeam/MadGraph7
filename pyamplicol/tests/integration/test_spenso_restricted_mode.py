@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-import socket
 import subprocess
 import sys
 
@@ -54,18 +53,11 @@ print("restricted tensor contraction passed")
 """
 
 
-def _free_local_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
-        listener.bind(("127.0.0.1", 0))
-        return int(listener.getsockname()[1])
-
-
 def test_spenso_sequential_execution_respects_symbolica_restricted_mode() -> None:
     environment = dict(os.environ)
     environment.pop("SYMBOLICA_LICENSE", None)
     environment.pop("SYMBOLICA_MASTER_LICENSE", None)
     environment["SYMBOLICA_HIDE_BANNER"] = "1"
-    environment["SYMBOLICA_PORT"] = str(_free_local_port())
     result = subprocess.run(
         [sys.executable, "-c", _RESTRICTED_MODE_MRE],
         check=False,
