@@ -453,6 +453,17 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  // The good-helicity filter of madevent (matrix_madevent_group_v4.inc): a
+  // helicity contributes if, at one of the sampled events, its |M|^2 is more than
+  // limhel/ncomb of the sum over all helicities there (limhel is the hidden
+  // run_card parameter of madevent, 1e-8 by default). Comparing to an exact 0 kept
+  // every helicity whose amplitudes only cancel to rounding -- the all-plus and
+  // one-minus helicities of a purely gluonic process, 12 of the 32 of g g > g g g --
+  // so that every evaluation then computed them for nothing.
+  constexpr double limhel = 1e-8;
+
+  //--------------------------------------------------------------------------
+
   void
   sigmaKin_getGoodHel( const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
                        const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]
@@ -487,6 +498,9 @@ namespace madmatrix
     for( int ihel = 0; ihel < ncomb; ihel++ ) isGoodHel[ihel] = false;
     (void)iflavorVec; // flavor is forced below to scan every flavor combination
     unsigned int hgFlavorVec[maxtry0] = {}; // forced single-flavor index buffer
+    // |M|^2 of every helicity at every sampled event (of the current flavor),
+    // compared at the end to the sum over helicities at the same event
+    std::vector<fptype> helMEs( (size_t)ncomb * maxtry0, 0. );
     for( int iflav = 0; iflav < nmaxflavor; ++iflav )
     {
     for( int i = 0; i < maxtry0; ++i ) hgFlavorVec[i] = (unsigned int)iflav;
@@ -520,19 +534,22 @@ namespace madmatrix
         for( int ieppV = 0; ieppV < neppV; ++ieppV )
         {
           const int ievt = ievt00 + ieppV;
-          if( allMEs[ievt] != 0 ) // NEW IMPLEMENTATION OF GETGOODHEL (#630): COMPARE EACH HELICITY CONTRIBUTION TO 0
-          {
-            isGoodHel[ihel] = true;
-          }
+          helMEs[(size_t)ihel * maxtry0 + ievt] = allMEs[ievt];
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
           const int ievt2 = ievt00 + ieppV + neppV;
-          if( allMEs[ievt2] != 0 ) // NEW IMPLEMENTATION OF GETGOODHEL (#630): COMPARE EACH HELICITY CONTRIBUTION TO 0
-          {
-            isGoodHel[ihel] = true;
-          }
+          helMEs[(size_t)ihel * maxtry0 + ievt2] = allMEs[ievt2];
 #endif
         }
       }
+    }
+    // a helicity is good for this flavor if it is above limhel/ncomb of the sum
+    // over helicities at one of the events (see limhel)
+    for( int ievt = 0; ievt < maxtry; ++ievt )
+    {
+      fptype sumhel = 0;
+      for( int ihel = 0; ihel < ncomb; ihel++ ) sumhel += std::abs( helMEs[(size_t)ihel * maxtry0 + ievt] );
+      for( int ihel = 0; ihel < ncomb; ihel++ )
+        if( std::abs( helMEs[(size_t)ihel * maxtry0 + ievt] ) > sumhel * limhel / ncomb ) isGoodHel[ihel] = true;
     }
     } // end loop over flavor combinations (per-flavor good-helicity union)
   }
