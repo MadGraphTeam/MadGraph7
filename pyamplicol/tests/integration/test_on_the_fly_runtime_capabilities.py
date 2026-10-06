@@ -112,8 +112,8 @@ def _rusticol_config() -> tuple[str, ...]:
     discovered = shutil.which("rusticol-config")
     if discovered:
         return (discovered,)
-    if importlib.util.find_spec("pyamplicol._sdk.config") is not None:
-        return (sys.executable, "-m", "pyamplicol._sdk.config")
+    if importlib.util.find_spec("rusticol_config") is not None:
+        return (sys.executable, "-m", "rusticol_config")
     _unavailable("the installed Rusticol C SDK is unavailable")
     raise AssertionError("unreachable")
 

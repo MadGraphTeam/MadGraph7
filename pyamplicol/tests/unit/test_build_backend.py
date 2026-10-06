@@ -1435,6 +1435,7 @@ def test_archive_overlay_without_git_history_uses_pruned_allowlist(
         ),
         Path("release_assets/prepared_models/README.md"): "release store\n",
         Path("src/pyamplicol/_sdk/config.py"): "maintained SDK config\n",
+        Path("src/rusticol_config/__init__.py"): "standalone SDK config\n",
         Path("tests/fixtures/candidate-Cargo.lock"): "fixture lock\n",
     }
     excluded = (

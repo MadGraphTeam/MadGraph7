@@ -66,8 +66,8 @@ def _rusticol_config_command() -> tuple[str, ...] | None:
     configured = os.environ.get("RUSTICOL_CONFIG")
     if configured:
         return tuple(shlex.split(configured))
-    if importlib.util.find_spec("pyamplicol._sdk.config") is not None:
-        return (sys.executable, "-m", "pyamplicol._sdk.config")
+    if importlib.util.find_spec("rusticol_config") is not None:
+        return (sys.executable, "-m", "rusticol_config")
     sibling = Path(sys.executable).parent / "rusticol-config"
     if sibling.is_file():
         return (str(sibling),)

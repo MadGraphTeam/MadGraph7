@@ -781,7 +781,7 @@ def _wheel(
             f"{dist_info}/entry_points.txt": (
                 b"[console_scripts]\n"
                 b"pyamplicol = pyamplicol.cli:main\n"
-                b"rusticol-config = pyamplicol._sdk.config:main\n"
+                b"rusticol-config = rusticol_config:main\n"
             ),
         }
     )
@@ -1004,6 +1004,12 @@ def test_generated_umami_templates_are_required_in_wheel_and_sdist() -> None:
             "umami.exports.macos",
         )
     }
+    assert resources <= set(_REQUIRED_WHEEL_PACKAGE_MEMBERS)
+    assert {f"src/{name}" for name in resources} <= REQUIRED_SDIST_MEMBERS
+
+
+def test_standalone_sdk_query_package_is_required_in_wheel_and_sdist() -> None:
+    resources = {"rusticol_config/__init__.py", "rusticol_config/__main__.py"}
     assert resources <= set(_REQUIRED_WHEEL_PACKAGE_MEMBERS)
     assert {f"src/{name}" for name in resources} <= REQUIRED_SDIST_MEMBERS
 

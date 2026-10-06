@@ -125,8 +125,8 @@ def _rusticol_config() -> tuple[str, ...] | None:
     discovered = shutil.which("rusticol-config")
     if discovered:
         return (discovered,)
-    if importlib.util.find_spec("pyamplicol._sdk.config") is not None:
-        return (sys.executable, "-m", "pyamplicol._sdk.config")
+    if importlib.util.find_spec("rusticol_config") is not None:
+        return (sys.executable, "-m", "rusticol_config")
     return None
 
 

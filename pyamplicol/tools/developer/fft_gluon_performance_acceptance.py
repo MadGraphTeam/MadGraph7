@@ -1798,7 +1798,7 @@ def _build_probe(
     memory_limit_gib: float = MEMORY_LIMIT_GIB,
 ) -> tuple[Path, dict[str, Any]]:
     sdk = _run_watched(
-        (python, "-m", "pyamplicol._sdk.config", "--json"),
+        (python, "-m", "rusticol_config", "--json"),
         python=python,
         environment=environment,
         timeout_seconds=60.0,

@@ -18,6 +18,10 @@ into another executable, see [UMAMI and MadSpace](umami-api.md). Its generated
 `API/umami` Makefile builds `libumami.so` and a linked standalone driver using
 the same installed Rusticol SDK.
 
+`rusticol-config` (also available as `python -m rusticol_config`) only reads SDK
+paths, version and linker metadata. It does not initialize pyAmpliCol or
+Symbolica, so build-system queries can run alongside numerical evaluations.
+
 FFT basis is a generation-time choice, not a native runtime flag. Generation
 with `--color-accuracy full` or Python's `ColorConfig(accuracy="full")`
 automatically tries adaptive adjoint FFT for recurrence/on-the-fly execution,

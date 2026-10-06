@@ -79,6 +79,8 @@ REQUIRED_SDIST_MEMBERS = frozenset(
         "src/pyamplicol/assets/api_templates/umami/UMAMI_LICENSE",
         "src/pyamplicol/assets/api_templates/umami/README.md",
         "src/pyamplicol/_build_info.json",
+        "src/rusticol_config/__init__.py",
+        "src/rusticol_config/__main__.py",
         *PREPARED_MODEL_SDIST_MEMBERS,
         "src/pyamplicol/assets/selftest/portable-64le/expected.json",
         "src/pyamplicol/assets/selftest/portable-64le/artifact/artifact.json",

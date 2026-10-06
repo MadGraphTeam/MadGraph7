@@ -478,7 +478,7 @@ def test_native_sdk_smoke_compiles_and_runs_all_four_language_drivers(
         rendered = [os.fspath(item) for item in command]
         commands.append(rendered)
         command_environments.append(dict(_kwargs.get("env", {})))
-        if "pyamplicol._sdk.config" in rendered:
+        if "rusticol_config" in rendered:
             return subprocess.CompletedProcess(rendered, 0, json.dumps(sdk), "")
         language = None
         if any(item.endswith("check_standalone.py") for item in rendered):

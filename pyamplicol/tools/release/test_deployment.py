@@ -259,6 +259,7 @@ package_files = [item for item in files if not item.startswith("../../../bin/")]
 roots = {item.split("/", 1)[0] for item in package_files}
 assert all(
     root == "pyamplicol"
+    or root == "rusticol_config"
     or root == "pyamplicol.libs"
     or root.endswith(".dist-info")
     for root in roots
@@ -745,7 +746,7 @@ def _native_toolchain(mode: str) -> NativeToolchain | None:
 
 def _sdk_payload(python: Path, environment: dict[str, str]) -> dict[str, Any]:
     completed = run(
-        [python, "-I", "-m", "pyamplicol._sdk.config", "--json"],
+        [python, "-I", "-m", "rusticol_config", "--json"],
         env=environment,
         capture_output=True,
     )

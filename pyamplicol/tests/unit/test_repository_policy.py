@@ -14,6 +14,7 @@ from pyamplicol._internal import versions
 ROOT = Path(__file__).resolve().parents[2]
 FIRST_PARTY_ROOTS = (
     ROOT / "src" / "pyamplicol",
+    ROOT / "src" / "rusticol_config",
     ROOT / "build_backend",
     ROOT / "dependencies",
     ROOT / "tools",
