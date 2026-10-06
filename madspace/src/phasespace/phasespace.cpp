@@ -730,13 +730,17 @@ PhaseSpaceMapping::PhaseSpaceMapping(
                         dr_full.at(child_to_out.at(a)).at(child_to_out.at(b));
                 }
             }
+            // The blocks of the chain that scatter the two beams (central 2->2,
+            // double-t, first peel of a single chain) take the rapidity bounds.
             _t_mapping = ColorOrderedMapping(
                 ps_chain_order(topology, color_order),
                 invariant_power,
                 invariant_power,
                 pt_min,
                 m_inv_co,
-                dr_co
+                dr_co,
+                true,
+                y_max
             );
         } else if (t_channel_mode == PhaseSpaceMapping::propagator ||
                    topology.t_propagator_count() < 2) {
@@ -905,7 +909,8 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
                     conds.push_back(decay_data.at(index).mass.value());
                 }
                 using TMapping = std::decay_t<decltype(t_mapping)>;
-                if constexpr (std::is_same_v<TMapping, TPropagatorMapping>) {
+                if constexpr (std::is_same_v<TMapping, TPropagatorMapping> ||
+                              std::is_same_v<TMapping, ColorOrderedMapping>) {
                     if (t_mapping.has_rapidity_window()) {
                         conds.push_back(x1);
                         conds.push_back(x2);
@@ -1116,7 +1121,8 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
                     args.push_back(decay_data.at(index).momentum.value());
                     conds.push_back(decay_data.at(index).computed_mass.value());
                 }
-                if constexpr (std::is_same_v<TMapping, TPropagatorMapping>) {
+                if constexpr (std::is_same_v<TMapping, TPropagatorMapping> ||
+                              std::is_same_v<TMapping, ColorOrderedMapping>) {
                     if (t_mapping.has_rapidity_window()) {
                         conds.push_back(x1);
                         conds.push_back(x2);

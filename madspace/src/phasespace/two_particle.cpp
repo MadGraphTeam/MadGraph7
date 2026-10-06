@@ -243,7 +243,10 @@ DoubleT::DoubleT(
     double t2_invariant_power,
     double t2_mass,
     double t2_width,
-    bool has_cut
+    bool has_cut,
+    double y_max1,
+    double y_max2,
+    double beam_sign
 ) :
     Mapping(
         "DoubleT",
@@ -262,12 +265,75 @@ DoubleT::DoubleT(
                 cond.push_back("etmin_i", batch_float);
                 cond.push_back("etmin_ir", batch_float);
             }
+            if (y_max1 >= 0. || y_max2 >= 0.) {
+                cond.push_back("x1", batch_float);
+                cond.push_back("x2", batch_float);
+            }
             return cond;
         }()
     ),
     _t1_invariant(t1_invariant_power, t1_mass, t1_width),
     _t2_invariant(t2_invariant_power, t2_mass, t2_width),
-    _has_cut(has_cut) {}
+    _has_cut(has_cut),
+    _rapidity_window(y_max1 >= 0. || y_max2 >= 0.),
+    _y_max1(y_max1),
+    _y_max2(y_max2),
+    _beam_sign(beam_sign) {}
+
+std::array<Value, 2> DoubleT::rapidity_clamp_t1(
+    FunctionBuilder& fb,
+    const NamedVector<Value>& conditions,
+    Value t1_min,
+    Value t1_max
+) const {
+    if (!_rapidity_window) {
+        return {t1_min, t1_max};
+    }
+    std::size_t x_index = _has_cut ? 6 : 4;
+    auto [lo, hi] = fb.t1_rapidity_clamp_doublet(
+        t1_min,
+        t1_max,
+        conditions.at(0),
+        conditions.at(1),
+        conditions.at(2),
+        conditions.at(3),
+        _has_cut ? conditions.at(4) : Value(0.),
+        _has_cut ? conditions.at(5) : Value(0.),
+        conditions.at(x_index),
+        conditions.at(x_index + 1),
+        _beam_sign,
+        _y_max1,
+        _y_max2
+    );
+    return {lo, hi};
+}
+
+std::array<Value, 2> DoubleT::rapidity_clamp(
+    FunctionBuilder& fb,
+    const NamedVector<Value>& conditions,
+    Value t2_min,
+    Value t2_max,
+    Value t1_abs
+) const {
+    if (!_rapidity_window) {
+        return {t2_min, t2_max};
+    }
+    std::size_t x_index = _has_cut ? 6 : 4;
+    auto [lo, hi] = fb.t2_rapidity_clamp_doublet(
+        t2_min,
+        t2_max,
+        conditions.at(0),
+        conditions.at(1),
+        conditions.at(2),
+        t1_abs,
+        conditions.at(x_index),
+        conditions.at(x_index + 1),
+        _beam_sign,
+        _y_max1,
+        _y_max2
+    );
+    return {lo, hi};
+}
 
 Mapping::Result DoubleT::build_forward_impl(
     FunctionBuilder& fb,
@@ -281,13 +347,16 @@ Mapping::Result DoubleT::build_forward_impl(
     auto etmin_i = _has_cut ? conditions.at(4) : Value(0.);
     auto etmin_ir = _has_cut ? conditions.at(5) : Value(0.);
 
-    auto [t1_min, t1_max] =
+    auto [t1_min_kin, t1_max_kin] =
         fb.t1_inv_min_max_doublet(p_in1, p_in2, m1, mir_min, etmin_i, etmin_ir);
+    auto [t1_min, t1_max] = rapidity_clamp_t1(fb, conditions, t1_min_kin, t1_max_kin);
     auto t1_result = _t1_invariant.build_forward(fb, {r_t1}, {t1_min, t1_max});
 
-    auto [t2_min, t2_max] = fb.t2_inv_min_max_doublet(
+    auto [t2_min_kin, t2_max_kin] = fb.t2_inv_min_max_doublet(
         p_in1, p_in2, m1, mir_min, t1_result["invariant"], etmin_i, etmin_ir
     );
+    auto [t2_min, t2_max] =
+        rapidity_clamp(fb, conditions, t2_min_kin, t2_max_kin, t1_result["invariant"]);
     auto t2_result = _t2_invariant.build_forward(fb, {r_t2}, {t2_min, t2_max});
 
     auto [p1, p2, det_scatter] = fb.double_t_scattering(
@@ -312,14 +381,17 @@ Mapping::Result DoubleT::build_inverse_impl(
 
     auto [r_phi, det_scatter] = fb.double_t_scattering_inverse(p1, p2, p_in1, p_in2);
 
-    auto [t1_abs, t1_min, t1_max] = fb.t1_inv_value_and_min_max_doublet(
+    auto [t1_abs, t1_min_kin, t1_max_kin] = fb.t1_inv_value_and_min_max_doublet(
         p_in1, p_in2, p1, m1, mir_min, etmin_i, etmin_ir
     );
+    auto [t1_min, t1_max] = rapidity_clamp_t1(fb, conditions, t1_min_kin, t1_max_kin);
     auto t1_result = _t1_invariant.build_inverse(fb, {t1_abs}, {t1_min, t1_max});
 
-    auto [t2_abs, t2_min, t2_max] = fb.t2_inv_value_and_min_max_doublet(
+    auto [t2_abs, t2_min_kin, t2_max_kin] = fb.t2_inv_value_and_min_max_doublet(
         p_in1, p_in2, p1, m1, mir_min, t1_abs, etmin_i, etmin_ir
     );
+    auto [t2_min, t2_max] =
+        rapidity_clamp(fb, conditions, t2_min_kin, t2_max_kin, t1_abs);
     auto t2_result = _t2_invariant.build_inverse(fb, {t2_abs}, {t2_min, t2_max});
 
     auto det_inv = fb.mul(t1_result["det"], t2_result["det"]);

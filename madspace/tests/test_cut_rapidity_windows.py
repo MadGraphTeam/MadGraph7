@@ -497,3 +497,144 @@ def test_t_channel_first_step_only_bounds_what_it_peels():
     outside = np.abs(eta(p_ext[:, 2:5])) > ETA_PHOTON + 1e-6
     assert outside[:, peeled].mean() < 0.03
     assert outside[:, other].mean() > 0.2
+
+
+# --------------------------------------------------------------------------
+# colour-ordered chains: the blocks that scatter the two beams
+# --------------------------------------------------------------------------
+#
+# ColorOrderedMapping uses the rapidity bounds where a block's incoming momenta
+# are the beams: the central 2->2 (the two colour sides), the double-t central
+# block (|t2| at fixed |t1|: pa.p1 and pb.p1 are (m1^2 + |t1|)/2 and
+# (m1^2 + |t2|)/2) and the first peel of a single chain.
+
+GGGG_PIDS = [2, -2, 21, 21, 21, 21]
+CO_ORDERS = {
+    "chain": [0, 2, 3, 4, 5, 1],  # one chain: first peel is beam-beam
+    "2+2": [0, 2, 3, 1, 4, 5],  # central 2->2 between {0, 1} and {2, 3}
+    "1+3": [0, 2, 1, 3, 4, 5],  # double-t: {0} against {1, 2, 3}
+}
+# outgoing particles whose summed momentum has to stay within the bound
+CO_BOUNDED = {"chain": [[0], [1, 2, 3]], "2+2": [[0, 1], [2, 3]], "1+3": [[0], [1, 2, 3]]}
+
+
+def gggg_cuts():
+    return ms.Cuts(
+        jet_cuts(GGGG_PIDS)
+        + [ms.CutItem(O(GGGG_PIDS, O.obs_delta_r, [O.jet_pids]), min=0.4)]
+    )
+
+
+def co_sample(mapping, n, seed):
+    rng = np.random.default_rng(seed)
+    r = rng.random((n, mapping.random_dim()))
+    d = rng.integers(0, 2, size=(n, mapping.discrete_dim())).astype(np.int32)
+    out = mapping.map_forward([r, d] if mapping.discrete_dim() else [r])
+    p_ext, x1, x2, det = (np.asarray(a) for a in out)
+    ok = np.isfinite(det) & np.all(np.isfinite(p_ext), axis=(1, 2))
+    return p_ext, x1, x2, np.where(ok, det, 0.0)
+
+
+@pytest.mark.parametrize("name", list(CO_ORDERS))
+def test_color_ordered_window_is_exact(name):
+    """Every event passing the cuts maps back into the unit cube through the
+    windowed colour-ordered mapping, and the cut-region integral is
+    unchanged."""
+    order = CO_ORDERS[name]
+    cuts = gggg_cuts()
+    masses = [0.0] * 6
+
+    def mapping(c):
+        return ms.PhaseSpaceMapping(
+            masses, CM_ENERGY, mode=ms.PhaseSpaceMapping.color_ordered, cuts=c, color_order=order
+        )
+
+    n = 200_000
+    p_free, y1, y2, det_free = co_sample(mapping(ms.Cuts(6)), n, SEED)
+    keep = passes(cuts, p_free) & (det_free > 0)
+    assert keep.sum() > 1000
+    out = mapping(cuts).map_inverse([p_free[keep], y1[keep], y2[keep]], [])
+    r_back = np.asarray(out[0])
+    assert np.all(np.isfinite(r_back))
+    assert r_back.min() > -1e-6 and r_back.max() < 1 + 1e-6
+
+    def integral(p_ext, x1, x2, det):
+        w = np.where(passes(cuts, p_ext), det / (CM_ENERGY**2 * x1 * x2), 0.0)
+        return w.mean(), w.std() / math.sqrt(len(w))
+
+    a, ea = integral(p_free, y1, y2, det_free)
+    b, eb = integral(*co_sample(mapping(cuts), n, SEED + 1))
+    assert abs(a - b) < 5.0 * math.hypot(ea, eb)
+
+
+@pytest.mark.parametrize("name", list(CO_ORDERS))
+def test_color_ordered_blocks_respect_the_bounds(name):
+    """ColorOrderedMapping on its own, at fixed sqrt(s_hat) and boost: with
+    y_max the momenta each beam-beam block emits stay within the bound (up
+    to the points where the pt and rapidity bounds leave nothing, for which
+    the block keeps its full range), and without it they do not."""
+    order = CO_ORDERS[name]
+    sqrt_s, y_boost = 500.0, 0.8
+    tau = (sqrt_s / CM_ENERGY) ** 2
+    x1, x2 = math.sqrt(tau) * math.exp(y_boost), math.sqrt(tau) * math.exp(-y_boost)
+    n = 100_000
+    rng = np.random.default_rng(SEED)
+
+    def outside(y_max):
+        mapping = ms.ColorOrderedMapping(
+            order, 0.8, 0.8, [PT_JET] * 4, [], [], True, y_max
+        )
+        r = rng.random((n, mapping.random_dim()))
+        d = rng.integers(0, 2, size=(n, mapping.discrete_dim())).astype(np.int32)
+        inputs = [r[:, i].copy() for i in range(r.shape[1])]
+        inputs += [d[:, j].copy() for j in range(d.shape[1])]
+        conditions = [np.full(n, sqrt_s)] + [np.zeros(n)] * 4
+        if y_max:
+            conditions += [np.full(n, x1), np.full(n, x2)]
+        out = mapping.map_forward(inputs, conditions)
+        p = np.stack([np.asarray(q) for q in out[:-1]], axis=1)
+        finite = np.all(np.isfinite(p), axis=(1, 2))
+        fractions = []
+        for group in CO_BOUNDED[name]:
+            system = p[finite][:, [2 + i for i in group]].sum(axis=1)
+            fractions.append(np.mean(np.abs(rapidity(system) + y_boost) > ETA_JET + 1e-9))
+        return fractions
+
+    for with_bound, without in zip(outside([ETA_JET] * 4), outside([])):
+        assert with_bound < 0.03
+        assert without > 0.1 or with_bound <= without
+
+
+def test_double_t_window_alone():
+    """DoubleT between the beams, with transverse-energy floors: with rapidity
+    bounds on the single particle and the recoil, |t1| is narrowed to values
+    that leave some |t2| (using (2 pa.q)(2 pb.q) = s M_T(q)^2) and |t2| at
+    fixed |t1|, so neither momentum ever leaves its bound; without them the
+    single particle does in a fifth of the points."""
+    n = 50_000
+    sqrt_s, y_boost = 500.0, 0.8
+    tau = (sqrt_s / CM_ENERGY) ** 2
+    x1, x2 = math.sqrt(tau) * math.exp(y_boost), math.sqrt(tau) * math.exp(-y_boost)
+    pa = np.tile([sqrt_s / 2, 0.0, 0.0, sqrt_s / 2], (n, 1))
+    pb = np.tile([sqrt_s / 2, 0.0, 0.0, -sqrt_s / 2], (n, 1))
+    rng = np.random.default_rng(SEED)
+    r = [rng.random(n) for _ in range(3)]
+    base = [pa, pb, np.zeros(n), np.zeros(n), np.full(n, 20.0), np.full(n, 40.0)]
+
+    def outside(mapping, conditions):
+        p1, p2, det = (np.asarray(a) for a in mapping.map_forward(r, conditions))
+        ok = np.isfinite(det) & (det > 0)
+        return [
+            np.mean(np.abs(rapidity(p[ok]) + y_boost) > ETA_JET + 1e-9) for p in (p1, p2)
+        ]
+
+    bounded = ms.DoubleT(0.8, 0.0, 0.0, 0.8, 0.0, 0.0, True, ETA_JET, ETA_JET, 1.0)
+    free = ms.DoubleT(0.8, 0.0, 0.0, 0.8, 0.0, 0.0, True)
+    assert outside(bounded, base + [np.full(n, x1), np.full(n, x2)]) == [0.0, 0.0]
+    assert outside(free, base)[0] > 0.1
+    *inputs, det_back = bounded.map_inverse(
+        list(bounded.map_forward(r, base + [np.full(n, x1), np.full(n, x2)])[:2]),
+        base + [np.full(n, x1), np.full(n, x2)],
+    )
+    for a, b in zip(inputs, r):
+        assert np.asarray(a) == approx(b, abs=1e-7)

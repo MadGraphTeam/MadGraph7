@@ -1571,6 +1571,100 @@ t_rapidity_clamp:
       desc: "narrowed upper bound of |t|"
   desc: "Narrows the |t| range of a beam-beam 2 -> 2 scattering to the values for which both outgoing momenta can satisfy their rapidity bounds. Building block of @ref TwoToTwoParticleScattering."
 
+t1_rapidity_clamp_doublet:
+  inputs:
+    - name: t1_min
+      type: [float]
+      desc: "lower bound of |t1|"
+    - name: t1_max
+      type: [float]
+      desc: "upper bound of |t1|"
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum (a beam, in the partonic centre-of-mass frame)"
+    - name: pb
+      type: [float, 4]
+      desc: "second incoming momentum (the other beam)"
+    - name: m1
+      type: [float]
+      desc: "mass of the single outgoing particle p1"
+    - name: mir_min
+      type: [float]
+      desc: "minimum invariant mass of the recoil system"
+    - name: etmin_1
+      type: [float]
+      desc: "lower bound on the transverse energy of p1 (0 for none)"
+    - name: etmin_2
+      type: [float]
+      desc: "lower bound on the transverse energy of the recoil p2 (0 for none)"
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2"
+    - name: beam_sign
+      type: [float]
+      desc: "+1 if pa is beam 1, -1 if it is beam 2"
+    - name: y_max1
+      type: [float]
+      desc: "bound on the absolute lab rapidity of p1, negative for none"
+    - name: y_max2
+      type: [float]
+      desc: "bound on the absolute lab rapidity of the recoil p2, negative for none"
+  outputs:
+    - name: t1_min_out
+      type: [float]
+      desc: "narrowed lower bound of |t1|"
+    - name: t1_max_out
+      type: [float]
+      desc: "narrowed upper bound of |t1|"
+  desc: "Narrows |t1| of the double-t central block to the values that leave some |t2| for the rapidity bounds of both outgoing momenta. Building block of @ref DoubleT."
+
+t2_rapidity_clamp_doublet:
+  inputs:
+    - name: t2_min
+      type: [float]
+      desc: "lower bound of |t2|"
+    - name: t2_max
+      type: [float]
+      desc: "upper bound of |t2|"
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum (a beam, in the partonic centre-of-mass frame)"
+    - name: pb
+      type: [float, 4]
+      desc: "second incoming momentum (the other beam)"
+    - name: m1
+      type: [float]
+      desc: "mass of the single outgoing particle p1"
+    - name: t1_abs
+      type: [float]
+      desc: "the sampled |t1| = -(pa - p1)^2"
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2"
+    - name: beam_sign
+      type: [float]
+      desc: "+1 if pa is beam 1, -1 if it is beam 2"
+    - name: y_max1
+      type: [float]
+      desc: "bound on the absolute lab rapidity of p1, negative for none"
+    - name: y_max2
+      type: [float]
+      desc: "bound on the absolute lab rapidity of the recoil p2, negative for none"
+  outputs:
+    - name: t2_min_out
+      type: [float]
+      desc: "narrowed lower bound of |t2|"
+    - name: t2_max_out
+      type: [float]
+      desc: "narrowed upper bound of |t2|"
+  desc: "Narrows |t2| of the double-t central block, at fixed |t1|, to the values for which both outgoing momenta can satisfy their rapidity bounds. Building block of @ref DoubleT."
+
 t_inv_value_and_min_max_cut:
   inputs:
     - name: pa

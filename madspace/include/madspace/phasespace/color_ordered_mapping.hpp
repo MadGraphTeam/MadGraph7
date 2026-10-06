@@ -33,6 +33,8 @@ namespace madspace {
  * **Conditions**
  * - `com_energy` – `float`, shape `(batch,)` – total collision energy.
  * - `mass_i` – `float`, shape `(batch,)` – the `n_out` outgoing masses.
+ * - `x1`, `x2` – `float`, shape `(batch,)` – beam momentum fractions. Present
+ *   only when a rapidity bound is used (see the constructor).
  *
  * **Outputs**
  * - `momentum_i` – `float`, shape `(batch, 4)` – the `n` momenta (incoming
@@ -70,6 +72,19 @@ public:
      *                          invariant with the arcsine map in the azimuth,
      *                          removing the `1/|sin(phi)|` edge peak of the
      *                          weight; see @ref TwoToThreeParticleScattering.
+     * @param y_max             Per-outgoing-particle bound on the absolute lab
+     *                          rapidity, negative (or empty) for none. Used
+     *                          where a block scatters the two beams in the
+     *                          partonic centre-of-mass frame, so that its
+     *                          momentum transfers fix the light-cone
+     *                          components of what it emits: the central 2->2
+     *                          (bounds of the two sides), the double-t central
+     *                          block (|t2| at fixed |t1|) and the first peel of
+     *                          a single chain. A side or rest system is bounded
+     *                          when each of its particles is. The mapping then
+     *                          takes the beam momentum fractions `x1`, `x2`
+     *                          (`float`, shape `(batch,)`) as two further
+     *                          conditions.
      */
     ColorOrderedMapping(
         const std::vector<std::size_t>& color_order,
@@ -78,13 +93,17 @@ public:
         const std::vector<double>& pt_min = {},
         const std::vector<std::vector<double>>& m_inv_min = {},
         const std::vector<std::vector<double>>& dr_min = {},
-        bool arcsine_s23 = true
+        bool arcsine_s23 = true,
+        const std::vector<double>& y_max = {}
     );
 
     /// Number of continuous unit-hypercube inputs consumed by the forward map.
     std::size_t random_dim() const { return _random_dim; }
     /// Number of discrete two-solution choices (one per 2->3 peel).
     std::size_t discrete_dim() const override { return _discrete_dim; }
+    /// Whether rapidity bounds narrow a block (and the mapping therefore takes
+    /// `x1`, `x2` as conditions).
+    bool has_rapidity_window() const { return _rapidity_window; }
 
 private:
     Result build_forward_impl(
@@ -130,10 +149,13 @@ private:
     std::vector<std::vector<double>> _m_inv_min;
     std::vector<std::vector<double>> _dr_min;
     bool _has_cut;
+    bool _rapidity_window;
 
     Invariant _uniform_invariant;
     TwoToTwoParticleScattering _com_scattering;
     TwoToTwoParticleScattering _lab_scattering;
+    // first peel of a single chain, whose incoming momenta are the beams
+    TwoToTwoParticleScattering _chain_scattering;
     TwoToThreeParticleScattering _two_to_three;
     DoubleT _double_t;
 };

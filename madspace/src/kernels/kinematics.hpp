@@ -915,6 +915,150 @@ KERNELSPEC void kernel_t_rapidity_clamp(
     t_max_out = where(ok, hi, FVal<T>(t_max));
 }
 
+// Narrows |t1| of the double-t central block (see t2_rapidity_clamp_doublet) to
+// the values that leave some |t2| for the rapidity bounds. At fixed |t1| every
+// bound on |t2| is linear in |t1|:
+//   p1 (bound y_max1): (m1^2 + |t1|) e^{2 lo1} - m1^2 <= |t2|
+//                       <= (m1^2 + |t1|) e^{2 hi1} - m1^2,
+//   p2 (bound y_max2): s - (s - m1^2 - |t1|) e^{2 hi2} - m1^2 <= |t2|
+//                       <= s - (s - m1^2 - |t1|) e^{2 lo2} - m1^2,
+//   kinematics:        0 <= |t2| <= s - |t1| - m1^2 - mir_min^2,
+// (lo, hi = -+y_max - y_boost), so each lower <= upper pair is a half-line in
+// |t1|. The kinematic lower end used here (0) is below the true one, so the
+// interval contains every |t1| that has a passing |t2|.
+// The transverse-energy floors add two more: for any momentum q,
+// (2 pa.q)(2 pb.q) = s M_T(q)^2, with M_T of a system at least the sum of its
+// members' m_T, and pb.q = pa.q e^{2 y_a(q)}. For p1, M_T >= etmin_1 and
+// y_a <= hi1 give (m1^2 + |t1|) >= sqrt(s) etmin_1 e^{-hi1}; for p2
+// (2 pa.p2 = s - m1^2 - |t1|), M_T >= etmin_2 and y_a(p2) <= hi2 give
+// (s - m1^2 - |t1|) >= sqrt(s) etmin_2 e^{-hi2}. An empty result returns the
+// input range.
+template <typename T>
+KERNELSPEC void kernel_t1_rapidity_clamp_doublet(
+    FIn<T, 0> t1_min,
+    FIn<T, 0> t1_max,
+    FIn<T, 1> pa,
+    FIn<T, 1> pb,
+    FIn<T, 0> m1,
+    FIn<T, 0> mir_min,
+    FIn<T, 0> etmin_1,
+    FIn<T, 0> etmin_2,
+    FIn<T, 0> x1,
+    FIn<T, 0> x2,
+    FIn<T, 0> beam_sign,
+    FIn<T, 0> y_max1,
+    FIn<T, 0> y_max2,
+    FOut<T, 0> t1_min_out,
+    FOut<T, 0> t1_max_out
+) {
+    FourMom<T> p_tot;
+    for (int i = 0; i < 4; ++i) {
+        p_tot[i] = pa[i] + pb[i];
+    }
+    auto s = lsquare<T>(p_tot);
+    auto m1_2 = m1 * m1;
+    auto y_boost = beam_sign * 0.5 * log(x1 / x2);
+    auto e1_lo = exp(2. * (-y_max1 - y_boost)), e1_hi = exp(2. * (y_max1 - y_boost));
+    auto e2_lo = exp(2. * (-y_max2 - y_boost)), e2_hi = exp(2. * (y_max2 - y_boost));
+    auto on1 = y_max1 >= 0., on2 = y_max2 >= 0.;
+
+    // the bounds on |t2| as alpha + beta |t1|; an inactive one is replaced by
+    // the kinematic bound of the same side
+    FVal<T> lo_alpha[3] = {
+        FVal<T>(0.),
+        where(on1, m1_2 * e1_lo - m1_2, FVal<T>(0.)),
+        where(on2, s - (s - m1_2) * e2_hi - m1_2, FVal<T>(0.))
+    };
+    FVal<T> lo_beta[3] = {
+        FVal<T>(0.), where(on1, e1_lo, FVal<T>(0.)), where(on2, e2_hi, FVal<T>(0.))
+    };
+    auto kin_alpha = s - m1_2 - mir_min * mir_min;
+    FVal<T> hi_alpha[3] = {
+        kin_alpha,
+        where(on1, m1_2 * e1_hi - m1_2, kin_alpha),
+        where(on2, s - (s - m1_2) * e2_lo - m1_2, kin_alpha)
+    };
+    FVal<T> hi_beta[3] = {
+        FVal<T>(-1.), where(on1, e1_hi, FVal<T>(-1.)), where(on2, e2_lo, FVal<T>(-1.))
+    };
+
+    FVal<T> lo = t1_min, hi = t1_max;
+    auto sqrt_s = sqrt(max(s, EPS));
+    lo = where(on1, max(lo, sqrt_s * etmin_1 * exp(-(y_max1 - y_boost)) - m1_2), lo);
+    hi =
+        where(on2, min(hi, s - m1_2 - sqrt_s * etmin_2 * exp(-(y_max2 - y_boost))), hi);
+    auto feasible = lo <= hi;
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            // lo_alpha_i + lo_beta_i t <= hi_alpha_j + hi_beta_j t
+            auto slope = lo_beta[i] - hi_beta[j];
+            auto rhs = hi_alpha[j] - lo_alpha[i];
+            auto bound = rhs / where(slope == 0., FVal<T>(1.), slope);
+            hi = where(slope > 0., min(hi, bound), hi);
+            lo = where(slope < 0., max(lo, bound), lo);
+            feasible = feasible & ((slope != 0.) | (rhs >= 0.));
+        }
+    }
+    auto ok = feasible & (hi > lo);
+    t1_min_out = where(ok, lo, FVal<T>(t1_min));
+    t1_max_out = where(ok, hi, FVal<T>(t1_max));
+}
+
+// Narrows |t2| of the double-t central block pa pb -> p1 p2 (pa, pb the massless
+// beams, |t1| = -(pa - p1)^2, |t2| = -(pb - p1)^2, see double_t_scattering)
+// given |t1| and bounds on the absolute lab rapidities of p1 (y_max1) and p2
+// (y_max2); negative means no bound. Here pa.p1 = (m1^2 + |t1|) / 2 and
+// pb.p1 = (m1^2 + |t2|) / 2, and for p2 = pa + pb - p1, pa.p2 = s/2 - pa.p1 and
+// pb.p2 = s/2 - pb.p1, so both rapidities along pa, log(pb.q / pa.q) / 2, are
+// monotonic in |t2| at fixed |t1|. The lab rapidity is that plus y_boost =
+// beam_sign * log(x1 / x2) / 2. An empty result returns the input range, as in
+// t_rapidity_clamp.
+template <typename T>
+KERNELSPEC void kernel_t2_rapidity_clamp_doublet(
+    FIn<T, 0> t2_min,
+    FIn<T, 0> t2_max,
+    FIn<T, 1> pa,
+    FIn<T, 1> pb,
+    FIn<T, 0> m1,
+    FIn<T, 0> t1_abs,
+    FIn<T, 0> x1,
+    FIn<T, 0> x2,
+    FIn<T, 0> beam_sign,
+    FIn<T, 0> y_max1,
+    FIn<T, 0> y_max2,
+    FOut<T, 0> t2_min_out,
+    FOut<T, 0> t2_max_out
+) {
+    FourMom<T> p_tot;
+    for (int i = 0; i < 4; ++i) {
+        p_tot[i] = pa[i] + pb[i];
+    }
+    auto s = lsquare<T>(p_tot);
+    auto m1_2 = m1 * m1;
+    auto y_boost = beam_sign * 0.5 * log(x1 / x2);
+    // pa.p1, and pb.p1 as the variable w
+    auto a1 = 0.5 * (m1_2 + t1_abs);
+    auto a2 = 0.5 * s - a1;
+
+    FVal<T> w_lo = 0.5 * (m1_2 + t2_min), w_hi = 0.5 * (m1_2 + t2_max);
+    // p1: w / a1 = exp(2 y_a), increasing in w
+    w_lo = where(y_max1 >= 0., max(w_lo, a1 * exp(2. * (-y_max1 - y_boost))), w_lo);
+    w_hi = where(y_max1 >= 0., min(w_hi, a1 * exp(2. * (y_max1 - y_boost))), w_hi);
+    // p2: (s/2 - w) / a2 = exp(2 y_a), decreasing in w
+    w_lo = where(
+        y_max2 >= 0., max(w_lo, 0.5 * s - a2 * exp(2. * (y_max2 - y_boost))), w_lo
+    );
+    w_hi = where(
+        y_max2 >= 0., min(w_hi, 0.5 * s - a2 * exp(2. * (-y_max2 - y_boost))), w_hi
+    );
+
+    auto lo = 2. * w_lo - m1_2;
+    auto hi = 2. * w_hi - m1_2;
+    auto ok = hi > lo;
+    t2_min_out = where(ok, lo, FVal<T>(t2_min));
+    t2_max_out = where(ok, hi, FVal<T>(t2_max));
+}
+
 template <typename T>
 KERNELSPEC void kernel_t_inv_value_and_min_max_cut(
     FIn<T, 1> pa,
