@@ -3248,7 +3248,8 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
                                 % (', '.join(missing), self.run_name))
         output = pjoin(event_dir, self.run_name, 'unweighted_events.lhe.gz')
         nb_event, _ = lhe_parser.MultiEventFile.merge_runs(paths, output,
-                    banner_path=pjoin(event_dir, '%s_banner.txt' % self.run_name))
+                    banner_path=pjoin(event_dir, '%s_banner.txt' % self.run_name),
+                    event_norm=self.run_card['event_norm'])
         self.results.add_detail('nb_event', nb_event)
         # a stale unzipped file would hide the merged one below
         if os.path.exists(output[:-3]):

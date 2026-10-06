@@ -2078,6 +2078,55 @@ class TestMergeRuns(unittest.TestCase):
         self.assertEqual(sorted(os.listdir(os.path.dirname(output))),
                          ['banner.txt', 'unweighted_events.lhe.gz'])
 
+    def test_merge_runs_no_event_norm(self):
+        """a banner without run_card: no silent guess of the normalisation,
+        the event_norm given by the caller is used"""
+
+        import re
+        nevts = [30, 20]
+        paths = []
+        for irun in range(2):
+            path = self.write_run(irun, self.make_weights(irun, nevts[irun], 10., 'sum'), 'sum')
+            text = re.sub(r'<MGRunCard>.*?</MGRunCard>\n', '', open(path).read(), flags=re.S)
+            self.assertNotIn('event_norm', text.split('</init>')[0])
+            open(path, 'w').write(text)
+            paths.append(path)
+        output = pjoin(self.path, 'merged.lhe')
+        with self.assertRaisesRegex(Exception, 'no event_norm'):
+            lhe_parser.MultiEventFile.merge_runs(paths, output)
+        self.assertFalse(os.path.exists(output))
+        lhe_parser.MultiEventFile.merge_runs(paths, output, event_norm='sum')
+        for wgt, run, orig, _ in self.read(output):
+            self.assertAlmostEqual(wgt/orig, nevts[run]/sum(nevts), delta=1e-6)
+
+    def test_merge_runs_truncated(self):
+        """a run file that ends inside an event is an error, with the raw
+        path and with the generic one, and the previous output is kept"""
+
+        paths = [self.write_run(irun, self.make_weights(irun, 20, 10., 'sum'), 'sum')
+                 for irun in range(2)]
+        output = pjoin(self.path, 'merged.lhe')
+        lhe_parser.MultiEventFile.merge_runs(paths, output)
+        ref = open(output, 'rb').read()
+        # cut the last event of the second run after its first particle
+        text = open(paths[1]).read()
+        start = text.rindex('<event>')
+        cut = text.index('\n', text.index('\n', start + len('<event>\n')) + 1) + 1
+        open(paths[1], 'w').write(text[:cut])
+        with self.assertRaises(EOFError):
+            lhe_parser.MultiEventFile.merge_runs(paths, output)
+        self.assertEqual(open(output, 'rb').read(), ref)
+
+        # generic path (format the raw path does not understand)
+        def raise_error(self):
+            raise ValueError
+            yield
+        with misc.TMP_variable(lhe_parser.EventFile, '_iter_raw_event_chunks', raise_error):
+            with self.assertRaisesRegex(Exception, 'merged 39 events instead of the 40'):
+                lhe_parser.MultiEventFile.merge_runs(paths, output)
+        self.assertEqual(open(output, 'rb').read(), ref)
+        self.assertEqual(sorted(os.listdir(self.path)), ['merged.lhe', 'run_0', 'run_1'])
+
     def test_merge_runs_mismatch(self):
         """runs of different generations are not merged"""
 

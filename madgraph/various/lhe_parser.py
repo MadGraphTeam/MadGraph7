@@ -632,7 +632,8 @@ class EventFile(object):
     def _iter_raw_event_chunks(self, size=1<<22):
         """Yield the events of the file, as raw bytes, by chunks of complete
         events: the file between the banner and </LesHouchesEvents>, as it is.
-        Raise ValueError if the file ends inside an event."""
+        Raise EOFError if the file ends inside an event (truncated file: not
+        the ValueError of a format the raw path does not understand)."""
         opener = gzip.open if self.zip_mode else open
         with opener(self.path, 'rb') as fsock:
             carry = b''
@@ -661,7 +662,7 @@ class EventFile(object):
                 if not data:
                     break
             if b'<event' in carry:
-                raise ValueError("%s ends inside an event" % self.path)
+                raise EOFError("%s ends inside an event" % self.path)
 
     def _scan_raw_weights(self):
         """Number of events and sum of |central weight| of the file, from its
@@ -2013,12 +2014,14 @@ class MultiEventFile(EventFile):
         return nb_event, info
 
     @staticmethod
-    def merge_runs(paths, outputpath, banner_path=None):
+    def merge_runs(paths, outputpath, banner_path=None, event_norm=None):
         """Merge the event files of independent runs of the same process
         (multi_run). The events are written in the order of paths, after the
         header of the first file. banner_path (optional) receives that header.
-        Both are replaced only if the merge succeeds; a run without event or
-        not compatible with the first one raises an error.
+        Both are replaced only if the merge succeeds; a run without event,
+        truncated or not compatible with the first one raises an error.
+        event_norm is used for a run whose banner has no (readable) run_card;
+        without it such a run is an error.
         Return the number of events and the cross section (<init>) of the
         merged file.
 
@@ -2063,9 +2066,14 @@ class MultiEventFile(EventFile):
                 if len(split) == 4:
                     procs[int(split[3])] = [float(v) for v in split[:3]]
             try:
-                event_norm = banner.get('run_card', 'event_norm').lower()
-            except Exception:
-                event_norm = 'average'
+                run_norm = banner.get('run_card', 'event_norm').lower()
+            except Exception as error:
+                if not event_norm:
+                    lhe.close()
+                    raise Exception("Cannot merge %s: no event_norm in its banner (%s)"
+                                    % (path, error))
+                logger.warning("no event_norm in the banner of %s: assume %s", path, event_norm)
+                run_norm = event_norm.lower()
             cross, error = banner.get_cross(witherror=True)
             integrated = re.search(r"Integrated\s*weight\s*\(\s*pb\s*\)\s*:\s*([\+\-\d.e]+)",
                                    banner['mggenerationinfo'] if 'mggenerationinfo' in banner else '', re.I)
@@ -2074,7 +2082,7 @@ class MultiEventFile(EventFile):
                          'first': [float(v) for v in init[0].split()],
                          'procs': procs,
                          'other': [l for l in init[1:] if len(l.split()) != 4],
-                         'event_norm': 'unity' if event_norm == 'unit' else event_norm,
+                         'event_norm': 'unity' if run_norm == 'unit' else run_norm,
                          'cross': cross, 'error': error,
                          'integrated': float(integrated.group(1)) if integrated else cross})
         if not runs:
@@ -2180,6 +2188,9 @@ class MultiEventFile(EventFile):
             except ValueError:
                 # unexpected format: restart with the generic (slower) parser
                 nb_event = write_events(use_raw=False)
+            if nb_event != nb_tot:
+                raise Exception("merged %i events instead of the %i found in %s"
+                                % (nb_event, nb_tot, ', '.join(run['path'] for run in runs)))
             if banner_path:
                 with open(banner_tmppath, 'w') as fsock:
                     fsock.write(header)
@@ -2195,8 +2206,6 @@ class MultiEventFile(EventFile):
         os.replace(tmppath, outputpath)
         if banner_path:
             os.replace(banner_tmppath, banner_path)
-        if nb_event != nb_tot:
-            logger.warning("merged %i events instead of %i", nb_event, nb_tot)
 
         logger.info("merged %i runs: %i events, cross section %g pb (event_norm=%s)",
                     len(runs), nb_tot, cross, event_norm)
