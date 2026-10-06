@@ -735,6 +735,55 @@ x1x2_to_r:
       desc: "Jacobian of the mapping"
   desc: "Inverse of `r_to_x1x2`: maps beam momentum fractions back to the random number. See @ref Luminosity."
 
+r_to_x1x2_window:
+  inputs:
+    - name: r
+      type: [float]
+      desc: "random number in [0, 1]"
+    - name: s_hat
+      type: [float]
+      desc: "partonic invariant mass squared"
+    - name: s_lab
+      type: [float]
+      desc: "hadronic invariant mass squared"
+    - name: y_max
+      type: [float]
+      desc: "largest allowed absolute rapidity of the partonic system"
+  outputs:
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the mapping"
+  desc: "`r_to_x1x2` with the rapidity log(x1/x2)/2 of the partonic system restricted to |y| <= y_max. See @ref PhaseSpaceMapping."
+
+x1x2_to_r_window:
+  inputs:
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2"
+    - name: s_lab
+      type: [float]
+      desc: "hadronic invariant mass squared"
+    - name: y_max
+      type: [float]
+      desc: "largest allowed absolute rapidity of the partonic system"
+  outputs:
+    - name: r
+      type: [float]
+      desc: "random number in [0, 1]"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the mapping"
+  desc: "Inverse of `r_to_x1x2_window`. See @ref PhaseSpaceMapping."
+
 diff_cross_section:
   inputs:
     - name: x1
@@ -818,6 +867,82 @@ two_body_decay_com_inverse:
       type: [float]
       desc: "Jacobian of the decay mapping"
   desc: "Inverse of `two_body_decay_com`. Building block of @ref TwoBodyDecay."
+
+com_cos_theta_window:
+  inputs:
+    - name: r_cos_theta
+      type: [float]
+      desc: "random number for the polar angle"
+    - name: m0
+      type: [float]
+      desc: "mass of the decaying system (sqrt(s_hat))"
+    - name: m1
+      type: [float]
+      desc: "mass of the first decay product"
+    - name: m2
+      type: [float]
+      desc: "mass of the second decay product"
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2"
+    - name: pt_min
+      type: [float]
+      desc: "lower bound on the transverse momentum of the products"
+    - name: y_max1
+      type: [float]
+      desc: "bound on the absolute lab rapidity of the first product, negative for none"
+    - name: y_max2
+      type: [float]
+      desc: "bound on the absolute lab rapidity of the second product, negative for none"
+  outputs:
+    - name: r_out
+      type: [float]
+      desc: "random number for the polar angle, restricted to the range the cuts leave"
+    - name: det
+      type: [float]
+      desc: "fraction of the polar-angle range kept"
+  desc: "Restricts the polar angle of `two_body_decay_com` to the range left open by transverse-momentum and rapidity bounds on the products. Building block of @ref TwoBodyDecay."
+
+com_cos_theta_window_inverse:
+  inputs:
+    - name: r_out
+      type: [float]
+      desc: "random number for the polar angle, restricted to the range the cuts leave"
+    - name: m0
+      type: [float]
+      desc: "mass of the decaying system (sqrt(s_hat))"
+    - name: m1
+      type: [float]
+      desc: "mass of the first decay product"
+    - name: m2
+      type: [float]
+      desc: "mass of the second decay product"
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2"
+    - name: pt_min
+      type: [float]
+      desc: "lower bound on the transverse momentum of the products"
+    - name: y_max1
+      type: [float]
+      desc: "bound on the absolute lab rapidity of the first product, negative for none"
+    - name: y_max2
+      type: [float]
+      desc: "bound on the absolute lab rapidity of the second product, negative for none"
+  outputs:
+    - name: r_cos_theta
+      type: [float]
+      desc: "random number for the polar angle"
+    - name: det
+      type: [float]
+      desc: "inverse of the fraction of the polar-angle range kept"
+  desc: "Inverse of `com_cos_theta_window`. Building block of @ref TwoBodyDecay."
 
 two_body_decay:
   inputs:

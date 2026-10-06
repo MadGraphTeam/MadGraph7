@@ -629,7 +629,14 @@ PYBIND11_MODULE(_madspace_py, m) {
         );
 
     py::classh<TwoBodyDecay, Mapping>(m, "TwoBodyDecay", pydoc::doc("TwoBodyDecay"))
-        .def(py::init<bool>(), py::arg("com"), pydoc::doc("TwoBodyDecay::TwoBodyDecay"))
+        .def(
+            py::init<bool, double, double, double>(),
+            py::arg("com"),
+            py::arg("pt_min") = 0.,
+            py::arg("y_max1") = -1.,
+            py::arg("y_max2") = -1.,
+            pydoc::doc("TwoBodyDecay::TwoBodyDecay")
+        )
         .def(
             "random_dim",
             &TwoBodyDecay::random_dim,

@@ -34,7 +34,9 @@ namespace madspace {
  *   Present only when @p com is false.
  *
  * **Conditions**
- * - None.
+ * - `x1`, `x2` – `float`, shape `(batch,)` – beam momentum fractions. Present
+ *   only when a transverse-momentum or rapidity bound is given (see the
+ *   constructor).
  *
  * **Outputs**
  * - `momentum1` – `float`, shape `(batch, 4)` – first daughter momentum.
@@ -49,10 +51,25 @@ namespace madspace {
  */
 class TwoBodyDecay : public Mapping {
 public:
-    /// @param com  If true the decay is generated in the parent rest frame,
-    ///             otherwise the parent momentum is taken from the
-    ///             `com_momentum` input.
-    TwoBodyDecay(bool com);
+    /// @param com     If true the decay is generated in the parent rest frame,
+    ///                otherwise the parent momentum is taken from the
+    ///                `com_momentum` input.
+    /// @param pt_min  With @p com only: lower bound on the transverse momentum
+    ///                both products share, p sin(theta) (the parent is the
+    ///                partonic system, at rest up to a boost along the beam).
+    /// @param y_max1  With @p com only: bound on the absolute lab rapidity of
+    ///                the first product, y + atanh(beta cos(theta)) with
+    ///                y = log(x1 / x2) / 2; negative for none.
+    /// @param y_max2  The same for the second product.
+    ///
+    /// When any of the three bounds is set, cos(theta) is sampled uniformly
+    /// over the range they leave instead of over [-1, 1], the Jacobian
+    /// shrinks accordingly (zero if nothing is left), and the mapping takes
+    /// the beam momentum fractions `x1`, `x2` (`float`, shape `(batch,)`) as
+    /// conditions.
+    TwoBodyDecay(
+        bool com, double pt_min = 0., double y_max1 = -1., double y_max2 = -1.
+    );
     /// Number of uniform random inputs consumed by the forward mapping (2).
     std::size_t random_dim() const { return 2; }
 
@@ -69,6 +86,10 @@ private:
     ) const override;
 
     bool _com;
+    bool _window;
+    double _pt_min;
+    double _y_max1;
+    double _y_max2;
 };
 
 /**

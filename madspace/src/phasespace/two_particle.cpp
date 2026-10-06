@@ -2,7 +2,13 @@
 
 using namespace madspace;
 
-TwoBodyDecay::TwoBodyDecay(bool com) :
+namespace {
+bool has_cos_theta_window(bool com, double pt_min, double y_max1, double y_max2) {
+    return com && (pt_min > 0. || y_max1 >= 0. || y_max2 >= 0.);
+}
+} // namespace
+
+TwoBodyDecay::TwoBodyDecay(bool com, double pt_min, double y_max1, double y_max2) :
     Mapping(
         "TwoBodyDecay",
         [&] {
@@ -19,9 +25,15 @@ TwoBodyDecay::TwoBodyDecay(bool com) :
             return input_types;
         }(),
         {{"momentum1", batch_four_vec}, {"momentum2", batch_four_vec}},
-        {}
+        has_cos_theta_window(com, pt_min, y_max1, y_max2)
+            ? NamedVector<Type>{{"x1", batch_float}, {"x2", batch_float}}
+            : NamedVector<Type>{}
     ),
-    _com(com) {}
+    _com(com),
+    _window(has_cos_theta_window(com, pt_min, y_max1, y_max2)),
+    _pt_min(pt_min),
+    _y_max1(y_max1),
+    _y_max2(y_max2) {}
 
 Mapping::Result TwoBodyDecay::build_forward_impl(
     FunctionBuilder& fb,
@@ -30,10 +42,28 @@ Mapping::Result TwoBodyDecay::build_forward_impl(
 ) const {
     auto r_phi = inputs.at(0), r_cos_theta = inputs.at(1);
     auto m0 = inputs.at(2), m1 = inputs.at(3), m2 = inputs.at(4);
+    Value det_window = 1.;
+    if (_window) {
+        auto [r_window, det] = fb.com_cos_theta_window(
+            r_cos_theta,
+            m0,
+            m1,
+            m2,
+            conditions.at(0),
+            conditions.at(1),
+            _pt_min,
+            _y_max1,
+            _y_max2
+        );
+        r_cos_theta = r_window;
+        det_window = det;
+    }
     auto [p1, p2, det] = _com
         ? fb.two_body_decay_com(r_phi, r_cos_theta, m0, m1, m2)
         : fb.two_body_decay(r_phi, r_cos_theta, m0, m1, m2, inputs.at(5));
-    return {{{"momentum1", p1}, {"momentum2", p2}}, det};
+    return {
+        {{"momentum1", p1}, {"momentum2", p2}}, _window ? fb.mul(det, det_window) : det
+    };
 }
 
 Mapping::Result TwoBodyDecay::build_inverse_impl(
@@ -45,6 +75,21 @@ Mapping::Result TwoBodyDecay::build_inverse_impl(
     if (_com) {
         auto [r_phi, r_cos_theta, m0, m1, m2, det] =
             fb.two_body_decay_com_inverse(p1, p2);
+        if (_window) {
+            auto [r_free, det_window] = fb.com_cos_theta_window_inverse(
+                r_cos_theta,
+                m0,
+                m1,
+                m2,
+                conditions.at(0),
+                conditions.at(1),
+                _pt_min,
+                _y_max1,
+                _y_max2
+            );
+            r_cos_theta = r_free;
+            det = fb.mul(det, det_window);
+        }
         return {
             {{"random_phi", r_phi},
              {"random_cos_theta", r_cos_theta},

@@ -169,6 +169,9 @@ private:
     double _sqrt_s_lab;
     bool _leptonic;
     bool _map_luminosity;
+    // bound on the absolute rapidity of the partonic system, log(x1 / x2) / 2,
+    // implied by the cuts; negative when they imply none
+    double _y_max_lab = -1.;
     bool _empty = false;
     std::size_t _n_discrete;
     std::vector<Invariant> _s_invariants;

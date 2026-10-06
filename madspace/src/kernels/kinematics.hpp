@@ -656,6 +656,48 @@ KERNELSPEC void kernel_x1x2_to_r(
     det = fabs(1 / log_tau) * s_lab;
 }
 
+// r_to_x1x2 with the rapidity of the partonic system, y = log(x1 / x2) / 2,
+// restricted to |y| <= y_max. r_to_x1x2 has y = (1 - 2 r) L / 2 with
+// L = -log(tau), uniform over |y| <= L / 2; here the same line is squeezed to
+// |y| <= min(y_max, L / 2), and the Jacobian shrinks by the same factor.
+// Where the window does not bind, this is r_to_x1x2 itself.
+template <typename T>
+KERNELSPEC void kernel_r_to_x1x2_window(
+    FIn<T, 0> r,
+    FIn<T, 0> s_hat,
+    FIn<T, 0> s_lab,
+    FIn<T, 0> y_max,
+    FOut<T, 0> x1,
+    FOut<T, 0> x2,
+    FOut<T, 0> det
+) {
+    auto tau = s_hat / s_lab;
+    auto log_tau_abs = fabs(log(tau));
+    auto squeeze = min(2. * y_max / max(log_tau_abs, EPS), 1.);
+    auto r_window = where(squeeze < 1., 0.5 + (r - 0.5) * squeeze, FVal<T>(r));
+    x1 = pow(tau, r_window);
+    x2 = pow(tau, (1 - r_window));
+    det = squeeze * log_tau_abs / s_lab;
+}
+
+template <typename T>
+KERNELSPEC void kernel_x1x2_to_r_window(
+    FIn<T, 0> x1,
+    FIn<T, 0> x2,
+    FIn<T, 0> s_lab,
+    FIn<T, 0> y_max,
+    FOut<T, 0> r,
+    FOut<T, 0> det
+) {
+    auto tau = x1 * x2;
+    auto log_tau = log(tau);
+    auto log_tau_abs = fabs(log_tau);
+    auto squeeze = min(2. * y_max / max(log_tau_abs, EPS), 1.);
+    auto r_window = log(x1) / log_tau;
+    r = where(squeeze < 1., 0.5 + (r_window - 0.5) / squeeze, r_window);
+    det = s_lab / (squeeze * log_tau_abs);
+}
+
 template <typename T>
 KERNELSPEC void kernel_diff_cross_section(
     FIn<T, 0> x1,
