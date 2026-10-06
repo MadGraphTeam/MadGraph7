@@ -691,7 +691,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   at the same phase-space point.  Requires gfortran / g++.")
         logger.info("   Example: check language p p > e+ e-",'$MG:color:GREEN')
         logger.info("o precision:",'$MG:color:GREEN')
-        logger.info("   syntax: check precision m|f|v [m|f|v ...] process_definition [--nb_event=X] [--energy=]")
+        logger.info("   syntax: check precision m|f|v [m|f|v ...] process_definition [--nb_event=X] [--energy=] [--backend=]")
         logger.info("   Evaluate the madmatrix standalone output built in each of the given")
         logger.info("   floating point modes (m: colour algebra in single precision,")
         logger.info("   f: single precision everywhere, v: single precision amplitudes")
@@ -702,6 +702,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   matrix element by each of the two builds (and the speed-up), and")
         logger.info("   writes a plot of the difference. Requires g++ and make.")
         logger.info("   Several modes share one double precision reference and one plot.")
+        logger.info("   --backend selects the madmatrix BACKEND of every build (default auto:")
+        logger.info("   the widest SIMD flavour of the host): %s." % '|'.join(process_checks.PRECISION_BACKENDS))
         logger.info("   Example: check precision f m v g g > t t~ g --nb_event=100000",'$MG:color:GREEN')
         logger.info("o cms:",'$MG:color:GREEN')
         logger.info("   Check the complex mass scheme consistency by comparing")
@@ -1341,6 +1343,7 @@ class CheckValidForCmd(cmd.CheckCmd):
 
         if args[0] == 'precision':
             user_options['--nb_event'] = '1000000'
+            user_options['--backend'] = 'auto'
 
         if args[0] in ['cms'] or args[0].lower()=='cmsoptions':
             # increase the default energy to 5000
@@ -2813,7 +2816,7 @@ class CompleteForCmd(cmd.CompleteCmd):
 
         options = ['--energy=']
         if len(args) >= 2 and args[1] == 'precision':
-            options.append('--nb_event=')
+            options.extend(['--nb_event=', '--backend='])
         if cms_options:
             options.extend(cms_options)
 
@@ -5106,6 +5109,12 @@ This implies that with decay chains:
                 except ValueError:
                     raise self.InvalidCmd("The value of the 'nb_event' option"+\
                                        " must be a number, not %s."%option[1])
+            elif option[0] == '--backend':
+                if option[1] not in process_checks.PRECISION_BACKENDS:
+                    raise self.InvalidCmd("The value of the 'backend' option must be"
+                            " one of %s, not %s." % ('|'.join(process_checks.PRECISION_BACKENDS),
+                                                     option[1]))
+                options['backend'] = option[1]
             elif option[0]=='--split_orders':
                 options['split_orders']=int(option[1])
             elif option[0]=='--helicity':
