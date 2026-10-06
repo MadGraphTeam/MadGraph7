@@ -3633,10 +3633,11 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             argument.get_spin_state_number()].lower()
         # Fill out with X up to 6 positions
         call = call + 'x' * (6 - len(call))
-        # Axial gauge: a vector leg is written out as vxxxxxr, which takes the
-        # (lightlike) momentum of another external leg as its gauge reference
-        # (see helas_call_writers.get_axial_gauge_refs)
-        axial = self.axial_gauge and argument.get('spin') == 3
+        # Axial gauge: a vector leg that got a reference (a massless one, see
+        # helas_call_writers.get_axial_gauge_refs) is written out as vxxxxxr,
+        # which takes the (lightlike) momentum of another external leg as its
+        # gauge reference; any other leg keeps vxxxxx
+        axial = argument.get('spin') == 3 and self.has_axial_gauge_ref(wf)
         if axial:
             call = call + 'r'
         # Specify namespace for Helas calls

@@ -1263,6 +1263,23 @@ class AxialGaugeReferenceTest(unittest.TestCase):
              'CALL VXXXXX(P(0,4),mdl_MW,NHEL(4),+1,W(4))',
              'CALL VXXXXXR(P(0,5),ZERO,NHEL(5),+1,P(0,1),W(5))'])
 
+    def test_madmatrix_massive_vector_keeps_vxxxxx(self):
+        """madmatrix: the W of u u~ > w+ w- g has no reference, the gluon has"""
+
+        from madmatrix import model_handling
+        me = self.matrix_element('u u~ > w+ w- g')
+        writer = model_handling.MadMatrixUFOHelasCallWriter(self.model)
+        writer.axial_gauge = True
+        writer.axial_gauge_refs = helas_call_writers.get_axial_gauge_refs(me)
+        externals = sorted([wf for wf in me.get_all_wavefunctions()
+                            if not wf.get('mothers')],
+                           key=lambda wf: wf.get('number_external'))
+        lines = [writer.get_external(wf, wf).strip() for wf in externals[2:]]
+        self.assertTrue(lines[0].startswith('vxxxxx<'), lines[0])
+        self.assertTrue(lines[1].startswith('vxxxxx<'), lines[1])
+        self.assertTrue(lines[2].startswith('vxxxxxr<'), lines[2])
+        self.assertTrue(lines[2].endswith('aloha_obj[4], 4, 0 );'), lines[2])
+
     def test_axial_gauge_requested(self):
         """the output option, and its refusal in the FD gauge (no vxxxxxr in
         the five-component HELAS library)"""
