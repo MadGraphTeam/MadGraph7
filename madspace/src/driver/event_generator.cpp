@@ -160,9 +160,7 @@ void EventGenerator::generate() {
 
         // Wait for the round to fully commit before resyncing cross-channel fractions.
         while (round_in_flight > 0) {
-            _abort_check_function();
-            std::size_t job_id = _result_queue.wait();
-            --round_in_flight;
+            std::size_t job_id = wait_for_result(round_in_flight);
             auto& job = _running_jobs.at(job_id);
             if (job.unweighted_events.size() == 0) {
                 auto& ready = _channel_ready_gen.at(job.channel_index);
@@ -259,9 +257,7 @@ void EventGenerator::survey(std::size_t survey_pass) {
         std::size_t in_flight = (_job_id - job_id_before) + unweight_dispatched;
         done = true;
         while (in_flight > 0) {
-            std::size_t job_id = _result_queue.wait();
-            _abort_check_function();
-            --in_flight;
+            std::size_t job_id = wait_for_result(in_flight);
             auto& job = _running_jobs.at(job_id);
             if (job.unweighted_events.size() == 0) {
                 // Generate-stage completion, globally ordered via
@@ -334,6 +330,61 @@ void EventGenerator::survey(std::size_t survey_pass) {
         }
     }
     print_survey_update(true, done_event_count, total_event_count, iter - 1);
+}
+
+// Every job counted in *in_flight* posts exactly one result (see
+// ResultQueue::submit), so this can't block on a job that died. If a job threw, or
+// the abort check does while waiting, the other jobs still in flight write into
+// _running_jobs: wait them out and drop the bookkeeping of the aborted run before
+// rethrowing, so the exception unwinds with no job left behind. The running jobs
+// stop at their next cancellation check, and an abort requested while they do
+// takes precedence over the job's own error.
+std::size_t EventGenerator::wait_for_result(std::size_t& in_flight) {
+    std::exception_ptr exception;
+    try {
+        auto result = _result_queue.wait(_abort_check_function);
+        --in_flight;
+        if (!result.exception) {
+            return result.id;
+        }
+        exception = result.exception;
+    } catch (...) {
+        exception = std::current_exception();
+    }
+    auto aborted = _result_queue.discard(in_flight, _abort_check_function);
+    in_flight = 0;
+    reset_jobs();
+    std::rethrow_exception(aborted ? aborted : exception);
+}
+
+void EventGenerator::reset_jobs() {
+    _running_jobs.clear();
+    _ready_jobs.clear();
+    _ready_job_rr_cursor = 0;
+    _ready_gen.clear();
+    _commit_cursor = _job_id;
+    std::fill(_channel_job_counts.begin(), _channel_job_counts.end(), 0);
+    std::fill(_context_job_counts.begin(), _context_job_counts.end(), 0);
+    std::fill(_channel_optimizing.begin(), _channel_optimizing.end(), false);
+    std::fill(_channel_batch_pending.begin(), _channel_batch_pending.end(), false);
+    std::fill(
+        _channel_batch_dispatch_done.begin(), _channel_batch_dispatch_done.end(), false
+    );
+    for (auto& queue : _channel_gen_order) {
+        queue.clear();
+    }
+    for (auto& ready : _channel_ready_gen) {
+        ready.clear();
+    }
+    for (auto& queue : _channel_unweight_order) {
+        queue.clear();
+    }
+    for (auto& ready : _channel_unweight_ready) {
+        ready.clear();
+    }
+    for (auto& queue : _context_unweight_queue) {
+        queue.clear();
+    }
 }
 
 // Reads only committed data (never jobs still in flight), so the estimate is a
