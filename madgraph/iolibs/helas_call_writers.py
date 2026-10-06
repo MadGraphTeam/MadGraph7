@@ -165,13 +165,18 @@ class HelasCallWriter(base_objects.PhysicsObject):
         self.axial_gauge = False
         self.axial_gauge_refs = {}
 
-    def get_axial_gauge_ref(self, wf):
-        """Reference leg used for the gauge of this external vector.  A leg
-        with no useful reference is its own reference, which vxxxxxr reads as
-        'leave the default HELAS gauge alone' since then r.p = 0."""
+    def has_axial_gauge_ref(self, wf):
+        """Whether this external is written as vxxxxxr: a vector that got a
+        reference leg (a massless one, see get_axial_gauge_refs). Any other
+        external -- a massive vector in particular -- keeps vxxxxx."""
 
-        leg = wf.get('number_external')
-        return self.axial_gauge_refs.get(leg, leg)
+        return self.axial_gauge and \
+               wf.get('number_external') in self.axial_gauge_refs
+
+    def get_axial_gauge_ref(self, wf):
+        """Reference leg used for the gauge of this external vector."""
+
+        return self.axial_gauge_refs[wf.get('number_external')]
 
     def filter(self, name, value):
         """Filter for model property values"""
@@ -908,23 +913,23 @@ class FortranHelasCallWriter(HelasCallWriter):
                 argument.get_spin_state_number()]
             # Fill out with X up to 6 positions
             call = call + 'X' * (11 - len(call))
-            # Axial gauge: a vector leg is written out as VXXXXXR, which
-            # takes the (lightlike) momentum of another external leg as its
-            # gauge reference.  The reference is fixed at generation time and
-            # is the same for every helicity configuration, so this does not
-            # change what an external wavefunction depends on -- see
-            # get_axial_gauge_refs.
+            # Axial gauge: a vector leg that got a reference is written out as
+            # VXXXXXR, which takes the (lightlike) momentum of another external
+            # leg as its gauge reference.  The reference is fixed at generation
+            # time and is the same for every helicity configuration, so this
+            # does not change what an external wavefunction depends on -- see
+            # get_axial_gauge_refs.  The call templates are cached per call
+            # key, which a massless and a massive vector can share, so which of
+            # the two a leg gets is decided when its call is written.
             axial = self.axial_gauge and argument.get('spin') == 3
             if axial:
-                call = call + 'R'
+                axial_call = call + 'R(P(0,%d),%s,NHEL(%d),%+d,P(0,%d),W(%d))'
             call = call + "(P(0,%d),"
             if argument.get('spin') != 1:
                 # For non-scalars, need mass and helicity
                 call = call + "%s,NHEL(%d),"
             if argument.get('spin') == 2:
                 call = call + "%+d, FLAVOR(%d),W(%d))"
-            elif axial:
-                call = call + "%+d,P(0,%d),W(%d))"
             else:
                 call = call + "%+d,W(%d))"
             if argument.get('spin') == 1:
@@ -934,13 +939,19 @@ class FortranHelasCallWriter(HelasCallWriter):
                                  (-1) ** (wf.get('state') == 'initial'),
                                  wf.get('me_id'))
             elif axial:
-                call_function = lambda wf: call % \
+                call_function = lambda wf: axial_call % \
                                 (wf.get('number_external'),
                                  wf.get('mass'),
                                  wf.get('number_external'),
                                  # For boson, need initial/final here
                                  (-1) ** (wf.get('state') == 'initial'),
                                  self.get_axial_gauge_ref(wf),
+                                 wf.get('me_id')) \
+                                if self.has_axial_gauge_ref(wf) else call % \
+                                (wf.get('number_external'),
+                                 wf.get('mass'),
+                                 wf.get('number_external'),
+                                 (-1) ** (wf.get('state') == 'initial'),
                                  wf.get('me_id'))
             elif argument.is_boson():
                 call_function = lambda wf: call % \
@@ -1511,15 +1522,15 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                 argument.get_spin_state_number()]
             # Fill out with X up to 6 positions
             call = call + 'X' * (11 - len(call))
-            # Axial gauge: a vector leg is written out as VXXXXXR, which takes
-            # the (lightlike) momentum of another external leg as its gauge
-            # reference. The reference is fixed at generation time and is the
-            # same for every helicity configuration, so this does not change
-            # what an external wavefunction depends on -- see
-            # get_axial_gauge_refs.
+            # Axial gauge: a vector leg that got a reference is written out as
+            # VXXXXXR, which takes the (lightlike) momentum of another external
+            # leg as its gauge reference. The reference is fixed at generation
+            # time and is the same for every helicity configuration, so this
+            # does not change what an external wavefunction depends on -- see
+            # get_axial_gauge_refs. The call templates are cached per call key,
+            # which a massless and a massive vector can share, so which of the
+            # two a leg gets is decided when its call is written.
             axial = self.axial_gauge and argument.get('spin') == 3
-            if axial:
-                call = call + 'R'
             call = call + "(P(0,%(number_external)d),"
             if argument.get('spin') != 1:
                 # For non-scalars, need mass and helicity
@@ -1531,17 +1542,20 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
             if argument.get('spin') == 2:
                 call = call + "%(state_id)+d, FLAVOR(%(number_external)d),{0})".format(\
                                     self.format_helas_object('W(','%(me_id)d'))
-            elif axial:
-                call = call + "%(state_id)+d,P(0,%(axial_ref)d),{0})".format(\
-                                    self.format_helas_object('W(','%(me_id)d'))
             else:
+                if axial:
+                    axial_call = call.replace('XXXXX(', 'XXXXXR(', 1) + \
+                        "%(state_id)+d,P(0,%(axial_ref)d),{0})".format(\
+                                    self.format_helas_object('W(','%(me_id)d'))
                 call = call + "%(state_id)+d,{0})".format(\
                                     self.format_helas_object('W(','%(me_id)d'))
 
         if axial:
-            call_function = lambda wf: call % dict(
+            call_function = lambda wf: axial_call % dict(
                 wf.get_external_helas_call_dict(),
-                axial_ref=self.get_axial_gauge_ref(wf))
+                axial_ref=self.get_axial_gauge_ref(wf)) \
+                if self.has_axial_gauge_ref(wf) else \
+                call % wf.get_external_helas_call_dict()
         else:
             call_function = lambda wf: call % wf.get_external_helas_call_dict()
         self.add_wavefunction(argument.get_call_key(), call_function)
