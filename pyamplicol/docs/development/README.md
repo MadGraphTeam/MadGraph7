@@ -25,6 +25,16 @@ The on-the-fly architecture page is retained because it records the current
 production contract and validation boundary; its historical dispositions are
 explicitly labelled as such.
 
+## Linux source-test wheels
+
+The contributor installer and `just source-runtime` build a host-compatible
+Linux wheel for local tests, rather than claiming compatibility with an older
+manylinux platform. They explicitly pass the backend setting
+`--config-setting pyamplicol.host-wheel=true` to `python -m build --wheel`.
+Published dependencies are unchanged. Normal release builds still target
+`manylinux_2_28` and must run in the appropriate build environment; a host wheel
+is not a substitute for the audited release artifact.
+
 ## Focused SymJIT dependency tests
 
 The source checkout includes small opt-in numerical/compiler regressions in

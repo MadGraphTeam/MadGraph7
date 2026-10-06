@@ -1276,6 +1276,11 @@ def _build_project_wheel(runner: Runner, *, mode: str) -> None:
             "--skip-dependency-check",
             "--outdir",
             project_wheels,
+            *(
+                ["--config-setting", "pyamplicol.host-wheel=true"]
+                if sys.platform == "linux"
+                else []
+            ),
         ],
         cwd=ROOT,
         env=build_environment,

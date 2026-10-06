@@ -384,7 +384,19 @@ def stage_runtime(
 def build_and_stage(*, python: Path, mode: str) -> dict[str, object]:
     with external_temporary_directory("pyamplicol-source-runtime-") as temporary:
         run(
-            [python, "-m", "build", "--wheel", "--outdir", temporary],
+            [
+                python,
+                "-m",
+                "build",
+                "--wheel",
+                "--outdir",
+                temporary,
+                *(
+                    ["--config-setting", "pyamplicol.host-wheel=true"]
+                    if sys.platform == "linux"
+                    else []
+                ),
+            ],
             cwd=ROOT,
             env=clean_environment(mode=mode),
         )

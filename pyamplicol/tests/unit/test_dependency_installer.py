@@ -917,13 +917,16 @@ def test_ratatui_sdist_materialization_rejects_unpinned_bytes(
 
 @pytest.mark.parametrize("explicit_bootstrap", [None, "1"])
 @pytest.mark.parametrize("mode", ["candidate", "release"])
+@pytest.mark.parametrize("platform_name", ["linux", "darwin"])
 def test_project_wheel_uses_selected_mode_without_forcing_asset_bootstrap(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     explicit_bootstrap: str | None,
     mode: str,
+    platform_name: str,
 ) -> None:
     module = _module()
+    monkeypatch.setattr(module.sys, "platform", platform_name)
     venv = tmp_path / ".venv"
     artifacts = tmp_path / "artifacts"
     calls: list[tuple[list[str], dict[str, str] | None]] = []
@@ -957,6 +960,12 @@ def test_project_wheel_uses_selected_mode_without_forcing_asset_bootstrap(
     assert build_command[1:4] == ["-m", "build", "--wheel"]
     assert "--no-isolation" in build_command
     assert "--skip-dependency-check" in build_command
+    assert ("pyamplicol.host-wheel=true" in build_command) == (platform_name == "linux")
+    if platform_name == "linux":
+        assert (
+            build_command[build_command.index("--config-setting") + 1]
+            == "pyamplicol.host-wheel=true"
+        )
     assert build_environment is not None
     assert build_environment["PYAMPLICOL_BUILD_MODE"] == mode
     install_command, install_environment = calls[1]

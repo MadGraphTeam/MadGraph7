@@ -271,18 +271,73 @@ def test_candidate_and_non_linux_wheels_preserve_frontend_settings(
 
 @pytest.mark.parametrize("mode", ("candidate", "release"))
 @pytest.mark.parametrize("platform_name", ("darwin", "linux"))
+def test_host_wheel_setting_is_consumed_and_only_changes_linux_tags(
+    monkeypatch: pytest.MonkeyPatch, mode: str, platform_name: str
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", mode)
+    monkeypatch.setattr(backend.sys, "platform", platform_name)
+    supplied = {"pyamplicol.host-wheel": "true", "frontend.setting": "preserved"}
+    expected = {"frontend.setting": "preserved"}
+    if platform_name == "linux":
+        expected["maturin.build-args"] = ["--compatibility", "linux"]
+    assert backend._release_wheel_config_settings(supplied) == expected
+    assert supplied["pyamplicol.host-wheel"] == "true"
+
+
+def test_false_host_wheel_setting_preserves_release_manylinux(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", "release")
+    monkeypatch.setattr(backend.sys, "platform", "linux")
+    assert backend._release_wheel_config_settings(
+        {"pyamplicol.host-wheel": "false"}
+    ) == {"maturin.build-args": ["--compatibility", "manylinux_2_28"]}
+
+
+@pytest.mark.parametrize("value", (None, True, "", "yes", "linux", ["true"]))
+def test_host_wheel_setting_rejects_invalid_values(value) -> None:
+    with pytest.raises(RuntimeError, match="host-wheel must be 'true' or 'false'"):
+        backend._release_wheel_config_settings({"pyamplicol.host-wheel": value})
+
+
+@pytest.mark.parametrize(
+    "hook_name", ("get_requires_for_build_wheel", "prepare_metadata_for_build_wheel")
+)
+def test_wheel_frontend_hooks_do_not_forward_backend_host_setting(
+    monkeypatch: pytest.MonkeyPatch, hook_name: str
+) -> None:
+    observed = []
+    monkeypatch.setattr(
+        backend,
+        "_from_overlay",
+        lambda _operation, *args, **_kwargs: observed.extend(args),
+    )
+    args = ("metadata",) if hook_name == "prepare_metadata_for_build_wheel" else ()
+    getattr(backend, hook_name)(
+        *args, config_settings={"pyamplicol.host-wheel": "true"}
+    )
+    assert observed[-1] == {}
+
+
+@pytest.mark.parametrize("mode", ("candidate", "release"))
+@pytest.mark.parametrize("platform_name", ("darwin", "linux"))
 @pytest.mark.parametrize("argument_key", ("maturin.build-args", "build-args"))
+@pytest.mark.parametrize("host_wheel", (False, True))
 def test_authenticated_wheel_rejects_frontend_maturin_overrides(
     monkeypatch: pytest.MonkeyPatch,
     mode: str,
     platform_name: str,
     argument_key: str,
+    host_wheel: bool,
 ) -> None:
     monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", mode)
     monkeypatch.setattr(backend.sys, "platform", platform_name)
 
     with pytest.raises(RuntimeError, match="caller-supplied Maturin build arguments"):
-        backend._release_wheel_config_settings({argument_key: ["--profile", "dev"]})
+        supplied = {argument_key: ["--profile", "dev"]}
+        if host_wheel:
+            supplied["pyamplicol.host-wheel"] = "true"
+        backend._release_wheel_config_settings(supplied)
 
 
 @pytest.mark.parametrize("platform_name", ("linux", "darwin"))

@@ -8,6 +8,7 @@ import platform
 import sys
 import tomllib
 import zipfile
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -709,6 +710,37 @@ def test_source_runtime_rejects_a_wheel_for_another_host(
             source_root=source_root,
             mode="candidate",
             audit=False,
+        )
+
+
+@pytest.mark.parametrize("mode", ("candidate", "release"))
+@pytest.mark.parametrize("platform_name", ("linux", "darwin"))
+def test_source_runtime_build_requests_host_wheel_only_on_linux(
+    tmp_path: Path, monkeypatch, mode: str, platform_name: str
+) -> None:
+    module = _module()
+    wheel = tmp_path / "pyamplicol-test.whl"
+    wheel.touch()
+    calls = []
+    monkeypatch.setattr(module.sys, "platform", platform_name)
+    monkeypatch.setattr(
+        module, "external_temporary_directory", lambda _name: nullcontext(tmp_path)
+    )
+    monkeypatch.setattr(
+        module, "run", lambda command, **kwargs: calls.append((command, kwargs))
+    )
+    monkeypatch.setattr(module, "clean_environment", lambda **_kwargs: {})
+    monkeypatch.setattr(module, "stage_runtime", lambda path, **kwargs: (path, kwargs))
+    assert module.build_and_stage(python=Path("python"), mode=mode) == (
+        wheel,
+        {"mode": mode, "audit": False},
+    )
+    command, _ = calls[0]
+    assert ("pyamplicol.host-wheel=true" in command) == (platform_name == "linux")
+    if platform_name == "linux":
+        assert (
+            command[command.index("--config-setting") + 1]
+            == "pyamplicol.host-wheel=true"
         )
 
 
