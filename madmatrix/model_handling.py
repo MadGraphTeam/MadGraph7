@@ -3289,7 +3289,17 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     # AV - overload helas_call_writers.GPUFOHelasCallWriter method (improve formatting)
     def get_matrix_element_calls(self, matrix_element, color_amplitudes, multi_channel_map):
         """Return a list of strings, corresponding to the Helas calls for the matrix element"""
-        res = self.super_get_matrix_element_calls(matrix_element, color_amplitudes, multi_channel_map)
+        # --axial_gauge: the massless external vectors are written out as
+        # vxxxxxr, in the axial gauge of the momentum of another external leg
+        # (see helas_call_writers.get_axial_gauge_refs)
+        self.axial_gauge = helas_call_writers.axial_gauge_requested(
+                                            getattr(self, 'cmd_options', None))
+        self.axial_gauge_refs = helas_call_writers.get_axial_gauge_refs(
+                            matrix_element) if self.axial_gauge else {}
+        try:
+            res = self.super_get_matrix_element_calls(matrix_element, color_amplitudes, multi_channel_map)
+        finally:
+            self.axial_gauge_refs = {}
         for i, item in enumerate(res):
             ###print(item) # FOR DEBUGGING
             if item.startswith('# Amplitude'): item='//'+item[1:] # AV replace '# Amplitude' by '// Amplitude'
@@ -3309,6 +3319,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         # (AV join using ',': no need to add a space as this is done by format_call later on)
         line = ', '.join(split_line)
         line = line.replace( 'xxx(', 'xxx<M_ACCESS, W_ACCESS>(' )
+        line = line.replace( 'xxxr(', 'xxxr<M_ACCESS, W_ACCESS>(' )
         line = line.replace( 'w_sv', 'w_fp' )
         # AV2: line2 logic is to have MGONGPU_TEST_DIVERGENCE on the first xxx call
         if self.first_get_external and ( ( 'mzxxx' in line ) or ( 'pzxxx' in line ) or ( 'xzxxx' in line ) ) :
@@ -3335,6 +3346,12 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             argument.get_spin_state_number()].lower()
         # Fill out with X up to 6 positions
         call = call + 'x' * (6 - len(call))
+        # Axial gauge: a vector leg is written out as vxxxxxr, which takes the
+        # (lightlike) momentum of another external leg as its gauge reference
+        # (see helas_call_writers.get_axial_gauge_refs)
+        axial = self.axial_gauge and argument.get('spin') == 3
+        if axial:
+            call = call + 'r'
         # Specify namespace for Helas calls
         call = call + '( momenta,'
         if argument.get('spin') != 1:
@@ -3345,7 +3362,20 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             ###call = call + 'm_pars->%s,'
             call = call
         # Add flavor and the related ALOHA object
-        call = call + '%+d, cFlavors[iflavor][%d], aloha_obj[%d], %d );'
+        if axial:
+            call = call + '%+d, cFlavors[iflavor][%d], aloha_obj[%d], %d, %d );'
+        else:
+            call = call + '%+d, cFlavors[iflavor][%d], aloha_obj[%d], %d );'
+        if axial:
+            return self.format_coupling(call % \
+                            (wf.get('mass'),
+                                wf.get('number_external')-1,
+                                # For boson, need initial/final here
+                                (-1) ** (wf.get('state') == 'initial'),
+                                wf.get('number_external')-1,
+                                wf.get('me_id')-1,
+                                wf.get('number_external')-1,
+                                self.get_axial_gauge_ref(wf)-1))
         if argument.get('spin') == 1:
             # AV This seems to be for scalars (spin==1???), pass neither mass nor helicity (#351)
             return call % \

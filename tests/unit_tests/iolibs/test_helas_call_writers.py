@@ -1225,6 +1225,26 @@ class AxialGaugeReferenceTest(unittest.TestCase):
              'CALL VXXXXXR(P(0,3),ZERO,NHEL(3),+1,P(0,1),W(3))',
              'CALL VXXXXXR(P(0,4),ZERO,NHEL(4),+1,P(0,1),W(4))'])
 
+    def test_madmatrix_vxxxxxr_call(self):
+        """madmatrix: the 0-based particle number of the reference comes last"""
+
+        from madmatrix import model_handling
+        me = self.matrix_element('g g > g g')
+        writer = model_handling.MadMatrixUFOHelasCallWriter(self.model)
+        writer.axial_gauge = True
+        writer.axial_gauge_refs = helas_call_writers.get_axial_gauge_refs(me)
+        externals = sorted([wf for wf in me.get_all_wavefunctions()
+                            if not wf.get('mothers')],
+                           key=lambda wf: wf.get('number_external'))
+        self.assertEqual(
+            writer.get_external(externals[0], externals[0]).strip(),
+            'vxxxxxr<M_ACCESS, W_ACCESS>( momenta, 0., cHel[ihel][0], -1, '
+            'cFlavors[iflavor][0], aloha_obj[0], 0, 1 );')
+        self.assertEqual(
+            writer.get_external(externals[2], externals[2]).strip(),
+            'vxxxxxr<M_ACCESS, W_ACCESS>( momenta, 0., cHel[ihel][2], +1, '
+            'cFlavors[iflavor][2], aloha_obj[2], 2, 0 );')
+
     def test_axial_gauge_requested(self):
         """the output option, and its refusal in the FD gauge (no vxxxxxr in
         the five-component HELAS library)"""
