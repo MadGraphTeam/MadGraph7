@@ -3119,7 +3119,7 @@ class CompleteForCmd(cmd.CompleteCmd):
                         possible_options = ['f', 'noclean', 'nojpeg'],
                         possible_options_full = ['-f', '-noclean', '-nojpeg', '--noeps=True','--hel_recycling=False',
                                                  '--jamp_optim=', '--jamp_orbit=', '--t_strategy=', '--vector_size=4', '--nb_warp=1',
-                                                 '--mask=False', '--prefix=']):
+                                                 '--mask=False', '--prefix=', '--axial_gauge=True']):
         "Complete the output command"
 
         possible_format = list(self._export_formats)

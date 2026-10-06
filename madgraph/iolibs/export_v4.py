@@ -6126,7 +6126,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         fortran_model.use_flavor_mask = (n_mask > 0)
         fortran_model.me_n_flavors = n_mask
         fortran_model.me_active_flavor_mask = active_flavor_mask
-        fortran_model.axial_gauge = bool(self.opt.get('axial_gauge'))
+        fortran_model.axial_gauge = helas_call_writers.axial_gauge_requested(
+                                                                   self.opt)
         fortran_model.axial_gauge_refs = \
             helas_call_writers.get_axial_gauge_refs(matrix_element) \
             if fortran_model.axial_gauge else {}
@@ -8185,7 +8186,8 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         fortran_model.use_flavor_mask = (n_flavors > 0)
         fortran_model.me_n_flavors = n_flavors
         fortran_model.me_active_flavor_mask = active_flavor_mask
-        fortran_model.axial_gauge = bool(self.opt.get('axial_gauge'))
+        fortran_model.axial_gauge = helas_call_writers.axial_gauge_requested(
+                                                                   self.opt)
         fortran_model.axial_gauge_refs = \
             helas_call_writers.get_axial_gauge_refs(matrix_element) \
             if fortran_model.axial_gauge else {}

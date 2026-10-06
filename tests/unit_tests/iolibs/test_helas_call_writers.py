@@ -1167,3 +1167,76 @@ w[9]= VVVV5_2(w[0],w[3],w[4],GC_57,CMASS_mdl_MW)
 amp[11]= VVV1_0(w[2],w[1],w[9],GC_4)"""
         
         self.assertEqual(solution.split('\n'), result)        
+
+
+#===============================================================================
+# AxialGaugeReferenceTest
+#===============================================================================
+class AxialGaugeReferenceTest(unittest.TestCase):
+    """--axial_gauge: the reference leg of every massless external vector,
+    and the vxxxxxr calls written with it"""
+
+    cmd = None
+
+    def setUp(self):
+        if AxialGaugeReferenceTest.cmd is None:
+            from madgraph.interface.master_interface import MasterCmd
+            AxialGaugeReferenceTest.cmd = MasterCmd()
+            AxialGaugeReferenceTest.cmd.exec_cmd('import model sm')
+        self.model = self.cmd._curr_model
+
+    def matrix_element(self, process):
+        self.cmd.exec_cmd('generate %s' % process)
+        return helas_objects.HelasMatrixElement(self.cmd._curr_amps[0])
+
+    def test_reference_initial_gluon(self):
+        """g g > g g g: one beam gluon for all, the other one for it"""
+
+        me = self.matrix_element('g g > g g g')
+        self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
+                         {1: 2, 2: 1, 3: 1, 4: 1, 5: 1})
+
+    def test_reference_coloured_leg(self):
+        """e+ e- > u u~ g g: the gluons take the u quark, not a beam lepton
+        (which they do not couple to, and which gives no vanishing amplitude)"""
+
+        me = self.matrix_element('e+ e- > u u~ g g')
+        self.assertEqual(helas_call_writers.get_axial_gauge_refs(me),
+                         {5: 3, 6: 3})
+
+    def test_no_reference_for_massive_vectors(self):
+        """u u~ > w+ w-: no massless vector, nothing to gauge"""
+
+        me = self.matrix_element('u u~ > w+ w-')
+        self.assertTrue(me.get('diagrams'))
+        self.assertEqual(helas_call_writers.get_axial_gauge_refs(me), {})
+
+    def test_fortran_vxxxxxr_call(self):
+        """the reference momentum is passed after nsv"""
+
+        me = self.matrix_element('g g > g g')
+        writer = helas_call_writers.FortranUFOHelasCallWriter(self.model)
+        writer.axial_gauge = True
+        writer.axial_gauge_refs = helas_call_writers.get_axial_gauge_refs(me)
+        calls = writer.get_matrix_element_calls(me)
+        self.assertEqual(calls[:4],
+            ['CALL VXXXXXR(P(0,1),ZERO,NHEL(1),-1,P(0,2),W(1))',
+             'CALL VXXXXXR(P(0,2),ZERO,NHEL(2),-1,P(0,1),W(2))',
+             'CALL VXXXXXR(P(0,3),ZERO,NHEL(3),+1,P(0,1),W(3))',
+             'CALL VXXXXXR(P(0,4),ZERO,NHEL(4),+1,P(0,1),W(4))'])
+
+    def test_axial_gauge_requested(self):
+        """the output option, and its refusal in the FD gauge (no vxxxxxr in
+        the five-component HELAS library)"""
+
+        requested = helas_call_writers.axial_gauge_requested
+        self.assertFalse(requested(None))
+        self.assertFalse(requested({'axial_gauge': 'False'}))
+        self.assertTrue(requested({'axial_gauge': 'True'}))
+        self.assertTrue(requested({'axial_gauge': True}))
+        old = aloha.unitary_gauge
+        try:
+            aloha.unitary_gauge = 3
+            self.assertFalse(requested({'axial_gauge': 'True'}))
+        finally:
+            aloha.unitary_gauge = old

@@ -24,6 +24,9 @@ import aloha.aloha_writers as aloha_writers
 import aloha
 from madgraph import MadGraph5Error
 import madgraph.various.misc as misc
+import logging
+
+logger = logging.getLogger('madgraph.helas_call_writers')
 if madgraph.ordering:
     set	= misc.OrderedSet
 
@@ -35,6 +38,27 @@ class HelasWriterError(Exception):
 #===============================================================================
 # Axial-gauge reference vectors
 #===============================================================================
+def axial_gauge_requested(output_options):
+    """Whether --axial_gauge=True was given on the output line.
+
+    The FD gauge has its own five-component vxxxxx and no vxxxxxr, so the
+    option is dropped there (with a warning)."""
+
+    value = (output_options or {}).get('axial_gauge', False)
+    if isinstance(value, str):
+        value = value.strip().lower() in ('true', 't', '1', 'yes', 'on')
+    if not value:
+        return False
+    if aloha.unitary_gauge == 3:
+        if not axial_gauge_requested.warned:
+            logger.warning('axial_gauge is not available in the FD gauge: '
+                           'the option is ignored.')
+            axial_gauge_requested.warned = True
+        return False
+    return True
+axial_gauge_requested.warned = False
+
+
 def get_axial_gauge_refs(matrix_element):
     """Pick the axial-gauge reference leg of every massless external vector.
 
@@ -42,9 +66,9 @@ def get_axial_gauge_refs(matrix_element):
     instead a lightlike r taken from another external leg gives eps.r = 0,
     and -- when several legs share the same r -- eps_i.eps_j = 0 for every
     same-chirality pair, which makes whole currents and amplitudes vanish
-    (arXiv:2312.07447). One reference is therefore shared by all of them;
-    the reference leg uses the next candidate so that r is never its own
-    momentum.
+    (arXiv:2312.07447). One reference is therefore shared by all the vectors
+    of a gauge group; the reference leg uses the next candidate so that r is
+    never its own momentum.
 
     The choice is made here, once, and is the same for every helicity
     configuration: an external wavefunction still depends only on its own leg
@@ -52,10 +76,16 @@ def get_axial_gauge_refs(matrix_element):
     themselves are helicity dependent and are picked up at run time by the
     existing hel_zeroamp scan.
 
-    An initial-state leg is preferred. It gives at least as many zeros as any
-    other choice, and it is the safest numerically: vxxxxxr divides by r.p,
-    which for r on the beam is E * pT * exp(-y) of the gauged leg and so is
-    kept away from zero by the usual pT and rapidity cuts.
+    The reference has to be a leg the vector couples to: a zero needs r to
+    meet eps in a vertex, either as the momentum of a fermion line the vector
+    is attached to or as another vector sharing r. So a gluon takes a
+    coloured leg and a photon a charged one; with e+ e- > u u~ g g a beam
+    reference gives no zero at all, the u quark 72 of the 256 (helicity,
+    diagram) pairs of the 16 good helicities.  Among those, an
+    initial-state leg is preferred as the safest numerically: vxxxxxr divides
+    by r.p, which for r on the beam is E * pT * exp(-y) of the gauged leg and
+    so is kept away from zero by the usual pT and rapidity cuts (a final-state
+    r relies on the separation cuts instead).
     """
 
     externals = {}
@@ -72,10 +102,24 @@ def get_axial_gauge_refs(matrix_element):
     if not vectors or len(massless) < 2:
         return {}
 
-    order = [i for i in massless if externals[i].get('state') == 'initial']
-    order += [i for i in massless if i not in order]
-    first, second = order[0], order[1]
-    return dict((i, second if i == first else first) for i in vectors)
+    def couples_to(vector):
+        part = externals[vector]['particle']
+        if part.get('color') != 1:
+            return lambda i: externals[i]['particle'].get('color') != 1
+        if part.get('charge') == 0:
+            return lambda i: externals[i]['particle'].get('charge') != 0
+        return lambda i: True
+
+    refs = {}
+    for vector in vectors:
+        candidates = [i for i in massless if couples_to(vector)(i)]
+        if len(candidates) < 2:
+            candidates = massless
+        order = [i for i in candidates
+                 if externals[i].get('state') == 'initial']
+        order += [i for i in candidates if i not in order]
+        refs[vector] = order[1] if vector == order[0] else order[0]
+    return refs
 
 
 #===============================================================================
