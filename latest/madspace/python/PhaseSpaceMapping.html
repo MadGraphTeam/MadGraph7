@@ -737,6 +737,13 @@
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="madspace.PhaseSpaceMapping.empty">
+<span class="sig-name descname"><span class="pre">empty</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.PhaseSpaceMapping" title="madspace._madspace_py.PhaseSpaceMapping"><span class="pre">madspace._madspace_py.PhaseSpaceMapping</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#madspace.PhaseSpaceMapping.empty" title="Link to this definition">¶</a></dt>
+<dd><p>True when the cuts exclude the whole region this mapping samples: a pair mass cut puts a propagator’s floor at or above the upper end of its on-shell window.</p>
+<p>Every point then fails the cuts, so the channel contributes nothing and should be dropped rather than sampled.</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="madspace.PhaseSpaceMapping.particle_count">
 <span class="sig-name descname"><span class="pre">particle_count</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.PhaseSpaceMapping" title="madspace._madspace_py.PhaseSpaceMapping"><span class="pre">madspace._madspace_py.PhaseSpaceMapping</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="DataType.html#madspace.DataType.int" title="madspace.DataType.int"><span class="pre">int</span></a></span></span><a class="headerlink" href="#madspace.PhaseSpaceMapping.particle_count" title="Link to this definition">¶</a></dt>
 <dd><p>Total number of particles, incoming and outgoing.</p>
@@ -831,6 +838,7 @@
 <li><a class="reference internal" href="#madspace.PhaseSpaceMapping.chili"><code class="docutils literal notranslate"><span class="pre">PhaseSpaceMapping.chili</span></code></a></li>
 <li><a class="reference internal" href="#madspace.PhaseSpaceMapping.color_ordered"><code class="docutils literal notranslate"><span class="pre">PhaseSpaceMapping.color_ordered</span></code></a></li>
 <li><a class="reference internal" href="#madspace.PhaseSpaceMapping.discrete_dim"><code class="docutils literal notranslate"><span class="pre">PhaseSpaceMapping.discrete_dim()</span></code></a></li>
+<li><a class="reference internal" href="#madspace.PhaseSpaceMapping.empty"><code class="docutils literal notranslate"><span class="pre">PhaseSpaceMapping.empty()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.PhaseSpaceMapping.particle_count"><code class="docutils literal notranslate"><span class="pre">PhaseSpaceMapping.particle_count()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.PhaseSpaceMapping.propagator"><code class="docutils literal notranslate"><span class="pre">PhaseSpaceMapping.propagator</span></code></a></li>
 <li><a class="reference internal" href="#madspace.PhaseSpaceMapping.rambo"><code class="docutils literal notranslate"><span class="pre">PhaseSpaceMapping.rambo</span></code></a></li>

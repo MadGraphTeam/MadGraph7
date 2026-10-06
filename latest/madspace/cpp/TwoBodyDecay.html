@@ -619,7 +619,7 @@
 </ul>
 </p>
 <p><strong>Conditions</strong><ul class="simple">
-<li><p>None.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">x1</span></code>, <code class="docutils literal notranslate"><span class="pre">x2</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – beam momentum fractions. Present only when a transverse-momentum or rapidity bound is given (see the constructor).</p></li>
 </ul>
 </p>
 <p><strong>Outputs</strong><ul class="simple">
@@ -635,11 +635,18 @@
 <div class="breathe-sectiondef docutils container">
 <p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
 <dl class="cpp function">
-<dt class="sig sig-object cpp" id="_CPPv4N8madspace12TwoBodyDecay12TwoBodyDecayEb">
-<span id="_CPPv3N8madspace12TwoBodyDecay12TwoBodyDecayEb"></span><span id="_CPPv2N8madspace12TwoBodyDecay12TwoBodyDecayEb"></span><span id="madspace::TwoBodyDecay::TwoBodyDecay__b"></span><span class="target" id="classmadspace_1_1TwoBodyDecay_1a92ce41a8e7043488dd5d2d64294457e2"></span><span class="sig-name descname"><span class="n"><span class="pre">TwoBodyDecay</span></span></span><span class="sig-paren">(</span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">com</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace12TwoBodyDecay12TwoBodyDecayEb" title="Link to this definition">¶</a><br /></dt>
-<dd><dl class="field-list simple">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace12TwoBodyDecay12TwoBodyDecayEbddd">
+<span id="_CPPv3N8madspace12TwoBodyDecay12TwoBodyDecayEbddd"></span><span id="_CPPv2N8madspace12TwoBodyDecay12TwoBodyDecayEbddd"></span><span id="madspace::TwoBodyDecay::TwoBodyDecay__b.double.double.double"></span><span class="target" id="classmadspace_1_1TwoBodyDecay_1aaecc7224cc328e261a4353cb7f745027"></span><span class="sig-name descname"><span class="n"><span class="pre">TwoBodyDecay</span></span></span><span class="sig-paren">(</span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">com</span></span>, <span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">pt_min</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="m"><span class="pre">0.</span></span>, <span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">y_max1</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="o"><span class="pre">-</span></span><span class="m"><span class="pre">1.</span></span>, <span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">y_max2</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="o"><span class="pre">-</span></span><span class="m"><span class="pre">1.</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace12TwoBodyDecay12TwoBodyDecayEbddd" title="Link to this definition">¶</a><br /></dt>
+<dd><p>
+When any of the three bounds is set, cos(theta) is sampled uniformly over the range they leave instead of over [-1, 1], the Jacobian shrinks accordingly (zero if nothing is left), and the mapping takes the beam momentum fractions <code class="docutils literal notranslate"><span class="pre">x1</span></code>, <code class="docutils literal notranslate"><span class="pre">x2</span></code> (<code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>) as conditions. </p>
+<dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>com</strong> – If true the decay is generated in the parent rest frame, otherwise the parent momentum is taken from the <code class="docutils literal notranslate"><span class="pre">com_momentum</span></code> input. </p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>com</strong> – If true the decay is generated in the parent rest frame, otherwise the parent momentum is taken from the <code class="docutils literal notranslate"><span class="pre">com_momentum</span></code> input. </p></li>
+<li><p><strong>pt_min</strong> – With <code class="docutils literal notranslate"><span class="pre">com</span></code> only: lower bound on the transverse momentum both products share, p sin(theta) (the parent is the partonic system, at rest up to a boost along the beam). </p></li>
+<li><p><strong>y_max1</strong> – With <code class="docutils literal notranslate"><span class="pre">com</span></code> only: bound on the absolute lab rapidity of the first product, y + atanh(beta cos(theta)) with y = log(x1 / x2) / 2; negative for none. </p></li>
+<li><p><strong>y_max2</strong> – The same for the second product.</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
@@ -712,7 +719,7 @@
             <ul>
 <li><a class="reference internal" href="#">TwoBodyDecay</a><ul>
 <li><a class="reference internal" href="#_CPPv4N8madspace12TwoBodyDecayE"><code class="docutils literal notranslate"><span class="pre">madspace::TwoBodyDecay</span></code></a><ul>
-<li><a class="reference internal" href="#_CPPv4N8madspace12TwoBodyDecay12TwoBodyDecayEb"><code class="docutils literal notranslate"><span class="pre">TwoBodyDecay()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace12TwoBodyDecay12TwoBodyDecayEbddd"><code class="docutils literal notranslate"><span class="pre">TwoBodyDecay()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace12TwoBodyDecay10random_dimEv"><code class="docutils literal notranslate"><span class="pre">random_dim()</span></code></a></li>
 </ul>
 </li>

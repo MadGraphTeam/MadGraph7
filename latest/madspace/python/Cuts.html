@@ -601,7 +601,7 @@
 <dd><p>Bases: <a class="reference internal" href="FunctionGenerator.html#madspace.FunctionGenerator" title="madspace._madspace_py.FunctionGenerator"><code class="xref py py-class docutils literal notranslate"><span class="pre">FunctionGenerator</span></code></a></p>
 <p>Fiducial phase-space cuts, as a compute-graph acceptance mask.</p>
 <p>Builds a per-event <code class="docutils literal notranslate"><span class="pre">mask</span></code> (1 for events passing every cut, 0 otherwise) from a list of cut items [1]. Each item evaluates one Observable for its particle selection and requires the result to lie in <code class="docutils literal notranslate"><span class="pre">[min,</span> <span class="pre">max]</span></code>. When the selection yields several values, CutMode decides whether all or any of them must pass. See Sec. 3.2.4 of [1].</p>
-<p>The accessors re-expose the active lower bounds in the layout the phase-space mappings consume. <code class="docutils literal notranslate"><span class="pre">pt_min()</span></code> and <code class="docutils literal notranslate"><span class="pre">eta_max()</span></code> are indexed by outgoing particle, with index 0 the first outgoing particle and the two beams excluded. <code class="docutils literal notranslate"><span class="pre">m_inv_min()</span></code> and <code class="docutils literal notranslate"><span class="pre">dr_min()</span></code> are symmetric <code class="docutils literal notranslate"><span class="pre">n_out</span> <span class="pre">*</span> <span class="pre">n_out</span></code> matrices indexed by outgoing-particle pair. A bound of <code class="docutils literal notranslate"><span class="pre">0</span></code>, or infinity for <code class="docutils literal notranslate"><span class="pre">eta_max()</span></code>, means the cut is inactive.</p>
+<p>The accessors re-expose the active lower bounds in the layout the phase-space mappings consume. <code class="docutils literal notranslate"><span class="pre">pt_min()</span></code> and <code class="docutils literal notranslate"><span class="pre">eta_max()</span></code> are indexed by outgoing particle, with index 0 the first outgoing particle and the two beams excluded. <code class="docutils literal notranslate"><span class="pre">m_inv_min()</span></code> and <code class="docutils literal notranslate"><span class="pre">dr_min()</span></code> are symmetric <code class="docutils literal notranslate"><span class="pre">n_out</span> <span class="pre">*</span> <span class="pre">n_out</span></code> matrices indexed by outgoing-particle pair. A bound of <code class="docutils literal notranslate"><span class="pre">0</span></code>, or infinity for <code class="docutils literal notranslate"><span class="pre">eta_max()</span></code>, means the cut is inactive. Only bounds that every selected object must satisfy are reported: an ordered selection (a rank, not a particle) or a CutMode::any cut over several objects stays a filter.</p>
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension. <code class="docutils literal notranslate"><span class="pre">n_particles</span></code> counts the incoming and outgoing particles.</p>
 <p><strong>Arguments</strong></p>
 <ul class="simple">
@@ -669,6 +669,25 @@
 
 </dd></dl>
 
+<dl class="py class">
+<dt class="sig sig-object py" id="madspace.Cuts.PairMassAny">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">PairMassAny</span></span><a class="headerlink" href="#madspace.Cuts.PairMassAny" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">pybind11_object</span></code></p>
+<p>A pair mass cut with CutMode::any over several pairs: at least one of <code class="docutils literal notranslate"><span class="pre">pairs</span></code> (outgoing indices, beams excluded) has invariant mass &gt;= <code class="docutils literal notranslate"><span class="pre">min</span></code>.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="madspace.Cuts.PairMassAny.min">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">min</span></span><a class="headerlink" href="#madspace.Cuts.PairMassAny.min" title="Link to this definition">¶</a></dt>
+<dd><p>Lower bound on the invariant mass of the passing pair.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="madspace.Cuts.PairMassAny.pairs">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">pairs</span></span><a class="headerlink" href="#madspace.Cuts.PairMassAny.pairs" title="Link to this definition">¶</a></dt>
+<dd><p>The pairs, as outgoing indices; one of them has to pass.</p>
+</dd></dl>
+
+</dd></dl>
+
 <dl class="py attribute">
 <dt class="sig sig-object py" id="madspace.Cuts.all">
 <span class="sig-name descname"><span class="pre">all</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;CutMode.all:</span> <span class="pre">1&gt;</span></span><a class="headerlink" href="#madspace.Cuts.all" title="Link to this definition">¶</a></dt>
@@ -695,6 +714,12 @@
 <dt class="sig sig-object py" id="madspace.Cuts.m_inv_min">
 <span class="sig-name descname"><span class="pre">m_inv_min</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.Cuts" title="madspace._madspace_py.Cuts"><span class="pre">madspace._madspace_py.Cuts</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="DataType.html#madspace.DataType.float" title="madspace.DataType.float"><span class="pre">float</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#madspace.Cuts.m_inv_min" title="Link to this definition">¶</a></dt>
 <dd><p>Symmetric matrix of minimum pair invariant masses (0 where inactive).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.Cuts.pair_mass_any_min">
+<span class="sig-name descname"><span class="pre">pair_mass_any_min</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.Cuts" title="madspace._madspace_py.Cuts"><span class="pre">madspace._madspace_py.Cuts</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#madspace.Cuts.PairMassAny" title="madspace._madspace_py.Cuts.PairMassAny"><span class="pre">madspace._madspace_py.Cuts.PairMassAny</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#madspace.Cuts.pair_mass_any_min" title="Link to this definition">¶</a></dt>
+<dd><p>The CutMode::any pair mass cuts over several pairs, which bound no pair in particular and are therefore absent from m_inv_min().</p>
 </dd></dl>
 
 <dl class="py method">
@@ -776,11 +801,17 @@
 <li><a class="reference internal" href="#madspace.Cuts.CutMode.value"><code class="docutils literal notranslate"><span class="pre">Cuts.CutMode.value</span></code></a></li>
 </ul>
 </li>
+<li><a class="reference internal" href="#madspace.Cuts.PairMassAny"><code class="docutils literal notranslate"><span class="pre">Cuts.PairMassAny</span></code></a><ul>
+<li><a class="reference internal" href="#madspace.Cuts.PairMassAny.min"><code class="docutils literal notranslate"><span class="pre">Cuts.PairMassAny.min</span></code></a></li>
+<li><a class="reference internal" href="#madspace.Cuts.PairMassAny.pairs"><code class="docutils literal notranslate"><span class="pre">Cuts.PairMassAny.pairs</span></code></a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#madspace.Cuts.all"><code class="docutils literal notranslate"><span class="pre">Cuts.all</span></code></a></li>
 <li><a class="reference internal" href="#madspace.Cuts.any"><code class="docutils literal notranslate"><span class="pre">Cuts.any</span></code></a></li>
 <li><a class="reference internal" href="#madspace.Cuts.dr_min"><code class="docutils literal notranslate"><span class="pre">Cuts.dr_min()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.Cuts.eta_max"><code class="docutils literal notranslate"><span class="pre">Cuts.eta_max()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.Cuts.m_inv_min"><code class="docutils literal notranslate"><span class="pre">Cuts.m_inv_min()</span></code></a></li>
+<li><a class="reference internal" href="#madspace.Cuts.pair_mass_any_min"><code class="docutils literal notranslate"><span class="pre">Cuts.pair_mass_any_min()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.Cuts.pt_min"><code class="docutils literal notranslate"><span class="pre">Cuts.pt_min()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.Cuts.sqrt_s_min"><code class="docutils literal notranslate"><span class="pre">Cuts.sqrt_s_min()</span></code></a></li>
 </ul>

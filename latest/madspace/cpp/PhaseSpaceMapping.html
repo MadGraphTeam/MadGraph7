@@ -731,6 +731,13 @@
 <dd><p>Number of permutation channels. </p>
 </dd></dl>
 
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8madspace17PhaseSpaceMapping5emptyEv">
+<span id="_CPPv3NK8madspace17PhaseSpaceMapping5emptyEv"></span><span id="_CPPv2NK8madspace17PhaseSpaceMapping5emptyEv"></span><span id="madspace::PhaseSpaceMapping::emptyC"></span><span class="target" id="classmadspace_1_1PhaseSpaceMapping_1a2a8436c0701241c791f09072b20b9365"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">empty</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace17PhaseSpaceMapping5emptyEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>True when the cuts exclude the whole region this mapping samples: a pair mass cut puts a propagator’s floor at or above the upper end of its on-shell window. </p>
+<p>Every point then fails the cuts, so the channel contributes nothing and should be dropped rather than sampled. </p>
+</dd></dl>
+
 </div>
 <div class="breathe-sectiondef docutils container">
 <p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-static-functions">Public Static Functions</p>
@@ -824,6 +831,7 @@
 <li><a class="reference internal" href="#_CPPv4NK8madspace17PhaseSpaceMapping12discrete_dimEv"><code class="docutils literal notranslate"><span class="pre">discrete_dim()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace17PhaseSpaceMapping14particle_countEv"><code class="docutils literal notranslate"><span class="pre">particle_count()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace17PhaseSpaceMapping13channel_countEv"><code class="docutils literal notranslate"><span class="pre">channel_count()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8madspace17PhaseSpaceMapping5emptyEv"><code class="docutils literal notranslate"><span class="pre">empty()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace17PhaseSpaceMapping14random_dim_forERK8Topologyb"><code class="docutils literal notranslate"><span class="pre">random_dim_for()</span></code></a></li>
 </ul>
 </li>
