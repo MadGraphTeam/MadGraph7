@@ -371,6 +371,7 @@ void ChannelEventGenerator::integrate(const GeneratorBatchJob& job) {
     _status.rel_std_dev = _abs_cross_section.rel_std_dev();
     _status.count += w_view.size();
     _status.count_opt += w_view.size();
+    _count_requested_opt += job.requested_event_count;
     _status.count_after_cuts += sample_count_after_cuts;
     _status.count_after_cuts_opt += sample_count_after_cuts;
 
@@ -487,6 +488,7 @@ void ChannelEventGenerator::start_job(
                 batch_size = job.batch_event_count;
             }
             std::size_t target_count = batch_size;
+            job.requested_event_count = batch_size;
 
             std::size_t total_count = 0, repetitions = 0;
             TensorVec all_ps_points;
@@ -631,6 +633,7 @@ void ChannelEventGenerator::clear_events() {
     _unweighted_count = 0;
     _unweighted_accept_count = 0;
     _status.count_opt = 0;
+    _count_requested_opt = 0;
     _status.count_after_cuts_opt = 0;
     _event_file.clear();
     _weight_file.clear();
