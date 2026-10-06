@@ -113,8 +113,7 @@ namespace madmatrix
 // COMPLEX TYPES: SIMPLE COMPLEX CLASS (cxsmpl)
 //==========================================================================
 
-// NB: namespace mgOnGpu includes types which are defined in exactly the same way for CPU and GPU builds (see #318 and #725)
-namespace mgOnGpu /* clang-format off */
+namespace madmatrix /* clang-format off */
 {
   // The number of floating point types in a complex type (real, imaginary)
   constexpr int nx2 = 2;
@@ -152,7 +151,7 @@ namespace mgOnGpu /* clang-format off */
   };
 
   template<typename FP>
-  constexpr // (NB: now valid code? in the past this failed as "a constexpr function cannot have a nonliteral return type mgOnGpu::cxsmpl")
+  constexpr // (NB: now valid code? in the past this failed as "a constexpr function cannot have a nonliteral return type madmatrix::cxsmpl")
   inline __host__ __device__ cxsmpl<FP>
   conj( const cxsmpl<FP>& c )
   {
@@ -161,7 +160,7 @@ namespace mgOnGpu /* clang-format off */
 } /* clang-format on */
 
 // Expose the cxsmpl class outside the namespace
-using mgOnGpu::cxsmpl;
+using madmatrix::cxsmpl;
 
 // Printout to stream for user defined types
 namespace madmatrix
@@ -314,7 +313,7 @@ namespace madmatrix
 #endif
 
   // SANITY CHECK: memory access may be based on casts of fptype[2] to cxtype (e.g. for wavefunctions)
-  static_assert( sizeof( cxtype ) == mgOnGpu::nx2 * sizeof( fptype ), "sizeof(cxtype) is not 2*sizeof(fptype)" );
+  static_assert( sizeof( cxtype ) == madmatrix::nx2 * sizeof( fptype ), "sizeof(cxtype) is not 2*sizeof(fptype)" );
 
   // --- Multi-precision complex types (same platform logic as cxtype)
 #ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
@@ -350,14 +349,14 @@ namespace madmatrix
 #endif
 
   // SANITY CHECKS
-  static_assert( sizeof( cxtype_momenta ) == mgOnGpu::nx2 * sizeof( fptype_momenta ), "sizeof(cxtype_momenta) is not 2*sizeof(fptype_momenta)" );
-  static_assert( sizeof( cxtype_amp ) == mgOnGpu::nx2 * sizeof( fptype_amp ), "sizeof(cxtype_amp) is not 2*sizeof(fptype_amp)" );
-  static_assert( sizeof( cxtype_colour ) == mgOnGpu::nx2 * sizeof( fptype2 ), "sizeof(cxtype_colour) is not 2*sizeof(fptype2)" );
+  static_assert( sizeof( cxtype_momenta ) == madmatrix::nx2 * sizeof( fptype_momenta ), "sizeof(cxtype_momenta) is not 2*sizeof(fptype_momenta)" );
+  static_assert( sizeof( cxtype_amp ) == madmatrix::nx2 * sizeof( fptype_amp ), "sizeof(cxtype_amp) is not 2*sizeof(fptype_amp)" );
+  static_assert( sizeof( cxtype_colour ) == madmatrix::nx2 * sizeof( fptype2 ), "sizeof(cxtype_colour) is not 2*sizeof(fptype2)" );
 }
 
 // DANGEROUS! this was mixing different cxtype definitions for CPU and GPU builds (see #318 and #725)
 // DO NOT expose typedefs and operators outside the namespace
-//using mgOnGpu::cxtype;
+//using madmatrix::cxtype;
 
 //==========================================================================
 // COMPLEX TYPES: (PLATFORM-SPECIFIC) FUNCTIONS AND OPERATORS

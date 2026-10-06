@@ -309,7 +309,7 @@ namespace
   bool run_umami(
     UmamiHandle handle,
     unsigned int nevt,
-    mgOnGpu::TimerMap& timermap,
+    madmatrix::TimerMap& timermap,
     double& wavetime,
 #ifdef MGONGPUCPP_GPUIMPL
     const DeviceBufferBase<double>& devUmamiMomenta,
@@ -618,7 +618,7 @@ namespace
     constexpr unsigned int nevt = kMatrixBlocks * kMatrixThreads;
     const unsigned int nFlavors = CPPProcess::nmaxflavor;
 
-    mgOnGpu::TimerMap timermap;
+    madmatrix::TimerMap timermap;
 
 #ifdef MGONGPUCPP_GPUIMPL
     timermap.start( "00 GpuInit" );
@@ -839,7 +839,7 @@ namespace
       }
     }
 
-    mgOnGpu::TimerMap timermap;
+    madmatrix::TimerMap timermap;
 
 #ifdef MGONGPUCPP_GPUIMPL
     timermap.start( "00 GpuInit" );

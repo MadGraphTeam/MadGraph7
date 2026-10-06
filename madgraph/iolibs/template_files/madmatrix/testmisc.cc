@@ -154,7 +154,6 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testmisc )
 
   // Scalar complex references
   {
-    using namespace mgOnGpu;
     // Refs to f1, f2
     fptype f1 = 1;
     fptype f2 = 2;
@@ -194,7 +193,6 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testmisc )
 
   // Vector complex references
   {
-    using namespace mgOnGpu;
     // Refs to f1, f2
     fptype_sv f1 = fptype_sv{ 0 } + 1;
     fptype_sv f2 = fptype_sv{ 0 } + 2;

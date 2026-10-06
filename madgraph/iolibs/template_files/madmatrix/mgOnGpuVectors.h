@@ -42,7 +42,7 @@ namespace madmatrix
   const int neppV = MGONGPU_CPPSIMD;
 
   // SANITY CHECK: cppAlign must be a multiple of neppV * sizeof(fptype)
-  static_assert( mgOnGpu::cppAlign % ( neppV * sizeof( fptype ) ) == 0 );
+  static_assert( madmatrix::cppAlign % ( neppV * sizeof( fptype ) ) == 0 );
 
   // SANITY CHECK: check that neppV is a power of two
   static_assert( ispoweroftwo( neppV ), "neppV is not a power of 2" );
@@ -59,7 +59,7 @@ namespace madmatrix
   // Mixed fptypes #537: float for color algebra and double elsewhere
 #if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
   const int neppV2 = MGONGPU_CPPSIMD * 2;
-  static_assert( mgOnGpu::cppAlign % ( neppV2 * sizeof( fptype2 ) ) == 0 );
+  static_assert( madmatrix::cppAlign % ( neppV2 * sizeof( fptype2 ) ) == 0 );
   static_assert( ispoweroftwo( neppV2 ), "neppV2 is not a power of 2" );
 #ifdef __clang__
   typedef fptype2 fptype2_v __attribute__( ( ext_vector_type( neppV2 ) ) ); // RRRRRRRR
@@ -134,7 +134,7 @@ namespace madmatrix
     cxtype_v( const fptype& r )
       : m_real( fptype_v{} + r ), m_imag{ 0 } {} // IIII=0000
     template<typename FP2>
-    cxtype_v( const mgOnGpu::cxsmpl<FP2>& c ) // broadcast a scalar complex (amp precision)
+    cxtype_v( const madmatrix::cxsmpl<FP2>& c ) // broadcast a scalar complex (amp precision)
       : m_real( fptype_v{} + fptype( c.real() ) ), m_imag( fptype_v{} + fptype( c.imag() ) ) {}
     cxtype_v& operator=( const cxtype_v& ) = default;
     cxtype_v& operator=( cxtype_v&& ) = default;
@@ -176,7 +176,7 @@ namespace madmatrix
     cxtype_denom_sv( fptype_momenta r, fptype_momenta i ) : m_real( r ), m_imag( i ) {}          // cId( 0., 1. )
     cxtype_denom_sv( const cxtype_v& c ) : m_real( fpdenom_widen( c.real() ) ), m_imag( fpdenom_widen( c.imag() ) ) {} // COUP (FP32 complex)
     template<typename FP2>
-    cxtype_denom_sv( const mgOnGpu::cxsmpl<FP2>& c ) : m_real( fptype_momenta( c.real() ) ), m_imag( fptype_momenta( c.imag() ) ) {} // scalar complex
+    cxtype_denom_sv( const madmatrix::cxsmpl<FP2>& c ) : m_real( fptype_momenta( c.real() ) ), m_imag( fptype_momenta( c.imag() ) ) {} // scalar complex
     const fptype_denom_sv& real() const { return m_real; }
     const fptype_denom_sv& imag() const { return m_imag; }
     explicit operator cxtype_v() const { return cxtype_v( fpdenom_narrow( m_real ), fpdenom_narrow( m_imag ) ); }
@@ -238,12 +238,12 @@ namespace madmatrix
 
 // DANGEROUS! this was mixing different cxtype definitions for CPU and GPU builds (see #318 and #725)
 // DO NOT expose typedefs outside the namespace
-//using mgOnGpu::neppV;
+//using madmatrix::neppV;
 //#ifdef MGONGPU_CPPSIMD
-//using mgOnGpu::fptype_v;
-//using mgOnGpu::fptype2_v;
-//using mgOnGpu::cxtype_v;
-//using mgOnGpu::bool_v;
+//using madmatrix::fptype_v;
+//using madmatrix::fptype2_v;
+//using madmatrix::cxtype_v;
+//using madmatrix::bool_v;
 //#endif
 
 //==========================================================================

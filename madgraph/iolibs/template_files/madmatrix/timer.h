@@ -10,7 +10,7 @@
 #include <chrono>
 #include <iostream>
 
-namespace mgOnGpu
+namespace madmatrix
 {
 
   /*

@@ -120,7 +120,7 @@ namespace madmatrix
     const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
     constexpr int ihel = 0; // the input buffer allJamps already points to a specific helicity
     // NB! The same striding as in compute_jamps and cuBLAS is used here
-    for( int ix2 = 0; ix2 < mgOnGpu::nx2; ix2++ )
+    for( int ix2 = 0; ix2 < madmatrix::nx2; ix2++ )
       for( int icol = 0; icol < ncolor; icol++ )
         allJamps2[ix2 * ncolor * nhel * nevt + icol * nhel * nevt + ihel * nevt + ievt] =
           allJamps[ix2 * ncolor * nhel * nevt + icol * nhel * nevt + ihel * nevt + ievt];
@@ -186,8 +186,8 @@ namespace madmatrix
 #if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
     // Mixed precision mode: the jamps go through a buffer of their own, as they must be
     // converted from double to float on the way
-    fptype_colour* ghelAllJampsBuf = ghelAllBlasTmp + ncolor * mgOnGpu::nx2 * nhel * nevt;    // start of the second one
-    fptype_colour* ghelAllMEsFpt2 = ghelAllBlasTmp + 2 * ncolor * mgOnGpu::nx2 * nhel * nevt; // start of the fptype_colour[nhel*nevt] buffer
+    fptype_colour* ghelAllJampsBuf = ghelAllBlasTmp + ncolor * madmatrix::nx2 * nhel * nevt;    // start of the second one
+    fptype_colour* ghelAllMEsFpt2 = ghelAllBlasTmp + 2 * ncolor * madmatrix::nx2 * nhel * nevt; // start of the fptype_colour[nhel*nevt] buffer
     const fptype_colour* ghelAllJamps2 = convertD2F_AllJamps( ghelAllJampsBuf, ghelAllJamps, ghelStreams, nhel, gpublocks, gputhreads );
 #else
     static_assert( std::is_same<fptype_colour, fptype>::value );

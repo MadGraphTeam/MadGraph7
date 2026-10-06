@@ -74,7 +74,7 @@ namespace madmatrix
     static constexpr size_t ndcoup = Parameters_dependentCouplings::ndcoup;
 
     // The number of floating point components of a complex number
-    static constexpr int nx2 = mgOnGpu::nx2;
+    static constexpr int nx2 = madmatrix::nx2;
 
     //--------------------------------------------------------------------------
     // NB all KernelLaunchers assume that memory access can be decomposed as "accessField = decodeRecord( accessRecord )"
@@ -163,7 +163,7 @@ namespace madmatrix
     // Per-flavor stride (in fptype's) between two consecutive flavor slots of a flavored coupling value buffer.
     // For dependent (event-by-event, running-alphas) couplings the value is an AOSOA record [nx2][neppC]
     // (real and imaginary SIMD lanes), so consecutive flavor slots are nx2*neppC fptype's apart.
-    static constexpr int flv_stride = MemoryAccessCouplingsBase::neppC * mgOnGpu::nx2;
+    static constexpr int flv_stride = MemoryAccessCouplingsBase::neppC * madmatrix::nx2;
 
     // Expose selected functions from MemoryAccessCouplings
     static constexpr auto ieventAccessRecordConst = MemoryAccessCouplings::ieventAccessRecordConst;
@@ -190,7 +190,7 @@ namespace madmatrix
       static_assert( neppC >= neppV );                              // ASSUME CONTIGUOUS ARRAYS
       static_assert( neppC % neppV == 0 );                          // ASSUME CONTIGUOUS ARRAYS
       static_assert( madmatrix::HostBufferCouplings::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
-      //assert( (size_t)( buffer ) % mgOnGpu::cppAlign == 0 );      // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
+      //assert( (size_t)( buffer ) % madmatrix::cppAlign == 0 );      // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
       return madmatrix::fptypevFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
     }
 
@@ -219,7 +219,7 @@ namespace madmatrix
       static_assert( neppC >= neppV ); // ASSUME CONTIGUOUS ARRAYS
       static_assert( neppC % neppV == 0 ); // ASSUME CONTIGUOUS ARRAYS
       static_assert( madmatrix::HostBufferCouplings::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
-      //assert( (size_t)( buffer ) % mgOnGpu::cppAlign == 0 ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
+      //assert( (size_t)( buffer ) % madmatrix::cppAlign == 0 ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
       return madmatrix::fptypevFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
 #endif
     }

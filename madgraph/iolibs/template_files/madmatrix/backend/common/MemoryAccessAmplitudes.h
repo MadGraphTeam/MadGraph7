@@ -39,7 +39,7 @@ namespace madmatrix
     friend class KernelAccessHelper<MemoryAccessAmplitudesBase, false, fptype_amp>;
 
     // The number of floating point components of a complex number
-    static constexpr int nx2 = mgOnGpu::nx2;
+    static constexpr int nx2 = madmatrix::nx2;
 
     //--------------------------------------------------------------------------
     // NB all KernelLaunchers assume that memory access can be decomposed as "accessField = decodeRecord( accessRecord )"

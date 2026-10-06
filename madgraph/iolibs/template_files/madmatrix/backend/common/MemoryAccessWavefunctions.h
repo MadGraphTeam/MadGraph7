@@ -39,10 +39,10 @@ namespace madmatrix
     friend class KernelAccessHelper<MemoryAccessWavefunctionsBase, false, fptype_amp>;
 
     // The number of components of a (fermion or vector) wavefunction
-    static constexpr int nw6 = mgOnGpu::nw6;
+    static constexpr int nw6 = madmatrix::nw6;
 
     // The number of floating point components of a complex number
-    static constexpr int nx2 = mgOnGpu::nx2;
+    static constexpr int nx2 = madmatrix::nx2;
 
     //--------------------------------------------------------------------------
     // NB all KernelLaunchers assume that memory access can be decomposed as "accessField = decodeRecord( accessRecord )"
