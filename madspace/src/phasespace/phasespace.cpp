@@ -140,6 +140,46 @@ std::size_t ps_discrete_dim(
     }
     return 0;
 }
+
+// The floor every pair of final-state particles puts on its invariant mass:
+// the pair mass cuts m_inv_min, raised wherever the pt and delta R cuts imply
+// more. All tables are indexed by outgoing position. For two massless
+// particles
+//     m^2 = 2 pt_i pt_j (cosh(d_eta) - cos(d_phi)),
+// and on d_eta^2 + d_phi^2 >= R^2 the bracket is smallest at d_eta = 0,
+// d_phi = R (moving along the circle towards d_phi = 0 costs more in cosh than
+// it gains in cos, since sin b <= b), so
+//     m >= sqrt(2 pt_i,min pt_j,min (1 - cos R)).
+// That is a consequence of the cuts, not an approximation to them, so it can
+// bound the sampling without changing the integral. It needs d_phi = R to be
+// reachable (R <= pi), and it needs massless legs: with a mass, delta R is
+// measured in pseudorapidity while the invariant depends on the rapidity, and
+// the bound no longer follows.
+std::vector<std::vector<double>> pair_mass_floors(
+    std::vector<std::vector<double>> floors,
+    const std::vector<double>& pt_min,
+    const std::vector<std::vector<double>>& dr_min,
+    const std::vector<double>& masses
+) {
+    for (std::size_t i = 0; i < floors.size(); ++i) {
+        if (masses.at(i) != 0.) {
+            continue;
+        }
+        for (std::size_t j = i + 1; j < floors.size(); ++j) {
+            double r = dr_min.at(i).at(j);
+            if (masses.at(j) != 0. || r <= 0. || r > PI) {
+                continue;
+            }
+            double floor =
+                std::sqrt(2. * pt_min.at(i) * pt_min.at(j) * (1. - std::cos(r)));
+            if (floor > floors.at(i).at(j)) {
+                floors.at(i).at(j) = floor;
+                floors.at(j).at(i) = floor;
+            }
+        }
+    }
+    return floors;
+}
 } // namespace
 
 PhaseSpaceMapping::PhaseSpaceMapping(
@@ -225,8 +265,16 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     // Cuts indexes its per-particle tables by outgoing position, counting two
     // incoming particles. A decay topology has one, so the tables cannot be
     // read against it at all - and a decay has no cuts to apply anyway.
+    // Besides the explicit pair mass cuts, the pt and delta R cuts of two
+    // massless particles also bound their invariant mass (pair_mass_floors),
+    // and that floor is used wherever a pair mass cut is.
     auto m_inv_min = _topology.incoming_masses().size() == 2
-        ? _cuts.m_inv_min()
+        ? pair_mass_floors(
+              _cuts.m_inv_min(),
+              _cuts.pt_min(),
+              _cuts.dr_min(),
+              _topology.outgoing_masses()
+          )
         : std::vector<std::vector<double>>{};
     std::vector<std::vector<std::size_t>> node_leaves(_topology.decays().size());
     {
@@ -318,6 +366,24 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     // rather than handed on as an empty range.
     if (_map_luminosity && sqrt_s_hat_min > 0. && sqrt_s_hat_min < _sqrt_s_lab) {
         _topology.raise_decay_e_min(0, sqrt_s_hat_min);
+    }
+    // One more floor on s_hat, from the pt cuts: in the partonic
+    // centre-of-mass frame sqrt(s_hat) is the sum of the outgoing energies,
+    // each at least the transverse mass, and the transverse momenta are the
+    // same there as in the lab, so
+    //     sqrt(s_hat) >= sum_i sqrt(m_i^2 + pt_i,min^2).
+    // Without a pt cut this is just the sum of the masses, which the sampler
+    // already respects.
+    if (_map_luminosity && _topology.incoming_masses().size() == 2) {
+        double transverse_mass_sum = 0.;
+        bool has_pt_cut = false;
+        for (auto [mass, pt_min] : zip(_topology.outgoing_masses(), _cuts.pt_min())) {
+            transverse_mass_sum += std::sqrt(mass * mass + pt_min * pt_min);
+            has_pt_cut = has_pt_cut || pt_min > 0.;
+        }
+        if (has_pt_cut && transverse_mass_sum < _sqrt_s_lab) {
+            _topology.raise_decay_e_min(0, transverse_mass_sum);
+        }
     }
     for (auto [decay, info] :
          zip(std::views::reverse(_topology.decays()),

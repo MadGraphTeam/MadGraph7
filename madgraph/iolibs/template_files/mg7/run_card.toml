@@ -136,7 +136,8 @@ $multiparticles
 #      named groups can form, so "lepton-pair_mass" is the same cut as
 #      "lepton-lepton-sum-mass". sqrt_s is for all outgoing particles)
 # A pair_mass minimum is also used to bound the integration.
-# A sqrt_s minimum bounds it the same way. The integral is
+# A sqrt_s minimum bounds it the same way, and so do pt and delta_r minima
+# through the pair masses and sqrt_s they imply. The integral is
 # unaffected either way -- only how much of the sampling is wasted.
 # for all cuts, min or max can be specified
 $cuts
