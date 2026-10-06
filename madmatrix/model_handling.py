@@ -863,7 +863,9 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 if not aloha.complex_mass:
                     # This affects 'denom = COUP' in HelAmps_sm.cc
                     if self.routine.denominator:
-                        if self.routine.denominator == '1':
+                        # the P1N routines of the amplitude split carry the
+                        # identity propagator, as the integer 1
+                        if str(self.routine.denominator) == '1':
                             out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s;\n' % mydict) # AV
                         else:
                             mydict['denom'] = self.denominator_in_denom_precision(
@@ -2074,6 +2076,124 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             raise Exception("This standalone format does not support madevent interface")
         return ('', {}) if write else {}
 
+    #===========================================================================
+    # helicity recycling (--hel_recycling)
+    #===========================================================================
+    # A wavefunction only depends on the helicities of the external legs it
+    # descends from, so every helicity row that agrees on those legs can share
+    # it. calculate_jamps rebuilds everything once per row; the recycled build
+    # (calculate_all_jamps in backend/{cpu,simd}/SigmaKin.cc) makes each
+    # wavefunction once per COPY, skips the amplitudes that vanish at a row and
+    # folds the others into per-row tables. The unfolding is madevent's own
+    # hel_recycle, through its C++ dialect.
+    #
+    # Two passes. At generation, the calls are written once more in the form the
+    # recycler reads (hr_orig_calls) and the ordinary ones carry a probe hook.
+    # Once the directory is buildable, the standalone exporter's finalize builds a
+    # probe (BACKEND=scalar FPTYPE=d -DMG_HR_PROBE), which prints the good
+    # helicities and, per helicity, the amplitudes that are only a cancellation
+    # zero; write_recycled then runs the recycler for those and writes
+    # HelRecycling.inc / HelRecyclingCalls.inc, whose presence is what switches
+    # SigmaKin.cc over. Any failure leaves the ordinary code in place.
+    _hr_warmups = []
+    HR_CALLS_MARK = '//HR_CALLS'
+
+    @property
+    def hel_recycling(self):
+        """Whether the output command asked for --hel_recycling=True (off by
+        default here; madevent's own option of the same name is separate)."""
+        options = getattr(self.helas_call_writer, 'cmd_options', None) or {}
+        return str(options.get('hel_recycling', False)).lower() \
+                                                in ('true', '1', 'yes')
+
+    def hel_recycling_refusal(self):
+        """Why this process cannot be recycled, or None."""
+        if aloha.unitary_gauge == 3:
+            return 'the FD gauge (its five-component wavefunctions)'
+        if len(self.matrix_elements) != 1:
+            return 'more than one matrix element in the directory'
+        so = export_v4.split_order_tables(self.matrix_elements[0])
+        if so and so['nampso'] > 1:
+            return 'split amplitude orders'
+        return None
+
+    def hr_orig_calls(self, color_amplitudes):
+        """The calls of the matrix element in the form the recycler reads.
+
+        Written before the ordinary calls: the ordinary pass renumbers every
+        amplitude to the one scratch it writes, and the number is what an
+        hr_orig amplitude is tagged with (and what the color flows and the
+        quartic current sums are keyed on). Restored afterwards, so that the
+        ordinary pass sees what it always saw."""
+        matrix_element = self.matrix_elements[0]
+        writer = self.helas_call_writer
+        amplitudes = matrix_element.get_all_amplitudes()
+        numbers = [(amp, amp.get('number')) for amp in amplitudes]
+        writer.hr_orig = True
+        try:
+            return writer.get_matrix_element_calls(
+                matrix_element, color_amplitudes,
+                multi_channel_map=self.multi_channel_map)
+        finally:
+            writer.hr_orig = False
+            for amp, number in numbers:
+                amp.set('number', number)
+
+    def write_recycled(self, good_hels, zero_perhel):
+        """Run the recycler over the hr_orig calls for the good helicities
+        (1-based rows of cHel) and the (row, amplitude) pairs that vanish, and
+        write HelRecycling.inc and HelRecyclingCalls.inc. Returns the number of
+        rows built."""
+        import madgraph.madevent.hel_recycle as hel_recycle
+        matrix_element = self.matrix_elements[0]
+        all_hel = [tuple(hel) for hel in
+                   matrix_element.get_helicity_matrix(allow_reverse=True)]
+        ncomb = len(all_hel)
+        kept = sorted(int(hel) for hel in good_hels)
+        row_of_hel = [-1] * ncomb
+        for compact, full in enumerate(kept):
+            row_of_hel[full - 1] = compact
+        orig_path = pjoin(self.path, 'HelRecycling_orig.cc')
+        tmpl_path = pjoin(self.path, 'HelRecycling_template.cc')
+        out_path = pjoin(self.path, 'HelRecycling_out.cc')
+        with open(orig_path, 'w') as fsock:
+            fsock.write('\n'.join(self._hr_calls) + '\n')
+        with open(tmpl_path, 'w') as fsock:
+            fsock.write(
+                '  // --hel_recycling: generated by madgraph/madevent/hel_recycle.py\n'
+                '  constexpr int nHrRows = ${ncomb}; // helicity rows built\n'
+                '  constexpr int hrNwf = ${nwavefuncs}; // wavefunction slots of the recycled build\n'
+                '  static constexpr int cHrRow[ncomb] = { %s }; // row of each helicity (-1: not built)\n'
+                '${helicity_lines}\n%s\n${helas_calls}\n'
+                % (', '.join(str(row) for row in row_of_hel), self.HR_CALLS_MARK))
+        recycler = hel_recycle.HelicityRecycler(
+                        [str(hel) for hel in kept], [],
+                        sorted((int(h), int(a)) for h, a in zero_perhel),
+                        dialect=hel_recycle.CppDialect())
+        recycler.hel_filt = True
+        recycler.amp_splt = True
+        recycler.amp_filt = True
+        try:
+            recycler.set_input(orig_path)
+            recycler.set_output(out_path)
+            recycler.set_template(tmpl_path)
+            recycler.set_helicity_table(all_hel)
+            recycler.generate_output_file()
+            with open(out_path) as fsock:
+                text = fsock.read()
+        finally:
+            for path in (orig_path, tmpl_path, out_path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+        header, calls = text.split(self.HR_CALLS_MARK, 1)
+        with open(pjoin(self.path, 'HelRecycling.inc'), 'w') as fsock:
+            fsock.write(header)
+        with open(pjoin(self.path, 'HelRecyclingCalls.inc'), 'w') as fsock:
+            fsock.write(calls.lstrip('\n'))
+        return len(kept)
+
     # AV - modify export_cpp.OneProcessExporterCPP method (fix CPPProcess.cc)
     # backend_separation: calculate_jamps' prologue (signature, memory-access
     # typedefs) and epilogue (color-choice bookkeeping, jamp output copy) are
@@ -2084,12 +2204,28 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     # flows of ColorFlows.inc, see edit_colorflows).
     def get_all_sigmaKin_lines(self, color_amplitudes, class_name):
         """Write EvaluateDiagrams.inc, the diagram calls backend/<variant>/SigmaKin.cc #includes"""
+        recycle = False
+        if self.single_helicities and self.hel_recycling:
+            refusal = self.hel_recycling_refusal()
+            if refusal:
+                logger.warning('--hel_recycling is not supported with %s: %s is '
+                               'written without it.', refusal,
+                               os.path.basename(self.path))
+            else:
+                recycle = True
+                self._hr_calls = self.hr_orig_calls(color_amplitudes[0])
+                if self not in OneProcessExporterMadMatrix._hr_warmups:
+                    OneProcessExporterMadMatrix._hr_warmups.append(self)
         if self.single_helicities:
-            helas_calls = self.helas_call_writer.get_matrix_element_calls(\
+            self.helas_call_writer.hr_probe = recycle
+            try:
+                helas_calls = self.helas_call_writer.get_matrix_element_calls(\
                                                     self.matrix_elements[0],
                                                     color_amplitudes[0],
                                                     multi_channel_map = self.multi_channel_map
                                                     )
+            finally:
+                self.helas_call_writer.hr_probe = False
             assert len(self.matrix_elements) == 1 or len(self.matrix_elements) == 2 # how to handle if this is not true?
             self.couplings2order = self.helas_call_writer.couplings2order
             self.couporderflv = self.helas_call_writer.couporderflv
@@ -2711,6 +2847,14 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     # leaving the color basis invariant (see JampOptimiser). Toggled by
     # --jamp_orbit=True|False.
     jamp_orbit = True
+    # --hel_recycling. hr_orig: write the calls the way madevent's hel_recycle
+    # reads them back (one call per line, every amplitude tagged //HRAMP with its
+    # number and followed by what it adds to the per-row tables, with a ${row}
+    # hole); see OneProcessExporterMadMatrix.hr_orig_calls. hr_probe: follow every
+    # amplitude of the ordinary calls with MG_HR_PROBE_AMP, which only a warm-up
+    # build (-DMG_HR_PROBE) compiles to anything.
+    hr_orig = False
+    hr_probe = False
     # Class structure information
     #  - object
     #  - dict(object) [built-in]
@@ -3077,7 +3221,11 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 color[namp][njamp] = coeff
         # Color flows through shared sub-expressions (None to write them out
         # one (color flow, amplitude) pair at a time, as before)
-        jamp_plan = self.build_jamp_plan(matrix_element, color_amplitudes)
+        # In hr_orig mode every amplitude is folded into its own row of the
+        # recycled tables, so there is nothing for shared sub-expressions to be
+        # shared between.
+        jamp_plan = None if self.hr_orig \
+                    else self.build_jamp_plan(matrix_element, color_amplitudes)
         self.nb_tmp_jamp = jamp_plan[0] if jamp_plan else 0
         so_index = self.split_order_index(matrix_element)
         ncolor_jamp = len(color_amplitudes)
@@ -3105,7 +3253,11 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         # grouped flavors (get_external_flavors_with_iden), so the per-flavor
         # masks set by compute_flavor_masks() are compressed onto those groups.
         # NB: this relies on iflavor being constant across a SIMD vector.
-        diag_group_mask, wf_group_mask = self._compute_group_masks(matrix_element)
+        # The guards wrap a call in an if/{} that the recycler's line-per-call
+        # reader cannot unfold, and they are only an optimisation (a masked term
+        # is multiplied by a zero coupling anyway): left out of the hr_orig calls.
+        diag_group_mask, wf_group_mask = ({}, {}) if self.hr_orig \
+                                     else self._compute_group_masks(matrix_element)
 
         def _guard_open(group_mask):
             # Emit the opening of an `if` guard for a non-full grouped mask.
@@ -3177,6 +3329,13 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 amp_block = [ self.get_amplitude_call(amplitude) ] # AV new: avoid format_call
                 for mother, me_id in sum_original:
                     mother.set('me_id', me_id)
+                if self.hr_orig:
+                    res.extend(self._hr_orig_amplitude(amp_block[0], namp, diagram,
+                                                       id_amp in diag_to_config,
+                                                       color))
+                    continue
+                if self.hr_probe:
+                    amp_block.append('MG_HR_PROBE_AMP( %d );' % namp)
                 if id_amp in diag_to_config:
                     ###res.append("if( channelId == %i ) numerators_sv += cxabs2( amp_sv[0] );" % diag_to_config[id_amp]) # BUG #472
                     ###res.append("if( channelId == %i ) numerators_sv += cxabs2( amp_sv[0] );" % id_amp) # wrong fix for BUG #472
@@ -3234,6 +3393,32 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             res.extend(jamp_final)
         ###res.append('\n    // *** END OF DIAGRAMS ***' ) # AV - no longer needed ('COLOR MATRIX BELOW')
         return res
+
+    def _hr_orig_amplitude(self, call, namp, diagram, channel, color):
+        """One amplitude in hr_orig form: the call, tagged with its number (all
+        amplitudes write the one scratch amp_sv[0], so the call itself cannot say
+        which it is), then a //HRFOLD block of what it adds to its helicity row's
+        tables -- the multichannel numerator and the color flows -- with a
+        ${row} hole the recycler stamps out once per row it survives in."""
+        out = ['%s //HRAMP %d' % (call.rstrip('\n'), namp), '//HRFOLD %d' % namp]
+        slot = '( ${row} * nParity + iParity )'
+        if channel:
+            out += ['if( storeChannelWeights )', '{',
+                    '  numAll_sv[%s * ndiagrams + %i] += cxabs2( amp_sv[0] );'
+                    % (slot, diagram.get('number') - 1), '}']
+        for njamp, coeff in color[namp].items():
+            scoeff = OneProcessExporterMadMatrix.coeff(*coeff)
+            if scoeff[0] == '+': scoeff = scoeff[1:]
+            for old_, new_ in (('(', '( '), (')', ' )'), (',', ', '),
+                               ('*', ' * '), ('/', ' / ')):
+                scoeff = scoeff.replace(old_, new_)
+            target = 'jampAll_sv[%s * njampso + %s]' % (slot, njamp)
+            if scoeff.startswith('-'):
+                out.append('%s -= %samp_sv[0];' % (target, scoeff[1:]))
+            else:
+                out.append('%s += %samp_sv[0];' % (target, scoeff))
+        out.append('//HRENDFOLD')
+        return out
 
     # AV/OM - compute per-diagram and per-wavefunction flavor masks, projected
     # onto the grouped flavors used at runtime (iflavor). Returns two dicts
@@ -3321,6 +3506,9 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         line = line.replace( 'xxx(', 'xxx<M_ACCESS, W_ACCESS>(' )
         line = line.replace( 'xxxr(', 'xxxr<M_ACCESS, W_ACCESS>(' )
         line = line.replace( 'w_sv', 'w_fp' )
+        if self.hr_orig:
+            # one call per line for the recycler: no divergence-test variant
+            return '%s\n' % line
         # AV2: line2 logic is to have MGONGPU_TEST_DIVERGENCE on the first xxx call
         if self.first_get_external and ( ( 'mzxxx' in line ) or ( 'pzxxx' in line ) or ( 'xzxxx' in line ) ) :
             self.first_get_external = False

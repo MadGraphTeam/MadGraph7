@@ -361,4 +361,81 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
 
     def finalize(self, *args, **kwargs):
         # We disable this since we don't need subprocesses.json either
-        pass
+        # (but --hel_recycling still needs its warm-up, which can only run once
+        # every P* directory is complete and buildable)
+        self._run_hel_recycling_warmups()
+
+    def _run_hel_recycling_warmups(self):
+        """For each --hel_recycling P* directory: build a probe of the ordinary
+        code (BACKEND=scalar FPTYPE=d HRPROBE=1), run it once to have its own
+        good-helicity scan print the good helicities and the amplitudes that are
+        only a cancellation zero at each, and write the recycled build for those.
+
+        The scan is the very sigmaKin_getGoodHel the helicity loop uses at run
+        time, so the rows built can never be short of one it asks for (at these
+        parameters). On any failure the directory keeps the ordinary code: correct
+        but not recycled, which is the right way round to fail."""
+        exporters = model_handling.OneProcessExporterMadMatrix._hr_warmups
+        for exporter in exporters:
+            dirpath = exporter.path
+            name = os.path.basename(dirpath)
+            try:
+                built = subprocess.run(
+                    ['make', '-j%d' % (os.cpu_count() or 1), 'BACKEND=scalar',
+                     'FPTYPE=d', 'HRPROBE=1'],
+                    cwd=dirpath, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                if built.returncode != 0:
+                    logger.warning('hel_recycling warm-up build failed in %s; it is '
+                        'written without recycling.\n%s', name,
+                        built.stdout.decode(errors='replace')[-1500:])
+                    continue
+                env = dict(os.environ, MG_DUMP_GOODHEL='1')
+                run = subprocess.run([pjoin(dirpath, 'check_sa.exe'), 'matrix'],
+                                     cwd=dirpath, env=env, stdout=subprocess.PIPE,
+                                     stderr=subprocess.STDOUT)
+                output = run.stdout.decode(errors='replace')
+                if run.returncode != 0:
+                    logger.warning('hel_recycling warm-up run failed in %s; it is '
+                                   'written without recycling.', name)
+                    continue
+                good_hels, zero_perhel = self._parse_hel_warmup(output)
+                if not good_hels:
+                    logger.warning('hel_recycling warm-up found no helicity in %s; '
+                                   'it is written without recycling.', name)
+                    continue
+                nrows = exporter.write_recycled(good_hels, zero_perhel)
+                logger.info('hel_recycling: %s builds %d helicity rows of %d, '
+                    'dropping %d (helicity, amplitude) pairs that vanish', name,
+                    nrows, exporter.matrix_elements[0].get_helicity_combinations(),
+                    len(zero_perhel))
+            except Exception as err:
+                logger.warning('hel_recycling warm-up error in %s (%s); it is '
+                               'written without recycling.', name, err)
+            finally:
+                self._clean_warmup_build(dirpath)
+        del exporters[:]
+
+    @staticmethod
+    def _parse_hel_warmup(output):
+        """The good helicities (1-based rows of cHel) and the (row, amplitude)
+        pairs that vanish, as printed by sigmaKin_setGoodHel under MG_HR_PROBE --
+        the protocol madevent's helicity filter prints."""
+        good, zeros = [], []
+        for line in output.splitlines():
+            if line.startswith('Matrix Element/Good Helicity:'):
+                good.append(int(line.split()[-1]))
+            elif line.startswith('HEL/ZEROAMP:'):
+                _me, hel, amp = line.split()[1:4]
+                zeros.append((int(hel), int(amp)))
+        return sorted(set(good)), sorted(set(zeros))
+
+    @staticmethod
+    def _clean_warmup_build(dirpath):
+        """Undo the probe build: its objects must not be reused (the probe is not
+        the real thing), and the build tag it leaves makes the next make with any
+        other BACKEND/FPTYPE refuse to run."""
+        try:
+            subprocess.run(['make', 'cleanall'], cwd=dirpath,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass

@@ -30,7 +30,10 @@
 #include "ColorData.h"       // for shouldUseBlas/mgOnGpu::nchannels/channel2iconfig/icolamp/nconfigSDE
 #include "color_sum.h"       // for color_sum_cpu/color_sum_cpu_blas
 
+#include <algorithm>
 #include <cassert>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <vector>
@@ -172,6 +175,60 @@ namespace madmatrix
   // sum suffices (CUDA needs atomicAdd instead: see backend/gpu/SigmaKin.cc).
 #define NUM_ATOMIC_ADD( DST, VAL ) ( DST ) += ( VAL )
 
+  // --hel_recycling warm-up probe (madmatrix/output.py). The recycled build drops
+  // the amplitudes that vanish at a given helicity -- in particular the ones a
+  // gauge choice (--axial_gauge) makes vanish identically -- and it has to be told
+  // which those are. A build with -DMG_HR_PROBE has every amplitude of the
+  // generated diagrams record |amp|^2 (MG_HR_PROBE_AMP), and an amplitude is alive
+  // at a helicity once it is above zeroamp_tol of the largest amplitude of that
+  // helicity at the same point: a cancellation zero is a rounding residual, never
+  // an exact 0 (the same rule as the fortran hel_zeroamp detection). The answer is
+  // the union over the points and flavors getGoodHel samples; sigmaKin_setGoodHel
+  // prints it under MG_DUMP_GOODHEL. Scalar double builds only.
+#ifdef MG_HR_PROBE
+#if defined MGONGPU_CPPSIMD or !defined MGONGPU_FPTYPE_DOUBLE
+#error "MG_HR_PROBE needs BACKEND=scalar FPTYPE=d"
+#endif
+  static std::vector<double> hrProbeAbs2;           // |amp|^2 at the current point, by amplitude number
+  static std::vector<std::vector<char>> hrProbeSeen;  // [ihel][namp]: evaluated at this helicity
+  static std::vector<std::vector<char>> hrProbeAlive; // [ihel][namp]: not a cancellation zero
+  inline void
+  hr_probe_record( const int namp, const cxtype_amp_sv& amp )
+  {
+    if( (int)hrProbeAbs2.size() <= namp ) hrProbeAbs2.resize( namp + 1, -1. );
+    hrProbeAbs2[namp] = cxabs2( amp );
+  }
+  inline void
+  hr_probe_close( const int ihel )
+  {
+    constexpr double zeroamp_tol = 1e-12;
+    if( hrProbeSeen.empty() )
+    {
+      hrProbeSeen.resize( ncomb );
+      hrProbeAlive.resize( ncomb );
+    }
+    double ampmax = 0;
+    for( double a : hrProbeAbs2 ) ampmax = std::max( ampmax, a );
+    std::vector<char>& seen = hrProbeSeen[ihel];
+    std::vector<char>& alive = hrProbeAlive[ihel];
+    if( seen.size() < hrProbeAbs2.size() )
+    {
+      seen.resize( hrProbeAbs2.size(), 0 );
+      alive.resize( hrProbeAbs2.size(), 0 );
+    }
+    for( size_t namp = 0; namp < hrProbeAbs2.size(); namp++ )
+    {
+      if( hrProbeAbs2[namp] < 0 ) continue;
+      seen[namp] = 1;
+      if( hrProbeAbs2[namp] > zeroamp_tol * zeroamp_tol * ampmax ) alive[namp] = 1;
+      hrProbeAbs2[namp] = -1.;
+    }
+  }
+#define MG_HR_PROBE_AMP( NAMP ) hr_probe_record( NAMP, amp_sv[0] )
+#else
+#define MG_HR_PROBE_AMP( NAMP )
+#endif
+
   // Evaluate QCD partial amplitudes jamps for this given helicity from Feynman diagrams.
   // Also compute running sums over helicities adding jamp2, numerator, denominator
   // (NB: this function no longer handles matrix elements as the color sum has now been
@@ -238,44 +295,8 @@ namespace madmatrix
     {
       const int ievt0 = ievt00 + iParity * neppV;
 
-      constexpr size_t nxcoup = ndcoup + nIPC; // both dependent and independent couplings
-      const fptype* allCOUPs[nxcoup];
-      for( size_t idcoup = 0; idcoup < ndcoup; idcoup++ )
-        allCOUPs[idcoup] = CD_ACCESS::idcoupAccessBufferConst( allcouplings, idcoup ); // dependent couplings, vary event-by-event
-      for( size_t iicoup = 0; iicoup < nIPC; iicoup++ )
-        allCOUPs[ndcoup + iicoup] = CI_ACCESS::iicoupAccessBufferConst( cIPC, iicoup ); // independent couplings, fixed for all events
-      // C++ kernels take input/output buffers with momenta/MEs for one specific event (the first in the current event page)
-      const fptype_momenta* momenta = M_ACCESS::ieventAccessRecordConst( allmomenta, ievt0 );
-      const fptype* COUPs[nxcoup];
-      for( size_t idcoup = 0; idcoup < ndcoup; idcoup++ )
-        COUPs[idcoup] = CD_ACCESS::ieventAccessRecordConst( allCOUPs[idcoup], ievt0 ); // dependent couplings, vary event-by-event
-      for( size_t iicoup = 0; iicoup < nIPC; iicoup++ )
-        COUPs[ndcoup + iicoup] = allCOUPs[ndcoup + iicoup]; // independent couplings, fixed for all events
+#include "JampsPreamble.h" // a fragment of the iParity loop body, not a header
       fptype_amp* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * ndiagrams );
-      // Create an array of views over the Flavor Couplings
-      FLV_COUPLING_ARRAY<nIPF, nMF> flvCOUPs{ cIPF_partner1, cIPF_partner2, cIPF_value };
-
-      // Dependent (event-by-event, running-alphas) flavor couplings (Step 3): the per-flavor
-      // values are NOT baked in (they run per event). Gather the current values of the
-      // underlying dependent couplings for this event page into an AOSOA buffer dpf_value
-      // (one nx2*neppC SIMD record per (coupling,flavor) slot, matching CD_ACCESS), then build
-      // an ordinary value-based view over it. The flavor index is constant across a SIMD lane
-      // (guaranteed by the phase-space integrator), so each lane gets its own running value
-      // while sharing the same flavor selection. This is the direct analogue of Fortran's
-      // FLV_xx%VAL(k)%P => GC_yyy(J). The vertex routines are instantiated with CD_ACCESS so
-      // get_coupling_def reads dpf_value with the right per-flavor stride (CD_ACCESS::flv_stride).
-      constexpr int ndpfbuf = ( nDPF > 0 ? nDPF * nMF * CD_ACCESS::flv_stride : 1 );
-      // cppAlign is only defined for SIMD
-      alignas( mgOnGpu::cppAlign ) fptype dpf_value[ndpfbuf]{};
-      for( int idpf = 0; idpf < nDPF; idpf++ )
-        for( int imf = 0; imf < nMF; imf++ )
-        {
-          const int idc = cDPF_idcoup[idpf * nMF + imf];
-          if( idc >= 0 )
-            CD_ACCESS::kernelAccess( dpf_value + ( idpf * nMF + imf ) * CD_ACCESS::flv_stride ) =
-              CD_ACCESS::kernelAccessConst( COUPs[idc] );
-        }
-      FLV_COUPLING_ARRAY<nDPF, nMF, CD_ACCESS::flv_stride> flvCOUPs_dep{ cDPF_partner1, cDPF_partner2, dpf_value };
 
       // Reset color flows (reset jamp_sv) at the beginning of a new event or event page
       for( int i = 0; i < njampso; i++ ) { jamp_sv[i] = cxzero_sv<cxtype_amp_sv>(); }
@@ -283,11 +304,10 @@ namespace madmatrix
       // Numerators for the current event page (C++); denominators are no longer
       // accumulated here: they are derived as the sum of numerators later.
       fptype_amp_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
-      // Scalar iflavor for the current event page (constant across the SIMD vector)
-      const unsigned int* iflavor_rec = F_ACCESS::ieventAccessRecordConst( iflavorVec, ievt0 );
-      const uint_sv iflavor_sv = F_ACCESS::kernelAccessConst( iflavor_rec );
-      const unsigned int iflavor = reinterpret_cast<const unsigned int*>( &iflavor_sv )[0];
 #include "EvaluateDiagrams.inc"
+#ifdef MG_HR_PROBE
+      hr_probe_close( ihel );
+#endif
 #include "ColorFlows.inc" // defines jampflow_sv[ncolor_flow], which is not jamp_sv on the DDM basis
 
       // *** COLOR CHOICE BELOW ***
@@ -309,6 +329,127 @@ namespace madmatrix
   }
 
 #undef NUM_ATOMIC_ADD
+#undef MG_HR_PROBE_AMP
+
+  //--------------------------------------------------------------------------
+
+  // --hel_recycling (CPU only; on GPU blockIdx.y already parallelises over the
+  // helicities). A wavefunction only depends on the helicities of the external
+  // legs it descends from, so the helicity rows that agree on those legs can
+  // share it. calculate_jamps rebuilds everything once per row; the recycled
+  // build, generated by madevent's hel_recycle into HelRecyclingCalls.inc, makes
+  // each wavefunction once per COPY, skips the amplitudes the warm-up probe found
+  // vanishing at a row, and folds the others into per-row tables that load_jamps
+  // then hands back to the helicity loop one row at a time. Without the generated
+  // files (no --hel_recycling, or a warm-up that could not run) this is not
+  // compiled and the helicity loop calls calculate_jamps as before.
+#if __has_include( "HelRecycling.inc" ) and !defined MG_HR_PROBE
+#define MGONGPU_HEL_RECYCLING 1
+#include "HelRecycling.inc" // nHrRows, cHrRow[ncomb], hrNwf (and the recycled chunks, if any)
+
+  // The rows that were built are the rows that contributed AT THE PARAMETERS THE
+  // WARM-UP RAN AT. getGoodHel still runs at run time, so when it finds a row that
+  // is not in the table -- a different param_card, typically -- say so rather than
+  // silently contributing zero.
+  inline void
+  hr_unbaked_row( int ihel )
+  {
+    static bool warned = false;
+    if( warned ) return;
+    warned = true;
+    printf( "*** WARNING: helicity row %d contributes at these parameters but was\n"
+            "*** never built: the --hel_recycling table was measured at others.\n"
+            "*** This matrix element is INCOMPLETE -- regenerate the process.\n",
+            ihel );
+  }
+
+  // Build every helicity row of the table at once, for one event page (two in
+  // mixed precision): jampAll_sv[nHrRows][nParity][njampso] and, if
+  // storeChannelWeights, numAll_sv[nHrRows][nParity][ndiagrams].
+  void
+  calculate_all_jamps( const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
+                       const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]
+                       const unsigned int* iflavorVec,   // input: indices of the flavor combinations
+                       cxtype_amp_sv* jampAll_sv,        // output: jamps of every row
+                       fptype_amp_sv* numAll_sv,         // output: |amp|^2 by diagram of every row
+                       bool storeChannelWeights,
+                       const int ievt00 )                // input: first event number in current C++ event page
+  {
+    using M_ACCESS = HostAccessMomenta;
+    using W_ACCESS = HostAccessWavefunctions;
+    using A_ACCESS = HostAccessAmplitudes;
+    using CD_ACCESS = HostAccessCouplings;
+    using CI_ACCESS = HostAccessCouplingsFixed;
+    using F_ACCESS = HostAccessIflavorVec;
+    mgDebug( 0, __FUNCTION__ );
+    // one wavefunction slot per COPY, which is more than the nwf of one row and
+    // far fewer than one row's worth per row
+    fptype_momenta_sv pvec_sv[hrNwf][np4];
+    cxtype_amp_sv w_sv[hrNwf][nw6];
+    cxtype_amp_sv amp_sv[1]; // every amplitude goes through this one scratch, then into the tables
+    ALOHAOBJ aloha_obj[hrNwf];
+    for( int iwf = 0; iwf < hrNwf; iwf++ ) aloha_obj[iwf] = ALOHAOBJ{ pvec_sv[iwf], w_sv[iwf] };
+    fptype_amp* amp_fp = reinterpret_cast<fptype_amp*>( amp_sv );
+    // the vertex with one leg left off, shared by every row that differs only in
+    // that leg (the P1N amplitude split)
+    fptype_momenta_sv p1n_pvec_sv[np4];
+    cxtype_amp_sv p1n_w_sv[nw6];
+    ALOHAOBJ _p1n = ALOHAOBJ{ p1n_pvec_sv, p1n_w_sv };
+    (void)_p1n;
+    (void)amp_fp;
+    for( int i = 0; i < nHrRows * nParity * njampso; i++ ) jampAll_sv[i] = cxzero_sv<cxtype_amp_sv>();
+    if( storeChannelWeights )
+      for( int i = 0; i < nHrRows * nParity * ndiagrams; i++ ) numAll_sv[i] = fptype_amp_sv{ 0 };
+    for( int iParity = 0; iParity < nParity; ++iParity )
+    {
+      const int ievt0 = ievt00 + iParity * neppV;
+#include "JampsPreamble.h" // a fragment of the iParity loop body, not a header
+#include "HelRecyclingCalls.inc"
+    }
+    mgDebug( 1, __FUNCTION__ );
+  }
+
+  // Hand the helicity loop the row it asked for, out of the tables above, with the
+  // bookkeeping calculate_jamps does for its own row: the multichannel numerators
+  // and the color flows for the choice of color.
+  void
+  load_jamps( int ihel,
+              const cxtype_amp_sv* jampAll_sv, // input: jamps of every row
+              const fptype_amp_sv* numAll_sv,  // input: |amp|^2 by diagram of every row
+              cxtype_amp_sv* allJamp_sv,       // output: jamp_sv[nParity*njampso] for this helicity
+              bool storeChannelWeights,
+              fptype_amp* allNumerators,       // input/output: multichannel numerators[nevt], add helicity ihel
+              fptype_amp_sv* jamp2_sv,         // output: jamp2[nParity][ncolor_flow][neppV] for color choice (nullptr if disabled)
+              const int ievt00 )               // input: first event number in current C++ event page
+  {
+    using NUM_ACCESS = HostAccessNumerators;
+    const int row = cHrRow[ihel];
+    if( row < 0 ) hr_unbaked_row( ihel );
+    for( int iParity = 0; iParity < nParity; ++iParity )
+    {
+      const int ievt0 = ievt00 + iParity * neppV;
+      const size_t slot = (size_t)( row < 0 ? 0 : row ) * nParity + iParity;
+      cxtype_amp_sv jamp_sv[njampso];
+      for( int icol = 0; icol < njampso; icol++ )
+        jamp_sv[icol] = row < 0 ? cxzero_sv<cxtype_amp_sv>() : jampAll_sv[slot * njampso + icol];
+      if( storeChannelWeights and row >= 0 )
+      {
+        fptype_amp* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * ndiagrams );
+        fptype_amp_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
+        for( int idiag = 0; idiag < ndiagrams; idiag++ )
+          numerators_sv[idiag] += numAll_sv[slot * ndiagrams + idiag];
+      }
+#include "ColorFlows.inc" // defines jampflow_sv[ncolor_flow], which is not jamp_sv on the DDM basis
+      if( jamp2_sv ) // disable color choice if nullptr
+      {
+        for( int icol = 0; icol < ncolor_flow; icol++ )
+          jamp2_sv[ncolor_flow * iParity + icol] += cxabs2( jampflow_sv[icol] ); // may underflow #831
+      }
+      for( int icol = 0; icol < njampso; icol++ )
+        allJamp_sv[iParity * njampso + icol] = jamp_sv[icol];
+    }
+  }
+#endif // HelRecycling.inc
 
   //--------------------------------------------------------------------------
 
@@ -413,6 +554,23 @@ namespace madmatrix
     }
     cNGoodHel = nGoodHel;
     for( int ihel = 0; ihel < ncomb; ihel++ ) cGoodHel[ihel] = goodHel[ihel];
+#ifdef MG_HR_PROBE
+    // --hel_recycling warm-up: the good helicities and, for each, the amplitudes
+    // the probe never saw alive, in the protocol the madevent warm-up prints
+    if( getenv( "MG_DUMP_GOODHEL" ) != nullptr )
+    {
+      for( int ighel = 0; ighel < nGoodHel; ighel++ )
+        printf( "Matrix Element/Good Helicity: %d %d\n", 1, goodHel[ighel] + 1 );
+      for( int ighel = 0; ighel < nGoodHel; ighel++ )
+      {
+        const int ihel = goodHel[ighel];
+        if( hrProbeSeen.empty() ) break;
+        for( size_t namp = 0; namp < hrProbeSeen[ihel].size(); namp++ )
+          if( hrProbeSeen[ihel][namp] and !hrProbeAlive[ihel][namp] )
+            printf( "HEL/ZEROAMP: %d %d %d\n", 1, ihel + 1, (int)namp );
+      }
+    }
+#endif
     return nGoodHel;
   }
 
@@ -550,6 +708,15 @@ namespace madmatrix
       fptype_sv MEs_ighel2[ncomb] = {}; // sum of MEs for all good helicities up to ighel (second neppV page)
 #endif
 
+#ifdef MGONGPU_HEL_RECYCLING
+      // --hel_recycling: build every helicity row of this event page at once, then
+      // read the rows back inside the helicity loop (see calculate_all_jamps)
+      static thread_local std::vector<cxtype_amp_sv> hrJamp_sv( (size_t)nHrRows * nParity * njampso );
+      static thread_local std::vector<fptype_amp_sv> hrNum_sv( (size_t)nHrRows * nParity * ndiagrams );
+      calculate_all_jamps( allmomenta, allcouplings, iflavorVec, hrJamp_sv.data(), hrNum_sv.data(),
+                           allChannelIds != nullptr || allrnddiagram != nullptr, ievt00 );
+#endif
+
       // The color matrix does not depend on the helicity, so for a large-enough color matrix
       // (ColorMatrixData::shouldUseBlas) it pays to keep the jamps of every good helicity and
       // hand them all to BLAS in one call after the loop instead of the per-helicity color sum.
@@ -566,7 +733,11 @@ namespace madmatrix
           for( int i = 0; i < nParity * ncolor; i++ ) jamp_sv[i] = cxzero_sv<cxtype_sv>(); // calculate_jamps accumulates into jamp_sv
           // **NB! in "mixed" precision, using SIMD, calculate_jamps computes MEs for TWO neppV pages with a single channelId! #924
           bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
+#ifdef MGONGPU_HEL_RECYCLING
+          load_jamps( ihel, hrJamp_sv.data(), hrNum_sv.data(), jamp_sv, storeChannelWeights, allNumerators, jamp2_sv, ievt00 );
+#else
           calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
+#endif
         }
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
         color_sum_cpu_blas( allMEs, MEs_ighel, MEs_ighel2, ghelJamp_sv.data(), cNGoodHel, ievt00 );
@@ -583,7 +754,11 @@ namespace madmatrix
           cxtype_amp_sv jamp_sv[nParity * njampso] = {}; // fixed nasty bug (omitting 'nParity' caused memory corruptions after calling calculate_jamps)
           // **NB! in "mixed" precision, using SIMD, calculate_jamps computes MEs for TWO neppV pages with a single channelId! #924
           bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
+#ifdef MGONGPU_HEL_RECYCLING
+          load_jamps( ihel, hrJamp_sv.data(), hrNum_sv.data(), jamp_sv, storeChannelWeights, allNumerators, jamp2_sv, ievt00 );
+#else
           calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
+#endif
           color_sum_cpu( allMEs, jamp_sv, ievt00 );
           MEs_ighel[ighel] = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
