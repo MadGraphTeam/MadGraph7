@@ -958,6 +958,16 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readonly("min", &Cuts::CutItem::min, pydoc::doc("Cuts::CutItem::min"))
         .def_readonly("max", &Cuts::CutItem::max, pydoc::doc("Cuts::CutItem::max"))
         .def_readonly("mode", &Cuts::CutItem::mode, pydoc::doc("Cuts::CutItem::mode"));
+    // Registered before the methods that return it: pybind11 writes a method's
+    // signature when it is defined, and a type it does not know yet ends up as
+    // its raw C++ name, which pybind11-stubgen rejects.
+    py::classh<Cuts::PairMassAny>(cuts, "PairMassAny", pydoc::doc("Cuts::PairMassAny"))
+        .def_readonly(
+            "pairs", &Cuts::PairMassAny::pairs, pydoc::doc("Cuts::PairMassAny::pairs")
+        )
+        .def_readonly(
+            "min", &Cuts::PairMassAny::min, pydoc::doc("Cuts::PairMassAny::min")
+        );
     cuts.def(
             py::init<const std::vector<Cuts::CutItem>&>(),
             py::arg("cut_data"),
@@ -977,13 +987,6 @@ PYBIND11_MODULE(_madspace_py, m) {
             "pair_mass_any_min",
             &Cuts::pair_mass_any_min,
             pydoc::doc("Cuts::pair_mass_any_min")
-        );
-    py::classh<Cuts::PairMassAny>(cuts, "PairMassAny", pydoc::doc("Cuts::PairMassAny"))
-        .def_readonly(
-            "pairs", &Cuts::PairMassAny::pairs, pydoc::doc("Cuts::PairMassAny::pairs")
-        )
-        .def_readonly(
-            "min", &Cuts::PairMassAny::min, pydoc::doc("Cuts::PairMassAny::min")
         );
 
     py::classh<ObservableHistograms::HistItem>(
