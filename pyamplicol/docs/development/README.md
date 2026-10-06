@@ -41,6 +41,9 @@ The source checkout includes small opt-in numerical/compiler regressions in
 `tests/integration/test_symjit_upstream_regressions.py`. They require Python
 3.11+, pytest and Cargo, but no pyAmpliCol native build or Symbolica installation.
 They are separate from full process-generation and performance tests.
+The reproducer bundles in `SYMJIT_FOLLOW_UP_FIXES/` and `DEPENDENCY_FIXES/`
+are local, untracked inputs; retain or supply those directories before running
+this optional suite. They are not included in a fresh checkout.
 
 ```sh
 # Published SymJIT 2.25.4; outstanding regressions fail rather than being xfailed.

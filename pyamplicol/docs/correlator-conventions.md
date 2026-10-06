@@ -7,7 +7,7 @@ nav_order: 5
 # Conventions for spin- and colour-correlated Born quantities
 
 This page connects the notation of the
-[MadNkLO colour-correlator note](https://github.com/mg5amcnlo/pyamplicol/blob/main/IMPLEMENTATION_DOCS/REFERENCES/ColorCorrelators_MadNkLO.pdf)
+[MadNkLO colour-correlator note](https://github.com/mg5amcnlo/pyamplicol/blob/80aec6f706c409b2f8f6c793dff8d8f04b118f7d/IMPLEMENTATION_DOCS/REFERENCES/ColorCorrelators_MadNkLO.pdf)
 to pyAmpliCol's [correlated API](correlators.md). In particular, it makes the
 bra/ket convention explicit: pyAmpliCol contracts the **adjoint of the bra
 connection with the ket connection**, rather than adopting the note's
