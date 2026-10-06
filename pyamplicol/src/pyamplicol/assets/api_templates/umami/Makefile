@@ -78,7 +78,7 @@ $(foreach provider,$(UMAMI_PROVIDERS),$(eval $(call provider_rules,$(provider),_
 endif
 
 run: $(call make_path,$(RUN_DRIVER))
-	cd "$(ARTIFACT_DIR)" && "$(RUN_DRIVER)" "$(ARTIFACT_DIR)" $(ARGS)
+	"$(RUN_DRIVER)" "$(ARTIFACT_DIR)" $(ARGS)
 
 clean:
 	$(RM) $(foreach name,$(LIBRARY_NAMES) $(DRIVER_NAMES),"$(BUILD_DIR)/$(name)")

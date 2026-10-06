@@ -272,6 +272,15 @@ def _point(provider, entry):
     return tuple(physical)
 
 
+def _member_input(representative, member, point):
+    # Compose the two physical-to-representative maps without changing the
+    # physical labelling on which a consumer applies cuts or flavour weights.
+    mapped = [None] * len(point)
+    for j, slot in enumerate(representative["permutation"]):
+        mapped[slot] = point[member["runtime"]["permutation"][j]]
+    return tuple(mapped)
+
+
 def _expected(provider, entry, point, parameters=None):
     runtime = Runtime.load(provider.artifact, process=entry["process_id"])
     if parameters:
@@ -432,6 +441,8 @@ def test_all_exported_flavours_match_native_and_preserve_stride(providers):
 def test_grouped_members_match_physical_flows_at_asymmetric_point(providers):
     for provider in providers:
         reconstructed, complete = {}, {}
+        cut_native, cut_umami = 0.0, 0.0
+        cut_decisions = set()
         with provider.handle() as handle:
             for channel, description in enumerate(provider.data["channels"]):
                 for flavour, exported in enumerate(description["processes"]):
@@ -465,12 +476,10 @@ def test_grouped_members_match_physical_flows_at_asymmetric_point(providers):
                             complete[process_id] = float(
                                 complex(runtime.evaluate((point,))[0]).real
                             )
-                        mapped = [None] * len(point)
                         # Both maps name the same representative runtime slots.
                         # Test each member at its own physical momenta; do not
                         # confuse integrated multiplicity with pointwise sum.
-                        for j, slot in enumerate(representative["permutation"]):
-                            mapped[slot] = point[member["runtime"]["permutation"][j]]
+                        mapped = _member_input(representative, member, point)
                         status, outputs = _batch(
                             provider,
                             handle,
@@ -486,10 +495,48 @@ def test_grouped_members_match_physical_flows_at_asymmetric_point(providers):
                             reconstructed.get(process_id, 0.0)
                             + outputs[0][0] * member["factor"]
                         )
+                        if provider.data["grouping"]["mode"] in ("exact", "none"):
+                            if process_id == "gg":
+                                # An explicitly labelled-leg cut is not invariant
+                                # under exchanging the two final-state gluons.
+                                samples = (point, (*point[:2], point[3], point[2]))
+                            elif process_id in ("flavour_one", "flavour_two"):
+                                samples = (point,)
+                            else:
+                                continue
+                            for sample in samples:
+                                accepted = (
+                                    sample[2][3] > 0
+                                    if process_id == "gg"
+                                    else member["pdgs"][2] == 1001
+                                )
+                                cut_decisions.add(accepted)
+                                status, selected = _batch(
+                                    provider,
+                                    handle,
+                                    (_member_input(representative, member, sample),),
+                                    channel=channel,
+                                    flavour=flavour,
+                                )
+                                assert status == 0
+                                physical = float(
+                                    complex(
+                                        runtime.evaluate(
+                                            (sample,), color_flows=selection
+                                        )[0]
+                                    ).real
+                                )
+                                weight = member["factor"] if accepted else 0.0
+                                cut_native += weight * physical
+                                cut_umami += weight * selected[0][0]
         # Exact/none enumerate contributions directly. For integrated grouping,
         # the member loop above reconstructs each physical flow at its own
         # mapped point; an orbit factor alone is not a pointwise estimator.
         assert reconstructed == pytest.approx(complete, rel=2e-11, abs=1e-15)
+        if cut_decisions:
+            assert cut_decisions == {False, True}
+            assert cut_native > 0
+            assert cut_umami == pytest.approx(cut_native, rel=2e-11, abs=1e-15)
 
 
 def test_parameters_event_override_and_independent_concurrent_handles(providers):
@@ -523,6 +570,31 @@ def test_parameters_event_override_and_independent_concurrent_handles(providers)
                 assert _parameter(provider, first, "G") == pytest.approx(
                     math.sqrt(4 * math.pi * changed)
                 )
+                # Recheck both physical UFO flavours after mutation, including
+                # the one whose computation is provided by its representative.
+                checked = set()
+                for channel, description in enumerate(provider.data["channels"]):
+                    for flavour, exported in enumerate(description["processes"]):
+                        for member in exported["members"]:
+                            physical = _runtime_point(provider, member["process_id"])
+                            native = Runtime.load(
+                                provider.artifact, process=member["process_id"]
+                            )
+                            native.set_model_parameters({name: changed})
+                            status, result = _batch(
+                                provider,
+                                first,
+                                (_member_input(exported["runtime"], member, physical),),
+                                channel=channel,
+                                flavour=flavour,
+                            )
+                            assert status == 0
+                            assert result[0][0] == pytest.approx(
+                                float(complex(native.evaluate((physical,))[0]).real),
+                                rel=2e-11,
+                            )
+                            checked.add(member["process_id"])
+                assert checked == {"flavour_one", "flavour_two"}
             event_values = (original.real * 0.8, original.real * 1.1)
             status, outputs = _batch(
                 provider, first, (point,) * 2, alpha_s=event_values
@@ -637,8 +709,41 @@ def test_rejects_other_valid_artifact_with_identical_external_labels(
     assert invalid.value is None
 
 
+def _assert_relative_make_run(provider, *, makefile=None):
+    sdk = provider.artifact / "API/umami"
+    command = ["make", "-C", str(sdk)]
+    if makefile is not None:
+        command.extend(("-f", str(makefile)))
+    command.extend(
+        (
+            "run",
+            f"BUILD_DIR={os.path.relpath(provider.build, sdk)}",
+            f"RUSTICOL_CONFIG={_config_executable()}",
+        )
+    )
+    completed = subprocess.run(
+        command,
+        env=dict(
+            os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[2] / "src")
+        ),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    result = json.loads(
+        next(line for line in completed.stdout.splitlines() if line.startswith("{"))
+    )
+    entry = _entry(provider)
+    assert result["matrix_element"] == pytest.approx(
+        _expected(provider, entry, _point(provider, entry)), rel=2e-11
+    )
+
+
 def test_linked_driver_survives_relocation(providers, tmp_path):
     provider = providers[0]
+    _assert_relative_make_run(provider)
     relocated = tmp_path / "relocated files with spaces"
     artifact, build = relocated / "artifact", relocated / "build"
     shutil.copytree(provider.artifact, artifact)
