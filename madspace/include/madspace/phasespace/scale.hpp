@@ -50,10 +50,10 @@ public:
         double ren_scale,
         double fact_scale1,
         double fact_scale2,
-        // Floor on mu_R and mu_F. An event below it is vetoed through the
-        // scale_weight output and the scales are clamped, so that a pdf is
-        // never asked for a density below the bottom of its grid. Zero
-        // disables it.
+        // Floor on mu_R and mu_F. The scales are clamped to it, so that a pdf
+        // is never asked for a density below the bottom of its grid. Only an
+        // MLM clustering also vetoes an event below it, through the
+        // scale_weight output, as setclscales does. Zero disables it.
         double min_scale = 0.,
         // Upper end of the same range, normally the top of the PDF grid.
         double max_scale = 0.
@@ -97,6 +97,12 @@ public:
     bool has_scale_range() const {
         return _min_scale > 0. || _max_scale > 0.;
     }
+    // Whether the scales come with a scale_weight output vetoing an event
+    // outside the range. Only the MLM clustering has one: madevent drops a
+    // merged event whose factorisation scale falls under 2 GeV, but for any
+    // other scale choice it lets LHAPDF freeze the density instead, which is
+    // what clamping the scale does here.
+    bool has_scale_veto() const { return is_mlm() && has_scale_range(); }
 
 private:
     NamedVector<Value> apply_scale_range(
@@ -107,14 +113,16 @@ private:
         FunctionBuilder& fb, const NamedVector<Value>& args
     ) const override;
 
-    DynamicalScaleType _dynamical_scale_type;
-    bool _ren_scale_fixed;
-    bool _fact_scale_fixed;
-    double _ren_scale;
-    double _fact_scale1;
-    double _fact_scale2;
-    double _min_scale;
-    double _max_scale;
+    // The MLM constructor leaves these at their defaults: the clustering
+    // decides the scales there.
+    DynamicalScaleType _dynamical_scale_type = half_transverse_mass;
+    bool _ren_scale_fixed = false;
+    bool _fact_scale_fixed = false;
+    double _ren_scale = 0.;
+    double _fact_scale1 = 0.;
+    double _fact_scale2 = 0.;
+    double _min_scale = 0.;
+    double _max_scale = 0.;
     std::optional<MLMClustering> _clustering;
 };
 

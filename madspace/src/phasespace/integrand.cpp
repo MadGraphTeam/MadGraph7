@@ -398,7 +398,6 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
 
     if (_energy_scale && _energy_scale->is_mlm()) {
         ret.push_back("cluster_scales_acc", acc_float_array(particle_count - 2));
-        ret.push_back("scale_diagram_index_acc", acc_int);
     }
 
     return ret;
@@ -654,7 +653,7 @@ NamedVector<Value> Integrand::build_channel_part(
             weights_after_cuts.push_back(weight);
         }
     }
-    if (_energy_scale && _energy_scale->has_scale_range() && !mlm_history_per_diagram) {
+    if (_energy_scale && _energy_scale->has_scale_veto() && !mlm_history_per_diagram) {
         // Same for the floor on the scales themselves, which applies to every
         // dynamical scale choice rather than only to the merging one.
         weights_after_cuts.push_back(scales.at("scale_weight"));
@@ -718,7 +717,6 @@ NamedVector<Value> Integrand::build_channel_part(
 
     if (_energy_scale && _energy_scale->is_mlm()) {
         out.push_back("cluster_scales_acc", scales.at("outgoing_scales"));
-        out.push_back("scale_diagram_index_acc", scales.at("diagram_index"));
     }
 
     return out;
@@ -948,15 +946,12 @@ NamedVector<Value> Integrand::build_common_part(
     }
 
     // Evaluate differential cross section
-    auto make_xs_args = [&](Value diagram, std::array<Value, 2>& pdfs, Value alpha) {
+    auto make_xs_args = [&](std::array<Value, 2>& pdfs, Value alpha) {
         ValueVec xs_args{
             momenta_acc,
             _flavor_remap.size() > 0 ? fb.gather_int(flavor_id, _flavor_remap)
                                      : flavor_id,
         };
-        if (_energy_scale && _energy_scale->is_mlm()) {
-            xs_args.push_back(diagram);
-        }
         xs_args.push_back(x1_acc);
         xs_args.push_back(x2_acc);
         xs_args.push_back(flavor_id);
@@ -968,12 +963,7 @@ NamedVector<Value> Integrand::build_common_part(
         xs_args.push_back(alpha);
         return xs_args;
     };
-    ValueVec xs_args = make_xs_args(
-        _energy_scale && _energy_scale->is_mlm() ? args.at("scale_diagram_index_acc")
-                                                 : Value(),
-        pdfs_acc,
-        alpha_qcd_acc
-    );
+    ValueVec xs_args = make_xs_args(pdfs_acc, alpha_qcd_acc);
     ValueVec dxs_vec;
     Value ps_flavor_id;
     Value subproc_id;
@@ -1060,7 +1050,7 @@ NamedVector<Value> Integrand::build_common_part(
         );
         std::array<Value, 2> x_acc{x1_acc, x2_acc};
         mlm_history_weights = mlm_weights(fb, scales, x_acc, flavor_id);
-        if (_energy_scale->has_scale_range()) {
+        if (_energy_scale->has_scale_veto()) {
             mlm_history_weights.push_back(scales.at("scale_weight"));
         }
         ren_scale_acc = scales.at("ren_scale");
@@ -1074,10 +1064,7 @@ NamedVector<Value> Integrand::build_common_part(
         alpha_qcd_acc =
             _running_coupling.value().build_function(fb, {ren_scale_acc}).at(0);
         dxs_vec = _diff_xs.at(0)
-                      .build_function(
-                          fb,
-                          make_xs_args(scales.at("diagram_index"), pdfs_acc, alpha_qcd_acc)
-                      )
+                      .build_function(fb, make_xs_args(pdfs_acc, alpha_qcd_acc))
                       .values();
     }
 

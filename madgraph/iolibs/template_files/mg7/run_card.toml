@@ -84,8 +84,9 @@ clustering_measure = %(beam.clustering_measure)s
 # from the picked diagram's, as madevent reclusters along the channel). The
 # last two evaluate the matrix element twice per event
 clustering_history = %(beam.clustering_history)s
-# floor on mu_R and mu_F: an event whose scales fall below this is dropped,
-# since a PDF grid has no densities there (0 disables it)
+# floor on mu_R and mu_F, since a PDF grid has no densities below it: the
+# scales are raised to it, and under dynamical_scale_choice = "mlm" the event
+# is dropped instead, as madevent does. Ignored without beam PDFs (0 disables it)
 min_scale = %(beam.min_scale)s
 
 [generation]
@@ -135,7 +136,7 @@ max_batch_size = %(vegas.max_batch_size)s
 
 [phasespace]
 mode = %(phasespace.mode)s #options: multichannel, flat, both
-merge_subprocesses = %(phasespace.merge_subprocesses)s
+merge_subprocesses = %(phasespace.merge_subprocesses)s # ignored under dynamical_scale_choice = "mlm"
 sde_strategy = %(phasespace.sde_strategy)s #options: diagrams, denominators
 decays = %(phasespace.decays)s # options: all, massive, none
 t_channel = %(phasespace.t_channel)s # options: propagator, rambo, chili

@@ -16,14 +16,9 @@ EnergyScale::EnergyScale(
     FunctionGenerator(
         "EnergyScale",
         {{"momenta", batch_four_vec_array(particle_count)}},
-        (min_scale > 0. || max_scale > 0.)
-            ? NamedVector<Type>{{"ren_scale", batch_float},
-                                {"fact_scale1", batch_float},
-                                {"fact_scale2", batch_float},
-                                {"scale_weight", batch_float}}
-            : NamedVector<Type>{{"ren_scale", batch_float},
-                                {"fact_scale1", batch_float},
-                                {"fact_scale2", batch_float}}
+        {{"ren_scale", batch_float},
+         {"fact_scale1", batch_float},
+         {"fact_scale2", batch_float}}
     ),
     _dynamical_scale_type(dynamical_scale_type),
     _ren_scale_fixed(ren_scale_fixed),
@@ -57,11 +52,14 @@ EnergyScale::EnergyScale(
 // 1 to 10000 GeV for NNPDF23, say - and outside it the densities are not
 // defined: below, a scale of a few MeV, above, one of several TeV. Either
 // comes back as a NaN that no later cut can remove, because the pdf is
-// evaluated before the veto weight multiplies it and NaN times zero is still
-// NaN. So an event outside the range is both vetoed, through the scale_weight
-// output, and clamped, which keeps what is computed on the way finite.
+// evaluated before any veto weight multiplies it and NaN times zero is still
+// NaN. So the scales are clamped into the range, which is what LHAPDF's
+// freezing does for madevent.
 //
-// madevent applies the same floor to mu_F, at 2 GeV, in reweight.f. The upper
+// An MLM clustering also vetoes the event, through the scale_weight output:
+// madevent's setclscales drops a merged event whose factorisation scale is
+// under 2 GeV (reweight.f) rather than evaluating it at a frozen density. No
+// other scale choice has that veto in madevent, so none has it here. The upper
 // end has no counterpart there: LHAPDF extrapolates rather than returning a
 // hole, so madevent never has to look.
 NamedVector<Value> EnergyScale::apply_scale_range(
@@ -85,13 +83,17 @@ NamedVector<Value> EnergyScale::apply_scale_range(
     }
     for (auto name : names) {
         auto& scale = scales.at(name);
-        auto pass = fb.cut_one(scale, low, high);
-        weight = weight ? fb.mul(weight, pass) : pass;
+        if (_clustering) {
+            auto pass = fb.cut_one(scale, low, high);
+            weight = weight ? fb.mul(weight, pass) : pass;
+        }
         auto batch_size = fb.batch_size({scale});
         scale = fb.max(scale, fb.full({low, batch_size}));
         scale = fb.min(scale, fb.full({high, batch_size}));
     }
-    scales.push_back("scale_weight", weight);
+    if (weight) {
+        scales.push_back("scale_weight", weight);
+    }
     return scales;
 }
 

@@ -194,10 +194,13 @@ much as for madspace.
   information; if merging is to work well, the fraction of jets landing there
   needs to come down.
 
-* Pass the selected diagram index through to the matrix element. The plumbing is
-  in place (`MatrixElement::diagram_in` replaces `random_diagram_in` when MLM is
-  active) but the madmatrix side needs per-event diagram input support. Affects
-  the LHE output only, not the scales.
+* Pass the selected diagram index through to the matrix element. Neither
+  backend takes a per-event diagram yet: madmatrix accepts `diagram_in` and
+  ignores it, and the mg7 `api.cpp` rejects it as an unsupported input. Feeding
+  it `diagram_in` in place of `random_diagram_in` therefore left madmatrix
+  drawing its diagram, and with it the colour flow, at a fixed random number of
+  0.5 for every event, so MLM keeps `random_diagram_in` until the backends
+  support it. Affects the LHE output only, not the scales.
 
 * The `dj_clus` massless/massive test is `mass > 0` here, where the Fortran uses
   thresholds tied to `maxjetflavor` (`m >= 3` if `maxjetflavor > 4`, else
