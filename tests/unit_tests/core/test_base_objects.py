@@ -1015,6 +1015,40 @@ class ModelTest2(unittest.TestCase):
         self.assertEqual(interaction.get('loop_particles'),
                          [[21, 81], [21, 81], [81], [5]])
 
+    def test_complex_mass_ghost_inherits_vector_width(self):
+        """A UFO's zero-width ghost still uses its gauge boson's CMS pole."""
+        model = copy.deepcopy(self.model)
+        vector = model.get_particle(24)
+        ghost = copy.copy(vector)
+        ghost.set('pdg_code', 9000024)
+        ghost.set('name', 'testghost')
+        ghost.set('antiname', 'testghost~')
+        ghost.set('spin', 1)
+        ghost.set('type', 'ghost')
+        ghost.set('width', 'ZERO')
+        model['particles'].append(ghost)
+        stable = copy.copy(ghost)
+        stable.set('pdg_code', 9000025)
+        stable.set('name', 'testscalar')
+        stable.set('antiname', 'testscalar~')
+        stable.set('type', '')
+        model['particles'].append(stable)
+        model.reset_dictionaries()
+        # Prime antiparticle lookups: CMS conversion must refresh these too.
+        self.assertEqual(model.get_particle(-9000024)['width'], 'ZERO')
+        self.assertEqual(model.get_particle('testghost~')['width'], 'ZERO')
+        interaction = base_objects.Interaction({'id': 9000024,
+            'particles': base_objects.ParticleList([
+                model.get_particle(9000024), model.get_particle(-9000024)])})
+        model['interactions'].append(interaction)
+        model.change_mass_to_complex_scheme()
+        self.assertTrue(all(p['width'] == vector['width']
+                            for p in interaction['particles']))
+        for pdg in (9000024, -9000024):
+            self.assertEqual(model.get_particle(pdg)['width'], vector['width'])
+        self.assertEqual(model.get_particle('testghost~')['width'], vector['width'])
+        self.assertEqual(stable['width'], 'ZERO')
+
     def test_merge_flavor_keeps_additive_counterterms(self):
         """Different internal flavours are additive, not external partners.
 

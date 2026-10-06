@@ -411,28 +411,27 @@ class LoopHelasAmplitude(helas_objects.HelasAmplitude):
         last_loop_wf_mother=last_loop_wf.get_loop_mother()
         while last_loop_wf_mother:
             denoms.append((tuple(last_loop_wf.get_struct_external_leg_ids()),
-                                                      last_loop_wf.get('mass')))
+                           self.get_loop_mass(last_loop_wf)))
             last_loop_wf=last_loop_wf_mother
             last_loop_wf_mother=last_loop_wf.get_loop_mother()
         denoms.reverse()
         
         return tuple(denoms)
 
+    @staticmethod
+    def get_loop_mass(wavefunction):
+        """Use the same propagator mass for identification and reduction."""
+        mass = wavefunction.get('mass')
+        if aloha.complex_mass and mass != 'ZERO' and wavefunction.get('width') != 'ZERO':
+            return 'CMASS_%s' % mass
+        return mass
+
     def get_masses(self):
         """ Returns the list of the masses of the loop particles as they should
         appear for cuttools (L-cut particles specified last) """
         
-        masses=[]
-        if not aloha.complex_mass:
-            for lwf in [wf for wf in self.get('wavefunctions') if wf.get('mothers')]:
-                    masses.append(lwf.get('mass'))
-        else:
-            for lwf in [wf for wf in self.get('wavefunctions') if wf.get('mothers')]:
-                if (lwf.get('width') == 'ZERO' or lwf.get('mass') == 'ZERO'):
-                    masses.append(lwf.get('mass'))
-                else: 
-                    masses.append('CMASS_%s' % lwf.get('mass'))
-        return masses
+        return [self.get_loop_mass(wf) for wf in self.get('wavefunctions')
+                if wf.get('mothers')]
 
     def get_couplings(self):
         """ Returns the list of the couplings of the different helas objects

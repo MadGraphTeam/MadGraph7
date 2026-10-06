@@ -2668,6 +2668,22 @@ class Model(PhysicsObject):
                 self.add_param(New_param, (mass, width))
                 to_change[mass.name] = New_param.name
         
+        # Some UFOs give Faddeev-Popov ghosts width ZERO although they share
+        # the vector's mass parameter. In CMS their propagator must share its
+        # complex pole too; HELAS selects CMASS from the particle's width.
+        vector_widths = {particle['mass']: particle['width']
+                         for particle in self['particles']
+                         if particle['spin'] == 3 and particle['mass'] in to_change}
+        for particle in self['particles']:
+            if particle['type'] == 'ghost' and particle['width'] == 'ZERO' \
+                    and particle['mass'] in vector_widths:
+                particle.set('width', vector_widths[particle['mass']])
+        # Antiparticles in this cache are copies of the model particles.
+        self['particle_dict'] = {}
+        if hasattr(self, 'name2part'):
+            del self.name2part
+        self.get('particle_dict')
+
         # Remove the Yukawa and fix those accordingly to the mass/complex mass
         yukawas = [p for p in self.get('parameters')[('external',)] 
                                               if p.lhablock.lower() == 'yukawa']
