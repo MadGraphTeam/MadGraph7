@@ -1,7 +1,5 @@
 #include "madspace/driver/thread_pool.hpp"
 
-#include <stdexcept>
-
 #include "madspace/util.hpp"
 
 using namespace madspace;
@@ -174,85 +172,34 @@ void ThreadPool::thread_loop(std::size_t index) {
     }
 }
 
-void ResultQueue::submit(ThreadPool& pool, std::size_t id, std::function<void()> job) {
-    pool.submit([this, id, job = std::move(job)]() -> std::optional<std::size_t> {
-        try {
-            if (_cancelled) {
-                throw std::runtime_error("job cancelled");
-            }
-            job();
-        } catch (...) {
-            push_exception(id, std::current_exception());
-            return std::nullopt;
-        }
-        push(id);
-        return std::nullopt;
-    });
-}
-
-void ResultQueue::push(std::size_t id) {
+void ResultQueue::push(std::size_t result) {
     std::unique_lock<std::mutex> lock(_mutex);
-    _queue.push_back({id, nullptr});
+    _queue.push_back(result);
     _cv.notify_one();
 }
 
-void ResultQueue::push_exception(std::size_t id, std::exception_ptr exception) {
-    std::unique_lock<std::mutex> lock(_mutex);
-    _queue.push_back({id, exception});
-    _cv.notify_one();
-}
-
-ResultQueue::Result ResultQueue::wait(
-    const std::function<void()>& poll, std::chrono::milliseconds poll_interval
-) {
-    // Once per call too, not only while blocked: results may keep coming.
-    if (poll) {
-        poll();
-    }
-    if (_buffer.empty()) {
-        std::unique_lock<std::mutex> lock(_mutex);
-        auto ready = [&] { return !_queue.empty(); };
-        if (!poll) {
-            _cv.wait(lock, ready);
-        }
-        while (!_cv.wait_for(lock, poll_interval, ready)) {
-            // Without the lock: poll may throw, or take its time.
-            lock.unlock();
-            poll();
-            lock.lock();
-        }
-        _buffer.insert(_buffer.begin(), _queue.rbegin(), _queue.rend());
-        _queue.clear();
-    }
-    Result result = _buffer.back();
+std::size_t ResultQueue::wait() {
+    fill_done_cache();
+    std::size_t result = _buffer.back();
     _buffer.pop_back();
     return result;
 }
 
-std::exception_ptr ResultQueue::discard(
-    std::size_t count,
-    const std::function<void()>& poll,
-    std::chrono::milliseconds poll_interval
-) {
-    _cancelled = true;
-    std::exception_ptr aborted;
-    // never throws: the drain has to run to completion
-    std::function<void()> guarded_poll;
-    if (poll) {
-        guarded_poll = [&] {
-            if (aborted) {
-                return;
-            }
-            try {
-                poll();
-            } catch (...) {
-                aborted = std::current_exception();
-            }
-        };
+std::vector<std::size_t> ResultQueue::wait_multiple() {
+    fill_done_cache();
+    std::vector<std::size_t> ret(_buffer.rbegin(), _buffer.rend());
+    _buffer.clear();
+    return ret;
+}
+
+void ResultQueue::fill_done_cache() {
+    if (!_buffer.empty()) {
+        return;
     }
-    for (std::size_t i = 0; i < count; ++i) {
-        wait(guarded_poll, poll_interval);
+    std::unique_lock<std::mutex> lock(_mutex);
+    if (_queue.empty()) {
+        _cv.wait(lock, [&] { return !_queue.empty(); });
     }
-    _cancelled = false;
-    return aborted;
+    _buffer.insert(_buffer.begin(), _queue.rbegin(), _queue.rend());
+    _queue.clear();
 }

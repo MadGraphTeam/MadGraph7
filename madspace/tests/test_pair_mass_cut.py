@@ -18,7 +18,6 @@ Three things are pinned down:
     is a consequence of the cut and not an extra cut of its own.
 """
 
-import functools
 import json
 import math
 import os
@@ -27,8 +26,6 @@ import numpy as np
 import pytest
 
 import madspace as ms
-import phasespace_helpers
-from phasespace_helpers import invariant_mass
 
 CM_ENERGY = 13000.0
 M_TOP = 173.0
@@ -71,7 +68,16 @@ def mapping(cuts=None):
     return ms.PhaseSpaceMapping(load_topology(), CM_ENERGY, cuts=cuts)
 
 
-sample = functools.partial(phasespace_helpers.sample, seed=SEED, n=BATCH_SIZE)
+def sample(mapping, seed=SEED, n=BATCH_SIZE):
+    rng = np.random.default_rng(seed)
+    p_ext, _x1, _x2, det = mapping.map_forward([rng.random((n, mapping.random_dim()))])
+    return np.asarray(p_ext), np.asarray(det)
+
+
+def invariant_mass(p, i, j):
+    total = p[:, i, :] + p[:, j, :]
+    m2 = total[:, 0] ** 2 - np.sum(total[:, 1:] ** 2, axis=1)
+    return np.sqrt(np.maximum(m2, 0.0))
 
 
 # --------------------------------------------------------------------------
@@ -133,10 +139,12 @@ def test_cut_volume_is_unchanged_by_the_boundary():
     cut or only the filtering does."""
     p_free, det_free = sample(mapping(), seed=SEED)
     passes = invariant_mass(p_free, 2, 3) >= PAIR_MASS_CUT
-    external = np.where(passes, phasespace_helpers.finite_weight(p_free, det_free), 0.0)
+    finite = np.isfinite(det_free) & np.all(np.isfinite(p_free), axis=(1, 2))
+    external = np.where(passes & finite, det_free, 0.0)
 
     p_cut, det_cut = sample(mapping(cuts=pair_mass_cuts(PAIR_MASS_CUT)), seed=SEED + 1)
-    piped = phasespace_helpers.finite_weight(p_cut, det_cut)
+    finite_cut = np.isfinite(det_cut) & np.all(np.isfinite(p_cut), axis=(1, 2))
+    piped = np.where(finite_cut, det_cut, 0.0)
 
     mean_external = external.mean()
     mean_piped = piped.mean()

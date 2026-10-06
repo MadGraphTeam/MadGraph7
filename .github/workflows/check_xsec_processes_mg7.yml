@@ -78,8 +78,7 @@ jobs:
       matrix:
         # Each job runs every process in the selected section and fails if any
         # process exceeds the tolerance.
-        # decay_cuts: [phasespace] cut_decays false/true on decay chains
-        section: [3jets, ttx1j, ttx2j, ttx_decay, dy1j, dy2j, decay_cuts]
+        section: [3jets, ttx1j, ttx2j, ttx_decay, dy1j, dy2j]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5

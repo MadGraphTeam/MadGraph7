@@ -458,12 +458,9 @@ void ChannelEventGenerator::start_job(
     job.rng_is_survey = is_survey;
     job.rng_survey_pass = survey_pass;
     job.rng_job_index = is_survey ? _survey_rng_seq++ : _generate_rng_seq++;
-    // Through result_queue, so a job that throws still posts its result and the
-    // exception reaches the waiting thread instead of leaving it blocked forever.
-    result_queue.submit(
-        _contexts.at(job.context_index)->thread_pool(),
-        job.job_id,
-        [this, &job, &result_queue]() {
+    _contexts.at(job.context_index)
+        ->thread_pool()
+        .submit([this, &job, &result_queue]() {
             auto& runtimes = _runtimes.at(job.context_index);
             auto& context = _contexts.at(job.context_index);
             if (job.rng_seed) {
@@ -517,9 +514,6 @@ void ChannelEventGenerator::start_job(
                 if (total_count >= _config.cut_efficiency_threshold * target_count) {
                     break;
                 }
-                if (result_queue.cancelled()) {
-                    throw std::runtime_error("job cancelled");
-                }
                 if (repetitions == _config.max_cut_repetitions) {
                     throw std::runtime_error(
                         std::format(
@@ -535,9 +529,6 @@ void ChannelEventGenerator::start_job(
                     (target_count - total_count) / cut_eff
                 );
             }
-            if (result_queue.cancelled()) {
-                throw std::runtime_error("job cancelled");
-            }
             if (job.rng_seed) {
                 runtimes.integrand_common->set_seed(generate_phase_seed(
                     job.rng_seed,
@@ -550,9 +541,6 @@ void ChannelEventGenerator::start_job(
             }
             job.events = runtimes.integrand_common->run(all_ps_points);
 
-            if (result_queue.cancelled()) {
-                throw std::runtime_error("job cancelled");
-            }
             job.weights = job.events.at(_field_indices.weight).cpu();
             // observable_histograms/vegas_histogram/discrete_histogram don't consume
             // random numbers, so they're never seeded.
@@ -586,8 +574,9 @@ void ChannelEventGenerator::start_job(
                     }
                 }
             }
-        }
-    );
+            result_queue.push(job.job_id);
+            return std::nullopt;
+        });
 }
 
 void ChannelEventGenerator::prepare_unweight_job(GeneratorBatchJob& job) const {
@@ -597,8 +586,9 @@ void ChannelEventGenerator::prepare_unweight_job(GeneratorBatchJob& job) const {
 void ChannelEventGenerator::submit_unweight_job(
     GeneratorBatchJob& job, ResultQueue& result_queue
 ) {
-    result_queue.submit(
-        _contexts.at(job.context_index)->thread_pool(), job.job_id, [this, &job]() {
+    _contexts.at(job.context_index)
+        ->thread_pool()
+        .submit([this, &job, &result_queue]() {
             auto& runtimes = _runtimes.at(job.context_index);
             auto& context = _contexts.at(job.context_index);
             if (job.rng_seed) {
@@ -617,8 +607,9 @@ void ChannelEventGenerator::submit_unweight_job(
             for (auto& item : unw_events) {
                 job.unweighted_events.push_back(item.cpu());
             }
-        }
-    );
+            result_queue.push(job.job_id);
+            return std::nullopt;
+        });
 }
 
 void ChannelEventGenerator::start_unweight_job(

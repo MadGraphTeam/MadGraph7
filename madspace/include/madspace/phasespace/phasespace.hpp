@@ -145,11 +145,6 @@ public:
     }
     /// Number of permutation channels.
     std::size_t channel_count() const { return _permutations.size(); }
-    /// True when the cuts exclude the whole region this mapping samples: a
-    /// pair mass cut puts a propagator's floor at or above the upper end of
-    /// its on-shell window. Every point then fails the cuts, so the channel
-    /// contributes nothing and should be dropped rather than sampled.
-    bool empty() const { return _empty; }
 
 private:
     Result build_forward_impl(
@@ -169,10 +164,6 @@ private:
     double _sqrt_s_lab;
     bool _leptonic;
     bool _map_luminosity;
-    // bound on the absolute rapidity of the partonic system, log(x1 / x2) / 2,
-    // implied by the cuts; negative when they imply none
-    double _y_max_lab = -1.;
-    bool _empty = false;
     std::size_t _n_discrete;
     std::vector<Invariant> _s_invariants;
     std::variant<
