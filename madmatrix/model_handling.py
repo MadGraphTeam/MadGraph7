@@ -1687,12 +1687,15 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         ###if 'eft' in self.model_name.lower():
         ###    replace_dict['eftwarn0'] = '\n//#warning Support for EFT physics models is still limited for HRDCOD=0 builds (#439 and PR #625)'
         ###    replace_dict['eftwarn1'] = '\n//#warning Support for EFT physics models is still limited for HRDCOD=1 builds (#439 and PR #625)'
+        # BSM params for aS-dependent couplings as fptype/cxtype
+        replace_dict['eftspecial0'] = ''
         if len( bsmparam_indep_real_used ) + len( bsmparam_indep_complex_used ) == 0:
             replace_dict['eftspecial0'] = '\n      // No special handling of non-hardcoded parameters (no additional BSM parameters needed in constant memory)'
-        else:
-            replace_dict['eftspecial0'] = ''
-            for ipar, par in enumerate( bsmparam_indep_real_used ) : replace_dict['eftspecial0'] += '\n      const double %s = bsmIndepParamPtr[%i];' % ( par, ipar )
-            for ipar, par in enumerate( bsmparam_indep_complex_used ) : replace_dict['eftspecial0'] += '\n      const cxsmpl<double> %s = cxsmpl<double>( bsmIndepParamPtr[%i], bsmIndepParamPtr[%i] );' % ( par, 2*ipar, 2*ipar+1 )
+        for ipar, par in enumerate( bsmparam_indep_real_used ):
+            replace_dict['eftspecial0'] += '\n      const fptype %s = bsmIndepParamPtr[%i];' % ( par, ipar )
+        for ipar, par in enumerate( bsmparam_indep_complex_used ):
+            ire = len( bsmparam_indep_real_used ) + 2 * ipar
+            replace_dict['eftspecial0'] += '\n      const cxtype %s = cxtype( bsmIndepParamPtr[%i], bsmIndepParamPtr[%i] );' % ( par, ire, ire + 1 )
         file_h = self.read_template_file(self.param_template_h) % replace_dict
         file_cc = self.read_template_file(self.param_template_cc) % replace_dict
         return file_h, file_cc
