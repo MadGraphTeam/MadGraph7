@@ -639,10 +639,11 @@ c111      logical set_goodjet(n_max_cl) ! variable for debugging unset call
       integer pdgm, pdgid1, pdgid2
 
       logical isqcd,isjet,isparton,cluster,isjetvx,is_octet
+      logical flavor_allows_graph
       integer ifsno
       double precision alphas
       external isqcd, isjet, isparton, cluster, isjetvx, alphas, ifsno
-      external is_octet
+      external is_octet, flavor_allows_graph
       setclscales=.true.
 
 c    WARNING: goodjet() is sometimes accessed for variable which are not
@@ -677,6 +678,15 @@ c      are flagged as jets)
  100  clustered = cluster(p(0,1), flavor, ivec)
       if(.not.clustered) then
          if(init_mode) goto 999
+c        chcluster allows only the graph of this channel, which may not exist
+c        for the flavours of this event (e.g. the s-channel gluon of a merged
+c        q q~ > q q~ channel for a u d~ > u d~ row): the event has no weight
+c        in this channel, so there is nothing to cluster.
+         if(chcluster.and..not.flavor_allows_graph(iconfig,flavor)) then
+            chcluster=chclusold
+            setclscales=.false.
+            return
+         endif
          open(unit=26,file='../../../error',status='unknown',err=999)
          write(26,*) 'Error: Clustering failed in cluster.f.'
          write(*,*) 'Error: Clustering failed in cluster.f.'
