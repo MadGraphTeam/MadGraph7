@@ -553,6 +553,9 @@ NamedVector<Value> Integrand::build_channel_part(
                 }
             )) {
             option_count = static_cast<me_int_t>(2);
+        } else if (!has_multi_flavor) {
+            // flavor_id is always zero with a single flavor
+            option_count = static_cast<me_int_t>(_flavor_mirror.at(0));
         } else {
             option_count = fb.gather_int(flavor_id, _flavor_mirror);
         }
@@ -637,6 +640,18 @@ NamedVector<Value> Integrand::build_common_part(
     auto flavor_id = args.at("flavor_id");
     auto batch_size_val = fb.batch_size({args.at("weight_before_cuts")});
 
+    // With a single flavor, flavor_id is always zero, so looking up per-flavor
+    // tables does not need a gather on a constant tensor
+    auto flavor_table_lookup = [&](const std::vector<me_int_t>& table) -> Value {
+        if (has_multi_flavor) {
+            return fb.gather_int(flavor_id, table);
+        } else if (table.at(0) == 0) {
+            return flavor_id;
+        } else {
+            return fb.full({table.at(0), fb.batch_size({momenta_acc})});
+        }
+    };
+
     auto scatter_or_drop = [&](Value default_value, Value value) -> Value {
         if (_drop_cuts_and_rescale) {
             return value;
@@ -681,7 +696,7 @@ NamedVector<Value> Integrand::build_common_part(
     // Evaluate differential cross section
     ValueVec xs_args{
         momenta_acc,
-        _flavor_remap.size() > 0 ? fb.gather_int(flavor_id, _flavor_remap) : flavor_id,
+        _flavor_remap.size() > 0 ? flavor_table_lookup(_flavor_remap) : flavor_id,
     };
     xs_args.push_back(x1_acc);
     xs_args.push_back(x2_acc);
@@ -710,9 +725,9 @@ NamedVector<Value> Integrand::build_common_part(
             }
         }
     } else {
-        Value dxs_index = fb.gather_int(flavor_id, _flavor_diff_xs_indices);
-        ps_flavor_id = fb.gather_int(flavor_id, _flavor_per_subproc_remap);
-        subproc_id = fb.gather_int(flavor_id, _flavor_subproc_indices);
+        Value dxs_index = flavor_table_lookup(_flavor_diff_xs_indices);
+        ps_flavor_id = flavor_table_lookup(_flavor_per_subproc_remap);
+        subproc_id = flavor_table_lookup(_flavor_subproc_indices);
         ValueVec split_indices =
             fb.batch_split_by_index(dxs_index, static_cast<me_int_t>(_diff_xs.size()));
         std::vector<ValueVec> split_outputs(_diff_xs.at(0).return_types().size());
@@ -756,9 +771,17 @@ NamedVector<Value> Integrand::build_common_part(
     }
     auto diff_xs_acc = dxs_vec.at(0);
     if (_flavor_factors.size() > 0) {
-        diff_xs_acc = fb.mul(diff_xs_acc, fb.gather(flavor_id, _flavor_factors));
+        diff_xs_acc = has_multi_flavor
+            ? fb.mul(diff_xs_acc, fb.gather(flavor_id, _flavor_factors))
+            : fb.mul(diff_xs_acc, _flavor_factors.at(0));
     }
-    ValueVec weights_after_cuts{args.at("weight_after_cuts"), diff_xs_acc};
+    // weight_after_cuts is one by construction unless flavor or mirror sampling
+    // contribute to it (see build_channel_part)
+    ValueVec weights_after_cuts;
+    if (has_multi_flavor || _has_mirror) {
+        weights_after_cuts.push_back(args.at("weight_after_cuts"));
+    }
+    weights_after_cuts.push_back(diff_xs_acc);
     ValueVec extra_weights_after_cuts;
     if (args.index_map().contains("extra_weight_after_cuts")) {
         extra_weights_after_cuts.push_back(args.at("extra_weight_after_cuts"));
