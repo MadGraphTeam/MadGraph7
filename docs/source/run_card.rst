@@ -97,6 +97,7 @@ fixed parameters. Their entries are described below.
 ----------
 
 Gridpacks are self-contained event generators created after the survey and training.
+See :doc:`gridpacks` for details.
 
 ``save_gridpack`` (``false``)
     Create a gridpack at the end of the run.
@@ -111,9 +112,6 @@ Gridpacks are self-contained event generators created after the survey and train
 ``include_madspace_source`` (``false``)
     Include the ``madspace`` source code.
 
-A gridpack contains the full card for reference and a reduced ``grid_run_card.toml`` with
-the settings that still matter during event generation. Gridpacks write LHE files by
-default.
 
 [beam]
 ------
