@@ -28,7 +28,7 @@ KERNELSPEC void kernel_vegas_inverse(
     FVal<T> bin_count_f(bin_count);
     IVal<T> bin_index(0);
     for (std::size_t i = 0; i < bin_count; ++i) {
-        bin_index = where(input < grid[i], i, bin_index);
+        bin_index = where(input >= grid[i], i, bin_index);
     }
     auto left_edge = grid.gather(bin_index);
     auto right_edge = grid.gather(bin_index + 1);

@@ -313,9 +313,12 @@ inline void tensor_foreach_impl(
     // (the whole batch handled sequentially by one thread). Broadcast *inputs* are
     // only ever read, never written, in both forward and backward -- concurrent
     // reads of the same memory are safe, so they don't need this.
+    // SIMD lanes would also write to the same memory, so use the scalar kernel.
+    bool broadcast_output = false;
     for (const Tensor* out : outputs) {
         if (out->size(0) != batch_size) {
             single_job = true;
+            broadcast_output = true;
         }
     }
 
@@ -333,23 +336,29 @@ inline void tensor_foreach_impl(
 
     device.foreach (
         batch_size,
-        [flat_views, scalar_args...](std::size_t count, std::size_t offset) mutable {
+        [flat_views,
+         broadcast_output,
+         scalar_args...](std::size_t count, std::size_t offset) mutable {
             auto views = std::apply(get_views(), flat_views);
             std::size_t scalar_offset = offset;
             if constexpr (!std::
                               is_same_v<decltype(scalar_func), decltype(vector_func)>) {
-                auto vectorized_views = std::apply(
-                    get_vectorized_views<decltype(vector_func), dims>(), views
-                );
-                std::size_t vec_count = count / simd_vec_size;
-                std::size_t vec_offset = offset / simd_vec_size;
-                std::apply(
-                    [vec_count, vec_offset](auto&&... args) {
-                        nested_for<vector_func, dims>(vec_count, vec_offset, args...);
-                    },
-                    vectorized_views
-                );
-                scalar_offset += vec_count * simd_vec_size;
+                if (!broadcast_output) {
+                    auto vectorized_views = std::apply(
+                        get_vectorized_views<decltype(vector_func), dims>(), views
+                    );
+                    std::size_t vec_count = count / simd_vec_size;
+                    std::size_t vec_offset = offset / simd_vec_size;
+                    std::apply(
+                        [vec_count, vec_offset](auto&&... args) {
+                            nested_for<vector_func, dims>(
+                                vec_count, vec_offset, args...
+                            );
+                        },
+                        vectorized_views
+                    );
+                    scalar_offset += vec_count * simd_vec_size;
+                }
             }
             std::size_t scalar_count = offset + count - scalar_offset;
             std::apply(

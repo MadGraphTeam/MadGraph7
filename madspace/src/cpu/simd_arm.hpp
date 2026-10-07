@@ -33,7 +33,7 @@ struct IVec {
 struct BVec {
     BVec() = default;
     BVec(uint64x2_t _v) : v(_v) {};
-    BVec(bool _v) : v(vceqzq_u64(vdupq_n_u64(_v))) {};
+    BVec(bool _v) : v(vdupq_n_u64(_v ? ~0ULL : 0)) {};
     operator uint64x2_t() { return v; }
     uint64x2_t v;
 };

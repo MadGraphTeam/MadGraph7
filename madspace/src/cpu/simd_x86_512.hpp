@@ -21,7 +21,7 @@ struct IVec {
     IVec() = default;
     IVec(__m512i _v) : v(_v) {};
     IVec(int _v) : v(_mm512_set1_epi64(_v)) {};
-    explicit IVec(__m512d _v) { v = _mm512_cvtepi32_epi64(_mm512_cvtpd_epi32(_v)); }
+    explicit IVec(__m512d _v) { v = _mm512_cvtepi32_epi64(_mm512_cvttpd_epi32(_v)); }
     operator __m512i() { return v; }
     IVec operator+=(IVec _v) {
         v = _mm512_add_epi64(v, _v);
