@@ -1083,12 +1083,15 @@ c The batched real matrix elements (the part offloaded to MadMatrix)
             jac=0.5d0
          endif
 c Also the Born needs to be included in the importance sampling over the
-c FKS configurations (for the shower scale). Ordinary output has one Born
-c luminosity shared by all process-map groups. Grouped output instead has
-c one luminosity per physical Born class, so divide by the total sampling
-c probability of the selected class rather than the selected topology.
+c FKS configurations (for the shower scale). Keep an equal Born share per
+c process-map group, as in MG5, independently of the adaptive probabilities.
+c Grouped output resolves physical Born classes: count only the active
+c groups of this lane's class. Dividing by the class probability instead
+c changes the S-event cancellation and its shower-group populations.
          if (HAS_PHYSICAL_FKS_CLASSES) then
-            jac=jac/born_vol1
+            jac=jac/(vol1*count(
+     $          born_class_map(1:proc_map(0,0)).eq.
+     $          born_class_map(lane_group(ivec))))
          else
             jac=jac/(proc_map(0,0)*vol1)
          endif
