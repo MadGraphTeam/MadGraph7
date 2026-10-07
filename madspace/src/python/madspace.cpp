@@ -742,7 +742,9 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readonly("e_max", &Propagator::e_max, pydoc::doc("Propagator::e_max"))
         .def_readonly("pdg_id", &Propagator::pdg_id, pydoc::doc("Propagator::pdg_id"))
         .def_readonly(
-            "flat_window", &Propagator::flat_window, pydoc::doc("Propagator::flat_window")
+            "flat_window",
+            &Propagator::flat_window,
+            pydoc::doc("Propagator::flat_window")
         );
 
     py::classh<TPropagatorMapping, Mapping>(
@@ -2517,7 +2519,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         &compute_generation_batch_event_count,
         py::arg("count_target"),
         py::arg("count_unweighted"),
-        py::arg("count_opt"),
+        py::arg("count_requested"),
         py::arg("abs_cross_section_count"),
         py::arg("abs_cross_section_rel_error"),
         py::arg("config"),
