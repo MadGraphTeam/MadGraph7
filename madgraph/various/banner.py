@@ -6810,7 +6810,7 @@ class RunCardMG7(RunCard):
             comment="merge subprocesses with the same diagram topologies into shared channels")
         self.add_toml_param('phasespace', 'mode', "multichannel",
             allowed=['auto', 'multichannel', 'flat', 'both'],
-            comment="multichannel: one channel per diagram; flat: no channels; both: run both and keep the better one; auto: choose by process")
+            comment="multichannel: channels from the diagrams; flat: a single channel; both: multichannel with the smallest channels replaced by a flat one; auto: both if MadNIS is enabled, else multichannel")
         self.add_toml_param('phasespace', 'sde_strategy', "diagrams",
             allowed=['diagrams', 'denominators'],
             comment="channel weights from the squared diagrams or from the propagator denominators")
@@ -6824,7 +6824,7 @@ class RunCardMG7(RunCard):
             allowed=['propagator', 'rambo', 'chili'],
             comment="phase-space parametrization of the flat channel")
         self.add_toml_param('phasespace', 'combine_channel_threshold', 0.01,
-            comment="channels below this fraction of the cross section are combined")
+            comment="in both mode, channels making up this fraction of the cross section are replaced by a flat channel")
         self.add_toml_param('phasespace', 'drop_qcd_s_channel', 20,
             comment="channel count above which channels without a QCD s-channel resonance are dropped; -1 keeps all")
         self.add_toml_param('phasespace', 'invariant_power', 0.7,

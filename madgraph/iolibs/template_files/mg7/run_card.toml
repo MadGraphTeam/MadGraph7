@@ -116,6 +116,7 @@ $cuts
 $histograms
 
 [madnis]
+# "auto" lets MG7 choose the value from the survey
 enable = %(madnis.enable)s
 
 # normalizing flow
