@@ -1169,6 +1169,65 @@ class TestNLORealFortranOracle(unittest.TestCase):
             self.assertFalse(context.value)
             os.rename(relocated, generated_path)
 
+    def test_restricted_orders_scalar_and_batch(self):
+        """The bridge returns all local orders; production must select NLO orders."""
+        case = dict(self.oracle['cases']['grouped_qcd_ttx'])
+        case['subprocess'] = 'P0_uux_ttx'
+        case['points'] = case['points'][:2]
+        output_path = pjoin(self.tmpdir, 'restricted_orders')
+        cmd = self._new_cmd()
+        for line in ('import model loop_sm',
+                     'set apply_flavor_grouping False --no_save',
+                     'generate u u~ > t t~ QCD^2=2 QED^2=2 [real=QCD]',
+                     'output standalone_fortran --fks --limits %s --me_exporter=mg7' % output_path):
+            self._run(cmd, line)
+        subproc = pjoin(output_path, 'SubProcesses', case['subprocess'])
+        records = {}
+        for backend in ('fortran', 'scalar'):
+            executable = self._compile_routed_driver(output_path, case, backend=backend)
+            raw = subprocess.check_output(
+                [executable], input=self._driver_input(case['points']),
+                cwd=subproc, stderr=subprocess.STDOUT).decode()
+            if backend == 'scalar':
+                self.assertIn('offload initialized: backend=scalar', raw)
+                self.assertNotIn('Fortran fallback', raw)
+            records[backend] = self._parse_driver_output(raw, 2)
+        self.assertEqual(len(records['fortran']), 24)
+        self.assertEqual(len(records['scalar']), 24)
+        for reference, actual in zip(records['fortran'], records['scalar']):
+            scale = max(abs(c['value']) for c in reference['local_squared_orders'])
+            self.assertNotEqual(reference['local_squared_orders'][0]['value'], 0.)
+            self.assertEqual(reference['global_squared_orders'][-3]['value'], 0.)
+            self.assertEqual(reference['global_squared_orders'][-1]['value'], 0.)
+            self._assert_close(actual['summed'], reference['summed'], scale=scale)
+            for a, b in zip(actual['global_squared_orders'], reference['global_squared_orders']):
+                self._assert_close(a['value'], b['value'], scale=scale)
+
+        with open(pjoin(subproc, 'nlo_real_manifest.json')) as stream:
+            row = json.load(stream)['fks_rows'][0]
+        reference = [r for r in records['fortran'] if r['fks_row'] == row['fks_row']]
+        # Include a masked lane: compacted multi-order batches must also filter.
+        reference.insert(1, reference[0])
+        text = self._compile_batch_wrapper_driver(
+            output_path, case, 'scalar', row, reference, [True, False, True])
+        self.assertIn('backend=scalar', text)
+        self.assertIn('event_count=2', text)
+        self.assertNotIn('Fortran fallback', text)
+        weights, components = {}, {}
+        for line in text.splitlines():
+            fields = line.split()
+            if fields and fields[0] == 'BATCH_LANE':
+                weights[int(fields[1])] = float(fields[2])
+            elif fields and fields[0] == 'BATCH_GLOBAL':
+                components.setdefault(int(fields[1]), []).append(float(fields[3]))
+        self.assertEqual(sorted(weights), [1, 2, 3])
+        for lane, ref in enumerate(reference, 1):
+            scale = max(abs(c['value']) for c in ref['local_squared_orders'])
+            self._assert_close(weights[lane], ref['summed'] if lane != 2 else 0., scale=scale)
+            self.assertEqual(len(components[lane]), len(ref['global_squared_orders']))
+            for value, component in zip(components[lane], ref['global_squared_orders']):
+                self._assert_close(value, component['value'] if lane != 2 else 0., scale=scale)
+
     def test_grouped_qcd_ttx_real_components(self):
         self._run_case('grouped_qcd_ttx')
 
