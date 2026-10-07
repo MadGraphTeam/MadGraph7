@@ -120,10 +120,8 @@ PROCESSES = [
     {'id': 'uux_wpwm',
      'process': 'u u~ > w+ w- [QED]',
      'model': 'loop_sm',
-     # grouped [QED] virtuals with closed light-quark loops are refused
-     # (flavour-dependent W couplings in a merged loop), so this process is
-     # generated ungrouped, like the other EW tests
-     'grouping': False,
+     # Exercise physical closed-loop specialization with grouped QED.
+     'grouping': True,
      # the soft-photon limit test (test_soft_col_limits) fails for this
      # process in a plain aMC@NLO output too (identical failures), so it is
      # kept out of the '--limits' check until that is understood

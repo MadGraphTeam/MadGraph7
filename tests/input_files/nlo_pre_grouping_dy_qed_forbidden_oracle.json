@@ -1,0 +1,25 @@
+{
+  "metadata": {
+    "source_commit": "844829d3ef0b13d294045f34dbbeef3a3d743e9b",
+    "source_process": "p p > e+ e- / s [QED]",
+    "model": "loop_qcd_qed_sm_Gmu_4FS",
+    "complex_mass_scheme": true,
+    "loop_optimized_output": true,
+    "param_card_sha256": "1de6b90dd4ae4911371348e0b4a3bfc2e3e324856ca52d852afe2216bf73c83f",
+    "restriction_sha256": "c564addfe995f6bb4c1b6474b381781c099298cf708c642ea7647b3f8afc58d1",
+    "description": "Pre-grouping reference for internal-flavour exclusion semantics, not a gauge-complete prediction. Eight physical representatives, stable code216. Same scale, parameters and e-,e+ momentum order as the unrestricted DY QED oracle. Runner and full evidence: NLO_acceleration_status/recovery-20261006/make_qed_oracle.py --forbidden s."
+  },
+  "virtual": {
+    "momenta": [[500.0,0.0,0.0,500.0],[500.0,0.0,0.0,-500.0],[500.0,300.0,0.0,400.0],[500.0,-300.0,0.0,-400.0]],
+    "oracles": {
+      "P0_ccx_emep_no_s": {"born":0.005516431447365863,"finite":0.0002571698718787666,"1eps":-2.7674663904489218e-05,"2eps":-1.9150486682264813e-05},
+      "P0_cxc_emep_no_s": {"born":0.0006180898945678061,"finite":4.8268266454958865e-05,"1eps":-8.78294048417671e-06,"2eps":-2.1457209080365347e-06},
+      "P0_ddx_emep_no_s": {"born":0.0029962556128027814,"finite":8.626964434781844e-05,"1eps":-1.529270567978671e-05,"2eps":-8.001236328387629e-06},
+      "P0_dxd_emep_no_s": {"born":0.0002640083752589764,"finite":1.7983307315763797e-05,"1eps":2.738120181505363e-07,"2eps":-7.05011079193182e-07},
+      "P0_ssx_emep_no_s": {"born":0.0029962556128027814,"finite":5.131448438524203e-05,"1eps":3.6442549712673137e-06,"2eps":-7.201112695548865e-06},
+      "P0_sxs_emep_no_s": {"born":0.0002640083752589764,"finite":-1.111766531740145e-06,"1eps":-4.16019887900952e-06,"2eps":-6.345099712738631e-07},
+      "P0_uux_emep_no_s": {"born":0.005516431447365863,"finite":-0.00043126665410423445,"1eps":1.9098414040273088e-05,"2eps":-1.9150486682264813e-05},
+      "P0_uxu_emep_no_s": {"born":0.0006180898945678061,"finite":4.749009756776961e-05,"1eps":-7.937583909560315e-06,"2eps":-2.1457209080365347e-06}
+    }
+  }
+}

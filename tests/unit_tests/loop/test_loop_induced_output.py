@@ -158,19 +158,10 @@ class TestLoopInducedExternalFlavors(unittest.TestCase):
         self.assertEqual([tuple(f) for f in flavors], [(1, 1, 1, 1)])
         self.assertEqual([list(p) for p in pdgs], [[21, 21, 25, 25]])
 
-    def test_grouped_light_quark_loop_induced_is_refused(self):
-        """A merged light-quark loop with Z couplings is not generated.
+    def test_grouped_light_quark_loop_induced(self):
+        """Physical Z-coupled loop flavours survive grouped generation."""
 
-        One loop of the merged quark stands for all its flavours, but the
-        loop numerator evaluates a single flavour, so the flavour-dependent
-        Z couplings cannot be summed.  The generation must stop with the
-        grouping diagnostic, not report a process without diagrams.  The
-        ungrouped model still generates it.
-        """
-
-        with self.assertRaisesRegex(MadGraph5Error,
-                                    'closed loop of merged particle'):
-            get_interface(LIGHT_QUARK_LOOP_INDUCED_PROCESS)
+        grouped = get_interface(LIGHT_QUARK_LOOP_INDUCED_PROCESS)
         interface = MGCmd.MasterCmd()
         interface.no_notification()
         interface.exec_cmd('set apply_flavor_grouping False', printcmd=False,
@@ -180,6 +171,13 @@ class TestLoopInducedExternalFlavors(unittest.TestCase):
         interface.exec_cmd('generate %s' % LIGHT_QUARK_LOOP_INDUCED_PROCESS,
                            printcmd=False, precmd=True)
         self.assertTrue(interface._curr_amps[0].get('loop_diagrams'))
+        for key in ('loop_diagrams', 'born_diagrams'):
+            self.assertEqual(len(grouped._curr_amps[0].get(key)),
+                             len(interface._curr_amps[0].get(key)))
+        me = get_matrix_element(LIGHT_QUARK_LOOP_INDUCED_PROCESS)
+        flavors, pdgs = me.get_external_flavors(return_pdgs=True)
+        self.assertEqual([tuple(f) for f in flavors], [(1, 1, 1, 1)])
+        self.assertEqual([list(p) for p in pdgs], [[21, 21, 23, 23]])
 
     def test_validate_model_preserves_supported_flavor_grouping(self):
         """NLO validation must not reload and replace a supported grouped

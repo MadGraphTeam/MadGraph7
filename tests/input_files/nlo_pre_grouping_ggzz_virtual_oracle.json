@@ -1,0 +1,30 @@
+{
+  "metadata": {
+    "source_commit": "844829d3ef0b13d294045f34dbbeef3a3d743e9b",
+    "model": "loop_sm",
+    "source_process": "g g > z z [sqrvirt=QCD]",
+    "loop_optimized_output": true,
+    "complex_mass_scheme": false,
+    "param_card_sha256": "61894bc225f62224521081571bb987ae519f355ac33921f47bd3a5cf1b1ec05f",
+    "restriction_sha256": "878a7d1b110faf49824885bd340fb09d6431394d9c7f3d5b86c12d6f4ef54160",
+    "mu_r": 1000.0,
+    "alpha_s": 0.118,
+    "description": "Pre-grouping physical loop-induced squared matrix element. The reference requires sqrvirt=QCD for standalone output (equivalent to noborn). Two independent executable runs, each with 16 calls, agree exactly after initialization; stable code 217. Full cards, model hashes, scripts and raw evidence: NLO_acceleration_status/recovery-20261006/ggzz_reference_evidence.tar.gz."
+  },
+  "virtual": {
+    "momenta": [
+      [500.0, 0.0, 0.0, 500.0],
+      [500.0, 0.0, 0.0, -500.0],
+      [500.0, 294.9686585319871, 0.0, 393.29154470931616],
+      [500.0, -294.9686585319871, 0.0, -393.29154470931616]
+    ],
+    "oracles": {
+      "P0_gg_zz": {
+        "born": 0.0,
+        "finite": 0.00021380212419861786,
+        "1eps": 0.0,
+        "2eps": 0.0
+      }
+    }
+  }
+}

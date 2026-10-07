@@ -856,6 +856,9 @@ class LoopAmplitude(diagram_generation.Amplitude):
         # Now select only the loops corresponding to the perturbative orders
         # asked for.
         self.filter_loop_for_perturbative_orders()
+        # Particle.is_perturbating uses the grouped generating interactions;
+        # specialize only after that selection, before Furry/CT matching.
+        self.expand_merged_fermion_loops()
 
         if len(self['loop_diagrams'])==0 and len(self['born_diagrams'])!=0:
             raise InvalidCmd('All loop diagrams discarded by user selection.\n'+\
@@ -924,6 +927,110 @@ class LoopAmplitude(diagram_generation.Amplitude):
                                               len(self['structure_repository']))
 
         return (bornsuccessful or totloopsuccessful)
+
+    def expand_merged_fermion_loops(self):
+        """Resolve closed grouped fermion rings into physical flavour cycles.
+
+        Attached trees stay grouped. A physical interaction fixes a transition
+        between neighbouring loop flavours; following those transitions and
+        requiring closure retains charges, CKM factors and original Lorentz
+        structures without a numerator-internal flavour sum.
+        """
+
+        model = self['process']['model']
+        merged = model.get('merged_particles')
+        if not merged:
+            return
+        structures = self['structure_repository']
+        external = self['process']['legs']
+        n_initial = len([leg for leg in external if not leg['state']])
+        forbidden = set(abs(pdg) for pdg in
+                        self['process']['forbidden_particles'])
+        expanded = base_objects.DiagramList()
+        seen = set()
+
+        def domain(pdg):
+            particle = model.get_particle(pdg)
+            if abs(pdg) not in merged:
+                return [pdg] if abs(pdg) not in forbidden else []
+            return [flavor if particle.get('is_part') else
+                    model.get_particle(flavor).get_anti_pdg_code()
+                    for flavor in merged[abs(pdg)]
+                    if abs(flavor) not in forbidden]
+
+        def append(diagram):
+            key = tuple((pdg, tuple(ids), vertex)
+                        for pdg, ids, vertex in diagram['canonical_tag'])
+            if key not in seen:
+                expanded.append(diagram)
+                seen.add(key)
+
+        for diagram in self['loop_diagrams']:
+            if not diagram.is_fermion_loop(model) or not any(
+                    abs(tag[0]['id']) in merged for tag in diagram['tag']):
+                append(diagram)
+                continue
+            domains = [domain(tag[0]['id']) for tag in diagram['tag']]
+            transitions = []
+            for i, (leg, structure_ids, inter_id) in enumerate(diagram['tag']):
+                interaction = model.get_interaction(inter_id)
+                sources = getattr(interaction, 'physical_interactions',
+                                  (interaction,))
+                bindings = [structures[sid]['binding_leg']['id']
+                            for sid in structure_ids]
+                choices = {}
+                for source in sources:
+                    particles = sorted(p.get_pdg_code()
+                                       for p in source['particles'])
+                    for incoming in domains[i]:
+                        for outgoing in domains[(i + 1) % len(domains)]:
+                            if particles == sorted(bindings + [incoming,
+                                    model.get_particle(outgoing).get_anti_pdg_code()]):
+                                vertex = model.register_loop_interaction(source)
+                                choices.setdefault(incoming, []).append(
+                                    (outgoing, vertex))
+                transitions.append(choices)
+
+            def cycles(start, incoming, vertices, flavors):
+                index = len(vertices)
+                if index == len(transitions):
+                    if incoming == start:
+                        yield vertices, flavors
+                    return
+                for outgoing, vertex in transitions[index].get(incoming, []):
+                    yield from cycles(start, outgoing, vertices + [vertex],
+                                      flavors + [incoming])
+
+            for start in domains[0]:
+                for vertices, flavors in cycles(start, start, [], []):
+                    physical = copy.deepcopy(diagram)
+                    physical['CT_vertices'] = base_objects.VertexList()
+                    physical['contracted_diagram'] = None
+                    physical['multiplier'] = 1
+                    physical.physical_flavor_loop = True
+                    for tag, flavor, vertex in zip(physical['tag'], flavors,
+                                                    vertices):
+                        tag[0]['id'] = flavor
+                        tag[2] = vertex
+                    if physical.cutting_method == 'optimal':
+                        physical['tag'] = physical.choose_optimal_lcut(
+                            physical['tag'], structures, model, external)
+                    else:
+                        physical['tag'] = physical.choose_default_lcut(
+                            physical['tag'], model)
+                    expected = [tag[0]['id'] for tag in physical['tag']]
+                    physical.synchronize_loop_vertices_with_tag(
+                        model, n_initial, structures, len(external) + 1,
+                        len(external) + 2)
+                    actual = [tag[0]['id'] for tag in physical['tag']]
+                    if actual != expected or physical['vertices'][-1][
+                            'legs'][0]['id'] != expected[0]:
+                        raise MadGraph5Error('Physical loop flavour cycle did '
+                                             'not survive vertex reconstruction')
+                    physical['canonical_tag'] = [
+                        [tag[0]['id'], tag[1], tag[2]] for tag in physical['tag']]
+                    append(physical)
+        self['loop_diagrams'] = expanded
 
     def get_merged_closed_loop_flavor_count(self, loop_diag):
         """Return how many physical flavours a closed merged-particle loop sums.
@@ -1247,6 +1354,45 @@ class LoopAmplitude(diagram_generation.Amplitude):
         return totloopsuccessful
 
 
+    def get_filtered_counterterm_interactions(self):
+        """Keep physical counterterm exclusions before merging loop keys.
+
+        Different external flavours can lose different internal contributions.
+        In that case retain masked physical-source vertices rather than applying
+        one multiplicity to every row of the merged interaction.
+        """
+
+        model = self['process']['model']
+        forbidden = set(abs(pdg) for pdg in self['process']['forbidden_particles'])
+        if not forbidden or not model.get('merged_particles'):
+            yield from model['interactions']
+            return
+        for interaction in model['interactions']:
+            sources = getattr(interaction, 'physical_interactions', (interaction,))
+            if not (
+                    interaction.is_UVloop() or interaction.is_UVtree() or
+                    interaction.is_UVmass() or interaction.is_R2()) or not any(
+                    forbidden.intersection(abs(pdg) for entry in source['loop_particles']
+                                           for pdg in entry) for source in sources):
+                yield interaction
+                continue
+            for source in sources:
+                allowed = [entry for entry in source['loop_particles']
+                           if not forbidden.intersection(abs(pdg) for pdg in entry)]
+                if not allowed:
+                    continue
+                variant = copy.deepcopy(source)
+                variant.set('color', source.get('color'))
+                variant.set('loop_particles', allowed)
+                for merged_pdg, ids in model.get('merged_particles').items():
+                    if any(p.get('pdg_code') in ids for p in variant['particles']):
+                        particle = model.get_particle(merged_pdg)
+                        variant.pass_interaction_to_flavor_mode(ids, particle,
+                            model.get_particle(particle.get_anti_pdg_code()))
+                variant_id = model.register_loop_interaction(variant,
+                    source_key=('filtered_ct', source['id'], tuple(sorted(forbidden))))
+                yield model.get_interaction(variant_id)
+
     def set_Born_CT(self):
         """ Scan all born diagrams and add for each all the corresponding UV 
         counterterms. It creates one LoopUVCTDiagram per born diagram and set
@@ -1264,7 +1410,9 @@ class LoopAmplitude(diagram_generation.Amplitude):
         # The following lists the UV interactions potentially giving UV counterterms
         # (The UVmass interactions is accounted for like the R2s)
         UVCTvertex_interactions = base_objects.InteractionList()
-        for inter in self['process']['model']['interactions'].get_UV():
+        filtered_interactions = base_objects.InteractionList(
+            self.get_filtered_counterterm_interactions())
+        for inter in filtered_interactions.get_UV():
             if inter.is_UVtree() and len(inter['particles'])>1 and \
               inter.is_perturbating(self['process']['perturbation_couplings']) \
               and (set(inter['orders'].keys()).intersection(\
@@ -1285,6 +1433,12 @@ class LoopAmplitude(diagram_generation.Amplitude):
         # Refresh the model interaction dictionary while including those special 
         # interactions
         self['process']['model'].actualize_dictionaries(useUVCT=True)
+        # Filtered UVtree variants enter only this temporary UVCT generation;
+        # ordinary Born/real generation must keep the original model rules.
+        model = self['process']['model']
+        model['ref_dict_to0'], model['ref_dict_to1'] = \
+            filtered_interactions.generate_ref_dict(useUVCT=True)
+        model['ref_dict_to0'].update(model['particles'].generate_ref_dict())
         
         # Generate the UVCTdiagrams (born diagrams with 'UVCT_SPECIAL'=0 order 
         # will be generated along)
@@ -1385,6 +1539,7 @@ class LoopAmplitude(diagram_generation.Amplitude):
         # the dictionary are a list of the  interaction ID having the same key 
         # above.
         CT_interactions = {}
+        physical_CT_interactions = {}
         # With flavour grouping, loops are tagged with merged PDGs.  Translate
         # the loop content of every counterterm to the same space (this also
         # covers interactions without merged external particles, such as the
@@ -1394,7 +1549,7 @@ class LoopAmplitude(diagram_generation.Amplitude):
                     self['process']['model'].get('merged_particles').items():
             for pdg in ids:
                 merged_ids[abs(pdg)] = abs(merged_pdg)
-        for inter in self['process']['model']['interactions']:
+        for inter in self.get_filtered_counterterm_interactions():
              if inter.is_UVmass() or inter.is_UVloop() or inter.is_R2() and \
                 len(inter['particles'])>1 and inter.is_perturbating(\
                                      self['process']['perturbation_couplings']):
@@ -1440,6 +1595,14 @@ class LoopAmplitude(diagram_generation.Amplitude):
                         CT_interactions[key].append((inter['id'],i))
                     except KeyError:
                         CT_interactions[key]=[(inter['id'],i),]
+                    # Expanded closed fermion loops have physical ring PDGs
+                    # and bosonic binding legs. Their CTs retain physical loop
+                    # content; grouped open-fermion loops still use the mapped
+                    # keys above. Unspecified/UVloop terms share add-once state.
+                    physical_key = (tuple(keyb), () if inter.is_UVloop()
+                                    else tuple(sorted(set(lparts))))
+                    physical_CT_interactions.setdefault(physical_key, []).append(
+                        (inter['id'], i))
         
         # The dictionary CTmass_added keeps track of what are the CounterTerms of
         # type UVmass or R2 already added and prevents us from adding them again. 
@@ -1508,12 +1671,15 @@ class LoopAmplitude(diagram_generation.Amplitude):
             # for its searchingKey in CT_interactions
 
             # misc.sprint("I have the following CT_interactions=",CT_interactions)
+            candidates = (physical_CT_interactions if
+                          getattr(diag, 'physical_flavor_loop', False) else
+                          CT_interactions)
             try:
-                CTIDs=copy.copy(CT_interactions[searchingKeySimple])
+                CTIDs=copy.copy(candidates[searchingKeySimple])
             except KeyError:
                 CTIDs=[]
             try:
-                CTIDs.extend(copy.copy(CT_interactions[searchingKeyLoopPart]))
+                CTIDs.extend(copy.copy(candidates[searchingKeyLoopPart]))
             except KeyError:
                 pass
             if not CTIDs:

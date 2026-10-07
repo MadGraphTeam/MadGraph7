@@ -1009,6 +1009,13 @@ class Interaction(PhysicsObject):
         the particles with the ids given in ids_to_merge. 
         Coupling will be passed to FLV_coupling """
 
+        # Keep physical vertices, including their original Lorentz structures
+        # and CT loop content, when successive merges combine flavour tables.
+        if not hasattr(self, 'physical_interactions'):
+            physical = copy.deepcopy(self)
+            physical.set('color', self.get('color'))
+            self.physical_interactions = (physical,)
+
         # MadLoop associates R2/UVmass vertices with loop diagrams through
         # ``loop_particles``.  Once physical particles are replaced by a
         # merged particle, this key must describe the same merged loop content
@@ -1075,6 +1082,9 @@ class Interaction(PhysicsObject):
                     'Cannot merge interactions with different loop content: '
                     '%s and %s' % (self.get('loop_particles'),
                                    other_loop_particles))
+
+        self.physical_interactions += getattr(
+            other_flavor, 'physical_interactions', (other_flavor,))
 
         self_couplings = self.get('couplings')
         other_couplings = other_flavor.get('couplings')
@@ -1499,6 +1509,8 @@ class Model(PhysicsObject):
         if (name == 'interaction_dict') and not self[name]:
             if self['interactions']:
                 self['interaction_dict'] = self['interactions'].generate_dict()
+            self['interaction_dict'].update(
+                getattr(self, '_loop_interactions', {}))
 
         elif (name == 'got_majoranas') and self[name] == None:
             if self['particles']:
@@ -1790,6 +1802,7 @@ class Model(PhysicsObject):
         The ids is the list of index of the particles to merge, 
         the associated flavor index will start at one"""
 
+        self.clear_loop_interactions()
         if not hasattr(self, 'unmerged_interactions'):
             self['unmerged_interactions'] = InteractionList()
         
@@ -1835,6 +1848,8 @@ class Model(PhysicsObject):
                     self.get('interactions').remove(inter)
                     newinter = copy.deepcopy(inter)
                     newinter.set('color', inter.get('color')) # avoid deepcopy issue with color objects
+                    if hasattr(inter, 'physical_interactions'):
+                        newinter.physical_interactions = inter.physical_interactions
                     new_interactions[key] = newinter
                     newinter.pass_interaction_to_flavor_mode(ids, new_part, anti_part)
                     self.get('interactions').append(newinter)
@@ -1863,6 +1878,8 @@ class Model(PhysicsObject):
         if not self['merged_particles']:
             return #nothing to unmerge
 
+        self.clear_loop_interactions()
+
         for inter in self.get('interactions')[:]:
             #misc.sprint("check inter", [p.get('pdg_code') for p in inter.get('particles')])
             for pdg, ids in self['merged_particles'].items():
@@ -1890,6 +1907,7 @@ class Model(PhysicsObject):
         the associated flavor index will start at one
         """
 
+        self.clear_loop_interactions()
         new_part = self.define_merged_part_antipart(id)
 
         # Update the model
@@ -2006,6 +2024,41 @@ class Model(PhysicsObject):
             return self.get("interaction_dict")[id]
         except Exception:
             return None
+
+    def clear_loop_interactions(self):
+        """Invalidate physical loop lookup variants when grouping changes."""
+
+        if hasattr(self, '_loop_interactions'):
+            del self._loop_interactions
+            del self._loop_interaction_ids
+            self['interaction_dict'] = {}
+
+    def register_loop_interaction(self, physical, source_key=None):
+        """Expose a physical vertex to loop reconstruction, not tree generation.
+
+        Original and merged interaction IDs can coincide. Give preserved
+        physical vertices fresh IDs and retain them across dictionary resets,
+        without adding them to the model's generating interaction list.
+        """
+
+        if self.get_interaction(physical['id']) is physical:
+            return physical['id']
+        if not hasattr(self, '_loop_interactions'):
+            self._loop_interactions = {}
+            self._loop_interaction_ids = {}
+        source_id = physical['id'] if source_key is None else source_key
+        if source_id not in self._loop_interaction_ids:
+            ids = list(self.get('interaction_dict'))
+            ids.extend(inter['id'] for inter in
+                       getattr(self, 'unmerged_interactions', ()))
+            new_id = max(ids, default=0) + 1
+            variant = copy.deepcopy(physical)
+            variant.set('color', physical.get('color'))
+            variant.set('id', new_id)
+            self._loop_interaction_ids[source_id] = new_id
+            self._loop_interactions[new_id] = variant
+            self.get('interaction_dict')[new_id] = variant
+        return self._loop_interaction_ids[source_id]
 
     def get_parameter(self, name):
         """Return the parameter associated to the name NAME"""

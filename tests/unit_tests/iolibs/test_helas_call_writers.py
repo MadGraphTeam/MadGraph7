@@ -39,6 +39,114 @@ import tests.parallel_tests.test_aloha as test_aloha
 #===============================================================================
 # HelasModelTestSetup
 #===============================================================================
+class LoopCutFlavorTest(unittest.TestCase):
+    """An open fermion loop is seeded by its physical external fermion."""
+
+    def test_initial_cut_flavor_comes_from_external_fermion(self):
+        from unittest.mock import Mock
+
+        def object_with(**values):
+            result = Mock()
+            result.get.side_effect = values.__getitem__
+            return result
+
+        cut = object_with(spin=2, is_loop=True, number=0, mothers=[])
+        external = object_with(spin=2, is_loop=False, number=1,
+                               number_external=1, state='incoming')
+        coupling = base_objects.FLV_Coupling()
+        coupling.set('flavors', {(1, 1, 0): 'GC_D', (2, 2, 0): 'GC_U'})
+        coupling.set('name', 'FLV_TEST')
+        wavefunction = object_with(mothers=[cut, external], spin=3,
+                                   number=5, coupling=[coupling])
+        wavefunction.get_aloha_info.return_value = (['FFV1'], ['L2'], 3)
+        amplitude = object_with(wavefunctions=[wavefunction], coupling=[coupling])
+
+        optimized = helas_call_writers.FortranUFOHelasCallWriterOptimized(
+            base_objects.Model())
+        source, leg, outgoing = optimized._loop_flavor_source(wavefunction)
+        self.assertIn('W(1', source)
+        self.assertIn('FLV_INDEX', source)
+        self.assertEqual((leg, outgoing), (1, 3))
+        default = helas_call_writers.FortranUFOHelasCallWriter(base_objects.Model())
+        resolved = default._resolve_nonoptimized_loop_couplings(amplitude)
+        self.assertIn('FLAVOR(1)', resolved[0][0])
+        self.assertIn('MP_GET_FLV_COUPLING_VALUE', resolved[0][1])
+
+        # Once propagated, the loop fermion's flavour is authoritative (it
+        # need not equal the external species after a charged-current vertex).
+        propagated = object_with(spin=2, is_loop=True, number=7,
+                                 mothers=[external])
+        wavefunction.get.side_effect = dict(mothers=[propagated, external]).__getitem__
+        self.assertEqual(optimized._loop_flavor_source(wavefunction),
+                         ('LOOP_FLAVOR(7)', 2, 3))
+
+    def test_forbidden_loop_flavor_does_not_exclude_external_flavor(self):
+        """The u->s internal transition is vetoed, while s->u is allowed."""
+        from unittest.mock import Mock, patch
+        from madgraph.loop.loop_exporters import LoopProcessExporterFortranSA
+
+        def object_with(**values):
+            result = Mock()
+            result.get.side_effect = values.__getitem__
+            return result
+
+        boson = object_with(spin=3, is_loop=True, pdg_code=24)
+        external = object_with(spin=2, is_loop=False, number=2,
+                               number_external=2, state='outgoing', pdg_code=-81)
+        coupling = base_objects.FLV_Coupling()
+        coupling.set('flavors', {(3, 2, 0): 'GC_US', (2, 3, 0): 'GC_SU'})
+        coupling.set('name', 'FLV_TEST')
+        wavefunction = object_with(mothers=[boson, external], spin=2,
+                                   pdg_code=81, number=5, coupling=[coupling])
+        wavefunction.get_aloha_info.return_value = (['FFV1'], ['L3'], 1)
+        amplitude = object_with(wavefunctions=[wavefunction], coupling=[coupling])
+        writer = helas_call_writers.FortranUFOHelasCallWriter(base_objects.Model())
+        writer.forbidden_loop_flavors = {81: (3,)}
+        dp, mp = writer._resolve_nonoptimized_loop_couplings(amplitude)[0]
+        self.assertIn('MERGE(', dp)
+        self.assertIn('GET_FLV_PARTNER(FLV_TEST,FLAVOR(2),.TRUE.).NE.3', dp)
+        self.assertNotIn('FLAVOR(2).NE.3', dp)
+        self.assertIn('CMPLX(0D0,KIND=16)', mp)
+
+        optimized = helas_call_writers.FortranUFOHelasCallWriterOptimized(base_objects.Model())
+        optimized.forbidden_loop_flavors = {81: (3,)}
+        # Exercise the optimized call substitution and the real MP conversion.
+        values = dict(mothers=[boson, external], spin=2, pdg_code=81,
+                      number=5, coupling=[coupling], is_loop=True)
+        wavefunction.get.side_effect = values.__getitem__
+        with patch.object(helas_call_writers.FortranUFOHelasCallWriter,
+                'get_wavefunction_call', return_value='CALL FOO(FLV_TEST)'):
+            call = optimized.get_wavefunction_call(wavefunction)
+        self.assertIn('MERGE(GET_FLV_COUPLING_VALUE(', call)
+        self.assertIn('.TRUE.).NE.3', call)
+        mp_calls = [call]
+        LoopProcessExporterFortranSA.turn_to_mp_calls(None, mp_calls)
+        self.assertIn('MP_GET_FLV_COUPLING_VALUE', mp_calls[0])
+        self.assertIn('CMPLX(0D0,KIND=16)', mp_calls[0])
+
+        # Scalar diagonal vertices have the same restriction on their internal
+        # fermion even though no FLV lookup is needed for the coupling.
+        wavefunction.get.side_effect = dict(mothers=[boson, external], spin=2,
+            pdg_code=81, number=5, coupling=['GC_DIAG']).__getitem__
+        amplitude.get.side_effect = dict(wavefunctions=[wavefunction],
+                                         coupling=['GC_DIAG']).__getitem__
+        dp, mp = writer._resolve_nonoptimized_loop_couplings(amplitude)[0]
+        self.assertIn('FLAVOR(2).NE.3', dp)
+        self.assertIn('MP__GC_DIAG', mp)
+
+        # Writer instances may be reused for a later unrestricted process.
+        model = base_objects.Model({'merged_particles': {81: [1, 2, 3, 4]}})
+        process = base_objects.Process({'model': model, 'forbidden_particles': [3]})
+        matrix = object_with(processes=[process])
+        LoopProcessExporterFortranSA.set_virtual_flavor_writer_state(writer, {}, matrix)
+        self.assertEqual(writer.forbidden_loop_flavors, {81: (3,)})
+        LoopProcessExporterFortranSA.reset_virtual_flavor_writer_state(writer)
+        self.assertEqual(writer.forbidden_loop_flavors, {})
+        process.set('forbidden_particles', [])
+        LoopProcessExporterFortranSA.set_virtual_flavor_writer_state(writer, {}, matrix)
+        self.assertNotIn('MERGE(', writer._resolve_nonoptimized_loop_couplings(amplitude)[0][0])
+
+
 class HelasModelTestSetup(unittest.TestCase):
     """Test class for the HelasModel object"""
 

@@ -12,6 +12,7 @@ runs:
           heft.tgz
           loop_qcd_qed_sm.tgz
           loop_qcd_qed_sm_Gmu.tgz
+          loop_qcd_qed_sm_Gmu_4FS.tgz
           RS.tgz
           sm_v4.tgz
           uutt_sch_4fermion.tgz

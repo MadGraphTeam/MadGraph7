@@ -1,0 +1,74 @@
+{
+  "metadata": {
+    "source_commit": "844829d3ef0b13d294045f34dbbeef3a3d743e9b",
+    "source_process": "p p > e+ e- [QED]",
+    "multiparticles": ["p = g d u s c d~ u~ s~ c~"],
+    "model": "loop_qcd_qed_sm_Gmu_4FS",
+    "loop_optimized_output": true,
+    "complex_mass_scheme": true,
+    "physical_model": true,
+    "restriction_sha256": "c564addfe995f6bb4c1b6474b381781c099298cf708c642ea7647b3f8afc58d1",
+    "param_card_sha256": "1de6b90dd4ae4911371348e0b4a3bfc2e3e324856ca52d852afe2216bf73c83f",
+    "description": "Pre-grouping physical QED virtual reference. All representatives return stable MadLoop code 216; native check_poles passes 80/80 (default 1e-5 tolerance). Final-state momentum order: e-, e+. Reproduction scripts, exact commands, model hashes and raw evidence are archived in NLO_acceleration_status/recovery-20261006."
+  },
+  "virtual": {
+    "momenta": [
+      [500.0, 0.0, 0.0, 500.0],
+      [500.0, 0.0, 0.0, -500.0],
+      [500.0, 300.0, 0.0, 400.0],
+      [500.0, -300.0, 0.0, -400.0]
+    ],
+    "oracles": {
+      "P0_ddx_emep": {
+        "born": 0.0029962556128027814,
+        "finite": 7.427474571265565e-05,
+        "1eps": -2.2550162358466724e-05,
+        "2eps": -8.001236328387629e-06
+      },
+      "P0_dxd_emep": {
+        "born": 0.0002640083752589764,
+        "finite": 1.7317571068882836e-05,
+        "1eps": -1.2807601649122794e-07,
+        "2eps": -7.05011079193182e-07
+      },
+      "P0_uux_emep": {
+        "born": 0.005516431447365863,
+        "finite": -0.0004460923175245862,
+        "1eps": 1.011542690542339e-05,
+        "2eps": -1.9150486682264813e-05
+      },
+      "P0_uxu_emep": {
+        "born": 0.0006180898945678061,
+        "finite": 4.809378989365129e-05,
+        "1eps": -7.570548176124441e-06,
+        "2eps": -2.1457209080365347e-06
+      }
+    },
+    "diagnostics": {
+      "P0_ddx_emep": {
+        "physical_processes": ["d d~ > e- e+", "s s~ > e- e+"],
+        "precision": [2.2084712757696434e-14, 2.2084712757696434e-14],
+        "returncode": 216,
+        "nctamps": 67
+      },
+      "P0_dxd_emep": {
+        "physical_processes": ["d~ d > e- e+", "s~ s > e- e+"],
+        "precision": [3.377350939633135e-14, 3.377350939633135e-14],
+        "returncode": 216,
+        "nctamps": 67
+      },
+      "P0_uux_emep": {
+        "physical_processes": ["u u~ > e- e+", "c c~ > e- e+"],
+        "precision": [4.801611840785303e-16, 4.801611840785303e-16],
+        "returncode": 216,
+        "nctamps": 67
+      },
+      "P0_uxu_emep": {
+        "physical_processes": ["u~ u > e- e+", "c~ c > e- e+"],
+        "precision": [5.164630374156226e-15, 5.164630374156226e-15],
+        "returncode": 216,
+        "nctamps": 67
+      }
+    }
+  }
+}

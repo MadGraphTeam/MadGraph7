@@ -1351,6 +1351,43 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
     def _is_flavor_coupling(coupling):
         return isinstance(coupling, base_objects.FLV_Coupling)
 
+    @staticmethod
+    def _loop_flavor_mother(wavefunction):
+        """Prefer a propagated loop flavour, or seed it from an external line.
+
+        The initial L-cut fermion has no physical flavour assigned yet. When
+        it meets a non-loop fermion, that fermion fixes the coupling indices;
+        reading the cut's LOOP_FLAVOR slot would instead select zero.
+        """
+
+        fermions = [mother for mother in wavefunction.get('mothers')
+                    if mother.get('spin') == 2]
+        loop = [mother for mother in fermions if mother.get('is_loop')]
+        if loop and loop[0].get('mothers'):
+            return loop[0]
+        return next((mother for mother in fermions if not mother.get('is_loop')),
+                    loop[0] if loop else None)
+
+    def _loop_flavor_condition(self, wavefunction, k1, k2):
+        """Restrict internal propagators, while keeping legal external rows."""
+        forbidden = getattr(self, 'forbidden_loop_flavors', {})
+        if not forbidden:
+            return ''
+        unused, tags, outgoing = wavefunction.get_aloha_info(True)
+        loop_leg = next((int(tag[1:]) for tag in tags if tag.startswith('L')), None)
+        slots = [(mother, loop_leg) for mother in wavefunction.get('mothers')
+                 if mother.get('is_loop') and mother.get('spin') == 2]
+        if wavefunction.get('spin') == 2:
+            slots.append((wavefunction, outgoing))
+        conditions = []
+        for fermion, leg in slots:
+            indices = forbidden.get(abs(fermion.get('pdg_code')), ())
+            if indices and leg in (1, 2):
+                flavor = k1 if leg == 1 else k2
+                if flavor is not None:
+                    conditions.extend('%s.NE.%d' % (flavor, index) for index in indices)
+        return '.AND.'.join(dict.fromkeys(conditions))
+
     def _resolve_nonoptimized_loop_couplings(self, loopamp):
         """Resolve merged couplings passed to a default-output loop call.
 
@@ -1370,13 +1407,7 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
             lorentz, tags, outgoing = wavefunction.get_aloha_info(True)
             loop_leg = next((int(tag[1:]) for tag in tags
                              if tag.startswith('L')), None)
-            fermion_mothers = [mother for mother in
-                               wavefunction.get('mothers')
-                               if mother.get('spin') == 2]
-            loop_fermions = [mother for mother in fermion_mothers
-                             if mother.get('is_loop')]
-            source_wf = loop_fermions[0] if loop_fermions else (
-                fermion_mothers[0] if fermion_mothers else None)
+            source_wf = self._loop_flavor_mother(wavefunction)
             source = None
             source_leg = None
             if source_wf is not None:
@@ -1403,6 +1434,8 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
             flavor_couplings = [coupling for coupling in couplings
                                 if self._is_flavor_coupling(coupling)]
             output_flavor = source
+            k1 = k2 = source
+            vertex_couplings = []
             if flavor_couplings:
                 if source is None or source_leg not in (1, 2):
                     raise self.PhysicsObjectError(
@@ -1421,15 +1454,25 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                 for coupling in couplings:
                     if self._is_flavor_coupling(coupling):
                         name = coupling.get('name')
-                        resolved.append((
+                        vertex_couplings.append((
                             'GET_FLV_COUPLING_VALUE(%s,%s,%s)' %
                             (name, k1, k2),
                             'MP_GET_FLV_COUPLING_VALUE(%s,%s,%s)' %
                             (name, k1, k2)))
                     else:
-                        resolved.append((coupling, None))
+                        vertex_couplings.append((coupling, None))
             else:
-                resolved.extend((coupling, None) for coupling in couplings)
+                vertex_couplings.extend((coupling, None) for coupling in couplings)
+
+            condition = self._loop_flavor_condition(wavefunction, k1, k2)
+            for coupling, mp_coupling in vertex_couplings:
+                if condition:
+                    if mp_coupling is None:
+                        mp_coupling = ('-%s%s' % (self.mp_prefix, coupling[1:])
+                            if coupling.startswith('-') else self.mp_prefix + coupling)
+                    coupling = 'MERGE(%s,DCMPLX(0D0),%s)' % (coupling, condition)
+                    mp_coupling = 'MERGE(%s,CMPLX(0D0,KIND=16),%s)' % (mp_coupling, condition)
+                resolved.append((coupling, mp_coupling))
 
             if wavefunction.get('spin') == 2 and output_flavor is not None:
                 loop_flavors[wavefunction.get('number')] = output_flavor
@@ -1797,12 +1840,7 @@ class FortranUFOHelasCallWriterOptimized(FortranUFOHelasCallWriter):
         lorentz, tags, outgoing = wavefunction.get_aloha_info(True)
         loop_leg = next((int(tag[1:]) for tag in tags
                          if tag.startswith('L')), None)
-        fermion_mothers = [mother for mother in wavefunction.get('mothers')
-                           if mother.get('spin') == 2]
-        loop_fermions = [mother for mother in fermion_mothers
-                         if mother.get('is_loop')]
-        source = loop_fermions[0] if loop_fermions else (
-            fermion_mothers[0] if fermion_mothers else None)
+        source = self._loop_flavor_mother(wavefunction)
         if source is None:
             return None, None, outgoing
 
@@ -1834,6 +1872,8 @@ class FortranUFOHelasCallWriterOptimized(FortranUFOHelasCallWriter):
                             wavefunction.get('coupling')
                             if self._is_flavor_coupling(coupling)]
 
+        k1 = k2 = source
+
         if flavor_couplings:
             if source is None or source_leg not in (1, 2):
                 raise self.PhysicsObjectError(
@@ -1855,15 +1895,27 @@ class FortranUFOHelasCallWriterOptimized(FortranUFOHelasCallWriter):
             else:
                 setup = '%s=0' % output
 
-            for coupling in flavor_couplings:
+        elif wavefunction.get('spin') == 2 and source is not None:
+            setup = '%s=%s' % (output, source)
+        else:
+            setup = '%s=0' % output
+
+        condition = self._loop_flavor_condition(wavefunction, k1, k2)
+        replacements = {}
+        for coupling in wavefunction.get('coupling'):
+            if self._is_flavor_coupling(coupling):
                 name = coupling.get('name')
                 value = 'GET_FLV_COUPLING_VALUE(%s,%s,%s)' % (name, k1, k2)
-                call = re.sub(r'\b%s\b' % re.escape(name), value, call)
-            return '%s\n%s' % (setup, call)
-
-        if wavefunction.get('spin') == 2 and source is not None:
-            return '%s=%s\n%s' % (output, source, call)
-        return '%s=0\n%s' % (output, call)
+            else:
+                name = coupling.lstrip('-')
+                value = name
+            if condition:
+                value = 'MERGE(%s,DCMPLX(0D0),%s)' % (value, condition)
+            replacements[name] = value
+        if replacements:
+            call = re.sub(r'\b(?:%s)\b' % '|'.join(re.escape(name) for name in replacements),
+                          lambda match: replacements[match.group()], call)
+        return '%s\n%s' % (setup, call)
 
     def format_helas_object(self, prefix, number):
         """ Returns the string for accessing the wavefunction with number in

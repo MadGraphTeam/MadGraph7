@@ -103,7 +103,7 @@ class TestCmdLoop(unittest.TestCase):
         return result.stdout
 
     def _evaluate_grouped_virtual_rows(self, virtual_dir, rows, ps_input,
-                                       env):
+                                       env, warmup=0):
         """Evaluate explicit virtual rows sequentially in one executable."""
 
         with open(pjoin(virtual_dir, 'check_sa.f')) as stream:
@@ -120,9 +120,15 @@ class TestCmdLoop(unittest.TestCase):
         for row in rows:
             calls.extend([
                 ('CALL SLOOPMATRIX_THRES_FLAVOR(P,%d,MATELEM,-1.0D0,'
+                 'PREC_FOUND,RETURNCODE)' % row)] * warmup)
+            calls.extend([
+                ('CALL SLOOPMATRIX_THRES_FLAVOR(P,%d,MATELEM,-1.0D0,'
                  'PREC_FOUND,RETURNCODE)' % row),
                 ("WRITE (*,*) 'GROUPED FLAVOR VALUES',%d,MATELEM(0,0),"
                  'MATELEM(1,0),MATELEM(2,0),MATELEM(3,0)' % row)])
+            if warmup:
+                calls.append("WRITE (*,*) 'GROUPED FLAVOR STATUS',%d,"
+                             'PREC_FOUND,RETURNCODE' % row)
         new_call = '\n        '.join(calls)
         self.assertEqual(check_source.count(old_call), 1)
         check_source = check_source.replace(old_call, new_call)
@@ -146,6 +152,8 @@ class TestCmdLoop(unittest.TestCase):
         self._run_checked(command, virtual_dir, env)
         output = self._run_checked(['./check_grouped_flavor'], virtual_dir,
                                    env)
+        with open(pjoin(virtual_dir, 'check_grouped_flavor.log'), 'w') as stream:
+            stream.write(output)
 
         values = []
         pattern = re.compile(
@@ -158,10 +166,16 @@ class TestCmdLoop(unittest.TestCase):
                 (float(value.replace('D', 'E').replace('d', 'e'))
                  for value in match.groups()[1:])))))
         self.assertEqual([row for row, unused in values], list(rows), output)
+        if warmup:
+            statuses = re.findall(r'GROUPED FLAVOR STATUS\s+(\d+)\s+'
+                                  r'[+\-0-9.DEde]+\s+[+\-0-9.DEde]+\s+(\d+)', output)
+            self.assertEqual([int(row) for row, code in statuses], list(rows), output)
+            self.assertTrue(all(int(code) // 100 == 2 for row, code in statuses), output)
         return values
 
     def _check_grouped_virtual_oracle(self, process, oracle_name, expected,
-                                      extra_checks=None):
+                                      extra_checks=None, model='loop_sm',
+                                      setup=(), definitions=(), warmup=0):
         """Compare grouped virtual rows with a pre-grouping physical oracle.
 
         ``expected`` maps each generated P directory to a tuple
@@ -191,6 +205,7 @@ class TestCmdLoop(unittest.TestCase):
             ' '.join('%.17e' % value for value in momentum)
             for momentum in pre_grouping['virtual']['momenta']) + '\n'
 
+        succeeded = False
         try:
             for optimized in (True, False):
                 output = pjoin(work, 'optimized' if optimized else 'default')
@@ -202,13 +217,17 @@ class TestCmdLoop(unittest.TestCase):
                         'set automatic_html_opening False --no_save',
                         'set apply_flavor_grouping True --no_save',
                         'set loop_optimized_output %s --no_save' % optimized,
-                        'import model loop_sm',
+                        *setup,
+                        'import model %s' % model,
+                        *definitions,
                         'generate %s' % process,
                         'output %s -f' % output,
                         'quit', '']))
-                self._run_checked(
+                generation_log = self._run_checked(
                     [pjoin(MG5DIR, 'bin', 'madgraph'), command_file],
                     MG5DIR, env)
+                self.assertTrue(os.path.isdir(pjoin(output, 'Source')),
+                                generation_log)
 
                 self._run_checked(['make'], pjoin(output, 'Source'), env)
                 virtual_dirs = glob.glob(pjoin(
@@ -225,13 +244,36 @@ class TestCmdLoop(unittest.TestCase):
                     with open(pjoin(virtual_dir, 'loop_matrix.f')) as stream:
                         loop_matrix = stream.read()
                     self.assertIn('SLOOPMATRIX_THRES_FLAVOR', loop_matrix)
-                    self.assertIn('NCTAMPS=%d' % nctamps, loop_matrix)
+                    if nctamps is not None:
+                        self.assertIn('NCTAMPS=%d' % nctamps, loop_matrix)
                     if extra_checks:
                         extra_checks(output, virtual_dir, loop_matrix,
                                      optimized)
 
+                    if isinstance(row_sequence[0], tuple):
+                        # QED also groups external leptons. Resolve explicit
+                        # per-leg flavour vectors, rather than assuming the
+                        # virtual table has the QCD oracle's row numbering.
+                        fortran = '\n'.join(line[6:] for line in
+                            loop_matrix.splitlines() if line and
+                            line[0].upper() not in ('C', '*', '!'))
+                        table = re.search(
+                            r'SUBROUTINE \w*GET_VIRTUAL_FLAVOR\b.*?'
+                            r'DATA FA_TABLE\s*/([^/]+)/', fortran, re.S)
+                        self.assertIsNotNone(table)
+                        entries = [int(value) for value in
+                                   re.findall(r'\d+', table.group(1))]
+                        nlegs = len(row_sequence[0])
+                        indices = {tuple(entries[start:start + nlegs]):
+                                   start // nlegs + 1
+                                   for start in range(0, len(entries), nlegs)}
+                        references = {indices[flavor]: value
+                                      for flavor, value in references.items()}
+                        row_sequence = tuple(indices[flavor]
+                                             for flavor in row_sequence)
+
                     actual_rows = self._evaluate_grouped_virtual_rows(
-                        virtual_dir, row_sequence, ps_input, env)
+                        virtual_dir, row_sequence, ps_input, env, warmup)
                     for row, actual in actual_rows:
                         reference = references[row]
                         for key in reference:
@@ -244,8 +286,12 @@ class TestCmdLoop(unittest.TestCase):
                                 ('optimized' if optimized else 'default',
                                  p_name, row, key, actual[key],
                                  reference[key]))
+            succeeded = True
         finally:
-            shutil.rmtree(work, ignore_errors=True)
+            if succeeded:
+                shutil.rmtree(work, ignore_errors=True)
+            else:
+                logger.error('Retained failed virtual oracle output at %s', work)
 
     def test_grouped_nlo_virtual_values_all_physical_rows(self):
         """Grouped virtual rows reproduce fixed d/u/s/c Born channels.
@@ -316,6 +362,113 @@ class TestCmdLoop(unittest.TestCase):
             {'P0_gg_ttx': ((1,), {1: old_virtuals['P0_gg_ttx']}, 85),
              'P0_QQx_ttx': (row_sequence, references('P0_uux_ttx'), 29),
              'P0_QxQ_ttx': (row_sequence, references('P0_uxu_ttx'), 29)})
+
+    def test_grouped_nlo_qed_virtual_values_all_physical_rows(self):
+        """EW closed-loop flavour sums agree with physical CMS references."""
+
+        oracle = 'nlo_pre_grouping_dy_qed_virtual_oracle.json'
+        with open(pjoin(MG5DIR, 'tests', 'input_files', oracle)) as stream:
+            old_virtuals = json.load(stream)['virtual']['oracles']
+        row_sequence = tuple((q, q, 1, 1) for q in (1, 2, 3, 4, 4, 3, 2, 1))
+        families = {(q, q, 1, 1): 'd' if q in (1, 3) else 'u'
+                    for q in (1, 2, 3, 4)}
+        expected = {}
+        for grouped, orientation in (('QQx', '%s%sx'), ('QxQ', '%sx%s')):
+            references = dict((row, old_virtuals['P0_%s_emep' %
+                (orientation % (flavor, flavor))])
+                for row, flavor in families.items())
+            # The grouped CT set is the union over external flavours; compare
+            # its values, not the CT count of one physical representative.
+            expected['P0_%s_emep' % grouped] = (row_sequence, references, None)
+        self._check_grouped_virtual_oracle(
+            'p p > e+ e- [QED]', oracle, expected,
+            model='loop_qcd_qed_sm_Gmu_4FS',
+            setup=('set complex_mass_scheme True --no_save',),
+            definitions=('define p = g d u s c d~ u~ s~ c~',), warmup=8)
+
+    def test_grouped_qed_forbidden_internal_flavor_matches_oracle(self):
+        """An internal s exclusion must preserve the external s beam row."""
+        oracle = 'nlo_pre_grouping_dy_qed_forbidden_oracle.json'
+        with open(pjoin(MG5DIR, 'tests', 'input_files', oracle)) as stream:
+            references = json.load(stream)['virtual']['oracles']
+        rows = tuple((q, q, 1, 1) for q in (1, 2, 3, 4, 4, 3, 2, 1))
+        expected = {}
+        for grouped, orientation in (('QQx', '%s%sx'), ('QxQ', '%sx%s')):
+            values = {(q, q, 1, 1): references['P0_%s_emep_no_s' %
+                       (orientation % (flavor, flavor))]
+                      for q, flavor in enumerate(('d', 'u', 's', 'c'), 1)}
+            expected['P0_%s_emep_no_s' % grouped] = (rows, values, None)
+        self._check_grouped_virtual_oracle('p p > e+ e- / s [QED]', oracle,
+            expected, model='loop_qcd_qed_sm_Gmu_4FS',
+            setup=('set complex_mass_scheme True --no_save',),
+            definitions=('define p = g d u s c d~ u~ s~ c~',), warmup=8)
+
+    def test_grouped_loop_induced_ggzz_matches_physical_oracle(self):
+        """Neutral fermion boxes sum physical charges in both loop exporters."""
+
+        with open(pjoin(MG5DIR, 'tests', 'input_files',
+                        'nlo_pre_grouping_ggzz_virtual_oracle.json')) as stream:
+            oracle = json.load(stream)
+        self.assertEqual(oracle['metadata']['source_commit'],
+                         '844829d3ef0b13d294045f34dbbeef3a3d743e9b')
+        env = os.environ.copy()
+        env['LD_LIBRARY_PATH'] = ':'.join([
+            pjoin(MG5DIR, 'HEPTools', 'ninja', 'lib'),
+            pjoin(MG5DIR, 'HEPTools', 'collier'), env.get('LD_LIBRARY_PATH', '')])
+        work = tempfile.mkdtemp(prefix='mg7_ggzz_virtual_',
+                               dir='/scratch' if os.path.isdir('/scratch') else None)
+        succeeded = False
+        try:
+            for optimized in (True, False):
+                output = pjoin(work, 'optimized' if optimized else 'default')
+                commands = pjoin(work, 'generate.cmd')
+                with open(commands, 'w') as stream:
+                    stream.write('\n'.join([
+                        'set automatic_html_opening False --no_save',
+                        'set apply_flavor_grouping True --no_save',
+                        'set loop_optimized_output %s --no_save' % optimized,
+                        'import model loop_sm',
+                        'generate g g > z z [sqrvirt=QCD]',
+                        'output standalone %s -f' % output, 'quit', '']))
+                log = self._run_checked([pjoin(MG5DIR, 'bin', 'madgraph'), commands],
+                                        MG5DIR, env)
+                self.assertTrue(os.path.isdir(pjoin(output, 'Source')), log)
+                self._run_checked(['make'], pjoin(output, 'Source'), env)
+                virtual = pjoin(output, 'SubProcesses', 'P0_gg_zz')
+                driver = pjoin(virtual, 'check_sa.f')
+                with open(driver) as stream:
+                    source = stream.read()
+                source = source.replace('PARAMETER (READPS = .FALSE.)',
+                                        'PARAMETER (READPS = .TRUE.)')
+                source = source.replace('PARAMETER (NPSPOINTS = 4)',
+                                        'PARAMETER (NPSPOINTS = 1)')
+                match = re.search(r'CALL \w*SLOOPMATRIX_THRES\(P,MATELEM,-1.0D0,'
+                                  r'PREC_FOUND(?:\s*\n\s*\$)?\s*,RETURNCODE\)', source)
+                self.assertIsNotNone(match)
+                call = match.group(0)
+                source = source.replace(call, '\n        '.join([call] * 16) +
+                    "\n        WRITE(*,*) 'GGZZ VALUES',MATELEM(1,0),RETURNCODE")
+                with open(driver, 'w') as stream:
+                    stream.write(source)
+                with open(pjoin(virtual, 'PS.input'), 'w') as stream:
+                    stream.write('\n'.join(' '.join('%.17e' % v for v in momentum)
+                        for momentum in oracle['virtual']['momenta']) + '\n')
+                self._run_checked(['make', 'check'], virtual, env)
+                log = self._run_checked(['./check'], virtual, env)
+                match = re.search(r'GGZZ VALUES\s+([+\-0-9.DEde]+)\s+(\d+)', log)
+                self.assertIsNotNone(match, log)
+                self.assertEqual(int(match.group(2)) // 100, 2, log)
+                value = float(match.group(1).replace('D', 'E'))
+                reference = oracle['virtual']['oracles']['P0_gg_zz']['finite']
+                self.assertLessEqual(abs(value - reference),
+                    5e-9 * max(abs(value), abs(reference)) + 5e-13,
+                    '%s: %.16e != %.16e' % (optimized, value, reference))
+            succeeded = True
+        finally:
+            if succeeded:
+                shutil.rmtree(work, ignore_errors=True)
+            else:
+                logger.error('Retained failed ggzz oracle output at %s', work)
     
     def do(self, line):
         """ exec a line in the interface """        

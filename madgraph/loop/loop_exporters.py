@@ -1985,6 +1985,15 @@ C               ENDIF""")%replace_dict
             '_virtual_active_mask')
         fortran_model.use_direct_flavor_mask = n_mask > 0
         fortran_model.direct_flavor_index = 'ACTIVE_VIRTUAL_FLAVOR_INDEX'
+        fortran_model.forbidden_loop_flavors = {}
+        if matrix_element is not None:
+            process = matrix_element.get('processes')[0]
+            forbidden = set(abs(pdg) for pdg in process.get('forbidden_particles'))
+            for merged, flavors in process.get('model').get('merged_particles').items():
+                excluded = tuple(index for index, pdg in enumerate(flavors, 1)
+                                 if abs(pdg) in forbidden)
+                if excluded:
+                    fortran_model.forbidden_loop_flavors[abs(merged)] = excluded
 
     @staticmethod
     def reset_virtual_flavor_writer_state(fortran_model):
@@ -1992,6 +2001,7 @@ C               ENDIF""")%replace_dict
         fortran_model.me_n_flavors = 0
         fortran_model.me_active_flavor_mask = None
         fortran_model.use_direct_flavor_mask = False
+        fortran_model.forbidden_loop_flavors = {}
                   
     def write_bornmatrix(self, writer, matrix_element, fortran_model):
         """Create the born_matrix.f file for the born process as for a standard
