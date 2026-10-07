@@ -1,3 +1,5 @@
+# Documentation: https://docs.madgraph.org/latest/run_card.html
+
 [run]
 run_name = %(run.run_name)s
 # -1 draws a fresh random seed for each run; the seed used is recorded in the output
