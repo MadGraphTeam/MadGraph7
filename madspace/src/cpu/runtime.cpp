@@ -1166,8 +1166,11 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
         std::visit(
             Overloaded{
                 [&](auto val) {
-                    Tensor tensor(val, cpu_device());
-                    _locals_init[local.local_index] = tensor;
+                    // padded so that the vectorized kernels can load it like a
+                    // batched tensor, see Tensor::simd_padded_literal
+                    _locals_init[local.local_index] = Tensor::simd_padded_literal(
+                        LiteralValue(val), simd_vec_size, cpu_device()
+                    );
                 },
                 [](std::monostate val) {}
             },
