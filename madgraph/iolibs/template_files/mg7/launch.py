@@ -921,9 +921,9 @@ class MadgraphProcess:
                 continue
             all_pids = clean_pids(meta["incoming"]) + clean_pids(meta["outgoing"])
             values = ms.ObservableValues([
-                ms.Observable(
+                build_observable(
                     observable_pids(meta, item.observable_kwargs),
-                    **item.observable_kwargs
+                    len(meta["incoming"]), item.observable_kwargs
                 )
                 for item in from_momenta
             ])
@@ -2002,6 +2002,20 @@ def observable_pids(
     return list(options[0])
 
 
+def build_observable(pids: list[int], n_in: int, observable_kwargs: dict):
+    """ms.Observable of a subprocess with `n_in` incoming particles.
+
+    madspace takes the first two momenta to be the beams (ignore_incoming), so
+    for a 1 -> N decay it would drop the first decay product from every
+    selection. There the selection runs over all the momenta instead, with the
+    incoming particle set to pdg id 0, which is in no group.
+    """
+    if n_in == 2:
+        return ms.Observable(pids, **observable_kwargs)
+    pids = [0] * n_in + list(pids[n_in:])
+    return ms.Observable(pids, **dict(observable_kwargs, ignore_incoming=False))
+
+
 def decay_products(meta: dict, unmerged_meta: dict | None = None) -> set[int]:
     """Outgoing positions (0-based, beams excluded) of the particles that come
     from an on-shell (decay-chain) propagator, as MadEvent's check_decay marks
@@ -2272,9 +2286,9 @@ class MadgraphSubprocess:
         self.cuts = (
             ms.Cuts([
                 ms.CutItem(
-                    observable=ms.Observable(
+                    observable=build_observable(
                         cut_pids(cut_item.observable_kwargs),
-                        **cut_item.observable_kwargs
+                        n_in, cut_item.observable_kwargs
                     ),
                     min=cut_item.min,
                     max=cut_item.max,
@@ -2297,11 +2311,11 @@ class MadgraphSubprocess:
         self.histograms = (
             ms.ObservableHistograms([
                 ms.HistItem(
-                    observable=ms.Observable(
+                    observable=build_observable(
                         observable_pids(
                             self.meta, hist_item.observable_kwargs, self.unmerged_meta
                         ),
-                        **hist_item.observable_kwargs
+                        n_in, hist_item.observable_kwargs
                     ),
                     min=hist_item.min,
                     max=hist_item.max,
