@@ -449,7 +449,7 @@ else()
         SIMD_FLAGS
         ""
         "-mavx2 -mfma"
-        "-mavx512f -mavx512vl -mavx512dq -mprefer-vector-width=256"
+        "-mavx2 -mfma -mavx512f -mavx512vl -mavx512dq -mprefer-vector-width=256"
         "-mavx512f"
     )
     set(
