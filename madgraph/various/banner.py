@@ -6681,7 +6681,7 @@ class RunCardMG7(RunCard):
             comment="matrix-element floating-point precision: all64 (FP64), all32 (FP32), "
                     "color32 (colour FP32, rest FP64), "
                     "denom64 (momenta + propagator denominator FP64, rest FP32)")
-        self.add_toml_param('run', 'madspace_cpu_mode', "scalar",
+        self.add_toml_param('run', 'madspace_cpu_mode', "scalar", gridpack=True,
             allowed=['auto', 'scalar', 'simd_128', 'simd_256', 'avx512y', 'simd_512'],
             comment="SIMD width of the phase-space sampling (madspace) on the 'cpu' devices "
                     "(experimental); simd_128 is ARM only, 'auto' makes the same choice as for cpu_mode")

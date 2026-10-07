@@ -292,14 +292,15 @@ jobs:
       # mg7 seeded generation (g g > t t~ g), repeated for every madspace SIMD
       # mode (madspace_cpu_mode) supported by the runner: the VEGAS cross
       # sections must agree with the scalar one up to rounding, the madnis ones
-      # within their statistical uncertainties. Self-skips if the runner supports
+      # within their statistical uncertainties, and the runs of a gridpack trained
+      # in scalar mode again up to rounding. Self-skips if the runner supports
       # no SIMD mode or the madspace + LHAPDF(NNPDF23) stack is unavailable.
       - name: "acceptancetest_mg7_simd_consistency"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
-            ./tests/test_manager.py test_vegas_simd_consistency_mg7 test_madnis_simd_consistency_mg7 -pA -t0 -l INFO
+            ./tests/test_manager.py test_vegas_simd_consistency_mg7 test_madnis_simd_consistency_mg7 test_madnis_gridpack_simd_consistency_mg7 -pA -t0 -l INFO
 
 
   acceptancetest_mg7_bundle_3:

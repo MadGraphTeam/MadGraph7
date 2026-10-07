@@ -26,6 +26,9 @@ with the one of the scalar run:
   * ``test_madnis_simd_consistency_mg7`` -- survey + madnis training + generate.
     The rounding differences grow during the training, so here the results only
     have to agree within their statistical uncertainties.
+  * ``test_madnis_gridpack_simd_consistency_mg7`` -- a gridpack trained with
+    madnis in scalar mode, then event generation from that gridpack in every
+    mode. Without the training drift, the same tolerance as for VEGAS applies.
 
 Process: ``g g > t t~ g``, whose multi-channel phase space uses momentum
 permutations. Self-skips if the mg7 runtime stack / PDF is unavailable, or if
@@ -60,8 +63,8 @@ pjoin = os.path.join
 _PROCESS = 'g g > t t~ g'
 _EVENTS = int(os.environ.get('MG7_SIMD_EVENTS', 5000))
 _SEED = 424242
-# relative tolerance for the VEGAS runs, which only differ by rounding
-_VEGAS_REL_TOL = 1e-4
+# relative tolerance for runs that only differ by rounding (VEGAS, gridpacks)
+_ROUNDING_REL_TOL = 1e-4
 # tolerance for the madnis runs, in combined standard deviations
 _MADNIS_SIGMAS = 4.
 
@@ -106,32 +109,46 @@ class MG7SimdConsistencyTest(unittest.TestCase):
         rc.write(toml)
         return run_dir
 
-    def _cross_section(self, run_dir, datadir, mode):
-        """Run bin/generate_events -f with the given madspace_cpu_mode and return
-        the (cross section, error) from the info.json of that run."""
-        shutil.rmtree(pjoin(run_dir, 'Events'), ignore_errors=True)
+    def _set_mode(self, run_dir, mode):
         toml = pjoin(run_dir, 'Cards', 'run_card.toml')
         rc = RunCardMG7(toml)
         rc.set('run.madspace_cpu_mode', mode, user=True)
         rc.write(toml)
+
+    def _cross_section(self, cmd, run_dir, datadir, mode, what):
+        """Run *cmd* in *run_dir* from scratch and return the (cross section,
+        error) from the info.json of that run."""
+        shutil.rmtree(pjoin(run_dir, 'Events'), ignore_errors=True)
         env = dict(os.environ)
         env['LHAPDF_DATA_PATH'] = datadir
-        _run([sys.executable, pjoin(run_dir, 'bin', 'generate_events'), '-f'],
-             run_dir, pjoin(run_dir, 'gen_%s.log' % mode), env,
-             'mg7 generate_events (madspace_cpu_mode=%s)' % mode)
+        _run(cmd, run_dir, pjoin(run_dir, 'gen_%s.log' % mode), env,
+             '%s (madspace_cpu_mode=%s)' % (what, mode))
         infos = sorted(glob.glob(pjoin(run_dir, 'Events', '*', 'info.json')))
         self.assertTrue(infos, 'no info.json produced for mode %s' % mode)
         with open(infos[-1]) as f:
             process = json.load(f)['process']
+        print('madspace_cpu_mode=%s: %.6g +- %.2g'
+              % (mode, process['mean'], process['error']))
         return process['mean'], process['error']
 
     def _results(self, run_dir, modes):
+        """Cross sections of full runs (bin/generate_events -f) per mode."""
         datadir = _mg7_datadir_or_skip(self)
-        results = {mode: self._cross_section(run_dir, datadir, mode)
-                   for mode in modes}
-        for mode, (mean, error) in results.items():
-            print('madspace_cpu_mode=%s: %.6g +- %.2g' % (mode, mean, error))
+        results = {}
+        for mode in modes:
+            self._set_mode(run_dir, mode)
+            results[mode] = self._cross_section(
+                [sys.executable, pjoin(run_dir, 'bin', 'generate_events'), '-f'],
+                run_dir, datadir, mode, 'mg7 generate_events')
         return results
+
+    def _assert_rounding_level(self, results):
+        ref_mean, _ = results['scalar']
+        for mode, (mean, _) in results.items():
+            self.assertLessEqual(
+                abs(mean - ref_mean), _ROUNDING_REL_TOL * abs(ref_mean),
+                'madspace_cpu_mode=%s: cross section %g differs from the scalar '
+                'one %g' % (mode, mean, ref_mean))
 
     def test_vegas_simd_consistency_mg7(self):
         """VEGAS runs: every SIMD mode reproduces the scalar cross section up
@@ -139,13 +156,7 @@ class MG7SimdConsistencyTest(unittest.TestCase):
         modes = self._modes_or_skip()
         _mg7_datadir_or_skip(self)
         run_dir = self._output_process('vegas', **{'madnis.enable': False})
-        results = self._results(run_dir, modes)
-        ref_mean, _ = results['scalar']
-        for mode, (mean, _) in results.items():
-            self.assertLessEqual(
-                abs(mean - ref_mean), _VEGAS_REL_TOL * abs(ref_mean),
-                'madspace_cpu_mode=%s: cross section %g differs from the scalar '
-                'one %g' % (mode, mean, ref_mean))
+        self._assert_rounding_level(self._results(run_dir, modes))
 
     def test_madnis_simd_consistency_mg7(self):
         """madnis runs: every SIMD mode agrees with the scalar cross section
@@ -163,3 +174,31 @@ class MG7SimdConsistencyTest(unittest.TestCase):
                 'madspace_cpu_mode=%s: cross section %g +- %g is not compatible '
                 'with the scalar one %g +- %g' % (mode, mean, error, ref_mean,
                                                   ref_error))
+
+    def test_madnis_gridpack_simd_consistency_mg7(self):
+        """A gridpack trained with madnis in scalar mode: event generation from
+        it reproduces the scalar cross section up to rounding in every mode."""
+        modes = self._modes_or_skip()
+        datadir = _mg7_datadir_or_skip(self)
+        run_dir = self._output_process(
+            'madnis_gridpack',
+            **{'madnis.enable': True, 'madnis.train_batches': 200,
+               'gridpack.save_gridpack': True})
+        self._set_mode(run_dir, 'scalar')
+        env = dict(os.environ)
+        env['LHAPDF_DATA_PATH'] = datadir
+        _run([sys.executable, pjoin(run_dir, 'bin', 'generate_events'), '-f'],
+             run_dir, pjoin(run_dir, 'train.log'), env,
+             'mg7 madnis training run')
+        gridpacks = glob.glob(pjoin(run_dir, 'Events', '*', 'gridpack'))
+        self.assertTrue(gridpacks, 'gridpack was not produced under %s' % run_dir)
+        gridpack_dir = gridpacks[0]
+
+        results = {}
+        for mode in modes:
+            results[mode] = self._cross_section(
+                [sys.executable, pjoin(gridpack_dir, 'bin', 'generate_events'),
+                 '--seed', str(_SEED), '--events', str(_EVENTS),
+                 '--output_format', 'compact_npy', '--madspace_cpu_mode', mode],
+                gridpack_dir, datadir, mode, 'gridpack generate_events')
+        self._assert_rounding_level(results)
