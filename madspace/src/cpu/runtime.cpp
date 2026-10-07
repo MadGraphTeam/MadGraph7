@@ -86,7 +86,11 @@ void op_matrix_element(
     std::vector<UmamiInputKey> input_keys(input_count);
     std::vector<UmamiOutputKey> output_keys(output_count);
     std::vector<void*> input_ptrs(input_count), output_ptrs(output_count);
-    for (std::size_t i = 0; i < input_count; ++i) {
+    // Only prepare the inputs if the matrix element is actually called: making an
+    // input contiguous can start an asynchronous copy, whose target would be freed
+    // while the copy is still running if we returned early below.
+    bool call_matrix_element = me_index != 0xBADCAFE && batch_size > 0;
+    for (std::size_t i = 0; i < input_count && call_matrix_element; ++i) {
         input_keys[i] = static_cast<UmamiInputKey>(
             locals[instruction.input_indices[3 + 2 * i]].index_value()
         );
@@ -130,7 +134,7 @@ void op_matrix_element(
             }
         }
     }
-    if (me_index == 0xBADCAFE || batch_size == 0) {
+    if (!call_matrix_element) {
         return;
     }
     auto& matrix_element = instruction.runtime.context().matrix_element(me_index);
