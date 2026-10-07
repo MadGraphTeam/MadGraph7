@@ -3698,6 +3698,11 @@ PYBIND11_MODULE(_madspace_py, m) {
         py::arg("simd_mode"),
         pydoc::doc("set_simd_mode")
     );
+    m.def(
+        "supported_simd_modes",
+        &supported_simd_modes,
+        pydoc::doc("supported_simd_modes")
+    );
 
     auto abort_check_function = [] {
         if (PyErr_CheckSignals() != 0) {

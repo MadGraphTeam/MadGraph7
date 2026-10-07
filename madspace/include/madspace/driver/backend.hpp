@@ -51,5 +51,8 @@ void set_lib_path(const std::string& lib_path);
 /// mode for the host, chosen as in madmatrix). Must be set before the CPU backend
 /// is first used; defaults to $MADSPACE_SIMD_MODE or "scalar".
 void set_simd_mode(const std::string& simd_mode);
+/// SIMD modes supported by this build on this host (without "auto"), ordered by
+/// increasing vector width; see @ref set_simd_mode.
+std::vector<std::string> supported_simd_modes();
 
 } // namespace madspace

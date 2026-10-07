@@ -165,6 +165,7 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    python/hip_device
    python/select_combine_channel_index
    python/set_simd_mode
+   python/supported_simd_modes
    python/set_lib_path
 
 Utilities

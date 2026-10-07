@@ -1,9 +1,11 @@
 #include "madspace/driver/backend.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <dlfcn.h>
 #include <format>
 #include <unordered_map>
+#include <utility>
 
 using namespace madspace;
 
@@ -71,33 +73,39 @@ struct LoadedBackend {
     );
 };
 
-const LoadedBackend& cpu_backend() {
-    static LoadedBackend backend = [&] {
-        std::vector<std::string> supported_modes{"scalar"};
-        std::string auto_mode = "scalar";
+// SIMD modes supported by this build and host, and the one chosen by "auto"
+std::pair<std::vector<std::string>, std::string> simd_mode_support() {
+    std::vector<std::string> supported_modes{"scalar"};
+    std::string auto_mode = "scalar";
 #ifdef SIMD_AVAILABLE
 #if defined(__aarch64__) || defined(_M_ARM64)
-        supported_modes.push_back("simd_128");
-        auto_mode = "simd_128";
+    supported_modes.push_back("simd_128");
+    auto_mode = "simd_128";
 #elif defined(__x86_64__) || defined(_M_X64)
-        if (__builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma")) {
-            supported_modes.push_back("simd_256");
-            auto_mode = "simd_256";
-        }
-        if (__builtin_cpu_supports("avx512f") && __builtin_cpu_supports("avx512vl") &&
-            __builtin_cpu_supports("avx512dq")) {
-            supported_modes.push_back("avx512y");
-            // mirrors madmatrix's auto mode (avx512y except with clang, never
-            // simd_512); TODO: revisit once madspace has its own x86 benchmarks
+    if (__builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma")) {
+        supported_modes.push_back("simd_256");
+        auto_mode = "simd_256";
+    }
+    if (__builtin_cpu_supports("avx512f") && __builtin_cpu_supports("avx512vl") &&
+        __builtin_cpu_supports("avx512dq")) {
+        supported_modes.push_back("avx512y");
+        // mirrors madmatrix's auto mode (avx512y except with clang, never
+        // simd_512); TODO: revisit once madspace has its own x86 benchmarks
 #ifndef __clang__
-            auto_mode = "avx512y";
+        auto_mode = "avx512y";
 #endif
-        }
-        if (__builtin_cpu_supports("avx512f")) {
-            supported_modes.push_back("simd_512");
-        }
+    }
+    if (__builtin_cpu_supports("avx512f")) {
+        supported_modes.push_back("simd_512");
+    }
 #endif
 #endif // SIMD_AVAILABLE
+    return {supported_modes, auto_mode};
+}
+
+const LoadedBackend& cpu_backend() {
+    static LoadedBackend backend = [&] {
+        auto [supported_modes, auto_mode] = simd_mode_support();
 
         std::string mode = LoadedBackend::simd_mode;
         if (mode.empty()) {
@@ -186,6 +194,10 @@ DevicePtr madspace::hip_device(std::size_t index) {
 
 void madspace::set_lib_path(const std::string& lib_path) {
     LoadedBackend::lib_path = lib_path;
+}
+
+std::vector<std::string> madspace::supported_simd_modes() {
+    return simd_mode_support().first;
 }
 
 void madspace::set_simd_mode(const std::string& simd_mode) {
