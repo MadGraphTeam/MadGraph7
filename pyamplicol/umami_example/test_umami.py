@@ -115,21 +115,54 @@ def main() -> None:
                 maximum_error, float(np.max(np.abs(amp2 - native) / scale))
             )
             checked += n
-            if data["provider"]["color_accuracy"] == "lc" and data["grouping"][
-                "mode"
-            ] in ("none", "exact"):
-                # These modes retain every physical contribution at this same
-                # point. Aggressive integration multiplicities do not have
-                # that pointwise meaning and must not enter this check.
-                if len(process["members"]) != 1 or len(process["matrix_elements"]) != 1:
-                    raise AssertionError(
-                        "uncompressed entry must have one physical member"
-                    )
-                member = process["members"][0]
+            for member in process["members"]:
+                # Every mode groups identical-particle integration orbits.
+                # Compose the maps to evaluate each member at the original
+                # labelled point, not at the representative's labelled point.
+                mapped_points = np.empty_like(p_ext)
+                mapped_points[:, spec["permutation"], :] = p_ext[
+                    :, member["runtime"]["permutation"], :
+                ]
+                member_buffers = [mapped_points]
+                if alpha_s is not None:
+                    member_buffers.append(alpha_s)
+                member_amp2, _member_hel = evaluator(
+                    *member_buffers, flavors, channels, rnd_hel
+                )
                 original_id = member["process_id"]
-                total, colors = physical_sums.setdefault(original_id, (np.zeros(n), []))
-                total += amp2 * float(process["matrix_elements"][0]["factor"])
-                colors.append(member["color_id"])
+                if original_id not in runtimes:
+                    runtimes[original_id] = Runtime.load(artifact, process=original_id)
+                physical_runtime = runtimes[original_id]
+                physical_color = member["color_id"]
+                selected = None if physical_color is None else (physical_color,)
+                physical_native = []
+                for i, point in enumerate(p_ext):
+                    if alpha_s is not None:
+                        physical_runtime.set_model_parameter(
+                            alpha_name, float(alpha_s[i])
+                        )
+                    value = physical_runtime.evaluate((point,), color_flows=selected)[0]
+                    physical_native.append(float(complex(value).real))
+                physical_native = np.asarray(physical_native)
+                np.testing.assert_allclose(
+                    member_amp2, physical_native, rtol=2e-10, atol=1e-25
+                )
+                if not np.all(np.isfinite(member_amp2)) or not np.all(member_amp2 >= 0):
+                    raise AssertionError("invalid physical-member matrix element")
+                scale = np.maximum(np.abs(physical_native), np.finfo(float).tiny)
+                maximum_error = max(
+                    maximum_error,
+                    float(np.max(np.abs(member_amp2 - physical_native) / scale)),
+                )
+                checked += n
+                if data["provider"]["color_accuracy"] == "lc":
+                    total, colors = physical_sums.setdefault(
+                        original_id, (np.zeros(n), [])
+                    )
+                    # Only the physical member weight belongs in a pointwise
+                    # sum; matrix_elements factors are integration weights.
+                    total += member_amp2 * float(member["factor"])
+                    colors.append(physical_color)
     reconstructed = 0
     for process_id, (total, colors) in physical_sums.items():
         if process_id not in runtimes:

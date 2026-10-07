@@ -329,8 +329,10 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         choices=("exact", "flavour_blind_observables", "none"),
         default=argparse.SUPPRESS,
         help=(
-            "UMAMI export grouping; flavour_blind_observables assumes "
-            "symmetric final-state observables"
+            "UMAMI export grouping (default: exact); all modes group identical "
+            "final-particle integration orbits. flavour_blind_observables also "
+            "groups proven equivalent flavours under flavour-blind cuts; none "
+            "disables optional runtime/helicity reuse and cross-flavour grouping"
         ),
     )
     parser.add_argument(

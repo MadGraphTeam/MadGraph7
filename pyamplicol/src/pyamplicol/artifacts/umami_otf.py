@@ -91,9 +91,9 @@ def restore_umami_on_the_fly_input(
 ) -> UmamiProcessInput:
     """Recover an old compact process's explicit SDK axes during append.
 
-    OTF exports every physical selector separately, without discovered orbit
-    reductions. Reuse those records and LHE tags verbatim; never infer a missing
-    colour pairing or turn a representative into an integration multiplicity.
+    The SDK retains every physical selector and its colour tags in its member
+    records, even when integration orbits have been compressed. Recover those
+    records, not just the exported representatives or their multiplicities.
     """
     matches = [
         (document, runtime)
@@ -132,10 +132,6 @@ def restore_umami_on_the_fly_input(
             for member in entry["members"]:
                 if member["process_id"] != process.process_id:
                     continue
-                if len(entry["members"]) != 1:
-                    raise ValueError(
-                        "UMAMI append cannot infer grouped OTF colour tags"
-                    )
                 identifier = member["color_id"]
                 if process.color_accuracy != "lc":
                     colors.append(
@@ -154,7 +150,7 @@ def restore_umami_on_the_fly_input(
                 word = (
                     [] if suffix == "singlet" else [int(v) for v in suffix.split(",")]
                 )
-                tags = document["color_flows"][entry["color_flows"]]
+                tags = document["color_flows"][member["color_flows"]]
                 if len(tags) != len(process.external_pdgs) or any(
                     len(pair) != 2 or any(not isinstance(v, int) or v < 0 for v in pair)
                     for pair in tags

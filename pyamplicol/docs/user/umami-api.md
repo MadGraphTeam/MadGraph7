@@ -209,21 +209,35 @@ Choose the export setting with `--umami-grouping`, or set
 
 | Mode | Meaning |
 | --- | --- |
-| `exact` (default) | Reuse proven computations while retaining physical contributions and their explicit momentum maps. No flavour-blind-cut or PDF symmetry assumption. |
-| `flavour_blind_observables` | Additionally compress proven integration orbits under compatible final-state permutation/flavour-blind cuts and observables. Multiplicities are explicit in metadata. |
-| `none` | No UMAMI-level grouping; existing evaluator optimizations remain active. |
+| `exact` (default) | Group identical final-particle integration orbits and reuse certified computations. Retain distinct physical flavour labels and every member's momentum map; no cross-flavour grouping or PDF symmetry assumption. |
+| `flavour_blind_observables` | Additionally group proven equivalent contributions with different physical flavours, requiring flavour-blind cuts and observables. |
+| `none` | Disable optional UMAMI runtime/helicity reuse and cross-flavour grouping, but retain mandatory identical-final-particle integration grouping. Existing evaluator optimizations remain active. |
+
+Every mode quotients integration contributions by permutations of identical
+final-state PDGs, using physical **oriented** colour topology and preserving
+the available helicity coverage. There is no additional reflection quotient or
+incoming-beam exchange. With complete LC coverage, `g g > g g g` therefore
+exports four representatives for its 24 physical colour contributions in all
+three modes, with integration multiplicity six each. The full-colour result is
+already contracted: it remains one contribution, with no extra factorial
+multiplier. This integration multiplicity is distinct from Rusticol's existing
+identical-final-state normalization.
 
 Equivalence is derived from model expressions and generated computation, not
 equal default parameters, particle categories or a hard-coded Standard Model
-process list. Unproved relations remain separate. Compression never assumes
+process list. Unproved relations remain separate. Grouping never assumes
 equal PDFs, exchanges the two beams, or identifies unequal mass parameters.
 
-In the compressed mode a representative's weighted integral reproduces its
-orbit **only under the recorded assumptions**; it need not equal the
-uncompressed pointwise sum at a given labelled momentum point. Use `exact` or
-`none` for flavour-sensitive cuts or observables, and apply them to the physical
-contribution in question. Changing this export setting does not change the
-numerical evaluator or invalidate a native build.
+In every mode a representative's weighted integral reproduces its orbit
+**only under the recorded assumptions**, including cuts invariant under the
+identical-particle permutations. Multiplicity times a representative is not
+the pointwise sum at a given labelled momentum point. Metadata retains all
+physical `members` and their momentum mappings for pointwise reconstruction.
+Arbitrary labelled-leg cuts require expanding those members and applying each
+cut to its physical contribution, even in `exact` or `none`. Species-sensitive
+cuts are supported in `exact` and `none`, which preserve physical flavour
+labels; they do not justify cross-flavour grouping. Changing this export setting
+does not change the numerical evaluator or invalidate a native build.
 
 ## MadSpace example
 

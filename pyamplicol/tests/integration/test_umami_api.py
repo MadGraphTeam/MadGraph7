@@ -122,10 +122,13 @@ class Provider:
         pytest.param(("lc", "exact", False), id="lc-exact"),
         pytest.param(("lc", "none", False), id="lc-none"),
         pytest.param(("lc", "flavour_blind_observables", False), id="lc-integrated"),
+        pytest.param(("lc5", "exact", False), id="lc-identical-ggg"),
+        pytest.param(("lcq", "exact", False), id="lc-identical-quarks"),
         pytest.param(("full", "exact", False), id="full-exact"),
         pytest.param(("nlc", "exact", False), id="nlc-exact"),
         pytest.param(("lc", "exact", True), id="restricted-helicity"),
         pytest.param(("ufo", "exact", False), id="ufo-scalars"),
+        pytest.param(("ufo", "flavour_blind_observables", False), id="ufo-flavours"),
     ),
 )
 def providers(request, tmp_path_factory):
@@ -136,8 +139,12 @@ def providers(request, tmp_path_factory):
     config_executable = _config_executable()
     accuracy, grouping, restricted = request.param
     is_ufo = accuracy == "ufo"
+    is_ggg = accuracy == "lc5"
+    is_qqg = accuracy == "lcq"
     if is_ufo:
         accuracy = "full"
+    elif is_ggg or is_qqg:
+        accuracy = "lc"
     root = tmp_path_factory.mktemp("umami-" + accuracy)
     artifact, build = root / "artifact with spaces", root / "build with spaces"
     config = RunConfig(
@@ -165,11 +172,28 @@ def providers(request, tmp_path_factory):
     )
     # The massive colour singlet forces a separate fixed-mass provider, while
     # retaining quark colour flow and generic UFO parameter declarations.
-    include_quark = accuracy == "full" or (
-        accuracy == "lc" and grouping == "exact" and not restricted
+    include_quark = not (is_ggg or is_qqg) and (
+        accuracy == "full"
+        or (accuracy == "lc" and grouping == "exact" and not restricted)
     )
-    expressions = ("g g > g g", "d d~ > z g") if include_quark else ("g g > g g",)
-    names = ("gg", "dd_zg") if include_quark else ("gg",)
+    expressions = (
+        ("g g > g g g",)
+        if is_ggg
+        else ("d d > d d g",)
+        if is_qqg
+        else ("g g > g g", "d d~ > z g")
+        if include_quark
+        else ("g g > g g",)
+    )
+    names = (
+        ("ggg",)
+        if is_ggg
+        else ("dd_ddg",)
+        if is_qqg
+        else ("gg", "dd_zg")
+        if include_quark
+        else ("gg",)
+    )
     from pyamplicol.generation import umami_semantics
 
     original_keys = umami_semantics.recurrence_structural_keys
@@ -237,6 +261,26 @@ def providers(request, tmp_path_factory):
             documents[0]["runtime_processes"][0]["coverage"]["helicities"] == "selected"
         )
         assert len(documents[0]["runtime_processes"][0]["helicity_ids"]) == 1
+    if is_ggg:
+        data = documents[0]
+        assert len(data["channels"]) == 4
+        assert data["grouping"]["physical_contributions"] == 24
+        assert [channel["phasespace_order"] for channel in data["channels"]] == [
+            [0, 1, 2, 3, 4],
+            [0, 2, 1, 3, 4],
+            [0, 2, 3, 1, 4],
+            [0, 2, 3, 4, 1],
+        ]
+        for channel in data["channels"]:
+            (entry,) = channel["processes"]
+            assert len(entry["members"]) == 6
+            assert entry["matrix_elements"] == [{"pdg_ids": 0, "factor": 6.0}]
+    if is_qqg:
+        grouping_metadata = documents[0]["grouping"]
+        assert (
+            grouping_metadata["exported_contributions"]
+            < grouping_metadata["physical_contributions"]
+        )
     return [
         Provider(
             artifact,
@@ -529,9 +573,8 @@ def test_grouped_members_match_physical_flows_at_asymmetric_point(providers):
                                 weight = member["factor"] if accepted else 0.0
                                 cut_native += weight * physical
                                 cut_umami += weight * selected[0][0]
-        # Exact/none enumerate contributions directly. For integrated grouping,
-        # the member loop above reconstructs each physical flow at its own
-        # mapped point; an orbit factor alone is not a pointwise estimator.
+        # Every mode compresses identical particles. The member loop restores
+        # each labelled physical flow; an orbit factor is not a pointwise sum.
         assert reconstructed == pytest.approx(complete, rel=2e-11, abs=1e-15)
         if cut_decisions:
             assert cut_decisions == {False, True}
@@ -668,6 +711,7 @@ def test_rejects_other_valid_artifact_with_identical_external_labels(
         provider.data["provider"]["color_accuracy"] == "lc"
         and provider.data["grouping"]["mode"] == "exact"
         and provider.data["provider"]["helicity_count"] > 1
+        and provider.data["runtime_processes"][0]["id"] == "gg"
     ):
         return
     # A genuinely generated artifact with a different native layout, not a
@@ -791,8 +835,12 @@ def test_real_generation_exercises_structural_proofs(providers):
                 for channel in provider.data["channels"]
                 for entry in channel["processes"]
             ]
-            assert len(entries) == 2
+            compressed = (
+                provider.data["grouping"]["mode"] == "flavour_blind_observables"
+            )
+            assert len(entries) == (1 if compressed else 2)
             assert all(
                 entry["runtime"]["process_id"] == "flavour_one" for entry in entries
             )
-            assert entries[0]["members"][0]["pdgs"] != entries[1]["members"][0]["pdgs"]
+            members = [member for entry in entries for member in entry["members"]]
+            assert members[0]["pdgs"] != members[1]["pdgs"]

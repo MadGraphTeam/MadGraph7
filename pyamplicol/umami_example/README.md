@@ -79,10 +79,10 @@ test varies the declared αs parameter event by event when available and checks
 the resulting matrix elements against native pyAmpliCol, including refreshed
 dependent parameters. A sampled helicity label is informational: the returned
 matrix element remains summed over the artifact's available helicities.
-For complete LC coverage in `exact` or `none` mode, it also sums all physical
-contributions at each point and checks that they reconstruct the native LC
-total. Aggressive integration multiplicities are not used in this pointwise
-check.
+For complete LC coverage, the pointwise check expands the physical members and
+their momentum mappings and checks that their sum reconstructs the native LC
+total. This expansion is necessary even in `exact` and `none`: integration
+multiplicities are not pointwise factors.
 
 Mixed process sets can produce multiple fixed-metadata providers. Select one
 explicitly using `--provider p0` (or another ID from the metadata index) and its
@@ -99,18 +99,32 @@ built-in particle-category or mass tables. This scattering example requires two
 massless incoming particles, matching MadSpace's `1/(2 s_hat)` flux; the UMAMI
 provider itself has no such restriction. The integration script's `--sqrts`,
 `--pt-min`, `--eta-max` and `--dr-min` options change these settings. Explicit
-`--cut-pdg ID` selections are available for uncompressed metadata, subject to
+`--cut-pdg ID` selections are available in `exact` and `none` mode, subject to
 compatible cut masks when sharing a phase-space map.
 
 `--grouping flavour_blind_observables` on `run.py` requests the additional
-integration compression. This assumes final-state permutation/flavour-blind
-cuts and observables, as recorded in the metadata. It does **not** assume equal
-PDFs or exchange the beams. `exact` retains each physical contribution and its
-momentum map; `none` disables UMAMI-level grouping. The integration script
-applies metadata multiplicities once and does not sum alternative mappings of
-the same contribution. It rejects a flavour-selective cut with compressed
-metadata. For arbitrary observables, use `exact` or `none` and apply the
-observable to each physical contribution.
+grouping of proven equivalent contributions with different physical flavours.
+It requires flavour-blind cuts and observables, as recorded in the metadata;
+the integration script rejects `--cut-pdg` in this mode. `exact` retains distinct
+physical flavour labels while allowing certified computation reuse. `none`
+disables optional UMAMI runtime/helicity reuse and cross-flavour grouping.
+
+All three modes always group integration orbits of identical final-state PDGs,
+using oriented physical colour topology and permutations that preserve the
+available helicity coverage. There is no additional reflection quotient, equal
+PDF assumption or beam exchange. For complete LC coverage of `g g > g g g`,
+all modes reduce 24 physical colour contributions to four representatives with
+integration multiplicity six each. Full colour remains one contracted
+contribution without an extra factorial multiplier. Equivalence comes from the
+model and generated computation, not Standard Model-specific particle rules.
+
+The integration script applies metadata multiplicities once, assuming cuts
+invariant under identical-particle permutations, and does not sum alternative
+mappings of the same contribution. Species-sensitive cuts are supported in
+`exact` and `none`. Arbitrary labelled-leg cuts or pointwise sums require
+expanding the retained physical members and their momentum mappings, even in
+these modes; multiplying one representative by its integration multiplicity is
+not a substitute.
 
 For the optional neural-flow training, pass `--madnis --epochs 200` to
 `test_integrate.py`. `--learn-discrete` also lets MadNIS learn the phase-space
@@ -135,8 +149,9 @@ example's dynamical scale is used.
 - Construct MadSpace's matrix-element function with its explicit particle
   count, avoiding the convenience overload's unconditional diagram-count query.
   No diagrams are invented for the recursion-based provider.
-- Keep LC colour contributions distinct; full colour is an already contracted
-  result and is not evaluated repeatedly as if it were separate colour flows.
+- Integrate one representative per identical-final-particle LC orbit, with its
+  metadata multiplicity. Full colour is an already contracted result and is not
+  evaluated repeatedly as if it were separate colour flows.
 - Retain Rusticol's incoming averages and identical-final-state factors exactly
   once. MadSpace's differential cross section adds flux, phase-space weights,
   optional PDFs and the conversion to pb.
@@ -160,9 +175,11 @@ python umami_example/test_grouping.py
 This separately generates the much smaller LC process `g g > g g` in all three
 grouping modes and reuses the same real MadSpace/VEGAS integration code. Its
 cuts are symmetric in the outgoing legs (`pT > 100 GeV`, `|eta| < 6`,
-`delta R > 0.4` at 1 TeV). It requires actual metadata compression and compares
-independent, fixed-seed integral estimates within six combined statistical
-standard errors, with each estimate's relative error below 5%. This is
+`delta R > 0.4` at 1 TeV). The identical-gluon fixture must have the same
+compressed contribution count in all three modes; compression is not exclusive
+to `flavour_blind_observables`. It compares independent, fixed-seed integral
+estimates within six combined statistical standard errors, with each estimate's
+relative error below 5%. This is
 stochastic validation, not the authority establishing amplitude equivalences.
 The default is 4096 points per channel after 256/512-point training. Estimates,
 errors, counts and comparisons are retained in

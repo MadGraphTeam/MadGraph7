@@ -21,6 +21,41 @@ from run import execute, generate
 from test_integrate import Config, Cuts, integrate_per_channel, load_channels
 
 MODES = ("none", "exact", "flavour_blind_observables")
+FIXTURES = {
+    # Process: (integration channels, physical colour contributions, orbit size).
+    "g g > g g": (3, 6, 2),
+    "g g > g g g": (4, 24, 6),
+}
+
+
+def check_identical_grouping(data, process):
+    """Require the same mandatory identical-particle quotient in every mode."""
+    channel_count, physical_count, orbit_size = FIXTURES[process]
+    entries = [entry for ch in data["channels"] for entry in ch["processes"]]
+    if (
+        len(data["channels"]) != channel_count
+        or len(entries) != channel_count
+        or data["grouping"]["exported_contributions"] != channel_count
+        or data["grouping"]["physical_contributions"] != physical_count
+    ):
+        raise AssertionError(
+            f"{process} must group {physical_count} physical contributions into "
+            f"{channel_count} channels in every grouping mode"
+        )
+    factors = []
+    for entry in entries:
+        terms = entry["matrix_elements"]
+        if (
+            len(terms) != 1
+            or float(terms[0]["factor"]) != orbit_size
+            or len(entry["members"]) != orbit_size
+        ):
+            raise AssertionError(
+                f"each {process} representative must have {orbit_size} physical "
+                f"members and explicit integration factor {orbit_size}"
+            )
+        factors.append(float(terms[0]["factor"]))
+    return factors
 
 
 def check_agreement(results, *, sigma=6.0, maximum_relative_error=0.05):
@@ -64,6 +99,12 @@ def main():
     parser.add_argument(
         "--output", type=Path, default=Path(".artifacts/umami-grouping")
     )
+    parser.add_argument(
+        "--process",
+        choices=tuple(FIXTURES),
+        default="g g > g g",
+        help="identical-gluon acceptance fixture (default: %(default)s)",
+    )
     parser.add_argument("--reuse", action="store_true")
     parser.add_argument("--rusticol-config", default="rusticol-config")
     parser.add_argument("--n", type=int, default=4096)
@@ -88,7 +129,7 @@ def main():
                     f"{artifact} already exists; use --reuse or another output"
                 )
         else:
-            generate(artifact, "lc", mode, "g g > g g")
+            generate(artifact, "lc", mode, args.process)
         metadata = artifact / "API/umami/metadata.json"
         channels, n_out, data = load_channels(metadata)
         if (
@@ -96,6 +137,7 @@ def main():
             or data["provider"]["color_accuracy"] != "lc"
         ):
             raise AssertionError("existing artifact does not match the requested mode")
+        integration_factors = check_identical_grouping(data, args.process)
         build = output / f"build_{mode}"
         execute(
             "make",
@@ -138,17 +180,13 @@ def main():
             "per_channel": per_channel,
             "exported_contributions": data["grouping"]["exported_contributions"],
             "physical_contributions": data["grouping"]["physical_contributions"],
+            "integration_factors": integration_factors,
         }
         print(f"{mode}: {value:.8g} +/- {error:.3g} pb", flush=True)
-    summary = {"process": "g g > g g", "cuts": vars(cfg.cuts), "results": results}
+    summary = {"process": args.process, "cuts": vars(cfg.cuts), "results": results}
     report = output / "grouping_comparison.json"
     # Retain estimates even if the statistical acceptance fails.
     report.write_text(json.dumps(summary, indent=2, allow_nan=False) + "\n")
-    if not (
-        results["flavour_blind_observables"]["exported_contributions"]
-        < results["exact"]["exported_contributions"]
-    ):
-        raise AssertionError("the positive fixture must demonstrate useful compression")
     summary["comparisons"] = check_agreement(results)
     summary["accepted"] = True
     report.write_text(json.dumps(summary, indent=2, allow_nan=False) + "\n")

@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import json
 from dataclasses import replace
+from itertools import permutations
 from types import SimpleNamespace
 
 import pytest
@@ -223,14 +224,15 @@ def test_distinct_restricted_helicity_domains_require_separate_providers():
     assert len(export(a, b)) == 2
 
 
-def test_exact_replay_preserves_physical_entries_and_runtime_mappings():
+def test_exact_groups_identical_legs_and_preserves_physical_runtime_mappings():
     (data,) = export(with_replay())
-    rows = entries(data)
-    assert len(rows) == 2
-    assert rows[1]["runtime"]["permutation"] == [0, 1, 3, 2]
-    assert rows[1]["runtime"]["color_id"] == "flow:1,2,3,4"
-    assert all(row["runtime"]["factor"] == 1 for row in rows)
-    assert all(row["matrix_elements"][0]["factor"] == 1 for row in rows)
+    (row,) = entries(data)
+    assert row["runtime"]["factor"] == 1
+    assert row["matrix_elements"] == [{"pdg_ids": 0, "factor": 2}]
+    assert len(row["members"]) == 2
+    assert row["members"][1]["runtime"]["permutation"] == [0, 1, 3, 2]
+    assert row["members"][1]["runtime"]["color_id"] == "flow:1,2,3,4"
+    assert {member["color_flows"] for member in row["members"]} == {0, 1}
 
 
 def test_aggressive_orbit_weight_is_in_json_only():
@@ -243,31 +245,176 @@ def test_aggressive_orbit_weight_is_in_json_only():
     assert data["grouping"]["exported_contributions"] == 1
 
 
-def test_none_avoids_umami_representative_reuse():
+def test_none_still_groups_identical_final_legs():
     (data,) = export(with_replay(), grouping="none")
-    rows = entries(data)
-    assert len(rows) == 2
-    assert rows[1]["runtime"]["color_id"] == "flow:1,2,4,3"
-    assert rows[1]["runtime"]["permutation"] == [0, 1, 2, 3]
+    (row,) = entries(data)
+    assert row["matrix_elements"] == [{"pdg_ids": 0, "factor": 2}]
+    assert row["runtime"]["color_id"] == "flow:1,2,3,4"
+    assert row["runtime"]["permutation"] == [0, 1, 2, 3]
+    assert row["members"][1]["runtime"]["permutation"] == [0, 1, 3, 2]
 
 
-def test_incoming_swap_and_noninvariant_restricted_helicity_are_not_grouped():
+def test_incoming_replay_swap_is_not_used_for_identical_leg_grouping():
     p = with_replay()
     p.physics["extensions"]["lc_topology_replay"]["partitions"][0][
         "label_permutations"
     ][1] = [[1, 2], [2, 1], [3, 3], [4, 4]]
     (data,) = export(p, grouping="flavour_blind_observables")
-    assert len(entries(data)) == 2
+    (row,) = entries(data)
+    assert row["matrix_elements"] == [{"pdg_ids": 0, "factor": 2}]
+    assert row["members"][1]["runtime"]["permutation"] == [0, 1, 3, 2]
+
+
+@pytest.mark.parametrize("grouping", ["exact", "flavour_blind_observables", "none"])
+def test_noninvariant_restricted_helicity_is_not_grouped(grouping):
     p = with_replay()
     p.physics["helicities"][0]["values"] = [1, 1, -1, 1]
-    (data,) = export(p, grouping="flavour_blind_observables")
+    (data,) = export(p, grouping=grouping)
     assert len(entries(data)) == 2
+    assert entries(data)[1]["runtime"]["color_id"] == "flow:1,2,4,3"
+    assert entries(data)[1]["runtime"]["permutation"] == [0, 1, 2, 3]
+
+
+def test_permutation_invariant_restricted_helicity_set_is_grouped():
+    p = with_replay()
+    p.physics["helicities"][0]["values"] = [1, 1, -1, 1]
+    opposite = copy.deepcopy(p.physics["helicities"][0])
+    opposite.update(
+        id="h:opposite", representative_id="h:opposite", values=[1, 1, 1, -1]
+    )
+    p.physics["helicities"].append(opposite)
+    (data,) = export(p)
+    (row,) = entries(data)
+    assert row["matrix_elements"] == [{"pdg_ids": 0, "factor": 2}]
 
 
 def test_unproven_replay_is_not_used():
     p = with_replay()
     p.physics["extensions"]["lc_topology_replay"]["partitions"][0]["proof"] = None
+    p.physics["extensions"]["lc_topology_replay"]["partitions"][0][
+        "label_permutations"
+    ][1] = [[1, 2], [2, 1], [3, 3], [4, 4]]
     (data,) = export(p, grouping="flavour_blind_observables")
+    (row,) = entries(data)
+    assert row["matrix_elements"] == [{"pdg_ids": 0, "factor": 2}]
+    assert row["members"][1]["runtime"]["permutation"] == [0, 1, 3, 2]
+
+
+@pytest.mark.parametrize("grouping", ["exact", "flavour_blind_observables", "none"])
+def test_identical_adjoint_finals_reduce_24_oriented_flows_to_four(grouping):
+    words = tuple((1, *tail) for tail in permutations((2, 3, 4, 5)))
+    p = process(pdgs=(990,) * 5, words=words)
+    (data,) = export(p, grouping=grouping)
+    rows = entries(data)
+    assert len(rows) == 4
+    assert data["grouping"]["physical_contributions"] == 24
+    assert data["grouping"]["exported_contributions"] == 4
+    assert len(data["color_flows"]) == 24
+    assert all(row["matrix_elements"] == [{"pdg_ids": 0, "factor": 6}] for row in rows)
+    assert all(len(row["members"]) == 6 for row in rows)
+    assert all(row["runtime"]["factor"] == 1 for row in rows)
+    assert {member["color_id"] for row in rows for member in row["members"]} == {
+        color["id"] for color in p.physics["color_components"]
+    }
+    assert {member["color_flows"] for row in rows for member in row["members"]} == set(
+        range(24)
+    )
+    assert all(
+        member["runtime"]["permutation"][:2] == [0, 1]
+        for row in rows
+        for member in row["members"]
+    )
+
+
+def test_identical_grouping_does_not_fold_trace_reflection_or_swap_beams():
+    p = process(pdgs=(990,) * 5, words=((1, 2, 3, 4, 5), (1, 5, 4, 3, 2)))
+    p.physics["color_components"][1]["representative_id"] = "flow:1,2,3,4,5"
+    (data,) = export(p)
+    assert len(entries(data)) == 2
+    assert all(
+        row["matrix_elements"] == [{"pdg_ids": 0, "factor": 1}] for row in entries(data)
+    )
+
+
+@pytest.mark.parametrize("grouping", ["exact", "flavour_blind_observables", "none"])
+def test_identical_trace_grouping_allows_cyclic_reanchoring(grouping):
+    m = model()
+    m["ir"]["particles"].append({"pdg_code": 993, "color": 8, "mass": "ZERO"})
+    p = process(pdgs=(995, 995, 990, 993, 990), words=((3, 4, 5), (3, 5, 4)))
+    (data,) = export(p, grouping=grouping, compiled_model=m)
+    (row,) = entries(data)
+    assert row["matrix_elements"] == [{"pdg_ids": 0, "factor": 2}]
+    assert len(row["members"]) == 2
+    # Swap only the two identical adjoints, then re-anchor the directed trace.
+    assert row["members"][1]["runtime"]["permutation"] == [0, 1, 4, 3, 2]
+
+
+@pytest.mark.parametrize("grouping", ["exact", "flavour_blind_observables", "none"])
+def test_identical_open_chains_allow_cyclic_block_rotation(grouping):
+    p = process(
+        pdgs=(991, 991, 991, 991, 990),
+        words=((3, 5, 1, 4, 2), (3, 2, 4, 5, 1)),
+    )
+    (data,) = export(p, grouping=grouping)
+    (row,) = entries(data)
+    assert row["matrix_elements"] == [{"pdg_ids": 0, "factor": 2}]
+    assert len(row["members"]) == 2
+    # The two outgoing quarks exchange; each directed chain and both beams
+    # remain intact, while the complete chain blocks rotate cyclically.
+    assert row["members"][1]["runtime"]["permutation"] == [0, 1, 3, 2, 4]
+
+
+@pytest.mark.parametrize("grouping", ["exact", "flavour_blind_observables", "none"])
+def test_equal_mass_distinct_final_species_are_not_identical(grouping):
+    m = model()
+    m["ir"]["particles"].append({"pdg_code": 993, "color": 8, "mass": "ZERO"})
+    p = process(pdgs=(990, 990, 990, 993), words=((1, 2, 3, 4), (1, 2, 4, 3)))
+    (data,) = export(p, grouping=grouping, compiled_model=m)
+    assert len(entries(data)) == 2
+
+
+def test_identical_grouping_preserves_open_chain_topology():
+    p = process(
+        pdgs=(991, -991, 991, -991, 990),
+        words=((2, 5, 4, 3, 1), (2, 5, 1, 3, 4)),
+    )
+    sectors = (
+        {
+            "id": 0,
+            "kind": "open-lines",
+            "word_labels": [2, 5, 4, 3, 1],
+            "open_color_lines": [
+                {
+                    "fundamental_label": 2,
+                    "adjoint_labels": [5],
+                    "antifundamental_label": 4,
+                },
+                {
+                    "fundamental_label": 3,
+                    "adjoint_labels": [],
+                    "antifundamental_label": 1,
+                },
+            ],
+        },
+        {
+            "id": 1,
+            "kind": "open-lines",
+            "word_labels": [2, 5, 1, 3, 4],
+            "open_color_lines": [
+                {
+                    "fundamental_label": 2,
+                    "adjoint_labels": [5],
+                    "antifundamental_label": 1,
+                },
+                {
+                    "fundamental_label": 3,
+                    "adjoint_labels": [],
+                    "antifundamental_label": 4,
+                },
+            ],
+        },
+    )
+    (data,) = export(replace(p, color_sectors=sectors))
     assert len(entries(data)) == 2
 
 
@@ -285,6 +432,30 @@ def test_structural_crossflavour_equality_keeps_incoming_pdf_flavours():
     assert len(rows) == 2
     assert rows[1]["runtime"]["process_id"] == "a"
     assert data["pdg_ids"] == [[991, -991, 990, 990], [992, -992, 990, 990]]
+
+
+@pytest.mark.parametrize(
+    "grouping,expected", [("exact", 2), ("none", 2), ("flavour_blind_observables", 1)]
+)
+def test_only_flavour_blind_mode_groups_certified_distinct_final_flavours(
+    grouping, expected
+):
+    a = replace(
+        process("a", pdgs=(990, 990, 991, -991), words=((3, 1, 2, 4),)),
+        structural_keys={"flow:3,1,2,4": "certified-key"},
+    )
+    b = replace(
+        process("b", pdgs=(990, 990, 992, -992), words=((3, 1, 2, 4),)),
+        structural_keys={"flow:3,1,2,4": "certified-key"},
+    )
+    (data,) = export(a, b, grouping=grouping)
+    assert len(entries(data)) == expected
+    assert sum(len(row["members"]) for row in entries(data)) == 2
+    if grouping == "flavour_blind_observables":
+        assert entries(data)[0]["matrix_elements"] == [
+            {"pdg_ids": 0, "factor": 1},
+            {"pdg_ids": 1, "factor": 1},
+        ]
 
 
 def test_equal_defaults_are_not_an_equivalence_and_aliases_not_multiplicity():
@@ -326,7 +497,9 @@ def test_payloads_have_sdk_roles_and_generated_c_matches_json():
     header = payloads["API/umami/provider_p0.h"].content.decode()
     assert "#define UMAMI_HAS_ALPHA_S 1" in header
     assert "static const UmamiProvider umami_provider" in header
-    assert "umami_c1_f0_permutation[] = {0, 1, 3, 2}" in header
+    assert "umami_c0_f0_permutation[] = {0, 1, 2, 3}" in header
+    assert "umami_c1_f0_permutation" not in header
+    assert entries(data)[0]["members"][1]["runtime"]["permutation"] == [0, 1, 3, 2]
     assert data["provider"]["library"] == "libumami.so"
     assert payloads["API/umami/metadata.json"].role == "sdk-metadata"
 
@@ -446,18 +619,29 @@ def test_otf_sdk_axes_do_not_change_compact_public_metadata(accuracy, flows, dom
     assert resolved["helicities"][1]["values"] == [domain[0]] * 3 + [domain[1]]
     assert len(resolved["color_components"]) == flows
     (data,) = export(replace(p, physics=resolved, color_sectors=sectors))
-    assert len(entries(data)) == flows
+    assert len(entries(data)) == (3 if accuracy == "lc" else 1)
+    assert data["grouping"]["physical_contributions"] == flows
     restored = restore_umami_on_the_fly_input(replace(p, physics=compact), [data])
     assert export(restored) == (data,)
     assert "helicities" not in compact
 
 
-def test_otf_append_rejects_ambiguous_old_grouping():
+def test_otf_append_recovers_grouped_physical_color_members():
     p = with_replay()
-    p.physics["helicities"][0]["id"] = "h:+1,+1,+1,+1"
+    p.physics["helicities"][0].update(
+        id="h:+1,+1,+1,+1", representative_id="h:+1,+1,+1,+1"
+    )
     (data,) = export(p, grouping="flavour_blind_observables")
-    with pytest.raises(ValueError, match="cannot infer grouped"):
-        restore_umami_on_the_fly_input(p, [data])
+    restored = restore_umami_on_the_fly_input(p, [data])
+    assert [color["id"] for color in restored.physics["color_components"]] == [
+        "flow:1,2,3,4",
+        "flow:1,2,4,3",
+    ]
+    assert restored.color_flows == {
+        member["color_id"]: data["color_flows"][member["color_flows"]]
+        for member in entries(data)[0]["members"]
+    }
+    assert export(restored, grouping="flavour_blind_observables") == (data,)
 
 
 def test_writer_append_recovers_old_compact_otf_sdk(tmp_path, monkeypatch):

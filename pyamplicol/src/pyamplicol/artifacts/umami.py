@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: 0BSD
 """Export UMAMI lookup tables without changing numerical artifact contents.
 
-Only generation certificates and exact structural keys authorize reuse.  In
-particular, equal masses or parameter defaults never establish an amplitude
-equivalence.  The runtime evaluates normalized physical contributions; optional
-integration multiplicities live in the JSON, not in the C provider.
+Identical final particles permit relabelling of physical colour contributions.
+Other equivalences require generation certificates or exact structural keys;
+equal masses or parameter defaults are not a proof. Integration multiplicities
+live in the JSON, not in the C provider.
 """
 
 from __future__ import annotations
@@ -291,6 +291,108 @@ def _intern(table: list, value: Any) -> int:
         return len(table) - 1
 
 
+def _identical_orbit(order, flow, pdgs, incoming, helicities, word_size):
+    """An oriented physical colour tensor modulo identical outgoing labels.
+
+    Equal keys induce the explicit bijection between the two complete orders.
+    It fixes incoming slots, preserves particle identity, directed colour edges
+    and the available helicity domain. Exchanging identical fermions changes
+    the overall amplitude sign, not this squared physical contribution. This
+    argument is independent of runtime topology/reflection reuse certificates.
+    """
+
+    def key(candidate):
+        tags = {}
+        directed_edges = []
+        for slot in candidate:
+            for tag in flow[slot] if flow is not None else ():
+                directed_edges.append(tags.setdefault(tag, len(tags) + 1) if tag else 0)
+        return (
+            tuple(
+                ("incoming", slot) if slot < incoming else ("final", pdgs[slot])
+                for slot in candidate
+            ),
+            tuple(directed_edges),
+            tuple(
+                sorted(
+                    tuple(h["values"][slot] for slot in candidate) for h in helicities
+                )
+            ),
+        )
+
+    starts = [0]
+    if flow is not None and word_size:
+        # Undo incoming crossing to identify oriented open-line starts from
+        # the actual colour tensor. A closed trace has no such endpoints.
+        pairs = [
+            tuple(reversed(flow[s])) if s < incoming else tuple(flow[s])
+            for s in order[:word_size]
+        ]
+        if all(any(pair) for pair in pairs):
+            starts = [i for i, (left, right) in enumerate(pairs) if left and not right]
+            if not starts:
+                starts = list(range(word_size)) if all(all(p) for p in pairs) else [0]
+    # Re-anchoring a trace, or cyclically rotating complete open-line blocks,
+    # changes no colour tensor. Never reverse it or arbitrarily sort blocks.
+    candidates = [order[i:word_size] + order[:i] + order[word_size:] for i in starts]
+    return min((key(candidate), candidate) for candidate in candidates)
+
+
+def _add_terms(entry, terms):
+    for term in terms:
+        existing = next(
+            (
+                value
+                for value in entry["matrix_elements"]
+                if value["pdg_ids"] == term["pdg_ids"]
+            ),
+            None,
+        )
+        if existing is None:
+            entry["matrix_elements"].append(dict(term))
+        else:
+            existing["factor"] += term["factor"]
+
+
+def _merge_flavour_orbits(data):
+    """Optionally merge different flavours with a common proven computation.
+
+    Do not use runtime reflection reuse to further collapse same-flavour colour
+    orders: their integration partition was already constructed physically.
+    """
+    candidates = {}
+    incoming = data["provider"]["incoming_count"]
+    for channel in data["channels"]:
+        kept = []
+        for entry in channel["processes"]:
+            runtime = entry["runtime"]
+            pdgs = {term["pdg_ids"] for term in entry["matrix_elements"]}
+            key = (
+                runtime["process_index"],
+                runtime["color_id"],
+                tuple(data["pdg_ids"][next(iter(pdgs))][:incoming]),
+            )
+            previous = next(
+                (
+                    other
+                    for other in candidates.get(key, ())
+                    if pdgs.isdisjoint(t["pdg_ids"] for t in other["matrix_elements"])
+                ),
+                None,
+            )
+            if previous is None:
+                candidates.setdefault(key, []).append(entry)
+                kept.append(entry)
+            else:
+                _add_terms(previous, entry["matrix_elements"])
+                previous["members"].extend(entry["members"])
+        channel["processes"] = kept
+    data["channels"] = [c for c in data["channels"] if c["processes"]]
+    for index, channel in enumerate(data["channels"]):
+        for entry in channel["processes"]:
+            entry["multichannels"] = [index]
+
+
 def build_umami_metadata(
     *,
     processes: Sequence[UmamiProcessInput],
@@ -403,10 +505,13 @@ def _build_provider(
         "grouping": {
             "mode": grouping,
             "assumptions": [
-                "final-state permutation/flavour-blind observables and cuts"
+                "identical-final-particle permutation-invariant observables and cuts"
             ]
-            if grouping == "flavour_blind_observables"
-            else [],
+            + (
+                ["final-state flavour-blind observables and cuts"]
+                if grouping == "flavour_blind_observables"
+                else []
+            ),
         },
         "channels": [],
         "pdg_ids": [],
@@ -420,7 +525,7 @@ def _build_provider(
         ),
     }
     structural_representatives: dict[str, dict] = {}
-    orbit_entries: dict[tuple, dict] = {}
+    orbit_entries: dict[tuple, tuple[dict, list[int]]] = {}
     channel_lookup = {}
     physical_count = 0
     for process_index, process in enumerate(processes):
@@ -473,7 +578,10 @@ def _build_provider(
             )
         replay = _safe_replay(process) if grouping != "none" else {}
         sectors_by_word = {_word(sector): sector for sector in process.color_sectors}
-        colors = _records(physics.get("color_components"))
+        colors = sorted(
+            _records(physics.get("color_components")),
+            key=lambda color: tuple(color.get("word", ())),
+        )
         for color in colors:
             physical_count += 1
             color_id = str(color["id"])
@@ -515,31 +623,32 @@ def _build_provider(
                 "process_id": process.process_id,
                 "pdgs": list(process.external_pdgs),
                 "color_id": None if contracted else color_id,
+                "color_flows": color_index,
                 "runtime": dict(runtime),
                 "factor": 1.0,
             }
-            orbit = (
-                runtime["process_index"],
-                runtime["color_id"],
-                tuple(process.external_pdgs[:incoming]),
+            orbit_key, aligned_order = _identical_orbit(
+                order,
+                None if contracted else data["color_flows"][color_index],
+                process.external_pdgs,
+                incoming,
+                helicities,
+                len(word),
             )
-            if grouping == "flavour_blind_observables" and orbit in orbit_entries:
-                entry = orbit_entries[orbit]
-                # Keep distinct incoming PDGs available to PDF weighting.
-                pdg_index = _intern(data["pdg_ids"], list(process.external_pdgs))
-                term = next(
-                    (m for m in entry["matrix_elements"] if m["pdg_ids"] == pdg_index),
-                    None,
-                )
-                if term is None:
-                    entry["matrix_elements"].append(
-                        {"pdg_ids": pdg_index, "factor": 1.0}
-                    )
-                else:
-                    term["factor"] += 1.0
+            orbit = (process_index, orbit_key)
+            pdg_index = _intern(data["pdg_ids"], list(process.external_pdgs))
+            if orbit in orbit_entries:
+                entry, representative_order = orbit_entries[orbit]
+                # Evaluate each physical member through the exported entry,
+                # independently of any additional internal runtime reuse.
+                slots = dict(zip(representative_order, aligned_order, strict=True))
+                member["runtime"] = {
+                    **entry["runtime"],
+                    "permutation": [slots[i] for i in entry["runtime"]["permutation"]],
+                }
+                _add_terms(entry, [{"pdg_ids": pdg_index, "factor": 1.0}])
                 entry["members"].append(member)
                 continue
-            pdg_index = _intern(data["pdg_ids"], list(process.external_pdgs))
             entry = {
                 "matrix_elements": [{"pdg_ids": pdg_index, "factor": 1.0}],
                 "color_order": _intern(data["color_orders"], order),
@@ -559,7 +668,9 @@ def _build_provider(
             channel_index = channel_lookup[channel_key]
             entry["multichannels"] = [channel_index]
             data["channels"][channel_index]["processes"].append(entry)
-            orbit_entries[orbit] = entry
+            orbit_entries[orbit] = (entry, aligned_order)
+    if grouping == "flavour_blind_observables":
+        _merge_flavour_orbits(data)
     alpha_names = {p["alpha_s_parameter"] for p in data["runtime_processes"]}
     data["provider"]["alpha_s_parameter"] = (
         next(iter(alpha_names)) if len(alpha_names) == 1 else None
