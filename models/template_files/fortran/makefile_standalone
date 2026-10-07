@@ -21,6 +21,12 @@ LIBRARY_SHARED=libmodel.$(dylibext)
 
 all: $(LIBDIR)$(LIBRARY)
 
+coupl.o: coupl.f90
+	$(FC) $(FFLAGS) -ffixed-form -c -o $@ $<
+
+# Model consumers use model_object from flavor_couplings.f, also with make -j.
+$(filter-out flavor_couplings.o,$(MODEL)): | flavor_couplings.o
+
 helas_couplings: helas_couplings.o $(LIBRARY)
 	$(FC) $(FFLAGS) -o $@ $^
 
