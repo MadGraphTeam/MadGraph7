@@ -297,9 +297,6 @@ VEGAS grids adapt the phase-space sampling during the survey.
     Learn the probabilities of the permutations of identical particles instead of using
     equal ones.
 
-``decays`` (``"all"``)
-    Currently has no effect.
-
 .. _run-card-multiparticles:
 
 [multiparticles]
@@ -460,9 +457,6 @@ Training
 
 ``max_stored_channel_weights`` (``100``)
     Number of prior channel weights stored for each buffered sample.
-
-``train_mcw`` (``true``), ``channel_grouping_mode`` (``"uniform"``)
-    Currently have no effect.
 
 Optimizer
 ^^^^^^^^^

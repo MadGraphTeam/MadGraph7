@@ -6814,9 +6814,6 @@ class RunCardMG7(RunCard):
         self.add_toml_param('phasespace', 'sde_strategy', "diagrams",
             allowed=['diagrams', 'denominators'],
             comment="channel weights from the squared diagrams or from the propagator denominators")
-        self.add_toml_param('phasespace', 'decays', "all",
-            allowed=['all', 'massive', 'none'],
-            comment="currently has no effect")
         self.add_toml_param('phasespace', 't_channel', "propagator",
             allowed=['propagator', 'rambo', 'chili'],
             comment="t-channel phase-space parametrization")
@@ -6898,8 +6895,6 @@ class RunCardMG7(RunCard):
             comment="Adam weight decay")
         self.add_toml_param('madnis', 'grad_clip_threshold', 0.003,
             comment="maximum gradient norm; 0 disables clipping")
-        self.add_toml_param('madnis', 'train_mcw', True,
-            comment="currently has no effect")
         self.add_toml_param('madnis', 'buffer_capacity', 60000,
             comment="replay buffer size per channel; 0 disables buffering")
         self.add_toml_param('madnis', 'minimum_buffer_size', 10000,
@@ -6924,9 +6919,6 @@ class RunCardMG7(RunCard):
             comment="ignore points with zero integrand in the training")
         self.add_toml_param('madnis', 'batch_size_threshold', 0.5,
             comment="new samples are drawn until a training batch holds this fraction of its nominal size")
-        self.add_toml_param('madnis', 'channel_grouping_mode', "uniform",
-            allowed=['none', 'uniform', 'learned'],
-            comment="currently has no effect; channels of a symmetry group are sampled uniformly")
         self.add_toml_param('madnis', 'fixed_cwnet_fraction', 0.33, auto=True,
             comment="fraction of the training with a frozen channel weight network")
         self.add_toml_param('madnis', 'softclip_threshold', 30.0,

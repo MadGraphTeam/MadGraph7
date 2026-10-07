@@ -95,7 +95,6 @@ rescued by a better integrator:
   sde_strategy          diagrams or denominators -- how channels map to
                         diagrams
   t_channel, flat_mode  propagator, rambo or chili for the t-channel
-  decays                all, massive or none
   bw_cutoff             how far off-shell a Breit-Wigner is followed
   drop_qcd_s_channel    drop channels with no QCD resonance once the channel
                         count would exceed this -- the lever for processes
