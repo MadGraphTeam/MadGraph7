@@ -2731,6 +2731,56 @@ C
 
         self.assertAlmostEqual(cross, 40.3, delta=max(1.0, 5 * error))
 
+    def test_decay_1to3_mg7(self):
+        """mg7 partial width of a 1 -> 3 decay: t > b e+ ve.
+
+        A process with one incoming particle is the special case of the mg7
+        chain, and it went unnoticed because the madevent fallback is what runs
+        without madspace:
+          - the default [histograms] are scaled by the mass of the decaying
+            particle, which used to be read from a 'parameter_dict' that only
+            a ModelReader has (a LoopModel crashed `output`);
+          - madspace's observables take the first two momenta to be the beams,
+            so the first decay product (the b here) dropped out of every
+            selection, and `z > mu+ mu-` asking for lepton_2 crashed the run.
+        So on top of the width (madevent: 0.1636 +- 0.0002 GeV, i.e.
+        Gamma(t > b w+) x BR(w+ > e+ ve)) the default histograms are checked:
+        no sqrt_s (madspace's adds up two beams), every momentum histogram
+        filled with the full width, and the e+ ve pair mass peaking at MW.
+        Self-skips where the mg7 runtime stack is unavailable.
+        """
+        import glob, json
+        datadir = _mg7_datadir_or_skip(self)
+        run_dir = pjoin(self.path, 'MG7_t_decay')
+        width, error = _run_mg7_xsec(self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate t > b e+ ve'],
+            run_dir, datadir)
+        self.assertAlmostEqual(width, 0.1636, delta=max(0.002, 5 * error))
+
+        info = json.load(open(sorted(glob.glob(
+            pjoin(run_dir, 'Events', '*', 'info.json')))[-1]))
+        hists = dict((h['name'], h) for h in info['event_histograms'])
+        self.assertNotIn('sqrt_s', list(hists))
+        momentum = [name for name in hists if name != 'weight']
+        for group in ('bottom', 'lepton', 'missing'):
+            self.assertIn('%s-pt' % group, momentum)
+        for name in momentum:
+            values = hists[name]['bin_values']
+            # the decay products of a 173 GeV top fit in the ranges, which
+            # are built from the top mass: nothing in under- or overflow
+            self.assertAlmostEqual(sum(values[1:-1]), width,
+                                   delta=0.01 * width, msg=name)
+            if name.endswith('-pt'):
+                # a particle left out of the selection is histogrammed at 0
+                self.assertLess(values[1], 0.5 * width, msg=name)
+        mll = hists['lepton-missing-pair_mass']
+        bin_width = (mll['max'] - mll['min']) / mll['bin_count']
+        peak = mll['bin_values'].index(max(mll['bin_values'])) - 1
+        self.assertLessEqual(mll['min'] + peak * bin_width, 80.419)
+        self.assertGreater(mll['min'] + (peak + 1) * bin_width, 80.419)
+
     def load_result(self, run_name):
         
         import madgraph.iolibs.save_load_object as save_load_object
