@@ -54,6 +54,26 @@ using namespace madspace::kernels;
 
 namespace {
 
+// External tensors (e.g. row-major numpy arrays, or expanded gradients from
+// torch) can have a batch stride other than one. The vectorized kernels only
+// handle batch stride one and leave everything else to the scalar kernels, which
+// round slightly differently, so copy them once to make the results independent
+// of the memory layout of the arguments.
+TensorVec batch_contiguous(const TensorVec& tensors) {
+    TensorVec ret;
+    ret.reserve(tensors.size());
+    for (auto& tensor : tensors) {
+        if (tensor && tensor.dtype() != DataType::batch_sizes &&
+            tensor.shape().size() > 0 && tensor.size(0) > 1 &&
+            tensor.stride()[0] != 1) {
+            ret.push_back(tensor.contiguous());
+        } else {
+            ret.push_back(tensor);
+        }
+    }
+    return ret;
+}
+
 template <typename D>
 void op_matrix_element(
     const CpuRuntime::Instruction& instruction, TensorVec& locals, const D& device
@@ -1199,21 +1219,24 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
 }
 
 TensorVec CpuRuntime::run(const TensorVec& inputs) {
+    auto contiguous_inputs = batch_contiguous(inputs);
     if (_concurrent && _context->thread_pool().thread_count() > 1) {
-        auto [outputs, locals, eval_grad] = run_concurrent(inputs, {}, false);
+        auto [outputs, locals, eval_grad] =
+            run_concurrent(contiguous_inputs, {}, false);
         return outputs;
     } else {
-        return run_single(inputs);
+        return run_single(contiguous_inputs);
     }
 }
 
 std::tuple<TensorVec, TensorVec, std::vector<bool>> CpuRuntime::run_with_grad(
     const TensorVec& inputs, const std::vector<bool>& input_requires_grad
 ) {
+    auto contiguous_inputs = batch_contiguous(inputs);
     if (_concurrent && _context->thread_pool().thread_count() > 1) {
-        return run_concurrent(inputs, input_requires_grad, true);
+        return run_concurrent(contiguous_inputs, input_requires_grad, true);
     } else {
-        return run_with_grad_single(inputs, input_requires_grad);
+        return run_with_grad_single(contiguous_inputs, input_requires_grad);
     }
 }
 
@@ -1223,13 +1246,14 @@ std::pair<TensorVec, TensorVec> CpuRuntime::run_backward(
     const std::vector<bool>& eval_grad,
     bool return_contiguous_grads
 ) {
+    auto contiguous_output_grads = batch_contiguous(output_grads);
     if (_concurrent && _context->thread_pool().thread_count() > 1) {
         return run_backward_concurrent(
-            output_grads, stored_locals, eval_grad, return_contiguous_grads
+            contiguous_output_grads, stored_locals, eval_grad, return_contiguous_grads
         );
     } else {
         return run_backward_single(
-            output_grads, stored_locals, eval_grad, return_contiguous_grads
+            contiguous_output_grads, stored_locals, eval_grad, return_contiguous_grads
         );
     }
 }
