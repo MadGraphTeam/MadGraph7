@@ -216,7 +216,7 @@ struct get_vectorized_views<void (*)(TParam...), dims> {
     auto operator()(TArg&... args) {
         return std::make_tuple([&]() {
             if constexpr (TArg::is_scalar_view) {
-                return ScalarView(TParam(0.0));
+                return ScalarView(TParam(typename TArg::DType(args)));
             } else {
                 return VectorizedTensorView<
                     typename TParam::VType,

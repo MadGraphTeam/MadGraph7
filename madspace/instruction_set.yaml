@@ -3185,6 +3185,7 @@ permute_momenta:
     - name: output
       type: [float, n, 4]
       desc: "permuted momenta"
+  vectorized: False
   desc: "Reorders momenta according to a stored permutation selected per event. Building block of @ref MultiChannelMapping."
 
 gather:
