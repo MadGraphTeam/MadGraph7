@@ -160,6 +160,10 @@ private:
     // MLMClustering::diagram_start_states padded to the matrix element's
     // diagram count, so that any diagram the pick can return has an entry.
     std::vector<me_int_t> _mlm_start_states;
+    // abs pdg id of every external leg per flavour option, row-major, for the
+    // clusterings that only exist for some flavours of a merged subprocess.
+    // Empty when the clustering does not depend on the flavours.
+    std::vector<me_int_t> _mlm_leg_flavors;
     std::optional<PropagatorChannelWeights> _prop_chan_weights;
     std::optional<SubchannelWeights> _subchan_weights;
     std::optional<ChannelWeightNetwork> _chan_weight_net;

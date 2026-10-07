@@ -2163,3 +2163,79 @@ def test_the_emission_scheme_still_books_the_radiating_quark():
     emission = fsr_jet_scales(jet_scale_scheme=ms.MLMClustering.JetScaleScheme.emission)
     np.testing.assert_array_equal(emission[:, 0], emission[:, 2])
     np.testing.assert_array_equal(emission[:, 1], CM_ENERGY)
+
+
+# --------------------------------------------------------------------------
+# clusterings that only exist for some flavours of a merged subprocess
+# --------------------------------------------------------------------------
+
+TRACE_SAME_FLAVOR = 1 << 16
+
+# q q~ > q q~ with a merged quark, as clean_pids in launch.py represents it
+QQ_TO_QQ_PDGS = [1, -1, 1, -1]
+GLUON = [0.0, 0.0, 0, 0.0, 0.0, 21]
+
+
+def qq_to_qq_diagrams():
+    """The s-channel gluon (diagram 0: legs 2 and 3) and the t-channel gluon
+    (diagram 1: legs 0 and 2, 1 and 3) of q q~ > q q~. For a q q~ > q' q~'
+    flavour only the first exists, for q q~' > q q~' only the second."""
+    common = {
+        "incoming_masses": [0.0, 0.0],
+        "outgoing_masses": [0.0, 0.0],
+        "propagators": [GLUON],
+        "permutations": [[0, 1, 2, 3]],
+    }
+    return [
+        dict(common, vertices=[["o0", "o1", "p0"], ["i0", "i1", "p0"]]),
+        dict(common, vertices=[["i0", "o0", "p0"], ["p0", "o1", "i1"]]),
+    ]
+
+
+def with_flavors(clustering, leg_flavors, momenta, flavor_index):
+    index = np.full(len(momenta), flavor_index, dtype=np.int32)
+    return [
+        np.asarray(v)
+        for v in ms.MLMClusteringWithFlavors(clustering, leg_flavors)(momenta, index)
+    ]
+
+
+def test_flavour_diagonal_clusterings_of_fermions_are_marked():
+    """Every clustering of q q~ > q q~ joins two quarks through a gluon, so all
+    of them depend on the flavours of the event."""
+    clustering = make_clustering(qq_to_qq_diagrams(), external_pdg_ids=QQ_TO_QQ_PDGS)
+    non_terminal, _ = walk(np.asarray(clustering.cluster_state_machine), 4)
+    marked, unmarked = set(), set()
+    for _, (_, transitions) in non_terminal.items():
+        for data, _, trace in transitions:
+            pair = (field(data, BIT_PARTICLE1), field(data, BIT_PARTICLE2))
+            (marked if trace & TRACE_SAME_FLAVOR else unmarked).add(pair)
+    assert marked == {(0, 2), (1, 3), (2, 3)}
+    assert unmarked == set()
+
+
+def test_clustering_follows_the_diagrams_the_flavours_allow():
+    """u u~ > d d~ only has the s-channel gluon and u d~ > u d~ only the
+    t-channel one, whichever of the two the kt measure prefers; a flavour with
+    every leg alike, or no flavour information, keeps the union.
+
+    For a 2 -> 2 the initial-state measure (the pt of the jet) always beats the
+    final-state one of the back-to-back pair, so the union always takes the
+    t-channel gluon: the q-q' clustering a u u~ > d d~ event does not have."""
+    diagrams = qq_to_qq_diagrams()
+    clustering = make_clustering(diagrams, external_pdg_ids=QQ_TO_QQ_PDGS)
+    momenta = sample_momenta(diagrams)
+    leg_flavors = [1, 1, 1, 1, 2, 2, 1, 1, 2, 1, 2, 1]
+    union = run(clustering, momenta)
+    assert np.all(union[4] == 1)
+
+    same = with_flavors(clustering, leg_flavors, momenta, 0)
+    s_channel = with_flavors(clustering, leg_flavors, momenta, 1)
+    t_channel = with_flavors(clustering, leg_flavors, momenta, 2)
+    unknown = with_flavors(clustering, [0, 0, 0, 0], momenta, 0)
+
+    assert np.all(s_channel[4] == 0)
+    assert np.all(t_channel[4] == 1)
+    for other in (same, unknown):
+        for a, b in zip(union, other[:5]):
+            np.testing.assert_array_equal(a, b)

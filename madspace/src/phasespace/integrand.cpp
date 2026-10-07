@@ -209,6 +209,19 @@ Integrand::Integrand(
     _flavor_per_subproc_remap(
         flavor_per_subproc_remap.begin(), flavor_per_subproc_remap.end()
     ) {
+    if (energy_scale && energy_scale->mlm_flavor_dependent() &&
+        pid_options.size() > 1) {
+        for (auto& option : pid_options) {
+            if (option.size() != pid_options.at(0).size()) {
+                throw std::invalid_argument(
+                    "every flavour option needs the same number of external legs"
+                );
+            }
+            for (me_int_t pid : option) {
+                _mlm_leg_flavors.push_back(std::abs(pid));
+            }
+        }
+    }
     if (pdf_grid) {
         for (std::size_t i = 0; i < 2; ++i) {
             std::set<int> pids;
@@ -648,6 +661,36 @@ NamedVector<Value> Integrand::build_channel_part(
     // the matrix element has given the diagram weights, in the common part.
     bool mlm_history_per_diagram =
         _energy_scale && _energy_scale->mlm_history_per_diagram();
+
+    // The history over every diagram above was clustered before the flavour
+    // was known, as the flavour prior needs its scales. Some of its
+    // clusterings only exist for some flavours of a merged subprocess (the
+    // q-q' t-channel gluon of q q~ > q q~ for a q q~ > q' q~' event), so the
+    // event is clustered again with its own flavours, and the densities are
+    // taken again at the scales that gives. The prior keeps the first ones:
+    // it only steers the sampling.
+    if (_energy_scale && _energy_scale->is_mlm() && !mlm_history_per_diagram &&
+        !_mlm_leg_flavors.empty()) {
+        scales = _energy_scale->build_mlm_with_flavors(
+            fb, momenta_acc, flavor_id, _mlm_leg_flavors
+        );
+        for (std::size_t i = 0; i < 2; ++i) {
+            if (!pdf_results.at(i)) {
+                continue;
+            }
+            auto& pdf_scale = _energy_scale->mlm_pdf_reweighting()
+                ? scales.at(std::format("pdf_scale{}", i + 1))
+                : scales.at(i + 1);
+            auto pdf = _pdfs.at(i)
+                           .value()
+                           .build_function(fb, {x_acc.at(i), pdf_scale})
+                           .at(0);
+            // _mlm_leg_flavors is only filled with more than one flavour
+            pdf_results.at(i) =
+                fb.gather(fb.gather_int(flavor_id, _pdf_indices.at(i)), pdf);
+        }
+    }
+
     if (_energy_scale && _energy_scale->is_mlm() && !mlm_history_per_diagram) {
         for (auto& weight : mlm_weights(fb, scales, x_acc, flavor_id)) {
             weights_after_cuts.push_back(weight);
@@ -1046,7 +1089,11 @@ NamedVector<Value> Integrand::build_common_part(
             fb.mul(dxs_vec.at(1), diagram_mask)
         );
         auto scales = _energy_scale->build_mlm_from_start_state(
-            fb, momenta_acc, fb.gather_int(diagram, _mlm_start_states)
+            fb,
+            momenta_acc,
+            fb.gather_int(diagram, _mlm_start_states),
+            flavor_id,
+            _mlm_leg_flavors
         );
         std::array<Value, 2> x_acc{x1_acc, x2_acc};
         mlm_history_weights = mlm_weights(fb, scales, x_acc, flavor_id);

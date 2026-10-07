@@ -149,9 +149,28 @@ public:
     build_along_diagram(FunctionBuilder& fb, Value momenta, Value diagram) const;
     // The same from an offset into cluster_state_machine, as
     // diagram_start_states lists them, for a caller that keeps its own table.
+    // flavor_index and leg_flavors restrict the walk to the clusterings that
+    // exist for the flavours of each event: leg_flavors holds, row-major, the
+    // abs pdg id of every external leg for each flavour index. Left out, every
+    // clustering of the union stays allowed.
     NamedVector<Value> build_from_start_state(
-        FunctionBuilder& fb, Value momenta, Value start_state
+        FunctionBuilder& fb,
+        Value momenta,
+        Value start_state,
+        Value flavor_index = Value(),
+        const std::vector<me_int_t>& leg_flavors = {}
     ) const;
+    // The history over every diagram, restricted to the flavours of each event
+    // as build_from_start_state does.
+    NamedVector<Value> build_with_flavors(
+        FunctionBuilder& fb,
+        Value momenta,
+        Value flavor_index,
+        const std::vector<me_int_t>& leg_flavors
+    ) const;
+    // Whether any clustering of the compiled state machines depends on the
+    // flavours of the event. Without one, the flavours change nothing.
+    bool has_flavor_dependent_clusterings() const { return _has_same_flavor; }
 
     // The compiled clustering state machine, in the flat encoding the kernel
     // walks. Exposed so that its structure can be checked directly.
@@ -183,7 +202,12 @@ private:
         FunctionBuilder& fb, const NamedVector<Value>& args
     ) const override;
     NamedVector<Value> build_kernel(
-        FunctionBuilder& fb, Value momenta, Value start_state, me_int_t history_mode
+        FunctionBuilder& fb,
+        Value momenta,
+        Value start_state,
+        me_int_t history_mode,
+        Value flavor_index,
+        const std::vector<me_int_t>& leg_flavors
     ) const;
 
     std::vector<me_int_t> _cluster_state_machine;
@@ -200,6 +224,7 @@ private:
     ClusteringMeasure _clustering_measure;
     ClusteringHistory _clustering_history;
     std::vector<int> _pdf_absolute_pdgs;
+    bool _has_same_flavor = false;
     int _beam_flags;
     int _jet_leg_mask;
     double _xqcut;
@@ -221,6 +246,25 @@ private:
     ) const override;
 
     MLMClustering _clustering;
+};
+
+// The clustering over every diagram restricted to the flavours of each event,
+// taking the flavour index as a second argument and the table of leg flavours
+// (see MLMClustering::build_with_flavors) at construction. The integrand calls
+// build_with_flavors directly; this is how that path is reached from Python.
+class MLMClusteringWithFlavors : public FunctionGenerator {
+public:
+    MLMClusteringWithFlavors(
+        const MLMClustering& clustering, std::vector<me_int_t> leg_flavors
+    );
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+
+    MLMClustering _clustering;
+    std::vector<me_int_t> _leg_flavors;
 };
 
 } // namespace madspace

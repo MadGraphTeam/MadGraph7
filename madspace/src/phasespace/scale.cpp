@@ -98,10 +98,29 @@ NamedVector<Value> EnergyScale::apply_scale_range(
 }
 
 NamedVector<Value> EnergyScale::build_mlm_from_start_state(
-    FunctionBuilder& fb, Value momenta, Value start_state
+    FunctionBuilder& fb,
+    Value momenta,
+    Value start_state,
+    Value flavor_index,
+    const std::vector<me_int_t>& leg_flavors
 ) const {
     return apply_scale_range(
-        fb, _clustering.value().build_from_start_state(fb, momenta, start_state)
+        fb,
+        _clustering.value().build_from_start_state(
+            fb, momenta, start_state, flavor_index, leg_flavors
+        )
+    );
+}
+
+NamedVector<Value> EnergyScale::build_mlm_with_flavors(
+    FunctionBuilder& fb,
+    Value momenta,
+    Value flavor_index,
+    const std::vector<me_int_t>& leg_flavors
+) const {
+    return apply_scale_range(
+        fb,
+        _clustering.value().build_with_flavors(fb, momenta, flavor_index, leg_flavors)
     );
 }
 

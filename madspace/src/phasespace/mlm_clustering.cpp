@@ -176,7 +176,48 @@ struct CompileContext {
     // The absolute flavours needed beyond gluon and the two beams, in the
     // order the classes above index them.
     std::vector<int>& absolute_pdgs;
+    // The propagator pdg ids each diagram puts on a line, keyed by (diagram,
+    // mask): what the union of mask_meta keeps only one of.
+    const std::map<std::pair<int, int>, std::vector<int>>& line_pdgs;
+    // Set once any clustering is marked same_flavor.
+    bool& has_same_flavor;
 };
+
+// Whether a line is a fermion whose flavour a g, a, Z or h vertex preserves.
+bool is_flavored_fermion_pdg(int pdg_id) {
+    int a = std::abs(pdg_id);
+    return (a >= 1 && a <= 6) || (a >= 11 && a <= 16);
+}
+
+// Whether every diagram among diags that has the line mask puts a g, a, Z or h
+// on it, so that the two bare external legs it joins must share their flavour.
+// madevent's cluster.f checks the same per graph, see flavor_filter there.
+bool joins_same_flavor(
+    const CompileContext& ctx, int mask, int mask_1, int mask_2,
+    const std::vector<int>& diags
+) {
+    if (!ctx.have_pdg_ids || std::popcount(static_cast<unsigned int>(mask_1)) != 1 ||
+        std::popcount(static_cast<unsigned int>(mask_2)) != 1 ||
+        !is_flavored_fermion_pdg(ctx.mask_meta.at(mask_1).pdg_id) ||
+        !is_flavored_fermion_pdg(ctx.mask_meta.at(mask_2).pdg_id)) {
+        return false;
+    }
+    bool any = false;
+    for (int diag : diags) {
+        auto search = ctx.line_pdgs.find({diag, mask});
+        if (search == ctx.line_pdgs.end()) {
+            return false;
+        }
+        for (int pdg_id : search->second) {
+            int a = std::abs(pdg_id);
+            if (a != 21 && a != 22 && a != 23 && a != 25) {
+                return false;
+            }
+            any = true;
+        }
+    }
+    return any;
+}
 
 // The flavour class of one line, allocating a new absolute class if it needs
 // one. flavor_class_none for anything the reweighting cannot follow.
@@ -247,6 +288,10 @@ struct StateItem {
     // this clustering. flavor_class_none ends the pdf reweighting chain,
     // which is also what stops madevent following ibeam(j) any further.
     int flavor_class_in;
+    // The two daughters are bare external fermions joined by a g, a, Z or h in
+    // every diagram left, so the clustering only exists for an event in which
+    // they carry the same flavour (TRACE_SAME_FLAVOR in kernels/mlm.hpp).
+    bool same_flavor;
 };
 
 // 1-based index into the Breit-Wigner tables handed to the kernel, or 0 for
@@ -267,7 +312,12 @@ int breit_wigner_index(CompileContext& ctx, const LineMeta& meta) {
 }
 
 StateItem make_state_item(
-    CompileContext& ctx, int next_state, int mask_in, int mask_1, int mask_2
+    CompileContext& ctx,
+    int next_state,
+    int mask_in,
+    int mask_1,
+    int mask_2,
+    const std::vector<int>& diags
 ) {
     int particle1 = std::countr_zero(static_cast<unsigned int>(mask_1));
     int particle2 = std::countr_zero(static_cast<unsigned int>(mask_2));
@@ -327,6 +377,11 @@ StateItem make_state_item(
         is_jet2 = is_jet_pdg(meta_2.pdg_id, ctx.max_jet_flavor);
     }
 
+    bool same_flavor = joins_same_flavor(ctx, mask_in, mask_1, mask_2, diags);
+    if (same_flavor) {
+        ctx.has_same_flavor = true;
+    }
+
     return {
         .next_state = next_state,
         .particle1 = particle1,
@@ -352,6 +407,7 @@ StateItem make_state_item(
             color_2 == 1,
         .flavor_class_in =
             flavor_class(ctx, meta_in.pdg_id, is_initial ? particle1 : -1),
+        .same_flavor = same_flavor,
     };
 }
 
@@ -447,6 +503,7 @@ void find_clusterings(
                             .mother_is_daughter2 = false,
                             .all_colorless = false,
                             .flavor_class_in = flavor_class_none,
+                            .same_flavor = false,
                         });
                     }
                 } else {
@@ -466,7 +523,7 @@ void find_clusterings(
             }
 
             states.at(prev_index)
-                .push_back(make_state_item(ctx, index, mask, mask_i, mask_j));
+                .push_back(make_state_item(ctx, index, mask, mask_i, mask_j, new_diags));
         }
     }
 }
@@ -526,7 +583,8 @@ std::vector<int> append_state_layout(
                     (item.is_colored_in << 3) +
                     ((item.flavor_class_in + 1) << 4) +
                     (item.is_octet_in << 12) + (item.mother_is_daughter1 << 13) +
-                    (item.mother_is_daughter2 << 14) + (item.all_colorless << 15)
+                    (item.mother_is_daughter2 << 14) + (item.all_colorless << 15) +
+                    (item.same_flavor << 16)
                 );
             }
         }
@@ -794,6 +852,13 @@ MLMClustering::MLMClustering(
         }
     }
 
+    std::map<std::pair<int, int>, std::vector<int>> line_pdgs;
+    for (auto& [diag_index, lines] : diagram_lines) {
+        for (auto& [mask, meta] : lines) {
+            line_pdgs[{static_cast<int>(diag_index), mask}].push_back(meta.pdg_id);
+        }
+    }
+
     std::vector<int> masks;
     masks.reserve(n_ext);
     for (int i = 0; i < n_ext; ++i) {
@@ -815,6 +880,8 @@ MLMClustering::MLMClustering(
         .beam_pdg = {have_pdg_ids ? external_pdg_ids.at(0) : 21,
                      have_pdg_ids ? external_pdg_ids.at(1) : 21},
         .absolute_pdgs = _pdf_absolute_pdgs,
+        .line_pdgs = line_pdgs,
+        .has_same_flavor = _has_same_flavor,
     };
     std::set<int> dead_states;
     find_clusterings(ctx, masks, all_diags, states, state_map, dead_states, 0);
@@ -870,6 +937,8 @@ MLMClustering::MLMClustering(
         .beam_pdg = {have_pdg_ids ? external_pdg_ids.at(0) : 21,
                      have_pdg_ids ? external_pdg_ids.at(1) : 21},
         .absolute_pdgs = _pdf_absolute_pdgs,
+        .line_pdgs = line_pdgs,
+        .has_same_flavor = _has_same_flavor,
     };
     nested_vector2<StateItem> diagram_states;
     std::map<StateKey, int> diagram_state_map;
@@ -918,7 +987,17 @@ NamedVector<Value> MLMClustering::build_function_impl(
 ) const {
     auto start_state =
         fb.full({static_cast<me_int_t>(0), fb.batch_size({args.at(0)})});
-    return build_kernel(fb, args.at(0), start_state, 0);
+    return build_kernel(fb, args.at(0), start_state, 0, Value(), {});
+}
+
+NamedVector<Value> MLMClustering::build_with_flavors(
+    FunctionBuilder& fb,
+    Value momenta,
+    Value flavor_index,
+    const std::vector<me_int_t>& leg_flavors
+) const {
+    auto start_state = fb.full({static_cast<me_int_t>(0), fb.batch_size({momenta})});
+    return build_kernel(fb, momenta, start_state, 0, flavor_index, leg_flavors);
 }
 
 NamedVector<Value> MLMClustering::build_along_diagram(
@@ -936,7 +1015,11 @@ NamedVector<Value> MLMClustering::build_along_diagram(
 }
 
 NamedVector<Value> MLMClustering::build_from_start_state(
-    FunctionBuilder& fb, Value momenta, Value start_state
+    FunctionBuilder& fb,
+    Value momenta,
+    Value start_state,
+    Value flavor_index,
+    const std::vector<me_int_t>& leg_flavors
 ) const {
     if (_clustering_history == ClusteringHistory::all_diagrams) {
         throw std::logic_error(
@@ -945,15 +1028,33 @@ NamedVector<Value> MLMClustering::build_from_start_state(
         );
     }
     return build_kernel(
-        fb, momenta, start_state, static_cast<me_int_t>(_clustering_history)
+        fb,
+        momenta,
+        start_state,
+        static_cast<me_int_t>(_clustering_history),
+        flavor_index,
+        leg_flavors
     );
 }
 
 NamedVector<Value> MLMClustering::build_kernel(
-    FunctionBuilder& fb, Value momenta, Value start_state, me_int_t history_mode
+    FunctionBuilder& fb,
+    Value momenta,
+    Value start_state,
+    me_int_t history_mode,
+    Value flavor_index,
+    const std::vector<me_int_t>& leg_flavors
 ) const {
     std::array<Value, 16> mlm_out;
     Value random = fb.squeeze(fb.random(fb.batch_size({momenta}), 1));
+    // Without the flavours of the event a single row of zeros, which leaves
+    // every clustering allowed: the history over the union of all diagrams.
+    if (!flavor_index || leg_flavors.empty()) {
+        flavor_index = fb.full({static_cast<me_int_t>(0), fb.batch_size({momenta})});
+    }
+    std::vector<me_int_t> flavor_table = leg_flavors.empty()
+        ? std::vector<me_int_t>(_external_masses.size(), 0)
+        : leg_flavors;
     if (_hadronic) {
         mlm_out = fb.mlm_clustering_hadronic(
             momenta,
@@ -975,7 +1076,9 @@ NamedVector<Value> MLMClustering::build_kernel(
             static_cast<me_int_t>(_alphas_scheme),
             static_cast<me_int_t>(_pdf_reweighting),
             static_cast<me_int_t>(_clustering_measure),
-            history_mode
+            history_mode,
+            flavor_index,
+            flavor_table
         );
     } else {
         mlm_out = fb.mlm_clustering_leptonic(
@@ -998,7 +1101,9 @@ NamedVector<Value> MLMClustering::build_kernel(
             static_cast<me_int_t>(_alphas_scheme),
             static_cast<me_int_t>(_pdf_reweighting),
             static_cast<me_int_t>(_clustering_measure),
-            history_mode
+            history_mode,
+            flavor_index,
+            flavor_table
         );
     }
     return {return_types().keys(), {mlm_out.begin(), mlm_out.end()}};
@@ -1020,4 +1125,25 @@ NamedVector<Value> MLMClusteringAlongDiagram::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
     return _clustering.build_along_diagram(fb, args.at(0), args.at(1));
+}
+
+MLMClusteringWithFlavors::MLMClusteringWithFlavors(
+    const MLMClustering& clustering, std::vector<me_int_t> leg_flavors
+) :
+    FunctionGenerator(
+        "MLMClusteringWithFlavors",
+        [&] {
+            auto types = clustering.arg_types();
+            types.push_back("flavor_index", batch_int);
+            return types;
+        }(),
+        clustering.return_types()
+    ),
+    _clustering(clustering),
+    _leg_flavors(std::move(leg_flavors)) {}
+
+NamedVector<Value> MLMClusteringWithFlavors::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    return _clustering.build_with_flavors(fb, args.at(0), args.at(1), _leg_flavors);
 }

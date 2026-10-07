@@ -87,9 +87,25 @@ public:
     // The scales of the MLM clustering walked from one diagram's start state
     // (see MLMClustering::diagram_start_states), with the same scale range
     // applied as the function itself applies.
+    // flavor_index and leg_flavors as in MLMClustering::build_from_start_state.
     NamedVector<Value> build_mlm_from_start_state(
-        FunctionBuilder& fb, Value momenta, Value start_state
+        FunctionBuilder& fb,
+        Value momenta,
+        Value start_state,
+        Value flavor_index = Value(),
+        const std::vector<me_int_t>& leg_flavors = {}
     ) const;
+    // The MLM history over every diagram, restricted to the flavours of each
+    // event (MLMClustering::build_with_flavors), with the scale range applied.
+    NamedVector<Value> build_mlm_with_flavors(
+        FunctionBuilder& fb,
+        Value momenta,
+        Value flavor_index,
+        const std::vector<me_int_t>& leg_flavors
+    ) const;
+    bool mlm_flavor_dependent() const {
+        return _clustering && _clustering->has_flavor_dependent_clusterings();
+    }
     // The band the pdf grid covers, for whoever has to keep a scale inside it.
     double min_scale() const { return _min_scale; }
     double max_scale() const { return _max_scale; }
