@@ -50,6 +50,24 @@ def mapping(process):
 
 
 @pytest.fixture
+def cut_mapping(process):
+    # a mild pt cut keeps the events away from extremely soft gluons, for which the
+    # inverse of the t-channel invariants is numerically ill-conditioned
+    pids = [21, 21] + [6 if mass > 0 else 21 for mass in process["outgoing_masses"]]
+    O = ms.Observable
+    cuts = ms.Cuts([ms.CutItem(O(pids, O.obs_pt, [O.jet_pids]), min=1.0)])
+    diagram = ms.Diagram(
+        process["incoming_masses"],
+        process["outgoing_masses"],
+        [ms.Propagator(*prop) for prop in process["propagators"]],
+        process["vertices"],
+    )
+    return ms.PhaseSpaceMapping(
+        ms.Topology(diagram), CM_ENERGY, cuts=cuts, permutations=process["permutations"]
+    )
+
+
+@pytest.fixture
 def masses(process):
     return process["incoming_masses"] + process["outgoing_masses"]
 
@@ -110,14 +128,17 @@ def test_process_momentum_conservation(mapping, masses, permutation_count):
     assert p_out == approx(p_in, rel=1e-6, abs=1e-10)
 
 
-def test_process_inverse(mapping, masses, permutation_count):
-    r = rng.random((BATCH_SIZE, mapping.random_dim()))
+def test_process_inverse(cut_mapping, masses, permutation_count):
+    r = rng.random((BATCH_SIZE, cut_mapping.random_dim()))
     condition = (
         []
         if permutation_count <= 1
         else [rng.integers(0, permutation_count, BATCH_SIZE, dtype=np.int32)]
     )
-    *map_out, det = mapping.map_forward([r], condition)
-    r_inv, det_inv = mapping.map_inverse(map_out, condition)
-    assert r_inv == approx(r, abs=1e-3, rel=1e-3)
-    assert det_inv == approx(1 / det, rel=1e-3)
+    *map_out, det = cut_mapping.map_forward([r], condition)
+    r_inv, det_inv = cut_mapping.map_inverse(map_out, condition)
+    # events removed by the cuts (zero weight) are outside the phase space
+    passed = det > 0
+    assert np.any(passed)
+    assert r_inv[passed] == approx(r[passed], abs=1e-3, rel=1e-3)
+    assert det_inv[passed] == approx(1 / det[passed], rel=1e-3)
