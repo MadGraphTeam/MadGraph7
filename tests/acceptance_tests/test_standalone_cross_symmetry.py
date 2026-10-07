@@ -3064,9 +3064,12 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         cmd.exec_cmd(('output standalone %s -f %s'
                       % (outdir, out_options)).strip())
 
+        # pq holds the u quark alone, so its merged leg is single-flavor and
+        # the directory is named after that flavor (gg_uux), not after the
+        # merged class (gg_QQx).
         subproc_root = pjoin(outdir, 'SubProcesses')
         pdirs = [pjoin(subproc_root, d) for d in sorted(os.listdir(subproc_root))
-                 if d.startswith('P') and 'gg_QQx' in d
+                 if d.startswith('P') and ('gg_QQx' in d or 'gg_uux' in d)
                  and os.path.isdir(pjoin(subproc_root, d))]
         self.assertEqual(len(pdirs), 1,
                          'expected exactly one g g > q q~ dir, got %s' % pdirs)
