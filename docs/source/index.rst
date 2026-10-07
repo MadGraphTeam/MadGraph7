@@ -27,6 +27,7 @@ If you need a stable release, use the
    installation
    first_steps
    run_card
+   madevent_to_mg7
 
 .. toctree::
    :maxdepth: 1

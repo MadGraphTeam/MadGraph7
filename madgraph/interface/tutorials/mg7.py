@@ -166,8 +166,8 @@ you are getting; the default is not the one a MadEvent run would have used.
 Seeding works the way you would expect -- `set iseed 42` at the launch question
 sets `[run] seed`, and so does editing the run card directly.
 
-**Coming from a LO run card?** `madgraph/various/RunCardLO_to_MG7_mapping.md`
-maps the old names onto the new sections.
+**Coming from a LO run card?** The "Coming from MadEvent" page of the
+documentation maps the old names onto the new sections.
 
 **Gridpacks** work here too, via the `[gridpack]` section and
 `bin/gridpack.py`.
