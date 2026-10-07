@@ -7872,6 +7872,40 @@ class RunCardMG7(RunCard):
         'mmll': ('lepton-sfos_pair_mass', 'min'),
         'mmllmax': ('lepton-sfos_pair_mass', 'max'),
         'dsqrt_shat': ('sqrt_s', 'min'), 'dsqrt_shatmax': ('sqrt_s', 'max'),
+        # leading jet / lepton: "at least one passes" is the hardest one passing
+        'xptj': ('jet_1-pt', 'min'), 'xptl': ('lepton_1-pt', 'min'),
+        # jet HT, and inclusive HT over the group of all partons
+        'htjmin': ('jet-pt-sum', 'min'), 'htjmax': ('jet-pt-sum', 'max'),
+        'ihtmin': ('parton-pt-sum', 'min'), 'ihtmax': ('parton-pt-sum', 'max'),
+        # all leptons including neutrinos taken together
+        'ptllmin': ('alllepton-sum-pt', 'min'), 'ptllmax': ('alllepton-sum-pt', 'max'),
+        'mmnl': ('alllepton-sum-mass', 'min'), 'mmnlmax': ('alllepton-sum-mass', 'max'),
+    }
+    for _code, _group in (('j', 'jet'), ('b', 'bottom'), ('a', 'photon'), ('l', 'lepton')):
+        _LO_CUT_MAP['eta%smin' % _code] = ('%s-eta_abs' % _group, 'min')
+        _LO_CUT_MAP['e%s' % _code] = ('%s-e' % _group, 'min')
+        _LO_CUT_MAP['e%smax' % _code] = ('%s-e' % _group, 'max')
+    # cuts on the pt of the n-th hardest jet or lepton
+    for _n in range(1, 5):
+        for _code, _group in (('j', 'jet'), ('l', 'lepton')):
+            _LO_CUT_MAP['pt%s%dmin' % (_code, _n)] = ('%s_%d-pt' % (_group, _n), 'min')
+            _LO_CUT_MAP['pt%s%dmax' % (_code, _n)] = ('%s_%d-pt' % (_group, _n), 'max')
+    # HT of the n hardest jets
+    for _n in range(2, 5):
+        for _bound in ('min', 'max'):
+            _LO_CUT_MAP['ht%d%s' % (_n, _bound)] = (
+                '-'.join('jet_%d' % i for i in range(1, _n + 1)) + '-pt-sum', _bound)
+    del _code, _group, _n, _bound
+    # groups the cuts above need beyond the default [multiparticles]
+    _LO_CUT_GROUPS = {
+        'parton': lambda mp: [1, 2, 3, 4, 5, -1, -2, -3, -4, -5, 21],
+        'alllepton': lambda mp: list(mp['lepton']) + list(mp['missing']),
+    }
+    # LO per-pdg cut -> (MG7 observable, bound); one group [pdg, -pdg] each
+    _LO_PDG_CUT_MAP = {
+        'pt_min_pdg': ('pt', 'min'), 'pt_max_pdg': ('pt', 'max'),
+        'e_min_pdg': ('e', 'min'), 'e_max_pdg': ('e', 'max'),
+        'eta_min_pdg': ('eta_abs', 'min'), 'eta_max_pdg': ('eta_abs', 'max'),
     }
     # built-in LO pdlabel -> LHAPDF set name
     _LO_PDF_LABEL_MAP = {
@@ -7901,19 +7935,11 @@ class RunCardMG7(RunCard):
         'clusinfo', 'auto_ptj_mjj', 'pdgs_for_merging_cut',
         # bias
         'bias_module', 'bias_parameters',
-        # unsupported cuts
-        'etajmin', 'etabmin', 'etaamin', 'etalmin',
-        'ej', 'eb', 'ea', 'el', 'ejmax', 'ebmax', 'eamax', 'elmax',
-        'ptj1min', 'ptj1max', 'ptj2min', 'ptj2max', 'ptj3min', 'ptj3max',
-        'ptj4min', 'ptj4max', 'ptl1min', 'ptl1max', 'ptl2min', 'ptl2max',
-        'ptl3min', 'ptl3max', 'ptl4min', 'ptl4max', 'cutuse',
-        'htjmin', 'htjmax', 'ihtmin', 'ihtmax', 'ht2min', 'ht3min', 'ht4min',
-        'ht2max', 'ht3max', 'ht4max', 'xptj', 'xptb', 'xpta', 'xptl',
-        'ptllmin', 'ptllmax', 'mmnl', 'mmnlmax', 'ptheavy', 'ptonium',
-        'etaonium', 'ptgmin', 'r0gamma', 'xn', 'epsgamma', 'isoem',
-        'xetamin', 'deltaeta',
-        'pt_min_pdg', 'pt_max_pdg', 'e_min_pdg', 'e_max_pdg', 'eta_min_pdg',
-        'eta_max_pdg', 'mxx_min_pdg', 'mxx_only_part_antipart',
+        # unsupported cuts: needs the opposite-hemisphere condition on the two
+        # hardest jets, any-of-the-ordered-cuts logic, photon isolation, or a
+        # per-process group of heavy particles
+        'cutuse', 'ptheavy', 'ptonium', 'etaonium', 'ptgmin', 'r0gamma', 'xn',
+        'epsgamma', 'isoem', 'xetamin', 'deltaeta',
         # systematics detail / eva / frame
         'systematics_program', 'systematics_arguments', 'sys_scalefact',
         'sys_alpsfact', 'sys_matchscale', 'sys_pdf', 'sys_scalecorrelation',
@@ -8010,13 +8036,46 @@ class RunCardMG7(RunCard):
 
         # --- cuts (rebuild from the LO card) ---
         cuts = collections.OrderedDict()
+        multiparticles = mg7.dynamic_sections['multiparticles']
+
+        def add_cut(cutkey, bound, val):
+            # two LO cuts can land on the same bound (ptj1min and xptj): the
+            # tighter one wins
+            entry = cuts.setdefault(cutkey, collections.OrderedDict())
+            if bound in entry:
+                val = max(entry[bound], val) if bound == 'min' else min(entry[bound], val)
+            entry[bound] = float(val)
+
+        def is_active(bound, val):
+            # LO: a minimum of 0 and a maximum below 0 switch the cut off
+            return (bound == 'min' and val > 0) or (bound == 'max' and val >= 0)
+
         for loname, (cutkey, bound) in cls._LO_CUT_MAP.items():
-            if loname not in lo:
-                continue
-            val = lo[loname]
-            active = (bound == 'min' and val > 0) or (bound == 'max' and val >= 0)
-            if active:
-                cuts.setdefault(cutkey, collections.OrderedDict())[bound] = float(val)
+            if loname in lo and is_active(bound, lo[loname]):
+                add_cut(cutkey, bound, lo[loname])
+
+        # cuts on one particle type, given by pdg id: a group [pdg, -pdg] each
+        # (the name has no "_<number>", which would select the n-th hardest)
+        for loname, (observable, bound) in cls._LO_PDG_CUT_MAP.items():
+            for pdg, val in lo[loname].items() if loname in lo else []:
+                if isinstance(pdg, int) and is_active(bound, val):
+                    group = 'pdg%d' % abs(pdg)
+                    multiparticles[group] = [abs(pdg), -abs(pdg)]
+                    add_cut('%s-%s' % (group, observable), bound, val)
+        if 'mxx_min_pdg' in lo:
+            only_pairs = lo['mxx_only_part_antipart'] if 'mxx_only_part_antipart' in lo else {}
+            for pdg, val in lo['mxx_min_pdg'].items():
+                if isinstance(pdg, int) and is_active('min', val):
+                    group = 'pdg%d' % abs(pdg)
+                    multiparticles[group] = [abs(pdg), -abs(pdg)]
+                    # X X~ pairs only, or every pair of the group
+                    observable = 'sfos_pair_mass' if only_pairs.get(
+                        pdg, only_pairs.get('default', False)) else 'pair_mass'
+                    add_cut('%s-%s' % (group, observable), 'min', val)
+
+        for group, build in cls._LO_CUT_GROUPS.items():
+            if any(key.startswith(group + '-') for key in cuts):
+                multiparticles[group] = build(multiparticles)
         mg7.dynamic_sections['cuts'] = cuts
 
         # --- report the non-default settings we could not transfer ---
