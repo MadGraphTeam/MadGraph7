@@ -73,14 +73,25 @@ struct LoadedBackend {
 
 const LoadedBackend& cpu_backend() {
     static LoadedBackend backend = [&] {
-        // ordered by increasing vector width, so that "auto" picks the last one
         std::vector<std::string> supported_modes{"scalar"};
+        std::string auto_mode = "scalar";
 #ifdef SIMD_AVAILABLE
 #if defined(__aarch64__) || defined(_M_ARM64)
         supported_modes.push_back("simd_128");
+        auto_mode = "simd_128";
 #elif defined(__x86_64__) || defined(_M_X64)
         if (__builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma")) {
             supported_modes.push_back("simd_256");
+            auto_mode = "simd_256";
+        }
+        if (__builtin_cpu_supports("avx512f") && __builtin_cpu_supports("avx512vl") &&
+            __builtin_cpu_supports("avx512dq")) {
+            supported_modes.push_back("avx512y");
+            // mirrors madmatrix's auto mode (avx512y except with clang, never
+            // simd_512); TODO: revisit once madspace has its own x86 benchmarks
+#ifndef __clang__
+            auto_mode = "avx512y";
+#endif
         }
         if (__builtin_cpu_supports("avx512f")) {
             supported_modes.push_back("simd_512");
@@ -94,7 +105,7 @@ const LoadedBackend& cpu_backend() {
             mode = env_var ? env_var : "scalar";
         }
         if (mode == "auto") {
-            mode = supported_modes.back();
+            mode = auto_mode;
         } else if (std::find(supported_modes.begin(), supported_modes.end(), mode) ==
                    supported_modes.end()) {
             std::string supported;

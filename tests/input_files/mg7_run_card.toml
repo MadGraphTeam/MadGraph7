@@ -6,7 +6,7 @@ device = ["cpu"]
 # options: auto (widest width supported by the host), scalar, simd_128, simd_256, simd_512, avx512y
 cpu_mode = "scalar"
 # SIMD width of the phase-space sampling (madspace) on the 'cpu' devices (experimental)
-# options: auto (widest width supported by the host), scalar, simd_128 (ARM only), simd_256, simd_512
+# options: auto (same choice as for cpu_mode), scalar, simd_128 (ARM only), simd_256, avx512y, simd_512
 madspace_cpu_mode = "scalar"
 # pool sizes: -1 sets count automatically based on number of CPUs
 cpu_thread_pool_size = -1

@@ -12,7 +12,7 @@ device = %(run.device)s
 # options: auto (widest width supported by the host), scalar, simd_128, simd_256, simd_512, avx512y
 cpu_mode = %(run.cpu_mode)s
 # SIMD width of the phase-space sampling (madspace) on the 'cpu' devices (experimental)
-# options: auto (widest width supported by the host), scalar, simd_128 (ARM only), simd_256, simd_512
+# options: auto (same choice as for cpu_mode), scalar, simd_128 (ARM only), simd_256, avx512y, simd_512
 madspace_cpu_mode = %(run.madspace_cpu_mode)s
 # matrix-element floating-point precision
 # options: all64, all32, color32 (colour FP32, rest FP64), denom64 (momenta + propagator denominator FP64, rest FP32)
