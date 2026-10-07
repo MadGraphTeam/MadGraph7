@@ -46,6 +46,11 @@ using namespace madspace;
 using namespace madspace::cpu;
 using namespace madspace::kernels;
 
+#ifdef USE_SIMD
+// the single kernel parameters match the single inputs of instruction_set.yaml
+#include "kernel_checks.inc"
+#endif
+
 namespace {
 
 template <typename D>

@@ -112,6 +112,9 @@ struct PackedTensorView {
     T* data;
     Sizes stride;
     Sizes shape;
+    /// Whether the data is a literal stored padded to the CPU SIMD vector size
+    /// (see @ref Tensor::is_simd_padded).
+    bool simd_padded = false;
 };
 
 /**

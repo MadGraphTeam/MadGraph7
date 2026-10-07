@@ -25,13 +25,13 @@ KERNELSPEC void kernel_cut_unphysical(
 
 template <typename T>
 KERNELSPEC void
-kernel_cut_one(FIn<T, 0> obs, FIn<T, 0> min, FIn<T, 0> max, FOut<T, 0> w) {
+kernel_cut_one(FIn<T, 0> obs, FSIn<T, 0> min, FSIn<T, 0> max, FOut<T, 0> w) {
     w = where((obs < min) | (obs > max), FVal<T>(0.), 1.);
 }
 
 template <typename T>
 KERNELSPEC void
-kernel_cut_all(FIn<T, 1> obs, FIn<T, 0> min, FIn<T, 0> max, FOut<T, 0> w) {
+kernel_cut_all(FIn<T, 1> obs, FSIn<T, 0> min, FSIn<T, 0> max, FOut<T, 0> w) {
     FVal<T> cut = 1., min_val = min, max_val = max;
     for (std::size_t i = 0; i < obs.size(); ++i) {
         FVal<T> obs_i = obs[i];
@@ -42,7 +42,7 @@ kernel_cut_all(FIn<T, 1> obs, FIn<T, 0> min, FIn<T, 0> max, FOut<T, 0> w) {
 
 template <typename T>
 KERNELSPEC void
-kernel_cut_any(FIn<T, 1> obs, FIn<T, 0> min, FIn<T, 0> max, FOut<T, 0> w) {
+kernel_cut_any(FIn<T, 1> obs, FSIn<T, 0> min, FSIn<T, 0> max, FOut<T, 0> w) {
     FVal<T> cut = 0., min_val = min, max_val = max;
     for (std::size_t i = 0; i < obs.size(); ++i) {
         FVal<T> obs_i = obs[i];

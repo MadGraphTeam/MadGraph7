@@ -62,19 +62,15 @@ inline IVec vgather(
     return ret;
 }
 
-inline FVec vload(double* base_ptr, std::size_t stride) {
-    FVec ret;
-    ret = vsetq_lane_f64(base_ptr[0], ret, 0);
-    ret = vsetq_lane_f64(base_ptr[stride], ret, 1);
-    return ret;
-}
+// contiguous loads and stores of the lanes of one batch element
+inline FVec vload(double* base_ptr) { return vld1q_f64(base_ptr); }
 
-inline IVec vload(int* base_ptr, std::size_t stride) {
-    IVec ret;
-    ret = vsetq_lane_s64(base_ptr[0], ret, 0);
-    ret = vsetq_lane_s64(base_ptr[stride], ret, 1);
-    return ret;
-}
+inline IVec vload(int* base_ptr) { return vmovl_s32(vld1_s32(base_ptr)); }
+
+// the same value in every lane
+inline FVec vload_broadcast(double* base_ptr) { return vld1q_dup_f64(base_ptr); }
+
+inline IVec vload_broadcast(int* base_ptr) { return vdupq_n_s64(*base_ptr); }
 
 inline void vscatter(
     double* base_ptr,
@@ -102,15 +98,9 @@ inline void vscatter(
         vgetq_lane_s64(values, 1);
 }
 
-inline void vstore(double* base_ptr, std::size_t stride, FVec values) {
-    base_ptr[0] = vgetq_lane_f64(values, 0);
-    base_ptr[stride] = vgetq_lane_f64(values, 1);
-}
+inline void vstore(double* base_ptr, FVec values) { vst1q_f64(base_ptr, values); }
 
-inline void vstore(int* base_ptr, std::size_t stride, IVec values) {
-    base_ptr[0] = vgetq_lane_s64(values, 0);
-    base_ptr[stride] = vgetq_lane_s64(values, 1);
-}
+inline void vstore(int* base_ptr, IVec values) { vst1_s32(base_ptr, vmovn_s64(values)); }
 
 inline FVec where(BVec arg1, FVec arg2, FVec arg3) {
     return vbslq_f64(arg1, arg2, arg3);
