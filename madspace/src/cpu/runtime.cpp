@@ -4,6 +4,7 @@
 #include <memory>
 #include <random>
 #include <ranges>
+#include <set>
 #include <tuple>
 
 #include "../kernels/kernels.hpp"
@@ -1041,6 +1042,10 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
     _requires_grad_init.resize(function.locals().size());
     LastUseOfLocals last_use(function);
     std::vector<int> local_sources(function.locals().size(), -1);
+    std::set<std::size_t> global_locals;
+    for (auto& [name, value] : function.globals()) {
+        global_locals.insert(value.local_index);
+    }
     std::vector<SizeVec> local_uses(function.locals().size());
     SizeVec instr_index_map;
 
@@ -1101,6 +1106,16 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
              dep_instrs_bw,
              dep_count_bw}
         );
+        for (auto& in : instr.inputs) {
+            auto& local = function.locals().at(in.local_index);
+            bool is_literal = !std::holds_alternative<std::monostate>(local.literal_value);
+            bool is_int_intermediate = local.type.dtype == DataType::dt_int &&
+                static_cast<std::size_t>(in.local_index) >= function.inputs().size() &&
+                !global_locals.contains(in.local_index);
+            _instructions.back().discard_input_grad.push_back(
+                is_literal || is_int_intermediate
+            );
+        }
 
         for (std::size_t local_index : last_use.local_indices(instr_index)) {
             std::size_t free_dep_count = 0;
