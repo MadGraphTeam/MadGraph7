@@ -397,7 +397,9 @@ std::size_t EventGenerator::next_batch_event_count(std::size_t channel_index) co
     return compute_generation_batch_event_count(
         status.count_target,
         status.count_unweighted,
-        status.count_opt,
+        // Not count_opt: start_jobs() splits batches by nominal size, and a job
+        // repeating batches to pass cuts yields more raw points than that.
+        channel->count_requested_opt(),
         abs_cross_section.count(),
         abs_cross_section.rel_error(),
         _config
