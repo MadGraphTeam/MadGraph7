@@ -46,7 +46,9 @@ DevicePtr cuda_device(std::size_t index = 0);
 DevicePtr hip_device(std::size_t index = 0);
 /// Directory to load the generated backend shared libraries from.
 void set_lib_path(const std::string& lib_path);
-/// Width, in elements, of the SIMD vector used by the CPU backend's kernels.
-void set_simd_vector_size(int vector_size);
+/// SIMD mode of the CPU backend: "scalar", "simd_128" (ARM), "simd_256" (AVX2),
+/// "simd_512" (AVX512) or "auto" (widest supported by the host). Must be set
+/// before the CPU backend is first used; defaults to $MADSPACE_SIMD_MODE or "scalar".
+void set_simd_mode(const std::string& simd_mode);
 
 } // namespace madspace

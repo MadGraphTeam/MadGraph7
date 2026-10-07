@@ -1293,7 +1293,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             &PhaseSpaceMapping::channel_count,
             pydoc::doc("PhaseSpaceMapping::channel_count")
         )
-        .def("empty", &PhaseSpaceMapping::empty, pydoc::doc("PhaseSpaceMapping::empty"));
+        .def(
+            "empty", &PhaseSpaceMapping::empty, pydoc::doc("PhaseSpaceMapping::empty")
+        );
 
     py::classh<MultiChannelFunction, FunctionGenerator>(
         m, "MultiChannelFunction", pydoc::doc("MultiChannelFunction")
@@ -3691,10 +3693,10 @@ PYBIND11_MODULE(_madspace_py, m) {
         "set_lib_path", &set_lib_path, py::arg("lib_path"), pydoc::doc("set_lib_path")
     );
     m.def(
-        "set_simd_vector_size",
-        &set_simd_vector_size,
-        py::arg("vector_size"),
-        pydoc::doc("set_simd_vector_size")
+        "set_simd_mode",
+        &set_simd_mode,
+        py::arg("simd_mode"),
+        pydoc::doc("set_simd_mode")
     );
 
     auto abort_check_function = [] {

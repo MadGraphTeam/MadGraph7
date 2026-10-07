@@ -125,7 +125,7 @@ Cuts that are **not representable** in the current MG7 cut engine ([x] unless no
 
 ## 9. MG7-only (no LO source, keep default) — [mg7-only]
 
-`run.device`, `run.cpu_mode`, `run.simd_vector_size`, `run.{cpu,gpu,combine}_thread_pool_size`,
+`run.device`, `run.cpu_mode`, `run.madspace_cpu_mode`, `run.{cpu,gpu,combine}_thread_pool_size`,
 `run.output_format`, `run.verbosity`, `run.dummy_matrix_element`,
 `gridpack.{include_source,include_madspace,include_madspace_source}`,
 `generation.{cpu,gpu}_batch_size`,

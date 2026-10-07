@@ -178,8 +178,8 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    cpp/format_with_error
    cpp/hip_device
    cpp/select_combine_channel_index
+   cpp/set_simd_mode
    cpp/set_lib_path
-   cpp/set_simd_vector_size
 
 Utilities
 ---------
