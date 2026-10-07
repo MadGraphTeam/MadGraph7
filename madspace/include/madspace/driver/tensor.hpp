@@ -389,11 +389,14 @@ public:
             dtype, shape, device, data, false, external_reset, nullptr, 1, stride
         }) {
         std::size_t stride_prod = 1;
-        bool first = true;
+        bool first = true, contiguous = true;
         impl->contiguous_dims = 0;
         for (auto [size_i, stride_i] : zip(shape, stride)) {
-            if (stride_i == stride_prod) {
+            // only the leading run of contiguous dimensions counts
+            if (contiguous && (stride_i == stride_prod || size_i == 1)) {
                 ++impl->contiguous_dims;
+            } else {
+                contiguous = false;
             }
             if (first && size_i == 1) {
                 impl->stride[0] = 0;

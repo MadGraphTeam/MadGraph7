@@ -31,20 +31,22 @@ kernel_cut_one(FIn<T, 0> obs, FIn<T, 0> min, FIn<T, 0> max, FOut<T, 0> w) {
 
 template <typename T>
 KERNELSPEC void
-kernel_cut_all(FIn<T, 1> obs, FIn<T, 1> min, FIn<T, 1> max, FOut<T, 0> w) {
-    FVal<T> cut = 1.;
+kernel_cut_all(FIn<T, 1> obs, FIn<T, 0> min, FIn<T, 0> max, FOut<T, 0> w) {
+    FVal<T> cut = 1., min_val = min, max_val = max;
     for (std::size_t i = 0; i < obs.size(); ++i) {
-        cut = where((obs[i] < min[i]) | (obs[i] > max[i]), 0., cut);
+        FVal<T> obs_i = obs[i];
+        cut = where((obs_i < min_val) | (obs_i > max_val), 0., cut);
     }
     w = cut;
 }
 
 template <typename T>
 KERNELSPEC void
-kernel_cut_any(FIn<T, 1> obs, FIn<T, 1> min, FIn<T, 1> max, FOut<T, 0> w) {
-    FVal<T> cut = 0.;
+kernel_cut_any(FIn<T, 1> obs, FIn<T, 0> min, FIn<T, 0> max, FOut<T, 0> w) {
+    FVal<T> cut = 0., min_val = min, max_val = max;
     for (std::size_t i = 0; i < obs.size(); ++i) {
-        cut = where((obs[i] < min[i]) | (obs[i] > max[i]), cut, 1.);
+        FVal<T> obs_i = obs[i];
+        cut = where((obs_i < min_val) | (obs_i > max_val), cut, 1.);
     }
     w = cut;
 }

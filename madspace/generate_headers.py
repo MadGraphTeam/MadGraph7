@@ -225,7 +225,7 @@ def instruction_set_mixin(commands, out_dir):
         first = True
         for name, cmd in commands.items():
             opcode = cmd["opcode"]
-            differentiable = "true" if cmd.get("differentiable", False) else "true"
+            differentiable = "true" if cmd.get("differentiable", False) else "false"
             if "class" in cmd:
                 f.write(
                     f"    InstructionOwner(new {cmd['class']}("
