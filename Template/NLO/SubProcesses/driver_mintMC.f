@@ -967,6 +967,8 @@ c "npNLO".
 
       fold=ifl
       if (ifl.eq.0 .or. ifl.eq.1) then
+C Clear per-fold MEs before preparing this fold's virtual approximations.
+         call reset_storage()
          if (ifl.eq.0) then
             icontr=0
             call reset_weight_lines_vec(nexternal)
@@ -974,6 +976,9 @@ c "npNLO".
             born_wgt_mint(0:amp_split_size)=0d0
             virtual_over_born=0d0
             virtual_over_born_vec(:)=0d0
+            bsv_virt_cache(:,:)=0d0
+            virt_wgt_vec(:,:)=0d0
+            born_wgt_vec(:,:)=0d0
          endif
          MCcntcalled=0
          MCcnt_vec(:)=0
@@ -1024,9 +1029,6 @@ c For sum=0, determine nFKSprocess so that the soft limit gives a non-zero Born
          endif
 
      
-C ZW: Reset all the storage arrays
-         call reset_storage()
-
          if(.not.goodhel_set) then
             call set_goodhel(nndim,iconfig,goodhel_calls,ntry_goodhel,proc_map,goodhel_set)
          end if
@@ -1125,7 +1127,8 @@ c changes the S-event cancellation and its shower-group populations.
                call bornsoftvirtual(p1_cnt(0,1,0),p_born,bsv_wgt,virt_wgt,born_wgt
      $     ,amp_split_virt,amp_split_born_for_virt,amp_split_avv
      $     ,amp_split_wgtnstmp,amp_split_wgtwnstmpmuf,amp_split_wgtwnstmpmur
-     $     ,wgt_born,born_ans_cnt,born_amp_split_cnt,born_saveamp,born_amp_split)
+     $     ,wgt_born,born_ans_cnt,born_amp_split_cnt,born_saveamp,born_amp_split
+     $     ,bsv_virt_cache(:,ivec))
                call compute_nbody_noborn(p1_cnt(0,1,0),bsv_wgt,virt_wgt,born_wgt
      $     ,amp_split_virt,amp_split_born_for_virt,amp_split_avv
      $     ,amp_split_wgtnstmp,amp_split_wgtwnstmpmuf,amp_split_wgtwnstmpmur

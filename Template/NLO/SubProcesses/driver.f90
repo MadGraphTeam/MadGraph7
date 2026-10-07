@@ -20,6 +20,8 @@ module driver_vec
   double precision, allocatable, public :: virt_wgt_vec(:,:), born_wgt_vec(:,:)
   double precision, allocatable, public :: average_virtual_vec(:,:), polyfit_vec(:,:)
   double precision, allocatable, public :: virtual_over_born_vec(:)
+  ! BSV values persist across folds; reset only at the start of a new batch.
+  double precision, allocatable, public :: bsv_virt_cache(:,:)
  ! born helicities
   integer, allocatable, public :: nhel_vec(:,:,:)
   ! n-body kinematics Borns
@@ -116,6 +118,11 @@ module driver_vec
      allocate(average_virtual_vec(0:n_ave_virt,vector_size))
      allocate(polyfit_vec(0:n_ave_virt,vector_size))
      allocate(virtual_over_born_vec(vector_size))
+     allocate(bsv_virt_cache(0:amp_split_size,vector_size))
+     bsv_virt_cache = 0d0
+     virt_wgt_vec = 0d0
+     born_wgt_vec = 0d0
+     virtual_over_born_vec = 0d0
     ! born helicities
     allocate(nhel_vec(nexternal-1,max_bhel,vector_size))
    ! n-body kinematics Borns
@@ -186,12 +193,10 @@ subroutine reset_storage()
    include 'nFKSconfigs.inc'
    include 'born_nhel.inc'
    driver_accepted(:) = .false.
-   ! Born and virtual storage reset
-   virt_wgt_vec(:,:) = 0d0
-     born_wgt_vec(:,:) = 0d0
+   ! Per-fold storage only. Weighted Born/virtual accumulators and the BSV
+   ! cache persist until the MC driver's next ifl=0 batch-start reset.
      average_virtual_vec(:,:) = 0d0
      polyfit_vec(:,:) = 0d0
-     virtual_over_born_vec(:) = 0d0
    ! n-body kinematics Borns
    snb_amp2(:,:,:) = 0d0
    snb_jamp2(:,:,:) = 0d0
@@ -274,6 +279,7 @@ subroutine deallocate_storage()
     if (allocated(average_virtual_vec)) deallocate(average_virtual_vec)
     if (allocated(polyfit_vec)) deallocate(polyfit_vec)
     if (allocated(virtual_over_born_vec)) deallocate(virtual_over_born_vec)
+    if (allocated(bsv_virt_cache)) deallocate(bsv_virt_cache)
   ! born helicities
     if (allocated(nhel_vec)) deallocate(nhel_vec)
     ! n-body kinematics Borns

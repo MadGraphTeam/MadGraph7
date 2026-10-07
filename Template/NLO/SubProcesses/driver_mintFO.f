@@ -347,6 +347,7 @@ c timing statistics
       double precision xx(ndimmax),vegas_wgt,f(nintegrals),jac,p(0:3
      $     ,nexternal),rwgt,vol,sig,x(99),MC_int_wgt
      $     ,f_class(nintegrals),sig_no_nbody
+      double precision bsv_virt_cache(0:amp_split_size)
       integer ifl,nFKS_born,nFKS_picked,iFKS,nFKS_min,iamp,igroup
      $     ,nFKS_max,izero,ione,itwo,mohdr,i,j,iran_picked,nFKS_sector
      $     ,iflav_config,born_class
@@ -475,6 +476,7 @@ C Real deg amplitudes
          stop 1
       endif
       fold=ifl
+      bsv_virt_cache(:)=0d0
       if (pineappl .and. sum) then
          write (*,*) 'WARNING: PineAPPL only possible '/
      &        /'with MC over FKS directories',pineappl,sum
@@ -570,7 +572,7 @@ c Evaluate each physical Born class once without a topology correction.
      $                    amp_split_wgtwnstmpmuf,
      $                    amp_split_wgtwnstmpmur,wgt_born,
      $                    born_ans_cnt,born_amp_split_cnt,
-     $                    born_saveamp,born_amp_split)
+     $                    born_saveamp,born_amp_split,bsv_virt_cache)
                          call compute_nbody_noborn(p1_cnt(0,1,0),
      $                    bsv_wgt,virt_wgt,born_wgt,
      $                    amp_split_virt,amp_split_born_for_virt,
@@ -839,7 +841,7 @@ c The nbody contributions
      $     ,amp_split_virt,amp_split_born_for_virt,amp_split_avv
      $     ,amp_split_wgtnstmp,amp_split_wgtwnstmpmuf,
      $     amp_split_wgtwnstmpmur,wgt_born,born_ans_cnt,
-     $     born_amp_split_cnt,born_saveamp,born_amp_split)
+     $     born_amp_split_cnt,born_saveamp,born_amp_split,bsv_virt_cache)
             call compute_nbody_noborn(p1_cnt(0,1,0),bsv_wgt,virt_wgt,born_wgt
      $     ,amp_split_virt,amp_split_born_for_virt,amp_split_avv
      $     ,amp_split_wgtnstmp,amp_split_wgtwnstmpmuf,amp_split_wgtwnstmpmur

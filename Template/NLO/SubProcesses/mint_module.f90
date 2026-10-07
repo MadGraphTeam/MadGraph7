@@ -265,6 +265,9 @@ contains
              virt_wgt_mint(:)=virt_wgt_vec(:,ivec)
                born_wgt_mint(:)=born_wgt_vec(:,ivec)
              pass_cuts_check=pass_cuts_check_vec(ivec)
+             ! Reconstruct this lane's virtual for approximation-grid training.
+             average_virtual(:,ichan)=average_virtual_vec(:,ivec)
+             polyfit(:)=polyfit_vec(:,ivec)
              call accumulate_the_point(x)
              virt_wgt_vec(:,ivec)=virt_wgt_mint
                born_wgt_vec(:,ivec)=born_wgt_mint

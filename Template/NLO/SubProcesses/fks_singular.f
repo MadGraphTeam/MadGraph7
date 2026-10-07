@@ -7610,7 +7610,8 @@ c
       subroutine bornsoftvirtual(p,p_born,bsv_wgt,virt_wgt,born_wgt
      &           ,amp_split_virt,amp_split_born_for_virt,amp_split_avv
      &           ,amp_split_wgtnstmp,amp_split_wgtwnstmpmuf,amp_split_wgtwnstmpmur
-     &           ,born_wgt_arg,born_cnt,born_split_cnt,born_saveamp,ret_amp_split)
+     &           ,born_wgt_arg,born_cnt,born_split_cnt,born_saveamp,ret_amp_split
+     &           ,virt_cache)
       use extra_weights
       use mint_module
       implicit none
@@ -7696,8 +7697,6 @@ c timing statistics
 c For the MINT folding
       integer fold,ifold_counter
       common /cfl/fold,ifold_counter
-      double precision virt_wgt_save
-      save virt_wgt_save
 
       double precision pmass(nexternal),zero,tiny
       parameter (zero=0d0)
@@ -7744,8 +7743,8 @@ C to keep track of the various split orders
       double precision amp_split_bsv(amp_split_size)
       double precision amp_split_soft(amp_split_size)
       double precision amp_split_finite_ML(amp_split_size)
-      double precision amp_split_virt_save(amp_split_size)
-      save amp_split_virt_save
+C Caller owns one cache per MC lane, retained across folds. FO always uses fold0.
+      double precision virt_cache(0:amp_split_size)
       double precision amp_split_virt(amp_split_size),
      &      amp_split_born_for_virt(amp_split_size),
      &      amp_split_avv(amp_split_size)
@@ -8087,13 +8086,13 @@ CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
             call cpu_time(tAfter)
             tOLP=tOLP+(tAfter-tBefore)
          endif
-         virt_wgt_save=virt_wgt
-         amp_split_virt_save(1:amp_split_size)=
+         virt_cache(0)=virt_wgt
+         virt_cache(1:amp_split_size)=
      $        amp_split_virt(1:amp_split_size)
       elseif(fold.eq.1) then
-         virt_wgt=virt_wgt_save
+         virt_wgt=virt_cache(0)
          amp_split_virt(1:amp_split_size)=
-     $        amp_split_virt_save(1:amp_split_size)
+     $        virt_cache(1:amp_split_size)
       endif
       if (abrv(1:4).ne.'virt' .and. ickkw.ne.-1) then
          if (use_poly_virtual) then
