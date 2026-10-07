@@ -158,9 +158,47 @@ zero, is simply left out.
       - ``lepton-sfos_pair_mass.min``, ``lepton-sfos_pair_mass.max``
     * - ``dsqrt_shat``, ``dsqrt_shatmax``
       - ``sqrt_s.min``, ``sqrt_s.max``
+    * - ``etajmin``, ``etabmin``, ``etaamin``, ``etalmin``
+      - ``jet-eta_abs.min``, ``bottom-eta_abs.min``, ``photon-eta_abs.min``,
+        ``lepton-eta_abs.min``
+    * - ``ej``, ``eb``, ``ea``, ``el`` and the ``max`` versions
+      - ``jet-e``, ``bottom-e``, ``photon-e``, ``lepton-e`` with ``.min`` and ``.max``
+    * - ``ptj1min`` to ``ptj4max``, ``ptl1min`` to ``ptl4max``
+      - ``jet_1-pt`` to ``jet_4-pt`` and ``lepton_1-pt`` to ``lepton_4-pt`` with ``.min``
+        and ``.max``
+    * - ``xptj``, ``xptl``
+      - ``jet_1-pt.min``, ``lepton_1-pt.min``. At least one particle passes if the hardest one
+        does.
+    * - ``htjmin``, ``htjmax``
+      - ``jet-pt-sum.min``, ``jet-pt-sum.max``
+    * - ``ihtmin``, ``ihtmax``
+      - ``parton-pt-sum.min``, ``parton-pt-sum.max``, with a group ``parton`` that holds all
+        quarks including the b quark and the gluon
+    * - ``ht2min``, ``ht3min``, ``ht4min`` and the ``max`` versions
+      - ``jet_1-jet_2-pt-sum``, ``jet_1-jet_2-jet_3-pt-sum``,
+        ``jet_1-jet_2-jet_3-jet_4-pt-sum``
+    * - ``ptllmin``, ``ptllmax``
+      - ``alllepton-sum-pt.min``, ``alllepton-sum-pt.max``, with a group ``alllepton`` that
+        holds the charged leptons and the neutrinos
+    * - ``mmnl``, ``mmnlmax``
+      - ``alllepton-sum-mass.min``, ``alllepton-sum-mass.max``
+    * - ``ptheavy``
+      - ``heavy_1-pt.min``, with a group ``heavy`` that holds the heavy particles of your
+        process
+    * - ``pt_min_pdg``, ``pt_max_pdg``, ``e_min_pdg``, ``e_max_pdg``, ``eta_min_pdg``,
+        ``eta_max_pdg``
+      - A group for the particle, for example ``top = [6, -6]``, and ``top-pt``,
+        ``top-e`` or ``top-eta_abs`` with ``.min`` and ``.max``
+    * - ``mxx_min_pdg``
+      - ``top-pair_mass.min`` for the group ``top = [6, -6]``. Use ``top-sfos_pair_mass``
+        instead if ``mxx_only_part_antipart`` is true.
 
 The cut ``mmll`` only applies to pairs of same-flavor and opposite-sign leptons. The
 observable ``sfos_pair_mass`` does the same.
+
+The groups in the last rows are your own entries in ``[multiparticles]``. The page about the
+:ref:`cut syntax <run-card-cuts>` explains how the selections, ``-sum-`` and ``-sum`` are
+combined.
 
 Not supported yet
 -----------------
@@ -176,17 +214,10 @@ The following MadEvent features have no MG7 equivalent. Settings for them are ig
   ``mass_ion2``, ``ievo_eva``, ``evaorder``, ``eva_xcut``.
 * Different PDFs or fixed factorization scales for the two beams, and the scale
   parameters ``mue_over_ref``, ``mue_ref_fixed`` and ``fixed_extra_scale``.
-* Cuts on a pseudorapidity minimum (``etajmin`` and similar), on energies (``ej``, ``eb``,
-  ``ea``, ``el`` and the ``max`` versions), on ordered particles (``ptj1min`` to
-  ``ptl4max``, ``cutuse``), on :math:`H_T` (``htjmin``, ``ihtmin``, ``ht2min`` and
-  similar), on summed momenta (``xptj``, ``xptb``, ``xpta``, ``xptl``), on lepton pairs
-  (``ptllmin``, ``ptllmax``, ``mmnl``, ``mmnlmax``) and on quarkonia and heavy particles
-  (``ptheavy``, ``ptonium``, ``etaonium``).
-* Photon isolation: ``ptgmin``, ``r0gamma``, ``xn``, ``epsgamma``, ``isoem``, ``xetamin``,
-  ``deltaeta``.
-* Cuts for individual particle types: ``pt_min_pdg``, ``pt_max_pdg``, ``e_min_pdg``,
-  ``e_max_pdg``, ``eta_min_pdg``, ``eta_max_pdg``, ``mxx_min_pdg`` and
-  ``mxx_only_part_antipart``.
+* Cuts that are not a bound on a single observable: ``cutuse = 1``, which accepts an event if
+  any of the ordered jet cuts passes, and the vector-boson-fusion cuts ``xetamin`` and
+  ``deltaeta``, which require the two hardest jets to lie in opposite hemispheres.
+* Photon isolation: ``ptgmin``, ``r0gamma``, ``xn``, ``epsgamma``, ``isoem``.
 * Helicity sampling: ``nhel``, ``limhel``, ``hel_recycling``, ``hel_filtering``,
   ``hel_splitamp``, ``hel_zeroamp``.
 * Event output options: ``event_norm``, ``lhe_version``, ``boost_event``, ``me_frame``,

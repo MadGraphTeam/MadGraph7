@@ -314,6 +314,8 @@ histograms. The defaults are ``jet``, ``bottom``, ``lepton``, ``missing`` and ``
 
 You can add your own groups, for example ``top = [6, -6]``.
 
+.. _run-card-cuts:
+
 [cuts]
 ------
 
@@ -359,6 +361,22 @@ hardest, and so on. The key ``order_by = "pt"`` sets the observable that defines
 
 By default a bound must hold for every selected particle. Setting ``mode = "any"`` on an
 entry relaxes this to at least one.
+
+The selections are flexible because you define the groups. Some examples:
+
+.. code-block:: toml
+
+    [multiparticles]
+    alllepton = [11, 13, 15, -11, -13, -15, 12, 14, 16, -12, -14, -16]
+    top = [6, -6]
+
+    [cuts]
+    jet-pt-sum.min = 200.0             # H_T of the jets
+    jet_1-jet_2-pt-sum.min = 150.0     # H_T of the two hardest jets
+    jet_2-pt.min = 40.0                # second hardest jet
+    alllepton-sum-pt.min = 30.0        # pT of all leptons and neutrinos together
+    top-pair_mass.min = 250.0          # mass of every pair of tops
+    jet-eta_abs.min = 1.0              # bounds work in both directions
 
 Cuts also restrict the sampling. ``pair_mass`` and ``sqrt_s`` minima bound the
 integration region, as do ``pt`` and ``delta_r`` minima through the masses they imply.

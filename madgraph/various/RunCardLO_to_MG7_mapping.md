@@ -81,20 +81,28 @@ mass, pair_mass, sfos_pair_mass, sqrt_s`. Mapping of the common LO cuts:
 | `mmll` (+ `mmllmax`) | `lepton-sfos_pair_mass.min/.max` | [=] (same-flavour opposite-sign pairs, as in LO) |
 | `dsqrt_shat`/`dsqrt_shatmax` | `sqrt_s.min/.max` | [=] |
 
-Cuts that are **not representable** in the current MG7 cut engine ([x] unless noted):
-- η **min** cuts (`etajmin`, `etabmin`, …): MG7 has only `eta_abs.max`. [!]
-- energy cuts `ej/eb/ea/el` (+ max): no `energy` observable. [x]
-- ordered/per-object cuts `ptj1min..ptj4max`, `ptl1min..ptl4max`, `cutuse`: no
-  ordered-object cuts. [x]
-- `HT` cuts `htjmin/max`, `ihtmin/max`, `ht2min..ht4max`: no `ht` observable. [x]
-- "sum" cuts `xptj/xptb/xpta/xptl`: no summed-pt observable. [x]
-- lepton-pair `ptllmin/max`, neutrino-lepton `mmnl/mmnlmax`: no such combined
-  observable. [x]
-- `ptheavy`, `ptonium`, `etaonium`: special/quarkonium cuts. [x]
-- photon isolation `ptgmin`, `r0gamma`, `xn`, `epsgamma`, `isoem`, `xetamin`,
-  `deltaeta`: no isolation in MG7. [x]
-- per-pdg cuts `pt_min_pdg`/`pt_max_pdg`/`e_*_pdg`/`eta_*_pdg`/`mxx_*_pdg`
-  (and the derived `*4pdg` arrays), `mxx_only_part_antipart`: no per-pdg cuts. [x]
+Further LO cuts map onto the same syntax, because the groups (`[multiparticles]`), ordered
+selections (`jet_1`), the `-sum-` prefix and the `-sum` suffix compose freely:
+
+| LO parameter(s) | MG7 target | class |
+|---|---|---|
+| `etajmin`, `etabmin`, `etaamin`, `etalmin` | `<grp>-eta_abs.min` | [=] |
+| `ej/eb/ea/el` (+ max) | `<grp>-e.min/.max` | [=] |
+| `ptj1min..ptj4max`, `ptl1min..ptl4max` | `jet_N-pt`, `lepton_N-pt` `.min/.max` | [=] |
+| `xptj`, `xptl` | `jet_1-pt.min`, `lepton_1-pt.min` | [=] |
+| `htjmin/max` | `jet-pt-sum.min/.max` | [=] |
+| `ihtmin/max` | `<all partons group>-pt-sum` | [~] needs a group with all quarks and the gluon |
+| `ht2min..ht4max` | `jet_1-jet_2-pt-sum`, `jet_1-jet_2-jet_3-pt-sum`, ... | [=] |
+| `ptllmin/max` | `<lepton+neutrino group>-sum-pt` | [~] needs a group |
+| `mmnl`, `mmnlmax` | `<lepton+neutrino group>-sum-mass` | [~] needs a group |
+| `ptheavy` | `<heavy group>_1-pt.min` | [~] needs a group |
+| `pt/e/eta_{min,max}_pdg` | `<group of that pdg>-pt/e/eta_abs` | [~] needs a group |
+| `mxx_min_pdg` | `<group>-pair_mass.min`, or `-sfos_pair_mass` with `mxx_only_part_antipart` | [~] |
+
+Cuts that are **not representable** in the current MG7 cut engine ([x]):
+- `cutuse = 1` (accept if any ordered jet pt cut passes; `0` is the default behavior).
+- WBF cuts `xetamin`, `deltaeta` (opposite-hemisphere condition on the two hardest jets).
+- photon isolation `ptgmin`, `r0gamma`, `xn`, `epsgamma`, `isoem`.
 
 ## 6. Matching / merging  — all [x]
 
@@ -152,7 +160,7 @@ PDF, η-min cuts, run_tag, systematics detail.
 
 **Cannot port — emit a clear "not supported in mg7" warning and skip:** beam
 polarization, heavy ion, matching/merging (`ickkw`/`xqcut`/`ktdurham`/…), bias,
-photon isolation, HT/energy/ordered/per-pdg/quarkonium cuts, helicity controls,
+photon isolation, `cutuse = 1`, the WBF cuts, helicity controls,
 scale-variation extras, LO-engine technical knobs.
 
 **Suggested implementation shape (later):**
