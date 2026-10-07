@@ -142,7 +142,14 @@ class CombineRuns(object):
             #                                           result.xerru, result.nunwgt))
             
 
-            ratio = result.nunwgt/results.nunwgt
+            # The events of each job sum to its cross-section and the channel
+            # cross-section is their plain average (compute_average), so every
+            # job gets the same weight. Weighting by its number of unweighted
+            # events instead penalised the jobs whose events contain a large
+            # weight: they have fewer unweighted events (the overweight events
+            # below keep their weight), and that suppressed exactly the rare
+            # large-weight contributions, i.e. the tails of the distributions.
+            ratio = 1./len(results)
             i = result.name
             if channel.endswith(os.path.pathsep):
                 path = channel[:-1] + i 

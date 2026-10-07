@@ -460,6 +460,14 @@ C
 
 	logical zeroamp_%(proc_id)s(NCOMB,NGRAPHS)
 	common/to_zeroamp_%(proc_id)s/zeroamp_%(proc_id)s
+	double precision ampmax_zero
+c	A cancelling amplitude is only zero to the rounding of the
+c	cancellation that produced it, so zeroamp has to be decided on a
+c	relative scale.  Exact zeros come from the diagram structure;
+c	an axial gauge reference vector instead makes whole diagrams
+c	cancel to about 1d-18 of the largest amplitude.
+	double precision zeroamp_tol
+	parameter (zeroamp_tol=1d-12)
 
        double precision tmin_for_channel
        integer sde_strat ! 1 means standard single diagram enhancement strategy,
@@ -494,8 +502,12 @@ JAMP(:,:) = (0d0,0d0)
 %(jampflow_lines)s
 
     if(init_mode)then
+      ampmax_zero = 0d0
+      DO I=1, NGRAPHS
+        ampmax_zero = max(ampmax_zero, abs(AMP(I)))
+      ENDDO
       DO I=1, NGRAPHS	
-        if (AMP(I).ne.0) then
+        if (abs(AMP(I)).gt.zeroamp_tol*ampmax_zero) then
        	  zeroamp_%(proc_id)s(ihel,i) = .false.
        endif
       ENDDO

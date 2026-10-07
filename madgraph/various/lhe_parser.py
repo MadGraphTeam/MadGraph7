@@ -619,6 +619,89 @@ class EventFile(object):
 
         raise ValueError("Failed to locate event header line in raw event block")
 
+    # entries of <rwgt> that multiply the central weight instead of replacing
+    # it (see correct_bias): they do not follow a change of normalisation
+    rwgt_multiplicative = ('bias',)
+    # on the raw bytes of the events: (<event> line + NUP IDPRUP) XWGTUP
+    _raw_event_wgt_pattern = re.compile(
+        rb'(<event(?:[ \t][^>\n]*)?>[ \t]*\r?\n[ \t]*\S+[ \t]+\S+[ \t]+)(\S+)')
+    # and the <wgt> of <rwgt>: open tag, id, ..., value, close tag
+    _raw_rwgt_wgt_pattern = re.compile(
+        rb'''(<\s*wgt id=['"])([^'"]+)(['"]\s*>\s*)([\ded+-.]+)(\s*</wgt>)''', re.I)
+
+    def _iter_raw_event_chunks(self, size=1<<22):
+        """Yield the events of the file, as raw bytes, by chunks of complete
+        events: the file between the banner and </LesHouchesEvents>, as it is.
+        Raise EOFError if the file ends inside an event (truncated file: not
+        the ValueError of a format the raw path does not understand)."""
+        opener = gzip.open if self.zip_mode else open
+        with opener(self.path, 'rb') as fsock:
+            carry = b''
+            for line in fsock:
+                low = line.lower()
+                if b'<event' in low:
+                    carry = line
+                    break
+                if b'</init>' in low:
+                    break
+            while True:
+                data = fsock.read(size)
+                buf = carry + data
+                carry = buf
+                # cut after the end of the line of the last </event>
+                end = buf.rfind(b'</event>')
+                if end != -1:
+                    newline = buf.find(b'\n', end)
+                    if newline != -1:
+                        carry = buf[newline+1:]
+                        yield buf[:newline+1]
+                    elif not data:
+                        end += len(b'</event>')
+                        carry = buf[end:]
+                        yield buf[:end] + b'\n'
+                if not data:
+                    break
+            if b'<event' in carry:
+                raise EOFError("%s ends inside an event" % self.path)
+
+    def _scan_raw_weights(self):
+        """Number of events and sum of |central weight| of the file, from its
+        raw bytes. Raise ValueError if an event header is not understood."""
+        nb_event, sum_abs = 0, 0.
+        for chunk in self._iter_raw_event_chunks():
+            wgts = [w for _, w in self._raw_event_wgt_pattern.findall(chunk)]
+            if len(wgts) != chunk.count(b'</event>'):
+                raise ValueError("unexpected event format in %s" % self.path)
+            nb_event += len(wgts)
+            sum_abs += math.fsum(abs(float(w)) for w in wgts)
+        return nb_event, sum_abs
+
+    def _write_raw_rescaled_events(self, out, factor):
+        """Write the events of the file to out (binary mode), with the central
+        weight and the weights of <rwgt> (but the multiplicative ones)
+        multiplied by factor; copied as they are for factor 1.
+        Return the number of events."""
+        multiplicative = [key.encode() for key in self.rwgt_multiplicative]
+
+        def rescale(match):
+            return match.group(1) + b'%+13.7e' % (float(match.group(2))*factor)
+        nb_event = 0
+        for chunk in self._iter_raw_event_chunks():
+            nb = chunk.count(b'</event>')
+            if factor != 1:
+                chunk, nb_sub = self._raw_event_wgt_pattern.subn(rescale, chunk)
+                if nb_sub != nb:
+                    raise ValueError("unexpected event format in %s" % self.path)
+                # [text, open, id, ..., value, close, text, open, ...]
+                parts = self._raw_rwgt_wgt_pattern.split(chunk)
+                for i in range(2, len(parts), 6):
+                    if parts[i] not in multiplicative:
+                        parts[i+2] = b'%+.7e' % (float(parts[i+2])*factor)
+                chunk = b''.join(parts)
+            out.write(chunk)
+            nb_event += nb
+        return nb_event
+
     def _iter_raw_events_direct(self):
         """Yield (raw_event, ievent, wgt, header_meta) via one-pass stream scanning.
 
@@ -856,9 +939,25 @@ class EventFile(object):
             outfile.write('</LesHouchesEvents>\n')
         return outputpath
 
+    def _weights_above(self, get_wgt, floor, use_fast_second_pass):
+        """sorted abs(wgt) of the events heavier than floor (read-only scan;
+        the random stream is left untouched)"""
+        state = random.getstate()
+        try:
+            self.seek(0)
+            if use_fast_second_pass:
+                wgts = (wgt for _r, _i, wgt, _m in self._iter_raw_events_for_unweight())
+            else:
+                wgts = (get_wgt(event) for event in self)
+            above = sorted(abs(w) for w in wgts if abs(w) > floor)
+        finally:
+            random.setstate(state)
+            self.seek(0)
+        return above
+
     def unweight(self, outputpath, get_wgt=None, max_wgt=0, trunc_error=0,
                  event_target=0, log_level=logging.INFO, normalization='average',
-                 keep_overshoot=False, nb_output=1):
+                 keep_overshoot=False, nb_output=1, keep_overweight_weight=False):
         """unweight the current file according to wgt information wgt.
         which can either be a fct of the event or a tag in the rwgt list.
         max_wgt allow to do partial unweighting. 
@@ -869,6 +968,11 @@ class EventFile(object):
         (round-robin) instead of a single one -- useful when they are going to be
         read back by that many parallel consumers, since each then reads only its
         own file. nb_output=1 (the default) keeps the historical single file.
+        keep_overweight_weight: with event_target, an event heavier than the
+        maximum weight keeps its weight (in units of the written weight) instead
+        of being truncated to one unit, and all weights are scaled so that their
+        mean stays the cross-section. Nothing is truncated, so the maximum weight
+        is chosen only to reach event_target (trunc_error is not a floor then).
         """
         self.parsing = 'wgt_only'
         nb_output = max(1, int(nb_output))
@@ -947,7 +1051,7 @@ class EventFile(object):
             if banner_module:
                 # modify the lha strategy
                 curr_strategy = banner.get_lha_strategy()
-                if normalization in ['unit', 'sum']:
+                if normalization in ['unit', 'unity', 'sum']:
                     strategy = 3
                 else:
                     strategy = 4
@@ -956,6 +1060,25 @@ class EventFile(object):
                 else:
                     banner.set_lha_strategy(-1*abs(strategy))
                 
+        # with keep_overweight_weight the LHA strategy follows the written weights:
+        # a sample with an event heavier than ow_threshold units is weighted
+        # (strategy 4); otherwise it is written with unit weights and keeps the
+        # strategy of its normalisation (3 for 'sum'/'unit')
+        ow_threshold = 1.01
+        lha_strategy = None
+        if self.banner and banner_module:
+            lha_strategy = (strategy, 1 if curr_strategy > 0 else -1)
+        ow_on = False
+        nb_below = 1
+        # ow_known: every abs(wgt) above ow_floor (the largest weights of the
+        # initial scan; complete if that scan kept them all). Each pass records
+        # the weights above half its max_wgt, so the overweight excess of the
+        # next pass is exact without an extra read unless max_wgt drops below
+        # ow_floor. There are at most 2*cross/max_wgt of them, about twice the
+        # number of unweighted events.
+        ow_known = all_wgt
+        ow_floor = all_wgt[0] if len(all_wgt) < nb_event else 0
+
         # Do the reweighting (up to 20 times if we have target_event)
         nb_try = 20
         nb_keep = 0
@@ -967,6 +1090,12 @@ class EventFile(object):
                 if i==0:
                     max_wgt = max_wgt_for_trunc(0)
                 else:
+                    if keep_overweight_weight and nb_below == 0:
+                        # every event was kept at the previous maximum weight: a
+                        # lower one cannot add events (and would only make the
+                        # weights, all overweight, numerically meaningless)
+                        logger.log(log_level+10,"fail to reach target %s", event_target)
+                        break
                     #guess the correct max_wgt based on last iteration
                     efficiency = nb_keep/nb_event
                     needed_efficiency = event_target/nb_event
@@ -974,6 +1103,8 @@ class EventFile(object):
                     needed_max_wgt = last_max_wgt * efficiency / needed_efficiency
                     
                     min_max_wgt = max_wgt_for_trunc(trunc_error)
+                    if keep_overweight_weight:
+                        min_max_wgt = 0 # no truncation happens: no floor needed
                     max_wgt = max(min_max_wgt, needed_max_wgt)
                     max_wgt = min(max_wgt, all_wgt[-1])
                     if max_wgt == last_max_wgt:
@@ -982,6 +1113,29 @@ class EventFile(object):
                             break   
                         else:
                             break
+
+            # overweight events keep their weight: w/max_wgt units, and all the
+            # weights scaled by ow_norm so that their mean stays the cross-section.
+            # Only when an event is heavier than ow_threshold units: otherwise the
+            # few events just above max_wgt are written as unit events (at most
+            # ow_threshold-1 of a unit truncated each) and the sample stays unit weight
+            ow_on = keep_overweight_weight and hasattr(self, "written_weight") \
+                and any(w > ow_threshold * max_wgt for w in all_wgt)
+            ow_excess = 0
+            if ow_on:
+                if max_wgt < ow_floor:
+                    # events heavier than max_wgt may be missing from ow_known
+                    ow_floor = 0.5 * max_wgt
+                    ow_known = self._weights_above(get_wgt, ow_floor,
+                                                   use_fast_second_pass)
+                ow_excess = sum(w - max_wgt for w in ow_known if w > max_wgt)
+                ow_norm = 1. - ow_excess / cross['abs']
+            seen_floor = 0.5 * max_wgt
+            seen = [] if (keep_overweight_weight and seen_floor < ow_floor) else None
+            ow = (lambda w: ow_norm * max(1., abs(w) / max_wgt)) if ow_on else (lambda w: 1.)
+            if keep_overweight_weight and lha_strategy:
+                # a weighted sample must not claim equal weights (strategy 3)
+                banner.set_lha_strategy(lha_strategy[1] * (4 if ow_on else abs(lha_strategy[0])))
 
             #create output file (here since we are sure that we have to rewrite it)
             if outputpath:
@@ -994,10 +1148,15 @@ class EventFile(object):
 
             # scan the file
             nb_keep = 0
+            nb_below = 0 # events lighter than max_wgt (kept or not)
             trunc_cross = 0
             if use_fast_second_pass:
                 for raw_event, _ievent, wgt, header_meta in self._iter_raw_events_for_unweight():
                     r = random.random()
+                    if 0 < abs(wgt) < max_wgt:
+                        nb_below += 1
+                    if seen is not None and abs(wgt) > seen_floor:
+                        seen.append(abs(wgt))
                     if abs(wgt) < r * max_wgt:
                         continue
                     elif wgt > 0:
@@ -1005,7 +1164,7 @@ class EventFile(object):
                         if abs(wgt) > max_wgt:
                             trunc_cross += abs(wgt) - max_wgt
                         if outputpath and (event_target == 0 or keep_overshoot or nb_keep <= event_target):
-                            final_wgt = written_weight(max(wgt, max_wgt))
+                            final_wgt = written_weight(max(wgt, max_wgt)) * ow(wgt)
                             try:
                                 outfiles[nb_keep % nb_output].write(self._rewrite_raw_event_weight(raw_event, final_wgt, header_meta))
                             except Exception:
@@ -1018,7 +1177,7 @@ class EventFile(object):
                         if abs(wgt) > max_wgt:
                             trunc_cross += abs(wgt) - max_wgt
                         if outputpath and (event_target == 0 or keep_overshoot or nb_keep <= event_target):
-                            final_wgt = -1 * written_weight(max(abs(wgt), max_wgt))
+                            final_wgt = -1 * written_weight(max(abs(wgt), max_wgt)) * ow(wgt)
                             try:
                                 outfiles[nb_keep % nb_output].write(self._rewrite_raw_event_weight(raw_event, final_wgt, header_meta))
                             except Exception:
@@ -1030,11 +1189,15 @@ class EventFile(object):
                 for event in self:
                     r = random.random()
                     wgt = get_wgt(event)
+                    if 0 < abs(wgt) < max_wgt:
+                        nb_below += 1
+                    if seen is not None and abs(wgt) > seen_floor:
+                        seen.append(abs(wgt))
                     if abs(wgt) < r * max_wgt:
                         continue
                     elif wgt > 0:
                         nb_keep += 1
-                        event.wgt = written_weight(max(wgt, max_wgt))
+                        event.wgt = written_weight(max(wgt, max_wgt)) * ow(wgt)
                         if abs(wgt) > max_wgt:
                             trunc_cross += abs(wgt) - max_wgt 
                         if event_target ==0 or keep_overshoot or nb_keep <= event_target:
@@ -1043,12 +1206,14 @@ class EventFile(object):
 
                     elif wgt < 0:
                         nb_keep += 1
-                        event.wgt =     -1* written_weight(max(abs(wgt), max_wgt))
+                        event.wgt =     -1* written_weight(max(abs(wgt), max_wgt)) * ow(wgt)
                         if abs(wgt) > max_wgt:
                             trunc_cross += abs(wgt) - max_wgt
                         if outputpath and (event_target ==0 or keep_overshoot or nb_keep <= event_target):
                             outfiles[nb_keep % nb_output].write(str(event))
-            
+            if seen is not None:
+                ow_known, ow_floor = sorted(seen), seen_floor
+
             if event_target and nb_keep > event_target:
                 if not outputpath:
                     #no outputpath define -> wants only the nb of unweighted events
@@ -1092,16 +1257,24 @@ class EventFile(object):
         logger.log(log_level, "write %i event (efficiency %.2g %%, truncation %.2g %%) after %i iteration(s)", 
           nb_keep, nb_events_unweighted/nb_event*100, trunc_cross/cross['abs']*100, i)
      
+        # every event heavier than max_wgt is kept, so trunc_cross is the
+        # overweight excess the weights were normalised with
+        if ow_on and abs(trunc_cross - ow_excess) > 1e-6 * cross['abs']:
+            logger.warning("overweight excess %s differs from the one used for "
+                           "the normalisation %s", trunc_cross, ow_excess)
+
         #correct the weight in the file if not the correct number of event
         if nb_keep != event_target and hasattr(self, "written_weight") and strategy !=4:
-            written_weight = lambda x: math.copysign(self.written_weight*event_target/nb_keep, float(x))
+            # rescale (not reset) each weight: kept overweight events keep
+            # their factor
+            factor = event_target/nb_keep
             for path in outpaths:
                 startfile = EventFile(path)
                 tmpname = pjoin(os.path.dirname(path), "wgtcorrected_"+ os.path.basename(path))
                 outfile = EventFile(tmpname, "w")
                 outfile.write(startfile.banner)
                 for event in startfile:
-                    event.wgt = written_weight(event.wgt)
+                    event.wgt = event.wgt * factor
                     outfile.write(str(event))
                 outfile.write("</LesHouchesEvents>\n")
                 startfile.close()
@@ -1760,7 +1933,7 @@ class MultiEventFile(EventFile):
                 elif opts['normalization'] == 'average':
                     strategy = 4
                     new_wgt = sum(self.across)                    
-                elif opts['normalization'] == 'unit':
+                elif opts['normalization'] in ['unit', 'unity']: # 'unity' in the LO run_card
                     strategy =3
                     new_wgt = 1.
             else:
@@ -1839,7 +2012,205 @@ class MultiEventFile(EventFile):
                 lhe.close()
         out.write("</LesHouchesEvents>\n") 
         return nb_event, info
-                            
+
+    @staticmethod
+    def merge_runs(paths, outputpath, banner_path=None, event_norm=None):
+        """Merge the event files of independent runs of the same process
+        (multi_run). The events are written in the order of paths, after the
+        header of the first file. banner_path (optional) receives that header.
+        Both are replaced only if the merge succeeds; a run without event,
+        truncated or not compatible with the first one raises an error.
+        event_norm is used for a run whose banner has no (readable) run_card;
+        without it such a run is an error.
+        Return the number of events and the cross section (<init>) of the
+        merged file.
+
+        Run i (N_i events) contributes its own cross section sigma_i with the
+        weight lambda_i = N_i/N_tot. All its events are multiplied by the same
+        factor f_i, which keeps their relative weights (overweights of the
+        unweighting, bias, MadSpin, sign) and follows the event_norm of the
+        run_card of the runs:
+          - average (mean weight = sigma_i): f_i = 1, so that the mean weight
+            of the merged file is sum_i lambda_i sigma_i;
+          - sum (sum of the weights = sigma_i): f_i = lambda_i;
+          - unity (sum of |w| = number of events, no normalisation in the
+            weights): f_i = N_i/A_i * |sigma_i|/sum_k lambda_k |sigma_k|, with
+            sigma_i the cross section of the <init> block of the run, so that
+            sum |w| = N_tot.
+        N_i and A_i = sum |w| come from a scan of the events (not from the
+        banner or XMAXUP). f_i also multiplies the absolute weights of <rwgt>
+        (systematics, reweighting) but not the multiplicative 'bias' entry.
+
+        <init>: the first line (beams, PDF, IDWTUP, NPRUP) and the processes
+        (LPRUP) of the runs must agree. XSECUP = sum_i lambda_i XSECUP_i,
+        XERRUP = sqrt(sum_i (lambda_i XERRUP_i)^2), and XMAXUP is the common
+        weight of the merged file, its mean |w| (as the unweighting writes it).
+        """
+
+        runs = []
+        for path in paths:
+            lhe = EventFile(path)
+            banner = lhe.get_banner()
+            try:
+                nb_event, sum_abs = lhe._scan_raw_weights()
+            except ValueError:
+                _, wgt_sum, nb_event = lhe._initialize_unweighting_header_only(0)
+                sum_abs = wgt_sum['abs']
+            if not nb_event:
+                lhe.close()
+                raise Exception("Cannot merge %s: no event" % path)
+            init = [l.strip() for l in banner['init'].split('\n') if l.strip()]
+            procs = collections.OrderedDict()
+            for line in init[1:]:
+                split = line.split()
+                if len(split) == 4:
+                    procs[int(split[3])] = [float(v) for v in split[:3]]
+            try:
+                run_norm = banner.get('run_card', 'event_norm').lower()
+            except Exception as error:
+                if not event_norm:
+                    lhe.close()
+                    raise Exception("Cannot merge %s: no event_norm in its banner (%s)"
+                                    % (path, error))
+                logger.warning("no event_norm in the banner of %s: assume %s", path, event_norm)
+                run_norm = event_norm.lower()
+            cross, error = banner.get_cross(witherror=True)
+            integrated = re.search(r"Integrated\s*weight\s*\(\s*pb\s*\)\s*:\s*([\+\-\d.e]+)",
+                                   banner['mggenerationinfo'] if 'mggenerationinfo' in banner else '', re.I)
+            runs.append({'path': path, 'lhe': lhe, 'banner': banner,
+                         'nb_event': nb_event, 'abs': sum_abs,
+                         'first': [float(v) for v in init[0].split()],
+                         'procs': procs,
+                         'other': [l for l in init[1:] if len(l.split()) != 4],
+                         'event_norm': 'unity' if run_norm == 'unit' else run_norm,
+                         'cross': cross, 'error': error,
+                         'integrated': float(integrated.group(1)) if integrated else cross})
+        if not runs:
+            raise Exception("No event to merge in %s" % ', '.join(paths))
+
+        # the runs have to be the same generation
+        ref = runs[0]
+        for run in runs[1:]:
+            if run['first'] != ref['first'] or set(run['procs']) != set(ref['procs']) \
+                                            or run['other'] != ref['other']:
+                raise Exception("Cannot merge %s with %s: the <init> blocks do not match"
+                                % (run['path'], ref['path']))
+            if run['event_norm'] != ref['event_norm']:
+                raise Exception("Cannot merge %s with %s: different event_norm (%s/%s)"
+                                % (run['path'], ref['path'], run['event_norm'], ref['event_norm']))
+            # as merge.pl: 5% agreement, unless within the statistical error
+            diff = abs(run['cross'] - ref['cross'])
+            if diff > 0.05 * max(abs(run['cross']), abs(ref['cross'])) and \
+                         diff > 5 * math.sqrt(run['error']**2 + ref['error']**2):
+                raise Exception("Cannot merge %s with %s: the cross sections do not agree (%g/%g pb)"
+                                % (run['path'], ref['path'], run['cross'], ref['cross']))
+
+        nb_tot = sum(run['nb_event'] for run in runs)
+        for run in runs:
+            run['lambda'] = run['nb_event'] / nb_tot
+        event_norm = ref['event_norm']
+        if event_norm == 'sum':
+            factors = [run['lambda'] for run in runs]
+        elif event_norm == 'unity':
+            sigma = [abs(run['cross']) for run in runs]
+            if not all(sigma):
+                sigma = [1] * len(runs)
+            mean_sigma = sum(run['lambda'] * s for run, s in zip(runs, sigma))
+            factors = [run['nb_event'] / run['abs'] * s / mean_sigma if run['abs'] else 1
+                       for run, s in zip(runs, sigma)]
+        else:
+            factors = [1] * len(runs)
+        common_wgt = sum(f * run['abs'] for f, run in zip(factors, runs)) / nb_tot
+
+        # combine <init> and <MGGenerationInfo> (in the Banner of the first run)
+        banner = ref['banner']
+        xsecup = dict((pid, sum(run['lambda'] * run['procs'][pid][0] for run in runs))
+                      for pid in ref['procs'])
+        xerrup = dict((pid, math.sqrt(sum((run['lambda'] * run['procs'][pid][1])**2 for run in runs)))
+                      for pid in ref['procs'])
+        banner.modify_init_cross(xsecup, error=xerrup, xmaxup=common_wgt)
+        # (MadSpin keeps there the cross section before the decays)
+        banner.add_generation_info(sum(run['lambda'] * run['integrated'] for run in runs), nb_tot)
+        cross = sum(xsecup.values())
+        # and put them in the header of the first run, which is otherwise
+        # kept as it is (Banner.write would drop the tags it does not know)
+        header = re.sub(r'(<init>[^\n]*\n).*?(</init>)',
+                        lambda m: m.group(1) + banner['init'].strip('\n') + '\n' + m.group(2),
+                        ref['lhe'].banner, count=1, flags=re.S)
+        gen_info = '<MGGenerationInfo>\n%s\n</MGGenerationInfo>' % banner['MGGenerationInfo'].strip('\n')
+        gen_info_pattern = re.compile(r'<MGGenerationInfo>.*?</MGGenerationInfo>', re.S | re.I)
+        if gen_info_pattern.search(header):
+            header = gen_info_pattern.sub(lambda m: gen_info, header, count=1)
+        else:
+            header = header.replace('</header>', '%s\n</header>' % gen_info, 1)
+
+        for run, factor in zip(runs, factors):
+            logger.debug("merge %s: %i events, cross section %g pb, weights x %g",
+                         run['path'], run['nb_event'], run['cross'], factor)
+
+        # written next to outputpath/banner_path, replaced only once complete
+        tmppath = pjoin(os.path.dirname(outputpath), '.merge_tmp_' + os.path.basename(outputpath))
+        banner_tmppath = banner_path + '.merge_tmp' if banner_path else None
+
+        def write_events(use_raw):
+            # level 6 (as gzip/perl): the python default (9) is ~4 times slower
+            # for a 4% smaller file
+            if outputpath.endswith('.gz'):
+                out = gzip.open(tmppath, 'wb', compresslevel=6)
+            else:
+                out = open(tmppath, 'wb')
+            nb_event = 0
+            try:
+                out.write(header.encode())
+                for run, factor in zip(runs, factors):
+                    lhe = run['lhe']
+                    if use_raw:
+                        nb_event += lhe._write_raw_rescaled_events(out, factor)
+                    else:
+                        lhe.seek(0)
+                        lhe.parsing = 'wgt_only'
+                        for event in lhe:
+                            nb_event += 1
+                            event.wgt *= factor
+                            rwgt = event.parse_reweight()
+                            for key in rwgt:
+                                if key not in EventFile.rwgt_multiplicative:
+                                    rwgt[key] *= factor
+                            out.write(str(event).encode())
+                out.write(b"</LesHouchesEvents>\n")
+            finally:
+                out.close()
+            return nb_event
+
+        try:
+            try:
+                nb_event = write_events(use_raw=True)
+            except ValueError:
+                # unexpected format: restart with the generic (slower) parser
+                nb_event = write_events(use_raw=False)
+            if nb_event != nb_tot:
+                raise Exception("merged %i events instead of the %i found in %s"
+                                % (nb_event, nb_tot, ', '.join(run['path'] for run in runs)))
+            if banner_path:
+                with open(banner_tmppath, 'w') as fsock:
+                    fsock.write(header)
+                    fsock.write("</LesHouchesEvents>\n")
+        except BaseException:
+            for path in [tmppath, banner_tmppath]:
+                if path and os.path.exists(path):
+                    os.remove(path)
+            raise
+        finally:
+            for run in runs:
+                run['lhe'].close()
+        os.replace(tmppath, outputpath)
+        if banner_path:
+            os.replace(banner_tmppath, banner_path)
+
+        logger.info("merged %i runs: %i events, cross section %g pb (event_norm=%s)",
+                    len(runs), nb_tot, cross, event_norm)
+        return nb_tot, cross
+
     def remove(self):
         """ """
         if self.parsefile:

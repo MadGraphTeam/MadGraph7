@@ -501,6 +501,9 @@ class ProcessExporterFortran(VirtualExporter,
         if opt:
             self.opt.update(opt)
         self.cmd_options = self.opt['output_options']
+        if isinstance(self.cmd_options, dict) and 'axial_gauge' in self.cmd_options:
+            self.opt['axial_gauge'] = banner_mod.ConfigFile.format_variable(
+                  self.cmd_options['axial_gauge'], bool, 'axial_gauge')
         self._configure_flavor_mask_from_cmd_options()
         self._check_crossing_support()
         
@@ -2543,8 +2546,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # Both sources of flavor multiplicity (several processes mapped onto one
         # matrix element, and merged legs within a process) are enumerated by
         # HelasMatrixElement.get_flavor_pdg_combinations, shared with the mg7
-        # exporter so the two backends cannot drift apart.
-        processes = matrix_element.get('processes')
+        # exporter so the two backends cannot drift apart (per process of
+        # get_flavor_row_processes).
+        processes = matrix_element.get_flavor_row_processes()
         for iproc, (pdg_lists, has_merged_particles) in enumerate(
                 matrix_element.get_flavor_pdg_combinations(self.model)):
             proc = processes[iproc]
@@ -6067,7 +6071,9 @@ C     crossing carried by FLAV_IDX moves across.
     def get_pdf_lines(self, matrix_element, ninitial, subproc_group = False, vector=False):
         """Generate the PDF lines for the auto_dsig.f file"""
 
-        processes = matrix_element.get('processes')
+        # processes combined in with another flavor restriction only add
+        # flavor rows, covered by the ones written for processes[0]
+        processes = matrix_element.get_flavor_row_processes()
         model = processes[0].get('model')
 
         pdf_definition_lines = ""
@@ -6306,18 +6312,11 @@ C     crossing carried by FLAV_IDX moves across.
                             for ibeam in [1, 2]:
                                 initial_state = proc.get_initial_pdg(ibeam)
                                 if abs(initial_state) in model.get('merged_particles'):
-                                    flv = proc.get_initial_flavor(ibeam)
-                                    if len(flv) == 0:
-                                        sign = 1 if initial_state > 0 else -1
-                                        initial_state = sign * one_flv[ibeam-1]
-                                    elif len(flv) ==1:
-                                        initial_state = flv[0]
-                                    else:
-                                        # Grouped process: multiple specific quarks are
-                                        # possible; use the one specified by this flavor
-                                        # combination.
-                                        sign = 1 if initial_state > 0 else -1
-                                        initial_state = sign * one_flv[ibeam-1]
+                                    # the flavor row fixes the beam flavor
+                                    # (it honours the leg restriction; a
+                                    # union row may not be processes[0]'s)
+                                    sign = 1 if initial_state > 0 else -1
+                                    initial_state = sign * one_flv[ibeam-1]
                                 
                                 if initial_state in list(pdf_codes.keys()):
                                     pdf_lines = pdf_lines + "%s%d*" % \
@@ -6349,7 +6348,8 @@ C     crossing carried by FLAV_IDX moves across.
                 pdf_lines += "ENDDO ! CURRWARP LOOP\n"
                 pdf_lines = pdf_lines + "ALL_PD(0,:) = 0d0\nIPROC = 0\n"
                 for proc in processes:
-                    for nb_flavor in range(matrix_element.get_nb_flavors()):
+                    # one entry per flavor row of this process
+                    for nb_flavor in range(len(matrix_element.get_external_flavors())):
                         comp_list = []
                         process_line = proc.base_string()
                         pdf_lines = pdf_lines + "IPROC=IPROC+1 ! " + process_line
@@ -6358,18 +6358,11 @@ C     crossing carried by FLAV_IDX moves across.
                         for ibeam in [1, 2]:
                             initial_state = proc.get_initial_pdg(ibeam)
                             if abs(initial_state) in model.get('merged_particles'):
-                                flv = proc.get_initial_flavor(ibeam)
-                                if len(flv) == 0:
-                                    sign = 1 if initial_state > 0 else -1
-                                    initial_state = sign * matrix_element.get_external_flavors()[nb_flavor][ibeam-1]
-                                elif len(flv) ==1:
-                                    initial_state = flv[0]
-                                else:
-                                    # Grouped process: multiple specific quarks are
-                                    # possible; use the one specified by this flavor
-                                    # combination.
-                                    sign = 1 if initial_state > 0 else -1
-                                    initial_state = sign * matrix_element.get_external_flavors()[nb_flavor][ibeam-1]
+                                # the flavor row fixes the beam flavor (it
+                                # honours the leg restriction; a union row
+                                # may not be processes[0]'s)
+                                sign = 1 if initial_state > 0 else -1
+                                initial_state = sign * matrix_element.get_external_flavors()[nb_flavor][ibeam-1]
 
                             if initial_state in list(pdf_codes.keys()):
                                 pdf_lines = pdf_lines + "%s%d(IVEC)*" % \
@@ -8419,6 +8412,11 @@ C       so this also stays correct for split-order processes.
                                                   'standalone_msF',
                                                   'matchbox',
                                                   'madloop_matchbox'))
+        fortran_model.axial_gauge = helas_call_writers.axial_gauge_requested(
+                                                                   self.opt)
+        fortran_model.axial_gauge_refs = \
+            helas_call_writers.get_axial_gauge_refs(matrix_element) \
+            if fortran_model.axial_gauge else {}
         try:
             # Extract helas calls
             helas_calls = fortran_model.get_matrix_element_calls(\
@@ -8426,6 +8424,7 @@ C       so this also stays correct for split-order processes.
         finally:
             fortran_model.use_flavor_mask = False
             fortran_model.me_n_flavors = 0
+            fortran_model.axial_gauge_refs = {}
             fortran_model.me_active_flavor_mask = None
             fortran_model.use_crossing_ic = False
 
@@ -10614,7 +10613,8 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                         'export_format':'madevent', 'mp': False,
                         'v5_model': True,
                         'output_options':{},
-                        'hel_recycling': False
+                        'hel_recycling': False,
+                        'axial_gauge': False
                         }
     jamp_optim = True
     default_vector_size = 1
@@ -10635,6 +10635,24 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                                        'hel_recycling' in opt['output_options']:
             self.opt['hel_recycling'] = banner_mod.ConfigFile.format_variable(
                   opt['output_options']['hel_recycling'], bool, 'hel_recycling')
+
+        if opt and isinstance(opt['output_options'], dict) and \
+                                       'axial_gauge' in opt['output_options']:
+            self.opt['axial_gauge'] = banner_mod.ConfigFile.format_variable(
+                  opt['output_options']['axial_gauge'], bool, 'axial_gauge')
+            if self.opt['axial_gauge']:
+                # AMP2 -- the single diagram enhancement weight of
+                # sde_strategy 1 -- is gauge dependent: the axial gauge moves
+                # amplitude between diagrams, so |AMP_i|^2 stops following the
+                # propagator structure of diagram i and the multichannel
+                # weights stop matching the peaks of the integrand.  Measured
+                # on g g > g g g g: 2m37s with sde_strategy 1 against 1m33s
+                # with sde_strategy 2, for the same cross section.
+                logger.warning("axial_gauge makes the per diagram AMP2 gauge "
+                    "dependent, which badly degrades the default single "
+                    "diagram enhancement. Set 'sde_strategy = 2' in the run "
+                    "card, otherwise the integration can be several times "
+                    "slower than without the optimisation.")
 
         if opt and isinstance(opt['output_options'], dict) and \
                                        't_strategy' in opt['output_options']:
@@ -11016,7 +11034,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         # Compute actual MAXPROC: for merged processes each flavor combination
         # generates a separate IDUP row, so MAXPROC must cover all of them.
         nb_idup_rows = 0
-        for proc in matrix_element.get('processes'):
+        for proc in matrix_element.get_flavor_row_processes():
             legs = proc.get_legs_with_decays()
             ids = [l.get('id') for l in legs]
             if self.model and 'merged_particles' in self.model and \
@@ -11393,6 +11411,11 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         # by IC(i) so a leg crossed between the initial and final state flips
         # (the crossed P/NHEL/IC are built by APPLY_CROSSING in SMATRIX).
         fortran_model.use_crossing_ic = me_use_crossing
+        fortran_model.axial_gauge = helas_call_writers.axial_gauge_requested(
+                                                                   self.opt)
+        fortran_model.axial_gauge_refs = \
+            helas_call_writers.get_axial_gauge_refs(matrix_element) \
+            if fortran_model.axial_gauge else {}
         try:
             helas_calls = fortran_model.get_matrix_element_calls(matrix_element)
         finally:
@@ -11400,6 +11423,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
             fortran_model.me_n_flavors = 0
             fortran_model.me_active_flavor_mask = None
             fortran_model.use_crossing_ic = False
+            fortran_model.axial_gauge_refs = {}
         if fortran_model.width_tchannel_set_tozero and not ProcessExporterFortranME.done_warning_tchannel:
             logger.info("Some T-channel width have been set to zero [new since 2.8.0]\n if you want to keep this width please set \"zerowidth_tchannel\" to False", '$MG:BOLD')
             ProcessExporterFortranME.done_warning_tchannel = True
@@ -13758,7 +13782,8 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                         'export_format':'madevent', 'mp': False,
                         'v5_model': True,
                         'output_options':{},
-                        'hel_recycling': True
+                        'hel_recycling': True,
+                        'axial_gauge': False
                         }
 
 
@@ -14650,7 +14675,11 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         printzeroamp = []
         for iproc in range(len(matrix_elements)):
             printzeroamp.append(\
-                "        call print_zero_amp%i()" % ( iproc + 1))
+                # PRINT_ZERO_AMP_<n> is the reporter defined by the matrix
+                # template; PRINT_ZERO_AMP<n> (no underscore) is the empty stub
+                # auto_dsig_v4.inc emits.  Calling the stub silently disabled
+                # the whole hel_zeroamp optimisation.
+                "        call print_zero_amp_%i()" % ( iproc + 1))
         replace_dict['print_zero_amp'] = "\n".join(printzeroamp)
         
         

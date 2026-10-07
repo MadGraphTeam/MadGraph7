@@ -3540,8 +3540,11 @@ set boost_choice [6, -6]
         msg = 'measured rho_avg = %r' % (rho_avg,)
         for i in range(len(rho_avg)):
             for j in range(len(rho_avg[0])):
-                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, places=3, msg=msg) #we ask 3 digits because we only use 50k events
-                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3, msg=msg)
+                # statistical error of a 50k-event average: at most 5e-4 per
+                # element (measured), so 3 digits (+-5e-4) is ~1 sigma and fails for
+                # most changes of the event generation; 2e-3 is 4 sigma
+                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, delta=2e-3, msg=msg)
+                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, delta=2e-3, msg=msg)
 
 
     @staticmethod

@@ -349,8 +349,10 @@ class Banner(dict):
         self['init'] = '\n'.join(all_lines)
 
 
-    def modify_init_cross(self, cross, allow_zero=False):
-        """modify the init information with the associate cross-section"""
+    def modify_init_cross(self, cross, allow_zero=False, error=None, xmaxup=None):
+        """modify the init information with the associate cross-section.
+        XERRUP and XMAXUP are rescaled with XSECUP, unless error (dict with
+        the keys of cross) or xmaxup (one value for every process) is given"""
         assert isinstance(cross, dict)
 #        assert "all" in cross
         assert "init" in self
@@ -382,8 +384,10 @@ class Banner(dict):
                 ratio = cross[pid]/float(xsec)
             else:
                 ratio = 0
+            xerr = error[pid] if error is not None else ratio*float(xerr)
+            xmax = xmaxup if xmaxup is not None else ratio*float(xmax)
             line = "   %+13.7e %+13.7e %+13.7e %i" % \
-                (float(cross[pid]), ratio* float(xerr), ratio*float(xmax), pid)
+                (float(cross[pid]), xerr, xmax, pid)
             new_data.append(line)
         self['init'] = '\n'.join(new_data)
                 
@@ -4696,6 +4700,7 @@ class RunCardLO(RunCard):
         self.add_param('survey_nchannel_per_job', 2, hidden=True, include=False, comment="control how many Channel are integrated inside a single job on cluster/multicore")
         self.add_param('refine_evt_by_job', -1, hidden=True, include=False, comment="control the maximal number of events for the first iteration of the refine (larger means less jobs)")
         self.add_param('disable_multichannel', False, hidden=True, include=False, comment='disable madevent suppressed-amplitude multichannel mode and ignore symfact multiplicative factors in gen_ximprove channel steering')
+        self.add_param('max_overweight_truncation', -1.0, hidden=True, comment="refine: fraction of the cross-section carried by the events heavier than the maximum weight (they keep their weight), as [generation] max_overweight_truncation in mg7. Negative (default): the maximum weight is the 99% quantile of the event weights of the iteration that decides the last one.")
         self.add_param('small_width_treatment', 1e-6, hidden=True, comment="generation where the width is below VALUE times mass will be replace by VALUE times mass for the computation. The cross-section will be corrected assuming NWA. Not used for loop-induced process")
         #hel recycling
         self.add_param('hel_recycling', True, hidden=True, include=False, comment='allowed to deactivate helicity optimization at run-time --code needed to be generated with such optimization--')
@@ -6824,6 +6829,10 @@ class RunCardMG7(RunCard):
                     "(-1 keeps all channels)")
         self.add_toml_param('phasespace', 'invariant_power', 0.7)
         self.add_toml_param('phasespace', 'bw_cutoff', 15)
+        self.add_toml_param('phasespace', 'cut_decays', False,
+            comment="apply the [cuts] to the decay products of on-shell "
+                    "(decay-chain) propagators too; false leaves them uncut, "
+                    "as MadEvent's cut_decays")
         self.add_toml_param('phasespace', 'adaptive_symmetry_sampling', True)
 
         # ----------------------------- [madnis] -----------------------
@@ -7792,6 +7801,7 @@ class RunCardMG7(RunCard):
         'dsqrt_q2fact1': 'beam.fact_scale1',
         'dsqrt_q2fact2': 'beam.fact_scale2',
         'bwcutoff': 'phasespace.bw_cutoff',
+        'cut_decays': 'phasespace.cut_decays',
         'use_syst': 'systematics.enable',
     }
     # LO dynamical_scale_choice (int) -> MG7 string
@@ -7816,11 +7826,13 @@ class RunCardMG7(RunCard):
         'drbl': ('bottom-lepton-delta_r', 'min'), 'drblmax': ('bottom-lepton-delta_r', 'max'),
         'drjl': ('jet-lepton-delta_r', 'min'), 'drjlmax': ('jet-lepton-delta_r', 'max'),
         'dral': ('photon-lepton-delta_r', 'min'), 'dralmax': ('photon-lepton-delta_r', 'max'),
-        # pair masses: "<grp>-mass" would be the mass of each single object
+        # pair masses: "<grp>-mass" would be the mass of each single object.
+        # LO mmll only cuts same-flavour opposite-sign lepton pairs (setcuts.f)
         'mmjj': ('jet-pair_mass', 'min'), 'mmjjmax': ('jet-pair_mass', 'max'),
         'mmbb': ('bottom-pair_mass', 'min'), 'mmbbmax': ('bottom-pair_mass', 'max'),
         'mmaa': ('photon-pair_mass', 'min'), 'mmaamax': ('photon-pair_mass', 'max'),
-        'mmll': ('lepton-pair_mass', 'min'), 'mmllmax': ('lepton-pair_mass', 'max'),
+        'mmll': ('lepton-sfos_pair_mass', 'min'),
+        'mmllmax': ('lepton-sfos_pair_mass', 'max'),
         'dsqrt_shat': ('sqrt_s', 'min'), 'dsqrt_shatmax': ('sqrt_s', 'max'),
     }
     # built-in LO pdlabel -> LHAPDF set name
@@ -7861,7 +7873,7 @@ class RunCardMG7(RunCard):
         'ht2max', 'ht3max', 'ht4max', 'xptj', 'xptb', 'xpta', 'xptl',
         'ptllmin', 'ptllmax', 'mmnl', 'mmnlmax', 'ptheavy', 'ptonium',
         'etaonium', 'ptgmin', 'r0gamma', 'xn', 'epsgamma', 'isoem',
-        'xetamin', 'deltaeta', 'cut_decays',
+        'xetamin', 'deltaeta',
         'pt_min_pdg', 'pt_max_pdg', 'e_min_pdg', 'e_max_pdg', 'eta_min_pdg',
         'eta_max_pdg', 'mxx_min_pdg', 'mxx_only_part_antipart',
         # systematics detail / eva / frame

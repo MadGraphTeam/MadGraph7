@@ -2178,7 +2178,10 @@ class TestMECmdShell(unittest.TestCase):
         
         #target = 0.003795
         target =0.003837 # value from v3.7.2 for 250k events
-        self.assertTrue(abs(val1 - target) / err1 < 2., 'large difference between %s and %s +- %s (%s sigma)'%
+        # a single sample against a fixed reference: a 2 sigma window fails ~5%
+        # of the random sequences, so any change of the event generation (not of
+        # the cross-section) can trip it; 3 sigma keeps the check meaningful
+        self.assertTrue(abs(val1 - target) / err1 < 3., 'large difference between %s and %s +- %s (%s sigma)'%
                         (target, val1, err1, abs(val1 - target) / err1))
 
 
@@ -2490,13 +2493,14 @@ C
         #target = 166.36114 # value used as reference before changing sde_strategy
         # previously PDF was nn23lo1 (lhaid 230000) with this reference value
         # 165.84 (a 100k run, +- 0.05)
-        # NNPDF40_lo_as_01180: 124.4459 +- 0.1349 from a single 10k CI run --
-        # the dev machine cannot run this (its lhapdf python module is broken),
-        # so unlike the old number this one is NOT a 100k measurement and the
-        # 1-sigma tolerance below is correspondingly tight.
-        target = 124.45
-        self.assertTrue(abs(val1 - target) / err1 < 1., 'large difference between %s and %s +- %s'%
-                        (target, val1, err1))
+        # NNPDF40_lo_as_01180: 124.39 +- 0.033 from two 100k runs (124.389 and
+        # 124.395 +- 0.046, with and without the last-iteration normalisation of
+        # the reported cross-section); the former target 124.45 was a single 10k
+        # run. A 10k run is compared within 3 sigma (its error combined with
+        # the target's): 1 sigma fails a third of unbiased runs.
+        target, target_err = 124.39, 0.033
+        self.assertTrue(abs(val1 - target) / math.sqrt(err1**2 + target_err**2) < 3.,
+                        'large difference between %s and %s +- %s'% (target, val1, err1))
 
         
         # edit run_card -> fix scale
@@ -2509,10 +2513,11 @@ C
         err1 = self.cmd_line.results.current['error']
         # previously PDF was nn23lo1 (lhaid 230000) with this reference value
         # 165.71 (a 100k run, +- 0.06)
-        # NNPDF40_lo_as_01180: 124.3625 +- 0.1355 from a single 10k CI run
-        target = 124.36
-        self.assertTrue(abs(val1 - target) / err1 < 1., 'large difference between %s and %s +- %s'%
-                        (target, val1, err1))
+        # NNPDF40_lo_as_01180: 124.37 +- 0.033 from two 100k runs (124.377 and
+        # 124.367 +- 0.047); the former target 124.36 was a single 10k run
+        target, target_err = 124.37, 0.033
+        self.assertTrue(abs(val1 - target) / math.sqrt(err1**2 + target_err**2) < 3.,
+                        'large difference between %s and %s +- %s'% (target, val1, err1))
 
 
 
@@ -3258,8 +3263,12 @@ class TestMEfromfile(unittest.TestCase):
                         count[1] += 1
                     break 
 
-        self.assertTrue(0.49<count[0]/10000.<0.51)       
-        self.assertTrue(0.49<count[1]/10000.<0.51)
+        # forward/backward balance of the muon: with 10000 events one fraction
+        # has a statistical error of 0.005, so the window is 4 sigma (0.49-0.51
+        # was 2 sigma and failed on the random stream alone; 100k events of the
+        # same run card give 0.5002 +- 0.0016)
+        self.assertTrue(0.48<count[0]/10000.<0.52)
+        self.assertTrue(0.48<count[1]/10000.<0.52)
 
 
         self.assertEqual(cwd, os.getcwd())
@@ -3419,8 +3428,13 @@ class TestMEfromfile(unittest.TestCase):
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
 
-        # Width : 1.3303e-05 ± 2.1e-08 (GeV) for 40k events
-        self.check_parton_output(cross= 1.3303e-05, error=tolerance*2.1e-08,target_event=40000)
+        # Width : 1.3760e-05 (GeV) for 40k events: mean of 8 seeds. The former
+        # 1.3303e-05 +- 2.1e-08 was the (x/sigma)^2 average of the refine
+        # iterations, biased low by ~3.5% (the reported cross-section is now the
+        # last iteration's mean). The error is the one a run reports (~7.5e-08):
+        # the 8 seeds lie within 2.5 sigma, the old estimator 4.4-5.8 sigma away.
+        # (The seed-to-seed spread, 1.6e-07, would let the old value pass.)
+        self.check_parton_output(cross= 1.3760e-05, error=tolerance*7.5e-08,target_event=40000)
 
         #
         #  START REAL CODE (3/3)
@@ -3450,8 +3464,10 @@ class TestMEfromfile(unittest.TestCase):
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
 
-        # Width : 3.9311e-12 ± 6.86e-15  (GeV) for 40k events
-        self.check_parton_output(cross=3.9311e-12, error=tolerance*6.86e-15,target_event=40000)
+        # Width : 3.9369e-12 (GeV) for 40k events, mean of 6 seeds (spread
+        # 1.7e-15); the former 3.9311e-12 was the (x/sigma)^2 average of the
+        # refine iterations (0.15% low). The error is kept as before.
+        self.check_parton_output(cross=3.9369e-12, error=tolerance*6.86e-15,target_event=40000)
 
     def test_generation_from_file_1(self):
         """ """

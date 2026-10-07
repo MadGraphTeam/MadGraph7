@@ -535,6 +535,9 @@ void ChannelEventGenerator::start_job(
                     (target_count - total_count) / cut_eff
                 );
             }
+            if (result_queue.cancelled()) {
+                throw std::runtime_error("job cancelled");
+            }
             if (job.rng_seed) {
                 runtimes.integrand_common->set_seed(generate_phase_seed(
                     job.rng_seed,
@@ -547,6 +550,9 @@ void ChannelEventGenerator::start_job(
             }
             job.events = runtimes.integrand_common->run(all_ps_points);
 
+            if (result_queue.cancelled()) {
+                throw std::runtime_error("job cancelled");
+            }
             job.weights = job.events.at(_field_indices.weight).cpu();
             // observable_histograms/vegas_histogram/discrete_histogram don't consume
             // random numbers, so they're never seeded.
