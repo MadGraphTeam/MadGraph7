@@ -6955,6 +6955,9 @@ class RunCardMG7(RunCard):
         # value, which keeps the tools on the plain (unmatched) code path.
         'ktdurham', 'ptlund', 'xqcut', 'maxjetflavor', 'sys_matchscale',
         'dparameter', 'lhaid', 'iseed', 'python_seed',
+        # read by MadSpin (check_launch, do_import) and by Banner.write for
+        # the <LesHouchesEvents version=...> of the files it rewrites
+        'lhe_version', 'bwcutoff',
     }
 
     # mg7 dynamical_scale_choice name -> legacy integer code. This is the
@@ -7026,6 +7029,10 @@ class RunCardMG7(RunCard):
                 return 0
         if key == 'python_seed':
             return -2            # -2: reuse iseed for the python RNG
+        if key == 'lhe_version':
+            return 3.0           # madspace's lhe_output always writes LHEF 3.0
+        if key == 'bwcutoff':
+            return float(self['phasespace']['bw_cutoff'])
         raise KeyError(key)
 
     def get_lhapdf_id(self):
