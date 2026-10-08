@@ -134,7 +134,6 @@ class Event:
     """ class to read an event, record the information, write down the event in the lhe format.
             This class is used both for production and decayed events"""
 
-    _pdg_to_merged = None  # cache for get_tag() to remap actual PDG codes to merged-particle IDs
     def __init__(self, inputfile=None, banner=None, model=None):
         """Store the name of the event file """
         self.inputfile=inputfile
@@ -143,9 +142,22 @@ class Event:
         # Optional model reference used by get_tag() to remap actual PDG codes
         # to merged-particle IDs so that all_ME key lookups succeed.
         self.model = model
-        # Lazy-built reverse map: actual_pdg -> merged_particle_pdg
-        if model:
-            self._get_pdg_to_merged(model)
+
+    @property
+    def model(self):
+        return self._model
+
+    @model.setter
+    def model(self, model):
+        # The reverse map of _get_pdg_to_merged is built from this model, so it
+        # belongs to this event object and is dropped whenever the model
+        # changes. It used to be a single cache on the class: an Event without
+        # a model then silently borrowed the map of whichever Event had built
+        # one first, from whatever model -- which is how run_from_pickle could
+        # forget the model and still work when the ms_dir was reused in the
+        # process that had built it.
+        self._model = model
+        self._pdg_to_merged = None
 
     def give_momenta(self, map_event=None):
         """ return the set of external momenta of the event, 
@@ -203,29 +215,26 @@ class Event:
         line.append('')
         return "\n".join(line)
     
-    @classmethod
-    def _get_pdg_to_merged(cls, model):
+    def _get_pdg_to_merged(self):
         """Build (and cache) a reverse map from real PDG code to merged-particle PDG.
 
         For example, if merged_particles = {81: [1, 2, 3, 4], 82: [11, 13]},
         the map contains {1: 81, 2: 81, 3: 81, 4: 81, -1: -81, -2: -81, ...}.
         Particle 21 (gluon, self-antipart) would map both 21 -> 81 and -21 -> -81
         only if 21 is a member of the group.
-        """
-        if cls._pdg_to_merged:
-            return cls._pdg_to_merged
-        cls._pdg_to_merged = {}
-        if model is None:
-            return cls._pdg_to_merged
-        merged = model.get('merged_particles')
-        if not merged:
-            return cls._pdg_to_merged
 
-        for merged_pdg, members in merged.items():
-            for pid in members:
-                cls._pdg_to_merged[pid] = merged_pdg
-                cls._pdg_to_merged[-pid] = -merged_pdg
-        return cls._pdg_to_merged
+        The map is empty without a model: the tags are then the physical PDG
+        codes, which only match an AllMatrixElement built without flavour
+        grouping.
+        """
+        if self._pdg_to_merged is None:
+            self._pdg_to_merged = {}
+            merged = self.model.get('merged_particles') if self.model else None
+            for merged_pdg, members in (merged or {}).items():
+                for pid in members:
+                    self._pdg_to_merged[pid] = merged_pdg
+                    self._pdg_to_merged[-pid] = -merged_pdg
+        return self._pdg_to_merged
 
     def get_tag(self):
         """Return the production tag and particle ordering for this event.
@@ -236,7 +245,7 @@ class Event:
         matches the keys stored in AllMatrixElement (which are built from the
         process legs and therefore use merged-particle IDs).
         """
-        pdg_to_merged = self._get_pdg_to_merged(self.model)
+        pdg_to_merged = self._get_pdg_to_merged()
         initial = []
         final = []
         order = [[],[]]
@@ -282,8 +291,7 @@ class Event:
         Returns the 1-based flavor_index, or 1 if no match is found (safe
         fallback for processes without merged particles).
         """
-        if not self._pdg_to_merged:
-            self._get_pdg_to_merged(self.model)
+        pdg_to_merged = self._get_pdg_to_merged()
         if not flavor_groups:
             return 1
 
@@ -307,10 +315,10 @@ class Event:
                 return 1
             pid = self.particle[evt_pos + 1]['pid']   # particle dict is 1-indexed
 
-            if pid not in self._pdg_to_merged:
+            if pid not in pdg_to_merged:
                 flav = 1
             else:
-                flav = self.model.get('merged_particles')[abs(self._pdg_to_merged[pid])].index(abs(pid)) + 1
+                flav = self.model.get('merged_particles')[abs(pdg_to_merged[pid])].index(abs(pid)) + 1
             event_flav.append(flav)
 
         # note that that flavor group can have more than one tuple (not sure when this happens)
@@ -2571,10 +2579,10 @@ class decay_all_events(object):
         
         self.model = model
         self.all_ME.model = model
-        # Keep curr_event.model in sync so get_tag() uses the right merged_particles.
+        # Keep curr_event.model in sync so get_tag() uses the right merged_particles
+        # (setting it drops the event's cached reverse map).
         if self.curr_event is not None:
             self.curr_event.model = model
-            type(self.curr_event)._pdg_to_merged = None  # invalidate cached reverse map
         for proc in self.all_ME:
             if  'decays' in self.all_ME[proc]:
                 for me in self.all_ME[proc]['decays']:

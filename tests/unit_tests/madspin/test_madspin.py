@@ -1252,6 +1252,137 @@ class TestEventGetFlavorIndex(unittest.TestCase):
 
 
 
+class TestRunFromPickleModel(unittest.TestCase):
+    """Reusing an ms_dir (``madspin.pkl``) in madspin_v1 mode.
+
+    ``save_status_to_pickle`` detaches the model before pickling, and
+    ``run_from_pickle`` never put it back: the restored event had no model, so
+    ``Event.get_tag`` returned the physical ``((-2, 2), (-6, 6))`` while
+    ``all_ME`` is keyed by the flavour-grouped ``((-81, 81), (-6, 6))``. Every
+    reuse died with a KeyError in ``load_event`` on the first quark-initiated
+    event -- mg7 and madevent samples alike, the sample that had built the
+    directory included.
+
+    It stayed hidden within a single process because the PDG -> merged-PDG map
+    used to be cached on the Event *class*, so a model-less event borrowed the
+    map of any event built before it.
+    """
+
+    QQ = ((-81, 81), (-6, 6))
+    GG = ((21, 21), (-6, 6))
+
+    class _Stop(Exception):
+        """Raised by the patched ending_run once every event has been read."""
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp(prefix='madspin_pickle_')
+        self.addCleanup(shutil.rmtree, self.tmpdir, True)
+        self.ms_dir = pjoin(self.tmpdir, 'msdir')
+        os.mkdir(self.ms_dir)
+        # LO p p > t t~ in the sm: 25 events, gg and q q~ in both orders.
+        # do_import gunzips its input in place, hence the copy.
+        events = pjoin(self.tmpdir, 'events.lhe.gz')
+        shutil.copy(pjoin(MG5DIR, 'tests', 'input_files', 'ttbar.lhe.gz'),
+                    events)
+        self.cmd = interface_madspin.MadSpinInterface()
+        self.cmd.do_set('ms_dir %s' % self.ms_dir)
+        self.cmd.do_import(events)
+
+    def _write_pickle(self):
+        """madspin.pkl as a first madspin_v1 run leaves it, written by the real
+        save_status_to_pickle: the two production topologies of p p > t t~,
+        keyed the way the flavour-grouped generation keys them."""
+        model = self.cmd.model
+        self.assertEqual(model.get('merged_particles')[81], [1, 2, 3, 4])
+        handler = madspin.decay_all_events.__new__(madspin.decay_all_events)
+        handler.options = self.cmd.options
+        handler.path_me = self.ms_dir
+        handler.banner = self.cmd.banner
+        handler.model = model
+        handler.evtfile = handler.curr_event = None
+        handler.mgcmd, handler.mscmd = self.cmd.mg5cmd, self.cmd
+        handler.width_estimator = None
+        handler.inverted_decay_mapping = {}
+        handler.all_decay = {}
+        handler.all_ME = madspin.AllMatrixElement(self.cmd.banner,
+                                                  self.cmd.options, [6], model)
+        for tag, initial in ((self.QQ, [81, -81]), (self.GG, [21, 21])):
+            handler.all_ME.add({'tag2order': {tag: (initial, [6, -6])},
+                                'decays': [], 'total_br': 0,
+                                'path': pjoin(self.ms_dir, 'production_me')},
+                               [tag])
+        handler.save_status_to_pickle(pjoin(self.ms_dir, 'madspin.pkl'))
+
+    def _reuse(self):
+        """run_from_pickle up to the decay: return, per event, the production
+        tag and the PDG codes in the order of the production ME."""
+        from unittest import mock
+        seen = []
+        def ending_run(handler):
+            while True:
+                tag, event_map = handler.load_event()
+                if tag == 0 == event_map:
+                    raise self._Stop
+                particle = handler.curr_event.particle
+                seen.append((tag, [particle[event_map[i] + 1]['pid']
+                                   for i in range(4)]))
+        with mock.patch.object(madspin.decay_all_events, 'ending_run',
+                               ending_run):
+            self.assertRaises(self._Stop, self.cmd.run_from_pickle)
+        return seen
+
+    def test_reuse_reads_quark_initiated_events(self):
+        """The bug: KeyError ((-1, 1), (-6, 6)) on the first d d~ event."""
+        self._write_pickle()
+        seen = self._reuse()
+        self.assertEqual(len(seen), 25)
+        self.assertEqual(set(tag for tag, _ in seen), {self.QQ, self.GG})
+        for tag, pids in seen:
+            self.assertEqual(pids[2:], [6, -6])
+            if tag == self.GG:
+                self.assertEqual(pids[:2], [21, 21])
+            else:
+                # quark in the first slot of the 81 -81 ME, whichever beam
+                # it came from: this sample has both orders
+                self.assertIn(pids[0], [1, 2, 3, 4])
+                self.assertEqual(pids[1], -pids[0])
+
+    def test_a_directory_grouped_differently_is_refused(self):
+        """The flavour indices handed to the compiled matrix elements are
+        positions within a merged group: a model that groups differently
+        must not be used in place of the one the directory was built with."""
+        import madgraph.iolibs.save_load_object as save_load_object
+        self._write_pickle()
+        path = pjoin(self.ms_dir, 'madspin.pkl')
+        handler = save_load_object.load_from_file(path)
+        handler.merged_particles = {81: [1, 2, 3, 4, 5]}
+        save_load_object.save_to_file(path, handler)
+        self.assertRaisesRegex(madspin.MadSpinError, 'flavour grouping',
+                               self._reuse)
+
+    def test_an_event_without_a_model_borrows_no_map(self):
+        """The map is per event and follows its model."""
+        def event(model):
+            ev = madspin.Event(model=model)
+            ev.particle = {
+                1: {'pid': -2, 'mothup1': 0, 'mothup2': 0},
+                2: {'pid': 2, 'mothup1': 0, 'mothup2': 0},
+                3: {'pid': 6, 'mothup1': 1, 'mothup2': 2},
+                4: {'pid': -6, 'mothup1': 1, 'mothup2': 2}}
+            return ev
+        grouped = event(self.cmd.model)
+        self.assertEqual(grouped.get_tag()[0], self.QQ)
+        # built after the grouped one: the old class-level cache handed it
+        # the sm map
+        self.assertEqual(event(None).get_tag()[0], ((-2, 2), (-6, 6)))
+        grouped.model = None
+        self.assertEqual(grouped.get_tag()[0], ((-2, 2), (-6, 6)))
+        grouped.model = self.cmd.model
+        self.assertEqual(grouped.get_tag()[0], self.QQ)
+
+
+
 # Shared flavor-group fixture used by several tests.
 # Models p p > W+ W- with W+ > j j, W- > j j (j = u d s c).
 # prod2full: production particles 0,1 are initial-state (at full-ME positions
