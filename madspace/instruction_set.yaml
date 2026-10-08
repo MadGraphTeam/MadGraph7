@@ -735,6 +735,55 @@ x1x2_to_r:
       desc: "Jacobian of the mapping"
   desc: "Inverse of `r_to_x1x2`: maps beam momentum fractions back to the random number. See @ref Luminosity."
 
+r_to_x1x2_window:
+  inputs:
+    - name: r
+      type: [float]
+      desc: "random number in [0, 1]"
+    - name: s_hat
+      type: [float]
+      desc: "partonic invariant mass squared"
+    - name: s_lab
+      type: [float]
+      desc: "hadronic invariant mass squared"
+    - name: y_max
+      type: [float]
+      desc: "largest allowed absolute rapidity of the partonic system"
+  outputs:
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the mapping"
+  desc: "`r_to_x1x2` with the rapidity log(x1/x2)/2 of the partonic system restricted to |y| <= y_max. See @ref PhaseSpaceMapping."
+
+x1x2_to_r_window:
+  inputs:
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2"
+    - name: s_lab
+      type: [float]
+      desc: "hadronic invariant mass squared"
+    - name: y_max
+      type: [float]
+      desc: "largest allowed absolute rapidity of the partonic system"
+  outputs:
+    - name: r
+      type: [float]
+      desc: "random number in [0, 1]"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the mapping"
+  desc: "Inverse of `r_to_x1x2_window`. See @ref PhaseSpaceMapping."
+
 diff_cross_section:
   inputs:
     - name: x1
@@ -818,6 +867,82 @@ two_body_decay_com_inverse:
       type: [float]
       desc: "Jacobian of the decay mapping"
   desc: "Inverse of `two_body_decay_com`. Building block of @ref TwoBodyDecay."
+
+com_cos_theta_window:
+  inputs:
+    - name: r_cos_theta
+      type: [float]
+      desc: "random number for the polar angle"
+    - name: m0
+      type: [float]
+      desc: "mass of the decaying system (sqrt(s_hat))"
+    - name: m1
+      type: [float]
+      desc: "mass of the first decay product"
+    - name: m2
+      type: [float]
+      desc: "mass of the second decay product"
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2"
+    - name: pt_min
+      type: [float]
+      desc: "lower bound on the transverse momentum of the products"
+    - name: y_max1
+      type: [float]
+      desc: "bound on the absolute lab rapidity of the first product, negative for none"
+    - name: y_max2
+      type: [float]
+      desc: "bound on the absolute lab rapidity of the second product, negative for none"
+  outputs:
+    - name: r_out
+      type: [float]
+      desc: "random number for the polar angle, restricted to the range the cuts leave"
+    - name: det
+      type: [float]
+      desc: "fraction of the polar-angle range kept"
+  desc: "Restricts the polar angle of `two_body_decay_com` to the range left open by transverse-momentum and rapidity bounds on the products. Building block of @ref TwoBodyDecay."
+
+com_cos_theta_window_inverse:
+  inputs:
+    - name: r_out
+      type: [float]
+      desc: "random number for the polar angle, restricted to the range the cuts leave"
+    - name: m0
+      type: [float]
+      desc: "mass of the decaying system (sqrt(s_hat))"
+    - name: m1
+      type: [float]
+      desc: "mass of the first decay product"
+    - name: m2
+      type: [float]
+      desc: "mass of the second decay product"
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2"
+    - name: pt_min
+      type: [float]
+      desc: "lower bound on the transverse momentum of the products"
+    - name: y_max1
+      type: [float]
+      desc: "bound on the absolute lab rapidity of the first product, negative for none"
+    - name: y_max2
+      type: [float]
+      desc: "bound on the absolute lab rapidity of the second product, negative for none"
+  outputs:
+    - name: r_cos_theta
+      type: [float]
+      desc: "random number for the polar angle"
+    - name: det
+      type: [float]
+      desc: "inverse of the fraction of the polar-angle range kept"
+  desc: "Inverse of `com_cos_theta_window`. Building block of @ref TwoBodyDecay."
 
 two_body_decay:
   inputs:
@@ -1401,6 +1526,144 @@ t_inv_min_max_cut:
       type: [float]
       desc: "upper limit of the momentum transfer"
   desc: "Kinematic limits of the Mandelstam t restricted by transverse-energy cuts. Building block of @ref TwoToTwoParticleScattering; see @ref Cuts."
+
+t_rapidity_clamp:
+  inputs:
+    - name: t_min
+      type: [float]
+      desc: "lower bound of |t|"
+    - name: t_max
+      type: [float]
+      desc: "upper bound of |t|"
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum (a beam, in the partonic centre-of-mass frame)"
+    - name: pb
+      type: [float, 4]
+      desc: "second incoming momentum (the other beam)"
+    - name: m1
+      type: [float]
+      desc: "mass of the first outgoing momentum (the recoil)"
+    - name: m2
+      type: [float]
+      desc: "mass of the second outgoing momentum (the peeled particle)"
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2"
+    - name: beam_sign
+      type: [float]
+      desc: "+1 if pa is beam 1, -1 if it is beam 2"
+    - name: y_max1
+      type: [float]
+      desc: "bound on the absolute lab rapidity of the recoil, negative or 100 and above for none"
+    - name: y_max2
+      type: [float]
+      desc: "bound on the absolute lab rapidity of the peeled particle, negative or 100 and above for none"
+  outputs:
+    - name: t_min_out
+      type: [float]
+      desc: "narrowed lower bound of |t|"
+    - name: t_max_out
+      type: [float]
+      desc: "narrowed upper bound of |t|"
+  desc: "Narrows the |t| range of a beam-beam 2 -> 2 scattering to the values for which both outgoing momenta can satisfy their rapidity bounds. Building block of @ref TwoToTwoParticleScattering."
+
+t1_rapidity_clamp_doublet:
+  inputs:
+    - name: t1_min
+      type: [float]
+      desc: "lower bound of |t1|"
+    - name: t1_max
+      type: [float]
+      desc: "upper bound of |t1|"
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum (a beam, in the partonic centre-of-mass frame)"
+    - name: pb
+      type: [float, 4]
+      desc: "second incoming momentum (the other beam)"
+    - name: m1
+      type: [float]
+      desc: "mass of the single outgoing particle p1"
+    - name: mir_min
+      type: [float]
+      desc: "minimum invariant mass of the recoil system"
+    - name: etmin_1
+      type: [float]
+      desc: "lower bound on the transverse energy of p1 (0 for none)"
+    - name: etmin_2
+      type: [float]
+      desc: "lower bound on the transverse energy of the recoil p2 (0 for none)"
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2"
+    - name: beam_sign
+      type: [float]
+      desc: "+1 if pa is beam 1, -1 if it is beam 2"
+    - name: y_max1
+      type: [float]
+      desc: "bound on the absolute lab rapidity of p1, negative or 100 and above for none"
+    - name: y_max2
+      type: [float]
+      desc: "bound on the absolute lab rapidity of the recoil p2, negative or 100 and above for none"
+  outputs:
+    - name: t1_min_out
+      type: [float]
+      desc: "narrowed lower bound of |t1|"
+    - name: t1_max_out
+      type: [float]
+      desc: "narrowed upper bound of |t1|"
+  desc: "Narrows |t1| of the double-t central block to the values that leave some |t2| for the rapidity bounds of both outgoing momenta. Building block of @ref DoubleT."
+
+t2_rapidity_clamp_doublet:
+  inputs:
+    - name: t2_min
+      type: [float]
+      desc: "lower bound of |t2|"
+    - name: t2_max
+      type: [float]
+      desc: "upper bound of |t2|"
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum (a beam, in the partonic centre-of-mass frame)"
+    - name: pb
+      type: [float, 4]
+      desc: "second incoming momentum (the other beam)"
+    - name: m1
+      type: [float]
+      desc: "mass of the single outgoing particle p1"
+    - name: t1_abs
+      type: [float]
+      desc: "the sampled |t1| = -(pa - p1)^2"
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2"
+    - name: beam_sign
+      type: [float]
+      desc: "+1 if pa is beam 1, -1 if it is beam 2"
+    - name: y_max1
+      type: [float]
+      desc: "bound on the absolute lab rapidity of p1, negative or 100 and above for none"
+    - name: y_max2
+      type: [float]
+      desc: "bound on the absolute lab rapidity of the recoil p2, negative or 100 and above for none"
+  outputs:
+    - name: t2_min_out
+      type: [float]
+      desc: "narrowed lower bound of |t2|"
+    - name: t2_max_out
+      type: [float]
+      desc: "narrowed upper bound of |t2|"
+  desc: "Narrows |t2| of the double-t central block, at fixed |t1|, to the values for which both outgoing momenta can satisfy their rapidity bounds. Building block of @ref DoubleT."
 
 t_inv_value_and_min_max_cut:
   inputs:
@@ -2072,6 +2335,64 @@ breit_wigner_invariant_inverse:
       type: [float]
       desc: "sampling density at s"
   desc: "Inverse of `breit_wigner_invariant`. Building block of @ref Invariant."
+
+flat_window_breit_wigner_invariant:
+  inputs:
+    - name: r
+      type: [float]
+      desc: "random number in [0, 1]"
+    - name: mass
+      type: [float]
+      desc: "resonance mass"
+    - name: width
+      type: [float]
+      desc: "resonance width"
+    - name: window
+      type: [float]
+      desc: "half-width of the flattened window, in units of the width"
+    - name: s_min
+      type: [float]
+      desc: "lower bound of the invariant"
+    - name: s_max
+      type: [float]
+      desc: "upper bound of the invariant"
+  outputs:
+    - name: s
+      type: [float]
+      desc: "sampled invariant"
+    - name: gs
+      type: [float]
+      desc: "sampling density at s"
+  desc: "Samples a propagator invariant with a Breit-Wigner density whose peak is flattened to a constant inside |sqrt(s) - mass| < window * width (the $-excluded region). Building block of @ref Invariant."
+
+flat_window_breit_wigner_invariant_inverse:
+  inputs:
+    - name: s
+      type: [float]
+      desc: "invariant value"
+    - name: mass
+      type: [float]
+      desc: "resonance mass"
+    - name: width
+      type: [float]
+      desc: "resonance width"
+    - name: window
+      type: [float]
+      desc: "half-width of the flattened window, in units of the width"
+    - name: s_min
+      type: [float]
+      desc: "lower bound of the invariant"
+    - name: s_max
+      type: [float]
+      desc: "upper bound of the invariant"
+  outputs:
+    - name: r
+      type: [float]
+      desc: "random number in [0, 1]"
+    - name: gs
+      type: [float]
+      desc: "sampling density at s"
+  desc: "Inverse of `flat_window_breit_wigner_invariant`. Building block of @ref Invariant."
 
 stable_invariant:
   inputs:

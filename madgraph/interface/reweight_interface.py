@@ -1050,6 +1050,18 @@ class ReweightInterface(extended_cmd.Cmd):
                             name = "mdl__%s__scale" % block.upper()
                             module.change_para(name, param_card[block].scale)
 
+                    # the $-syntax propagators veto |m-M| < bwcutoff*Gamma: use
+                    # the window the events were generated with rather than
+                    # the standalone default of 15
+                    if hasattr(module, 'set_bwcutoff') and 'mgruncard' in self.banner:
+                        try:
+                            module.set_bwcutoff(float(self.banner.get_detail('run_card', 'bwcutoff')))
+                        except Exception as error:
+                            logger.warning('bwcutoff not passed to %s: %s. The '
+                                           '$-syntax propagators keep the '
+                                           'default window of 15 widths.',
+                                           path, error)
+
                     #check for running attribute
                     update_running_info = False
                     if tag == 2:
@@ -1664,15 +1676,16 @@ class ReweightInterface(extended_cmd.Cmd):
         if self.keep_ordering:
             all_p = [event.get_momenta(orig_order, merged_map=self.revert_merged)]
         else:
-            all_p = event.get_all_momenta(orig_order, merged_map=self.revert_merged)
+            all_p = event.get_all_momenta(orig_order, merged_map=self.revert_merged,
+                                          decay_chain=True)
             if len(all_p) >1:
                 if self.helicity_reweighting:
                     logger.warning("due to ordering ambiguity, we flip off helicity per helicity reweighting.")
                 self.helicity_reweighting = False
 
         # add helicity information
-        event_pos2order, orderevent_2pos = event.get_mapping(orig_order, merged_map=self.revert_merged)
-        hel_order = event.get_helicity(orig_order, merged_map=self.revert_merged)
+        hel_order = event.get_helicity(orig_order, merged_map=self.revert_merged,
+                                       decay_chain=not self.keep_ordering)
         if self.helicity_reweighting and 9 not in hel_order:
             nhel = hel_dict[tuple(hel_order)]
 
@@ -1786,6 +1799,13 @@ class ReweightInterface(extended_cmd.Cmd):
         only for a momentum that is exactly at rest, and the boost arithmetic
         leaves ~1e-14 (see boost_to_frame in Template/LO/SubProcesses/genps.f).
         """
+        if pboost.mass_sqr <= 1e-10 * pboost.E ** 2:
+            # a light-like (e.g. a single massless leg) system has no rest
+            # frame: FourMomentum.boost would divide by its zero mass
+            raise madgraph.InvalidCmd(
+                "The frame asked for (me_frame / boost choice) is the rest "
+                "frame of a massless system (m^2 = %g GeV^2): it does not "
+                "exist. Select massive legs, or several legs." % pboost.mass_sqr)
         neg = lhe_parser.FourMomentum(pboost.E, -pboost.px, -pboost.py,
                                       -pboost.pz)
         out = []
@@ -1796,35 +1816,32 @@ class ReweightInterface(extended_cmd.Cmd):
             out[rest_leg] = (out[rest_leg][0], 0., 0., 0.)
         return out
 
-    @staticmethod
-    def boost_momenta_to_me_frame(momenta, me_frame, n_incoming):
-        """``momenta`` -- lab frame, in the matrix element's leg order --
-        boosted into the rest frame of the legs ``me_frame`` (counted from 1)
-        the way the events' own matrix element got there: first into the rest
-        frame of the incoming system, and only from there into the one
-        ``me_frame`` names. madevent and aMC@NLO hand their matrix element
-        partonic centre-of-mass momenta and boost them once; madspace, which
-        generates in the lab frame, takes the same two steps (see
-        MatrixElement in madspace/src/phasespace/matrix_element.cpp).
+    @classmethod
+    def boost_momenta_to_me_frame(cls, momenta, nb_initial, selected):
+        """madevent's ``boost_to_frame``: ``momenta`` (lab frame, matrix
+        element's leg order) in the rest frame of the legs ``selected``
+        (counted from 1), a single one exactly at rest.
 
-        A single boost straight from the lab is not the same frame: two boosts
-        along different directions compose into a boost *and* a Wigner
-        rotation. For a single leg held at rest -- where HELAS takes the
-        frame's z axis as the spin axis -- that rotation moves |M|^2 of a
-        polarised particle by tens of per cent.
+        madevent applies that boost to momenta that are in the partonic CM
+        frame -- genps.f builds them there and unwgt.f boosts them to the lab
+        only when it writes the event -- so the event is first taken back to
+        the rest frame of its initial state (the z boost the default frame
+        does below). Boosting to the selected legs straight from the lab is
+        not the same frame: two boosts along different directions compose to
+        a boost *and* a rotation (Wigner), and the quantisation axis of a
+        single leg at rest turns with it -- by 25 degrees already for a W of
+        pT = 100 GeV in a partonic CM at rapidity 1. Only a frame that
+        is the partonic CM itself (e.g. the whole final state) is unaffected.
         """
-        to_rest = ReweightInterface.boost_momenta_to_rest_frame
-        p_in = lhe_parser.FourMomentum()
-        for p in momenta[:n_incoming]:
-            p_in += lhe_parser.FourMomentum(p)
-        # a decaying particle is the reference frame on its own: put it
-        # exactly at rest too
-        momenta = to_rest(momenta, p_in, 0 if n_incoming == 1 else None)
+        pinit = lhe_parser.FourMomentum()
+        for i in range(nb_initial):
+            pinit += lhe_parser.FourMomentum(momenta[i])
+        cm = cls.boost_momenta_to_rest_frame(momenta, pinit)
         pboost = lhe_parser.FourMomentum()
-        for n in me_frame:
-            pboost += lhe_parser.FourMomentum(momenta[n - 1])
-        rest_leg = me_frame[0] - 1 if len(me_frame) == 1 else None
-        return to_rest(momenta, pboost, rest_leg)
+        for n in selected:
+            pboost += lhe_parser.FourMomentum(cm[n - 1])
+        rest_leg = selected[0] - 1 if len(selected) == 1 else None
+        return cls.boost_momenta_to_rest_frame(cm, pboost, rest_leg)
 
     def get_me_frame(self, n_incoming, n_external):
         """The legs -- counted from 1, in the matrix element's order -- whose
@@ -1872,32 +1889,40 @@ class ReweightInterface(extended_cmd.Cmd):
         
         n_incoming = len(orig_order[0])
         me_frame = None
-        if hypp_id == 0:
+        if not (hypp_id == 1 and self.boost_event):
             me_frame = self.get_me_frame(n_incoming, len(all_p[0]))
         if me_frame is not None:
-            # The original matrix element has to see the momenta in the frame
-            # the events were generated in: its value is what the event weight
-            # is divided by. me_frame counts legs in the *matrix element's*
-            # order, the order all_p is already in -- walking the event's own
-            # lines instead picks whatever particle the LHE wrote at that
-            # place. The momenta are boosted directly, like the zboost below,
-            # so the Monte-Carlo-mass projection the caller applied to all_p
-            # survives the boost.
+            # The frame the events were generated in (see get_me_frame for why
+            # it is read from me_frame and not frame_id). Both matrix elements
+            # are evaluated in it: the weight is w_new/w_orig, and a ratio of
+            # two helicity-dependent matrix elements taken in two frames means
+            # nothing. A boost set explicitly for the new one ('change boost')
+            # still takes precedence.
+            # me_frame counts legs in the *matrix element's* order, the order
+            # all_p is already in -- walking the event's own lines instead
+            # picks whatever particle the LHE wrote at that place. The momenta
+            # are boosted directly, like the zboost below, rather than re-read
+            # from a boosted copy of the event, so the Monte-Carlo-mass
+            # projection the caller applied to all_p survives the boost.
             if not me_frame:
+                # mg7's default: its matrix element saw the lab-frame momenta
                 return all_p
-            if len(all_p) > 1:
-                logger.critical("due to ordering ambiguity, the boost used might not be consistent. please ensure that this is not an issue")
-            return [self.boost_momenta_to_me_frame(p, me_frame, n_incoming)
+            # each assignment of the identical particles is its own guess of
+            # which particle is leg n: its frame is built from its own legs
+            return [self.boost_momenta_to_me_frame(p, n_incoming, me_frame)
                     for p in all_p]
+        # None: the rest frame of the incoming system, i.e. the default
+        # partonic-CM boost below (madevent's frame_id 6, or no leg selected)
 
-        elif (hypp_id == 1 and self.boost_event):
+        if (hypp_id == 1 and self.boost_event):
             if self.boost_event is not True:
                 new_event = copy.deepcopy(event)
                 new_event.boost(self.boost_event)
                 if self.keep_ordering:
-                    new_all_p = [new_event.get_momenta(orig_order)]
+                    new_all_p = [new_event.get_momenta(orig_order, merged_map=self.revert_merged)]
                 else:     
-                    new_all_p = new_event.get_all_momenta(orig_order)
+                    new_all_p = new_event.get_all_momenta(orig_order, merged_map=self.revert_merged,
+                                                          decay_chain=True)
 
                 return new_all_p
             return all_p #if we arrive here, we should return the input no ?
@@ -2041,9 +2066,10 @@ class ReweightInterface(extended_cmd.Cmd):
             misc.sprint(type(error))
             raise
         
-        commandline = 'output %s %s --prefix=int --prefixf2py=%s' % (self.sa_class, pjoin(path_me,data['paths'][0]), self.nb_rw)
         self.path2prefix[pjoin(path_me,data['paths'][0])] = self.nb_rw
         self.nb_rw += 1
+        # no --prefixf2py for the tree output: rw_me and rw_me_<N> are kept
+        # apart by the name of their shared library (see compile_SubProcess_dir)
         commandline = 'output %s %s --prefix=int --density=1' % (self.sa_class, pjoin(path_me,data['paths'][0]))
         if self.inc_sudakov:
             # in this case, the sudakov output format has to be changed
@@ -2466,18 +2492,24 @@ class ReweightInterface(extended_cmd.Cmd):
             nb_core = self.mother.options['nb_core'] if self.mother.options['run_mode'] !=0 else 1
         else:
             nb_core = 1
+        # rw_me and rw_me_<N> are loaded in the same process: their shared
+        # library (liball<PROCNAME>_<MENUM>me) needs a distinct name, otherwise
+        # the loader hands the second f2py module the first library.
+        # The leading '_' keeps it different from the liball<dir>_<N>me.so
+        # name that load_module tries to preload with RTLD_GLOBAL.
+        procname = 'PROCNAME=_%s' % os.path.basename(os.path.dirname(os.path.normpath(Sdir)))
         os.environ['MENUM'] = '2'
         try: 
-            misc.compile(['all_matrix2py.so'], cwd=Sdir, nb_core=nb_core)
+            misc.compile([procname, 'all_matrix2py.so'], cwd=Sdir, nb_core=nb_core)
         except Exception as e:
-            misc.compile(['all_matrix2py.so'], cwd=Sdir, nb_core=1)
+            misc.compile([procname, 'all_matrix2py.so'], cwd=Sdir, nb_core=1)
 
         if not (self.second_model or self.second_process or self.dedicated_path):
             os.environ['MENUM'] = '3'
             try:
-                misc.compile(['all_matrix3py.so'], cwd=Sdir, nb_core=nb_core)
+                misc.compile([procname, 'all_matrix3py.so'], cwd=Sdir, nb_core=nb_core)
             except Exception as e:
-                misc.compile(['all_matrix3py.so'], cwd=Sdir, nb_core=1)
+                misc.compile([procname, 'all_matrix3py.so'], cwd=Sdir, nb_core=1)
                 
 
     def load_module(self, metag=1):
@@ -3341,7 +3373,8 @@ class DensityInterface(ReweightInterface):
         if self.keep_ordering:
             all_p = [event.get_momenta(orig_order, merged_map=self.revert_merged)]
         else:
-            all_p = event.get_all_momenta(orig_order, merged_map=self.revert_merged)
+            all_p = event.get_all_momenta(orig_order, merged_map=self.revert_merged,
+                                          decay_chain=True)
 
             if len(all_p) >1:
                 if self.helicity_reweighting:
@@ -3349,7 +3382,8 @@ class DensityInterface(ReweightInterface):
                 self.helicity_reweighting = False
 
         # add helicity information
-        hel_order = event.get_helicity(orig_order, merged_map=self.revert_merged)
+        hel_order = event.get_helicity(orig_order, merged_map=self.revert_merged,
+                                       decay_chain=not self.keep_ordering)
         if self.helicity_reweighting and 9 not in hel_order:
             nhel = hel_dict[tuple(hel_order)]
         else:
@@ -3375,7 +3409,8 @@ class DensityInterface(ReweightInterface):
         # the particles are chosen -- and ranked, for an observable -- on the
         # lab-frame momenta, laid out in the matrix element's order like pdg
         # and all_p, so that a returned position is a leg for all three
-        lab_p = event.get_momenta(orig_order, merged_map=self.revert_merged)
+        lab_p = event.get_momenta(orig_order, merged_map=self.revert_merged,
+                                 decay_chain=not self.keep_ordering)
         boost_corrected = self.chose_particle_user_input(lab_p, pdg, list_properties, orig_order, self.momenta_boost, 'momenta_boost', fortran_format = False)
         all_p = self.method_boost_event(event, all_p, orig_order, hypp_id, boost_corrected)
         
@@ -3492,14 +3527,23 @@ class DensityInterface(ReweightInterface):
         # status-2 ones included, against them -- another particle whenever
         # the LHE order is not the matrix element's, or a resonance line sits
         # before the chosen leg.
-        pboost = lhe_parser.FourMomentum()
-        for position in boost_corrected:
-            pboost += lhe_parser.FourMomentum(all_p[0][position])
+        # Each assignment of identical particles in all_p is its own guess of
+        # which particle sits on those legs, so each gets the frame of its own
+        # legs (one boost from all_p[0] for all of them left the others'
+        # chosen legs moving). Boosted directly, like the base class's frame
+        # and zboost branches, rather than re-read from a boosted copy of the
+        # event.
+        return [self._boost_to_chosen_legs(p, boost_corrected) for p in all_p]
 
+    def _boost_to_chosen_legs(self, momenta, positions):
+        """``momenta`` in the rest frame of the legs ``positions`` (0-based)"""
+        pboost = lhe_parser.FourMomentum()
+        for position in positions:
+            pboost += lhe_parser.FourMomentum(momenta[position])
 
         if abs(pboost.px/pboost.E) < 1e-10 and abs(pboost.py/pboost.E) < 1e-10 and abs(pboost.pz/pboost.E) < 1e-10:
             #if we try to boost with with a 4-momentum like [M, 0, 0, 0], we return the momenta without any boost
-            return all_p
+            return momenta
                 
         if abs(pboost.px/pboost.E) < 1e-10:
             pboost.px = 0.
@@ -3508,11 +3552,7 @@ class DensityInterface(ReweightInterface):
         if abs(pboost.pz/pboost.E) < 1e-10:
             pboost.pz = 0.
 
-        if len(all_p) > 1:
-            logger.critical("due to ordering ambiguity, the boost used might not be consistent. please ensure that this is not an issue")
-        # boosted directly rather than through the event, so the Monte-Carlo
-        # mass projection applied to all_p before this survives the boost
-        return [self.boost_momenta_to_rest_frame(p, pboost) for p in all_p]
+        return self.boost_momenta_to_rest_frame(momenta, pboost)
 
 
 

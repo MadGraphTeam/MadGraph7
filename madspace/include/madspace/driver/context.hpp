@@ -150,7 +150,8 @@ private:
         const std::string& param_card,
         ThreadPool& thread_pool,
         DevicePtr device,
-        std::size_t index = 0
+        std::size_t index = 0,
+        const std::unordered_map<std::string, double>& parameters = {}
     );
 
     void check_umami_status(UmamiStatus status) const;
@@ -161,6 +162,7 @@ private:
     decltype(&umami_required_inputs) _required_inputs;
     decltype(&umami_supported_outputs) _supported_outputs;
     decltype(&umami_initialize) _initialize;
+    decltype(&umami_set_parameter) _set_parameter;
     decltype(&umami_matrix_element) _matrix_element;
     decltype(&umami_free) _free;
     using InstanceType = std::unique_ptr<void, std::function<void(void*)>>;
@@ -204,10 +206,16 @@ public:
     Context(const Context&) = delete;
     Context& operator=(const Context&) = delete;
     /// Load the UMAMI matrix element from `file`, initialized with
-    /// `param_card`. Caches by `file`: loading the same file twice returns
-    /// the same @ref MatrixElementApi.
-    const MatrixElementApi&
-    load_matrix_element(const std::string& file, const std::string& param_card);
+    /// `param_card`. Every entry of `parameters` is then passed to each
+    /// process instance through `umami_set_parameter` (real value, e.g.
+    /// `{"bwcutoff": 15.}`, the window of the `$`-excluded propagators);
+    /// a library that rejects one of them is an error. Caches by `file`:
+    /// loading the same file twice returns the same @ref MatrixElementApi.
+    const MatrixElementApi& load_matrix_element(
+        const std::string& file,
+        const std::string& param_card,
+        const std::unordered_map<std::string, double>& parameters = {}
+    );
     /// Create and zero-initialize a new global named `name`.
     Tensor define_global(
         const std::string& name,

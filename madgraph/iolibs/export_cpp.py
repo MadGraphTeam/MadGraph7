@@ -26,6 +26,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import json
 from collections import defaultdict
 
@@ -475,8 +476,8 @@ class UFOModelConverterCPP(object):
             template_h_files = self.read_aloha_template_files(ext = 'h')
             template_cc_files = self.read_aloha_template_files(ext = 'cc')
 
-        aloha_model = create_aloha.AbstractALOHAModel(self.model.get('name'),
-                                                      explicit_combine=True)
+        aloha_model = create_aloha.AbstractALOHAModel.from_model(self.model,
+                                                        explicit_combine=True)
         aloha_model.add_Lorentz_object(self.model.get('lorentz'))
         
         if self.wanted_lorentz:
@@ -2687,9 +2688,13 @@ class ProcessExporterCPP(VirtualExporter):
                 except os.error as error:
                     logger.warning(error.strerror + " " + self.dir_path)
     
-            # Write param_card
-            open(os.path.join("Cards","param_card.dat"), 'w').write(\
-                                                       model.write_param_card())
+            # Write param_card, and keep a pristine copy of it beside the
+            # one the user edits: that is what `set param_card default` at the
+            # launch question restores, and what says which values a run was
+            # not the model's own. The Fortran standalone has always done it.
+            card = model.write_param_card()
+            for name in ("param_card.dat", "param_card_default.dat"):
+                open(os.path.join("Cards", name), 'w').write(card)
 
     
             # Copy the needed src files
@@ -3188,6 +3193,46 @@ class UFOModelConverterPythia8(UFOModelConverterCPP):
         return OneProcessExporterPythia8.read_template_file(*args, **opts)
 
 
+def mg7_launcher_source(interpreter, mg5_dir):
+    """The text of bin/generate_events for an mg7 output.
+
+    `interpreter` is the python MadGraph7 itself is running: a run needs the
+    packages of *that* environment (matplotlib for the plots, the LHAPDF
+    bindings, madspace), which the "python3" of the PATH may well not have.
+    It is written as the shebang and, because a shebang is only a default --
+    it is bypassed by "python3 bin/generate_events" and ignored by the kernel
+    when the path is too long -- the script also re-executes itself through it
+    when it finds it is running somewhere else.
+
+    The path is deliberately NOT resolved through its symlinks: in a virtual
+    environment sys.executable points at the environment, and the base
+    interpreter it links to does not see the environment's site-packages.
+
+    Pinning it costs no portability that this directory had: it already holds
+    an absolute MG5DIR. The gridpack is the portable artefact, and keeps its
+    "/usr/bin/env python3".
+    """
+
+    interpreter = os.path.normpath(interpreter) if interpreter else ''
+    return (
+        "#! %s\n" % (interpreter or "/usr/bin/env python3")
+        + "import sys, os\n"
+        + "_INTERPRETER = %r\n" % interpreter
+        + "if _INTERPRETER and os.path.exists(_INTERPRETER) \\\n"
+          "        and os.path.normpath(sys.executable or '') != _INTERPRETER:\n"
+          "    os.execv(_INTERPRETER, [_INTERPRETER,\n"
+          "                            os.path.abspath(__file__)] + sys.argv[1:])\n"
+        + "sys.path.append(%r)\n" % mg5_dir
+        + "from madgraph.iolibs.template_files.mg7.launch import main\n"
+          "if __name__ == '__main__':\n"
+          "    os.chdir(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))\n"
+          "    try:\n"
+          "        main()\n"
+          "    except KeyboardInterrupt:\n"
+          "        pass\n"
+    )
+
+
 class ProcessExporterMG7(ProcessExporterCPP):
     """ Extends the standalone CPP exporter to add files needed to run madevent7 / madnis """
 
@@ -3265,19 +3310,20 @@ class ProcessExporterMG7(ProcessExporterCPP):
         with misc.chdir(self.dir_path):
             madnis_bin = os.path.join("bin", "generate_events")
             with open(madnis_bin, "w") as f:
+                f.write(mg7_launcher_source(sys.executable, MG5DIR))
+            os.chmod(madnis_bin, 0o755)
+
+            npy_bin = os.path.join("bin", "npy_to_lhe")
+            with open(npy_bin, "w") as f:
                 f.write(
                     "#! /usr/bin/env python3\n"
                     "import sys, os\n"
                     f"sys.path.append('{MG5DIR}')\n"
-                    "from madgraph.iolibs.template_files.mg7.launch import main\n"
+                    "from madgraph.iolibs.template_files.mg7.npy_to_lhe import main\n"
                     "if __name__ == '__main__':\n"
-                    "    os.chdir(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))\n"
-                    "    try:\n"
-                    "        main()\n"
-                    "    except KeyboardInterrupt:\n"
-                    "        pass\n"
+                    "    main(me_dir=os.path.dirname(os.path.dirname(os.path.realpath(__file__))))\n"
                 )
-            os.chmod(madnis_bin, 0o755)
+            os.chmod(npy_bin, 0o755)
 
     # Recorded in Cards/me5_configuration.txt: the tools a run needs but cannot
     # rediscover on its own. LHAPDF above all -- bin/generate_events may be
@@ -3496,6 +3542,31 @@ class ProcessExporterMG7(ProcessExporterCPP):
         except (Exception, SystemExit) as error:
             logger.warning('MadAnalysis5 default card generation failed: %s', error)
 
+    def write_model_reference(self, model):
+        """Write SubProcesses/model.txt: the reference `import model`
+        understands (line 1) and a hash of the model's python source (line 2),
+        so that the runtime can reload the model and detect one that changed
+        since output."""
+
+        try:
+            try:
+                model_path = model.get('modelpath')
+                model_hash = misc.hash_model_files(model_path)
+            except Exception:
+                model_path, model_hash = None, None
+            # the restriction is part of the model the process was
+            # generated with ('sm-no_b_mass' is not 'sm'), so store the
+            # reference that reproduces it, not the bare UFO directory.
+            try:
+                model_ref = model.get('modelpath+restriction')
+            except Exception:
+                model_ref = model_path or model.get('name')
+            if model_ref:
+                with open(pjoin(self.dir_path, 'SubProcesses', 'model.txt'), 'w') as f:
+                    f.write(model_ref + '\n' + (model_hash or '') + '\n')
+        except Exception as error:
+            logger.debug('could not record the model: %s', error)
+
     def create_run_card(self, matrix_elements, history):
         """Write Cards/run_card.toml from the run_card.toml template via
         banner.RunCardMG7, applying process-dependent defaults."""
@@ -3522,25 +3593,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
             # from the free ones (launch.MG7Cmd.get_model). A hash of the
             # model's python source is stored on the second line so the runtime
             # can detect a model that changed since output.
-            try:
-                model = processes[0][0].get('model')
-                try:
-                    model_path = model.get('modelpath')
-                    model_hash = misc.hash_model_files(model_path)
-                except Exception:
-                    model_path, model_hash = None, None
-                # the restriction is part of the model the process was
-                # generated with ('sm-no_b_mass' is not 'sm'), so store the
-                # reference that reproduces it, not the bare UFO directory.
-                try:
-                    model_ref = model.get('modelpath+restriction')
-                except Exception:
-                    model_ref = model_path or model.get('name')
-                if model_ref:
-                    with open(pjoin(self.dir_path, 'SubProcesses', 'model.txt'), 'w') as f:
-                        f.write(model_ref + '\n' + (model_hash or '') + '\n')
-            except Exception as error:
-                logger.debug('could not record the model: %s', error)
+            self.write_model_reference(processes[0][0].get('model'))
 
         template = pjoin(_file_path, 'iolibs', 'template_files',
                          'mg7', 'run_card.toml')

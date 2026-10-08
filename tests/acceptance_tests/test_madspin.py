@@ -306,11 +306,15 @@ decay z > l+ l-
         # trials/event is sampling dependent (~2.70 in density mode, ~4.98 on
         # the legacy onshell path): only sanity-check it is present and in a
         # physically reasonable range rather than pinning the exact value.
+        # It depends strongly on the production sample through MadSpin's
+        # maximum-weight estimate: with madevent decays, iseed 1-4 gave 4.4-15
+        # (and 34 on CI) and, before the refine normalisation changed, 4.6-152
+        # (9.3 on CI), so the bound only catches a broken unweighting.
         trials = re.search(r'([0-9]+(?:\.[0-9]+)?)\s*trials\s*/\s*event', log)
         if trials is not None:
             trials_per_event = float(trials.group(1))
             self.assertGreater(trials_per_event, 1.0)
-            self.assertLess(trials_per_event, 20.0)
+            self.assertLess(trials_per_event, 500.0)
 
         # The legacy onshell-mode summary lines (Branching ratio to allowed
         # decays / Number of events with weights larger than max_weight /

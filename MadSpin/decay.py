@@ -630,7 +630,11 @@ class dc_branch_from_me(dict):
                     child_propa_id -= 1
                     self["tree"][propa_id]["d%s" % c_nb]["index"] = child_propa_id
                     self.nb_decays += 1
-                    child_propa_id = add_decay(to_decay[c_pid].pop(), child_propa_id)
+                    # FIFO, as in get_full_process_structure: the n-th child of
+                    # a given pid takes the n-th sub-decay written for it, which
+                    # is how MG orders the legs of the full matrix element
+                    # (h > z z, z > e+ e-, z > u u~ has e+ e- before u u~).
+                    child_propa_id = add_decay(to_decay[c_pid].pop(0), child_propa_id)
                 else:
                     self.nexternal += 1
                     self["tree"][propa_id]["d%s" % c_nb]["index"] = self.nexternal
@@ -832,6 +836,11 @@ class dc_branch_from_me(dict):
                     to_decay[pid] = [dec]
 
             # loop over the child
+            # resonances are numbered as in __init__: a decaying child takes
+            # the next free id after the whole subtree of its previous
+            # sibling (propa_id-1 for every child sent two decaying z's of
+            # h > z z to the same resonance)
+            child_propa_id = propa_id
             for c_nb,leg in enumerate(proc.get('legs')):
                 if c_nb == 0:
                     continue
@@ -839,7 +848,10 @@ class dc_branch_from_me(dict):
                 c_pid = leg.get('id')
                 self["tree"][propa_id]["d%s" % c_nb]["labels"].append(c_pid)
                 if c_pid in to_decay:
-                    add_decay(to_decay[c_pid].pop(), propa_id-1)
+                    child_propa_id -= 1
+                    # FIFO, same pairing as in __init__
+                    child_propa_id = add_decay(to_decay[c_pid].pop(0), child_propa_id)
+            return child_propa_id
         
         # launch the recursive loop
         for proc in proc_list:
@@ -5612,8 +5624,9 @@ class decay_all_events_onshell(decay_all_events):
         ms_me_subdir = getattr(self.mscmd, 'ms_me_subdir', 'madspin_me')
         ms_me_decay_subdir = getattr(self.mscmd, 'ms_me_decay_subdir', 'madspin_decay')
         # Per-instance suffix for the f2py-linked shared library: with the
-        # default ``PROCNAME=`` the makefile produces ``liball_2me.{so,dylib}``
-        # regardless of which madspin_me_<N> subdir we are in, and the
+        # makefile's former (always empty) default ``PROCNAME=`` it produced
+        # ``liball_2me.{so,dylib}`` whichever madspin_me_<N> subdir we are in
+        # (the default is now the output directory name), and the
         # dynamic loader on both Linux (SONAME) and macOS (LC_ID_DYLIB)
         # caches that library by its baked-in name. So a second MadSpin
         # call in the same process — even loading a wrapper from a fresh
@@ -5628,7 +5641,7 @@ class decay_all_events_onshell(decay_all_events):
         # the *same* Python process to build the density matrix. They must NOT
         # share the f2py extension-module name (all_matrix<MENUM>py) nor the
         # dependent Fortran shared library name (liball<PROCNAME>_<MENUM>me):
-        # with the empty default PROCNAME both sides otherwise produce
+        # with the former empty default PROCNAME both sides produced
         # ``all_matrix2py`` + ``@rpath/liball_2me.dylib``, and two identically
         # named f2py modules (sharing the same Fortran COMMON blocks / global
         # symbols) co-existing in one process corrupt memory and segfault

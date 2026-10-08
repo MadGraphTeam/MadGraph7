@@ -72,6 +72,9 @@ public:
     const RunningIntegral& cross_section() const { return _cross_section; }
     /// Running estimate of the mean absolute weight.
     const RunningIntegral& abs_cross_section() const { return _abs_cross_section; }
+    /// Weighted events requested since the last reset of `count_opt`, counting
+    /// each job at its nominal batch size rather than its raw point count.
+    std::size_t count_requested_opt() const { return _count_requested_opt; }
     /// The filled observable histograms, if any were requested.
     const std::vector<Histogram>& histograms() const { return _histograms; }
     /// The weighted event file.
@@ -87,10 +90,9 @@ public:
     bool needs_optimization() const {
         return (_vegas_optimizer || _discrete_optimizer) && !_status.optimized;
     }
-    /// Set the target unweighted event count.
-    void set_target_count(std::size_t target_count) {
-        _status.count_target = target_count;
-    }
+    /// Set the target unweighted event count; a smaller target tightens the
+    /// maximum-weight estimate to the smaller truncation budget.
+    void set_target_count(std::size_t target_count);
     /// Names of the compute-graph globals this channel's integrand reads.
     const std::unordered_set<std::string>& used_globals() const {
         return _used_globals;
@@ -143,6 +145,7 @@ public:
     void save(const std::string& file_name) const;
 
 private:
+    void apply_truncation_budget();
     ChannelEventGenerator(
         const std::vector<ContextPtr>& contexts,
         std::size_t particle_count,
@@ -202,6 +205,7 @@ private:
     RunningIntegral _cross_section;
     RunningIntegral _abs_cross_section;
     double _max_weight = 0.;
+    std::size_t _count_requested_opt = 0;
     // Monotonic per-job counters keying each job's deterministic random stream;
     // never reset. Separate for survey/generate so neither depends on the other.
     std::size_t _survey_rng_seq = 0;

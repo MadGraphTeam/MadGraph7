@@ -23,7 +23,22 @@ simd_vector_size = %(run.simd_vector_size)s
 cpu_thread_pool_size = %(run.cpu_thread_pool_size)s
 gpu_thread_pool_size = %(run.gpu_thread_pool_size)s
 combine_thread_pool_size = %(run.combine_thread_pool_size)s
-output_format = %(run.output_format)s # options: compact_npy, lhe_npy, lhe
+output_format = %(run.output_format)s # options: compact_npy, lhe_npy, lhe (switched to lhe when a post-processing step needs it)
+# fill the [histograms] with the weighted events during the integration
+# (info.json "histograms"); costs an observable evaluation per phase-space point
+weighted_histograms = %(run.weighted_histograms)s
+# fill the [histograms] with the final events and all their scale/PDF weights
+# (info.json "event_histograms"); the plots and the HwU file are drawn from these
+postprocessing_histograms = %(run.postprocessing_histograms)s
+# draw the [histograms] distributions, bands included, into Events/<run>/plots
+# (one PDF per observable). Needs matplotlib: without it the run says so once
+# and carries on, the numbers being in Events/<run>/info.json either way.
+make_plots = %(run.make_plots)s
+# write the [histograms] distributions as MADatLO.HwU next to the events, in
+# the format aMC@NLO writes as MADatNLO.HwU, so that an LO run can be overlaid
+# on an NLO one with madgraph/various/histograms.py. The same numbers (bands
+# included) are in Events/<run>/info.json either way.
+write_hwu = %(run.write_hwu)s
 verbosity = %(run.verbosity)s # options: silent, pretty, log, auto (pretty if attached to a terminal, log otherwise)
 dummy_matrix_element = %(run.dummy_matrix_element)s
 # Lorentz frame in which the matrix element is evaluated, given as the list of
@@ -114,6 +129,7 @@ combine_channel_threshold = %(phasespace.combine_channel_threshold)s
 drop_qcd_s_channel = %(phasespace.drop_qcd_s_channel)s # -1 keeps all channels, otherwise drop channels without a QCD s-channel resonance once the channel count would exceed this
 invariant_power = %(phasespace.invariant_power)s
 bw_cutoff = %(phasespace.bw_cutoff)s
+cut_decays = %(phasespace.cut_decays)s # false: the [cuts] skip the decay products of on-shell (decay-chain) propagators, as in MadEvent
 adaptive_symmetry_sampling = %(phasespace.adaptive_symmetry_sampling)s
 
 [multiparticles]
@@ -121,7 +137,7 @@ $multiparticles
 
 [cuts]
 # possible groups: jet, bottom, lepton, missing, photon
-# possible observables: pt, eta, dR, mass, pair_mass, sqrt_s
+# possible observables: pt, eta, dR, mass, pair_mass, sfos_pair_mass, sqrt_s
 #     (mass is the mass of one particle. Put "-sum-" before it and the momenta
 #      are added up first: "lepton-sum-mass" is the mass of all the leptons
 #      together, while naming a group per member gives one combination at a
@@ -129,14 +145,33 @@ $multiparticles
 #      "lepton-jet-top-sum-mass" that of a lepton-jet-top triple.
 #      pair_mass is the invariant mass of a pair, taken over every pair the
 #      named groups can form, so "lepton-pair_mass" is the same cut as
-#      "lepton-lepton-sum-mass". sqrt_s is for all outgoing particles)
+#      "lepton-lepton-sum-mass". sfos_pair_mass keeps the same-flavour
+#      opposite-sign pairs only (e+ e-, mu+ mu-), like MadEvent's mmll.
+#      sqrt_s is for all outgoing particles)
 # A pair_mass minimum is also used to bound the integration.
-# A sqrt_s minimum bounds it the same way. The integral is
-# unaffected either way -- only how much of the sampling is wasted.
+# A sqrt_s minimum bounds it the same way, and so do pt and delta_r minima
+# through the pair masses and sqrt_s they imply. eta_abs maxima bound the
+# rapidity of the partonic system when every final-state particle has one,
+# and with the pt minima they bound the polar angle of an s-channel 2 -> 2
+# and the momentum transfer of the first t-channel scattering.
+# The integral is unaffected either way -- only how much of the sampling is
+# wasted.
 # for all cuts, min or max can be specified
 $cuts
 
 [histograms]
+# The observables to histogram, written at output time for this final state.
+# Same names as the cuts above, with "_1", "_2", ... selecting the hardest,
+# second hardest, ... particle of a group (order_by says what "hardest" means,
+# pt by default). Each needs a range and a number of bins:
+#     jet_1-pt.min = 0.0
+#     jet_1-pt.max = 500.0
+#     jet_1-pt.bin_count = 50
+# "weight" is the one name that is not an observable of the momenta: it is the
+# distribution of the event weight, in units of the cross section (so a fully
+# unweighted sample is a spike at 1).
+# "set histograms OFF" in the launch question removes them all, and
+# "set histograms default" puts the generated ones back.
 $histograms
 
 [madnis]

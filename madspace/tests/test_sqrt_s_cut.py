@@ -23,12 +23,14 @@ Pinned down here:
     inverted sampling range.
 """
 
+import functools
 import math
 
 import numpy as np
 import pytest
 
 import madspace as ms
+import phasespace_helpers
 
 CM_ENERGY = 13000.0
 M_TOP = 173.0
@@ -57,23 +59,17 @@ def mapping(cuts=None, leptonic=False):
     return ms.PhaseSpaceMapping(MASSES, CM_ENERGY, cuts=cuts, leptonic=leptonic)
 
 
-def sample(mapping, seed=SEED, n=BATCH_SIZE):
-    rng = np.random.default_rng(seed)
-    p_ext, _x1, _x2, det = mapping.map_forward([rng.random((n, mapping.random_dim()))])
-    return np.asarray(p_ext), np.asarray(det)
+sample = functools.partial(phasespace_helpers.sample, seed=SEED, n=BATCH_SIZE)
 
 
 def s_hat(p):
     """sqrt of the partonic Mandelstam s, from the two incoming momenta."""
-    total = p[:, 0, :] + p[:, 1, :]
-    m2 = total[:, 0] ** 2 - np.sum(total[:, 1:] ** 2, axis=1)
-    return np.sqrt(np.maximum(m2, 0.0))
+    return phasespace_helpers.invariant_mass(p, 0, 1)
 
 
 def volume(det, p):
     """The integral the mapping estimates, with non-finite points dropped."""
-    finite = np.isfinite(det) & np.all(np.isfinite(p), axis=(1, 2))
-    return np.where(finite, det, 0.0)
+    return phasespace_helpers.finite_weight(p, det)
 
 
 # --------------------------------------------------------------------------

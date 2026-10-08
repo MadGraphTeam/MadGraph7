@@ -22,17 +22,31 @@ bool layout_has(const DataLayout& layout, const std::string& name) {
 EventHistograms::EventHistograms(
     ContextPtr context,
     const std::vector<EventHistogramSpec>& specs,
-    const std::vector<std::optional<SubprocessObservables>>& observables
+    const std::vector<std::optional<SubprocessObservables>>& observables,
+    double reference_weight
 ) :
-    _specs(specs) {
+    _specs(specs),
+    _reference_weight(
+        std::isfinite(reference_weight) && reference_weight != 0. ? reference_weight
+                                                                  : 1.
+    ) {
     if (!context) {
         throw std::invalid_argument("EventHistograms requires a context");
     }
+    std::size_t observable_count = 0;
     for (auto& spec : _specs) {
         if (spec.bin_count == 0 || !(spec.max > spec.min)) {
             throw std::invalid_argument(
                 std::format("invalid binning for histogram '{}'", spec.name)
             );
+        }
+        // a from_weight histogram is filled from the event record, so it does
+        // not consume one of the subprocess's observables
+        if (spec.from_weight) {
+            _observable_index.push_back(std::nullopt);
+        } else {
+            _observable_index.push_back(observable_count);
+            ++observable_count;
         }
     }
     for (auto& obs : observables) {
@@ -40,7 +54,7 @@ EventHistograms::EventHistograms(
             _runtimes.push_back(std::nullopt);
             continue;
         }
-        if (obs->values.observables().size() != _specs.size()) {
+        if (obs->values.observables().size() != observable_count) {
             throw std::invalid_argument(
                 "EventHistograms: one observable per histogram expected"
             );
@@ -96,7 +110,10 @@ void EventHistograms::fill(
             outputs = runtime_data.runtime->run({momenta});
         }
         for (std::size_t o = 0; o < _specs.size(); ++o) {
-            Tensor out = outputs.at(o).cpu().contiguous();
+            if (!_observable_index.at(o)) {
+                continue;  // filled from the event weight below
+            }
+            Tensor out = outputs.at(_observable_index.at(o).value()).cpu().contiguous();
             if (out.shape().size() == 1) {
                 auto out_view = out.view<double, 1>();
                 for (std::size_t n = 0; n < indices.size(); ++n) {
@@ -135,11 +152,11 @@ void EventHistograms::fill(
     for (std::size_t i = 0; i < count; ++i) {
         double w0 = buffer.event(i).weight();
         for (std::size_t o = 0; o < _specs.size(); ++o) {
-            double value = values[o][i];
+            auto& spec = _specs[o];
+            double value = spec.from_weight ? w0 / _reference_weight : values[o][i];
             if (std::isnan(value)) {
                 continue;
             }
-            auto& spec = _specs[o];
             double frac = (value - spec.min) / (spec.max - spec.min);
             std::size_t bin;
             if (frac < 0.) {
