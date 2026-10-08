@@ -268,7 +268,7 @@ C look for orders which match the born order constraint
       iden=iden_values(nfksprocess)
 force_ijglu_zero = .true.
 
-CALL BORN(P,NHEL,HELL,ANS,borns)
+CALL BORN(P,NHEL,HELL,0,ANS,borns)
 
 ans_summed = 0d0
 max_val = 0d0
@@ -344,8 +344,8 @@ C
 C
 C LOCAL VARIABLES
 C
-      INTEGER IHEL,IDEN,i,j,jj,glu_ij
-      REAL*8 borns(2,0:NSQAMPSO)
+      INTEGER IHEL,IDEN,i,j,jj,glu_ij,BMODE
+      REAL*8 borns(2,0:NSQAMPSO), BORNRHO(NSQAMPSO)
       COMPLEX*16 BORNTILDE
       INTEGER NTRY(%(nconfs)d)
       DATA NTRY /%(nconfs)d*0/
@@ -424,6 +424,16 @@ C ----------
           ANS(2,I) = 0D0
       ENDDO
       hel_fac=1d0
+C     The JAMPs of every helicity are summed into the colour density
+C     RHO (BORN_RHO_ADD); the Born and the colour-linked Borns are then
+C     traces of RHO with their colour matrix. The Born of each helicity
+C     is only needed on the first call, to find the good helicities.
+      CALL BORN_RHO_RESET()
+      IF (NTRY(nFKSprocess).LT.2) THEN
+        BMODE=1
+      ELSE
+        BMODE=2
+      ENDIF
       DO IHEL=1,NCOMB
         ! the following lines are to avoid segfaults when glu_ij=0
         cond_ij=skip(nfksprocess).eq.0
@@ -432,22 +442,24 @@ C ----------
         if (cond_ij) then
           IF ((GOODHEL(IHEL,nFKSprocess) .OR. GOODHEL(IHEL+SKIP(nFKSprocess),nFKSprocess) .OR. NTRY(nFKSprocess) .LT. 2) ) THEN
 
-            CALL BORN(P1,NHEL(1,IHEL),IHEL,T,borns)
+            CALL BORN(P1,NHEL(1,IHEL),IHEL,BMODE,T,borns)
             DO I=1,NSQAMPSO
-                ANS(1,I)=ANS(1,I)+T(1,I)
                 ANS(2,I)=ANS(2,I)+T(2,I)
             ENDDO
+            IF (BMODE.EQ.1) THEN
             if ( borns(1,0).ne.0d0 .AND. .NOT. GOODHEL(IHEL,nFKSprocess) ) then
               GOODHEL(IHEL,nFKSprocess)=.TRUE.
             endif
             if ( borns(2,0).ne.0d0 .AND. .NOT. GOODHEL(IHEL+SKIP(nFKSprocess),nFKSprocess) ) then
               GOODHEL(IHEL+SKIP(nFKSprocess),nFKSprocess)=.TRUE.
             endif
+            ENDIF
 	  ENDIF
         ENDIF
       ENDDO
+      CALL BORN_RHO_TRACE(0,BORNRHO)
       DO I=1,NSQAMPSO
-      ANS(1,I)=ANS(1,I)/DBLE(IDEN)
+      ANS(1,I)=BORNRHO(I)/DBLE(IDEN)
       ANS(2,I)=ANS(2,I)/DBLE(IDEN)
       ANS(1,0)=ANS(1,0)+ANS(1,I)
       ANS(2,0)=ANS(2,0)+ANS(2,I)
@@ -456,17 +468,24 @@ C ----------
       END
 
 
-      SUBROUTINE BORN(P,NHEL,HELL,ANS,borns)
+      SUBROUTINE BORN(P,NHEL,HELL,IMODE,ANS,borns)
 C
 %(info_lines)s
 C RETURNS AMPLITUDE SQUARED SUMMED/AVG OVER COLORS
 C FOR THE POINT WITH EXTERNAL LINES W(0:6,NEXTERNAL-1)
 C
-C The amplitudes are computed by GET_AMP_BORN, the Born JAMPs by
-C GET_JAMP_BORN and all colour sums by BORN_COLOR_SQUARE (colour
-C matrix 0 = the Born one). The JAMPs of every helicity are saved in
-C /TO_SAVEJAMP/ so that the colour-linked Borns (SB_SF_LINK) are just
-C a contraction of the same JAMPs with another colour matrix.
+C The amplitudes are computed by GET_AMP_BORN and the Born JAMPs by
+C GET_JAMP_BORN. IMODE selects what is done with the JAMPs:
+C   IMODE = 0 : the Born of this helicity (BORN_COLOR_SQUARE with the
+C               Born colour matrix) in ANS(1,:) and BORNS
+C   IMODE = 1 : the same, and the JAMPs are also added to the colour
+C               density RHO (BORN_RHO_ADD)
+C   IMODE = 2 : the JAMPs are only added to RHO; ANS(1,:) and BORNS
+C               are zero
+C The Born and the colour-linked Borns summed over helicities are then
+C traces of RHO (BORN_RHO_TRACE). The spin-correlated Born ANS(2,:)
+C pairs the two helicities of the FKS gluon, so it is computed here for
+C every IMODE.
 
 %(process_lines)s
 C
@@ -486,7 +505,7 @@ C
 C ARGUMENTS
 C
       REAL*8 P(0:3,NEXTERNAL-1),borns(2,0:NSQAMPSO)
-      INTEGER NHEL(NEXTERNAL-1), HELL
+      INTEGER NHEL(NEXTERNAL-1), HELL, IMODE
       COMPLEX*16 ANS(2,NSQAMPSO)
 C
 C LOCAL VARIABLES
@@ -501,8 +520,6 @@ C
       common/to_amps_born/  amp2,       jamp2
       double complex saveamp(ngraphs,max_bhel)
       common/to_saveamp/saveamp
-      double complex savejamp(ncolor,nampso,max_bhel)
-      common/to_savejamp/savejamp
       double precision hel_fac
       integer get_hel,skip(%(nconfs)d)
       common/cBorn/hel_fac,get_hel,skip
@@ -563,13 +580,15 @@ C       passed in, hell+skip for the flipped one of the FKS gluon
           amp(1:ngraphs)=saveamp(1:ngraphs,ihsave)
         endif
         CALL GET_JAMP_BORN(AMP,JAMP)
-        savejamp(:,:,ihsave)=jamp(:,:)
-C       the Born: contraction with the Born colour matrix
-        CALL BORN_COLOR_SQUARE(0,JAMP,RES)
         iflip=2-(1+back_hel*ihel)/2
-        DO I = 1, NSQAMPSO
-          BORNS(iflip,I)=BORNS(iflip,I)+DBLE(RES(I))
-        ENDDO
+        IF (IMODE.GE.1) CALL BORN_RHO_ADD(JAMP)
+        IF (IMODE.LE.1) THEN
+C         the Born of this helicity: the Born colour matrix
+          CALL BORN_COLOR_SQUARE(0,JAMP,RES)
+          DO I = 1, NSQAMPSO
+            BORNS(iflip,I)=BORNS(iflip,I)+DBLE(RES(I))
+          ENDDO
+        ENDIF
         Do I = 1, NGRAPHS
           amp2(i)=amp2(i)+amp(i)*dconjg(amp(i))
         Enddo
@@ -685,8 +704,8 @@ C For each squared split order it returns
 C   RES = sum_ij S_ij (JAMPA(j,M) conj(JAMPB(i,N))
 C                      + JAMPA(i,M) conj(JAMPB(j,N)))/2
 C i.e. the symmetrised interference needed for the spin-correlated Born.
-C For JAMPA = JAMPB (the Born and the colour-linked Borns) use the cheaper
-C BORN_COLOR_SQUARE. The matrices are symmetric: only the upper triangle
+C For JAMPA = JAMPB use the cheaper BORN_COLOR_SQUARE, or, summed over
+C helicities, BORN_RHO_TRACE. The matrices are symmetric: only the upper triangle
 C is stored, with the off-diagonal entries doubled, as integers over
 C DENOM(ILINK) (BLOCK DATA BORN_COLOR_DATA).
 %(process_lines)s
@@ -713,6 +732,10 @@ C
       COMPLEX*16 ZTEMP
       INTEGER CF(NCF,0:NLINKS), DENOM(0:NLINKS)
       COMMON /C_BORN_COLOR_MATRICES/ CF, DENOM
+      INTEGER SQSO(NAMPSO,NAMPSO)
+      LOGICAL FIRSTTIME
+      DATA FIRSTTIME /.TRUE./
+      SAVE SQSO, FIRSTTIME
 C
 C FUNCTION
 C
@@ -720,6 +743,15 @@ C
 C ----------
 C BEGIN CODE
 C ----------
+C     the squared split-order index of each (M,N) pair, looked up once
+      IF (FIRSTTIME) THEN
+        DO M = 1, NAMPSO
+          DO N = 1, NAMPSO
+            SQSO(M,N) = SQSOINDEXB(M,N)
+          ENDDO
+        ENDDO
+        FIRSTTIME = .FALSE.
+      ENDIF
       RES(:) = (0d0,0d0)
       DO M = 1, NAMPSO
         DO N = 1, NAMPSO
@@ -731,7 +763,7 @@ C ----------
               IF (CF(CF_INDEX,ILINK).NE.0) ZTEMP = ZTEMP + CF(CF_INDEX,ILINK)*(JAMPA(J,M)*DCONJG(JAMPB(I,N))+JAMPA(I,M)*DCONJG(JAMPB(J,N)))
             ENDDO
           ENDDO
-          RES(SQSOINDEXB(M,N)) = RES(SQSOINDEXB(M,N)) + ZTEMP
+          RES(SQSO(M,N)) = RES(SQSO(M,N)) + ZTEMP
         ENDDO
       ENDDO
       RES(:) = RES(:)/(2d0*DENOM(ILINK))
@@ -811,6 +843,153 @@ C       ZT = S.JAMP(:,M), using the packed upper triangle
       END
 
 
+      SUBROUTINE BORN_RHO_RESET()
+C
+%(info_lines)s
+C Sets the colour density RHO of the Born JAMPs (BORN_RHO_ADD) to zero.
+%(process_lines)s
+C
+      IMPLICIT NONE
+C
+C CONSTANTS
+C
+      INTEGER NSQAMPSO
+      PARAMETER (NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER    NCOLOR, NCF
+      PARAMETER (NCOLOR=%(ncolor)d, NCF=NCOLOR*(NCOLOR+1)/2)
+C
+C GLOBAL VARIABLES
+C
+      DOUBLE PRECISION RHO(NCF,NSQAMPSO)
+      COMMON /C_BORN_RHO/ RHO
+C ----------
+C BEGIN CODE
+C ----------
+      RHO(:,:) = 0d0
+      END
+
+
+      SUBROUTINE BORN_RHO_ADD(JAMP)
+C
+%(info_lines)s
+C Adds the Born JAMPs of one helicity to the colour density
+C   RHO(ij,K) = sum_hel sum_(M,N) Re(JAMP(j,M) conj(JAMP(i,N)))
+C for i <= j (packed as the colour matrices), the sum running over the
+C pairs of amplitude split orders (M,N) of the squared split order K.
+C All the colour matrices S are real and symmetric, so the helicity sum
+C of conj(JAMP).S.JAMP is the trace sum_ij S_ij RHO(ij,K)
+C (BORN_RHO_TRACE): the sum over helicities is done once, for the Born
+C and for all the colour-linked Borns.
+%(process_lines)s
+C
+      IMPLICIT NONE
+C
+C CONSTANTS
+C
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER    NCOLOR, NCF
+      PARAMETER (NCOLOR=%(ncolor)d, NCF=NCOLOR*(NCOLOR+1)/2)
+C
+C ARGUMENTS
+C
+      COMPLEX*16 JAMP(NCOLOR,NAMPSO)
+C
+C LOCAL VARIABLES
+C
+      INTEGER I,J,M,N,K,CF_INDEX
+      DOUBLE PRECISION RHO(NCF,NSQAMPSO)
+      COMMON /C_BORN_RHO/ RHO
+      INTEGER SQSO(NAMPSO,NAMPSO)
+      LOGICAL FIRSTTIME
+      DATA FIRSTTIME /.TRUE./
+      SAVE SQSO, FIRSTTIME
+C
+C FUNCTION
+C
+      INTEGER SQSOINDEXB
+C ----------
+C BEGIN CODE
+C ----------
+C     the squared split-order index of each (M,N) pair, looked up once
+      IF (FIRSTTIME) THEN
+        DO M = 1, NAMPSO
+          DO N = 1, NAMPSO
+            SQSO(M,N) = SQSOINDEXB(M,N)
+          ENDDO
+        ENDDO
+        FIRSTTIME = .FALSE.
+      ENDIF
+      DO M = 1, NAMPSO
+C       (M,M): Re(JAMP(j,M) conj(JAMP(i,M))) is symmetric in i,j
+        K = SQSO(M,M)
+        CF_INDEX = 0
+        DO I = 1, NCOLOR
+          DO J = I, NCOLOR
+            CF_INDEX = CF_INDEX + 1
+            RHO(CF_INDEX,K) = RHO(CF_INDEX,K) + DBLE(JAMP(J,M))*DBLE(JAMP(I,M)) + DIMAG(JAMP(J,M))*DIMAG(JAMP(I,M))
+          ENDDO
+        ENDDO
+C       (M,N) and (N,M) for N > M share the squared split order
+        DO N = M+1, NAMPSO
+          K = SQSO(M,N)
+          CF_INDEX = 0
+          DO I = 1, NCOLOR
+            DO J = I, NCOLOR
+              CF_INDEX = CF_INDEX + 1
+              RHO(CF_INDEX,K) = RHO(CF_INDEX,K) + DBLE(JAMP(J,M))*DBLE(JAMP(I,N)) + DIMAG(JAMP(J,M))*DIMAG(JAMP(I,N)) + DBLE(JAMP(I,M))*DBLE(JAMP(J,N)) + DIMAG(JAMP(I,M))*DIMAG(JAMP(J,N))
+            ENDDO
+          ENDDO
+        ENDDO
+      ENDDO
+      END
+
+
+      SUBROUTINE BORN_RHO_TRACE(ILINK,RES)
+C
+%(info_lines)s
+C The Born (ILINK = 0) or the ILINK-th colour-linked Born, summed over
+C the helicities added to the colour density RHO since the last
+C BORN_RHO_RESET, for each squared split order (not divided by IDEN):
+C   RES(K) = sum_ij S_ij RHO(ij,K)
+%(process_lines)s
+C
+      IMPLICIT NONE
+C
+C CONSTANTS
+C
+      INTEGER NSQAMPSO
+      PARAMETER (NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER    NCOLOR, NCF, NLINKS
+      PARAMETER (NCOLOR=%(ncolor)d, NCF=NCOLOR*(NCOLOR+1)/2)
+      PARAMETER (NLINKS=%(nlinks)d)
+C
+C ARGUMENTS
+C
+      INTEGER ILINK
+      DOUBLE PRECISION RES(NSQAMPSO)
+C
+C LOCAL VARIABLES
+C
+      INTEGER K,CF_INDEX
+      DOUBLE PRECISION TEMP
+      INTEGER CF(NCF,0:NLINKS), DENOM(0:NLINKS)
+      COMMON /C_BORN_COLOR_MATRICES/ CF, DENOM
+      DOUBLE PRECISION RHO(NCF,NSQAMPSO)
+      COMMON /C_BORN_RHO/ RHO
+C ----------
+C BEGIN CODE
+C ----------
+      DO K = 1, NSQAMPSO
+        TEMP = 0d0
+        DO CF_INDEX = 1, NCF
+          TEMP = TEMP + CF(CF_INDEX,ILINK)*RHO(CF_INDEX,K)
+        ENDDO
+        RES(K) = TEMP/DENOM(ILINK)
+      ENDDO
+      END
+
+
       BLOCK DATA BORN_COLOR_DATA
 C The colour matrices in the Born colour basis: index 0 is the Born one,
 C 1..NLINKS the colour links (upper triangle, off-diagonal entries doubled,
@@ -832,9 +1011,10 @@ C
 C
 C     The ILINK-th colour-linked Born, summed over the split orders
 C     required for the counterterms (the values per split order are
-C     stored in AMP_SPLIT_CNT). It contracts the Born JAMPs saved by the
-C     last Born call with the colour matrix of the link, so SBORN must
-C     have been called before at the same momenta.
+C     stored in AMP_SPLIT_CNT). It is the trace of the colour density
+C     left by the last Born call with the colour matrix of the link
+C     (BORN_RHO_TRACE), so SBORN must have been called before at the
+C     same momenta.
 C
 %(process_lines)s
 C
@@ -843,13 +1023,8 @@ C
 C CONSTANTS
 C
       include 'nexternal.inc'
-      include "born_nhel.inc"
-      INTEGER     NCOMB
-      PARAMETER ( NCOMB=  %(ncomb)d )
-      INTEGER NAMPSO, NSQAMPSO
-      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
-      INTEGER    NCOLOR
-      PARAMETER (NCOLOR=%(ncolor)d)
+      INTEGER NSQAMPSO
+      PARAMETER (NSQAMPSO=%(nSqAmpSplitOrders)d)
 C
 C ARGUMENTS
 C
@@ -858,10 +1033,9 @@ C
 C
 C VARIABLES
 C
-      INTEGER I,J,IHEL,IDEN
+      INTEGER I,J,IDEN
       include 'orders.inc'
-      REAL*8 ANS(0:NSQAMPSO)
-      COMPLEX*16 RES(NSQAMPSO)
+      REAL*8 ANS(0:NSQAMPSO), RES(NSQAMPSO)
       LOGICAL KEEP_ORDER_CNT(NSPLITORDERS, NSQAMPSO)
       common /c_keep_order_cnt/ keep_order_cnt
       integer amp_orders(nsplitorders)
@@ -872,10 +1046,6 @@ C
 C
 C GLOBAL VARIABLES
 C
-      LOGICAL GOODHEL(NCOMB,%(nconfs)d)
-      common /c_goodhel/ goodhel
-      double complex savejamp(ncolor,nampso,max_bhel)
-      common/to_savejamp/savejamp
       double precision savemom(nexternal-1,2)
       common/to_savemom/savemom
       logical calculatedBorn
@@ -904,16 +1074,9 @@ C ----------
          stop
       endif
       ANS(:) = 0D0
-      DO IHEL=1,NCOMB
-         IF (GOODHEL(IHEL,nFKSprocess)) THEN
-           CALL BORN_COLOR_SQUARE(ILINK,SAVEJAMP(:,:,IHEL),RES)
-           DO I=1,NSQAMPSO
-             ANS(I)=ANS(I)+DBLE(RES(I))
-           ENDDO
-         ENDIF
-      ENDDO
+      CALL BORN_RHO_TRACE(ILINK,RES)
       DO I=1,NSQAMPSO
-        ANS(I)=ANS(I)/DBLE(IDEN)
+        ANS(I)=RES(I)/DBLE(IDEN)
         ANS(0)=ANS(0)+ANS(I)
       ENDDO
 
