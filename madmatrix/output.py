@@ -389,8 +389,11 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                         'written without recycling.\n%s', name,
                         built.stdout.decode(errors='replace')[-1500:])
                     continue
+                # perf mode: 64 distinct RAMBO events, which the probe's
+                # good-helicity scan samples (matrix mode repeats ONE point)
                 env = dict(os.environ, MG_DUMP_GOODHEL='1')
-                run = subprocess.run([pjoin(dirpath, 'check_sa.exe'), 'matrix'],
+                run = subprocess.run([pjoin(dirpath, 'check_sa.exe'), 'perf',
+                                      '1', '64', '1'],
                                      cwd=dirpath, env=env, stdout=subprocess.PIPE,
                                      stderr=subprocess.STDOUT)
                 output = run.stdout.decode(errors='replace')

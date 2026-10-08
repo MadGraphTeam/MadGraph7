@@ -461,7 +461,16 @@ namespace madmatrix
   // every helicity whose amplitudes only cancel to rounding -- the all-plus and
   // one-minus helicities of a purely gluonic process, 12 of the 32 of g g > g g g --
   // so that every evaluation then computed them for nothing.
+#ifndef MG_HR_PROBE
   constexpr double limhel = 1e-8;
+#else
+  // The --hel_recycling warm-up bakes the rows it finds into the recycled table,
+  // and the run time cannot add one (hr_unbaked_row): a row baked for nothing
+  // only costs time, a missing one loses physics. So the probe keeps every row
+  // above a much lower threshold -- still far above a rounding residual
+  // (~1e-30 of the sum) -- and samples more events than the run-time scan does.
+  constexpr double limhel = 1e-14;
+#endif
 
   //--------------------------------------------------------------------------
 
@@ -476,7 +485,11 @@ namespace madmatrix
                        const int nevt )                  // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
   {
     // Allocate arrays at build time to contain at least 16 events (or at least neppV events if neppV>16, e.g. in future VPUs)
+#ifndef MG_HR_PROBE
     constexpr int maxtry0 = std::max( 16, neppV ); // 16, but at least neppV (otherwise the npagV loop does not even start)
+#else
+    constexpr int maxtry0 = std::max( 64, neppV ); // --hel_recycling warm-up: more events than the run-time scan (see limhel)
+#endif
     // Loop over only nevt events if nevt is < 16 (note that nevt is always >= neppV)
     assert( nevt >= neppV );
     const int maxtry = std::min( maxtry0, nevt ); // 16, but at most nevt (avoid invalid memory access if nevt<maxtry0)

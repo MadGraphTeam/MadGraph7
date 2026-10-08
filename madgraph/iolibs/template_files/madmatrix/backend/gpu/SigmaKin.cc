@@ -161,6 +161,10 @@ namespace madmatrix
   // blocks/streams for a given event race on the same numerator slot (the helicity
   // dimension has been removed to save memory), so an atomicAdd is mandatory.
 #define NUM_ATOMIC_ADD( DST, VAL ) atomicAdd( &( DST ), VAL )
+// The --hel_recycling warm-up probe hook that a recycled output's diagram calls
+// carry after every amplitude: the probe and the recycled build are CPU only
+// (see backend/{cpu,simd}/SigmaKin.cc), so it is nothing here.
+#define MG_HR_PROBE_AMP( NAMP )
 
   // Evaluate QCD partial amplitudes jamps for this given helicity from Feynman diagrams.
   // Also compute running sums over helicities adding jamp2, numerator, denominator
@@ -310,6 +314,7 @@ namespace madmatrix
   }
 
 #undef NUM_ATOMIC_ADD
+#undef MG_HR_PROBE_AMP
 
   //--------------------------------------------------------------------------
 
