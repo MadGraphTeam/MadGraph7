@@ -128,7 +128,13 @@ Cuts that are **not representable** in the current MG7 cut engine ([x] unless no
   to `[1,2]`, which is free there because madevent already works in the partonic
   centre of mass, while MG7 defaults to `[]` (no boost) because madspace works
   in the lab frame. A converter should therefore carry `me_frame` over
-  explicitly rather than treat `[1,2]` as "the default, nothing to do".
+  explicitly rather than treat `[1,2]` as "the default, nothing to do" --
+  `RunCardMG7.from_LO` does. Two values do not port as they are: an empty LO
+  `me_frame` selects no leg, which madevent reads as no boost of its partonic
+  c.m. momenta, so it becomes `[1,2]`; and madevent skips `[1,2]` (frame_id 6)
+  for a 1 -> n decay as well, keeping the decaying particle's rest frame, which
+  is `[1]` in MG7 -- a decay card needs that fixed by hand, since nothing in
+  the run_card says whether the process is a decay.
 
 ## 9. MG7-only (no LO source, keep default) — [mg7-only]
 

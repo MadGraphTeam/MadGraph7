@@ -821,14 +821,18 @@ class MG7MeFrameTest(unittest.TestCase):
     # massive (a frame can be asked for it) and the others are not
     MASSES = {21: 0.0, 23: 91.188}
 
-    def resolve(self, me_frame, is_decay, particle_count=4):
+    def resolve(self, me_frame, is_decay, particle_count=4, outgoing=None):
+        """``outgoing``, if given, lists the final states of several
+        subprocesses of one output (g g > each of them)"""
         from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
         process = object.__new__(mg7_launch.MadgraphProcess)
         process.run_card = {'run': {'me_frame': me_frame}}
         process.is_decay = is_decay
         incoming = [23] if is_decay else [21, 21]
-        outgoing = [23] + [21] * (particle_count - len(incoming) - 1)
-        process.subprocess_data = [{'incoming': incoming, 'outgoing': outgoing}]
+        if outgoing is None:
+            outgoing = [[23] + [21] * (particle_count - len(incoming) - 1)]
+        process.subprocess_data = [{'incoming': incoming, 'outgoing': final}
+                                   for final in outgoing]
         process.get_mass = lambda pid: self.MASSES[pid]
         process.init_me_frame()
         return process.me_frame, process.incoming_count
@@ -868,3 +872,33 @@ class MG7MeFrameTest(unittest.TestCase):
         self.assertIn('4 external particles', str(caught.exception))
         with self.assertRaises(ValueError):
             self.resolve([0], False)
+
+    def test_mixed_multiplicities_check_every_subprocess(self):
+        """An output can mix multiplicities (MLM merging). Every subprocess is
+        checked against its own particles, whichever comes first: the bigger
+        one first used to pass the range check, and the massless check then
+        indexed past the end of the smaller one (a bare IndexError)."""
+        mixed = [[23, 21, 21], [23, 21]]      # g g > z g g and g g > z g
+        for outgoing in (mixed, mixed[::-1]):
+            for me_frame in ([5], [3, 5]):
+                with self.assertRaises(ValueError) as caught:
+                    self.resolve(me_frame, False, outgoing=outgoing)
+                message = str(caught.exception)
+                self.assertIn('me_frame particle 5 out of range', message)
+                self.assertIn('21 21 > 23 21 has 4 external particles',
+                              message)
+                self.assertIn('mixes subprocesses with 4, 5', message)
+            # a particle every subprocess has is fine
+            self.assertEqual(self.resolve([3], False, outgoing=outgoing),
+                             ([3], 2))
+            self.assertEqual(self.resolve([3, 4], False, outgoing=outgoing),
+                             ([3, 4], 2))
+
+    def test_the_massless_check_covers_every_subprocess(self):
+        """Particle 4 is a Z in g g > z z g but a gluon in g g > z g."""
+        with self.assertRaises(ValueError) as caught:
+            self.resolve([4], False, outgoing=[[23, 23, 21], [23, 21]])
+        self.assertIn('massless (pdg [21])', str(caught.exception))
+        self.assertEqual(
+            self.resolve([4], False, outgoing=[[23, 23, 21], [23, 23]]),
+            ([4], 2))

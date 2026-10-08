@@ -103,15 +103,18 @@ class MG7PolarisedMirrorTest(unittest.TestCase):
         mg.exec_cmd('generate %s' % process)
         mg.exec_cmd('output mg7 %s' % run_dir)
 
+        # set through the card's own sections rather than by editing its text:
+        # several sections have an 'enable' key, and which one comes first is
+        # the template's business
+        from madgraph.various.banner import RunCardMG7
         toml = pjoin(run_dir, 'Cards', 'run_card.toml')
-        card = open(toml).read()
-        import re
-        card = re.sub(r'(?m)^events = .*$', 'events = %d' % _EVENTS, card)
-        card = re.sub(r'(?m)^seed = .*$', 'seed = %d' % _SEED, card)
-        card = re.sub(r'(?m)^me_frame = .*$', 'me_frame = %s' % me_frame, card)
+        card = RunCardMG7(toml)
+        card.set('generation.events', _EVENTS, user=True)
+        card.set('run.seed', _SEED, user=True)
+        card.set('run.me_frame', me_frame, user=True)
         # the scale/PDF variation weights are irrelevant here and cost time
-        card = card.replace('enable = true', 'enable = false', 1)
-        open(toml, 'w').write(card)
+        card.set('systematics.enable', False, user=True)
+        card.write(toml)
 
         log = pjoin(run_dir, 'mg7_gen.log')
         with open(log, 'w') as logfh:
@@ -137,8 +140,8 @@ class MG7PolarisedMirrorTest(unittest.TestCase):
         """
         _require_mg7_runtime(self)
 
-        plus, plus_err = self._cross_section('p p > z{+} j', 'zplus', '[3]')
-        minus, minus_err = self._cross_section('p p > z{-} j', 'zminus', '[3]')
+        plus, plus_err = self._cross_section('p p > z{+} j', 'zplus', [3])
+        minus, minus_err = self._cross_section('p p > z{-} j', 'zminus', [3])
 
         spread = (plus_err ** 2 + minus_err ** 2) ** 0.5
         self.assertAlmostEqual(

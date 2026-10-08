@@ -263,17 +263,36 @@ class MadgraphProcess:
 
         The particle numbers are checked here rather than only in madspace,
         which would not see them until the integrands are built -- long after
-        the matrix-element libraries have been compiled.
+        the matrix-element libraries have been compiled. Every subprocess is
+        checked against its own particles: an output can mix multiplicities
+        (p p > z j and p p > z j j, say, for MLM merging), and madspace builds
+        one matrix element per subprocess, each refusing a particle it does not
+        have. That is stricter than madevent, which ignores the particles a
+        process does not have and so changes the frame from one multiplicity
+        to the next without a word.
         """
         me_frame = list(self.run_card["run"]["me_frame"])
         pdgs = [clean_pids(meta["incoming"]) + clean_pids(meta["outgoing"])
                 for meta in self.subprocess_data]
-        particle_count = len(pdgs[0])
-        for index in me_frame:
-            if index < 1 or index > particle_count:
+        counts = sorted({len(pdg_list) for pdg_list in pdgs})
+        for meta, pdg_list in zip(self.subprocess_data, pdgs):
+            for index in me_frame:
+                if 1 <= index <= len(pdg_list):
+                    continue
+                process = "%s > %s" % (
+                    " ".join(str(pid) for pid in meta["incoming"]),
+                    " ".join(str(pid) for pid in meta["outgoing"]),
+                )
+                mixed = (
+                    f"; this output mixes subprocesses with "
+                    f"{', '.join(str(count) for count in counts)} external "
+                    "particles, and me_frame has to name particles every one "
+                    "of them has"
+                    if len(counts) > 1 else ""
+                )
                 raise ValueError(
-                    f"me_frame particle {index} out of range: this process has "
-                    f"{particle_count} external particles"
+                    f"me_frame particle {index} out of range: subprocess "
+                    f"{process} has {len(pdg_list)} external particles{mixed}"
                 )
         if len(me_frame) == 1:
             # A massless particle has no rest frame: its momentum squares to

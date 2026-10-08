@@ -30,12 +30,21 @@ pdg, POS of GET_DENSITY -- is laid out in the matrix element's leg order:
 
 The tests feed the same physical event written in several line orders and
 require identical answers.
+
+The original matrix element must also be put in the frame the events were
+generated in, which was read from the wrong place: ``frame_id`` is only computed
+when the include files are written, so a run_card read back from an LHE banner
+always said 6 (the partonic c.m.), and an mg7 banner has none, while there
+``me_frame = []`` means no boost at all. And the frame has to be reached the way
+the generation reached it, through the partonic c.m.: a single boost straight
+from the lab leaves a Wigner rotation behind.
 """
 
 from __future__ import absolute_import
 import math
 import unittest
 
+import madgraph.various.banner as banner_mod
 import madgraph.various.lhe_parser as lhe_parser
 import madgraph.interface.reweight_interface as reweight_interface
 
@@ -72,46 +81,65 @@ def _rest(momenta, legs):
     return [sum(momenta[leg][k] for leg in legs) for k in (1, 2, 3)]
 
 
+def _zboost(momenta, rapidity):
+    """``momenta`` boosted along z by ``rapidity``: the same event seen from a
+    lab frame in which the partonic system moves along the beam"""
+    ch, sh = math.cosh(rapidity), math.sinh(rapidity)
+    return [(e * ch + pz * sh, px, py, pz * ch + e * sh)
+            for e, px, py, pz in momenta]
+
+
+def _mg7_card(me_frame):
+    card = banner_mod.RunCardMG7()
+    card['run']['me_frame'] = me_frame
+    return card
+
+
 class _BaseStub(object):
     class _Banner(object):
-        def __init__(self, frame_id):
-            self.run_card = {'frame_id': frame_id}
+        def __init__(self, run_card):
+            self.run_card = run_card
 
-    def __init__(self, frame_id):
-        self.banner = self._Banner(frame_id)
+    def __init__(self, run_card):
+        """``run_card`` a RunCardMG7, or a plain dict standing for a legacy
+        (LO/NLO) one; a list is taken as the legacy me_frame"""
+        if isinstance(run_card, list):
+            run_card = {'me_frame': run_card}
+        self.banner = self._Banner(run_card)
         self.keep_ordering = False
         self.boost_event = False
 
     method_boost_event = reweight_interface.ReweightInterface.method_boost_event
+    get_me_frame = reweight_interface.ReweightInterface.get_me_frame
     boost_momenta_to_rest_frame = staticmethod(
         reweight_interface.ReweightInterface.boost_momenta_to_rest_frame)
+    boost_momenta_to_me_frame = staticmethod(
+        reweight_interface.ReweightInterface.boost_momenta_to_me_frame)
 
 
 class TestFrameIdBoost(unittest.TestCase):
-    """me_frame / frame_id in the reweighting: bit n is leg n of the matrix
-    element, counted from 1."""
+    """me_frame in the reweighting: entry n is leg n of the matrix element,
+    counted from 1."""
 
-    def _boosted(self, frame_id, layout, resonance=False):
+    def _boosted(self, run_card, layout, resonance=False, rapidity=0.):
         event = _event(layout, resonance)
-        all_p = [event.get_momenta(ORDER)]
-        return _BaseStub(frame_id).method_boost_event(event, all_p, ORDER, 0)
+        all_p = [_zboost(event.get_momenta(ORDER), rapidity)]
+        return _BaseStub(run_card).method_boost_event(event, all_p, ORDER, 0)
 
     def test_the_chosen_legs_end_up_at_rest(self):
         """me_frame = [3, 4]: the first top and first anti-top of the matrix
         element, whichever LHE line they sit on."""
-        frame_id = 2 ** 3 + 2 ** 4
         for layout in LAYOUTS:
-            out = self._boosted(frame_id, layout)
+            out = self._boosted([3, 4], layout)
             self.assertEqual(len(out), 1)
             for comp in _rest(out[0], [2, 3]):
                 self.assertAlmostEqual(comp, 0., places=8)
 
     def test_the_line_order_does_not_matter(self):
-        frame_id = 2 ** 3 + 2 ** 4
-        ref = self._boosted(frame_id, LAYOUTS[0])
+        ref = self._boosted([3, 4], LAYOUTS[0])
         for layout in LAYOUTS[1:]:
             for resonance in (False, True):
-                out = self._boosted(frame_id, layout, resonance)
+                out = self._boosted([3, 4], layout, resonance)
                 for a, b in zip(out[0], ref[0]):
                     for x, y in zip(a, b):
                         self.assertAlmostEqual(x, y, places=8)
@@ -119,16 +147,80 @@ class TestFrameIdBoost(unittest.TestCase):
     def test_a_single_leg_is_exactly_at_rest(self):
         """HELAS takes the frame's z axis only for a momentum exactly at rest;
         the boost arithmetic alone leaves ~1e-14."""
-        out = self._boosted(2 ** 5, LAYOUTS[1])
+        out = self._boosted([5], LAYOUTS[1], rapidity=0.8)
         self.assertEqual(out[0][4][1:], (0., 0., 0.))
         self.assertAlmostEqual(out[0][4][0], 173., places=8)
 
-    def test_no_selected_leg_changes_nothing(self):
+    def test_frame_id_is_not_read(self):
+        """frame_id is only computed when the include files are written: a
+        run_card read back from an LHE banner keeps its default 6 whatever
+        me_frame says. me_frame is what decides."""
+        out = self._boosted({'me_frame': [5], 'frame_id': 6}, LAYOUTS[0])
+        self.assertEqual(out[0][4][1:], (0., 0., 0.))
+
+    def test_the_frame_is_reached_through_the_partonic_cm(self):
+        """The same event seen from any longitudinally boosted lab frame must
+        end up with the same momenta: the generation went lab -> partonic
+        c.m. -> me_frame, and a single boost from the lab would leave a Wigner
+        rotation that turns the spin axis of the leg held at rest."""
+        ref = self._boosted([5], LAYOUTS[0])
+        for rapidity in (-1.1, 0.6):
+            out = self._boosted([5], LAYOUTS[0], rapidity=rapidity)
+            for a, b in zip(out[0], ref[0]):
+                for x, y in zip(a, b):
+                    self.assertAlmostEqual(x, y, places=7)
+        # and the test is sensitive to it: the single boost straight from the
+        # lab does put leg 5 at rest, but rotates everything else
+        event = _event(LAYOUTS[0])
+        lab = _zboost(event.get_momenta(ORDER), 0.6)
+        direct = reweight_interface.ReweightInterface.boost_momenta_to_rest_frame(
+            lab, lhe_parser.FourMomentum(lab[4]), 4)
+        self.assertGreater(max(abs(x - y) for a, b in zip(direct, ref[0])
+                               for x, y in zip(a, b)), 1.)
+
+    def test_the_partonic_cm_is_left_to_the_zboost(self):
+        """[1, 2] -- frame_id 6, which madevent and aMC@NLO skip outright,
+        decays included -- and [] (no leg selected, so no boost of momenta
+        already in the partonic c.m.) both mean the partonic c.m. at LO/NLO,
+        and so do legs the matrix element does not have."""
+        for me_frame in ([1, 2], [2, 1], [], [7]):
+            stub = _BaseStub(me_frame)
+            self.assertIsNone(stub.get_me_frame(2, 6), me_frame)
+            self.assertIsNone(stub.get_me_frame(1, 6), me_frame)
+        self.assertIsNone(_BaseStub({}).get_me_frame(2, 6))
+
+    def test_mg7_default_applies_no_boost(self):
+        """mg7's [] means the matrix element saw the lab-frame momenta it
+        wrote out, not madevent's partonic c.m."""
+        event = _event(LAYOUTS[0])
+        lab = _zboost(event.get_momenta(ORDER), 0.6)
+        all_p = [list(lab)]
+        out = _BaseStub(_mg7_card([])).method_boost_event(event, all_p,
+                                                          ORDER, 0)
+        self.assertIs(out, all_p)
+        self.assertEqual(out[0], lab)
+
+    def test_mg7_frame(self):
+        stub = _BaseStub(_mg7_card([5]))
+        self.assertEqual(stub.get_me_frame(2, 6), [5])
+        out = self._boosted(_mg7_card([5]), LAYOUTS[0], rapidity=0.6)
+        self.assertEqual(out[0][4][1:], (0., 0., 0.))
+        # unlike at LO, [1, 2] of a decay is a real frame in mg7 -- the
+        # decaying particle and its first product -- while [1] is the
+        # decaying particle's rest frame, i.e. no frame to reach
+        self.assertEqual(_BaseStub(_mg7_card([1, 2])).get_me_frame(1, 4),
+                         [1, 2])
+        self.assertIsNone(_BaseStub(_mg7_card([1])).get_me_frame(1, 4))
+        self.assertIsNone(_BaseStub(_mg7_card([1, 2])).get_me_frame(2, 6))
+
+    def test_the_new_hypothesis_is_not_affected(self):
+        """Only the original matrix element (hypp_id 0) is put in the
+        generation frame."""
         event = _event(LAYOUTS[0])
         all_p = [event.get_momenta(ORDER)]
-        # bit 0 is not a leg
-        self.assertIs(_BaseStub(1).method_boost_event(event, all_p, ORDER, 0),
-                      all_p)
+        stub = _BaseStub([5])
+        out = stub.method_boost_event(event, all_p, ORDER, 1)
+        self.assertNotEqual(out[0][4][1:], (0., 0., 0.))
 
 
 class _DensityStub(object):

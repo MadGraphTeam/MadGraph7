@@ -7563,11 +7563,11 @@ class RunCardMG7(RunCard):
         'xetamin', 'deltaeta', 'cut_decays',
         'pt_min_pdg', 'pt_max_pdg', 'e_min_pdg', 'e_max_pdg', 'eta_min_pdg',
         'eta_max_pdg', 'mxx_min_pdg', 'mxx_only_part_antipart',
-        # systematics detail / eva / frame
+        # systematics detail / eva / event frame
         'systematics_program', 'systematics_arguments', 'sys_scalefact',
         'sys_alpsfact', 'sys_matchscale', 'sys_pdf', 'sys_scalecorrelation',
         'ievo_eva', 'evaorder', 'eva_xcut',
-        'boost_event', 'me_frame', 'frame_id', 'event_norm', 'lhe_version',
+        'boost_event', 'event_norm', 'lhe_version',
     }
 
     @classmethod
@@ -7645,6 +7645,20 @@ class RunCardMG7(RunCard):
         sde = lo['SDE_strategy'] if 'SDE_strategy' in lo else 1
         mg7.set('phasespace.sde_strategy',
                 'denominators' if int(sde) == 2 else 'diagrams')
+
+        # --- matrix-element frame ---
+        # Carried over explicitly, the LO default [1,2] included: madevent
+        # hands its matrix element partonic centre-of-mass momenta, so [1,2]
+        # costs nothing there, while mg7's own default [] is the lab frame and
+        # gives a polarised matrix element other polarisation axes. An empty
+        # LO me_frame selects no leg, which madevent reads as no boost of
+        # those partonic c.m. momenta, i.e. [1,2] again. frame_id is only
+        # madevent's encoding of me_frame. Caveat: madevent skips [1,2]
+        # (frame_id 6) for a 1 -> n decay too, which keeps the decaying
+        # particle's rest frame -- [1] in mg7 -- but nothing in the run_card
+        # says whether the process is a decay.
+        if 'me_frame' in lo:
+            mg7.set('run.me_frame', list(lo['me_frame']) or [1, 2])
 
         # --- PDF ---
         pdf_name = cls._resolve_pdf(lo, dropped)

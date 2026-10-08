@@ -1796,32 +1796,98 @@ class ReweightInterface(extended_cmd.Cmd):
             out[rest_leg] = (out[rest_leg][0], 0., 0., 0.)
         return out
 
+    @staticmethod
+    def boost_momenta_to_me_frame(momenta, me_frame, n_incoming):
+        """``momenta`` -- lab frame, in the matrix element's leg order --
+        boosted into the rest frame of the legs ``me_frame`` (counted from 1)
+        the way the events' own matrix element got there: first into the rest
+        frame of the incoming system, and only from there into the one
+        ``me_frame`` names. madevent and aMC@NLO hand their matrix element
+        partonic centre-of-mass momenta and boost them once; madspace, which
+        generates in the lab frame, takes the same two steps (see
+        MatrixElement in madspace/src/phasespace/matrix_element.cpp).
+
+        A single boost straight from the lab is not the same frame: two boosts
+        along different directions compose into a boost *and* a Wigner
+        rotation. For a single leg held at rest -- where HELAS takes the
+        frame's z axis as the spin axis -- that rotation moves |M|^2 of a
+        polarised particle by tens of per cent.
+        """
+        to_rest = ReweightInterface.boost_momenta_to_rest_frame
+        p_in = lhe_parser.FourMomentum()
+        for p in momenta[:n_incoming]:
+            p_in += lhe_parser.FourMomentum(p)
+        # a decaying particle is the reference frame on its own: put it
+        # exactly at rest too
+        momenta = to_rest(momenta, p_in, 0 if n_incoming == 1 else None)
+        pboost = lhe_parser.FourMomentum()
+        for n in me_frame:
+            pboost += lhe_parser.FourMomentum(momenta[n - 1])
+        rest_leg = me_frame[0] - 1 if len(me_frame) == 1 else None
+        return to_rest(momenta, pboost, rest_leg)
+
+    def get_me_frame(self, n_incoming, n_external):
+        """The legs -- counted from 1, in the matrix element's order -- whose
+        rest frame the events' own matrix element was evaluated in, from the
+        run_card of the banner. None when that is the rest frame of the
+        incoming system (the partonic centre of mass of a collision), which
+        the zboost branch of method_boost_event reaches on its own; [] when
+        the matrix element saw the momenta unboosted, mg7's default.
+
+        me_frame is read rather than frame_id. frame_id is a system parameter,
+        computed only when the include files are written, so a run_card read
+        back from an LHE banner keeps its default 6 whatever me_frame says --
+        a polarised sample was reweighted in the partonic centre of mass. An
+        mg7 banner has no frame_id at all, and there [] means no boost:
+        madspace evaluates the matrix element on the lab-frame momenta it
+        writes out, not in madevent's partonic centre of mass.
+        """
+        run_card = self.banner.run_card
+        if isinstance(run_card, banner.RunCardMG7):
+            me_frame = list(run_card['run']['me_frame'])
+            if not me_frame:
+                return []
+        elif 'me_frame' in run_card:
+            me_frame = list(run_card['me_frame'])
+            # madevent and aMC@NLO skip [1, 2] (frame_id 6) outright, decays
+            # included: their matrix element is handed momenta already in
+            # the partonic centre of mass, or the decaying particle's rest
+            # frame
+            if sorted(set(me_frame)) == [1, 2]:
+                return None
+        else:
+            return None
+        # madevent reads only the bits of the legs the matrix element has
+        # (mapid), and with none of them selected boosts by nothing, i.e.
+        # stays in the partonic centre of mass
+        me_frame = sorted(set(n for n in me_frame if 1 <= n <= n_external))
+        if not me_frame or me_frame == list(range(1, n_incoming + 1)):
+            return None
+        return me_frame
+
     def method_boost_event(self, event, all_p, orig_order, hypp_id):
         # For 2>N pass in the center of mass frame
         #   - required for helicity by helicity re-weighitng
         #   - Speed-up loop computation 
         
-        if (hypp_id == 0 and ('frame_id' in self.banner.run_card and self.banner.run_card['frame_id'] !=6)):
-            # frame_id = sum(2**n for n in me_frame): bit n selects leg n,
-            # counted from 1 in the *matrix element's* order -- the order all_p
-            # is already in. Walking the event's own lines instead, as this
-            # did, picks whatever particle the LHE wrote at that place; it
-            # never got that far, since it also died on FourMomenta (no such
-            # name) and on str.reverse. The momenta are boosted directly,
-            # like the zboost below, so the Monte-Carlo-mass projection the
-            # caller applied to all_p survives the boost.
-            frame_id = int(self.banner.run_card['frame_id'])
-            selected = [n for n in range(1, len(all_p[0]) + 1)
-                        if frame_id >> n & 1]
-            if not selected:
+        n_incoming = len(orig_order[0])
+        me_frame = None
+        if hypp_id == 0:
+            me_frame = self.get_me_frame(n_incoming, len(all_p[0]))
+        if me_frame is not None:
+            # The original matrix element has to see the momenta in the frame
+            # the events were generated in: its value is what the event weight
+            # is divided by. me_frame counts legs in the *matrix element's*
+            # order, the order all_p is already in -- walking the event's own
+            # lines instead picks whatever particle the LHE wrote at that
+            # place. The momenta are boosted directly, like the zboost below,
+            # so the Monte-Carlo-mass projection the caller applied to all_p
+            # survives the boost.
+            if not me_frame:
                 return all_p
             if len(all_p) > 1:
                 logger.critical("due to ordering ambiguity, the boost used might not be consistent. please ensure that this is not an issue")
-            pboost = lhe_parser.FourMomentum()
-            for n in selected:
-                pboost += lhe_parser.FourMomentum(all_p[0][n - 1])
-            rest_leg = selected[0] - 1 if len(selected) == 1 else None
-            return [self.boost_momenta_to_rest_frame(p, pboost, rest_leg)
+            return [self.boost_momenta_to_me_frame(p, me_frame, n_incoming)
                     for p in all_p]
 
         elif (hypp_id == 1 and self.boost_event):

@@ -29,6 +29,18 @@ ANNOUNCEMENT:
        through the rest frame of the incoming system: a single boost from the
        lab would leave a Wigner rotation behind and pick different polarisation
        axes than madevent.
+   OM: BUG FIX (reweight): for a sample generated with a non-default me_frame,
+       the original matrix element -- the one each event weight is divided by --
+       was not evaluated in the frame the events were generated in. The frame
+       was read from frame_id, which a run_card read back from the LHE banner
+       never sets (it always said 6, the partonic centre of mass), and an mg7
+       banner has none at all, while there me_frame = [] means no boost. It is
+       now read from me_frame, LO, NLO and mg7 alike, and the frame is reached
+       the way the generation reached it, through the rest frame of the incoming
+       system: a single boost straight from the lab-frame momenta of the LHE file
+       leaves a Wigner rotation that turns the spin axis of a particle held at
+       rest. Only polarised samples were affected. RunCardMG7.from_LO now also
+       carries me_frame over, instead of reporting it as unsupported.
    OM: BUG FIX (mg7): the initial-state mirror paired each event with a matrix
        element evaluated on the momenta *before* the mirror was applied. madspace
        covers the beam-swapped copy of an asymmetric initial state by rotating
