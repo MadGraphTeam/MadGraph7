@@ -1382,6 +1382,40 @@ class TestRunFromPickleModel(unittest.TestCase):
         self.assertEqual(grouped.get_tag()[0], self.QQ)
 
 
+class TestDcBranchFromDict(unittest.TestCase):
+    """save_status_to_pickle keeps all_decay as its repr, so a decay branch
+    comes back as a plain dict; get_identical_decay, which use_old_dir reruns,
+    calls generate_momenta on it. dc_branch_from_me.from_dict rebuilds it."""
+
+    def test_round_trip_through_the_repr(self):
+        w_decay = MG.Process({'legs': MG.LegList([
+            MG.Leg({'id': 24, 'state': False}), MG.Leg({'id': -11}),
+            MG.Leg({'id': 12})])})
+        t_decay = MG.Process({'legs': MG.LegList([
+            MG.Leg({'id': 6, 'state': False}), MG.Leg({'id': 24}),
+            MG.Leg({'id': 5})]),
+            'decay_chains': MG.ProcessList([w_decay])})
+        branch = madspin.dc_branch_from_me(t_decay)
+        back = madspin.dc_branch_from_me.from_dict(eval(repr(branch)))
+
+        self.assertIsInstance(back, madspin.dc_branch_from_me)
+        self.assertEqual(dict(back), dict(branch))
+        # t > w+ b, w+ > e+ ve: two decays, three external legs
+        self.assertEqual((branch.nb_decays, branch.nexternal), (2, 3))
+        self.assertEqual((back.nb_decays, back.nexternal), (2, 3))
+
+        mass = {6: 173.0, 24: 80.4, 5: 4.7}
+        width = {6: 1.5, 24: 2.05}
+        def momenta(dc_branch):
+            random.seed(7)
+            tree, jac, nb_sol = dc_branch.generate_momenta(
+                madspin.momentum(173.0, 0, 0, 0), True,
+                lambda pid: width.get(abs(pid), 0.),
+                lambda pid: mass.get(abs(pid), 0.), 15, 13000)
+            return sorted((i, str(tree[i]['momentum'])) for i in tree), jac
+        self.assertEqual(momenta(back), momenta(branch))
+
+
 
 # Shared flavor-group fixture used by several tests.
 # Models p p > W+ W- with W+ > j j, W- > j j (j = u d s c).

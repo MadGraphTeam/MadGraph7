@@ -2397,20 +2397,15 @@ class MadSpinInterface(extended_cmd.Cmd):
         
         generate_all = save_load_object.load_from_file(pjoin(self.options['ms_dir'], 'madspin.pkl'))
         
-        #restore data passed to string to help pickle
-        generate_all.all_decay = eval(generate_all.all_decay)
-        for me in generate_all.all_ME:
-            for d in generate_all.all_ME[me]['decays']:
-                if isinstance(d['decay_struct'], str):
-                    d['decay_struct'] = eval(d['decay_struct'])
-
 
         # Re-create information which are not save in the pickle.
         generate_all.evtfile = self.events_file
         generate_all.curr_event = madspin.Event(self.events_file, self.banner ) 
         generate_all.mgcmd = self.mg5cmd
         generate_all.mscmd = self 
-        self._restore_pickled_model(generate_all)
+        # all_decay/decay_struct strings and the model (the event reader needs
+        # it to produce the flavour-grouped tags all_ME is keyed by)
+        generate_all.restore_pickled_status(self.model, self.options['ms_dir'])
         #generate_all.pid2width = lambda pid: generate_all.banner.get('param_card', 'decay', abs(pid)).value
         #generate_all.pid2mass = lambda pid: generate_all.banner.get('param_card', 'mass', abs(pid)).value
         if generate_all.path_me != self.options['ms_dir']:
@@ -2490,32 +2485,6 @@ class MadSpinInterface(extended_cmd.Cmd):
         # own card, and archived nothing at all before -- do_launch returns here
         # long before reaching its own copy of this call.
         self._archive_madspin_card(decayed_evt_file)
-
-    def _restore_pickled_model(self, generate_all):
-        """Give ``generate_all``, restored from ``madspin.pkl``, the live model.
-
-        ``save_status_to_pickle`` detaches the model before pickling
-        (``switch_all_model_instance(None)``) and keeps only its
-        ``merged_particles``. But ``all_ME`` is keyed by flavour-grouped tags,
-        e.g. ``((-81, 81), (-6, 6))``, and the event only produces those through
-        the model: without one, ``Event.get_tag`` returns the physical
-        ``((-2, 2), (-6, 6))`` and ``load_event`` dies with a KeyError on the
-        first quark-initiated event -- for any sample, mg7 or madevent, the
-        one that built the directory included. The flavour indices handed to
-        the Fortran (``get_flavor_index``) are read from the model as well.
-
-        Those indices are positions within a merged group, and the code in the
-        directory was compiled for the grouping it was generated with, so a
-        model that groups differently cannot be used in its place."""
-        pickled = getattr(generate_all, 'merged_particles', None) or {}
-        live = (self.model.get('merged_particles') if self.model else None) or {}
-        if pickled != live:
-            raise madspin.MadSpinError(
-                "The directory %s was built with the flavour grouping %s, but "
-                "the model of this event file groups %s. Its matrix elements "
-                "cannot be reused for these events: use another ms_dir."
-                % (self.options['ms_dir'], pickled, live))
-        generate_all.switch_all_model_instance(self.model)
 
     def run_bridge(self, line):
         """Run the Bridge Algorithm"""

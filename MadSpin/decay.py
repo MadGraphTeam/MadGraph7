@@ -647,6 +647,20 @@ class dc_branch_from_me(dict):
         # launch the recursive loop
         add_decay(process)
 
+    @classmethod
+    def from_dict(cls, data):
+        """Rebuild the object from its dict content, which is all the repr of
+        save_status_to_pickle keeps: nb_decays and nexternal follow from the
+        tree (one node per decay, one positive index per external leg)."""
+        new = cls.__new__(cls)
+        dict.update(new, data)
+        new.model = None
+        new.nb_decays = len(new['tree'])
+        new.nexternal = sum(1 for node in new['tree'].values()
+                            for key, child in node.items()
+                            if key.startswith('d') and child['index'] > 0)
+        return new
+
     def get_leaf_pids(self):
         """Return a list of the leaf (final-state) PDG codes for this decay branch.
 
@@ -2319,12 +2333,33 @@ class decay_all_events(object):
         else:
             try:
                 data = save_load_object.load_from_file(pjoin(self.path_me,"production_me", "all_ME.pkl"))
+                data.restore_pickled_status(self.model, self.path_me)
+                # run() needs these from all_decay (get_identical_decay); a
+                # file written before they were stored cannot be reused
+                if any('final_ids' not in d or 'tags' not in d
+                       for d in data.all_decay.values()):
+                    raise MadSpinError('%s predates the plain-data all_decay'
+                                       % pickle_info)
                 self.all_ME, self.all_decay,self.width_estimator = data.all_ME, data.all_decay, data.width_estimator
+                # as get_branching_ratio does: the widths MadSpin computed are
+                # what the branching ratio and the Breit-Wigner cut use
+                if self.width_estimator:
+                    self.banner.param_card = self.width_estimator.banner.param_card
+                # the Fortran reads a ranmar_state.dat left by the previous run
+                # in preference to seeds.dat: drop it, as run_from_pickle does,
+                # so that this run follows its own seed
+                for name in misc.glob(pjoin('*', 'SubProcesses', '*', 'ranmar_state.dat'),
+                                      self.path_me):
+                    os.remove(name)
+                logger.info('use_old_dir: reusing the matrix elements in %s'
+                            % self.path_me)
             except Exception as error:
                 logger.debug(str(error))
                 self.generate_all_matrix_element()
-                self.save_to_file(pickle_info,
-                                          (self.all_ME,self.all_decay,self.width_estimator))                
+                # the same format as above: the live objects reach the UFO
+                # model and do not pickle (save_to_file would swallow that and
+                # leave a truncated file)
+                self.save_status_to_pickle(pickle_info)
         
         if not self.options["onlyhelicity"] and \
             self.options['spinmode'] in  ['madspin_v1']:
@@ -2505,7 +2540,8 @@ class decay_all_events(object):
             
         # Closing all run
         self.terminate_fortran_executables()
-        if not self.options['ms_dir']:
+        # use_old_dir is the request to reuse them (production_me/all_ME.pkl)
+        if not (self.options['ms_dir'] or self.options['use_old_dir']):
             shutil.rmtree(pjoin(self.path_me,'production_me'))
             shutil.rmtree(pjoin(self.path_me,'full_me'))
             if not self.options["onlyhelicity"]:
@@ -2568,7 +2604,40 @@ class decay_all_events(object):
                     d['decay_struct'] = eval(d['decay_struct'])
         self.switch_all_model_instance(model)
 
+    def restore_pickled_status(self, model, directory):
+        """Undo save_status_to_pickle on an object loaded back from its file:
+        madspin.pkl (run_from_pickle) or production_me/all_ME.pkl (use_old_dir).
 
+        The file holds all_decay and every decay_struct as their repr and no
+        model: the model is detached and only its merged_particles is kept.
+        Both are put back here. all_ME is keyed by flavour-grouped tags, e.g.
+        ((-81, 81), (-6, 6)), and the event only produces those through the
+        model: without one, Event.get_tag returns the physical
+        ((-2, 2), (-6, 6)) and load_event dies with a KeyError on the first
+        quark-initiated event. The flavour indices handed to the compiled
+        matrix elements are positions within a merged group, so a model that
+        groups differently cannot stand in for the one ``directory`` was built
+        with.
+        """
+        if isinstance(self.all_decay, str):
+            self.all_decay = eval(self.all_decay)
+        # the repr kept only the dict content: get_identical_decay needs the
+        # methods back (use_old_dir reruns it; run_from_pickle does not)
+        for decay in self.all_decay.values():
+            if not isinstance(decay['dc_branch'], dc_branch_from_me):
+                decay['dc_branch'] = dc_branch_from_me.from_dict(decay['dc_branch'])
+        for production in self.all_ME.values():
+            for decay in production['decays']:
+                if isinstance(decay['decay_struct'], str):
+                    decay['decay_struct'] = eval(decay['decay_struct'])
+        pickled = getattr(self, 'merged_particles', None) or {}
+        live = (model.get('merged_particles') if model else None) or {}
+        if pickled != live:
+            raise MadSpinError(
+                "The directory %s was built with the flavour grouping %s, but "
+                "the model of this event file groups %s. Its matrix elements "
+                "cannot be reused for these events." % (directory, pickled, live))
+        self.switch_all_model_instance(model)
 
 
 
@@ -3090,7 +3159,7 @@ class decay_all_events(object):
         nbody_to_decay = collections.defaultdict(list)
         for decay in self.all_decay.values():
             id = decay['dc_branch']['tree'][-1]['label']
-            id_final = decay['processes'][0].get_final_ids_after_decay()
+            id_final = decay['final_ids']
             cut = 0.0 
             mass_final = tuple([m if m> cut else 0 for m in map(self.pid2mass, id_final)])
             
@@ -3168,7 +3237,7 @@ class decay_all_events(object):
         # fullfill the object with the already identify to one decay.
         #and add those who doesn't have any relations.
         for decay in self.all_decay.values():
-            tags = [m.shell_string(pdg_order=True)[2:] for m in decay['processes']]
+            tags = [tag[2:] for tag in decay['tags']]
             init_tag = tags[0]
             if init_tag not in relation:
                 out = (init_tag, 1)
@@ -3470,10 +3539,17 @@ class decay_all_events(object):
             # Store decay ME flavor data for compile time (point 2)
             nexternal, flavor_combos, pdg_to_group_pos, flavor_groups = \
                 self.get_flavor_data_from_me(matrix_element)
+            # final_ids and tags are what get_identical_decay needs from the
+            # processes, kept as plain data: all_decay is pickled as its repr
+            # (the processes reach the UFO model, which does not pickle), and
+            # what comes back is dicts, not Process objects.
             self.all_decay[me_string] = {'path': dirpath, 
                                          'dc_branch':dc_branch_from_me(me),
                                          'nbody': len(me.get_final_ids_after_decay()),
                                          'processes': matrix_element.get('processes'),
+                                         'final_ids': me.get_final_ids_after_decay(),
+                                         'tags': [p.shell_string(pdg_order=True)
+                                                  for p in matrix_element.get('processes')],
                                          'tag': me.shell_string(pdg_order=True),
                                          'flavor_combos_decay': (nexternal,
                                                                   flavor_combos,

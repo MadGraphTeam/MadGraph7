@@ -346,7 +346,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madspin_gridpack test_madspin_gridpack_unequal_br -pA -t0 -l INFO
+            ./tests/test_manager.py test_madspin_gridpack test_madspin_gridpack_unequal_br test_madspin_use_old_dir -pA -t0 -l INFO
 
       # ---- acceptancetest_density_interface ----
       - name: "acceptancetest_density_interface"

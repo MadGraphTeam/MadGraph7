@@ -514,36 +514,78 @@ class TestMECmdShell(unittest.TestCase):
         
         self.check_parton_output('run_02_decayed_1', 100)           
         
-    def test_madspin_gridpack_unequal_br(self):
-        """Reuse an ms_dir in madspin_v1 mode, down to the decayed events.
+    def _setup_madspin_ww_wz(self, *card_lines):
+        """p p > w+ w- plus p p > w+ z, decayed by madspin_v1.
 
-        Two productions with different total branching ratios -- W+W- at
-        0.67 x 0.22, W+Z at 0.67 x 0.07 -- so add_loose_decay gives W+Z a null
-        decay (decay_struct None) for the events that must be dropped. Saving
-        madspin.pkl used to crash on it (switch_all_model_instance iterated
-        None). The second launch reuses the directory: run_from_pickle used
-        to restore no model, so the flavour-grouped production tags
-        ((-81, 81), (-24, 24)) were looked up as ((-2, 2), (-24, 24)) and
-        load_event died with a KeyError. Every decay product here is a merged
-        class (j, l, vl), so the decayed events also check that the flavour
-        indices and the concrete PDG codes come out right on reuse.
-        """
+        The two productions have different total branching ratios -- W+W-
+        0.67 x 0.22, W+Z 0.67 x 0.07 -- so add_loose_decay gives W+Z a null
+        decay (decay_struct None) for the events that must be dropped. Both
+        are quark-initiated, so all_ME is keyed by flavour-grouped tags
+        ((-81, 81), (-24, 24)), and every decay product is a merged class
+        (j, l, vl)."""
         self.out_dir = self.run_dir
         self.generate(['p p > w+ w-', 'p p > w+ z'], 'sm')
-
-        ms_dir = pjoin(self.out_dir, 'MSDIR')
         with open(pjoin(self.out_dir, 'Cards', 'madspin_card.dat'), 'w') as ff:
-            ff.write('set ms_dir %s\n' % ms_dir)
-            ff.write('set spinmode madspin_v1\n')
-            ff.write('set seed 11\n')
-            ff.write('decay w+ > j j\n')
-            ff.write('decay w- > l- vl~\n')
-            ff.write('decay z > l+ l-\n')
-            ff.write('launch\n')
+            for line in card_lines + ('set spinmode madspin_v1',
+                                      'set seed 11',
+                                      'decay w+ > j j',
+                                      'decay w- > l- vl~',
+                                      'decay z > l+ l-',
+                                      'launch'):
+                ff.write(line + '\n')
         run_card = banner.RunCardLO(pjoin(self.out_dir, 'Cards', 'run_card.dat'))
         run_card.set('nevents', 300)
         run_card.set('use_syst', False)
         run_card.write(pjoin(self.out_dir, 'Cards', 'run_card.dat'))
+
+    def _check_madspin_ww_wz(self, run):
+        """The decayed events of `run` (see _setup_madspin_ww_wz): flavour
+        consistent decays, no merged PDG code, and the null decay applied to
+        W+Z only."""
+        allowed = {24: [{2, -1}, {4, -3}], -24: [{11, -12}, {13, -14}],
+                   23: [{11, -11}, {13, -13}]}
+        def production(event):
+            return tuple(sorted(p.pid for p in event
+                                if p.status in (1, 2) and p.mother1
+                                and p.mother1.status == -1))
+
+        undecayed = collections.Counter(
+            production(e) for e in lhe_parser.EventFile(pjoin(
+                self.out_dir, 'Events', run, 'unweighted_events.lhe.gz')))
+        decayed = pjoin(self.out_dir, 'Events', run + '_decayed_1',
+                        'unweighted_events.lhe.gz')
+        # madevent logs a MadSpin crash and carries on: say so here
+        self.assertTrue(os.path.exists(decayed),
+                        'MadSpin wrote no decayed events for %s' % run)
+        written = collections.Counter()
+        for event in lhe_parser.EventFile(decayed):
+            written[production(event)] += 1
+            for p in event:
+                self.assertFalse(80 < abs(p.pid) < 90,
+                                 'merged PDG code %s written' % p.pid)
+                if p.pid in allowed:
+                    daughters = {d.pid for d in event if d.mother1 is p}
+                    self.assertIn(daughters, allowed[p.pid])
+        ww, wz = (-24, 24), (23, 24)
+        self.assertEqual(set(undecayed), {ww, wz})
+        # the larger total BR: every W+W- event is written
+        self.assertEqual(written[ww], undecayed[ww])
+        # the smaller one: kept with probability 0.07/0.22, so some but
+        # not all of the ~50 W+Z events (0 kept: ~1e-8)
+        self.assertGreater(written[wz], 0)
+        self.assertLess(written[wz], undecayed[wz])
+
+    def test_madspin_gridpack_unequal_br(self):
+        """Reuse an ms_dir in madspin_v1 mode, down to the decayed events.
+
+        Saving madspin.pkl used to crash on the null decay of W+Z
+        (switch_all_model_instance iterated its decay_struct, None). The
+        second launch reuses the directory: run_from_pickle used to restore
+        no model, so the production tags were looked up unmerged,
+        ((-2, 2), (-24, 24)), and load_event died with a KeyError.
+        """
+        ms_dir = pjoin(self.run_dir, 'MSDIR')
+        self._setup_madspin_ww_wz('set ms_dir %s' % ms_dir)
 
         # build the directory
         self.do('launch -f')
@@ -557,39 +599,35 @@ class TestMECmdShell(unittest.TestCase):
         self.assertEqual(os.stat(pkl).st_mtime_ns, built,
                          'the second launch should reuse madspin.pkl')
 
-        allowed = {24: [{2, -1}, {4, -3}], -24: [{11, -12}, {13, -14}],
-                   23: [{11, -11}, {13, -13}]}
-        def production(event):
-            return tuple(sorted(p.pid for p in event
-                                if p.status in (1, 2) and p.mother1
-                                and p.mother1.status == -1))
+        for run in ('run_01', 'run_02'):
+            self._check_madspin_ww_wz(run)
+
+    def test_madspin_use_old_dir(self):
+        """use_old_dir reruns madspin_v1 on the matrix elements the previous
+        run left in the same directory (production_me/all_ME.pkl).
+
+        That file is written by save_status_to_pickle: all_decay and the
+        decay structures as their repr, no model. The reload took it as it
+        was -- all_decay a string, the decay branches plain dicts, the tags
+        unmerged -- and a successful run deleted production_me anyway, so
+        there was nothing to reload in the first place.
+        """
+        self._setup_madspin_ww_wz('set use_old_dir True')
+
+        self.do('launch -f')
+        # MadSpin works in the process directory (the events are in Events/)
+        pkl = pjoin(self.out_dir, 'production_me', 'all_ME.pkl')
+        self.assertTrue(os.path.exists(pkl),
+                        'the first launch did not keep production_me')
+        built = os.stat(pkl).st_mtime_ns
+
+        self.do('launch -f')
+        # a reload that fails falls back to regenerating, which rewrites it
+        self.assertEqual(os.stat(pkl).st_mtime_ns, built,
+                         'the second launch should reload all_ME.pkl')
 
         for run in ('run_01', 'run_02'):
-            undecayed = collections.Counter(
-                production(e) for e in lhe_parser.EventFile(pjoin(
-                    self.out_dir, 'Events', run, 'unweighted_events.lhe.gz')))
-            decayed = pjoin(self.out_dir, 'Events', run + '_decayed_1',
-                            'unweighted_events.lhe.gz')
-            # madevent logs a MadSpin crash and carries on: say so here
-            self.assertTrue(os.path.exists(decayed),
-                            'MadSpin wrote no decayed events for %s' % run)
-            written = collections.Counter()
-            for event in lhe_parser.EventFile(decayed):
-                written[production(event)] += 1
-                for p in event:
-                    self.assertFalse(80 < abs(p.pid) < 90,
-                                     'merged PDG code %s written' % p.pid)
-                    if p.pid in allowed:
-                        daughters = {d.pid for d in event if d.mother1 is p}
-                        self.assertIn(daughters, allowed[p.pid])
-            ww, wz = (-24, 24), (23, 24)
-            self.assertEqual(set(undecayed), {ww, wz})
-            # the larger total BR: every W+W- event is written
-            self.assertEqual(written[ww], undecayed[ww])
-            # the smaller one: kept with probability 0.07/0.22, so some but
-            # not all of the ~50 W+Z events (0 kept: ~1e-8)
-            self.assertGreater(written[wz], 0)
-            self.assertLess(written[wz], undecayed[wz])
+            self._check_madspin_ww_wz(run)
         
         
     def test_width_computation(self):
