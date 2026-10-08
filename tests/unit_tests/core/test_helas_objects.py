@@ -5976,6 +5976,13 @@ class TestDecayChainFlavorTree(unittest.TestCase):
     def setUpClass(cls):
         cls.model = import_ufo.import_model(
             'sm', options={'apply_flavor_grouping': True})
+        # command-line processes, with and without flavor grouping
+        import madgraph.interface.master_interface as Cmd
+        cls.cmd = Cmd.MasterCmd()
+        cls.cmd.exec_cmd('import model sm')
+        cls.cmd_no_grouping = Cmd.MasterCmd()
+        cls.cmd_no_grouping.exec_cmd('set apply_flavor_grouping False')
+        cls.cmd_no_grouping.exec_cmd('import model sm')
 
     def build(self, bosons):
         q = 81
@@ -6040,6 +6047,76 @@ class TestDecayChainFlavorTree(unittest.TestCase):
         with mock.patch.object(HME, '_valid_flavors_per_diagram',
                                side_effect=TypeError):
             self.assertRaises(TypeError, self.build, (24, -24))
+
+    @staticmethod
+    def generate(cmd, line):
+        cmd.exec_cmd('generate %s' % line)
+        return helas_objects.HelasMultiProcess(
+            cmd._curr_amps).get_matrix_elements()
+
+    def check_process(self, line, compare_enumeration=True):
+        """For the decay chain `line` with flavor grouping: the enumeration is
+        never used for a decay-chain ME, the flavor stores are those of the
+        enumeration, and the physical channels (sorted initial, sorted final
+        pdgs) are those of the same process without flavor grouping."""
+        HME = helas_objects.HelasMatrixElement
+        enumerated = []
+        enumerate_flavor = HME.check_flavor_for_all_diagrams
+        def spy(me, *args):
+            if me.get('processes')[0].get('decay_chains'):
+                enumerated.append(me.get('processes')[0].nice_string())
+            return enumerate_flavor(me, *args)
+        with mock.patch.object(HME, 'check_flavor_for_all_diagrams',
+                               autospec=True, side_effect=spy):
+            mes = self.generate(self.cmd, line)
+        self.assertFalse(enumerated)
+        self.assertTrue(any(me.get('processes')[0].get('decay_chains')
+                            for me in mes))
+
+        if compare_enumeration:
+            with mock.patch.object(HME, '_valid_flavors_per_diagram',
+                                   side_effect=HME.FlavorTreeUnsupported):
+                reference = self.generate(self.cmd, line)
+            # get_external_flavors applies the (lazy) diagram trimming
+            for me in mes + reference:
+                me.get_external_flavors()
+            self.assertEqual([self.flavor_store(me) for me in mes],
+                             [self.flavor_store(me) for me in reference])
+
+        channels = set()
+        for me in mes:
+            ninit = me.get_nexternal_ninitial()[1]
+            for pdgs in me.get_external_flavors(return_pdgs=True)[1]:
+                channels.add((tuple(sorted(pdgs[:ninit])),
+                              tuple(sorted(pdgs[ninit:]))))
+        expected = set()
+        for me in self.generate(self.cmd_no_grouping, line):
+            for proc in me.get('processes'):
+                ninit = len(proc.get_initial_ids())
+                pdgs = [leg.get('id') for leg in proc.get_legs_with_decays()]
+                expected.add((tuple(sorted(pdgs[:ninit])),
+                              tuple(sorted(pdgs[ninit:]))))
+        self.assertEqual(channels, expected)
+        return channels
+
+    def test_tree_pass_ttbar_nested_decays(self):
+        """Semi-leptonic t t~ with nested decays: merged quarks in the
+        initial state and in the w+ decay, merged leptons and neutrinos in
+        the w- decay."""
+        channels = self.check_process('p p > t t~, (t > b w+, w+ > j j), '
+                                      '(t~ > b~ w-, w- > l- vl~)')
+        self.assertEqual(len(channels), 20)
+
+    def test_tree_pass_vbs_same_sign_ww(self):
+        """Same-sign W scattering: the w exchange ties the flavors of the
+        four merged quark legs, the two identical w+ decays share a
+        signature across their sub-trees.  The enumeration is compared on
+        the restricted decay (it takes ~15 s for l+ vl)."""
+        channels = self.check_process('p p > w+ w+ j j QCD=0, w+ > l+ vl',
+                                      compare_enumeration=False)
+        self.assertEqual(len(channels), 36)
+        channels = self.check_process('p p > w+ w+ j j QCD=0, w+ > e+ ve')
+        self.assertEqual(len(channels), 12)
 
 
 
