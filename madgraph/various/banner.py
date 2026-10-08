@@ -546,7 +546,8 @@ class Banner(dict):
         elif tag == 'mgruncard':
             if 'mg7runcard' in self:
                 # mg7 events embed the TOML run_card under <MG7RunCard>
-                self.run_card = RunCardMG7(self['mg7runcard'], consistency=False)
+                self.run_card = RunCardMG7(self['mg7runcard'], consistency=False,
+                                           from_banner=True)
             else:
                 with misc.TMP_variable(RunCard, 'allow_scan', True):
                     self.run_card = RunCard(self[tag], consistency=False, unknown_warning=False)
@@ -6626,6 +6627,8 @@ class RunCardMG7(RunCard):
         self.dynamic_sections = collections.OrderedDict()
         # unknown sections preserved for round-trip
         self.extra_sections = collections.OrderedDict()
+        # set while read(from_banner=True) fills the card, see __setitem__
+        self._from_banner = False
         super(RunCardMG7, self).__init__(*args, **opts)
 
     # ------------------------------------------------------------------
@@ -6935,13 +6938,23 @@ class RunCardMG7(RunCard):
         asked for, so make it a hard error here. This matters in particular for
         run cards written before the backend renaming, which still carry a
         removed value such as 'cpu_128b'.
+
+        A card read back from an event file's banner (read(from_banner=True))
+        only describes a run that is over and is never run again, so there the
+        value is reported and the default kept: refusing it would make every
+        tool reading such a sample (MadSpin, systematics, ...) abort on a
+        parameter it never uses.
         """
         if isinstance(name, str) and name.strip().lower() in ('cpu_mode', 'run.cpu_mode'):
             allowed = self.allowed_value.get('run.cpu_mode', [])
             if allowed and str(value).strip().lower() not in [str(v).lower() for v in allowed]:
-                raise InvalidRunCard(
-                    "Invalid cpu_mode='%s': supported values are [ '%s' ]"
-                    % (str(value).strip(), "', '".join(str(v) for v in allowed)))
+                message = ("Invalid cpu_mode='%s': supported values are [ '%s' ]"
+                           % (str(value).strip(), "', '".join(str(v) for v in allowed)))
+                if getattr(self, '_from_banner', False):
+                    logger.warning("%s; the run_card of the event file is read with "
+                                   "cpu_mode='%s'", message, self['run']['cpu_mode'])
+                    return
+                raise InvalidRunCard(message)
         return super(RunCardMG7, self).__setitem__(name, value, *args, **opts)
 
     # ------------------------------------------------------------------
@@ -6960,6 +6973,9 @@ class RunCardMG7(RunCard):
         # value, which keeps the tools on the plain (unmatched) code path.
         'ktdurham', 'ptlund', 'xqcut', 'maxjetflavor', 'sys_matchscale',
         'dparameter', 'lhaid', 'iseed', 'python_seed',
+        # read by MadSpin (check_launch, do_import) and by Banner.write for
+        # the <LesHouchesEvents version=...> of the files it rewrites
+        'lhe_version', 'bwcutoff',
     }
 
     # mg7 dynamical_scale_choice name -> legacy integer code. This is the
@@ -7031,6 +7047,10 @@ class RunCardMG7(RunCard):
                 return 0
         if key == 'python_seed':
             return -2            # -2: reuse iseed for the python RNG
+        if key == 'lhe_version':
+            return 3.0           # madspace's lhe_output always writes LHEF 3.0
+        if key == 'bwcutoff':
+            return float(self['phasespace']['bw_cutoff'])
         raise KeyError(key)
 
     def get_lhapdf_id(self):
@@ -7064,8 +7084,13 @@ class RunCardMG7(RunCard):
     # ------------------------------------------------------------------
     # reading TOML
     # ------------------------------------------------------------------
-    def read(self, finput, consistency=True, unknown_warning=True, **opt):
-        """Read a TOML run_card from a path, a file object or a string."""
+    def read(self, finput, consistency=True, unknown_warning=True,
+             from_banner=False, **opt):
+        """Read a TOML run_card from a path, a file object or a string.
+
+        ``from_banner=True`` is for the card embedded in an event file
+        (<MG7RunCard>): a value that is refused for a run is then only
+        reported, see __setitem__."""
         import tomllib
 
         self.path = None
@@ -7086,7 +7111,11 @@ class RunCardMG7(RunCard):
             raise Exception("RunCardMG7 cannot read input of type %s" % type(finput))
 
         data = tomllib.loads(text)
-        self.read_data(data, unknown_warning=unknown_warning)
+        self._from_banner = from_banner
+        try:
+            self.read_data(data, unknown_warning=unknown_warning)
+        finally:
+            self._from_banner = False
 
         if consistency:
             try:
