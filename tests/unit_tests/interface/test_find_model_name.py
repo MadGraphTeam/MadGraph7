@@ -13,9 +13,9 @@
 #
 ################################################################################
 """CommonRunCmd.find_model_name reads the model and the processes back from
-Cards/proc_card_mg5.dat. ProcCard.write cuts every line at 70 characters,
-wherever the cut falls (even inside a token), so the card has to be read back
-through ProcCard and not line by line."""
+Cards/proc_card_mg5.dat. Older versions of ProcCard.write cut every line at 70
+characters, wherever the cut falls (even inside a token), so the card has to
+be read back through ProcCard and not line by line."""
 
 from __future__ import absolute_import
 
@@ -50,13 +50,23 @@ class TestFindModelName(unittest.TestCase):
         shutil.rmtree(self.me_dir)
 
     def write_card(self, lines):
-        """write the card as MG5 does and return the raw text"""
+        """write the card as older versions of MG5 did (every line cut at 70
+        characters) and return the raw text"""
         card = banner.ProcCard()
         for line in lines:
             card.append(line)
         card.write(self.card_path)
         with open(self.card_path) as stream:
-            return stream.read()
+            wrapped = []
+            for line in stream.read().split('\n'):
+                while len(line) > 70:
+                    wrapped.append(line[:70] + '\\')
+                    line = line[70:]
+                wrapped.append(line)
+        raw = '\n'.join(wrapped)
+        with open(self.card_path, 'w') as stream:
+            stream.write(raw)
+        return raw
 
     def find(self):
         cmd = _Cmd(self.me_dir)

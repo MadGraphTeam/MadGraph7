@@ -980,7 +980,23 @@ class ProcCard(list):
             return out 
         else:
             return self.info[tag]
-            
+
+    def get_output_options(self):
+        """Return the '--name[=value]' options of the last 'output' command,
+        as the cmd_options dict the exporter received ({'density': '3,4'};
+        a bare flag maps to True). Empty if the card has no output line.
+
+        Read the options from here, not by grepping proc_card_mg5.dat: cards
+        written by older versions are wrapped at 70 characters, wherever that
+        falls, so '--density' can be split as '-\\' / '-density' in the file."""
+
+        for line in reversed(self):
+            args = line.split('#')[0].split()
+            if args and args[0] == 'output':
+                return dict((arg[2:].split('=', 1) if '=' in arg else (arg[2:], True))
+                            for arg in args if arg.startswith('--'))
+        return {}
+
     def write(self, path):
         """write the proc_card to a given path"""
         
@@ -993,11 +1009,10 @@ class ProcCard(list):
             # prompt, which has no `set width` (extended_cmd.QuestionAnswer)
             if getattr(line, 'is_answer', False):
                 continue
-            while len(line) > 70:
-                sub, line = line[:70]+"\\" , line[70:] 
-                fsock.write(sub+"\n")
-            else:
-                fsock.write(line+"\n")
+            # one command per line, never cut: older versions wrapped at 70
+            # characters, even inside a token ('--de\' / 'nsity=3'), which
+            # broke every grep of the card. read() still joins those lines.
+            fsock.write(line+"\n")
  
 class InvalidCardEdition(InvalidCmd): pass 
  
