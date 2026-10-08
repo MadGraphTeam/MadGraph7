@@ -894,6 +894,28 @@ class TestImportRunCard(unittest.TestCase):
         self.assertEqual(picked['beampol'], [0., 0.])
         self.assertEqual(picked, self._picked(lo, 'lo.lhe'))
 
+    def test_mg7_card_with_a_removed_cpu_mode_still_imports(self):
+        """A card from before the backend renaming carries a cpu_mode that no
+        longer exists. RunCardMG7 refuses it for a run; read from the banner it
+        must not stop the import, which now parses <MG7RunCard> in every
+        spinmode (the density modes never used to)."""
+        import re
+        mg7 = banner.RunCardMG7()
+        mg7['generation']['events'] = self.NEVENTS
+        path = _write_production_lhe(self.tmpdir, mg7, 'old.lhe')
+        with open(path) as fsock:
+            text, count = re.subn(r'(?m)^cpu_mode\s*=.*$',
+                                  'cpu_mode = "cpu_128b"', fsock.read())
+        self.assertEqual(count, 1)
+        with open(path, 'w') as fsock:
+            fsock.write(text)
+
+        ms = interface_madspin.MadSpinInterface()
+        ms.do_import(path)
+        self.addCleanup(ms.events_file.close)
+        self.assertEqual(ms.options['Nevents_for_max_weight'],
+                         int(3 * self.NEVENTS**(1/3)))
+
     def test_no_run_card_keeps_the_fallbacks(self):
         picked = self._picked(None, 'none.lhe')
         self.assertEqual(picked['Nevents_for_max_weight'], 75)

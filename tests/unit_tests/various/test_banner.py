@@ -1659,6 +1659,34 @@ class TestRunCardMG7(unittest.TestCase):
         rc['beam']['scale_factor'] = 0.0
         self.assertRaises(bannermod.InvalidRunCard, rc.check_validity)
 
+    def test_removed_cpu_mode_refused_for_a_run_reported_from_a_banner(self):
+        """A cpu_mode that no longer exists (a card from before the backend
+        renaming) is a hard error for a card that will be run. Read back from
+        an event file's <MG7RunCard> it is only reported and the default kept,
+        so that the tools reading the sample do not abort on it."""
+        out = io.StringIO()
+        bannermod.RunCardMG7().write(out, template=self.template)
+        text, count = re.subn(r'(?m)^cpu_mode\s*=.*$', 'cpu_mode = "cpu_128b"',
+                              out.getvalue())
+        self.assertEqual(count, 1)
+
+        self.assertRaises(bannermod.InvalidRunCard,
+                          bannermod.RunCardMG7, text, consistency=False)
+
+        with self.assertLogs('madevent.cards', level='WARNING') as cm:
+            rc = bannermod.RunCardMG7(text, consistency=False, from_banner=True)
+        self.assertIn("cpu_mode='cpu_128b'", ' '.join(cm.output))
+        self.assertEqual(rc['run']['cpu_mode'], 'auto')
+        # the leniency ends with the read
+        self.assertRaises(bannermod.InvalidRunCard,
+                          rc.__setitem__, 'run.cpu_mode', 'cpu_128b')
+
+        mybanner = bannermod.Banner()
+        mybanner['mg7runcard'] = text
+        with self.assertLogs('madevent.cards', level='WARNING'):
+            self.assertEqual(mybanner.get('run_card', 'nevents'),
+                             rc['generation']['events'])
+
     def test_defaults_and_section_access(self):
         """default values are accessible through nested-section views"""
         rc = bannermod.RunCardMG7()
