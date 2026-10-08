@@ -425,13 +425,21 @@ PYBIND11_MODULE(_madspace_py, m) {
         py::arg("index") = 0,
         pydoc::doc("default_hip_context")
     );
+    m.def("get_stream", &caller_stream, pydoc::doc("caller_stream"));
+    m.def(
+        "set_stream",
+        &set_caller_stream,
+        py::arg("stream"),
+        pydoc::doc("set_caller_stream")
+    );
 
     py::classh<FunctionRuntime>(m, "FunctionRuntime", py::dynamic_attr())
         .def(py::init<Function>(), py::arg("function"))
         .def(py::init<Function, ContextPtr>(), py::arg("function"), py::arg("context"))
         .def("call", &FunctionRuntime::call)
         .def("call_with_grad", &FunctionRuntime::call_with_grad)
-        .def("call_backward", &FunctionRuntime::call_backward);
+        .def("call_backward", &FunctionRuntime::call_backward)
+        .def("release_inputs", &FunctionRuntime::release_inputs);
 
     auto& fb =
         py::classh<FunctionBuilder>(m, "FunctionBuilder", pydoc::doc("FunctionBuilder"))
