@@ -2618,7 +2618,8 @@ class decay_all_events(object):
 
         for proc in self.all_ME:
             for me in self.all_ME[proc]['decays']:
-                for d in me['decay_struct']:
+                # the null decays of add_loose_decay have no decay_struct
+                for d in me['decay_struct'] or ():
                     me['decay_struct'][d]['model'] = model
 
         for proc in self.all_decay:
