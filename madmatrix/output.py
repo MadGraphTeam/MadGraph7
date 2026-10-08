@@ -25,6 +25,7 @@ from os.path import join as pjoin
 import madgraph.iolibs.files as files
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.export_cpp as export_cpp
+import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.various.misc as misc
 
 from . import launch_plugin
@@ -193,6 +194,10 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         # Honor the output command's --mask=True|False (flavor-mask
         # optimization for grouped/merged flavors). Default: enabled.
         self.use_flavor_mask = self._parse_flavor_mask_option()
+        # --axial_gauge is read per matrix element by the helas call writer;
+        # say here, once per output, if the FD gauge drops it
+        helas_call_writers.axial_gauge_requested(
+                            self.opt.get('output_options'), warn=True)
 
     def _parse_flavor_mask_option(self):
         """Read --mask=True|False from the output command line (default True)."""

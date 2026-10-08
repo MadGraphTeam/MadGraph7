@@ -1292,6 +1292,12 @@ class AxialGaugeReferenceTest(unittest.TestCase):
         old = aloha.unitary_gauge
         try:
             aloha.unitary_gauge = 3
-            self.assertFalse(requested({'axial_gauge': 'True'}))
+            # silent when asked per matrix element, and it warns every time it
+            # is asked to -- once per output, not once per session
+            with self.assertNoLogs('madgraph.helas_call_writers', 'WARNING'):
+                self.assertFalse(requested({'axial_gauge': 'True'}))
+            for _ in range(2):
+                with self.assertLogs('madgraph.helas_call_writers', 'WARNING'):
+                    self.assertFalse(requested({'axial_gauge': 'True'}, warn=True))
         finally:
             aloha.unitary_gauge = old
