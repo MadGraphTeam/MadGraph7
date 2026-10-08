@@ -27,6 +27,7 @@ int observable_type(Observable::ObservableOption observable) {
     case Observable::obs_delta_phi:
     case Observable::obs_delta_r:
     case Observable::obs_pair_mass:
+    case Observable::obs_sfos_pair_mass:
         return 2;
     case Observable::obs_sqrt_s:
         return 0;
@@ -72,6 +73,7 @@ Value build_observable(
     case Observable::obs_delta_r:
         return fb.obs_delta_r(momenta.at(0), momenta.at(1));
     case Observable::obs_pair_mass:
+    case Observable::obs_sfos_pair_mass:
         return fb.obs_pair_mass(momenta.at(0), momenta.at(1));
     case Observable::obs_sqrt_s:
         return fb.obs_sqrt_s(momenta.at(0));
@@ -217,6 +219,31 @@ std::tuple<nested_vector2<me_int_t>, nested_vector2<me_int_t>, Type> build_indic
         }
     } else {
         ret_indices = selected_indices;
+    }
+    if (observable == Observable::obs_sfos_pair_mass) {
+        // Keep the same-flavour opposite-sign pairs only. An ordered selection
+        // holds ranks, whose PDG ids are only known event by event.
+        for (auto& order : ret_order_indices) {
+            if (order.size() > 0) {
+                throw std::invalid_argument(
+                    "sfos_pair_mass cannot be combined with an ordered selection"
+                );
+            }
+        }
+        nested_vector2<me_int_t> sfos_indices(ret_indices.size());
+        for (std::size_t k = 0; k < ret_indices.at(0).size(); ++k) {
+            int pid_a = pids.at(ret_indices.at(0).at(k));
+            int pid_b = pids.at(ret_indices.at(1).at(k));
+            if (pid_a != 0 && pid_a == -pid_b) {
+                sfos_indices.at(0).push_back(ret_indices.at(0).at(k));
+                sfos_indices.at(1).push_back(ret_indices.at(1).at(k));
+            }
+        }
+        if (sfos_indices.at(0).empty()) {
+            // no such pair in this process: like a selection that found nothing
+            return {{}, {}, batch_float};
+        }
+        ret_indices = std::move(sfos_indices);
     }
     Type ret_type =
         (obs_type == 1 &&

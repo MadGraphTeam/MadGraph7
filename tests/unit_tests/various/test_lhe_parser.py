@@ -1802,3 +1802,547 @@ class TestProductionJacobian(unittest.TestCase):
         evt = self._event(new_mass=1e6)
         self.assertEqual(evt.production_jacobian(), -1)
         self.assertEqual(evt[2].new_mass, 1e6)  # not resampled behind our back
+
+
+class TestMergeRuns(unittest.TestCase):
+    """MultiEventFile.merge_runs, the merge of the runs of multi_run: each run
+    contributes its own cross section (weighted by its number of events), the
+    relative weights inside a run are kept and the merged file follows the
+    event_norm of the runs."""
+
+    template = """<event>
+ 4 %(pid)6i %(wgt)+.10e 2.26335600e+02 7.54677100e-03 1.12924600e-01
+       21 -1    0    0  501  502 +0.0000000000e+00 +0.0000000000e+00 +1.3497663545e+02 1.3497663545e+02 0.0000000000e+00 0.0000e+00 1.0000e+00
+       21 -1    0    0  502  503 -0.0000000000e+00 -0.0000000000e+00 -5.2972469895e+02 5.2972469895e+02 0.0000000000e+00 0.0000e+00 -1.0000e+00
+        6  1    1    2  501    0 +9.9532160446e+01 +1.0673399736e+02 -2.0404901160e+01 2.2725350854e+02 1.7300000000e+02 0.0000e+00 1.0000e+00
+       -6  1    1    2    0  503 -9.9532160446e+01 -1.0673399736e+02 -3.7434316234e+02 4.3744782585e+02 1.7300000000e+02 0.0000e+00 -1.0000e+00
+#orig %(run)i %(wgt).17e
+<rwgt>
+<wgt id='1'> %(syst)+.10e </wgt>
+<wgt id='bias'> %(bias)+.10e </wgt>
+</rwgt>
+</event>
+"""
+
+    def setUp(self):
+        self.path = tempfile.mkdtemp(prefix='test_mg5')
+        self.banner_text = lhe_parser.EventFile(pjoin(MG5DIR, 'tests',
+                                     'input_files', 'ttbar.lhe.gz')).banner
+
+    def tearDown(self):
+        shutil.rmtree(self.path)
+
+    @staticmethod
+    def make_weights(seed, nevt, xsec, event_norm, neg=0.1):
+        """nevt weights with a tail and some negative ones, normalised to xsec
+        according to event_norm"""
+        import random
+        rng = random.Random(seed)
+        wgts = []
+        for i in range(nevt):
+            w = rng.random()**(-1./3)
+            if rng.random() < neg:
+                w = -w
+            wgts.append(w)
+        if event_norm == 'average':
+            norm = xsec * nevt / sum(wgts)
+        elif event_norm == 'sum':
+            norm = xsec / sum(wgts)
+        else:
+            norm = nevt / sum(abs(w) for w in wgts)
+        return [float('%.10e' % (w*norm)) for w in wgts]
+
+    def write_run(self, irun, wgts, event_norm='average', procs=None, ebeam=6500,
+                  idwtup=-4, integrated=None, nb_event=None, pids=None):
+        """an LHE file with the banner of ttbar.lhe.gz but the event_norm, the
+        <init> block (procs = [(lprup, xsecup, xerrup)]) and MGGenerationInfo
+        given, and one event per weight. The <rwgt> block has a systematics
+        weight (2*wgt) and a bias (1+run)."""
+        import re
+        if procs is None:
+            xsec = sum(wgts)/len(wgts) if event_norm == 'average' else sum(wgts)
+            procs = [(1, xsec, 0.01*abs(xsec))]
+        if integrated is None:
+            integrated = sum(p[1] for p in procs)
+        text = re.sub(r'^\s*\w+\s*=\s*event_norm', ' %s = event_norm' % event_norm,
+                      self.banner_text, flags=re.M)
+        text = re.sub(r'#  Number of Events\s*:\s*\S+', '#  Number of Events        :       %s'
+                      % (nb_event or len(wgts)), text)
+        text = re.sub(r'#  Integrated weight \(pb\)\s*:\s*\S+',
+                      '#  Integrated weight (pb)  :       %s' % integrated, text)
+        # XMAXUP is not used by the merge: give it a meaningless value
+        init = ['2212 2212 %e %e 0 0 247000 247000 %i %i' % (ebeam, ebeam, idwtup, len(procs))]
+        init += ['%e %e %e %i' % (xsec, xerr, 123., lprup) for lprup, xsec, xerr in procs]
+        init.append("<generator name='MadGraph5_aMC@NLO' version='2.5.5'>please cite 1405.0301 </generator>")
+        text = re.sub(r'<init>.*</init>\n', lambda m: '<init>\n%s\n</init>\n' % '\n'.join(init),
+                      text, flags=re.S)
+        path = pjoin(self.path, 'run_%i' % irun, 'unweighted_events.lhe')
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w') as fsock:
+            fsock.write(text)
+            for i, w in enumerate(wgts):
+                pid = pids[i] if pids else procs[0][0]
+                fsock.write(self.template % {'wgt': w, 'run': irun, 'pid': pid,
+                                             'syst': 2*w, 'bias': 1+irun})
+            fsock.write('</LesHouchesEvents>\n')
+        return path
+
+    def read(self, path):
+        """events of the merged file: list of (wgt, run, input wgt, rwgt)"""
+        events = []
+        for event in lhe_parser.EventFile(path):
+            run, orig = event.comment.split()[1:3]
+            events.append((event.wgt, int(run), float(orig), dict(event.parse_reweight())))
+        return events
+
+    @staticmethod
+    def init_lines(banner):
+        return [l.split() for l in banner['init'].split('\n') if l.strip()]
+
+    def test_merge_runs_normalisation(self):
+        """average: mean w = sigma, sum: sum w = sigma, unity: sum |w| = N,
+        with sigma = sum_i N_i sigma_i / N_tot; a single factor per run, so
+        that the relative weights and their sign are kept"""
+
+        output = pjoin(self.path, 'merged.lhe')
+        nevts, xsecs = [300, 200], [10., 10.4]
+        lam = [n/sum(nevts) for n in nevts]
+        expected = sum(l*x for l, x in zip(lam, xsecs))
+        for event_norm in ['average', 'sum', 'unity']:
+            paths = []
+            for irun in range(2):
+                wgts = self.make_weights(irun, nevts[irun], xsecs[irun], event_norm)
+                paths.append(self.write_run(irun, wgts, event_norm,
+                                            procs=[(1, xsecs[irun], 0.01*xsecs[irun])]))
+            nb_event, cross = lhe_parser.MultiEventFile.merge_runs(paths, output)
+            self.assertEqual(nb_event, sum(nevts))
+            self.assertAlmostEqual(cross/expected, 1, delta=1e-9)
+            events = self.read(output)
+            # all the events, in the order of the files
+            self.assertEqual([e[1] for e in events], [0]*nevts[0] + [1]*nevts[1])
+            factors = []
+            for irun in range(2):
+                ratios = [w/orig for w, run, orig, _ in events if run == irun]
+                # also checks that the sign is kept
+                self.assertGreater(min(ratios), 0)
+                self.assertAlmostEqual(max(ratios)/min(ratios), 1, delta=1e-6)
+                factors.append(ratios[0])
+            self.assertTrue(any(w < 0 for w, _, _, _ in events))
+            sum_wgt = sum(e[0] for e in events)
+            sum_abs = sum(abs(e[0]) for e in events)
+            if event_norm == 'average':
+                self.assertAlmostEqual(sum_wgt/nb_event/expected, 1, delta=1e-6)
+                self.assertEqual(factors, [1, 1])
+            elif event_norm == 'sum':
+                self.assertAlmostEqual(sum_wgt/expected, 1, delta=1e-6)
+                self.assertAlmostEqual(factors[0]/lam[0], 1, delta=1e-6)
+                self.assertAlmostEqual(factors[1]/lam[1], 1, delta=1e-6)
+            else:
+                self.assertAlmostEqual(sum_abs/nb_event, 1, delta=1e-6)
+                # each run keeps its own cross section
+                self.assertAlmostEqual(factors[0]/factors[1], xsecs[0]/xsecs[1], delta=1e-6)
+            # XMAXUP: the common weight, mean |w|
+            banner = lhe_parser.EventFile(output).get_banner()
+            for line in self.init_lines(banner)[1:2]:
+                self.assertAlmostEqual(float(line[2])*nb_event/sum_abs, 1, delta=1e-6)
+            self.assertAlmostEqual(banner.get_cross()/expected, 1, delta=1e-6)
+
+    def test_merge_runs_init_and_banner(self):
+        """XSECUP/XERRUP weighted by the number of events, first line of <init>
+        (IDWTUP) kept, actual number of events in the banner, header of the
+        first file otherwise unchanged"""
+
+        import re
+        procs = [[(1, 6.0, 0.06), (2, 4.0, 0.05)], [(1, 6.2, 0.07), (2, 4.1, 0.04)]]
+        # as after MadSpin: MGGenerationInfo keeps the cross section before
+        # the decays, <init> has the one of the events
+        integrated = [150.0, 154.5]
+        nevts = [300, 100]
+        paths = []
+        for irun in range(2):
+            wgts = self.make_weights(irun, nevts[irun], sum(p[1] for p in procs[irun]), 'average')
+            pids = [1 + i % 2 for i in range(nevts[irun])]
+            # a wrong number of events in the banner: the events are counted
+            paths.append(self.write_run(irun, wgts, procs=procs[irun], idwtup=-3,
+                                        integrated=integrated[irun], nb_event=1000,
+                                        pids=pids))
+        output = pjoin(self.path, 'merged.lhe.gz')
+        banner_path = pjoin(self.path, 'merged_banner.txt')
+        nb_event, cross = lhe_parser.MultiEventFile.merge_runs(paths, output, banner_path)
+        self.assertEqual(nb_event, 400)
+        lam = [0.75, 0.25]
+        self.assertAlmostEqual(cross, 0.75*10.0 + 0.25*10.3, delta=1e-6)
+
+        lhe = lhe_parser.EventFile(output)
+        banner = lhe.get_banner()
+        init = self.init_lines(banner)
+        self.assertEqual(init[0], self.init_lines(lhe_parser.EventFile(paths[0]).get_banner())[0])
+        self.assertEqual(banner.get_lha_strategy(), -3)
+        self.assertEqual(len(init), 4)
+        self.assertTrue(init[3][0].startswith('<generator'))
+        sum_abs = sum(abs(e.wgt) for e in lhe)
+        for i, (xsec, xerr, xmax, lprup) in enumerate(init[1:3]):
+            self.assertEqual(int(lprup), i+1)
+            self.assertAlmostEqual(float(xsec), sum(lam[r]*procs[r][i][1] for r in range(2)), delta=1e-6)
+            self.assertAlmostEqual(float(xerr), math.sqrt(sum((lam[r]*procs[r][i][2])**2 for r in range(2))), delta=1e-8)
+            self.assertAlmostEqual(float(xmax)/(sum_abs/nb_event), 1, delta=1e-6)
+
+        info = banner['mggenerationinfo']
+        self.assertEqual(int(re.search(r'Number of Events\s*:\s*(\S+)', info).group(1)), 400)
+        self.assertAlmostEqual(float(re.search(r'Integrated weight \(pb\)\s*:\s*(\S+)', info).group(1)),
+                               0.75*150.0 + 0.25*154.5)
+        # header: the one of the first file, but for <MGGenerationInfo> and <init>
+        header = lhe.banner
+        self.assertEqual(header.count('<MGGenerationInfo>'), 1)
+        first = open(paths[0]).read()
+        for tag in ['<MGGenerationInfo>', '</MGGenerationInfo>']:
+            self.assertEqual(first.split(tag)[0 if tag[1] != '/' else 1].split('<init>')[0],
+                             header.split(tag)[0 if tag[1] != '/' else 1].split('<init>')[0])
+        self.assertEqual(open(banner_path).read(), header + '</LesHouchesEvents>\n')
+
+    def test_merge_runs_rwgt(self):
+        """the absolute weights of <rwgt> follow the central weight, the
+        multiplicative bias does not; same output with the generic parser"""
+
+        nevts = [30, 20]
+        paths = [self.write_run(irun, self.make_weights(irun, nevts[irun], 10., 'sum'), 'sum')
+                 for irun in range(2)]
+        output = pjoin(self.path, 'merged.lhe')
+        lhe_parser.MultiEventFile.merge_runs(paths, output)
+        events = self.read(output)
+        for wgt, run, orig, rwgt in events:
+            self.assertAlmostEqual(wgt/orig, nevts[run]/sum(nevts), delta=1e-6)
+            self.assertAlmostEqual(rwgt['1']/wgt, 2, delta=1e-6)
+            self.assertEqual(rwgt['bias'], 1 + run)
+
+        # format not understood by the fast (raw bytes) path: generic parser
+        def raise_error(self):
+            raise ValueError
+            yield
+        with misc.TMP_variable(lhe_parser.EventFile, '_iter_raw_event_chunks', raise_error):
+            lhe_parser.MultiEventFile.merge_runs(paths, output)
+        for event, ref in zip(self.read(output), events):
+            self.assertAlmostEqual(event[0]/ref[0], 1, delta=1e-6)
+            self.assertEqual(event[1:3], ref[1:3])
+            self.assertAlmostEqual(event[3]['1']/ref[3]['1'], 1, delta=1e-6)
+            self.assertEqual(event[3]['bias'], ref[3]['bias'])
+
+    def test_merge_runs_raw_chunks(self):
+        """the fast path reads the files by chunks of events: same result
+        whatever the size of the chunks (events cut between two reads)"""
+
+        import functools
+        nevts = [30, 20]
+        paths = [self.write_run(irun, self.make_weights(irun, nevts[irun], 10., 'sum'), 'sum')
+                 for irun in range(2)]
+        lhe = lhe_parser.EventFile(paths[0])
+        events = open(paths[0], 'rb').read().split(b'</init>\n', 1)[1]
+        events = events.split(b'</LesHouchesEvents>')[0]
+        output = pjoin(self.path, 'merged.lhe')
+        lhe_parser.MultiEventFile.merge_runs(paths, output)
+        ref = open(output, 'rb').read()
+        orig = lhe_parser.EventFile._iter_raw_event_chunks
+        for size in [1, 13, 1000]:
+            chunks = list(lhe._iter_raw_event_chunks(size=size))
+            self.assertEqual(b''.join(chunks), events)
+            self.assertTrue(all(c.rstrip().endswith(b'</event>') for c in chunks))
+            with misc.TMP_variable(lhe_parser.EventFile, '_iter_raw_event_chunks',
+                                   functools.partialmethod(orig, size=size)):
+                self.assertEqual(lhe._scan_raw_weights()[0], nevts[0])
+                lhe_parser.MultiEventFile.merge_runs(paths, output)
+            self.assertEqual(open(output, 'rb').read(), ref)
+
+    def test_merge_runs_failure_keeps_output(self):
+        """a merge that fails leaves the previous output and banner as they
+        were, and no temporary file"""
+
+        paths = [self.write_run(irun, self.make_weights(irun, 20, 10., 'sum'), 'sum')
+                 for irun in range(2)]
+        output = pjoin(self.path, 'merged', 'unweighted_events.lhe.gz')
+        banner_path = pjoin(self.path, 'merged', 'banner.txt')
+        os.makedirs(os.path.dirname(output))
+        lhe_parser.MultiEventFile.merge_runs(paths, output, banner_path)
+        ref = [open(p, 'rb').read() for p in [output, banner_path]]
+
+        def fail(self, out, factor):
+            out.write(b'<event>\n')
+            raise RuntimeError('disk full')
+        with misc.TMP_variable(lhe_parser.EventFile, '_write_raw_rescaled_events', fail):
+            with self.assertRaisesRegex(RuntimeError, 'disk full'):
+                lhe_parser.MultiEventFile.merge_runs(paths, output, banner_path)
+        # an incompatible run
+        other = self.write_run(2, self.make_weights(2, 20, 10., 'average'), 'average')
+        with self.assertRaisesRegex(Exception, 'Cannot merge'):
+            lhe_parser.MultiEventFile.merge_runs(paths + [other], output, banner_path)
+        self.assertEqual([open(p, 'rb').read() for p in [output, banner_path]], ref)
+        self.assertEqual(sorted(os.listdir(os.path.dirname(output))),
+                         ['banner.txt', 'unweighted_events.lhe.gz'])
+
+    def test_merge_runs_no_event_norm(self):
+        """a banner without run_card: no silent guess of the normalisation,
+        the event_norm given by the caller is used"""
+
+        import re
+        nevts = [30, 20]
+        paths = []
+        for irun in range(2):
+            path = self.write_run(irun, self.make_weights(irun, nevts[irun], 10., 'sum'), 'sum')
+            text = re.sub(r'<MGRunCard>.*?</MGRunCard>\n', '', open(path).read(), flags=re.S)
+            self.assertNotIn('event_norm', text.split('</init>')[0])
+            open(path, 'w').write(text)
+            paths.append(path)
+        output = pjoin(self.path, 'merged.lhe')
+        with self.assertRaisesRegex(Exception, 'no event_norm'):
+            lhe_parser.MultiEventFile.merge_runs(paths, output)
+        self.assertFalse(os.path.exists(output))
+        lhe_parser.MultiEventFile.merge_runs(paths, output, event_norm='sum')
+        for wgt, run, orig, _ in self.read(output):
+            self.assertAlmostEqual(wgt/orig, nevts[run]/sum(nevts), delta=1e-6)
+
+    def test_merge_runs_truncated(self):
+        """a run file that ends inside an event is an error, with the raw
+        path and with the generic one, and the previous output is kept"""
+
+        paths = [self.write_run(irun, self.make_weights(irun, 20, 10., 'sum'), 'sum')
+                 for irun in range(2)]
+        output = pjoin(self.path, 'merged.lhe')
+        lhe_parser.MultiEventFile.merge_runs(paths, output)
+        ref = open(output, 'rb').read()
+        # cut the last event of the second run after its first particle
+        text = open(paths[1]).read()
+        start = text.rindex('<event>')
+        cut = text.index('\n', text.index('\n', start + len('<event>\n')) + 1) + 1
+        open(paths[1], 'w').write(text[:cut])
+        with self.assertRaises(EOFError):
+            lhe_parser.MultiEventFile.merge_runs(paths, output)
+        self.assertEqual(open(output, 'rb').read(), ref)
+
+        # generic path (format the raw path does not understand)
+        def raise_error(self):
+            raise ValueError
+            yield
+        with misc.TMP_variable(lhe_parser.EventFile, '_iter_raw_event_chunks', raise_error):
+            with self.assertRaisesRegex(Exception, 'merged 39 events instead of the 40'):
+                lhe_parser.MultiEventFile.merge_runs(paths, output)
+        self.assertEqual(open(output, 'rb').read(), ref)
+        self.assertEqual(sorted(os.listdir(self.path)), ['merged.lhe', 'run_0', 'run_1'])
+
+    def test_merge_runs_mismatch(self):
+        """runs of different generations are not merged"""
+
+        wgts = self.make_weights(0, 20, 10., 'average')
+        output = pjoin(self.path, 'merged.lhe')
+        ref = self.write_run(0, wgts, procs=[(1, 10., 0.1)])
+        cases = [
+            # beam energy
+            ({'ebeam': 7000, 'procs': [(1, 10., 0.1)]}, False),
+            # processes
+            ({'procs': [(2, 10., 0.1)]}, False),
+            ({'procs': [(1, 5., 0.05), (2, 5., 0.05)]}, False),
+            # normalisation
+            ({'event_norm': 'sum', 'procs': [(1, 10., 0.1)]}, False),
+            # cross section 20% away
+            ({'procs': [(1, 12., 0.1)]}, False),
+            # ... but compatible within the errors
+            ({'procs': [(1, 12., 1.)]}, True),
+            ({'procs': [(1, 10.3, 0.1)]}, True),
+            # a run without event
+            ({'procs': [(1, 10., 0.1)], 'wgts': []}, False),
+            ]
+        for i, (opts, valid) in enumerate(cases):
+            path = self.write_run(i+1, opts.pop('wgts', wgts), **opts)
+            if valid:
+                nb_event, _ = lhe_parser.MultiEventFile.merge_runs([ref, path], output)
+                self.assertEqual(nb_event, 40)
+            else:
+                with self.assertRaisesRegex(Exception, 'Cannot merge'):
+                    lhe_parser.MultiEventFile.merge_runs([ref, path], output)
+
+
+# MadGraph7 keeps the overweights only with keep_overweight_weight=True and
+# normalises the weights in expectation (ow_norm = 1 - excess/sigma) rather than
+# rescaling the written sample to sigma exactly, as mg5amcnlo 3.8.1 does: the
+# sample normalisation then carries the statistical spread of the accepted
+# events (a few 1e-5 here), not a 1e-9 rounding error.
+NORM_TOL = 1e-3
+
+
+class TestUnweightOverweight(unittest.TestCase):
+    """MultiEventFile.unweight with an event_target (the final combination of
+    madevent): an accepted event with |w| > max_wgt must be written with
+    |w|/max_wgt units of the common weight (sign kept), not truncated to one,
+    and the sample must stay normalised according to event_norm."""
+
+    template = """<event>
+ 4      1 %(wgt)+.10e 2.26335600e+02 7.54677100e-03 1.12924600e-01
+       21 -1    0    0  501  502 +0.0000000000e+00 +0.0000000000e+00 +1.3497663545e+02 1.3497663545e+02 0.0000000000e+00 0.0000e+00 1.0000e+00
+       21 -1    0    0  502  503 -0.0000000000e+00 -0.0000000000e+00 -5.2972469895e+02 5.2972469895e+02 0.0000000000e+00 0.0000e+00 -1.0000e+00
+        6  1    1    2  501    0 +9.9532160446e+01 +1.0673399736e+02 -2.0404901160e+01 2.2725350854e+02 1.7300000000e+02 0.0000e+00 1.0000e+00
+       -6  1    1    2    0  503 -9.9532160446e+01 -1.0673399736e+02 -3.7434316234e+02 4.3744782585e+02 1.7300000000e+02 0.0000e+00 -1.0000e+00
+#orig %(file)i %(wgt).17e
+</event>
+"""
+
+    def setUp(self):
+        self.path = tempfile.mkdtemp(prefix='test_mg5')
+        self.banner_text = lhe_parser.EventFile(pjoin(MG5DIR, 'tests',
+                                     'input_files', 'ttbar.lhe.gz')).banner
+
+    def tearDown(self):
+        shutil.rmtree(self.path)
+
+    def write_channels(self):
+        """two channels with a heavy-tailed weight distribution (and some
+        negative weights in the second one). Return the list of (path, weights)"""
+
+        import random
+        rng = random.Random(4242)
+        channels = []
+        for ifile, (nevt, neg) in enumerate([(1500, 0), (1000, 0.1)]):
+            wgts = []
+            for i in range(nevt):
+                w = rng.random()**(-1./3) # tail in the weight: P(|w|>x) = x^-3
+                if rng.random() < neg:
+                    w = -w
+                wgts.append(float('%.10e' % w))
+            Gdir = pjoin(self.path, 'P1_gg_ttx', 'G%i' % (ifile+1))
+            os.makedirs(Gdir)
+            path = pjoin(Gdir, 'events.lhe')
+            with open(path, 'w') as fsock:
+                fsock.write(self.banner_text)
+                for w in wgts:
+                    fsock.write(self.template % {'wgt': w, 'file': ifile})
+                fsock.write('</LesHouchesEvents>\n')
+            channels.append((path, wgts))
+        return channels
+
+    def unweight(self, channels, normalization, event_target, get_wgt=None):
+        """run the final unweighting. Return the output events as a list of
+        (written weight, scaled input weight) and the MultiEventFile"""
+
+        import random
+        import madgraph.various.banner as banner_mod
+        random.seed(17)
+        allevent = lhe_parser.MultiEventFile()
+        allevent.banner = banner_mod.Banner(self.banner_text)
+        scales = []
+        for i, (path, wgts) in enumerate(channels):
+            # give a different normalisation to each channel
+            across = (i+1) * sum(abs(w) for w in wgts)
+            scales.append((i+1))
+            allevent.add(path, across, 0.01*across, across, nb_event=len(wgts))
+        if not get_wgt:
+            get_wgt = lambda event: event.wgt
+        output = pjoin(self.path, 'unweighted_events.lhe')
+        nb_event = allevent.unweight(output, get_wgt, trunc_error=1e-2, keep_overweight_weight=True,
+                                     event_target=event_target,
+                                     normalization=normalization)
+        events = []
+        for event in lhe_parser.EventFile(output):
+            ifile, orig = event.comment.split()[1:3]
+            events.append((event.wgt, float(orig) * scales[int(ifile)]))
+        self.assertEqual(len(events), nb_event)
+        return events, allevent
+
+    def check_overweights(self, events, max_wgt):
+        """every written weight is sign(w) * common * max(1, |w|/max_wgt)"""
+
+        common = min(abs(w) for w, _ in events)
+        nb_over = 0
+        for written, orig in events:
+            self.assertEqual(math.copysign(1, written), math.copysign(1, orig))
+            ratio = max(1., abs(orig)/max_wgt)
+            self.assertAlmostEqual(abs(written)/common, ratio, delta=1e-6*ratio)
+            if ratio > 1:
+                nb_over += 1
+        # the 1% criterion leaves some events above max_wgt
+        self.assertGreater(nb_over, 0)
+        return common, nb_over
+
+    def test_unweight_keeps_overweights(self):
+        """overweight events keep their weight for each event_norm, and the
+        sample stays normalised to the cross section"""
+
+        channels = self.write_channels()
+        xsec = sum((i+1) * sum(abs(w) for w in wgts) for i, (_, wgts) in enumerate(channels))
+        # the second getter forces the generic (event parsing) loop
+        for normalization, get_wgt in [('average', None), ('sum', None), ('unit', None),
+                                       ('sum', lambda event: float(event.wgt))]:
+            # 500: requested number reached; 1500: not reached by a fixed max_wgt
+            for event_target in [500, 1500]:
+                events, allevent = self.unweight(channels, normalization,
+                                                 event_target, get_wgt)
+                nb_event = len(events)
+                if event_target == 500:
+                    self.assertEqual(nb_event, event_target)
+                else:
+                    # MadGraph7 lowers max_wgt until the target is reached
+                    # (the overweights it creates are kept, not truncated)
+                    self.assertLessEqual(nb_event, event_target)
+                self.check_overweights(events, allevent.max_wgt)
+                sum_abs = sum(abs(w) for w, _ in events)
+                if normalization == 'average':
+                    self.assertAlmostEqual(sum_abs/nb_event/xsec, 1, delta=NORM_TOL)
+                elif normalization == 'sum':
+                    self.assertAlmostEqual(sum_abs/xsec, 1, delta=NORM_TOL)
+                else:
+                    self.assertAlmostEqual(sum_abs/event_target, 1, delta=NORM_TOL)
+
+    def test_unweight_overweights_are_unbiased(self):
+        """the written sample reproduces the input cross section carried by
+        the events above max_wgt, which a truncation to the common weight lowers"""
+
+        channels = self.write_channels()
+        events, allevent = self.unweight(channels, 'sum', 500)
+        tail = allevent.max_wgt
+        xsec_tail = sum(w*(i+1) for i, (_, wgts) in enumerate(channels)
+                        for w in wgts if abs(w)*(i+1) > tail)
+        out_tail = sum(w for w, orig in events if abs(orig) > tail)
+        # all the events above max_wgt are accepted: only the (uniform) drop of
+        # the events beyond event_target and the global normalisation fluctuate
+        self.assertAlmostEqual(out_tail/xsec_tail, 1, delta=0.1)
+        # a truncation to the common weight loses a visible fraction of it
+        common = min(abs(w) for w, _ in events)
+        truncated = sum(math.copysign(common, w) for w, orig in events if abs(orig) > tail)
+        self.assertLess(truncated/xsec_tail, 0.8)
+
+    def test_unweight_partial_then_final(self):
+        """two-stage combination (do_combine_events_partial, then the final
+        unweighting of the partial files): the overweights of the first stage
+        survive the second one and the sample stays normalised"""
+
+        import random
+        import madgraph.various.banner as banner_mod
+        channels = self.write_channels()
+        xsec = sum((i+1) * sum(abs(w) for w in wgts) for i, (_, wgts) in enumerate(channels))
+        random.seed(23)
+        partials = []
+        for i, (path, wgts) in enumerate(channels):
+            # one partial per channel, unweighted as in do_combine_events_partial
+            partial = lhe_parser.MultiEventFile()
+            partial.banner = banner_mod.Banner(self.banner_text)
+            across = (i+1) * sum(abs(w) for w in wgts)
+            partial.add(path, across, 0.01*across, across, nb_event=len(wgts))
+            output = pjoin(self.path, 'partials%i.lhe' % i)
+            partial.unweight(output, lambda event: event.wgt, log_level=5,
+                             trunc_error=1e-2, keep_overweight_weight=True, event_target=300)
+            partials.append((output, across, 0.01*across, across))
+        allevent = lhe_parser.MultiEventFile()
+        allevent.banner = banner_mod.Banner(self.banner_text)
+        for data in partials:
+            allevent.add(*data)
+        output = pjoin(self.path, 'unweighted_events.lhe')
+        nb_event = allevent.unweight(output, lambda event: event.wgt,
+                                     trunc_error=1e-2, keep_overweight_weight=True, event_target=500,
+                                     normalization='average')
+        events = []
+        for event in lhe_parser.EventFile(output):
+            ifile, orig = event.comment.split()[1:3]
+            events.append((event.wgt, float(orig) * (int(ifile)+1)))
+        self.assertEqual(len(events), nb_event)
+        sum_abs = sum(abs(w) for w, _ in events)
+        self.assertAlmostEqual(sum_abs/nb_event/xsec, 1, delta=NORM_TOL)
+        common = min(abs(w) for w, _ in events)
+        self.assertGreater(max(abs(w) for w, _ in events)/common, 2)
+        for written, orig in events:
+            self.assertEqual(math.copysign(1, written), math.copysign(1, orig))

@@ -4591,6 +4591,10 @@ PRECISION_MODES = {
     'v': 'denom64: single precision amplitudes, double precision momenta and denominators',
 }
 
+# madmatrix.mk BACKEND values; 'auto' is the widest SIMD flavour of the host.
+PRECISION_BACKENDS = ['auto', 'scalar', 'simd_128', 'simd_256', 'avx512y',
+                      'simd_512', 'cuda', 'hip']
+
 # An event whose relative error exceeds this counts in the reported rate.
 PRECISION_THRESHOLD = 0.01
 
@@ -4693,13 +4697,15 @@ def check_precision(process_definition, modes, param_card=None, options=None,
     integrator. The double precision reference is computed only once, however
     many modes are compared to it.
 
-    Recognised *options*: 'nb_event' (default 10^6) and 'energy' (GeV, default
-    1000). The difference plot, one per subprocess with every mode on it, is
-    written in *output_path* (default: the current directory).
+    Recognised *options*: 'nb_event' (default 10^6), 'energy' (GeV, default
+    1000) and 'backend' (madmatrix.mk BACKEND, default 'auto'). The difference
+    plot, one per subprocess with every mode on it, is written in *output_path*
+    (default: the current directory).
 
     Returns a list with one dict per subprocess, mode and flavour combination,
-    with the keys 'process_label', 'subprocess', 'flavor', 'mode', the ones of
-    :func:`precision_statistics`, 'time_double', 'time_mode' and 'plot'.
+    with the keys 'process_label', 'subprocess', 'flavor', 'mode', 'backend',
+    the ones of :func:`precision_statistics`, 'time_double', 'time_mode' and
+    'plot'.
     """
     import tempfile
     import multiprocessing
@@ -4722,6 +4728,10 @@ def check_precision(process_definition, modes, param_card=None, options=None,
     if nb_event < 1:
         raise InvalidCmd('--nb_event must be a positive number of events')
     energy = float(options.get('energy', 1000.0))
+    backend = options.get('backend', 'auto')
+    if backend not in PRECISION_BACKENDS:
+        raise InvalidCmd('--backend must be one of %s, not %s'
+                         % ('|'.join(PRECISION_BACKENDS), backend))
     if output_path is None:
         output_path = os.getcwd()
     if process_definition.get('perturbation_couplings'):
@@ -4781,11 +4791,12 @@ def check_precision(process_definition, modes, param_card=None, options=None,
         with open(log, 'w') as out:
             subprocess.call(['make', 'cleanall'], cwd=p_dir, stdout=out,
                             stderr=subprocess.STDOUT)
-            status = subprocess.call(['make', '-j%s' % nb_core, 'FPTYPE=%s' % fptype],
+            status = subprocess.call(['make', '-j%s' % nb_core, 'FPTYPE=%s' % fptype,
+                                      'BACKEND=%s' % backend],
                                      cwd=p_dir, stdout=out, stderr=subprocess.STDOUT)
         if status:
-            raise MadGraph5Error('check precision: FPTYPE=%s build failed, see %s'
-                                 % (fptype, log))
+            raise MadGraph5Error('check precision: FPTYPE=%s BACKEND=%s build failed, see %s'
+                                 % (fptype, backend, log))
 
     def run(p_dir, args, tag):
         log = pjoin(work_dir, 'run_%s_%s.log' % (os.path.basename(p_dir), tag))
@@ -4825,8 +4836,8 @@ def check_precision(process_definition, modes, param_card=None, options=None,
     try:
         for p_name in p_dirs:
             p_dir = pjoin(proc_root, p_name)
-            logger.info('check precision: %s, %d events, FPTYPE=d vs FPTYPE=%s'
-                        % (p_name, nb_event, ','.join(modes)))
+            logger.info('check precision: %s, %d events, FPTYPE=d vs FPTYPE=%s, BACKEND=%s'
+                        % (p_name, nb_event, ','.join(modes), backend))
             # Double precision: the points, the flavours and the reference values
             with progress.step('%s: build FPTYPE=d' % p_name):
                 build(p_dir, 'd')
@@ -4868,7 +4879,7 @@ def check_precision(process_definition, modes, param_card=None, options=None,
                 for iflav, label in enumerate(labels):
                     entry = precision_statistics(me_double[iflav], me_mode[iflav])
                     entry.update({'process_label': label, 'subprocess': p_name,
-                                  'flavor': iflav, 'mode': mode,
+                                  'flavor': iflav, 'mode': mode, 'backend': backend,
                                   'time_double': time_double[iflav],
                                   'time_mode': time_mode[iflav]})
                     entries.append(entry)
@@ -4970,8 +4981,8 @@ def output_precision(results, output='text'):
     modes = misc.make_unique([r['mode'] for r in results])
     proc_col = max([len('Process')] + [len(r['process_label']) for r in results]) + 2
     col = 16
-    text = 'FPTYPE=%s vs FPTYPE=d, %d events per flavour\n' % (
-        ','.join(modes), results[0]['nb_event'])
+    text = 'FPTYPE=%s vs FPTYPE=d, BACKEND=%s, %d events per flavour\n' % (
+        ','.join(modes), results[0].get('backend', 'auto'), results[0]['nb_event'])
     for mode in modes:
         text += '  %s = %s\n' % (mode, PRECISION_MODES.get(mode, 'unknown mode'))
 

@@ -425,13 +425,21 @@ PYBIND11_MODULE(_madspace_py, m) {
         py::arg("index") = 0,
         pydoc::doc("default_hip_context")
     );
+    m.def("get_stream", &caller_stream, pydoc::doc("caller_stream"));
+    m.def(
+        "set_stream",
+        &set_caller_stream,
+        py::arg("stream"),
+        pydoc::doc("set_caller_stream")
+    );
 
     py::classh<FunctionRuntime>(m, "FunctionRuntime", py::dynamic_attr())
         .def(py::init<Function>(), py::arg("function"))
         .def(py::init<Function, ContextPtr>(), py::arg("function"), py::arg("context"))
         .def("call", &FunctionRuntime::call)
         .def("call_with_grad", &FunctionRuntime::call_with_grad)
-        .def("call_backward", &FunctionRuntime::call_backward);
+        .def("call_backward", &FunctionRuntime::call_backward)
+        .def("release_inputs", &FunctionRuntime::release_inputs);
 
     auto& fb =
         py::classh<FunctionBuilder>(m, "FunctionBuilder", pydoc::doc("FunctionBuilder"))
@@ -629,7 +637,14 @@ PYBIND11_MODULE(_madspace_py, m) {
         );
 
     py::classh<TwoBodyDecay, Mapping>(m, "TwoBodyDecay", pydoc::doc("TwoBodyDecay"))
-        .def(py::init<bool>(), py::arg("com"), pydoc::doc("TwoBodyDecay::TwoBodyDecay"))
+        .def(
+            py::init<bool, double, double, double>(),
+            py::arg("com"),
+            py::arg("pt_min") = 0.,
+            py::arg("y_max1") = -1.,
+            py::arg("y_max2") = -1.,
+            pydoc::doc("TwoBodyDecay::TwoBodyDecay")
+        )
         .def(
             "random_dim",
             &TwoBodyDecay::random_dim,
@@ -640,18 +655,31 @@ PYBIND11_MODULE(_madspace_py, m) {
         m, "TwoToTwoParticleScattering", pydoc::doc("TwoToTwoParticleScattering")
     )
         .def(
-            py::init<bool, double, double, double, bool>(),
+            py::init<bool, double, double, double, bool, double, double, double>(),
             py::arg("com"),
             py::arg("invariant_power") = 0.,
             py::arg("mass") = 0.,
             py::arg("width") = 0.,
             py::arg("has_cut") = false,
+            py::arg("y_max1") = -1.,
+            py::arg("y_max2") = -1.,
+            py::arg("beam_sign") = 1.,
             pydoc::doc("TwoToTwoParticleScattering::TwoToTwoParticleScattering")
         );
 
     py::classh<DoubleT, Mapping>(m, "DoubleT", pydoc::doc("DoubleT"))
         .def(
-            py::init<double, double, double, double, double, double, bool>(),
+            py::init<
+                double,
+                double,
+                double,
+                double,
+                double,
+                double,
+                bool,
+                double,
+                double,
+                double>(),
             py::arg("t1_invariant_power") = 0.,
             py::arg("t1_mass") = 0.,
             py::arg("t1_width") = 0.,
@@ -659,6 +687,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("t2_mass") = 0.,
             py::arg("t2_width") = 0.,
             py::arg("has_cut") = false,
+            py::arg("y_max1") = -1.,
+            py::arg("y_max2") = -1.,
+            py::arg("beam_sign") = 1.,
             pydoc::doc("DoubleT::DoubleT")
         );
 
@@ -719,17 +750,24 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readonly("e_max", &Propagator::e_max, pydoc::doc("Propagator::e_max"))
         .def_readonly("pdg_id", &Propagator::pdg_id, pydoc::doc("Propagator::pdg_id"))
         .def_readonly(
-            "flat_window", &Propagator::flat_window, pydoc::doc("Propagator::flat_window")
+            "flat_window",
+            &Propagator::flat_window,
+            pydoc::doc("Propagator::flat_window")
         );
 
     py::classh<TPropagatorMapping, Mapping>(
         m, "TPropagatorMapping", pydoc::doc("TPropagatorMapping")
     )
         .def(
-            py::init<std::vector<std::size_t>, double, std::vector<double>>(),
+            py::init<
+                std::vector<std::size_t>,
+                double,
+                std::vector<double>,
+                std::vector<double>>(),
             py::arg("integration_order"),
             py::arg("invariant_power") = 0.8,
             py::arg("pt_min") = std::vector<double>{},
+            py::arg("y_max") = std::vector<double>{},
             pydoc::doc("TPropagatorMapping::TPropagatorMapping")
         )
         .def(
@@ -749,7 +787,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::vector<double>,
                 std::vector<std::vector<double>>,
                 std::vector<std::vector<double>>,
-                bool>(),
+                bool,
+                std::vector<double>>(),
             py::arg("color_order"),
             py::arg("t_invariant_power") = 0.8,
             py::arg("s_invariant_power") = 0.8,
@@ -757,6 +796,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("m_inv_min") = std::vector<std::vector<double>>{},
             py::arg("dr_min") = std::vector<std::vector<double>>{},
             py::arg("arcsine_s23") = true,
+            py::arg("y_max") = std::vector<double>{},
             pydoc::doc("ColorOrderedMapping::ColorOrderedMapping")
         )
         .def(
@@ -871,6 +911,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"delta_r", Observable::obs_delta_r},
             {"pair_mass", Observable::obs_pair_mass},
             {"sqrt_s", Observable::obs_sqrt_s},
+            {"sfos_pair_mass", Observable::obs_sfos_pair_mass},
         },
         "obs_"
     );
@@ -927,6 +968,16 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readonly("min", &Cuts::CutItem::min, pydoc::doc("Cuts::CutItem::min"))
         .def_readonly("max", &Cuts::CutItem::max, pydoc::doc("Cuts::CutItem::max"))
         .def_readonly("mode", &Cuts::CutItem::mode, pydoc::doc("Cuts::CutItem::mode"));
+    // Registered before the methods that return it: pybind11 writes a method's
+    // signature when it is defined, and a type it does not know yet ends up as
+    // its raw C++ name, which pybind11-stubgen rejects.
+    py::classh<Cuts::PairMassAny>(cuts, "PairMassAny", pydoc::doc("Cuts::PairMassAny"))
+        .def_readonly(
+            "pairs", &Cuts::PairMassAny::pairs, pydoc::doc("Cuts::PairMassAny::pairs")
+        )
+        .def_readonly(
+            "min", &Cuts::PairMassAny::min, pydoc::doc("Cuts::PairMassAny::min")
+        );
     cuts.def(
             py::init<const std::vector<Cuts::CutItem>&>(),
             py::arg("cut_data"),
@@ -941,7 +992,12 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("eta_max", &Cuts::eta_max, pydoc::doc("Cuts::eta_max"))
         .def("pt_min", &Cuts::pt_min, pydoc::doc("Cuts::pt_min"))
         .def("m_inv_min", &Cuts::m_inv_min, pydoc::doc("Cuts::m_inv_min"))
-        .def("dr_min", &Cuts::dr_min, pydoc::doc("Cuts::dr_min"));
+        .def("dr_min", &Cuts::dr_min, pydoc::doc("Cuts::dr_min"))
+        .def(
+            "pair_mass_any_min",
+            &Cuts::pair_mass_any_min,
+            pydoc::doc("Cuts::pair_mass_any_min")
+        );
 
     py::classh<ObservableHistograms::HistItem>(
         m, "HistItem", pydoc::doc("ObservableHistograms::HistItem")
@@ -1244,7 +1300,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             "channel_count",
             &PhaseSpaceMapping::channel_count,
             pydoc::doc("PhaseSpaceMapping::channel_count")
-        );
+        )
+        .def("empty", &PhaseSpaceMapping::empty, pydoc::doc("PhaseSpaceMapping::empty"));
 
     py::classh<MultiChannelFunction, FunctionGenerator>(
         m, "MultiChannelFunction", pydoc::doc("MultiChannelFunction")
@@ -2470,7 +2527,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         &compute_generation_batch_event_count,
         py::arg("count_target"),
         py::arg("count_unweighted"),
-        py::arg("count_opt"),
+        py::arg("count_requested"),
         py::arg("abs_cross_section_count"),
         py::arg("abs_cross_section_rel_error"),
         py::arg("config"),

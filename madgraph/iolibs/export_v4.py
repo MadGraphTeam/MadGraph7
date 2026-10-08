@@ -2204,8 +2204,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # Both sources of flavor multiplicity (several processes mapped onto one
         # matrix element, and merged legs within a process) are enumerated by
         # HelasMatrixElement.get_flavor_pdg_combinations, shared with the mg7
-        # exporter so the two backends cannot drift apart.
-        processes = matrix_element.get('processes')
+        # exporter so the two backends cannot drift apart (per process of
+        # get_flavor_row_processes).
+        processes = matrix_element.get_flavor_row_processes()
         for iproc, (pdg_lists, has_merged_particles) in enumerate(
                 matrix_element.get_flavor_pdg_combinations(self.model)):
             proc = processes[iproc]
@@ -4150,7 +4151,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
     def get_pdf_lines(self, matrix_element, ninitial, subproc_group = False, vector=False):
         """Generate the PDF lines for the auto_dsig.f file"""
 
-        processes = matrix_element.get('processes')
+        # processes combined in with another flavor restriction only add
+        # flavor rows, covered by the ones written for processes[0]
+        processes = matrix_element.get_flavor_row_processes()
         model = processes[0].get('model')
 
         pdf_definition_lines = ""
@@ -4389,18 +4392,11 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                             for ibeam in [1, 2]:
                                 initial_state = proc.get_initial_pdg(ibeam)
                                 if abs(initial_state) in model.get('merged_particles'):
-                                    flv = proc.get_initial_flavor(ibeam)
-                                    if len(flv) == 0:
-                                        sign = 1 if initial_state > 0 else -1
-                                        initial_state = sign * one_flv[ibeam-1]
-                                    elif len(flv) ==1:
-                                        initial_state = flv[0]
-                                    else:
-                                        # Grouped process: multiple specific quarks are
-                                        # possible; use the one specified by this flavor
-                                        # combination.
-                                        sign = 1 if initial_state > 0 else -1
-                                        initial_state = sign * one_flv[ibeam-1]
+                                    # the flavor row fixes the beam flavor
+                                    # (it honours the leg restriction; a
+                                    # union row may not be processes[0]'s)
+                                    sign = 1 if initial_state > 0 else -1
+                                    initial_state = sign * one_flv[ibeam-1]
                                 
                                 if initial_state in list(pdf_codes.keys()):
                                     pdf_lines = pdf_lines + "%s%d*" % \
@@ -4432,7 +4428,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 pdf_lines += "ENDDO ! CURRWARP LOOP\n"
                 pdf_lines = pdf_lines + "ALL_PD(0,:) = 0d0\nIPROC = 0\n"
                 for proc in processes:
-                    for nb_flavor in range(matrix_element.get_nb_flavors()):
+                    # one entry per flavor row of this process
+                    for nb_flavor in range(len(matrix_element.get_external_flavors())):
                         comp_list = []
                         process_line = proc.base_string()
                         pdf_lines = pdf_lines + "IPROC=IPROC+1 ! " + process_line
@@ -4441,18 +4438,11 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                         for ibeam in [1, 2]:
                             initial_state = proc.get_initial_pdg(ibeam)
                             if abs(initial_state) in model.get('merged_particles'):
-                                flv = proc.get_initial_flavor(ibeam)
-                                if len(flv) == 0:
-                                    sign = 1 if initial_state > 0 else -1
-                                    initial_state = sign * matrix_element.get_external_flavors()[nb_flavor][ibeam-1]
-                                elif len(flv) ==1:
-                                    initial_state = flv[0]
-                                else:
-                                    # Grouped process: multiple specific quarks are
-                                    # possible; use the one specified by this flavor
-                                    # combination.
-                                    sign = 1 if initial_state > 0 else -1
-                                    initial_state = sign * matrix_element.get_external_flavors()[nb_flavor][ibeam-1]
+                                # the flavor row fixes the beam flavor (it
+                                # honours the leg restriction; a union row
+                                # may not be processes[0]'s)
+                                sign = 1 if initial_state > 0 else -1
+                                initial_state = sign * matrix_element.get_external_flavors()[nb_flavor][ibeam-1]
 
                             if initial_state in list(pdf_codes.keys()):
                                 pdf_lines = pdf_lines + "%s%d(IVEC)*" % \
@@ -7859,7 +7849,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         # Compute actual MAXPROC: for merged processes each flavor combination
         # generates a separate IDUP row, so MAXPROC must cover all of them.
         nb_idup_rows = 0
-        for proc in matrix_element.get('processes'):
+        for proc in matrix_element.get_flavor_row_processes():
             legs = proc.get_legs_with_decays()
             ids = [l.get('id') for l in legs]
             if self.model and 'merged_particles' in self.model and \
