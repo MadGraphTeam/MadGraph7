@@ -3,7 +3,6 @@
 #include "gpu_abstraction.cuh"
 #include "madspace/driver/tensor.hpp"
 
-#include <atomic>
 #include <format>
 
 namespace madspace {
@@ -38,6 +37,7 @@ public:
     allocate(std::size_t size, AllocHint hint) const override;
     void free(void* ptr) const override;
     void free_on_stream(void* ptr, void* stream) const override;
+    void* default_free_stream() const override;
     void order_streams(void* from, void* to) const override;
     void memcpy(void* to, void* from, std::size_t size) const override;
 
@@ -63,8 +63,6 @@ public:
 
     GpuDevice(const GpuDevice&) = delete;
     GpuDevice& operator=(GpuDevice&) = delete;
-
-    static inline std::atomic<bool> unsynchronized_calls{false};
 
     static const GpuDevice& instance(int index) {
         static std::vector<GpuDevice*> devices = [] {

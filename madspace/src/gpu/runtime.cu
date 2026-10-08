@@ -2000,7 +2000,6 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) {
     if (caller) {
         check_error(gpuEventRecord(_last_stream.get().event, main_stream));
         _last_stream.get().pending = true;
-        GpuDevice::unsynchronized_calls = true;
         hold_inputs(inputs, main_stream, *caller == 0);
     } else {
         check_error(gpuStreamSynchronize(main_stream));
@@ -2088,7 +2087,6 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
     if (caller) {
         check_error(gpuEventRecord(_last_stream.get().event, main_stream));
         _last_stream.get().pending = true;
-        GpuDevice::unsynchronized_calls = true;
         hold_inputs(inputs, main_stream, *caller == 0);
     } else {
         check_error(gpuStreamSynchronize(main_stream));
@@ -2190,7 +2188,6 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
     if (caller) {
         check_error(gpuEventRecord(_last_stream.get().event, main_stream));
         _last_stream.get().pending = true;
-        GpuDevice::unsynchronized_calls = true;
         TensorVec held(output_grads);
         held.insert(held.end(), stored_locals.begin(), stored_locals.end());
         hold_inputs(held, main_stream, *caller == 0);

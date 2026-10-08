@@ -260,6 +260,8 @@ public:
     virtual void free(void* ptr) const = 0;
     /// Free a pointer returned by @ref allocate after the work queued on `stream`.
     virtual void free_on_stream(void* ptr, void* stream) const { free(ptr); }
+    /// Stream to free stream-ordered storage on if it has no known stream.
+    virtual void* default_free_stream() const { return nullptr; }
     /// Make work queued on `to` from now on wait for the work queued on `from`.
     virtual void order_streams(void* from, void* to) const {}
     /// Copy `size` bytes from `from` to `to`, both on this device.
@@ -628,7 +630,7 @@ public:
     std::size_t byte_size() const { return dtype_size() * shape().product(); }
 
     /// Releases this reference; the tensor is empty afterwards.
-    void reset() { reset_on_stream(stream().value_or(0)); }
+    void reset() { reset_on_stream(stream()); }
 
     template <typename D>
     /// Releases this reference on `device`; the tensor is empty afterwards.
@@ -640,8 +642,9 @@ public:
         impl = nullptr;
     }
 
-    /// Releases this reference, freeing stream-ordered storage on `stream`.
-    void reset_on_stream(std::uintptr_t stream) {
+    /// Releases this reference, freeing stream-ordered storage on `stream` or, if
+    /// unknown, on the device's default free stream.
+    void reset_on_stream(std::optional<std::uintptr_t> stream) {
         if (impl == nullptr) {
             return;
         }
@@ -816,13 +819,17 @@ private:
             delete this;
         }
 
-        void reset_on_stream(std::uintptr_t stream) {
+        void reset_on_stream(std::optional<std::uintptr_t> stream) {
             if (ref_count.fetch_sub(1, std::memory_order_acq_rel) != 1) {
                 return;
             }
             if (owns_data && data != nullptr) {
                 if (stream_ordered) {
-                    device->free_on_stream(data, reinterpret_cast<void*>(stream));
+                    device->free_on_stream(
+                        data,
+                        stream ? reinterpret_cast<void*>(*stream)
+                               : device->default_free_stream()
+                    );
                 } else {
                     device->free(data);
                 }
