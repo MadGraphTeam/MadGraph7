@@ -33,7 +33,7 @@ struct IVec {
 struct BVec {
     BVec() = default;
     BVec(uint64x2_t _v) : v(_v) {};
-    BVec(bool _v) : v(vceqzq_u64(vdupq_n_u64(_v))) {};
+    BVec(bool _v) : v(vdupq_n_u64(_v ? ~0ULL : 0)) {};
     operator uint64x2_t() { return v; }
     uint64x2_t v;
 };
@@ -173,4 +173,4 @@ inline FVec exp(FVec arg1) { return Sleef_expd2_u10(arg1); }
 inline FVec log1p(FVec arg1) { return Sleef_log1pd2_u10(arg1); }
 inline FVec expm1(FVec arg1) { return Sleef_expm1d2_u10(arg1); }
 inline FVec erf(FVec arg1) { return Sleef_erfd2_u10(arg1); }
-inline FVec fma(FVec arg1, FVec arg2, FVec arg3) { return vfmaq_f64(arg1, arg2, arg3); }
+inline FVec fma(FVec arg1, FVec arg2, FVec arg3) { return vfmaq_f64(arg3, arg1, arg2); }

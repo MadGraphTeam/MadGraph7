@@ -1,21 +1,15 @@
+// AVX512 instructions (F, VL, DQ) with 256-bit vectors, like the madmatrix avx512y mode
 #include <cstddef>
 #include <immintrin.h>
 #include <sleef.h>
 
 constexpr int simd_vec_size = 4;
 
-inline __m128i truncate_i64_to_i32(__m256i arg) {
-    __m256 x = _mm256_castsi256_ps(arg);
-    return _mm_castps_si128(_mm_shuffle_ps(
-        _mm256_castps256_ps128(x), _mm256_extractf128_ps(x, 1), _MM_SHUFFLE(2, 0, 2, 0)
-    ));
-}
-
 struct FVec {
     FVec() = default;
     FVec(__m256d _v) : v(_v) {};
     FVec(double _v) : v(_mm256_set1_pd(_v)) {};
-    explicit FVec(__m256i _v) { v = _mm256_cvtepi32_pd(truncate_i64_to_i32(_v)); }
+    explicit FVec(__m256i _v) : v(_mm256_cvtepi64_pd(_v)) {};
     operator __m256d() { return v; }
     FVec operator+=(FVec _v) {
         v = _mm256_add_pd(v, _v);
@@ -28,7 +22,7 @@ struct IVec {
     IVec() = default;
     IVec(__m256i _v) : v(_v) {};
     IVec(int _v) : v(_mm256_set1_epi64x(_v)) {};
-    explicit IVec(__m256d _v) { v = _mm256_cvtepi32_epi64(_mm256_cvttpd_epi32(_v)); }
+    explicit IVec(__m256d _v) : v(_mm256_cvttpd_epi64(_v)) {};
     operator __m256i() { return v; }
     IVec operator+=(IVec _v) {
         v = _mm256_add_epi64(v, _v);
@@ -39,22 +33,22 @@ struct IVec {
 
 struct BVec {
     BVec() = default;
-    BVec(__m256d _v) : v(_v) {};
-    BVec(__m256i _v) : v(_mm256_castsi256_pd(_v)) {};
-    BVec(bool _v) : v(_mm256_castsi256_pd(_mm256_set1_epi64x(_v ? -1 : 0))) {};
-    operator __m256d() { return v; }
-    operator __m256i() { return _mm256_castpd_si256(v); }
-    __m256d v;
+    BVec(bool _v) : v(_v ? 0x0F : 0) {};
+    BVec(__mmask8 _v) : v(_v) {};
+    operator __mmask8() { return v; }
+    __mmask8 v;
 };
 
-inline __m128i stride_seq(std::size_t stride) {
-    return _mm_mullo_epi32(_mm_set1_epi32(stride), _mm_set_epi32(3, 2, 1, 0));
+inline __m256i stride_seq(std::size_t stride) {
+    return _mm256_mullo_epi64(
+        _mm256_set1_epi64x(stride), _mm256_set_epi64x(3, 2, 1, 0)
+    );
 }
 
-inline __m128i
+inline __m256i
 mem_indices(std::size_t batch_stride, std::size_t index_stride, IVec indices) {
-    return _mm_add_epi32(
-        _mm_mullo_epi32(truncate_i64_to_i32(indices), _mm_set1_epi32(index_stride)),
+    return _mm256_add_epi64(
+        _mm256_mullo_epi64(indices, _mm256_set1_epi64x(index_stride)),
         stride_seq(batch_stride)
     );
 }
@@ -62,7 +56,7 @@ mem_indices(std::size_t batch_stride, std::size_t index_stride, IVec indices) {
 inline FVec vgather(
     double* base_ptr, std::size_t batch_stride, std::size_t index_stride, IVec indices
 ) {
-    return _mm256_i32gather_pd(
+    return _mm256_i64gather_pd(
         base_ptr, mem_indices(batch_stride, index_stride, indices), 8
     );
 }
@@ -70,17 +64,19 @@ inline FVec vgather(
 inline IVec vgather(
     int* base_ptr, std::size_t batch_stride, std::size_t index_stride, IVec indices
 ) {
-    return _mm256_cvtepi32_epi64(_mm_i32gather_epi32(
+    return _mm256_cvtepi32_epi64(_mm256_i64gather_epi32(
         base_ptr, mem_indices(batch_stride, index_stride, indices), 4
     ));
 }
 
 inline FVec vload(double* base_ptr, std::size_t stride) {
-    return _mm256_i32gather_pd(base_ptr, stride_seq(stride), 8);
+    return _mm256_i64gather_pd(base_ptr, stride_seq(stride), 8);
 }
 
 inline IVec vload(int* base_ptr, std::size_t stride) {
-    return _mm256_cvtepi32_epi64(_mm_i32gather_epi32(base_ptr, stride_seq(stride), 4));
+    return _mm256_cvtepi32_epi64(
+        _mm256_i64gather_epi32(base_ptr, stride_seq(stride), 4)
+    );
 }
 
 inline void vscatter(
@@ -90,17 +86,9 @@ inline void vscatter(
     IVec indices,
     FVec values
 ) {
-    double values_buf[4];
-    union {
-        long long scalar[4];
-        __m256i vec;
-    } indices_buf;
-    _mm256_storeu_pd(values_buf, values);
-    _mm256_store_si256(&indices_buf.vec, indices);
-    for (int i = 0; i < 4; ++i) {
-        base_ptr[index_stride * indices_buf.scalar[i] + batch_stride * i] =
-            values_buf[i];
-    }
+    _mm256_i64scatter_pd(
+        base_ptr, mem_indices(batch_stride, index_stride, indices), values, 8
+    );
 }
 
 inline void vscatter(
@@ -110,82 +98,81 @@ inline void vscatter(
     IVec indices,
     IVec values
 ) {
-    union {
-        int scalar[4];
-        __m128i vec;
-    } values_buf;
-    union {
-        long long scalar[4];
-        __m256i vec;
-    } indices_buf;
-    _mm_store_si128(&values_buf.vec, truncate_i64_to_i32(values));
-    _mm256_store_si256(&indices_buf.vec, indices);
-    for (int i = 0; i < 4; ++i) {
-        base_ptr[index_stride * indices_buf.scalar[i] + batch_stride * i] =
-            values_buf.scalar[i];
-    }
+    _mm256_i64scatter_epi32(
+        base_ptr,
+        mem_indices(batch_stride, index_stride, indices),
+        _mm256_cvtepi64_epi32(values),
+        4
+    );
 }
 
 inline void vstore(double* base_ptr, std::size_t stride, FVec values) {
-    double values_buf[4];
-    _mm256_storeu_pd(values_buf, values);
-    for (int i = 0; i < 4; ++i) {
-        base_ptr[i * stride] = values_buf[i];
-    }
+    _mm256_i64scatter_pd(base_ptr, stride_seq(stride), values, 8);
 }
 
 inline void vstore(int* base_ptr, std::size_t stride, IVec values) {
-    union {
-        int scalar[4];
-        __m128i vec;
-    } values_buf;
-    _mm_store_si128(&values_buf.vec, truncate_i64_to_i32(values));
-    for (int i = 0; i < 4; ++i) {
-        base_ptr[i * stride] = values_buf.scalar[i];
-    }
+    _mm256_i64scatter_epi32(
+        base_ptr, stride_seq(stride), _mm256_cvtepi64_epi32(values), 4
+    );
 }
 
 inline FVec where(BVec arg1, FVec arg2, FVec arg3) {
-    return _mm256_blendv_pd(arg3, arg2, arg1);
+    return _mm256_mask_blend_pd(arg1, arg3, arg2);
 }
 inline IVec where(BVec arg1, IVec arg2, IVec arg3) {
-    return _mm256_blendv_epi8(arg3, arg2, arg1);
+    return _mm256_mask_blend_epi64(arg1, arg3, arg2);
 }
-inline std::size_t single_index(IVec arg) { return _mm256_extract_epi32(arg, 0); }
+inline std::size_t single_index(IVec arg) {
+    return _mm_cvtsi128_si64(_mm256_castsi256_si128(arg));
+}
 inline FVec min(FVec arg1, FVec arg2) { return _mm256_min_pd(arg1, arg2); }
 inline FVec max(FVec arg1, FVec arg2) { return _mm256_max_pd(arg1, arg2); }
 
 inline BVec operator==(FVec arg1, FVec arg2) {
-    return _mm256_cmp_pd(arg1, arg2, _CMP_EQ_OQ);
+    return _mm256_cmp_pd_mask(arg1, arg2, _CMP_EQ_OQ);
 }
 inline BVec operator!=(FVec arg1, FVec arg2) {
-    return _mm256_cmp_pd(arg1, arg2, _CMP_NEQ_UQ);
+    return _mm256_cmp_pd_mask(arg1, arg2, _CMP_NEQ_UQ);
 }
 inline BVec operator>(FVec arg1, FVec arg2) {
-    return _mm256_cmp_pd(arg1, arg2, _CMP_GT_OQ);
+    return _mm256_cmp_pd_mask(arg1, arg2, _CMP_GT_OQ);
 }
 inline BVec operator<(FVec arg1, FVec arg2) {
-    return _mm256_cmp_pd(arg1, arg2, _CMP_LT_OQ);
+    return _mm256_cmp_pd_mask(arg1, arg2, _CMP_LT_OQ);
 }
 inline BVec operator>=(FVec arg1, FVec arg2) {
-    return _mm256_cmp_pd(arg1, arg2, _CMP_GE_OQ);
+    return _mm256_cmp_pd_mask(arg1, arg2, _CMP_GE_OQ);
 }
 inline BVec operator<=(FVec arg1, FVec arg2) {
-    return _mm256_cmp_pd(arg1, arg2, _CMP_LE_OQ);
+    return _mm256_cmp_pd_mask(arg1, arg2, _CMP_LE_OQ);
 }
 
-inline BVec operator&(BVec arg1, BVec arg2) { return _mm256_and_si256(arg1, arg2); }
-inline BVec operator|(BVec arg1, BVec arg2) { return _mm256_or_si256(arg1, arg2); }
-inline BVec operator!(BVec arg1) {
-    return _mm256_xor_si256(arg1, _mm256_cmpeq_epi64(arg1, arg1));
+inline BVec operator&(BVec arg1, BVec arg2) {
+    return static_cast<__mmask8>(arg1.v & arg2.v & 0x0F);
 }
+inline BVec operator|(BVec arg1, BVec arg2) {
+    return static_cast<__mmask8>((arg1.v | arg2.v) & 0x0F);
+}
+inline BVec operator!(BVec arg1) { return static_cast<__mmask8>(~arg1.v & 0x0F); }
 
-inline BVec operator==(IVec arg1, IVec arg2) { return _mm256_cmpeq_epi64(arg1, arg2); }
-inline BVec operator!=(IVec arg1, IVec arg2) { return !(arg1 == arg2); }
-inline BVec operator>(IVec arg1, IVec arg2) { return _mm256_cmpgt_epi64(arg1, arg2); }
-inline BVec operator>=(IVec arg1, IVec arg2) { return (arg1 > arg2) | (arg1 == arg2); }
-inline BVec operator<(IVec arg1, IVec arg2) { return !(arg1 >= arg2); }
-inline BVec operator<=(IVec arg1, IVec arg2) { return !(arg1 > arg2); }
+inline BVec operator==(IVec arg1, IVec arg2) {
+    return _mm256_cmpeq_epi64_mask(arg1, arg2);
+}
+inline BVec operator!=(IVec arg1, IVec arg2) {
+    return _mm256_cmpneq_epi64_mask(arg1, arg2);
+}
+inline BVec operator>(IVec arg1, IVec arg2) {
+    return _mm256_cmpgt_epi64_mask(arg1, arg2);
+}
+inline BVec operator>=(IVec arg1, IVec arg2) {
+    return _mm256_cmpge_epi64_mask(arg1, arg2);
+}
+inline BVec operator<(IVec arg1, IVec arg2) {
+    return _mm256_cmplt_epi64_mask(arg1, arg2);
+}
+inline BVec operator<=(IVec arg1, IVec arg2) {
+    return _mm256_cmple_epi64_mask(arg1, arg2);
+}
 
 inline FVec operator-(FVec arg1) { return _mm256_sub_pd(_mm256_set1_pd(0.), arg1); }
 inline FVec operator+(FVec arg1, FVec arg2) { return _mm256_add_pd(arg1, arg2); }

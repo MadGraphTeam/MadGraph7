@@ -1238,7 +1238,8 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     '@MG5aMC', # MA5 hadronique
                     'run_rivet_later', # Rivet
                     'change particle_in_density_matrix', # density mode of reweight
-                    'simd_vector_size', # mg7 run_card.toml
+                    'madspace_cpu_mode', # mg7 run_card.toml
+                    'simd_vector_size', # mg7 run_card.toml (before madspace_cpu_mode)
                     'include_madspace', # mg7 run_card.toml
                     ]
         
@@ -1274,7 +1275,8 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             # MadAnalysis4 is gone, but banners and process directories written
             # by older versions still carry this card: recognise it, ignore it.
             return 'plot_card.dat'
-        elif 'simd_vector_size' in text or 'include_madspace' in text:
+        elif 'madspace_cpu_mode' in text or 'simd_vector_size' in text or \
+                'include_madspace' in text:
             # mg7 run_card is a TOML file (madspace/MadNIS integration engine)
             return 'run_card.toml'
         elif ('gridpack' in text and 'ebeam1' in text) or \

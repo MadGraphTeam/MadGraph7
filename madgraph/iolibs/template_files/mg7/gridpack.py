@@ -122,6 +122,13 @@ def main() -> None:
     )
     parser.add_argument("--device", type=str, nargs="*")
     parser.add_argument(
+        "--madspace_cpu_mode",
+        type=str,
+        default=run_args.get("madspace_cpu_mode", "scalar"),
+        choices=["auto", "scalar", "simd_128", "simd_256", "avx512y", "simd_512"],
+        help="SIMD width of the phase-space sampling (madspace) on the 'cpu' devices",
+    )
+    parser.add_argument(
         "--cpu_thread_pool_size", type=int, default=run_args["cpu_thread_pool_size"]
     )
     parser.add_argument(
@@ -146,6 +153,8 @@ def main() -> None:
     parser.add_argument("--gpu_batch_size", type=int, default=gen_args["gpu_batch_size"])
     args = parser.parse_args()
     seed = resolve_seed(args.seed)
+    # has to be set before the madspace CPU backend is first loaded
+    ms.set_simd_mode(args.madspace_cpu_mode)
 
     # initialize event directory
     run_name = args.run_name

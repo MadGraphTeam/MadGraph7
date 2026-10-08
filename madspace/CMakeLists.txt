@@ -436,14 +436,26 @@ if(NOT ENABLE_SIMD)
     set(CPU_TARGETS madspace_cpu)
     set(SIMD_FLAGS "")
     set(SIMD_DEFINES "")
-elseif(APPLE)
-    set(CPU_TARGETS madspace_cpu madspace_cpu_neon)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|ARM64)$")
+    set(CPU_TARGETS madspace_cpu madspace_cpu_simd_128)
     set(SIMD_FLAGS "" "")
     set(SIMD_DEFINES "" "USE_SIMD_NEON=1")
 else()
-    set(CPU_TARGETS madspace_cpu madspace_cpu_avx2 madspace_cpu_avx512)
-    set(SIMD_FLAGS "" "-mavx2 -mfma" "-mavx512f")
-    set(SIMD_DEFINES "" "USE_SIMD_AVX2=1" "USE_SIMD_AVX512=1")
+    set(
+        CPU_TARGETS
+        madspace_cpu madspace_cpu_simd_256 madspace_cpu_avx512y madspace_cpu_simd_512
+    )
+    set(
+        SIMD_FLAGS
+        ""
+        "-mavx2 -mfma"
+        "-mavx2 -mfma -mavx512f -mavx512vl -mavx512dq -mprefer-vector-width=256"
+        "-mavx512f"
+    )
+    set(
+        SIMD_DEFINES
+        "" "USE_SIMD_AVX2=1" "USE_SIMD_AVX512Y=1" "USE_SIMD_AVX512=1"
+    )
 endif()
 
 foreach(
@@ -464,6 +476,8 @@ foreach(
         src/cpu/simd.hpp
         src/cpu/simd_arm.hpp
         src/cpu/simd_x86_256.hpp
+        src/cpu/simd_x86_256y.hpp
+        src/cpu/simd_x86_512.hpp
         ${KERNEL_SRC}
     )
     target_include_directories(${cpu_target} PUBLIC include)

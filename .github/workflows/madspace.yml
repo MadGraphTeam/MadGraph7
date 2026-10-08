@@ -62,7 +62,7 @@ jobs:
             MACOSX_DEPLOYMENT_TARGET: 14.5
             CIBW_BEFORE_ALL: brew install doxygen
             CIBW_ENVIRONMENT: >
-                SKBUILD_CMAKE_ARGS="-DENABLE_DOCS=ON"
+                SKBUILD_CMAKE_ARGS="-DENABLE_SIMD=ON;-DENABLE_DOCS=ON"
             CIBW_REPAIR_WHEEL_COMMAND: >
               delocate-wheel
               --ignore-missing-dependencies
@@ -87,7 +87,9 @@ jobs:
               scipy
               --extra-index-url https://download.pytorch.org/whl/cpu
               torch
-            CIBW_TEST_COMMAND: pytest {project}/madspace/tests
+            # runs the unit tests once per SIMD mode supported by the runner
+            CIBW_TEST_COMMAND: >
+              python {project}/madspace/tests/run_simd_modes.py {project}/madspace/tests
 
       - uses: actions/upload-artifact@v4
         with:

@@ -6680,14 +6680,16 @@ class RunCardMG7(RunCard):
             comment="list of devices; each entry is cpu, cuda or hip, optionally followed by a device index (e.g. \"cuda:1\")")
         self.add_toml_param('run', 'cpu_mode', "auto", gridpack=True,
             allowed=['auto', 'scalar', 'simd_128', 'simd_256', 'simd_512', 'avx512y'],
-            comment="SIMD width used by the 'cpu' devices; 'auto' detects the widest one supported by the host")
+            comment="SIMD width of the matrix elements (madmatrix) on the 'cpu' devices; 'auto' detects the widest one supported by the host")
         self.add_toml_param('run', 'precision', "color32", gridpack=True,
             allowed=['all64', 'all32', 'color32', 'denom64'],
             comment="matrix-element floating-point precision: all64 (FP64), all32 (FP32), "
                     "color32 (colour FP32, rest FP64), "
                     "denom64 (momenta + propagator denominator FP64, rest FP32)")
-        self.add_toml_param('run', 'simd_vector_size', -1,
-            comment="-1 chooses automatically; on x86: 1, 4, 8; on Apple silicon: 1, 2")
+        self.add_toml_param('run', 'madspace_cpu_mode', "scalar", gridpack=True,
+            allowed=['auto', 'scalar', 'simd_128', 'simd_256', 'avx512y', 'simd_512'],
+            comment="SIMD width of the phase-space sampling (madspace) on the 'cpu' devices "
+                    "(experimental); simd_128 is ARM only, 'auto' makes the same choice as for cpu_mode")
         self.add_toml_param('run', 'cpu_thread_pool_size', -1, gridpack=True,
             comment="-1 sets count automatically based on number of CPUs")
         self.add_toml_param('run', 'gpu_thread_pool_size', 1, gridpack=True)
@@ -6927,7 +6929,7 @@ class RunCardMG7(RunCard):
     get = __getitem__
 
     def __setitem__(self, name, value, *args, **opts):
-        """Refuse an unsupported cpu_mode instead of silently falling back.
+        """Refuse an unsupported (madspace_)cpu_mode instead of silently falling back.
 
         The generic ConfigFile machinery reacts to a value outside an 'allowed'
         list by logging a warning and keeping the previous value. For cpu_mode
@@ -6936,12 +6938,15 @@ class RunCardMG7(RunCard):
         run cards written before the backend renaming, which still carry a
         removed value such as 'cpu_128b'.
         """
-        if isinstance(name, str) and name.strip().lower() in ('cpu_mode', 'run.cpu_mode'):
-            allowed = self.allowed_value.get('run.cpu_mode', [])
+        key = name.strip().lower() if isinstance(name, str) else None
+        if key is not None and key.startswith('run.'):
+            key = key[4:]
+        if key in ('cpu_mode', 'madspace_cpu_mode'):
+            allowed = self.allowed_value.get('run.' + key, [])
             if allowed and str(value).strip().lower() not in [str(v).lower() for v in allowed]:
                 raise InvalidRunCard(
-                    "Invalid cpu_mode='%s': supported values are [ '%s' ]"
-                    % (str(value).strip(), "', '".join(str(v) for v in allowed)))
+                    "Invalid %s='%s': supported values are [ '%s' ]"
+                    % (key, str(value).strip(), "', '".join(str(v) for v in allowed)))
         return super(RunCardMG7, self).__setitem__(name, value, *args, **opts)
 
     # ------------------------------------------------------------------
