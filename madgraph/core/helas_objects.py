@@ -570,6 +570,9 @@ class HelasWavefunction(base_objects.PhysicsObject):
     
     supported_analytical_info = ['wavefunction_rank','interaction_rank']
 
+    class FlavorTagError(Exception):
+        """No flavor tag can be assigned to this wavefunction (raised by
+        tag_external_flavor and propagate_flavor_tag)."""
 
     @staticmethod
     def spin_to_size(spin):
@@ -1617,7 +1620,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
             curr_flav_index = model['merged_particles'][merged_id].index(curr_id) 
             self[tag_name] =  curr_flav_index + 1 
         else:
-            raise Exception('Not Implemented')
+            raise self.FlavorTagError('Not Implemented')
 
     def propagate_flavor_tag(self, model, tag_name='flavortag', fct=None, check_valid_input=True):
         """Propagate the flavor tag from the mothers to the wavefunction.
@@ -1695,11 +1698,11 @@ class HelasWavefunction(base_objects.PhysicsObject):
                     # for this example, we need to find the flavor of the neutrino
                     # A single flavor should be valid from the coupling.
                     if len(coup.get('flavors')) != 1:
-                        raise Exception('Flavor propagation for merged particle with no merged input is ambiguous')
+                        raise self.FlavorTagError('Flavor propagation for merged particle with no merged input is ambiguous')
                     flv_coup = next(iter(coup.get('flavors').keys()))
                     flav_output = [ f for f in flv_coup if f != 0]
                     if len(flav_output) != 1:
-                        raise Exception('Flavor propagation for merged particle with no merged input is ambiguous')
+                        raise self.FlavorTagError('Flavor propagation for merged particle with no merged input is ambiguous')
                     self[tag_name] = flav_output[0]
                     return return_fct(self, True, model, tag_name)
 
@@ -5823,8 +5826,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         of all the merged legs (4^10 candidates for p p > w+ w+ w- w- with
         hadronic decays).
 
-        Raises FlavorTreeUnsupported if two mothers share an external leg, an
-        amplitude does not cover every leg, or a flavor tag cannot be computed.
+        Raises FlavorTreeUnsupported if two mothers share an external leg or
+        an amplitude does not cover every leg.  Lets the
+        HelasWavefunction.FlavorTagError of a tag computation through.
         """
 
         # NB: no comprehension variable may be called `id` in this function:
@@ -5929,19 +5933,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                             valid.add(assignment)
                 out.append(valid)
             return out
-        except self.FlavorTreeUnsupported:
-            raise
-        except Exception as error:
-            # this pass also evaluates wavefunctions that check_flavor never
-            # reaches (it stops at the first invalid one of a diagram): leave
-            # any error to the enumeration, which raises it only if it does
-            raise self.FlavorTreeUnsupported(error)
         finally:
             for node in tagged:
-                try:
-                    del node['flavortag']
-                except Exception:
-                    pass
+                node.pop('flavortag', None)
 
     def populate_flavor_validity(self, model=None):
         """Eager, single-source-of-truth pass for multi-flavor generation.
@@ -6050,7 +6044,12 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             try:
                 diag_flavors = self._valid_flavors_per_diagram(model, pdgs,
                                                                to_map)
-            except self.FlavorTreeUnsupported as error:
+            except (self.FlavorTreeUnsupported,
+                    HelasWavefunction.FlavorTagError) as error:
+                # A FlavorTagError may come from a wavefunction that only
+                # appears in diagrams the enumeration rejects before reaching
+                # it (check_flavor stops at the first invalid wavefunction):
+                # leave it to the enumeration, which raises it if it does.
                 logger.debug('flavors of %s: full enumeration (%s)' % (
                     self.get('processes')[0].nice_string().replace(
                         'Process: ', ''), error))

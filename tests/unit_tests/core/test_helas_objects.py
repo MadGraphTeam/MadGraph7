@@ -6028,6 +6028,19 @@ class TestDecayChainFlavorTree(unittest.TestCase):
                                  self.flavor_store(reference))
                 self.assertEqual(len(me.get('allowed_flavors')), nflavors)
 
+    def test_tree_pass_error_handling(self):
+        """A FlavorTagError of the bottom-up pass falls back to the
+        enumeration; any other error is a bug and propagates."""
+        HME = helas_objects.HelasMatrixElement
+        expected = self.flavor_store(self.build((24, -24)))
+        with mock.patch.object(HME, '_valid_flavors_per_diagram',
+                side_effect=helas_objects.HelasWavefunction.FlavorTagError):
+            self.assertEqual(self.flavor_store(self.build((24, -24))),
+                             expected)
+        with mock.patch.object(HME, '_valid_flavors_per_diagram',
+                               side_effect=TypeError):
+            self.assertRaises(TypeError, self.build, (24, -24))
+
 
 
 
