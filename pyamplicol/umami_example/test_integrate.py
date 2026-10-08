@@ -19,7 +19,7 @@ import madspace as ms
 import numpy as np
 import torch
 import torch.nn as nn
-from _metadata import load_metadata
+from _metadata import grouping_summary, load_metadata
 
 
 # =============================================================================
@@ -450,9 +450,10 @@ def main():
         cuts=Cuts(args.pt_min, args.eta_max, args.dr_min),
     )
     print(
-        f"Loaded {len(channels)} independent contributions, n_out={n_out}; "
-        f"{data['provider']['color_accuracy']} colour, "
-        "automatic symmetry grouping"
+        f"Metadata: {args.json.resolve()} (provider {data['provider']['id']})\n"
+        f"Loaded {grouping_summary(data)}, n_out={n_out}; "
+        f"{data['provider']['color_accuracy']} colour",
+        flush=True,
     )
     ctx = ms.Context(1)
     torch.set_num_threads(1)

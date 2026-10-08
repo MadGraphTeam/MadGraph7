@@ -16,6 +16,21 @@ This interface is being developed on the `umami` branch. Use that branch's
 matching generation code and installed native SDK; it is not present in an
 older released wheel.
 
+`git pull` updates the checkout, not a non-editable installed package. Check the
+Python interpreter and exporter actually being imported with:
+
+```console
+python -c "import sys; import pyamplicol.artifacts.umami as umami; print(sys.executable); print(umami.__file__)"
+```
+
+To rebuild and reinstall the current branch into `.venv`, run the repository's
+existing `just dev-install` workflow from a clean checkout. Python-only changes
+can instead use `env PYTHONPATH="$PWD/src" .venv/bin/python ...` from the repository
+root when a matching native runtime is already staged; they do not require a
+new Rusticol build. See the
+[example README](https://github.com/mg5amcnlo/pyamplicol/tree/umami/umami_example#updating-a-checkout-or-stale-environment)
+for complete commands.
+
 ## Generate and build
 
 Ordinary generation includes the API bundle by default:
@@ -210,6 +225,16 @@ no grouping setting. Using the compact integration contributions assumes
 **permutation-invariant, flavour-blind cuts and observables**, as recorded in
 `grouping.assumptions`. The `grouping` object also reports physical and exported
 contribution counts; it has no mode selector.
+
+An exporter still accepting a `grouping` argument, or saved metadata containing
+`grouping.mode`, belongs to the older contract. The example scripts reject such
+metadata, and the orchestrator checks the installed exporter before optional
+integration imports. After updating the Python code, regenerate into a new
+`--output` directory without `--reuse` and build the matching shared library.
+Old JSON and `.so` pairs cannot be repaired by editing metadata counts or
+multiplicities: the provider tables are compiled into the library. The example
+reports actual channel, representative and physical-member counts from its
+metadata.
 
 Integration contributions are quotiented by permutations of identical
 final-state PDGs, using physical **oriented** colour topology and preserving

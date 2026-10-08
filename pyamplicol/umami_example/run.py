@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from _metadata import load_metadata
+from _metadata import load_metadata, require_current_exporter
 
 
 def generate(artifact: Path, accuracy: str, expression: str = "g g > g g g") -> None:
@@ -64,6 +64,20 @@ def main() -> None:
             "integration/training counts must be at least two; "
             "check-points must be positive"
         )
+    exporter = require_current_exporter()
+    print(f"Python: {sys.executable}\nUMAMI exporter: {exporter}", flush=True)
+    directory = args.output.resolve()
+    accuracies = tuple(dict.fromkeys(args.accuracy))
+    existing = {}
+    for accuracy in accuracies:
+        artifact = directory / accuracy
+        if artifact.exists():
+            if not args.reuse:
+                parser.error(
+                    f"{artifact} exists; choose another output or pass --reuse"
+                )
+            # Reject stale reused metadata before dependencies, builds or profiling.
+            existing[accuracy] = load_metadata(artifact / "API/umami/metadata.json")
     rusticol_config = shutil.which(args.rusticol_config)
     if rusticol_config is None:
         parser.error(
@@ -73,20 +87,16 @@ def main() -> None:
     # Check optional integration dependencies before starting generation.
     for module in ("madspace", "madnis", "vegas", "torch"):
         __import__(module)
-    directory = args.output.resolve()
     directory.mkdir(parents=True, exist_ok=True)
     scripts = Path(__file__).resolve().parent
-    for accuracy in dict.fromkeys(args.accuracy):
+    for accuracy in accuracies:
         artifact = directory / accuracy
-        if artifact.exists():
-            if not args.reuse:
-                parser.error(
-                    f"{artifact} exists; choose another output or pass --reuse"
-                )
+        metadata = artifact / "API/umami/metadata.json"
+        if accuracy in existing:
+            data = existing[accuracy]
         else:
             generate(artifact, accuracy)
-        metadata = artifact / "API/umami/metadata.json"
-        data = load_metadata(metadata)
+            data = load_metadata(metadata)
         if data["provider"]["color_accuracy"] != accuracy:
             raise ValueError(
                 "existing artifact's colour accuracy differs from the request"

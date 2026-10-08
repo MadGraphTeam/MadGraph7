@@ -59,6 +59,46 @@ The C driver links to the resulting UMAMI `.so`, not to a second copy of
 Rusticol. The Makefile sets a relative runtime-library search path so the driver
 and `.so` can be moved together.
 
+### Updating a checkout or stale environment
+
+`git pull` updates these example scripts, but does not update a non-editable
+pyAmpliCol installation. `run.py` prints the active Python and UMAMI exporter
+paths and rejects an obsolete exporter before loading the optional integration
+dependencies. To inspect those paths without running the example:
+
+```sh
+python -c "import sys; import pyamplicol.artifacts.umami as umami; print(sys.executable); print(umami.__file__)"
+```
+
+From a clean checkout of the current `umami` branch, use the repository's normal
+contributor installation workflow to rebuild and reinstall it into `.venv`:
+
+```sh
+just dev-install
+.venv/bin/python -m pip install -r umami_example/requirements.txt
+.venv/bin/python umami_example/run.py \
+  --rusticol-config "$PWD/.venv/bin/rusticol-config" \
+  --output .artifacts/umami-example-current
+```
+
+For Python-only development with an already matching native runtime staged by
+`just dev-install`, run directly from the checkout without rebuilding Rusticol:
+
+```sh
+env PYTHONPATH="$PWD/src" .venv/bin/python umami_example/run.py \
+  --rusticol-config "$PWD/.venv/bin/rusticol-config" \
+  --output .artifacts/umami-example-source
+```
+
+Run these commands from the repository root and choose a previously unused
+`--output`, **without `--reuse`**, when replacing stale artifacts. An old exporter
+with a `grouping` argument, or metadata retaining `grouping.mode` (such as
+`"exact"`), predates the automatic-grouping contract. The examples reject that
+metadata. Updating Python does not update existing artifacts: regenerate the
+artifact and rebuild its matching `.so`. Editing JSON counts or multiplicities
+cannot repair the provider tables compiled into an old library. The run reports
+the actual channel, representative and physical-member counts from metadata.
+
 ## Run the individual steps
 
 For an already generated artifact, use absolute paths (substitute your paths):

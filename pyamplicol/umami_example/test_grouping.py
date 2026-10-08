@@ -17,6 +17,7 @@ from pathlib import Path
 
 import madspace as ms
 import torch
+from _metadata import require_current_exporter
 from run import execute, generate
 from test_integrate import Channel, Config, Cuts, integrate_per_channel, load_channels
 
@@ -151,6 +152,8 @@ def main():
     args = parser.parse_args()
     if min(args.n, *args.training) < 2:
         parser.error("integration and training counts must be at least two")
+    exporter = require_current_exporter()
+    print(f"Python: {sys.executable}\nUMAMI exporter: {exporter}", flush=True)
     config_binary = shutil.which(args.rusticol_config)
     if config_binary is None:
         parser.error("activate the pyAmpliCol environment or pass --rusticol-config")

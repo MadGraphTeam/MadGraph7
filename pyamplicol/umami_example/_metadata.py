@@ -2,8 +2,37 @@
 
 from __future__ import annotations
 
+import inspect
 import json
+import sys
 from pathlib import Path
+
+
+def require_current_exporter() -> Path:
+    """Reject the old selectable exporter before starting expensive generation."""
+    from pyamplicol.artifacts import umami
+
+    path = Path(umami.__file__).resolve()
+    if "grouping" in inspect.signature(umami.build_umami_metadata).parameters:
+        raise RuntimeError(
+            f"Outdated pyAmpliCol UMAMI exporter loaded by {sys.executable}: {path}. "
+            "Reinstall pyAmpliCol from the current umami branch in this Python "
+            "environment; git pull alone only updates the example scripts. "
+            "Then regenerate into a fresh --output without --reuse. "
+            "See umami_example/README.md for the source-checkout workflow."
+        )
+    return path
+
+
+def grouping_summary(data: dict) -> str:
+    """Describe the loaded tables, without claiming that a policy was applied."""
+    entries = [entry for channel in data["channels"] for entry in channel["processes"]]
+    physical_count = sum(len(entry["members"]) for entry in entries)
+    return (
+        f"{len(data['channels'])} integration channels, "
+        f"{len(entries)} representative contributions, "
+        f"{physical_count} physical contributions"
+    )
 
 
 def load_metadata(path: str | Path, provider: str | None = None) -> dict:
@@ -20,4 +49,16 @@ def load_metadata(path: str | Path, provider: str | None = None) -> dict:
         raise ValueError(f"metadata does not describe provider {provider!r}")
     if data["provider"]["incoming_count"] != 2:
         raise ValueError("this scattering example requires two incoming particles")
+    grouping = data.get("grouping")
+    if (
+        not isinstance(grouping, dict)
+        or "mode" in grouping
+        or not {"physical_contributions", "exported_contributions"} <= grouping.keys()
+    ):
+        raise ValueError(
+            f"Outdated or missing automatic-grouping metadata in {path}. "
+            "Reinstall pyAmpliCol from the current umami branch, then regenerate "
+            "into a fresh --output without --reuse. Rebuilding the .so alone "
+            "does not update metadata; do not edit channel counts by hand."
+        )
     return data
