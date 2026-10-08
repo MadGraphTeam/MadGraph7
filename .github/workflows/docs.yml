@@ -137,7 +137,11 @@ jobs:
 
   build:
     needs: [target, gate]
+    # !cancelled() is required: gate is skipped for non-push events, and a
+    # skipped need otherwise skips this job via the implicit success().
     if: |
+      !cancelled() &&
+      needs.target.result == 'success' &&
       needs.target.outputs.skip != 'true' &&
       needs.target.outputs.action == 'publish' &&
       (github.event_name != 'push' || needs.gate.result == 'success')
@@ -229,6 +233,8 @@ jobs:
     # legitimately skipped for a `remove`: there is nothing to build to delete
     # a directory.
     if: |
+      !cancelled() &&
+      needs.target.result == 'success' &&
       needs.target.outputs.skip != 'true' &&
       needs.target.outputs.dry_run != 'true' &&
       (needs.target.outputs.action == 'remove' || needs.build.result == 'success')
