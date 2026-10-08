@@ -61,7 +61,8 @@ c statistics for MadLoop
 
       double precision virtual_over_born
       common/c_vob/virtual_over_born
-      include 'orders.inc'
+      include 'pineappl_common.inc'
+      integer orders(nsplitorders)
 
 c timing statistics
       include "timing_variables.inc"
@@ -210,6 +211,18 @@ c
                virtual_fraction(kchan)=1d0
             enddo
          endif
+c A grouped real contribution can survive failed Born phase-space
+c generation. Book histograms before either contribution is evaluated.
+c PineAPPL needs the coupling orders before the analysis books its grids.
+         if (pineappl) then
+            appl_amp_split_size=amp_split_size
+            do j=1,amp_split_size
+               call amp_split_pos_to_orders(j,orders)
+               appl_qcdpower(j)=orders(qcd_pos)
+               appl_qedpower(j)=orders(qed_pos)
+            enddo
+         endif
+         call initplot
          call mint(sigint)
          call topout
          call deallocate_weight_lines

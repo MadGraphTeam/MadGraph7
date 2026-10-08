@@ -1431,8 +1431,7 @@ c Restore scales for the n+1-body FxFx terms
       
       subroutine compute_prefactors_nbody(vegas_wgt)
 c Compute all the relevant prefactors for the Born and the soft-virtual,
-c i.e. all the nbody contributions. Also initialises the plots and
-c bpower.
+c i.e. all the nbody contributions.
       use extra_weights
       use mint_module
       implicit none
@@ -1441,9 +1440,7 @@ c bpower.
       include 'genps.inc'
       include 'timing_variables.inc'
       double precision pi,vegas_wgt
-      integer i,j
-      logical firsttime
-      data firsttime /.true./
+      integer i
       parameter (pi=3.1415926535897932385d0)
       double precision    p1_cnt(0:3,nexternal,-2:2),wgt_cnt(-2:2)
      $                    ,pswgt_cnt(-2:2),jac_cnt(-2:2)
@@ -1463,16 +1460,12 @@ c bpower.
      &                  fkssymmetryfactorDeg,ngluons,nquarks,nphotons
       double precision      f_b,f_nb
       common /factor_nbody/ f_b,f_nb
-      logical pineappl
-      common /for_pineappl/ pineappl
       logical needrndec
       parameter (needrndec=.false.)
       real*8 ran2
       external ran2
       real*8 rndec(10)
       common/crndec/rndec
-      include "pineappl_common.inc" 
-      integer orders(nsplitorders)
 C
       call cpu_time(tBefore)
 c Random numbers to be used in the plotting routine: these numbers will
@@ -1481,20 +1474,6 @@ c not change between events, counter events and n-body contributions.
          do i=1,10
             rndec(i)=ran2()
          enddo
-      endif
-      if (firsttime) then
-         if (pineappl) then 
-         ! PineAPPL stuff
-         appl_amp_split_size = amp_split_size
-           do j=1,amp_split_size
-             call amp_split_pos_to_orders(j, orders)
-             appl_qcdpower(j) = orders(qcd_pos)
-             appl_qedpower(j) = orders(qed_pos)
-           enddo
-         endif
-c Initialize hiostograms for fixed order runs
-         if (fixed_order) call initplot
-         firsttime=.false.
       endif
       call set_cms_stuff(0)
 c f_* multiplication factors for Born and nbody
