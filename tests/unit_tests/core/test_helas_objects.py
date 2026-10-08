@@ -16,6 +16,7 @@ from __future__ import absolute_import
 from madgraph.iolibs import helas_call_writers
 """Unit test library for the helas_objects module"""
 import unittest as uni
+from unittest import mock
 import copy
 
 import tests.unit_tests as unittest
@@ -5956,6 +5957,76 @@ class TestFlavorStoreDecayChain(unittest.TestCase):
                     diag.check_flavor(flv, self.model),
                     "has_flavor/check_flavor disagree for %r on a decay "
                     "diagram" % (flv,))
+
+
+#===============================================================================
+# TestDecayChainFlavorTree  (bottom-up flavor pass of decay-chain MEs)
+#===============================================================================
+class TestDecayChainFlavorTree(unittest.TestCase):
+    """populate_flavor_validity builds the valid flavors of a decay-chain ME
+    bottom-up (_valid_flavors_per_diagram) instead of checking every flavor
+    assignment of the merged legs on every diagram, which took hours for
+    p p > w+ w+ w- w- with hadronic decays.  It must give exactly what that
+    enumeration gives: same allowed flavors, in the same order, and the same
+    per-diagram stores.  The decays are identical (z z) or not (w+ w-), so
+    several assignments share a signature across the decay sub-trees.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.model = import_ufo.import_model(
+            'sm', options={'apply_flavor_grouping': True})
+
+    def build(self, bosons):
+        q = 81
+        legs = [base_objects.Leg({'id': q, 'number': 1, 'state': False}),
+                base_objects.Leg({'id': -q, 'number': 2, 'state': False})]
+        legs += [base_objects.Leg({'id': b, 'number': 3 + i, 'state': True})
+                 for i, b in enumerate(bosons)]
+        core = base_objects.Process({'legs': base_objects.LegList(legs),
+                                     'model': self.model,
+                                     'orders': {'QED': 2, 'QCD': 0}})
+        decays = base_objects.ProcessList()
+        for b in misc.make_unique(bosons):
+            decays.append(base_objects.Process({
+                'legs': base_objects.LegList([
+                    base_objects.Leg({'id': b, 'number': 1, 'state': False}),
+                    base_objects.Leg({'id': q, 'number': 2, 'state': True}),
+                    base_objects.Leg({'id': -q, 'number': 3, 'state': True})]),
+                'model': self.model,
+                'orders': {'QED': 1, 'QCD': 0}}))
+        core.set('decay_chains', decays)
+        amp = diagram_generation.DecayChainAmplitude(core)
+        mes = helas_objects.HelasDecayChainProcess(amp).\
+            combine_decay_chain_processes()
+        self.assertEqual(len(mes), 1)
+        return mes[0]
+
+    @staticmethod
+    def flavor_store(me):
+        return (list(me.get('allowed_flavors')),
+                [list(pdgs) for pdgs in me.get('allowed_flavors_pdgs')],
+                [sorted(diag.valid_flavors) for diag in me.get('diagrams')])
+
+    def test_tree_pass_matches_enumeration(self):
+        """Same flavor store with the bottom-up pass and with the enumeration
+        (the fallback, forced here)."""
+        HME = helas_objects.HelasMatrixElement
+        for bosons, nflavors in [((24, -24), 16), ((23, 23), 40)]:
+            with self.subTest(bosons=bosons):
+                with mock.patch.object(HME, 'check_flavor_for_all_diagrams',
+                        autospec=True,
+                        side_effect=HME.check_flavor_for_all_diagrams) as calls:
+                    me = self.build(bosons)
+                # only the core and decay MEs enumerate their (16) flavors;
+                # the enumeration of the full ME takes ~4^6 calls.
+                self.assertLessEqual(calls.call_count, 48)
+                with mock.patch.object(HME, '_valid_flavors_per_diagram',
+                                    side_effect=HME.FlavorTreeUnsupported):
+                    reference = self.build(bosons)
+                self.assertEqual(self.flavor_store(me),
+                                 self.flavor_store(reference))
+                self.assertEqual(len(me.get('allowed_flavors')), nflavors)
 
 
 

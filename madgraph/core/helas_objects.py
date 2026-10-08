@@ -5771,25 +5771,173 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             itertools.product(*[to_map.get(abs(id), [1]) for id in pdgs]),
             itertools.product(*[to_map.get(abs(id), [abs(id)]) for id in pdgs]),
         ):
-            # actual pdg codes (with the sign), before the initial-state flip
-            pdg = [one_flavor[i] if id > 0 else -one_flavor[i]
-                   for i, id in enumerate(pdgs)]
+            candidate = self._flavor_candidate(one_flavor, one_flavor_pdg,
+                                    pdgs, pdg_signs, restrictions, ninit)
+            if candidate is not None:
+                yield (one_flavor,) + candidate
 
-            # apply the per-leg flavor restriction (None => leg unconstrained)
-            if not any(all(rf is None or pdg[i] in rf
-                           for i, rf in enumerate(restricted_flavor))
-                       for restricted_flavor in restrictions):
-                continue
+    @staticmethod
+    def _flavor_candidate(one_flavor, one_flavor_pdg, pdgs, pdg_signs,
+                          restrictions, ninit):
+        """(signed_pdg, signature) of one external-flavor assignment, or None
+        if the per-leg restriction rejects it (see _iter_candidate_flavors)."""
 
-            signed_pdg = [flav * sign
-                          for flav, sign in zip(one_flavor_pdg, pdg_signs)]
+        # actual pdg codes (with the sign), before the initial-state flip
+        pdg = [one_flavor[i] if id > 0 else -one_flavor[i]
+               for i, id in enumerate(pdgs)]
 
-            # dedup signature: flip initial states, then sort init/final apart
-            for i in range(ninit):
-                pdg[i] = -pdg[i]
-            signature = tuple(sorted(pdg[:ninit]) + sorted(pdg[ninit:]))
+        # apply the per-leg flavor restriction (None => leg unconstrained)
+        if not any(all(rf is None or pdg[i] in rf
+                       for i, rf in enumerate(restricted_flavor))
+                   for restricted_flavor in restrictions):
+            return None
 
-            yield one_flavor, signed_pdg, signature
+        signed_pdg = [flav * sign
+                      for flav, sign in zip(one_flavor_pdg, pdg_signs)]
+
+        # dedup signature: flip initial states, then sort init/final apart
+        for i in range(ninit):
+            pdg[i] = -pdg[i]
+        signature = tuple(sorted(pdg[:ninit]) + sorted(pdg[ninit:]))
+
+        return signed_pdg, signature
+
+    class FlavorTreeUnsupported(Exception):
+        """The diagram structure is outside what _valid_flavors_per_diagram
+        handles (e.g. overlapping sub-trees); use the full enumeration."""
+
+    def _valid_flavors_per_diagram(self, model, pdgs, to_map):
+        """For every diagram, the set of external-flavor assignments (per-leg
+        flavor tuples, as yielded by _iter_candidate_flavors) for which
+        HelasDiagram.check_flavor accepts it, without enumerating the full
+        product of the per-leg flavors.
+
+        The flavortag of a wavefunction only depends on the flavors of the
+        external legs below it, so the valid partial assignments are built
+        bottom-up: a wavefunction keeps {assignment of its external legs: tag}
+        for the combinations of its mothers' entries that propagate_flavor_tag
+        accepts, and an invalid entry (tag 0) is dropped since it invalidates
+        every descendant.  The cost then scales with the number of *valid*
+        assignments.  For a decay chain this is roughly the product of the
+        valid assignments of each decay rather than the product of the flavors
+        of all the merged legs (4^10 candidates for p p > w+ w+ w- w- with
+        hadronic decays).
+
+        Raises FlavorTreeUnsupported if two mothers share an external leg, an
+        amplitude does not cover every leg, or a flavor tag cannot be computed.
+        """
+
+        nleg = len(pdgs)
+        leg_values = [to_map.get(abs(id), [1]) for id in pdgs]
+        tables = {}      # id(node) -> {partial assignment: tag}
+        prop_cache = {}  # (id(node), mother tags) -> tag (0 = invalid)
+        tagged = []      # nodes whose 'flavortag' must be dropped at the end
+
+        def table(node, is_amp=False):
+            key = id(node)
+            if key in tables:
+                return tables[key]
+            mothers = node.get('mothers')
+            out = {}
+            if not mothers:
+                n = node.get('number_external')
+                if not 0 < n <= nleg:
+                    raise self.FlavorTreeUnsupported(n)
+                flavor = [1] * nleg
+                assignment = [None] * nleg
+                tagged.append(node)
+                for value in leg_values[n - 1]:
+                    flavor[n - 1] = value
+                    assignment[n - 1] = value
+                    node.tag_external_flavor(flavor, model)
+                    out[tuple(assignment)] = node['flavortag']
+            else:
+                subs = [table(m) for m in mothers]
+                tagged.append(node)
+                for combo in itertools.product(*[list(s.items()) for s in subs]):
+                    tags = tuple(tag for _, tag in combo)
+                    ckey = (key, tags)
+                    if ckey not in prop_cache:
+                        for mother, tag in zip(mothers, tags):
+                            mother['flavortag'] = tag
+                        if is_amp:
+                            valid = node.propagate_flavor_tag(model)
+                            prop_cache[ckey] = 1 if valid else 0
+                        else:
+                            node.propagate_flavor_tag(model,
+                                                      check_valid_input=True)
+                            prop_cache[ckey] = node['flavortag']
+                    if not prop_cache[ckey]:
+                        continue
+                    assignment = [None] * nleg
+                    for part, _ in combo:
+                        for i, value in enumerate(part):
+                            if value is not None:
+                                if assignment[i] is not None:
+                                    raise self.FlavorTreeUnsupported(i)
+                                assignment[i] = value
+                    out[tuple(assignment)] = prop_cache[ckey]
+            tables[key] = out
+            return out
+
+        ancestors = {}   # id(node) -> set of id() of node and its ancestors
+        def get_ancestors(node):
+            key = id(node)
+            if key not in ancestors:
+                out = {key}
+                for mother in node.get('mothers'):
+                    out |= get_ancestors(mother)
+                ancestors[key] = out
+            return ancestors[key]
+
+        def project(assignment, node):
+            # restriction of a full assignment to the legs below node (the
+            # key of tables[id(node)])
+            legs = next(iter(tables[id(node)]), None)
+            if legs is None:
+                return None
+            return tuple(value if leg is not None else None
+                         for value, leg in zip(assignment, legs))
+
+        try:
+            out = []
+            for diag in self.get('diagrams'):
+                # check_flavor rejects the diagram if any of its wavefunctions,
+                # or any mother of its wavefunctions and amplitudes, is
+                # invalid, and accepts it if one of its amplitudes is valid.
+                required = list(diag.get('wavefunctions'))
+                for obj in list(diag.get('wavefunctions')) + \
+                                               list(diag.get('amplitudes')):
+                    required.extend(obj.get('mothers'))
+                for node in required:
+                    table(node)
+                valid = set()
+                for amp in diag.get('amplitudes'):
+                    amp_table = table(amp, is_amp=True)
+                    # an amplitude's validity implies that of its ancestors
+                    anc = get_ancestors(amp)
+                    extra = [node for node in required if id(node) not in anc]
+                    for assignment in amp_table:
+                        if None in assignment:
+                            raise self.FlavorTreeUnsupported(assignment)
+                        if all(project(assignment, node) in tables[id(node)]
+                               for node in extra):
+                            valid.add(assignment)
+                out.append(valid)
+            return out
+        except self.FlavorTreeUnsupported:
+            raise
+        except Exception as error:
+            # this pass also evaluates wavefunctions that check_flavor never
+            # reaches (it stops at the first invalid one of a diagram): leave
+            # any error to the enumeration, which raises it only if it does
+            raise self.FlavorTreeUnsupported(error)
+        finally:
+            for node in tagged:
+                try:
+                    del node['flavortag']
+                except Exception:
+                    pass
 
     def populate_flavor_validity(self, model=None):
         """Eager, single-source-of-truth pass for multi-flavor generation.
@@ -5886,26 +6034,64 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # at all remain orphans.
         enumerate_all = self.enumerate_all_flavors
 
-        for one_flavor, signed_pdg, signature in self._iter_candidate_flavors(
-                pdgs, pdg_signs, to_map, restrictions, ninit):
-            if not enumerate_all and signature in checked:
-                if checked[signature]:
-                    # genuine permutation duplicate of a validated flavor
+        # For a decay chain every invalid assignment is re-checked (see above),
+        # so the enumeration (else branch) costs (product of the per-leg
+        # flavors) x (number of diagrams): hours for p p > w+ w+ w- w- with
+        # hadronic decays.  Build the valid assignments bottom-up instead and
+        # visit only those, in the same (product) order: as the enumeration
+        # keeps the first *valid* assignment of each signature of a decay
+        # chain, this gives the same result.
+        diag_flavors = None
+        if is_decay_chain:
+            try:
+                diag_flavors = self._valid_flavors_per_diagram(model, pdgs,
+                                                               to_map)
+            except self.FlavorTreeUnsupported:
+                diag_flavors = None
+        if diag_flavors is not None:
+            position = [dict((value, i) for i, value in
+                             enumerate(to_map.get(abs(id), [1])))
+                        for id in pdgs]
+            valid = {flavor for flavors in diag_flavors for flavor in flavors}
+            for one_flavor in sorted(valid,
+                    key=lambda f: [pos[v] for pos, v in zip(position, f)]):
+                one_flavor_pdg = tuple(value if abs(id) in to_map else abs(id)
+                                       for value, id in zip(one_flavor, pdgs))
+                candidate = self._flavor_candidate(one_flavor, one_flavor_pdg,
+                                    pdgs, pdg_signs, restrictions, ninit)
+                if candidate is None:
                     continue
-                elif not is_decay_chain:
-                    # known-invalid signature; sound to skip for a plain ME
+                signed_pdg, signature = candidate
+                if not enumerate_all and signature in checked:
                     continue
-                # decay-chain ME: a cached False may hide a valid sibling
-                # assignment sharing this (too coarse) signature, so fall
-                # through and re-check this specific flavor assignment.
-
-            # populate every diagram's store for this flavor
-            if self.check_flavor_for_all_diagrams(one_flavor, model):
+                for diag, flavors in zip(self.get('diagrams'), diag_flavors):
+                    if one_flavor in flavors:
+                        diag.valid_flavors.add(one_flavor)
                 flavor_list.append(one_flavor)
                 pdg_list.append(signed_pdg)
                 checked[signature] = True
-            else:
-                checked[signature] = False
+        else:
+            for one_flavor, signed_pdg, signature in \
+                    self._iter_candidate_flavors(pdgs, pdg_signs, to_map,
+                                                 restrictions, ninit):
+                if not enumerate_all and signature in checked:
+                    if checked[signature]:
+                        # genuine permutation duplicate of a validated flavor
+                        continue
+                    elif not is_decay_chain:
+                        # known-invalid signature; sound to skip for a plain ME
+                        continue
+                    # decay-chain ME: a cached False may hide a valid sibling
+                    # assignment sharing this (too coarse) signature, so fall
+                    # through and re-check this specific flavor assignment.
+
+                # populate every diagram's store for this flavor
+                if self.check_flavor_for_all_diagrams(one_flavor, model):
+                    flavor_list.append(one_flavor)
+                    pdg_list.append(signed_pdg)
+                    checked[signature] = True
+                else:
+                    checked[signature] = False
 
         self['allowed_flavors'] = flavor_list
         self['allowed_flavors_pdgs'] = pdg_list
