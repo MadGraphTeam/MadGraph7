@@ -265,12 +265,8 @@ private:
     nested_vector2<double> _active_flavors_mask;
     std::vector<me_int_t> _flavor_remap;
     std::vector<double> _flavor_factors;
-    std::vector<me_int_t> _flavor_mirror;
     std::vector<double> _flavor_mirror_factors;
     bool _has_mirror;
-    // Asymmetric beams: the orientation is drawn before the phase-space
-    // mapping (mirror_index condition) instead of mirroring accepted events.
-    bool _mirror_before_cuts;
     NamedVector<Type> _channel_part_ret_types;
     std::vector<me_int_t> _flavor_diff_xs_indices;
     std::vector<me_int_t> _flavor_subproc_indices;

@@ -890,11 +890,6 @@ PYBIND11_MODULE(_madspace_py, m) {
            py::arg("name") = "",
            pydoc::doc("Observable::Observable")
     )
-        .def(
-            "mirror_invariant",
-            &Observable::mirror_invariant,
-            pydoc::doc("Observable::mirror_invariant")
-        )
         .def_readonly_static("jet_pids", &Observable::jet_pids)
         .def_readonly_static("bottom_pids", &Observable::bottom_pids)
         .def_readonly_static("lepton_pids", &Observable::lepton_pids)
@@ -935,16 +930,6 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::init<std::size_t>(),
             py::arg("particle_count"),
             pydoc::doc("Cuts::Cuts#2")
-        )
-        .def(
-            "non_mirror_invariant_cuts",
-            &Cuts::non_mirror_invariant_cuts,
-            pydoc::doc("Cuts::non_mirror_invariant_cuts")
-        )
-        .def(
-            "mirror_invariant",
-            &Cuts::mirror_invariant,
-            pydoc::doc("Cuts::mirror_invariant")
         )
         .def("sqrt_s_min", &Cuts::sqrt_s_min, pydoc::doc("Cuts::sqrt_s_min"))
         .def("eta_max", &Cuts::eta_max, pydoc::doc("Cuts::eta_max"))

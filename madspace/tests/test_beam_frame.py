@@ -149,9 +149,7 @@ def test_mirror_beams(rng, pdf_asymmetric_only):
 # The initial-state mirror is the rotation by pi about x, (E, px, py, pz) ->
 # (E, px, -py, -pz), which moves each leg onto the other beam. With mirror_beams
 # the mapping draws the orientation first, so the cuts and the written event see
-# the same momenta. Without it the Integrand mirrors accepted events afterwards,
-# which only reproduces the same sample if no cut can tell the two orientations
-# apart; Integrand refuses the combination otherwise.
+# the same momenta. Integrand requires it for mirrored flavors.
 
 
 def mirror(p):
@@ -179,86 +177,6 @@ def lepton_cut(observable, **bounds):
             )
         ]
     )
-
-
-@pytest.mark.parametrize(
-    "observable, invariant",
-    [
-        ("e", True),
-        ("px", True),
-        ("py", False),
-        ("pz", False),
-        ("mass", True),
-        ("pt", True),
-        ("p_mag", True),
-        ("phi", False),
-        ("theta", False),
-        ("y", False),
-        ("y_abs", True),
-        ("eta", False),
-        ("eta_abs", True),
-    ],
-)
-def test_observable_mirror_invariance(observable, invariant):
-    obs = ms.Observable(PIDS, observable, [[11, -11]])
-    assert obs.mirror_invariant() == invariant
-
-
-@pytest.mark.parametrize(
-    "observable, invariant",
-    [
-        ("delta_eta", False),
-        ("delta_phi", False),
-        ("delta_r", True),
-        ("pair_mass", True),
-    ],
-)
-def test_pairwise_observable_mirror_invariance(observable, invariant):
-    obs = ms.Observable(PIDS, observable, [[11, -11], [11, -11]])
-    assert obs.mirror_invariant() == invariant
-
-
-def test_sqrt_s_is_mirror_invariant():
-    assert ms.Observable(PIDS, "sqrt_s", []).mirror_invariant()
-
-
-def test_ordering_observable_decides_mirror_invariance():
-    """Sorting by a quantity that flips picks another particle out of the event."""
-    kwargs = dict(select_pids=[[11, -11]], order_indices=[1])
-    by_pt = ms.Observable(PIDS, "pt", order_observable="pt", **kwargs)
-    by_eta = ms.Observable(PIDS, "pt", order_observable="eta", **kwargs)
-    assert by_pt.mirror_invariant()
-    assert not by_eta.mirror_invariant()
-
-
-def test_cut_on_absent_particle_is_mirror_invariant():
-    """It matched nothing, so it is the constant 0 whatever the orientation."""
-    obs = ms.Observable(PIDS, "eta", [[5, -5]])
-    assert obs.mirror_invariant()
-    assert ms.Cuts([ms.CutItem(observable=obs, min=0.0)]).mirror_invariant()
-
-
-def test_cuts_report_the_offending_cuts_by_name():
-    cuts = ms.Cuts(
-        [
-            ms.CutItem(
-                observable=ms.Observable(PIDS, "pt", [[11, -11]], name="lepton-pt"),
-                min=10.0,
-            ),
-            ms.CutItem(
-                observable=ms.Observable(PIDS, "eta", [[11, -11]], name="lepton-eta"),
-                min=0.0,
-            ),
-            ms.CutItem(
-                observable=ms.Observable(PIDS, "y", [[11, -11]], name="lepton-y"),
-                min=0.0,
-            ),
-        ]
-    )
-    assert not cuts.mirror_invariant()
-    assert cuts.non_mirror_invariant_cuts() == ["lepton-eta", "lepton-y"]
-    mapping = ms.PhaseSpaceMapping([0.0] * 4, 13000.0, cuts=cuts)
-    assert mapping.cuts().non_mirror_invariant_cuts() == ["lepton-eta", "lepton-y"]
 
 
 @pytest.mark.parametrize(
@@ -326,7 +244,7 @@ PID_OPTIONS = [[2, -2], [-2, 2]]
 
 
 def build_integrand(
-    running_coupling, cuts=None, mirror_beams=False, flavor_mirror=(True, True)
+    running_coupling, cuts=None, mirror_beams=True, flavor_mirror=(True, True)
 ):
     """A 2 -> 2 integrand over a beam-swapped pair of flavors. The matrix
     element is never called; only the compute graph is built."""
@@ -370,29 +288,19 @@ def build_integrand(
     )
 
 
-def test_post_cut_mirror_accepts_mirror_invariant_cuts(running_coupling):
-    build_integrand(running_coupling, cuts=lepton_cut("eta_abs", max=2.5))
+def test_mirrored_flavors_need_mirror_beams(running_coupling):
+    with pytest.raises(ValueError, match="mirror_beams"):
+        build_integrand(running_coupling, mirror_beams=False)
 
 
-def test_post_cut_mirror_refuses_a_cut_that_is_not_mirror_invariant(running_coupling):
-    """The event is written mirrored, so a cut the mirror changes would be
-    applied to an orientation nobody keeps."""
-    with pytest.raises(ValueError, match="lepton-eta"):
-        build_integrand(running_coupling, cuts=lepton_cut("eta", min=0.0))
+def test_any_cut_is_allowed(running_coupling):
+    """The orientation is drawn before the mapping, so the cuts act on the
+    written event whatever they measure."""
+    build_integrand(running_coupling, cuts=lepton_cut("eta", min=0.0))
 
 
-def test_mirror_beams_allows_any_cut(running_coupling):
-    """Drawing the orientation before the mapping puts the cuts on the written
-    event, so the restriction does not apply."""
-    build_integrand(
-        running_coupling, cuts=lepton_cut("eta", min=0.0), mirror_beams=True
-    )
-
-
-def test_unmirrored_flavors_allow_any_cut(running_coupling):
-    build_integrand(
-        running_coupling, cuts=lepton_cut("eta", min=0.0), flavor_mirror=(False, False)
-    )
+def test_unmirrored_flavors_need_no_mirror_beams(running_coupling):
+    build_integrand(running_coupling, mirror_beams=False, flavor_mirror=(False, False))
 
 
 def instruction_names(function):
@@ -405,30 +313,10 @@ def find_instruction(function, name):
     return function.instructions[names.index(name)]
 
 
-def test_matrix_element_sees_the_written_momenta(running_coupling):
-    """On the post-cut path the matrix element is evaluated on the mirrored
-    momenta, the ones the event is written with -- not on the momenta as
-    generated. |M|^2 is invariant under the rotation for a Lorentz invariant
-    matrix element, but not for a polarised one evaluated in a frame that holds
-    the polarised particle at rest."""
+def test_mirror_is_applied_before_the_cuts(running_coupling):
+    """The only mirror is the one inside the mapping, so the matrix element is
+    evaluated on the orientation the event is written with."""
     function = build_integrand(running_coupling).function()
     names = instruction_names(function)
-    # the orientation is drawn after the cuts here
-    assert names.index("mirror_momenta") > names.index("nonzero")
-    mirrored = find_instruction(function, "mirror_momenta").outputs[0]
-    matrix_element = find_instruction(function, "matrix_element")
-    assert any(
-        str(value) == str(mirrored) for value in matrix_element.inputs
-    ), "the matrix element is not evaluated on the mirrored momenta"
-
-
-def test_mirror_beams_needs_no_second_mirror(running_coupling):
-    """With mirror_beams the mapping already returns the written orientation,
-    so there is nothing left for the Integrand to pick between."""
-    function = build_integrand(running_coupling, mirror_beams=True).function()
-    names = instruction_names(function)
-    # the only mirror is the one inside the mapping, before the cuts
+    assert names.count("mirror_momenta") == 1
     assert names.index("mirror_momenta") < names.index("nonzero")
-    mirrored = find_instruction(function, "mirror_momenta").outputs[0]
-    matrix_element = find_instruction(function, "matrix_element")
-    assert not any(str(value) == str(mirrored) for value in matrix_element.inputs)

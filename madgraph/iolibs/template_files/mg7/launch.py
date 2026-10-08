@@ -558,7 +558,6 @@ class MadgraphProcess:
             self.e_cm = self.decaying_mass
             self.beam_energies = (float(self.e_cm), 0.0)
             self.beam_rapidity = 0.0
-            self.asymmetric_beams = False
             self.leptonic = True
         else:
             ebeam1 = float(beam_args["ebeam1"])
@@ -642,11 +641,6 @@ class MadgraphProcess:
                 # (Integrand::pdf2_prefix)
                 self.pdf_grid2.initialize_globals(context, "beam2")
             self.alphas_grid.initialize_globals(context)
-        # Beams that differ in energy or PDF are not mirror images: a flavor
-        # standing for both orientations then needs the orientation drawn
-        # before the phase-space mapping (ms.PhaseSpaceMapping mirror_beams).
-        self.asymmetric_beams = (
-            self.beam_rapidity != 0.0 or self.pdf_grid2 is not None)
         self.running_coupling = ms.RunningCoupling(self.alphas_grid)
 
     # ------------------------------------------------------------------
@@ -2193,24 +2187,9 @@ class MadgraphSubprocess:
             if len(self.process.cut_data) > 0
             else None
         )
-        # Mirroring an accepted event after the cuts hands the event writer an
-        # orientation the cuts never saw. That reproduces the same sample only
-        # if no cut can tell the two orientations apart -- true of pt, |eta|,
-        # delta_r and any invariant, false as soon as one is on a signed
-        # rapidity, eta, phi or pz. Draw the orientation before the mapping in
-        # that case, as asymmetric beams already do; ms.Integrand refuses the
-        # other way round.
-        self.mirror_beams = self.process.asymmetric_beams
-        if (self.cuts is not None and not self.process.is_decay
-                and not self.mirror_beams and self.has_mirrored_flavors()):
-            not_invariant = self.cuts.non_mirror_invariant_cuts()
-            if not_invariant:
-                logger.info(
-                    "subprocess %d: the cut(s) %s change under the initial-state "
-                    "mirror, so the beam orientation is drawn before the phase-"
-                    "space mapping rather than after the cuts",
-                    self.subproc_id, ", ".join(not_invariant))
-                self.mirror_beams = True
+        # A flavor standing for both beam orientations draws the orientation
+        # before the phase-space mapping, so boost, cuts and PDFs all see it.
+        self.mirror_beams = not self.process.is_decay and self.has_mirrored_flavors()
         # the integration histograms are functions of the momenta; the weight
         # distribution is a property of the final event sample, so it is only
         # filled by MadgraphProcess.build_event_histograms at combine time
