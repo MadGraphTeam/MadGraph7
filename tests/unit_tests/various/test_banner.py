@@ -543,6 +543,76 @@ Beams:LHEF='events_ouaf.lhe.gz'
 
 
 
+class TestProcCardWrappedLines(unittest.TestCase):
+    """ProcCard.write wraps lines at 70 characters wherever that falls, so a
+    command-line option can be split across two lines of proc_card_mg5.dat.
+    Options must be read back through ProcCard, never by grepping the file."""
+
+    prefix = 'output standalone_fortran '
+    options = ' --density=3,4 -f'
+
+    def write_and_reread(self, lines):
+        card = bannermod.ProcCard()
+        for line in lines:
+            card.append(line)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = pjoin(tmpdir, 'proc_card_mg5.dat')
+            card.write(path)
+            with open(path) as stream:
+                raw = stream.read()
+            return raw, bannermod.ProcCard(path)
+
+    def test_density_option_survives_every_wrap_position(self):
+        # slide the 70-character cut through the whole option, value included
+        start = 70 - len(self.prefix) - len(self.options) - 1
+        split_in_flag = 0
+        for path_length in range(start, 70 - len(self.prefix)):
+            output_dir = '/' + 'd' * (path_length - 1)
+            output = self.prefix + output_dir + self.options
+            raw, card = self.write_and_reread(
+                ['import model loop_sm',
+                 'generate g g > z* g [sqrvirt=QCD]',
+                 output])
+            if not any('--density' in line for line in raw.split('\n')):
+                split_in_flag += 1
+            self.assertIn(output, card)
+            self.assertEqual(card.get_output_options(), {'density': '3,4'},
+                             msg='wrapped as:\n%s' % raw)
+        # the regression case is in the sweep: '-\' then '-density=3,4 -f'
+        self.assertGreater(split_in_flag, 0)
+
+    def test_regression_layout(self):
+        # the layout seen in a worktree, cut between the two dashes:
+        # '--density' starts at column 69
+        output_dir = '/' + 'd' * (69 - len(self.prefix) - 3) + 's'
+        raw, card = self.write_and_reread(
+            ['generate g g > z* g [sqrvirt=QCD]',
+             self.prefix + output_dir + self.options])
+        self.assertIn('s -\\\n-density=3,4 -f\n', raw)
+        self.assertEqual(card.get_output_options(), {'density': '3,4'})
+
+    def test_last_output_options(self):
+        _, card = self.write_and_reread(
+            ['generate e+ e- > mu+ mu-',
+             'output standalone /tmp/a --prefix=int --hel_recycling=False'])
+        self.assertEqual(card.get_output_options(),
+                         {'prefix': 'int', 'hel_recycling': 'False'})
+
+        _, card = self.write_and_reread(
+            ['generate e+ e- > mu+ mu-', 'output standalone /tmp/a -f'])
+        self.assertEqual(card.get_output_options(), {})
+
+        _, card = self.write_and_reread(['generate e+ e- > mu+ mu-'])
+        self.assertEqual(card.get_output_options(), {})
+
+    def test_wrapped_modelname(self):
+        # '-modelname' starts at column 66: cut as '-mode\' / 'lname'
+        model = '/' + 'm' * (65 - len('import model ') - 1) + ' -modelname'
+        raw, card = self.write_and_reread(['import model %s' % model])
+        self.assertNotIn('-modelname', raw)
+        self.assertIn('-modelname', card.get('full_model_line'))
+
+
 import re
 import shutil
 class TestRunCardNLOMeFrame(unittest.TestCase):

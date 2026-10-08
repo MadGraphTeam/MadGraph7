@@ -281,8 +281,10 @@ class CheckValidForCmd(object):
 #        if not hasattr(model.get('particles')[0], 'partial_widths'):
 #            raise self.InvalidCmd, 'The UFO model does not include partial widths information. Impossible to compute widths automatically'
             
-        # check if the name are passed to default MG5
-        if '-modelname' not in open(pjoin(self.me_dir,'Cards','proc_card_mg5.dat')).read():
+        # check if the name are passed to default MG5 (through ProcCard: a
+        # long 'import model' line is wrapped, possibly inside '-modelname')
+        proc_card = banner_mod.ProcCard(pjoin(self.me_dir,'Cards','proc_card_mg5.dat'))
+        if '-modelname' not in proc_card.get('full_model_line'):
             model.pass_particles_name_in_mg_default()        
         model = model_reader.ModelReader(model)
         particles_name = dict([(p.get('name'), p.get('pdg_code'))

@@ -186,6 +186,15 @@ class MadLoopLauncher(ExtLauncher):
         else:
             super(MadLoopLauncher,self).treat_input_file(filename,default,msg)
 
+    def uses_density(self):
+        """True if the output was written with 'output ... --density=...'.
+        The command options are not available here, so they are read back
+        from the proc_card (the only place they are recorded), through
+        ProcCard which joins the lines its writer wrapped."""
+
+        proc_card = banner_mod.ProcCard(pjoin(self.card_dir, 'proc_card_mg5.dat'))
+        return 'density' in proc_card.get_output_options()
+
     def launch_program(self):
         """launch the main program"""
         evaluator = process_checks.LoopMatrixElementTimer
@@ -234,16 +243,8 @@ class MadLoopLauncher(ExtLauncher):
                 MadLoopparam.set('DoubleCheckHelicityFilter', False)
                 MadLoopparam.write(os.path.join(self.card_dir, 'MadLoopParams.dat'))
 
-                #This is not optimal at all but I don't think I have access to the command options here. The code only passes here for standalone mode
-                UseDensity = False
-                with open(os.path.join(self.card_dir, 'proc_card_mg5.dat'), 'r') as proc_card:
-                    for line in proc_card:
-                        if '--density' in line:
-                            UseDensity = True
-                            break
-
                 #for the density mode, we use HelicityFilterLevel = 0 because the use of symmetry of HelicityFilterLevel = 2 does not work for JAMP interferences
-                if UseDensity:
+                if self.uses_density():
                     MadLoopparam.set('HelicityFilterLevel', 0)
                     MadLoopparam.write(os.path.join(self.card_dir, 'MadLoopParams.dat'))
                     logger.warning("WARNING: With the density mode, HelicityFilterLevel must be set to 0. It is currently set to 0.")
