@@ -102,9 +102,10 @@ void GpuDevice::adam_step(
     double weight_decay
 ) const {
     activate();
-    for (auto* tensor : {&gradient, &parameter, &exp_avg, &exp_avg_sq}) {
-        wait_for_tensor(*tensor);
-    }
+    wait_for_tensor(gradient);
+    wait_for_tensor(parameter);
+    wait_for_tensor(exp_avg);
+    wait_for_tensor(exp_avg_sq);
     AsyncGpuDevice device(*this, gpuStreamPerThread, 0);
     tensor_foreach_dynamic<kernel_adam_step<GpuTypes>, 1, 3>(
         {&gradient},
