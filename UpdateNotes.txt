@@ -47,7 +47,9 @@ ANNOUNCEMENT:
        matrix element having seen the lab-frame momenta. It is now read from
        me_frame, LO, NLO and mg7 alike. Only polarised samples were affected.
        RunCardMG7.from_LO now also carries me_frame over, instead of reporting
-       it as unsupported.
+       it as unsupported. MadSpin likewise takes the frame of an mg7 sample from
+       its run.me_frame, the default [] meaning the lab frame (no boost) rather
+       than the partonic centre of mass every other sample defaults to.
    OM: BUG FIX (mg7): the initial-state mirror paired each event with a matrix
        element evaluated on the momenta *before* the mirror was applied. madspace
        covers the beam-swapped copy of an asymmetric initial state by rotating

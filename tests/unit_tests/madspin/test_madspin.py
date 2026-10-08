@@ -780,6 +780,30 @@ class TestFrameFromRunCard(unittest.TestCase):
             options = self.apply(card, user=('frame_id', 'beampol'))
             self.assertEqual(options['frame_id'], 16, type(card).__name__)
             self.assertEqual([float(x) for x in options['beampol']], [50., 0.])
+        card = banner.RunCardMG7()
+        card['run']['me_frame'] = [3, 4]
+        options = self.apply(card, user=('frame_id',))
+        self.assertEqual(options['frame_id'], 16)
+
+    def test_the_mg7_me_frame_reaches_madspin(self):
+        """mg7's run.me_frame, with its own default: [] is the lab frame the
+        matrix element saw (frame_id 0, no boost), not the partonic c.m. (6)
+        every other sample defaults to."""
+        for frame, wanted in (([], 0), ([3], 8), ([3, 4], 24), ([1, 2], 6)):
+            card = banner.RunCardMG7()
+            card['run']['me_frame'] = frame
+            options = self.apply(card)
+            self.assertEqual(options['frame_id'], wanted, frame)
+            self.assertEqual([float(x) for x in options['beampol']], [0., 0.])
+
+    def test_frame_id_zero_is_the_lab_frame(self):
+        """what mg7's [] maps to: _frame_boost has no frame to boost to, even
+        where the frame is observable (a polarised production)"""
+        stub = object.__new__(self.MI)
+        stub.options = interface_madspin.MadSpinOptions()
+        stub.options['frame_id'] = 0
+        stub._needs_frame_axis = lambda: True
+        self.assertIsNone(stub._frame_boost(None))
 
 
 class TestOnshellProductionNorm(unittest.TestCase):
