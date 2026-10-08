@@ -54,6 +54,13 @@ constexpr int TRACE_IS_OCTET_IN = 1 << 12;
 constexpr int TRACE_MOTHER_IS_DAU1 = 1 << 13;
 constexpr int TRACE_MOTHER_IS_DAU2 = 1 << 14;
 constexpr int TRACE_ALL_COLORLESS = 1 << 15;
+// The clustering joins two bare external fermions through a flavour-diagonal
+// boson (g, a, Z, h), so it only exists when the two carry the same flavour.
+// One state machine serves every flavour of a merged subprocess, and the union
+// of its diagrams has such a vertex for some flavours only: for q q~ > q' q~'
+// the q-q' t-channel gluon of q q~ > q q~. The flavour is a per-event input,
+// see flavor_index and leg_flavors.
+constexpr int TRACE_SAME_FLAVOR = 1 << 16;
 // jet_leg_mask carries is_jet per leg in the low half and is_octet in the high
 // half; n_ext_max is 12, so one word holds both.
 constexpr int LEG_OCTET_SHIFT = 16;
@@ -284,6 +291,8 @@ KERNELSPEC int mlm_clustering_walk(
     IIn<T, 0> alphas_scheme,
     IIn<T, 0> pdf_reweighting,
     IIn<T, 0> clustering_measure,
+    IIn<T, 0> flavor_index,
+    IIn<T, 1> leg_flavors,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -350,10 +359,26 @@ KERNELSPEC int mlm_clustering_walk(
         masses_tmp[i] = external_masses[i];
     }
 
+    // abs pdg id of each external leg for this event, zero where it is not
+    // known, which leaves every clustering touching that leg allowed.
+    int leg_flavor[N_EXT_MAX];
+    for (int i = 0; i < n_part; ++i) {
+        int entry = flavor_index * n_part + i;
+        leg_flavor[i] = flavor_index >= 0 && entry < leg_flavors.size()
+            ? leg_flavors[entry]
+            : 0;
+    }
+
     int win_next_state = -1, win_data = 0, win_trace = TRACE_FIRST;
     bool win_resonant = false;
     bool win_initial = false;
     FVal<T> win_scale = SCALE_MAX * 10.;
+    // The best of the candidates the flavours of the event forbid, taken only
+    // when a state offers nothing else, so that the walk can always go on.
+    int alt_next_state = -1, alt_data = 0, alt_trace = TRACE_FIRST;
+    bool alt_resonant = false;
+    bool alt_initial = false;
+    FVal<T> alt_scale = SCALE_MAX * 10.;
     while (cluster_count < cluster_max) {
         int data = state_machine[state];
         int next_state = state_machine[state + 1];
@@ -418,17 +443,43 @@ KERNELSPEC int mlm_clustering_walk(
         // the madevent measure an initial-state clustering and a massless-massive
         // final-state one can tie exactly, so settle that tie the same way
         // whatever order the state machine lists them in.
-        bool beats_on_tie = clustering_measure == MEASURE_MADEVENT &&
-            is_initial && !win_initial &&
-            !(scale > win_scale * (1.0 + 1e-12));
-        if (win_next_state == -1 || (!win_resonant && resonant) ||
-            (win_resonant == resonant && (scale < win_scale || beats_on_tie))) {
-            win_next_state = next_state;
-            win_scale = scale;
-            win_data = data;
-            win_trace = trace_data;
-            win_resonant = resonant;
-            win_initial = is_initial;
+        bool forbidden = (trace_data & TRACE_SAME_FLAVOR) &&
+            leg_flavor[particle1] != 0 && leg_flavor[particle2] != 0 &&
+            leg_flavor[particle1] != leg_flavor[particle2];
+        if (forbidden) {
+            bool beats_on_tie = clustering_measure == MEASURE_MADEVENT &&
+                is_initial && !alt_initial &&
+                !(scale > alt_scale * (1.0 + 1e-12));
+            if (alt_next_state == -1 || (!alt_resonant && resonant) ||
+                (alt_resonant == resonant && (scale < alt_scale || beats_on_tie))) {
+                alt_next_state = next_state;
+                alt_scale = scale;
+                alt_data = data;
+                alt_trace = trace_data;
+                alt_resonant = resonant;
+                alt_initial = is_initial;
+            }
+        } else {
+            bool beats_on_tie = clustering_measure == MEASURE_MADEVENT &&
+                is_initial && !win_initial &&
+                !(scale > win_scale * (1.0 + 1e-12));
+            if (win_next_state == -1 || (!win_resonant && resonant) ||
+                (win_resonant == resonant && (scale < win_scale || beats_on_tie))) {
+                win_next_state = next_state;
+                win_scale = scale;
+                win_data = data;
+                win_trace = trace_data;
+                win_resonant = resonant;
+                win_initial = is_initial;
+            }
+        }
+        if (is_last && win_next_state == -1) {
+            win_next_state = alt_next_state;
+            win_scale = alt_scale;
+            win_data = alt_data;
+            win_trace = alt_trace;
+            win_resonant = alt_resonant;
+            win_initial = alt_initial;
         }
         if (is_last) {
             int p1_win = win_data & 0xFF;
@@ -511,6 +562,12 @@ KERNELSPEC int mlm_clustering_walk(
             win_resonant = false;
             win_initial = false;
             win_scale = SCALE_MAX * 10.;
+            alt_next_state = -1;
+            alt_data = 0;
+            alt_trace = TRACE_FIRST;
+            alt_resonant = false;
+            alt_initial = false;
+            alt_scale = SCALE_MAX * 10.;
         } else {
             state += STATE_ITEM_SIZE;
         }
@@ -1484,6 +1541,8 @@ KERNELSPEC void mlm_clustering(
     IIn<T, 0> pdf_reweighting,
     IIn<T, 0> clustering_measure,
     IIn<T, 0> history_mode,
+    IIn<T, 0> flavor_index,
+    IIn<T, 1> leg_flavors,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -1522,6 +1581,8 @@ KERNELSPEC void mlm_clustering(
             alphas_scheme,
             pdf_reweighting,
             clustering_measure,
+            flavor_index,
+            leg_flavors,
             ren_scale,
             fact_scale1,
             fact_scale2,
@@ -1579,6 +1640,8 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
     IIn<T, 0> pdf_reweighting,
     IIn<T, 0> clustering_measure,
     IIn<T, 0> history_mode,
+    IIn<T, 0> flavor_index,
+    IIn<T, 1> leg_flavors,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -1617,6 +1680,8 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
         pdf_reweighting,
         clustering_measure,
         history_mode,
+        flavor_index,
+        leg_flavors,
         ren_scale,
         fact_scale1,
         fact_scale2,
@@ -1659,6 +1724,8 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
     IIn<T, 0> pdf_reweighting,
     IIn<T, 0> clustering_measure,
     IIn<T, 0> history_mode,
+    IIn<T, 0> flavor_index,
+    IIn<T, 1> leg_flavors,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -1697,6 +1764,8 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
         pdf_reweighting,
         clustering_measure,
         history_mode,
+        flavor_index,
+        leg_flavors,
         ren_scale,
         fact_scale1,
         fact_scale2,

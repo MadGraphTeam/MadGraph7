@@ -2268,6 +2268,12 @@ mlm_clustering_hadronic:
     - name: history_mode
       type: [int, single]
       desc: ClusteringHistory, how the start state and the history over every diagram are combined
+    - name: flavor_index
+      type: [int]
+      desc: sampled flavour of the event, i.e. the row of leg_flavors that applies to it
+    - name: leg_flavors
+      type: [int, single, f]
+      desc: abs pdg id of every external leg per flavour, row-major; a row of zeros (or a flavor_index past the table) leaves every clustering allowed
   outputs:
     - name: ren_scale
       type: [float]
@@ -2382,6 +2388,12 @@ mlm_clustering_leptonic:
     - name: history_mode
       type: [int, single]
       desc: ClusteringHistory, how the start state and the history over every diagram are combined
+    - name: flavor_index
+      type: [int]
+      desc: sampled flavour of the event, i.e. the row of leg_flavors that applies to it
+    - name: leg_flavors
+      type: [int, single, f]
+      desc: abs pdg id of every external leg per flavour, row-major; a row of zeros (or a flavor_index past the table) leaves every clustering allowed
   outputs:
     - name: ren_scale
       type: [float]

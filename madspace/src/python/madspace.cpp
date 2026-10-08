@@ -1109,6 +1109,15 @@ PYBIND11_MODULE(_madspace_py, m) {
     )
         .def(py::init<const MLMClustering&>(), py::arg("clustering"));
 
+    py::classh<MLMClusteringWithFlavors, FunctionGenerator>(
+        m, "MLMClusteringWithFlavors"
+    )
+        .def(
+            py::init<const MLMClustering&, std::vector<me_int_t>>(),
+            py::arg("clustering"),
+            py::arg("leg_flavors")
+        );
+
     py::classh<VegasGridOptimizer>(m, "VegasGridOptimizer")
         .def(
             "add_data",

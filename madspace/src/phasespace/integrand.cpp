@@ -209,6 +209,19 @@ Integrand::Integrand(
     _flavor_per_subproc_remap(
         flavor_per_subproc_remap.begin(), flavor_per_subproc_remap.end()
     ) {
+    if (energy_scale && energy_scale->mlm_flavor_dependent() &&
+        pid_options.size() > 1) {
+        for (auto& option : pid_options) {
+            if (option.size() != pid_options.at(0).size()) {
+                throw std::invalid_argument(
+                    "every flavour option needs the same number of external legs"
+                );
+            }
+            for (me_int_t pid : option) {
+                _mlm_leg_flavors.push_back(std::abs(pid));
+            }
+        }
+    }
     if (pdf_grid) {
         for (std::size_t i = 0; i < 2; ++i) {
             std::set<int> pids;
@@ -398,7 +411,6 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
 
     if (_energy_scale && _energy_scale->is_mlm()) {
         ret.push_back("cluster_scales_acc", acc_float_array(particle_count - 2));
-        ret.push_back("scale_diagram_index_acc", acc_int);
     }
 
     return ret;
@@ -649,12 +661,42 @@ NamedVector<Value> Integrand::build_channel_part(
     // the matrix element has given the diagram weights, in the common part.
     bool mlm_history_per_diagram =
         _energy_scale && _energy_scale->mlm_history_per_diagram();
+
+    // The history over every diagram above was clustered before the flavour
+    // was known, as the flavour prior needs its scales. Some of its
+    // clusterings only exist for some flavours of a merged subprocess (the
+    // q-q' t-channel gluon of q q~ > q q~ for a q q~ > q' q~' event), so the
+    // event is clustered again with its own flavours, and the densities are
+    // taken again at the scales that gives. The prior keeps the first ones:
+    // it only steers the sampling.
+    if (_energy_scale && _energy_scale->is_mlm() && !mlm_history_per_diagram &&
+        !_mlm_leg_flavors.empty()) {
+        scales = _energy_scale->build_mlm_with_flavors(
+            fb, momenta_acc, flavor_id, _mlm_leg_flavors
+        );
+        for (std::size_t i = 0; i < 2; ++i) {
+            if (!pdf_results.at(i)) {
+                continue;
+            }
+            auto& pdf_scale = _energy_scale->mlm_pdf_reweighting()
+                ? scales.at(std::format("pdf_scale{}", i + 1))
+                : scales.at(i + 1);
+            auto pdf = _pdfs.at(i)
+                           .value()
+                           .build_function(fb, {x_acc.at(i), pdf_scale})
+                           .at(0);
+            // _mlm_leg_flavors is only filled with more than one flavour
+            pdf_results.at(i) =
+                fb.gather(fb.gather_int(flavor_id, _pdf_indices.at(i)), pdf);
+        }
+    }
+
     if (_energy_scale && _energy_scale->is_mlm() && !mlm_history_per_diagram) {
         for (auto& weight : mlm_weights(fb, scales, x_acc, flavor_id)) {
             weights_after_cuts.push_back(weight);
         }
     }
-    if (_energy_scale && _energy_scale->has_scale_range() && !mlm_history_per_diagram) {
+    if (_energy_scale && _energy_scale->has_scale_veto() && !mlm_history_per_diagram) {
         // Same for the floor on the scales themselves, which applies to every
         // dynamical scale choice rather than only to the merging one.
         weights_after_cuts.push_back(scales.at("scale_weight"));
@@ -718,7 +760,6 @@ NamedVector<Value> Integrand::build_channel_part(
 
     if (_energy_scale && _energy_scale->is_mlm()) {
         out.push_back("cluster_scales_acc", scales.at("outgoing_scales"));
-        out.push_back("scale_diagram_index_acc", scales.at("diagram_index"));
     }
 
     return out;
@@ -948,15 +989,12 @@ NamedVector<Value> Integrand::build_common_part(
     }
 
     // Evaluate differential cross section
-    auto make_xs_args = [&](Value diagram, std::array<Value, 2>& pdfs, Value alpha) {
+    auto make_xs_args = [&](std::array<Value, 2>& pdfs, Value alpha) {
         ValueVec xs_args{
             momenta_acc,
             _flavor_remap.size() > 0 ? fb.gather_int(flavor_id, _flavor_remap)
                                      : flavor_id,
         };
-        if (_energy_scale && _energy_scale->is_mlm()) {
-            xs_args.push_back(diagram);
-        }
         xs_args.push_back(x1_acc);
         xs_args.push_back(x2_acc);
         xs_args.push_back(flavor_id);
@@ -968,12 +1006,7 @@ NamedVector<Value> Integrand::build_common_part(
         xs_args.push_back(alpha);
         return xs_args;
     };
-    ValueVec xs_args = make_xs_args(
-        _energy_scale && _energy_scale->is_mlm() ? args.at("scale_diagram_index_acc")
-                                                 : Value(),
-        pdfs_acc,
-        alpha_qcd_acc
-    );
+    ValueVec xs_args = make_xs_args(pdfs_acc, alpha_qcd_acc);
     ValueVec dxs_vec;
     Value ps_flavor_id;
     Value subproc_id;
@@ -1056,11 +1089,15 @@ NamedVector<Value> Integrand::build_common_part(
             fb.mul(dxs_vec.at(1), diagram_mask)
         );
         auto scales = _energy_scale->build_mlm_from_start_state(
-            fb, momenta_acc, fb.gather_int(diagram, _mlm_start_states)
+            fb,
+            momenta_acc,
+            fb.gather_int(diagram, _mlm_start_states),
+            flavor_id,
+            _mlm_leg_flavors
         );
         std::array<Value, 2> x_acc{x1_acc, x2_acc};
         mlm_history_weights = mlm_weights(fb, scales, x_acc, flavor_id);
-        if (_energy_scale->has_scale_range()) {
+        if (_energy_scale->has_scale_veto()) {
             mlm_history_weights.push_back(scales.at("scale_weight"));
         }
         ren_scale_acc = scales.at("ren_scale");
@@ -1074,10 +1111,7 @@ NamedVector<Value> Integrand::build_common_part(
         alpha_qcd_acc =
             _running_coupling.value().build_function(fb, {ren_scale_acc}).at(0);
         dxs_vec = _diff_xs.at(0)
-                      .build_function(
-                          fb,
-                          make_xs_args(scales.at("diagram_index"), pdfs_acc, alpha_qcd_acc)
-                      )
+                      .build_function(fb, make_xs_args(pdfs_acc, alpha_qcd_acc))
                       .values();
     }
 
