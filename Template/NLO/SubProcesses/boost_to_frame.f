@@ -392,6 +392,29 @@ c**************************************************************************
       end
 
 
+      subroutine sborn_amp_vec_frame(p_in,amp2,jamp2,ret_amp_split,
+     $     ret_amp_split_cnt,ans_summed,ans_cnt,ret_saveamp,
+     $     icoup,ilane,iFKS,flavour)
+C Each Born configuration builds its own frame; keep explicit lane/FKS indices.
+      implicit none
+      include 'nexternal.inc'
+      include 'genps.inc'
+      include 'orders.inc'
+      include 'born_nhel.inc'
+      double precision p_in(0:3,nexternal-1),p_f(0:3,nexternal-1)
+      double precision amp2(ngraphs),jamp2(0:ncolor),ans_summed
+      double precision ret_amp_split(amp_split_size)
+      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex ans_cnt(2,nsplitorders),ret_saveamp(ngraphs,max_bhel)
+      integer icoup,ilane,iFKS,flavour,ids(nexternal-1)
+      call get_frame_mask_born(ids)
+      call boost_to_me_frame(p_in,nexternal-1,ids,p_f)
+      call sborn_amp_vec(p_f,amp2,jamp2,ret_amp_split,
+     $     ret_amp_split_cnt,ans_summed,ans_cnt,ret_saveamp,
+     $     icoup,ilane,iFKS,flavour)
+      end
+
+
       subroutine sborn_onehel_frame(p_in,hel1,chosen_hel,ans,
      $     ret_saveamp)
 c**************************************************************************
@@ -541,6 +564,27 @@ c**************************************************************************
       end
 
 
+      subroutine sborn_sf_amp_frame(p_in,m,n,wgt,ans_cnt,
+     $     ret_amp_split_cnt,ret_saveamp,amp_split_soft)
+C The supplied amplitudes are already framed, including the checked Born cache.
+      implicit none
+      include 'nexternal.inc'
+      include 'genps.inc'
+      include 'orders.inc'
+      include 'born_nhel.inc'
+      double precision p_in(0:3,nexternal-1),p_f(0:3,nexternal-1),wgt
+      double precision amp_split_soft(amp_split_size)
+      double complex ans_cnt(2,nsplitorders)
+      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex ret_saveamp(ngraphs,max_bhel)
+      integer m,n,ids(nexternal-1)
+      call get_frame_mask_born(ids)
+      call boost_to_me_frame(p_in,nexternal-1,ids,p_f)
+      call sborn_sf(p_f,m,n,wgt,ans_cnt,ret_amp_split_cnt,
+     $     ret_saveamp,amp_split_soft)
+      end
+
+
       subroutine extra_cnt_frame(p_in, icnt, cnts)
 c**************************************************************************
 c     Extra g/a -> q qbar counterterm Born in the me_frame rest frame.
@@ -576,6 +620,18 @@ c**************************************************************************
       double precision p_in(0:3,nexternal)
       double precision wgt
       double precision ret_amp_split(amp_split_size)
+      call smatrix_real_amp_frame(p_in,ret_amp_split,wgt)
+      amp_split(:)=ret_amp_split(:)
+      end
+
+
+      subroutine smatrix_real_amp_frame(p_in,ret_amp_split,wgt)
+C Returned split orders in the selected frame, for FO and scalar limit callers.
+      implicit none
+      include 'nexternal.inc'
+      include 'orders.inc'
+      double precision p_in(0:3,nexternal),wgt
+      double precision ret_amp_split(amp_split_size)
       double precision p_f(0:3,nexternal)
       integer ids(nexternal)
       integer nFKSprocess
@@ -584,9 +640,33 @@ c**************************************************************************
       call get_frame_mask_real(nFKSprocess, ids)
       call boost_to_me_frame(p_in, nexternal, ids, p_f)
       call smatrix_real(p_f,ret_amp_split,wgt)
-      amp_split(:)=ret_amp_split(:)
 
       return
+      end
+
+
+      subroutine smatrix_real_vec_batch_frame(p_in,g_values,
+     $     ret_amp_split,wgt,active,coup_index,vector_size,iFKS,flavour)
+C One explicit FKS row, independent local frames for its active event lanes.
+C Frame before backend selection so offload and Fortran fallback agree.
+      implicit none
+      include 'nexternal.inc'
+      include 'orders.inc'
+      integer vector_size,iFKS,flavour,coup_index(vector_size),lane
+      integer ids(nexternal)
+      logical active(vector_size)
+      double precision p_in(0:3,nexternal,vector_size)
+      double precision p_f(0:3,nexternal,vector_size)
+      double precision g_values(vector_size),wgt(vector_size)
+      double precision ret_amp_split(amp_split_size,vector_size)
+      call get_frame_mask_real(iFKS,ids)
+      p_f(:,:,:)=0d0
+      do lane=1,vector_size
+         if (.not.active(lane)) cycle
+         call boost_to_me_frame(p_in(:,:,lane),nexternal,ids,p_f(:,:,lane))
+      enddo
+      call smatrix_real_vec_batch(p_f,g_values,ret_amp_split,wgt,active,
+     $     coup_index,vector_size,iFKS,flavour)
       end
 
 

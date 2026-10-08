@@ -335,7 +335,7 @@ c Note that tests are always performed at fixed energy with Bjorken x=1.
             if (ilim.eq.2) then
                calculatedBorn=.false.
                call set_cms_stuff(0)
-               call sborn_amp(p_born,amp2,jamp2,ret_amp_split,
+               call sborn_amp_frame(p_born,amp2,jamp2,ret_amp_split,
      $              born_split_cnt,born_wgt,ans_cnt,born_saveamp)
                call sreal(p1_cnt(0,1,0),zero,y_ij_fks_ev,fx,ret_amp_split,ans_cnt,born_split_cnt,born_saveamp)
             else
@@ -353,7 +353,7 @@ c Initialise shower_S_scale to a large value, not to get spurious dead zones
                if(ilim.eq.0)then
                   call xmcsubt_wrap(p1_cnt(0,1,0),zero,y_ij_fks_ev,fx)
                else
-                  call sborn_amp(p_born,amp2,jamp2,ret_amp_split,
+                  call sborn_amp_frame(p_born,amp2,jamp2,ret_amp_split,
      $                 born_split_cnt,born_wgt,ans_cnt,born_saveamp)
                   call sreal(p1_cnt(0,1,0),zero,y_ij_fks_ev,fx,ret_amp_split,ans_cnt,born_split_cnt,born_saveamp)
                endif
@@ -370,7 +370,7 @@ c Initialise shower_S_scale to a large value, not to get spurious dead zones
             enddo
             if (ilim.eq.2) then
                call set_cms_stuff(-100)
-               call sborn_amp(p_born,amp2,jamp2,ret_amp_split,
+               call sborn_amp_frame(p_born,amp2,jamp2,ret_amp_split,
      $              born_split_cnt,born_wgt,ans_cnt,born_saveamp)
                call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx,ret_amp_split,ans_cnt,born_split_cnt,born_saveamp)
             else
@@ -413,7 +413,7 @@ c because otherwise fresh random will be used...
                call generate_momenta(ndim,iconfig,wgt,x,p)
                if (ilim.eq.2) then
                   calculatedBorn=.false.
-                  call sborn_amp(p_born,amp2,jamp2,ret_amp_split,
+                  call sborn_amp_frame(p_born,amp2,jamp2,ret_amp_split,
      $                 born_split_cnt,born_wgt,ans_cnt,born_saveamp)
                   call set_cms_stuff(0)
                   call sreal(p1_cnt(0,1,0),zero,y_ij_fks_ev,fx,ret_amp_split,ans_cnt,born_split_cnt,born_saveamp)
@@ -425,7 +425,7 @@ c because otherwise fresh random will be used...
                   enddo
                   calculatedBorn=.false.
                   call set_cms_stuff(-100)
-                  call sborn_amp(p_born,amp2,jamp2,ret_amp_split,
+                  call sborn_amp_frame(p_born,amp2,jamp2,ret_amp_split,
      $                 born_split_cnt,born_wgt,ans_cnt,born_saveamp)
                   call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx,ret_amp_split,ans_cnt,born_split_cnt,born_saveamp)
               else
@@ -597,7 +597,7 @@ c
             if(ilim.eq.0)then
                call xmcsubt_wrap(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,fx)
             else
-               call sborn_amp(p_born,amp2,jamp2,ret_amp_split,
+               call sborn_amp_frame(p_born,amp2,jamp2,ret_amp_split,
      $              born_split_cnt,born_wgt,ans_cnt,born_saveamp)
                call sreal(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,fx,ret_amp_split,ans_cnt,born_split_cnt,born_saveamp)
             endif
@@ -617,7 +617,7 @@ c No new phase-space point in between, so clear the 'xmcsubt done' bit
 c by hand: with ilim=0 the call above was already an xmcsubt_wrap one.
             MCcntcalled=0
             if (ilim.eq.2) then
-               call sborn_amp(p_born,amp2,jamp2,ret_amp_split,
+               call sborn_amp_frame(p_born,amp2,jamp2,ret_amp_split,
      $              born_split_cnt,born_wgt,ans_cnt,born_saveamp)
                call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx,ret_amp_split,ans_cnt,born_split_cnt,born_saveamp)
             else
@@ -653,7 +653,7 @@ c by hand: with ilim=0 the call above was already an xmcsubt_wrap one.
                if (ilim.eq.2) then
                   calculatedBorn=.false.
                   call set_cms_stuff(1)
-                  call sborn_amp(p_born,amp2,jamp2,ret_amp_split,
+                  call sborn_amp_frame(p_born,amp2,jamp2,ret_amp_split,
      $                 born_split_cnt,born_wgt,ans_cnt,born_saveamp)
                   call sreal(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,fx,ret_amp_split,ans_cnt,born_split_cnt,born_saveamp) 
                   fxl(i)=fx*jac_cnt(1)
@@ -664,7 +664,7 @@ c by hand: with ilim=0 the call above was already an xmcsubt_wrap one.
                   enddo
                   calculatedBorn=.false.
                   call set_cms_stuff(-100)
-                  call sborn_amp(p_born,amp2,jamp2,ret_amp_split,
+                  call sborn_amp_frame(p_born,amp2,jamp2,ret_amp_split,
      $                 born_split_cnt,born_wgt,ans_cnt,born_saveamp)
                   call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx,ret_amp_split,ans_cnt,born_split_cnt,born_saveamp)
                else

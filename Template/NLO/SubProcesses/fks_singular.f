@@ -5120,7 +5120,7 @@ c has soft singularities
             ret_amp_split(1:amp_split_size) = 0d0
          endif
       else
-         call smatrix_real(pp,ret_amp_split,wgt)
+         call smatrix_real_amp_frame(pp,ret_amp_split,wgt)
          wgt=wgt*xi_i_fks**2*(1d0-y_ij_fks)
          ret_amp_split(1:amp_split_size) = ret_amp_split(1:amp_split_size)*xi_i_fks**2*(1d0-y_ij_fks)
       endif
@@ -5711,6 +5711,7 @@ C ap and Q contain the QCD(1) and QED(2) Altarelli-Parisi kernel
       TYPE(ALOHA) W1,W2,W3,W4
       double complex Wij_angle,Wij_recta
       double complex azifact
+      logical me_boosted
 
       double precision zero,vtiny
       parameter (zero=0d0)
@@ -5784,7 +5785,7 @@ C check if any extra_cnt is needed
                wgt1(1:2) = ans_cnt(1:2,iord)
             else if (iord.eq.isplitorder_cnt) then
             ! this is the contribution from the extra cnt
-               call extra_cnt(p_born_used, iextra_cnt, ans_extra_cnt)
+               call extra_cnt_frame(p_born_used, iextra_cnt, ans_extra_cnt)
                wgt1(1:2) = ans_extra_cnt(1:2,iord)
             else
                write(*,*) 'ERROR in sborncol_isr', iord
@@ -5811,6 +5812,14 @@ c ans_extra_cnt). They are copied, so the caller's array is never rescaled.
            amp_split_cnt_local(1:amp_split_size,2,iord)=dcmplx(0d0,0d0)
         else
 c Insert <ij>/[ij] which is not included by sborn()
+           call azifact_me_frame(p_born_used,j_fks,p_i_fks_ev,
+     &        p(0,j_fks),y_ij_fks,azifact,me_boosted)
+           if (me_boosted) then
+C Match the scalar ISR contraction in the boosted mother's helicity basis.
+              wgt1(2)=-dconjg(azifact)*wgt1(2)
+              amp_split_cnt_local(1:amp_split_size,2,iord)=
+     $            -dconjg(azifact)*amp_split_cnt_local(1:amp_split_size,2,iord)
+           else
            if (1d0-y_ij_fks.lt.vtiny)then
               azifact=xij_aor
            else
@@ -5848,6 +5857,7 @@ c Insert the extra factor due to Madgraph convention for polarization vectors
      $          +ximag*sphi_mother)**2
      $          *amp_split_cnt_local(1:amp_split_size,2,iord) *
      $          dconjg(azifact)
+           endif
         endif
         if (iord.eq.qcd_pos) then
             wgt=wgt+dble(wgt1(1)*ap(1)+wgt1(2)*Q(1))
@@ -6557,7 +6567,7 @@ C Reset the amp_split array
             if ((m.ne.n .or. (m.eq.n .and. pmass(m).ne.ZERO)) .and.
      &           n.ne.i_fks.and.m.ne.i_fks) then
 C wgt includes the gs/w^2
-               call sborn_sf(p_born,m,n,wgt,ans_cnt,local_split_cnt,ret_saveamp,amp_split_soft)
+               call sborn_sf_amp_frame(p_born,m,n,wgt,ans_cnt,local_split_cnt,ret_saveamp,amp_split_soft)
                if (wgt.ne.0d0) then
                   call eikonal_reduced(pp,m,n,i_fks,j_fks,
      #                                 xi_i_fks,y_ij_fks,eik)
@@ -7980,7 +7990,7 @@ C reusing the passed born_cnt made the integrated soft term differ from MG5
 C at almost every point (W+j, mixed QCD/QED). Temporaries keep the caller's
 C ret_amp_split and the Born weight untouched.
          calculatedBorn = .false.
-         call sborn_amp(p_born,amp2,jamp2,amp_split_link,ret_amp_split_cnt,
+         call sborn_amp_frame(p_born,amp2,jamp2,amp_split_link,ret_amp_split_cnt,
      &        wgt_link,ans_cnt,ret_saveamp)
          contr=0d0
          do i=1,fks_j_from_i(i_fks,0)
@@ -8678,7 +8688,7 @@ C setup the fks i/j info
         call fks_inc_chooser()
 C the following call to born is to setup the goodhel(nfksprocess)
         calculatedBorn = .false.
-        call sborn_amp(p_born,amp2,jamp2,DUMMY_AMP_SPLIT,DUMMY_AMP_SPLIT_CNT,wgt1,ans_cnt,ret_saveamp)
+        call sborn_amp_frame(p_born,amp2,jamp2,DUMMY_AMP_SPLIT,DUMMY_AMP_SPLIT_CNT,wgt1,ans_cnt,ret_saveamp)
 
         contr1=0d0
         do i=1,fks_j_from_i(i_fks,0)
@@ -8687,7 +8697,7 @@ C the following call to born is to setup the goodhel(nfksprocess)
             n=fks_j_from_i(i_fks,j)
             if( m.ne.n .and. n.ne.i_fks .and. m.ne.i_fks )then
 C wgt includes the gs/w^2 factor
-              call sborn_sf(p_born,m,n,wgt,ans_cnt,DUMMY_AMP_SPLIT_CNT,ret_saveamp,amp_split_soft)
+              call sborn_sf_amp_frame(p_born,m,n,wgt,ans_cnt,DUMMY_AMP_SPLIT_CNT,ret_saveamp,amp_split_soft)
 c The factor -2 compensate for that missing in sborn_sf
               wgt=-2d0*wgt
               if(wgt.ne.0.d0)then

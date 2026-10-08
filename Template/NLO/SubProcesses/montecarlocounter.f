@@ -560,10 +560,10 @@ c so that the soft/collinear tests check the production counterterms.
          p_born_rot(3,i)=-p_born(3,i)
       enddo
       calculatedBorn=.false.
-      call sborn_amp(p_born,amp2,born_jamp2,born_split,born_split_cnt
+      call sborn_amp_frame(p_born,amp2,born_jamp2,born_split,born_split_cnt
      $     ,born_wgt,born_cnt,born_saveamp)
       calculatedBorn=.false.
-      call sborn_amp(p_born_rot,amp2,rot_jamp2,born_split,rot_split_cnt
+      call sborn_amp_frame(p_born_rot,amp2,rot_jamp2,born_split,rot_split_cnt
      $     ,born_wgt,rot_cnt,born_saveamp)
       calculatedBorn=.false.
       first_MCcnt_call=.true.
@@ -941,7 +941,7 @@ c this is p_born, except for the collinear counter-event with xi_i_fks>0
 c and without event projection, which uses p_born_coll. sreal
 c overwrites ret_amp_split, so recompute the Born before every call.
          calculatedBorn=.false.
-         call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
+         call sborn_amp_frame(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
          call set_cms_stuff(izero)
          call sreal(p1_cnt(0,1,0),zero,y_ij_fks,wgts,ret_amp_split
      $             ,ans_cnt,born_split_cnt,born_saveamp)
@@ -950,9 +950,9 @@ c overwrites ret_amp_split, so recompute the Born before every call.
          enddo
          calculatedBorn=.false.
          if (xi_i_fks.gt.0d0.and..not.use_evpr) then
-            call sborn_amp(p_born_coll,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
+            call sborn_amp_frame(p_born_coll,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
          else
-            call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
+            call sborn_amp_frame(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
          endif
          call set_cms_stuff(ione)
          call sreal(p1_cnt(0,1,1),xi_i_fks,one,wgtc,ret_amp_split
@@ -961,7 +961,7 @@ c overwrites ret_amp_split, so recompute the Born before every call.
            amp_split_c(iamp) = ret_amp_split(iamp)
          enddo
          calculatedBorn=.false.
-         call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
+         call sborn_amp_frame(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
          call set_cms_stuff(itwo)
          call sreal(p1_cnt(0,1,2),zero,one,wgtsc,ret_amp_split
      $             ,ans_cnt,born_split_cnt,born_saveamp)

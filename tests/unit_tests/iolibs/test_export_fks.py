@@ -604,7 +604,7 @@ class TestFKSOutput(unittest.TestCase):
         code = '\n'.join(line for line in loop.splitlines()
                          if not re.match(r'[cC*!]', line))
         chooser = code.index('call fks_inc_chooser()')
-        recompute = code.find('call sborn_amp(p_born', chooser)
+        recompute = code.find('call sborn_amp_frame(p_born', chooser)
         links = code.index('call sborn_sf_store(', chooser)
         self.assertNotEqual(recompute, -1,
                             'the link loop must recompute the Born')

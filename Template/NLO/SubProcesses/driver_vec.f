@@ -305,9 +305,9 @@ C which have write-access to the GOODHEL arrays, while the vectorised routines d
              call update_fks_dir(iFKS)
              call generate_momenta(nndim,iconfig,dummy_jac,x,p)
              calculatedBorn=.false.
-             call sborn(p_born, dummy_ans)
+             call sborn_frame(p_born, dummy_ans)
              if (1d0-y_ij_fks_ev.lt.tiny.or.xi_i_fks_ev.lt.tiny) cycle
-             call smatrix_real(p, dummy_amp_split, dummy_ans)
+             call smatrix_real_amp_frame(p, dummy_amp_split, dummy_ans)
              goodhel_calls(iFKS) = goodhel_calls(iFKS) + 1
            enddo
           enddo
@@ -444,24 +444,24 @@ C            call update_fks_dir(iFKS)
             passcuts_n1body=passcuts(p,rwgt)
             if (.not. (passcuts_nbody.or.passcuts_n1body)) cycle
             ! if (passcuts_nbody) then
-               call sborn_amp_vec(p_born_ev,ev_amp2,ev_jamp2,ev_amp_split
+               call sborn_amp_vec_frame(p_born_ev,ev_amp2,ev_jamp2,ev_amp_split
      $                    ,ev_amp_split_cnt,wgt_ev,ev_ans_cnt,ev_saveamp
      $                    ,icoup,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
                sev_amp2(:,iFKS,ivec)=ev_amp2(:)
-               call sborn_amp_vec(p_born_norad,norad_amp2,norad_jamp2,norad_amp_split
+               call sborn_amp_vec_frame(p_born_norad,norad_amp2,norad_jamp2,norad_amp_split
      $                    ,norad_amp_split_cnt,wgt_norad,norad_ans_cnt,norad_saveamp
      $                    ,icoup+1,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
                snorad_amp2(:,iFKS,ivec)=norad_amp2(:)
                calculatedBorn=.false.
                ! if (.not.passcuts_nbody_vec(iFKS,ivec)) goto 51
-               call sborn_amp_vec(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
+               call sborn_amp_vec_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
      $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp
      $                    ,icoup+2,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
                scb_amp_split(:,iFKS,ivec)=coll_amp_split(:)
                scb_amp_split_cnt(:,:,:,iFKS,ivec)=coll_amp_split_cnt(:,:,:)
                scb_ans_cnt(:,:,iFKS,ivec)=coll_ans_cnt(:,:)
                scb_saveamp(:,:,iFKS,ivec)=coll_saveamp(:,:)
-               call sborn_amp_vec(p_born,nb_amp2,nb_jamp2,nb_amp_split
+               call sborn_amp_vec_frame(p_born,nb_amp2,nb_jamp2,nb_amp_split
      $                    ,nb_amp_split_cnt,wgt_nb,nb_ans_cnt,nb_saveamp
      $                    ,icoup+2,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
                snb_amp2(:,iFKS,ivec)=nb_amp2(:)
@@ -469,7 +469,7 @@ C            call update_fks_dir(iFKS)
                snb_amp_split_cnt(:,:,:,iFKS,ivec)=nb_amp_split_cnt(:,:,:)
                snb_ans_cnt(:,:,iFKS,ivec)=nb_ans_cnt(:,:)
                snb_saveamp(:,:,iFKS,ivec)=nb_saveamp(:,:)
-               call sborn_amp_vec(p_born_rot,rot_amp2,rot_jamp2,rot_amp_split
+               call sborn_amp_vec_frame(p_born_rot,rot_amp2,rot_jamp2,rot_amp_split
      $                    ,rot_amp_split_cnt,wgt_rot,rot_ans_cnt,rot_saveamp
      $                    ,icoup+3,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
                srot_jamp2(:,iFKS,ivec)=rot_jamp2(:)
@@ -478,14 +478,14 @@ C            call update_fks_dir(iFKS)
                srot_ans_cnt(:,:,iFKS,ivec)=rot_ans_cnt(:,:)
                ! srot_saveamp(:,:,iFKS,1)=rot_saveamp(:,:)
                ! calculatedBorn=.false.
-               call sborn_amp_vec(p_born_coll,coll_n1_amp2,coll_n1_jamp2,coll_n1_amp_split
+               call sborn_amp_vec_frame(p_born_coll,coll_n1_amp2,coll_n1_jamp2,coll_n1_amp_split
      $                    ,coll_n1_split_cnt,wgt_coll_n1,coll_n1_cnt,coll_n1_saveamp
      $                    ,icoup+3,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
                sc1_amp_split(:,iFKS,ivec)=coll_n1_amp_split(:)
                sc1_amp_split_cnt(:,:,:,iFKS,ivec)=coll_n1_split_cnt(:,:,:)
                sc1_ans_cnt(:,:,iFKS,ivec)=coll_n1_cnt(:,:)
                sc1_saveamp(:,:,iFKS,ivec)=coll_n1_saveamp(:,:)
-               call sborn_amp_vec(p_born,n1_amp2,n1_jamp2,n1_amp_split
+               call sborn_amp_vec_frame(p_born,n1_amp2,n1_jamp2,n1_amp_split
      $                    ,n1_amp_split_cnt,wgt_n1,n1_ans_cnt,n1_saveamp
      $                    ,icoup+3,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
                sn1_amp2(:,iFKS,ivec)=n1_amp2(:)
@@ -508,7 +508,7 @@ c Pick the first one because that's the one with the soft singularity
             if (skip_iter) cycle
          ! p_born_nb(:,:) = p_born(:,:)
          ! if (.not.passcuts_born_vec(ivec)) goto 52
-         call sborn_amp_vec(p_born,born_amp2,born_jamp2,born_amp_split
+         call sborn_amp_vec_frame(p_born,born_amp2,born_jamp2,born_amp_split
      $                     ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp
      $                     ,indent+coup_step,ivec,nFKS_nbody,BORN_FLAVOR_INDEX_D(nFKS_nbody))
 
@@ -648,24 +648,24 @@ C Local parameters
             passcuts_n1body=passcuts_n1body_vec(iFKS,ivec)
             if (.not. (passcuts_nbody.or.passcuts_n1body)) cycle
             ! if (passcuts_nbody) then
-               call sborn_amp_vec(p_born_ev,ev_amp2,ev_jamp2,ev_amp_split
+               call sborn_amp_vec_frame(p_born_ev,ev_amp2,ev_jamp2,ev_amp_split
      $                    ,ev_amp_split_cnt,wgt_ev,ev_ans_cnt,ev_saveamp
      $                    ,icoup,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
                sev_amp2(:,iFKS,ivec)=ev_amp2(:)
-               call sborn_amp_vec(p_born_norad,norad_amp2,norad_jamp2,norad_amp_split
+               call sborn_amp_vec_frame(p_born_norad,norad_amp2,norad_jamp2,norad_amp_split
      $                    ,norad_amp_split_cnt,wgt_norad,norad_ans_cnt,norad_saveamp
      $                    ,icoup+1,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
                snorad_amp2(:,iFKS,ivec)=norad_amp2(:)
                ! calculatedBorn=.false.
                ! if (.not.passcuts_nbody_vec(iFKS,ivec)) goto 51
-               call sborn_amp_vec(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
+               call sborn_amp_vec_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
      $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp
      $                    ,icoup+2,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
                scb_amp_split(:,iFKS,ivec)=coll_amp_split(:)
                scb_amp_split_cnt(:,:,:,iFKS,ivec)=coll_amp_split_cnt(:,:,:)
                scb_ans_cnt(:,:,iFKS,ivec)=coll_ans_cnt(:,:)
                scb_saveamp(:,:,iFKS,ivec)=coll_saveamp(:,:)
-               call sborn_amp_vec(p_born,nb_amp2,nb_jamp2,nb_amp_split
+               call sborn_amp_vec_frame(p_born,nb_amp2,nb_jamp2,nb_amp_split
      $                    ,nb_amp_split_cnt,wgt_nb,nb_ans_cnt,nb_saveamp
      $                    ,icoup+2,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
                snb_amp2(:,iFKS,ivec)=nb_amp2(:)
@@ -673,7 +673,7 @@ C Local parameters
                snb_amp_split_cnt(:,:,:,iFKS,ivec)=nb_amp_split_cnt(:,:,:)
                snb_ans_cnt(:,:,iFKS,ivec)=nb_ans_cnt(:,:)
                snb_saveamp(:,:,iFKS,ivec)=nb_saveamp(:,:)
-               call sborn_amp_vec(p_born_rot,rot_amp2,rot_jamp2,rot_amp_split
+               call sborn_amp_vec_frame(p_born_rot,rot_amp2,rot_jamp2,rot_amp_split
      $                    ,rot_amp_split_cnt,wgt_rot,rot_ans_cnt,rot_saveamp
      $                    ,icoup+3,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
                srot_jamp2(:,iFKS,ivec)=rot_jamp2(:)
@@ -682,14 +682,14 @@ C Local parameters
                srot_ans_cnt(:,:,iFKS,ivec)=rot_ans_cnt(:,:)
                ! srot_saveamp(:,:,iFKS,1)=rot_saveamp(:,:)
                ! calculatedBorn=.false.
-               call sborn_amp_vec(p_born_coll,coll_n1_amp2,coll_n1_jamp2,coll_n1_amp_split
+               call sborn_amp_vec_frame(p_born_coll,coll_n1_amp2,coll_n1_jamp2,coll_n1_amp_split
      $                    ,coll_n1_split_cnt,wgt_coll_n1,coll_n1_cnt,coll_n1_saveamp
      $                    ,icoup+3,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
                sc1_amp_split(:,iFKS,ivec)=coll_n1_amp_split(:)
                sc1_amp_split_cnt(:,:,:,iFKS,ivec)=coll_n1_split_cnt(:,:,:)
                sc1_ans_cnt(:,:,iFKS,ivec)=coll_n1_cnt(:,:)
                sc1_saveamp(:,:,iFKS,ivec)=coll_n1_saveamp(:,:)
-               call sborn_amp_vec(p_born,n1_amp2,n1_jamp2,n1_amp_split
+               call sborn_amp_vec_frame(p_born,n1_amp2,n1_jamp2,n1_amp_split
      $                    ,n1_amp_split_cnt,wgt_n1,n1_ans_cnt,n1_saveamp
      $                    ,icoup+3,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
                sn1_amp2(:,iFKS,ivec)=n1_amp2(:)
@@ -712,7 +712,7 @@ c Pick the first one because that's the one with the soft singularity
             ! if (skip_iter) cycle
          ! p_born_nb(:,:) = p_born(:,:)
          ! if (.not.passcuts_born_vec(ivec)) goto 52
-         call sborn_amp_vec(p_born,born_amp2,born_jamp2,born_amp_split
+         call sborn_amp_vec_frame(p_born,born_amp2,born_jamp2,born_amp_split
      $                     ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp
      $                     ,indent+coup_step,ivec,nFKS_nbody,BORN_FLAVOR_INDEX_D(nFKS_nbody))
 
@@ -750,7 +750,7 @@ c is active in at least one lane (real_active is set per lane and row).
             coup_index(ivec)=(ivec-1)*coup_step+4*(iFKS-1)+4
             g_strong(ivec)=G_vec(coup_index(ivec))
          enddo
-         call smatrix_real_vec_batch(sp1(:,:,iFKS,1:vector_size),
+         call smatrix_real_vec_batch_frame(sp1(:,:,iFKS,1:vector_size),
      $        g_strong,sreal_amp_split(:,iFKS,1:vector_size),
      $        sfx_ev(iFKS,1:vector_size),
      $        real_active(iFKS,1:vector_size),coup_index,vector_size,

@@ -550,7 +550,7 @@ c
       ! this contribution is needed only for i_fks being a gluon/photon
       ! (soft limit)
       if (is_aorg(i_fks))then
-         call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
+         call sborn_amp_frame(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
 c i_fks is gluon/photon
          call set_cms_stuff(izero)
          call sreal(p1_cnt(0,1,0),zero,y_ij_fks,wgts,ret_amp_split
