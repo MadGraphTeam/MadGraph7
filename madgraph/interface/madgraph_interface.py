@@ -7299,7 +7299,6 @@ This implies that with decay chains:
         for amp in amplitudes:
             mother = [l.get('id') for l in amp['process'].get('legs') \
                                                         if not l.get('state')]
-            misc.sprint(mother)
             if 1 == len(mother):
                 try:
                     decay_table = decay_tables[abs(mother[0])]
@@ -7315,13 +7314,10 @@ This implies that with decay chains:
                              else -x for x in child]
                 child.sort()
                 child.insert(0, len(child))
-                misc.sprint(child)
-                misc.sprint(list(decay_table.keys()))  
                 #check if the decay is present or not:
                 if tuple(child) not in list(decay_table.keys()):
                     if any(id in self._curr_model.get('merged_particles') for id in child):
                         all_keys =[list(k) for k in decay_table.keys()]
-                        misc.sprint(all_keys)
                         for one_key in all_keys:
                             for i,pid in enumerate(one_key):
                                 if i ==0:
@@ -7331,20 +7327,14 @@ This implies that with decay chains:
                                         one_key[i] = mid
                                     if -pid in pdgs:
                                         one_key[i] = -mid
-                        misc.sprint(all_keys)
                         for i,k in enumerate(all_keys):
-                            misc.sprint(k)
                             new_k = list(k[1:])
                             new_k.sort()
                             new_k.insert(0, k[0])
-                            misc.sprint(new_k) 
                             all_keys[i] = tuple(new_k)            
-                        misc.sprint(all_keys)
                         if tuple(child) not in all_keys:
-                            misc.sprint('to rm' , child)
                             to_remove.append(amp)
                     else:
-                        misc.sprint('to rm' , child)
                         to_remove.append(amp)
         def remove_amp(amps, to_remove):
             for amp in amps[:]:
@@ -7355,8 +7345,7 @@ This implies that with decay chains:
                     for decay in amp.get('decay_chains'):
                         remove_amp(decay.get('amplitudes'), to_remove)
         remove_amp(self._curr_amps, to_remove)
-        misc.sprint("Removed %s amplitudes that are not in the decay table" % len(to_remove))
-        misc.sprint("Remaining amplitudes: %s" % len(self._curr_amps))
+        logger.debug("Removed %s amplitudes that are not in the decay table" % len(to_remove))
 
 
     def import_ufo_model(self, model_name):
