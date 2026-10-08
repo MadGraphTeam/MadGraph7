@@ -374,11 +374,34 @@ C
       integer nfksprocess
       common/c_nfksprocess/nfksprocess
       logical cond_ij
+      LOGICAL BORN_CACHE_OK
+      INTEGER BORN_CACHE_NFKS
+      COMMON /C_BORN_CACHE/ BORN_CACHE_OK, BORN_CACHE_NFKS
+      COMPLEX*16 BORN_CACHE_ANS(2,0:NSQAMPSO)
+      SAVE BORN_CACHE_ANS
 C ----------
 C BEGIN CODE
 C ----------
       iden=iden_values(nfksprocess)
       glu_ij = ij_values(nfksprocess)
+      if (calculatedBorn) then
+         do j=1,nexternal-1
+            if (savemom(j,1).ne.p1(0,j) .or. savemom(j,2).ne.p1(3,j)) then
+               calculatedBorn=.false.
+               write (*,*) "momenta not the same in Born"
+	       stop
+            endif
+         enddo
+      endif
+C     A repeated call: the same momenta as the last evaluation (the
+C     amplitudes are cached) and the same FKS configuration, and nothing
+C     has touched the cached amplitudes since (BORN_CACHE_OK, reset by
+C     BORN for IMODE = 0). The result, the colour density RHO and
+C     AMP2/JAMP2 are still those of the last evaluation.
+      IF (calculatedBorn .AND. BORN_CACHE_OK .AND. nFKSprocess.EQ.BORN_CACHE_NFKS) THEN
+        ANS(:,:) = BORN_CACHE_ANS(:,:)
+        RETURN
+      ENDIF
       NTRY(nFKSprocess)=NTRY(nFKSprocess)+1
       if (NTRY(nFKSprocess).lt.2) then
        if (glu_ij.eq.0) then
@@ -399,15 +422,6 @@ C ----------
           jamp2(jj,I)=0d0
       ENDDO
       ENDDO
-      if (calculatedBorn) then
-         do j=1,nexternal-1
-            if (savemom(j,1).ne.p1(0,j) .or. savemom(j,2).ne.p1(3,j)) then
-               calculatedBorn=.false.
-               write (*,*) "momenta not the same in Born"
-	       stop
-            endif
-         enddo
-      endif
       if (.not.calculatedBorn) then
          do j=1,nexternal-1
             savemom(j,1)=p1(0,j)
@@ -465,6 +479,9 @@ C     is only needed on the first call, to find the good helicities.
       ANS(2,0)=ANS(2,0)+ANS(2,I)
       ENDDO
       calculatedBorn=.true.
+      BORN_CACHE_ANS(:,:)=ANS(:,:)
+      BORN_CACHE_NFKS=nFKSprocess
+      BORN_CACHE_OK=.TRUE.
       END
 
 
@@ -531,11 +548,17 @@ C
       logical cond_ij
       logical force_ijglu_zero
       common /to_force_ijglu/ force_ijglu_zero
+      LOGICAL BORN_CACHE_OK
+      INTEGER BORN_CACHE_NFKS
+      COMMON /C_BORN_CACHE/ BORN_CACHE_OK, BORN_CACHE_NFKS
 
 %(ij_lines)s
 C ----------
 C BEGIN CODE
 C ----------
+C     a single-helicity call (SBORN_ONEHEL) adds to AMP2/JAMP2 and may
+C     overwrite saved amplitudes: the cached SBORN result is stale
+      IF (IMODE.EQ.0) BORN_CACHE_OK=.FALSE.
       borns(:,:) =0d0
       ans(:,:) = (0d0, 0d0)
       jamph(:,:,:) = (0d0, 0d0)
@@ -1001,6 +1024,10 @@ C integers over DENOM)
       INTEGER I
       INTEGER CF(NCF,0:NLINKS), DENOM(0:NLINKS)
       COMMON /C_BORN_COLOR_MATRICES/ CF, DENOM
+      LOGICAL BORN_CACHE_OK
+      INTEGER BORN_CACHE_NFKS
+      COMMON /C_BORN_CACHE/ BORN_CACHE_OK, BORN_CACHE_NFKS
+      DATA BORN_CACHE_OK /.FALSE./, BORN_CACHE_NFKS /0/
 %(color_link_data_lines)s
       END
 
