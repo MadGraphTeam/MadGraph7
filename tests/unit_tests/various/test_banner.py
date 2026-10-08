@@ -1834,8 +1834,35 @@ class TestRunCardMG7Histograms(unittest.TestCase):
     def test_decay_process_uses_the_decaying_mass(self):
         """a 1 -> N width has no collider energy to scale the ranges with"""
         rc = self.build([[mg7_proc([6], [5, 24])]], ninitial=1)
-        self.assertEqual(rc['histograms']['sqrt_s']['max'], 200.)
         self.assertEqual(rc['histograms']['bottom-pt']['max'], 100.)
+        self.assertEqual(rc['histograms']['bottom-w-pair_mass']['max'], 200.)
+        # madspace's sqrt_s is that of two beams
+        self.assertNotIn('sqrt_s', rc['histograms'])
+
+    def test_decaying_mass_without_parameter_dict(self):
+        """only a ModelReader has a 'parameter_dict'
+
+        At output time (MadSpin's mg7 decays) the model can be a plain Model
+        or a LoopModel: its LoopModel.get('parameter_dict') used to raise a
+        PhysicsObjectError, and a Model gave 0. MW is an internal parameter
+        of sm-full, so it has to be evaluated from the external ones.
+        """
+        import models.import_ufo as import_ufo
+        import madgraph.core.base_objects as base_objects
+        import madgraph.loop.loop_base_objects as loop_base_objects
+
+        full = import_ufo.import_model('sm-full')
+        for cls in (base_objects.Model, loop_base_objects.LoopModel):
+            model = cls()
+            for key in model:
+                if key in full:
+                    model[key] = full[key]
+            self.assertNotIn('parameter_dict', model)
+            proc = mg7_proc([24], [-11, 12], model=model)
+            mass = bannermod.RunCardMG7._decaying_mass([[proc]])
+            self.assertAlmostEqual(mass, 80.419, places=3)
+            # evaluated on the side: the model itself is not touched
+            self.assertIsNone(model.get_parameter('mdl_MW').value)
 
     def test_every_pair_gets_an_invariant_mass(self):
         rc = self.build([[mg7_proc([21, 21], [6, -6, 25])]])

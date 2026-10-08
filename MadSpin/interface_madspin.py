@@ -2950,6 +2950,9 @@ class MadSpinInterface(extended_cmd.Cmd):
         # _worker_refill passes it on. Nothing is added to the owner->waiter
         # publish contract, which stays exactly the one ms_refill.gen marker.
         run_card['run']['output_format'] = 'lhe_npy'
+        # nobody looks at the plots of a decay pool, and filling them costs
+        # an observable evaluation per event: same as `set histograms OFF`
+        run_card.remove_all_histograms()
         run_card.write(run_card_path)
         with open(pjoin(decay_dir, 'Cards', 'param_card.dat'), 'w') as fsock:
             fsock.write(self.banner['slha'])

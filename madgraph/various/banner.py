@@ -7534,8 +7534,8 @@ class RunCardMG7(RunCard):
         except (KeyError, TypeError, ValueError):
             return 0., False
 
-    @staticmethod
-    def _decaying_mass(proc_def):
+    @classmethod
+    def _decaying_mass(cls, proc_def):
         """Numerical mass of the decaying particle of a 1 -> N process."""
 
         for plist in proc_def or []:
@@ -7547,10 +7547,42 @@ class RunCardMG7(RunCard):
                     name = particle.get('mass')
                     if str(name).lower() == 'zero':
                         return 0.
-                    return abs(float(model.get('parameter_dict')[name]))
-                except (AttributeError, KeyError, IndexError, TypeError, ValueError):
+                    return abs(cls._parameter_value(model, name).real)
+                except Exception:
                     continue
         return 0.
+
+    @staticmethod
+    def _parameter_value(model, name):
+        """Numerical value of the model parameter `name`, from the default
+        values of the external parameters.
+
+        Only a ModelReader has a 'parameter_dict'; at output time the model is
+        usually a plain Model or LoopModel, whose internal parameters (MW in
+        the sm) carry an expression and no value. The expressions are
+        evaluated in a scratch namespace, so the model itself is left as is.
+        """
+
+        if 'parameter_dict' in model and model['parameter_dict']:
+            return complex(model['parameter_dict'][name])
+
+        import models.model_reader as model_reader
+        namespace = dict(vars(model_reader))
+        namespace['ZERO'] = 0.
+        for param in model['parameters'][('external',)]:
+            namespace[param.name] = param.value
+        if name in namespace:
+            return complex(namespace[name])
+        for func in model['functions']:
+            exec("def %s(%s):\n   return %s" % (func.name,
+                       ",".join(func.arguments), func.expr), namespace)
+        for key in sorted((k for k in model['parameters'] if k != ('external',)),
+                          key=len):
+            for param in model['parameters'][key]:
+                namespace[param.name] = eval(param.expr, namespace)
+                if param.name == name:
+                    return complex(namespace[name])
+        raise KeyError(name)
 
     # MadGraph gives a leg whose flavours were merged one of these codes; the
     # mg7 runtime resolves them to the same representatives (clean_pids /
@@ -7690,8 +7722,8 @@ class RunCardMG7(RunCard):
     def set_default_histograms(self, proc_characteristic, proc_def):
         """Fill [histograms] with a starting set of plots for this process:
         the pt and eta of every final-state particle, the invariant mass of
-        every pair of them, the partonic sqrt(s) and the distribution of the
-        event weight.
+        every pair of them, the partonic sqrt(s) (not for a decay) and the
+        distribution of the event weight.
 
         The observables are named after the [multiparticles] groups, with the
         "_1", "_2", ... suffix selecting the hardest, second hardest, ... of a
@@ -7748,8 +7780,11 @@ class RunCardMG7(RunCard):
                     collections.OrderedDict(
                         [('min', 0.), ('max', mass_max), ('bin_count', bins)])
                 pairs += 1
-        histograms['sqrt_s'] = collections.OrderedDict(
-            [('min', 0.), ('max', mass_max), ('bin_count', bins)])
+        if not is_decay:
+            # madspace's sqrt_s adds up the two beams: a decay has one, at a
+            # fixed mass, so there is nothing to plot
+            histograms['sqrt_s'] = collections.OrderedDict(
+                [('min', 0.), ('max', mass_max), ('bin_count', bins)])
         # "weight" is not an observable of the momenta: it is the reserved key
         # for the distribution of the event weight itself (see
         # MadgraphProcess.weight_histogram_key in the mg7 launcher)
