@@ -4854,8 +4854,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # We need one copy of the decay element diagrams for each
         # old_wf to be replaced, since we need different wavefunction
         # numbers for them
-        decay_elements = [copy.deepcopy(d) for d in \
-                          [ decay.get('diagrams') ] * len(old_wfs)]
+        decay_elements = [copy.deepcopy(decay.get('diagrams'),
+                                        decay.shared_models_memo())
+                          for old_wf in old_wfs]
 
         # Need to replace Particle in all wavefunctions to avoid
         # deepcopy
@@ -4976,7 +4977,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                             # Don't want to affect original decay
                             # wavefunctions, so need to deepcopy
                             decay_diag_wfs = copy.deepcopy(\
-                                                    decay_diag.get('wavefunctions'))
+                                                    decay_diag.get('wavefunctions'),
+                                                    decay.shared_models_memo())
                             # Need to replace Particle in all
                             # wavefunctions to avoid deepcopy
                             for i, wf in enumerate(decay_diag.get('wavefunctions')):
@@ -5143,6 +5145,16 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                                    self.get('diagrams')[\
                                      diagram.get('number') - numdecay - 1:\
                                      diagram.get('number') - 1]], [])
+
+                # The loop below only acts on wavefunctions already present
+                # in earlier_wfs: skip building the (costly) mother arrays of
+                # all later wavefunctions when there is none, e.g. always for
+                # the first copy (numdecay == 0, the only one for a decay
+                # with a single diagram).
+                earlier_numbers = {w.get('number') for w in earlier_wfs}
+                if not any(w.get('number') in earlier_numbers
+                           for w in diagram.get('wavefunctions')):
+                    continue
 
                 later_wfs = sum([d.get('wavefunctions') for d in \
                                    self.get('diagrams')[\
@@ -5489,6 +5501,18 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         return max([sum([ len(d.get('wavefunctions')) for d in \
                        self.get('diagrams')])] + extra)
         
+    def shared_models_memo(self):
+        """A copy.deepcopy memo that keeps the models shared: every
+        wavefunction and amplitude keeps its model as attribute (see
+        HelasWavefunction.set), so a plain deepcopy of a diagram also copies
+        the complete model.  Use a new memo for each deepcopy."""
+        memo = {}
+        for obj in self.get_all_wavefunctions() + self.get_all_amplitudes():
+            model = getattr(obj, 'model', None)
+            if model is not None:
+                memo[id(model)] = model
+        return memo
+
     def get_all_wavefunctions(self):
         """Gives a list of all wavefunctions for this ME"""
 
@@ -7661,7 +7685,8 @@ class HelasDecayChainProcess(base_objects.PhysicsObject):
                 # Avoid Python copying the complete model every time
                 for i, process in enumerate(core_process.get('processes')):
                     process.set('model',base_objects.Model())
-                matrix_element = copy.deepcopy(core_process)
+                matrix_element = copy.deepcopy(core_process,
+                                            core_process.shared_models_memo())
                 # Avoid Python copying the complete model every time
                 for i, process in enumerate(matrix_element.get('processes')):
                     process.set('model', model_bk)
