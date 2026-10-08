@@ -51,7 +51,7 @@ class LoopCutFlavorTest(unittest.TestCase):
             return result
 
         cut = object_with(spin=2, is_loop=True, number=0, mothers=[])
-        external = object_with(spin=2, is_loop=False, number=1,
+        external = object_with(spin=2, is_loop=False, number=1, mothers=[],
                                number_external=1, state='incoming')
         coupling = base_objects.FLV_Coupling()
         coupling.set('flavors', {(1, 1, 0): 'GC_D', (2, 2, 0): 'GC_U'})
@@ -91,7 +91,7 @@ class LoopCutFlavorTest(unittest.TestCase):
             return result
 
         boson = object_with(spin=3, is_loop=True, pdg_code=24)
-        external = object_with(spin=2, is_loop=False, number=2,
+        external = object_with(spin=2, is_loop=False, number=2, mothers=[],
                                number_external=2, state='outgoing', pdg_code=-81)
         coupling = base_objects.FLV_Coupling()
         coupling.set('flavors', {(3, 2, 0): 'GC_US', (2, 3, 0): 'GC_SU'})
@@ -145,6 +145,100 @@ class LoopCutFlavorTest(unittest.TestCase):
         process.set('forbidden_particles', [])
         LoopProcessExporterFortranSA.set_virtual_flavor_writer_state(writer, {}, matrix)
         self.assertNotIn('MERGE(', writer._resolve_nonoptimized_loop_couplings(amplitude)[0][0])
+
+    def test_shared_open_cut_uses_each_closing_fermion(self):
+        """Shared boson-first prefixes must follow distinct closing flavours."""
+        from unittest.mock import Mock, patch
+        from madgraph.loop import loop_helas_objects
+
+        def wf(number, spin=2, mothers=(), loop=True, coupling=('GC',),
+               outgoing=2, loop_leg=1, external=1):
+            values = dict(number=number, spin=spin, mothers=list(mothers),
+                          is_loop=loop, pdg_code=81 if spin == 2 else 21,
+                          coupling=list(coupling), number_external=external,
+                          state='incoming')
+            result = Mock()
+            result.get.side_effect = values.__getitem__
+            result.get_aloha_info.return_value = (
+                ['FFV1'], ['L%d' % loop_leg] if loop else [], outgoing)
+            result.get_loop_mother.return_value = next(
+                (m for m in mothers if m.get('is_loop')), None)
+            return result
+
+        charged = base_objects.FLV_Coupling()
+        charged.set('name', 'FLV_CC')
+        charged.set('flavors', {(1, 2, 0): 'GC_12', (2, 3, 0): 'GC_23'})
+        neutral = base_objects.FLV_Coupling()
+        neutral.set('name', 'FLV_Z')
+        neutral.set('flavors', {(1, 1, 0): 'GC_D', (2, 2, 0): 'GC_U'})
+        cut = wf(-1)
+        boson = wf(1, spin=3, loop=False)
+        external = wf(2, loop=False, external=2)
+        # This attached tree inherits a misleading number_external=1.
+        attached = wf(5, mothers=(external, boson), loop=False,
+                      coupling=(charged,), outgoing=1)
+        prefix = wf(3, mothers=(cut, boson), coupling=(neutral,))
+        middle = wf(4, spin=3, mothers=(prefix, external), outgoing=3)
+        final1 = wf(5, mothers=(middle, external), loop_leg=3)
+        penultimate = wf(6, mothers=(middle, attached), loop_leg=3)
+        final2 = wf(7, mothers=(penultimate, boson), coupling=(charged,),
+                    outgoing=1, loop_leg=2)
+
+        def lamp(final, number):
+            result = Mock()
+            amplitude = Mock()
+            amplitude.get.return_value = number
+            chain = ([cut, prefix, middle, final] if number == 1 else
+                     [cut, prefix, middle, penultimate, final])
+            values = dict(wavefunctions=chain,
+                          coupling=[c for w in chain[1:] for c in w.get('coupling')], loop_group_id=number,
+                          loopsymmetryfactor=1, multiplier=1,
+                          amplitudes=[amplitude])
+            result.get.side_effect = values.__getitem__
+            result.get_starting_loop_wavefunction.return_value = cut
+            result.get_final_loop_wavefunction.return_value = final
+            result.get_analytic_info.return_value = 2
+            result.get_lcut_size.return_value = 4
+            return result
+
+        lamps = [lamp(final1, 1), lamp(final2, 2)]
+        model = base_objects.Model({'merged_particles': {81: [1, 2, 3, 4]}})
+        default = helas_call_writers.FortranUFOHelasCallWriter(model)
+        first = default._resolve_nonoptimized_loop_couplings(lamps[0])[0]
+        second = default._resolve_nonoptimized_loop_couplings(lamps[1])[0]
+        self.assertIn('FLAVOR(2)', first[0])
+        self.assertIn('GET_FLV_PARTNER(FLV_CC,FLAVOR(2),.TRUE.)', second[0])
+        self.assertNotIn('FLAVOR(1)', second[0])
+        self.assertIn('MP_GET_FLV_COUPLING_VALUE', second[1])
+
+        diagrams = []
+        for number, loopamp in enumerate(lamps):
+            diagram = Mock()
+            # The second diagram owns no copy of its shared prefix.
+            diagram.get.side_effect = dict(number=number,
+                loop_wavefunctions=[prefix, middle, final1] if number == 0
+                                   else [penultimate, final2]).__getitem__
+            diagram.get_loop_amplitudes.return_value = [loopamp]
+            diagrams.append(diagram)
+        matrix = Mock(spec=loop_helas_objects.LoopHelasMatrixElement)
+        process = Mock()
+        process.get.return_value = True
+        matrix.get.side_effect = dict(processes=[process]).__getitem__
+        matrix.get_loop_diagrams.return_value = diagrams
+        optimized = helas_call_writers.FortranUFOHelasCallWriterOptimized(model)
+        with patch.object(optimized, '_flavor_mask_prefix', return_value=''), \
+             patch.object(optimized, 'get_wavefunction_call',
+                          side_effect=lambda w: 'STEP%d' % w.get('number')):
+            calls, unused = optimized.get_coef_construction_calls(matrix)
+        first_seed = calls.index('LOOP_FLAVOR(-1)=W(2)%%FLV_INDEX')
+        second_seed = calls.index('LOOP_FLAVOR(-1)='
+            'GET_FLV_PARTNER(FLV_CC,W(5)%%FLV_INDEX,.TRUE.)')
+        self.assertEqual(calls[first_seed + 1:first_seed + 4],
+                         ['STEP3', 'STEP4', 'STEP5'])
+        self.assertEqual(calls[second_seed + 1:second_seed + 5],
+                         ['STEP3', 'STEP4', 'STEP6', 'STEP7'])
+        self.assertIn('CREATE_LOOP_COEFS', calls[first_seed + 4])
+        self.assertIn('CREATE_LOOP_COEFS', calls[second_seed + 5])
 
 
 class HelasModelTestSetup(unittest.TestCase):

@@ -185,7 +185,8 @@ class TestCmdLoop(unittest.TestCase):
         MadLoop exporters are generated and compared with the same oracle.
         """
 
-        scratch_root = '/scratch' if os.path.isdir('/scratch') else None
+        scratch_root = os.environ.get('TMPDIR') or (
+            '/scratch' if os.path.isdir('/scratch') else None)
         work = tempfile.mkdtemp(prefix='mg7_grouped_virtual_',
                                 dir=scratch_root)
         hep_tools = pjoin(MG5DIR, 'HEPTools')
@@ -220,7 +221,9 @@ class TestCmdLoop(unittest.TestCase):
                         *setup,
                         'import model %s' % model,
                         *definitions,
-                        'generate %s' % process,
+                        *(['generate %s' % process] if isinstance(process, str)
+                          else ['generate %s' % process[0]] +
+                          ['add process %s' % item for item in process[1:]]),
                         'output %s -f' % output,
                         'quit', '']))
                 generation_log = self._run_checked(
@@ -292,6 +295,35 @@ class TestCmdLoop(unittest.TestCase):
                 shutil.rmtree(work, ignore_errors=True)
             else:
                 logger.error('Retained failed virtual oracle output at %s', work)
+
+    def test_grouped_nlo_virtual_values_zj_open_cuts(self):
+        """Boson-first open cuts reproduce independent polarized Z+jet loops.
+
+        Check both beam orders, particles/antiparticles and all four light
+        flavours, then reverse the row order to expose shared-prefix state.
+        Both exporters must match Born, finite, single and double poles.
+        """
+        fixture = 'nlo_pre_grouping_zj_oracle.json'
+        with open(pjoin(MG5DIR, 'tests', 'input_files', fixture)) as stream:
+            reference = json.load(stream)['virtual']['oracles']
+        expected = {}
+        for gluon_first in (True, False):
+            rows = tuple((1, f, 1, f) if gluon_first else (f, 1, 1, f)
+                         for f in (1, 2, 3, 4))
+            for anti in ('', 'x'):
+                group = 'Q' + anti
+                channel = 'g' + group if gluon_first else group + 'g'
+                values = {}
+                for row, species in zip(rows, ('d', 'u', 'd', 'u')):
+                    physical = species + anti
+                    beams = ('g' + physical if gluon_first else physical + 'g')
+                    values[row] = reference['P0_%s_z0%s' % (beams, physical)]
+                expected['P0_%s_z0%s' % (channel, group)] = (
+                    rows + rows[::-1], values, None)
+        self._check_grouped_virtual_oracle(
+            ['g q > z{0} q [QCD]', 'q g > z{0} q [QCD]'],
+            fixture, expected,
+            definitions=('define q = d u s c d~ u~ s~ c~',), warmup=8)
 
     def test_grouped_nlo_virtual_values_all_physical_rows(self):
         """Grouped virtual rows reproduce fixed d/u/s/c Born channels.

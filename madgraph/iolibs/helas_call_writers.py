@@ -1388,6 +1388,56 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                     conditions.extend('%s.NE.%d' % (flavor, index) for index in indices)
         return '.AND.'.join(dict.fromkeys(conditions))
 
+    def _fermion_flavor_expression(self, wavefunction, use_wavefunctions=False):
+        """Resolve a fermion's flavour from its physical attached tree.
+
+        An internal tree's number_external need not identify its fermion leaf.
+        Default loop calls are outside the helicity loop, so reconstruct the
+        index from external FLAVOR entries and intervening partner maps.  The
+        optimized writer can instead read the already evaluated attached W.
+        Returning None at an initial cut keeps closed fermion rings separate
+        from open lines whose flavour is fixed by an attached tree.
+        """
+        if wavefunction.get('spin') != 2:
+            return None
+        is_loop = wavefunction.get('is_loop')
+        if use_wavefunctions and not is_loop:
+            return '%s%%%%FLV_INDEX' % self.format_helas_object(
+                'W(', str(wavefunction.get('number')))
+        if not wavefunction.get('mothers'):
+            return None if is_loop else 'FLAVOR(%d)' % wavefunction.get(
+                'number_external')
+        mother = self._loop_flavor_mother(wavefunction)
+        if mother is None:
+            return None
+        source = self._fermion_flavor_expression(mother, use_wavefunctions)
+        if source is None:
+            return None
+        unused, tags, outgoing = wavefunction.get_aloha_info(True)
+        source_leg = (next((int(tag[1:]) for tag in tags
+                           if tag.startswith('L')), None)
+                      if mother.get('is_loop') else 3 - outgoing)
+        couplings = [coupling for coupling in wavefunction.get('coupling')
+                     if self._is_flavor_coupling(coupling)]
+        if couplings and source_leg != outgoing:
+            if source_leg not in (1, 2) or outgoing not in (1, 2):
+                raise self.PhysicsObjectError('Cannot trace fermion flavour')
+            return 'GET_FLV_PARTNER(%s,%s,%s)' % (
+                couplings[0].get('name'), source,
+                '.TRUE.' if source_leg == 2 else '.FALSE.')
+        return source
+
+    def _open_loop_flavor_seed(self, loopamp, use_wavefunctions=False):
+        """Resolve a merged fermion cut from the segment closing that cut."""
+        if not self['model'].get('merged_particles'):
+            return None
+        cut = loopamp.get_starting_loop_wavefunction()
+        if (cut.get('spin') != 2 or abs(cut.get('pdg_code')) not in
+                self['model'].get('merged_particles')):
+            return None
+        return self._fermion_flavor_expression(
+            loopamp.get_final_loop_wavefunction(), use_wavefunctions)
+
     def _resolve_nonoptimized_loop_couplings(self, loopamp):
         """Resolve merged couplings passed to a default-output loop call.
 
@@ -1398,6 +1448,10 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
         """
 
         loop_flavors = {}
+        cut_seed = self._open_loop_flavor_seed(loopamp)
+        if cut_seed is not None:
+            loop_flavors[loopamp.get_starting_loop_wavefunction().get(
+                'number')] = cut_seed
         resolved = []
         original = []
         for wavefunction in loopamp.get('wavefunctions'):
@@ -1415,12 +1469,7 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                     source = loop_flavors.get(source_wf.get('number'))
                     source_leg = loop_leg
                 else:
-                    # Default-output LOOP_* reduction calls are emitted after
-                    # the helicity loop, where H no longer identifies a valid
-                    # W(:,H) entry.  External FLV_INDEX is exactly the stable
-                    # per-leg FLAVOR value initialized for this virtual row.
-                    source = 'FLAVOR(%d)' % source_wf.get(
-                        'number_external')
+                    source = self._fermion_flavor_expression(source_wf)
                     if outgoing in (1, 2):
                         source_leg = 3 - outgoing
                     else:
@@ -1953,6 +2002,22 @@ class FortranUFOHelasCallWriterOptimized(FortranUFOHelasCallWriter):
             for lwf in ldiag.get('loop_wavefunctions'):
                     res.append(self.get_wavefunction_call(lwf))
             for lamp in ldiag.get_loop_amplitudes():
+                cut_seed = self._open_loop_flavor_seed(lamp, True)
+                if cut_seed is not None:
+                    # A shared polynomial prefix can belong to open lines
+                    # closing on different physical fermions.  Rebuild this
+                    # complete chain with its own cut flavour before use;
+                    # changing the shared cut slot alone leaves stale prefixes.
+                    cut = lamp.get_starting_loop_wavefunction()
+                    res.append('LOOP_FLAVOR(%d)=%s' % (
+                        cut.get('number'), cut_seed))
+                    chain = []
+                    current = lamp.get_final_loop_wavefunction()
+                    while current.get('mothers'):
+                        chain.append(current)
+                        current = current.get_loop_mother()
+                    res.extend(self.get_wavefunction_call(wavefunction)
+                               for wavefunction in reversed(chain))
                 # If the loop grouping is not desired, then make sure it is 
                 # turned off here. It is of course not to be included for 
                 # loop-induced processes
