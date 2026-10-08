@@ -5827,8 +5827,12 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         amplitude does not cover every leg, or a flavor tag cannot be computed.
         """
 
+        # NB: no comprehension variable may be called `id` in this function:
+        # the nested helpers call the builtin id(), which makes it a cell
+        # variable, and python 3.12 leaves that cell unbound after an inlined
+        # comprehension over `id` (UnboundLocalError in id(node)).
         nleg = len(pdgs)
-        leg_values = [to_map.get(abs(id), [1]) for id in pdgs]
+        leg_values = [to_map.get(abs(pdg), [1]) for pdg in pdgs]
         tables = {}      # id(node) -> {partial assignment: tag}
         prop_cache = {}  # (id(node), mother tags) -> tag (0 = invalid)
         tagged = []      # nodes whose 'flavortag' must be dropped at the end
@@ -6046,17 +6050,19 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             try:
                 diag_flavors = self._valid_flavors_per_diagram(model, pdgs,
                                                                to_map)
-            except self.FlavorTreeUnsupported:
-                diag_flavors = None
+            except self.FlavorTreeUnsupported as error:
+                logger.debug('flavors of %s: full enumeration (%s)' % (
+                    self.get('processes')[0].nice_string().replace(
+                        'Process: ', ''), error))
         if diag_flavors is not None:
             position = [dict((value, i) for i, value in
-                             enumerate(to_map.get(abs(id), [1])))
-                        for id in pdgs]
+                             enumerate(to_map.get(abs(pdg), [1])))
+                        for pdg in pdgs]
             valid = {flavor for flavors in diag_flavors for flavor in flavors}
             for one_flavor in sorted(valid,
                     key=lambda f: [pos[v] for pos, v in zip(position, f)]):
-                one_flavor_pdg = tuple(value if abs(id) in to_map else abs(id)
-                                       for value, id in zip(one_flavor, pdgs))
+                one_flavor_pdg = tuple(value if abs(pdg) in to_map else abs(pdg)
+                                       for value, pdg in zip(one_flavor, pdgs))
                 candidate = self._flavor_candidate(one_flavor, one_flavor_pdg,
                                     pdgs, pdg_signs, restrictions, ninit)
                 if candidate is None:
