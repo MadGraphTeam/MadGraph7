@@ -1959,3 +1959,283 @@ def test_the_fxfx_measure_lets_the_jet_pair_with_the_w():
         momenta,
     )
     assert fxfx < 0.95, "the FxFx measure should pair a visible fraction with the W"
+
+
+# --------------------------------------------------------------------------
+# clustering_history: over every diagram, or along one diagram
+# --------------------------------------------------------------------------
+
+HISTORY = ms.MLMClustering.ClusteringHistory
+
+
+def history_clustering(diagrams, pdg_ids, history, **kwargs):
+    kwargs.setdefault("scale_scheme", ms.MLMClustering.ScaleScheme.madevent)
+    return make_clustering(
+        diagrams, external_pdg_ids=pdg_ids, clustering_history=history, **kwargs
+    )
+
+
+def along(clustering, momenta, diagram):
+    diagram = np.broadcast_to(np.asarray(diagram, dtype=np.int32), len(momenta))
+    return [
+        np.asarray(v)
+        for v in ms.MLMClusteringAlongDiagram(clustering)(
+            momenta, np.ascontiguousarray(diagram)
+        )
+    ]
+
+
+def test_all_diagrams_is_the_default_history(process):
+    _, diagrams, pdg_ids = process
+    clustering = make_clustering(diagrams, external_pdg_ids=pdg_ids)
+    assert clustering.clustering_history == HISTORY.all_diagrams
+    assert len(clustering.diagram_start_states) == 0
+
+
+def test_every_diagram_gets_a_state_machine_after_the_union_one(process):
+    _, diagrams, pdg_ids = process
+    union = history_clustering(diagrams, pdg_ids, HISTORY.all_diagrams)
+    per_diagram = history_clustering(diagrams, pdg_ids, HISTORY.diagram)
+    machine = per_diagram.cluster_state_machine
+    union_size = len(union.cluster_state_machine)
+    assert machine[:union_size] == union.cluster_state_machine
+    starts = np.asarray(per_diagram.diagram_start_states)
+    assert len(starts) == sum(len(d["permutations"]) for d in diagrams)
+    assert np.all(starts >= union_size)
+    assert np.all(starts < len(machine))
+    assert len(set(starts)) == len(starts)
+
+
+def test_the_history_setting_leaves_the_union_walk_alone(process):
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams)
+    reference = run_all(history_clustering(diagrams, pdg_ids, HISTORY.all_diagrams), momenta)
+    for history in (HISTORY.diagram, HISTORY.madevent):
+        other = run_all(history_clustering(diagrams, pdg_ids, history), momenta)
+        for a, b in zip(reference, other):
+            np.testing.assert_array_equal(a, b)
+
+
+def test_the_union_walk_cannot_be_walked_along_a_diagram(process):
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams, batch_size=4)
+    clustering = history_clustering(diagrams, pdg_ids, HISTORY.all_diagrams)
+    with pytest.raises(Exception):
+        along(clustering, momenta, 0)
+
+
+def test_a_history_along_a_diagram_reports_that_diagram(process):
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams)
+    clustering = history_clustering(diagrams, pdg_ids, HISTORY.diagram, xqcut=20.0)
+    count = len(clustering.diagram_start_states)
+    picked = np.random.default_rng(3).integers(0, count, len(momenta))
+    out = along(clustering, momenta, picked)
+    np.testing.assert_array_equal(out[4], picked)
+    for value in out:
+        assert np.all(np.isfinite(value))
+
+
+def test_a_single_diagram_clusters_along_itself_as_its_union_does(process):
+    """A process made of one diagram has nothing to merge, so the history over
+    every diagram and the one along that diagram are the same walk."""
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams)
+    single = [dict(diagrams[0], permutations=diagrams[0]["permutations"][:1])]
+    union = run_all(history_clustering(single, pdg_ids, HISTORY.all_diagrams), momenta)
+    full = history_clustering(diagrams, pdg_ids, HISTORY.diagram)
+    out = along(full, momenta, 0)
+    for a, b in zip(union, out):
+        np.testing.assert_array_equal(a, b)
+
+
+def test_the_madevent_history_is_either_the_union_or_the_diagram(process):
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams)
+    count = sum(len(d["permutations"]) for d in diagrams)
+    picked = np.random.default_rng(4).integers(0, count, len(momenta))
+    union = run_all(history_clustering(diagrams, pdg_ids, HISTORY.madevent), momenta)
+    diagram = along(history_clustering(diagrams, pdg_ids, HISTORY.diagram), momenta, picked)
+    madevent = along(history_clustering(diagrams, pdg_ids, HISTORY.madevent), momenta, picked)
+    is_union = np.all([np.isclose(a, b).reshape(len(momenta), -1).all(axis=1)
+                       for a, b in zip(union, madevent)], axis=0)
+    is_diagram = np.all([np.isclose(a, b).reshape(len(momenta), -1).all(axis=1)
+                         for a, b in zip(diagram[:6], madevent[:6])], axis=0)
+    assert np.all(is_union | is_diagram)
+    # both outcomes occur for a process with this many diagrams
+    assert 0 < np.mean(is_union) < 1
+
+
+def test_a_diagram_history_uses_that_diagrams_own_line_flavours():
+    """g u > e+ ve d. Along the t-channel diagram the jet goes into beam 0 and
+    its clustering is a QCD vertex that alpha_s is reweighted at. Along the
+    s-channel one (u* > d W) the only QCD vertex left is g u > u*, which the
+    union can also pick; the two diagrams must never hand back each other's
+    history."""
+    diagrams = w_plus_jet_two_diagrams()
+    momenta = sample_momenta(diagrams, batch_size=2000)
+    clustering = w_plus_jet_two_diagram_clustering(
+        clustering_history=HISTORY.diagram,
+        clustering_measure=ms.MLMClustering.ClusteringMeasure.madevent,
+    )
+    s_channel = along(clustering, momenta, 0)
+    t_channel = along(clustering, momenta, 1)
+    jet = momenta[:, 4, :]
+    jet_pt = np.sqrt(jet[:, 1] ** 2 + jet[:, 2] ** 2)
+    # the t-channel history always takes the jet into a beam at its pt
+    assert np.mean(np.abs(t_channel[3][:, 2] / jet_pt - 1.0) < 1e-5) == 1.0
+    # the s-channel one never clusters the jet with beam 0 before the W
+    assert np.mean(np.abs(s_channel[3][:, 2] / jet_pt - 1.0) < 1e-5) < 0.5
+
+
+# --------------------------------------------------------------------------
+# jet scales of legs that are not merging jets, under scale_scheme = madevent
+# --------------------------------------------------------------------------
+
+
+def vbf_like_fsr_diagram():
+    """u d > u d g with a colourless t-channel Z between the two quark lines
+    and the gluon radiated off the outgoing u:
+
+      u* > u g      (final state, a jet vertex)
+      u Z > u*      (beam 0 line, through the Z)
+      Z d > d       (beam 1 line)
+
+    Neither quark is a merging jet in madevent (the Z stops both beam lines
+    being parton lines), the gluon is."""
+    return [
+        {
+            "incoming_masses": [0.0, 0.0],
+            "outgoing_masses": [0.0, 0.0, 0.0],
+            "propagators": [(0.0, 0.0, 2), (M_Z, 0.0, 23)],
+            "vertices": [["o0", "o2", "p0"], ["i0", "p1", "p0"], ["p1", "i1", "o1"]],
+            "permutations": [[0, 1, 2, 3, 4]],
+        },
+    ]
+
+
+def vbf_like_fsr_clustering(**kwargs):
+    diagrams = vbf_like_fsr_diagram()
+    return ms.MLMClustering(
+        [
+            ms.Topology(
+                ms.Diagram(
+                    d["incoming_masses"],
+                    d["outgoing_masses"],
+                    [ms.Propagator(mass=m, width=w, pdg_id=i)
+                     for m, w, i in d["propagators"]],
+                    d["vertices"],
+                )
+            )
+            for d in diagrams
+        ],
+        [d["permutations"] for d in diagrams],
+        make_diagram_indices(diagrams),
+        cm_energy=CM_ENERGY,
+        external_pdg_ids=[2, 1, 2, 1, 21],
+        scale_scheme=ms.MLMClustering.ScaleScheme.madevent,
+        **kwargs,
+    )
+
+
+def fsr_jet_scales(**kwargs):
+    momenta = sample_momenta(vbf_like_fsr_diagram(), batch_size=500)
+    return run(vbf_like_fsr_clustering(**kwargs), momenta)[3]
+
+
+def test_a_quark_that_is_not_a_merging_jet_is_written_at_the_collider_energy():
+    """madevent writes ptclus = sqrt(s) for every leg iqjets does not call a
+    merging jet, even one that radiated at a QCD vertex: the shower's MLM
+    matching must leave it alone. The gluon keeps the scale of the vertex it
+    was emitted at. (The kt measure of these unconstrained points can itself
+    exceed sqrt(s), so the scales are compared to each other, not to it.)"""
+    production = fsr_jet_scales()
+    emission = fsr_jet_scales(jet_scale_scheme=ms.MLMClustering.JetScaleScheme.emission)
+    np.testing.assert_array_equal(production[:, 0], CM_ENERGY)
+    np.testing.assert_array_equal(production[:, 1], CM_ENERGY)
+    np.testing.assert_array_equal(production[:, 2], emission[:, 2])
+    assert np.all(production[:, 2] != CM_ENERGY)
+
+
+def test_the_emission_scheme_still_books_the_radiating_quark():
+    """The emission scheme is not madevent's and keeps booking the (u, g)
+    vertex onto both of its legs."""
+    emission = fsr_jet_scales(jet_scale_scheme=ms.MLMClustering.JetScaleScheme.emission)
+    np.testing.assert_array_equal(emission[:, 0], emission[:, 2])
+    np.testing.assert_array_equal(emission[:, 1], CM_ENERGY)
+
+
+# --------------------------------------------------------------------------
+# clusterings that only exist for some flavours of a merged subprocess
+# --------------------------------------------------------------------------
+
+TRACE_SAME_FLAVOR = 1 << 16
+
+# q q~ > q q~ with a merged quark, as clean_pids in launch.py represents it
+QQ_TO_QQ_PDGS = [1, -1, 1, -1]
+GLUON = [0.0, 0.0, 0, 0.0, 0.0, 21]
+
+
+def qq_to_qq_diagrams():
+    """The s-channel gluon (diagram 0: legs 2 and 3) and the t-channel gluon
+    (diagram 1: legs 0 and 2, 1 and 3) of q q~ > q q~. For a q q~ > q' q~'
+    flavour only the first exists, for q q~' > q q~' only the second."""
+    common = {
+        "incoming_masses": [0.0, 0.0],
+        "outgoing_masses": [0.0, 0.0],
+        "propagators": [GLUON],
+        "permutations": [[0, 1, 2, 3]],
+    }
+    return [
+        dict(common, vertices=[["o0", "o1", "p0"], ["i0", "i1", "p0"]]),
+        dict(common, vertices=[["i0", "o0", "p0"], ["p0", "o1", "i1"]]),
+    ]
+
+
+def with_flavors(clustering, leg_flavors, momenta, flavor_index):
+    index = np.full(len(momenta), flavor_index, dtype=np.int32)
+    return [
+        np.asarray(v)
+        for v in ms.MLMClusteringWithFlavors(clustering, leg_flavors)(momenta, index)
+    ]
+
+
+def test_flavour_diagonal_clusterings_of_fermions_are_marked():
+    """Every clustering of q q~ > q q~ joins two quarks through a gluon, so all
+    of them depend on the flavours of the event."""
+    clustering = make_clustering(qq_to_qq_diagrams(), external_pdg_ids=QQ_TO_QQ_PDGS)
+    non_terminal, _ = walk(np.asarray(clustering.cluster_state_machine), 4)
+    marked, unmarked = set(), set()
+    for _, (_, transitions) in non_terminal.items():
+        for data, _, trace in transitions:
+            pair = (field(data, BIT_PARTICLE1), field(data, BIT_PARTICLE2))
+            (marked if trace & TRACE_SAME_FLAVOR else unmarked).add(pair)
+    assert marked == {(0, 2), (1, 3), (2, 3)}
+    assert unmarked == set()
+
+
+def test_clustering_follows_the_diagrams_the_flavours_allow():
+    """u u~ > d d~ only has the s-channel gluon and u d~ > u d~ only the
+    t-channel one, whichever of the two the kt measure prefers; a flavour with
+    every leg alike, or no flavour information, keeps the union.
+
+    For a 2 -> 2 the initial-state measure (the pt of the jet) always beats the
+    final-state one of the back-to-back pair, so the union always takes the
+    t-channel gluon: the q-q' clustering a u u~ > d d~ event does not have."""
+    diagrams = qq_to_qq_diagrams()
+    clustering = make_clustering(diagrams, external_pdg_ids=QQ_TO_QQ_PDGS)
+    momenta = sample_momenta(diagrams)
+    leg_flavors = [1, 1, 1, 1, 2, 2, 1, 1, 2, 1, 2, 1]
+    union = run(clustering, momenta)
+    assert np.all(union[4] == 1)
+
+    same = with_flavors(clustering, leg_flavors, momenta, 0)
+    s_channel = with_flavors(clustering, leg_flavors, momenta, 1)
+    t_channel = with_flavors(clustering, leg_flavors, momenta, 2)
+    unknown = with_flavors(clustering, [0, 0, 0, 0], momenta, 0)
+
+    assert np.all(s_channel[4] == 0)
+    assert np.all(t_channel[4] == 1)
+    for other in (same, unknown):
+        for a, b in zip(union, other[:5]):
+            np.testing.assert_array_equal(a, b)
