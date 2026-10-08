@@ -88,9 +88,6 @@ mode = "error"
 workers = "auto"
 # generation.emit_api_bundle: Emit Python/Rust/C/C++/Fortran/UMAMI API bundle. Default true.
 emit_api_bundle = true
-# generation.umami_grouping: "exact", "flavour_blind_observables", or "none". Default exact.
-# The compressed mode assumes final-state permutation/flavour-blind observables.
-umami_grouping = "exact"
 [generation.validation]
 # generation.validation.enabled: Run generation validation. Default true.
 enabled = true

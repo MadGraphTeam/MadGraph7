@@ -826,7 +826,6 @@ def _write_umami_bundle(
     processes: Sequence[ProcessArtifact],
     process_records: Sequence[Mapping[str, object]],
     compiled_model: CompiledModel,
-    grouping: str,
 ) -> None:
     """Add export-only selector tables after runtime physics has been staged."""
     from ..artifacts.umami import UmamiProcessInput, umami_bundle_payloads
@@ -891,7 +890,6 @@ def _write_umami_bundle(
     for payload in umami_bundle_payloads(
         processes=inputs,
         compiled_model=compiled_model.to_dict(),
-        grouping=grouping,
         artifact_id=compute_artifact_id(
             {"payloads": [record.as_dict() for record in builder.payload_records()]}
         ),
@@ -1198,13 +1196,6 @@ def write_schema_v3_artifact(
                 processes=processes,
                 process_records=process_records,
                 compiled_model=compiled_model,
-                grouping=str(
-                    (
-                        configuration.effective
-                        if isinstance(configuration.effective, GenerationConfig)
-                        else configuration.effective.generation
-                    ).umami_grouping
-                ),
             )
         builder.finalize(
             kind=(

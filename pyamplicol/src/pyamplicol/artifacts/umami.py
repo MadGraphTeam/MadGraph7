@@ -18,8 +18,6 @@ from typing import Any
 
 from .api_bundle import ApiBundlePayload
 
-GROUPING_MODES = ("exact", "flavour_blind_observables", "none")
-
 
 @dataclass(frozen=True)
 class UmamiProcessInput:
@@ -355,7 +353,7 @@ def _add_terms(entry, terms):
 
 
 def _merge_flavour_orbits(data):
-    """Optionally merge different flavours with a common proven computation.
+    """Merge different flavours with a common proven computation.
 
     Do not use runtime reflection reuse to further collapse same-flavour colour
     orders: their integration partition was already constructed physically.
@@ -397,12 +395,9 @@ def build_umami_metadata(
     *,
     processes: Sequence[UmamiProcessInput],
     compiled_model: Mapping[str, Any],
-    grouping: str = "exact",
     artifact_id: str | None = None,
 ) -> tuple[dict[str, Any], ...]:
     """Return separate, directly consumable metadata documents per provider."""
-    if grouping not in GROUPING_MODES:
-        raise ValueError(f"unknown UMAMI grouping mode {grouping!r}")
     particles, parameters, defaults = _model_tables(compiled_model)
     groups: list[tuple[tuple, list[UmamiProcessInput], list[tuple[str, float]]]] = []
     for process in processes:
@@ -475,7 +470,6 @@ def build_umami_metadata(
                 compiled_model,
                 particles,
                 parameters,
-                grouping,
                 len(groups) == 1,
             )
         )
@@ -484,7 +478,7 @@ def build_umami_metadata(
 
 
 def _build_provider(
-    provider_id, processes, masses, model, particles, parameters, grouping, single
+    provider_id, processes, masses, model, particles, parameters, single
 ):
     first_external = _records(processes[0].physics["external_particles"])
     count = len(first_external)
@@ -503,15 +497,10 @@ def _build_provider(
             "color_accuracy": processes[0].color_accuracy,
         },
         "grouping": {
-            "mode": grouping,
             "assumptions": [
-                "identical-final-particle permutation-invariant observables and cuts"
-            ]
-            + (
-                ["final-state flavour-blind observables and cuts"]
-                if grouping == "flavour_blind_observables"
-                else []
-            ),
+                "identical-final-particle permutation-invariant observables and cuts",
+                "final-state flavour-blind observables and cuts",
+            ],
         },
         "channels": [],
         "pdg_ids": [],
@@ -564,9 +553,7 @@ def _build_provider(
         helicity_mappings = []
         for h in helicities:
             hindex = _intern(data["helicities"], list(h["values"]))
-            key = str(
-                h["id"] if grouping == "none" else h.get("representative_id", h["id"])
-            )
+            key = str(h.get("representative_id", h["id"]))
             helicity_groups.setdefault(key, []).append(hindex)
             helicity_mappings.append(
                 {
@@ -576,7 +563,7 @@ def _build_provider(
                     "structural_zero": h.get("structural_zero", False),
                 }
             )
-        replay = _safe_replay(process) if grouping != "none" else {}
+        replay = _safe_replay(process)
         sectors_by_word = {_word(sector): sector for sector in process.color_sectors}
         colors = sorted(
             _records(physics.get("color_components")),
@@ -612,7 +599,7 @@ def _build_provider(
                 "factor": 1.0,
             }
             semantic_key = (process.structural_keys or {}).get(color_id)
-            if grouping != "none" and semantic_key:
+            if semantic_key:
                 if semantic_key in structural_representatives:
                     runtime = dict(structural_representatives[semantic_key])
                 else:
@@ -669,8 +656,7 @@ def _build_provider(
             entry["multichannels"] = [channel_index]
             data["channels"][channel_index]["processes"].append(entry)
             orbit_entries[orbit] = (entry, aligned_order)
-    if grouping == "flavour_blind_observables":
-        _merge_flavour_orbits(data)
+    _merge_flavour_orbits(data)
     alpha_names = {p["alpha_s_parameter"] for p in data["runtime_processes"]}
     data["provider"]["alpha_s_parameter"] = (
         next(iter(alpha_names)) if len(alpha_names) == 1 else None
@@ -700,7 +686,6 @@ def umami_bundle_payloads(
     *,
     processes: Sequence[UmamiProcessInput],
     compiled_model: Mapping[str, Any],
-    grouping: str = "exact",
     artifact_id: str | None = None,
 ) -> tuple[ApiBundlePayload, ...]:
     """Create JSON, provider headers and Make variables from one representation."""
@@ -709,7 +694,6 @@ def umami_bundle_payloads(
     documents = build_umami_metadata(
         processes=processes,
         compiled_model=compiled_model,
-        grouping=grouping,
         artifact_id=artifact_id,
     )
     payloads = []
@@ -756,7 +740,6 @@ def umami_bundle_payloads(
 
 
 __all__ = [
-    "GROUPING_MODES",
     "UmamiProcessInput",
     "build_umami_metadata",
     "umami_bundle_payloads",

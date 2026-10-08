@@ -271,3 +271,29 @@ You should also commit+push to the remote at periodic implementation milestone, 
 Do a deep investigation of all the material above, and ask question for anything unclear, and I'll then give you the green light to implement it.
 ```
 
+## 6. Superseding scope note — automatic symmetry grouping (2026-10-08)
+
+The approved plan and original request above are retained verbatim as historical
+context. The current instruction supersedes their selectable grouping modes:
+remove the UMAMI grouping option from generation configuration, CLI, metadata
+mode selectors, documentation and example plumbing. Always apply proven
+identical-particle and cross-flavour symmetry grouping, together with certified
+computation and helicity reuse. Metadata retains `grouping.assumptions`,
+contribution counters, physical member identities and momentum maps, but no
+`grouping.mode`.
+
+Compact weighted integration assumes permutation-invariant, flavour-blind cuts
+and observables. Equivalence must follow from model expressions and generated
+computation, not equal default values, Standard Model particle categories or
+numerical coincidence. Unproved relations remain separate. Incoming PDGs and
+their PDF weights remain oriented and distinct, with no beam-exchange or equal-PDF
+assumption. Physical member expansion remains necessary for pointwise sums or
+cuts outside the compact integration assumptions.
+
+The optional MadSpace acceptance comparison now uses one automatically compacted
+provider and compares its weighted representatives with explicit physical-member
+integration channels. Both use the existing genuine MadSpace/VEGAS workflow and
+native normalization; the reference uses member weights and composed momentum
+maps, not an ungrouped export mode. This is stochastic validation of structural
+proofs, not a numerical grouping authority. This follow-up calls for focused
+checks only, with no native rebuild.

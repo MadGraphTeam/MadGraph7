@@ -55,6 +55,9 @@ class Channel:
     pdg_final: list[int]
     masses: list[float]
     processes: list[list[tuple[float, int, int, tuple]]] = field(default_factory=list)
+    # Explicit-member validation can evaluate a mapped exported representative.
+    selector: tuple[int, int] | None = None
+    momentum_permutation: list[int] | None = None
 
 
 def load_channels(path, provider=None):
@@ -100,18 +103,11 @@ def load_channels(path, provider=None):
 # =============================================================================
 def build_ms_cuts(cfg: Config, ch: Channel):
     c = cfg.cuts
+    if c.pdgs is not None:
+        raise ValueError("automatic UMAMI grouping requires flavour-blind cuts")
     a, b = ch.init_states[0]
     pids = [a, b, *ch.pdg_final]
-    selected = c.pdgs if c.pdgs is not None else sorted(set(ch.pdg_final))
-    # A map is shared only when every physical flavour gets the same cut mask.
-    expected = [p in selected for p in ch.pdg_final]
-    for configs in ch.processes:
-        for _factor, _a, _b, final in configs:
-            actual_selected = c.pdgs if c.pdgs is not None else set(final)
-            if [p in actual_selected for p in final] != expected:
-                raise ValueError(
-                    "flavour-dependent cuts require separate phase-space maps"
-                )
+    selected = sorted(set(ch.pdg_final))
     obs_type = ms.Observable
     items = []
 
@@ -206,7 +202,7 @@ class ColorOrderedChannel:
         self.cfg_proc, self.cfg_factor, pid_options = [], [], []
         for iproc, cfgs in enumerate(ch.processes):
             for fac, a, b, final in cfgs:
-                self.cfg_proc.append(iproc)
+                self.cfg_proc.append(iproc if ch.selector is None else ch.selector[1])
                 self.cfg_factor.append(fac)
                 pid_options.append([a, b, *final])
         self.n_config = len(pid_options)
@@ -261,7 +257,12 @@ class ColorOrderedChannel:
         x1, x2 = x1.expand(r.shape[0]), x2.expand(r.shape[0])
         pg, x1g, x2g, detg = p[good], x1[good], x2[good], det[good]
         ng = len(detg)
-        chan_id = torch.full((ng,), self.ch.index, device=dev, dtype=torch.int32)
+        if self.ch.momentum_permutation is not None:
+            pg = pg[:, self.ch.momentum_permutation, :]
+        selector_channel = (
+            self.ch.index if self.ch.selector is None else self.ch.selector[0]
+        )
+        chan_id = torch.full((ng,), selector_channel, device=dev, dtype=torch.int32)
         total = torch.zeros(ng, dtype=detg.dtype, device=dev)
         for c in range(self.n_config):
             flavor = torch.full((ng,), self.cfg_proc[c], device=dev, dtype=torch.int32)
@@ -431,7 +432,6 @@ def main():
     ap.add_argument("--pt-min", type=float, default=30.0)
     ap.add_argument("--eta-max", type=float, default=6.0)
     ap.add_argument("--dr-min", type=float, default=0.4)
-    ap.add_argument("--cut-pdg", type=int, action="append")
     ap.add_argument(
         "--selftest", action="store_true", help="phase-space volume, without ME or PDFs"
     )
@@ -440,8 +440,6 @@ def main():
     if min(args.n, args.batch_size, args.epochs, *args.training) < 2:
         ap.error("sample counts, batch size and epochs must be at least two")
     channels, n_out, data = load_channels(args.json, args.provider)
-    if data["grouping"]["mode"] == "flavour_blind_observables" and args.cut_pdg:
-        ap.error("compressed integration assumes flavour-blind cuts; omit --cut-pdg")
     if args.pdf and data["provider"]["alpha_s_parameter"] is None:
         ap.error("this provider has no unambiguous running-alpha_s input")
     cfg = Config(
@@ -449,12 +447,12 @@ def main():
         pdfset=args.pdfset,
         pdf_dir=args.pdf_dir,
         scale_ref=args.scale,
-        cuts=Cuts(args.pt_min, args.eta_max, args.dr_min, args.cut_pdg),
+        cuts=Cuts(args.pt_min, args.eta_max, args.dr_min),
     )
     print(
         f"Loaded {len(channels)} independent contributions, n_out={n_out}; "
         f"{data['provider']['color_accuracy']} colour, "
-        f"{data['grouping']['mode']} grouping"
+        "automatic symmetry grouping"
     )
     ctx = ms.Context(1)
     torch.set_num_threads(1)

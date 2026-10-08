@@ -12,9 +12,7 @@ from pathlib import Path
 from _metadata import load_metadata
 
 
-def generate(
-    artifact: Path, accuracy: str, grouping: str, expression: str = "g g > g g g"
-) -> None:
+def generate(artifact: Path, accuracy: str, expression: str = "g g > g g g") -> None:
     from pyamplicol import Generator, ModelSource
     from pyamplicol.config import resolve_config
 
@@ -26,7 +24,6 @@ def generate(
             "generation": {
                 "workers": 1,
                 "emit_api_bundle": True,
-                "umami_grouping": grouping,
                 "relation_discovery": {"mode": "off"},
             },
             "evaluator": {
@@ -50,11 +47,6 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=Path(".artifacts/umami-example"))
     parser.add_argument(
         "--accuracy", choices=("lc", "full"), nargs="+", default=["lc", "full"]
-    )
-    parser.add_argument(
-        "--grouping",
-        choices=("exact", "flavour_blind_observables", "none"),
-        default="exact",
     )
     parser.add_argument(
         "--reuse", action="store_true", help="reuse previously generated artifacts"
@@ -92,16 +84,12 @@ def main() -> None:
                     f"{artifact} exists; choose another output or pass --reuse"
                 )
         else:
-            generate(artifact, accuracy, args.grouping)
+            generate(artifact, accuracy)
         metadata = artifact / "API/umami/metadata.json"
         data = load_metadata(metadata)
-        if (
-            data["provider"]["color_accuracy"] != accuracy
-            or data["grouping"]["mode"] != args.grouping
-        ):
+        if data["provider"]["color_accuracy"] != accuracy:
             raise ValueError(
-                "existing artifact's colour accuracy or grouping differs "
-                "from the request"
+                "existing artifact's colour accuracy differs from the request"
             )
         build_dir = directory / f"build_{accuracy}"
         execute(

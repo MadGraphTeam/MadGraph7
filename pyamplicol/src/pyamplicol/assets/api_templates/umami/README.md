@@ -45,28 +45,28 @@ output; the corresponding capability query reports this explicitly.
 Integration multiplicities in metadata are not silently included in the returned
 matrix element. Consult metadata for restricted coverage and grouping assumptions.
 
-All grouping modes, including `none`, group integration orbits of identical
-final-state PDGs using oriented physical colour topology and permutations that
-preserve available helicity coverage. They do not add a reflection quotient or
+UMAMI automatically groups proven equivalent contributions; there is no grouping
+setting. Compact integration requires permutation-invariant, flavour-blind cuts
+and observables, recorded in `grouping.assumptions` alongside contribution
+counters. Identical-particle integration orbits are derived from final-state PDGs,
+oriented physical colour topology and permutations that preserve available
+helicity coverage. They do not add a reflection quotient or
 exchange incoming beams. With complete LC coverage, `g g > g g g` has four
 representatives for 24 physical colour contributions, each with integration
-multiplicity six, in every mode. Full colour remains one contracted contribution
-with no extra factorial multiplier; native identical-particle normalization is
-already included.
+multiplicity six. Full colour remains one contracted contribution with no extra
+factorial multiplier; native identical-particle normalization is already included.
 
-`exact` is the default: it retains distinct physical flavour labels and allows
-certified computation reuse. `flavour_blind_observables` additionally groups
-proven equivalent contributions of different flavours under flavour-blind cuts
-and observables. `none` disables optional UMAMI runtime/helicity reuse and
-cross-flavour grouping, not the identical-particle integration quotient.
-Equivalence uses model expressions and generated computation, not equal default
-parameters or Standard Model-specific particle rules.
+Proven equivalent contributions with different physical final-state flavours
+are also grouped. Equivalence uses model expressions and generated computation,
+not equal default parameters or Standard Model-specific particle rules.
+Unproved relations remain separate.
 
 Integration multiplicities require cuts invariant under the recorded particle
 permutations; they are not factors for pointwise sums. Metadata retains physical
-members and their momentum mappings. Arbitrary labelled-leg cuts require
-expanding those members even in `exact` or `none`; species-sensitive cuts are
-supported in those two modes. No grouping mode assumes equal PDFs.
+members and their momentum mappings. Arbitrary labelled-leg or species-sensitive
+cuts require expanding those members and applying each cut to its physical
+contribution. Grouping never assumes equal PDFs; physical incoming PDGs remain
+oriented and retain their own PDF weights.
 
 The public header is copied from MadGraph7's UMAMI interface. Its copyright and
 license terms are retained in `UMAMI_LICENSE`; distribute that notice alongside

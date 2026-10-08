@@ -119,16 +119,13 @@ class Provider:
 @pytest.fixture(
     scope="module",
     params=(
-        pytest.param(("lc", "exact", False), id="lc-exact"),
-        pytest.param(("lc", "none", False), id="lc-none"),
-        pytest.param(("lc", "flavour_blind_observables", False), id="lc-integrated"),
-        pytest.param(("lc5", "exact", False), id="lc-identical-ggg"),
-        pytest.param(("lcq", "exact", False), id="lc-identical-quarks"),
-        pytest.param(("full", "exact", False), id="full-exact"),
-        pytest.param(("nlc", "exact", False), id="nlc-exact"),
-        pytest.param(("lc", "exact", True), id="restricted-helicity"),
-        pytest.param(("ufo", "exact", False), id="ufo-scalars"),
-        pytest.param(("ufo", "flavour_blind_observables", False), id="ufo-flavours"),
+        pytest.param(("lc", False), id="lc"),
+        pytest.param(("lc5", False), id="lc-identical-ggg"),
+        pytest.param(("lcq", False), id="lc-identical-quarks"),
+        pytest.param(("full", False), id="full"),
+        pytest.param(("nlc", False), id="nlc"),
+        pytest.param(("lc", True), id="restricted-helicity"),
+        pytest.param(("ufo", False), id="ufo-flavours"),
     ),
 )
 def providers(request, tmp_path_factory):
@@ -137,7 +134,7 @@ def providers(request, tmp_path_factory):
     if shutil.which("make") is None or shutil.which(os.environ.get("CC", "cc")) is None:
         _unavailable("UMAMI integration requires make and a C compiler")
     config_executable = _config_executable()
-    accuracy, grouping, restricted = request.param
+    accuracy, restricted = request.param
     is_ufo = accuracy == "ufo"
     is_ggg = accuracy == "lc5"
     is_qqg = accuracy == "lcq"
@@ -158,7 +155,6 @@ def providers(request, tmp_path_factory):
         generation=GenerationConfig(
             workers=1,
             emit_api_bundle=True,
-            umami_grouping=grouping,
             relation_discovery=GenerationRelationDiscoveryConfig(mode="off"),
             validation=GenerationValidationConfig(
                 enabled=False, post_build_validation=False
@@ -173,8 +169,7 @@ def providers(request, tmp_path_factory):
     # The massive colour singlet forces a separate fixed-mass provider, while
     # retaining quark colour flow and generic UFO parameter declarations.
     include_quark = not (is_ggg or is_qqg) and (
-        accuracy == "full"
-        or (accuracy == "lc" and grouping == "exact" and not restricted)
+        accuracy == "full" or (accuracy == "lc" and not restricted)
     )
     expressions = (
         ("g g > g g g",)
@@ -539,42 +534,41 @@ def test_grouped_members_match_physical_flows_at_asymmetric_point(providers):
                             reconstructed.get(process_id, 0.0)
                             + outputs[0][0] * member["factor"]
                         )
-                        if provider.data["grouping"]["mode"] in ("exact", "none"):
-                            if process_id == "gg":
-                                # An explicitly labelled-leg cut is not invariant
-                                # under exchanging the two final-state gluons.
-                                samples = (point, (*point[:2], point[3], point[2]))
-                            elif process_id in ("flavour_one", "flavour_two"):
-                                samples = (point,)
-                            else:
-                                continue
-                            for sample in samples:
-                                accepted = (
-                                    sample[2][3] > 0
-                                    if process_id == "gg"
-                                    else member["pdgs"][2] == 1001
-                                )
-                                cut_decisions.add(accepted)
-                                status, selected = _batch(
-                                    provider,
-                                    handle,
-                                    (_member_input(representative, member, sample),),
-                                    channel=channel,
-                                    flavour=flavour,
-                                )
-                                assert status == 0
-                                physical = float(
-                                    complex(
-                                        runtime.evaluate(
-                                            (sample,), color_flows=selection
-                                        )[0]
-                                    ).real
-                                )
-                                weight = member["factor"] if accepted else 0.0
-                                cut_native += weight * physical
-                                cut_umami += weight * selected[0][0]
-        # Every mode compresses identical particles. The member loop restores
-        # each labelled physical flow; an orbit factor is not a pointwise sum.
+                        if process_id == "gg":
+                            # An explicitly labelled-leg cut is not invariant
+                            # under exchanging the two final-state gluons.
+                            samples = (point, (*point[:2], point[3], point[2]))
+                        elif process_id in ("flavour_one", "flavour_two"):
+                            samples = (point,)
+                        else:
+                            continue
+                        for sample in samples:
+                            accepted = (
+                                sample[2][3] > 0
+                                if process_id == "gg"
+                                else member["pdgs"][2] == 1001
+                            )
+                            cut_decisions.add(accepted)
+                            status, selected = _batch(
+                                provider,
+                                handle,
+                                (_member_input(representative, member, sample),),
+                                channel=channel,
+                                flavour=flavour,
+                            )
+                            assert status == 0
+                            physical = float(
+                                complex(
+                                    runtime.evaluate((sample,), color_flows=selection)[
+                                        0
+                                    ]
+                                ).real
+                            )
+                            weight = member["factor"] if accepted else 0.0
+                            cut_native += weight * physical
+                            cut_umami += weight * selected[0][0]
+        # The member loop restores each labelled physical flow, including
+        # cross-flavour compaction; an orbit factor is not a pointwise sum.
         assert reconstructed == pytest.approx(complete, rel=2e-11, abs=1e-15)
         if cut_decisions:
             assert cut_decisions == {False, True}
@@ -709,13 +703,12 @@ def test_rejects_other_valid_artifact_with_identical_external_labels(
     provider = providers[0]
     if not (
         provider.data["provider"]["color_accuracy"] == "lc"
-        and provider.data["grouping"]["mode"] == "exact"
         and provider.data["provider"]["helicity_count"] > 1
         and provider.data["runtime_processes"][0]["id"] == "gg"
     ):
         return
     # A genuinely generated artifact with a different native layout, not a
-    # damaged manifest or a change of SDK grouping alone. Particle/helicity
+    # damaged manifest or a change of SDK metadata alone. Particle/helicity
     # labels and colour accuracy by themselves cannot protect compiled tables.
     other = tmp_path / "different native artifact"
     config = RunConfig(
@@ -820,7 +813,6 @@ def test_real_generation_exercises_structural_proofs(providers):
     for provider in providers:
         if (
             provider.data["provider"]["color_accuracy"] == "lc"
-            and provider.data["grouping"]["mode"] == "exact"
             and provider.data["provider"]["helicity_count"] > 1
         ):
             assert provider.structural_keys and any(provider.structural_keys), (
@@ -835,10 +827,7 @@ def test_real_generation_exercises_structural_proofs(providers):
                 for channel in provider.data["channels"]
                 for entry in channel["processes"]
             ]
-            compressed = (
-                provider.data["grouping"]["mode"] == "flavour_blind_observables"
-            )
-            assert len(entries) == (1 if compressed else 2)
+            assert len(entries) == 1
             assert all(
                 entry["runtime"]["process_id"] == "flavour_one" for entry in entries
             )

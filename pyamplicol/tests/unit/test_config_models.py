@@ -39,13 +39,8 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 80
-    assert FIELD_REGISTRY["generation.umami_grouping"].default == "exact"
-    assert FIELD_REGISTRY["generation.umami_grouping"].choices == (
-        "exact",
-        "flavour_blind_observables",
-        "none",
-    )
+    assert len(FIELD_REGISTRY) == 79
+    assert "generation.umami_grouping" not in FIELD_REGISTRY
     assert "evaluator.jit.direct_translation" not in FIELD_REGISTRY
     assert FIELD_REGISTRY["action"].required
     assert FIELD_REGISTRY["generation.workers"].default == "auto"

@@ -6169,30 +6169,27 @@ class GenerationBackend:
                 sector.to_json_dict() for sector in prepared.complete_color_plan.sectors
             )
             umami_physics = dict(physics)
-            if str(run.generation.umami_grouping) != "none":
-                from .umami_semantics import recurrence_structural_keys
+            from .umami_semantics import recurrence_structural_keys
 
-                umami_keys = recurrence_structural_keys(
-                    exact_sections=output.exact_sections,
-                    runtime_metadata=runtime_metadata,
-                    kernel_pack=model_inputs.bundle.kernel_pack,
-                    ir=model_inputs.bundle.compiled_model["ir"],
-                    physics=physics,
-                    remap=process_remap,
-                    color_contraction_payload=color_contraction_payload,
-                )
-                replay = (
-                    prepared.topology_replay
-                    if isinstance(prepared.topology_replay, LCColorTopologyReplayPlan)
-                    else build_lc_topology_replay_plan(
-                        prepared.complete_color_plan, model
-                    )
-                )
-                if replay is not None:
-                    umami_physics["extensions"] = {
-                        **cast(Mapping[str, object], physics.get("extensions", {})),
-                        "lc_topology_replay": replay.to_json_dict(),
-                    }
+            umami_keys = recurrence_structural_keys(
+                exact_sections=output.exact_sections,
+                runtime_metadata=runtime_metadata,
+                kernel_pack=model_inputs.bundle.kernel_pack,
+                ir=model_inputs.bundle.compiled_model["ir"],
+                physics=physics,
+                remap=process_remap,
+                color_contraction_payload=color_contraction_payload,
+            )
+            replay = (
+                prepared.topology_replay
+                if isinstance(prepared.topology_replay, LCColorTopologyReplayPlan)
+                else build_lc_topology_replay_plan(prepared.complete_color_plan, model)
+            )
+            if replay is not None:
+                umami_physics["extensions"] = {
+                    **cast(Mapping[str, object], physics.get("extensions", {})),
+                    "lc_topology_replay": replay.to_json_dict(),
+                }
         artifact = RecurrenceProcessArtifact(
             process_id=process_name,
             expression=expanded.process_ir.process,

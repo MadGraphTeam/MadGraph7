@@ -57,12 +57,6 @@ class GenerationMode(StrEnum):
     REPLACE = "replace"
 
 
-class UmamiGrouping(StrEnum):
-    EXACT = "exact"
-    FLAVOUR_BLIND_OBSERVABLES = "flavour_blind_observables"
-    NONE = "none"
-
-
 class RelationDiscoveryMode(StrEnum):
     OFF = "off"
     DIAGNOSTIC = "diagnostic"
@@ -632,10 +626,6 @@ class GenerationConfig:
     )
     workers: AutoInt = field(default="auto", metadata=_setting("auto_int"))
     emit_api_bundle: bool = field(default=True, metadata=_setting("bool"))
-    umami_grouping: UmamiGrouping = field(
-        default=UmamiGrouping.EXACT,
-        metadata=_setting("str", choices=tuple(UmamiGrouping)),
-    )
     validation: GenerationValidationConfig = field(
         default_factory=GenerationValidationConfig, metadata=_section()
     )
@@ -654,11 +644,6 @@ class GenerationConfig:
         )
         if not isinstance(self.emit_api_bundle, bool):
             raise ConfigurationError("generation.emit_api_bundle must be a boolean")
-        object.__setattr__(
-            self,
-            "umami_grouping",
-            _enum(self.umami_grouping, UmamiGrouping, "generation.umami_grouping"),
-        )
         if not isinstance(self.validation, GenerationValidationConfig):
             raise ConfigurationError(
                 "generation.validation must be a GenerationValidationConfig"
@@ -1179,5 +1164,4 @@ __all__ = [
     "RelationDiscoveryMode",
     "RunConfig",
     "SymbolicaConfig",
-    "UmamiGrouping",
 ]

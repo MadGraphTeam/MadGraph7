@@ -59,20 +59,14 @@ def test_generate_defaults_to_recurrence_execution() -> None:
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
 
 
-@pytest.mark.parametrize("grouping", ["exact", "flavour_blind_observables", "none"])
-def test_umami_grouping_generation_option(grouping: str) -> None:
-    config = parse_cli(("generate", "--umami-grouping", grouping)).resolve().effective
-    assert config.generation.umami_grouping == grouping
+def test_umami_grouping_is_not_a_user_option() -> None:
+    config = parse_cli(("generate",)).resolve().effective
     assert config.generation.emit_api_bundle
-
-
-def test_umami_grouping_default_and_invalid_value() -> None:
-    assert (
-        parse_cli(("generate",)).resolve().effective.generation.umami_grouping
-        == "exact"
-    )
+    assert not hasattr(config.generation, "umami_grouping")
+    with pytest.raises(SystemExit):
+        parse_cli(("generate", "--umami-grouping", "flavour_blind_observables"))
     with pytest.raises(ConfigurationError, match="umami_grouping"):
-        parse_cli(("generate", "--set", "generation.umami_grouping=unsafe")).resolve()
+        parse_cli(("generate", "--set", "generation.umami_grouping=exact")).resolve()
 
 
 def test_generate_accepts_symmetric_group_color_contraction() -> None:

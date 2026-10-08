@@ -116,7 +116,7 @@ def main() -> None:
             )
             checked += n
             for member in process["members"]:
-                # Every mode groups identical-particle integration orbits.
+                # Automatic grouping includes identical-particle integration orbits.
                 # Compose the maps to evaluate each member at the original
                 # labelled point, not at the representative's labelled point.
                 mapped_points = np.empty_like(p_ext)

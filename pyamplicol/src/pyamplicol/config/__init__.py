@@ -38,7 +38,6 @@ from .models import (
     RelationDiscoveryMode,
     RunConfig,
     SymbolicaConfig,
-    UmamiGrouping,
 )
 from .registry import (
     CONFIG_SECTIONS,
@@ -104,7 +103,6 @@ __all__ = [
     "RelationDiscoveryMode",
     "RunConfig",
     "SymbolicaConfig",
-    "UmamiGrouping",
     "config_to_dict",
     "config_to_toml",
     "get_config_field",

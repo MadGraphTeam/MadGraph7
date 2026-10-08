@@ -34,7 +34,7 @@ python umami_example/run.py
 Generation uses recurrence JIT O2, one worker and one optimization core, with
 numerical current-relation discovery explicitly disabled. Full colour uses the
 configured default exact colour contraction (adjoint FFT). Both accuracies use
-the selected UMAMI grouping, `exact` by default.
+automatic symmetry grouping.
 
 The output is `.artifacts/umami-example/`. Artifact payloads are in `lc/` and
 `full/`; compiled libraries and drivers are outside them in `build_lc/` and
@@ -81,8 +81,7 @@ dependent parameters. A sampled helicity label is informational: the returned
 matrix element remains summed over the artifact's available helicities.
 For complete LC coverage, the pointwise check expands the physical members and
 their momentum mappings and checks that their sum reconstructs the native LC
-total. This expansion is necessary even in `exact` and `none`: integration
-multiplicities are not pointwise factors.
+total. Integration multiplicities are not pointwise factors.
 
 Mixed process sets can produce multiple fixed-metadata providers. Select one
 explicitly using `--provider p0` (or another ID from the metadata index) and its
@@ -98,33 +97,31 @@ pairwise `delta R > 0.4`. Masses come from provider metadata; there are no
 built-in particle-category or mass tables. This scattering example requires two
 massless incoming particles, matching MadSpace's `1/(2 s_hat)` flux; the UMAMI
 provider itself has no such restriction. The integration script's `--sqrts`,
-`--pt-min`, `--eta-max` and `--dr-min` options change these settings. Explicit
-`--cut-pdg ID` selections are available in `exact` and `none` mode, subject to
-compatible cut masks when sharing a phase-space map.
+`--pt-min`, `--eta-max` and `--dr-min` options change these settings. All compact
+UMAMI integrations assume permutation-invariant, flavour-blind cuts and
+observables. The script therefore has no species-selective cut option, and its
+programmatic cut builder rejects species selections.
 
-`--grouping flavour_blind_observables` on `run.py` requests the additional
-grouping of proven equivalent contributions with different physical flavours.
-It requires flavour-blind cuts and observables, as recorded in the metadata;
-the integration script rejects `--cut-pdg` in this mode. `exact` retains distinct
-physical flavour labels while allowing certified computation reuse. `none`
-disables optional UMAMI runtime/helicity reuse and cross-flavour grouping.
-
-All three modes always group integration orbits of identical final-state PDGs,
-using oriented physical colour topology and permutations that preserve the
-available helicity coverage. There is no additional reflection quotient, equal
-PDF assumption or beam exchange. For complete LC coverage of `g g > g g g`,
-all modes reduce 24 physical colour contributions to four representatives with
+UMAMI automatically groups proven equivalent contributions with different
+physical final-state flavours, and always groups integration orbits of identical
+final-state PDGs, using oriented physical colour topology and permutations that
+preserve the available helicity coverage. There is no additional reflection
+quotient, equal PDF assumption or beam exchange. For complete LC coverage of `g g > g g g`,
+24 physical colour contributions reduce to four representatives with
 integration multiplicity six each. Full colour remains one contracted
 contribution without an extra factorial multiplier. Equivalence comes from the
-model and generated computation, not Standard Model-specific particle rules.
+model expressions and generated computation, not equal parameter defaults or
+Standard Model-specific particle rules. Unproved relations remain separate;
+there is no grouping option.
 
 The integration script applies metadata multiplicities once, assuming cuts
-invariant under identical-particle permutations, and does not sum alternative
-mappings of the same contribution. Species-sensitive cuts are supported in
-`exact` and `none`. Arbitrary labelled-leg cuts or pointwise sums require
-expanding the retained physical members and their momentum mappings, even in
-these modes; multiplying one representative by its integration multiplicity is
-not a substitute.
+invariant under the recorded permutations and blind to final-state flavour,
+and does not sum alternative mappings of the same contribution. Arbitrary
+labelled-leg or species-sensitive cuts, or pointwise sums, require expanding the
+retained physical members and their momentum mappings; multiplying one
+representative by its integration multiplicity is not a substitute. The compact
+integration script does not implement such cuts. Physical incoming PDGs keep
+their own PDF weights.
 
 For the optional neural-flow training, pass `--madnis --epochs 200` to
 `test_integrate.py`. `--learn-discrete` also lets MadNIS learn the phase-space
@@ -172,12 +169,16 @@ project's UMAMI API page and in the generated `API/umami/README.md`.
 python umami_example/test_grouping.py
 ```
 
-This separately generates the much smaller LC process `g g > g g` in all three
-grouping modes and reuses the same real MadSpace/VEGAS integration code. Its
+This generates one automatically compacted provider for the much smaller LC
+process `g g > g g` and reuses the same real MadSpace/VEGAS integration code. Its
 cuts are symmetric in the outgoing legs (`pT > 100 GeV`, `|eta| < 6`,
-`delta R > 0.4` at 1 TeV). The identical-gluon fixture must have the same
-compressed contribution count in all three modes; compression is not exclusive
-to `flavour_blind_observables`. It compares independent, fixed-seed integral
+`delta R > 0.4` at 1 TeV). The fixture must compact six physical colour
+contributions into three representatives with integration multiplicity two.
+The reference expands each retained member into a separate integration channel,
+composes its momentum mapping with the representative's map, and uses only its
+physical weight, not the integration multiplicity. The provider's representative
+computations remain certified and unchanged. It compares the compact and
+explicit-member integrals using independent, fixed-seed
 estimates within six combined statistical standard errors, with each estimate's
 relative error below 5%. This is
 stochastic validation, not the authority establishing amplitude equivalences.
