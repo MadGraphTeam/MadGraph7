@@ -897,8 +897,12 @@ class HelicityRecycler():
         Amplitude.max_amp_num = 0
         self.last_category = None
         self.good_elements = good_elements
-        self.bad_amps = bad_amps
-        self.bad_amps_perhel = bad_amps_perhel
+        # Only ever asked "is it in there": sets, not the lists the callers
+        # hand in. good_helicity asks bad_amps_perhel once per unfolded copy of
+        # every amplitude -- hundreds of thousands of times against 12612 dead
+        # (helicity, amplitude) pairs for g g > g g g g in the axial gauge.
+        self.bad_amps = set(bad_amps)
+        self.bad_amps_perhel = set(map(tuple, bad_amps_perhel))
 
         # Default file names
         self.input_file = 'matrix_orig.f'
