@@ -59,6 +59,7 @@ import models.import_ufo as import_ufo
 #from madgraph.interface.madgraph_interface import MadGraphCmd
 import madgraph.interface.master_interface as Cmd
 import madgraph.interface.madevent_interface as me_interface
+import madgraph.interface.common_run_interface as common_run_interface
 import madgraph.iolibs.save_load_object as save_load_object
 import madgraph.iolibs.files as files
 import madgraph.fks.fks_common as fks_common
@@ -74,9 +75,38 @@ import madgraph.various.misc as misc
 
 MAX_COMPAT_FLAVS = 500
 
+# Optimisation flag the matrix elements are compiled with. It is the
+# GLOBAL_FLAG of the tree's Source/make_opts, which every makefile of the tree
+# (DHELAS, MODEL, the P directories, MadSpin/src/makefile_*) adds to FFLAGS;
+# ``output standalone`` leaves it empty, i.e. -O0.
+MS_GLOBAL_FLAG = '-O2'
+# ... used only when a production process has at least this many particles to
+# decay. -O2 costs ~2 s of compilation per run and only pays off when the
+# matrix elements dominate: measured on 10^4 events (the MG7 paper's MadSpin
+# timing setup), x1.05-1.07 for t t~ t t~ and x1.25 for W+W-W+W-, but 3-7%
+# slower for WH, t t~, ZZ and t t~ Z.
+MS_GLOBAL_FLAG_MIN_DECAYS = 4
+
 
 class MadSpinError(MadGraph5Error):
     pass
+
+
+def set_global_flag(tree, flag=MS_GLOBAL_FLAG):
+    """Have the standalone tree ``tree`` compiled with ``flag``.
+
+    ``output standalone`` has already built Source/DHELAS and Source/MODEL
+    with the empty default flag, and make does not track flags: when the flag
+    has to change, their objects and libraries are removed so that the next
+    make rebuilds them with it. Nothing is removed when it is already set.
+    """
+    make_opts = pjoin(tree, 'Source', 'make_opts')
+    if not common_run_interface.CommonRunCmd.update_make_opts_full(
+                                            make_opts, {'GLOBAL_FLAG': flag}):
+        return
+    for lib in ('DHELAS', 'MODEL'):
+        misc.compile(arg=['clean'], cwd=pjoin(tree, 'Source', lib),
+                     mode='fortran')
 
 
 def bw_retained_fraction(pole, width, bw_cut):
@@ -3959,6 +3989,24 @@ class decay_all_events(object):
 
         return self.get_full_flavor_index(production_tag, decay_me, event_map)
 
+    def nb_decaying_in_production(self):
+        """The largest number of final-state particles of a production process
+        that MadSpin decays (the decays of their decay products do not count).
+        The production processes are in all_ME for madspin_v1 and in all_me
+        (type 'production') for the onshell/density modes."""
+        decay_ids = self.all_ME.decay_ids
+        finals = [topo['base_order'][1] for topo in self.all_ME.values()]
+        finals += [tag[1] for tag, info in getattr(self, 'all_me', {}).items()
+                   if info.get('type') == 'production']
+        return max([sum(abs(pid) in decay_ids for pid in final)
+                    for final in finals] or [0])
+
+    def use_global_flag(self, tree):
+        """Compile ``tree`` with MS_GLOBAL_FLAG if the production has enough
+        particles to decay for it to pay off (see MS_GLOBAL_FLAG_MIN_DECAYS)."""
+        if self.nb_decaying_in_production() >= MS_GLOBAL_FLAG_MIN_DECAYS:
+            set_global_flag(tree)
+
     def compile(self):
         logger.info('Compiling code')
         self.compile_fortran(self.path_me, mode="full_me")
@@ -3977,6 +4025,7 @@ class decay_all_events(object):
         logger.debug("""Finalizing %s's """% mode)
 
         # COMPILATION OF LIBRARY
+        self.use_global_flag(pjoin(path_me, mode))
         misc.compile( cwd=pjoin(path_me, mode,"Source","DHELAS"), mode='fortran')
         file_madspin=pjoin(MG5DIR, 'MadSpin', 'src', 'lha_read_ms.f')
         shutil.copyfile(file_madspin, pjoin(path_me, mode,"Source","MODEL","lha_read.f" ))
@@ -5644,6 +5693,7 @@ class decay_all_events_onshell(decay_all_events):
             decay_args.insert(0, 'PROCNAME=_ms%d' % ms_run_id)
         #my_env = os.environ.copy()
         #os.environ["GFORTRAN_UNBUFFERED_ALL"] = "y"
+        self.use_global_flag(pjoin(self.path_me, ms_me_subdir))
         misc.compile(cwd=pjoin(self.path_me, ms_me_subdir, 'Source'),
                      nb_core=self.mgcmd.options['nb_core'])
         misc.compile(prod_args,
@@ -5651,6 +5701,7 @@ class decay_all_events_onshell(decay_all_events):
                      nb_core=self.mgcmd.options['nb_core'])
         #Valentin: not sure the decay_folder exists in all cases, so I check
         if os.path.exists(pjoin(self.path_me, ms_me_decay_subdir)):
+            self.use_global_flag(pjoin(self.path_me, ms_me_decay_subdir))
             misc.compile(cwd=pjoin(self.path_me, ms_me_decay_subdir, 'Source'),
                         nb_core=self.mgcmd.options['nb_core'])
             misc.compile(decay_args,
