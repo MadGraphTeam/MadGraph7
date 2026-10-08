@@ -26,7 +26,8 @@ class TestSALauncherTimings(unittest.TestCase):
 
 class TestMadLoopLauncherDensity(unittest.TestCase):
     """The density mode must be detected from the output line of the proc
-    card even when the card writer wrapped that line inside '--density'."""
+    card even when it is wrapped inside '--density', as older versions of
+    the card writer did."""
 
     def write_proc_card(self, tmpdir, *lines):
         os.mkdir(os.path.join(tmpdir, 'Cards'))
@@ -35,8 +36,8 @@ class TestMadLoopLauncherDensity(unittest.TestCase):
             stream.write('\n'.join(lines) + '\n')
 
     def test_density_flag_split_by_the_wrap(self):
-        # as written for a long MG5DIR/TEST_AMC/MGProcess: no line of the
-        # file contains '--density'
+        # as older versions wrote it for a long MG5DIR/TEST_AMC/MGProcess: no
+        # line of the file contains '--density'
         with tempfile.TemporaryDirectory() as tmpdir:
             self.write_proc_card(tmpdir,
                 'import model loop_sm',

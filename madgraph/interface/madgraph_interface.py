@@ -7251,7 +7251,7 @@ This implies that with decay chains:
             ban = banner_module.Banner(args[1])
             # Check that this is MG5 banner
             if 'mg5proccard' in ban:
-                # ProcCard joins the lines the card writer wrapped with '\'
+                # ProcCard joins the lines older versions wrapped with '\'
                 for line in banner_module.ProcCard(ban['mg5proccard'].split('\n')):
                     if line.startswith('#') or line.startswith('<'):
                         continue

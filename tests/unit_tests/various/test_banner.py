@@ -543,15 +543,31 @@ Beams:LHEF='events_ouaf.lhe.gz'
 
 
 
+def wrap_like_older_versions(text):
+    """the proc card as ProcCard.write used to write it: every line cut at 70
+    characters, wherever that falls, with a '\\' continuation"""
+    out = []
+    for line in text.split('\n'):
+        while len(line) > 70:
+            out.append(line[:70] + '\\')
+            line = line[70:]
+        out.append(line)
+    return '\n'.join(out)
+
+
 class TestProcCardWrappedLines(unittest.TestCase):
-    """ProcCard.write wraps lines at 70 characters wherever that falls, so a
-    command-line option can be split across two lines of proc_card_mg5.dat.
-    Options must be read back through ProcCard, never by grepping the file."""
+    """Older versions of ProcCard.write wrapped lines at 70 characters
+    wherever that falls, so a command-line option can be split across two
+    lines of proc_card_mg5.dat (old outputs, banners of old event files).
+    Options must be read back through ProcCard, never by grepping the file.
+    The writer now keeps every command on one line."""
 
     prefix = 'output standalone_fortran '
     options = ' --density=3,4 -f'
 
-    def write_and_reread(self, lines):
+    def write_and_reread(self, lines, wrap=True):
+        """write the card (wrapped as older versions did if wrap) and read
+        it back"""
         card = bannermod.ProcCard()
         for line in lines:
             card.append(line)
@@ -560,7 +576,22 @@ class TestProcCardWrappedLines(unittest.TestCase):
             card.write(path)
             with open(path) as stream:
                 raw = stream.read()
+            if wrap:
+                raw = wrap_like_older_versions(raw)
+                with open(path, 'w') as stream:
+                    stream.write(raw)
             return raw, bannermod.ProcCard(path)
+
+    def test_write_keeps_long_lines_whole(self):
+        output = self.prefix + '/' + 'd' * 80 + self.options
+        generate = ('generate p p > t t~, (t > w+ b, w+ > e+ ve), '
+                    '(t~ > w- b~, w- > mu- vm~) @0 QED=2 QCD=2')
+        raw, card = self.write_and_reread([generate, output], wrap=False)
+        lines = raw.split('\n')
+        self.assertIn(output, lines)
+        self.assertIn(generate, lines)
+        self.assertFalse(any(line.endswith('\\') for line in lines))
+        self.assertEqual(card.get_output_options(), {'density': '3,4'})
 
     def test_density_option_survives_every_wrap_position(self):
         # slide the 70-character cut through the whole option, value included
@@ -594,7 +625,8 @@ class TestProcCardWrappedLines(unittest.TestCase):
     def test_last_output_options(self):
         _, card = self.write_and_reread(
             ['generate e+ e- > mu+ mu-',
-             'output standalone /tmp/a --prefix=int --hel_recycling=False'])
+             'output standalone /tmp/a --prefix=int --hel_recycling=False'],
+            wrap=False)
         self.assertEqual(card.get_output_options(),
                          {'prefix': 'int', 'hel_recycling': 'False'})
 

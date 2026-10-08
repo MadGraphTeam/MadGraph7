@@ -281,8 +281,8 @@ class CheckValidForCmd(object):
 #        if not hasattr(model.get('particles')[0], 'partial_widths'):
 #            raise self.InvalidCmd, 'The UFO model does not include partial widths information. Impossible to compute widths automatically'
             
-        # check if the name are passed to default MG5 (through ProcCard: a
-        # long 'import model' line is wrapped, possibly inside '-modelname')
+        # check if the name are passed to default MG5 (through ProcCard: older
+        # versions wrapped a long 'import model' line, even inside '-modelname')
         proc_card = banner_mod.ProcCard(pjoin(self.me_dir,'Cards','proc_card_mg5.dat'))
         if '-modelname' not in proc_card.get('full_model_line'):
             model.pass_particles_name_in_mg_default()        
@@ -4599,9 +4599,10 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         if hasattr(self, 'model_name'):
             return self.model_name
 
-        # ProcCard.write wraps lines at 70 characters, even inside a token, and
-        # ProcCard.read joins them back. Reading the card also drops the
-        # generate/add process lines that precede the last 'import model'.
+        # Older versions of ProcCard.write wrapped lines at 70 characters, even
+        # inside a token, and ProcCard.read joins them back. Reading the card
+        # also drops the generate/add process lines that precede the last
+        # 'import model'.
         proc_card = banner_mod.ProcCard(os.path.join(self.me_dir, 'Cards',
                                                      'proc_card_mg5.dat'))
         # info['model'] is None for 'import model_v4 NAME' (and keeps a trailing

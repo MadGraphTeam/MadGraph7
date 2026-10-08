@@ -1483,8 +1483,8 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         self.load_results_db()
         self.results.def_web_mode(self.web)
         # check that compiler is gfortran 4.6 or later if virtuals have been exported
-        # joined by ProcCard: the card is wrapped at 70 characters, which can
-        # fall inside '[real=QCD]'
+        # joined by ProcCard: cards from older versions are wrapped at 70
+        # characters, which can fall inside '[real=QCD]'
         proc_card = '\n'.join(banner_mod.ProcCard(pjoin(self.me_dir, 'Cards', 'proc_card_mg5.dat')))
 
         if not '[real=QCD]' in proc_card:
@@ -3179,7 +3179,7 @@ RESTART = %(mint_mode)s
         step corresponds to the mintMC step, if =2 (i.e. after event generation)
         some additional infos are printed"""
         # find process name
-        # ProcCard joins the lines wrapped at 70 characters
+        # ProcCard joins the lines older versions wrapped at 70 characters
         proc_card_lines = banner_mod.ProcCard(pjoin(self.me_dir, 'Cards', 'proc_card_mg5.dat'))
         process = ''
         for line in proc_card_lines:

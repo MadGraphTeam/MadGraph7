@@ -190,7 +190,7 @@ class MadLoopLauncher(ExtLauncher):
         """True if the output was written with 'output ... --density=...'.
         The command options are not available here, so they are read back
         from the proc_card (the only place they are recorded), through
-        ProcCard which joins the lines its writer wrapped."""
+        ProcCard which joins the lines older versions wrapped."""
 
         proc_card = banner_mod.ProcCard(pjoin(self.card_dir, 'proc_card_mg5.dat'))
         return 'density' in proc_card.get_output_options()
