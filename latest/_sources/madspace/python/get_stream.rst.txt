@@ -1,0 +1,4 @@
+get_stream
+==========
+
+.. autofunction:: madspace.get_stream

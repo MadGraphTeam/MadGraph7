@@ -415,6 +415,9 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/set_simd_vector_size.html">set_simd_vector_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/NamedTypes.html">NamedTypes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/NamedValues.html">NamedValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/get_stream.html">get_stream</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/set_stream.html">set_stream</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/stream.html">stream</a></li>
 </ul>
 </li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="madspace/cpp-api.html">C++ API</a><input aria-label="Toggle navigation of C++ API" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -1254,6 +1257,8 @@
         </ul></li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="madspace/python/get_stream.html#madspace.get_stream">get_stream() (in module madspace)</a>
+</li>
         <li><a href="madspace/python/Context.html#madspace.Context.global_exists">global_exists() (madspace.Context method)</a>
 </li>
         <li><a href="madspace/python/Context.html#madspace.Context.global_names">global_names() (madspace.Context method)</a>
@@ -1992,7 +1997,13 @@
 </li>
         <li><a href="madspace/cpp/Device.html#_CPPv4NK8madspace6Device4freeEPv">madspace::Device::free (C++ function)</a>
 </li>
+        <li><a href="madspace/cpp/Device.html#_CPPv4NK8madspace6Device14free_on_streamEPvPv">madspace::Device::free_on_stream (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/Device.html#_CPPv4NK8madspace6Device6memcpyEPvPvNSt6size_tE">madspace::Device::memcpy (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/Device.html#_CPPv4NK8madspace6Device13order_streamsEPvPv">madspace::Device::order_streams (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/Device.html#_CPPv4N8madspace6Device20stream_ordered_allocE">madspace::Device::stream_ordered_alloc (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/Device.html#_CPPv4NK8madspace6Device12sync_barrierEv">madspace::Device::sync_barrier (C++ function)</a>
 </li>
@@ -2828,10 +2839,10 @@
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6ConfigE">madspace::MadnisTraining::Config (C++ struct)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config10adam_beta1E">madspace::MadnisTraining::Config::adam_beta1 (C++ member)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config10adam_beta2E">madspace::MadnisTraining::Config::adam_beta2 (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config8adam_epsE">madspace::MadnisTraining::Config::adam_eps (C++ member)</a>
@@ -3474,6 +3485,8 @@
 </li>
         <li><a href="madspace/cpp/Runtime.html#_CPPv4N8madspace7Runtime13build_runtimeERK8Function10ContextPtrb">madspace::Runtime::build_runtime (C++ function)</a>
 </li>
+        <li><a href="madspace/cpp/Runtime.html#_CPPv4N8madspace7Runtime14release_inputsEv">madspace::Runtime::release_inputs (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/Runtime.html#_CPPv4N8madspace7Runtime3runERK9TensorVec">madspace::Runtime::run (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/Runtime.html#_CPPv4N8madspace7Runtime12run_backwardERK9TensorVecRK9TensorVecRKNSt6vectorIbEEb">madspace::Runtime::run_backward (C++ function)</a>
@@ -3648,9 +3661,13 @@
 </li>
         <li><a href="madspace/cpp/Tensor.html#_CPPv4I0EN8madspace6Tensor5resetEvRK1D">madspace::Tensor::reset (C++ function)</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor5resetEv">[1]</a>
 </li>
+        <li><a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor15reset_on_streamENSt9uintptr_tE">madspace::Tensor::reset_on_stream (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/Tensor.html#_CPPv4NK8madspace6Tensor7reshapeERK5Sizes">madspace::Tensor::reshape (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/Tensor.html#_CPPv4NK8madspace6Tensor6selectENSt6size_tENSt6size_tE">madspace::Tensor::select (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor10set_streamENSt8optionalINSt9uintptr_tEEE">madspace::Tensor::set_stream (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/Tensor.html#_CPPv4NK8madspace6Tensor5shapeEv">madspace::Tensor::shape (C++ function)</a>
 </li>
@@ -3662,9 +3679,11 @@
 </li>
         <li><a href="madspace/cpp/Tensor.html#_CPPv4NK8madspace6Tensor17split_and_reshapeERKNSt6vectorI5SizesEE">madspace::Tensor::split_and_reshape (C++ function)</a>
 </li>
+        <li><a href="madspace/cpp/Tensor.html#_CPPv4NK8madspace6Tensor6streamEv">madspace::Tensor::stream (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/Tensor.html#_CPPv4NK8madspace6Tensor6strideEv">madspace::Tensor::stride (C++ function)</a>
 </li>
-        <li><a href="madspace/cpp/Tensor.html#_CPPv4I0EN8madspace6Tensor6TensorE8DataTypeRK5SizesRK1D9AllocHint">madspace::Tensor::Tensor (C++ function)</a>, <a href="madspace/cpp/Tensor.html#_CPPv4I_10ScalarType0EN8madspace6Tensor6TensorE1TRK1D9AllocHint">[1]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4I_10ScalarTypeEN8madspace6Tensor6TensorE1T9DevicePtr9AllocHint">[2]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorE11TensorValue9DevicePtr9AllocHint">[3]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorE8DataTypeRK5Sizes9AllocHint">[4]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorE8DataTypeRK5Sizes9DevicePtr9AllocHint">[5]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorE8DataTypeRK5Sizes9DevicePtrPvNSt8functionIFvvEEE">[6]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorE8DataTypeRK5SizesPvNSt8functionIFvvEEE">[7]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorE8DataTypeRK5SizesRK5Sizes9DevicePtrPvNSt8functionIFvvEEE">[8]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorERK6Tensor">[9]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorERK7SizeVec">[10]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorERR6Tensor">[11]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorEv">[12]</a>
+        <li><a href="madspace/cpp/Tensor.html#_CPPv4I0EN8madspace6Tensor6TensorE8DataTypeRK5SizesRK1D9AllocHint">madspace::Tensor::Tensor (C++ function)</a>, <a href="madspace/cpp/Tensor.html#_CPPv4I_10ScalarType0EN8madspace6Tensor6TensorE1TRK1D9AllocHint">[1]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4I_10ScalarTypeEN8madspace6Tensor6TensorE1T9DevicePtr9AllocHint">[2]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorE11TensorValue9DevicePtr9AllocHint">[3]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorE8DataTypeRK5Sizes9AllocHint">[4]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorE8DataTypeRK5Sizes9DevicePtr9AllocHint">[5]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorE8DataTypeRK5Sizes9DevicePtrPvNSt8functionIFvvEEE">[6]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorE8DataTypeRK5SizesPvNSt8functionIFvvEEE">[7]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorE8DataTypeRK5SizesRK5Sizes9DevicePtrPvNSt8functionIFvvEEENSt8optionalINSt9uintptr_tEEE">[8]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorERK6Tensor">[9]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorERK7SizeVec">[10]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorERR6Tensor">[11]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor6TensorEv">[12]</a>
 </li>
         <li><a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor12tensor_countE">madspace::Tensor::tensor_count (C++ member)</a>
 </li>
@@ -3744,7 +3763,7 @@
 </li>
         <li><a href="madspace/cpp/ThreadResource.html#_CPPv4N8madspace14ThreadResource5resetEv">madspace::ThreadResource::reset (C++ function)</a>
 </li>
-        <li><a href="madspace/cpp/ThreadResource.html#_CPPv4N8madspace14ThreadResource14ThreadResourceER10ThreadPoolNSt8functionIF1TvEEENSt8optionalINSt8functionIFvR1TEEEEE">madspace::ThreadResource::ThreadResource (C++ function)</a>, <a href="madspace/cpp/ThreadResource.html#_CPPv4N8madspace14ThreadResource14ThreadResourceERK14ThreadResource">[1]</a>, <a href="madspace/cpp/ThreadResource.html#_CPPv4N8madspace14ThreadResource14ThreadResourceERR14ThreadResource">[2]</a>, <a href="madspace/cpp/ThreadResource.html#_CPPv4N8madspace14ThreadResource14ThreadResourceEv">[3]</a>
+        <li><a href="madspace/cpp/ThreadResource.html#_CPPv4N8madspace14ThreadResource14ThreadResourceER10ThreadPoolNSt8functionIF1TvEEENSt8optionalINSt8functionIFvR1TEEEEEb">madspace::ThreadResource::ThreadResource (C++ function)</a>, <a href="madspace/cpp/ThreadResource.html#_CPPv4N8madspace14ThreadResource14ThreadResourceERK14ThreadResource">[1]</a>, <a href="madspace/cpp/ThreadResource.html#_CPPv4N8madspace14ThreadResource14ThreadResourceERR14ThreadResource">[2]</a>, <a href="madspace/cpp/ThreadResource.html#_CPPv4N8madspace14ThreadResource14ThreadResourceEv">[3]</a>
 </li>
         <li><a href="madspace/cpp/ThreadResource.html#_CPPv4N8madspace14ThreadResourceD0Ev">madspace::ThreadResource::~ThreadResource (C++ function)</a>
 </li>
@@ -4578,12 +4597,12 @@
           <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.MatrixElementInput.random_helicity_in">(madspace.MatrixElement.MatrixElementInput attribute)</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.random_int">random_int() (madspace.FunctionBuilder method)</a>
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.reduce_product">reduce_product() (madspace.FunctionBuilder method)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.reduce_sum">reduce_sum() (madspace.FunctionBuilder method)</a>
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.reduce_sum_vector">reduce_sum_vector() (madspace.FunctionBuilder method)</a>
@@ -4596,6 +4615,16 @@
         </ul></li>
         <li><a href="madspace/python/GeneratorStatus.html#madspace.GeneratorStatus.rel_std_dev">rel_std_dev (madspace.GeneratorStatus property)</a>
 </li>
+        <li><a href="madspace/python/Function.html#madspace.Function.release_inputs">release_inputs() (madspace.Function method)</a>
+
+        <ul>
+          <li><a href="madspace/python/FunctionGenerator.html#madspace.FunctionGenerator.release_inputs">(madspace.FunctionGenerator method)</a>
+</li>
+          <li><a href="madspace/python/FunctionRuntime.html#madspace.FunctionRuntime.release_inputs">(madspace.FunctionRuntime method)</a>
+</li>
+          <li><a href="madspace/python/Mapping.html#madspace.Mapping.release_inputs">(madspace.Mapping method)</a>
+</li>
+        </ul></li>
         <li><a href="madspace/python/MLP.html#madspace.MLP.relu">relu (madspace.MLP attribute)</a>
 
         <ul>
@@ -4714,6 +4743,8 @@
 </li>
         <li><a href="madspace/python/set_simd_vector_size.html#madspace.set_simd_vector_size">set_simd_vector_size() (in module madspace)</a>
 </li>
+        <li><a href="madspace/python/set_stream.html#madspace.set_stream">set_stream() (in module madspace)</a>
+</li>
         <li><a href="madspace/python/Type.html#madspace.Type.shape">shape (madspace.Type property)</a>
 </li>
         <li><a href="madspace/python/MLP.html#madspace.MLP.sigmoid">sigmoid (madspace.MLP attribute)</a>
@@ -4785,6 +4816,8 @@
         <li><a href="madspace/python/StatusFile.html#madspace.StatusFile">StatusFile (class in madspace)</a>
 </li>
         <li><a href="madspace/python/AdamOptimizer.html#madspace.AdamOptimizer.step">step() (madspace.AdamOptimizer method)</a>
+</li>
+        <li><a href="madspace/python/stream.html#madspace.stream">stream() (in module madspace)</a>
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.sub">sub() (madspace.FunctionBuilder method)</a>
 </li>

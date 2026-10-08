@@ -177,3 +177,6 @@ Lower-level helpers and containers.
 
    python/NamedTypes
    python/NamedValues
+   python/get_stream
+   python/set_stream
+   python/stream

@@ -1,0 +1,4 @@
+set_stream
+==========
+
+.. autofunction:: madspace.set_stream
