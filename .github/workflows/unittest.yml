@@ -64,7 +64,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_ungrouping_lepton test_all_permutation test_permutation_from_id test_v31_syntax_crash test_polarisation_nlo_regimes test_the_exit_from_child_cmd test_the_exit_from_child_cmd2 test_get_final_part test_InvalidCmd test_check_generate test_cleaning_history test_generate_polarised test_help_category test_output_default test_shell_and_continuation_line test_simple_generate test_card_type_recognition test_help_category test_autocompletion test_modif_ML_card test_modif_madweight_card test_modif_param_card test_modif_pythia8_card test_modif_run_card test_modif_shower_card test_modif_reweight_card test_wrapped_model_path test_wrapped_processes test_processes_after_last_import_model test_model_v4 test_default_model -t0
+            ./tests/test_manager.py test_ungrouping_lepton test_all_permutation test_permutation_from_id test_v31_syntax_crash test_polarisation_nlo_regimes test_the_exit_from_child_cmd test_the_exit_from_child_cmd2 test_get_final_part test_InvalidCmd test_check_generate test_cleaning_history test_generate_polarised test_help_category test_output_default test_shell_and_continuation_line test_simple_generate test_card_type_recognition test_help_category test_autocompletion test_modif_ML_card test_modif_madweight_card test_modif_param_card test_modif_pythia8_card test_modif_run_card test_modif_shower_card test_modif_reweight_card test_wrapped_model_path test_wrapped_processes test_processes_after_last_import_model test_model_v4 test_default_model test_density_option_survives_every_wrap_position test_regression_layout test_last_output_options test_wrapped_modelname test_density_flag_split_by_the_wrap test_density_flag_on_one_line test_no_density test_write_keeps_long_lines_whole -t0
 
       # ---- unittest_2 ----
       - name: "unittest_2"
@@ -141,7 +141,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_generate_fks_ew_dijet_qed2qcd1_qed test_generate_fks_ew_dijet_qed2qcd2_qcd test_generate_fks_ew_dijet_qed2qcd2_qed test_generate_fks_ew_dijet_qed2qcd2_qedqcd test_generate_fks_ew_extra_cnts_ttx_full test_generate_fks_ew_extra_cnts_ttx_qed2qcd1 test_generate_fks_ew_noorders test_include_lep_split test_combine_ij test_find_color_links test_find_orders test_find_particles_interactions_no_ghosts test_find_particles_interactions_no_goldstones test_find_pert_particles_interactions test_find_pert_particles_interactions_mssm test_find_splittings test_insert_color_links test_insert_legs test_legs_to_color_link_string test_sort_fksleglist test_split_leg test_to_fks_leg_s test_diagram_tag_gg_ggg test_diagram_tag_uu_uug test_reorder_permutation -t0
+            ./tests/test_manager.py test_generate_fks_ew_dijet_qed2qcd1_qed test_generate_fks_ew_dijet_qed2qcd2_qcd test_generate_fks_ew_dijet_qed2qcd2_qed test_generate_fks_ew_dijet_qed2qcd2_qedqcd test_generate_fks_ew_extra_cnts_ttx_full test_generate_fks_ew_extra_cnts_ttx_qed2qcd1 test_generate_fks_ew_noorders test_include_lep_split test_ew_resonances_without_cms test_qcd_resonances_without_cms test_resonance_warning_from_generate test_combine_ij test_find_color_links test_find_orders test_find_particles_interactions_no_ghosts test_find_particles_interactions_no_goldstones test_find_pert_particles_interactions test_find_pert_particles_interactions_mssm test_find_splittings test_insert_color_links test_insert_legs test_legs_to_color_link_string test_sort_fksleglist test_split_leg test_to_fks_leg_s test_diagram_tag_gg_ggg test_diagram_tag_uu_uug test_reorder_permutation -t0
 
       # ---- unittest_26 ----
       - name: "unittest_26"
@@ -301,6 +301,15 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_xdg_config_home_wins test_home_fallback test_never_mg5 test_no_home test_no_base test_mg7_file_wins test_mg5_fallback test_neither_file test_absolute_lhapdf test_python_filter_is_not_part_of_the_path test_relative_value_roots_at_the_install test_bare_name_from_path test_missing_executable_does_not_raise test_no_lhapdf_at_all test_lhapdf5_pdfsets_path test_datadir_list_is_split test_env_data_path_comes_first test_env_config_wins_over_options test_lhapdf_py3_fallback test_none_and_auto_are_not_paths test_heptools_fallback_when_datadir_is_read_only test_create_makes_the_download_directory test_cvmfs_mirror_is_searched_last_and_never_downloaded_into test_with_data_path_promotes_a_directory -t0
 
+      # ---- unittest_ordering ----
+      # event-leg mapping (lhe_parser.get_mapping), me_frame boost of the
+      # reweighting and FourMomentum.boost at rest
+      - name: "unittest_ordering: test lhe_parser/reweight ordering and boost"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_lhe_ordering test_reweight_ordering test_boost_by_a_momentum_at_rest test_nested_identical_children -t0
+
 
   unittest_bundle_3:
     # former jobs, run one after the other: unittest_10 unittest_density_29
@@ -320,7 +329,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_decay_chain_different_order1 test_decay_chain_different_order2 test_decay_chain_different_order3 test_decay_chain_different_pdgs test_decay_chain_process_overall_orders test_decay_processes_different_is_particles test_equal_decay_chains test_helas_multi_process test_helas_multiprocess_pp_nj test_majorana_decay_chain_process test_multistage_decay_chain_process test_multistage_symmetryfactor test_non_combine_processes test_setget_wavefunction_exceptions test_values_for_prop test_identify_me_tag_qq_qqg test_non_identify_me_tag_qq_qqg test_identify_me_tag_qq_qg test_extract_info test_get_final_state_particle test_get_proc_with_decay_LO test_get_proc_with_decay_NLO test_madspin_event test_find_symmetry_uu_tt test_find_symmetry_uu_tt_with_subprocess_group test_tree_pass_matches_enumeration test_tree_pass_error_handling test_tree_pass_ttbar_nested_decays test_tree_pass_vbs_same_sign_ww -t0
+            ./tests/test_manager.py test_decay_chain_different_order1 test_decay_chain_different_order2 test_decay_chain_different_order3 test_decay_chain_different_pdgs test_decay_chain_process_overall_orders test_decay_processes_different_is_particles test_equal_decay_chains test_helas_multi_process test_helas_multiprocess_pp_nj test_majorana_decay_chain_process test_multistage_decay_chain_process test_multistage_symmetryfactor test_non_combine_processes test_setget_wavefunction_exceptions test_values_for_prop test_identify_me_tag_qq_qqg test_non_identify_me_tag_qq_qqg test_identify_me_tag_qq_qg test_extract_info test_get_final_state_particle test_get_proc_with_decay_LO test_get_proc_with_decay_NLO test_madspin_event test_find_symmetry_uu_tt test_find_symmetry_uu_tt_with_subprocess_group test_trimmed_decay_keeps_external_leg_order test_gluino_decay_chain_leg_numbering test_tree_pass_matches_enumeration test_tree_pass_error_handling test_tree_pass_ttbar_nested_decays test_tree_pass_vbs_same_sign_ww -t0
             ./tests/test_manager.py tests.unit_tests.madspin.test_madspin -t0
 
       # ---- unittest_density_29 ----

@@ -281,8 +281,10 @@ class CheckValidForCmd(object):
 #        if not hasattr(model.get('particles')[0], 'partial_widths'):
 #            raise self.InvalidCmd, 'The UFO model does not include partial widths information. Impossible to compute widths automatically'
             
-        # check if the name are passed to default MG5
-        if '-modelname' not in open(pjoin(self.me_dir,'Cards','proc_card_mg5.dat')).read():
+        # check if the name are passed to default MG5 (through ProcCard: older
+        # versions wrapped a long 'import model' line, even inside '-modelname')
+        proc_card = banner_mod.ProcCard(pjoin(self.me_dir,'Cards','proc_card_mg5.dat'))
+        if '-modelname' not in proc_card.get('full_model_line'):
             model.pass_particles_name_in_mg_default()        
         model = model_reader.ModelReader(model)
         particles_name = dict([(p.get('name'), p.get('pdg_code'))
@@ -4597,9 +4599,10 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         if hasattr(self, 'model_name'):
             return self.model_name
 
-        # ProcCard.write wraps lines at 70 characters, even inside a token, and
-        # ProcCard.read joins them back. Reading the card also drops the
-        # generate/add process lines that precede the last 'import model'.
+        # Older versions of ProcCard.write wrapped lines at 70 characters, even
+        # inside a token, and ProcCard.read joins them back. Reading the card
+        # also drops the generate/add process lines that precede the last
+        # 'import model'.
         proc_card = banner_mod.ProcCard(os.path.join(self.me_dir, 'Cards',
                                                      'proc_card_mg5.dat'))
         # info['model'] is None for 'import model_v4 NAME' (and keeps a trailing
@@ -4760,6 +4763,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         """update the make_opts file writing the environmental variables
         of def_variables.
         if a value of the dictionary is None then it is not written.
+        Return True if the file had to be changed.
         """
         make_opts = path
         pattern = re.compile(r'^(\w+)\s*=\s*(.*)$',re.DOTALL)
@@ -4850,7 +4854,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             # never observe the file in the truncated state that open(...,'w')
             # would leave it in.
             misc.atomic_write(make_opts, content_variables + '\n'.join(content))
-        return       
+        return diff
 
 
 

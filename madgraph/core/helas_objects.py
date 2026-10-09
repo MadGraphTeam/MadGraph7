@@ -6303,20 +6303,18 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                     out.update(store_dropped(wf, def_wfct))
             return out
         
-        def restore_dropped(wft, dropped_wfct, def_wfct, diag):
-            """diag is the diagram to which assiciated the wfct 
-               wft is the wfct to check recursively (and be sure that it is not dropped)
+        def restore_dropped(wft, dropped_wfct, def_wfct, restored):
+            """wft is the wfct to check recursively (and be sure that it is not dropped)
                dropped_wfct is the dict of dropped wfct (key is the wfct number and value the wfct object)
-               def_wfct is the set of currently defined wfct number (so not need to restore it)"""
+               def_wfct is the set of currently defined wfct number (so not need to restore it)
+               restored collects the wfct taken back from dropped_wfct"""
 
             for wf in wft.get('mothers')[:]:
                 if wf.get('number') in dropped_wfct:
-                    tmp = diag.get('wavefunctions')
-                    tmp.insert(0,dropped_wfct[wf.get('number')])
-                    del dropped_wfct[wf.get('number')]
+                    restored.append(dropped_wfct.pop(wf.get('number')))
                     def_wfct.add(wf.get('number'))
                     # start recursion
-                    restore_dropped(wf, dropped_wfct, def_wfct, diag)
+                    restore_dropped(wf, dropped_wfct, def_wfct, restored)
                 else:
                     def_wfct.add(wf.get('number'))
                     
@@ -6348,12 +6346,20 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             else:
                 # need to check if the wfct has not been dropped already
                 if debug: misc.sprint('keeping diagram -> check wfcts')
+                restored = []
                 for wf in diag['wavefunctions'][:]:
                     def_wfct.add(wf.get('number'))
-                    restore_dropped(wf, dropped_wfct, def_wfct, diag)
+                    restore_dropped(wf, dropped_wfct, def_wfct, restored)
                 for wf in diag['amplitudes'][:]:
                     def_wfct.add(wf.get('number'))
-                    restore_dropped(wf, dropped_wfct, def_wfct, diag)
+                    restore_dropped(wf, dropped_wfct, def_wfct, restored)
+                # Put the restored wfcts in front in their creation order
+                # (wfct numbers grow along the generation, so mothers stay
+                # before daughters), not in recursion order: the external
+                # wfcts must stay sorted by leg, since insert_decay reads the
+                # leg offset of a decay from its first final-state wfct.
+                restored.sort(key=lambda wf: wf.get('number'))
+                diag['wavefunctions'][:0] = restored
 
         initial_len = len(self.get('diagrams'))
 
