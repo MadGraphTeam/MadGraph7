@@ -170,7 +170,8 @@ sets `[run] seed`, and so does editing the run card directly.
 maps the old names onto the new sections.
 
 **Gridpacks** work here too, via the `[gridpack]` section and
-`bin/gridpack.py`.
+`bin/generate_events`. With `run_mode = "fix_max_weight"`, the gridpack also
+ships `bin/event_stream.py`, a Python API that streams events in memory.
 
 %(see_also)s
 
