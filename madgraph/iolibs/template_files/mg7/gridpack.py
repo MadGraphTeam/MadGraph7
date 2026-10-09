@@ -240,9 +240,9 @@ def main() -> None:
     # run-time matrix-element parameters (bwcutoff) of the run that made the
     # gridpack; gridpacks written before they were recorded used the default
     me_parameters = madspace_data.get("me_parameters", {})
-    global_dir = os.path.join("data", "globals")
+    globals_path = os.path.join("data", "globals.tar")
     for context, backend in zip(contexts, backends):
-        context.load_globals(global_dir)
+        context.load_globals(globals_path)
         for me_path in madspace_data["matrix_elements"]:
             context.load_matrix_element(
                 me_path.format(device=backend), param_card_path, me_parameters

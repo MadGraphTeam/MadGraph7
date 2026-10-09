@@ -1851,7 +1851,7 @@ class MadgraphProcess:
         os.mkdir(gridpack_path)
         os.mkdir(data_path)
         os.mkdir(events_path)
-        self.contexts[0].save_globals(os.path.join(data_path, "globals"))
+        self.contexts[0].save_globals(os.path.join(data_path, "globals.tar"))
 
         channel_path = os.path.join(data_path, "channels")
         os.mkdir(channel_path)
