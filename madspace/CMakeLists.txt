@@ -209,6 +209,8 @@ add_library(
     src/driver/context.cpp
     src/driver/event_generator.cpp
     src/driver/channel_generator.cpp
+    src/driver/event_utils.cpp
+    src/driver/event_stream.cpp
     src/driver/generator_data.cpp
     src/driver/status_file.cpp
     src/driver/thread_pool.cpp

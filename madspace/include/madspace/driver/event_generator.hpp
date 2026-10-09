@@ -241,13 +241,6 @@ private:
         double norm_factor,
         MixMaxRandom& rand_gen
     );
-    void fill_lhe_event(
-        LHECompleter& lhe_completer,
-        LHEEvent& lhe_event,
-        EventBuffer& buffer,
-        std::size_t event_index,
-        MixMaxRandom& rand_gen
-    );
     // Layout of the combined events as read from the channel files
     DataLayout combined_layout() const;
     // Layout of the written events: the reweighting inputs are dropped unless

@@ -66,7 +66,9 @@ compress = %(gridpack.compress)s
 #                  unweighted events are reached; its maximum weight is then kept
 #                  fixed in the gridpack run, and its integral is combined with the
 #                  one of the gridpack run to share the events between channels
-#                  (can be slow for low-efficiency channels)
+#                  (can be slow for low-efficiency channels); the gridpack
+#                  also gets bin/event_stream.py to stream events in memory
+#                  from Python
 run_mode = %(gridpack.run_mode)s
 # gridpack runs only: directories for the temporary npy files and for the final
 # output files. "" uses the run folder Events/<run_name>_<index>; if output_dir

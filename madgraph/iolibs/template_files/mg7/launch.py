@@ -1969,10 +1969,13 @@ class MadgraphProcess:
         bin_path = os.path.join(gridpack_path, "bin")
         os.mkdir(bin_path)
         gen_events_file = os.path.join(bin_path, "generate_events")
-        shutil.copy(
-            os.path.join(os.path.dirname(__file__), "gridpack.py"), gen_events_file
-        )
+        template_dir = os.path.dirname(__file__)
+        shutil.copy(os.path.join(template_dir, "gridpack.py"), gen_events_file)
         os.chmod(gen_events_file, 0o755)
+        shutil.copy(os.path.join(template_dir, "gridpack_setup.py"), bin_path)
+        # streaming needs the fixed maximum weights of this mode
+        if self.gridpack_run_mode == "fix_max_weight":
+            shutil.copy(os.path.join(template_dir, "event_stream.py"), bin_path)
 
         data = {
             "matrix_elements": matrix_elements,

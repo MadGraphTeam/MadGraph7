@@ -52,8 +52,10 @@ public:
     /**
      * @param contexts          One context per device to run on.
      * @param integrand         The channel's compiled integrand.
-     * @param event_file        Path of the weighted event file.
-     * @param weight_file       Path of the max-weight tracking file.
+     * @param event_file        Path of the weighted event file; empty for no
+     *                          file (events are only kept in memory).
+     * @param weight_file       Path of the max-weight tracking file; empty
+     *                          for no file.
      * @param config            Generator configuration.
      * @param subprocess_index  Index of the owning subprocess.
      * @param name              Human-readable channel name.
@@ -86,12 +88,17 @@ public:
     std::size_t count_requested_opt() const { return _count_requested_opt; }
     /// The filled observable histograms, if any were requested.
     const std::vector<Histogram>& histograms() const { return _histograms; }
-    /// The weighted event file.
-    EventFile& event_file() { return _event_file; }
-    /// The max-weight tracking file.
-    EventFile& weight_file() { return _weight_file; }
+    /// The weighted event file. Throws if the channel was created without one.
+    EventFile& event_file();
+    /// The max-weight tracking file. Throws if the channel was created without
+    /// one.
+    EventFile& weight_file();
+    /// Number of particles per event.
+    std::size_t particle_count() const { return _particle_count; }
     /// Current maximum-weight estimate, used for unweighting.
     double max_weight() const { return _max_weight; }
+    /// Whether the maximum weight was fixed with @ref set_fixed_max_weight.
+    bool max_weight_fixed() const { return _max_weight_fixed; }
     /// Use `max_weight` for unweighting from now on, instead of estimating it
     /// from the generated events. Must be positive.
     void set_fixed_max_weight(double max_weight);
@@ -162,6 +169,14 @@ public:
     /// Append `unweighted_events` to @ref event_file, recording
     /// `job_max_weight`.
     void write_events(const TensorVec& unweighted_events, double job_max_weight);
+    /// Pack `unweighted_events` into `event_buffer` (layout @ref
+    /// event_file_layout) and their weights into `weight_buffer` (layout
+    /// `weight_file_layout`), resizing both.
+    void fill_event_buffers(
+        const TensorVec& unweighted_events,
+        EventBuffer& event_buffer,
+        EventBuffer& weight_buffer
+    ) const;
     /// Serialize this generator's state to `file_name`; see @ref load.
     void save(const std::string& file_name) const;
     /// The JSON text that @ref save writes; see @ref load_json. With
@@ -218,8 +233,8 @@ private:
     int _event_layout_extra_flags;
     int _particle_layout_extra_flags;
     DataLayout _event_file_layout;
-    EventFile _event_file;
-    EventFile _weight_file;
+    std::optional<EventFile> _event_file;
+    std::optional<EventFile> _weight_file;
     std::optional<VegasGridOptimizer> _vegas_optimizer;
     std::optional<DiscreteOptimizer> _discrete_optimizer;
     std::size_t _batch_size;
