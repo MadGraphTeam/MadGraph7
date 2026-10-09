@@ -27,37 +27,10 @@ int observable_type(Observable::ObservableOption observable) {
     case Observable::obs_delta_phi:
     case Observable::obs_delta_r:
     case Observable::obs_pair_mass:
+    case Observable::obs_sfos_pair_mass:
         return 2;
     case Observable::obs_sqrt_s:
         return 0;
-    }
-}
-
-bool option_mirror_invariant(Observable::ObservableOption observable) {
-    // The initial-state mirror is the rotation by pi about the x axis
-    // (E, px, py, pz) -> (E, px, -py, -pz). Every case is listed so that a new
-    // observable has to declare which side it falls on.
-    switch (observable) {
-    case Observable::obs_py:        // -> -py
-    case Observable::obs_pz:        // -> -pz
-    case Observable::obs_phi:       // atan2(py, px) -> -phi
-    case Observable::obs_theta:     // -> pi - theta
-    case Observable::obs_y:         // -> -y
-    case Observable::obs_eta:       // -> -eta
-    case Observable::obs_delta_eta: // difference of two flipped etas -> -delta_eta
-    case Observable::obs_delta_phi: // difference of two flipped phis -> -delta_phi
-        return false;
-    case Observable::obs_e:
-    case Observable::obs_px:
-    case Observable::obs_mass:
-    case Observable::obs_pt:
-    case Observable::obs_p_mag:
-    case Observable::obs_y_abs:
-    case Observable::obs_eta_abs:
-    case Observable::obs_delta_r: // sqrt(delta_eta^2 + delta_phi^2): both flip
-    case Observable::obs_pair_mass:
-    case Observable::obs_sqrt_s:
-        return true;
     }
 }
 
@@ -100,6 +73,7 @@ Value build_observable(
     case Observable::obs_delta_r:
         return fb.obs_delta_r(momenta.at(0), momenta.at(1));
     case Observable::obs_pair_mass:
+    case Observable::obs_sfos_pair_mass:
         return fb.obs_pair_mass(momenta.at(0), momenta.at(1));
     case Observable::obs_sqrt_s:
         return fb.obs_sqrt_s(momenta.at(0));
@@ -246,6 +220,31 @@ std::tuple<nested_vector2<me_int_t>, nested_vector2<me_int_t>, Type> build_indic
     } else {
         ret_indices = selected_indices;
     }
+    if (observable == Observable::obs_sfos_pair_mass) {
+        // Keep the same-flavour opposite-sign pairs only. An ordered selection
+        // holds ranks, whose PDG ids are only known event by event.
+        for (auto& order : ret_order_indices) {
+            if (order.size() > 0) {
+                throw std::invalid_argument(
+                    "sfos_pair_mass cannot be combined with an ordered selection"
+                );
+            }
+        }
+        nested_vector2<me_int_t> sfos_indices(ret_indices.size());
+        for (std::size_t k = 0; k < ret_indices.at(0).size(); ++k) {
+            int pid_a = pids.at(ret_indices.at(0).at(k));
+            int pid_b = pids.at(ret_indices.at(1).at(k));
+            if (pid_a != 0 && pid_a == -pid_b) {
+                sfos_indices.at(0).push_back(ret_indices.at(0).at(k));
+                sfos_indices.at(1).push_back(ret_indices.at(1).at(k));
+            }
+        }
+        if (sfos_indices.at(0).empty()) {
+            // no such pair in this process: like a selection that found nothing
+            return {{}, {}, batch_float};
+        }
+        ret_indices = std::move(sfos_indices);
+    }
     Type ret_type =
         (obs_type == 1 &&
          (ret_indices.size() > 1 || !(sum_momenta || sum_observable))) ||
@@ -256,17 +255,6 @@ std::tuple<nested_vector2<me_int_t>, nested_vector2<me_int_t>, Type> build_indic
 }
 
 } // namespace
-
-bool Observable::mirror_invariant() const {
-    // An observable that matched no particle is the constant 0, whatever the
-    // orientation: a cut naming a particle this process does not have imposes
-    // nothing, and must not stand in the way of the post-cut mirror.
-    if (not_found()) {
-        return true;
-    }
-    return option_mirror_invariant(_observable) &&
-        (!_order_observable || option_mirror_invariant(_order_observable.value()));
-}
 
 const std::vector<int> Observable::jet_pids{1, 2, 3, 4, -1, -2, -3, -4, 21};
 const std::vector<int> Observable::bottom_pids{-5, 5};

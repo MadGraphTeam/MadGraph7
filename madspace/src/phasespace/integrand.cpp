@@ -251,49 +251,18 @@ Integrand::Integrand(
         }
     }
 
-    _flavor_mirror.reserve(flavor_mirror.size());
     _has_mirror = false;
     for (bool mirror : flavor_mirror) {
-        _flavor_mirror.push_back(mirror ? 2 : 1);
         _flavor_mirror_factors.push_back(mirror ? 2. : 1.);
         _has_mirror |= mirror;
     }
-    // Mirroring an accepted lab-frame event swaps the beams only if they are
-    // identical: otherwise the mirrored event has another boost, other cuts
-    // and other PDFs, so its orientation must be chosen before the mapping.
+    // The orientation is drawn before the mapping, so that the boost, the cuts
+    // and the PDFs all see the orientation the event is written with.
     if (_has_mirror && !mapping.mirror_beams()) {
-        if (mapping.beam_rapidity() != 0. || pdf_grid2) {
-            throw std::invalid_argument(
-                "mirrored flavors with asymmetric beams need a PhaseSpaceMapping "
-                "built with mirror_beams = true"
-            );
-        }
-        // Even with identical beams, mirroring after the cuts hands the event
-        // writer an orientation the cuts never saw. That is only the same
-        // sample if no cut can tell the two orientations apart -- which is
-        // true of every cut on an invariant, a pt or an |eta|, and false as
-        // soon as one is on a signed rapidity, eta, phi or pz.
-        auto bad_cuts = mapping.cuts().non_mirror_invariant_cuts();
-        if (!bad_cuts.empty()) {
-            std::string names;
-            for (auto& name : bad_cuts) {
-                if (!names.empty()) {
-                    names += ", ";
-                }
-                names += name;
-            }
-            throw std::invalid_argument(
-                std::format(
-                    "the cut(s) {} are not invariant under the initial-state mirror "
-                    "(py, pz -> -py, -pz), so they have to be applied to the mirrored "
-                    "event: mirrored flavors then need a PhaseSpaceMapping built with "
-                    "mirror_beams = true, which draws the orientation before the cuts",
-                    names
-                )
-            );
-        }
+        throw std::invalid_argument(
+            "mirrored flavors need a PhaseSpaceMapping built with mirror_beams = true"
+        );
     }
-    _mirror_before_cuts = _has_mirror && mapping.mirror_beams();
     _channel_part_ret_types = compute_channel_part_ret_types();
 }
 
@@ -354,12 +323,6 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
     // outputs after cuts
     ret.push_back("indices_acc", Type(DataType::dt_int, acc_batch_size, {}));
     ret.push_back("momenta_acc", acc_four_vec_array(particle_count));
-    if (_has_mirror && !_mirror_before_cuts) {
-        if (!_madnis_training) {
-            ret.push_back("momenta_mirror_acc", acc_four_vec_array(particle_count));
-        }
-        ret.push_back("mirror_id_acc", acc_int);
-    }
     ret.push_back("x1_acc", acc_float);
     ret.push_back("x2_acc", acc_float);
     ret.push_back("flavor_id", acc_int);
@@ -415,7 +378,8 @@ NamedVector<Value> Integrand::build_channel_part(
 
     // Apply adaptive map (VEGAS or MadNIS flow)
     Value latent = r;
-    ValueVec mapping_conditions, flow_conditions;
+    NamedVector<Value> mapping_conditions;
+    ValueVec flow_conditions;
     std::visit(
         Overloaded{
             [&](std::monostate) {},
@@ -473,7 +437,7 @@ NamedVector<Value> Integrand::build_channel_part(
             _discrete_sym
         );
         chan_index = fb.gather_int(chan_index_in_group, _channel_indices);
-        mapping_conditions.push_back(chan_index_in_group);
+        mapping_conditions.push_back("permutation_index", chan_index_in_group);
     } else {
         chan_index =
             fb.full({static_cast<me_int_t>(_channel_indices.at(0)), batch_size_val});
@@ -484,18 +448,21 @@ NamedVector<Value> Integrand::build_channel_part(
     // Drawn uniformly; the flavor-dependent factor follows the flavor sampling.
     Value mirror_index;
     if (_mapping.mirror_beams()) {
-        if (_mirror_before_cuts) {
+        if (_has_mirror) {
+            // the det is 2; the flavor-dependent weight is applied after the cuts
             auto [index, mirror_det] =
                 fb.sample_discrete(mirror_random, static_cast<me_int_t>(2));
             mirror_index = index;
         } else {
             mirror_index = fb.full({static_cast<me_int_t>(0), batch_size_val});
         }
-        mapping_conditions.push_back(mirror_index);
+        mapping_conditions.push_back("mirror_index", mirror_index);
     }
 
     // Apply phase space mapping
-    auto mapping_result = _mapping.build_forward(fb, {latent}, mapping_conditions);
+    auto mapping_result = _mapping.build_forward(
+        fb, {_mapping.input_types().keys(), {latent}}, mapping_conditions
+    );
     weights_before_cuts.push_back(mapping_result["det"]);
     Value momenta = mapping_result["momenta"];
     Value x0 = mapping_result["x1"];
@@ -530,7 +497,7 @@ NamedVector<Value> Integrand::build_channel_part(
                         .value()
                         .build_function(fb, {x_acc.at(i), scales.at(i + 1)})
                         .at(0);
-                if (_mirror_before_cuts && _pdfs_swapped.at(i)) {
+                if (_has_mirror && _pdfs_swapped.at(i)) {
                     // leg i of a mirrored event comes from the other beam
                     auto pdf_swapped =
                         _pdfs_swapped.at(i)
@@ -623,31 +590,12 @@ NamedVector<Value> Integrand::build_channel_part(
         }
     }
 
-    if (_mirror_before_cuts) {
+    if (_has_mirror) {
         // Both orientations were sampled with probability 1/2. A flavor that
         // stands for itself and its mirror image collects both (factor 2);
         // for any other flavor the two orientations cover the same phase
         // space (factor 1).
         weights_after_cuts.push_back(fb.gather(flavor_id, _flavor_mirror_factors));
-    }
-
-    Value momenta_mirror_acc, mirror_id_acc;
-    if (_has_mirror && !_mirror_before_cuts) {
-        Value option_count;
-        if (std::all_of(
-                _flavor_mirror.begin(), _flavor_mirror.end(), [](me_int_t mirror) {
-                    return mirror == 2;
-                }
-            )) {
-            option_count = static_cast<me_int_t>(2);
-        } else {
-            option_count = fb.gather_int(flavor_id, _flavor_mirror);
-        }
-        Value mirror_random_acc = fb.batch_gather(indices_acc, mirror_random);
-        auto [index, mirror_det] = fb.sample_discrete(mirror_random_acc, option_count);
-        mirror_id_acc = index;
-        momenta_mirror_acc = fb.mirror_momenta(momenta_acc, mirror_id_acc);
-        weights_after_cuts.push_back(mirror_det);
     }
 
     Value weight_after_cuts = weights_after_cuts.empty()
@@ -680,12 +628,6 @@ NamedVector<Value> Integrand::build_channel_part(
     // outputs after cuts
     out.push_back("indices_acc", indices_acc);
     out.push_back("momenta_acc", momenta_acc);
-    if (_has_mirror && !_mirror_before_cuts) {
-        if (!_madnis_training) {
-            out.push_back("momenta_mirror_acc", momenta_mirror_acc);
-        }
-        out.push_back("mirror_id_acc", mirror_id_acc);
-    }
     out.push_back("x1_acc", x_acc.at(0));
     out.push_back("x2_acc", x_acc.at(1));
     out.push_back("flavor_id", flavor_id);
@@ -724,31 +666,10 @@ NamedVector<Value> Integrand::build_common_part(
     auto flavor_id = args.at("flavor_id");
     auto batch_size_val = fb.batch_size({args.at("weight_before_cuts")});
 
-    // The matrix element is evaluated on the momenta the event is written
-    // with, which for the mirrored half of a beam-swapped subprocess is the
-    // mirrored set (mirror_momenta: py, pz -> -py, -pz, the rotation by pi
-    // about x that moves each leg onto the other beam). This is what madevent
-    // does too -- it flips the momentum array that then goes to both the matrix
-    // element and the event record (super_auto_dsig_group_v4.inc, "Flip momenta
-    // (rotate around x axis)") -- and it is what the systematics reweighting
-    // here already assumes, since that reads the momenta back out of the event
-    // buffer.
-    //
-    // Feeding the unmirrored momenta instead only ever worked because |M|^2 is
-    // invariant under that rotation. A polarised matrix element is not, once it
-    // is evaluated in a frame that holds the polarised particle at rest: HELAS
-    // quantises such a particle along the *frame* z axis (the pp == 0 branch of
-    // vxxxxx) rather than along its own momentum, the mirror flips that axis,
-    // and the + and - states swap. Measured at 48% on g q > z{+} q evaluated in
-    // the Z rest frame.
-    //
-    // momenta_mirror_acc is only produced on the post-cut path. With
-    // mirror_beams the mirror is inside the mapping, before the boost into the
-    // lab frame and before the cuts, so momenta_acc is already the orientation
-    // the event is written with and there is nothing to pick.
-    auto momenta_me = args.index_map().contains("momenta_mirror_acc")
-        ? args.at("momenta_mirror_acc")
-        : momenta_acc;
+    // The matrix element sees the momenta the event is written with: the mirror
+    // is applied inside the mapping. This matters for polarised matrix elements,
+    // which are not invariant under the mirror (HELAS quantises along the frame
+    // z axis).
 
     auto scatter_or_drop = [&](Value default_value, Value value) -> Value {
         if (_drop_cuts_and_rescale) {
@@ -793,7 +714,7 @@ NamedVector<Value> Integrand::build_common_part(
 
     // Evaluate differential cross section
     ValueVec xs_args{
-        momenta_me,
+        momenta_acc,
         _flavor_remap.size() > 0 ? fb.gather_int(flavor_id, _flavor_remap) : flavor_id,
     };
     xs_args.push_back(x1_acc);
@@ -1011,14 +932,7 @@ NamedVector<Value> Integrand::build_common_part(
         }
     } else {
         outputs.push_back("weight", optional_cut(weight));
-        if (_has_mirror && !_mirror_before_cuts) {
-            outputs.push_back(
-                "momenta",
-                scatter_or_drop(args.at("momenta"), args.at("momenta_mirror_acc"))
-            );
-        } else {
-            outputs.push_back("momenta", args.at("momenta"));
-        }
+        outputs.push_back("momenta", args.at("momenta"));
         auto zeros_int = fb.full({static_cast<me_int_t>(0), batch_size_val});
         auto zeros_float = fb.full({0., batch_size_val});
         outputs.push_back("color_index", scatter_or_drop(zeros_int, dxs_vec.at(2)));

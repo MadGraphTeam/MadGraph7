@@ -25,7 +25,9 @@ namespace madspace {
  * outgoing particle, with index 0 the first outgoing particle and the two
  * beams excluded. `m_inv_min()` and `dr_min()` are symmetric `n_out * n_out`
  * matrices indexed by outgoing-particle pair. A bound of `0`, or infinity for
- * `eta_max()`, means the cut is inactive.
+ * `eta_max()`, means the cut is inactive. Only bounds that every selected
+ * object must satisfy are reported: an ordered selection (a rank, not a
+ * particle) or a CutMode::any cut over several objects stays a filter.
  *
  * `batch` is the leading batch dimension. `n_particles` counts the incoming and
  * outgoing particles.
@@ -61,14 +63,6 @@ public:
     /// Build a pass-through mask with no cuts.
     /// @param particle_count  Number of external particles.
     Cuts(std::size_t particle_count);
-    /// Names of the configured cuts that are not invariant under the
-    /// initial-state mirror (py, pz -> -py, -pz); empty if every cut is.
-    /// Mirroring an accepted event after the cuts only reproduces the mirrored
-    /// half of the initial state if the cuts cannot tell the two orientations
-    /// apart, since the event that gets written is the mirrored one.
-    std::vector<std::string> non_mirror_invariant_cuts() const;
-    /// Whether every configured cut is invariant under the initial-state mirror.
-    bool mirror_invariant() const { return non_mirror_invariant_cuts().empty(); }
     /// Largest required partonic center-of-mass energy, or 0 if unconstrained.
     double sqrt_s_min() const;
     /// Per-outgoing-particle maximum pseudorapidity (infinity where inactive).
@@ -80,13 +74,24 @@ public:
     /// Symmetric matrix of minimum pair `delta_r` separations (0 where inactive).
     std::vector<std::vector<double>> dr_min() const;
 
+    /// A pair mass cut with CutMode::any over several pairs: at least one of
+    /// `pairs` (outgoing indices, beams excluded) has invariant mass >= `min`.
+    struct PairMassAny {
+        /// The pairs, as outgoing indices; one of them has to pass.
+        std::vector<std::pair<std::size_t, std::size_t>> pairs;
+        /// Lower bound on the invariant mass of the passing pair.
+        double min;
+    };
+    /// The CutMode::any pair mass cuts over several pairs, which bound no pair
+    /// in particular and are therefore absent from m_inv_min().
+    std::vector<PairMassAny> pair_mass_any_min() const;
+
 private:
     NamedVector<Value> build_function_impl(
         FunctionBuilder& fb, const NamedVector<Value>& args
     ) const override;
 
     std::vector<std::vector<double>> pairwise_min(
-        Observable::ObservableOption obs,
         const std::function<
             std::vector<std::pair<std::size_t, std::size_t>>(const Observable&)>& pairs
     ) const;

@@ -349,8 +349,10 @@ class Banner(dict):
         self['init'] = '\n'.join(all_lines)
 
 
-    def modify_init_cross(self, cross, allow_zero=False):
-        """modify the init information with the associate cross-section"""
+    def modify_init_cross(self, cross, allow_zero=False, error=None, xmaxup=None):
+        """modify the init information with the associate cross-section.
+        XERRUP and XMAXUP are rescaled with XSECUP, unless error (dict with
+        the keys of cross) or xmaxup (one value for every process) is given"""
         assert isinstance(cross, dict)
 #        assert "all" in cross
         assert "init" in self
@@ -382,8 +384,10 @@ class Banner(dict):
                 ratio = cross[pid]/float(xsec)
             else:
                 ratio = 0
+            xerr = error[pid] if error is not None else ratio*float(xerr)
+            xmax = xmaxup if xmaxup is not None else ratio*float(xmax)
             line = "   %+13.7e %+13.7e %+13.7e %i" % \
-                (float(cross[pid]), ratio* float(xerr), ratio*float(xmax), pid)
+                (float(cross[pid]), xerr, xmax, pid)
             new_data.append(line)
         self['init'] = '\n'.join(new_data)
                 
@@ -2074,6 +2078,10 @@ class PY8Card(ConfigFile):
         # to indicate that he wants to pipe the output. Or /dev/null to turn the
         # output off.
         self.add_param("HEPMCoutput:file", 'hepmc.gz')
+        # HepMC version of that output: hepmc2, hepmc3, or auto (HepMC3 unless
+        # a tool of the run needs HepMC2). Not a Pythia8 setting: MadGraph7
+        # runs a main164 compiled against the corresponding HepMC library.
+        self.add_param("HEPMCoutput:format", 'auto')
 
         # Hidden parameters always written out
         # ====================================
@@ -2156,7 +2164,7 @@ class PY8Card(ConfigFile):
         self.add_param("PartonLevel:FSRinResonances", True, hidden=True, always_write_to_card=False, comment="Do not allow shower to run from decay product of unstable particle")
         self.add_param("ProcessLevel:resonanceDecays", True, hidden=True, always_write_to_card=False, comment="Do not allow unstable particle to decay.")
 
-        # Parameters only needed for main164 type of run (not pythia8/MG5 interface)
+        # Parameters only needed for main164 type of run
         self.add_param("Main:HepMC", True, hidden=True, always_write_to_card=False,
                        comment="""Specify the type of output to be used by the main164 run. """)
         self.add_param("HepMC:output", 'hepmc.gz', hidden=True, always_write_to_card=False,
@@ -2316,7 +2324,7 @@ class PY8Card(ConfigFile):
             else:
                 return ','.join([PY8Card.pythia8_formatting(arg) for arg in value])
             
-    #change of name convention between MG5 old interface and main164 from Pythia8
+    # parameters of the retired MG5aMC_PY8_interface, and their main164 equivalent
     interface_to_164 = {'HEPMCoutput:file': 'HepMC:output',
                         'SysCalc:fullCutVariation': '!SysCalc:fullCutVariation (not supported with 164)',
                         'SysCalc:qCutList': '!SysCalc:qCutList (not supported with 164)',
@@ -2327,8 +2335,7 @@ class PY8Card(ConfigFile):
 
 
     def write(self, output_file, template, read_subrun=False, 
-                    print_only_visible=False, direct_pythia_input=False, add_missing=True,
-                    use_mg5amc_py8_interface=False):
+                    print_only_visible=False, direct_pythia_input=False, add_missing=True):
         """ Write the card to output_file using a specific template.
         > 'print_only_visible' specifies whether or not the hidden parameters
             should be written out if they are in the hidden_params_to_always_write
@@ -2338,11 +2345,9 @@ class PY8Card(ConfigFile):
           or system_set are commented.
         > If 'add_missing' is False then parameters that should be written_out but are absent
         from the template will not be written out.
-        > use_mg5amc_py8_interface is a flag to indicate that the MadGraph7-PY8 interface is used or not
-          if not used some parameters need to be translated from the old convention to the new one
+        > If 'direct_pythia_input' is true, the parameters named after the
+          retired MG5aMC_PY8_interface are translated to their main164 names.
         """
-
-        self.use_mg5amc_py8_interface = use_mg5amc_py8_interface
 
         # First list the visible parameters
         visible_param = [p for p in self if p.lower() not in self.hidden_param
@@ -2485,8 +2490,7 @@ class PY8Card(ConfigFile):
                 # Just copy parameters which don't need to be specified
                 if param.lower() not in self.params_to_never_write:
 
-                    if not use_mg5amc_py8_interface and direct_pythia_input and \
-                                   param in self.interface_to_164:
+                    if direct_pythia_input and param in self.interface_to_164:
                         param_entry = self.interface_to_164[param.strip()]
                         # special case for HepMC needs two flags
                         if 'HepMC:output' == param_entry:
@@ -2496,7 +2500,11 @@ class PY8Card(ConfigFile):
                         output.write(line)
                 else:
                     output.write('! The following parameter was forced to be commented out by MadGraph7.\n')
-                    output.write('! %s'%line)
+                    if param in self:
+                        # record the value in use, not the one of the template
+                        output.write('! %s = %s\n'%(param, PY8Card.pythia8_formatting(self[param])))
+                    else:
+                        output.write('! %s'%line)
                 # Proceed to next line
                 last_pos = tmpl.tell()
                 line     = tmpl.readline()
@@ -2518,8 +2526,7 @@ class PY8Card(ConfigFile):
                 # then they shouldn't be passed to Pythia
                 template = '!%s=%s'
 
-            if not use_mg5amc_py8_interface and direct_pythia_input and \
-                                   param in self.interface_to_164:
+            if direct_pythia_input and param in self.interface_to_164:
                 param_entry = self.interface_to_164[param]
                 # special case for HepMC needs two flags
                 if 'HepMC:output' == param_entry:
@@ -2528,9 +2535,6 @@ class PY8Card(ConfigFile):
                         self['Main:InternalAnalysis'].lower() == 'on':
                         output.write('InternalAnalysis:output = ./djrs.dat\n')
 
-            #elif param in self.interface_to_164.values() and not direct_pythia_input:
-            #    misc.sprint(use_mg5amc_py8_interface, direct_pythia_input,param)
-            #    raise Exception('The parameter %s is not supported in the MadGraph7-PY8 interface. Please use the new interface.'%param_entry
             output.write(template%(param_entry,
                                   value_entry.replace(value,new_value)))
         
@@ -2575,7 +2579,7 @@ class PY8Card(ConfigFile):
                 comment = '\n'.join('! %s'%c for c in 
                           self.comments[param.lower()].split('\n'))
                 output.write(comment+'\n')
-            if not use_mg5amc_py8_interface and param in self.interface_to_164:
+            if param in self.interface_to_164:
                 continue
             output.write('%s=%s\n'%(param,PY8Card.pythia8_formatting(self[param])))
         
@@ -4696,6 +4700,7 @@ class RunCardLO(RunCard):
         self.add_param('survey_nchannel_per_job', 2, hidden=True, include=False, comment="control how many Channel are integrated inside a single job on cluster/multicore")
         self.add_param('refine_evt_by_job', -1, hidden=True, include=False, comment="control the maximal number of events for the first iteration of the refine (larger means less jobs)")
         self.add_param('disable_multichannel', False, hidden=True, include=False, comment='disable madevent suppressed-amplitude multichannel mode and ignore symfact multiplicative factors in gen_ximprove channel steering')
+        self.add_param('max_overweight_truncation', -1.0, hidden=True, comment="refine: fraction of the cross-section carried by the events heavier than the maximum weight (they keep their weight), as [generation] max_overweight_truncation in mg7. Negative (default): the maximum weight is the 99% quantile of the event weights of the iteration that decides the last one.")
         self.add_param('small_width_treatment', 1e-6, hidden=True, comment="generation where the width is below VALUE times mass will be replace by VALUE times mass for the computation. The cross-section will be corrected assuming NWA. Not used for loop-induced process")
         #hel recycling
         self.add_param('hel_recycling', True, hidden=True, include=False, comment='allowed to deactivate helicity optimization at run-time --code needed to be generated with such optimization--')
@@ -4768,7 +4773,12 @@ class RunCardLO(RunCard):
                 logger.warning('draj cut discarded since photon isolation is used')
                 self['draj'] = 0.0   
         
-        # special treatment for gridpack use the gseed instead of the iseed        
+        # the fortran code only knows -1 as "no cut": any other value is a cap
+        # and 0 would give a NaN phase-space (TAUMAX=0) and a zero cross-section
+        if self['dsqrt_shatmax'] <= 0 and self['dsqrt_shatmax'] != -1:
+            self['dsqrt_shatmax'] = -1.0
+
+        # special treatment for gridpack use the gseed instead of the iseed
         if self['gridrun']:
             self['iseed'] = self['gseed']
         
@@ -6827,6 +6837,10 @@ class RunCardMG7(RunCard):
                     "(-1 keeps all channels)")
         self.add_toml_param('phasespace', 'invariant_power', 0.7)
         self.add_toml_param('phasespace', 'bw_cutoff', 15)
+        self.add_toml_param('phasespace', 'cut_decays', False,
+            comment="apply the [cuts] to the decay products of on-shell "
+                    "(decay-chain) propagators too; false leaves them uncut, "
+                    "as MadEvent's cut_decays")
         self.add_toml_param('phasespace', 'adaptive_symmetry_sampling', True)
 
         # ----------------------------- [madnis] -----------------------
@@ -7574,8 +7588,8 @@ class RunCardMG7(RunCard):
         except (KeyError, TypeError, ValueError):
             return 0., False
 
-    @staticmethod
-    def _decaying_mass(proc_def):
+    @classmethod
+    def _decaying_mass(cls, proc_def):
         """Numerical mass of the decaying particle of a 1 -> N process."""
 
         for plist in proc_def or []:
@@ -7587,10 +7601,42 @@ class RunCardMG7(RunCard):
                     name = particle.get('mass')
                     if str(name).lower() == 'zero':
                         return 0.
-                    return abs(float(model.get('parameter_dict')[name]))
-                except (AttributeError, KeyError, IndexError, TypeError, ValueError):
+                    return abs(cls._parameter_value(model, name).real)
+                except Exception:
                     continue
         return 0.
+
+    @staticmethod
+    def _parameter_value(model, name):
+        """Numerical value of the model parameter `name`, from the default
+        values of the external parameters.
+
+        Only a ModelReader has a 'parameter_dict'; at output time the model is
+        usually a plain Model or LoopModel, whose internal parameters (MW in
+        the sm) carry an expression and no value. The expressions are
+        evaluated in a scratch namespace, so the model itself is left as is.
+        """
+
+        if 'parameter_dict' in model and model['parameter_dict']:
+            return complex(model['parameter_dict'][name])
+
+        import models.model_reader as model_reader
+        namespace = dict(vars(model_reader))
+        namespace['ZERO'] = 0.
+        for param in model['parameters'][('external',)]:
+            namespace[param.name] = param.value
+        if name in namespace:
+            return complex(namespace[name])
+        for func in model['functions']:
+            exec("def %s(%s):\n   return %s" % (func.name,
+                       ",".join(func.arguments), func.expr), namespace)
+        for key in sorted((k for k in model['parameters'] if k != ('external',)),
+                          key=len):
+            for param in model['parameters'][key]:
+                namespace[param.name] = eval(param.expr, namespace)
+                if param.name == name:
+                    return complex(namespace[name])
+        raise KeyError(name)
 
     # MadGraph gives a leg whose flavours were merged one of these codes; the
     # mg7 runtime resolves them to the same representatives (clean_pids /
@@ -7730,8 +7776,8 @@ class RunCardMG7(RunCard):
     def set_default_histograms(self, proc_characteristic, proc_def):
         """Fill [histograms] with a starting set of plots for this process:
         the pt and eta of every final-state particle, the invariant mass of
-        every pair of them, the partonic sqrt(s) and the distribution of the
-        event weight.
+        every pair of them, the partonic sqrt(s) (not for a decay) and the
+        distribution of the event weight.
 
         The observables are named after the [multiparticles] groups, with the
         "_1", "_2", ... suffix selecting the hardest, second hardest, ... of a
@@ -7788,8 +7834,11 @@ class RunCardMG7(RunCard):
                     collections.OrderedDict(
                         [('min', 0.), ('max', mass_max), ('bin_count', bins)])
                 pairs += 1
-        histograms['sqrt_s'] = collections.OrderedDict(
-            [('min', 0.), ('max', mass_max), ('bin_count', bins)])
+        if not is_decay:
+            # madspace's sqrt_s adds up the two beams: a decay has one, at a
+            # fixed mass, so there is nothing to plot
+            histograms['sqrt_s'] = collections.OrderedDict(
+                [('min', 0.), ('max', mass_max), ('bin_count', bins)])
         # "weight" is not an observable of the momenta: it is the reserved key
         # for the distribution of the event weight itself (see
         # MadgraphProcess.weight_histogram_key in the mg7 launcher)
@@ -7840,6 +7889,7 @@ class RunCardMG7(RunCard):
         'dsqrt_q2fact1': 'beam.fact_scale1',
         'dsqrt_q2fact2': 'beam.fact_scale2',
         'bwcutoff': 'phasespace.bw_cutoff',
+        'cut_decays': 'phasespace.cut_decays',
         'use_syst': 'systematics.enable',
     }
     # LO dynamical_scale_choice (int) -> MG7 string
@@ -7864,10 +7914,13 @@ class RunCardMG7(RunCard):
         'drbl': ('bottom-lepton-delta_r', 'min'), 'drblmax': ('bottom-lepton-delta_r', 'max'),
         'drjl': ('jet-lepton-delta_r', 'min'), 'drjlmax': ('jet-lepton-delta_r', 'max'),
         'dral': ('photon-lepton-delta_r', 'min'), 'dralmax': ('photon-lepton-delta_r', 'max'),
-        'mmjj': ('jet-mass', 'min'), 'mmjjmax': ('jet-mass', 'max'),
-        'mmbb': ('bottom-mass', 'min'), 'mmbbmax': ('bottom-mass', 'max'),
-        'mmaa': ('photon-mass', 'min'), 'mmaamax': ('photon-mass', 'max'),
-        'mmll': ('lepton-mass', 'min'), 'mmllmax': ('lepton-mass', 'max'),
+        # pair masses: "<grp>-mass" would be the mass of each single object.
+        # LO mmll only cuts same-flavour opposite-sign lepton pairs (setcuts.f)
+        'mmjj': ('jet-pair_mass', 'min'), 'mmjjmax': ('jet-pair_mass', 'max'),
+        'mmbb': ('bottom-pair_mass', 'min'), 'mmbbmax': ('bottom-pair_mass', 'max'),
+        'mmaa': ('photon-pair_mass', 'min'), 'mmaamax': ('photon-pair_mass', 'max'),
+        'mmll': ('lepton-sfos_pair_mass', 'min'),
+        'mmllmax': ('lepton-sfos_pair_mass', 'max'),
         'dsqrt_shat': ('sqrt_s', 'min'), 'dsqrt_shatmax': ('sqrt_s', 'max'),
     }
     # built-in LO pdlabel -> LHAPDF set name
@@ -7908,7 +7961,7 @@ class RunCardMG7(RunCard):
         'ht2max', 'ht3max', 'ht4max', 'xptj', 'xptb', 'xpta', 'xptl',
         'ptllmin', 'ptllmax', 'mmnl', 'mmnlmax', 'ptheavy', 'ptonium',
         'etaonium', 'ptgmin', 'r0gamma', 'xn', 'epsgamma', 'isoem',
-        'xetamin', 'deltaeta', 'cut_decays',
+        'xetamin', 'deltaeta',
         'pt_min_pdg', 'pt_max_pdg', 'e_min_pdg', 'e_max_pdg', 'eta_min_pdg',
         'eta_max_pdg', 'mxx_min_pdg', 'mxx_only_part_antipart',
         # systematics detail / eva / frame

@@ -456,7 +456,10 @@ class HelicityRecycler():
             return None
 
         # Now check for external spinor
-        ext_calls = ['OXXXXX', 'IXXXXX', 'VXXXXX', 'SXXXXX']
+        # VXXXXXR is VXXXXX with an axial-gauge reference momentum appended
+        # after nsv; it is still an external wavefunction, and its first
+        # arguments are the ones this module reads (P(0,i) and NHEL(i)).
+        ext_calls = ['OXXXXX', 'IXXXXX', 'VXXXXX', 'SXXXXX', 'VXXXXXR']
         if function.upper() in ext_calls:
             return 'external'
 

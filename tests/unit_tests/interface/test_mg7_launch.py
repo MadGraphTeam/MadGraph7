@@ -1184,3 +1184,100 @@ class TestHistogramSwitches(unittest.TestCase):
         process.hist_data = [launch.HistItem(None, 0., 1., 10, 'weight', True)]
         self.assertIsNone(process.build_event_histograms())
         self.assertIsNone(process.event_histograms)
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class MG7ObservablePidsTest(unittest.TestCase):
+    """Which pdg ids a cut or histogram observable is built with.
+
+    Group selections work on clean_pids' unsigned representatives, but a
+    same-flavour opposite-sign pair needs the signed pdg ids of the actual
+    flavours, consistent over every flavour a subprocess groups together."""
+
+    def setUp(self):
+        from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
+        self.launch = mg7_launch
+
+    @staticmethod
+    def meta(outgoing, options):
+        return {
+            'incoming': [81, -81],
+            'outgoing': outgoing,
+            'flavors': [{'index': i, 'options': [option], 'mirror': False}
+                        for i, option in enumerate(options)],
+        }
+
+    @staticmethod
+    def kwargs(observable, groups=([11, -11, 13, -13],)):
+        return {'observable': observable, 'select_pids': list(groups),
+                'name': 'lepton-%s' % observable}
+
+    def test_unsigned_observables_keep_the_representatives(self):
+        meta = self.meta([-82, 82, 21, 21], [[2, -2, -11, 11, 21, 21]])
+        self.assertEqual(
+            self.launch.observable_pids(meta, self.kwargs('pair_mass')),
+            [1, 1, 11, 11, 21, 21])
+
+    def test_sfos_gets_the_signed_flavours(self):
+        meta = self.meta([-82, 82, 21, 21], [[2, -2, -11, 11, 21, 21],
+                                             [4, -4, -13, 13, 21, 21]])
+        self.assertEqual(
+            self.launch.observable_pids(meta, self.kwargs('sfos_pair_mass')),
+            [2, -2, -11, 11, 21, 21])
+
+    def test_sfos_refuses_flavours_that_pair_differently(self):
+        # e+ e- mu+ mu- and e+ mu- mu+ e-: the same momenta, different pairs
+        meta = self.meta([-82, 82, -82, 82], [[2, -2, -11, 11, -13, 13],
+                                              [2, -2, -11, 13, -13, 11]])
+        with self.assertRaises(ValueError) as error:
+            self.launch.observable_pids(meta, self.kwargs('sfos_pair_mass'))
+        self.assertIn('apply_flavor_grouping', str(error.exception))
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class MG7DecayProductsTest(unittest.TestCase):
+    """Which particles phasespace.cut_decays = false leaves uncut: those an
+    on-shell (decay-chain) propagator decays into, as MadEvent's check_decay."""
+
+    def setUp(self):
+        from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
+        self.launch = mg7_launch
+
+    @staticmethod
+    def meta(vertices, on_shell, permutation=(0, 1, 2, 3, 4)):
+        # p p > z j, z > e+ e-: outgoing e+ e- j
+        return {
+            'incoming': [21, 81],
+            'outgoing': [-82, 82, 81],
+            'channels': [{
+                'propagators': [81, 23],
+                'vertices': vertices,
+                'on_shell_propagators': on_shell,
+                'diagrams': [{'diagram': 1, 'permutation': list(permutation)}],
+            }],
+        }
+
+    def test_the_decay_chain_products(self):
+        meta = self.meta([['i1', 'i0', 'p0'], ['o0', 'o1', 'p1'],
+                          ['p0', 'o2', 'p1']], [1])
+        self.assertEqual(self.launch.decay_products(meta), {0, 1})
+
+    def test_no_decay_chain(self):
+        meta = self.meta([['i1', 'i0', 'p0'], ['o0', 'o1', 'p1'],
+                          ['p0', 'o2', 'p1']], [])
+        self.assertEqual(self.launch.decay_products(meta), set())
+
+    def test_a_propagator_built_from_the_beams(self):
+        # p1 = i0 + i1 - o2: it decays to everything but o2
+        meta = self.meta([['i0', 'i1', 'p0'], ['p0', 'o2', 'p1'],
+                          ['o0', 'o1', 'p1']], [1])
+        self.assertEqual(self.launch.decay_products(meta), {0, 1})
+
+    def test_read_through_the_permutation(self):
+        # event[i] = topology[permutation[i]]: the topology's o0, o1 sit at
+        # event outgoing positions 1 and 2
+        meta = self.meta([['i1', 'i0', 'p0'], ['o0', 'o1', 'p1'],
+                          ['p0', 'o2', 'p1']], [1], permutation=(0, 1, 4, 2, 3))
+        self.assertEqual(self.launch.decay_products(meta), {1, 2})

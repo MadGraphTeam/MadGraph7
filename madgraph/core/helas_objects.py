@@ -4798,7 +4798,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         """Return the number of different flavors used in the matrix elements"""
         
 
-        return len(self.get_external_flavors())*len(self.get('processes'))
+        return len(self.get_external_flavors()) * \
+            len(self.get_flavor_row_processes())
 
     def insert_decay(self, old_wfs, decay, numbers, got_majoranas):
         """Insert a decay chain matrix element into the matrix element.
@@ -5647,10 +5648,13 @@ class HelasMatrixElement(base_objects.PhysicsObject):
     def _flavor_enumeration_context(self, model):
         """Per-external-leg data used to enumerate external-flavor assignments.
 
-        Returns (pdgs, pdg_signs, to_map, restricted_flavor, ninit) where, indexed
+        Returns (pdgs, pdg_signs, to_map, restrictions, ninit) where, indexed
         by external leg: pdgs[i] is the (merged) pdg code, pdg_signs[i] the sign
-        to apply when reporting the physical pdg, and restricted_flavor[i] the
-        list of pdgs the leg is restricted to (or None if unconstrained).  to_map
+        to apply when reporting the physical pdg.  restrictions is a list of
+        per-leg restriction vectors, one per distinct flavor restriction among
+        the processes of this matrix element (the first one read from the
+        external wavefunctions): restriction[i] is the list of pdgs the leg is
+        restricted to (or None if unconstrained).  to_map
         maps a merged pdg to its constituent pdgs; ninit is the number of initial
         legs.  This is the single place that reads the external wavefunctions.
         """
@@ -5686,13 +5690,72 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             if wf.get('flavor'):
                 restricted_flavor[i] = wf.get('flavor')
 
-        return pdgs, pdg_signs, to_map, restricted_flavor, ninit
+        # The external wavefunctions only carry the restriction of the FIRST
+        # process; see _combined_flavor_restrictions for the other ones.
+        restrictions = [restricted_flavor]
+        for extra in self._combined_flavor_restrictions():
+            if len(extra) == len(pdgs):
+                restrictions.append(list(extra))
+
+        return pdgs, pdg_signs, to_map, restrictions, ninit
+
+    @staticmethod
+    def get_process_flavor_restriction(process):
+        """Per-external-leg flavor restriction of one process (None when the
+        leg is unconstrained), in the leg order of legs_with_decays.  Same
+        sign convention as the external wavefunctions' 'flavor'."""
+        return tuple(tuple(sorted(leg.get('flavor'))) if leg.get('flavor')
+                     else None for leg in process.get_legs_with_decays())
+
+    def _combined_flavor_restrictions(self):
+        """Restriction vectors of the processes combined into this matrix
+        element (processes[1:]) that differ from the first process's one.
+
+        Processes with identical diagrams are combined (IdentifyMETag and the
+        decay-chain combination) even when their per-leg flavor restrictions
+        differ, e.g. `generate z > u u~` + `add process z > d d~`, or `z > Q Qx`
+        [u u~] and `z > Qx Q` [d~ d] from `define l+ = u d~`.  One matrix
+        element per merged process is what the exporters dispatch on (the
+        leg-order repair of all_matrix.f works inside one matrix element), so
+        it must serve the UNION of the flavor ROWS its processes ask for.  A
+        per-leg union would admit rows no process asked for, hence one vector
+        per process.  See get_flavor_row_processes for the exporters.
+        The combined processes are reordered to the leg order of the first one
+        (HelasMultiProcess.reorder_process), so the vectors are positional.
+        """
+        processes = self.get('processes')
+        if len(processes) < 2:
+            return []
+        ref = self.get_process_flavor_restriction(processes[0])
+        out = []
+        for proc in processes[1:]:
+            vec = self.get_process_flavor_restriction(proc)
+            if vec != ref and vec not in out:
+                out.append(vec)
+        return out
+
+    def get_flavor_row_processes(self):
+        """The processes that own the flavor rows of this matrix element, i.e.
+        that the exporters loop over (IDUP, PDF lines, ...): all of them,
+        except the ones combined in with another flavor restriction.  Those
+        only add rows to the union (see _combined_flavor_restrictions); they
+        have the same leg ids as processes[0] (HelasMultiProcess.
+        find_identical_me), so the rows written for processes[0] cover them.
+        """
+        processes = self.get('processes')
+        if not self._combined_flavor_restrictions():
+            return processes
+        ref = self.get_process_flavor_restriction(processes[0])
+        return base_objects.ProcessList([p for p in processes if
+                    self.get_process_flavor_restriction(p) == ref])
 
     def _iter_candidate_flavors(self, pdgs, pdg_signs, to_map,
-                                restricted_flavor, ninit):
+                                restrictions, ninit):
         """Yield (one_flavor, signed_pdg, signature) for every external-flavor
         assignment permitted by the merged-particle expansion and the per-leg
-        restriction.
+        restriction.  `restrictions` is a list of per-leg restriction vectors
+        (one per distinct process restriction); an assignment is kept when at
+        least one of them admits it (row-level union).
 
         - one_flavor : per-leg merged-flavor-index tuple (the value passed to
           HelasDiagram.check_flavor and stored in valid_flavors).
@@ -5713,8 +5776,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                    for i, id in enumerate(pdgs)]
 
             # apply the per-leg flavor restriction (None => leg unconstrained)
-            if any(rf is not None and pdg[i] not in rf
-                   for i, rf in enumerate(restricted_flavor)):
+            if not any(all(rf is None or pdg[i] in rf
+                           for i, rf in enumerate(restricted_flavor))
+                       for restricted_flavor in restrictions):
                 continue
 
             signed_pdg = [flav * sign
@@ -5755,8 +5819,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         for diag in self.get('diagrams'):
             diag.valid_flavors = set()
 
-        pdgs, pdg_signs, to_map, restricted_flavor, ninit = \
+        pdgs, pdg_signs, to_map, restrictions, ninit = \
             self._flavor_enumeration_context(model)
+        self._flavor_restriction_key = self._combined_flavor_restrictions()
 
         # Some diagrams may be incompatible with *every* allowed flavor and
         # must be trimmed.  This happens for two reasons:
@@ -5775,7 +5840,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # only genuinely unphysical diagrams remain orphans.
         has_merged_external = any(abs(pdg) in to_map for pdg in pdgs)
         self._flavor_allow_trimming = has_merged_external or \
-            (restricted_flavor != [None] * len(pdgs))
+            any(rf != [None] * len(pdgs) for rf in restrictions)
 
         # Fast path: if no external leg carries a merged (flavor-grouped) pdg and
         # there is no flavor restriction, then there is a single external-flavor
@@ -5822,7 +5887,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         enumerate_all = self.enumerate_all_flavors
 
         for one_flavor, signed_pdg, signature in self._iter_candidate_flavors(
-                pdgs, pdg_signs, to_map, restricted_flavor, ninit):
+                pdgs, pdg_signs, to_map, restrictions, ninit):
             if not enumerate_all and signature in checked:
                 if checked[signature]:
                     # genuine permutation duplicate of a validated flavor
@@ -5873,6 +5938,15 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         a no-op: only the representative (deduplicated) flavors are returned.
         """
         if not self._flavor_is_populated():
+            self.populate_flavor_validity()
+        elif self._combined_flavor_restrictions() != \
+                getattr(self, '_flavor_restriction_key', []):
+            # processes with another flavor restriction were combined into
+            # this matrix element after the eager population: redo it
+            if getattr(self, '_flavor_trimmed', False):
+                logger.warning('Flavor restriction of %s changed after its '
+                    'diagrams were trimmed: flavors needing a trimmed diagram '
+                    'are lost.' % self.get('processes')[0].nice_string())
             self.populate_flavor_validity()
 
         if getattr(self, '_flavor_allow_trimming', False) and \
@@ -5932,7 +6006,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             True, pdg 81/82/...), whose concrete flavors are enumerated by
             get_external_flavors_with_iden.
 
-        Returns one (pdg_lists, has_merged_particles) pair per process, so that
+        Returns one (pdg_lists, has_merged_particles) pair per process of
+        get_flavor_row_processes (processes combined in with another flavor
+        restriction only add rows to the first one), so that
         callers which need the per-process split (madevent's IDUP numbering)
         keep it while callers which just want every channel can flatten it.
         """
@@ -5943,7 +6019,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             merged = model['merged_particles']
 
         combinations = []
-        for proc in self.get('processes'):
+        for proc in self.get_flavor_row_processes():
             base_ids = [l.get('id') for l in proc.get_legs_with_decays()]
             has_merged = any(abs(pdg) in merged for pdg in base_ids)
             if has_merged:
@@ -7437,7 +7513,10 @@ class HelasDecayChainProcess(base_objects.PhysicsObject):
                     # If an identical matrix element is already in the list,
                     # then simply add this process to the list of
                     # processes for that matrix element
-                    me_index = me_tags.index(me_tag)
+                    me_index, reordered = HelasMultiProcess.find_identical_me(
+                        me_tags, me_tag, permutations,
+                        lambda i: matrix_elements[i].get('processes'),
+                        matrix_element.get('processes'))
                 except ValueError:
                     # Otherwise, if the matrix element has any diagrams,
                     # add this matrix element.
@@ -7454,11 +7533,7 @@ class HelasDecayChainProcess(base_objects.PhysicsObject):
                     logger.info("Combining process with %s" % \
                       other_processes[0].nice_string().replace('Process: ', ''))
 
-                    for proc in matrix_element.get('processes'):
-                        other_processes.append(HelasMultiProcess.\
-                              reorder_process(proc,
-                                   permutations[me_index],
-                                   me_tag[-1][0].get_external_numbers()))
+                    other_processes.extend(reordered)
 
         return matrix_elements
 
@@ -7682,6 +7757,7 @@ class HelasMultiProcess(base_objects.PhysicsObject):
 
         # List of valid matrix elements
         matrix_elements = HelasMatrixElementList()
+        no_flavor_error = None
         # List of identified matrix_elements
         identified_matrix_elements = []
         # List of amplitude tags, synchronized with identified_matrix_elements
@@ -7712,7 +7788,10 @@ class HelasMultiProcess(base_objects.PhysicsObject):
                     try:
                         if not combine:
                             raise ValueError
-                        me_index = amplitude_tags.index(amplitude_tag)
+                        me_index, reordered = cls.find_identical_me(
+                            amplitude_tags, amplitude_tag, permutations,
+                            lambda i: identified_matrix_elements[i],
+                            matrix_element.get('processes'))
                     except ValueError:
                         # Create matrix element for this amplitude
                         matrix_element_list.append(matrix_element)
@@ -7724,13 +7803,9 @@ class HelasMultiProcess(base_objects.PhysicsObject):
                     else: # try
                         # Identical matrix element found
                         other_processes = identified_matrix_elements[me_index]
-                        # Reorder each of the processes
-                        # Since decay chain, only reorder legs_with_decays
-                        for proc in matrix_element.get('processes'):
-                            other_processes.append(cls.reorder_process(\
-                                    proc,
-                                    permutations[me_index],
-                                    amplitude_tag[-1][0].get_external_numbers()))
+                        # Reordered processes (since decay chain, only
+                        # legs_with_decays is reordered)
+                        other_processes.extend(reordered)
                         logger.info("Combined %s with %s" % \
                                     (matrix_element.get('processes')[0].\
                                      nice_string().\
@@ -7745,7 +7820,10 @@ class HelasMultiProcess(base_objects.PhysicsObject):
                 # they have the same matrix element
                 amplitude_tag = IdentifyMETag.create_tag(amplitude)
                 try:
-                    me_index = amplitude_tags.index(amplitude_tag)
+                    me_index, reordered = cls.find_identical_me(
+                        amplitude_tags, amplitude_tag, permutations,
+                        lambda i: identified_matrix_elements[i],
+                        [amplitude.get('process')])
                 except ValueError:
                     # Create matrix element for this amplitude
                     logger.info("Generating Helas calls for %s" % \
@@ -7771,12 +7849,7 @@ class HelasMultiProcess(base_objects.PhysicsObject):
                 else:
                     # Identical matrix element found
                     other_processes = identified_matrix_elements[me_index]
-                                      
-                    
-                    other_processes.append(cls.reorder_process(\
-                        amplitude.get('process'),
-                        permutations[me_index],
-                        amplitude_tag[-1][0].get_external_numbers()))
+                    other_processes.extend(reordered)
                     logger.info("Combined %s with %s" % \
                                 (other_processes[-1].nice_string().\
                                  replace('Process: ', 'process '),
@@ -7785,16 +7858,6 @@ class HelasMultiProcess(base_objects.PhysicsObject):
                     # Go on to next amplitude
                     continue
             
-            for matrix_element in matrix_element_list:
-                # Trigger restricted-flavor / merged-flavor diagram trimming
-                # here, *before* the color basis is built below (process_color),
-                # so the color basis is constructed from the final (trimmed)
-                # diagram set and stays consistent with it.  get_external_flavors
-                # self-populates and only trims when there is something to trim,
-                # so it is a cheap no-op for plain (non-merged, unrestricted)
-                # matrix elements.
-                matrix_element.get_external_flavors()
-
             # Deal with newly generated matrix elements
             for matrix_element in copy.copy(matrix_element_list):
                 assert isinstance(matrix_element, HelasMatrixElement), \
@@ -7803,19 +7866,78 @@ class HelasMultiProcess(base_objects.PhysicsObject):
                 # Add this matrix element to list
                 matrix_elements.append(matrix_element)
 
-                if not gen_color:
-                    continue
+        # Trimming and color are deferred until every amplitude has been
+        # combined: a later process combined into an earlier matrix element
+        # may bring other flavor rows, and the diagrams they need (see
+        # HelasMatrixElement._combined_flavor_restrictions).  The matrix
+        # elements are processed in creation order, as before.
+        for matrix_element in matrix_elements[:]:
+            # Trigger restricted-flavor / merged-flavor diagram trimming
+            # here, *before* the color basis is built below (process_color),
+            # so the color basis is constructed from the final (trimmed)
+            # diagram set and stays consistent with it.  get_external_flavors
+            # self-populates and only trims when there is something to trim,
+            # so it is a cheap no-op for plain (non-merged, unrestricted)
+            # matrix elements.
+            try:
+                matrix_element.get_external_flavors()
+            except HelasMatrixElement.NoFlavorError as error:
+                # One leg combination of a multiparticle definition can allow
+                # no flavor at all, e.g. w+ > c~ s from `define qa = u c~` and
+                # `define qb = d~ s`: drop that matrix element only (the error
+                # is raised below if none is left).
+                logger.debug("No allowed flavor for %s: removed" %
+                    matrix_element.get('processes')[0].nice_string())
+                matrix_elements.remove(matrix_element)
+                no_flavor_error = error
+                continue
 
-                # The treatment of color is quite different for loop amplitudes
-                # than for regular tree ones. So the function below is overloaded
-                # in LoopHelasProcess
-                cls.process_color(matrix_element,color_information,\
-                                                compute_loop_nc=compute_loop_nc)                    
+            if not gen_color:
+                continue
+
+            # The treatment of color is quite different for loop amplitudes
+            # than for regular tree ones. So the function below is overloaded
+            # in LoopHelasProcess
+            cls.process_color(matrix_element,color_information,\
+                                            compute_loop_nc=compute_loop_nc)                    
 
         if not matrix_elements:
+            if no_flavor_error:
+                raise no_flavor_error
             raise InvalidCmd("No matrix elements generated, check overall coupling orders")
 
         return matrix_elements
+
+    @classmethod
+    def find_identical_me(cls, tags, tag, permutations, get_processes,
+                          processes):
+        """Return (index, reordered processes) of the first entry of `tags`
+        equal to `tag` whose matrix element can take `processes`, or raise
+        ValueError.
+
+        Identical diagrams (IdentifyMETag) are enough, except under flavor
+        grouping when the flavor restrictions differ (`z > u u~` + `add
+        process z > d d~`, or z > Q Qx [u u~] and z > Qx Q [d~ d] from `define
+        l+ = u d~`).  The matrix element then serves the union of their flavor
+        rows (HelasMatrixElement._combined_flavor_restrictions), and the
+        exporters write those rows once, for processes[0]: so all its
+        processes must carry the same leg ids, else it is a new matrix
+        element.
+        """
+        restriction = HelasMatrixElement.get_process_flavor_restriction
+        ids = lambda proc: [l.get('id') for l in proc.get_legs_with_decays()]
+        for index, other_tag in enumerate(tags):
+            if other_tag != tag:
+                continue
+            reordered = [cls.reorder_process(proc, permutations[index],
+                                             tag[-1][0].get_external_numbers())
+                         for proc in processes]
+            all_procs = list(get_processes(index)) + reordered
+            if len(set(restriction(p) for p in all_procs)) > 1 and \
+                    any(ids(p) != ids(all_procs[0]) for p in all_procs):
+                continue
+            return index, reordered
+        raise ValueError
 
     @staticmethod
     def reorder_process(process, org_perm, proc_perm):

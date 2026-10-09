@@ -17,8 +17,11 @@ namespace madspace {
  * combined, for example all jet flavours. The available observables are
  * single-momentum functions (`e`, `px`, `py`, `pz`, `mass`, `pt`, `p_mag`,
  * `phi`, `theta`, `y`, `y_abs`, `eta`, `eta_abs`), pair functions
- * (`delta_eta`, `delta_phi`, `delta_r`, `pair_mass`), and the event-level
- * `sqrt_s`. The same mechanism defines the observables used by
+ * (`delta_eta`, `delta_phi`, `delta_r`, `pair_mass`, `sfos_pair_mass`), and
+ * the event-level `sqrt_s`. `sfos_pair_mass` is `pair_mass` restricted to
+ * same-flavour opposite-sign pairs, i.e. pairs whose PDG ids are `id` and
+ * `-id` (the l+ l- pairs of MadEvent's `mmll`); it needs the signed PDG ids
+ * of the actual flavours in @p pids and cannot be combined with ordering. The same mechanism defines the observables used by
  * @ref Cuts and @ref ObservableHistograms.
  *
  * `batch` is the leading batch dimension. `n` is the number of selected
@@ -67,7 +70,8 @@ public:
         obs_delta_phi,
         obs_delta_r,
         obs_pair_mass,
-        obs_sqrt_s
+        obs_sqrt_s,
+        obs_sfos_pair_mass
     };
 
     /**
@@ -100,17 +104,14 @@ public:
     );
     /// The kinematic quantity this observable computes.
     ObservableOption observable() const { return _observable; }
-    /// Whether this observable is unchanged by the initial-state mirror, the
-    /// rotation by pi about x (py, pz -> -py, -pz) that moves each leg onto
-    /// the other beam. Both the observable itself and the one it is ordered by
-    /// have to be: sorting by a quantity that flips picks a different particle
-    /// out of the event. An observable that matched no particle (see
-    /// not_found()) is the constant 0 and counts as invariant.
-    bool mirror_invariant() const;
     /// Per-selection lists of particle indices the observable is evaluated on.
     const nested_vector2<me_int_t>& indices() const { return _indices; }
     /// Whether the tuple momenta are summed before evaluation.
     bool sum_momenta() const { return _sum_momenta; }
+    /// Whether the selection is sorted first (e.g. the leading jet). The
+    /// entries of indices() are then positions in the sorted list, not
+    /// particle indices.
+    bool ordered() const { return _order_observable.has_value(); }
     /// Flat particle-index list for a single ungrouped, unsummed selection;
     /// empty otherwise.
     std::vector<std::size_t> simple_observable_indices() const {

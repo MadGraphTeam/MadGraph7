@@ -72,6 +72,8 @@ suppress_timeout = False
 removed_options = {
     'madanalysis_path': 'MadAnalysis4 support has been removed, use MadAnalysis5',
     'td_path': 'topdrawer was only used by MadAnalysis4, which has been removed',
+    'mg5amc_py8_interface_path': 'the MG5aMC_PY8_interface has been removed, '
+                                 'Pythia8 showers run its main164',
 }
 
 
@@ -1139,6 +1141,10 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
                         line = 'EOF'
                     else:
                         line = line[:-1] # chop \n
+                # Coloured prompt
+                if not os.environ.get('MG7_NO_COLOR'):
+                    sys.stdout.write("\033[0m")
+                    sys.stdout.flush()
             try:
                 line = self.precmd(line)
                 stop = self.onecmd(line)

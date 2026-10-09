@@ -58,6 +58,7 @@ Legend for the mapping:
 | `gridpack` | `gridpack.save_gridpack` | [=] | |
 | `run_tag` | `run.run_name` | [!] | close but not identical semantics (tag vs run name). |
 | `bwcutoff` | `phasespace.bw_cutoff` | [=] | rename |
+| `cut_decays` | `phasespace.cut_decays` | [=] | decay-chain products uncut when false (default in both) |
 | `SDE_strategy` (int 1/2) | `phasespace.sde_strategy` (str) | [~] | `1`(single-diagram enhanced)→`diagrams`, `2`(product of denominators)→`denominators`. |
 | `maxjetflavor` | `multiparticles.jet` | [~] | rebuild the jet pdg list from maxjetflavor (± up to N + gluon). |
 | `use_syst` / `systematics_*` | `generation.systematics` (bool) | [!] | MG7 only has on/off; the systematics program/arguments/pdf/scale sets are lost. |
@@ -68,7 +69,7 @@ Legend for the mapping:
 
 MG7 expresses cuts as `<group>[-<group>]-<observable>.{min,max}` over the groups
 `jet, bottom, lepton, missing, photon` and observables `pt, eta_abs, delta_r,
-mass, sqrt_s`. Mapping of the common LO cuts:
+mass, pair_mass, sfos_pair_mass, sqrt_s`. Mapping of the common LO cuts:
 
 | LO parameter(s) | MG7 target | class |
 |---|---|---|
@@ -76,7 +77,8 @@ mass, sqrt_s`. Mapping of the common LO cuts:
 | `misset`/`missetmax` | `missing-pt.min/.max` | [=] |
 | `etaj`, `etab`, `etaa`, `etal` | `<grp>-eta_abs.max` | [~] (LO η-max → eta_abs.max) |
 | `drjj`, `drbb`, `drll`, `draa`, `drbj`, `draj`, `drjl`, `drab`, `drbl`, `dral` (+ `*max`) | `<grp>[-<grp>]-delta_r.min/.max` | [=] |
-| `mmjj`, `mmbb`, `mmaa`, `mmll` (+ `*max`) | `<grp>-mass.min/.max` | [=] |
+| `mmjj`, `mmbb`, `mmaa` (+ `*max`) | `<grp>-pair_mass.min/.max` | [=] |
+| `mmll` (+ `mmllmax`) | `lepton-sfos_pair_mass.min/.max` | [=] (same-flavour opposite-sign pairs, as in LO) |
 | `dsqrt_shat`/`dsqrt_shatmax` | `sqrt_s.min/.max` | [=] |
 
 Cuts that are **not representable** in the current MG7 cut engine ([x] unless noted):
@@ -93,7 +95,6 @@ Cuts that are **not representable** in the current MG7 cut engine ([x] unless no
   `deltaeta`: no isolation in MG7. [x]
 - per-pdg cuts `pt_min_pdg`/`pt_max_pdg`/`e_*_pdg`/`eta_*_pdg`/`mxx_*_pdg`
   (and the derived `*4pdg` arrays), `mxx_only_part_antipart`: no per-pdg cuts. [x]
-- `cut_decays`: cut on decay products flag — no MG7 equivalent. [x]
 
 ## 6. Matching / merging  — all [x]
 

@@ -1475,16 +1475,10 @@ class TestNloShowerGuidance(unittest.TestCase):
     machine, before they type launch."""
 
     class _WithPy8(object):
-        options = {'pythia8_path': '/somewhere',
-                   'mg5amc_py8_interface_path': '/somewhere/else'}
+        options = {'pythia8_path': '/somewhere'}
 
     class _WithoutPy8(object):
-        options = {'pythia8_path': None, 'mg5amc_py8_interface_path': None}
-
-    class _HalfInstalled(object):
-        """Pythia8 present but not the interface aMC@NLO drives it through."""
-        options = {'pythia8_path': '/somewhere',
-                   'mg5amc_py8_interface_path': None}
+        options = {'pythia8_path': None}
 
     def step(self):
         return [s for s in tutorials.get('nlo').steps
@@ -1493,7 +1487,7 @@ class TestNloShowerGuidance(unittest.TestCase):
     def test_without_py8_it_says_how_to_install(self):
         text = self.step().render(self._WithoutPy8())
         self.assertIn('install pythia8', text)
-        self.assertIn('install mg5amc_py8_interface', text)
+        self.assertNotIn('install mg5amc_py8_interface', text)
 
     def test_without_py8_it_offers_parton_level_but_calls_it_unphysical(self):
         text = self.step().render(self._WithoutPy8())
@@ -1506,14 +1500,13 @@ class TestNloShowerGuidance(unittest.TestCase):
         self.assertNotIn('install pythia8', text)
         self.assertIn('has installed', text)
 
-    def test_the_interface_counts_as_a_requirement(self):
-        """Pythia8 alone is not enough: aMC@NLO needs the MG5aMC interface."""
+    def test_pythia8_path_is_the_requirement(self):
+        """Pythia8 alone is enough: aMC@NLO builds its own Pythia8 driver."""
 
         from madgraph.interface.tutorials.session import pythia8_available
 
         self.assertTrue(pythia8_available(self._WithPy8()))
         self.assertFalse(pythia8_available(self._WithoutPy8()))
-        self.assertFalse(pythia8_available(self._HalfInstalled()))
 
     def test_it_warns_off_herwig6(self):
         for interface in (self._WithPy8(), self._WithoutPy8()):
