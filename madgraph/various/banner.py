@@ -6796,6 +6796,11 @@ class RunCardMG7(RunCard):
         self.add_toml_param('generation', 'survey_target_precision', 0.1)
         self.add_toml_param('generation', 'cut_efficiency_threshold', 0.7, gridpack=True)
         self.add_toml_param('generation', 'max_cut_repetitions', 1000, gridpack=True)
+        # interference (squared split orders dropping a component): exact = the
+        # helicity of each event drawn on |T_i| with sign(T_i)*sum|T| as madevent,
+        # summed = the helicity sum as the weight, helicities written as 9
+        self.add_toml_param('generation', 'interference_helicity', 'exact',
+                            allowed=['exact', 'summed'])
         # legacy alias of systematics.enable (kept so that older cards still
         # read; not written to new cards)
         self.add_toml_param('generation', 'systematics', False, hidden=True)

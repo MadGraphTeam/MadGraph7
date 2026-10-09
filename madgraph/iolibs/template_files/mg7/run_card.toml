@@ -84,6 +84,12 @@ survey_max_iters = %(generation.survey_max_iters)s
 survey_target_precision = %(generation.survey_target_precision)s
 cut_efficiency_threshold = %(generation.cut_efficiency_threshold)s
 max_cut_repetitions = %(generation.max_cut_repetitions)s
+# interference (squared split orders keeping a cross term, whose helicities can
+# contribute negatively): "exact" draws the helicity of each event on |T_i| and
+# gives the event the sign of T_i, as madevent (exact helicities, about twice the
+# events for the same precision); "summed" weights the events with the helicity
+# sum (lower variance) and writes their helicities as 9 in the LHE
+interference_helicity = %(generation.interference_helicity)s # options: exact, summed
 
 [systematics]
 # scale/PDF variation weights, computed by madspace when the events are written

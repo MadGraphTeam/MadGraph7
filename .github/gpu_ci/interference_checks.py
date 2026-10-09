@@ -15,7 +15,9 @@ Any CPU backend (scalar, simd_128, ...) works too, to try the script without a G
    ``u u~ > t t~ g QED^2==2``, whose helicities have both signs at most points: every
    draw has |M|^2 = sum|T|, a helicity always comes with the same sign, the average over
    a uniform grid of random numbers is the helicity sum (what umami returns without the
-   random number) and the points with mixed signs give both signs.
+   random number) and the points with mixed signs give both signs; with the umami
+   parameter interference_helicity_summed (run card interference_helicity = "summed")
+   every draw returns the helicity sum.
 3. mg7 ``p p > u u~ QCD^2==2`` on the backend: the negative cross section of the CPU
    reference, the LHE <init> declaring the negative weights (IDWTUP = -4, XMAXUP the
    unit weight sigma_abs) and events of both signs. It runs with the PDF set of the
@@ -297,11 +299,26 @@ def check_helicity_choice(repo, backend, npoints=16, ngrid=4000):
         print('  point %2d  sum T % .6e  mean % .6e  sum|T| %.6e  helicities %2d  signs %s'
               % (ipoint, helicity_sum, mean, abs_sum, len(signs),
                  ''.join('+' if s else '-' for _h, s in sorted(signs.items()))))
-    lib.umami_free(handle)
     if mixed <= npoints // 2:
         problems.append('only %d of %d points with mixed signs' % (mixed, npoints))
     check('helicity_choice', not problems,
           '; '.join(problems[:3]) or '%d of %d points with mixed signs' % (mixed, npoints))
+
+    # run card [generation] interference_helicity = "summed": the instance keeps the
+    # helicity sum as the |M|^2 of every draw (mg7 then writes the helicities as 9)
+    lib.umami_set_parameter.argtypes = [ctypes.c_void_p, ctypes.c_char_p,
+                                        ctypes.c_double, ctypes.c_double]
+    status = lib.umami_set_parameter(handle, b'interference_helicity_summed', 1., 0.)
+    worst = 0.
+    for ipoint in range(4):
+        point = rambo(list(masses)[2:], 1000., rng)
+        (helicity_sum,), _ = evaluate(point, False)
+        me, _hel = evaluate(point, True)
+        worst = max([worst] + [abs(v - helicity_sum) / abs(helicity_sum) for v in me])
+    check('helicity_summed', status == 0 and worst < 1e-12,
+          'umami_set_parameter status %d, max |M|^2 / helicity sum - 1 = %.1e'
+          % (status, worst))
+    lib.umami_free(handle)
 
 
 # ---------------------------------------------------------------------------

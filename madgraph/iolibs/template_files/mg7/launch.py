@@ -170,8 +170,38 @@ def me_parameters(run_card):
     """Run-time parameters of the matrix-element libraries, passed to each
     instance through umami_set_parameter by ms.Context.load_matrix_element:
     the window of the $-excluded propagators is the run card bw_cutoff (the
-    one the phase space uses around the resonances too)."""
-    return {"bwcutoff": float(run_card["phasespace"]["bw_cutoff"])}
+    one the phase space uses around the resonances too), and with
+    [generation] interference_helicity = "summed" the helicity sum as the
+    |M|^2 of an interference (see interference_helicities_summed). That one is
+    only sent when asked for: a library made before it existed refuses an
+    unknown parameter."""
+    parameters = {"bwcutoff": float(run_card["phasespace"]["bw_cutoff"])}
+    if interference_helicities_summed(run_card):
+        parameters["interference_helicity_summed"] = 1.
+    return parameters
+
+
+def interference_helicities_summed(run_card):
+    """Whether [generation] interference_helicity is "summed".
+
+    For an interference (squared split orders dropping a component), a helicity
+    can contribute negatively. "exact", the default, draws the helicity of each
+    event on |T_i| and gives the event sign(T_i) * sum_j |T_j|, as madevent does:
+    the helicity of the event is exact, at the cost of a larger sum|w| (about 2x
+    the events for the same precision). "summed" keeps the helicity sum sum_j T_j
+    as the weight (lower variance), and the helicity then means nothing: it is
+    written as 9 in the LHE (lhe_helicities)."""
+    return run_card["generation"].get("interference_helicity", "exact") == "summed"
+
+
+def lhe_helicities(meta, run_card):
+    """The helicity table the LHE completer writes for a subprocess: its own,
+    or 9 for every particle of an interference subprocess whose |M|^2 is the
+    helicity sum (interference_helicities_summed)."""
+    helicities = meta["helicities"]
+    if meta.get("interference") and interference_helicities_summed(run_card):
+        return [[9] * len(row) for row in helicities]
+    return helicities
 
 
 def lhe_weight_info(status):
@@ -279,6 +309,13 @@ class MadgraphProcess:
 
         self.init_decay_mode()
         self.init_me_frame()
+        if interference_helicities_summed(self.run_card):
+            count = sum(1 for meta in self.subprocess_data if meta.get("interference"))
+            if count:
+                logger.info(
+                    "interference_helicity = summed: the weight of the %d interference "
+                    "subprocess(es) is the helicity sum, and their helicities are "
+                    "written as 9 in the LHE", count)
 
     def init_me_frame(self) -> None:
         """Resolve the run card's me_frame into the list of external particles
@@ -1840,7 +1877,7 @@ class MadgraphProcess:
                     int(key): value
                     for key, value in meta["pdg_color_types"].items()
                 },
-                helicities = meta["helicities"],
+                helicities = lhe_helicities(meta, self.run_card),
                 pdg_ids = [flavor["options"] for flavor in meta["flavors"]],
             )
             for mcdata, meta in zip(all_mcdata, self.subprocess_data)

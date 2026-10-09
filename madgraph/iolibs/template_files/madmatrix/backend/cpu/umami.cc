@@ -108,6 +108,10 @@ namespace
   struct InterfaceInstance
   {
     bool initialized = false;
+    // parameter interference_helicity_summed (run card [generation]
+    // interference_helicity = "summed"): an interference |M|^2 stays the helicity
+    // sum even when the caller draws the helicity (see umami_matrix_element)
+    bool summed_helicity = false;
   };
 
   std::vector<double> g_externalMasses;
@@ -192,17 +196,26 @@ extern "C"
   }
 
   UmamiStatus umami_set_parameter(
-    [[maybe_unused]] UmamiHandle handle,
+    UmamiHandle handle,
     char const* name,
     double parameter_real,
     [[maybe_unused]] double parameter_imag )
   {
-    // Only the run card bw_cutoff so far (the $-excluded propagator window).
-    // It is shared by all the instances of this library, like the model
-    // parameters read by umami_initialize.
+    // The run card bw_cutoff (the $-excluded propagator window). It is shared
+    // by all the instances of this library, like the model parameters read by
+    // umami_initialize.
     if( std::string( name ) == "bwcutoff" )
     {
       setBwCutoff( parameter_real );
+      return UMAMI_SUCCESS;
+    }
+    // Non-zero: the helicity choice of an interference |M|^2 keeps the helicity
+    // sum as the |M|^2 (lower variance), and the chosen helicity is then not
+    // meaningful (mg7 writes 9 in the LHE). Zero, the default: the madevent
+    // convention, see umami_matrix_element. Per instance.
+    if( std::string( name ) == "interference_helicity_summed" )
+    {
+      static_cast<InterfaceInstance*>( handle )->summed_helicity = parameter_real != 0;
       return UMAMI_SUCCESS;
     }
     return UMAMI_ERROR_NOT_IMPLEMENTED;
@@ -408,9 +421,10 @@ extern "C"
       false,
       rounded_count,
       // a caller drawing the helicity (event generation) gets the madevent convention for
-      // an interference |M|^2, see select_helicity_signed; without the random number the
-      // |M|^2 stays the helicity sum (systematics re-evaluation, standalone checks)
-      random_helicity_in != nullptr );
+      // an interference |M|^2, see select_helicity_signed, unless the instance was asked
+      // to keep the helicity sum (interference_helicity_summed); without the random number
+      // the |M|^2 stays the helicity sum (systematics re-evaluation, standalone checks)
+      random_helicity_in != nullptr && !instance->summed_helicity );
 
     if ( sort_flavors )
     {

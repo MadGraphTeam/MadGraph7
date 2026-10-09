@@ -161,6 +161,9 @@ All done; decided convention: (a), madevent's.
     - σ unchanged: −0.405(16) against −0.402(12) pb before;
     - σ_abs goes from 4.16 to 5.57 pb.
   - The d, f, m (mixed) and scalar builds all compile. The mixed second page is checked too.
+- **D1, opt-out (option (c)).** The run card `[generation] interference_helicity = "summed"` turns the convention off. It defaults to `"exact"`.
+  - mg7 sends the umami parameter `interference_helicity_summed`, per instance and only when asked for, since older libraries refuse unknown parameters. The matrix element is then the helicity sum, with lower variance.
+  - The LHE helicities of the interference subprocesses (flagged by `export_mg7` as `interference`) are written as 9 on every line, through `launch.lhe_helicities`.
 - **D2.** `IDWTUP = -4`, not −3, for a sample with negative weights. Pythia8 8.317 takes the cross section as |XSECUP| × ⟨sign⟩ under −3: −6405 pb for a −9572 pb sample. With −4 the showered σ is −9678(75) pb against −9635(40). `XMAXUP = σ_abs`. Positive samples keep +3 and XMAXUP = σ, so nothing changes for them. Whether a positive sample with kept overweights should declare 4 is a separate question.
 - **D8, measured.** The fix is checked by `madspace/tests/test_buffer_unweighter.py`, which needed a new Python binding for `BufferUnweighter`. It has synthetic positive, all-negative and mixed batches. With the signed quantile the all-negative batch kept 100% (no unweighting) and the mixed one 94%, against 28.5% for the positive batch; the two signed tests fail on the old code. The rescaled `adaptive_prob` kept the buffer unbiased in all cases.
   - The effect on training is not measurable on our samples. MadNIS was forced on with 4000 batches and the same seed:

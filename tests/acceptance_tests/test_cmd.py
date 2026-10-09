@@ -1504,6 +1504,21 @@ class TestCmdShell2(unittest.TestCase,
         # 15 of the 16 points when this test was written
         self.assertGreater(mixed, npoints // 2)
 
+        # run card [generation] interference_helicity = "summed": the instance
+        # keeps the helicity sum as the |M|^2 of every draw (mg7 then writes the
+        # helicities as 9)
+        lib.umami_set_parameter.argtypes = [ctypes.c_void_p, ctypes.c_char_p,
+                                            ctypes.c_double, ctypes.c_double]
+        self.assertEqual(0, lib.umami_set_parameter(
+            handle, b'interference_helicity_summed', 1., 0.))
+        for ipoint in range(4):
+            point = momenta[ipoint * npar * 4:(ipoint + 1) * npar * 4]
+            (helicity_sum,), _ = evaluate(point, False)
+            me, _hel = evaluate(point, True)
+            for value in me:
+                self.assertAlmostEqual(value, helicity_sum,
+                                       delta=1e-12 * abs(helicity_sum))
+
     def test_standalone_cpp(self):
         """test that the scalar C++ standalone exporter is working
 
