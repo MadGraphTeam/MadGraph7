@@ -23,6 +23,7 @@ save_gridpack = false
 include_source = false
 include_madspace = true
 include_madspace_source = false
+compress = false
 
 [beam]
 e_cm = 1000.0

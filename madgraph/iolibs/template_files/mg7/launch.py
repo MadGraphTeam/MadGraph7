@@ -1952,6 +1952,9 @@ class MadgraphProcess:
                 systematics_data["nominal_info_file"] = os.path.join("data", name)
             with open(os.path.join(data_path, "systematics.json"), "w") as f:
                 json.dump(systematics_data, f)
+        if self.run_card["gridpack"]["compress"]:
+            shutil.make_archive(gridpack_path, "gztar", self.run_path, "gridpack")
+            shutil.rmtree(gridpack_path)
 
     def save_gridpack_lhe_meta(self, path) -> None:
         """The run-independent part of the LHE header (cards, beams, PDF), for

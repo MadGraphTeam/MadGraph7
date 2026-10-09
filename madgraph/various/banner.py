@@ -6758,6 +6758,7 @@ class RunCardMG7(RunCard):
         self.add_toml_param('gridpack', 'include_source', False)
         self.add_toml_param('gridpack', 'include_madspace', True)
         self.add_toml_param('gridpack', 'include_madspace_source', False)
+        self.add_toml_param('gridpack', 'compress', False)
 
         # ----------------------------- [beam] -------------------------
         self.add_toml_param('beam', 'e_cm', 13000.0)
