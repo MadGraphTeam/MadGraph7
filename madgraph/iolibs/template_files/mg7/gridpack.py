@@ -107,14 +107,6 @@ def main() -> None:
     param_card_path = os.path.join("Cards", "param_card.dat")
     with open(os.path.join("data", "data.json")) as f:
         madspace_data = json.load(f)
-    if madspace_data["source_hash"] != ms.SOURCE_HASH:
-        print()
-        print(
-            "\033[1m\033[31mWARNING\033[39m: The madspace version is not identical "
-            "to the one used to generate the gridpack. This can lead to errors or "
-            "incorrect results\033[0m"
-        )
-        print()
 
     # parse command line arguments
     parser = argparse.ArgumentParser()
@@ -135,6 +127,11 @@ def main() -> None:
         "--temp_output_dir", type=str, default=None,
         help="directory for the temporary npy files (default: the run card "
              "value, else the output directory)"
+    )
+    parser.add_argument(
+        "--ignore_source_hash", action="store_true",
+        help="run even if the madspace version differs from the one used to "
+             "generate the gridpack (can lead to errors or incorrect results)"
     )
     parser.add_argument("--device", type=str, nargs="*")
     parser.add_argument(
@@ -161,6 +158,20 @@ def main() -> None:
     parser.add_argument("--cpu_batch_size", type=int, default=gen_args["cpu_batch_size"])
     parser.add_argument("--gpu_batch_size", type=int, default=gen_args["gpu_batch_size"])
     args = parser.parse_args()
+
+    if madspace_data["source_hash"] != ms.SOURCE_HASH:
+        message = (
+            "The madspace version is not identical to the one used to generate "
+            "the gridpack. This can lead to errors or incorrect results"
+        )
+        if not args.ignore_source_hash:
+            sys.exit(
+                f"\033[1m\033[31mERROR\033[39m: {message}.\n"
+                "Use --ignore_source_hash to run anyway.\033[0m"
+            )
+        print()
+        print(f"\033[1m\033[31mWARNING\033[39m: {message}\033[0m")
+        print()
     seed = resolve_seed(args.seed)
 
     # initialize output directories; command line paths are relative to the
