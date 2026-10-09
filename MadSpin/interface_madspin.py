@@ -2425,19 +2425,15 @@ class MadSpinInterface(extended_cmd.Cmd):
         
         generate_all = save_load_object.load_from_file(pjoin(self.options['ms_dir'], 'madspin.pkl'))
         
-        #restore data passed to string to help pickle
-        generate_all.all_decay = eval(generate_all.all_decay)
-        for me in generate_all.all_ME:
-            for d in generate_all.all_ME[me]['decays']:
-                if isinstance(d['decay_struct'], str):
-                    d['decay_struct'] = eval(d['decay_struct'])
-
 
         # Re-create information which are not save in the pickle.
         generate_all.evtfile = self.events_file
         generate_all.curr_event = madspin.Event(self.events_file, self.banner ) 
         generate_all.mgcmd = self.mg5cmd
         generate_all.mscmd = self 
+        # all_decay/decay_struct strings and the model (the event reader needs
+        # it to produce the flavour-grouped tags all_ME is keyed by)
+        generate_all.restore_pickled_status(self.model, self.options['ms_dir'])
         #generate_all.pid2width = lambda pid: generate_all.banner.get('param_card', 'decay', abs(pid)).value
         #generate_all.pid2mass = lambda pid: generate_all.banner.get('param_card', 'mass', abs(pid)).value
         if generate_all.path_me != self.options['ms_dir']:
@@ -2516,8 +2512,6 @@ class MadSpinInterface(extended_cmd.Cmd):
         # own card, and archived nothing at all before -- do_launch returns here
         # long before reaching its own copy of this call.
         self._archive_madspin_card(decayed_evt_file)
-    
-    
 
     def run_bridge(self, line):
         """Run the Bridge Algorithm"""
