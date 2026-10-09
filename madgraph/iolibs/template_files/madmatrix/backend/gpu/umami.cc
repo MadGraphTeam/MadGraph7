@@ -416,7 +416,8 @@ extern "C"
         {reinterpret_cast<void**>(&helicity_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&color_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&ghel_matrix_elements), rounded_count * ProcessData::ncomb * sizeof( fptype )},
-        {reinterpret_cast<void**>(&ghel_jamps), rounded_count * ProcessData::ncomb * ProcessData::ncolor * mgOnGpu::nx2 * sizeof( fptype_amp )},
+        // njampso = ncolor per amplitude split order (just ncolor without split orders)
+        {reinterpret_cast<void**>(&ghel_jamps), rounded_count * ProcessData::ncomb * ProcessData::njampso * mgOnGpu::nx2 * sizeof( fptype_amp )},
     }};
     std::size_t total_size = 0;
     constexpr std::size_t MAX_SIZE = std::max( { sizeof( fptype ), sizeof( fptype_momenta ), sizeof( fptype ), sizeof( int ) } );
@@ -456,8 +457,10 @@ extern "C"
     InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
     if( !instance->initialized )
     {
+      // the jamp scratch of the helicity filtering (one helicity, njampso jamps, a few
+      // events): ghel_jamps, whose size does not depend on ncolor_flow and nampso
       initialize(
-        momenta, couplings, flavor_indices, matrix_elements, color_jamps, numerators, denominators, rounded_count );
+        momenta, couplings, flavor_indices, matrix_elements, ghel_jamps, numerators, denominators, rounded_count );
       instance->initialized = true;
     }
 
@@ -484,7 +487,11 @@ extern "C"
       &gpu_stream,
       true,
       n_blocks,
-      n_threads );
+      n_threads,
+      // a caller drawing the helicity (event generation) gets the madevent convention for
+      // an interference |M|^2 (see add_and_select_hel); without the random number the
+      // |M|^2 stays the helicity sum (systematics re-evaluation, standalone checks)
+      random_helicity_in != nullptr );
 
     copy_outputs<<<n_blocks, n_threads, 0, gpu_stream>>>(
       denominators,

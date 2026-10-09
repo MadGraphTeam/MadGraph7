@@ -41,6 +41,10 @@ on:
         description: 'Keep the run directory on the cluster after a successful run'
         type: boolean
         default: false
+      interference:
+        description: 'Also run the interference (squared split-order) checks'
+        type: boolean
+        default: true
 
 # one run at a time per cluster; a newer pending run replaces an older pending one
 concurrency:
@@ -63,6 +67,8 @@ jobs:
       time_limit: ${{ inputs.time_limit || '02:00:00' }}
       extra_sbatch: ${{ inputs.extra_sbatch }}
       keep_workdir: ${{ inputs.keep_workdir || false }}
+      # opt-in on "Run workflow" only for now (no inputs on push: false)
+      interference: ${{ inputs.interference || false }}
     # needed for the called workflow to see the CECI_KEY secret of its `ceci-gpu`
     # environment (the repository itself has no other secrets)
     secrets: inherit

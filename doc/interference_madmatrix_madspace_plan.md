@@ -208,6 +208,26 @@ Depends on PR #243, either as a commit on it or as a follow-up.
    - the BLAS colour sum stays off.
 3. Validate on CECI lemaitre4 against the CPU at the same momenta.
 
+#### Phase 4 status (2026-10-09): written, waiting for the GPU CI
+
+No CUDA toolchain was available locally, so the GPU code is not compiled yet.
+
+What was changed:
+- **Jamps.** `calculate_jamps` keeps `njampso` jamps. `DeviceAccessJamp`, all the device jamp buffers (`MatrixElementKernels.cc`, `umami.cc`) and the memset use `njampso` as the plane length.
+- **Colour sum.** `color_sum_kernel` has the ordered-pair split-order branch, in colour-algebra precision.
+- **Tables.** `sqSoIndex` and `chosenSqso` are generated `__device__ constexpr`, as `icolamp` already is (an empty macro on CPU).
+- **cuBLAS.** It is refused at runtime for `nampso > 1`, with a warning and an assert.
+- **Helicity choice.** `add_and_select_hel` uses the madevent convention behind the same `sampleSignedHelicity` flag, which GPU umami sets from the random-helicity input.
+- **Helicity filtering.** GPU umami's filtering now uses the per-helicity jamp buffer as scratch, which removes a limit of 8 orders.
+- **Message.** The `static_assert` and the "GPU will not compile" message are gone.
+
+**CI.** `.github/gpu_ci/interference_gpu.sh` and `interference_checks.py` add an opt-in `interference` job to `gpu_runner_ci.yml`. It is on by default for *Run workflow*, and off on pushes to main until it is validated. It checks:
+1. standalone `u u~ > u u~` against the Fortran interference, the QED=0+2+4 = `QED^2<=4` sum rule, and FPTYPE=m;
+2. the umami helicity choice on `u u~ > t t~ g QED^2==2`, with device memory through `cudaMalloc`/`hipMalloc` via ctypes;
+3. mg7 `p p > u u~ QCD^2==2` on the GPU against −12253(10) pb, the `<init>` line and the signed events.
+
+The script passes on CPU (`--backend simd_128`): the interference agrees to 3.7e−16, the sum rule to 3.2e−16, 11 of 16 points have mixed signs, and mg7 gives −12202(136) pb.
+
 ### Not planned: `[LIxtree]` in mg7
 
 madmatrix has no loop matrix elements. Supporting it would need either a

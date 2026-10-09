@@ -63,11 +63,62 @@ namespace madmatrix
       allJamps = allJamps + ighel * nevtIfAllHelicities; // Jamps for one specific helicity ighel
     }
     using J_ACCESS = DeviceAccessJamp;
+    using E_ACCESS = DeviceAccessMatrixElements; // non-trivial access: buffer includes all events
+    constexpr int ihel0 = 0; // the input buffer allJamps already points to a specific helicity
+    if constexpr( nampso > 1 )
+    {
+      // Squared split orders: the jamps carry an amplitude-order index (njampso =
+      // ncolor * nampso, the order striding by ncolor, as calculate_jamps wrote them)
+      // and are paired here, as color_sum_cpu_splitorders in backend/{cpu,simd} does.
+      // The color contraction stays triangular, but the loop over amplitude-order
+      // pairs must run over ALL ordered pairs: for two different jamp vectors a pair
+      // and its transpose are not each other's conjugate, only their sum is the
+      // truth (a triangle gives about twice the answer). Masking stays safe because
+      // sqSoIndex is symmetric: a pair and its transpose are kept or dropped together.
+      // (in the color algebra precision, as below and as backend/{cpu,simd} do)
+      fptype_colour jampR[nampso][ncolor];
+      fptype_colour jampI[nampso][ncolor];
+      for( int iao = 0; iao < nampso; iao++ )
+      {
+        for( int icol = 0; icol < ncolor; icol++ )
+        {
+          cxtype_amp jamp = J_ACCESS::kernelAccessIcolIhelNhelConst( allJamps, iao * ncolor + icol, ihel0, nGoodHel );
+          jampR[iao][icol] = jamp.real();
+          jampI[iao][icol] = jamp.imag();
+        }
+      }
+      fptype deltaMEs = { 0 };
+      for( int iao = 0; iao < nampso; iao++ )
+      {
+        for( int jao = 0; jao < nampso; jao++ )
+        {
+          // the squared order this pair contributes to, dropped if the process asked
+          // for a contribution that does not include it
+          if( !chosenSqso[sqSoIndex[iao][jao]] ) continue;
+          for( int icol = 0; icol < ncolor; icol++ )
+          {
+            // ztemp from the jamps of order iao, contracted with those of order jao
+            // (Fortran: ZTEMP from JAMP(:,M), times DCONJG(JAMP(I,N)))
+            fptype_colour ztempR = s_pNormalizedColorMatrix2[icol * ncolor + icol] * jampR[iao][icol];
+            fptype_colour ztempI = s_pNormalizedColorMatrix2[icol * ncolor + icol] * jampI[iao][icol];
+            for( int jcol = 0; jcol < icol; jcol++ )
+            {
+              ztempR += 2 * s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampR[iao][jcol];
+              ztempI += 2 * s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampI[iao][jcol];
+            }
+            deltaMEs += ztempR * jampR[jao][icol];
+            deltaMEs += ztempI * jampI[jao][icol];
+          }
+        }
+      }
+      // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
+      E_ACCESS::kernelAccess( allMEs ) += deltaMEs; // fix #435
+      return;
+    }
     fptype_amp jampR[ncolor];
     fptype_amp jampI[ncolor];
     for( int icol = 0; icol < ncolor; icol++ )
     {
-      constexpr int ihel0 = 0; // the input buffer allJamps already points to a specific helicity
       cxtype_amp jamp = J_ACCESS::kernelAccessIcolIhelNhelConst( allJamps, icol, ihel0, nGoodHel );
       jampR[icol] = jamp.real();
       jampI[icol] = jamp.imag();
@@ -101,7 +152,6 @@ namespace madmatrix
       deltaMEs += ztempI * jampIi;
     }
     // *** STORE THE RESULTS ***
-    using E_ACCESS = DeviceAccessMatrixElements; // non-trivial access: buffer includes all events
     // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
     E_ACCESS::kernelAccess( allMEs ) += deltaMEs; // fix #435
   }
@@ -307,6 +357,9 @@ namespace madmatrix
 #ifdef MGONGPU_HAS_NO_BLAS
       assert( false ); // sanity check: no path to this statement for HASBLAS=hasNoBlas
 #else
+      // sanity check: MatrixElementKernelDevice never enables BLAS for split amplitude
+      // orders, whose jamps the BLAS color sum cannot pair
+      assert( nampso == 1 );
       if (processAllHelicities) {
         assert( false ); // BLAS in async mode not supported for now
       } else {
