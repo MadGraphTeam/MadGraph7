@@ -65,6 +65,7 @@ namespace madmatrix
     using J_ACCESS = DeviceAccessJamp;
     using E_ACCESS = DeviceAccessMatrixElements; // non-trivial access: buffer includes all events
     constexpr int ihel0 = 0; // the input buffer allJamps already points to a specific helicity
+    fptype deltaMEs = { 0 };
     if constexpr( nampso > 1 )
     {
       // Squared split orders: the jamps carry an amplitude-order index (njampso =
@@ -87,7 +88,6 @@ namespace madmatrix
           jampI[iao][icol] = jamp.imag();
         }
       }
-      fptype deltaMEs = { 0 };
       for( int iao = 0; iao < nampso; iao++ )
       {
         for( int jao = 0; jao < nampso; jao++ )
@@ -111,8 +111,6 @@ namespace madmatrix
           }
         }
       }
-      // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
-      E_ACCESS::kernelAccess( allMEs ) += deltaMEs; // fix #435
     }
     else // one amplitude split order (an else, not a return: no unreachable code for nvcc)
     {
@@ -124,7 +122,6 @@ namespace madmatrix
         jampR[icol] = jamp.real();
         jampI[icol] = jamp.imag();
       }
-      fptype deltaMEs = { 0 };
       for( int icol = 0; icol < ncolor; icol++ )
       {
         fptype_colour ztempR = { 0 };
@@ -152,10 +149,12 @@ namespace madmatrix
         deltaMEs += ztempR * jampRi;
         deltaMEs += ztempI * jampIi;
       }
-      // *** STORE THE RESULTS ***
-      // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
-      E_ACCESS::kernelAccess( allMEs ) += deltaMEs; // fix #435
     }
+    // *** STORE THE RESULTS ***
+    // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
+    // (once, after the if constexpr: on HIP, a template first named in the discarded branch
+    // was never instantiated for the device, "undefined hidden symbol ... kernelAccessField")
+    E_ACCESS::kernelAccess( allMEs ) += deltaMEs; // fix #435
   }
 
   //--------------------------------------------------------------------------
