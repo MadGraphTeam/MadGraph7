@@ -7542,9 +7542,12 @@ class RunCardMG7(RunCard):
     max_histogram_pairs = 10
     histogram_bin_count = 50
     histogram_eta_max = 5.0
-    # the event weight is histogrammed in units of the cross section (the mean
-    # weight), so this range does not depend on the process: a fully unweighted
-    # sample is a spike at 1, and a partially unweighted one spreads around it.
+    # the event weight is histogrammed in units of the unit weight (sigma_abs,
+    # the cross section of a positive sample), so this range does not depend on
+    # the process: a fully unweighted sample is a spike at 1, and a partially
+    # unweighted one spreads around it. A process with a squared-order
+    # constraint (an interference) can have negative weights, at -1: its range
+    # is made symmetric.
     histogram_weight_max = 5.0
 
     @staticmethod
@@ -7837,9 +7840,16 @@ class RunCardMG7(RunCard):
         # "weight" is not an observable of the momenta: it is the reserved key
         # for the distribution of the event weight itself (see
         # MadgraphProcess.weight_histogram_key in the mg7 launcher)
+        signed = False
+        try:
+            signed = any(oneproc.get('squared_orders')
+                         for proc in proc_def for oneproc in proc)
+        except (TypeError, KeyError, AttributeError):
+            pass
         histograms['weight'] = collections.OrderedDict(
-            [('min', 0.), ('max', self.histogram_weight_max),
-             ('bin_count', bins)])
+            [('min', -self.histogram_weight_max if signed else 0.),
+             ('max', self.histogram_weight_max),
+             ('bin_count', 2 * bins if signed else bins)])
 
     def remove_all_histograms(self):
         """Drop every histogram (the `set histograms OFF` shortcut)."""

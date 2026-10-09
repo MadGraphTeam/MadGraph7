@@ -174,6 +174,20 @@ def me_parameters(run_card):
     return {"bwcutoff": float(run_card["phasespace"]["bw_cutoff"])}
 
 
+def lhe_weight_info(status):
+    """(IDWTUP, XMAXUP) for the LHE <init> block of a run with this generator
+    status. The events are unweighted to +-sigma_abs, keeping the sign of the
+    integrand, and XMAXUP is that unit weight rather than the signed cross
+    section. A sample that can hold negative weights -- an interference --
+    declares it with IDWTUP = -4, as madevent does: the cross section is then
+    the mean of the signed event weights. With -3 a shower takes it as
+    |XSECUP| times the mean sign instead (Pythia8 does), which is not the
+    cross section, and +3 is for positive weights only. gridpack.py applies the
+    same rule inline, since it must not import this module."""
+    negative = status.mean < 0 or status.mean_abs > abs(status.mean) * (1 + 1e-12)
+    return (-4 if negative else 3), status.mean_abs
+
+
 @dataclass
 class Channel:
     phasespace_mapping: ms.PhaseSpaceMapping
@@ -937,10 +951,13 @@ class MadgraphProcess:
         return self.event_histograms
 
     def _mean_event_weight(self) -> float:
-        """The cross section the generation converged to, used as the unit of
-        the weight histograms. 0 (the raw weight) when it is not available."""
+        """The unit weight of the unweighted events, sigma_abs, used as the
+        unit of the weight histograms: the cross section of a positive sample,
+        and for one with negative weights (an interference) what puts them at
+        +-1 rather than dividing by a signed, possibly small, total. 0 (the raw
+        weight) when it is not available."""
         try:
-            return float(self.event_generator.status().mean)
+            return float(self.event_generator.status().mean_abs)
         except Exception as error:
             logger.debug("no cross section for the weight histograms: %s", error)
             return 0.
@@ -1273,8 +1290,11 @@ class MadgraphProcess:
         index = 0
         for phasespace in phasespaces_multi:
             channel_count = len(phasespace.channels)
+            # rank the channels by the integral of |w|: a channel whose signed
+            # integral cancels (an interference) can still carry most of the
+            # variance, and folding it into the flat channel would blow it up
             cross_sections.append([
-                abs(status.mean)
+                status.mean_abs
                 for status in channel_status[index:index + channel_count]
             ])
             index += channel_count
@@ -1697,6 +1717,7 @@ class MadgraphProcess:
         pdf_group = -1 if self.leptonic else 0
         status = self.event_generator.status()
         xsec, err = status.mean, status.error
+        weight_mode, max_weight = lhe_weight_info(status)
         with open(self.param_card_path) as f:
             param_text = f.read()
         with open(os.path.join("Cards", "run_card.toml")) as f:
@@ -1721,9 +1742,9 @@ class MadgraphProcess:
             beam1_energy=energies[0], beam2_energy=energies[1],
             beam1_pdf_authors=pdf_group, beam2_pdf_authors=pdf_group,
             beam1_pdf_id=lhaid, beam2_pdf_id=lhaid,
-            weight_mode=3,
+            weight_mode=weight_mode,
             # positional: the pybind arg name for max_weight is non-kwarg-safe
-            processes=[ms.LHEProcess(xsec, err, xsec, 1)],
+            processes=[ms.LHEProcess(xsec, err, max_weight, 1)],
             headers=headers,
         )
 
@@ -2496,7 +2517,8 @@ class MadgraphSubprocess:
             #    if resonance not in seen_resonances:
             #        has_unseen_resonances = True
             #        seen_resonances.add(flav)
-            if has_unseen_flavors or has_unseen_resonances or cum_cs / tot_cs < threshold:
+            if has_unseen_flavors or has_unseen_resonances or not tot_cs \
+                    or cum_cs / tot_cs < threshold:
                 kept_channels.append(index)
         if len(kept_channels) >= len(cross_sections) - 1:
             return multi_phasespace

@@ -112,8 +112,11 @@ def _y_scale(values):
 
     Empty bins are ignored rather than forcing a linear axis: the tail of a pt
     spectrum runs out of events long before it stops being interesting, and a
-    logarithmic axis simply leaves those bins out.
+    logarithmic axis simply leaves those bins out. A negative bin (an
+    interference) does force it: a logarithmic axis would hide it.
     """
+    if any(v < 0 for v in values):
+        return 'linear'
     positive = [v for v in values if v > 0]
     if len(positive) < 2:
         return 'linear'
