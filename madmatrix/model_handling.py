@@ -1687,12 +1687,15 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         ###if 'eft' in self.model_name.lower():
         ###    replace_dict['eftwarn0'] = '\n//#warning Support for EFT physics models is still limited for HRDCOD=0 builds (#439 and PR #625)'
         ###    replace_dict['eftwarn1'] = '\n//#warning Support for EFT physics models is still limited for HRDCOD=1 builds (#439 and PR #625)'
+        # BSM params for aS-dependent couplings as fptype/cxtype
+        replace_dict['eftspecial0'] = ''
         if len( bsmparam_indep_real_used ) + len( bsmparam_indep_complex_used ) == 0:
             replace_dict['eftspecial0'] = '\n      // No special handling of non-hardcoded parameters (no additional BSM parameters needed in constant memory)'
-        else:
-            replace_dict['eftspecial0'] = ''
-            for ipar, par in enumerate( bsmparam_indep_real_used ) : replace_dict['eftspecial0'] += '\n      const double %s = bsmIndepParamPtr[%i];' % ( par, ipar )
-            for ipar, par in enumerate( bsmparam_indep_complex_used ) : replace_dict['eftspecial0'] += '\n      const cxsmpl<double> %s = cxsmpl<double>( bsmIndepParamPtr[%i], bsmIndepParamPtr[%i] );' % ( par, 2*ipar, 2*ipar+1 )
+        for ipar, par in enumerate( bsmparam_indep_real_used ):
+            replace_dict['eftspecial0'] += '\n      const fptype %s = bsmIndepParamPtr[%i];' % ( par, ipar )
+        for ipar, par in enumerate( bsmparam_indep_complex_used ):
+            ire = len( bsmparam_indep_real_used ) + 2 * ipar
+            replace_dict['eftspecial0'] += '\n      const cxtype %s = cxtype( bsmIndepParamPtr[%i], bsmIndepParamPtr[%i] );' % ( par, ire, ire + 1 )
         file_h = self.read_template_file(self.param_template_h) % replace_dict
         file_cc = self.read_template_file(self.param_template_cc) % replace_dict
         return file_h, file_cc
@@ -3301,7 +3304,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     # [GPUFOHelasCallWriter.get_external_line is called by GPUFOHelasCallWriter.get_external]
     # [=> GPUFOHelasCallWriter.get_external is called by GPUFOHelasCallWriter.generate_helas_call]
     # [GPUFOHelasCallWriter.generate_helas_call is called by UFOHelasCallWriter.get_wavefunction_call/get_amplitude_call]
-    first_get_external = True
+    # (cudacpp's MGONGPU_TEST_DIVERGENCE variant of the first ipzxxx/imzxxx/
+    # ixzxxx call is gone with them: get_external_line never emits those)
     def get_external(self, wf, argument):
         line = self.get_external_line(wf, argument)
         split_line = line.split(',')
@@ -3310,17 +3314,6 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         line = ', '.join(split_line)
         line = line.replace( 'xxx(', 'xxx<M_ACCESS, W_ACCESS>(' )
         line = line.replace( 'w_sv', 'w_fp' )
-        # AV2: line2 logic is to have MGONGPU_TEST_DIVERGENCE on the first xxx call
-        if self.first_get_external and ( ( 'mzxxx' in line ) or ( 'pzxxx' in line ) or ( 'xzxxx' in line ) ) :
-            self.first_get_external = False
-            line2 = line.replace('mzxxx','xxxxx').replace('pzxxx','xxxxx').replace('xzxxx','xxxxx')
-            line2 = line2[:line2.find('// NB')]
-            split_line2 = line2.split(',')
-            split_line2 = [ str.lstrip(' ').rstrip(' ') for str in split_line2] # AV
-            split_line2.insert(2, '0') # add parameter fmass=0
-            line2 = ', '.join(split_line2)
-            text = '#if not( defined MGONGPUCPP_GPUIMPL and defined MGONGPU_TEST_DIVERGENCE )\n      %s\n#else\n      if( ( blockDim.x * blockIdx.x + threadIdx.x ) %% 2 == 0 )\n        %s\n      else\n        %s\n#endif\n' # AV
-            return text % (line, line, line2)
         text = '%s\n' # AV
         return text % line
 
@@ -3330,6 +3323,16 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     # [GPUFOHelasCallWriter.get_external (adding #ifdef CUDA) is called by GPUFOHelasCallWriter.generate_helas_call]
     # [GPUFOHelasCallWriter.generate_helas_call is called by UFOHelasCallWriter.get_wavefunction_call/get_amplitude_call]
     def get_external_line(self, wf, argument):
+        # NB: always the generic ixxxxx/oxxxxx/vxxxxx/sxxxxx, never the
+        # z-axis-optimised ipzxxx/imzxxx/ixzxxx (and their o counterparts) that
+        # the base GPUFOHelasCallWriter picks for a massless external fermion.
+        # Those assume px == py == 0 and E == +-pz for legs 1 and 2, which only
+        # holds in the frames where the beams run along z. The matrix element is
+        # called on momenta boosted into the frame the run card's me_frame asks
+        # for (madevent: boost_to_frame in genps.f; mg7: the boost_to_frame
+        # instruction madspace applies before the call), and in e.g. the rest
+        # frame of one final-state particle the incoming partons are not along z
+        # at all. Do not reintroduce them without gating on me_frame.
         call = ''
         call = call + helas_call_writers.HelasCallWriter.mother_dict[\
             argument.get_spin_state_number()].lower()

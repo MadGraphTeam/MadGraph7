@@ -546,7 +546,8 @@ class Banner(dict):
         elif tag == 'mgruncard':
             if 'mg7runcard' in self:
                 # mg7 events embed the TOML run_card under <MG7RunCard>
-                self.run_card = RunCardMG7(self['mg7runcard'], consistency=False)
+                self.run_card = RunCardMG7(self['mg7runcard'], consistency=False,
+                                           from_banner=True)
             else:
                 with misc.TMP_variable(RunCard, 'allow_scan', True):
                     self.run_card = RunCard(self[tag], consistency=False, unknown_warning=False)
@@ -979,7 +980,23 @@ class ProcCard(list):
             return out 
         else:
             return self.info[tag]
-            
+
+    def get_output_options(self):
+        """Return the '--name[=value]' options of the last 'output' command,
+        as the cmd_options dict the exporter received ({'density': '3,4'};
+        a bare flag maps to True). Empty if the card has no output line.
+
+        Read the options from here, not by grepping proc_card_mg5.dat: cards
+        written by older versions are wrapped at 70 characters, wherever that
+        falls, so '--density' can be split as '-\\' / '-density' in the file."""
+
+        for line in reversed(self):
+            args = line.split('#')[0].split()
+            if args and args[0] == 'output':
+                return dict((arg[2:].split('=', 1) if '=' in arg else (arg[2:], True))
+                            for arg in args if arg.startswith('--'))
+        return {}
+
     def write(self, path):
         """write the proc_card to a given path"""
         
@@ -992,11 +1009,10 @@ class ProcCard(list):
             # prompt, which has no `set width` (extended_cmd.QuestionAnswer)
             if getattr(line, 'is_answer', False):
                 continue
-            while len(line) > 70:
-                sub, line = line[:70]+"\\" , line[70:] 
-                fsock.write(sub+"\n")
-            else:
-                fsock.write(line+"\n")
+            # one command per line, never cut: older versions wrapped at 70
+            # characters, even inside a token ('--de\' / 'nsity=3'), which
+            # broke every grep of the card. read() still joins those lines.
+            fsock.write(line+"\n")
  
 class InvalidCardEdition(InvalidCmd): pass 
  
@@ -4773,7 +4789,12 @@ class RunCardLO(RunCard):
                 logger.warning('draj cut discarded since photon isolation is used')
                 self['draj'] = 0.0   
         
-        # special treatment for gridpack use the gseed instead of the iseed        
+        # the fortran code only knows -1 as "no cut": any other value is a cap
+        # and 0 would give a NaN phase-space (TAUMAX=0) and a zero cross-section
+        if self['dsqrt_shatmax'] <= 0 and self['dsqrt_shatmax'] != -1:
+            self['dsqrt_shatmax'] = -1.0
+
+        # special treatment for gridpack use the gseed instead of the iseed
         if self['gridrun']:
             self['iseed'] = self['gseed']
         
@@ -6621,6 +6642,8 @@ class RunCardMG7(RunCard):
         self.dynamic_sections = collections.OrderedDict()
         # unknown sections preserved for round-trip
         self.extra_sections = collections.OrderedDict()
+        # set while read(from_banner=True) fills the card, see __setitem__
+        self._from_banner = False
         super(RunCardMG7, self).__init__(*args, **opts)
 
     # ------------------------------------------------------------------
@@ -6700,6 +6723,21 @@ class RunCardMG7(RunCard):
             comment="amount of console output; auto is pretty in a terminal and log otherwise")
         self.add_toml_param('run', 'dummy_matrix_element', False,
             comment="skip the matrix element evaluation, for testing")
+        # Lorentz frame the matrix element is evaluated in, as a list of the
+        # external particles whose momenta are summed up to define it (same
+        # convention as the legacy run_card me_frame). The default [] means no
+        # boost at all: the matrix element sees the momenta in the frame they
+        # are generated in, which for a collision is the lab frame. [1, 2] is
+        # the partonic centre of mass, i.e. the frame madevent evaluates in,
+        # and [1] its equivalent for a 1 -> n decay. Only matters for a matrix
+        # element that is not Lorentz invariant, i.e. a polarised one, so the
+        # default costs nothing and leaves every other run unchanged.
+        self.add_toml_param('run', 'me_frame', [], typelist=int,
+            comment="external particles whose momenta are summed up to define the "
+                    "rest frame in which to evaluate the matrix element; [] (the "
+                    "default) applies no boost, [1,2] is the partonic centre of "
+                    "mass (what madevent evaluates in). Only matters for a non "
+                    "Lorentz invariant (polarised) matrix element")
 
         # ---------------------------- [gridpack] ----------------------
         self.add_toml_param('gridpack', 'save_gridpack', False,
@@ -6971,13 +7009,23 @@ class RunCardMG7(RunCard):
         asked for, so make it a hard error here. This matters in particular for
         run cards written before the backend renaming, which still carry a
         removed value such as 'cpu_128b'.
+
+        A card read back from an event file's banner (read(from_banner=True))
+        only describes a run that is over and is never run again, so there the
+        value is reported and the default kept: refusing it would make every
+        tool reading such a sample (MadSpin, systematics, ...) abort on a
+        parameter it never uses.
         """
         if isinstance(name, str) and name.strip().lower() in ('cpu_mode', 'run.cpu_mode'):
             allowed = self.allowed_value.get('run.cpu_mode', [])
             if allowed and str(value).strip().lower() not in [str(v).lower() for v in allowed]:
-                raise InvalidRunCard(
-                    "Invalid cpu_mode='%s': supported values are [ '%s' ]"
-                    % (str(value).strip(), "', '".join(str(v) for v in allowed)))
+                message = ("Invalid cpu_mode='%s': supported values are [ '%s' ]"
+                           % (str(value).strip(), "', '".join(str(v) for v in allowed)))
+                if getattr(self, '_from_banner', False):
+                    logger.warning("%s; the run_card of the event file is read with "
+                                   "cpu_mode='%s'", message, self['run']['cpu_mode'])
+                    return
+                raise InvalidRunCard(message)
         return super(RunCardMG7, self).__setitem__(name, value, *args, **opts)
 
     # ------------------------------------------------------------------
@@ -6996,6 +7044,9 @@ class RunCardMG7(RunCard):
         # value, which keeps the tools on the plain (unmatched) code path.
         'ktdurham', 'ptlund', 'xqcut', 'maxjetflavor', 'sys_matchscale',
         'dparameter', 'lhaid', 'iseed', 'python_seed',
+        # read by MadSpin (check_launch, do_import) and by Banner.write for
+        # the <LesHouchesEvents version=...> of the files it rewrites
+        'lhe_version', 'bwcutoff',
     }
 
     # mg7 dynamical_scale_choice name -> legacy integer code. This is the
@@ -7067,6 +7118,10 @@ class RunCardMG7(RunCard):
                 return 0
         if key == 'python_seed':
             return -2            # -2: reuse iseed for the python RNG
+        if key == 'lhe_version':
+            return 3.0           # madspace's lhe_output always writes LHEF 3.0
+        if key == 'bwcutoff':
+            return float(self['phasespace']['bw_cutoff'])
         raise KeyError(key)
 
     def get_lhapdf_id(self):
@@ -7100,8 +7155,13 @@ class RunCardMG7(RunCard):
     # ------------------------------------------------------------------
     # reading TOML
     # ------------------------------------------------------------------
-    def read(self, finput, consistency=True, unknown_warning=True, **opt):
-        """Read a TOML run_card from a path, a file object or a string."""
+    def read(self, finput, consistency=True, unknown_warning=True,
+             from_banner=False, **opt):
+        """Read a TOML run_card from a path, a file object or a string.
+
+        ``from_banner=True`` is for the card embedded in an event file
+        (<MG7RunCard>): a value that is refused for a run is then only
+        reported, see __setitem__."""
         import tomllib
 
         self.path = None
@@ -7122,7 +7182,11 @@ class RunCardMG7(RunCard):
             raise Exception("RunCardMG7 cannot read input of type %s" % type(finput))
 
         data = tomllib.loads(text)
-        self.read_data(data, unknown_warning=unknown_warning)
+        self._from_banner = from_banner
+        try:
+            self.read_data(data, unknown_warning=unknown_warning)
+        finally:
+            self._from_banner = False
 
         if consistency:
             try:
@@ -7369,6 +7433,19 @@ class RunCardMG7(RunCard):
                     "Invalid device '%s': the device index must be a non-negative integer"
                     % entry)
 
+        # me_frame lists external particles by their (one based) position; the
+        # number of external particles is only known to the run directory, so
+        # all that can be checked here is that the entries could name one.
+        me_frame = self['run']['me_frame']
+        if len(set(me_frame)) != len(me_frame):
+            raise InvalidRunCard(
+                "me_frame lists the same particle twice: %s" % (me_frame,))
+        for entry in me_frame:
+            if entry < 1:
+                raise InvalidRunCard(
+                    "Invalid me_frame entry %s: particles are numbered from 1 "
+                    "(1 and 2 are the initial state)" % entry)
+
     # ------------------------------------------------------------------
     # writing TOML
     # ------------------------------------------------------------------
@@ -7575,8 +7652,8 @@ class RunCardMG7(RunCard):
         except (KeyError, TypeError, ValueError):
             return 0., False
 
-    @staticmethod
-    def _decaying_mass(proc_def):
+    @classmethod
+    def _decaying_mass(cls, proc_def):
         """Numerical mass of the decaying particle of a 1 -> N process."""
 
         for plist in proc_def or []:
@@ -7588,10 +7665,42 @@ class RunCardMG7(RunCard):
                     name = particle.get('mass')
                     if str(name).lower() == 'zero':
                         return 0.
-                    return abs(float(model.get('parameter_dict')[name]))
-                except (AttributeError, KeyError, IndexError, TypeError, ValueError):
+                    return abs(cls._parameter_value(model, name).real)
+                except Exception:
                     continue
         return 0.
+
+    @staticmethod
+    def _parameter_value(model, name):
+        """Numerical value of the model parameter `name`, from the default
+        values of the external parameters.
+
+        Only a ModelReader has a 'parameter_dict'; at output time the model is
+        usually a plain Model or LoopModel, whose internal parameters (MW in
+        the sm) carry an expression and no value. The expressions are
+        evaluated in a scratch namespace, so the model itself is left as is.
+        """
+
+        if 'parameter_dict' in model and model['parameter_dict']:
+            return complex(model['parameter_dict'][name])
+
+        import models.model_reader as model_reader
+        namespace = dict(vars(model_reader))
+        namespace['ZERO'] = 0.
+        for param in model['parameters'][('external',)]:
+            namespace[param.name] = param.value
+        if name in namespace:
+            return complex(namespace[name])
+        for func in model['functions']:
+            exec("def %s(%s):\n   return %s" % (func.name,
+                       ",".join(func.arguments), func.expr), namespace)
+        for key in sorted((k for k in model['parameters'] if k != ('external',)),
+                          key=len):
+            for param in model['parameters'][key]:
+                namespace[param.name] = eval(param.expr, namespace)
+                if param.name == name:
+                    return complex(namespace[name])
+        raise KeyError(name)
 
     # MadGraph gives a leg whose flavours were merged one of these codes; the
     # mg7 runtime resolves them to the same representatives (clean_pids /
@@ -7731,8 +7840,8 @@ class RunCardMG7(RunCard):
     def set_default_histograms(self, proc_characteristic, proc_def):
         """Fill [histograms] with a starting set of plots for this process:
         the pt and eta of every final-state particle, the invariant mass of
-        every pair of them, the partonic sqrt(s) and the distribution of the
-        event weight.
+        every pair of them, the partonic sqrt(s) (not for a decay) and the
+        distribution of the event weight.
 
         The observables are named after the [multiparticles] groups, with the
         "_1", "_2", ... suffix selecting the hardest, second hardest, ... of a
@@ -7789,8 +7898,11 @@ class RunCardMG7(RunCard):
                     collections.OrderedDict(
                         [('min', 0.), ('max', mass_max), ('bin_count', bins)])
                 pairs += 1
-        histograms['sqrt_s'] = collections.OrderedDict(
-            [('min', 0.), ('max', mass_max), ('bin_count', bins)])
+        if not is_decay:
+            # madspace's sqrt_s adds up the two beams: a decay has one, at a
+            # fixed mass, so there is nothing to plot
+            histograms['sqrt_s'] = collections.OrderedDict(
+                [('min', 0.), ('max', mass_max), ('bin_count', bins)])
         # "weight" is not an observable of the momenta: it is the reserved key
         # for the distribution of the event weight itself (see
         # MadgraphProcess.weight_histogram_key in the mg7 launcher)
@@ -7940,11 +8052,11 @@ class RunCardMG7(RunCard):
         # per-process group of heavy particles
         'cutuse', 'ptheavy', 'ptonium', 'etaonium', 'ptgmin', 'r0gamma', 'xn',
         'epsgamma', 'isoem', 'xetamin', 'deltaeta',
-        # systematics detail / eva / frame
+        # systematics detail / eva / event frame
         'systematics_program', 'systematics_arguments', 'sys_scalefact',
         'sys_alpsfact', 'sys_matchscale', 'sys_pdf', 'sys_scalecorrelation',
         'ievo_eva', 'evaorder', 'eva_xcut',
-        'boost_event', 'me_frame', 'frame_id', 'event_norm', 'lhe_version',
+        'boost_event', 'event_norm', 'lhe_version',
     }
 
     @classmethod
@@ -8022,6 +8134,20 @@ class RunCardMG7(RunCard):
         sde = lo['SDE_strategy'] if 'SDE_strategy' in lo else 1
         mg7.set('phasespace.sde_strategy',
                 'denominators' if int(sde) == 2 else 'diagrams')
+
+        # --- matrix-element frame ---
+        # Carried over explicitly, the LO default [1,2] included: madevent
+        # hands its matrix element partonic centre-of-mass momenta, so [1,2]
+        # costs nothing there, while mg7's own default [] is the lab frame and
+        # gives a polarised matrix element other polarisation axes. An empty
+        # LO me_frame selects no leg, which madevent reads as no boost of
+        # those partonic c.m. momenta, i.e. [1,2] again. frame_id is only
+        # madevent's encoding of me_frame. Caveat: madevent skips [1,2]
+        # (frame_id 6) for a 1 -> n decay too, which keeps the decaying
+        # particle's rest frame -- [1] in mg7 -- but nothing in the run_card
+        # says whether the process is a decay.
+        if 'me_frame' in lo:
+            mg7.set('run.me_frame', list(lo['me_frame']) or [1, 2])
 
         # --- PDF ---
         pdf_name = cls._resolve_pdf(lo, dropped)

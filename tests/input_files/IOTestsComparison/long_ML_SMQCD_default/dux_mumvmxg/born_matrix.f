@@ -428,6 +428,8 @@ C
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0D0, 0D0), (1D0, 0D0)/
       DOUBLE PRECISION BWCUTOFF
+      DOUBLE PRECISION STANDALONE_BWCUTOFF
+      COMMON/TO_STANDALONE_BWCUTOFF/STANDALONE_BWCUTOFF
 C     Flavor table for the FLAV_IDX -> FLAVOR rebuild.
       INTEGER NMASK_FLAV
       PARAMETER (NMASK_FLAV=1)
@@ -441,7 +443,17 @@ C
 
 C     
 C     
-      BWCUTOFF=15  ! use if $ syntax is defined in the process
+C     $-syntax propagators veto |m-M| < bwcutoff*Gamma. That has to be
+C      the
+C     window the events were generated with (run_card bwcutoff); a
+C      caller
+C     such as MadSpin or the reweighting sets it through SET_BWCUTOFF.
+C     Zero (nothing set it) keeps the historical default of 15.
+      IF (STANDALONE_BWCUTOFF.GT.0D0) THEN
+        BWCUTOFF = STANDALONE_BWCUTOFF
+      ELSE
+        BWCUTOFF = 15D0
+      ENDIF
 C     Rebuild FLAVOR(NEXTERNAL) from the resolved flavor index.
       IF (FLAV_IDX .GE. 1 .AND. FLAV_IDX .LE. NMASK_FLAV) THEN
         DO MASK_J = 1, NEXTERNAL

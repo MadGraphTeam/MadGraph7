@@ -14,6 +14,7 @@
 ################################################################################
 from __future__ import division
 from __future__ import absolute_import
+import collections
 import subprocess
 import unittest
 import json
@@ -512,6 +513,121 @@ class TestMECmdShell(unittest.TestCase):
         self.do('launch -f')
         
         self.check_parton_output('run_02_decayed_1', 100)           
+        
+    def _setup_madspin_ww_wz(self, *card_lines):
+        """p p > w+ w- plus p p > w+ z, decayed by madspin_v1.
+
+        The two productions have different total branching ratios -- W+W-
+        0.67 x 0.22, W+Z 0.67 x 0.07 -- so add_loose_decay gives W+Z a null
+        decay (decay_struct None) for the events that must be dropped. Both
+        are quark-initiated, so all_ME is keyed by flavour-grouped tags
+        ((-81, 81), (-24, 24)), and every decay product is a merged class
+        (j, l, vl)."""
+        self.out_dir = self.run_dir
+        self.generate(['p p > w+ w-', 'p p > w+ z'], 'sm')
+        with open(pjoin(self.out_dir, 'Cards', 'madspin_card.dat'), 'w') as ff:
+            for line in card_lines + ('set spinmode madspin_v1',
+                                      'set seed 11',
+                                      'decay w+ > j j',
+                                      'decay w- > l- vl~',
+                                      'decay z > l+ l-',
+                                      'launch'):
+                ff.write(line + '\n')
+        run_card = banner.RunCardLO(pjoin(self.out_dir, 'Cards', 'run_card.dat'))
+        run_card.set('nevents', 300)
+        run_card.set('use_syst', False)
+        run_card.write(pjoin(self.out_dir, 'Cards', 'run_card.dat'))
+
+    def _check_madspin_ww_wz(self, run):
+        """The decayed events of `run` (see _setup_madspin_ww_wz): flavour
+        consistent decays, no merged PDG code, and the null decay applied to
+        W+Z only."""
+        allowed = {24: [{2, -1}, {4, -3}], -24: [{11, -12}, {13, -14}],
+                   23: [{11, -11}, {13, -13}]}
+        def production(event):
+            return tuple(sorted(p.pid for p in event
+                                if p.status in (1, 2) and p.mother1
+                                and p.mother1.status == -1))
+
+        undecayed = collections.Counter(
+            production(e) for e in lhe_parser.EventFile(pjoin(
+                self.out_dir, 'Events', run, 'unweighted_events.lhe.gz')))
+        decayed = pjoin(self.out_dir, 'Events', run + '_decayed_1',
+                        'unweighted_events.lhe.gz')
+        # madevent logs a MadSpin crash and carries on: say so here
+        self.assertTrue(os.path.exists(decayed),
+                        'MadSpin wrote no decayed events for %s' % run)
+        written = collections.Counter()
+        for event in lhe_parser.EventFile(decayed):
+            written[production(event)] += 1
+            for p in event:
+                self.assertFalse(80 < abs(p.pid) < 90,
+                                 'merged PDG code %s written' % p.pid)
+                if p.pid in allowed:
+                    daughters = {d.pid for d in event if d.mother1 is p}
+                    self.assertIn(daughters, allowed[p.pid])
+        ww, wz = (-24, 24), (23, 24)
+        self.assertEqual(set(undecayed), {ww, wz})
+        # the larger total BR: every W+W- event is written
+        self.assertEqual(written[ww], undecayed[ww])
+        # the smaller one: kept with probability 0.07/0.22, so some but
+        # not all of the ~50 W+Z events (0 kept: ~1e-8)
+        self.assertGreater(written[wz], 0)
+        self.assertLess(written[wz], undecayed[wz])
+
+    def test_madspin_gridpack_unequal_br(self):
+        """Reuse an ms_dir in madspin_v1 mode, down to the decayed events.
+
+        Saving madspin.pkl used to crash on the null decay of W+Z
+        (switch_all_model_instance iterated its decay_struct, None). The
+        second launch reuses the directory: run_from_pickle used to restore
+        no model, so the production tags were looked up unmerged,
+        ((-2, 2), (-24, 24)), and load_event died with a KeyError.
+        """
+        ms_dir = pjoin(self.run_dir, 'MSDIR')
+        self._setup_madspin_ww_wz('set ms_dir %s' % ms_dir)
+
+        # build the directory
+        self.do('launch -f')
+        pkl = pjoin(ms_dir, 'madspin.pkl')
+        self.assertTrue(os.path.exists(pkl),
+                        'the first launch did not build the ms_dir')
+        built = os.stat(pkl).st_mtime_ns
+
+        # reuse it on a new sample
+        self.do('launch -f')
+        self.assertEqual(os.stat(pkl).st_mtime_ns, built,
+                         'the second launch should reuse madspin.pkl')
+
+        for run in ('run_01', 'run_02'):
+            self._check_madspin_ww_wz(run)
+
+    def test_madspin_use_old_dir(self):
+        """use_old_dir reruns madspin_v1 on the matrix elements the previous
+        run left in the same directory (production_me/all_ME.pkl).
+
+        That file is written by save_status_to_pickle: all_decay and the
+        decay structures as their repr, no model. The reload took it as it
+        was -- all_decay a string, the decay branches plain dicts, the tags
+        unmerged -- and a successful run deleted production_me anyway, so
+        there was nothing to reload in the first place.
+        """
+        self._setup_madspin_ww_wz('set use_old_dir True')
+
+        self.do('launch -f')
+        # MadSpin works in the process directory (the events are in Events/)
+        pkl = pjoin(self.out_dir, 'production_me', 'all_ME.pkl')
+        self.assertTrue(os.path.exists(pkl),
+                        'the first launch did not keep production_me')
+        built = os.stat(pkl).st_mtime_ns
+
+        self.do('launch -f')
+        # a reload that fails falls back to regenerating, which rewrites it
+        self.assertEqual(os.stat(pkl).st_mtime_ns, built,
+                         'the second launch should reload all_ME.pkl')
+
+        for run in ('run_01', 'run_02'):
+            self._check_madspin_ww_wz(run)
         
         
     def test_width_computation(self):
@@ -2730,6 +2846,56 @@ C
         target = 40.3 # fixed scale mz
 
         self.assertAlmostEqual(cross, 40.3, delta=max(1.0, 5 * error))
+
+    def test_decay_1to3_mg7(self):
+        """mg7 partial width of a 1 -> 3 decay: t > b e+ ve.
+
+        A process with one incoming particle is the special case of the mg7
+        chain, and it went unnoticed because the madevent fallback is what runs
+        without madspace:
+          - the default [histograms] are scaled by the mass of the decaying
+            particle, which used to be read from a 'parameter_dict' that only
+            a ModelReader has (a LoopModel crashed `output`);
+          - madspace's observables take the first two momenta to be the beams,
+            so the first decay product (the b here) dropped out of every
+            selection, and `z > mu+ mu-` asking for lepton_2 crashed the run.
+        So on top of the width (madevent: 0.1636 +- 0.0002 GeV, i.e.
+        Gamma(t > b w+) x BR(w+ > e+ ve)) the default histograms are checked:
+        no sqrt_s (madspace's adds up two beams), every momentum histogram
+        filled with the full width, and the e+ ve pair mass peaking at MW.
+        Self-skips where the mg7 runtime stack is unavailable.
+        """
+        import glob, json
+        datadir = _mg7_datadir_or_skip(self)
+        run_dir = pjoin(self.path, 'MG7_t_decay')
+        width, error = _run_mg7_xsec(self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate t > b e+ ve'],
+            run_dir, datadir)
+        self.assertAlmostEqual(width, 0.1636, delta=max(0.002, 5 * error))
+
+        info = json.load(open(sorted(glob.glob(
+            pjoin(run_dir, 'Events', '*', 'info.json')))[-1]))
+        hists = dict((h['name'], h) for h in info['event_histograms'])
+        self.assertNotIn('sqrt_s', list(hists))
+        momentum = [name for name in hists if name != 'weight']
+        for group in ('bottom', 'lepton', 'missing'):
+            self.assertIn('%s-pt' % group, momentum)
+        for name in momentum:
+            values = hists[name]['bin_values']
+            # the decay products of a 173 GeV top fit in the ranges, which
+            # are built from the top mass: nothing in under- or overflow
+            self.assertAlmostEqual(sum(values[1:-1]), width,
+                                   delta=0.01 * width, msg=name)
+            if name.endswith('-pt'):
+                # a particle left out of the selection is histogrammed at 0
+                self.assertLess(values[1], 0.5 * width, msg=name)
+        mll = hists['lepton-missing-pair_mass']
+        bin_width = (mll['max'] - mll['min']) / mll['bin_count']
+        peak = mll['bin_values'].index(max(mll['bin_values'])) - 1
+        self.assertLessEqual(mll['min'] + peak * bin_width, 80.419)
+        self.assertGreater(mll['min'] + (peak + 1) * bin_width, 80.419)
 
     def load_result(self, run_name):
         
