@@ -7812,6 +7812,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
             matrix_element)
 
         filename = pjoin(Ppath, 'config_nqcd.inc')
+        nqcd_list = interference_nqcd_list(nqcd_list, [matrix_element])
         self.write_config_nqcd_file(writers.FortranWriter(filename),
                                nqcd_list)
 
@@ -10032,6 +10033,7 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             subproc_diagrams_for_config)
 
         filename = 'config_nqcd.inc'
+        nqcd_list = interference_nqcd_list(nqcd_list, matrix_elements)
         self.write_config_nqcd_file(writers.FortranWriter(filename),
                                     nqcd_list)
 
@@ -13825,6 +13827,83 @@ c         segments from -DABS(tiny*Ga) to Ga
 # now names the MadMatrix (C++) output -- is a prefix of it, as it is of
 # standalone_msP / _msF / _rw. None of those has a loop backend.
 LOOP_INDUCED_FORMATS = ['madevent', 'plugin', 'standalone_fortran']
+
+def interference_alpha_s_power(matrix_elements):
+    """The power of alpha_s of the events of an interference process
+    ('left [LIxtree=QCD] right' or 'left [treextree] right').
+
+    madevent gives each event the QCD order of the diagram of its integration
+    channel (config_nqcd.inc), which is the power of alpha_s of |A|^2 for an
+    ordinary process. For an interference the quantity computed is
+    2 Re(A_left A_right^*): its power is half the QCD order of the products of
+    one left-hand and one right-hand amplitude passing the squared-order
+    constraints, whatever the channel. Returns:
+      False  for an ordinary process (keep the per-channel values),
+      n      when all those products share the power n,
+      None   when they do not, or when it is not an integer (the scale
+             variations of the systematics are then ill-defined).
+    """
+
+    import madgraph.loop.loop_helas_objects as loop_helas_objects
+    powers = set()
+    for me in matrix_elements:
+        process = me.get('processes')[0]
+        if not process.get_interference_mode():
+            return False
+        hierarchy = process.get('model').get('order_hierarchy')
+        if isinstance(me, loop_helas_objects.LoopHelasMatrixElement):
+            amplitude = me.get('base_amplitude')
+            orders = [d.get('orders') for d in amplitude.get('loop_diagrams') +
+                      amplitude.get('loop_UVCT_diagrams')]
+        else:
+            orders = [d.calculate_orders() for d in me.get('diagrams')]
+        sides = {0: [], 1: []}
+        for signature in set(tuple(sorted((k, v) for k, v in o.items()
+                                          if k != 'WEIGHTED')) for o in orders):
+            side = dict(signature).get(base_objects.INTERFERENCE_ORDER, 0)
+            if side in sides:
+                sides[side].append(dict(signature))
+        squared_orders = process.get('squared_orders')
+        for left in sides[0]:
+            for right in sides[1]:
+                product = dict((k, left.get(k, 0) + right.get(k, 0))
+                               for k in set(left) | set(right))
+                product['WEIGHTED'] = sum(hierarchy.get(k, 0) * v
+                                          for k, v in product.items())
+                passed = True
+                for order, value in squared_orders.items():
+                    if value < 0:
+                        continue
+                    kind = process.get_squared_order_type(order)
+                    combined = product.get(order, 0)
+                    if (kind == '==' and combined != value) or \
+                       (kind in ['=', '<='] and combined > value) or \
+                       (kind == '>' and combined <= value):
+                        passed = False
+                        break
+                if passed:
+                    powers.add(product.get('QCD', 0))
+    if len(powers) == 1:
+        power = powers.pop()
+        if power % 2 == 0:
+            return power // 2
+    return None
+
+def interference_nqcd_list(nqcd_list, matrix_elements):
+    """config_nqcd.inc entries of an interference process: the same power of
+    alpha_s for every channel (see interference_alpha_s_power)."""
+
+    power = interference_alpha_s_power(matrix_elements)
+    if power is False:
+        return nqcd_list
+    if power is None:
+        logger.warning("The power of alpha_s of this interference is not "
+                       "unique: the scale variations of the systematics "
+                       "(off by default for interference processes) would be "
+                       "wrong. Constrain the QCD order of the interference "
+                       "(e.g. QCD^2==n after ']') to make it unique.")
+        return nqcd_list
+    return [power] * len(nqcd_list)
 
 def loop_induced_not_supported_msg(format, process=None):
     """Refusal text for a format that cannot write a LoopHelasMatrixElement."""

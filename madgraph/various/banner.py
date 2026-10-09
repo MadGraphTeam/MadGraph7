@@ -5269,7 +5269,12 @@ class RunCardLO(RunCard):
         interference = False
         for proc in proc_def:
             for oneproc in proc:
-                if '^2' in oneproc.nice_string():
+                # a squared-order constraint, or an interference process
+                # ('left [LIxtree=QCD] right' / '[treextree]'), whose hidden
+                # squared-order constraint is not printed
+                if '^2' in oneproc.nice_string() or \
+                        (hasattr(oneproc, 'get_interference_mode') and
+                                            oneproc.get_interference_mode()):
                     interference = True
                     break
             else:
