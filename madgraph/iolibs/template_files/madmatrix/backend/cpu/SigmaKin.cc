@@ -240,14 +240,17 @@ namespace madmatrix
       const int ievt0 = ievt00 + iParity * neppV;
 
       constexpr size_t nxcoup = ndcoup + nIPC; // both dependent and independent couplings
-      const fptype* allCOUPs[nxcoup];
+      // nxcoup can be 0 (no alpha_s-dependent coupling, and only flavor couplings, e.g.
+      // u u~ > u u~ QED^2==4 with flavor grouping): a zero-sized array is only a compiler
+      // extension (and refused in GPU device code), so size them at least 1, as cIPD/cIPC
+      const fptype* allCOUPs[nxcoup > 0 ? nxcoup : 1];
       for( size_t idcoup = 0; idcoup < ndcoup; idcoup++ )
         allCOUPs[idcoup] = CD_ACCESS::idcoupAccessBufferConst( allcouplings, idcoup ); // dependent couplings, vary event-by-event
       for( size_t iicoup = 0; iicoup < nIPC; iicoup++ )
         allCOUPs[ndcoup + iicoup] = CI_ACCESS::iicoupAccessBufferConst( cIPC, iicoup ); // independent couplings, fixed for all events
       // C++ kernels take input/output buffers with momenta/MEs for one specific event (the first in the current event page)
       const fptype_momenta* momenta = M_ACCESS::ieventAccessRecordConst( allmomenta, ievt0 );
-      const fptype* COUPs[nxcoup];
+      const fptype* COUPs[nxcoup > 0 ? nxcoup : 1];
       for( size_t idcoup = 0; idcoup < ndcoup; idcoup++ )
         COUPs[idcoup] = CD_ACCESS::ieventAccessRecordConst( allCOUPs[idcoup], ievt0 ); // dependent couplings, vary event-by-event
       for( size_t iicoup = 0; iicoup < nIPC; iicoup++ )

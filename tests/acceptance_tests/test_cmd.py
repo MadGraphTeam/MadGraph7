@@ -1441,13 +1441,16 @@ class TestCmdShell2(unittest.TestCase,
         momenta = struct.unpack('%dd' % (len(raw) // 8), raw)
         self.assertEqual(len(momenta), npoints * npar * 4)
 
+        # The process library finds its common library through its own
+        # loader-relative rpath: no RTLD_GLOBAL preload, which would leak this
+        # process's symbols into every library loaded later in this (shared)
+        # test process.
         libdir = pjoin(self.out_dir, 'lib')
-        ctypes.CDLL(glob.glob(pjoin(libdir, 'libmadmatrix_common_*.so'))[0],
-                    mode=ctypes.RTLD_GLOBAL)
         lib = ctypes.CDLL(glob.glob(pjoin(libdir, 'libmadmatrix_P*.so'))[0])
         handle = ctypes.c_void_p()
         card = pjoin(self.out_dir, 'Cards', 'param_card.dat').encode()
         self.assertEqual(0, lib.umami_initialize(ctypes.byref(handle), card))
+        self.addCleanup(lib.umami_free, handle)
         # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_IN_RANDOM_HELICITY = 4,
         # UMAMI_OUT_MATRIX_ELEMENT = 0, UMAMI_OUT_HELICITY_INDEX = 3
         IN_MOMENTA, IN_RANDOM_HELICITY = 0, 4

@@ -3,8 +3,9 @@
 # The squared split orders (interference) on the GPU backend of madmatrix and in mg7:
 # see interference_checks.py for what is checked.
 # Environment: as pp_ttx_mg7.sh (BACKEND, MODULES, GPU_ARCH, VENV, MADSPACE_PREFIX,
-# WORKDIR, NEVENTS, PDF_SET, CACHE_DIR). The mg7 check needs PDF_SET to be the set its
-# reference was made with, NNPDF23_lo_as_0130_qed (the default of gpu_runner_ci.yml).
+# WORKDIR, CACHE_DIR). The mg7 check runs with the PDF set its reference was made with,
+# whatever the workflow's pdf_set: interference_checks.py names it and it is downloaded
+# into the cache if needed. INTERFERENCE_EVENTS sets its number of events (5000).
 set -eo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
@@ -42,10 +43,11 @@ nb_core = ${SLURM_CPUS_PER_TASK:-4}
 EOF
 
 export LHAPDF_DATA_PATH=$CACHE_DIR/lhapdf
-if [ ! -d "$LHAPDF_DATA_PATH/$PDF_SET" ]; then
-    echo "Downloading the PDF set $PDF_SET"
+REFERENCE_PDF=$(python3 "$HERE/interference_checks.py" --print-reference-pdf)
+if [ ! -d "$LHAPDF_DATA_PATH/$REFERENCE_PDF" ]; then
+    echo "Downloading the PDF set $REFERENCE_PDF"
     mkdir -p "$LHAPDF_DATA_PATH"
-    curl -fsSL --retry 3 "https://lhapdfsets.web.cern.ch/current/$PDF_SET.tar.gz" | tar -xz -C "$LHAPDF_DATA_PATH"
+    curl -fsSL --retry 3 "https://lhapdfsets.web.cern.ch/current/$REFERENCE_PDF.tar.gz" | tar -xz -C "$LHAPDF_DATA_PATH"
 fi
 
 rm -rf "$WORKDIR"
@@ -53,7 +55,7 @@ mkdir -p "$WORKDIR"
 cd "$WORKDIR"
 STATUS=0
 python3 "$HERE/interference_checks.py" --repo "$REPO" --backend "$BACKEND" \
-    --pdf-set "$PDF_SET" --events "${INTERFERENCE_EVENTS:-5000}" 2>&1 | tee checks.log || STATUS=1
+    --events "${INTERFERENCE_EVENTS:-5000}" 2>&1 | tee checks.log || STATUS=1
 
 section "Summary"
 cat summary.txt 2> /dev/null || echo "no summary.txt"

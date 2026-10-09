@@ -202,7 +202,7 @@ jobs:
       BACKEND: ${{ inputs.backend }}
       MODULES: ${{ inputs.modules }}
       GPU_ARCH: ${{ inputs.gpu_arch }}
-      PDF_SET: ${{ inputs.pdf_set }}
+      # no PDF_SET: the mg7 check runs with the PDF set of its reference
       VENV: ${{ needs.build_madspace.outputs.venv }}
       MADSPACE_PREFIX: ${{ needs.build_madspace.outputs.madspace_prefix }}
     steps:

@@ -18,7 +18,9 @@ Any CPU backend (scalar, simd_128, ...) works too, to try the script without a G
    random number) and the points with mixed signs give both signs.
 3. mg7 ``p p > u u~ QCD^2==2`` on the backend: the negative cross section of the CPU
    reference, the LHE <init> declaring the negative weights (IDWTUP = -4, XMAXUP the
-   unit weight sigma_abs) and events of both signs.
+   unit weight sigma_abs) and events of both signs. It runs with the PDF set of the
+   reference, whatever the workflow's pdf_set (--print-reference-pdf names it, for
+   the driver to download it).
 
 Writes summary.txt (key=value lines) in the current directory; exit status 1 if a
 check fails.
@@ -222,10 +224,8 @@ def check_helicity_choice(repo, backend, npoints=16, ngrid=4000):
     section('helicity choice of an interference |M|^2 through umami (%s)' % backend)
     proc_dir = standalone(repo, backend, 'uuxttxg_qed2_d', 'u u~ > t t~ g QED^2==2', 'd')
     out_dir = os.path.dirname(os.path.dirname(proc_dir))
-    libdir = os.path.join(out_dir, 'lib')
-    common = glob.glob(os.path.join(libdir, 'libmadmatrix_common_*.so'))[0]
-    library = glob.glob(os.path.join(libdir, 'libmadmatrix_P*.so'))[0]
-    ctypes.CDLL(common, mode=ctypes.RTLD_GLOBAL)
+    # the process library finds its common library through its own rpath
+    library = glob.glob(os.path.join(out_dir, 'lib', 'libmadmatrix_P*.so'))[0]
     lib = ctypes.CDLL(library)
     memory = Memory(backend, library)
     handle = ctypes.c_void_p()
@@ -297,6 +297,7 @@ def check_helicity_choice(repo, backend, npoints=16, ngrid=4000):
         print('  point %2d  sum T % .6e  mean % .6e  sum|T| %.6e  helicities %2d  signs %s'
               % (ipoint, helicity_sum, mean, abs_sum, len(signs),
                  ''.join('+' if s else '-' for _h, s in sorted(signs.items()))))
+    lib.umami_free(handle)
     if mixed <= npoints // 2:
         problems.append('only %d of %d points with mixed signs' % (mixed, npoints))
     check('helicity_choice', not problems,
@@ -326,12 +327,8 @@ def read_lhe(path):
     return init, weights
 
 
-def check_mg7(repo, backend, pdf_set, events):
+def check_mg7(repo, backend, events):
     section('mg7 p p > u u~ QCD^2==2 (%s)' % backend)
-    if pdf_set != UUX_MG7_PDF:
-        check('mg7_cross_section', False, 'the reference needs PDF_SET=%s, not %s'
-              % (UUX_MG7_PDF, pdf_set))
-        return
     madgraph(repo, 'mg7_uux', ['generate p p > u u~ QCD^2==2', 'output mg7 PROC_uux'])
     card_path = os.path.join('PROC_uux', 'Cards', 'run_card.toml')
     card = open(card_path).read()
@@ -343,7 +340,7 @@ def check_mg7(repo, backend, pdf_set, events):
             (r'(?m)^output_format = \S+', 'output_format = "lhe"'),
             (r'(?m)^fixed_ren_scale = false', 'fixed_ren_scale = true'),
             (r'(?m)^fixed_fact_scale = false', 'fixed_fact_scale = true'),
-            (r'(?m)^pdf = ".*"$', 'pdf = "%s"' % pdf_set),
+            (r'(?m)^pdf = ".*"$', 'pdf = "%s"' % UUX_MG7_PDF),
             (r'(?m)^(\[systematics\]\n(?:#.*\n)*)enable = \S+', r'\1enable = false')):
         card, count = re.subn(pattern, value, card, count=1)
         if count != 1:
@@ -379,15 +376,21 @@ def check_mg7(repo, backend, pdf_set, events):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    parser.add_argument('--repo', required=True)
-    parser.add_argument('--backend', required=True)
-    parser.add_argument('--pdf-set', default=UUX_MG7_PDF)
+    parser.add_argument('--print-reference-pdf', action='store_true',
+                        help='print the LHAPDF set the mg7 check runs with, and exit')
+    parser.add_argument('--repo')
+    parser.add_argument('--backend')
     parser.add_argument('--events', type=int, default=5000)
     args = parser.parse_args()
+    if args.print_reference_pdf:
+        print(UUX_MG7_PDF)
+        return 0
+    if not args.repo or not args.backend:
+        parser.error('--repo and --backend are required')
     start = time.time()
     for name, step in (('standalone', lambda: check_standalone(args.repo, args.backend)),
                        ('helicity_choice', lambda: check_helicity_choice(args.repo, args.backend)),
-                       ('mg7', lambda: check_mg7(args.repo, args.backend, args.pdf_set, args.events))):
+                       ('mg7', lambda: check_mg7(args.repo, args.backend, args.events))):
         try:
             step()
         except Exception as error:  # one broken step must not hide the others
