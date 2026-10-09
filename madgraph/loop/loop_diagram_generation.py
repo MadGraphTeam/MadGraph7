@@ -1056,9 +1056,16 @@ class LoopAmplitude(diagram_generation.Amplitude):
                                                            key=lambda el: el[1])
         
         
+        # the hidden INTERFERENCE_ORDER is not printed
+        shown = [i for i, order in enumerate(sorted_hierarchy[:-1])
+                                               if order != INTERFERENCE_ORDER]
+        def SO_string(SO):
+            return '(%s,W%d)' % (','.join('%d' % SO[i] for i in shown), SO[-1])
+
         logger.debug("Coupling order combinations considered:"+\
-                                            " (%s)"%','.join(sorted_hierarchy))
-        
+                    " (%s)"%','.join([sorted_hierarchy[i] for i in shown] +
+                                                                 ['WEIGHTED']))
+
         # Now check what is left
         born_considered = []
         loop_considered = []
@@ -1096,14 +1103,12 @@ class LoopAmplitude(diagram_generation.Amplitude):
             if len(considered)==0:
                 logger.debug(" > %s : None"%name)
             else:
-                logger.debug(" > %s : %s"%(name,' '.join(['(%s,W%d)'%(
-                            ','.join(list('%d'%s for s in c[:-1])),c[-1]) 
-                                                         for c in considered])))
-            
+                logger.debug(" > %s : %s"%(name,' '.join(
+                                        [SO_string(c) for c in considered])))
+
             if len(extra)!=0:
-                logger.debug(" > %s (not selected but available): %s"%(name,' '.
-                    join(['(%s,W%d)'%(','.join(list('%d'%s for s in e[:-1])),
-                                                       e[-1]) for e in extra])))
+                logger.debug(" > %s (not selected but available): %s"%(name,
+                                    ' '.join([SO_string(e) for e in extra])))
                 
         # In case it is needed, the considered orders are returned 
         # (it is used by some of the unit tests)

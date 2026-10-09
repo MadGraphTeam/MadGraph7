@@ -26,6 +26,8 @@ test_tree_x_tree_standalone in tests/acceptance_tests/test_loop_induced_x_tree.p
 
 from __future__ import absolute_import
 
+import contextlib
+import io
 import os
 import re
 import shutil
@@ -155,6 +157,39 @@ class TreeInterferenceGenerationTest(unittest.TestCase):
                            precmd=True, errorhandling=False)
         for diagram in interface._curr_amps[0].get('diagrams'):
             self.assertNotIn(INTERF, diagram.get('orders'))
+
+    def test_hidden_order_is_never_printed(self):
+        """Registered in the model by an interference process, the hidden
+        order (hierarchy 0) is neither part of the WEIGHTED definition printed
+        by the minimal-order search, nor listed by 'display coupling_order',
+        nor one of the orders that default_unset_couplings sets."""
+        interface = MGCmd.MasterCmd()
+        interface.exec_cmd('import model sm', printcmd=False, precmd=True)
+        # (the left-hand process goes through WEIGHTED<=2 and 3 before 4)
+        with self.assertLogs('madgraph.diagram_generation', level='INFO') as log:
+            interface.exec_cmd('generate u d > u d [treextree] u d > u d QCD=0',
+                               printcmd=False, precmd=True, errorhandling=False)
+        self.assertEqual(interface._curr_model['order_hierarchy'][INTERF], 0)
+        searches = [line for line in log.output
+                    if 'Trying coupling order WEIGHTED' in line]
+        self.assertTrue(searches)
+        for line in searches:
+            self.assertEqual(sorted(line.rsplit(' IS ', 1)[1].split('+')),
+                             ['2*QED', 'QCD'])
+            self.assertIn('WEIGHTED IS ', line)
+
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            interface.exec_cmd('display coupling_order', printcmd=False,
+                               precmd=True, errorhandling=False)
+        self.assertIn('QED : weight = 2', stdout.getvalue())
+        self.assertNotIn(INTERF, stdout.getvalue())
+
+        interface.options['default_unset_couplings'] = 0
+        interface.exec_cmd('generate u u~ > e+ e- QED=2', printcmd=False,
+                           precmd=True, errorhandling=False)
+        process = interface._curr_amps[0].get('process')
+        self.assertEqual(process.get('orders'), {'QED': 2, 'QCD': 0})
 
     def test_never_grouped_with_an_ordinary_process(self):
         """Same '@N', same legs: still two subprocess groups, since the

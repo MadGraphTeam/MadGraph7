@@ -150,6 +150,22 @@ class LoopInducedXTreeGenerationTest(unittest.TestCase):
         self.assertEqual(amp.drop_orphan_interference_trees(), 3)
         self.assertEqual(len(amp['loop_UVCT_diagrams']), 0)
 
+    def test_split_order_infos_do_not_print_the_hidden_order(self):
+        """The debug summary of the squared-order selection leaves the hidden
+        order out: loop x tree (INTERF=1) is selected, loop x loop (0) and
+        tree x tree (2) are not. The returned combinations keep it."""
+        amp = self.interface._curr_amps[0]
+        with self.assertLogs('madgraph.loop_diagram_generation',
+                             level='DEBUG') as log:
+            infos = amp.print_split_order_infos()
+        text = '\n'.join(log.output)
+        self.assertNotIn(INTERF, text)
+        self.assertIn('considered: (QCD,QED,WEIGHTED)', text)
+        self.assertIn(' > loop : (4,2,W8)', text)
+        self.assertIn('(4,4,W12)', text)
+        self.assertIn('(4,0,W4)', text)
+        self.assertEqual(infos[2], [(1, 4, 2, 8)])
+
 
 class LoopInducedXTreeDisplayTest(unittest.TestCase):
 
@@ -198,6 +214,20 @@ class LoopInducedXTreeMultiProcessTest(unittest.TestCase):
         """g g > z z has no tree-level diagram: nothing to interfere with."""
         self.assertRaisesRegex(InvalidCmd, 'no interference',
                                generate, 'g g > h > z z [LIxtree=QCD]')
+
+    def test_later_nlo_process_ignores_the_hidden_order(self):
+        """The hidden order the interference process added to the model is
+        not one of the orders of a later NLO process: neither constrained,
+        split nor perturbed."""
+        interface = generate('g g > h > t t~ [LIxtree=QCD]')
+        interface.exec_cmd('generate u u~ > e+ e- [QCD]', printcmd=False,
+                           precmd=True, errorhandling=False)
+        procdef = interface._curr_proc_defs[-1]
+        self.assertEqual(sorted(procdef['perturbation_couplings']),
+                         ['QCD', 'QED'])
+        self.assertNotIn(INTERF, procdef['split_orders'])
+        self.assertNotIn(INTERF, procdef['squared_orders'])
+        self.assertNotIn(INTERF, procdef.nice_string())
 
 
 if __name__ == '__main__':
