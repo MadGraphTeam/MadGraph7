@@ -81,6 +81,7 @@ import madgraph.iolibs.import_v4 as import_v4
 import madgraph.iolibs.save_load_object as save_load_object
 
 import madgraph.interface.extended_cmd as cmd
+import madgraph.interface.coloring_logging as coloring_logging
 import madgraph.interface.tutorials as tutorials
 import madgraph.interface.tutorials.mixin as tutorial_mixin
 import madgraph.interface.launch_ext_program as launch_ext
@@ -124,6 +125,16 @@ logger_tuto = logging.getLogger('tutorial') # -> stdout include instruction in
 logger_tuto_nlo = logging.getLogger('tutorial_aMCatNLO') # deprecated, unused
 logger_tuto_madloop = logging.getLogger('tutorial_MadLoop') # deprecated, unused
 
+
+# The logo's blue (#3B6598). Empty under --plain (MG7_NO_COLOR).
+if os.environ.get('MG7_NO_COLOR'):
+    MG7_BLUE = ""
+elif os.environ.get('COLORTERM', '').lower() in ('truecolor', '24bit'):
+    MG7_BLUE = "\033[1;38;2;59;101;152m"
+else:
+    MG7_BLUE = "\033[1;34m" #fall back to bold blue
+MG7_RESET = "\033[0m" if MG7_BLUE else ""
+
 class DuplicateParticle(madgraph.InvalidCmd):
     """A particle name given twice where only one is meaningful.
 
@@ -132,13 +143,23 @@ class DuplicateParticle(madgraph.InvalidCmd):
     turn any *other* InvalidCmd -- an unknown particle name, say -- into that
     same misleading message.
     """
-
-
-# Central definition of the main interface prompt (bold blue "MG7> ")
-MG7_PROMPT = "\001\033[1;94m\002MG7> \001\033[0m\002"
+    
 # the same prompt without the colour escapes, for quoting commands inside
 # tutorial text and help messages
 MG7_PROMPT_TEXT = "MG7> "
+
+# Stock macOS Python just leaks escape bytes into
+# the line editor instead of rendering. Keep the prompt plain there.
+try:
+    _prompt_is_libedit = 'libedit' in readline.__doc__
+except Exception:
+    _prompt_is_libedit = False
+
+#left open so whole command in blue
+if _prompt_is_libedit or not MG7_BLUE:
+    MG7_PROMPT = MG7_PROMPT_TEXT
+else:
+    MG7_PROMPT = "\001%s\002MG7> " % MG7_BLUE
 
 # The banner (and every easter-egg variant of it in madgraph.various.misc) is
 # written as a block of BANNER_WIDTH columns: '*', 58 characters of content and
@@ -254,7 +275,7 @@ class CmdExtended(cmd.Cmd):
     intro_banner = "************************************************************\n" + \
         "*                                                          *\n" + \
         "*                     W E L C O M E to                     *\n" + \
-        "*                    M A D G R A P H 7                     *\n" + \
+        "*                    M A D G R A P H " + MG7_BLUE + "7" + MG7_RESET + "                     *\n" + \
         "*                                                          *\n" + \
         "*                                                          *\n" + \
         "*                        ..........                        *\n" + \
@@ -265,11 +286,11 @@ class CmdExtended(cmd.Cmd):
         "*                 .     M  M   M  M  ..                    *\n" + \
         "*                 ..    M   M M   M ..                     *\n" + \
         "*                  .    M    M    M.                       *\n" + \
-        "*                  ...               7777777               *\n" + \
-        "*                    ....                 7                *\n" + \
-        "*                       ................ 7                 *\n" + \
-        "*                                       7                  *\n" + \
-        "*                                      7                   *\n" + \
+        "*                  ...               " + MG7_BLUE + "7777777" + MG7_RESET + "               *\n" + \
+        "*                    ....                 " + MG7_BLUE + "7" + MG7_RESET + "                *\n" + \
+        "*                       ................ " + MG7_BLUE + "7" + MG7_RESET + "                 *\n" + \
+        "*                                       " + MG7_BLUE + "7" + MG7_RESET + "                  *\n" + \
+        "*                                      " + MG7_BLUE + "7" + MG7_RESET + "                   *\n" + \
         "*                                                          *\n" + \
         "%s" + \
         "*                                                          *\n" + \
@@ -453,6 +474,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   The following options are available:")
         logger.info("     --force        Overwrite without asking any existing installation.")
         logger.info("     --keep_source  Keep a local copy of the sources of the tools MadGraph7 installed from.")
+        logger.info("     --hepmc2       (pythia8) Build Pythia8 against HepMC2 instead of HepMC3.")
+        logger.info("                    Either way, main164 is also compiled for the other HepMC version.")
         logger.info(" ")
         logger.info("   \"install update\"",'$MG:BOLD')
         logger.info("   check if your MG5 installation is the latest one.")
@@ -626,6 +649,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --jamp_orbit=[True|False]: [madevent|standalone_fortran|mg7] look for the shared color-factor sub-expressions by whole orbits of the color basis symmetry.")
         logger.info("      --t_strategy: [madevent] allows to change ordering strategy for t-channel.")
         logger.info("      --hel_recycling=False: [madevent] forbids helicity recycling optimization")
+        logger.info("      --axial_gauge=True: [madevent|standalone_fortran] build the polarisation of massless vectors in the axial gauge of another external (lightlike) leg, so that whole diagrams vanish (default:False).")
         logger.info("      --mask=False: [madevent|standalone_fortran] disable flavor-mask optimization for grouped/merged flavors (default:True).")
         logger.info("      --prefix=int|proc: [standalone_fortran] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
         logger.info("   Examples:",'$MG:color:GREEN')
@@ -668,7 +692,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   at the same phase-space point.  Requires gfortran / g++.")
         logger.info("   Example: check language p p > e+ e-",'$MG:color:GREEN')
         logger.info("o precision:",'$MG:color:GREEN')
-        logger.info("   syntax: check precision m|f|v [m|f|v ...] process_definition [--nb_event=X] [--energy=]")
+        logger.info("   syntax: check precision m|f|v [m|f|v ...] process_definition [--nb_event=X] [--energy=] [--backend=]")
         logger.info("   Evaluate the madmatrix standalone output built in each of the given")
         logger.info("   floating point modes (m: colour algebra in single precision,")
         logger.info("   f: single precision everywhere, v: single precision amplitudes")
@@ -679,6 +703,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   matrix element by each of the two builds (and the speed-up), and")
         logger.info("   writes a plot of the difference. Requires g++ and make.")
         logger.info("   Several modes share one double precision reference and one plot.")
+        logger.info("   --backend selects the madmatrix BACKEND of every build (default auto:")
+        logger.info("   the widest SIMD flavour of the host): %s." % '|'.join(process_checks.PRECISION_BACKENDS))
         logger.info("   Example: check precision f m v g g > t t~ g --nb_event=100000",'$MG:color:GREEN')
         logger.info("o cms:",'$MG:color:GREEN')
         logger.info("   Check the complex mass scheme consistency by comparing")
@@ -1070,8 +1096,6 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > This allow to not run on the central disk. ")
         logger.info(" > This is not used by condor cluster (since condor has")
         logger.info("   its own way to prevent it).")
-        logger.info("mg5amc_py8_interface_path PATH",'$MG:color:GREEN')
-        logger.info(" > Necessary when showering events with Pythia8 from Madevent.")        
         logger.info("OLP ProgramName",'$MG:color:GREEN')
         logger.info(" > (default 'MadLoop') [Used for virtual generation]")
         logger.info(" > Chooses what One-Loop Program to use for the virtual")
@@ -1320,6 +1344,7 @@ class CheckValidForCmd(cmd.CheckCmd):
 
         if args[0] == 'precision':
             user_options['--nb_event'] = '1000000'
+            user_options['--backend'] = 'auto'
 
         if args[0] in ['cms'] or args[0].lower()=='cmsoptions':
             # increase the default energy to 5000
@@ -1718,6 +1743,11 @@ class CheckValidForCmd(cmd.CheckCmd):
             # Now that the options have been treated keep only the target tool
             # to install as argument.   
             args = args[:1]
+
+        if args[0] == 'mg5amc_py8_interface':
+            raise self.InvalidCmd("The MG5aMC_PY8_interface is not supported by "+
+                "MadGraph7: the Pythia8 shower runs Pythia8's main164, which is "+
+                "installed (and compiled if needed) with 'install pythia8'.")
 
         if args[0] not in self._install_opts + hidden_prog + self._advanced_install_opts: 
             self.help_install()
@@ -2787,7 +2817,7 @@ class CompleteForCmd(cmd.CompleteCmd):
 
         options = ['--energy=']
         if len(args) >= 2 and args[1] == 'precision':
-            options.append('--nb_event=')
+            options.extend(['--nb_event=', '--backend='])
         if cms_options:
             options.extend(cms_options)
 
@@ -3092,7 +3122,7 @@ class CompleteForCmd(cmd.CompleteCmd):
                         possible_options = ['f', 'noclean', 'nojpeg'],
                         possible_options_full = ['-f', '-noclean', '-nojpeg', '--noeps=True','--hel_recycling=False',
                                                  '--jamp_optim=', '--jamp_orbit=', '--t_strategy=', '--vector_size=4', '--nb_warp=1',
-                                                 '--mask=False', '--prefix=']):
+                                                 '--mask=False', '--prefix=', '--axial_gauge=True']):
         "Complete the output command"
 
         possible_format = list(self._export_formats)
@@ -3484,8 +3514,7 @@ class CompleteForCmd(cmd.CompleteCmd):
             options = ['--keep_source','--logging=']
             if args[1]=='pythia8':
                 options.append('--pythia8_tarball=')
-            elif args[1]=='mg5amc_py8_interface':
-                options.append('--mg5amc_py8_interface_tarball=') 
+                options.append('--hepmc2')
             elif args[1] in ['MadAnalysis5','MadAnalysis']:
                 #options.append('--no_MA5_further_install')
                 options.append('--no_root_in_MA5')
@@ -3539,7 +3568,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     
     # The targets below are installed using the HEPToolsInstaller.py script
     _advanced_install_opts = ['pythia8','zlib','boost','lhapdf6','lhapdf5','collier',
-                              'hepmc','mg5amc_py8_interface','ninja','oneloop','MadAnalysis5',
+                              'hepmc','ninja','oneloop','MadAnalysis5',
                               'yoda', 'rivet', 'fastjet', 'fjcontrib', 'contur', 'cmake', 'eMELA',
                               'cudacpp', 'hepmc3', 'pythia8_hepmc3', 'DMTCP']
 
@@ -3584,6 +3613,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'hwpp_path': './herwigPP',
                        'thepeg_path': './thepeg',
                        'hepmc_path': './hepmc',
+                       'hepmc3_path': './HEPTools/hepmc3',
                        'madanalysis5_path':'./HEPTools/madanalysis5/madanalysis5',
                        'pythia-pgs_path':'./pythia-pgs',
                        'rivet_path' : './HEPTools/rivet',
@@ -3622,10 +3652,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'lhapdf_py2': None,
                        'lhapdf_py3': None,
                        'cluster_temp_path':None,
-                       'mg5amc_py8_interface_path': './HEPTools/MG5aMC_PY8_interface',
                        'cluster_local_path': None,
                        'cvmfs_lhapdf_path': misc.CVMFS_LHAPDF_PATH,
-                       'mg5amc_py8_interface_path': './HEPTools/MG5aMC_PY8_interface',
                        'OLP': 'MadLoop',
                        'cluster_nb_retry':1,
                        'cluster_retry_wait':300,
@@ -3636,6 +3664,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'acknowledged_v3.1_syntax': True,
                        'auto_update':7,
                        'heptools_install_dir': './HEPTools',
+                       'plain': False,
                        }
 
     options_madgraph= {'group_subprocesses': 'Auto',
@@ -3684,7 +3713,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     def preloop(self):
         """Initializing before starting the main loop"""
 
-        self.prompt = MG7_PROMPT
+        self.prompt = MG7_PROMPT_TEXT if self.options.get('plain') else MG7_PROMPT
         if madgraph.ReadWrite: # prevent on read-only disk
             self.do_install('update --mode=mg5_start')
 
@@ -5081,6 +5110,12 @@ This implies that with decay chains:
                 except ValueError:
                     raise self.InvalidCmd("The value of the 'nb_event' option"+\
                                        " must be a number, not %s."%option[1])
+            elif option[0] == '--backend':
+                if option[1] not in process_checks.PRECISION_BACKENDS:
+                    raise self.InvalidCmd("The value of the 'backend' option must be"
+                            " one of %s, not %s." % ('|'.join(process_checks.PRECISION_BACKENDS),
+                                                     option[1]))
+                options['backend'] = option[1]
             elif option[0]=='--split_orders':
                 options['split_orders']=int(option[1])
             elif option[0]=='--helicity':
@@ -6443,7 +6478,10 @@ This implies that with decay chains:
                             # If not all merged components are in this multiparticle,
                             # record the present ones as a per-leg flavor restriction
                             # so diagram generation only allows those specific flavors.
-                            if not all(pdg in self._multiparticles[part_name]
+                            # Completeness is checked per sign: `u d s c d~`
+                            # holds every Q but only one Qx.
+                            sign = 1 if pid > 0 else -1
+                            if not all(sign * pdg in self._multiparticles[part_name]
                                        for pdg in self._curr_model.merged_particles[abs(merged_pdg)]):
                                 if pid not in flavor:
                                     flavor.append(pid)
@@ -7261,7 +7299,6 @@ This implies that with decay chains:
         for amp in amplitudes:
             mother = [l.get('id') for l in amp['process'].get('legs') \
                                                         if not l.get('state')]
-            misc.sprint(mother)
             if 1 == len(mother):
                 try:
                     decay_table = decay_tables[abs(mother[0])]
@@ -7277,13 +7314,10 @@ This implies that with decay chains:
                              else -x for x in child]
                 child.sort()
                 child.insert(0, len(child))
-                misc.sprint(child)
-                misc.sprint(list(decay_table.keys()))  
                 #check if the decay is present or not:
                 if tuple(child) not in list(decay_table.keys()):
                     if any(id in self._curr_model.get('merged_particles') for id in child):
                         all_keys =[list(k) for k in decay_table.keys()]
-                        misc.sprint(all_keys)
                         for one_key in all_keys:
                             for i,pid in enumerate(one_key):
                                 if i ==0:
@@ -7293,20 +7327,14 @@ This implies that with decay chains:
                                         one_key[i] = mid
                                     if -pid in pdgs:
                                         one_key[i] = -mid
-                        misc.sprint(all_keys)
                         for i,k in enumerate(all_keys):
-                            misc.sprint(k)
                             new_k = list(k[1:])
                             new_k.sort()
                             new_k.insert(0, k[0])
-                            misc.sprint(new_k) 
                             all_keys[i] = tuple(new_k)            
-                        misc.sprint(all_keys)
                         if tuple(child) not in all_keys:
-                            misc.sprint('to rm' , child)
                             to_remove.append(amp)
                     else:
-                        misc.sprint('to rm' , child)
                         to_remove.append(amp)
         def remove_amp(amps, to_remove):
             for amp in amps[:]:
@@ -7317,8 +7345,7 @@ This implies that with decay chains:
                     for decay in amp.get('decay_chains'):
                         remove_amp(decay.get('amplitudes'), to_remove)
         remove_amp(self._curr_amps, to_remove)
-        misc.sprint("Removed %s amplitudes that are not in the decay table" % len(to_remove))
-        misc.sprint("Remaining amplitudes: %s" % len(self._curr_amps))
+        logger.debug("Removed %s amplitudes that are not in the decay table" % len(to_remove))
 
 
     def import_ufo_model(self, model_name):
@@ -7611,6 +7638,45 @@ This implies that with decay chains:
 
         return self._fockstates
 
+    def install_pythia8_main164(self, prefix, config_file, add_options):
+        """Compile main164, the Pythia8 program MadEvent showers with, for both
+        HepMC2 and HepMC3 (installing the HepMC version Pythia8 was not
+        configured with if needed), so that the pythia8_card can pick either
+        with 'HEPMCoutput:format'. Record the HepMC3 installation in hepmc3_path
+        if none is set yet."""
+
+        pythia8_path = self.options['pythia8_path']
+        try:
+            misc.get_pythia8_main164(pythia8_path)
+        except (MadGraph5Error, OSError) as error:
+            logger.warning('Pythia8 is installed but its main164 could not be ' +
+                'compiled, so MadEvent cannot shower with it yet:\n%s' % error)
+            return
+        # the HepMC3 of a Pythia8 built against it (pythia8_hepmc3)
+        if not self.options['hepmc3_path'] and misc.find_hepmc(3, [pjoin(prefix, 'hepmc3')]):
+            self.options['hepmc3_path'] = pjoin(prefix, 'hepmc3')
+            self.exec_cmd('save options %s hepmc3_path' % config_file, printcmd=False, log=False)
+        native = misc.pythia8_hepmc_version(misc.find_pythia8_main164(pythia8_path)[1])
+        if native not in [2, 3]:
+            return
+        other = 5 - native
+        hepmc_tool = 'hepmc3' if other == 3 else 'hepmc'
+        hepmc_dir = pjoin(prefix, hepmc_tool)
+        if not misc.find_hepmc(other, [hepmc_dir]):
+            logger.info('Installing HepMC%d, so that Pythia8 can also write HepMC%d events.'
+                        % (other, other), '$MG:BOLD')
+            try:
+                self.advanced_install(hepmc_tool, additional_options=add_options+['--force'])
+            except self.InvalidCmd as error:
+                logger.warning('Pythia8 will only write HepMC%d events: %s' % (native, error))
+                return
+        try:
+            misc.get_pythia8_main164(pythia8_path, hepmc_version=other,
+                                     hepmc_paths=[hepmc_dir])
+        except (MadGraph5Error, OSError) as error:
+            logger.warning('main164 of Pythia8 could not be compiled for HepMC%d, ' % other +
+                'so that Pythia8 will only write HepMC%d events:\n%s' % (native, error))
+
     def advanced_install(self, tool_to_install,
                                HepToolsInstaller_web_address=None,
                                additional_options=[]):
@@ -7688,21 +7754,6 @@ This implies that with decay chains:
         prefix, config_file = self.heptools_install_target(
                                        self.options['heptools_install_dir'])
 
-        # Add the path of pythia8 if known and the MG5 path
-        if tool=='mg5amc_py8_interface':
-            #add_options.append('--mg5_path=%s'%MG5DIR)
-            # Warn about the soft dependency to gnuplot
-            if misc.which('gnuplot') is None:
-                logger.warning("==========")
-                logger.warning("The optional dependency 'gnuplot' for the tool"+\
-                 " 'mg5amc_py8_interface' was not found. We recommend that you"+\
-                 " install it so as to be able to view the plots related to "+\
-                                                      " merging with Pythia 8.")
-                logger.warning("==========")
-            if self.options['pythia8_path']:
-                add_options.append(
-                               '--with_pythia8=%s'%os.path.abspath(self.options['pythia8_path']))
-
         # Special rules for certain tools
         if tool in ['madanalysis5', 'rivet']:
             add_options.append('--mg5_path=%s'%MG5DIR)
@@ -7719,7 +7770,7 @@ This implies that with decay chains:
                 add_options.append('--with_delphes3=%s'%\
                    os.path.normpath(pjoin(MG5DIR,self.options['delphes_path'])))
 
-        if tool in ['pythia8','eMELA']:
+        if tool in ['pythia8', 'pythia8_hepmc3', 'eMELA']:
             # All what's below is to handle the lhapdf dependency of Pythia8
             lhapdf_config  = misc.which(self.options['lhapdf'])
             lhapdf_version = None
@@ -7835,13 +7886,10 @@ This implies that with decay chains:
             raise self.InvalidCmd("Installation of %s failed."%tool_to_install)
 
         # Post-installation treatment
-        if tool == 'pythia8':
+        if tool in ['pythia8', 'pythia8_hepmc3']:
             self.options['pythia8_path'] = pjoin(prefix,'pythia8')
             self.exec_cmd('save options %s pythia8_path' % config_file, printcmd=False, log=False)
-            # Automatically re-install the mg5amc_py8_interface after a fresh
-            # Pythia8 installation
-            self.advanced_install('mg5amc_py8_interface',
-                              additional_options=add_options+['--force'])          
+            self.install_pythia8_main164(prefix, config_file, add_options)
         elif tool == 'lhapdf6':
                 self.options['lhapdf_py3'] = pjoin(prefix,'lhapdf6_py3','bin', 'lhapdf-config')
                 self.exec_cmd('save options %s lhapdf_py3' % config_file)
@@ -7855,13 +7903,6 @@ This implies that with decay chains:
         elif tool == 'madanalysis5':
             self.options['madanalysis5_path'] = pjoin(prefix, 'madanalysis5','madanalysis5')
             self.exec_cmd('save options madanalysis5_path', printcmd=False, log=False)
-        elif tool == 'mg5amc_py8_interface':
-            # At this stage, pythia is guaranteed to be installed
-            if self.options['pythia8_path'] in ['',None,'None']:
-                self.options['pythia8_path'] = pjoin(prefix,'pythia8')
-            self.options['mg5amc_py8_interface_path'] = pjoin(prefix, 'MG5aMC_PY8_interface')
-            self.exec_cmd('save options %s mg5amc_py8_interface_path' % config_file, 
-                                                            printcmd=False, log=False)      
         elif tool == 'collier':
             self.options['collier'] = pjoin(prefix,'lib')
             self.exec_cmd('save options %s collier' % config_file, printcmd=False, log=False)      
@@ -7978,7 +8019,6 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
                           'lhapdf6':['arXiv:1412.7420'],
                           'lhapdf5':['arXiv:0605240'],
                           'hepmc':['CPC 134 (2001) 41-46'],
-                          'mg5amc_py8_interface':['arXiv:1410.3012','arXiv:XXXX.YYYYY'],
                           'ninja':['arXiv:1203.0291','arXiv:1403.1229','arXiv:1604.01363'],
                           'MadAnalysis5':['arXiv:1206.1599'],
                           'collier':['arXiv:1604.06792'],
@@ -8128,15 +8168,18 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
             # Now launch the advanced installation of the tool args[0]
             # path['HEPToolsInstaller'] is the online adress where to downlaod
             # the installers if necessary.
-            # Specify the path of the MG5_aMC_interface
-            MG5aMC_PY8_interface_path = path['MG5aMC_PY8_interface'] if \
-                                        'MG5aMC_PY8_interface' in path else 'NA'
-            add_options.append('--mg5amc_py8_interface_tarball=%s'%\
-                                                   MG5aMC_PY8_interface_path)
             add_options.extend(install_options['options_for_HEPToolsInstaller'])
             if not any(opt.startswith('--logging=') for opt in add_options):
                 add_options.append('--logging=%d' % logger.level)
-                
+            # Pythia8 is built against HepMC3 (the HepMC2 version of its main164
+            # is compiled afterwards), unless --hepmc2 asks for the HepMC2 build.
+            if name == 'pythia8':
+                if '--hepmc2' in add_options:
+                    add_options.remove('--hepmc2')
+                else:
+                    name = 'pythia8_hepmc3'
+                    add_options = [opt.replace('--pythia8_tarball=', '--pythia8_hepmc3_tarball=')
+                                   for opt in add_options]
 
             return self.advanced_install(name, path['HEPToolsInstaller'],
                                         additional_options = add_options)
@@ -8769,8 +8812,6 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                 fsock.write("version_nb   %s\n" % fail)
             fsock.write("last_check   %s\n" % int(time.time()))
             fsock.close()
-            logger.info('Refreshing installation of MG5aMC_PY8_interface.')
-            self.do_install('mg5amc_py8_interface',additional_options=['--force'])
             logger.info('Checking current version. (type ctrl-c to bypass the check)')
             subprocess.call([os.path.join('tests','test_manager.py')],
                                                                   cwd=MG5DIR)            
@@ -8838,7 +8879,7 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
         config_file = open(config_path)
 
         # read the file and extract information
-        logger.info('load MG5 configuration from %s ' % config_file.name)
+        logger.info('load MG7 configuration from %s ' % config_file.name)
         for line in config_file:
             if '#' in line:
                 line = line.split('#',1)[0]
@@ -8872,7 +8913,7 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
         # try absolute and relative path
         for key in self.options:
             if key in ['pythia8_path', 'hwpp_path', 'thepeg_path', 'hepmc_path',
-                       'mg5amc_py8_interface_path','madanalysis5_path']:
+                       'hepmc3_path', 'madanalysis5_path']:
                 if self.options[key] in ['None', None]:
                     self.options[key] = None 
                     continue
@@ -8881,12 +8922,6 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                 if key == 'pythia8_path' and not os.path.isfile(pjoin(MG5DIR, path, 'include', 'Pythia8', 'Pythia.h')):
                     if not os.path.isfile(pjoin(path,  'include', 'Pythia8', 'Pythia.h')):
                         self.options['pythia8_path'] = None
-                    else:
-                        continue
-                #this is for mg5amc_py8_interface_path
-                if key == 'mg5amc_py8_interface_path' and not os.path.isfile(pjoin(MG5DIR, path, 'MG5aMC_PY8_interface')):
-                    if not os.path.isfile(pjoin(path, 'MG5aMC_PY8_interface')):
-                        self.options['mg5amc_py8_interface_path'] = None
                     else:
                         continue
                 #this is for madanalysis5
@@ -8917,6 +8952,12 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                 elif key == 'hepmc_path' and not os.path.isfile(pjoin(MG5DIR, path, 'include', 'HepMC', 'HEPEVT_Wrapper.h')):
                     if not os.path.isfile(pjoin(path, 'include', 'HepMC', 'HEPEVT_Wrapper.h')):
                         self.options['hepmc_path'] = None
+                    else:
+                        continue
+                # this is for hepmc3 (hepmc_path being the HepMC2 installation)
+                elif key == 'hepmc3_path' and not os.path.isfile(pjoin(MG5DIR, path, 'include', 'HepMC3', 'GenEvent.h')):
+                    if not os.path.isfile(pjoin(path, 'include', 'HepMC3', 'GenEvent.h')):
+                        self.options['hepmc3_path'] = None
                     else:
                         continue
 
@@ -8991,10 +9032,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 else:
                     if key in self.options_madgraph:
                         self.history.append('set %s %s' % (key, self.options[key]))
-        
-        warnings = madevent_interface.MadEventCmd.mg5amc_py8_interface_consistency_warning(self.options)
-        if warnings:
-            logger.warning(warnings)
 
         # Configure the way to open a file:
         launch_ext.open_file.configure(self.options)
@@ -11258,6 +11295,26 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         
         self.options[args[0]] = args[1]
 
+    def set2_plain(self, args, log=True):
+        """Enable/Disable coloured output (equivalent to ./bin/madgraph --plain).
+        Example: set plain True
+        or: set plain False [Default]
+        """
+        args = ['plain'] + args
+        self.check_set(args)
+        if args[1] not in ['None', 'True', 'False']:
+            raise self.InvalidCmd('expected bool for plain')
+        self.options[args[0]] = eval(args[1])
+
+        if self.options['plain']:
+            os.environ['MG7_NO_COLOR'] = '1'
+            coloring_logging.NO_COLOR = True
+            self.prompt = MG7_PROMPT_TEXT
+        else:
+            os.environ.pop('MG7_NO_COLOR', None)
+            coloring_logging.NO_COLOR = False
+            self.prompt = MG7_PROMPT
+
     def set2_notification_center(self, args, log=True):
         """Enable/Disable the notification center (on desktop ubuntu/mac).
         Example: set notification_center True
@@ -11627,8 +11684,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 # not documented options:
 #   	            	contur_path         
 #delphes_path             	eps_viewer               	exrootanalysis_path
-#hepmc_path               	hwpp_path                	
-#mg5amc_py8_interface_path
+#hepmc_path               	hepmc3_path              	hwpp_path
 #pineappl                 	pythia-pgs_path          	pythia8_path
 #rivet_path               	                 	syscalc_path
 #thepeg_path              	yoda_path
@@ -12614,7 +12670,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # Create configuration file [path to executable] for amcatnlo
             filename = os.path.join(self._export_dir, 'Cards', 'amcatnlo_configuration.txt')
             opts_to_keep = ['lhapdf', 'fastjet', 'pythia8_path', 'hwpp_path', 'thepeg_path', 
-                                                                    'hepmc_path', 'eMELA']
+                                                     'hepmc_path', 'hepmc3_path', 'eMELA']
             to_keep = {}
             for opt in opts_to_keep:
                 if self.options[opt]:

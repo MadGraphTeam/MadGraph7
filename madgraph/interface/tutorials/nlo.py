@@ -42,9 +42,7 @@ SHOWER_NOTE_NO_PY8 = """
 The default is PYTHIA8, and **this MG7 does not have it**. Install it first:
 
   MG7> install pythia8
-  MG7> install mg5amc_py8_interface
 
-Both are needed -- the second is the bridge aMC@NLO drives Pythia8 through.
 It takes a while, but it is the path that works.
 
 If you would rather not wait, you can run the fixed-order parton level only:

@@ -13,12 +13,17 @@ Non-interactive examples:
   python install.py --source -j 8
   python install.py --source --cuda --hip --simd --debug
   python install.py --source --yes --cuda --cuda-arch 80
+  python install.py --source --clean          # rebuild from scratch
 
 Source-build options (--cuda, --hip, --openblas, --simd, --debug, ...,
 --cuda-arch, --hip-arch) are resolved per option: a flag given on the command
 line always wins; otherwise --yes reuses the value saved by the previous
 source build, else the platform default. Without --yes, compile flags describe
 the whole build: the options they leave out take the platform default.
+
+Rebuilds reuse the CMake tree in build/ and are therefore incremental. --clean
+deletes build/ and install/ first, for the rare cases where that tree is in the
+way; the saved settings live outside both and survive it.
 """
 
 import argparse
@@ -34,7 +39,13 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
 INSTALL_DIR = SCRIPT_DIR / "install"
-SETTINGS_FILE = SCRIPT_DIR / "build" / "install_settings.json"
+BUILD_DIR = SCRIPT_DIR / "build"
+# Deliberately outside both directories, so --clean resets the build without
+# also forgetting how the user wants madspace built. _LEGACY_SETTINGS_FILE is
+# where it used to live; still read so an existing installation keeps its
+# choices.
+SETTINGS_FILE = SCRIPT_DIR / "install_settings.json"
+_LEGACY_SETTINGS_FILE = BUILD_DIR / "install_settings.json"
 
 PACKAGE_NAME = "madspace"
 
@@ -572,17 +583,38 @@ def _release_wheel_available() -> bool:
 
 
 def load_settings() -> dict:
-    try:
-        with open(SETTINGS_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+    for path in (SETTINGS_FILE, _LEGACY_SETTINGS_FILE):
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            continue
+    return {}
 
 
 def save_settings(settings: dict) -> None:
     SETTINGS_FILE.parent.mkdir(exist_ok=True)
     with open(SETTINGS_FILE, "w") as f:
         json.dump(settings, f, indent=2)
+
+
+# Starting over
+#
+# A rebuild is normally incremental: the CMake tree in build/ is what makes it
+# take seconds instead of recompiling madspace and its vendored OpenBLAS from
+# scratch, so it is kept unless the user asks otherwise with --clean.
+
+
+def clean_install_dirs() -> list[Path]:
+    """Delete the CMake build tree and the install directory. Returns the
+    directories that were actually removed."""
+    removed = []
+    for target in (BUILD_DIR, INSTALL_DIR):
+        if target.is_dir():
+            shutil.rmtree(target)
+            print(f"Removed {target}")
+            removed.append(target)
+    return removed
 
 
 # Main
@@ -634,6 +666,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help="Install system-wide instead of into the local install/ directory.",
+    )
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        default=False,
+        help="Delete the build/ and install/ directories first, for a rebuild "
+        "from scratch (slow: madspace and its vendored OpenBLAS are recompiled). "
+        "The saved settings are kept.",
     )
 
     # Compile option flags (each defaults to None = not specified via CLI)
@@ -744,8 +784,14 @@ def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     _set_noninteractive(args.yes)
 
-    # Load saved settings when a previous installation is present
-    saved = load_settings() if (INSTALL_DIR / "madspace").is_dir() else {}
+    # The saved settings describe how the user wants madspace built, so they
+    # are read whether or not install/ holds a previous installation: it never
+    # does under --system, nor after a --clean whose rebuild failed. Read
+    # before --clean on purpose, since the legacy location is inside build/.
+    saved = load_settings()
+
+    if args.clean:
+        clean_install_dirs()
 
     # The PyPI wheel is only offered/defaulted-to in an actual release tarball
     # (input/.release, written by bin/create_release.py) that still matches

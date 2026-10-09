@@ -29,7 +29,13 @@ namespace madspace {
  *   \Big]^{\frac{1}{1-\nu}} + m^2
  * @f]
  *
- * otherwise. When @p mass is zero and `invariant_min` is zero, a small
+ * otherwise. A nonzero @p flat_window (with a nonzero @p width) flattens the
+ * Breit-Wigner peak: the density is kept outside
+ * @f$|\sqrt{s} - m| < w\,\Gamma@f$ and replaced inside by a constant, the
+ * mean of its two edge values. This is the mapping of a `$`-excluded
+ * propagator, whose matrix element vanishes in that window.
+ *
+ * When @p mass is zero and `invariant_min` is zero, a small
  * auxiliary negative @f$m^2 = -a@f$ is used inside the mapping only. This keeps
  * the power-law and logarithmic forms well defined at the boundary and leaves
  * the physical integrand unchanged. The naive choice @f$\nu = 2@f$ is rarely
@@ -64,8 +70,13 @@ public:
      *               regularization described above.
      * @param width  Resonance width @f$\Gamma@f$; a nonzero value selects
      *               Breit-Wigner sampling around @p mass.
+     * @param flat_window  Half-width @f$w@f$, in units of @p width, of the
+     *               window in which the Breit-Wigner density is flattened;
+     *               `0` (the default) keeps the plain Breit-Wigner.
      */
-    Invariant(double power = 0, double mass = 0, double width = 0);
+    Invariant(
+        double power = 0, double mass = 0, double width = 0, double flat_window = 0
+    );
 
 private:
     Result build_forward_impl(
@@ -79,7 +90,7 @@ private:
         const NamedVector<Value>& conditions
     ) const override;
 
-    double _power, _mass, _width;
+    double _power, _mass, _width, _flat_window;
 };
 
 } // namespace madspace

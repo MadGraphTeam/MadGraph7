@@ -769,7 +769,11 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 else:
                     out.write('    %s = %s;\n' % (name, self.write_obj(obj))) # AV
                     self.declaration.add(('complex', name))
-        for name, (fct, objs) in self.routine.fct.items():
+        # FCTn are numbered in creation order and a later one can use an
+        # earlier one (the $ propagator's theta function takes FCT0/FCT1), so
+        # define them in that order -- the dict order puts FCT0 last there.
+        for name in sorted(self.routine.fct, key=lambda n: (len(n), n)):
+            fct, objs = self.routine.fct[name]
             # OM the FCTn variable needs to be defined, not only assigned (and
             # write_combined_parts_cc looks for exactly this 'const <type> FCTn ='
             # form when it merges the structures of an assembled routine)
@@ -1683,12 +1687,15 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         ###if 'eft' in self.model_name.lower():
         ###    replace_dict['eftwarn0'] = '\n//#warning Support for EFT physics models is still limited for HRDCOD=0 builds (#439 and PR #625)'
         ###    replace_dict['eftwarn1'] = '\n//#warning Support for EFT physics models is still limited for HRDCOD=1 builds (#439 and PR #625)'
+        # BSM params for aS-dependent couplings as fptype/cxtype
+        replace_dict['eftspecial0'] = ''
         if len( bsmparam_indep_real_used ) + len( bsmparam_indep_complex_used ) == 0:
             replace_dict['eftspecial0'] = '\n      // No special handling of non-hardcoded parameters (no additional BSM parameters needed in constant memory)'
-        else:
-            replace_dict['eftspecial0'] = ''
-            for ipar, par in enumerate( bsmparam_indep_real_used ) : replace_dict['eftspecial0'] += '\n      const double %s = bsmIndepParamPtr[%i];' % ( par, ipar )
-            for ipar, par in enumerate( bsmparam_indep_complex_used ) : replace_dict['eftspecial0'] += '\n      const cxsmpl<double> %s = cxsmpl<double>( bsmIndepParamPtr[%i], bsmIndepParamPtr[%i] );' % ( par, 2*ipar, 2*ipar+1 )
+        for ipar, par in enumerate( bsmparam_indep_real_used ):
+            replace_dict['eftspecial0'] += '\n      const fptype %s = bsmIndepParamPtr[%i];' % ( par, ipar )
+        for ipar, par in enumerate( bsmparam_indep_complex_used ):
+            ire = len( bsmparam_indep_real_used ) + 2 * ipar
+            replace_dict['eftspecial0'] += '\n      const cxtype %s = cxtype( bsmIndepParamPtr[%i], bsmIndepParamPtr[%i] );' % ( par, ire, ire + 1 )
         file_h = self.read_template_file(self.param_template_h) % replace_dict
         file_cc = self.read_template_file(self.param_template_cc) % replace_dict
         return file_h, file_cc
@@ -1785,7 +1792,7 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         else:
             aloha_model.compute_all(save=False, custom_propa=True)
         for abstracthelas in dict(aloha_model).values():
-            print(type(abstracthelas), abstracthelas.name) # AV this is the loop on FFV functions
+            # print(type(abstracthelas), abstracthelas.name) # AV this is the loop on FFV functions
             h_rout, cc_rout = abstracthelas.write(output_dir=None, language=self.aloha_writer, mode='no_include')
             template_h_files.append(h_rout)
             template_cc_files.append(cc_rout)
@@ -3425,6 +3432,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             flag = []
             if argument.needs_hermitian_conjugate():
                 flag = ['C%d' % i for i in argument.get_conjugate_index()]
+            if isinstance(argument, helas_objects.HelasWavefunction) and argument.get('onshell') is False:
+                flag.append('P1D') # D is for $ syntax -> offshell propagator only
             # Creating line formatting:
             # (AV NB: in the default code these two branches were identical, use a single branch)
             ###if isinstance(argument, helas_objects.HelasWavefunction): # AV e.g. FFV1P0_3 (output is wavefunction)
@@ -3470,6 +3479,10 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                     arg['mass'] = 'm_pars->%(CM)s, '
                 else:
                     arg['mass'] = 'm_pars->%(M)s, m_pars->%(W)s, '
+                if argument.get('onshell') is False:
+                    # $-excluded propagator: the run card bw_cutoff, set at run
+                    # time through umami_set_parameter (see SigmaKin.cc)
+                    arg['mass'] += 'cBWCUTOFF, '
             else:
                 #arg['out'] = '&amp_sv[%(out)d]'
                 arg['out'] = '&amp_fp[%(out)d]'

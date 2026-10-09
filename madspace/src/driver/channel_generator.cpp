@@ -371,6 +371,7 @@ void ChannelEventGenerator::integrate(const GeneratorBatchJob& job) {
     _status.rel_std_dev = _abs_cross_section.rel_std_dev();
     _status.count += w_view.size();
     _status.count_opt += w_view.size();
+    _count_requested_opt += job.requested_event_count;
     _status.count_after_cuts += sample_count_after_cuts;
     _status.count_after_cuts_opt += sample_count_after_cuts;
 
@@ -458,9 +459,12 @@ void ChannelEventGenerator::start_job(
     job.rng_is_survey = is_survey;
     job.rng_survey_pass = survey_pass;
     job.rng_job_index = is_survey ? _survey_rng_seq++ : _generate_rng_seq++;
-    _contexts.at(job.context_index)
-        ->thread_pool()
-        .submit([this, &job, &result_queue]() {
+    // Through result_queue, so a job that throws still posts its result and the
+    // exception reaches the waiting thread instead of leaving it blocked forever.
+    result_queue.submit(
+        _contexts.at(job.context_index)->thread_pool(),
+        job.job_id,
+        [this, &job, &result_queue]() {
             auto& runtimes = _runtimes.at(job.context_index);
             auto& context = _contexts.at(job.context_index);
             if (job.rng_seed) {
@@ -487,6 +491,7 @@ void ChannelEventGenerator::start_job(
                 batch_size = job.batch_event_count;
             }
             std::size_t target_count = batch_size;
+            job.requested_event_count = batch_size;
 
             std::size_t total_count = 0, repetitions = 0;
             TensorVec all_ps_points;
@@ -514,6 +519,9 @@ void ChannelEventGenerator::start_job(
                 if (total_count >= _config.cut_efficiency_threshold * target_count) {
                     break;
                 }
+                if (result_queue.cancelled()) {
+                    throw std::runtime_error("job cancelled");
+                }
                 if (repetitions == _config.max_cut_repetitions) {
                     throw std::runtime_error(
                         std::format(
@@ -529,6 +537,9 @@ void ChannelEventGenerator::start_job(
                     (target_count - total_count) / cut_eff
                 );
             }
+            if (result_queue.cancelled()) {
+                throw std::runtime_error("job cancelled");
+            }
             if (job.rng_seed) {
                 runtimes.integrand_common->set_seed(generate_phase_seed(
                     job.rng_seed,
@@ -541,6 +552,9 @@ void ChannelEventGenerator::start_job(
             }
             job.events = runtimes.integrand_common->run(all_ps_points);
 
+            if (result_queue.cancelled()) {
+                throw std::runtime_error("job cancelled");
+            }
             job.weights = job.events.at(_field_indices.weight).cpu();
             // observable_histograms/vegas_histogram/discrete_histogram don't consume
             // random numbers, so they're never seeded.
@@ -574,9 +588,8 @@ void ChannelEventGenerator::start_job(
                     }
                 }
             }
-            result_queue.push(job.job_id);
-            return std::nullopt;
-        });
+        }
+    );
 }
 
 void ChannelEventGenerator::prepare_unweight_job(GeneratorBatchJob& job) const {
@@ -586,9 +599,8 @@ void ChannelEventGenerator::prepare_unweight_job(GeneratorBatchJob& job) const {
 void ChannelEventGenerator::submit_unweight_job(
     GeneratorBatchJob& job, ResultQueue& result_queue
 ) {
-    _contexts.at(job.context_index)
-        ->thread_pool()
-        .submit([this, &job, &result_queue]() {
+    result_queue.submit(
+        _contexts.at(job.context_index)->thread_pool(), job.job_id, [this, &job]() {
             auto& runtimes = _runtimes.at(job.context_index);
             auto& context = _contexts.at(job.context_index);
             if (job.rng_seed) {
@@ -607,9 +619,8 @@ void ChannelEventGenerator::submit_unweight_job(
             for (auto& item : unw_events) {
                 job.unweighted_events.push_back(item.cpu());
             }
-            result_queue.push(job.job_id);
-            return std::nullopt;
-        });
+        }
+    );
 }
 
 void ChannelEventGenerator::start_unweight_job(
@@ -631,6 +642,7 @@ void ChannelEventGenerator::clear_events() {
     _unweighted_count = 0;
     _unweighted_accept_count = 0;
     _status.count_opt = 0;
+    _count_requested_opt = 0;
     _status.count_after_cuts_opt = 0;
     _event_file.clear();
     _weight_file.clear();

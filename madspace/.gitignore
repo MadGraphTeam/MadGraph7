@@ -13,6 +13,7 @@ __pycache__/
 .Python
 build/
 install/
+install_settings.json
 develop-eggs/
 dist/
 downloads/

@@ -187,9 +187,7 @@ def lepton_cut(observable, **bounds):
 def test_mirror_beams_cuts_the_written_orientation(rng, observable, bounds, separates):
     """With mirror_beams the cuts act on the momenta the mapping returns.
 
-    A signed eta cut tells the two orientations apart -- the configuration the
-    post-cut mirror may not be used for -- while |eta| cannot, which is why the
-    post-cut path is sound for the cuts mg7 ships.
+    A signed eta cut tells the two orientations apart, |eta| does not.
     """
     e_cm, mode = 13000.0, ms.PhaseSpaceMapping.rambo
     cut = ms.PhaseSpaceMapping(
@@ -204,25 +202,54 @@ def test_mirror_beams_cuts_the_written_orientation(rng, observable, bounds, sepa
     accepted, momenta, physical = {}, {}, {}
     for index in (0, 1):
         condition = np.full(N, index, dtype=np.int32)
-        accepted[index] = np.asarray(cut.map_forward([r], [condition])[3]) > 0
+        p_cut, _, _, det_cut = map(np.asarray, cut.map_forward([r], [condition]))
+        accepted[index] = det_cut > 0
         p, _, _, det = map(np.asarray, free.map_forward([r], [condition]))
         momenta[index], physical[index] = p, det > 0
+        # whatever the cut mapping accepts passes the cut as written
+        obs = eta(p_cut[:, 2:])
+        if observable == "eta_abs":
+            passed = (np.abs(obs) < bounds["max"] + 1e-9).all(axis=1)
+        else:
+            passed = (obs > bounds["min"] - 1e-9).all(axis=1)
+        assert passed[accepted[index]].all()
+        assert accepted[index].any()
 
     ok = physical[0]
     assert ok.any()
     # orientation 1 is the pi rotation of orientation 0
     assert momenta[1][ok] == approx(mirror(momenta[0][ok]), abs=1e-7)
-    # and both are cut on the momenta that come out, not on the other orientation
-    for index in (0, 1):
-        obs = eta(momenta[index][:, 2:])
-        if observable == "eta_abs":
-            passed = (np.abs(obs) < bounds["max"]).all(axis=1)
-        else:
-            passed = (obs > bounds["min"]).all(axis=1)
-        assert (accepted[index][ok] == (passed & physical[index])[ok]).all()
-    # which matters only if the cut can tell the two orientations apart
-    differ = (accepted[0][ok] != accepted[1][ok]).any()
-    assert differ == separates
+    if separates:
+        # the cut is on the written momenta, so it tells the orientations apart
+        assert (accepted[0] != accepted[1]).any()
+
+
+@pytest.mark.parametrize("mirror_beams", [False, True], ids=["plain", "mirror"])
+def test_cut_aware_sampling_loses_nothing_with_asymmetric_beams(rng, mirror_beams):
+    """The rapidity windows are built from the cuts, which hold in the lab frame;
+    the integral over the cut mapping must equal the cut applied afterwards to
+    an uncut mapping."""
+    n, e_cm, y0 = 400_000, 13000.0, 0.7
+    mode = ms.PhaseSpaceMapping.rambo
+    cuts = lepton_cut("eta_abs", max=1.5)
+    kwargs = dict(mode=mode, beam_rapidity=y0, mirror_beams=mirror_beams)
+    cut = ms.PhaseSpaceMapping([0.0] * 4, e_cm, cuts=cuts, **kwargs)
+    free = ms.PhaseSpaceMapping([0.0] * 4, e_cm, **kwargs)
+
+    def conditions():
+        if not mirror_beams:
+            return []
+        return [rng.integers(0, 2, n).astype(np.int32)]
+
+    det_cut = np.asarray(
+        cut.map_forward([rng.random((n, cut.random_dim()))], conditions())[3]
+    )
+    p, _, _, det = map(
+        np.asarray,
+        free.map_forward([rng.random((n, free.random_dim()))], conditions()),
+    )
+    passed = (np.abs(eta(p[:, 2:])) < 1.5).all(axis=1)
+    assert det_cut.mean() == approx((det * passed).mean(), rel=0.03)
 
 
 # --- the mirror and the matrix element ---------------------------------------

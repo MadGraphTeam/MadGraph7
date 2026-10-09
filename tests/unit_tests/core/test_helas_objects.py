@@ -5958,3 +5958,136 @@ class TestFlavorStoreDecayChain(unittest.TestCase):
                     "diagram" % (flv,))
 
 
+
+
+#===============================================================================
+# TestAsymmetricFlavorRestriction
+#===============================================================================
+class TestAsymmetricFlavorRestriction(unittest.TestCase):
+    """Multiparticle labels whose particle/antiparticle content differs across
+    flavors (`define l+ = e+ mu+ u d~`) must keep every requested flavor under
+    flavor grouping.  Three things used to drop them: the final-state dedup of
+    MultiProcess.generate_multi_amplitudes (merged ids only: (Qx, Q) looked
+    like a permutation of (Q, Qx)), the mirror-process collection, and the
+    IdentifyMETag combination of processes with different flavor
+    restrictions (the merged ME enumerates its rows from its first process)."""
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.interface.master_interface as Cmd
+        cls.cmd = Cmd.MasterCmd()
+        cls.cmd.exec_cmd('import model sm')
+
+    def generate(self, *lines):
+        for line in lines:
+            self.cmd.exec_cmd(line)
+        amps = self.cmd._curr_amps
+        mes = helas_objects.HelasMultiProcess(amps).get_matrix_elements()
+        return amps, mes
+
+    @staticmethod
+    def rows(me):
+        """Flavor rows of a matrix element, as (sorted initial, sorted final)
+        signed pdgs, so that `z > d~ d` and `z > d d~` compare equal."""
+        ninit = me.get_nexternal_ninitial()[1]
+        out = set()
+        for pdgs in me.get_external_flavors(return_pdgs=True)[1]:
+            out.add((tuple(sorted(pdgs[:ninit])), tuple(sorted(pdgs[ninit:]))))
+        return out
+
+    def all_rows(self, mes):
+        out = set()
+        for me in mes:
+            rows = self.rows(me)
+            self.assertFalse(out & rows, 'flavor row in two matrix elements')
+            out |= rows
+        return out
+
+    def test_final_state_asymmetric_multiparticle(self):
+        """z > l+ l- with l+ = e+ mu+ u d~: z > d~ d must not be lost."""
+        amps, mes = self.generate('define l+ = e+ mu+ u d~',
+                                  'define l- = e- mu- u~ d',
+                                  'generate z > l+ l-')
+        quark_rows = set(r for r in self.all_rows(mes)
+                         if abs(r[1][0]) < 10)
+        self.assertEqual(quark_rows, {((23,), (-2, 2)), ((23,), (-1, 1))})
+
+    def test_final_state_asymmetric_multiparticle_no_crossing(self):
+        """Same with --no_crossing (merge_crossing, used by reweight under
+        flavor grouping): z > Qx Q [d~ d] is not covered by z > Q Qx [u u~]
+        and must not be skipped as its crossing."""
+        amps, mes = self.generate('define l+ = e+ mu+ u d~',
+                                  'define l- = e- mu- u~ d',
+                                  'generate z > l+ l- --no_crossing')
+        quark_rows = set(r for r in self.all_rows(mes)
+                         if abs(r[1][0]) < 10)
+        self.assertEqual(quark_rows, {((23,), (-2, 2)), ((23,), (-1, 1))})
+
+    def test_final_state_symmetric_multiparticle(self):
+        """Control: l+ = e+ mu+ u d stays ONE quark matrix element."""
+        amps, mes = self.generate('define l+ = e+ mu+ u d',
+                                  'define l- = e- mu- u~ d~',
+                                  'generate z > l+ l-')
+        quark_mes = [me for me in mes if any(abs(r[1][0]) < 10
+                                             for r in self.rows(me))]
+        self.assertEqual(len(quark_mes), 1)
+        self.assertEqual(self.rows(quark_mes[0]),
+                         {((23,), (-2, 2)), ((23,), (-1, 1))})
+
+    def test_initial_state_asymmetric_multiparticle(self):
+        """qa qb > z with qa = u d~, qb = u~ d: Qx Q > z [d~ d] is not the
+        mirror of Q Qx > z [u u~] (whose mirror would be u~ u)."""
+        amps, mes = self.generate('define qa = u d~', 'define qb = u~ d',
+                                  'generate qa qb > z')
+        self.assertFalse(any(a.get('has_mirror_process') for a in amps))
+        rows = set()
+        for me in mes:
+            for pdgs in me.get_external_flavors(return_pdgs=True)[1]:
+                rows.add(tuple(pdgs))
+        self.assertEqual(rows, {(2, -2, 23), (-1, 1, 23)})
+
+    def test_initial_state_symmetric_mirror(self):
+        """Control: qa = qb = u u~ keeps the mirror."""
+        amps, mes = self.generate('define qa = u u~',
+                                  'generate qa qa > z')
+        self.assertEqual(len(amps), 1)
+        self.assertTrue(amps[0].get('has_mirror_process'))
+
+    def test_add_process_other_flavor(self):
+        """generate z > u u~ + add process z > d d~: one matrix element that
+        serves both flavor rows (it used to keep the u u~ row only).  The
+        exporters write the rows once, for the first process."""
+        amps, mes = self.generate('generate z > u u~',
+                                  'add process z > d d~')
+        self.assertEqual(len(mes), 1)
+        self.assertEqual(self.rows(mes[0]),
+                         {((23,), (-2, 2)), ((23,), (-1, 1))})
+        self.assertEqual(len(mes[0].get('processes')), 2)
+        self.assertEqual(len(mes[0].get_flavor_row_processes()), 1)
+        pdgs = [p for pdg_lists, merged in
+                mes[0].get_flavor_pdg_combinations() for p in pdg_lists]
+        self.assertEqual(sorted(pdgs), [[23, 1, -1], [23, 2, -2]])
+
+    def test_one_sign_complete_multiparticle(self):
+        """qq = u d s c d~ holds every Q but only one Qx: z > qq qq is d d~."""
+        amps, mes = self.generate('define qq = u d s c d~',
+                                  'generate z > qq qq')
+        self.assertEqual(self.all_rows(mes), {((23,), (-1, 1))})
+
+    def test_flavorless_me_dropped_uncombined(self):
+        """Uncombined, w+ > u d~ and w+ > c d~ (no allowed flavor in sm)
+        compare equal before trimming; only the flavorless one is dropped."""
+        for line in ('generate w+ > u d~', 'add process w+ > c d~'):
+            self.cmd.exec_cmd(line)
+        amps = self.cmd._curr_amps
+        mes = helas_objects.HelasMultiProcess.generate_matrix_elements(
+            amps, combine_matrix_elements=False)
+        self.assertEqual(len(mes), 1)
+        self.assertEqual(self.rows(mes[0]), {((24,), (-1, 2))})
+
+    def test_charge_forbidden_leg_combination(self):
+        """w+ > qa qb with qa = u c~, qb = d~ s: the (c~, s) combination
+        allows no flavor and is dropped without dropping w+ > u d~."""
+        amps, mes = self.generate('define qa = u c~', 'define qb = d~ s',
+                                  'generate w+ > qa qb')
+        self.assertEqual(self.all_rows(mes), {((24,), (-1, 2))})
