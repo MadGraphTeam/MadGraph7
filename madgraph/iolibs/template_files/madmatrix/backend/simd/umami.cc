@@ -407,7 +407,11 @@ extern "C"
       denominators.data(),
       diagram_index.data(),
       false,
-      rounded_count );
+      rounded_count,
+      // a caller drawing the helicity (event generation) gets the madevent convention for
+      // an interference |M|^2, see select_helicity_signed; without the random number the
+      // |M|^2 stays the helicity sum (systematics re-evaluation, standalone checks)
+      random_helicity_in != nullptr );
 
     if ( sort_flavors )
     {

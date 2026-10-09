@@ -1395,6 +1395,112 @@ class TestCmdShell2(unittest.TestCase,
                                msg='the squared-order components do not add up '
                                    'to the total this backend computes')
 
+    def test_standalone_interference_helicity_choice(self):
+        """the helicity drawn for an interference |M|^2 follows madevent.
+
+        A helicity can contribute negatively to an interference, so choosing it
+        on the signed running sum over the helicities (the positive case)
+        picks it with no meaningful probability. madmatrix follows madevent
+        instead when the caller draws the helicity (umami's random helicity
+        input, i.e. event generation): helicity i with probability
+        |T_i| / sum_j |T_j|, and the event gets sign(T_i) * sum_j |T_j|. That
+        averages back to the helicity sum sum_j T_j, which is what is returned
+        when no random number is given.
+
+        ``u u~ > t t~ g QED^2==2`` (the QCD-EW interference behind the tt~
+        charge asymmetry) has helicities of both signs at almost every RAMBO
+        point. Each point is evaluated on a uniform grid of helicity random
+        numbers, through the umami interface of the library:
+
+        * |M|^2 is the same, sum_j |T_j|, for every draw;
+        * every helicity always comes with the same sign;
+        * the average over the grid is the helicity sum, to the grid step;
+        * the points with mixed signs give both signs, with
+          sum_j |T_j| > |sum_j T_j|: the signed choice gives a constant |M|^2,
+          and would fail here.
+        """
+        import ctypes
+        import glob
+        import struct
+
+        self.do('import model sm')
+        self.do('generate u u~ > t t~ g QED^2==2')
+        self.do('output standalone %s -f' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        proc_dir = [pjoin(proc_root, d) for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))][0]
+        devnull = open(os.devnull, 'w')
+        self.assertEqual(0, subprocess.call(['make', 'FPTYPE=d'], stdout=devnull,
+                                            stderr=devnull, cwd=proc_dir))
+        npar, npoints, ngrid = 5, 16, 4000
+        momfile = pjoin(proc_dir, 'momenta.bin')
+        subprocess.call(['./check_sa.exe', 'perf', '--dump-momenta', momfile,
+                         '1', str(npoints), '1'], cwd=proc_dir,
+                        stdout=devnull, stderr=devnull)
+        raw = open(momfile, 'rb').read()
+        momenta = struct.unpack('%dd' % (len(raw) // 8), raw)
+        self.assertEqual(len(momenta), npoints * npar * 4)
+
+        libdir = pjoin(self.out_dir, 'lib')
+        ctypes.CDLL(glob.glob(pjoin(libdir, 'libmadmatrix_common_*.so'))[0],
+                    mode=ctypes.RTLD_GLOBAL)
+        lib = ctypes.CDLL(glob.glob(pjoin(libdir, 'libmadmatrix_P*.so'))[0])
+        handle = ctypes.c_void_p()
+        card = pjoin(self.out_dir, 'Cards', 'param_card.dat').encode()
+        self.assertEqual(0, lib.umami_initialize(ctypes.byref(handle), card))
+        # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_IN_RANDOM_HELICITY = 4,
+        # UMAMI_OUT_MATRIX_ELEMENT = 0, UMAMI_OUT_HELICITY_INDEX = 3
+        IN_MOMENTA, IN_RANDOM_HELICITY = 0, 4
+        OUT_MATRIX_ELEMENT, OUT_HELICITY_INDEX = 0, 3
+
+        def evaluate(point, draw):
+            count = ngrid if draw else 1
+            mom = (ctypes.c_double * (4 * npar * count))()
+            for ipart in range(npar):  # momenta[count * (npar * mu + ipart) + ievt]
+                for mu in range(4):
+                    start = count * (npar * mu + ipart)
+                    mom[start:start + count] = [point[ipart * 4 + mu]] * count
+            me = (ctypes.c_double * count)()
+            hel = (ctypes.c_int * count)()
+            rnd = (ctypes.c_double * count)(
+                *[(k + 0.5) / count for k in range(count)])
+            in_keys = [IN_MOMENTA] + ([IN_RANDOM_HELICITY] if draw else [])
+            inputs = [mom] + ([rnd] if draw else [])
+            out_keys = [OUT_MATRIX_ELEMENT] + ([OUT_HELICITY_INDEX] if draw else [])
+            outputs = [me] + ([hel] if draw else [])
+            status = lib.umami_matrix_element(
+                handle, ctypes.c_size_t(count), ctypes.c_size_t(count),
+                ctypes.c_size_t(0), ctypes.c_size_t(len(in_keys)),
+                (ctypes.c_int * len(in_keys))(*in_keys),
+                (ctypes.c_void_p * len(inputs))(
+                    *[ctypes.addressof(a) for a in inputs]),
+                ctypes.c_size_t(len(out_keys)),
+                (ctypes.c_int * len(out_keys))(*out_keys),
+                (ctypes.c_void_p * len(outputs))(
+                    *[ctypes.addressof(a) for a in outputs]))
+            self.assertEqual(status, 0)
+            return list(me), list(hel)
+
+        mixed = 0
+        for ipoint in range(npoints):
+            point = momenta[ipoint * npar * 4:(ipoint + 1) * npar * 4]
+            (helicity_sum,), _ = evaluate(point, False)
+            me, hel = evaluate(point, True)
+            abs_sum = abs(me[0])
+            signs = {}
+            for value, ihel in zip(me, hel):
+                self.assertAlmostEqual(abs(value), abs_sum, delta=1e-12 * abs_sum)
+                self.assertEqual(signs.setdefault(ihel, value > 0), value > 0,
+                                 'helicity %d came with both signs' % ihel)
+            # the grid step bounds the error of each helicity's interval
+            self.assertAlmostEqual(sum(me) / ngrid, helicity_sum,
+                                   delta=len(signs) * abs_sum / ngrid)
+            if len(set(signs.values())) == 2:
+                mixed += 1
+                self.assertGreater(abs_sum, abs(helicity_sum) * (1 + 1e-6))
+        # 15 of the 16 points when this test was written
+        self.assertGreater(mixed, npoints // 2)
+
     def test_standalone_cpp(self):
         """test that the scalar C++ standalone exporter is working
 
