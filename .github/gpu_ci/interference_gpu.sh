@@ -56,6 +56,9 @@ cd "$WORKDIR"
 STATUS=0
 python3 "$HERE/interference_checks.py" --repo "$REPO" --backend "$BACKEND" \
     --events "${INTERFERENCE_EVENTS:-5000}" 2>&1 | tee checks.log || STATUS=1
+# TEMPORARY: diagnosis of the HIP crash of the mg7 interference run (to be reverted)
+python3 "$HERE/interference_diagnose.py" --repo "$REPO" --backend "$BACKEND" 2>&1 \
+    | tee diagnose.log || true
 
 section "Summary"
 cat summary.txt 2> /dev/null || echo "no summary.txt"
