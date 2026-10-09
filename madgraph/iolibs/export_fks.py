@@ -2999,8 +2999,35 @@ Parameters              %(params)s\n\
             matrices += [{} for l in matrix_element.color_links]
 
         lines = self.get_color_link_data_lines(matrices, ncolor)
-        return {'nlinks': len(matrices) - 1,
-                'color_link_data_lines': '\n'.join(lines)}
+        out = {'nlinks': len(matrices) - 1,
+               'color_link_data_lines': '\n'.join(lines)}
+        out.update(self.get_born_coupling_check_dict(born_me))
+        return out
+
+    @staticmethod
+    def get_born_coupling_check_dict(born_me):
+        """The replace_dict entries with which the Born of born.f records
+        the couplings its amplitudes are computed with, and compares them
+        before reusing cached amplitudes (see set_ren_scale). If a coupling
+        is not a plain Fortran name the check is switched off
+        (born_checks_amps false) and the cached amplitudes are discarded
+        as before."""
+        names = []
+        for c in born_me.get_used_couplings(output="set"):
+            names.extend(c if isinstance(c, (list, tuple)) else [c])
+        names = sorted(set(names), key=lambda c: str(c))
+        if not names or not all(isinstance(c, str) and
+                re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', c) for c in names):
+            return {'ncoup_check': 1, 'coup_check_lines': '',
+                    'coup_record_lines': '', 'born_checks_amps': '.FALSE.'}
+        check = ['         if (saved_coup(%d).ne.%s) calculatedBorn=.false.'
+                 % (i + 1, c) for i, c in enumerate(names)]
+        record = ['         saved_coup(%d)=%s' % (i + 1, c)
+                  for i, c in enumerate(names)]
+        return {'ncoup_check': len(names),
+                'coup_check_lines': '\n'.join(check),
+                'coup_record_lines': '\n'.join(record),
+                'born_checks_amps': '.TRUE.'}
 
     @staticmethod
     def get_color_link_data_lines(matrices, ncolor, n=64):

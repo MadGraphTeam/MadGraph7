@@ -328,6 +328,7 @@ C CONSTANTS
 C
       include "nexternal.inc"
       include "born_nhel.inc"
+      include "coupl.inc"
       INTEGER     NCOMB
       PARAMETER ( NCOMB=  %(ncomb)d )
       INTEGER NAMPSO, NSQAMPSO
@@ -379,11 +380,28 @@ C
       COMMON /C_BORN_CACHE/ BORN_CACHE_OK, BORN_CACHE_NFKS
       COMPLEX*16 BORN_CACHE_ANS(2,0:NSQAMPSO)
       SAVE BORN_CACHE_ANS
+      LOGICAL CHECK_BORN_AMPS, BORN_CHECKS_AMPS
+      COMMON /C_BORN_AMPS_CHECK/ CHECK_BORN_AMPS, BORN_CHECKS_AMPS
+      DOUBLE PRECISION SAVEMOM4(0:3,NEXTERNAL-1)
+      DOUBLE COMPLEX SAVED_COUP(%(ncoup_check)d)
+      SAVE SAVEMOM4, SAVED_COUP
 C ----------
 C BEGIN CODE
 C ----------
       iden=iden_values(nfksprocess)
       glu_ij = ij_values(nfksprocess)
+C     set_ren_scale (or sreal_deg) kept the cached amplitudes instead of
+C     discarding them: discard them here unless the couplings of the
+C     Born and the momenta are exactly the ones they were computed with
+      if (calculatedBorn .and. check_born_amps) then
+%(coup_check_lines)s
+         do j=1,nexternal-1
+            do i=0,3
+               if (p1(i,j).ne.savemom4(i,j)) calculatedBorn=.false.
+            enddo
+         enddo
+      endif
+      check_born_amps=.false.
       if (calculatedBorn) then
          do j=1,nexternal-1
             if (savemom(j,1).ne.p1(0,j) .or. savemom(j,2).ne.p1(3,j)) then
@@ -394,7 +412,7 @@ C ----------
          enddo
       endif
 C     A repeated call: the same momenta as the last evaluation (the
-C     amplitudes are cached) and the same FKS configuration, and nothing
+C     amplitudes are cached), the same FKS configuration, and nothing
 C     has touched the cached amplitudes since (BORN_CACHE_OK, reset by
 C     BORN for IMODE = 0). The result, the colour density RHO and
 C     AMP2/JAMP2 are still those of the last evaluation.
@@ -426,7 +444,9 @@ C     AMP2/JAMP2 are still those of the last evaluation.
          do j=1,nexternal-1
             savemom(j,1)=p1(0,j)
             savemom(j,2)=p1(3,j)
+            savemom4(0:3,j)=p1(0:3,j)
          enddo
+%(coup_record_lines)s
          do j=1,max_bhel
             do jj=1,ngraphs
                saveamp(jj,j)=(0d0,0d0)
@@ -728,9 +748,9 @@ C   RES = sum_ij S_ij (JAMPA(j,M) conj(JAMPB(i,N))
 C                      + JAMPA(i,M) conj(JAMPB(j,N)))/2
 C i.e. the symmetrised interference needed for the spin-correlated Born.
 C For JAMPA = JAMPB use the cheaper BORN_COLOR_SQUARE, or, summed over
-C helicities, BORN_RHO_TRACE. The matrices are symmetric: only the upper triangle
-C is stored, with the off-diagonal entries doubled, as integers over
-C DENOM(ILINK) (BLOCK DATA BORN_COLOR_DATA).
+C helicities, BORN_RHO_TRACE. The matrices are symmetric: only the
+C upper triangle is stored, with the off-diagonal entries doubled, as
+C integers over DENOM(ILINK) (BLOCK DATA BORN_COLOR_DATA).
 %(process_lines)s
 C
       IMPLICIT NONE
@@ -1028,6 +1048,10 @@ C integers over DENOM)
       INTEGER BORN_CACHE_NFKS
       COMMON /C_BORN_CACHE/ BORN_CACHE_OK, BORN_CACHE_NFKS
       DATA BORN_CACHE_OK /.FALSE./, BORN_CACHE_NFKS /0/
+      LOGICAL CHECK_BORN_AMPS, BORN_CHECKS_AMPS
+      COMMON /C_BORN_AMPS_CHECK/ CHECK_BORN_AMPS, BORN_CHECKS_AMPS
+      DATA CHECK_BORN_AMPS /.FALSE./
+      DATA BORN_CHECKS_AMPS /%(born_checks_amps)s/
 %(color_link_data_lines)s
       END
 
@@ -1079,6 +1103,8 @@ C
       common/ccalculatedBorn/calculatedBorn
       integer nfksprocess
       common/c_nfksprocess/nfksprocess
+      LOGICAL CHECK_BORN_AMPS, BORN_CHECKS_AMPS
+      COMMON /C_BORN_AMPS_CHECK/ CHECK_BORN_AMPS, BORN_CHECKS_AMPS
 C
 C     FUNCTIONS
 C
@@ -1098,6 +1124,10 @@ C ----------
          enddo
       else
          write(*,*) 'Error in sb_sf: color_linked borns should be called only with calculatedborn = true'
+         stop
+      endif
+      if (check_born_amps) then
+         write(*,*) 'Error in sb_sf: the Born must be called again first'
          stop
       endif
       ANS(:) = 0D0
