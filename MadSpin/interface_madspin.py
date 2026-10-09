@@ -1067,6 +1067,14 @@ class MadSpinInterface(extended_cmd.Cmd):
         "no frame at all" to MadSpin. The default ``me_frame = [1,2]`` gives 6,
         i.e. exactly the value NLO samples always had. An NLO run_card has no
         beam polarisation.
+
+        An mg7 run_card (``run.me_frame``) is read the same way, but its
+        default ``[]`` gives 0, not 6: madspace evaluates the matrix element on
+        the lab-frame momenta it writes out unless me_frame names a frame, and
+        0 is exactly "no frame, stay in the lab" to MadSpin -- ``_frame_boost``
+        returns None, and the v1 driver's ``boost_to_frame`` selects no leg and
+        boosts by nothing. Giving it 6 projected the polarisation of an mg7
+        sample in the partonic c.m. instead. mg7 has no beam polarisation.
         """
         if isinstance(run_card, banner.RunCardLO):
             run_card.update_system_parameter_for_include()
@@ -1074,6 +1082,9 @@ class MadSpinInterface(extended_cmd.Cmd):
             beampol = [run_card['polbeam1'], run_card['polbeam2']]
         elif isinstance(run_card, banner.RunCardNLO):
             frame_id = sum(2**n for n in run_card['me_frame'])
+            beampol = [0., 0.]
+        elif isinstance(run_card, banner.RunCardMG7):
+            frame_id = sum(2**n for n in run_card['run']['me_frame'])
             beampol = [0., 0.]
         else:
             frame_id = 6
@@ -2425,19 +2436,15 @@ class MadSpinInterface(extended_cmd.Cmd):
         
         generate_all = save_load_object.load_from_file(pjoin(self.options['ms_dir'], 'madspin.pkl'))
         
-        #restore data passed to string to help pickle
-        generate_all.all_decay = eval(generate_all.all_decay)
-        for me in generate_all.all_ME:
-            for d in generate_all.all_ME[me]['decays']:
-                if isinstance(d['decay_struct'], str):
-                    d['decay_struct'] = eval(d['decay_struct'])
-
 
         # Re-create information which are not save in the pickle.
         generate_all.evtfile = self.events_file
         generate_all.curr_event = madspin.Event(self.events_file, self.banner ) 
         generate_all.mgcmd = self.mg5cmd
         generate_all.mscmd = self 
+        # all_decay/decay_struct strings and the model (the event reader needs
+        # it to produce the flavour-grouped tags all_ME is keyed by)
+        generate_all.restore_pickled_status(self.model, self.options['ms_dir'])
         #generate_all.pid2width = lambda pid: generate_all.banner.get('param_card', 'decay', abs(pid)).value
         #generate_all.pid2mass = lambda pid: generate_all.banner.get('param_card', 'mass', abs(pid)).value
         if generate_all.path_me != self.options['ms_dir']:
@@ -2516,8 +2523,6 @@ class MadSpinInterface(extended_cmd.Cmd):
         # own card, and archived nothing at all before -- do_launch returns here
         # long before reaching its own copy of this call.
         self._archive_madspin_card(decayed_evt_file)
-    
-    
 
     def run_bridge(self, line):
         """Run the Bridge Algorithm"""
