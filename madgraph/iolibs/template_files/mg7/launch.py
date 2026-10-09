@@ -1869,6 +1869,7 @@ class MadgraphProcess:
             shutil.copytree(
                 _INSTALL_DIR / "madspace",
                 os.path.join(gridpack_path, "madspace", "install", "madspace"),
+                ignore=shutil.ignore_patterns("include"),
             )
 
         matrix_elements = []
