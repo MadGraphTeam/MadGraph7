@@ -162,7 +162,19 @@ All done; decided convention: (a), madevent's.
     - σ_abs goes from 4.16 to 5.57 pb.
   - The d, f, m (mixed) and scalar builds all compile. The mixed second page is checked too.
 - **D2.** `IDWTUP = -4`, not −3, for a sample with negative weights. Pythia8 8.317 takes the cross section as |XSECUP| × ⟨sign⟩ under −3: −6405 pb for a −9572 pb sample. With −4 the showered σ is −9678(75) pb against −9635(40). `XMAXUP = σ_abs`. Positive samples keep +3 and XMAXUP = σ, so nothing changes for them. Whether a positive sample with kept overweights should declare 4 is a separate question.
-- **D3, D7, D8, D9** as planned. In D9 the weight histogram is in units of σ_abs, with a symmetric range when the process has a squared-order constraint. The xsec acceptance test also divides by |reference| now.
+- **D8, measured.** The fix is checked by `madspace/tests/test_buffer_unweighter.py`, which needed a new Python binding for `BufferUnweighter`. It has synthetic positive, all-negative and mixed batches. With the signed quantile the all-negative batch kept 100% (no unweighting) and the mixed one 94%, against 28.5% for the positive batch; the two signed tests fail on the old code. The rescaled `adaptive_prob` kept the buffer unbiased in all cases.
+  - The effect on training is not measurable on our samples. MadNIS was forced on with 4000 batches and the same seed:
+
+    | process | quantile | RSD | unw. eff. | final loss |
+    |---|---|---|---|---|
+    | `p p > u u~ QCD^2==2` | signed | 0.1081 | 0.658 | 0.502 |
+    | `p p > u u~ QCD^2==2` | \|w\| | 0.1085 | 0.649 | 0.501 |
+    | heft `g g > t t~ HIG^2==1`, m_H = 500 GeV | signed | 0.0886 | 0.694 | 0.993 |
+    | heft `g g > t t~ HIG^2==1`, m_H = 500 GeV | \|w\| | 0.0880 | 0.714 | 0.990 |
+
+    The buffers reach capacity (120k) within about 1200 batches either way.
+  - With the default card the buffer is never used: `buffer_skip_batches = 1000` equals `train_batches = 1000`, so the old code had no effect on default runs.
+- **D3, D7, D9** as planned. In D9 the weight histogram is in units of σ_abs, with a symmetric range when the process has a squared-order constraint. The xsec acceptance test also divides by |reference| now.
 - **Tests:**
   - `test_cmd.py::test_standalone_interference_helicity_choice`: umami via ctypes, `u u~ > t t~ g QED^2==2`. It fails against the old selection.
   - `test_mg7_interference.py`: `p p > u u~ QCD^2==2` against −12253(10) pb, from three mg7 seeds of 200k events. madevent with the same settings gives −12340(42) pb, 0.7% (2σ) away; not chased.

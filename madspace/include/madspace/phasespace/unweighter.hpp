@@ -37,21 +37,27 @@ private:
 };
 
 /**
- * Partial unweighting against a running maximum weight.
+ * Partial unweighting of one batch, for the MadNIS replay buffer.
  *
- * Used for the intermediate channel-wise event files: events are only
- * partially unweighted while generation continues, using the current estimate
- * of the per-channel maximum weight, and a final @ref Unweighter pass is run
- * once the target count is reached (Sec. 3.4.1 of [1]). @p quantile sets the
- * fraction of over-weight events allowed when estimating the maximum.
+ * The maximum weight is the @p quantile quantile of |w| over the batch (so a
+ * fraction 1 - @p quantile of the events is over-weight). An event is kept
+ * with probability min(1, |w| / w_max) and gets the weight
+ * sign(w) * max(|w|, w_max): the sign of a negative weight (an interference)
+ * is kept, and the quantile is over |w| like the acceptance, so that a mostly
+ * negative batch is still unweighted. The `adaptive_prob` of a kept event, the
+ * density it was sampled with, is multiplied by its acceptance probability and
+ * by N / N_kept, so that training on the buffered events stays unbiased
+ * (Sec. 3.4.1 of [1]).
  *
  * `batch` is the leading batch dimension.
  *
  * **Arguments**
- * - the tensors named in @p types (the first is the event weight).
+ * - the tensors named in @p types (the first is the event weight, and one
+ *   must be named `adaptive_prob`).
  *
  * **Returns**
- * - the tensors named in @p types, partially unweighted.
+ * - the tensors named in @p types, partially unweighted, with `adaptive_prob`
+ *   rescaled.
  *
  * **References**
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
@@ -60,7 +66,7 @@ private:
 class BufferUnweighter : public FunctionGenerator {
 public:
     /// @param types     The per-event tensors, the first being the weight.
-    /// @param quantile  Allowed fraction of over-weight events.
+    /// @param quantile  Quantile of |w| taken as the maximum weight.
     BufferUnweighter(const NamedVector<Type>& types, double quantile = 0.0);
 
 private:
