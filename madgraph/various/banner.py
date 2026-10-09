@@ -7298,6 +7298,41 @@ class RunCardMG7(RunCard):
         self.dynamic_sections['cuts'].setdefault(cut, collections.OrderedDict())[bound] = value
         return cut, bound, value
 
+    @staticmethod
+    def _lo_cut_is_active(bound, value):
+        """Whether a madevent cut value imposes a constraint: a minimum must be
+        positive, a maximum non-negative (-1 is madevent's "no cut")."""
+        return (bound == 'min' and value > 0) or (bound == 'max' and value >= 0)
+
+    def set_lo_cut(self, name, value):
+        """Set a cut from its madevent run_card name (``ptj``, ``mmll``,
+        ``etaj``, ``mmllmax``, ... see ``_LO_CUT_MAP``) in the ``[cuts]``
+        section, with the same conventions as :meth:`from_LO`: a "no cut"
+        value (minimum <= 0, maximum < 0) removes that bound, and the cut
+        itself once it has no bound left. A cut on one of the
+        ``_LO_CUT_GROUPS`` (``ihtmin``, ``ptllmin``, ...) also defines that
+        group in ``[multiparticles]``, unless the card already has it.
+        Returns ``(cut, bound, value)``, with value None when the bound was
+        removed."""
+        cut, bound = self._LO_CUT_MAP[name.lower()]
+        value = self.parse_energy(value)
+        if isinstance(value, str):
+            value = self.format_variable(value, float, name=name)
+        value = float(value)
+        cuts = self.dynamic_sections['cuts']
+        if self._lo_cut_is_active(bound, value):
+            cuts.setdefault(cut, collections.OrderedDict())[bound] = value
+            multiparticles = self.dynamic_sections['multiparticles']
+            for group, build in self._LO_CUT_GROUPS.items():
+                if cut.startswith(group + '-') and group not in multiparticles:
+                    multiparticles[group] = build(multiparticles)
+            return cut, bound, value
+        if cut in cuts:
+            cuts[cut].pop(bound, None)
+            if not cuts[cut]:
+                del cuts[cut]
+        return cut, bound, None
+
     # ------------------------------------------------------------------
     # expression evaluation (energy units + arithmetic + masses)
     # ------------------------------------------------------------------
@@ -8172,9 +8207,9 @@ class RunCardMG7(RunCard):
                 val = max(entry[bound], val) if bound == 'min' else min(entry[bound], val)
             entry[bound] = float(val)
 
-        def is_active(bound, val):
-            # LO: a minimum of 0 and a maximum below 0 switch the cut off
-            return (bound == 'min' and val > 0) or (bound == 'max' and val >= 0)
+        # LO: a minimum of 0 and a maximum below 0 switch the cut off (shared
+        # with set_lo_cut, i.e. "set ptj 0" in the launch question)
+        is_active = cls._lo_cut_is_active
 
         for loname, (cutkey, bound) in cls._LO_CUT_MAP.items():
             if loname in lo and is_active(bound, lo[loname]):

@@ -1596,6 +1596,65 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertTrue(rc.is_cut_name('cuts.jet-pt.max'))
         self.assertFalse(rc.is_cut_name('generation.events'))
 
+    def test_set_lo_cut(self):
+        """madevent cut names land in [cuts] as from_LO maps them, the "no
+        cut" sentinels removing the bound; [histograms] is left alone"""
+        rc = bannermod.RunCardMG7()
+        rc.dynamic_sections['histograms']['sqrt_s'] = \
+            {'min': 0., 'max': 2000., 'bin_count': 50}
+        self.assertEqual(rc.set_lo_cut('mmll', '200'),
+                         ('lepton-sfos_pair_mass', 'min', 200.0))
+        self.assertEqual(rc['cuts']['lepton-sfos_pair_mass'], {'min': 200.0})
+        rc.set_lo_cut('MMLLMAX', '1 TeV')
+        self.assertEqual(rc['cuts']['lepton-sfos_pair_mass'],
+                         {'min': 200.0, 'max': 1000.0})
+        # minimum 0 / maximum -1 mean "no cut"
+        self.assertEqual(rc.set_lo_cut('mmll', 0),
+                         ('lepton-sfos_pair_mass', 'min', None))
+        self.assertEqual(rc['cuts']['lepton-sfos_pair_mass'], {'max': 1000.0})
+        rc.set_lo_cut('mmllmax', -1)
+        self.assertNotIn('lepton-sfos_pair_mass', rc['cuts'])
+        # a maximum of 0 is a real cut, as in from_LO
+        rc.set_lo_cut('ptjmax', 0)
+        self.assertEqual(rc['cuts']['jet-pt'], {'min': 20.0, 'max': 0.0})
+        rc.set_lo_cut('etaj', -1)
+        self.assertNotIn('jet-eta_abs', rc['cuts'])
+        # sqrt_s is a cut and a histogram under the same key
+        rc.set_lo_cut('dsqrt_shat', '500')
+        self.assertEqual(rc['cuts']['sqrt_s'], {'min': 500.0})
+        self.assertEqual(rc['histograms']['sqrt_s'],
+                         {'min': 0., 'max': 2000., 'bin_count': 50})
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_cut, 'ptj', 'abc')
+
+    def test_set_lo_cut_composite(self):
+        """the ordered/summed cuts from_LO converts are settable too, and
+        bring the group they are written on when the card lacks it"""
+        rc = bannermod.RunCardMG7()
+        multiparticles = rc['multiparticles']
+        self.assertNotIn('parton', multiparticles)
+        self.assertNotIn('alllepton', multiparticles)
+        rc.set_lo_cut('ptj1min', 50)
+        rc.set_lo_cut('ht3min', 200)
+        self.assertEqual(rc['cuts']['jet_1-pt'], {'min': 50.0})
+        self.assertEqual(rc['cuts']['jet_1-jet_2-jet_3-pt-sum'], {'min': 200.0})
+        self.assertNotIn('parton', multiparticles)
+        rc.set_lo_cut('ihtmin', 100)
+        self.assertEqual(rc['cuts']['parton-pt-sum'], {'min': 100.0})
+        self.assertEqual(sorted(multiparticles['parton']),
+                         [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 21])
+        rc.set_lo_cut('ptllmin', 30)
+        self.assertEqual(rc['cuts']['alllepton-sum-pt'], {'min': 30.0})
+        self.assertEqual(list(multiparticles['alllepton']),
+                         list(multiparticles['lepton']) + list(multiparticles['missing']))
+        # a group the user defined is kept
+        multiparticles['alllepton'] = [11, -11]
+        rc.set_lo_cut('mmnl', 80)
+        self.assertEqual(multiparticles['alllepton'], [11, -11])
+        # "no cut" removes the cut, not the group
+        rc.set_lo_cut('ihtmin', 0)
+        self.assertNotIn('parton-pt-sum', rc['cuts'])
+        self.assertIn('parton', multiparticles)
+
     def test_evaluate_math_and_masses(self):
         """values support arithmetic and mass references"""
         rc = bannermod.RunCardMG7()

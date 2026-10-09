@@ -17,6 +17,14 @@ and ``use_syst``. The shortcuts ``set lhc``, ``set lep``, ``set fixed_scale``,
 ``set no_parton_cut`` and ``set dynamical_scale_choice HT/n`` work as before, and so does
 ``set iseed``. MadEvent draws a random seed for ``iseed = 0``. MG7 does the same for
 ``seed = -1`` and treats ``0`` as an ordinary fixed seed, so ``set iseed 0`` is translated.
+
+The cut names of the `Cuts`_ table are translated as well, so ``set mmll 200`` sets
+``lepton-sfos_pair_mass.min`` and ``set ptj1min 50`` sets ``jet_1-pt.min``. As in
+``run_card.dat``, a minimum of zero or a negative maximum removes that bound. A cut on the
+``parton`` or ``alllepton`` group also adds the group to ``[multiparticles]`` if it is not
+there yet. ``ptheavy`` and the per-pdg cuts (``pt_min_pdg``, ``mxx_min_pdg``, ...) are not
+translated, because they need a group of your own.
+
 All other settings must use their new names.
 
 Beams and PDFs

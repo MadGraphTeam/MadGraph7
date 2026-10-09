@@ -3536,6 +3536,26 @@ def build_selector_cmd(mother=None):
                         self.modified_card.add("run")
                         return
 
+                    # legacy madevent cut names ("set ptj 20", "set mmll 200",
+                    # "set etaj -1", ...) -> the [cuts] entry the LO->MG7
+                    # run_card conversion maps them to (_LO_CUT_MAP), with the
+                    # same "no cut" sentinels (minimum <= 0, maximum < 0).
+                    if rest and nlow in run_card._LO_CUT_MAP:
+                        try:
+                            cut, bound, val = run_card.set_lo_cut(
+                                nlow, run_card.evaluate(rest, masses))
+                        except (_banner_mod.InvalidCmd, TypeError, ValueError):
+                            logger.warning("ignoring 'set %s %s': not a number", nlow, rest)
+                            return
+                        if val is None:
+                            logger.info("set %s (mg7 cut %s.%s) of the run_card.toml: "
+                                        "no cut", nlow, cut, bound)
+                        else:
+                            logger.info("set %s (mg7 cut %s.%s) of the run_card.toml to %s",
+                                        nlow, cut, bound, val)
+                        self.modified_card.add("run")
+                        return
+
                     # 'iseed' is the madevent spelling of the mg7 run.seed,
                     # but the two disagree on how to ask for a random seed:
                     # madevent uses 0, mg7 uses -1 (0 being a perfectly good

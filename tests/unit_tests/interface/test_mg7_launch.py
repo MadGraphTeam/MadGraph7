@@ -676,6 +676,44 @@ class MG7CmdTest(unittest.TestCase):
         self.assertEqual(dict(obj.run_card['histograms']), before)
         self.assertNotIn('run', obj.modified_card)
 
+    # -- "set <madevent cut name> ..." in the launch question ---------------
+    def cut_selector(self):
+        """histogram_selector() whose generic editor must not be reached: it
+        is what answered "WARNING: invalid set command mmll 200"."""
+        obj = self.histogram_selector()
+        generic = mock.patch.object(type(obj).__mro__[1], 'do_set')
+        self.generic_do_set = generic.start()
+        self.addCleanup(generic.stop)
+        return obj
+
+    def test_set_madevent_cut_names(self):
+        """set mmll/mmllmax/... edit the [cuts] entry from_LO maps them to"""
+        obj = self.cut_selector()
+        obj.do_set('mmll 200')
+        self.assertEqual(dict(obj.run_card['cuts']['lepton-sfos_pair_mass']),
+                         {'min': 200.0})
+        self.assertIn('run', obj.modified_card)
+        obj.do_set('run_card mmllmax 2*100+100')
+        self.assertEqual(dict(obj.run_card['cuts']['lepton-sfos_pair_mass']),
+                         {'min': 200.0, 'max': 300.0})
+        obj.do_set('mmll 0')
+        obj.do_set('mmllmax -1')
+        self.assertNotIn('lepton-sfos_pair_mass', obj.run_card['cuts'])
+        # sqrt_s is also a histogram name: only the cut moves
+        obj.do_set('dsqrt_shat 500')
+        self.assertEqual(dict(obj.run_card['cuts']['sqrt_s']), {'min': 500.0})
+        self.assertEqual(dict(obj.run_card['histograms']['sqrt_s']),
+                         {'min': 0., 'max': 2000., 'bin_count': 50})
+        self.generic_do_set.assert_not_called()
+
+    def test_set_madevent_cut_name_rejects_non_numbers(self):
+        obj = self.cut_selector()
+        before = dict(obj.run_card['cuts'])
+        obj.do_set('ptj abc')
+        self.assertEqual(dict(obj.run_card['cuts']), before)
+        self.assertNotIn('run', obj.modified_card)
+        self.generic_do_set.assert_not_called()
+
     def test_no_post_processing_keeps_the_npy_output(self):
         self.assertEqual(self.output_format({}), 'compact_npy')
         self.assertEqual(self.output_format(None), 'compact_npy')
