@@ -721,10 +721,10 @@
 </li>
         <li><a href="madspace/python/LHEMeta.html#madspace.LHEMeta.beam1_pdf_id">beam1_pdf_id (madspace.LHEMeta property)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/LHEMeta.html#madspace.LHEMeta.beam1_pdg_id">beam1_pdg_id (madspace.LHEMeta property)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/LHEMeta.html#madspace.LHEMeta.beam2_energy">beam2_energy (madspace.LHEMeta property)</a>
 </li>
         <li><a href="madspace/python/LHEMeta.html#madspace.LHEMeta.beam2_pdf_authors">beam2_pdf_authors (madspace.LHEMeta property)</a>
@@ -750,6 +750,8 @@
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.boost_beam">boost_beam() (madspace.FunctionBuilder method)</a>
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.boost_beam_inverse">boost_beam_inverse() (madspace.FunctionBuilder method)</a>
+</li>
+        <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.boost_to_frame">boost_to_frame() (madspace.FunctionBuilder method)</a>
 </li>
         <li><a href="madspace/python/Observable.html#madspace.Observable.bottom_pids">bottom_pids (madspace.Observable attribute)</a>
 </li>
@@ -1192,6 +1194,8 @@
         <li><a href="madspace/python/format_with_error.html#madspace.format_with_error">format_with_error() (in module madspace)</a>
 </li>
         <li><a href="madspace/python/Mapping.html#madspace.Mapping.forward_function">forward_function() (madspace.Mapping method)</a>
+</li>
+        <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.frame_mask">frame_mask() (madspace.MatrixElement method)</a>
 </li>
         <li><a href="madspace/python/GeneratorConfig.html#madspace.GeneratorConfig.freeze_max_weight_after">freeze_max_weight_after (madspace.GeneratorConfig property)</a>
 </li>
@@ -2841,10 +2845,10 @@
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config10adam_beta1E">madspace::MadnisTraining::Config::adam_beta1 (C++ member)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config10adam_beta2E">madspace::MadnisTraining::Config::adam_beta2 (C++ member)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config8adam_epsE">madspace::MadnisTraining::Config::adam_eps (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config17adam_weight_decayE">madspace::MadnisTraining::Config::adam_weight_decay (C++ member)</a>
@@ -2949,11 +2953,13 @@
 </li>
         <li><a href="madspace/cpp/MatrixElement.html#_CPPv4NK8madspace13MatrixElement15external_inputsEv">madspace::MatrixElement::external_inputs (C++ function)</a>
 </li>
+        <li><a href="madspace/cpp/MatrixElement.html#_CPPv4NK8madspace13MatrixElement10frame_maskEv">madspace::MatrixElement::frame_mask (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/MatrixElement.html#_CPPv4NK8madspace13MatrixElement6inputsEv">madspace::MatrixElement::inputs (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/MatrixElement.html#_CPPv4NK8madspace13MatrixElement20matrix_element_indexEv">madspace::MatrixElement::matrix_element_index (C++ function)</a>
 </li>
-        <li><a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement13MatrixElementENSt6size_tENSt6size_tERKNSt6vectorI18MatrixElementInputEERKNSt6vectorI19MatrixElementOutputEENSt6size_tEb">madspace::MatrixElement::MatrixElement (C++ function)</a>, <a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement13MatrixElementERK16MatrixElementApiRKNSt6vectorI18MatrixElementInputEERKNSt6vectorI19MatrixElementOutputEEb">[1]</a>
+        <li><a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement13MatrixElementENSt6size_tENSt6size_tERKNSt6vectorI18MatrixElementInputEERKNSt6vectorI19MatrixElementOutputEENSt6size_tEbRKNSt6vectorI8me_int_tEENSt6size_tE">madspace::MatrixElement::MatrixElement (C++ function)</a>, <a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement13MatrixElementERK16MatrixElementApiRKNSt6vectorI18MatrixElementInputEERKNSt6vectorI19MatrixElementOutputEEbRKNSt6vectorI8me_int_tEENSt6size_tE">[1]</a>
 </li>
         <li><a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement18MatrixElementInputE">madspace::MatrixElement::MatrixElementInput (C++ enum)</a>
 </li>
@@ -2990,6 +2996,8 @@
         <li><a href="madspace/cpp/MatrixElement.html#_CPPv4NK8madspace13MatrixElement7outputsEv">madspace::MatrixElement::outputs (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/MatrixElement.html#_CPPv4NK8madspace13MatrixElement14particle_countEv">madspace::MatrixElement::particle_count (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MatrixElement.html#_CPPv4NK8madspace13MatrixElement14reference_maskEv">madspace::MatrixElement::reference_mask (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/MatrixElementApi.html#_CPPv4N8madspace16MatrixElementApiE">madspace::MatrixElementApi (C++ class)</a>
 </li>
@@ -4606,6 +4614,8 @@
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.reduce_sum">reduce_sum() (madspace.FunctionBuilder method)</a>
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.reduce_sum_vector">reduce_sum_vector() (madspace.FunctionBuilder method)</a>
+</li>
+        <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.reference_mask">reference_mask() (madspace.MatrixElement method)</a>
 </li>
         <li><a href="madspace/python/AlphaSGrid.html#madspace.AlphaSGrid.region_sizes">region_sizes (madspace.AlphaSGrid property)</a>
 

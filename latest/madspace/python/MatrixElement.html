@@ -626,7 +626,7 @@
 </ul>
 <p>Overloaded function.</p>
 <ol class="arabic simple">
-<li><p>__init__(self: madspace._madspace_py.MatrixElement, matrix_element_index: typing.SupportsInt, particle_count: typing.SupportsInt, inputs: collections.abc.Sequence[madspace._madspace_py.MatrixElement.MatrixElementInput], outputs: collections.abc.Sequence[madspace._madspace_py.MatrixElement.MatrixElementOutput], diagram_count: typing.SupportsInt = 1, sample_random_inputs: bool = False) -&gt; None</p></li>
+<li><p>__init__(self: madspace._madspace_py.MatrixElement, matrix_element_index: typing.SupportsInt, particle_count: typing.SupportsInt, inputs: collections.abc.Sequence[madspace._madspace_py.MatrixElement.MatrixElementInput], outputs: collections.abc.Sequence[madspace._madspace_py.MatrixElement.MatrixElementOutput], diagram_count: typing.SupportsInt = 1, sample_random_inputs: bool = False, me_frame: collections.abc.Sequence[typing.SupportsInt] = [], incoming_count: typing.SupportsInt = 2) -&gt; None</p></li>
 </ol>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -637,11 +637,13 @@
 <li><p><strong>outputs</strong> – Quantities to return (default: just <code class="docutils literal notranslate"><span class="pre">matrix_element_out</span></code>; required in Python).</p></li>
 <li><p><strong>diagram_count</strong> – Number of Feynman diagrams.</p></li>
 <li><p><strong>sample_random_inputs</strong> – If true, the <code class="docutils literal notranslate"><span class="pre">random_*</span></code> inputs are drawn internally instead of being passed in.</p></li>
+<li><p><strong>me_frame</strong> – One-based indices of the external particles whose momentum sum defines the rest frame the matrix element is evaluated in (the run card’s me_frame). Empty means no boost, so the matrix element sees the momenta in the frame they are generated in.</p></li>
+<li><p><strong>incoming_count</strong> – How many of the external particles are incoming. The frame is reached the way madevent reaches it, starting from the rest frame of the incoming system (the partonic centre of mass of a collision, the decaying particle’s rest frame of a decay): boosts do not commute, so going there straight from the lab frame would leave a Wigner rotation behind and rotate the polarisation axes.</p></li>
 </ul>
 </dd>
 </dl>
 <ol class="arabic simple" start="2">
-<li><p>__init__(self: madspace._madspace_py.MatrixElement, matrix_element_api: madspace._madspace_py.MatrixElementApi, inputs: collections.abc.Sequence[madspace._madspace_py.MatrixElement.MatrixElementInput], outputs: collections.abc.Sequence[madspace._madspace_py.MatrixElement.MatrixElementOutput], sample_random_inputs: bool = False) -&gt; None</p></li>
+<li><p>__init__(self: madspace._madspace_py.MatrixElement, matrix_element_api: madspace._madspace_py.MatrixElementApi, inputs: collections.abc.Sequence[madspace._madspace_py.MatrixElement.MatrixElementInput], outputs: collections.abc.Sequence[madspace._madspace_py.MatrixElement.MatrixElementOutput], sample_random_inputs: bool = False, me_frame: collections.abc.Sequence[typing.SupportsInt] = [], incoming_count: typing.SupportsInt = 2) -&gt; None</p></li>
 </ol>
 <p>Take <code class="docutils literal notranslate"><span class="pre">matrix_element_index</span></code>, <code class="docutils literal notranslate"><span class="pre">particle_count</span></code> and <code class="docutils literal notranslate"><span class="pre">diagram_count</span></code> from an already-loaded matrix element.</p>
 <dl class="field-list simple">
@@ -833,6 +835,12 @@
 <span class="sig-name descname"><span class="pre">flavor_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.flavor_in:</span> <span class="pre">2&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.flavor_in" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.MatrixElement.frame_mask">
+<span class="sig-name descname"><span class="pre">frame_mask</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.MatrixElement" title="madspace._madspace_py.MatrixElement"><span class="pre">madspace._madspace_py.MatrixElement</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="DataType.html#madspace.DataType.int" title="madspace.DataType.int"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#madspace.MatrixElement.frame_mask" title="Link to this definition">¶</a></dt>
+<dd><p>Per-particle 0/1 selector built from me_frame, empty if no boost is applied.</p>
+</dd></dl>
+
 <dl class="py attribute">
 <dt class="sig sig-object py" id="madspace.MatrixElement.helicity_in">
 <span class="sig-name descname"><span class="pre">helicity_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.helicity_in:</span> <span class="pre">6&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.helicity_in" title="Link to this definition">¶</a></dt>
@@ -891,6 +899,12 @@
 <dt class="sig sig-object py" id="madspace.MatrixElement.random_helicity_in">
 <span class="sig-name descname"><span class="pre">random_helicity_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.random_helicity_in:</span> <span class="pre">4&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.random_helicity_in" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.MatrixElement.reference_mask">
+<span class="sig-name descname"><span class="pre">reference_mask</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.MatrixElement" title="madspace._madspace_py.MatrixElement"><span class="pre">madspace._madspace_py.MatrixElement</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="DataType.html#madspace.DataType.int" title="madspace.DataType.int"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#madspace.MatrixElement.reference_mask" title="Link to this definition">¶</a></dt>
+<dd><p>Per-particle 0/1 selector of the incoming particles, whose rest frame the me_frame boost starts from; empty when no boost is applied or when it is already the frame me_frame asks for.</p>
+</dd></dl>
 
 </dd></dl>
 
@@ -984,6 +998,7 @@
 <li><a class="reference internal" href="#madspace.MatrixElement.diagram_index_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.diagram_index_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.external_inputs"><code class="docutils literal notranslate"><span class="pre">MatrixElement.external_inputs()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.flavor_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.flavor_in</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.frame_mask"><code class="docutils literal notranslate"><span class="pre">MatrixElement.frame_mask()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.helicity_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.helicity_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.helicity_index_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.helicity_index_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.inputs"><code class="docutils literal notranslate"><span class="pre">MatrixElement.inputs()</span></code></a></li>
@@ -995,6 +1010,7 @@
 <li><a class="reference internal" href="#madspace.MatrixElement.random_color_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.random_color_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.random_diagram_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.random_diagram_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.random_helicity_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.random_helicity_in</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.reference_mask"><code class="docutils literal notranslate"><span class="pre">MatrixElement.reference_mask()</span></code></a></li>
 </ul>
 </li>
 </ul>
