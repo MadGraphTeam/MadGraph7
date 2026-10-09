@@ -1392,7 +1392,7 @@ class Amplitude(base_objects.PhysicsObject):
         self.get('process').get('legs').sort(pert=pertur)
 
         if treextree:
-            res = self.add_interference_diagrams(res)
+            res = self.add_interference_diagrams(res, diagram_filter)
 
         # Set diagrams to res if not asked to be returned
         if not returndiag:
@@ -1401,7 +1401,7 @@ class Amplitude(base_objects.PhysicsObject):
         else:
            return not failed_crossing, res
 
-    def add_interference_diagrams(self, left_diagrams):
+    def add_interference_diagrams(self, left_diagrams, diagram_filter=False):
         """For an interference process 'left [treextree] right', add to the
         diagrams of this (left-hand) process those of the right-hand process
         with the same external legs, each tagged with one unit of the hidden
@@ -1409,7 +1409,8 @@ class Amplitude(base_objects.PhysicsObject):
         the process to the whole list: with INTERF^2==1 (see
         prepare_interference_process) only the products of a left-hand and a
         right-hand diagram, 2 Re(A_left A_right^*), contribute. All diagrams of
-        both sides are kept as integration channels. Returns the new diagram
+        both sides are kept as integration channels. A user diagram filter
+        ('--diagram_filter') applies to both sides. Returns the new diagram
         list, empty if either side has no diagram."""
 
         process = self.get('process')
@@ -1418,8 +1419,11 @@ class Amplitude(base_objects.PhysicsObject):
 
         right_diagrams = base_objects.DiagramList()
         if left_diagrams:
+            right_amplitude = Amplitude()
+            right_amplitude.set('process', right_process)
             try:
-                right_diagrams = Amplitude(right_process).get('diagrams')
+                right_amplitude.generate_diagrams(diagram_filter=diagram_filter)
+                right_diagrams = right_amplitude.get('diagrams')
             except InvalidCmd:
                 pass
         if not left_diagrams or not right_diagrams:

@@ -76,6 +76,19 @@ class InterferenceLineSplitTest(unittest.TestCase):
             ('g g > h > t t~ [noborn= QCD ] QCD^2==6 QED = 2 @3', 'LIxtree',
              'g g > t t~ QED=0 / b'))
 
+    def test_pdg_code_processes_are_not_constraints(self):
+        """An order name is an identifier, and a constraint is followed by a
+        process: '25 > 6' or 'h > 5' starting a right-hand decay is no
+        'ORDER > n' constraint."""
+        self.assertEqual(split('25 > 6 -6 [treextree] 25 > 6 -6'),
+                         ('25 > 6 -6', 'treextree', '25 > 6 -6'))
+        self.assertEqual(split('h > b b~ [treextree] h > 5 -5'),
+                         ('h > b b~', 'treextree', 'h > 5 -5'))
+        self.assertEqual(split('u u~ > e+ e- [treextree] QED>2 u u~ > e+ e-'),
+                         ('u u~ > e+ e- QED>2', 'treextree', 'u u~ > e+ e-'))
+        self.assertEqual(split('g g > h > t t~ [LIxtree=QCD] QCD^2==6'),
+                         ('g g > h > t t~ [noborn= QCD ] QCD^2==6', 'LIxtree', None))
+
     def test_ordinary_lines_are_untouched(self):
         for line in ['g g > z z [noborn=QCD]', 'p p > t t~ [QCD]',
                      'p p > t t~ [real=QCD] QCD^2<=4', 'p p > t t~ QED=0',
@@ -146,6 +159,15 @@ class InterferenceProcessTest(unittest.TestCase):
         self.assertEqual(procdef['interference_mode'], '')
         self.assertIsNone(procdef['interference_process'])
         self.assertEqual(base_objects.Process()['interference_mode'], '')
+
+    def test_process_from_an_older_pickle(self):
+        """A process unpickled from a version without the interference keys
+        still prints."""
+        process = base_objects.Process()
+        for key in ('interference_mode', 'interference_process'):
+            dict.__delitem__(process, key)
+        self.assertNotIn('interference_mode', str(process))
+        self.assertEqual(process.get_interference_mode(), '')
 
     def test_lixtree(self):
         procdef = self.cmd.extract_process(

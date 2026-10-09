@@ -517,6 +517,12 @@ class SubProcessGroup(base_objects.PhysicsObject):
             pols = tuple(base_objects.canonical_polarization(
                              l.get('polarization'))
                          for l in process.get('legs'))
+            # Likewise an interference process ('[LIxtree=QCD]', '[treextree]')
+            # never shares a group with an ordinary one, even with the same
+            # '@N': the events of a group share the power of alpha_s of each
+            # channel (config_nqcd.inc), which differs between the two.
+            # Ordinary processes all have '' here: their grouping is unchanged.
+            interference = process.get_interference_mode()
 
             # This is where the requirements for which particles to
             # combine are defined. Include p.get('is_part') in
@@ -531,7 +537,7 @@ class SubProcessGroup(base_objects.PhysicsObject):
                              abs(p.get('color')),l.get('onshell'),l.get('onium').get('id')) for (p, l) \
                              in zip(is_parts + fs_parts, process.get('legs'))],
                            amplitude.get('process').get('id'),
-                           process.get('id'), pols]
+                           process.get('id'), pols, interference]
             if (criteria=="madweight"):
               proc_class = [ [(abs(p.get('pdg_code'))==5, abs(p.get('pdg_code'))==11, 
                            abs(p.get('pdg_code'))==13, abs(p.get('pdg_code'))==15) for p in \
@@ -546,7 +552,7 @@ class SubProcessGroup(base_objects.PhysicsObject):
                              abs(p.get('color')),l.get('onshell'),l.get('onium').get('id')) for (p, l) \
                              in zip(is_parts + fs_parts, process.get('legs'))],
                            amplitude.get('process').get('id'),
-                           process.get('id'), pols]
+                           process.get('id'), pols, interference]
 
             try:
                 amplitude_classes[iamp] = proc_classes.index(proc_class)

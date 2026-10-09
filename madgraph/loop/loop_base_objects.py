@@ -1401,6 +1401,9 @@ class LoopUVCTDiagram(base_objects.Diagram):
             weight += sum([model.get('order_hierarchy')[c]*n for \
                               (c,n) in couplings.items()])
         coupling_orders['WEIGHTED'] = weight
+        # only the interfering trees (LIxtree) list the hidden order
+        if not coupling_orders.get(base_objects.INTERFERENCE_ORDER):
+            coupling_orders.pop(base_objects.INTERFERENCE_ORDER, None)
         self.set('orders', coupling_orders)
 
     def nice_string(self):

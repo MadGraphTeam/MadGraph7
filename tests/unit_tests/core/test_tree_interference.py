@@ -106,6 +106,83 @@ class TreeInterferenceGenerationTest(unittest.TestCase):
             self.assertEqual(sorted(d.get_order(INTERF)
                                     for d in amp.get('diagrams')), [0, 1])
 
+    def test_left_hand_amplitude_constraints(self):
+        """'==' on the left constrains the left-hand amplitudes only: it does
+        not become a squared-order constraint on the product (QED^2==0 would
+        remove every QCD x EW product here)."""
+        interface = generate('u d > u d QED==0 [treextree] u d > u d QCD==0')
+        amp = interface._curr_amps[0]
+        process = amp.get('process')
+        self.assertEqual(process['squared_orders'], {INTERF: 1})
+        self.assertEqual(process['constrained_orders'], {'QED': (0, '==')})
+        sides = [(d.get_order(INTERF), d.get_order('QED')) for d in amp.get('diagrams')]
+        self.assertTrue(sides)
+        self.assertTrue(all(qed == 0 for side, qed in sides if side == 0))
+        self.assertTrue(all(qed == 2 for side, qed in sides if side == 1))
+        self.assertEqual(set(side for side, _ in sides), set([0, 1]))
+
+    def test_user_diagram_filter_applies_to_both_sides(self):
+        """'--diagram_filter' runs the user filter on the right-hand diagrams
+        too."""
+        import madgraph.core.diagram_generation as diagram_generation
+        filtered = []
+        original = diagram_generation.Amplitude.apply_user_filter
+        def record(amplitude, diag_list):
+            filtered.append(amplitude.get('process').get('required_s_channels'))
+            return diag_list
+        diagram_generation.Amplitude.apply_user_filter = record
+        try:
+            generate('u u~ > z > e+ e- [treextree] u u~ > a > e+ e- '
+                     '--diagram_filter')
+        finally:
+            diagram_generation.Amplitude.apply_user_filter = original
+        self.assertIn([[23]], filtered)
+        self.assertIn([[22]], filtered)
+
+    def test_hidden_order_does_not_leak(self):
+        """Once registered by an interference process, the hidden order
+        neither appears in the diagrams of later ordinary processes nor adds a
+        level to the coupling hierarchy used for the default orders."""
+        interface = MGCmd.MasterCmd()
+        interface.exec_cmd('import model sm', printcmd=False, precmd=True)
+        model = interface._curr_model
+        before = model.get_particles_hierarchy()
+        interface.exec_cmd('generate u u~ > z > e+ e- [treextree] u u~ > a > e+ e-',
+                           printcmd=False, precmd=True, errorhandling=False)
+        self.assertIn(INTERF, model.get('coupling_orders'))
+        self.assertEqual(model.get_particles_hierarchy(), before)
+        interface.exec_cmd('generate u u~ > e+ e-', printcmd=False,
+                           precmd=True, errorhandling=False)
+        for diagram in interface._curr_amps[0].get('diagrams'):
+            self.assertNotIn(INTERF, diagram.get('orders'))
+
+    def test_never_grouped_with_an_ordinary_process(self):
+        """Same '@N', same legs: still two subprocess groups, since the
+        events of a group share the power of alpha_s of each channel."""
+        import madgraph.iolibs.group_subprocs as group_subprocs
+        import madgraph.core.diagram_generation as diagram_generation
+        interface = generate('u u~ > z > e+ e- [treextree] u u~ > a > e+ e- @1')
+        interface.exec_cmd('add process u u~ > z > e+ e- @1', printcmd=False,
+                           precmd=True, errorhandling=False)
+        amps = diagram_generation.AmplitudeList(interface._curr_amps)
+        self.assertEqual(len(amps), 2)
+        classes = group_subprocs.SubProcessGroup.find_process_classes(amps,
+                                                                 'madevent')
+        self.assertNotEqual(classes[0], classes[1])
+
+    def test_alpha_s_power_per_subprocess(self):
+        """One power per matrix element: None for an ordinary process (its
+        channels keep the QCD order of their diagram), the power of the
+        left x right products for an interference."""
+        import madgraph.iolibs.export_v4 as export_v4
+        interface = generate('u d > u d QED=0 [treextree] u d > u d QCD=0')
+        interference = helas_objects.HelasMatrixElement(interface._curr_amps[0])
+        interface.exec_cmd('add process u d > u d', printcmd=False,
+                           precmd=True, errorhandling=False)
+        ordinary = helas_objects.HelasMatrixElement(interface._curr_amps[-1])
+        self.assertEqual(export_v4.interference_alpha_s_powers(
+                                     [ordinary, interference]), [None, 1])
+
     def test_no_interference(self):
         self.assertRaisesRegex(InvalidCmd, 'no interference',
                                generate,

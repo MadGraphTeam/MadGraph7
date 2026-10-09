@@ -134,8 +134,40 @@ class LoopInducedXTreeGenerationTest(unittest.TestCase):
         me = loop_helas_objects.LoopHelasMatrixElement(
                      self.interface._curr_amps[0], optimized_output=True)
         self.assertEqual(export_v4.interference_alpha_s_power([me]), 2)
-        self.assertEqual(export_v4.interference_nqcd_list([5, 0, 3], [me]),
-                         [2, 2, 2])
+        self.assertEqual(export_v4.interference_alpha_s_powers([me]), [2])
+
+    def test_orphan_trees_are_dropped(self):
+        """Trees whose loop partners are all removed after the squared-order
+        selection no longer contribute and are dropped."""
+        import copy
+        import madgraph.core.base_objects as base_objects
+        amp = copy.copy(self.interface._curr_amps[0])
+        amp['loop_UVCT_diagrams'] = base_objects.DiagramList(
+                                            amp['loop_UVCT_diagrams'])
+        self.assertEqual(amp.drop_orphan_interference_trees(), 0)
+        self.assertEqual(len(amp['loop_UVCT_diagrams']), 3)
+        amp['loop_diagrams'] = base_objects.DiagramList()
+        self.assertEqual(amp.drop_orphan_interference_trees(), 3)
+        self.assertEqual(len(amp['loop_UVCT_diagrams']), 0)
+
+
+class LoopInducedXTreeDisplayTest(unittest.TestCase):
+
+    def test_subprocess_string_parses_back(self):
+        """The string of a subprocess puts the left-hand exclusions before
+        the bracket, so that they stay on the left-hand side when the string
+        is read back."""
+        interface = generate('g g > h > t t~ / b [LIxtree=QCD] g g > t t~')
+        process = interface._curr_amps[0]['process']
+        printed = process.nice_string(prefix=False)
+        self.assertLess(printed.index('/ b'), printed.index('[ LIxtree'))
+        again = interface.extract_process(printed)
+        self.assertEqual(again['interference_mode'], 'LIxtree')
+        self.assertEqual(again['forbidden_particles'], [5])
+        right = again['interference_process']
+        self.assertEqual(right['forbidden_particles'], [])
+        self.assertEqual([l['ids'] for l in right['legs']],
+                         [[21], [21], [6], [-6]])
 
 
 class LoopInducedXTreeMultiProcessTest(unittest.TestCase):

@@ -1964,8 +1964,12 @@ class Model(PhysicsObject):
         with lowest value) where it has an interaction.
         """
         
-        # Find coupling orders in model
-        coupling_orders = self.get('coupling_orders')
+        # Find coupling orders in model (not the hidden order of interference
+        # processes, which no interaction carries: with its hierarchy 0 it
+        # would otherwise add a level and move the particles of order-less
+        # interactions there)
+        coupling_orders = [k for k in self.get('coupling_orders')
+                           if k != INTERFERENCE_ORDER]
         # Loop through the different coupling hierarchy values, so we
         # start with the most dominant and proceed to the least dominant
         hierarchy = sorted(list(set([self.get('order_hierarchy')[k] for \
@@ -1976,7 +1980,7 @@ class Model(PhysicsObject):
         for value in hierarchy:
             orders.append([ k for (k, v) in \
                             self.get('order_hierarchy').items() if \
-                            v == value ])
+                            v == value and k != INTERFERENCE_ORDER ])
 
         # Extract the interaction that correspond to the different
         # coupling hierarchies, and the corresponding particles
@@ -3397,6 +3401,10 @@ class Diagram(PhysicsObject):
             weight += sum([model.get('order_hierarchy')[c]*n for \
                               (c,n) in couplings.items()])
         coupling_orders['WEIGHTED'] = weight
+        # the hidden order of interference processes, once in the model, is
+        # only listed by the diagrams which carry it
+        if not coupling_orders.get(INTERFERENCE_ORDER):
+            coupling_orders.pop(INTERFERENCE_ORDER, None)
         self.set('orders', coupling_orders)
 
     def pass_squared_order_constraints(self, diag_multiplier, squared_orders,
@@ -3936,8 +3944,9 @@ class Process(PhysicsObject):
                 'forbidden_onsh_s_channels', 'forbidden_s_channels',
                 'forbidden_particles', 'is_decay_chain', 'decay_chains',
                 'legs_with_decays', 'perturbation_couplings', 'has_born', 
-                'NLO_mode', 'split_orders', 'born_sq_orders',
-                'interference_mode', 'interference_process']
+                'NLO_mode', 'split_orders', 'born_sq_orders'] + \
+               [key for key in ('interference_mode', 'interference_process')
+                if key in self]   # absent from a process pickled before them
 
     def get_interference_mode(self):
         """'LIxtree', 'treextree' or '' (also for a process unpickled from
@@ -3947,14 +3956,20 @@ class Process(PhysicsObject):
 
     def interference_string(self):
         """The tail of the process syntax for an interference process: the
-        '[ treextree ]' bracket (the LIxtree one is printed with the
-        perturbation orders) followed by the right-hand process, each piece
-        ending with a space. Empty for an ordinary process."""
+        '[ treextree ]' or '[ LIxtree = ORDERS ]' bracket followed by the
+        right-hand process, each piece ending with a space. It comes after
+        everything that belongs to the left-hand process (orders, squared
+        orders, exclusions), since what follows the bracket is read back as
+        the right-hand process. Empty for an ordinary process."""
 
         mode = self.get_interference_mode()
         if not mode:
             return ''
-        mystr = '[ treextree ] ' if mode == 'treextree' else ''
+        if mode == 'treextree':
+            mystr = '[ treextree ] '
+        else:
+            mystr = '[ LIxtree = %s ] ' % ' '.join(sorted(
+                                              self['perturbation_couplings']))
         right = self['interference_process']
         if right is not None:
             mystr += right.nice_string(prefix=False, print_weighted=False) + ' '
@@ -4044,14 +4059,14 @@ class Process(PhysicsObject):
               self['constrained_orders'][key][1], self['constrained_orders'][key][0]) 
                     for key in sorted(self['constrained_orders'].keys()))  + ' '
 
-        # Add perturbation_couplings
-        if print_perturbated and self['perturbation_couplings']:
+        # Add perturbation_couplings (for LIxtree: with the right-hand process,
+        # see interference_string)
+        if print_perturbated and self['perturbation_couplings'] and \
+                                   self.get_interference_mode() != 'LIxtree':
             mystr = mystr + '[ '
             if self['NLO_mode']!='tree':
                 if self['NLO_mode']=='virt' and not self['has_born']:
                     mystr = mystr + 'sqrvirt = '
-                elif self.get_interference_mode() == 'LIxtree':
-                    mystr = mystr + 'LIxtree = '
                 else:
                     mystr = mystr + self['NLO_mode'] + ' = '
             for order in sorted(self['perturbation_couplings']):
@@ -4985,14 +5000,14 @@ class ProcessDefinition(Process):
                                      (key,(value, operator)) 
                                    in self['constrained_orders'].items()) + ' '
 
-        # Add perturbation_couplings
-        if self['perturbation_couplings']:
+        # Add perturbation_couplings (for LIxtree: with the right-hand process,
+        # see interference_string)
+        if self['perturbation_couplings'] and \
+                                   self.get_interference_mode() != 'LIxtree':
             mystr = mystr + '[ '
             if self['NLO_mode']!='tree':
                 if self['NLO_mode']=='virt' and not self['has_born']:
                     mystr = mystr + 'sqrvirt = '
-                elif self.get_interference_mode() == 'LIxtree':
-                    mystr = mystr + 'LIxtree = '
                 else:
                     mystr = mystr + self['NLO_mode'] + ' = '
             for order in self['perturbation_couplings']:

@@ -159,9 +159,10 @@ _INTERFERENCE_BRACKET = re.compile(
 # 'QED == 2', ... The constraints written between the bracket and the
 # right-hand process belong to the left-hand one (the usual place of the
 # squared-order constraints of a loop process), those written after the
-# right-hand process belong to the right-hand one.
+# right-hand process belong to the right-hand one. An order name is an
+# identifier, never a pdg code: '25 > 6 -6' is a process, not 'ORDER > 6'.
 _LEADING_ORDER_CONSTRAINT = re.compile(
-    r"^\s*(?:\w|\^2)+\s*(?:===|==|<=|>=|!=|=|<|>)\s*-?\d+(?=\s|$)")
+    r"^\s*[A-Za-z_]\w*(?:\^2)?\s*(?:===|==|<=|>=|!=|=|<|>)\s*-?\d+(?=\s|$)")
 
 
 def interference_mode_of(option, orders):
@@ -237,8 +238,13 @@ def split_interference_line(line):
     tail = tail.strip()
     constraint = _LEADING_ORDER_CONSTRAINT.match(tail)
     while constraint:
+        rest = tail[constraint.end():].strip()
+        # a constraint is followed by more constraints or by the right-hand
+        # process, which has an arrow: in 'h > 5 -5', 'h > 5' is no constraint
+        if rest and not re.search(r'>\D', rest):
+            break
         left_constraints.append(constraint.group(0).strip())
-        tail = tail[constraint.end():].strip()
+        tail = rest
         constraint = _LEADING_ORDER_CONSTRAINT.match(tail)
 
     right = tail if tail else None
@@ -6902,9 +6908,15 @@ This implies that with decay chains:
         constraint and no exclusion is carried over from the loop process.
         """
 
+        # An amplitude-level '==' or '>' constraint on the left-hand process
+        # constrains the left-hand amplitudes only: unlike for an ordinary
+        # process, it must not turn into a squared-order constraint, which
+        # here would act on the left x right products (u d > u d QED==0
+        # [treextree] u d > u d QCD==0 would get QED^2==0 and no interference
+        # at all). Explicit '^2' constraints are kept.
         procdef = self.extract_process(left, proc_number=proc_number,
                                        overall_orders=overall_orders,
-                                       avoid_squared_orders=avoid_squared_orders)
+                                       avoid_squared_orders=True)
         if not procdef:
             raise self.InvalidCmd("Empty or wrong format process, please try again.")
         if procdef.get('decay_chains'):

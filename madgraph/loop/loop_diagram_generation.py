@@ -893,6 +893,12 @@ class LoopAmplitude(diagram_generation.Amplitude):
         # will find examples of common filters.
         self.user_filter(model,self['structure_repository'], filter=loop_filter)
 
+        # LIxtree: the filters above may have removed every loop that some
+        # interfering trees were paired with; such trees no longer contribute
+        # to the interference and are dropped
+        if self['process'].get_interference_mode() == 'LIxtree':
+            self.drop_orphan_interference_trees()
+
         # Set the necessary UV/R2 CounterTerms for each loop diagram generated
         self.set_LoopCT_vertices()
 
@@ -1265,6 +1271,36 @@ class LoopAmplitude(diagram_generation.Amplitude):
                         % tree_process.nice_string(prefix=False))
         ldg_debug_info("#Interfering tree diagrams", len(tree_diagrams))
         return len(tree_diagrams)
+
+    def drop_orphan_interference_trees(self):
+        """Remove the interfering trees of a LIxtree process (see
+        set_interference_trees) of which no remaining loop diagram forms a
+        product passing the squared-order constraints. The squared-order
+        selection keeps a tree as long as one loop partner exists, but the loop
+        filters applied after it (Furry, wave-function corrections, vanishing
+        tadpoles, perturbative orders, user loop filter) can remove that
+        partner. Returns the number of trees removed."""
+
+        squared_orders = dict((order, value) for order, value in
+                              self['process']['squared_orders'].items()
+                              if value >= 0)
+        sqorders_types = copy.copy(self['process'].get('sqorders_types'))
+        if 'WEIGHTED' not in sqorders_types:
+            sqorders_types['WEIGHTED'] = '<='
+        kept = base_objects.DiagramList()
+        removed = 0
+        for diagram in self['loop_UVCT_diagrams']:
+            if not diagram['UVCT_orders'].get(INTERFERENCE_ORDER) or \
+                   any(diagram.pass_squared_order_constraints(loop,
+                                          squared_orders, sqorders_types)
+                       for loop in self['loop_diagrams']):
+                kept.append(diagram)
+            else:
+                removed += 1
+        self['loop_UVCT_diagrams'] = kept
+        if removed:
+            ldg_debug_info("#Orphan interfering trees removed", removed)
+        return removed
 
     def set_Born_CT(self):
         """ Scan all born diagrams and add for each all the corresponding UV 
