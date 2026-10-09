@@ -72,9 +72,8 @@ void update_mass_min_max(
 // Masses of the external momenta in the order they are handed to boost_beam,
 // i.e. after the channel permutation. A position whose mass differs between
 // permutations gets -1, and boost_beam reads that mass off the momentum.
-std::vector<double> lab_masses(
-    const Topology& topology, const nested_vector2<me_int_t>& permutations
-) {
+std::vector<double>
+lab_masses(const Topology& topology, const nested_vector2<me_int_t>& permutations) {
     std::vector<double> masses = topology.incoming_masses();
     const auto& out = topology.outgoing_masses();
     masses.insert(masses.end(), out.begin(), out.end());
@@ -193,9 +192,9 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         }()
     ),
     _topology(topology),
-    _cuts(cuts.value_or(Cuts(
-        topology.outgoing_masses().size() + topology.incoming_masses().size()
-    ))),
+    _cuts(cuts.value_or(
+        Cuts(topology.outgoing_masses().size() + topology.incoming_masses().size())
+    )),
     _pi_factors(
         std::pow(2 * PI, 4 - 3 * static_cast<int>(topology.outgoing_masses().size()))
     ),
@@ -252,11 +251,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         : std::vector<std::vector<double>>{};
     std::vector<std::vector<std::size_t>> node_leaves(_topology.decays().size());
     {
-        std::vector<std::size_t> decay_to_outgoing(
-            _topology.decays().size(), no_leaf
-        );
-        for (std::size_t out_pos = 0;
-             out_pos < _topology.outgoing_indices().size();
+        std::vector<std::size_t> decay_to_outgoing(_topology.decays().size(), no_leaf);
+        for (std::size_t out_pos = 0; out_pos < _topology.outgoing_indices().size();
              ++out_pos) {
             decay_to_outgoing.at(_topology.outgoing_indices().at(out_pos)) = out_pos;
         }
@@ -564,8 +560,9 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
     // permute, boost into the lab frame and apply the cuts
     auto finish = [&](Value p_ext_stack) -> Result {
         if (_permutations.size() > 1) {
-            p_ext_stack =
-                fb.permute_momenta(p_ext_stack, _permutations, conditions.at(0));
+            p_ext_stack = fb.permute_momenta(
+                p_ext_stack, _permutations, conditions.at("permutation_index")
+            );
         } else if (_permutations.size() == 1 &&
                    !std::is_sorted(
                        _permutations.at(0).begin(), _permutations.at(0).end()
@@ -761,9 +758,7 @@ Value PhaseSpaceMapping::to_lab(
     }
     if (_mirror_beams) {
         // a rotation: the masses of the legs are unchanged by it
-        momenta = fb.mirror_momenta(
-            momenta, conditions.at(_permutations.size() > 1 ? 1 : 0)
-        );
+        momenta = fb.mirror_momenta(momenta, conditions.at("mirror_index"));
     }
     if (_beam_rapidity != 0.) {
         momenta = fb.boost_beam(momenta, masses, exp_plus, exp_minus);
@@ -790,9 +785,7 @@ Value PhaseSpaceMapping::from_lab(
     }
     if (_mirror_beams) {
         // a rotation: the masses of the legs are unchanged by it
-        momenta = fb.mirror_momenta(
-            momenta, conditions.at(_permutations.size() > 1 ? 1 : 0)
-        );
+        momenta = fb.mirror_momenta(momenta, conditions.at("mirror_index"));
     }
     if (_map_luminosity) {
         momenta = fb.boost_beam_inverse(momenta, masses, x1, x2);
@@ -815,7 +808,9 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
     // permute momenta if permutations are given
     if (_permutations.size() > 1) {
         p_ext_stack = fb.permute_momenta(
-            p_ext_stack, invert_permutations(_permutations), conditions.at(0)
+            p_ext_stack,
+            invert_permutations(_permutations),
+            conditions.at("permutation_index")
         );
     } else if (_permutations.size() == 1 &&
                !std::is_sorted(
@@ -831,12 +826,11 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
     std::vector<DecayData> decay_data(
         _topology.decays().begin(), _topology.decays().end()
     );
-    for (auto [decay_index, mass, momentum] :
-         zip(_topology.outgoing_indices(),
+    for (auto [decay_index, mass, momentum] : zip(
+             _topology.outgoing_indices(),
              _topology.outgoing_masses(),
-             std::span(
-                 p_ext.begin() + _topology.incoming_masses().size(), p_ext.end()
-             ))) {
+             std::span(p_ext.begin() + _topology.incoming_masses().size(), p_ext.end())
+         )) {
         auto& data = decay_data.at(decay_index);
         data.mass = mass;
         data.mass2 = mass * mass;

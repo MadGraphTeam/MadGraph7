@@ -378,7 +378,8 @@ NamedVector<Value> Integrand::build_channel_part(
 
     // Apply adaptive map (VEGAS or MadNIS flow)
     Value latent = r;
-    ValueVec mapping_conditions, flow_conditions;
+    NamedVector<Value> mapping_conditions;
+    ValueVec flow_conditions;
     std::visit(
         Overloaded{
             [&](std::monostate) {},
@@ -436,7 +437,7 @@ NamedVector<Value> Integrand::build_channel_part(
             _discrete_sym
         );
         chan_index = fb.gather_int(chan_index_in_group, _channel_indices);
-        mapping_conditions.push_back(chan_index_in_group);
+        mapping_conditions.push_back("permutation_index", chan_index_in_group);
     } else {
         chan_index =
             fb.full({static_cast<me_int_t>(_channel_indices.at(0)), batch_size_val});
@@ -455,11 +456,13 @@ NamedVector<Value> Integrand::build_channel_part(
         } else {
             mirror_index = fb.full({static_cast<me_int_t>(0), batch_size_val});
         }
-        mapping_conditions.push_back(mirror_index);
+        mapping_conditions.push_back("mirror_index", mirror_index);
     }
 
     // Apply phase space mapping
-    auto mapping_result = _mapping.build_forward(fb, {latent}, mapping_conditions);
+    auto mapping_result = _mapping.build_forward(
+        fb, {_mapping.input_types().keys(), {latent}}, mapping_conditions
+    );
     weights_before_cuts.push_back(mapping_result["det"]);
     Value momenta = mapping_result["momenta"];
     Value x0 = mapping_result["x1"];
