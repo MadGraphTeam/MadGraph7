@@ -249,15 +249,17 @@ def main() -> None:
             )
 
     # set up generators
+    with open(os.path.join("data", "channels.json")) as f:
+        channels = json.load(f)
     channel_generators = [
-        ms.ChannelEventGenerator.load(
-            os.path.join("data", "channels", file),
+        ms.ChannelEventGenerator.load_json(
+            json.dumps(channel),
             contexts,
             event_file=os.path.join(temp_dir, f"events.{name}.npy"),
             weight_file=os.path.join(temp_dir, f"weights.{name}.npy"),
             config=config,
         )
-        for name, file in madspace_data["channels"].items()
+        for name, channel in channels.items()
     ]
     event_generator = ms.EventGenerator(
         contexts=contexts,

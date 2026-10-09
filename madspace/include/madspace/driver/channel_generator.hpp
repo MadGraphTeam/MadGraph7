@@ -39,6 +39,15 @@ public:
         const std::string& weight_file,
         const GeneratorConfig& config
     );
+    /// Like @ref load, from the JSON text produced by @ref to_json instead of
+    /// a file.
+    static ChannelEventGenerator load_json(
+        const std::string& channel_json,
+        const std::vector<ContextPtr>& contexts,
+        const std::string& event_file,
+        const std::string& weight_file,
+        const GeneratorConfig& config
+    );
 
     /**
      * @param contexts          One context per device to run on.
@@ -143,6 +152,8 @@ public:
     void write_events(const TensorVec& unweighted_events, double job_max_weight);
     /// Serialize this generator's state to `file_name`; see @ref load.
     void save(const std::string& file_name) const;
+    /// The JSON text that @ref save writes; see @ref load_json.
+    std::string to_json() const;
 
 private:
     void apply_truncation_budget();

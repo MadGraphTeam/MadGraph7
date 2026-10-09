@@ -1853,14 +1853,14 @@ class MadgraphProcess:
         os.mkdir(events_path)
         self.contexts[0].save_globals(os.path.join(data_path, "globals.tar"))
 
-        channel_path = os.path.join(data_path, "channels")
-        os.mkdir(channel_path)
-        channel_files = {}
-        for channel in self.event_generator.channels():
-            name = channel.status().name
-            file = f"channel{name}.json"
-            channel_files[name] = file
-            channel.save(os.path.join(channel_path, file))
+        # one json object per channel, joined by hand so that the channel
+        # json is not parsed and dumped again
+        channel_entries = [
+            f"{json.dumps(channel.status().name)}:{channel.to_json()}"
+            for channel in self.event_generator.channels()
+        ]
+        with open(os.path.join(data_path, "channels.json"), "w") as f:
+            f.write("{" + ",".join(channel_entries) + "}")
 
         lib_path = os.path.join(gridpack_path, "lib")
         if self.run_card["gridpack"]["include_source"]:
@@ -1948,7 +1948,6 @@ class MadgraphProcess:
         os.chmod(gen_events_file, 0o755)
 
         data = {
-            "channels": channel_files,
             "matrix_elements": matrix_elements,
             "me_parameters": me_parameters(self.run_card),
             "source_hash": ms.SOURCE_HASH,

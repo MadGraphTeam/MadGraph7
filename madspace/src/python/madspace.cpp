@@ -1313,7 +1313,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             &PhaseSpaceMapping::channel_count,
             pydoc::doc("PhaseSpaceMapping::channel_count")
         )
-        .def("empty", &PhaseSpaceMapping::empty, pydoc::doc("PhaseSpaceMapping::empty"));
+        .def(
+            "empty", &PhaseSpaceMapping::empty, pydoc::doc("PhaseSpaceMapping::empty")
+        );
 
     py::classh<MultiChannelFunction, FunctionGenerator>(
         m, "MultiChannelFunction", pydoc::doc("MultiChannelFunction")
@@ -3079,6 +3081,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("config"),
             pydoc::doc("ChannelEventGenerator::load")
         )
+        .def_static(
+            "load_json",
+            &ChannelEventGenerator::load_json,
+            py::arg("channel_json"),
+            py::arg("contexts"),
+            py::arg("event_file"),
+            py::arg("weight_file"),
+            py::arg("config"),
+            pydoc::doc("ChannelEventGenerator::load_json")
+        )
         .def(
             py::init<
                 const std::vector<ContextPtr>&,
@@ -3109,6 +3121,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             &ChannelEventGenerator::save,
             py::arg("save"),
             pydoc::doc("ChannelEventGenerator::save")
+        )
+        .def(
+            "to_json",
+            &ChannelEventGenerator::to_json,
+            pydoc::doc("ChannelEventGenerator::to_json")
         );
 
     py::classh<PdfMemberSpec>(m, "PdfMemberSpec", pydoc::doc("PdfMemberSpec"))

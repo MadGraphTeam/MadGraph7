@@ -809,9 +809,13 @@ void ChannelEventGenerator::write_events(
 
 void ChannelEventGenerator::save(const std::string& file_name) const {
     std::ofstream f(file_name);
+    f << to_json();
+}
+
+std::string ChannelEventGenerator::to_json() const {
     json j;
     j = *this;
-    f << j.dump();
+    return j.dump();
 }
 
 ChannelEventGenerator ChannelEventGenerator::load(
@@ -822,7 +826,23 @@ ChannelEventGenerator ChannelEventGenerator::load(
     const GeneratorConfig& config
 ) {
     std::ifstream f(channel_file);
-    json channel = json::parse(f);
+    if (!f) {
+        throw std::runtime_error(std::format("Could not open file '{}'", channel_file));
+    }
+    std::string text(
+        (std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>()
+    );
+    return load_json(text, contexts, event_file, weight_file, config);
+}
+
+ChannelEventGenerator ChannelEventGenerator::load_json(
+    const std::string& channel_json,
+    const std::vector<ContextPtr>& contexts,
+    const std::string& event_file,
+    const std::string& weight_file,
+    const GeneratorConfig& config
+) {
+    json channel = json::parse(channel_json);
     std::optional<Function> hist_function;
     std::vector<Histogram> histograms;
     if (!channel.at("histogram_function").is_null()) {
