@@ -1067,6 +1067,14 @@ class MadSpinInterface(extended_cmd.Cmd):
         "no frame at all" to MadSpin. The default ``me_frame = [1,2]`` gives 6,
         i.e. exactly the value NLO samples always had. An NLO run_card has no
         beam polarisation.
+
+        An mg7 run_card (``run.me_frame``) is read the same way, but its
+        default ``[]`` gives 0, not 6: madspace evaluates the matrix element on
+        the lab-frame momenta it writes out unless me_frame names a frame, and
+        0 is exactly "no frame, stay in the lab" to MadSpin -- ``_frame_boost``
+        returns None, and the v1 driver's ``boost_to_frame`` selects no leg and
+        boosts by nothing. Giving it 6 projected the polarisation of an mg7
+        sample in the partonic c.m. instead. mg7 has no beam polarisation.
         """
         if isinstance(run_card, banner.RunCardLO):
             run_card.update_system_parameter_for_include()
@@ -1074,6 +1082,9 @@ class MadSpinInterface(extended_cmd.Cmd):
             beampol = [run_card['polbeam1'], run_card['polbeam2']]
         elif isinstance(run_card, banner.RunCardNLO):
             frame_id = sum(2**n for n in run_card['me_frame'])
+            beampol = [0., 0.]
+        elif isinstance(run_card, banner.RunCardMG7):
+            frame_id = sum(2**n for n in run_card['run']['me_frame'])
             beampol = [0., 0.]
         else:
             frame_id = 6

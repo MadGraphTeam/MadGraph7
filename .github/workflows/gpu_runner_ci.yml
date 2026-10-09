@@ -81,7 +81,9 @@ env:
 
 jobs:
   start_runner:
-    runs-on: vmadgraph # the other MadGraph7 workflows use ubuntu-24.04
+    # one vmadgraph runner per cluster (labels vmadgraph-lemaitre4 / vmadgraph-manneback), so a
+    # run waiting in one cluster's Slurm queue does not block the other; see .github/gpu_ci/README.md
+    runs-on: [self-hosted, vmadgraph, "vmadgraph-${{ inputs.cluster }}"]
     # holds CECI_KEY; restrict it to the main branch (and optionally add reviewers)
     environment: ceci-gpu
     timeout-minutes: 300 # mostly the time the runner job waits in the Slurm queue

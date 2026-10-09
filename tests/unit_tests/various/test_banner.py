@@ -1730,6 +1730,22 @@ class TestRunCardMG7(unittest.TestCase):
         mg7.write(buf, template=self.template)
         tomllib.loads(buf.getvalue())
 
+    def test_from_LO_me_frame(self):
+        """me_frame is carried over, the LO default included: madevent's [1,2]
+        is the partonic c.m., mg7's own default [] the lab frame"""
+        lo = bannermod.RunCardLO()
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['run']['me_frame'], [1, 2])
+        lo.set('me_frame', [3, 4], user=True)
+        lo.update_system_parameter_for_include()     # frame_id 24
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['run']['me_frame'], [3, 4])
+        self.assertNotIn('frame', ' '.join(dropped))
+        # no leg selected: madevent stays in the partonic c.m.
+        lo.set('me_frame', [], user=True)
+        mg7, _ = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['run']['me_frame'], [1, 2])
+
     def test_int_with_operator_is_not_silently_zero(self):
         """'ht/4' used to parse as 0, i.e. dynamical_scale_choice = user hook"""
         fmt = bannermod.ConfigFile.format_variable
