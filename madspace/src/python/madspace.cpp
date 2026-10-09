@@ -3125,7 +3125,14 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "to_json",
             &ChannelEventGenerator::to_json,
+            py::arg("include_estimates") = false,
             pydoc::doc("ChannelEventGenerator::to_json")
+        )
+        .def(
+            "set_fixed_max_weight",
+            &ChannelEventGenerator::set_fixed_max_weight,
+            py::arg("max_weight"),
+            pydoc::doc("ChannelEventGenerator::set_fixed_max_weight")
         );
 
     py::classh<PdfMemberSpec>(m, "PdfMemberSpec", pydoc::doc("PdfMemberSpec"))
@@ -3632,6 +3639,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             "generate",
             &EventGenerator::generate,
             pydoc::doc("EventGenerator::generate")
+        )
+        .def(
+            "optimize",
+            &EventGenerator::optimize,
+            pydoc::doc("EventGenerator::optimize")
+        )
+        .def(
+            "fix_max_weights",
+            &EventGenerator::fix_max_weights,
+            pydoc::doc("EventGenerator::fix_max_weights")
         )
         .def(
             "combine_to_compact_npy",

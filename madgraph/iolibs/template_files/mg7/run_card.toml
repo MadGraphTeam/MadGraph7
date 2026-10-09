@@ -58,6 +58,16 @@ include_source = %(gridpack.include_source)s
 include_madspace = %(gridpack.include_madspace)s
 include_madspace_source = %(gridpack.include_madspace_source)s
 compress = %(gridpack.compress)s
+# how the run that creates the gridpack ends (only used if save_gridpack is set):
+#   regular        a normal run with events, then the gridpack is stored
+#   minimal        no events: the gridpack is stored right after the MadNIS training,
+#                  or, with VEGAS, once the grid of every channel has converged
+#   fix_max_weight no events: every channel runs until freeze_max_weight_after
+#                  unweighted events are reached; its maximum weight is then kept
+#                  fixed in the gridpack run, and its integral is combined with the
+#                  one of the gridpack run to share the events between channels
+#                  (can be slow for low-efficiency channels)
+run_mode = %(gridpack.run_mode)s
 # gridpack runs only: directories for the temporary npy files and for the final
 # output files. "" uses the run folder Events/<run_name>_<index>; if output_dir
 # is set, no run folder is created.

@@ -237,6 +237,8 @@ class HistItem:
 
 class MadgraphProcess:
     def __init__(self):
+        self.madnis_trained = False
+        self.lhe_completer = None
         self.load_cards()
         self.init_backend()
         self.init_event_dir()
@@ -1461,6 +1463,7 @@ class MadgraphProcess:
         for context in self.contexts[1:]:
             context.copy_globals_from(self.contexts[0])
         self.event_generator = self.build_event_generator(madnis_phasespaces)
+        self.madnis_trained = True
 
     def update_madnis_status_single(
         self, batch: int, batch_target: int, loss: float, lr: float, channel_count: int
@@ -1544,7 +1547,30 @@ class MadgraphProcess:
         self.madnis_upper_box.print_update()
         self.madnis_lower_box.print_update()
 
+    @property
+    def gridpack_run_mode(self) -> str:
+        """How this run ends: a gridpack run may skip the events (see the
+        [gridpack] run_mode run card option); any other run is a regular one."""
+        if not self.run_card["gridpack"]["save_gridpack"]:
+            return "regular"
+        return self.run_card["gridpack"]["run_mode"]
+
+    def finish_without_events(self) -> None:
+        """The end of a gridpack run that writes no events: only what the
+        gridpack needs is prepared, then it is stored."""
+        if self.gridpack_run_mode == "minimal":
+            # a trained MadNIS needs nothing more, a VEGAS grid has to converge
+            if not self.madnis_trained:
+                self.event_generator.optimize()
+        else:
+            self.event_generator.fix_max_weights()
+        self.build_systematics()
+        self.save_gridpack()
+
     def generate_events(self) -> None:
+        if self.gridpack_run_mode != "regular":
+            self.finish_without_events()
+            return
         start_time = get_start_time()
         self.event_generator.generate()
         output_format = self.run_card["run"]["output_format"]
@@ -1856,7 +1882,7 @@ class MadgraphProcess:
         # one json object per channel, joined by hand so that the channel
         # json is not parsed and dumped again
         channel_entries = [
-            f"{json.dumps(channel.status().name)}:{channel.to_json()}"
+            f"{json.dumps(channel.status().name)}:{channel.to_json(self.gridpack_run_mode == "fix_max_weight")}"
             for channel in self.event_generator.channels()
         ]
         with open(os.path.join(data_path, "channels.json"), "w") as f:
@@ -4200,6 +4226,8 @@ def run_single(switch=None) -> "MadgraphProcess":
     process.survey()
     process.train_madnis()
     process.generate_events()
+    if process.gridpack_run_mode != "regular":
+        return process
     # run_card-driven LHE post-processing (displaced vertex + systematics)
     run_lhe_postprocessing(process)
     # run the post-processing tools (Pythia8/Delphes/MadSpin/reweight/analysis)

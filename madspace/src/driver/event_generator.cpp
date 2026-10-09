@@ -106,7 +106,14 @@ void EventGenerator::finish_channel_job(const GeneratorBatchJob& job) {
 
 // Jobs run on the pool, but commit strictly in per-channel dispatch order, so
 // results are a pure function of the seed.
-void EventGenerator::generate() {
+void EventGenerator::generate() { run_generate(GenerateMode::events); }
+
+void EventGenerator::optimize() { run_generate(GenerateMode::optimize_only); }
+
+void EventGenerator::fix_max_weights() { run_generate(GenerateMode::fix_max_weights); }
+
+void EventGenerator::run_generate(GenerateMode mode) {
+    _generate_mode = mode;
     _survey_job = false;
     reset_start_time();
     print_gen_init();
@@ -116,9 +123,20 @@ void EventGenerator::generate() {
     // so round one truncates at all; _max_weight only rises, and set_target_count()
     // tightens it when the real (smaller) target arrives.
     for (auto& channel : _channels) {
-        if (channel->status().count_opt == 0) {
-            channel->set_target_count(_config.target_count);
+        if (channel->status().count_opt == 0 || mode == GenerateMode::fix_max_weights) {
+            channel->set_target_count(
+                mode == GenerateMode::fix_max_weights
+                    ? _config.freeze_max_weight_after
+                    : _config.target_count
+            );
         }
+    }
+
+    // channels loaded with a known integral can share the events from the start
+    if (std::any_of(_channels.begin(), _channels.end(), [](auto& channel) {
+            return channel->has_abs_integral_prior();
+        })) {
+        update_integral_fractions();
     }
 
     while (true) {
@@ -128,8 +146,13 @@ void EventGenerator::generate() {
              ++channel_index) {
             auto& channel = _channels.at(channel_index);
             double integral_frac = _channel_integral_fractions.at(channel_index);
-            if (integral_frac > 0 &&
-                channel->status().count_unweighted >= channel->status().count_target) {
+            if (mode == GenerateMode::optimize_only) {
+                if (!channel->needs_optimization()) {
+                    continue;
+                }
+            } else if (integral_frac > 0 &&
+                       channel->status().count_unweighted >=
+                           channel->status().count_target) {
                 continue;
             }
             if (channel->needs_optimization()) {
@@ -189,6 +212,15 @@ void EventGenerator::generate() {
             std::size_t job_id_refill = _job_id;
             std::size_t refill_unweight_dispatched = start_jobs();
             round_in_flight += (_job_id - job_id_refill) + refill_unweight_dispatched;
+        }
+
+        if (mode == GenerateMode::optimize_only) {
+            if (std::none_of(_channels.begin(), _channels.end(), [](auto& channel) {
+                    return channel->needs_optimization();
+                })) {
+                break;
+            }
+            continue;
         }
 
         update_integral_fractions();
@@ -572,9 +604,20 @@ void EventGenerator::update_integral_status() {
 }
 
 void EventGenerator::update_integral_fractions() {
+    // With an integral known from an earlier run, the sum of the channel estimates
+    // normalizes the fractions; without, this is _status.mean_abs.
+    double total_estimate = _status.mean_abs;
+    if (std::any_of(_channels.begin(), _channels.end(), [](auto& channel) {
+            return channel->has_abs_integral_prior();
+        })) {
+        total_estimate = 0.;
+        for (auto& channel : _channels) {
+            total_estimate += channel->abs_integral_estimate();
+        }
+    }
     for (auto [channel, integral_fraction] :
          zip(_channels, _channel_integral_fractions)) {
-        integral_fraction = channel->abs_cross_section().mean() / _status.mean_abs;
+        integral_fraction = channel->abs_integral_estimate() / total_estimate;
     }
 
     // Distribute events between channels, ensure sum is exactly target_count
@@ -601,7 +644,11 @@ void EventGenerator::update_integral_fractions() {
     for (std::size_t index : order | std::views::take(leftover)) {
         ++counts.at(index);
     }
-    for (auto [channel, count] : zip(_channels, counts)) {
+    for (auto [channel, count, fraction] :
+         zip(_channels, counts, _channel_integral_fractions)) {
+        if (_generate_mode == GenerateMode::fix_max_weights) {
+            count = fraction > 0 ? _config.freeze_max_weight_after : 0;
+        }
         channel->set_target_count(count);
     }
 }
