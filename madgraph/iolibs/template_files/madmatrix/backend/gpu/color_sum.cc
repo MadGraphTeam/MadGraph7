@@ -113,47 +113,49 @@ namespace madmatrix
       }
       // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
       E_ACCESS::kernelAccess( allMEs ) += deltaMEs; // fix #435
-      return;
     }
-    fptype_amp jampR[ncolor];
-    fptype_amp jampI[ncolor];
-    for( int icol = 0; icol < ncolor; icol++ )
+    else // one amplitude split order (an else, not a return: no unreachable code for nvcc)
     {
-      cxtype_amp jamp = J_ACCESS::kernelAccessIcolIhelNhelConst( allJamps, icol, ihel0, nGoodHel );
-      jampR[icol] = jamp.real();
-      jampI[icol] = jamp.imag();
-    }
-    fptype deltaMEs = { 0 };
-    for( int icol = 0; icol < ncolor; icol++ )
-    {
-      fptype_colour ztempR = { 0 };
-      fptype_colour ztempI = { 0 };
-      fptype_colour jampRi = jampR[icol];
-      fptype_colour jampIi = jampI[icol];
-      // OLD IMPLEMENTATION (ihel3: symmetric square matrix) - Loop over all jcol
-      //for( int jcol = 0; jcol < ncolor; jcol++ )
-      //{
-      //  fptype_colour jampRj = jampR[jcol];
-      //  fptype_colour jampIj = jampI[jcol];
-      //  ztempR += s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampRj; // use fptype_colour version of color matrix
-      //  ztempI += s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampIj; // use fptype_colour version of color matrix
-      //}
-      // NEW IMPLEMENTATION #475 (ihel3p1: triangular lower diagonal matrix) - Loop over jcol < icol
-      ztempR += s_pNormalizedColorMatrix2[icol * ncolor + icol] * jampRi; // use fptype_colour version of color matrix
-      ztempI += s_pNormalizedColorMatrix2[icol * ncolor + icol] * jampIi; // use fptype_colour version of color matrix
-      for( int jcol = 0; jcol < icol; jcol++ )
+      fptype_amp jampR[ncolor];
+      fptype_amp jampI[ncolor];
+      for( int icol = 0; icol < ncolor; icol++ )
       {
-        fptype_colour jampRj = jampR[jcol];
-        fptype_colour jampIj = jampI[jcol];
-        ztempR += 2 * s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampRj; // use fptype_colour version of color matrix
-        ztempI += 2 * s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampIj; // use fptype_colour version of color matrix
+        cxtype_amp jamp = J_ACCESS::kernelAccessIcolIhelNhelConst( allJamps, icol, ihel0, nGoodHel );
+        jampR[icol] = jamp.real();
+        jampI[icol] = jamp.imag();
       }
-      deltaMEs += ztempR * jampRi;
-      deltaMEs += ztempI * jampIi;
+      fptype deltaMEs = { 0 };
+      for( int icol = 0; icol < ncolor; icol++ )
+      {
+        fptype_colour ztempR = { 0 };
+        fptype_colour ztempI = { 0 };
+        fptype_colour jampRi = jampR[icol];
+        fptype_colour jampIi = jampI[icol];
+        // OLD IMPLEMENTATION (ihel3: symmetric square matrix) - Loop over all jcol
+        //for( int jcol = 0; jcol < ncolor; jcol++ )
+        //{
+        //  fptype_colour jampRj = jampR[jcol];
+        //  fptype_colour jampIj = jampI[jcol];
+        //  ztempR += s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampRj; // use fptype_colour version of color matrix
+        //  ztempI += s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampIj; // use fptype_colour version of color matrix
+        //}
+        // NEW IMPLEMENTATION #475 (ihel3p1: triangular lower diagonal matrix) - Loop over jcol < icol
+        ztempR += s_pNormalizedColorMatrix2[icol * ncolor + icol] * jampRi; // use fptype_colour version of color matrix
+        ztempI += s_pNormalizedColorMatrix2[icol * ncolor + icol] * jampIi; // use fptype_colour version of color matrix
+        for( int jcol = 0; jcol < icol; jcol++ )
+        {
+          fptype_colour jampRj = jampR[jcol];
+          fptype_colour jampIj = jampI[jcol];
+          ztempR += 2 * s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampRj; // use fptype_colour version of color matrix
+          ztempI += 2 * s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampIj; // use fptype_colour version of color matrix
+        }
+        deltaMEs += ztempR * jampRi;
+        deltaMEs += ztempI * jampIi;
+      }
+      // *** STORE THE RESULTS ***
+      // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
+      E_ACCESS::kernelAccess( allMEs ) += deltaMEs; // fix #435
     }
-    // *** STORE THE RESULTS ***
-    // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
-    E_ACCESS::kernelAccess( allMEs ) += deltaMEs; // fix #435
   }
 
   //--------------------------------------------------------------------------

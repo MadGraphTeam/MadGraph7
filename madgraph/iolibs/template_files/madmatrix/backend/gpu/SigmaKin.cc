@@ -230,7 +230,11 @@ namespace madmatrix
     // === Calculate wavefunctions and amplitudes for all diagrams in all processes
 
     constexpr size_t nxcoup = ndcoup + nIPC; // both dependent and independent couplings
-    const fptype* allCOUPs[nxcoup];
+    // nxcoup can be 0: a process with no alpha_s-dependent coupling whose couplings are
+    // all flavor couplings (cIPF, e.g. u u~ > u u~ QED^2==4 with flavor grouping), and a
+    // zero-sized array is not allowed in device code (the host compilers take it as an
+    // extension): size them at least 1, as cIPD/cIPC above
+    const fptype* allCOUPs[nxcoup > 0 ? nxcoup : 1];
 #ifdef __CUDACC__ // this must be __CUDACC__
 #pragma nv_diagnostic push
 #pragma nv_diag_suppress 186 // e.g. <<warning #186-D: pointless comparison of unsigned integer with zero>>
@@ -244,7 +248,7 @@ namespace madmatrix
 #endif
     // CUDA kernels take input/output buffers with momenta/MEs for all events
     const fptype_momenta* momenta = allmomenta;
-    const fptype* COUPs[nxcoup];
+    const fptype* COUPs[nxcoup > 0 ? nxcoup : 1];
     for( size_t ixcoup = 0; ixcoup < nxcoup; ixcoup++ ) COUPs[ixcoup] = allCOUPs[ixcoup];
     const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread) in grid
     fptype_amp* numerators = &allNumerators[ievt * ndiagrams];
