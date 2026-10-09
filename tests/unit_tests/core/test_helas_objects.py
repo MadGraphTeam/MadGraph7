@@ -5958,6 +5958,60 @@ class TestFlavorStoreDecayChain(unittest.TestCase):
                     "diagram" % (flv,))
 
 
+#===============================================================================
+# TestTrimmedDecayChainLegNumbering
+#===============================================================================
+class TestTrimmedDecayChainLegNumbering(unittest.TestCase):
+    """With flavor grouping, go > u u~ n1 (MSSM_SLHA2) becomes
+    go > _quark _anti_quark n1 restricted to u, and the trimming drops the
+    d/s/c-squark diagrams, among them the first one, which introduced the
+    external wavefunctions.  remove_diagrams_without_flavor used to restore
+    them in recursion order (legs 1, 3, 2, 4), and insert_decay, which takes
+    the leg offset of a decay from its first final-state wavefunction, then
+    numbered the decay legs one too low: they collided with production leg 2
+    and p p > go go, go > u u~ n1 died building the colour matrix
+    ("1 Nc^2 T(-1003,-1001) cannot be simplified to a number")."""
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.interface.master_interface as Cmd
+        cls.cmd = Cmd.MasterCmd()
+        cls.cmd.exec_cmd('set apply_flavor_grouping True')
+        cls.cmd.exec_cmd('import model MSSM_SLHA2')
+
+    def generate(self, line):
+        self.cmd.exec_cmd(line)
+        return helas_objects.HelasMultiProcess(
+            self.cmd._curr_amps).get_matrix_elements()
+
+    def test_trimmed_decay_keeps_external_leg_order(self):
+        """The trimmed decay ME lists its external wavefunctions by leg."""
+        mes = self.generate('generate go > u u~ n1')
+        self.assertEqual(len(mes), 1)
+        me = mes[0]
+        self.assertTrue(me._flavor_trimmed)
+        self.assertEqual(len(me.get('diagrams')), 4)
+        externals = [wf.get('number_external') for wf in
+                     me.get('diagrams')[0].get('wavefunctions')
+                     if not wf.get('mothers')]
+        self.assertEqual(externals, [1, 2, 3, 4])
+
+    def test_gluino_decay_chain_leg_numbering(self):
+        """Every external leg of the decay-chain MEs is the particle of the
+        process leg with that number (the colour matrix builds)."""
+        mes = self.generate('generate p p > go go, go > u u~ n1')
+        self.assertEqual(len(mes), 2)
+        for me in mes:
+            expected = dict((leg.get('number'), set([abs(leg.get('id'))]))
+                for leg in me.get('processes')[0].get_legs_with_decays())
+            self.assertEqual(len(expected), 8)
+            found = {}
+            for wf in me.get_all_wavefunctions():
+                if not wf.get('mothers'):
+                    found.setdefault(wf.get('number_external'), set()).add(
+                        abs(wf.get('pdg_code')))
+            self.assertEqual(found, expected)
+
 
 
 #===============================================================================
