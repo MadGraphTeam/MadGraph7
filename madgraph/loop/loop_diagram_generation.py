@@ -36,7 +36,6 @@ logger = logging.getLogger('madgraph.loop_diagram_generation')
 #===============================================================================
 INTERFERENCE_ORDER = base_objects.INTERFERENCE_ORDER
 register_interference_order = diagram_generation.register_interference_order
-prepare_interference_process = diagram_generation.prepare_interference_process
 
 def ldg_debug_info(msg,val, force=False):
     # This subroutine has typically quite large DEBUG info.

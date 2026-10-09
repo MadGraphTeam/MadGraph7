@@ -42,6 +42,11 @@ pjoin = os.path.join
 # added to the model in memory with hierarchy 0, so that WEIGHTED is
 # unchanged, and is never printed in a process definition.
 INTERFERENCE_ORDER = 'INTERF'
+
+def visible_orders(orders):
+    """The keys of a dictionary of (squared) coupling orders that a process
+    description shows: all but the hidden INTERFERENCE_ORDER."""
+    return [key for key in orders if key != INTERFERENCE_ORDER]
 if madgraph.ordering:
     set = misc.OrderedSet
 
@@ -3954,6 +3959,25 @@ class Process(PhysicsObject):
 
         return dict.get(self, 'interference_mode', '') or ''
 
+    def has_squared_order_selection(self):
+        """Whether only some squared orders of this process are kept: an
+        interference process ('[LIxtree=QCD]', '[treextree]'), or a
+        squared-order constraint other than the one implied by an amplitude
+        '==' / '>' constraint, here or in a decay chain. This is exactly when
+        nice_string shows a '^2' (or would, but for the hidden order), and it
+        is what the run card treats as an interference."""
+
+        if self.get_interference_mode():
+            return True
+        for key, value in self['squared_orders'].items():
+            constrained = self['constrained_orders'].get(key)
+            if constrained and constrained[0] == value / 2 and \
+                     constrained[1] == self.get_squared_order_type(key):
+                continue
+            return True
+        return any(decay.has_squared_order_selection()
+                   for decay in self['decay_chains'])
+
     def interference_string(self):
         """The tail of the process syntax for an interference process: the
         '[ treextree ]' or '[ LIxtree = ORDERS ]' bracket followed by the
@@ -4030,10 +4054,8 @@ class Process(PhysicsObject):
         # Add orders
         if self['orders']:
             to_add = []
-            for key in sorted(self['orders'].keys()):
+            for key in sorted(visible_orders(self['orders'])):
                 if not print_weighted and key == 'WEIGHTED':
-                    continue
-                if key == INTERFERENCE_ORDER:
                     continue
                 value = int(self['orders'][key])
                 if key in self['squared_orders']:
@@ -4076,10 +4098,8 @@ class Process(PhysicsObject):
         # Add squared orders
         if self['squared_orders']:
             to_add = []
-            for key in sorted(self['squared_orders'].keys()):
+            for key in sorted(visible_orders(self['squared_orders'])):
                 if not print_weighted and key == 'WEIGHTED':
-                    continue
-                if key == INTERFERENCE_ORDER:
                     continue
                 if key in self['constrained_orders']:
                     if self['constrained_orders'][key][0] == self['squared_orders'][key]/2 and \
@@ -4172,7 +4192,7 @@ class Process(PhysicsObject):
             prevleg = leg
 
         if self['orders']:
-            keys = [k for k in self['orders'] if k != INTERFERENCE_ORDER]
+            keys = visible_orders(self['orders'])
             keys.sort(reverse=True)
             mystr = mystr + " ".join([key + '=' + repr(self['orders'][key]) \
                        for key in keys]) + ' '
@@ -4180,8 +4200,7 @@ class Process(PhysicsObject):
         # Add squared orders
         if self['squared_orders']:
             mystr = mystr + " ".join([key + '^2=' + repr(self['squared_orders'][key]) \
-                       for key in self['squared_orders']
-                       if key != INTERFERENCE_ORDER]) + ' '
+                       for key in visible_orders(self['squared_orders'])]) + ' '
 
         # Add perturbation orders
         if self['perturbation_couplings']:
@@ -4992,8 +5011,7 @@ class ProcessDefinition(Process):
 
         if self['orders']:
             mystr = mystr + " ".join([key + '=' + repr(self['orders'][key]) \
-                       for key in sorted(self['orders'])
-                       if key != INTERFERENCE_ORDER]) + ' '
+                       for key in sorted(visible_orders(self['orders']))]) + ' '
 
         if self['constrained_orders']:
             mystr = mystr + " ".join('%s%s%d' % (key, operator, value) for 
@@ -5017,9 +5035,8 @@ class ProcessDefinition(Process):
         if self['squared_orders']:
             mystr = mystr + " ".join([key + '^2%s%d'%\
                 (self.get_squared_order_type(key),self['squared_orders'][key]) \
-              for key in self['squared_orders'].keys() \
-                    if (print_weighted or key!='WEIGHTED') and \
-                                            key != INTERFERENCE_ORDER]) + ' '
+              for key in visible_orders(self['squared_orders']) \
+                                    if print_weighted or key!='WEIGHTED']) + ' '
 
         mystr = mystr + self.interference_string()
 

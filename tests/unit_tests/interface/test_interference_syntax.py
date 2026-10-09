@@ -160,6 +160,25 @@ class InterferenceProcessTest(unittest.TestCase):
         self.assertIsNone(procdef['interference_process'])
         self.assertEqual(base_objects.Process()['interference_mode'], '')
 
+    def test_squared_order_selection(self):
+        """What the run card treats as an interference: for ordinary
+        processes exactly when the process string shows a '^2' (the squared
+        order implied by an amplitude '==' is not one), and every interference
+        process, whose constraint is hidden."""
+        for line, expected in [('u u~ > e+ e-', False),
+                               ('p p > j j QED==2', False),
+                               ('p p > j j QCD^2==2', True),
+                               ('p p > j j QED^2<=2', True),
+                               ('u u~ > z > e+ e- [treextree] u u~ > a > e+ e-', True)]:
+            procdef = self.cmd.extract_process(line)
+            if procdef.get_interference_mode():
+                import madgraph.core.diagram_generation as diagram_generation
+                diagram_generation.prepare_interference_process(procdef)
+            process = next(iter(procdef))
+            self.assertEqual(process.has_squared_order_selection(), expected, line)
+            if not procdef.get_interference_mode():
+                self.assertEqual('^2' in process.nice_string(), expected, line)
+
     def test_process_from_an_older_pickle(self):
         """A process unpickled from a version without the interference keys
         still prints."""

@@ -13886,32 +13886,24 @@ def interference_alpha_s_power(matrix_elements):
                       amplitude.get('loop_UVCT_diagrams')]
         else:
             orders = [d.calculate_orders() for d in me.get('diagrams')]
+        # one diagram per distinct set of orders, on each side
         sides = {0: [], 1: []}
         for signature in set(tuple(sorted((k, v) for k, v in o.items()
                                           if k != 'WEIGHTED')) for o in orders):
-            side = dict(signature).get(base_objects.INTERFERENCE_ORDER, 0)
+            diagram_orders = dict(signature)
+            diagram_orders['WEIGHTED'] = sum(hierarchy.get(k, 0) * v
+                                             for k, v in signature)
+            side = diagram_orders.get(base_objects.INTERFERENCE_ORDER, 0)
             if side in sides:
-                sides[side].append(dict(signature))
+                sides[side].append(base_objects.Diagram({'orders': diagram_orders}))
         squared_orders = process.get('squared_orders')
+        types = dict((order, process.get_squared_order_type(order))
+                     for order in squared_orders)
         for left in sides[0]:
             for right in sides[1]:
-                product = dict((k, left.get(k, 0) + right.get(k, 0))
-                               for k in set(left) | set(right))
-                product['WEIGHTED'] = sum(hierarchy.get(k, 0) * v
-                                          for k, v in product.items())
-                passed = True
-                for order, value in squared_orders.items():
-                    if value < 0:
-                        continue
-                    kind = process.get_squared_order_type(order)
-                    combined = product.get(order, 0)
-                    if (kind == '==' and combined != value) or \
-                       (kind in ['=', '<='] and combined > value) or \
-                       (kind == '>' and combined <= value):
-                        passed = False
-                        break
-                if passed:
-                    powers.add(product.get('QCD', 0))
+                if left.pass_squared_order_constraints(right, squared_orders,
+                                                       types):
+                    powers.add(left.get_order('QCD') + right.get_order('QCD'))
     if len(powers) == 1:
         power = powers.pop()
         if power % 2 == 0:

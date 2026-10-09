@@ -939,6 +939,10 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > For processes without born amplitudes (i.e. loop-induced like g g > z), please use ")
         logger.info("   the 'virt=' NLO mode. aMC@NLO cannot integrate these processes, but standalone MadLoop5")
         logger.info("   can still handle these.")
+        self._log_interference_syntax()
+
+    def _log_interference_syntax(self):
+        """The interference syntax, for 'help generate' and 'help add'."""
         logger.info("Interference syntax:",'$MG:BOLD')
         logger.info(" o left process [LIxtree=LoopOrders] SQUAREDCOUPi=ORDERi right process")
         logger.info(" o left process [treextree] SQUAREDCOUPi=ORDERi right process")
@@ -996,21 +1000,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > For processes without born amplitudes (i.e. loop-induced like g g > z), please use ")
         logger.info("   the 'virt=' NLO mode. aMC@NLO cannot integrate these processes, but standalone MadLoop5")
         logger.info("   can still handle these.")
-        logger.info("Interference syntax:",'$MG:BOLD')
-        logger.info(" o left process [LIxtree=LoopOrders] SQUAREDCOUPi=ORDERi right process")
-        logger.info(" o left process [treextree] SQUAREDCOUPi=ORDERi right process")
-        logger.info(" o Example: generate g g > h > t t~ [LIxtree=QCD] g g > t t~",'$MG:color:GREEN')
-        logger.info(" o Example: generate p p > z > e+ e- [treextree] p p > a > e+ e-",'$MG:color:GREEN')
-        logger.info(" > Only the interference 2 Re(A_left A_right^*) is computed. The left process is")
-        logger.info("   a loop-induced process for LIxtree, a tree-level one for treextree; the right")
-        logger.info("   process is always tree level. The keywords are case-insensitive.")
-        logger.info(" > Each side takes its own s-channel requirements, exclusions and amplitude orders.")
-        logger.info("   Squared-order constraints apply to the interference: give them right after ']'.")
-        logger.info(" > Both sides must have the same external legs, in the same order (the right-hand")
-        logger.info("   legs may be wider multiparticles). For LIxtree the right process is optional:")
-        logger.info("   by default it is the tree-level process with the same legs.")
-        logger.info(" > 'output madevent' integrates the interference (events with signed weights);")
-        logger.info("   for LIxtree, 'output standalone_fortran' evaluates it at a phase-space point.")
+        self._log_interference_syntax()
 
         logger.info("--  merge two model to create a new one", '$MG:color:BLUE')
         logger.info("syntax:",'$MG:BOLD')
@@ -6891,7 +6881,7 @@ This implies that with decay chains:
 
 
     def extract_interference_process(self, left, mode, right, proc_number=0,
-                                     overall_orders={},
+                                     overall_orders=None,
                                      avoid_squared_orders=False):
         """Build the ProcessDefinition of an interference process, as split by
         split_interference_line: 'left' is the left-hand process in the
@@ -6915,8 +6905,8 @@ This implies that with decay chains:
         # [treextree] u d > u d QCD==0 would get QED^2==0 and no interference
         # at all). Explicit '^2' constraints are kept.
         procdef = self.extract_process(left, proc_number=proc_number,
-                                       overall_orders=overall_orders,
-                                       avoid_squared_orders=True)
+                    overall_orders=overall_orders if overall_orders else {},
+                    avoid_squared_orders=True)
         if not procdef:
             raise self.InvalidCmd("Empty or wrong format process, please try again.")
         if procdef.get('decay_chains'):
