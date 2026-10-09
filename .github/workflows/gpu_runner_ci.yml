@@ -2,7 +2,7 @@
 # allocation per workflow run: all the CI jobs below share that allocation.
 # Called by gpu_manneback_cuda.yml and gpu_lemaitre4_hip.yml; see .github/gpu_ci/README.md.
 #
-#   start_runner    GitHub-hosted   ssh to the cluster (key of the `ceci-gpu` environment),
+#   start_runner    vmadgraph       ssh to the cluster (key of the `ceci-gpu` environment),
 #                                   sbatch the runner on the GPU partition, wait until online
 #   build_madspace  cluster runner  madspace with the CUDA/HIP backend (cached on the cluster)
 #   pp_ttx          cluster runner  p p > t t~ with mg7 on the GPU
@@ -51,7 +51,7 @@ on:
       time_limit:
         description: 'Slurm --time of the runner allocation, i.e. of all the CI jobs together'
         type: string
-        default: '02:00:00'
+        default: '00:20:00'
       extra_sbatch:
         description: 'Extra sbatch options, space separated, no quotes'
         type: string

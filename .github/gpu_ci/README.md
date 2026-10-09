@@ -26,7 +26,11 @@ allocation per workflow run, and every CI job of that run executes in it:
 To add a CI job, give it `runs-on: [self-hosted, "${{ inputs.runner_label }}"]` and add it
 to the `needs` of `stop_runner`. It runs in the same allocation, after the others, so
 `time_limit` must cover all the jobs together. The first madspace build (OpenBLAS + GPU code)
-is the slow part.
+is the slow part. The default is kept short so that Slurm can backfill the allocation:
+20 minutes on lemaitre4 (successful runs take 1-12 minutes) and 30 minutes on manneback
+(usually 2-17 minutes, but the runner set-up and the checkout are sometimes slow there).
+Raise it from the Actions tab for a run that needs more, or in the caller workflow when a
+new job makes every run longer.
 
 Other safeguards:
 * **One run at a time per cluster.** The runner jobs of a cluster share the name

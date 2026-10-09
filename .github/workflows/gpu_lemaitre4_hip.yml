@@ -32,7 +32,7 @@ on:
       time_limit:
         description: 'Slurm --time of the allocation (all CI jobs together)'
         type: string
-        default: '02:00:00'
+        default: '00:20:00'
       extra_sbatch:
         description: 'Extra sbatch options, space separated, no quotes (e.g. --qos=preemptible)'
         type: string
@@ -64,7 +64,7 @@ jobs:
       gres: ${{ inputs.gres || 'gpu:1' }}
       gpu_arch: ${{ inputs.gpu_arch }}
       nevents: ${{ inputs.nevents || '10000' }}
-      time_limit: ${{ inputs.time_limit || '02:00:00' }}
+      time_limit: ${{ inputs.time_limit || '00:20:00' }}
       extra_sbatch: ${{ inputs.extra_sbatch }}
       keep_workdir: ${{ inputs.keep_workdir || false }}
       # opt-in on "Run workflow" only for now (no inputs on push: false)
