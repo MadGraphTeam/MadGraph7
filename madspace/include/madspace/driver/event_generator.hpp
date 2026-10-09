@@ -196,6 +196,8 @@ private:
     // What a run of the generate loop does; see run_generate().
     enum class GenerateMode { events, optimize_only, fix_max_weights };
     void run_generate(GenerateMode mode);
+    // Channels with an optimizer, and how many of them are optimized.
+    std::pair<std::size_t, std::size_t> optimized_channel_count() const;
     GenerateMode _generate_mode = GenerateMode::events;
 
     // Scheduling context for the running survey()/generate() call, read by

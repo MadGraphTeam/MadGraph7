@@ -414,6 +414,7 @@ void ChannelEventGenerator::optimize_vegas(const GeneratorBatchJob& job) {
         }
     }
     _best_rsd = std::min(rsd, _best_rsd);
+    _status.iters_without_improvement = _iters_without_improvement;
     ++_status.iterations;
 }
 

@@ -2639,6 +2639,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("GeneratorStatus::iterations")
         )
         .def_readwrite(
+            "iters_without_improvement",
+            &GeneratorStatus::iters_without_improvement,
+            pydoc::doc("GeneratorStatus::iters_without_improvement")
+        )
+        .def_readwrite(
             "optimized",
             &GeneratorStatus::optimized,
             pydoc::doc("GeneratorStatus::optimized")
