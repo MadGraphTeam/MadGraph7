@@ -299,19 +299,6 @@ public:
         return *this;
     }
 
-    // called from the destructor and noexcept move, so errors are reported, not thrown
-    void release() noexcept {
-        for (void* ptr : {static_cast<void*>(_engines), static_cast<void*>(_q_table)}) {
-            if (!ptr) {
-                continue;
-            }
-            gpuError_t error = gpuFree(ptr);
-            if (error != gpuSuccess) {
-                std::fprintf(stderr, "GPU error: %s\n", gpuGetErrorString(error));
-            }
-        }
-    }
-
     void set_seed(DerivedSeed seed) {
         // the engine index is folded into the low SEED_STREAM_BITS of the stream field,
         // so callers must leave the whole reserved stream index unset
@@ -358,6 +345,19 @@ private:
             _q_table, kr_inv
         );
         check_error();
+    }
+
+    // called from the destructor and noexcept move, so errors are reported, not thrown
+    void release() noexcept {
+        for (void* ptr : {static_cast<void*>(_engines), static_cast<void*>(_q_table)}) {
+            if (!ptr) {
+                continue;
+            }
+            gpuError_t error = gpuFree(ptr);
+            if (error != gpuSuccess) {
+                std::fprintf(stderr, "GPU error: %s\n", gpuGetErrorString(error));
+            }
+        }
     }
 
     mixmax_engine* _engines = nullptr;
