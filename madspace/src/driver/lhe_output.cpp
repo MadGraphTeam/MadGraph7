@@ -583,6 +583,13 @@ void LHECompleter::complete_event_data(
         ++particle_index;
     }
 
+    // The flavor tables list the incoming legs in leg order, and a mirrored
+    // event has them the other way round on the beams. LHE wants particle 1 to
+    // come from beam 1, moving along +z.
+    if (n_in == 2 && event.particles.at(0).pz < 0.) {
+        std::swap(event.particles.at(0), event.particles.at(1));
+    }
+
     auto find_propagators = _propagator_index_and_count.find(
         cantor_pairing(subprocess_index, diagram_index, color_index)
     );
@@ -619,8 +626,7 @@ void LHECompleter::complete_event_data(
         // negative m_min would instead turn it into a large positive floor and
         // reject nearly everything, so a wider window would write *fewer*
         // resonances than a narrow one.
-        double m_min =
-            std::max(0., propagator.mass - _bw_cutoff * propagator.width);
+        double m_min = std::max(0., propagator.mass - _bw_cutoff * propagator.width);
         double m_max = propagator.mass + _bw_cutoff * propagator.width;
         if (m2 > m_min * m_min && m2 < m_max * m_max) {
             auto [color, anti_color] = prop_color;
