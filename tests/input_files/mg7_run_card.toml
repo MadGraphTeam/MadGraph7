@@ -24,6 +24,8 @@ include_source = false
 include_madspace = true
 include_madspace_source = false
 compress = false
+temp_output_dir = ""
+output_dir = ""
 
 [beam]
 e_cm = 1000.0

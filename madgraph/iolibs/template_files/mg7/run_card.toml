@@ -58,6 +58,11 @@ include_source = %(gridpack.include_source)s
 include_madspace = %(gridpack.include_madspace)s
 include_madspace_source = %(gridpack.include_madspace_source)s
 compress = %(gridpack.compress)s
+# gridpack runs only: directories for the temporary npy files and for the final
+# output files. "" uses the run folder Events/<run_name>_<index>; if output_dir
+# is set, no run folder is created.
+temp_output_dir = %(gridpack.temp_output_dir)s
+output_dir = %(gridpack.output_dir)s
 
 [beam]
 e_cm = %(beam.e_cm)s

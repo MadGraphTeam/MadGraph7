@@ -6759,6 +6759,9 @@ class RunCardMG7(RunCard):
         self.add_toml_param('gridpack', 'include_madspace', True)
         self.add_toml_param('gridpack', 'include_madspace_source', False)
         self.add_toml_param('gridpack', 'compress', False)
+        # used when running the gridpack; "" keeps the default Events/<run> folder
+        self.add_toml_param('gridpack', 'temp_output_dir', "", gridpack=True)
+        self.add_toml_param('gridpack', 'output_dir', "", gridpack=True)
 
         # ----------------------------- [beam] -------------------------
         self.add_toml_param('beam', 'e_cm', 13000.0)

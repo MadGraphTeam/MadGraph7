@@ -86,6 +86,10 @@ def write_lhe_header(run_path: str, meta) -> None:
     del writer  # closes the file (writes the closing tag)
 
 
+# directory the gridpack was called from; relative command line paths refer to it
+_INVOCATION_DIR = os.getcwd()
+
+
 def main() -> None:
     # load run card and metadata. Use the RunCardMG7 representation when the
     # madgraph package is importable; gridpacks are meant to be portable, so
@@ -99,6 +103,7 @@ def main() -> None:
             run_card = tomllib.load(f)
     run_args = run_card["run"]
     gen_args = run_card["generation"]
+    grid_args = run_card.get("gridpack", {})
     param_card_path = os.path.join("Cards", "param_card.dat")
     with open(os.path.join("data", "data.json")) as f:
         madspace_data = json.load(f)
@@ -119,6 +124,17 @@ def main() -> None:
         help="every run is reproducible from its seed; -1 draws a fresh random "
              "seed each run instead of fixing one here (still recorded in the "
              "run's info.json)"
+    )
+    parser.add_argument(
+        "--output_dir", type=str, default=None,
+        help="directory for the final output files instead of a new Events/<run> "
+             "folder (default: the run card value; relative paths refer to the "
+             "current directory)"
+    )
+    parser.add_argument(
+        "--temp_output_dir", type=str, default=None,
+        help="directory for the temporary npy files (default: the run card "
+             "value, else the output directory)"
     )
     parser.add_argument("--device", type=str, nargs="*")
     parser.add_argument(
@@ -147,23 +163,40 @@ def main() -> None:
     args = parser.parse_args()
     seed = resolve_seed(args.seed)
 
-    # initialize event directory
-    run_name = args.run_name
-    os.makedirs("Events", exist_ok=True)
-    run_dir_prefix = os.path.join("Events", f"{run_name}_")
-    existing_run_dirs = glob.glob(f"{run_dir_prefix}*")
-    run_index = 1
-    for run_dir in existing_run_dirs:
-        run_index_str = run_dir[len(run_dir_prefix):]
-        if run_index_str.isnumeric():
-            run_index = max(run_index, int(run_index_str) + 1)
-    while True:
-        try:
-            run_path = f"{run_dir_prefix}{run_index:02d}"
-            os.mkdir(run_path)
-            break
-        except FileExistsError:
-            run_index += 1
+    # initialize output directories; command line paths are relative to the
+    # invocation directory, run card paths to the gridpack
+    def resolve_dir(cli_value, card_value):
+        if cli_value:
+            return os.path.abspath(
+                os.path.join(_INVOCATION_DIR, os.path.expanduser(cli_value)))
+        return os.path.abspath(os.path.expanduser(card_value)) if card_value else None
+
+    output_dir = resolve_dir(args.output_dir, grid_args.get("output_dir"))
+    temp_dir = resolve_dir(args.temp_output_dir, grid_args.get("temp_output_dir"))
+    if output_dir is not None:
+        run_path = output_dir
+        os.makedirs(run_path, exist_ok=True)
+    else:
+        run_name = args.run_name
+        os.makedirs("Events", exist_ok=True)
+        run_dir_prefix = os.path.join("Events", f"{run_name}_")
+        existing_run_dirs = glob.glob(f"{run_dir_prefix}*")
+        run_index = 1
+        for run_dir in existing_run_dirs:
+            run_index_str = run_dir[len(run_dir_prefix):]
+            if run_index_str.isnumeric():
+                run_index = max(run_index, int(run_index_str) + 1)
+        while True:
+            try:
+                run_path = f"{run_dir_prefix}{run_index:02d}"
+                os.mkdir(run_path)
+                break
+            except FileExistsError:
+                run_index += 1
+    if temp_dir is None:
+        temp_dir = run_path
+    else:
+        os.makedirs(temp_dir, exist_ok=True)
 
     # initialize context
     device_names = args.device if args.device else run_args["device"]
@@ -220,8 +253,8 @@ def main() -> None:
         ms.ChannelEventGenerator.load(
             os.path.join("data", "channels", file),
             contexts,
-            event_file=os.path.join(run_path, f"events.{name}.npy"),
-            weight_file=os.path.join(run_path, f"weights.{name}.npy"),
+            event_file=os.path.join(temp_dir, f"events.{name}.npy"),
+            weight_file=os.path.join(temp_dir, f"weights.{name}.npy"),
             config=config,
         )
         for name, file in madspace_data["channels"].items()
