@@ -7,6 +7,7 @@
 #   build_madspace  cluster runner  madspace with the CUDA/HIP backend (cached on the cluster)
 #   pp_ttx          cluster runner  p p > t t~ with mg7 on the GPU
 #   pp_jj           cluster runner  p p > j j with mg7 on the GPU (cuts on several jets)
+#   madspace_ops    cluster runner  madspace GPU operations against the CPU runtime, .github/gpu_ci/madspace_checks.py
 #   ...             cluster runner  more CI jobs: same runs-on, and add them to stop_runner's needs
 #   stop_runner     cluster runner  clean up and end the allocation (no ssh key needed)
 #
@@ -236,9 +237,53 @@ jobs:
           path: results/
           if-no-files-found: warn
 
+  madspace_ops:
+    # madspace GPU runtime operations against the CPU runtime (histogram, rank-4 kernels)
+    needs: build_madspace
+    runs-on: [self-hosted, "${{ inputs.runner_label }}"]
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash -l -eo pipefail {0}
+    env:
+      BACKEND: ${{ inputs.backend }}
+      MODULES: ${{ inputs.modules }}
+      # no VENV: the python3 of the modules (see madspace_ops_gpu.sh)
+      MADSPACE_PREFIX: ${{ needs.build_madspace.outputs.madspace_prefix }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: run directory
+        run: echo "WORKDIR=${GLOBALSCRATCH:-$HOME}/mg7-gpu-ci/runs/$RUN_TAG/madspace_ops" >> "$GITHUB_ENV"
+      - name: madspace operations on the GPU
+        run: .github/gpu_ci/madspace_ops_gpu.sh
+      - name: collect logs
+        if: always()
+        run: |
+          mkdir -p results
+          (cd "$WORKDIR" && tar -cf - --ignore-failed-read summary.txt checks.log 2> /dev/null) | tar -xf - -C results || true
+      - name: job summary
+        if: always()
+        run: |
+          {
+            echo "### madspace operations on ${{ inputs.cluster }} ($BACKEND)"
+            if [ -f results/summary.txt ]; then
+              echo "| | |"
+              echo "|---|---|"
+              sed 's/^\([^=]*\)=\(.*\)$/| \1 | \2 |/' results/summary.txt
+            else
+              echo "No summary.txt: the job stopped early, see the log of the 'madspace operations on the GPU' step."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpu-madspace_ops-${{ inputs.cluster }}-${{ inputs.backend }}
+          path: results/
+          if-no-files-found: warn
+
   stop_runner:
     # must list every job that runs on the self-hosted runner
-    needs: [start_runner, build_madspace, pp_ttx, pp_jj]
+    needs: [start_runner, build_madspace, pp_ttx, pp_jj, madspace_ops]
     if: always() && needs.start_runner.result == 'success'
     runs-on: [self-hosted, "${{ inputs.runner_label }}"]
     defaults:

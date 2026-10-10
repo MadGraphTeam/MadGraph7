@@ -10,6 +10,8 @@
 #include <functional>
 #include <initializer_list>
 #include <optional>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace madspace {
@@ -74,6 +76,9 @@ public:
     const std::size_t* end() const { return &_values[_size]; }
     /// Append one more dimension.
     void push_back(std::size_t item) {
+        if (_size >= max_size) {
+            throw std::out_of_range("maximum dimension exceeded");
+        }
         _values[_size] = item;
         ++_size;
     }
@@ -95,7 +100,9 @@ public:
     }
 
 private:
-    std::size_t _values[max_size];
+    // zero beyond size(): a view with more dimensions than its tensor (see
+    // Tensor::view) must not read stale strides and shapes
+    std::size_t _values[max_size] = {};
     std::size_t _size;
 };
 
@@ -514,6 +521,7 @@ public:
     /// Typed, dimension-checked view onto the data for direct element access.
     TensorView<T, dim> view() {
         check_impl();
+        check_view_dim(dim, impl->shape.size());
         T* data = static_cast<T*>(impl->data);
         return TensorView<T, dim>(data, impl->stride.data(), impl->shape.data());
     }
@@ -522,6 +530,7 @@ public:
     /// Typed, dimension-checked view onto the data for direct element access.
     const TensorView<T, dim> view() const {
         check_impl();
+        check_view_dim(dim, impl->shape.size());
         T* data = static_cast<T*>(impl->data);
         return TensorView<T, dim>(data, impl->stride.data(), impl->shape.data());
     }
@@ -532,11 +541,13 @@ public:
         check_impl();
         T* data = static_cast<T*>(impl->data);
         if (flatten_count <= 1) {
+            check_view_dim(dim, impl->shape.size());
             return {data, impl->stride, impl->shape};
         }
         if (flatten_count > impl->contiguous_dims) {
             throw std::invalid_argument("can only flatten contiguous dimensions");
         }
+        check_view_dim(dim, impl->shape.size() - flatten_count + 1);
         Sizes stride{1}, shape{1};
         std::size_t i = 0;
         for (; i < flatten_count; ++i) {
@@ -856,6 +867,18 @@ private:
     void check_impl() const {
         if (impl == nullptr) {
             throw std::runtime_error("empty tensor");
+        }
+    }
+
+    // a view of more dimensions than the tensor has reads strides and shapes that were
+    // never set: out-of-bounds accesses, silent on one platform, a memory fault on
+    // another (e.g. a kernel taking FIn<T, 1> for a tensor of declared rank 0)
+    static void check_view_dim(std::size_t view_dim, std::size_t tensor_dim) {
+        if (view_dim > tensor_dim) {
+            throw std::invalid_argument(
+                "view of dimension " + std::to_string(view_dim) +
+                " of a tensor of dimension " + std::to_string(tensor_dim)
+            );
         }
     }
 
