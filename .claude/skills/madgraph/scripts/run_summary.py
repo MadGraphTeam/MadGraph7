@@ -393,9 +393,11 @@ def summarise_amcatnlo(run_dir, banner):
             print("PDF band    : +%s%% -%s%%  (%s)" % (up, down, header))
     print("seed        : %s  (the card is reset to 0 after a run; this is the "
           "one used)" % grab("iseed"))
-    print("collider    : lpp %s/%s, ebeam %s + %s GeV, PDF lhaid %s"
+    proc_dir = os.path.dirname(os.path.dirname(run_dir.rstrip(os.sep)))
+    name = pdf_name(proc_dir, grab("lhaid"))
+    print("collider    : lpp %s/%s, ebeam %s + %s GeV, PDF lhaid %s%s"
           % (grab("lpp1"), grab("lpp2"), grab("ebeam1"), grab("ebeam2"),
-             grab("lhaid")))
+             grab("lhaid"), " (%s)" % name if name else ""))
     if str(grab("fixed_ren_scale")).lower() in ("true", "t", ".true."):
         print("scales      : fixed, mu_R = %s, mu_F = %s GeV"
               % (grab("muR_ref_fixed"), grab("muF_ref_fixed")))
@@ -455,45 +457,222 @@ def summarise_amcatnlo(run_dir, banner):
                       % (name.split(None, 1)[-1], len(members), pct(std, xsec)))
 
 
-def summarise_madevent(run_dir, banner):
+MADEVENT_SCALES = {"-1": "default: CKKW back-clustering of the event",
+                   "0": "user-defined", "1": "sum of E_T",
+                   "2": "sum of transverse masses (H_T)",
+                   "3": "H_T/2", "4": "sqrt(s-hat)"}
+# madevent cut names, by the particle families they need
+MADEVENT_CUTS = [
+    (("jet",), ("ptj", "etaj", "drjj", "mmjj", "xptj", "ptjmax", "mmjjmax")),
+    (("bottom",), ("ptb", "etab", "drbb", "mmbb", "xptb", "ptbmax")),
+    (("lepton",), ("ptl", "etal", "drll", "mmll", "xptl", "ptlmax", "mmllmax",
+                   "ptllmin", "ptllmax")),
+    (("missing",), ("misset", "missetmax")),
+    (("photon",), ("pta", "etaa", "draa", "mmaa", "xpta", "ptamax", "ptgmin")),
+    (("bottom", "jet"), ("drbj",)), (("photon", "jet"), ("draj",)),
+    (("jet", "lepton"), ("drjl",)), (("photon", "bottom"), ("drab",)),
+    (("bottom", "lepton"), ("drbl",)), (("photon", "lepton"), ("dral",)),
+]
+
+
+def lhapdf_configs(proc_dir):
+    """Candidate lhapdf-config executables, most specific first: the process
+    directory, this installation, the user's MadGraph7 config, then PATH."""
+    mg_root = os.path.abspath(os.path.join(os.path.dirname(__file__),
+                                           "..", "..", "..", ".."))
+    files = [os.path.join(proc_dir, "Cards", card) for card in
+             ("me5_configuration.txt", "amcatnlo_configuration.txt")]
+    files += [os.path.join(mg_root, "input", "mg7_configuration.txt"),
+              os.path.expanduser("~/.mg7/mg7_configuration.txt")]
+    for path in files:
+        try:
+            with open(path) as fsock:
+                for line in fsock:
+                    line = line.split("#", 1)[0].strip()
+                    if "=" in line and line.split("=")[0].strip() in (
+                            "lhapdf", "lhapdf_py3"):
+                        value = line.split("=", 1)[1].split()
+                        if value:
+                            yield value[0]
+        except OSError:
+            continue
+    yield "lhapdf-config"
+
+
+def pdf_name(proc_dir, lhaid):
+    """LHAPDF set name of an lhaid, from the pdfsets.index of the LHAPDF
+    MadGraph uses for this process directory (None if not found)."""
+    import subprocess
+    for config in lhapdf_configs(proc_dir):
+        try:
+            datadir = subprocess.run([config, "--datadir"], capture_output=True,
+                                     text=True, timeout=20).stdout.strip()
+            with open(os.path.join(datadir, "pdfsets.index")) as index:
+                for row in index:
+                    words = row.split()
+                    if words and words[0] == str(lhaid).strip():
+                        return words[1]
+        except (OSError, subprocess.SubprocessError):
+            continue
+    return None
+
+
+def madevent_numbers(run_dir, banner):
+    """Cross section, MC error and event count of a madevent run (the last
+    block wins: a re-showered run's banner repeats the earlier ones)."""
     with open(banner) as fsock:
         text = fsock.read()
-    print("format      : %s" % ("MadSpin output (LHE)"
-                                  if "_decayed_" in os.path.basename(run_dir)
-                                  else "madevent"))
 
     def grab(pattern):
-        match = re.search(pattern, text, re.M)
-        return match.group(1).strip() if match else None
+        found = re.findall(pattern, text, re.M)
+        return found[-1].strip() if found else None
 
-    xsec = grab(r"Integrated weight \(pb\)\s*:\s*(\S+)")
+    xsec = grab(r"^#\s*Integrated weight \(pb\)\s*:\s*(\S+)")
     nevt = grab(r"Number of Events\s*:\s*(\S+)")
     init_xsec, err = lhe_init_error(run_dir)
     if xsec is None:
         # a MadSpin run_XX_decayed_N banner has no summary: the LHE <init>
         # block carries the cross section, branching ratios included
         xsec = init_xsec
+    return (float(xsec) if xsec is not None else None), err, nevt, grab
+
+
+def summarise_madevent(proc_dir, run_dir, banner):
+    decayed = "_decayed_" in os.path.basename(run_dir)
+    print("format      : %s" % ("MadSpin output (LHE)" if decayed else "madevent"))
+    xsec, err, nevt, grab = madevent_numbers(run_dir, banner)
     if xsec is None:
         fail("no cross section in %s: did the run finish?" % banner)
-    xsec = float(xsec)
-    if "_decayed_" in os.path.basename(run_dir):
+    if decayed:
         print("note        : MadSpin-decayed sample, cross section includes "
               "the branching ratios")
+    card = lambda key: grab(r"^\s*(\S+)\s*=\s*%s\b" % key)
+    mlm = card("ickkw") == "1"
     if err is not None:
-        print("cross section: %.6g +- %.3g pb  (MC rel. error %.2f%%)"
-              % (xsec, err, pct(err, abs(xsec))))
+        print("cross section: %.6g +- %.3g pb  (MC rel. error %.2f%%%s)"
+              % (xsec, err, pct(err, abs(xsec)),
+                 "; parton level, before the MLM veto" if mlm else ""))
     else:
         print("cross section: %.6g pb  (MC error not found)" % xsec)
-    seed = grab(r"^\s*(\d+)\s*=\s*iseed")
     if nevt is not None:
-        print("events      : %s" % nevt)
-    if seed is not None:
-        print("seed        : %s" % seed)
-    for key in ("lpp1", "lpp2", "ebeam1", "ebeam2", "pdlabel", "lhaid",
-                "dynamical_scale_choice", "fixed_ren_scale", "scale"):
-        value = grab(r"^\s*(\S+)\s*=\s*%s\b" % key)
-        if value is not None:
-            print("%-12s: %s" % (key, value))
+        print("events      : %s%s" % (nevt, " (parton level, before the MLM veto)"
+                                      if mlm else ""))
+    if card("iseed") is not None:
+        print("seed        : %s" % card("iseed"))
+    if card("lpp1") is None:
+        return
+    beams = "%s + %s GeV" % (card("ebeam1"), card("ebeam2"))
+    if card("lpp1") == "0" and card("lpp2") == "0":
+        print("collider    : lepton, %s" % beams)
+    else:
+        lhaid = card("lhaid")
+        name = pdf_name(proc_dir, lhaid) if card("pdlabel") == "lhapdf" else None
+        print("collider    : lpp %s/%s, %s, PDF %s"
+              % (card("lpp1"), card("lpp2"), beams,
+                 "%s (%s)" % (lhaid, name) if name else
+                 lhaid if card("pdlabel") == "lhapdf" else card("pdlabel")))
+    if str(card("fixed_ren_scale")).lower() in ("true", "t"):
+        print("scales      : fixed, mu_R = %s GeV, mu_F = %s / %s GeV"
+              % (card("scale"), card("dsqrt_q2fact1"), card("dsqrt_q2fact2")))
+    else:
+        choice = card("dynamical_scale_choice")
+        factor = card("scalefact")
+        print("scales      : dynamical_scale_choice %s (%s)%s"
+              % (choice, MADEVENT_SCALES.get(choice, "see the run card"),
+                 "" if factor in (None, "1.0", "1") else " x %s" % factor))
+    names = final_state(proc_dir)
+    present = families_of(names) if names is not None else None
+    unknown = sorted(n for n in names or () if n not in KNOWN)
+    active, inactive = [], []
+    for families, keys in MADEVENT_CUTS:
+        for key in keys:
+            value = card(key)
+            if value is None or is_off(value):
+                continue
+            acts = present is None or set(families) <= present
+            (active if acts else inactive).append("%s = %s" % (key, value))
+    print("cuts        : %s" % ("; ".join(active) or "none"))
+    print_inactive([c.split("=")[0].strip() for c in inactive], unknown)
+    if present is not None:
+        print_stable(present)
+    syst = os.path.join(run_dir, "parton_systematics.log")
+    if os.path.exists(syst):
+        with open(syst) as fsock:
+            stext = fsock.read()
+        for label, key in (("scale band", "scale variation"),
+                           ("emission sc.", "emission scale variation"),
+                           ("PDF band", "PDF variation")):
+            match = re.search(r"^#\s*" + key + r":\s*\+([\d.]+)% -([\d.]+)%",
+                              stext, re.M)
+            if match:
+                print("%-12s: +%s%% -%s%%  (parton_systematics.log%s)"
+                      % (label, match.group(1), match.group(2),
+                         "; before the MLM veto, quote as relative uncertainties"
+                         if mlm else ""))
+    if mlm:
+        summarise_mlm(run_dir, xsec, err, nevt, card)
+
+
+def pythia8_setting(run_dir, tag, key):
+    try:
+        with open(os.path.join(run_dir, "%s_pythia8.cmd" % tag)) as fsock:
+            for line in fsock:
+                if line.split("!")[0].strip().lower().startswith(key.lower()):
+                    value = line.split("=", 1)[1].split("!")[0].strip()
+                    try:
+                        return "%g" % float(value)
+                    except ValueError:
+                        return value
+    except OSError:
+        pass
+    return None
+
+
+def mlm_results(run_dir, xsec, err, nevt):
+    """One entry per shower (tag) of an MLM run: qCut, matched cross section
+    with its error, fraction and number of events kept by the veto."""
+    banners = glob.glob(os.path.join(run_dir, "*_tag_*_banner.txt"))
+    banners.sort(key=lambda b: int(re.search(r"_tag_(\d+)_banner", b).group(1)))
+    results = []
+    for banner in banners:
+        tag = "tag_" + re.search(r"_tag_(\d+)_banner", banner).group(1)
+        with open(banner) as fsock:
+            found = re.findall(r"Matched Integrated weight \(pb\)\s*:\s*(\S+)",
+                               fsock.read())
+        if not found:
+            continue
+        matched = float(found[-1])
+        kept = matched / xsec if xsec else float("nan")
+        rel = (err / xsec) ** 2 if err else 0.0
+        if nevt and 0 < kept < 1:
+            rel += (1 - kept) / (kept * float(nevt))
+        results.append({
+            "tag": tag, "matched": matched, "error": matched * rel ** 0.5,
+            "kept": kept,
+            "events": int(round(kept * float(nevt))) if nevt else None,
+            "qcut": pythia8_setting(run_dir, tag, "JetMatching:qCut"),
+            "njetmax": pythia8_setting(run_dir, tag, "JetMatching:nJetMax")})
+    return results
+
+
+def summarise_mlm(run_dir, xsec, err, nevt, card):
+    """MLM-merged madevent run: the cross section after the Pythia8 veto,
+    for every shower (tag) of the run, i.e. a merging-scale scan."""
+    print("MLM         : ickkw 1, xqcut %s GeV, maxjetflavor %s, auto_ptj_mjj %s"
+          % (card("xqcut"), card("maxjetflavor"), card("auto_ptj_mjj")))
+    results = mlm_results(run_dir, xsec, err, nevt)
+    for res in results:
+        print("matched     : %.6g +- %.3g pb  (%s: qCut %s, nJetMax %s; %.1f%% "
+              "kept by the veto = %s merged events in %s_pythia8_events.hepmc.gz)"
+              % (res["matched"], res["error"], res["tag"], res["qcut"],
+                 res["njetmax"], 100 * res["kept"], res["events"], res["tag"]))
+    if results:
+        print("              quote the matched (merged) cross section, not the "
+              "parton-level one; identify the showers by their qCut, not by "
+              "their tag number")
+    else:
+        print("matched     : none (no Pythia8 shower yet: the parton-level "
+              "number above is not the merged cross section)")
 
 
 def amcatnlo_xsec(run_dir):
@@ -506,43 +685,65 @@ def amcatnlo_xsec(run_dir):
 
 
 def run_xsec(proc_dir, run_dir):
-    """(cross section, MC error) in pb of one run, whatever its format."""
+    """{label: (cross section, MC error)} in pb for one run. One entry,
+    except for an MLM run: one matched cross section per qCut."""
     if os.path.exists(os.path.join(run_dir, "info.json")):
         with open(os.path.join(run_dir, "info.json")) as fsock:
             proc = json.load(fsock).get("process", {})
-        return proc["mean"], proc["error"]
+        return {"": (proc["mean"], proc["error"])}
     if os.path.exists(os.path.join(run_dir, "summary.txt")):
-        return amcatnlo_xsec(run_dir)
-    xsec, err = lhe_init_error(run_dir)
-    if xsec is None:
-        fail("no cross section found in %s" % run_dir)
-    return xsec, err
+        return {"": amcatnlo_xsec(run_dir)}
+    banners = glob.glob(os.path.join(run_dir, "*_banner.txt"))
+    if banners:
+        xsec, err, nevt, grab = madevent_numbers(run_dir, sorted(banners)[-1])
+        if grab(r"^\s*(\S+)\s*=\s*ickkw\b") == "1":
+            results = mlm_results(run_dir, xsec, err, nevt)
+            if not results:
+                fail("%s is an MLM run without a shower: no matched cross "
+                     "section to combine" % run_dir)
+            return dict(("qCut %s" % r["qcut"], (r["matched"], r["error"]))
+                        for r in results)
+        if xsec is not None:
+            return {"": (xsec, err)}
+    fail("no cross section found in %s" % run_dir)
+
+
+def combine_values(values):
+    weights = [1.0 / err ** 2 for _, err in values]
+    mean = sum(w * x for w, (x, _) in zip(weights, values)) / sum(weights)
+    error = sum(weights) ** -0.5
+    chi2 = sum(((x - mean) / e) ** 2 for x, e in values) / (len(values) - 1)
+    plain = sum(x for x, _ in values) / len(values)
+    spread = (sum((x - plain) ** 2 for x, _ in values) / (len(values) - 1)) ** 0.5
+    return mean, error * max(1.0, chi2 ** 0.5), chi2, plain, spread
 
 
 def combine(proc_dir, run_names):
     """Weighted mean of independent runs (different seeds), with the error
     scaled by sqrt(chi2/ndf) when the runs scatter more than their quoted
-    errors say (PDG prescription), plus the plain mean for comparison."""
-    values = []
+    errors say (PDG prescription), plus the plain mean for comparison. MLM
+    runs are combined per qCut, using the matched cross sections."""
+    groups = {}
     for name in run_names:
-        xsec, err = run_xsec(proc_dir, pick_run(proc_dir, name))
-        values.append((xsec, err))
-        print("%-12s: %.6g +- %.3g pb" % (name, xsec, err))
-    if len(values) < 2:
-        fail("--combine needs at least two runs")
-    weights = [1.0 / err ** 2 for _, err in values]
-    mean = sum(w * x for w, (x, _) in zip(weights, values)) / sum(weights)
-    error = sum(weights) ** -0.5
-    chi2 = sum(((x - mean) / e) ** 2 for x, e in values) / (len(values) - 1)
-    scale = max(1.0, chi2 ** 0.5)
-    print("combined    : %.6g +- %.3g pb  (weighted mean; chi2/ndf = %.2f%s; "
-          "quote this one)" % (mean, error * scale, chi2,
-                               ", error scaled by %.2f" % scale if scale > 1
-                               else ""))
-    plain = sum(x for x, _ in values) / len(values)
-    spread = (sum((x - plain) ** 2 for x, _ in values) / (len(values) - 1)) ** 0.5
-    print("plain mean  : %.6g +- %.3g pb  (standard deviation of the runs %.3g)"
-          % (plain, spread / len(values) ** 0.5, spread))
+        for label, value in run_xsec(proc_dir, pick_run(proc_dir, name)).items():
+            groups.setdefault(label, []).append(value)
+            print("%-12s: %.6g +- %.3g pb%s"
+                  % (name, value[0], value[1], "  (%s)" % label if label else ""))
+    for label, values in sorted(groups.items()):
+        if len(values) < 2:
+            print("%s: only one run, nothing to combine" % (label or "result"))
+            continue
+        mean, error, chi2, plain, spread = combine_values(values)
+        prefix = "%s: " % label if label else ""
+        print("%scombined : %.6g +- %.3g pb  (weighted mean of %d runs; "
+              "chi2/ndf = %.2f%s; quote this one)"
+              % (prefix, mean, error, len(values), chi2,
+                 ", error scaled by %.2f" % chi2 ** 0.5 if chi2 > 1 else ""))
+        print("%splain mean: %.6g +- %.3g pb  (standard deviation of the runs "
+              "%.3g)" % (prefix, plain, spread / len(values) ** 0.5, spread))
+        if chi2 > 10:
+            print("WARNING: the runs disagree far beyond their errors: check that "
+                  "they differ only in their seed (energy, PDF, cuts, scales)")
 
 
 def main():
@@ -556,14 +757,15 @@ def main():
     proc_dir = sys.argv[1]
     run_dir = pick_run(proc_dir, sys.argv[2] if len(sys.argv) > 2 else None)
     print("run         : %s" % run_dir)
-    banners = sorted(glob.glob(os.path.join(run_dir, "*_banner.txt")))
+    banners = sorted(glob.glob(os.path.join(run_dir, "*_banner.txt")),
+                     key=lambda b: int((re.findall(r"_tag_(\d+)_", b) or [0])[0]))
     if os.path.exists(os.path.join(run_dir, "info.json")):
         summarise_mg7(proc_dir, run_dir)
     elif banners and os.path.exists(os.path.join(proc_dir, "Cards",
                                                   "FKS_params.dat")):
         summarise_amcatnlo(run_dir, banners[-1])
     elif banners:
-        summarise_madevent(run_dir, banners[-1])
+        summarise_madevent(proc_dir, run_dir, banners[-1])
     else:
         fail("neither info.json nor a banner in %s: the run did not finish"
              % run_dir)

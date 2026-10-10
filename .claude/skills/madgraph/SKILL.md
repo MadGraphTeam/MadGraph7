@@ -2,8 +2,9 @@
 name: madgraph
 description: Run MadGraph7 for the user. Generate a process, compute an LO or
   NLO cross section, produce events (with cuts, scale/PDF uncertainties,
-  histograms, showering, MC@NLO), and report the results. Use when the user
-  asks for a cross section, a K-factor, events, distributions or a
+  histograms, showering, MC@NLO, MLM-merged multi-jet samples), draw its
+  Feynman diagrams, and report the results. Use when the user asks for a
+  cross section, a K-factor, events, merged samples, Feynman diagrams or a
   MadGraph/MG7/MG5/aMC@NLO run, or asks why a MadGraph run failed.
 ---
 
@@ -19,10 +20,13 @@ never pipe them through stdin: write a script file and run it.
 |---|---|---|---|
 | LO cross section / LO events | `generate p p > t t~` | mg7 (`output`) | `reference/mg7_run_card.md` |
 | NLO cross section, K-factor, NLO+PS events | `generate p p > t t~ [QCD]` | aMC@NLO (`output`) | `reference/nlo.md` |
-| something mg7 lacks (e.g. MLM merging) | `generate ...` | `output madevent` | `reference/troubleshooting.md` |
+| MLM-merged LO multi-jet sample | `generate ...` + `add process ... j` ... | `output madevent` | `reference/mlm.md` |
+| Feynman diagrams only | `generate ...` | none needed | `reference/diagrams.md` |
+| something else mg7 lacks | `generate ...` | `output madevent` | `reference/troubleshooting.md` |
 
-The workflow below is common to all three. Only the launch block and the
-result files differ.
+The workflow below is common to all of them. Only the launch block and the
+result files differ. For diagrams only, steps 1-3 apply, without `output`
+or `launch`.
 
 ## The workflow
 
@@ -64,17 +68,22 @@ result files differ.
    /path/to/MadGraph7/bin/madgraph run_tt.mg7 > run_tt.log 2>&1; echo "exit=$?"
    ```
 
+   `bin/madgraph` runs with the first `python3` on PATH (>= 3.12). If the
+   user keeps MadGraph in a dedicated environment (venv, conda, direnv),
+   run it from there.
+
    Runs can take from seconds to hours. For anything beyond a quick check, run
-   it in the background and poll the log with `grep "integral:" run.log | tail -1`;
-   don't block on it. If the RSD in those lines runs into the hundreds while
+   it in the background and poll the log; don't block on it. For mg7, use
+   `grep "integral:" run.log | tail -1`. For madevent and aMC@NLO, use
+   `grep -E "Idle:|Cross-section|Total cross section" run.log | tail -3`. If the RSD in those lines runs into the hundreds while
    `unw. eff.` stays at 0, the integrand is divergent (a missing cut). Stop the
    run instead of waiting. The first launch in a fresh installation also
    builds the madspace library (a few minutes, needs a C++ compiler and
    Python >= 3.12).
 
 3. **Check for failure before reading any result**: a non-zero exit code, or
-   `Traceback`, `Error`, `invalid set command`, `Ambiguous key` or `WARNING`
-   lines in the log. Grep for them; never print a whole log, because PDF
+   `Traceback`, `Error`, `ERROR`, `CRITICAL`, `invalid set command`,
+   `Ambiguous key` or `WARNING` lines in the log. Grep for them; never print a whole log, because PDF
    downloads fill it with progress bars. `reference/troubleshooting.md` has
    the grep commands and what each symptom means.
    A `WARNING: invalid set command ...` is NOT fatal: the run continues
@@ -151,6 +160,13 @@ result files differ.
   `p`/`j` contain the gluon and the u, d, s, c quarks and their antiquarks
   (no b: 4-flavour scheme; `import model sm-no_b_mass` adds the b),
   `l+`/`l-` = e and mu, `vl`/`vl~` = all three neutrinos, the top is `t`/`t~`.
+- For a decaying resonance (W -> mu nu, Z -> e e, ...), choose between:
+  - the full final state (`p p > mu+ vm`), which includes off-shell effects
+    and is the default choice;
+  - a decay chain (`p p > w+, w+ > mu+ vm`), which forces it on shell;
+  - a stable resonance, decayed later by MadSpin or the shower.
+
+  Say which one you used.
 - Use `$ X` / `/ X` to exclude a propagating particle, `,` for decay chains
   (`p p > t t~, t > b w+, t~ > b~ w-`), and coupling-order constraints such
   as `QED=2`, as in MG5. For spin-correlated decays of a large sample,
@@ -163,6 +179,9 @@ result files differ.
 
 - `reference/nlo.md`: NLO with aMC@NLO (modes, settings, IR-safe cuts,
   negative weights, reading the results, K-factors).
+- `reference/mlm.md`: MLM merging with madevent and Pythia8 (xqcut and
+  qCut, matched cross section, qCut scan).
+- `reference/diagrams.md`: drawing, reading and counting Feynman diagrams.
 - `reference/mg7_run_card.md`: every `set` you are likely to need, cut
   syntax, madevent-to-mg7 names, and the Pythia8 shower and MadSpin switches.
 - `reference/troubleshooting.md`: log grepping, harmless lines, failures that

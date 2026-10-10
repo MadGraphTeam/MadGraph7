@@ -17,10 +17,19 @@ These lines are harmless; don't report them:
 slow!!!', ...)`, `stty: stdin isn't a terminal`, `Trying to add argument
 mode in DensityCard ... Did you mean ['matrix_normalisation']`, `Please set
 the 'fastjet'/'eMELA' variable ...` (only needed for NLO matching tools),
+`... lhapdf-config does not seem to correspond to a valid lhapdf-config
+executable` followed by a `set lhapdf to ...` line (the first guess failed,
+the next one was found), `value '[]' for entry 'bypass_check' is not
+valid` (madevent launches; unrelated to the "not valid for current
+question" launch trap),
 `CRITICAL: MadSpin unweight efficiency` / `MadSpin phase timings` (MadSpin
 prints its statistics at CRITICAL level), `Using default gzip`. The NLO
 warnings (α_s update, Z width set to zero, missing run-card arguments,
 multiparticles at NLO) are explained in `reference/nlo.md`.
+
+Logs and `display` output show flavour-grouped names such as `_quark`,
+`_anti_quark`, `_lepton` or `_neutrino` (PDG codes 81-83): these are the
+grouped light flavours (see `reference/diagrams.md`), not an error.
 
 ## Failures that do not look like failures
 
@@ -80,8 +89,9 @@ The mg7 output is LO only. Use the madevent (Fortran) path when the user
 needs:
 - **NLO**: `generate p p > t t~ [QCD]` followed by a plain `output` produces an
   aMC@NLO directory (see `reference/nlo.md`).
-- **MLM matching / merging** with `ickkw`, or other features of the classic run
-  card that have no mg7 equivalent, or a comparison against an MG5 sample.
+- **MLM matching / merging** (see `reference/mlm.md`), other features of the
+  classic run card that have no mg7 equivalent, or a comparison against an
+  MG5 sample.
 
 In a madevent directory the run card is `Cards/run_card.dat`. All classic
 names work there (`set ptj 20`, `set ebeam1 6500`, `set lhaid 331900`,
