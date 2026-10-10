@@ -1366,6 +1366,16 @@ class LoopUVCTDiagram(base_objects.Diagram):
         
         return ['vertices', 'UVCT_couplings', 'UVCT_orders', 'type', 'orders']
 
+    def get_contracted_loop_diagram(self, model, struct_rep=None):
+        """A UVCT diagram has no loop to contract: return a copy of it, as
+        for the tree-level diagrams interfered with a loop-induced amplitude
+        (LIxtree), which are stored as UVCT diagrams."""
+        return copy.copy(self)
+
+    def get_contracted_loop_diagram_without_tag(self, struct_rep=None):
+        """See get_contracted_loop_diagram."""
+        return copy.copy(self)
+
     def get_UVCTinteraction(self, model):
         """ Finds the UV counter-term interaction present in this UVCTDiagram """
         
@@ -1391,6 +1401,9 @@ class LoopUVCTDiagram(base_objects.Diagram):
             weight += sum([model.get('order_hierarchy')[c]*n for \
                               (c,n) in couplings.items()])
         coupling_orders['WEIGHTED'] = weight
+        # only the interfering trees (LIxtree) list the hidden order
+        if not coupling_orders.get(base_objects.INTERFERENCE_ORDER):
+            coupling_orders.pop(base_objects.INTERFERENCE_ORDER, None)
         self.set('orders', coupling_orders)
 
     def nice_string(self):

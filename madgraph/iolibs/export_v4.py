@@ -8873,7 +8873,8 @@ c           This is dummy particle used in multiparticle vertices
                                                             [[c[1]] for c in configs],
                                                             mapconfigs,
                                                             nexternal, ninitial,
-                                                            model)
+                                                            model,
+                    alpha_s_powers=interference_alpha_s_powers([matrix_element]))
 
     #===========================================================================
     # write_run_configs_file
@@ -8899,7 +8900,8 @@ c           This is dummy particle used in multiparticle vertices
     # write_configs_file_from_diagrams
     #===========================================================================
     def write_configs_file_from_diagrams(self, writer, configs, mapconfigs,
-                                         nexternal, ninitial, model):
+                                         nexternal, ninitial, model,
+                                         alpha_s_powers=None):
         """Write the actual configs.inc file.
         
         configs is the diagrams corresponding to configs (each
@@ -8988,14 +8990,22 @@ c           This is dummy particle used in multiparticle vertices
             lines.append("data mapconfig(%d)/%d/" % (nconfigs,
                                                      mapconfigs[iconfig]))
             lines.append("data tstrategy(%d)/%d/" % (nconfigs, tchannels_strategy))
-            # Number of QCD couplings in this diagram
+            # Number of QCD couplings in this diagram, i.e. the power of
+            # alpha_s of the events of this channel; for an interference
+            # process the power of the left x right product instead, given
+            # per subprocess in alpha_s_powers (see
+            # interference_alpha_s_power)
             nqcd = 0
-            for h in helas_diags:
+            for isub, h in enumerate(helas_diags):
                 if h:
-                    try:
-                        nqcd = h.calculate_orders()['QCD']
-                    except KeyError:
-                        pass
+                    power = alpha_s_powers[isub] if alpha_s_powers else None
+                    if power is not None:
+                        nqcd = power
+                    else:
+                        try:
+                            nqcd = h.calculate_orders()['QCD']
+                        except KeyError:
+                            pass
                     break
                 else:
                     continue
@@ -9051,7 +9061,7 @@ c           This is dummy particle used in multiparticle vertices
     #===========================================================================
     def write_configs_file_from_onia_diagrams(self, writer, configs, mapconfigs,
                                          nexternal, ninitial, model,
-                                         onia_pairs=None):
+                                         onia_pairs=None, alpha_s_powers=None):
         """Write the actual configs.inc file.
 
         configs is the diagrams corresponding to configs (each
@@ -9140,14 +9150,22 @@ c           This is dummy particle used in multiparticle vertices
             lines.append("data mapconfig(%d)/%d/" % (nconfigs,
                                                      mapconfigs[iconfig]))
             lines.append("data tstrategy(%d)/%d/" % (nconfigs, tchannels_strategy))
-            # Number of QCD couplings in this diagram
+            # Number of QCD couplings in this diagram, i.e. the power of
+            # alpha_s of the events of this channel; for an interference
+            # process the power of the left x right product instead, given
+            # per subprocess in alpha_s_powers (see
+            # interference_alpha_s_power)
             nqcd = 0
-            for h in helas_diags:
+            for isub, h in enumerate(helas_diags):
                 if h:
-                    try:
-                        nqcd = h.calculate_orders()['QCD']
-                    except KeyError:
-                        pass
+                    power = alpha_s_powers[isub] if alpha_s_powers else None
+                    if power is not None:
+                        nqcd = power
+                    else:
+                        try:
+                            nqcd = h.calculate_orders()['QCD']
+                        except KeyError:
+                            pass
                     break
                 else:
                     continue
@@ -10566,18 +10584,31 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         (nexternal, ninitial) = subproc_group.get_nexternal_ninitial()
         onia_pairs = matrix_elements[0].get_onia_pairs()
 
+        # power of alpha_s per subprocess for the interference processes
+        alpha_s_powers = interference_alpha_s_powers(matrix_elements)
+        if len(set(p for p in alpha_s_powers if p is not None)) > 1:
+            logger.warning("The interference subprocesses of %s have different "
+                           "powers of alpha_s, but share the integration "
+                           "channels: each channel takes the power of its first "
+                           "subprocess, so the scale variations of the "
+                           "systematics (off by default) would be approximate. "
+                           "Generate these subprocesses with separate 'add "
+                           "process' lines to avoid it."
+                           % subproc_group.get('name'))
         if onia_pairs:
             return len(diagrams), \
                self.write_configs_file_from_onia_diagrams(writer, diagrams,
                                                 config_numbers,
                                                 nexternal, ninitial,
-                                                     model,onia_pairs)
+                                                     model,onia_pairs,
+                                                alpha_s_powers=alpha_s_powers)
         else:
             return len(diagrams), \
                self.write_configs_file_from_diagrams(writer, diagrams,
                                                 config_numbers,
                                                 nexternal, ninitial,
-                                                     model)
+                                                     model,
+                                                alpha_s_powers=alpha_s_powers)
 
 
 
@@ -13829,6 +13860,82 @@ c         segments from -DABS(tiny*Ga) to Ga
 # now names the MadMatrix (C++) output -- is a prefix of it, as it is of
 # standalone_msP / _msF / _rw. None of those has a loop backend.
 LOOP_INDUCED_FORMATS = ['madevent', 'plugin', 'standalone_fortran']
+
+def interference_alpha_s_power(matrix_elements):
+    """The power of alpha_s of the events of an interference process
+    ('left [LIxtree=QCD] right' or 'left [treextree] right').
+
+    madevent gives each event the QCD order of the diagram of its integration
+    channel (config_nqcd.inc), which is the power of alpha_s of |A|^2 for an
+    ordinary process. For an interference the quantity computed is
+    2 Re(A_left A_right^*): its power is half the QCD order of the products of
+    one left-hand and one right-hand amplitude passing the squared-order
+    constraints, whatever the channel. Returns:
+      False  for an ordinary process (keep the per-channel values),
+      n      when all those products share the power n,
+      None   when they do not, or when it is not an integer (the scale
+             variations of the systematics are then ill-defined).
+    """
+
+    import madgraph.loop.loop_helas_objects as loop_helas_objects
+    powers = set()
+    for me in matrix_elements:
+        process = me.get('processes')[0]
+        if not process.get_interference_mode():
+            return False
+        hierarchy = process.get('model').get('order_hierarchy')
+        if isinstance(me, loop_helas_objects.LoopHelasMatrixElement):
+            amplitude = me.get('base_amplitude')
+            orders = [d.get('orders') for d in amplitude.get('loop_diagrams') +
+                      amplitude.get('loop_UVCT_diagrams')]
+        else:
+            orders = [d.calculate_orders() for d in me.get('diagrams')]
+        # one diagram per distinct set of orders, on each side
+        sides = {0: [], 1: []}
+        for signature in set(tuple(sorted((k, v) for k, v in o.items()
+                                          if k != 'WEIGHTED')) for o in orders):
+            diagram_orders = dict(signature)
+            diagram_orders['WEIGHTED'] = sum(hierarchy.get(k, 0) * v
+                                             for k, v in signature)
+            side = diagram_orders.get(base_objects.INTERFERENCE_ORDER, 0)
+            if side in sides:
+                sides[side].append(base_objects.Diagram({'orders': diagram_orders}))
+        squared_orders = process.get('squared_orders')
+        types = dict((order, process.get_squared_order_type(order))
+                     for order in squared_orders)
+        for left in sides[0]:
+            for right in sides[1]:
+                if left.pass_squared_order_constraints(right, squared_orders,
+                                                       types):
+                    powers.add(left.get_order('QCD') + right.get_order('QCD'))
+    if len(powers) == 1:
+        power = powers.pop()
+        if power % 2 == 0:
+            return power // 2
+    return None
+
+def interference_alpha_s_powers(matrix_elements):
+    """The power of alpha_s to give the events of each matrix element in
+    config_nqcd.inc (see interference_alpha_s_power): the power of the left x
+    right products for an interference process, None for an ordinary one,
+    whose events keep the QCD order of the diagram of their channel. Kept
+    per matrix element, so that a subprocess group mixing interference and
+    ordinary processes gets the right value for each channel."""
+
+    powers = []
+    for me in matrix_elements:
+        power = interference_alpha_s_power([me])
+        if power is None:
+            logger.warning("The power of alpha_s of the interference %s is not "
+                           "unique: the scale variations of the systematics "
+                           "(off by default for interference processes) would "
+                           "be wrong. Constrain the QCD order of the "
+                           "interference (e.g. QCD^2==n after ']') to make it "
+                           "unique." % me.get('processes')[0].nice_string(
+                                                                 prefix=False))
+        # 'is False': a power of 0 is a valid one
+        powers.append(None if power is False else power)
+    return powers
 
 def loop_induced_not_supported_msg(format, process=None):
     """Refusal text for a format that cannot write a LoopHelasMatrixElement."""

@@ -52,6 +52,7 @@ import madgraph.iolibs.export_fks as export_fks
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.loop.loop_base_objects as loop_base_objects
+import madgraph.core.base_objects as base_objects
 import madgraph.core.diagram_generation as diagram_generation
 import madgraph.core.helas_objects as helas_objects
 
@@ -752,7 +753,10 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
 
         # check that all the couplings of the model have been constrained
         # in the squared orders, otherwise set the others to zero
-        for o in myprocdef['model'].get('coupling_orders'):
+        # (not the hidden order an interference process adds to the model)
+        model_orders = base_objects.visible_orders(
+                                     myprocdef['model'].get('coupling_orders'))
+        for o in model_orders:
             if o not in myprocdef['squared_orders'].keys():
                 logger.warning('No squared order constraint for order %s. Setting to 0' % o)
                 myprocdef['squared_orders'][o] = 0 
@@ -761,7 +765,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         # split all orders in the model, for the moment it's the simplest solution
         # mz02/2014
         #if proc_type[1] != 'only':
-        myprocdef['split_orders'] += [o for o in myprocdef['model'].get('coupling_orders') \
+        myprocdef['split_orders'] += [o for o in model_orders \
                 if o not in myprocdef['split_orders']]
 
         # now set the squared orders
@@ -809,7 +813,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         # squared-orders constraints. In that case, all kind of splittings/loop-particles
         # must be included
         if not myprocdef['orders'] and self.options['nlo_mixed_expansion']:
-            myprocdef['perturbation_couplings'] = list(myprocdef['model']['coupling_orders'])
+            myprocdef['perturbation_couplings'] = list(model_orders)
 
         self._curr_proc_defs.append(myprocdef)
 

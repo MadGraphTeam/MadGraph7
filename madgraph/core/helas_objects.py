@@ -4474,6 +4474,22 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                     # Add amplitude to amplitdes in helas_diagram
                     helas_diagram.get('amplitudes').append(amp)
 
+            # A right-hand diagram of an interference process
+            # ('left [treextree] right') carries the hidden order tagging it,
+            # which no interaction has: pass it on to its amplitudes (on a
+            # copy, their orders being those of the interaction), so that the
+            # split orders of the generated code see it.
+            interference_tag = diagram.get('orders').get(
+                                    base_objects.INTERFERENCE_ORDER, 0) \
+                               if diagram.get('orders') else 0
+            if interference_tag:
+                for amp in helas_diagram.get('amplitudes'):
+                    orders = dict(amp.get('orders'))
+                    orders[base_objects.INTERFERENCE_ORDER] = \
+                        orders.get(base_objects.INTERFERENCE_ORDER, 0) + \
+                                                               interference_tag
+                    amp.set('orders', orders)
+
             # After generation of all wavefunctions and amplitudes,
             # first sort the wavefunctions according to number
             diagram_wavefunctions.sort(key=lambda wf:wf.get('number')) 

@@ -144,6 +144,119 @@ class DuplicateParticle(madgraph.InvalidCmd):
     same misleading message.
     """
     
+#===============================================================================
+# Interference of two amplitude sets: 'left [LIxtree=QCD] right' and
+# 'left [treextree] right'
+#===============================================================================
+# The bracket of an interference process. Its keyword is matched without
+# regard to case, so that [LIxtree=QCD], [lixtree=QCD] and [TreeXTree] are all
+# accepted; INTERFERENCE_MODES maps the lower-case spelling on the one stored
+# in Process['interference_mode'].
+INTERFERENCE_MODES = {'lixtree': 'LIxtree', 'treextree': 'treextree'}
+_INTERFERENCE_BRACKET = re.compile(
+    r"\[\s*(?:(?P<option>\w+)\s*=)?\s*(?P<orders>[^\]\[]*?)\s*\]")
+# One coupling-order constraint at the start of a string: 'QED=0', 'QCD^2<=4',
+# 'QED == 2', ... The constraints written between the bracket and the
+# right-hand process belong to the left-hand one (the usual place of the
+# squared-order constraints of a loop process), those written after the
+# right-hand process belong to the right-hand one. An order name is an
+# identifier, never a pdg code: '25 > 6 -6' is a process, not 'ORDER > 6'.
+_LEADING_ORDER_CONSTRAINT = re.compile(
+    r"^\s*[A-Za-z_]\w*(?:\^2)?\s*(?:===|==|<=|>=|!=|=|<|>)\s*-?\d+(?=\s|$)")
+
+
+def interference_mode_of(option, orders):
+    """The interference mode named by a bracket, '' if it names none.
+    'option' is the word before '=' (None without '='), 'orders' the list of
+    words after it."""
+
+    if option and option.lower() in INTERFERENCE_MODES:
+        return INTERFERENCE_MODES[option.lower()]
+    # bare keyword: '[treextree]', or '[LIxtree]' (refused later: no orders)
+    if not option and len(orders) == 1 and orders[0].lower() in INTERFERENCE_MODES:
+        return INTERFERENCE_MODES[orders[0].lower()]
+    return ''
+
+
+def split_interference_line(line):
+    """Split a process definition of the form
+
+        left_process [LIxtree=ORDERS] left_constraints right_process
+        left_process [treextree] left_constraints right_process
+
+    into (left_line, mode, right_line).
+
+    'left_line' is the left-hand process written in the ordinary syntax: with
+    '[noborn=ORDERS]' for LIxtree (the loop-induced amplitude) and without any
+    bracket for treextree. 'mode' is 'LIxtree' or 'treextree', and
+    'right_line' the right-hand (tree-level) process, None when it is absent.
+    A trailing '@N' and what follows it stay with the left-hand line, which
+    carries the process number of the whole definition.
+
+    A line without an interference bracket is returned as (line, '', None).
+    Raises InvalidCmd for a malformed interference bracket.
+    """
+
+    match = _INTERFERENCE_BRACKET.search(line)
+    if not match:
+        return line, '', None
+    option = match.group('option')
+    orders = match.group('orders').split()
+    mode = interference_mode_of(option, orders)
+    if not mode:
+        return line, '', None
+    if not option:
+        # the only word in the bracket is the keyword itself
+        orders = []
+
+    head, tail = line[:match.start()], line[match.end():]
+    if '[' in tail or ']' in tail:
+        raise madgraph.InvalidCmd(
+            "Only one '[...]' is allowed in a %s process: the right-hand "
+            "process is a tree-level process." % mode)
+
+    if mode == 'LIxtree':
+        if not orders:
+            raise madgraph.InvalidCmd(
+                "The LIxtree mode needs the orders of the loop, as in "
+                "'g g > h > t t~ [LIxtree=QCD]'.")
+        bracket = ' [noborn= %s ] ' % ' '.join(orders)
+    else:
+        if option:
+            raise madgraph.InvalidCmd(
+                "The treextree mode takes no orders: write '[treextree]', "
+                "not '[%s=%s]'." % (option, ' '.join(orders)))
+        bracket = ' '
+
+    # '@N ...' closes the whole definition: keep it with the left-hand line
+    suffix = ''
+    at = re.search(r'@\s*\d+', tail)
+    if at:
+        tail, suffix = tail[:at.start()], ' ' + tail[at.start():]
+
+    left_constraints = []
+    tail = tail.strip()
+    constraint = _LEADING_ORDER_CONSTRAINT.match(tail)
+    while constraint:
+        rest = tail[constraint.end():].strip()
+        # a constraint is followed by more constraints or by the right-hand
+        # process, which has an arrow: in 'h > 5 -5', 'h > 5' is no constraint
+        if rest and not re.search(r'>\D', rest):
+            break
+        left_constraints.append(constraint.group(0).strip())
+        tail = rest
+        constraint = _LEADING_ORDER_CONSTRAINT.match(tail)
+
+    right = tail if tail else None
+    if right is None and mode == 'treextree':
+        raise madgraph.InvalidCmd(
+            "The treextree mode needs the right-hand process, as in "
+            "'p p > z > e+ e- [treextree] p p > a > e+ e-'.")
+
+    left = head.rstrip() + bracket + ' '.join(left_constraints) + suffix
+    return ' '.join(left.split()), mode, right
+
+
 # the same prompt without the colour escapes, for quoting commands inside
 # tutorial text and help messages
 MG7_PROMPT_TEXT = "MG7> "
@@ -826,6 +939,27 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > For processes without born amplitudes (i.e. loop-induced like g g > z), please use ")
         logger.info("   the 'virt=' NLO mode. aMC@NLO cannot integrate these processes, but standalone MadLoop5")
         logger.info("   can still handle these.")
+        self._log_interference_syntax()
+
+    def _log_interference_syntax(self):
+        """The interference syntax, for 'help generate' and 'help add'."""
+        logger.info("Interference syntax:",'$MG:BOLD')
+        logger.info(" o left process [LIxtree=LoopOrders] SQUAREDCOUPi=ORDERi right process")
+        logger.info(" o left process [treextree] SQUAREDCOUPi=ORDERi right process")
+        logger.info(" o Example: generate g g > h > t t~ [LIxtree=QCD] g g > t t~",'$MG:color:GREEN')
+        logger.info(" o Example: generate p p > z > e+ e- [treextree] p p > a > e+ e-",'$MG:color:GREEN')
+        logger.info(" > Only the interference 2 Re(A_left A_right^*) is computed. The left process is")
+        logger.info("   a loop-induced process for LIxtree, a tree-level one for treextree; the right")
+        logger.info("   process is always tree level. The keywords are case-insensitive.")
+        logger.info(" > Each side takes its own s-channel requirements, exclusions and amplitude orders.")
+        logger.info("   Squared-order constraints apply to the interference: give them right after ']'.")
+        logger.info(" > Both sides must have the same external legs, in the same order (the right-hand")
+        logger.info("   legs may be wider multiparticles). For LIxtree the right process is optional:")
+        logger.info("   by default it is the tree-level process with the same legs.")
+        logger.info(" > 'output' (mg7) and 'output madevent' integrate the interference (events with")
+        logger.info("   signed weights); 'output standalone' and 'output standalone_fortran' evaluate")
+        logger.info("   it at a phase-space point. LIxtree needs a loop backend: 'output madevent' or")
+        logger.info("   'output standalone_fortran' only.")
 
     def help_add(self):
         logger.info("-- generate diagrams for a process and add to existing processes",'$MG:color:BLUE')
@@ -868,6 +1002,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > For processes without born amplitudes (i.e. loop-induced like g g > z), please use ")
         logger.info("   the 'virt=' NLO mode. aMC@NLO cannot integrate these processes, but standalone MadLoop5")
         logger.info("   can still handle these.")
+        self._log_interference_syntax()
 
         logger.info("--  merge two model to create a new one", '$MG:color:BLUE')
         logger.info("syntax:",'$MG:BOLD')
@@ -1446,6 +1581,13 @@ class CheckValidForCmd(cmd.CheckCmd):
 
     def check_process_format(self, process):
         """ check the validity of the string given to describe a format """
+
+        left, mode, right = split_interference_line(process)
+        if mode:
+            self.check_process_format(left)
+            if right is not None:
+                self.check_process_format(right)
+            return
 
         #check balance of paranthesis
         if process.count('(') != process.count(')'):
@@ -3601,7 +3743,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     'merge_quartic_vertices'
                     ]
     _valid_color_basis = ['auto', 'trace', 'ddm']
-    _valid_nlo_modes = ['all','real','virt','sqrvirt','tree','noborn','LOonly', 'only']
+    _valid_nlo_modes = ['all','real','virt','sqrvirt','tree','noborn','LOonly', 'only',
+                        'LIxtree']
     _valid_sqso_types = ['==','<=','=','>']
     _valid_amp_so_types = ['=','<=', '==', '>']
     _OLP_supported = ['MadLoop', 'GoSam']
@@ -3914,6 +4057,9 @@ This implies that with decay chains:
                 nb_proc = len([l for l in self.history if l.startswith(('generate','add process'))])
                 nb_proc += counter
                 myprocdef = self.extract_process(line, proc_number=nb_proc)
+                # 'left [treextree] right': hidden order selecting the
+                # interference, minimal orders of the right-hand process
+                diagram_generation.prepare_interference_process(myprocdef)
 
             
 
@@ -3976,14 +4122,22 @@ This implies that with decay chains:
                                "ignore_six_quark_processes" in self.options \
                                else []
     
-                myproc = diagram_generation.MultiProcess(myprocdef,
+                try:
+                    myproc = diagram_generation.MultiProcess(myprocdef,
                                          collect_mirror_procs = collect_mirror_procs,
                                          ignore_six_quark_processes = ignore_six_quark_processes,
                                          optimize=optimize, diagram_filter=diagram_filter,
                                          merge_crossing=merge_crossing)
+                    amplitudes = myproc.get('amplitudes')
+                except diagram_generation.NoDiagramException:
+                    if not myprocdef.get_interference_mode():
+                        raise
+                    raise self.InvalidCmd(
+                        "No subprocess of '%s' has diagrams on both sides of "
+                        "[treextree]: there is no interference to compute." %
+                        myprocdef.nice_string(prefix=False))
     
-    
-                for amp in myproc.get('amplitudes'):
+                for amp in amplitudes:
                     if amp not in self._curr_amps:
                         self._curr_amps.append(amp)
                     elif warning_duplicate:
@@ -4403,7 +4557,9 @@ This implies that with decay chains:
                 print(self.boundstate_string(key))
 
         elif args[0] == 'coupling_order':
-            hierarchy = list(self._curr_model['order_hierarchy'].items())
+            hierarchy = [(order, weight) for order, weight in
+                         self._curr_model['order_hierarchy'].items()
+                         if order != base_objects.INTERFERENCE_ORDER]
             hierarchy.sort(key=operator.itemgetter(1))
             # an order declared by the model can have no interaction left
             # carrying it -- a restriction card typically removes all of them.
@@ -5393,6 +5549,16 @@ This implies that with decay chains:
         # Don't try to extract the process if just re-analyzing a saved run
         if not (args[0]=='cms' and options['analyze']!='None'):
             myprocdef = self.extract_process(proc_line)
+            if myprocdef and myprocdef.get_interference_mode():
+                raise self.InvalidCmd(
+                    "The check command does not support %s interference "
+                    "processes: generate the process and use 'output "
+                    "standalone_fortran', whose check executable prints the "
+                    "interference and, as cross-checks, the squared loop and "
+                    "tree amplitudes (complete only with HelicityFilterLevel "
+                    "0 in MadLoopParams.dat, the filter being set on the "
+                    "interference)."
+                    % myprocdef.get_interference_mode())
 
             # Check that we have something
             if not myprocdef:
@@ -5960,6 +6126,15 @@ This implies that with decay chains:
         """Extract a process definition from a string. Returns
         a ProcessDefinition."""
 
+        # 'left [LIxtree=QCD] right' / 'left [treextree] right': two processes
+        # on one line, see extract_interference_process
+        left, mode, right = split_interference_line(line)
+        if mode:
+            return self.extract_interference_process(left, mode, right,
+                                    proc_number=proc_number,
+                                    overall_orders=overall_orders,
+                                    avoid_squared_orders=avoid_squared_orders)
+
         orig_line = line
         # Check basic validity of the line
         if not len(re.findall(r'>\D', line)) in [1,2]:
@@ -6107,7 +6282,8 @@ This implies that with decay chains:
         if self.options['default_unset_couplings'] != 99 and \
                                                      (orders or squared_orders): 
                            
-                to_set = [name for name in self._curr_model.get('coupling_orders')
+                to_set = [name for name in base_objects.visible_orders(
+                                       self._curr_model.get('coupling_orders'))
                           if name not in orders and name not in squared_orders]
                 if to_set:
                     logger.info('the following coupling will be allowed up to the maximal value of %s: %s' % 
@@ -6709,6 +6885,121 @@ This implies that with decay chains:
         #                       'is_decay_chain': decay_process\
 
 
+    def extract_interference_process(self, left, mode, right, proc_number=0,
+                                     overall_orders=None,
+                                     avoid_squared_orders=False):
+        """Build the ProcessDefinition of an interference process, as split by
+        split_interference_line: 'left' is the left-hand process in the
+        ordinary syntax, 'mode' is 'LIxtree' or 'treextree' and 'right' the
+        right-hand (tree-level) process, None for the LIxtree default.
+
+        The left-hand process is returned, with 'interference_mode' set and
+        the right-hand ProcessDefinition in 'interference_process'. The
+        quantity computed is 2 Re(A_left A_right^*): the squared-order
+        constraints, which constrain that product, are given on the left-hand
+        side only. Without a right-hand process, LIxtree interferes with the
+        tree-level amplitudes of the same external legs, i.e. with what
+        'generate <legs>' alone would give: no s-channel requirement, no order
+        constraint and no exclusion is carried over from the loop process.
+        """
+
+        # An amplitude-level '==' or '>' constraint on the left-hand process
+        # constrains the left-hand amplitudes only: unlike for an ordinary
+        # process, it must not turn into a squared-order constraint, which
+        # here would act on the left x right products (u d > u d QED==0
+        # [treextree] u d > u d QCD==0 would get QED^2==0 and no interference
+        # at all). Explicit '^2' constraints are kept.
+        procdef = self.extract_process(left, proc_number=proc_number,
+                    overall_orders=overall_orders if overall_orders else {},
+                    avoid_squared_orders=True)
+        if not procdef:
+            raise self.InvalidCmd("Empty or wrong format process, please try again.")
+        if procdef.get('decay_chains'):
+            raise self.InvalidCmd("Decay chains are not supported for %s processes." % mode)
+
+        if right is None:
+            rightdef = base_objects.ProcessDefinition({
+                                        'legs': copy.deepcopy(procdef['legs']),
+                                        'model': procdef['model']})
+        else:
+            if ',' in right:
+                raise self.InvalidCmd("Decay chains are not supported for %s processes." % mode)
+            # the process number belongs to the whole definition, i.e. to
+            # the left-hand process: the right-hand one keeps id 0
+            rightdef = self.extract_process(right, avoid_squared_orders=True)
+            if not rightdef:
+                raise self.InvalidCmd("The right-hand process '%s' of the %s "
+                                      "process is not valid." % (right, mode))
+            if rightdef['squared_orders']:
+                raise self.InvalidCmd(
+                    "Squared-order constraints (%s) are not allowed on the "
+                    "right-hand process of a %s process: they constrain the "
+                    "interference, so they belong to the left-hand side, "
+                    "between ']' and the right-hand process, as in "
+                    "'g g > h > t t~ [LIxtree=QCD] QCD^2==6 g g > t t~'."
+                    % (', '.join('%s^2%s%d' % (k, rightdef.get_squared_order_type(k), v)
+                                 for k, v in rightdef['squared_orders'].items()),
+                       mode))
+
+        self.validate_interference_legs(procdef, rightdef, mode)
+
+        procdef.set('interference_mode', mode)
+        procdef.set('interference_process', rightdef)
+        return procdef
+
+    @staticmethod
+    def interference_leg_pdgs(leg, model):
+        """The set of signed pdg codes a MultiLeg stands for, with the merged
+        (flavour-grouped) particles expanded into their members, restricted
+        by the leg 'flavor' when it is set."""
+
+        merged = getattr(model, 'merged_particles', None) or {}
+        restriction = set(leg.get('flavor') or [])
+        pdgs = set()
+        for pid in leg.get('ids'):
+            if abs(pid) in merged:
+                sign = 1 if pid > 0 else -1
+                members = set(sign * m for m in merged[abs(pid)])
+                pdgs |= (members & restriction) or members
+            else:
+                pdgs.add(pid)
+        return pdgs
+
+    def validate_interference_legs(self, leftdef, rightdef, mode):
+        """The two sides of an interference process must describe the same
+        external legs, written in the same order: same number of initial and
+        final particles, the same polarisation, and at each position every
+        particle of the left-hand leg must be allowed by the right-hand one
+        (the right-hand legs may be wider, e.g. 'j' against 'g'). Raises
+        InvalidCmd otherwise."""
+
+        left_legs, right_legs = leftdef.get('legs'), rightdef.get('legs')
+        if leftdef.get_ninitial() != rightdef.get_ninitial() or \
+                                            len(left_legs) != len(right_legs):
+            raise self.InvalidCmd(
+                "The two sides of a %s process must have the same external "
+                "legs: '%s' and '%s' differ in the number of initial or final "
+                "particles." % (mode, leftdef.nice_string(prefix=False),
+                                rightdef.nice_string(prefix=False)))
+
+        model = leftdef.get('model')
+        names = lambda pdgs: ' '.join(sorted(model.get_particle(p).get_name()
+                                             for p in pdgs))
+        for i, (lleg, rleg) in enumerate(zip(left_legs, right_legs)):
+            missing = self.interference_leg_pdgs(lleg, model) - \
+                      self.interference_leg_pdgs(rleg, model)
+            if lleg.get('state') != rleg.get('state') or missing:
+                raise self.InvalidCmd(
+                    "The two sides of a %s process must have the same external "
+                    "legs, in the same order: leg %d of the right-hand process "
+                    "does not contain %s. Write the right-hand legs in the "
+                    "order of the left-hand ones." % (mode, i + 1,
+                    names(missing) if missing else 'the same state'))
+            if sorted(lleg.get('polarization')) != sorted(rleg.get('polarization')):
+                raise self.InvalidCmd(
+                    "The two sides of a %s process must have the same "
+                    "polarisation on each leg (leg %d differs)." % (mode, i + 1))
+
     def create_loop_induced(self, line, myprocdef=None):
         """ Routine to create the MultiProcess for the loop-induced case"""
         
@@ -6743,6 +7034,8 @@ This implies that with decay chains:
         
         if not myprocdef:
             myprocdef = self.extract_process(' '.join(args))
+        # LIxtree: hidden order selecting the interference, right-hand orders
+        diagram_generation.prepare_interference_process(myprocdef)
         
         myprocdef.set('NLO_mode', 'noborn')
             
@@ -6786,13 +7079,23 @@ This implies that with decay chains:
 
         # Decide here wether one needs a LoopMultiProcess or a MultiProcess
 
-        myproc = loop_diagram_generation.LoopInducedMultiProcess(myprocdef,
+        try:
+            myproc = loop_diagram_generation.LoopInducedMultiProcess(myprocdef,
                                  collect_mirror_procs = collect_mirror_procs,
                                  ignore_six_quark_processes = ignore_six_quark_processes,
                                  optimize=optimize,
                                  loop_filter=loop_filter)
+            amplitudes = myproc.get('amplitudes')
+        except diagram_generation.NoDiagramException:
+            if myprocdef.get_interference_mode() != 'LIxtree':
+                raise
+            raise self.InvalidCmd(
+                "No subprocess of '%s' has both loop-induced diagrams and "
+                "tree-level diagrams of '%s': there is no interference to "
+                "compute." % (myprocdef.nice_string(prefix=False).split('[')[0].strip(),
+                    myprocdef.get('interference_process').nice_string(prefix=False)))
 
-        for amp in myproc.get('amplitudes'):
+        for amp in amplitudes:
             if amp not in self._curr_amps:
                 self._curr_amps.append(amp)
                 if amp['has_born']:
@@ -12088,6 +12391,24 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     raise self.InvalidCmd(
                         export_v4.loop_induced_not_supported_msg(
                             format, self._curr_amps[0].get('process')))
+
+        # A tree x tree interference ('left [treextree] right') needs the
+        # selection of squared split orders in the generated code: other
+        # formats would silently return |A_left + A_right|^2.
+        # (a decay-chain amplitude has no 'process', and is never one)
+        interference = [amp for amp in self._curr_amps if 'process' in amp
+            and amp['process'].get_interference_mode() == 'treextree']
+        if interference:
+            for format in [self._export_format,
+                           options['me_exporter'].get('name')]:
+                if format and format not in \
+                           diagram_generation.TREE_INTERFERENCE_FORMATS:
+                    raise self.InvalidCmd(
+                        "The '%s' output format cannot select the "
+                        "interference of a treextree process (it would "
+                        "return |A_left + A_right|^2): use one of %s."
+                        % (format, ', '.join(
+                               diagram_generation.TREE_INTERFERENCE_FORMATS)))
 
         # check
         if os.path.realpath(self._export_dir) == os.getcwd():
