@@ -248,7 +248,7 @@ jobs:
     env:
       BACKEND: ${{ inputs.backend }}
       MODULES: ${{ inputs.modules }}
-      VENV: ${{ needs.build_madspace.outputs.venv }}
+      # no VENV: the python3 of the modules (see madspace_ops_gpu.sh)
       MADSPACE_PREFIX: ${{ needs.build_madspace.outputs.madspace_prefix }}
     steps:
       - uses: actions/checkout@v5

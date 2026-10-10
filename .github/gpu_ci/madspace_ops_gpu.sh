@@ -1,15 +1,18 @@
 #!/bin/bash -l
 # Runs on the self-hosted runner (GPU node): job madspace_ops of gpu_runner_ci.yml.
 # madspace GPU runtime operations against the CPU runtime: see madspace_checks.py.
-# Environment: as pp_ttx_mg7.sh (BACKEND, MODULES, VENV, MADSPACE_PREFIX, WORKDIR).
-# torch (from the PyTorch module) puts the inputs on the GPU.
+# Environment: as pp_ttx_mg7.sh (BACKEND, MODULES, MADSPACE_PREFIX, WORKDIR).
+# torch (from the PyTorch module) puts the inputs on the GPU. This runs the python3 of
+# the modules, not the venv of build_madspace (same interpreter, which madspace was built
+# with): EasyBuild finds some packages of the modules (e.g. typing_extensions of
+# Python-bundle-PyPI, which torch imports) through EBPYTHONPREFIXES, which only the
+# python3 of the modules reads (its sitecustomize), not a venv made from it.
 set -eo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 section() { echo; echo "=================== $* ($(date +%T))"; }
 
 section "Environment"
 if [ -n "$MODULES" ]; then source "$HERE/load_modules.sh"; fi
-source "$VENV/bin/activate"
 python3 --version
 case $BACKEND in
     cuda) GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader | sed -n 1p) ;;
