@@ -209,7 +209,7 @@ namespace madmatrix
           // This assumes alignment for momenta1d without checking - causes segmentation fault in reinterpret_cast if not aligned!
           return madmatrix::fptypevFromAlignedArray( out ); // use reinterpret_cast
         }
-        else if( (size_t)( buffer ) % mgOnGpu::cppAlign == 0 )
+        else if( (size_t)( buffer ) % madmatrix::cppAlign == 0 )
         {
           //static bool first=true; if( first ){ std::cout << "WARNING! aligned AOSOA, reinterpret cast" << std::endl; first=false; } // SLOWER (5.00E6)
           // DEFAULT! A tiny bit (<1%) slower because of the alignment check (5.07E6 in eemumu 512y)

@@ -27,7 +27,7 @@
 #include "MemoryAccessMomenta.h"
 #include "MemoryAccessNumerators.h"
 #include "MemoryAccessWavefunctions.h"
-#include "ColorData.h"       // for shouldUseBlas/mgOnGpu::nchannels/channel2iconfig/icolamp/nconfigSDE
+#include "ColorData.h"       // for shouldUseBlas/madmatrix::nchannels/channel2iconfig/icolamp/nconfigSDE
 #include "color_sum.h"       // for color_sum_cpu/color_sum_cpu_blas
 
 #include <cassert>
@@ -266,7 +266,7 @@ namespace madmatrix
       // get_coupling_def reads dpf_value with the right per-flavor stride (CD_ACCESS::flv_stride).
       constexpr int ndpfbuf = ( nDPF > 0 ? nDPF * nMF * CD_ACCESS::flv_stride : 1 );
       // cppAlign is only defined for SIMD
-      alignas( mgOnGpu::cppAlign ) fptype dpf_value[ndpfbuf]{};
+      alignas( madmatrix::cppAlign ) fptype dpf_value[ndpfbuf]{};
       for( int idpf = 0; idpf < nDPF; idpf++ )
         for( int imf = 0; imf < nMF; imf++ )
         {
@@ -531,7 +531,7 @@ namespace madmatrix
 #ifdef _OPENMP
     // OMP multithreading #575 (NB: tested only with gcc11 so far)
 #define _OMPLIST0 allcouplings, allMEs, allmomenta, allrndcol, allrndhel, allselcol, allselhel, cGoodHel, cNGoodHel, npagV2
-#define _OMPLIST1 , allDenominators, allNumerators, allChannelIds, mgOnGpu::icolamp, mgOnGpu::channel2iconfig
+#define _OMPLIST1 , allDenominators, allNumerators, allChannelIds, madmatrix::icolamp, madmatrix::channel2iconfig
 #pragma omp parallel for default( none ) shared( _OMPLIST0 _OMPLIST1 )
 #undef _OMPLIST0
 #undef _OMPLIST1
@@ -645,16 +645,16 @@ namespace madmatrix
         {
           const int ievt = ievt00 + ieppV;
           fptype numerator_sum = 0., normalization = 0.;
-          for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
+          for( unsigned int ichan = 0; ichan < madmatrix::nchannels; ichan++ )
           {
-            if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
+            if( madmatrix::channel2iconfig[ichan] == -1 ) continue;
             normalization += allNumerators[ievt / neppV * neppV * ndiagrams +
                                            ichan * neppV + ieppV % neppV];
           }
-          channelIdVec[ieppV] = mgOnGpu::nchannels;
-          for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
+          channelIdVec[ieppV] = madmatrix::nchannels;
+          for( unsigned int ichan = 0; ichan < madmatrix::nchannels; ichan++ )
           {
-            if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
+            if( madmatrix::channel2iconfig[ichan] == -1 ) continue;
             numerator_sum += allNumerators[ievt / neppV * neppV * ndiagrams +
                                            ichan * neppV + ieppV % neppV];
             if( allrnddiagram[ievt] < numerator_sum / normalization )
@@ -673,22 +673,22 @@ namespace madmatrix
         for( int ieppV = 0; ieppV < vecsize; ++ieppV )
         {
           unsigned int channelId = channelIdVec[ieppV];
-          if( channelId > mgOnGpu::nchannels )
+          if( channelId > madmatrix::nchannels )
           {
-            printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%d which is greater than nchannels=%d\n", channelId, mgOnGpu::nchannels );
-            assert( channelId <= mgOnGpu::nchannels ); // SANITY CHECK #919 #910
+            printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%d which is greater than nchannels=%d\n", channelId, madmatrix::nchannels );
+            assert( channelId <= madmatrix::nchannels ); // SANITY CHECK #919 #910
           }
           // NB (see #877): in the array channel2iconfig, the input index uses C indexing (channelId -1), the output index uses F indexing (iconfig)
-          const int iconfig = mgOnGpu::channel2iconfig[channelId - 1]; // map N_diagrams to N_config <= N_diagrams configs (fix LHE color mismatch #856: see also #826, #852, #853)
+          const int iconfig = madmatrix::channel2iconfig[channelId - 1]; // map N_diagrams to N_config <= N_diagrams configs (fix LHE color mismatch #856: see also #826, #852, #853)
           if( iconfig <= 0 )
           {
             printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%d which has no associated SDE iconfig\n", channelId );
             assert( iconfig > 0 ); // SANITY CHECK #917
           }
-          else if( iconfig > (int)mgOnGpu::nconfigSDE )
+          else if( iconfig > (int)madmatrix::nconfigSDE )
           {
-            printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%d (invalid SDE iconfig=%d\n > nconfig=%d)", channelId, iconfig, mgOnGpu::nconfigSDE );
-            assert( iconfig <= (int)mgOnGpu::nconfigSDE ); // SANITY CHECK #917
+            printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%d (invalid SDE iconfig=%d\n > nconfig=%d)", channelId, iconfig, madmatrix::nconfigSDE );
+            assert( iconfig <= (int)madmatrix::nconfigSDE ); // SANITY CHECK #917
           }
           fptype_amp targetamp[ncolor_flow] = { 0 };
           // NB (see #877): explicitly use 'icolC' rather than 'icol' to indicate that icolC uses C indexing in [0, N_colors-1]
@@ -699,10 +699,10 @@ namespace madmatrix
             else
               targetamp[icolC] = targetamp[icolC - 1];
 #ifdef MGONGPU_CPPSIMD
-            if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] +=
+            if( madmatrix::icolamp[iconfig - 1][icolC] ) targetamp[icolC] +=
               jamp2_sv[icolC + ncolor_flow * ( ieppV / neppV )][ieppV % neppV];
 #else
-            if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] +=
+            if( madmatrix::icolamp[iconfig - 1][icolC] ) targetamp[icolC] +=
               jamp2_sv[icolC + ncolor_flow * ( ieppV / neppV )];
 #endif
           }

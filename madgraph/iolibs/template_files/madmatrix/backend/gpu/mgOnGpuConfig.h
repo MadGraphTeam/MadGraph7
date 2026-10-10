@@ -156,8 +156,7 @@
 
 // SANITY CHECKS (C++ complex number implementation)
 
-// NB: namespace mgOnGpu includes types which are defined in exactly the same way for CPU and GPU builds (see #318 and #725)
-namespace mgOnGpu
+namespace madmatrix
 {
 
   // --- Type definitions
@@ -280,12 +279,12 @@ namespace mgOnGpu
 }
 
 // Expose typedefs and operators outside the namespace
-using mgOnGpu::fptype;
-using mgOnGpu::fptype2;
-using mgOnGpu::fptype_momenta;
-using mgOnGpu::fptype_denom;
-using mgOnGpu::fptype_amp;
-using mgOnGpu::fptype_colour;
+using madmatrix::fptype;
+using madmatrix::fptype2;
+using madmatrix::fptype_momenta;
+using madmatrix::fptype_denom;
+using madmatrix::fptype_amp;
+using madmatrix::fptype_colour;
 
 // Undefine ARM_NEON (hack for the 'scalar' backend on Apple silicon ARM)
 #ifdef MGONGPU_NOARMNEON
@@ -304,7 +303,7 @@ using mgOnGpu::fptype_colour;
 // CUDA nsight compute (ncu) debug: add dummy lines to ease SASS program flow navigation [NB: CURRENTLY NO LONGER SUPPORTED!]
 // Arguments (not used so far): text is __FUNCTION__, code is 0 (start) or 1 (end)
 //#if defined __CUDACC__ && defined MGONGPU_NSIGHT_DEBUG // this must be __CUDACC__
-//#define mgDebugDeclare() __shared__ float mgDebugCounter[mgOnGpu::ntpbMAX];
+//#define mgDebugDeclare() __shared__ float mgDebugCounter[madmatrix::ntpbMAX];
 //#define mgDebugInitialise() { mgDebugCounter[threadIdx.x] = 0; }
 //#define mgDebug( code, text ) { mgDebugCounter[threadIdx.x] += 1; }
 //#define mgDebugFinalise() { if ( blockIdx.x == 0 && threadIdx.x == 0 ) printf( "MGDEBUG: counter=%f\n", mgDebugCounter[threadIdx.x] ); }

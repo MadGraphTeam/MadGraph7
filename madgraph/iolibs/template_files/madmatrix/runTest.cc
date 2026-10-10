@@ -30,23 +30,23 @@
 
 using namespace madmatrix;
 
-// Host-accessible copy of mgOnGpu::channel2iconfig, needed only by setChannelIds()
+// Host-accessible copy of madmatrix::channel2iconfig, needed only by setChannelIds()
 #ifndef MGONGPUCPP_GPUIMPL
 inline const int*
 getHostChannel2iconfig()
 {
-  return mgOnGpu::channel2iconfig;
+  return madmatrix::channel2iconfig;
 }
 #else
 inline const int*
 getHostChannel2iconfig()
 {
-  static int hostCopy[mgOnGpu::nchannels];
+  static int hostCopy[madmatrix::nchannels];
   static bool first = true;
   if( first )
   {
     first = false;
-    gpuMemcpyFromSymbol( hostCopy, mgOnGpu::channel2iconfig, mgOnGpu::nchannels * sizeof( int ) );
+    gpuMemcpyFromSymbol( hostCopy, madmatrix::channel2iconfig, madmatrix::nchannels * sizeof( int ) );
   }
   return hostCopy;
 }
@@ -58,7 +58,7 @@ struct CUDA_CPU_TestBase : public TestDriverBase
   static constexpr int np4 = CPPProcess::np4;
   static constexpr int npar = CPPProcess::npar;
   static_assert( gputhreads % neppM == 0, "ERROR! #threads/block should be a multiple of neppM" );
-  static_assert( gputhreads <= mgOnGpu::ntpbMAX, "ERROR! #threads/block should be <= ntpbMAX" );
+  static_assert( gputhreads <= madmatrix::ntpbMAX, "ERROR! #threads/block should be <= ntpbMAX" );
   CUDA_CPU_TestBase( const std::string& refFileName )
     : TestDriverBase( npar, refFileName ) {}
   // Does this test use channelIds?
@@ -82,10 +82,10 @@ struct CUDA_CPU_TestBase : public TestDriverBase
     for( unsigned int iWarp = 0; iWarp < nWarp; ++iWarp )
     {
       //const unsigned int channelId = 1 + ( iWarp + iiter * nWarp ) % CPPProcess::ndiagrams; // bug #917
-      const int iconfig = 1 + ( iWarp + iiter * nWarp ) % mgOnGpu::nconfigSDE;
+      const int iconfig = 1 + ( iWarp + iiter * nWarp ) % madmatrix::nconfigSDE;
       unsigned int channelId = 0;
       //for( unsigned int idiagram = 1; idiagram < CPPProcess::ndiagrams; idiagram++ ) // two bugs #920 and #919
-      for( unsigned int idiagram = 0; idiagram < mgOnGpu::nchannels; idiagram++ ) // fix #920 and work around #919
+      for( unsigned int idiagram = 0; idiagram < madmatrix::nchannels; idiagram++ ) // fix #920 and work around #919
       {
         if( getHostChannel2iconfig()[idiagram] == iconfig )
         {

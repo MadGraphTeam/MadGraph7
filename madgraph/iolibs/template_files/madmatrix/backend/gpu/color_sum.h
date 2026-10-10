@@ -33,7 +33,7 @@ namespace madmatrix
   constexpr std::size_t
   blasColorSumTmpSize( const int nhel, const int nevt )
   {
-    std::size_t nfptype2PerEvent = ProcessData::ncolor * mgOnGpu::nx2;
+    std::size_t nfptype2PerEvent = ProcessData::ncolor * madmatrix::nx2;
 #if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
     nfptype2PerEvent *= 2;  // the jamps converted to float need a buffer of their own
     nfptype2PerEvent += 1;  // the fptype2 matrix elements

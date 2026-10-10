@@ -36,9 +36,9 @@ extern "C"
     }
   }
 
-  static mgOnGpu::Timer<TIMERTYPE> program_timer;
+  static madmatrix::Timer<TIMERTYPE> program_timer;
   static float program_totaltime = 0;
-  static mgOnGpu::Timer<TIMERTYPE> smatrix1multi_timer[nimplC];
+  static madmatrix::Timer<TIMERTYPE> smatrix1multi_timer[nimplC];
   static float smatrix1multi_totaltime[nimplC] = { 0 };
   static int smatrix1multi_counter[nimplC] = { 0 };
 

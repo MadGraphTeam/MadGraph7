@@ -33,7 +33,7 @@ namespace ColorMatrixData
 %(sqso_tables)s
 }
 
-namespace mgOnGpu
+namespace madmatrix
 {
   // Diagram: C-indexed [0,ndiagrams). Channel (channelId): F-indexed [1,nchannels],
   // not all diagrams have one (#919); channelId-1 indexes channel2iconfig. Config

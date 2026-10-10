@@ -59,8 +59,7 @@
 #error You must CHOOSE (ONE AND) ONLY ONE of MGONGPU_CPPCXTYPE_STDCOMPLEX or MGONGPU_CPPCXTYPE_CXSMPL for C++
 #endif
 
-// NB: namespace mgOnGpu includes types which are defined in exactly the same way for CPU and GPU builds (see #318 and #725)
-namespace mgOnGpu
+namespace madmatrix
 {
   // Floating point type (for everything but color algebra #537): fptype
 #if defined MGONGPU_FPTYPE_DOUBLE
@@ -171,12 +170,12 @@ namespace mgOnGpu
 }
 
 // Expose typedefs outside the namespace
-using mgOnGpu::fptype;
-using mgOnGpu::fptype2;
-using mgOnGpu::fptype_momenta;
-using mgOnGpu::fptype_denom;
-using mgOnGpu::fptype_amp;
-using mgOnGpu::fptype_colour;
+using madmatrix::fptype;
+using madmatrix::fptype2;
+using madmatrix::fptype_momenta;
+using madmatrix::fptype_denom;
+using madmatrix::fptype_amp;
+using madmatrix::fptype_colour;
 
 // Undefine ARM_NEON (hack for the 'scalar' backend on Apple silicon ARM)
 #ifdef MGONGPU_NOARMNEON
