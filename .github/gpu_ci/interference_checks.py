@@ -30,7 +30,6 @@ check fails.
 
 import argparse
 import ctypes
-import ctypes.util
 import glob
 import gzip
 import json
@@ -42,7 +41,7 @@ import subprocess
 import sys
 import time
 
-GPU_BACKENDS = ('cuda', 'hip')
+from umami_harness import GPU_BACKENDS, Memory, rambo
 
 # u u~ > u u~ QED^2==2 at the check_sa RAMBO point, from the Fortran split-order
 # standalone (madmatrix CPU: -5.5828746494657258e-02)
@@ -135,92 +134,6 @@ def check_standalone(repo, backend):
 # ---------------------------------------------------------------------------
 # 2. helicity choice through umami
 # ---------------------------------------------------------------------------
-
-class Memory:
-    """Buffers for umami: host memory for a CPU library, device memory for a GPU one
-    (through the CUDA/HIP runtime the library itself is linked with)."""
-
-    def __init__(self, backend, library):
-        self.gpu = backend in GPU_BACKENDS
-        if not self.gpu:
-            return
-        name, prefix = ('cudart', 'cuda') if backend == 'cuda' else ('amdhip64', 'hip')
-        path = None
-        ldd = subprocess.run(['ldd', library], capture_output=True, text=True).stdout
-        for line in ldd.splitlines():
-            if 'lib%s' % name in line and '=>' in line:
-                path = line.split('=>')[1].split()[0]
-        self.rt = ctypes.CDLL(path or ctypes.util.find_library(name) or 'lib%s.so' % name)
-        self.malloc = getattr(self.rt, prefix + 'Malloc')
-        self.malloc.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_size_t]
-        self.memcpy = getattr(self.rt, prefix + 'Memcpy')
-        self.memcpy.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
-        self.free = getattr(self.rt, prefix + 'Free')
-        self.free.argtypes = [ctypes.c_void_p]
-        self.sync = getattr(self.rt, prefix + 'DeviceSynchronize')
-        self.pointers = []
-
-    def buffer(self, host):
-        """A buffer for umami holding (a copy of) the ctypes array host."""
-        if not self.gpu:
-            return ctypes.addressof(host)
-        pointer = ctypes.c_void_p()
-        assert self.malloc(ctypes.byref(pointer), ctypes.sizeof(host)) == 0, 'device malloc'
-        # cudaMemcpyHostToDevice == hipMemcpyHostToDevice == 1
-        assert self.memcpy(pointer, ctypes.addressof(host), ctypes.sizeof(host), 1) == 0
-        self.pointers.append(pointer)
-        return pointer.value
-
-    def fetch(self, pointer, host):
-        """Copy a umami output back into the ctypes array host."""
-        if not self.gpu:
-            return
-        assert self.sync() == 0, 'device synchronize'
-        # cudaMemcpyDeviceToHost == hipMemcpyDeviceToHost == 2
-        assert self.memcpy(ctypes.addressof(host), pointer, ctypes.sizeof(host), 2) == 0
-
-    def release(self):
-        if self.gpu:
-            for pointer in self.pointers:
-                self.free(pointer)
-            self.pointers = []
-
-
-def rambo(masses_out, roots, rng):
-    """One phase-space point: two massless beams along z, then RAMBO with masses."""
-    n = len(masses_out)
-    q = []
-    for _ in range(n):
-        c, f = 2 * rng.random() - 1, 2 * math.pi * rng.random()
-        e = -math.log(rng.random() * rng.random())
-        s = math.sqrt(1 - c * c)
-        q.append([e, e * s * math.cos(f), e * s * math.sin(f), e * c])
-    big_q = [sum(qi[k] for qi in q) for k in range(4)]
-    mass = math.sqrt(big_q[0] ** 2 - sum(big_q[k] ** 2 for k in (1, 2, 3)))
-    b = [-big_q[k] / mass for k in (1, 2, 3)]
-    g, x = big_q[0] / mass, roots / mass
-    a = 1 / (1 + g)
-    p = []
-    for qi in q:
-        bq = sum(b[k] * qi[k + 1] for k in range(3))
-        p.append([x * (g * qi[0] + bq)] +
-                 [x * (qi[k + 1] + b[k] * qi[0] + a * bq * b[k]) for k in range(3)])
-    # rescale the three-momenta so that the energies add up to roots with the masses
-    xi = 1.
-    for _ in range(100):
-        energies = [math.sqrt((xi * pi[0]) ** 2 + m * m) for pi, m in zip(p, masses_out)]
-        f = sum(energies) - roots
-        df = sum(xi * pi[0] ** 2 / e for pi, e in zip(p, energies))
-        xi -= f / df
-        if abs(f) < 1e-12 * roots:
-            break
-    out = []
-    for pi, m in zip(p, masses_out):
-        vec = [xi * v for v in pi[1:]]
-        out.append([math.sqrt(sum(v * v for v in vec) + m * m)] + vec)
-    half = roots / 2
-    return [[half, 0., 0., half], [half, 0., 0., -half]] + out
-
 
 def check_helicity_choice(repo, backend, npoints=16, ngrid=4000):
     section('helicity choice of an interference |M|^2 through umami (%s)' % backend)

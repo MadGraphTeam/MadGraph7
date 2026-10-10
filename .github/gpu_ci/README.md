@@ -23,6 +23,7 @@ allocation per workflow run, and every CI job of that run executes in it:
 | `pp_ttx` | cluster | `generate p p > t t~`, `output mg7`, `device = ["cuda"]` or `["hip"]` in `run_card.toml`, `bin/generate_events -f`, check the cross section in `info.json` (`pp_ttx_mg7.sh`). The logs and cards are uploaded as an artifact, and the cross section is shown in the run summary |
 | `pp_jj` | cluster | the same with `generate p p > j j` (`PROCESS`/`TAG` of `pp_ttx_mg7.sh`): its jet cuts act on several objects, which `p p > t t~` has none of |
 | `interference` | cluster | squared split orders on the GPU backend of madmatrix (`interference_gpu.sh`, `interference_checks.py`): standalone `u u~ > u u~` constraints, the helicity choice of an interference matrix element through umami (exact and summed), and `p p > u u~ QCD^2==2` with mg7 against its CPU reference. Input `interference`, on by default and on push |
+| `madmatrix` | cluster | the GPU backend of madmatrix against its scalar CPU backend through umami (`madmatrix_gpu.sh`, `madmatrix_checks.py`): MSSM `p p > go go` event by event (running flavour couplings), a subprocess with no good helicity (`b b~ > ta+ ta- / z a`, ymtau = 0), and a non-blocking stream handed to umami (`g g > t t~ g`). Each check runs in its own process |
 | `stop_runner` | cluster | clean up, then create the stop file: `runner_batch.sh` stops the runner and the allocation ends |
 
 To add a CI job, give it `runs-on: [self-hosted, "${{ inputs.runner_label }}"]` and add it

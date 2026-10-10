@@ -8,6 +8,7 @@
 #   pp_ttx          cluster runner  p p > t t~ with mg7 on the GPU
 #   pp_jj           cluster runner  p p > j j with mg7 on the GPU (cuts on several jets)
 #   interference    cluster runner  squared split orders (interference), .github/gpu_ci/interference_gpu.sh
+#   madmatrix       cluster runner  GPU against CPU backend of madmatrix, .github/gpu_ci/madmatrix_gpu.sh
 #   ...             cluster runner  more CI jobs: same runs-on, and add them to stop_runner's needs
 #   stop_runner     cluster runner  clean up and end the allocation (no ssh key needed)
 #
@@ -240,6 +241,52 @@ jobs:
           path: results/
           if-no-files-found: warn
 
+  madmatrix:
+    # the GPU backend of madmatrix against its CPU backend through umami: running flavour
+    # couplings (MSSM), a subprocess with no good helicity, a non-blocking stream
+    needs: build_madspace
+    runs-on: [self-hosted, "${{ inputs.runner_label }}"]
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash -l -eo pipefail {0}
+    env:
+      BACKEND: ${{ inputs.backend }}
+      MODULES: ${{ inputs.modules }}
+      GPU_ARCH: ${{ inputs.gpu_arch }}
+      VENV: ${{ needs.build_madspace.outputs.venv }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: run directory
+        run: echo "WORKDIR=${GLOBALSCRATCH:-$HOME}/mg7-gpu-ci/runs/$RUN_TAG/madmatrix" >> "$GITHUB_ENV"
+      - name: madmatrix on the GPU
+        run: .github/gpu_ci/madmatrix_gpu.sh
+      - name: collect logs
+        if: always()
+        run: |
+          mkdir -p results
+          (cd "$WORKDIR" && tar -cf - --ignore-failed-read summary.txt checks.log *.json *.mg5 *.log 2> /dev/null) | tar -xf - -C results || true
+          find results -type f | sort
+      - name: job summary
+        if: always()
+        run: |
+          {
+            echo "### madmatrix on ${{ inputs.cluster }} ($BACKEND)"
+            if [ -f results/summary.txt ]; then
+              echo "| | |"
+              echo "|---|---|"
+              sed 's/^\([^=]*\)=\(.*\)$/| \1 | \2 |/' results/summary.txt
+            else
+              echo "No summary.txt: the job stopped early, see the log of the 'madmatrix on the GPU' step."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpu-madmatrix-${{ inputs.cluster }}-${{ inputs.backend }}
+          path: results/
+          if-no-files-found: warn
+
   pp_jj:
     # p p > j j: cuts on several objects (the jets), which p p > t t~ does not have
     needs: build_madspace
@@ -293,7 +340,7 @@ jobs:
 
   stop_runner:
     # must list every job that runs on the self-hosted runner
-    needs: [start_runner, build_madspace, pp_ttx, pp_jj, interference]
+    needs: [start_runner, build_madspace, pp_ttx, pp_jj, interference, madmatrix]
     if: always() && needs.start_runner.result == 'success'
     runs-on: [self-hosted, "${{ inputs.runner_label }}"]
     defaults:
