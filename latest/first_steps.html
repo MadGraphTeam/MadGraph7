@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Installation" href="madspace/installation.html"><link rel="prev" title="Installation" href="installation.html">
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Run card" href="run_card.html"><link rel="prev" title="Installation" href="installation.html">
         <link rel="canonical" href="https://docs.madgraph.org/latest/first_steps.html">
         <link rel="prefetch" href="_static/logo-light.png" as="image">
         <link rel="prefetch" href="_static/logo-dark.png" as="image">
@@ -279,6 +279,9 @@
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">First steps</a></li>
+<li class="toctree-l1"><a class="reference internal" href="run_card.html">Run card</a></li>
+<li class="toctree-l1"><a class="reference internal" href="gridpacks.html">Gridpacks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="madevent_to_mg7.html">Coming from MadEvent</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">MadSpace</span></p>
 <ul>
@@ -598,13 +601,51 @@
         <article role="main" id="furo-main-content">
           <section id="first-steps">
 <h1>First steps<a class="headerlink" href="#first-steps" title="Link to this heading">¶</a></h1>
-<p>Type <code class="docutils literal notranslate"><span class="pre">tutorial</span></code> at the MadGraph7 prompt for a guided walkthrough of the commands.</p>
-<p>To start your first process, you can enter the following commands:</p>
+<p>To start your first process, enter the following commands at the MadGraph7 prompt:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">generate</span> <span class="n">p</span> <span class="n">p</span> <span class="o">&gt;</span> <span class="n">t</span> <span class="n">t</span><span class="o">~</span>
 <span class="n">output</span> <span class="n">my_first_run</span>
 <span class="n">launch</span>
 </pre></div>
 </div>
+<p>The <code class="docutils literal notranslate"><span class="pre">launch</span></code> command asks which programs to run and lets you edit the cards. Press Enter to
+accept the defaults. The events are written to <code class="docutils literal notranslate"><span class="pre">my_first_run/Events</span></code>.</p>
+<section id="interactive-tutorial">
+<h2>Interactive tutorial<a class="headerlink" href="#interactive-tutorial" title="Link to this heading">¶</a></h2>
+<p>Type <code class="docutils literal notranslate"><span class="pre">tutorial</span></code> at the prompt for a guided walkthrough that runs inside the interpreter. It
+shows a menu of lessons. You pick one by name, for example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">tutorial</span> <span class="n">lo</span>
+<span class="n">tutorial</span> <span class="n">mg7</span>
+</pre></div>
+</div>
+<p>The first lessons are a good start:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">lo</span></code></dt><dd><p>From a cold start to a first event sample.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">syntax</span></code></dt><dd><p>The process syntax: orders, interference, decay chains and polarization.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">mg7</span></code></dt><dd><p>The run card, the phase-space options and training MadNIS.</p>
+</dd>
+</dl>
+<p>Other lessons cover models, decays, standalone matrix elements, NLO and MadLoop, the
+<code class="docutils literal notranslate"><span class="pre">check</span></code> commands and the MadEvent mode. The <code class="docutils literal notranslate"><span class="pre">exercises</span></code> lesson checks your answers
+and tells you which mistake you made. Leave a lesson with <code class="docutils literal notranslate"><span class="pre">tutorial</span> <span class="pre">stop</span></code>.</p>
+</section>
+<section id="where-to-go-next">
+<h2>Where to go next<a class="headerlink" href="#where-to-go-next" title="Link to this heading">¶</a></h2>
+<dl class="simple">
+<dt><a class="reference internal" href="run_card.html"><span class="doc">Run card</span></a></dt><dd><p>Every setting of the run card <code class="docutils literal notranslate"><span class="pre">Cards/run_card.toml</span></code>, section by section.</p>
+</dd>
+<dt><a class="reference internal" href="gridpacks.html"><span class="doc">Gridpacks</span></a></dt><dd><p>Save a finished run and generate more events from it without repeating the survey and
+the training.</p>
+</dd>
+<dt><a class="reference internal" href="madevent_to_mg7.html"><span class="doc">Coming from MadEvent</span></a></dt><dd><p>The MadEvent settings and their MG7 equivalents, if you are used to <code class="docutils literal notranslate"><span class="pre">run_card.dat</span></code>.</p>
+</dd>
+<dt><a class="reference internal" href="installation.html"><span class="doc">Installation</span></a></dt><dd><p>Requirements and how to install MadGraph7 and <code class="docutils literal notranslate"><span class="pre">madspace</span></code>.</p>
+</dd>
+<dt><a class="reference internal" href="madspace/examples.html"><span class="doc">Examples</span></a></dt><dd><p>Use the phase-space and integration library from Python.</p>
+</dd>
+</dl>
+</section>
 <section id="graphical-interface">
 <h2>Graphical interface<a class="headerlink" href="#graphical-interface" title="Link to this heading">¶</a></h2>
 <p><a class="reference external" href="https://github.com/MadGraphTeam/MadBoard">MadBoard</a> is a separate package providing a
@@ -622,12 +663,12 @@ browser and inspecting their results. You can install it with:</p>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="madspace/installation.html">
+          <a class="next-page" href="run_card.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Installation</div>
+                <div class="title">Run card</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -673,6 +714,8 @@ browser and inspecting their results. You can install it with:</p>
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">First steps</a><ul>
+<li><a class="reference internal" href="#interactive-tutorial">Interactive tutorial</a></li>
+<li><a class="reference internal" href="#where-to-go-next">Where to go next</a></li>
 <li><a class="reference internal" href="#graphical-interface">Graphical interface</a></li>
 </ul>
 </li>

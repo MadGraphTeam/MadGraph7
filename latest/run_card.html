@@ -1,0 +1,1154 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="./">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Gridpacks" href="gridpacks.html"><link rel="prev" title="First steps" href="first_steps.html">
+        <link rel="canonical" href="https://docs.madgraph.org/latest/run_card.html">
+        <link rel="prefetch" href="_static/logo-light.png" as="image">
+        <link rel="prefetch" href="_static/logo-dark.png" as="image">
+
+    <!-- Generated with Sphinx 9.0.4 and Furo 2025.12.19 -->
+        <title>Run card - MadGraph7 0.2.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=acfd86a5" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="index.html"><div class="brand">MadGraph7 0.2.1 documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="_static/logo-light.png" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="_static/logo-dark.png" alt="Dark Logo"/>
+  </div>
+  
+  
+</a><form class="sidebar-search-container" method="get" action="search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div>
+<div class="mg7-versions" id="mg7-versions" hidden>
+  <label class="mg7-versions__label" for="mg7-version-select">Version</label>
+  <select id="mg7-version-select" aria-label="Documentation version"></select>
+</div>
+<style>
+  .mg7-versions {
+    margin: 0 var(--sidebar-item-spacing-horizontal, 1rem) .75rem;
+  }
+  .mg7-versions__label {
+    display: block;
+    margin-bottom: .2rem;
+    font-size: var(--font-size--small--2, .75rem);
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--color-foreground-muted);
+  }
+  .mg7-versions select {
+    width: 100%;
+    padding: .3rem .4rem;
+    border-radius: .25rem;
+    font-size: var(--font-size--small, .875rem);
+    color: var(--color-foreground-primary);
+    background: var(--color-background-primary);
+    border: 1px solid var(--color-background-border);
+  }
+</style>
+<script>
+(function () {
+  var current = "latest";
+  var versionRoot = new URL("./" || "./", window.location.href);
+  var siteRoot = new URL("../", versionRoot);
+
+  fetch(new URL("versions.json", siteRoot).href, { cache: "no-cache" })
+    .then(function (r) {
+      if (!r.ok) throw new Error("status " + r.status);
+      return r.json();
+    })
+    .then(function (data) {
+      var sel = document.getElementById("mg7-version-select");
+      var seen = false;
+
+      (data.versions || []).forEach(function (v) {
+        var opt = document.createElement("option");
+        opt.value = new URL(v.url, siteRoot).href;
+        opt.textContent = v.title || v.name;
+        if (v.name === current) {
+          opt.selected = true;
+          seen = true;
+        }
+        sel.appendChild(opt);
+      });
+
+      if (!seen) {
+        // The build running this page isn't in versions.json (e.g. a
+        // workflow_dispatch dry run). Label it rather than silently
+        // selecting the wrong entry, and don't navigate away from it.
+        var opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = current + " (this build)";
+        opt.selected = true;
+        sel.insertBefore(opt, sel.firstChild);
+      }
+
+      sel.addEventListener("change", function () {
+        // Navigate to the other version's root, not the current page path:
+        // this exact page may not exist in that version.
+        if (sel.value) {
+          window.location.assign(sel.value);
+        }
+      });
+
+      document.getElementById("mg7-versions").hidden = false;
+    })
+    .catch(function () {
+      // No versions.json reachable (local build, or served off-site):
+      // leave the switcher hidden rather than show a broken control.
+    });
+})();
+</script><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Usage</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="first_steps.html">First steps</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Run card</a></li>
+<li class="toctree-l1"><a class="reference internal" href="gridpacks.html">Gridpacks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="madevent_to_mg7.html">Coming from MadEvent</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">MadSpace</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="madspace/installation.html">Installation</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="madspace/examples.html">Examples</a><input aria-label="Toggle navigation of Examples" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="madspace/examples/simple-mappings.html">Constructing and calling a phase-space mapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/examples/cuts.html">Defining fiducial cuts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/examples/diagram-mapping.html">Building a mapping for a Feynman diagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/examples/integration-order.html">Multiple on-shell configurations and integration order</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/examples/matrix-element.html">Calling a MadGraph-generated matrix element</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/examples/gpu.html">Running on a GPU</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/examples/pdf.html">The built-in PDF interpolator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/examples/integrator.html">Building a simple integrator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/examples/integrator-madnis.html">Neural importance sampling with MadNIS</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/examples/flow-training.html">Fusing RNG, flow, mapping and matrix element into one graph</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="madspace/umami-api.html">UMAMI API</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="madspace/python-api.html">Python API</a><input aria-label="Toggle navigation of Python API" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/ChiliMapping.html">ChiliMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/DiscreteFlow.html">DiscreteFlow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/DiscreteSampler.html">DiscreteSampler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/DoubleT.html">DoubleT</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/FastRamboMapping.html">FastRamboMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Flow.html">Flow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Invariant.html">Invariant</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Luminosity.html">Luminosity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Mapping.html">Mapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/MultiChannelMapping.html">MultiChannelMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/PhaseSpaceMapping.html">PhaseSpaceMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/TPropagatorMapping.html">TPropagatorMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/ThreeBodyDecay.html">ThreeBodyDecay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/TwoBodyDecay.html">TwoBodyDecay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/TwoToThreeParticleScattering.html">TwoToThreeParticleScattering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/TwoToTwoParticleScattering.html">TwoToTwoParticleScattering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/VegasMapping.html">VegasMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/CachedPdf.html">CachedPdf</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/CachedScale.html">CachedScale</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/CutItem.html">CutItem</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Cuts.html">Cuts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/DiscreteHistogram.html">DiscreteHistogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/EnergyScale.html">EnergyScale</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/FunctionGenerator.html">FunctionGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/HistItem.html">HistItem</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Integrand.html">Integrand</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/MLP.html">MLP</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/MadnisLoss.html">MadnisLoss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/MatrixElement.html">MatrixElement</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/MomentumPreprocessing.html">MomentumPreprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/MultiChannelFunction.html">MultiChannelFunction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/MultiChannelIntegrand.html">MultiChannelIntegrand</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Observable.html">Observable</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/ObservableHistograms.html">ObservableHistograms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/ObservableValues.html">ObservableValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/PartonDensity.html">PartonDensity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/RunningCoupling.html">RunningCoupling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Unweighter.html">Unweighter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/VegasHistogram.html">VegasHistogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Decay.html">Decay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Diagram.html">Diagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/LineRef.html">LineRef</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/PdfGrid.html">PdfGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Propagator.html">Propagator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Topology.html">Topology</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/initialize_vegas_grid.html">initialize_vegas_grid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/BatchSize.html">BatchSize</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/DataType.html">DataType</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Function.html">Function</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/FunctionBuilder.html">FunctionBuilder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/FunctionRuntime.html">FunctionRuntime</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Instruction.html">Instruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/InstructionCall.html">InstructionCall</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Type.html">Type</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Value.html">Value</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/batch_float_array.html">batch_float_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/multichannel_batch_size.html">multichannel_batch_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/AdamOptimizer.html">AdamOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/ChannelEventGenerator.html">ChannelEventGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Context.html">Context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Device.html">Device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/DiscreteOptimizer.html">DiscreteOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/EventGenerator.html">EventGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/EventHistogramSpec.html">EventHistogramSpec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/EventHistograms.html">EventHistograms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/GeneratorConfig.html">GeneratorConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/GeneratorStatus.html">GeneratorStatus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Histogram.html">Histogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/LHECompleter.html">LHECompleter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/LHEEvent.html">LHEEvent</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/LHEFileWriter.html">LHEFileWriter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/LHEHeader.html">LHEHeader</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/LHEMeta.html">LHEMeta</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/LHEParticle.html">LHEParticle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/LHEProcess.html">LHEProcess</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Logger.html">Logger</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/MadnisConfig.html">MadnisConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/MadnisTraining.html">MadnisTraining</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/MatrixElementApi.html">MatrixElementApi</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/MixMaxRandom.html">MixMaxRandom</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/MultiMadnisTraining.html">MultiMadnisTraining</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/PdfGroupInfo.html">PdfGroupInfo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/PdfMemberSpec.html">PdfMemberSpec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/PrettyBox.html">PrettyBox</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/StatusFile.html">StatusFile</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/SubprocArgs.html">SubprocArgs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/SubprocessObservables.html">SubprocessObservables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/SystematicsCalculator.html">SystematicsCalculator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/SystematicsConfig.html">SystematicsConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Tensor.html">Tensor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/TrainingArgs.html">TrainingArgs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Variation.html">Variation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/Verbosity.html">Verbosity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/available_backends.html">available_backends</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/cpu_device.html">cpu_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/cuda_device.html">cuda_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/default_context.html">default_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/default_cuda_context.html">default_cuda_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/default_hip_context.html">default_hip_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/format_progress.html">format_progress</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/format_si_prefix.html">format_si_prefix</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/format_with_error.html">format_with_error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/hip_device.html">hip_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/select_combine_channel_index.html">select_combine_channel_index</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/set_lib_path.html">set_lib_path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/set_simd_vector_size.html">set_simd_vector_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/NamedTypes.html">NamedTypes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/NamedValues.html">NamedValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/get_stream.html">get_stream</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/set_stream.html">set_stream</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/stream.html">stream</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="madspace/cpp-api.html">C++ API</a><input aria-label="Toggle navigation of C++ API" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ChiliMapping.html">ChiliMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/DiscreteFlow.html">DiscreteFlow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/DiscreteSampler.html">DiscreteSampler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/DoubleT.html">DoubleT</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/FastRamboMapping.html">FastRamboMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Flow.html">Flow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Invariant.html">Invariant</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Luminosity.html">Luminosity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Mapping.html">Mapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/MultiChannelMapping.html">MultiChannelMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/PhaseSpaceMapping.html">PhaseSpaceMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/TPropagatorMapping.html">TPropagatorMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ThreeBodyDecay.html">ThreeBodyDecay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/TwoBodyDecay.html">TwoBodyDecay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/TwoToThreeParticleScattering.html">TwoToThreeParticleScattering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/TwoToTwoParticleScattering.html">TwoToTwoParticleScattering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/VegasMapping.html">VegasMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/BatchSampler.html">BatchSampler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/BufferUnweighter.html">BufferUnweighter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Cuts.html">Cuts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/DiscreteHistogram.html">DiscreteHistogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/EnergyScale.html">EnergyScale</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/FunctionGenerator.html">FunctionGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/GradientClipper.html">GradientClipper</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Integrand.html">Integrand</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/IntegrandChannelPart.html">IntegrandChannelPart</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/IntegrandCommonPart.html">IntegrandCommonPart</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/IntegrandConcatenator.html">IntegrandConcatenator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/MLP.html">MLP</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/MadnisLoss.html">MadnisLoss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/MatrixElement.html">MatrixElement</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/MomentumPreprocessing.html">MomentumPreprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/MultiChannelFunction.html">MultiChannelFunction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/MultiChannelIntegrand.html">MultiChannelIntegrand</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Observable.html">Observable</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ObservableHistograms.html">ObservableHistograms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ObservableValues.html">ObservableValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/PartonDensity.html">PartonDensity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/RunningCoupling.html">RunningCoupling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Unweighter.html">Unweighter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/VegasHistogram.html">VegasHistogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Diagram.html">Diagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/PdfGrid.html">PdfGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Propagator.html">Propagator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Topology.html">Topology</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/initialize_vegas_grid.html">initialize_vegas_grid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/BatchSize.html">BatchSize</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Function.html">Function</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/FunctionBuilder.html">FunctionBuilder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Instruction.html">Instruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/InstructionCall.html">InstructionCall</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Type.html">Type</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Value.html">Value</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/batch_float_array.html">batch_float_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/multichannel_batch_size.html">multichannel_batch_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/AdamOptimizer.html">AdamOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ChannelEventGenerator.html">ChannelEventGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Context.html">Context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/DataLayout.html">DataLayout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/DerivedSeed.html">DerivedSeed</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Device.html">Device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/DiscreteOptimizer.html">DiscreteOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/EventBuffer.html">EventBuffer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/EventFile.html">EventFile</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/EventGenerator.html">EventGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/EventHistogramSpec.html">EventHistogramSpec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/EventHistograms.html">EventHistograms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/EventRecord.html">EventRecord</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/FieldLayout.html">FieldLayout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/GeneratorBatchJob.html">GeneratorBatchJob</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/GeneratorConfig.html">GeneratorConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/GeneratorStatus.html">GeneratorStatus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Histogram.html">Histogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/LHECompleter.html">LHECompleter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/LHEEvent.html">LHEEvent</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/LHEFileWriter.html">LHEFileWriter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/LHEHeader.html">LHEHeader</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/LHEMeta.html">LHEMeta</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/LHEParticle.html">LHEParticle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/LHEProcess.html">LHEProcess</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/LOReweightInfo.html">LOReweightInfo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Logger.html">Logger</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/MadnisTraining.html">MadnisTraining</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/MatrixElementApi.html">MatrixElementApi</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/MixMaxRandom.html">MixMaxRandom</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/MultiMadnisTraining.html">MultiMadnisTraining</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/PackedTensorView.html">PackedTensorView</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ParticleRecord.html">ParticleRecord</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/PdfGroupInfo.html">PdfGroupInfo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/PdfMemberSpec.html">PdfMemberSpec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/PrettyBox.html">PrettyBox</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ReadyJob.html">ReadyJob</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ResultQueue.html">ResultQueue</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/RunSeedSkip.html">RunSeedSkip</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/RunningIntegral.html">RunningIntegral</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Runtime.html">Runtime</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Sizes.html">Sizes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/StatusFile.html">StatusFile</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SubprocessObservables.html">SubprocessObservables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SystematicsCalculator.html">SystematicsCalculator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SystematicsConfig.html">SystematicsConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Tensor.html">Tensor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/TensorView.html">TensorView</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ThreadPool.html">ThreadPool</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ThreadResource.html">ThreadResource</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/UnalignedRef.html">UnalignedRef</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Variation.html">Variation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/available_backends.html">available_backends</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/cpu_device.html">cpu_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/cuda_device.html">cuda_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/default_context.html">default_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/default_cuda_context.html">default_cuda_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/default_hip_context.html">default_hip_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/format_progress.html">format_progress</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/format_si_prefix.html">format_si_prefix</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/format_with_error.html">format_with_error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/hip_device.html">hip_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/select_combine_channel_index.html">select_combine_channel_index</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/set_lib_path.html">set_lib_path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/set_simd_vector_size.html">set_simd_vector_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/NamedVector.html">NamedVector</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Overloaded.html">Overloaded</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="_sources/run_card.rst.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="run-card">
+<h1>Run card<a class="headerlink" href="#run-card" title="Link to this heading">¶</a></h1>
+<p>The run card <code class="docutils literal notranslate"><span class="pre">Cards/run_card.toml</span></code> holds the settings of an MG7 run. It is a
+<a class="reference external" href="https://toml.io">TOML</a> file with one section per topic. This page describes every
+section. If you are coming from MadEvent, see <a class="reference internal" href="madevent_to_mg7.html"><span class="doc">Coming from MadEvent</span></a>.</p>
+<section id="editing-the-run-card">
+<h2>Editing the run card<a class="headerlink" href="#editing-the-run-card" title="Link to this heading">¶</a></h2>
+<p>You can edit the file directly or change values at the launch question with <code class="docutils literal notranslate"><span class="pre">set</span></code>:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>set events 50000
+set beam.e_cm 14 TeV
+set jet-pt.min 30
+set seed 42
+</pre></div>
+</div>
+<p>A key name without its section works as long as it is unique. Otherwise write
+<code class="docutils literal notranslate"><span class="pre">section.key</span></code>. Energies accept units (<code class="docutils literal notranslate"><span class="pre">eV</span></code> to <code class="docutils literal notranslate"><span class="pre">PeV</span></code>) and are stored in GeV. Numeric
+values also accept arithmetic expressions with the masses <code class="docutils literal notranslate"><span class="pre">mz</span></code>, <code class="docutils literal notranslate"><span class="pre">mw</span></code>, <code class="docutils literal notranslate"><span class="pre">mh</span></code>, <code class="docutils literal notranslate"><span class="pre">mt</span></code>,
+<code class="docutils literal notranslate"><span class="pre">mb</span></code>, <code class="docutils literal notranslate"><span class="pre">mc</span></code>, <code class="docutils literal notranslate"><span class="pre">mtau</span></code> and <code class="docutils literal notranslate"><span class="pre">mmu</span></code>, for example <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">fixed_scale</span> <span class="pre">mz/2</span></code>. <code class="docutils literal notranslate"><span class="pre">help</span> <span class="pre">&lt;name&gt;</span></code> prints
+a short description of a parameter.</p>
+<p>Some parameters can be set to <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>. MG7 then chooses the value during the run. A
+number you set explicitly always wins.</p>
+<p>The sections <code class="docutils literal notranslate"><span class="pre">[multiparticles]</span></code>, <code class="docutils literal notranslate"><span class="pre">[cuts]</span></code> and <code class="docutils literal notranslate"><span class="pre">[histograms]</span></code> are lists rather than
+fixed parameters. Their entries are described below.</p>
+</section>
+<section id="run">
+<h2>[run]<a class="headerlink" href="#run" title="Link to this heading">¶</a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">run_name</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;run&quot;</span></code>)</dt><dd><p>Name of the run. Events are written to <code class="docutils literal notranslate"><span class="pre">Events/&lt;run_name&gt;_NN</span></code>, where <code class="docutils literal notranslate"><span class="pre">NN</span></code> counts up
+from 01.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">seed</span></code> (<code class="docutils literal notranslate"><span class="pre">-1</span></code>)</dt><dd><p>Random seed. The same seed reproduces a run exactly. <code class="docutils literal notranslate"><span class="pre">-1</span></code> draws a new seed for each
+run. The seed that was used is recorded in the output.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">device</span></code> (<code class="docutils literal notranslate"><span class="pre">[&quot;cpu&quot;]</span></code>)</dt><dd><p>List of devices to run on. Each entry is <code class="docutils literal notranslate"><span class="pre">cpu</span></code>, <code class="docutils literal notranslate"><span class="pre">cuda</span></code> or <code class="docutils literal notranslate"><span class="pre">hip</span></code>, optionally
+followed by a device index such as <code class="docutils literal notranslate"><span class="pre">&quot;cuda:1&quot;</span></code>. Several devices share the work.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">cpu_mode</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>)</dt><dd><p>SIMD width used on <code class="docutils literal notranslate"><span class="pre">cpu</span></code> devices. Choose from <code class="docutils literal notranslate"><span class="pre">auto</span></code>, <code class="docutils literal notranslate"><span class="pre">scalar</span></code>, <code class="docutils literal notranslate"><span class="pre">simd_128</span></code>,
+<code class="docutils literal notranslate"><span class="pre">simd_256</span></code>, <code class="docutils literal notranslate"><span class="pre">simd_512</span></code> and <code class="docutils literal notranslate"><span class="pre">avx512y</span></code>. <code class="docutils literal notranslate"><span class="pre">auto</span></code> picks the widest width the host
+supports.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">precision</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;color32&quot;</span></code>)</dt><dd><p>Floating-point precision of the matrix elements. <code class="docutils literal notranslate"><span class="pre">all64</span></code> and <code class="docutils literal notranslate"><span class="pre">all32</span></code> use double and
+single precision throughout. <code class="docutils literal notranslate"><span class="pre">color32</span></code> evaluates the color algebra in single precision
+and everything else in double precision. <code class="docutils literal notranslate"><span class="pre">denom64</span></code> keeps the momenta and propagator
+denominators in double precision and uses single precision elsewhere.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">simd_vector_size</span></code> (<code class="docutils literal notranslate"><span class="pre">-1</span></code>)</dt><dd><p>Vector size of the CPU matrix elements. <code class="docutils literal notranslate"><span class="pre">-1</span></code> chooses automatically. Valid sizes are 1,
+4 and 8 on x86 and 1 and 2 on Apple silicon.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">cpu_thread_pool_size</span></code> (<code class="docutils literal notranslate"><span class="pre">-1</span></code>), <code class="docutils literal notranslate"><span class="pre">gpu_thread_pool_size</span></code> (<code class="docutils literal notranslate"><span class="pre">1</span></code>), <code class="docutils literal notranslate"><span class="pre">combine_thread_pool_size</span></code> (<code class="docutils literal notranslate"><span class="pre">-1</span></code>)</dt><dd><p>Number of threads for each <code class="docutils literal notranslate"><span class="pre">cpu</span></code> device, each GPU device and for combining the
+channel results. <code class="docutils literal notranslate"><span class="pre">-1</span></code> chooses based on the number of CPUs.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">output_format</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;lhe_npy&quot;</span></code>)</dt><dd><p>Format of the event file. <code class="docutils literal notranslate"><span class="pre">compact_npy</span></code> and <code class="docutils literal notranslate"><span class="pre">lhe_npy</span></code> write <code class="docutils literal notranslate"><span class="pre">events.npy</span></code> together
+with a <code class="docutils literal notranslate"><span class="pre">header.lhe</span></code> that carries the run and param card and the cross-section
+information. <code class="docutils literal notranslate"><span class="pre">lhe</span></code> writes a compressed LHE file directly. Tools that read LHE files,
+such as the shower programs, need <code class="docutils literal notranslate"><span class="pre">lhe</span></code>. The launch question switches to it when you
+select one of them.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">weighted_histograms</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Fill the <a class="reference internal" href="#run-card-histograms"><span class="std std-ref">histograms</span></a> with weighted events during the
+integration. This costs one observable evaluation per phase-space point.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">postprocessing_histograms</span></code> (<code class="docutils literal notranslate"><span class="pre">true</span></code>)</dt><dd><p>Fill the histograms with the final events, including their scale and PDF weights.
+Plots and the HwU file are made from these.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">make_plots</span></code> (<code class="docutils literal notranslate"><span class="pre">true</span></code>)</dt><dd><p>Plot the histograms into <code class="docutils literal notranslate"><span class="pre">Events/&lt;run&gt;/plots</span></code>. This needs <code class="docutils literal notranslate"><span class="pre">matplotlib</span></code>. Without it
+the numbers are still written to <code class="docutils literal notranslate"><span class="pre">info.json</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">write_hwu</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Also write the histograms as <code class="docutils literal notranslate"><span class="pre">MADatLO.HwU</span></code>. This is the format MG5_aMC writes as
+<code class="docutils literal notranslate"><span class="pre">MADatNLO.HwU</span></code> for NLO runs.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">verbosity</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>)</dt><dd><p>Amount of console output: <code class="docutils literal notranslate"><span class="pre">silent</span></code>, <code class="docutils literal notranslate"><span class="pre">pretty</span></code> or <code class="docutils literal notranslate"><span class="pre">log</span></code>. <code class="docutils literal notranslate"><span class="pre">auto</span></code> is <code class="docutils literal notranslate"><span class="pre">pretty</span></code> in
+a terminal and <code class="docutils literal notranslate"><span class="pre">log</span></code> otherwise.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">dummy_matrix_element</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Skip the matrix element evaluation. This is meant for testing the phase-space sampling.</p>
+</dd>
+</dl>
+</section>
+<section id="gridpack">
+<h2>[gridpack]<a class="headerlink" href="#gridpack" title="Link to this heading">¶</a></h2>
+<p>Gridpacks are self-contained event generators created after the survey and training.
+See <a class="reference internal" href="gridpacks.html"><span class="doc">Gridpacks</span></a> for details.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">save_gridpack</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Create a gridpack at the end of the run.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">include_source</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Ship the process source code instead of the compiled libraries.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">include_madspace</span></code> (<code class="docutils literal notranslate"><span class="pre">true</span></code>)</dt><dd><p>Include the installed <code class="docutils literal notranslate"><span class="pre">madspace</span></code> package, so the gridpack runs without a separate
+installation.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">include_madspace_source</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Include the <code class="docutils literal notranslate"><span class="pre">madspace</span></code> source code.</p>
+</dd>
+</dl>
+</section>
+<section id="beam">
+<h2>[beam]<a class="headerlink" href="#beam" title="Link to this heading">¶</a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">e_cm</span></code> (<code class="docutils literal notranslate"><span class="pre">13000.0</span></code>)</dt><dd><p>Center-of-mass energy in GeV. Units are accepted, for example <code class="docutils literal notranslate"><span class="pre">&quot;13</span> <span class="pre">TeV&quot;</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">leptonic</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Treat the beams as leptons: no PDFs are used and the partonic energy equals <code class="docutils literal notranslate"><span class="pre">e_cm</span></code>.
+This is set automatically for lepton-collider processes, together with <code class="docutils literal notranslate"><span class="pre">e_cm</span> <span class="pre">=</span> <span class="pre">1000</span></code>
+and no jet cuts.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">pdf</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;NNPDF40_lo_as_01180&quot;</span></code>)</dt><dd><p>Name of the LHAPDF set. MG7 tries to download it if it is not installed. The default is
+the 5-flavor NNPDF 4.0 LO set, which has 100 error members for the PDF variations.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">fixed_ren_scale</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>), <code class="docutils literal notranslate"><span class="pre">fixed_fact_scale</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Use the fixed values below instead of the dynamical scale choice. The two switches act
+on the renormalization and the factorization scale separately.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">ren_scale</span></code> (<code class="docutils literal notranslate"><span class="pre">91.188</span></code>), <code class="docutils literal notranslate"><span class="pre">fact_scale1</span></code> (<code class="docutils literal notranslate"><span class="pre">91.188</span></code>), <code class="docutils literal notranslate"><span class="pre">fact_scale2</span></code> (<code class="docutils literal notranslate"><span class="pre">91.188</span></code>)</dt><dd><p>Fixed scales in GeV. They are only used when the matching switch is on.
+<code class="docutils literal notranslate"><span class="pre">fact_scale1</span></code> and <code class="docutils literal notranslate"><span class="pre">fact_scale2</span></code> are the factorization scales of the two beams.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">dynamical_scale_choice</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;half_transverse_mass&quot;</span></code>)</dt><dd><p>Scale used when it is not fixed. <code class="docutils literal notranslate"><span class="pre">transverse_energy</span></code> is the sum of the transverse
+energies of the final-state particles. <code class="docutils literal notranslate"><span class="pre">transverse_mass</span></code> is the sum of their
+transverse masses, <span class="math notranslate nohighlight">\(H_T\)</span>. <code class="docutils literal notranslate"><span class="pre">half_transverse_mass</span></code> is <span class="math notranslate nohighlight">\(H_T/2\)</span>.
+<code class="docutils literal notranslate"><span class="pre">partonic_energy</span></code> is the partonic center-of-mass energy. <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">dynamical_scale_choice</span>
+<span class="pre">HT/4</span></code> is a shortcut that sets this parameter and <code class="docutils literal notranslate"><span class="pre">scale_factor</span></code> to give
+<span class="math notranslate nohighlight">\(H_T/4\)</span>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">scale_factor</span></code> (<code class="docutils literal notranslate"><span class="pre">1.0</span></code>)</dt><dd><p>Factor applied to the dynamical scale. Fixed scales are not affected. With the default
+choice, <code class="docutils literal notranslate"><span class="pre">scale_factor</span> <span class="pre">=</span> <span class="pre">0.5</span></code> gives <span class="math notranslate nohighlight">\(H_T/4\)</span>.</p>
+</dd>
+</dl>
+</section>
+<section id="generation">
+<h2>[generation]<a class="headerlink" href="#generation" title="Link to this heading">¶</a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">events</span></code> (<code class="docutils literal notranslate"><span class="pre">100000</span></code>)</dt><dd><p>Number of unweighted events to generate.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">survey_min_iters</span></code> (<code class="docutils literal notranslate"><span class="pre">3</span></code>), <code class="docutils literal notranslate"><span class="pre">survey_max_iters</span></code> (<code class="docutils literal notranslate"><span class="pre">3</span></code>), <code class="docutils literal notranslate"><span class="pre">survey_target_precision</span></code> (<code class="docutils literal notranslate"><span class="pre">0.1</span></code>)</dt><dd><p>The survey adapts the sampling before events are generated. These set the minimum and
+maximum number of iterations and the relative precision the survey aims for.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">max_overweight_truncation</span></code> (<code class="docutils literal notranslate"><span class="pre">0.001</span></code>)</dt><dd><p>Fraction of the weight distribution’s tail that is ignored when the maximum weight for
+unweighting is estimated. Larger values raise the unweighting efficiency at the price of
+more events with a weight above one.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">freeze_max_weight_after</span></code> (<code class="docutils literal notranslate"><span class="pre">100000</span></code>)</dt><dd><p>Number of events after which the maximum weight estimate is no longer updated.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">cpu_batch_size</span></code> (<code class="docutils literal notranslate"><span class="pre">1000</span></code>), <code class="docutils literal notranslate"><span class="pre">gpu_batch_size</span></code> (<code class="docutils literal notranslate"><span class="pre">64000</span></code>)</dt><dd><p>Number of phase-space points per batch on CPU and GPU devices.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">cut_efficiency_threshold</span></code> (<code class="docutils literal notranslate"><span class="pre">0.7</span></code>), <code class="docutils literal notranslate"><span class="pre">max_cut_repetitions</span></code> (<code class="docutils literal notranslate"><span class="pre">1000</span></code>)</dt><dd><p>When fewer than this fraction of the points in a batch pass the cuts, the batch is
+sampled again, up to the given number of times.</p>
+</dd>
+</dl>
+</section>
+<section id="systematics">
+<h2>[systematics]<a class="headerlink" href="#systematics" title="Link to this heading">¶</a></h2>
+<p>Scale and PDF variation weights are computed while the events are written. They are stored
+as <code class="docutils literal notranslate"><span class="pre">&lt;rwgt&gt;</span></code> blocks in LHE files and as <code class="docutils literal notranslate"><span class="pre">rwgt_&lt;id&gt;</span></code> columns in the npy files.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">enable</span></code> (<code class="docutils literal notranslate"><span class="pre">true</span></code>)</dt><dd><p>Compute the variation weights.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">mur</span></code> (<code class="docutils literal notranslate"><span class="pre">[0.5,</span> <span class="pre">1.0,</span> <span class="pre">2.0]</span></code>), <code class="docutils literal notranslate"><span class="pre">muf</span></code> (<code class="docutils literal notranslate"><span class="pre">[0.5,</span> <span class="pre">1.0,</span> <span class="pre">2.0]</span></code>)</dt><dd><p>Factors applied to the renormalization and the factorization scale. <code class="docutils literal notranslate"><span class="pre">1.0</span></code> is the
+nominal value.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">together</span></code> (<code class="docutils literal notranslate"><span class="pre">true</span></code>)</dt><dd><p>If true, all combinations of <code class="docutils literal notranslate"><span class="pre">mur</span></code> and <code class="docutils literal notranslate"><span class="pre">muf</span></code> are evaluated. If false, one scale is
+varied at a time.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">dynamical_scale</span></code> (<code class="docutils literal notranslate"><span class="pre">[]</span></code>)</dt><dd><p>Alternative dynamical scale choices, using the same names as <code class="docutils literal notranslate"><span class="pre">dynamical_scale_choice</span></code>.
+Each is combined with the factors above.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">pdf</span></code> (<code class="docutils literal notranslate"><span class="pre">[&quot;errorset&quot;]</span></code>)</dt><dd><p>PDF variations. <code class="docutils literal notranslate"><span class="pre">&quot;errorset&quot;</span></code> evaluates all members of the nominal set and
+<code class="docutils literal notranslate"><span class="pre">&quot;central&quot;</span></code> its central member. LHAPDF set names or ids evaluate all members of that
+set, and <code class="docutils literal notranslate"><span class="pre">&quot;&lt;set&gt;&#64;&lt;member&gt;&quot;</span></code> a single one.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">write_inputs</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Also store <span class="math notranslate nohighlight">\(x_1\)</span>, <span class="math notranslate nohighlight">\(x_2\)</span> and the scales of each event, so the weights can be
+recomputed later. In LHE files they go into an <code class="docutils literal notranslate"><span class="pre">&lt;mgrwt&gt;</span></code> block.</p>
+</dd>
+</dl>
+</section>
+<section id="postprocessing">
+<h2>[postprocessing]<a class="headerlink" href="#postprocessing" title="Link to this heading">¶</a></h2>
+<p>This section drives the older post-processing steps of MadEvent. They work on the LHE
+file, so enabling one switches <code class="docutils literal notranslate"><span class="pre">output_format</span></code> to <code class="docutils literal notranslate"><span class="pre">&quot;lhe&quot;</span></code>.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">time_of_flight</span></code> (<code class="docutils literal notranslate"><span class="pre">-1.0</span></code>)</dt><dd><p>Threshold in mm below which the invariant livetime is not written. <code class="docutils literal notranslate"><span class="pre">-1</span></code> disables the
+step.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">systematics</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Recompute the uncertainties with <code class="docutils literal notranslate"><span class="pre">systematics.py</span></code> after the run. This only runs if
+<code class="docutils literal notranslate"><span class="pre">enable</span></code> in <code class="docutils literal notranslate"><span class="pre">[systematics]</span></code> is false, since the native computation replaces it.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">systematics_mur</span></code> (<code class="docutils literal notranslate"><span class="pre">[0.5,</span> <span class="pre">1.0,</span> <span class="pre">2.0]</span></code>), <code class="docutils literal notranslate"><span class="pre">systematics_muf</span></code> (<code class="docutils literal notranslate"><span class="pre">[0.5,</span> <span class="pre">1.0,</span> <span class="pre">2.0]</span></code>), <code class="docutils literal notranslate"><span class="pre">systematics_pdf</span></code> (<code class="docutils literal notranslate"><span class="pre">[&quot;errorset&quot;]</span></code>)</dt><dd><p>Scale factors and PDF variations for <code class="docutils literal notranslate"><span class="pre">systematics.py</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">systematics_str_options</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code>)</dt><dd><p>Extra command-line options passed to <code class="docutils literal notranslate"><span class="pre">systematics.py</span></code>, for example
+<code class="docutils literal notranslate"><span class="pre">&quot;--together=mur,muf&quot;</span></code>.</p>
+</dd>
+</dl>
+</section>
+<section id="vegas">
+<h2>[vegas]<a class="headerlink" href="#vegas" title="Link to this heading">¶</a></h2>
+<p>VEGAS grids adapt the phase-space sampling during the survey.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">enable</span></code> (<code class="docutils literal notranslate"><span class="pre">true</span></code>)</dt><dd><p>Use VEGAS grids. MadNIS flows start from the VEGAS grid when both are active.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">bins</span></code> (<code class="docutils literal notranslate"><span class="pre">64</span></code>)</dt><dd><p>Number of grid bins per dimension.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">damping</span></code> (<code class="docutils literal notranslate"><span class="pre">0.4</span></code>)</dt><dd><p>Damping of the grid updates. Raise it if the grid oscillates instead of settling.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">optimization_patience</span></code> (<code class="docutils literal notranslate"><span class="pre">5</span></code>), <code class="docutils literal notranslate"><span class="pre">optimization_threshold</span></code> (<code class="docutils literal notranslate"><span class="pre">0.9</span></code>)</dt><dd><p>The grid optimization stops when this many iterations in a row fail to improve the
+result by the given relative margin.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">start_batch_size</span></code> (<code class="docutils literal notranslate"><span class="pre">1000</span></code>), <code class="docutils literal notranslate"><span class="pre">max_batch_size</span></code> (<code class="docutils literal notranslate"><span class="pre">32000</span></code>)</dt><dd><p>Batch size of the first survey iteration and the largest batch size used afterwards.
+Larger batches give a better grid at a proportionally higher cost.</p>
+</dd>
+</dl>
+</section>
+<section id="phasespace">
+<h2>[phasespace]<a class="headerlink" href="#phasespace" title="Link to this heading">¶</a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">mode</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;multichannel&quot;</span></code>)</dt><dd><p>Strategy for the phase space. <code class="docutils literal notranslate"><span class="pre">multichannel</span></code> uses one channel per diagram. <code class="docutils literal notranslate"><span class="pre">flat</span></code>
+uses a single channel described by <code class="docutils literal notranslate"><span class="pre">flat_mode</span></code>. <code class="docutils literal notranslate"><span class="pre">both</span></code> surveys the multichannel
+phase space and then replaces the least important channels with one flat channel, see
+<code class="docutils literal notranslate"><span class="pre">combine_channel_threshold</span></code>. <code class="docutils literal notranslate"><span class="pre">auto</span></code> behaves like <code class="docutils literal notranslate"><span class="pre">both</span></code> if MadNIS is enabled and
+like <code class="docutils literal notranslate"><span class="pre">multichannel</span></code> otherwise. Decays always use <code class="docutils literal notranslate"><span class="pre">multichannel</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">merge_subprocesses</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Merge subprocesses with the same diagram topologies into shared channels.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">sde_strategy</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;diagrams&quot;</span></code>)</dt><dd><p>How the multichannel weights are computed. <code class="docutils literal notranslate"><span class="pre">diagrams</span></code> uses the squared single
+diagrams, <code class="docutils literal notranslate"><span class="pre">denominators</span></code> the product of the propagator denominators.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">t_channel</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;propagator&quot;</span></code>)</dt><dd><p>Parametrization of the t-channel part of the multichannel phase space. <code class="docutils literal notranslate"><span class="pre">propagator</span></code>
+follows the diagram as a chain of <span class="math notranslate nohighlight">\(2 \to 2\)</span> steps. <code class="docutils literal notranslate"><span class="pre">rambo</span></code> applies RAMBO to the
+t-channel particles and <code class="docutils literal notranslate"><span class="pre">chili</span></code> uses collider coordinates.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">flat_mode</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;rambo&quot;</span></code>)</dt><dd><p>The same choice for the flat channel.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">combine_channel_threshold</span></code> (<code class="docutils literal notranslate"><span class="pre">0.01</span></code>)</dt><dd><p>In <code class="docutils literal notranslate"><span class="pre">both</span></code> mode, the channels that together contribute this fraction of the cross
+section are replaced by the flat channel.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">drop_qcd_s_channel</span></code> (<code class="docutils literal notranslate"><span class="pre">20</span></code>)</dt><dd><p>If a subprocess has more channels than this, channels without a QCD s-channel resonance
+are dropped. <code class="docutils literal notranslate"><span class="pre">-1</span></code> keeps all channels. This helps with processes that have too many
+channels.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">invariant_power</span></code> (<code class="docutils literal notranslate"><span class="pre">0.7</span></code>)</dt><dd><p>Exponent <span class="math notranslate nohighlight">\(p\)</span> of the <span class="math notranslate nohighlight">\(1/s^p\)</span> sampling of time-like invariants.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">bw_cutoff</span></code> (<code class="docutils literal notranslate"><span class="pre">15</span></code>)</dt><dd><p>Breit-Wigner propagators are sampled within this many widths of the mass. The same
+window applies to propagators excluded with <code class="docutils literal notranslate"><span class="pre">$</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">cut_decays</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Apply the cuts to the decay products of on-shell particles. As in MadEvent, they are
+left uncut by default.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">adaptive_symmetry_sampling</span></code> (<code class="docutils literal notranslate"><span class="pre">true</span></code>)</dt><dd><p>Learn the probabilities of the permutations of identical particles instead of using
+equal ones.</p>
+</dd>
+</dl>
+</section>
+<section id="multiparticles">
+<span id="run-card-multiparticles"></span><h2>[multiparticles]<a class="headerlink" href="#multiparticles" title="Link to this heading">¶</a></h2>
+<p>Named groups of particles, given as lists of PDG ids. The names are used in the cuts and
+histograms. The defaults are <code class="docutils literal notranslate"><span class="pre">jet</span></code>, <code class="docutils literal notranslate"><span class="pre">bottom</span></code>, <code class="docutils literal notranslate"><span class="pre">lepton</span></code>, <code class="docutils literal notranslate"><span class="pre">missing</span></code> and <code class="docutils literal notranslate"><span class="pre">photon</span></code>:</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[multiparticles]</span>
+<span class="n">jet</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="mi">-1</span><span class="p">,</span><span class="w"> </span><span class="mi">-2</span><span class="p">,</span><span class="w"> </span><span class="mi">-3</span><span class="p">,</span><span class="w"> </span><span class="mi">-4</span><span class="p">,</span><span class="w"> </span><span class="mi">21</span><span class="p">]</span>
+<span class="n">bottom</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="mi">-5</span><span class="p">,</span><span class="w"> </span><span class="mi">5</span><span class="p">]</span>
+<span class="n">lepton</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="mi">11</span><span class="p">,</span><span class="w"> </span><span class="mi">13</span><span class="p">,</span><span class="w"> </span><span class="mi">15</span><span class="p">,</span><span class="w"> </span><span class="mi">-11</span><span class="p">,</span><span class="w"> </span><span class="mi">-13</span><span class="p">,</span><span class="w"> </span><span class="mi">-15</span><span class="p">]</span>
+<span class="n">missing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="mi">14</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="p">,</span><span class="w"> </span><span class="mi">-12</span><span class="p">,</span><span class="w"> </span><span class="mi">-14</span><span class="p">,</span><span class="w"> </span><span class="mi">-16</span><span class="p">]</span>
+<span class="n">photon</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="mi">22</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>You can add your own groups, for example <code class="docutils literal notranslate"><span class="pre">top</span> <span class="pre">=</span> <span class="pre">[6,</span> <span class="pre">-6]</span></code>.</p>
+</section>
+<section id="cuts">
+<span id="run-card-cuts"></span><h2>[cuts]<a class="headerlink" href="#cuts" title="Link to this heading">¶</a></h2>
+<p>Each entry has the form <code class="docutils literal notranslate"><span class="pre">&lt;selection&gt;-&lt;observable&gt;</span></code> with the bounds <code class="docutils literal notranslate"><span class="pre">min</span></code> and <code class="docutils literal notranslate"><span class="pre">max</span></code>:</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[cuts]</span>
+<span class="n">jet-pt</span><span class="p">.</span><span class="n">min</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">20.0</span>
+<span class="n">jet-eta_abs</span><span class="p">.</span><span class="n">max</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">5.0</span>
+<span class="n">jet-delta_r</span><span class="p">.</span><span class="n">min</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.4</span>
+<span class="n">lepton-pt</span><span class="p">.</span><span class="n">min</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">10.0</span>
+<span class="n">lepton-eta_abs</span><span class="p">.</span><span class="n">max</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">2.5</span>
+<span class="n">lepton-delta_r</span><span class="p">.</span><span class="n">min</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.4</span>
+<span class="n">jet-lepton-delta_r</span><span class="p">.</span><span class="n">min</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.4</span>
+<span class="n">sqrt_s</span><span class="p">.</span><span class="n">min</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.0</span>
+</pre></div>
+</div>
+<p>The selection is one or more groups from <code class="docutils literal notranslate"><span class="pre">[multiparticles]</span></code>. The observable is one of</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">pt</span></code>, <code class="docutils literal notranslate"><span class="pre">mass</span></code>, <code class="docutils literal notranslate"><span class="pre">e</span></code>, <code class="docutils literal notranslate"><span class="pre">px</span></code>, <code class="docutils literal notranslate"><span class="pre">py</span></code>, <code class="docutils literal notranslate"><span class="pre">pz</span></code>, <code class="docutils literal notranslate"><span class="pre">p_mag</span></code>, <code class="docutils literal notranslate"><span class="pre">phi</span></code>, <code class="docutils literal notranslate"><span class="pre">theta</span></code>, <code class="docutils literal notranslate"><span class="pre">y</span></code>,
+<code class="docutils literal notranslate"><span class="pre">y_abs</span></code>, <code class="docutils literal notranslate"><span class="pre">eta</span></code> and <code class="docutils literal notranslate"><span class="pre">eta_abs</span></code> for single particles,</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">delta_r</span></code>, <code class="docutils literal notranslate"><span class="pre">delta_eta</span></code> and <code class="docutils literal notranslate"><span class="pre">delta_phi</span></code> for pairs of particles,</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pair_mass</span></code> and <code class="docutils literal notranslate"><span class="pre">sfos_pair_mass</span></code> for the invariant mass of pairs,</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">sqrt_s</span></code> for the partonic center-of-mass energy. It takes no selection.</p></li>
+</ul>
+<p>A single group applies the observable to each of its particles. <code class="docutils literal notranslate"><span class="pre">jet-pt.min</span> <span class="pre">=</span> <span class="pre">20</span></code>
+requires every jet to pass. Two groups, as in <code class="docutils literal notranslate"><span class="pre">jet-lepton-delta_r</span></code>, form all pairs with
+one particle from each group. The pairs of a single group, as in <code class="docutils literal notranslate"><span class="pre">jet-delta_r</span></code>, are all
+distinct pairs within it.</p>
+<p><code class="docutils literal notranslate"><span class="pre">pair_mass</span></code> is the invariant mass of every pair the groups can form, so
+<code class="docutils literal notranslate"><span class="pre">lepton-pair_mass</span></code> is the mass of every lepton pair. <code class="docutils literal notranslate"><span class="pre">sfos_pair_mass</span></code> only keeps
+same-flavor opposite-sign pairs such as <span class="math notranslate nohighlight">\(e^+ e^-\)</span>. It corresponds to MadEvent’s
+<code class="docutils literal notranslate"><span class="pre">mmll</span></code>.</p>
+<p>Add <code class="docutils literal notranslate"><span class="pre">-sum-</span></code> before the observable to add up the momenta first. <code class="docutils literal notranslate"><span class="pre">lepton-lepton-sum-mass</span></code>
+is the mass of two leptons taken together, and <code class="docutils literal notranslate"><span class="pre">lepton-jet-top-sum-mass</span></code> the mass of a
+lepton, a jet and a top. Add <code class="docutils literal notranslate"><span class="pre">-sum</span></code> after the observable to add up the values instead, so
+<code class="docutils literal notranslate"><span class="pre">jet-pt-sum</span></code> is the scalar sum of the jet transverse momenta.</p>
+<p>An index selects particles by rank. <code class="docutils literal notranslate"><span class="pre">jet_1-pt</span></code> is the hardest jet, <code class="docutils literal notranslate"><span class="pre">jet_2-pt</span></code> the second
+hardest, and so on. The key <code class="docutils literal notranslate"><span class="pre">order_by</span> <span class="pre">=</span> <span class="pre">&quot;pt&quot;</span></code> sets the observable that defines the rank.</p>
+<p>By default a bound must hold for every selected particle. Setting <code class="docutils literal notranslate"><span class="pre">mode</span> <span class="pre">=</span> <span class="pre">&quot;any&quot;</span></code> on an
+entry relaxes this to at least one.</p>
+<p>The selections are flexible because you define the groups. Some examples:</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[multiparticles]</span>
+<span class="n">alllepton</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="mi">11</span><span class="p">,</span><span class="w"> </span><span class="mi">13</span><span class="p">,</span><span class="w"> </span><span class="mi">15</span><span class="p">,</span><span class="w"> </span><span class="mi">-11</span><span class="p">,</span><span class="w"> </span><span class="mi">-13</span><span class="p">,</span><span class="w"> </span><span class="mi">-15</span><span class="p">,</span><span class="w"> </span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="mi">14</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="p">,</span><span class="w"> </span><span class="mi">-12</span><span class="p">,</span><span class="w"> </span><span class="mi">-14</span><span class="p">,</span><span class="w"> </span><span class="mi">-16</span><span class="p">]</span>
+<span class="n">top</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="mi">-6</span><span class="p">]</span>
+
+<span class="k">[cuts]</span>
+<span class="n">jet-pt-sum</span><span class="p">.</span><span class="n">min</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">200.0</span><span class="w">             </span><span class="c1"># H_T of the jets</span>
+<span class="n">jet_1-jet_2-pt-sum</span><span class="p">.</span><span class="n">min</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">150.0</span><span class="w">     </span><span class="c1"># H_T of the two hardest jets</span>
+<span class="n">jet_2-pt</span><span class="p">.</span><span class="n">min</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">40.0</span><span class="w">                </span><span class="c1"># second hardest jet</span>
+<span class="n">alllepton-sum-pt</span><span class="p">.</span><span class="n">min</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">30.0</span><span class="w">        </span><span class="c1"># pT of all leptons and neutrinos together</span>
+<span class="n">top-pair_mass</span><span class="p">.</span><span class="n">min</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">250.0</span><span class="w">          </span><span class="c1"># mass of every pair of tops</span>
+<span class="n">jet-eta_abs</span><span class="p">.</span><span class="n">min</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">1.0</span><span class="w">              </span><span class="c1"># bounds work in both directions</span>
+</pre></div>
+</div>
+<p>Cuts also restrict the sampling. <code class="docutils literal notranslate"><span class="pre">pair_mass</span></code> and <code class="docutils literal notranslate"><span class="pre">sqrt_s</span></code> minima bound the
+integration region, as do <code class="docutils literal notranslate"><span class="pre">pt</span></code> and <code class="docutils literal notranslate"><span class="pre">delta_r</span></code> minima through the masses they imply.
+<code class="docutils literal notranslate"><span class="pre">eta_abs</span></code> maxima bound the rapidity of the partonic system and, together with the <code class="docutils literal notranslate"><span class="pre">pt</span></code>
+minima, the scattering angle. This only improves efficiency. The result is the same.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">no_parton_cut</span></code> to remove all cuts. <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">&lt;selection&gt;-&lt;observable&gt;.min</span> <span class="pre">&lt;value&gt;</span></code>
+changes a single bound. Processes without initial-state particles, such as decays, start
+without cuts.</p>
+</section>
+<section id="histograms">
+<span id="run-card-histograms"></span><h2>[histograms]<a class="headerlink" href="#histograms" title="Link to this heading">¶</a></h2>
+<p>Histograms of observables, filled during the run and written to <code class="docutils literal notranslate"><span class="pre">Events/&lt;run&gt;/info.json</span></code>.
+They use the same observable names as the cuts. Each entry needs a range and a number of
+bins:</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[histograms]</span>
+<span class="n">jet_1-pt</span><span class="p">.</span><span class="n">min</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.0</span>
+<span class="n">jet_1-pt</span><span class="p">.</span><span class="n">max</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">500.0</span>
+<span class="n">jet_1-pt</span><span class="p">.</span><span class="n">bin_count</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">50</span>
+</pre></div>
+</div>
+<p>The entry <code class="docutils literal notranslate"><span class="pre">weight</span></code> is not an observable of the momenta. It is the distribution of the
+event weight in units of the cross section. A fully unweighted sample is a spike at 1.</p>
+<p><code class="docutils literal notranslate"><span class="pre">output</span></code> writes a default set of histograms for the final state of your process. <code class="docutils literal notranslate"><span class="pre">set</span>
+<span class="pre">histograms</span> <span class="pre">OFF</span></code> at the launch question removes them and <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">histograms</span> <span class="pre">default</span></code>
+restores them. The parameters <code class="docutils literal notranslate"><span class="pre">weighted_histograms</span></code>, <code class="docutils literal notranslate"><span class="pre">postprocessing_histograms</span></code>,
+<code class="docutils literal notranslate"><span class="pre">make_plots</span></code> and <code class="docutils literal notranslate"><span class="pre">write_hwu</span></code> in <code class="docutils literal notranslate"><span class="pre">[run]</span></code> control what is done with them.</p>
+</section>
+<section id="madnis">
+<h2>[madnis]<a class="headerlink" href="#madnis" title="Link to this heading">¶</a></h2>
+<p><a class="reference external" href="https://arxiv.org/abs/2212.06172">MadNIS</a> trains neural networks to improve the phase-space
+sampling. It needs PyTorch. <code class="docutils literal notranslate"><span class="pre">enable</span></code> can be <code class="docutils literal notranslate"><span class="pre">true</span></code>, <code class="docutils literal notranslate"><span class="pre">false</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>. In auto
+mode, MG7 surveys first and then decides for each subprocess. Processes with two outgoing
+particles never use MadNIS. Three outgoing particles use it if the survey is noisy, if more
+than a million events are requested or if a gridpack is built. Four or more outgoing
+particles always use it. Auto mode also sizes the networks and picks the learning rate.
+The parameters marked <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> below are chosen this way, and setting one yourself
+overrides this.</p>
+<p>Start tuning with <code class="docutils literal notranslate"><span class="pre">train_batches</span></code> and <code class="docutils literal notranslate"><span class="pre">batch_size_per_channel</span></code>. Next try <code class="docutils literal notranslate"><span class="pre">lr</span></code> and the
+loss. Change the network shapes last.</p>
+<section id="training">
+<h3>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">enable</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>)</dt><dd><p>Train MadNIS networks.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">train_batches</span></code> (<code class="docutils literal notranslate"><span class="pre">1000</span></code>)</dt><dd><p>Number of training batches.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">batch_size_per_channel</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>)</dt><dd><p>Minimum number of training events per active channel.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">batch_size_offset</span></code> (<code class="docutils literal notranslate"><span class="pre">512</span></code>)</dt><dd><p>Number of events added to the training batch size of every channel.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">loss</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;stratified_variance&quot;</span></code>)</dt><dd><p>Training loss: <code class="docutils literal notranslate"><span class="pre">stratified_variance</span></code>, <code class="docutils literal notranslate"><span class="pre">kl_divergence</span></code> or <code class="docutils literal notranslate"><span class="pre">rkl_divergence</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">log_interval</span></code> (<code class="docutils literal notranslate"><span class="pre">100</span></code>)</dt><dd><p>Batches between two entries in the training log.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">uniform_channel_ratio</span></code> (<code class="docutils literal notranslate"><span class="pre">0.5</span></code>)</dt><dd><p>Fraction of the training batch spread uniformly over the channels. The rest is
+distributed according to the channel integrals.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">integration_history_length</span></code> (<code class="docutils literal notranslate"><span class="pre">100</span></code>)</dt><dd><p>Number of batches for which the mean and variance of each channel are kept.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">batch_size_threshold</span></code> (<code class="docutils literal notranslate"><span class="pre">0.5</span></code>)</dt><dd><p>New samples are drawn until a training batch holds at least this fraction of its nominal
+size.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">drop_zero_integrands</span></code> (<code class="docutils literal notranslate"><span class="pre">true</span></code>)</dt><dd><p>Ignore points with a vanishing integrand in the training.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">fixed_cwnet_fraction</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>)</dt><dd><p>Fraction of the training during which the channel weight network is frozen. It only
+starts training afterwards.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">softclip_threshold</span></code> (<code class="docutils literal notranslate"><span class="pre">30.0</span></code>)</dt><dd><p>Soft clipping threshold of the channel weights. <code class="docutils literal notranslate"><span class="pre">0</span></code> disables it.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">compressed_channel_weight_count</span></code> (<code class="docutils literal notranslate"><span class="pre">50</span></code>)</dt><dd><p>Number of channel weights kept per event in the multichannel weight loss.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">max_stored_channel_weights</span></code> (<code class="docutils literal notranslate"><span class="pre">100</span></code>)</dt><dd><p>Number of prior channel weights stored for each buffered sample.</p>
+</dd>
+</dl>
+</section>
+<section id="optimizer">
+<h3>Optimizer<a class="headerlink" href="#optimizer" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">lr</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>)</dt><dd><p>Learning rate of the Adam optimizer.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">lr_scheduler</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;cosine&quot;</span></code>)</dt><dd><p><code class="docutils literal notranslate"><span class="pre">cosine</span></code> decays the learning rate to zero over the training. <code class="docutils literal notranslate"><span class="pre">none</span></code> keeps it
+constant.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">lr_decay</span></code> (<code class="docutils literal notranslate"><span class="pre">0.01</span></code>), <code class="docutils literal notranslate"><span class="pre">lr_max</span></code> (<code class="docutils literal notranslate"><span class="pre">3e-3</span></code>)</dt><dd><p>Parameters of the exponential and one-cycle schedules. They have no effect with the
+schedulers currently available.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">adam_beta1</span></code> (<code class="docutils literal notranslate"><span class="pre">0.9</span></code>), <code class="docutils literal notranslate"><span class="pre">adam_beta2</span></code> (<code class="docutils literal notranslate"><span class="pre">0.999</span></code>), <code class="docutils literal notranslate"><span class="pre">adam_eps</span></code> (<code class="docutils literal notranslate"><span class="pre">1e-8</span></code>), <code class="docutils literal notranslate"><span class="pre">adam_weight_decay</span></code> (<code class="docutils literal notranslate"><span class="pre">1e-4</span></code>)</dt><dd><p>Adam parameters.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">grad_clip_threshold</span></code> (<code class="docutils literal notranslate"><span class="pre">0.003</span></code>)</dt><dd><p>Maximum gradient norm. <code class="docutils literal notranslate"><span class="pre">0</span></code> disables clipping.</p>
+</dd>
+</dl>
+</section>
+<section id="replay-buffer">
+<h3>Replay buffer<a class="headerlink" href="#replay-buffer" title="Link to this heading">¶</a></h3>
+<p>Training can reuse earlier samples. This saves matrix element evaluations.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">buffer_capacity</span></code> (<code class="docutils literal notranslate"><span class="pre">60000</span></code>)</dt><dd><p>Number of samples kept per channel. <code class="docutils literal notranslate"><span class="pre">0</span></code> disables the buffer.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">minimum_buffer_size</span></code> (<code class="docutils literal notranslate"><span class="pre">10000</span></code>)</dt><dd><p>Number of buffered samples needed before training on the buffer starts.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">buffered_steps_fraction</span></code> (<code class="docutils literal notranslate"><span class="pre">0.8</span></code>)</dt><dd><p>Fraction of the training steps done on buffered samples.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">buffer_skip_batches</span></code> (<code class="docutils literal notranslate"><span class="pre">1000</span></code>)</dt><dd><p>Number of initial batches that are not stored.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">buffer_unweighting_quantile</span></code> (<code class="docutils literal notranslate"><span class="pre">0.95</span></code>)</dt><dd><p>Quantile of the weights used as the maximum when buffered samples are unweighted.</p>
+</dd>
+</dl>
+</section>
+<section id="sample-generation">
+<h3>Sample generation<a class="headerlink" href="#sample-generation" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">generator_target_size_factor</span></code> (<code class="docutils literal notranslate"><span class="pre">32</span></code>)</dt><dd><p>Number of training batches the sample generator keeps buffered for each channel.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">gpu_generator_batch_granularity</span></code> (<code class="docutils literal notranslate"><span class="pre">1000</span></code>)</dt><dd><p>Batch sizes for sample generation on GPUs are rounded to a multiple of this.</p>
+</dd>
+</dl>
+</section>
+<section id="channel-dropping">
+<h3>Channel dropping<a class="headerlink" href="#channel-dropping" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">channel_dropping_threshold</span></code> (<code class="docutils literal notranslate"><span class="pre">0.01</span></code>), <code class="docutils literal notranslate"><span class="pre">channel_dropping_interval</span></code> (<code class="docutils literal notranslate"><span class="pre">100</span></code>)</dt><dd><p>Every <code class="docutils literal notranslate"><span class="pre">channel_dropping_interval</span></code> batches, channels that contribute less than the
+threshold fraction of the integral are dropped.</p>
+</dd>
+</dl>
+</section>
+<section id="networks">
+<h3>Networks<a class="headerlink" href="#networks" title="Link to this heading">¶</a></h3>
+<p>Three networks are trained. The flow maps the phase-space sampling, the discrete network
+learns the probabilities of discrete choices such as permutations and flavors, and the
+channel weight network learns the multichannel weights. Each is built from fully connected
+subnetworks and has settings for the number of hidden units and layers and the activation
+function. The activations are <code class="docutils literal notranslate"><span class="pre">relu</span></code>, <code class="docutils literal notranslate"><span class="pre">leaky_relu</span></code>, <code class="docutils literal notranslate"><span class="pre">elu</span></code>, <code class="docutils literal notranslate"><span class="pre">gelu</span></code>, <code class="docutils literal notranslate"><span class="pre">sigmoid</span></code> and
+<code class="docutils literal notranslate"><span class="pre">softplus</span></code>.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">flow_hidden_dim</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>), <code class="docutils literal notranslate"><span class="pre">flow_layers</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>), <code class="docutils literal notranslate"><span class="pre">flow_activation</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;leaky_relu&quot;</span></code>)</dt><dd><p>Size and activation of the flow subnetworks.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">flow_spline_bins</span></code> (<code class="docutils literal notranslate"><span class="pre">10</span></code>)</dt><dd><p>Number of spline bins per flow transformation.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">flow_invert_spline</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Apply the splines in the inverse direction.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">discrete_hidden_dim</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>), <code class="docutils literal notranslate"><span class="pre">discrete_layers</span></code> (<code class="docutils literal notranslate"><span class="pre">3</span></code>), <code class="docutils literal notranslate"><span class="pre">discrete_activation</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;leaky_relu&quot;</span></code>)</dt><dd><p>Size and activation of the discrete network.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">cwnet_hidden_dim</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>), <code class="docutils literal notranslate"><span class="pre">cwnet_layers</span></code> (<code class="docutils literal notranslate"><span class="pre">3</span></code>), <code class="docutils literal notranslate"><span class="pre">cwnet_activation</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;leaky_relu&quot;</span></code>)</dt><dd><p>Size and activation of the channel weight network.</p>
+</dd>
+</dl>
+</section>
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="gridpacks.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Gridpacks</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="first_steps.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">First steps</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2025-2026, The MadGraph7 Development Team
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">Run card</a><ul>
+<li><a class="reference internal" href="#editing-the-run-card">Editing the run card</a></li>
+<li><a class="reference internal" href="#run">[run]</a></li>
+<li><a class="reference internal" href="#gridpack">[gridpack]</a></li>
+<li><a class="reference internal" href="#beam">[beam]</a></li>
+<li><a class="reference internal" href="#generation">[generation]</a></li>
+<li><a class="reference internal" href="#systematics">[systematics]</a></li>
+<li><a class="reference internal" href="#postprocessing">[postprocessing]</a></li>
+<li><a class="reference internal" href="#vegas">[vegas]</a></li>
+<li><a class="reference internal" href="#phasespace">[phasespace]</a></li>
+<li><a class="reference internal" href="#multiparticles">[multiparticles]</a></li>
+<li><a class="reference internal" href="#cuts">[cuts]</a></li>
+<li><a class="reference internal" href="#histograms">[histograms]</a></li>
+<li><a class="reference internal" href="#madnis">[madnis]</a><ul>
+<li><a class="reference internal" href="#training">Training</a></li>
+<li><a class="reference internal" href="#optimizer">Optimizer</a></li>
+<li><a class="reference internal" href="#replay-buffer">Replay buffer</a></li>
+<li><a class="reference internal" href="#sample-generation">Sample generation</a></li>
+<li><a class="reference internal" href="#channel-dropping">Channel dropping</a></li>
+<li><a class="reference internal" href="#networks">Networks</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="_static/documentation_options.js?v=37f418d5"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/scripts/furo.js?v=46bd48cc"></script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
+    </body>
+</html>
