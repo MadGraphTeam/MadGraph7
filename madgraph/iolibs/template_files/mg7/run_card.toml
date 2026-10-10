@@ -1,45 +1,31 @@
+# Documentation: https://docs.madgraph.org/latest/run_card.html
+
 [run]
 run_name = %(run.run_name)s
-# every run is reproducible: the same seed reproduces the run bit-identically,
-# and distinct seeds are statistically independent. -1 draws a fresh random
-# seed each run instead of fixing one here; the seed actually used is still
-# recorded (the MG7Seed tag in the LHE file, or the info.json status file), so
-# the run can be reproduced later.
+# -1 draws a fresh random seed for each run; the seed used is recorded in the output
 seed = %(run.seed)s
-# list of devices; options: cpu, cuda, hip (an optional device index can be added, e.g. "cuda:1")
+# options: cpu, cuda, hip, each optionally with a device index, e.g. "cuda:1"
 device = %(run.device)s
-# SIMD width used by the 'cpu' devices (ignored by cuda/hip)
-# options: auto (widest width supported by the host), scalar, simd_128, simd_256, simd_512, avx512y
+# SIMD width on cpu devices; options: auto, scalar, simd_128, simd_256, simd_512, avx512y
 cpu_mode = %(run.cpu_mode)s
-# matrix-element floating-point precision
-# options: all64, all32, color32 (colour FP32, rest FP64), denom64 (momenta + propagator denominator FP64, rest FP32)
+# matrix element precision; options: all64, all32, color32, denom64
 precision = %(run.precision)s
-# options:
-#   -1 to choose automatically
-#   on x86: 1, 4, 8
-#   on Apple silicon: 1, 2
+# -1 chooses automatically; x86: 1, 4, 8; Apple silicon: 1, 2
 simd_vector_size = %(run.simd_vector_size)s
-# pool sizes: -1 sets count automatically based on number of CPUs
+# -1 sets the thread count automatically
 cpu_thread_pool_size = %(run.cpu_thread_pool_size)s
 gpu_thread_pool_size = %(run.gpu_thread_pool_size)s
 combine_thread_pool_size = %(run.combine_thread_pool_size)s
-output_format = %(run.output_format)s # options: compact_npy, lhe_npy, lhe (switched to lhe when a post-processing step needs it)
-# fill the [histograms] with the weighted events during the integration
-# (info.json "histograms"); costs an observable evaluation per phase-space point
+output_format = %(run.output_format)s # options: compact_npy, lhe_npy, lhe
+# fill the [histograms] with weighted events during integration
 weighted_histograms = %(run.weighted_histograms)s
-# fill the [histograms] with the final events and all their scale/PDF weights
-# (info.json "event_histograms"); the plots and the HwU file are drawn from these
+# fill the [histograms] with the final events, including scale/PDF weights
 postprocessing_histograms = %(run.postprocessing_histograms)s
-# draw the [histograms] distributions, bands included, into Events/<run>/plots
-# (one PDF per observable). Needs matplotlib: without it the run says so once
-# and carries on, the numbers being in Events/<run>/info.json either way.
+# plot the [histograms] into Events/<run>/plots (needs matplotlib)
 make_plots = %(run.make_plots)s
-# write the [histograms] distributions as MADatLO.HwU next to the events, in
-# the format aMC@NLO writes as MADatNLO.HwU, so that an LO run can be overlaid
-# on an NLO one with madgraph/various/histograms.py. The same numbers (bands
-# included) are in Events/<run>/info.json either way.
+# also write the [histograms] in HwU format
 write_hwu = %(run.write_hwu)s
-verbosity = %(run.verbosity)s # options: silent, pretty, log, auto (pretty if attached to a terminal, log otherwise)
+verbosity = %(run.verbosity)s # options: silent, pretty, log, auto
 dummy_matrix_element = %(run.dummy_matrix_element)s
 # Lorentz frame in which the matrix element is evaluated, given as the list of
 # external particles whose momenta are summed up to define it. [] applies no
@@ -69,8 +55,7 @@ fact_scale1 = %(beam.fact_scale1)s
 fact_scale2 = %(beam.fact_scale2)s
 # options: transverse_energy, transverse_mass, half_transverse_mass, partonic_energy
 dynamical_scale_choice = %(beam.dynamical_scale_choice)s
-# factor on the dynamical scale (fixed scales are untouched), e.g. 0.5 with
-# half_transverse_mass is H_T/4, also set by: set dynamical_scale_choice HT/4
+# multiplies the dynamical scale; fixed scales are unaffected
 scale_factor = %(beam.scale_factor)s
 
 [generation]
@@ -86,23 +71,19 @@ cut_efficiency_threshold = %(generation.cut_efficiency_threshold)s
 max_cut_repetitions = %(generation.max_cut_repetitions)s
 
 [systematics]
-# scale/PDF variation weights, computed by madspace when the events are written
-# (LHEF3 <rwgt> blocks in the lhe output, rwgt_<id> columns in the npy outputs)
 enable = %(systematics.enable)s
-mur = %(systematics.mur)s # renormalisation scale factors (1.0 is the nominal point)
-muf = %(systematics.muf)s # factorisation scale factors
-together = %(systematics.together)s # true: all mur x muf combinations, false: one scale at a time
-# alternative dynamical scale choices (transverse_energy, transverse_mass, half_transverse_mass, partonic_energy),
-# each combined with the mur/muf factors above
+mur = %(systematics.mur)s # renormalization scale factors
+muf = %(systematics.muf)s # factorization scale factors
+together = %(systematics.together)s # true: all mur x muf combinations, false: one at a time
+# alternative dynamical scale choices, as for [beam] dynamical_scale_choice
 dynamical_scale = %(systematics.dynamical_scale)s
-# PDF variations: "errorset" (all members of the nominal set), "central" (its central member),
-# LHAPDF set names or ids (all members), "<set>@<member>" for a single member
+# "errorset", "central", LHAPDF set names or ids, or "<set>@<member>"
 pdf = %(systematics.pdf)s
-write_inputs = %(systematics.write_inputs)s # keep the per-event reweighting inputs (x1, x2, scales) in the output
+write_inputs = %(systematics.write_inputs)s # store x1, x2 and scales for each event
 
 [postprocessing]
-time_of_flight = %(postprocessing.time_of_flight)s # threshold (in mm) below which the invariant livetime is not written (-1 means not written)
-# legacy path: recompute the uncertainties with systematics.py + LHAPDF after the run (needs the lhe output)
+time_of_flight = %(postprocessing.time_of_flight)s # threshold in mm, -1 disables
+# legacy systematics.py run; use [systematics] instead
 systematics = %(postprocessing.systematics)s
 systematics_muf = %(postprocessing.systematics_muf)s
 systematics_mur = %(postprocessing.systematics_mur)s
@@ -119,65 +100,37 @@ start_batch_size = %(vegas.start_batch_size)s
 max_batch_size = %(vegas.max_batch_size)s
 
 [phasespace]
-mode = %(phasespace.mode)s #options: multichannel, flat, both
+mode = %(phasespace.mode)s # options: auto, multichannel, flat, both
 merge_subprocesses = %(phasespace.merge_subprocesses)s
-sde_strategy = %(phasespace.sde_strategy)s #options: diagrams, denominators
-decays = %(phasespace.decays)s # options: all, massive, none
+sde_strategy = %(phasespace.sde_strategy)s # options: diagrams, denominators
 t_channel = %(phasespace.t_channel)s # options: propagator, rambo, chili
 flat_mode = %(phasespace.flat_mode)s # options: propagator, rambo, chili
 combine_channel_threshold = %(phasespace.combine_channel_threshold)s
-drop_qcd_s_channel = %(phasespace.drop_qcd_s_channel)s # -1 keeps all channels, otherwise drop channels without a QCD s-channel resonance once the channel count would exceed this
+drop_qcd_s_channel = %(phasespace.drop_qcd_s_channel)s # channel count above which QCD-less channels are dropped, -1 keeps all
 invariant_power = %(phasespace.invariant_power)s
 bw_cutoff = %(phasespace.bw_cutoff)s
-cut_decays = %(phasespace.cut_decays)s # false: the [cuts] skip the decay products of on-shell (decay-chain) propagators, as in MadEvent
+cut_decays = %(phasespace.cut_decays)s # apply the [cuts] to decay products of on-shell particles
 adaptive_symmetry_sampling = %(phasespace.adaptive_symmetry_sampling)s
 
 [multiparticles]
 $multiparticles
 
 [cuts]
-# possible groups: jet, bottom, lepton, missing, photon
-# possible observables: pt, eta, dR, mass, pair_mass, sfos_pair_mass, sqrt_s
-#     (mass is the mass of one particle. Put "-sum-" before it and the momenta
-#      are added up first: "lepton-sum-mass" is the mass of all the leptons
-#      together, while naming a group per member gives one combination at a
-#      time, so "lepton-lepton-sum-mass" is the mass of a lepton pair and
-#      "lepton-jet-top-sum-mass" that of a lepton-jet-top triple.
-#      pair_mass is the invariant mass of a pair, taken over every pair the
-#      named groups can form, so "lepton-pair_mass" is the same cut as
-#      "lepton-lepton-sum-mass". sfos_pair_mass keeps the same-flavour
-#      opposite-sign pairs only (e+ e-, mu+ mu-), like MadEvent's mmll.
-#      sqrt_s is for all outgoing particles)
-# A pair_mass minimum is also used to bound the integration.
-# A sqrt_s minimum bounds it the same way, and so do pt and delta_r minima
-# through the pair masses and sqrt_s they imply. eta_abs maxima bound the
-# rapidity of the partonic system when every final-state particle has one,
-# and with the pt minima they bound the polar angle of an s-channel 2 -> 2
-# and the momentum transfer of the first t-channel scattering.
-# The integral is unaffected either way -- only how much of the sampling is
-# wasted.
-# for all cuts, min or max can be specified
+# <group>[-<group>]-<observable>.min / .max
+# groups: jet, bottom, lepton, missing, photon (see [multiparticles])
+# observables: pt, eta_abs, delta_r, mass, pair_mass, sfos_pair_mass, sqrt_s
 $cuts
 
 [histograms]
-# The observables to histogram, written at output time for this final state.
-# Same names as the cuts above, with "_1", "_2", ... selecting the hardest,
-# second hardest, ... particle of a group (order_by says what "hardest" means,
-# pt by default). Each needs a range and a number of bins:
-#     jet_1-pt.min = 0.0
-#     jet_1-pt.max = 500.0
-#     jet_1-pt.bin_count = 50
-# "weight" is the one name that is not an observable of the momenta: it is the
-# distribution of the event weight, in units of the cross section (so a fully
-# unweighted sample is a spike at 1).
-# "set histograms OFF" in the launch question removes them all, and
-# "set histograms default" puts the generated ones back.
+# <observable>.min, .max and .bin_count; "jet_1-pt" selects the hardest jet
+# "weight" histograms the event weight
 $histograms
 
 [madnis]
+# "auto" lets MG7 choose the value from the survey
 enable = %(madnis.enable)s
 
-# normalizing flow parameters
+# normalizing flow
 flow_hidden_dim = %(madnis.flow_hidden_dim)s
 flow_layers = %(madnis.flow_layers)s
 flow_spline_bins = %(madnis.flow_spline_bins)s
@@ -211,7 +164,6 @@ adam_beta2 = %(madnis.adam_beta2)s
 adam_eps = %(madnis.adam_eps)s
 adam_weight_decay = %(madnis.adam_weight_decay)s
 grad_clip_threshold = %(madnis.grad_clip_threshold)s
-train_mcw = %(madnis.train_mcw)s
 buffer_capacity = %(madnis.buffer_capacity)s
 minimum_buffer_size = %(madnis.minimum_buffer_size)s
 buffered_steps_fraction = %(madnis.buffered_steps_fraction)s
@@ -224,7 +176,6 @@ channel_dropping_threshold = %(madnis.channel_dropping_threshold)s
 channel_dropping_interval = %(madnis.channel_dropping_interval)s
 drop_zero_integrands = %(madnis.drop_zero_integrands)s
 batch_size_threshold = %(madnis.batch_size_threshold)s
-channel_grouping_mode = %(madnis.channel_grouping_mode)s # options: none, uniform, learned
 fixed_cwnet_fraction = %(madnis.fixed_cwnet_fraction)s
 softclip_threshold = %(madnis.softclip_threshold)s
 compressed_channel_weight_count = %(madnis.compressed_channel_weight_count)s
