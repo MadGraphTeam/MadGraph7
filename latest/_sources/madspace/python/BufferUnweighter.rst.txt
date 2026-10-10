@@ -1,0 +1,7 @@
+BufferUnweighter
+================
+
+.. autoclass:: madspace.BufferUnweighter
+   :members:
+   :undoc-members:
+   :show-inheritance:

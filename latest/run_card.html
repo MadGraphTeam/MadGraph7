@@ -319,6 +319,7 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/TwoToThreeParticleScattering.html">TwoToThreeParticleScattering</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/TwoToTwoParticleScattering.html">TwoToTwoParticleScattering</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/VegasMapping.html">VegasMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/BufferUnweighter.html">BufferUnweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/CachedPdf.html">CachedPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/CachedScale.html">CachedScale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
@@ -740,6 +741,16 @@ more events with a weight above one.</p>
 <dt><code class="docutils literal notranslate"><span class="pre">cut_efficiency_threshold</span></code> (<code class="docutils literal notranslate"><span class="pre">0.7</span></code>), <code class="docutils literal notranslate"><span class="pre">max_cut_repetitions</span></code> (<code class="docutils literal notranslate"><span class="pre">1000</span></code>)</dt><dd><p>When fewer than this fraction of the points in a batch pass the cuts, the batch is
 sampled again, up to the given number of times.</p>
 </dd>
+<dt><code class="docutils literal notranslate"><span class="pre">interference_helicity</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;exact&quot;</span></code>)</dt><dd><p>How the helicity of an interference matrix element is handled, that is of a process
+whose squared split orders keep a cross term (e.g. <code class="docutils literal notranslate"><span class="pre">QCD^2==2</span></code>) and so can give
+negative weights. Such a cross term can be negative for some helicities and positive
+for others. <code class="docutils literal notranslate"><span class="pre">&quot;exact&quot;</span></code> does as madevent: the helicity of each event is drawn with
+probability <span class="math notranslate nohighlight">\(|T_i|/\sum_j |T_j|\)</span> and the event gets the weight
+<span class="math notranslate nohighlight">\(\mathrm{sign}(T_i)\sum_j |T_j|\)</span>, so the events carry their exact helicities
+at the price of a larger variance (more negative weights). <code class="docutils literal notranslate"><span class="pre">&quot;summed&quot;</span></code> gives each
+event the helicity sum as its weight (smaller variance) and writes its helicities as
+9 (unknown) in the LHE file. Processes without such a cross term are not affected.</p>
+</dd>
 </dl>
 </section>
 <section id="systematics">
@@ -929,7 +940,9 @@ bins:</p>
 </pre></div>
 </div>
 <p>The entry <code class="docutils literal notranslate"><span class="pre">weight</span></code> is not an observable of the momenta. It is the distribution of the
-event weight in units of the cross section. A fully unweighted sample is a spike at 1.</p>
+event weight in units of the unit weight <span class="math notranslate nohighlight">\(\sigma_\mathrm{abs}\)</span>, the integral of
+the absolute value of the weights. A fully unweighted sample is a spike at 1, and its
+negative weights (from an interference) a spike at -1.</p>
 <p><code class="docutils literal notranslate"><span class="pre">output</span></code> writes a default set of histograms for the final state of your process. <code class="docutils literal notranslate"><span class="pre">set</span>
 <span class="pre">histograms</span> <span class="pre">OFF</span></code> at the launch question removes them and <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">histograms</span> <span class="pre">default</span></code>
 restores them. The parameters <code class="docutils literal notranslate"><span class="pre">weighted_histograms</span></code>, <code class="docutils literal notranslate"><span class="pre">postprocessing_histograms</span></code>,

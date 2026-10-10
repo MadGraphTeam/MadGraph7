@@ -3,13 +3,13 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="set_simd_vector_size" href="set_simd_vector_size.html"><link rel="prev" title="select_combine_channel_index" href="select_combine_channel_index.html">
-        <link rel="canonical" href="https://docs.madgraph.org/latest/madspace/cpp/set_lib_path.html">
+<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="CachedPdf" href="CachedPdf.html"><link rel="prev" title="VegasMapping" href="VegasMapping.html">
+        <link rel="canonical" href="https://docs.madgraph.org/latest/madspace/python/BufferUnweighter.html">
         <link rel="prefetch" href="../../_static/logo-light.png" as="image">
         <link rel="prefetch" href="../../_static/logo-dark.png" as="image">
 
     <!-- Generated with Sphinx 9.0.4 and Furo 2025.12.19 -->
-        <title>set_lib_path - MadGraph7 0.2.1 documentation</title>
+        <title>BufferUnweighter - MadGraph7 0.2.1 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=acfd86a5" />
     <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -300,133 +300,7 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../umami-api.html">UMAMI API</a></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../python-api.html">Python API</a><input aria-label="Toggle navigation of Python API" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l2"><a class="reference internal" href="../python/ChiliMapping.html">ChiliMapping</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/DiscreteFlow.html">DiscreteFlow</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/DiscreteSampler.html">DiscreteSampler</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/DoubleT.html">DoubleT</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/FastRamboMapping.html">FastRamboMapping</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Flow.html">Flow</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Invariant.html">Invariant</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Luminosity.html">Luminosity</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Mapping.html">Mapping</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/MultiChannelMapping.html">MultiChannelMapping</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/PhaseSpaceMapping.html">PhaseSpaceMapping</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/TPropagatorMapping.html">TPropagatorMapping</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/ThreeBodyDecay.html">ThreeBodyDecay</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/TwoBodyDecay.html">TwoBodyDecay</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/TwoToThreeParticleScattering.html">TwoToThreeParticleScattering</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/TwoToTwoParticleScattering.html">TwoToTwoParticleScattering</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/VegasMapping.html">VegasMapping</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/BufferUnweighter.html">BufferUnweighter</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/CachedPdf.html">CachedPdf</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/CachedScale.html">CachedScale</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/CutItem.html">CutItem</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Cuts.html">Cuts</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/DiscreteHistogram.html">DiscreteHistogram</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/EnergyScale.html">EnergyScale</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/FunctionGenerator.html">FunctionGenerator</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/HistItem.html">HistItem</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Integrand.html">Integrand</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/IntegrandProbability.html">IntegrandProbability</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/MLP.html">MLP</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/MadnisLoss.html">MadnisLoss</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/MatrixElement.html">MatrixElement</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/MomentumPreprocessing.html">MomentumPreprocessing</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/MultiChannelFunction.html">MultiChannelFunction</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/MultiChannelIntegrand.html">MultiChannelIntegrand</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Observable.html">Observable</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/ObservableHistograms.html">ObservableHistograms</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/ObservableValues.html">ObservableValues</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/PartonDensity.html">PartonDensity</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/RunningCoupling.html">RunningCoupling</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/SubchannelWeights.html">SubchannelWeights</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Unweighter.html">Unweighter</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/VegasHistogram.html">VegasHistogram</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/AlphaSGrid.html">AlphaSGrid</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Decay.html">Decay</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Diagram.html">Diagram</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/LineRef.html">LineRef</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/PdfGrid.html">PdfGrid</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Propagator.html">Propagator</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Topology.html">Topology</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/initialize_vegas_grid.html">initialize_vegas_grid</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/BatchSize.html">BatchSize</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/DataType.html">DataType</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Function.html">Function</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/FunctionBuilder.html">FunctionBuilder</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/FunctionRuntime.html">FunctionRuntime</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Instruction.html">Instruction</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/InstructionCall.html">InstructionCall</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Type.html">Type</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Value.html">Value</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/batch_float_array.html">batch_float_array</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/batch_four_vec_array.html">batch_four_vec_array</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/multichannel_batch_size.html">multichannel_batch_size</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/AdamOptimizer.html">AdamOptimizer</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/ChannelEventGenerator.html">ChannelEventGenerator</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Context.html">Context</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Device.html">Device</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/DiscreteOptimizer.html">DiscreteOptimizer</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/EventGenerator.html">EventGenerator</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/EventHistogramSpec.html">EventHistogramSpec</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/EventHistograms.html">EventHistograms</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/GeneratorConfig.html">GeneratorConfig</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/GeneratorStatus.html">GeneratorStatus</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Histogram.html">Histogram</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/LHECompleter.html">LHECompleter</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/LHEEvent.html">LHEEvent</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/LHEFileWriter.html">LHEFileWriter</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/LHEHeader.html">LHEHeader</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/LHEMeta.html">LHEMeta</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/LHEParticle.html">LHEParticle</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/LHEProcess.html">LHEProcess</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Logger.html">Logger</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/MadnisConfig.html">MadnisConfig</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/MadnisTraining.html">MadnisTraining</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/MatrixElementApi.html">MatrixElementApi</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/MixMaxRandom.html">MixMaxRandom</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/MultiMadnisTraining.html">MultiMadnisTraining</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/PdfGroupInfo.html">PdfGroupInfo</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/PdfMemberSpec.html">PdfMemberSpec</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/PrettyBox.html">PrettyBox</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/StatusFile.html">StatusFile</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/SubprocArgs.html">SubprocArgs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/SubprocessObservables.html">SubprocessObservables</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/SystematicsCalculator.html">SystematicsCalculator</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/SystematicsConfig.html">SystematicsConfig</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Tensor.html">Tensor</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/TrainingArgs.html">TrainingArgs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Variation.html">Variation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/Verbosity.html">Verbosity</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/available_backends.html">available_backends</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/cpu_device.html">cpu_device</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/cuda_device.html">cuda_device</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/default_context.html">default_context</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/default_cuda_context.html">default_cuda_context</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/default_hip_context.html">default_hip_context</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/format_progress.html">format_progress</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/format_si_prefix.html">format_si_prefix</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/format_with_error.html">format_with_error</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/hip_device.html">hip_device</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/select_combine_channel_index.html">select_combine_channel_index</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/set_lib_path.html">set_lib_path</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/set_simd_vector_size.html">set_simd_vector_size</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/NamedTypes.html">NamedTypes</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/NamedValues.html">NamedValues</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/get_stream.html">get_stream</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/set_stream.html">set_stream</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/stream.html">stream</a></li>
-</ul>
-</li>
-<li class="toctree-l1 current has-children"><a class="reference internal" href="../cpp-api.html">C++ API</a><input aria-label="Toggle navigation of C++ API" checked="" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l1 current has-children"><a class="reference internal" href="../python-api.html">Python API</a><input aria-label="Toggle navigation of Python API" checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="ChiliMapping.html">ChiliMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ColorOrderedMapping.html">ColorOrderedMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DiscreteFlow.html">DiscreteFlow</a></li>
@@ -445,19 +319,18 @@
 <li class="toctree-l2"><a class="reference internal" href="TwoToThreeParticleScattering.html">TwoToThreeParticleScattering</a></li>
 <li class="toctree-l2"><a class="reference internal" href="TwoToTwoParticleScattering.html">TwoToTwoParticleScattering</a></li>
 <li class="toctree-l2"><a class="reference internal" href="VegasMapping.html">VegasMapping</a></li>
-<li class="toctree-l2"><a class="reference internal" href="BatchSampler.html">BatchSampler</a></li>
-<li class="toctree-l2"><a class="reference internal" href="BufferUnweighter.html">BufferUnweighter</a></li>
+<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">BufferUnweighter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CachedPdf.html">CachedPdf</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CachedScale.html">CachedScale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CutItem.html">CutItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Cuts.html">Cuts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DifferentialCrossSection.html">DifferentialCrossSection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DiscreteHistogram.html">DiscreteHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="EnergyScale.html">EnergyScale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="FunctionGenerator.html">FunctionGenerator</a></li>
-<li class="toctree-l2"><a class="reference internal" href="GradientClipper.html">GradientClipper</a></li>
+<li class="toctree-l2"><a class="reference internal" href="HistItem.html">HistItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Integrand.html">Integrand</a></li>
-<li class="toctree-l2"><a class="reference internal" href="IntegrandChannelPart.html">IntegrandChannelPart</a></li>
-<li class="toctree-l2"><a class="reference internal" href="IntegrandCommonPart.html">IntegrandCommonPart</a></li>
-<li class="toctree-l2"><a class="reference internal" href="IntegrandConcatenator.html">IntegrandConcatenator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="IntegrandProbability.html">IntegrandProbability</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MadnisLoss.html">MadnisLoss</a></li>
@@ -475,14 +348,18 @@
 <li class="toctree-l2"><a class="reference internal" href="Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Decay.html">Decay</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Diagram.html">Diagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="LineRef.html">LineRef</a></li>
 <li class="toctree-l2"><a class="reference internal" href="PdfGrid.html">PdfGrid</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Propagator.html">Propagator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Topology.html">Topology</a></li>
 <li class="toctree-l2"><a class="reference internal" href="initialize_vegas_grid.html">initialize_vegas_grid</a></li>
 <li class="toctree-l2"><a class="reference internal" href="BatchSize.html">BatchSize</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DataType.html">DataType</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Function.html">Function</a></li>
 <li class="toctree-l2"><a class="reference internal" href="FunctionBuilder.html">FunctionBuilder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="FunctionRuntime.html">FunctionRuntime</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Instruction.html">Instruction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="InstructionCall.html">InstructionCall</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Type.html">Type</a></li>
@@ -493,18 +370,11 @@
 <li class="toctree-l2"><a class="reference internal" href="AdamOptimizer.html">AdamOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ChannelEventGenerator.html">ChannelEventGenerator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Context.html">Context</a></li>
-<li class="toctree-l2"><a class="reference internal" href="DataLayout.html">DataLayout</a></li>
-<li class="toctree-l2"><a class="reference internal" href="DerivedSeed.html">DerivedSeed</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Device.html">Device</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DiscreteOptimizer.html">DiscreteOptimizer</a></li>
-<li class="toctree-l2"><a class="reference internal" href="EventBuffer.html">EventBuffer</a></li>
-<li class="toctree-l2"><a class="reference internal" href="EventFile.html">EventFile</a></li>
 <li class="toctree-l2"><a class="reference internal" href="EventGenerator.html">EventGenerator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="EventHistogramSpec.html">EventHistogramSpec</a></li>
 <li class="toctree-l2"><a class="reference internal" href="EventHistograms.html">EventHistograms</a></li>
-<li class="toctree-l2"><a class="reference internal" href="EventRecord.html">EventRecord</a></li>
-<li class="toctree-l2"><a class="reference internal" href="FieldLayout.html">FieldLayout</a></li>
-<li class="toctree-l2"><a class="reference internal" href="GeneratorBatchJob.html">GeneratorBatchJob</a></li>
 <li class="toctree-l2"><a class="reference internal" href="GeneratorConfig.html">GeneratorConfig</a></li>
 <li class="toctree-l2"><a class="reference internal" href="GeneratorStatus.html">GeneratorStatus</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Histogram.html">Histogram</a></li>
@@ -515,35 +385,26 @@
 <li class="toctree-l2"><a class="reference internal" href="LHEMeta.html">LHEMeta</a></li>
 <li class="toctree-l2"><a class="reference internal" href="LHEParticle.html">LHEParticle</a></li>
 <li class="toctree-l2"><a class="reference internal" href="LHEProcess.html">LHEProcess</a></li>
-<li class="toctree-l2"><a class="reference internal" href="LOReweightInfo.html">LOReweightInfo</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Logger.html">Logger</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MadnisConfig.html">MadnisConfig</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MadnisTraining.html">MadnisTraining</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MatrixElementApi.html">MatrixElementApi</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MixMaxRandom.html">MixMaxRandom</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MultiMadnisTraining.html">MultiMadnisTraining</a></li>
-<li class="toctree-l2"><a class="reference internal" href="PackedTensorView.html">PackedTensorView</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ParticleRecord.html">ParticleRecord</a></li>
 <li class="toctree-l2"><a class="reference internal" href="PdfGroupInfo.html">PdfGroupInfo</a></li>
 <li class="toctree-l2"><a class="reference internal" href="PdfMemberSpec.html">PdfMemberSpec</a></li>
 <li class="toctree-l2"><a class="reference internal" href="PrettyBox.html">PrettyBox</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ReadyJob.html">ReadyJob</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ResultQueue.html">ResultQueue</a></li>
-<li class="toctree-l2"><a class="reference internal" href="RunSeedSkip.html">RunSeedSkip</a></li>
-<li class="toctree-l2"><a class="reference internal" href="RunningIntegral.html">RunningIntegral</a></li>
-<li class="toctree-l2"><a class="reference internal" href="Runtime.html">Runtime</a></li>
-<li class="toctree-l2"><a class="reference internal" href="Sizes.html">Sizes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="StatusFile.html">StatusFile</a></li>
+<li class="toctree-l2"><a class="reference internal" href="SubprocArgs.html">SubprocArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SubprocessObservables.html">SubprocessObservables</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SubprocessSystArgs.html">SubprocessSystArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SystematicsCalculator.html">SystematicsCalculator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SystematicsConfig.html">SystematicsConfig</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Tensor.html">Tensor</a></li>
-<li class="toctree-l2"><a class="reference internal" href="TensorView.html">TensorView</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ThreadPool.html">ThreadPool</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ThreadResource.html">ThreadResource</a></li>
-<li class="toctree-l2"><a class="reference internal" href="UnalignedRef.html">UnalignedRef</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TrainingArgs.html">TrainingArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Variation.html">Variation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="VegasGridOptimizer.html">VegasGridOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Verbosity.html">Verbosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="available_backends.html">available_backends</a></li>
 <li class="toctree-l2"><a class="reference internal" href="compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpu_device.html">cpu_device</a></li>
@@ -556,10 +417,149 @@
 <li class="toctree-l2"><a class="reference internal" href="format_with_error.html">format_with_error</a></li>
 <li class="toctree-l2"><a class="reference internal" href="hip_device.html">hip_device</a></li>
 <li class="toctree-l2"><a class="reference internal" href="select_combine_channel_index.html">select_combine_channel_index</a></li>
-<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">set_lib_path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="set_lib_path.html">set_lib_path</a></li>
 <li class="toctree-l2"><a class="reference internal" href="set_simd_vector_size.html">set_simd_vector_size</a></li>
-<li class="toctree-l2"><a class="reference internal" href="NamedVector.html">NamedVector</a></li>
-<li class="toctree-l2"><a class="reference internal" href="Overloaded.html">Overloaded</a></li>
+<li class="toctree-l2"><a class="reference internal" href="NamedTypes.html">NamedTypes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="NamedValues.html">NamedValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="get_stream.html">get_stream</a></li>
+<li class="toctree-l2"><a class="reference internal" href="set_stream.html">set_stream</a></li>
+<li class="toctree-l2"><a class="reference internal" href="stream.html">stream</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../cpp-api.html">C++ API</a><input aria-label="Toggle navigation of C++ API" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/ChiliMapping.html">ChiliMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/DiscreteFlow.html">DiscreteFlow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/DiscreteSampler.html">DiscreteSampler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/DoubleT.html">DoubleT</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/FastRamboMapping.html">FastRamboMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Flow.html">Flow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Invariant.html">Invariant</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Luminosity.html">Luminosity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Mapping.html">Mapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MultiChannelMapping.html">MultiChannelMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/PhaseSpaceMapping.html">PhaseSpaceMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/TPropagatorMapping.html">TPropagatorMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/ThreeBodyDecay.html">ThreeBodyDecay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/TwoBodyDecay.html">TwoBodyDecay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/TwoToThreeParticleScattering.html">TwoToThreeParticleScattering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/TwoToTwoParticleScattering.html">TwoToTwoParticleScattering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/VegasMapping.html">VegasMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/BatchSampler.html">BatchSampler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/BufferUnweighter.html">BufferUnweighter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Cuts.html">Cuts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/DiscreteHistogram.html">DiscreteHistogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/EnergyScale.html">EnergyScale</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/FunctionGenerator.html">FunctionGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/GradientClipper.html">GradientClipper</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Integrand.html">Integrand</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/IntegrandChannelPart.html">IntegrandChannelPart</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/IntegrandCommonPart.html">IntegrandCommonPart</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/IntegrandConcatenator.html">IntegrandConcatenator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MLP.html">MLP</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MadnisLoss.html">MadnisLoss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MatrixElement.html">MatrixElement</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MomentumPreprocessing.html">MomentumPreprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MultiChannelFunction.html">MultiChannelFunction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MultiChannelIntegrand.html">MultiChannelIntegrand</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Observable.html">Observable</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/ObservableHistograms.html">ObservableHistograms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/ObservableValues.html">ObservableValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/PartonDensity.html">PartonDensity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/RunningCoupling.html">RunningCoupling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Unweighter.html">Unweighter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/VegasHistogram.html">VegasHistogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Diagram.html">Diagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/PdfGrid.html">PdfGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Propagator.html">Propagator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Topology.html">Topology</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/initialize_vegas_grid.html">initialize_vegas_grid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/BatchSize.html">BatchSize</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Function.html">Function</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/FunctionBuilder.html">FunctionBuilder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Instruction.html">Instruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/InstructionCall.html">InstructionCall</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Type.html">Type</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Value.html">Value</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/batch_float_array.html">batch_float_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/multichannel_batch_size.html">multichannel_batch_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/AdamOptimizer.html">AdamOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/ChannelEventGenerator.html">ChannelEventGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Context.html">Context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/DataLayout.html">DataLayout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/DerivedSeed.html">DerivedSeed</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Device.html">Device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/DiscreteOptimizer.html">DiscreteOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/EventBuffer.html">EventBuffer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/EventFile.html">EventFile</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/EventGenerator.html">EventGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/EventHistogramSpec.html">EventHistogramSpec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/EventHistograms.html">EventHistograms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/EventRecord.html">EventRecord</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/FieldLayout.html">FieldLayout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/GeneratorBatchJob.html">GeneratorBatchJob</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/GeneratorConfig.html">GeneratorConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/GeneratorStatus.html">GeneratorStatus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Histogram.html">Histogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/LHECompleter.html">LHECompleter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/LHEEvent.html">LHEEvent</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/LHEFileWriter.html">LHEFileWriter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/LHEHeader.html">LHEHeader</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/LHEMeta.html">LHEMeta</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/LHEParticle.html">LHEParticle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/LHEProcess.html">LHEProcess</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/LOReweightInfo.html">LOReweightInfo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Logger.html">Logger</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MadnisTraining.html">MadnisTraining</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MatrixElementApi.html">MatrixElementApi</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MixMaxRandom.html">MixMaxRandom</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MultiMadnisTraining.html">MultiMadnisTraining</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/PackedTensorView.html">PackedTensorView</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/ParticleRecord.html">ParticleRecord</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/PdfGroupInfo.html">PdfGroupInfo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/PdfMemberSpec.html">PdfMemberSpec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/PrettyBox.html">PrettyBox</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/ReadyJob.html">ReadyJob</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/ResultQueue.html">ResultQueue</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/RunSeedSkip.html">RunSeedSkip</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/RunningIntegral.html">RunningIntegral</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Runtime.html">Runtime</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Sizes.html">Sizes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/StatusFile.html">StatusFile</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/SubprocessObservables.html">SubprocessObservables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/SystematicsCalculator.html">SystematicsCalculator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/SystematicsConfig.html">SystematicsConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Tensor.html">Tensor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/TensorView.html">TensorView</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/ThreadPool.html">ThreadPool</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/ThreadResource.html">ThreadResource</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/UnalignedRef.html">UnalignedRef</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Variation.html">Variation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/available_backends.html">available_backends</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/cpu_device.html">cpu_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/cuda_device.html">cuda_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/default_context.html">default_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/default_cuda_context.html">default_cuda_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/default_hip_context.html">default_hip_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/format_progress.html">format_progress</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/format_si_prefix.html">format_si_prefix</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/format_with_error.html">format_with_error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/hip_device.html">hip_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/select_combine_channel_index.html">select_combine_channel_index</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/set_lib_path.html">set_lib_path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/set_simd_vector_size.html">set_simd_vector_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/NamedVector.html">NamedVector</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/Overloaded.html">Overloaded</a></li>
 </ul>
 </li>
 </ul>
@@ -582,7 +582,7 @@
         </a>
         <div class="content-icon-container">
           <div class="view-this-page">
-  <a class="muted-link" href="../../_sources/madspace/cpp/set_lib_path.rst.txt" title="View this page">
+  <a class="muted-link" href="../../_sources/madspace/python/BufferUnweighter.rst.txt" title="View this page">
     <svg><use href="#svg-eye"></use></svg>
     <span class="visually-hidden">View this page</span>
   </a>
@@ -600,12 +600,35 @@
           </label>
         </div>
         <article role="main" id="furo-main-content">
-          <section id="set-lib-path">
-<h1>set_lib_path<a class="headerlink" href="#set-lib-path" title="Link to this heading">¶</a></h1>
-<dl class="cpp function">
-<dt class="sig sig-object cpp" id="_CPPv4N8madspace12set_lib_pathERKNSt6stringE">
-<span id="_CPPv3N8madspace12set_lib_pathERKNSt6stringE"></span><span id="_CPPv2N8madspace12set_lib_pathERKNSt6stringE"></span><span id="madspace::set_lib_path__ssCR"></span><span class="target" id="backend_8hpp_1aaca953f52c41e640de9892f31997fd27"></span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-prename descclassname"><span class="n"><span class="pre">madspace</span></span><span class="p"><span class="pre">::</span></span></span><span class="sig-name descname"><span class="n"><span class="pre">set_lib_path</span></span></span><span class="sig-paren">(</span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">string</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">lib_path</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace12set_lib_pathERKNSt6stringE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Directory to load the generated backend shared libraries from. </p>
+          <section id="bufferunweighter">
+<h1>BufferUnweighter<a class="headerlink" href="#bufferunweighter" title="Link to this heading">¶</a></h1>
+<dl class="py class">
+<dt class="sig sig-object py" id="madspace.BufferUnweighter">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">BufferUnweighter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.BufferUnweighter" title="madspace._madspace_py.BufferUnweighter"><span class="pre">madspace._madspace_py.BufferUnweighter</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">types</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="NamedTypes.html#madspace.NamedTypes" title="madspace._madspace_py.NamedTypes"><span class="pre">madspace._madspace_py.NamedTypes</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">quantile</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SupportsFloat</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#madspace.BufferUnweighter" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="FunctionGenerator.html#madspace.FunctionGenerator" title="madspace._madspace_py.FunctionGenerator"><code class="xref py py-class docutils literal notranslate"><span class="pre">FunctionGenerator</span></code></a></p>
+<p>Partial unweighting of one batch, for the MadNIS replay buffer.</p>
+<p>The maximum weight is the <code class="docutils literal notranslate"><span class="pre">quantile</span></code> quantile of <a href="#id1"><span class="problematic" id="id2">|w|</span></a> over the batch (so a fraction 1 - <code class="docutils literal notranslate"><span class="pre">quantile</span></code> of the events is over-weight). An event is kept with probability min(1, <a href="#id3"><span class="problematic" id="id4">|w|</span></a> / w_max) and gets the weight sign(w) * max(<a href="#id5"><span class="problematic" id="id6">|w|</span></a>, w_max): the sign of a negative weight (an interference) is kept, and the quantile is over <a href="#id7"><span class="problematic" id="id8">|w|</span></a> like the acceptance, so that a mostly negative batch is still unweighted. The <code class="docutils literal notranslate"><span class="pre">adaptive_prob</span></code> of a kept event, the density it was sampled with, is multiplied by its acceptance probability and by N / N_kept, so that training on the buffered events stays unbiased (Sec. 3.4.1 of [1]).</p>
+<p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension.</p>
+<p><strong>Arguments</strong></p>
+<ul class="simple">
+<li><p>the tensors named in <code class="docutils literal notranslate"><span class="pre">types</span></code> (the first is the event weight, and one must be named <code class="docutils literal notranslate"><span class="pre">adaptive_prob</span></code>).</p></li>
+</ul>
+<p><strong>Returns</strong></p>
+<ul class="simple">
+<li><p>the tensors named in <code class="docutils literal notranslate"><span class="pre">types</span></code>, partially unweighted, with <code class="docutils literal notranslate"><span class="pre">adaptive_prob</span></code> rescaled.</p></li>
+</ul>
+<p><strong>References</strong></p>
+<ul class="simple">
+<li><p>[1] T. Heimel, O. Mattelaer, R. Winterhalder, “MadSpace”, <a class="reference external" href="https://arxiv.org/abs/2602.06895">https://arxiv.org/abs/2602.06895</a> (Sec. 3.4.1)</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>types</strong> – The per-event tensors, the first being the weight.</p></li>
+<li><p><strong>quantile</strong> – Quantile of <a href="#id9"><span class="problematic" id="id10">|w|</span></a> taken as the maximum weight.</p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 </section>
@@ -615,23 +638,23 @@
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="set_simd_vector_size.html">
+          <a class="next-page" href="CachedPdf.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">set_simd_vector_size</div>
+                <div class="title">CachedPdf</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="select_combine_channel_index.html">
+          <a class="prev-page" href="VegasMapping.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">select_combine_channel_index</div>
+                <div class="title">VegasMapping</div>
                 
               </div>
             </a>
@@ -665,8 +688,8 @@
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">set_lib_path</a><ul>
-<li><a class="reference internal" href="#_CPPv4N8madspace12set_lib_pathERKNSt6stringE"><code class="docutils literal notranslate"><span class="pre">set_lib_path()</span></code></a></li>
+<li><a class="reference internal" href="#">BufferUnweighter</a><ul>
+<li><a class="reference internal" href="#madspace.BufferUnweighter"><code class="docutils literal notranslate"><span class="pre">BufferUnweighter</span></code></a></li>
 </ul>
 </li>
 </ul>

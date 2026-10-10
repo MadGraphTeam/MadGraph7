@@ -319,6 +319,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/TwoToThreeParticleScattering.html">TwoToThreeParticleScattering</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/TwoToTwoParticleScattering.html">TwoToTwoParticleScattering</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/VegasMapping.html">VegasMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/BufferUnweighter.html">BufferUnweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/CachedPdf.html">CachedPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/CachedScale.html">CachedScale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
@@ -604,15 +605,15 @@
 <dl class="cpp class">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace16BufferUnweighterE">
 <span id="_CPPv3N8madspace16BufferUnweighterE"></span><span id="_CPPv2N8madspace16BufferUnweighterE"></span><span id="madspace::BufferUnweighter"></span><span class="target" id="classmadspace_1_1BufferUnweighter"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">BufferUnweighter</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">madspace</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="FunctionGenerator.html#_CPPv4N8madspace17FunctionGeneratorE" title="madspace::FunctionGenerator"><span class="n"><span class="pre">FunctionGenerator</span></span></a><a class="headerlink" href="#_CPPv4N8madspace16BufferUnweighterE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Partial unweighting against a running maximum weight. </p>
-<p>Used for the intermediate channel-wise event files: events are only partially unweighted while generation continues, using the current estimate of the per-channel maximum weight, and a final <a class="reference internal" href="Unweighter.html#classmadspace_1_1Unweighter"><span class="std std-ref">Unweighter</span></a> pass is run once the target count is reached (Sec. 3.4.1 of [1]). <code class="docutils literal notranslate"><span class="pre">quantile</span></code> sets the fraction of over-weight events allowed when estimating the maximum.</p>
+<dd><p>Partial unweighting of one batch, for the MadNIS replay buffer. </p>
+<p>The maximum weight is the <code class="docutils literal notranslate"><span class="pre">quantile</span></code> quantile of |w| over the batch (so a fraction 1 - <code class="docutils literal notranslate"><span class="pre">quantile</span></code> of the events is over-weight). An event is kept with probability min(1, |w| / w_max) and gets the weight sign(w) * max(|w|, w_max): the sign of a negative weight (an interference) is kept, and the quantile is over |w| like the acceptance, so that a mostly negative batch is still unweighted. The <code class="docutils literal notranslate"><span class="pre">adaptive_prob</span></code> of a kept event, the density it was sampled with, is multiplied by its acceptance probability and by N / N_kept, so that training on the buffered events stays unbiased (Sec. 3.4.1 of [1]).</p>
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension.</p>
 <p><strong>Arguments</strong><ul class="simple">
-<li><p>the tensors named in <code class="docutils literal notranslate"><span class="pre">types</span></code> (the first is the event weight).</p></li>
+<li><p>the tensors named in <code class="docutils literal notranslate"><span class="pre">types</span></code> (the first is the event weight, and one must be named <code class="docutils literal notranslate"><span class="pre">adaptive_prob</span></code>).</p></li>
 </ul>
 </p>
 <p><strong>Returns</strong><ul class="simple">
-<li><p>the tensors named in <code class="docutils literal notranslate"><span class="pre">types</span></code>, partially unweighted.</p></li>
+<li><p>the tensors named in <code class="docutils literal notranslate"><span class="pre">types</span></code>, partially unweighted, with <code class="docutils literal notranslate"><span class="pre">adaptive_prob</span></code> rescaled.</p></li>
 </ul>
 </p>
 <p><strong>References</strong><ul class="simple">
@@ -628,7 +629,7 @@
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>types</strong> – The per-event tensors, the first being the weight. </p></li>
-<li><p><strong>quantile</strong> – Allowed fraction of over-weight events. </p></li>
+<li><p><strong>quantile</strong> – Quantile of |w| taken as the maximum weight. </p></li>
 </ul>
 </dd>
 </dl>

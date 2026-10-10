@@ -40,6 +40,7 @@ Builders that assemble compute-graph functions for channel weights, energy scale
 .. toctree::
    :maxdepth: 1
 
+   python/BufferUnweighter
    python/CachedPdf
    python/CachedScale
    python/ChannelWeightNetwork
