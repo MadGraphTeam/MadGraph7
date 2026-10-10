@@ -24,6 +24,7 @@ import madgraph.various.misc as misc
 import os
 import models
 import io
+import re
 import sys
 from madgraph import MG5DIR
 
@@ -1622,6 +1623,87 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(rc['beam']['e_cm'], 250.0)
         self.assertIs(rc['beam']['leptonic'], True)
 
+    def test_per_beam_energy_and_pdf(self):
+        """ebeam1/ebeam2 and pdf1/pdf2 are per beam; e_cm and pdf are derived
+        from them and setting either sets both beams"""
+        rc = bannermod.RunCardMG7()
+        rc.set('beam.ebeam1', '7 TeV', user=True)
+        rc.set('beam.ebeam2', 4000, user=True)
+        self.assertEqual(rc['beam']['ebeam1'], 7000.0)
+        self.assertAlmostEqual(rc['beam']['e_cm'], 2 * (7000.0 * 4000.0) ** 0.5)
+        self.assertEqual(rc['ebeam2'], 4000.0)  # legacy run_card.dat name
+        rc.set('e_cm', '14 TeV', user=True)
+        self.assertEqual((rc['beam']['ebeam1'], rc['beam']['ebeam2']), (7000.0, 7000.0))
+        rc.set('beam.pdf', 'CT18LO', user=True)
+        self.assertEqual((rc['beam']['pdf1'], rc['beam']['pdf2']), ('CT18LO', 'CT18LO'))
+        self.assertEqual(rc['beam']['pdf'], 'CT18LO')
+        rc.set('beam.pdf2', 'nNNPDF30_nlo_as_0118_A208_Z82', user=True)
+        self.assertRaises(KeyError, lambda: rc['beam']['pdf'])
+        # a bare "pdf" could be the beam or the systematics one: left untouched
+        rc.set('pdf', 'NNPDF31_lo_as_0118', user=True)
+        self.assertEqual(rc['beam']['pdf1'], 'CT18LO')
+        self.assertEqual(rc['systematics']['pdf'], ['errorset'])
+        with self.assertRaises(bannermod.InvalidRunCard):
+            rc.set('beam.e_cm', 'scan:[7000, 13000]', user=True)
+        rc.set('beam.ebeam2', 0, user=True)
+        self.assertRaises(bannermod.InvalidRunCard, rc.check_validity)
+
+    def test_set_lo_beam_param(self):
+        """madevent beam settings (set ebeam/lpp/pdlabel/lhaid at the launch
+        question) go to the per-beam entries"""
+        rc = bannermod.RunCardMG7()
+        beams = lambda key: (rc['beam'][key + '1'], rc['beam'][key + '2'])
+        rc.set_lo_beam_param('ebeam', '6.8 TeV')
+        self.assertEqual(beams('ebeam'), (6800.0, 6800.0))
+        rc.set_lo_beam_param('ebeam2', 'mz*40', masses={'mz': 91.188})
+        self.assertEqual(beams('ebeam'), (6800.0, 3647.52))
+        rc.set_lo_beam_param('pdlabel', 'nn23lo1')
+        self.assertEqual(beams('pdf'), ('NNPDF23_lo_as_0130_qed',) * 2)
+        rc.set_lo_beam_param('pdlabel1', 'cteq6l1')
+        self.assertEqual(beams('pdf'), ('cteq6l1', 'NNPDF23_lo_as_0130_qed'))
+        # the set is chosen by lhaid: 'lhapdf' alone changes nothing
+        rc.set_lo_beam_param('pdlabel', 'lhapdf')
+        self.assertEqual(beams('pdf'), ('cteq6l1', 'NNPDF23_lo_as_0130_qed'))
+        # an id outside the built-in table, through the LHAPDF index
+        index_dir = tempfile.mkdtemp()
+        try:
+            with open(os.path.join(index_dir, 'pdfsets.index'), 'w') as fsock:
+                fsock.write('244800 NNPDF23_nlo_as_0119_qed 5\n')
+            rc.set_lo_beam_param('lhaid', '244800', data_paths=[index_dir])
+        finally:
+            shutil.rmtree(index_dir)
+        self.assertEqual(beams('pdf'), ('NNPDF23_nlo_as_0119_qed',) * 2)
+        for name, value in (('lhaid', '999999'), ('pdlabel2', 'isronlyll'),
+                            ('pdlabel2', 'none'), ('lpp1', '2'), ('lpp', 'p')):
+            self.assertRaises(bannermod.InvalidRunCard,
+                              rc.set_lo_beam_param, name, value)
+        self.assertEqual(beams('pdf'), ('NNPDF23_nlo_as_0119_qed',) * 2)
+        # one lepton/hadron switch for both beams
+        rc.set_lo_beam_param('lpp', '0')
+        self.assertTrue(rc['beam']['leptonic'])
+        rc.set_lo_beam_param('lpp1', '1')
+        self.assertFalse(rc['beam']['leptonic'])
+        rc.set_lo_beam_param('pdlabel', 'none')
+        self.assertTrue(rc['beam']['leptonic'])
+
+    def test_read_card_with_e_cm_and_pdf(self):
+        """a card written before the per-beam keys still reads"""
+        rc = bannermod.RunCardMG7()
+        out = io.StringIO()
+        rc.write(out, template=self.template)
+        text = out.getvalue()
+        text = text.replace('ebeam1 = 6500.0\nebeam2 = 6500.0', 'e_cm = 1000.0')
+        text = re.sub(r'pdf1 = .*\npdf2 = .*', 'pdf = "NNPDF23_lo_as_0130_qed"', text)
+        self.assertNotIn('ebeam1 =', text)
+        self.assertNotIn('pdf1 =', text)
+        rc2 = bannermod.RunCardMG7(text)
+        self.assertEqual((rc2['beam']['ebeam1'], rc2['beam']['ebeam2']), (500.0, 500.0))
+        self.assertEqual(rc2['beam']['pdf2'], 'NNPDF23_lo_as_0130_qed')
+        out = io.StringIO()
+        rc2.write(out, template=self.template)
+        self.assertIn('ebeam2 = 500.0', out.getvalue())
+        self.assertNotIn('e_cm =', out.getvalue())
+
     def test_fixed_scale_and_remove_cuts(self):
         """fixed_scale sets all scales; remove_all_cut clears cuts"""
         rc = bannermod.RunCardMG7()
@@ -1641,7 +1723,9 @@ class TestRunCardMG7(unittest.TestCase):
         out = io.StringIO()
         rc.write(out, template=self.template)
         text = out.getvalue()
-        text = text.replace('e_cm = 13000.0', 'e_cm = "scan:[7000, 13000]"')
+        # the collision energy is scanned through both beams, moving together
+        text = text.replace('ebeam1 = 6500.0', 'ebeam1 = "scan2:[3500, 6500]"')
+        text = text.replace('ebeam2 = 6500.0', 'ebeam2 = "scan2:[3500, 6500]"')
         text = text.replace('ren_scale = 91.188', 'ren_scale = "scan1:[91.0, 172.0]"')
         text = text.replace('fact_scale1 = 91.188', 'fact_scale1 = "scan1:[45.5, 86.0]"')
         # valid TOML, and detected as a scan
@@ -1705,6 +1789,7 @@ class TestRunCardMG7(unittest.TestCase):
         mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
         # ported
         self.assertEqual(mg7['beam']['e_cm'], 13000.0)
+        self.assertEqual(mg7['beam']['ebeam1'], 6500.0)
         self.assertEqual(mg7['generation']['events'], 25000)
         self.assertEqual(mg7['beam']['dynamical_scale_choice'], 'half_transverse_mass')
         self.assertEqual(mg7['beam']['scale_factor'], 0.5)
@@ -1729,6 +1814,20 @@ class TestRunCardMG7(unittest.TestCase):
         buf = io.StringIO()
         mg7.write(buf, template=self.template)
         tomllib.loads(buf.getvalue())
+
+    def test_from_LO_conversion_per_beam(self):
+        """asymmetric beam energies and PDFs are kept per beam"""
+        lo = bannermod.RunCardLO()
+        lo['ebeam1'] = 7000
+        lo['ebeam2'] = 4000
+        lo['pdlabel1'] = 'nn23lo1'
+        lo['pdlabel2'] = 'cteq6l1'
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual((mg7['beam']['ebeam1'], mg7['beam']['ebeam2']), (7000.0, 4000.0))
+        self.assertAlmostEqual(mg7['beam']['e_cm'], 2 * (7000.0 * 4000.0) ** 0.5)
+        self.assertEqual((mg7['beam']['pdf1'], mg7['beam']['pdf2']),
+                         ('NNPDF23_lo_as_0130_qed', 'cteq6l1'))
+        self.assertNotIn('pdlabel', ' '.join(dropped))
 
     def test_from_LO_conversion_of_composite_cuts(self):
         """ordered, HT, summed-momentum, energy and per-pdg LO cuts are ported"""
@@ -1882,7 +1981,10 @@ class TestRunCardMG7(unittest.TestCase):
         rc.write(out, template=self.template)
         data = tomllib.loads(out.getvalue())
         self.assertEqual(data['run']['output_format'], 'lhe_npy')
-        self.assertEqual(data['beam']['e_cm'], 13000.0)
+        self.assertEqual(data['beam']['ebeam1'], 6500.0)
+        self.assertEqual(data['beam']['ebeam2'], 6500.0)
+        self.assertEqual(data['beam']['pdf1'], data['beam']['pdf2'])
+        self.assertNotIn('e_cm', data['beam'])
         self.assertIs(data['vegas']['enable'], True)
         self.assertEqual(data['multiparticles']['photon'], [22])
         self.assertEqual(data['cuts']['sqrt_s'], {'min': 0.0})

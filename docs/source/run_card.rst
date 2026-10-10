@@ -116,17 +116,22 @@ See :doc:`gridpacks` for details.
 [beam]
 ------
 
-``e_cm`` (``13000.0``)
-    Center-of-mass energy in GeV. Units are accepted, for example ``"13 TeV"``.
+``ebeam1`` (``6500.0``), ``ebeam2`` (``6500.0``)
+    Energy of each beam in GeV, beam 1 moving along :math:`+z`. Units are accepted, for
+    example ``"7 TeV"``. The collision energy is :math:`2\sqrt{E_1 E_2}`. With different
+    energies the events are written, and the :math:`\eta` cuts applied, in this lab frame.
+    ``e_cm`` can still be read and set: ``set e_cm 13 TeV`` sets both beams to 6.5 TeV.
 
 ``leptonic`` (``false``)
-    Treat the beams as leptons: no PDFs are used and the partonic energy equals ``e_cm``.
-    This is set automatically for lepton-collider processes, together with ``e_cm = 1000``
-    and no jet cuts.
+    Treat the beams as leptons: no PDFs are used and the partonic energy equals the
+    collision energy. This is set automatically for lepton-collider processes, together
+    with 500 GeV beams and no jet cuts.
 
-``pdf`` (``"NNPDF40_lo_as_01180"``)
-    Name of the LHAPDF set. MG7 tries to download it if it is not installed. The default is
-    the 5-flavor NNPDF 4.0 LO set, which has 100 error members for the PDF variations.
+``pdf1`` (``"NNPDF40_lo_as_01180"``), ``pdf2`` (``"NNPDF40_lo_as_01180"``)
+    Name of the LHAPDF set of each beam. ``set beam.pdf X`` sets both. MG7 tries to
+    download a set that is not installed. The default is the 5-flavor NNPDF 4.0 LO set,
+    which has 100 error members for the PDF variations. With different sets on the two
+    beams the PDF member variations of ``[systematics]`` are dropped.
 
 ``fixed_ren_scale`` (``false``), ``fixed_fact_scale`` (``false``)
     Use the fixed values below instead of the dynamical scale choice. The two switches act

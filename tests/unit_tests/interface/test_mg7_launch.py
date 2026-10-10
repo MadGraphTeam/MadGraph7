@@ -676,6 +676,26 @@ class MG7CmdTest(unittest.TestCase):
         self.assertEqual(dict(obj.run_card['histograms']), before)
         self.assertNotIn('run', obj.modified_card)
 
+    def test_set_madevent_beam_names(self):
+        """set ebeam1/ebeam/pdlabel2/lpp, as a madevent launch script writes
+        them, edit the per-beam [beam] entries"""
+        obj = self.histogram_selector()
+        obj.do_set('ebeam 6.8 TeV')
+        obj.do_set('ebeam1 7 TeV')
+        obj.do_set('pdlabel2 cteq6l1')
+        obj.do_set('lpp 1')
+        beam = obj.run_card['beam']
+        self.assertEqual((beam['ebeam1'], beam['ebeam2']), (7000.0, 6800.0))
+        self.assertEqual(beam['pdf2'], 'cteq6l1')
+        self.assertNotEqual(beam['pdf1'], 'cteq6l1')
+        self.assertFalse(beam['leptonic'])
+        self.assertIn('run', obj.modified_card)
+        # a value mg7 cannot represent leaves the card alone
+        obj.modified_card.clear()
+        obj.do_set('pdlabel1 none')
+        self.assertNotEqual(obj.run_card['beam']['pdf1'], 'none')
+        self.assertNotIn('run', obj.modified_card)
+
     def test_no_post_processing_keeps_the_npy_output(self):
         self.assertEqual(self.output_format({}), 'compact_npy')
         self.assertEqual(self.output_format(None), 'compact_npy')
@@ -1141,12 +1161,12 @@ class TestForceLHEOutput(unittest.TestCase):
     def test_scan_card_survives(self):
         """A scan value is not a valid RunCardMG7 entry: the card is edited
         as text, and only on its output_format line."""
-        self.edit('e_cm = 13000.0', 'e_cm = "scan:[13000, 14000]"')
+        self.edit('ebeam1 = 6500.0', 'ebeam1 = "scan:[6500, 7000]"')
         self.launch.force_lhe_output_if_needed({})
         self.launch.force_lhe_output_if_needed({'madspin': 'ON'})
         self.assertEqual(self.output_format(), 'lhe')
         with open(self.card) as f:
-            self.assertIn('e_cm = "scan:[13000, 14000]"', f.read())
+            self.assertIn('ebeam1 = "scan:[6500, 7000]"', f.read())
 
     def test_missing_output_format_line(self):
         with open(self.card, 'w') as f:
