@@ -12,6 +12,7 @@
 #include <thrust/fill.h>
 #include <thrust/gather.h>
 #include <thrust/iterator/constant_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
 #include <thrust/sequence.h>
 #include <thrust/sort.h>
 
@@ -1434,7 +1435,19 @@ void op_histogram(
     auto weights_ptr =
         thrust::device_pointer_cast(static_cast<double*>(weights_tmp.data()));
     auto values_ptr = thrust::device_pointer_cast(static_cast<double*>(values.data()));
-    thrust::sort_by_key(policy, indices_ptr, indices_ptr + padded_size, weights_ptr);
+    auto square_weights_ptr =
+        thrust::device_pointer_cast(static_cast<double*>(square_weights_tmp.data()));
+    auto square_values_ptr =
+        thrust::device_pointer_cast(static_cast<double*>(square_values.data()));
+    // one sort of the bin indices, carrying the weights AND the squared weights along:
+    // sorting the indices again for the squared weights (as before) left these in the
+    // event order, so the squared weights of the wrong events were summed in each bin
+    thrust::sort_by_key(
+        policy,
+        indices_ptr,
+        indices_ptr + padded_size,
+        thrust::make_zip_iterator(thrust::make_tuple(weights_ptr, square_weights_ptr))
+    );
     thrust::reduce_by_key(
         policy,
         indices_ptr,
@@ -1442,14 +1455,6 @@ void op_histogram(
         weights_ptr,
         reduce_tmp_ptr,
         values_ptr
-    );
-
-    auto square_weights_ptr =
-        thrust::device_pointer_cast(static_cast<double*>(square_weights_tmp.data()));
-    auto square_values_ptr =
-        thrust::device_pointer_cast(static_cast<double*>(square_values.data()));
-    thrust::sort_by_key(
-        policy, indices_ptr, indices_ptr + padded_size, square_weights_ptr
     );
     thrust::reduce_by_key(
         policy,

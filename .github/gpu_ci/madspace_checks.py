@@ -5,13 +5,15 @@ Run by madspace_ops_gpu.sh (job madspace_ops of gpu_runner_ci.yml) in its run
 directory. The inputs go to the GPU as torch tensors (dlpack), so that madspace runs
 the function on its GPU runtime; the same function on numpy inputs runs on the CPU.
 
-1. histogram: a weighted histogram with underflow and overflow bins (the GPU reduction
-   used to write its n_bins + 2 keys into a scratch buffer of n_bins);
+1. histogram: a weighted histogram with underflow and overflow bins, its values and
+   squared values (the GPU reduction used to write its n_bins + 2 keys into a scratch
+   buffer of n_bins, and summed the squared weights of the wrong events in each bin);
 2. rank4_add: an elementwise kernel on a rank-4 tensor, batch x 2 x 3 x 4 (the GPU
    launcher computed only the first slice of the last dimension).
 
-Writes summary.txt (key=value lines) in the current directory; exit status 1 if a
-check fails.
+Without a GPU-enabled torch among the modules (manneback: the default PyTorch module is
+the CPU build) the checks are reported as skipped. Writes summary.txt (key=value lines)
+in the current directory; exit status 1 if a check fails.
 """
 
 import os
@@ -50,12 +52,13 @@ def check_histogram(torch, device, n=100000, n_bins=40):
            for t in ms.FunctionRuntime(function, ms.default_context()).call(inputs)]
     gpu = [to_numpy(t, torch) for t in ms.FunctionRuntime(function).call(
         [torch.from_numpy(a).to(device) for a in inputs])]
-    worst = max(float(np.max(np.abs(g - c) / np.maximum(np.abs(c), 1e-300)))
-                for g, c in zip(gpu, cpu))
+    worst = [float(np.max(np.abs(g - c) / np.maximum(np.abs(c), 1e-300)))
+             for g, c in zip(gpu, cpu)]
     under, over = cpu[0][0][0], cpu[0][0][-1]
-    check('histogram', worst < 1e-9 and under != 0 and over != 0,
-          '%d bins + underflow/overflow, max rel diff GPU vs CPU %.1e '
-          '(underflow %.4g, overflow %.4g)' % (n_bins, worst, under, over))
+    check('histogram', max(worst) < 1e-9 and under != 0 and over != 0,
+          '%d bins + underflow/overflow, max rel diff GPU vs CPU %.1e (values), %.1e '
+          '(squared values); underflow %.4g, overflow %.4g'
+          % (n_bins, worst[0], worst[1], under, over))
 
 
 def check_rank4_add(torch, device, n=4096):
@@ -78,8 +81,10 @@ def main():
     except ImportError as error:
         check('torch', False, 'cannot import torch (%s): no GPU inputs' % error)
         torch = None
+    skipped = None
     if torch is not None and not torch.cuda.is_available():
-        check('torch', False, 'torch sees no GPU')
+        skipped = 'torch %s of the modules has no GPU support' % torch.__version__
+        print('SKIP all checks: %s' % skipped, flush=True)
         torch = None
     if torch is not None:
         for name, step in (('histogram', check_histogram), ('rank4_add', check_rank4_add)):
@@ -91,10 +96,12 @@ def main():
     with open('summary.txt', 'w') as f:
         for name, (ok, detail) in results.items():
             f.write('%s=%s (%s)\n' % (name, 'ok' if ok else 'FAILED', detail))
+        if skipped:
+            f.write('checks=skipped (%s)\n' % skipped)
         f.write('node=%s\ngpu=%s\nwalltime=%ds\n' % (
             os.uname().nodename, os.environ.get('GPU_NAME', 'none'), time.time() - start))
     print('\n%d check(s) failed: %s' % (len(failures), ', '.join(failures)) if failures
-          else '\nall checks passed')
+          else '\nskipped: %s' % skipped if skipped else '\nall checks passed')
     return 1 if failures else 0
 
 
