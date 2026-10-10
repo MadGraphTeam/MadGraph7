@@ -574,7 +574,33 @@ class TestCmdShell2(unittest.TestCase,
                                                'SubProcesses', 'P0_epem_epem')))
         self.assertTrue(os.path.exists(os.path.join(self.out_dir,
                                                'Cards', 'proc_card_mg5.dat')))
-    
+
+    def test_output_standalone_fortran_make_all_subprocesses(self):
+        """A plain 'make' in the SubProcesses directory of a standalone_fortran
+        output (without --prefix) must build the python module of every P
+        directory. The per-directory rules used to come before 'all', so the
+        default goal was the module of the first P directory only."""
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+
+        self.do('import model sm')
+        self.do('generate p p > t t~')
+        self.do('output standalone_fortran %s' % self.out_dir)
+
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        dirs = sorted(d for d in os.listdir(proc_root)
+                      if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+        self.assertGreaterEqual(len(dirs), 2, dirs)
+
+        # a dry run is enough: the per-directory rules call a plain 'make'
+        # (not $(MAKE)), so -n prints them without needing f2py
+        dry_run = subprocess.run(['make', '-n'], cwd=proc_root,
+                                 capture_output=True, text=True)
+        self.assertEqual(dry_run.returncode, 0, dry_run.stderr)
+        for d in dirs:
+            self.assertIn('cd %s;make matrix2py.so' % d, dry_run.stdout)
+
     def test_custom_propa(self):
         """check that using custom propagator is working"""
         
@@ -1986,6 +2012,88 @@ class TestCmdShell2(unittest.TestCase,
             self.assertLessEqual(abs(vector - scalar), 1e-5 * scalar,
                                  'the scalar and vectorised backends disagree '
                                  'in %s: %s vs %s' % (d, scalar, vector))
+
+    def test_standalone_cpp_perf_alpha_s_from_param_card(self):
+        """check_sa.exe 'perf' mode must use the alpha_s of the param card,
+        as the 'matrix' mode does.
+
+        With --momenta (or -e) and --dump-me, perf mode is how the matrix
+        element is evaluated at user-given points. It did not pass alpha_s to
+        umami_matrix_element, so UMAMI fell back to its hard-coded g_s
+        (alpha_s = 0.118) whatever the card said.
+
+        g g > t t~ is compared to the analytic result (Ellis, Stirling, Webber,
+        table 10.2) at the card alpha_s, then at twice that value. The top
+        width in the t-channel propagators moves MadGraph away from it by about
+        3e-6 at this point.
+        """
+        import array
+        import math
+        import models.check_param_card as check_param_card
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        self.do('import model sm')
+        self.do('generate g g > t t~')
+        self.do('output standalone %s' % self.out_dir)
+
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        dirs = [d for d in os.listdir(proc_root)
+                if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))]
+        self.assertEqual(len(dirs), 1, dirs)
+        proc_dir = pjoin(proc_root, dirs[0])
+        devnull = open(os.devnull, 'w')
+        subprocess.call(['make', 'FPTYPE=d'], stdout=devnull, stderr=devnull,
+                        cwd=proc_dir)
+        self.assertTrue(os.path.exists(pjoin(proc_dir, 'check_sa.exe')),
+                        'check_sa.exe did not build in %s' % proc_dir)
+
+        card_path = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        card = check_param_card.ParamCard(card_path)
+        mt = card['mass'].get(6).value
+
+        # one on-shell point in the partonic centre-of-mass frame
+        energy, theta, phi = 500., 0.7, 0.3
+        pabs = math.sqrt(energy**2 - mt**2)
+        p3 = [energy, pabs * math.sin(theta) * math.cos(phi),
+              pabs * math.sin(theta) * math.sin(phi), pabs * math.cos(theta)]
+        p4 = [energy] + [-x for x in p3[1:]]
+        point = [energy, 0., 0., energy] + [energy, 0., 0., -energy] + p3 + p4
+        # repeated 8 times: perf mode needs a multiple of the SIMD width
+        with open(pjoin(proc_dir, 'pts.bin'), 'wb') as fsock:
+            array.array('d', point * 8).tofile(fsock)
+
+        s = 4 * energy**2
+        tau1 = 2 * energy * (p3[0] - p3[3]) / s   # 2 p1.p3 / s
+        tau2 = 2 * energy * (p3[0] + p3[3]) / s   # 2 p2.p3 / s
+        rho = 4 * mt**2 / s
+        def analytic(alpha_s):
+            return (4 * math.pi * alpha_s)**2 \
+                * (1. / (6 * tau1 * tau2) - 3. / 8.) \
+                * (tau1**2 + tau2**2 + rho - rho**2 / (4 * tau1 * tau2))
+
+        def perf_mes(tag):
+            dump = 'me_%s.bin' % tag
+            subprocess.call(['./check_sa.exe', 'perf', '--momenta', 'pts.bin',
+                             '--dump-me', dump, '1', '8', '1'],
+                            stdout=devnull, stderr=devnull, cwd=proc_dir)
+            self.assertTrue(os.path.exists(pjoin(proc_dir, dump)),
+                            'check_sa.exe perf wrote no %s' % dump)
+            mes = array.array('d')
+            with open(pjoin(proc_dir, dump), 'rb') as fsock:
+                mes.frombytes(fsock.read())
+            self.assertEqual(len(mes), 8)
+            return mes
+
+        alpha_s = card['sminputs'].get(3).value
+        for tag, value in (('card', alpha_s), ('doubled', 2 * alpha_s)):
+            card['sminputs'].get(3).value = value
+            card.write(card_path)
+            expected = analytic(value)
+            for me in perf_mes(tag):
+                self.assertLessEqual(abs(me - expected), 1e-4 * expected,
+                                     'alpha_s = %s: %s instead of %s'
+                                     % (value, me, expected))
 
     def test_madmatrix_vs_fortran(self):
         """Cross-check that standalone (madmatrix) reproduces the
