@@ -106,6 +106,8 @@ C
       COMMON/C_NFKSPROCESS/NFKSPROCESS
       DOUBLE PRECISION WGT_HEL(NSQAMPSO, MAX_BHEL)
       COMMON/C_BORN_HEL_SPLIT/WGT_HEL
+      LOGICAL CHECK_BORN_AMPS, BORN_CHECKS_AMPS
+      COMMON /C_BORN_AMPS_CHECK/ CHECK_BORN_AMPS, BORN_CHECKS_AMPS
 C     ----------
 C     BEGIN CODE
 C     ----------
@@ -123,6 +125,11 @@ C     ----------
       ELSE
         WRITE(*,*) 'Error in sborn_hel_splitorders: this should be'
      $   //' called only with calculatedborn = true'
+        STOP
+      ENDIF
+      IF (CHECK_BORN_AMPS) THEN
+        WRITE(*,*) 'Error in sborn_hel_splitorders: the Born must be'
+     $   //' called again first'
         STOP
       ENDIF
       DO I=0,NSQAMPSO
