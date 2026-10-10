@@ -68,7 +68,7 @@ class TestPlotHelpers(unittest.TestCase):
         self.assertEqual(plots._inner([1.0, 2.0], 3), [1.0, 2.0, 0.])
 
     def test_values_are_differential(self):
-        """the y axis is dsigma/dx, as in HwU and in MadBoard's plots"""
+        """the y axis is dsigma/dx, as in MadBoard's plots (not HwU)"""
         self.assertEqual(plots._scaled([99.0, 10.0, 30.0, 88.0], 2, 50.0),
                          [0.2, 0.6])
         self.assertEqual(plots._scaled([0.0, 1.0, 0.0], 1, 0.), [0.])

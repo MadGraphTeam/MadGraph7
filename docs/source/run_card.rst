@@ -84,7 +84,9 @@ fixed parameters. Their entries are described below.
 
 ``write_hwu`` (``false``)
     Also write the histograms as ``MADatLO.HwU``. This is the format MG5_aMC writes as
-    ``MADatNLO.HwU`` for NLO runs.
+    ``MADatNLO.HwU`` for NLO runs, with the same conventions: the cross section per bin
+    (not divided by the bin width, unlike the plots), and the same scale-variation
+    columns. ``madgraph/various/histograms.py`` reads both files together.
 
 ``verbosity`` (``"auto"``)
     Amount of console output: ``silent``, ``pretty`` or ``log``. ``auto`` is ``pretty`` in
