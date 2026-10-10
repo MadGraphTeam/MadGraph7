@@ -78,7 +78,10 @@ def _borrow_decision_helpers(namespace):
                  # that borrows the resolver needs them -- and _weighted_decay
                  # is built on the decay_output resolver
                  '_pure_interference', '_weighted_decay', '_decay_output',
-                 '_announce_decay_output'):
+                 '_announce_decay_output',
+                 # sequential_accept_reject deals identical parents their
+                 # channels once per production event, before any draw
+                 '_positional_deal', '_dealt_rank'):
         namespace[name] = inspect.getattr_static(
             interface_madspin.MadSpinInterface, name)
 
@@ -675,6 +678,39 @@ class TestFrameBoost(unittest.TestCase):
         boost = self._stub(6)._frame_boost(_MomentaEvent(self.MOMENTA))
         self.assertIsNone(boost.rest_leg)
 
+    def test_single_leg_frame_goes_through_the_partonic_cms(self):
+        """madevent's boost_to_frame acts on partonic-CM momenta (genps.f;
+        unwgt.f boosts to the lab only when it writes the event). The beams of
+        MOMENTA are unequal, so boosting to leg 3 straight from the lab lands
+        in a frame rotated from madevent's (Wigner rotation), and the
+        quantisation axis of the leg at rest turns with it."""
+        stub = self._stub(8)
+        boost = stub._frame_boost(_MomentaEvent(self.MOMENTA))
+        out = stub._boost_momenta(self.MOMENTA, boost)
+        # madevent's route, written out: z boost to the partonic CM, then to leg 3
+        pcm = lhe_parser.FourMomentum(700., 0., 0., 300.)
+        cm = [lhe_parser.FourMomentum(p).zboost(pcm) for p in self.MOMENTA]
+        neg = lhe_parser.FourMomentum(cm[2].E, -cm[2].px, -cm[2].py, -cm[2].pz)
+        ref = [p.boost(neg) for p in cm]
+        for new, want in zip(out, ref):
+            for x, y in zip(new, (want.E, want.px, want.py, want.pz)):
+                self.assertAlmostEqual(x, y, places=8)
+        # which is not the frame reached from the lab
+        lab3 = lhe_parser.FourMomentum(*self.MOMENTA[2])
+        neg = lhe_parser.FourMomentum(lab3.E, -lab3.px, -lab3.py, -lab3.pz)
+        direct = lhe_parser.FourMomentum(*self.MOMENTA[0]).boost(neg)
+        self.assertGreater(abs(direct.px - out[0][1]), 1.)
+
+    def test_massless_frame_is_refused(self):
+        """a single massless leg has no rest frame: this used to be a
+        ZeroDivisionError deep inside FourMomentum.boost"""
+        momenta = [(500., 0., 0., 500.), (200., 0., 0., -200.),
+                   (300., 100., 50., -80.), (400., -100., -50., 380.),
+                   (math.sqrt(10.**2 + 20.**2 + 30.**2), 10., 20., 30.)]
+        stub = self._stub(2 ** 5)
+        self.assertRaises(stub.InvalidCmd, stub._frame_boost,
+                          _MomentaEvent(momenta))
+
     def test_boost_of_a_system_already_at_rest(self):
         """A lepton-collider event arrives in the partonic CMS, so frame_id = 6
         asks for a boost with no spatial part. That is the identity, not an
@@ -744,6 +780,234 @@ class TestFrameFromRunCard(unittest.TestCase):
             options = self.apply(card, user=('frame_id', 'beampol'))
             self.assertEqual(options['frame_id'], 16, type(card).__name__)
             self.assertEqual([float(x) for x in options['beampol']], [50., 0.])
+        card = banner.RunCardMG7()
+        card['run']['me_frame'] = [3, 4]
+        options = self.apply(card, user=('frame_id',))
+        self.assertEqual(options['frame_id'], 16)
+
+    def test_the_mg7_me_frame_reaches_madspin(self):
+        """mg7's run.me_frame, with its own default: [] is the lab frame the
+        matrix element saw (frame_id 0, no boost), not the partonic c.m. (6)
+        every other sample defaults to."""
+        for frame, wanted in (([], 0), ([3], 8), ([3, 4], 24), ([1, 2], 6)):
+            card = banner.RunCardMG7()
+            card['run']['me_frame'] = frame
+            options = self.apply(card)
+            self.assertEqual(options['frame_id'], wanted, frame)
+            self.assertEqual([float(x) for x in options['beampol']], [0., 0.])
+
+    def test_frame_id_zero_is_the_lab_frame(self):
+        """what mg7's [] maps to: _frame_boost has no frame to boost to, even
+        where the frame is observable (a polarised production)"""
+        stub = object.__new__(self.MI)
+        stub.options = interface_madspin.MadSpinOptions()
+        stub.options['frame_id'] = 0
+        stub._needs_frame_axis = lambda: True
+        self.assertIsNone(stub._frame_boost(None))
+
+
+def _write_production_lhe(tmpdir, run_card=None, name='events.lhe'):
+    """An event-less production LHE for ``p p > t t~`` in the sm, written the
+    way the generators do: ``run_card`` (a RunCardMG7 or a legacy RunCard, or
+    None for no run card) goes under <MG7RunCard> or <MGRunCard>."""
+    path = pjoin(tmpdir, name)
+    with open(path, 'w') as fsock:
+        fsock.write('<LesHouchesEvents version="3.0">\n<header>\n'
+                    '<MG5ProcCard>\nimport model sm\ngenerate p p > t t~\n'
+                    '</MG5ProcCard>\n<slha>\n')
+        fsock.write(open(pjoin(MG5DIR, 'models', 'sm',
+                               'restrict_default.dat')).read())
+        fsock.write('</slha>\n')
+        if run_card is not None:
+            tag = 'MG7RunCard' if isinstance(run_card, banner.RunCardMG7) \
+                  else 'MGRunCard'
+            card_path = pjoin(tmpdir, name + '.card')
+            run_card.write(card_path)
+            fsock.write('<%s>\n%s</%s>\n' % (tag, open(card_path).read(), tag))
+        fsock.write('</header>\n<init>\n'
+                    '  2212 2212 6.5e+03 6.5e+03 0 0 0 0 3 1\n'
+                    '  1.0e+00 1.0e-03 1.0e+00 1\n</init>\n'
+                    '</LesHouchesEvents>\n')
+    return path
+
+
+class TestCheckLaunchRunCard(unittest.TestCase):
+    """``check_launch`` (the madspin_v1 path) on the run card of the production.
+
+    An ``output mg7`` LHE carries its run card as ``<MG7RunCard>`` (TOML) and no
+    ``<MGRunCard>``, so the banner parses it as a RunCardMG7, which only answers
+    the legacy keys it maps. ``check_launch`` read ``lhe_version`` from it and
+    every madspin_v1 run on an mg7 sample died with ``KeyError: 'lhe_version'``
+    before decaying anything (the density modes never call check_launch)."""
+
+    class _Stub(object):
+        InvalidCmd = interface_madspin.MadSpinInterface.InvalidCmd
+
+        def __init__(self, mybanner):
+            self.banner = mybanner
+            self.list_branches = {'t': ['t > w+ b']}
+            self.options = {'onlyhelicity': False}
+            self.events_file = object()
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmpdir, True)
+
+    def _mg7_banner(self):
+        """The banner of an mg7 LHE, read from the file as do_import does."""
+        mybanner = banner.Banner(
+            _write_production_lhe(self.tmpdir, banner.RunCardMG7()))
+        self.assertIn('mg7runcard', mybanner)
+        self.assertNotIn('mgruncard', mybanner)
+        return mybanner
+
+    def check_launch(self, mybanner):
+        interface_madspin.MadSpinInterface.check_launch(self._Stub(mybanner), [])
+
+    def test_mg7_banner_passes_check_launch(self):
+        mybanner = self._mg7_banner()
+        self.check_launch(mybanner)
+        self.assertIsInstance(mybanner.run_card, banner.RunCardMG7)
+        # madspace writes LHEF 3.0, and that is what the card now reports
+        self.assertEqual(mybanner.get('run_card', 'lhe_version'), 3)
+
+    def test_mg7_banner_rewrites_as_lhef3(self):
+        """Banner.write takes the <LesHouchesEvents version> of the files it
+        rewrites (MadSpin's decayed output among them) from the run card. The
+        missing key used to fall back to 1.0 for an LHEF 3.0 input."""
+        mybanner = self._mg7_banner()
+        out = pjoin(self.tmpdir, 'rewritten.lhe')
+        mybanner.write(out)
+        with open(out) as fsock:
+            self.assertEqual(fsock.readline().strip(),
+                             '<LesHouchesEvents version="3.0">')
+
+    def test_banner_without_run_card_passes_check_launch(self):
+        """do_import accepts a banner without any run card."""
+        mybanner = banner.Banner()
+        mybanner['mg5proccard'] = 'generate p p > t t~'
+        self.check_launch(mybanner)
+
+    def test_matching_without_lhef3_is_still_refused(self):
+        card = banner.RunCardLO()
+        card['lhe_version'] = 1.0
+        card['ickkw'] = 1
+        mybanner = banner.Banner()
+        mybanner['mgruncard'] = str(card)
+        mybanner.run_card = card
+        with self.assertRaisesRegex(Exception, 'LHEF version 3'):
+            self.check_launch(mybanner)
+        card['lhe_version'] = 3.0
+        self.check_launch(mybanner)
+
+
+class TestImportRunCard(unittest.TestCase):
+    """What ``do_import`` takes from the run card of the production: the
+    max-weight sample size and nb_sigma (both from nevents), BW_cut (from
+    bwcutoff), frame_id and beampol.
+
+    It used to look for the run card only under <MGRunCard>, which an mg7 file
+    does not have, so every mg7 sample got the fixed fallbacks (75 events, 4.5
+    sigma) whatever its size: a 100k-event mg7 sample was decayed with fewer
+    max-weight trials and a lower margin than the same madevent sample."""
+
+    NEVENTS = 100000
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmpdir, True)
+
+    def _import(self, run_card, name):
+        ms = interface_madspin.MadSpinInterface()
+        ms.do_import(_write_production_lhe(self.tmpdir, run_card, name))
+        self.addCleanup(ms.events_file.close)
+        return ms
+
+    def _picked(self, run_card, name):
+        options = self._import(run_card, name).options
+        return {'Nevents_for_max_weight': options['Nevents_for_max_weight'],
+                'nb_sigma': options['nb_sigma'],
+                'BW_cut': float(options['BW_cut']),
+                'frame_id': options['frame_id'],
+                'beampol': [float(x) for x in options['beampol']]}
+
+    def test_mg7_sample_is_read_like_a_madevent_one(self):
+        mg7 = banner.RunCardMG7()
+        mg7['generation']['events'] = self.NEVENTS
+        mg7['phasespace']['bw_cutoff'] = 12
+        lo = banner.RunCardLO()
+        lo['nevents'] = self.NEVENTS
+        lo['bwcutoff'] = 12
+
+        picked = self._picked(mg7, 'mg7.lhe')
+        self.assertEqual(picked['Nevents_for_max_weight'],
+                         int(3 * self.NEVENTS**(1/3)))
+        self.assertGreater(picked['Nevents_for_max_weight'], 75)
+        self.assertAlmostEqual(picked['nb_sigma'], math.log(self.NEVENTS, 7.7))
+        self.assertEqual(picked['BW_cut'], 12.)
+        # mg7's default me_frame [] is the lab frame (0), not madevent's
+        # partonic c.m. (6): see test_the_mg7_me_frame_reaches_madspin
+        self.assertEqual(picked['frame_id'], 0)
+        self.assertEqual(picked['beampol'], [0., 0.])
+        mg7['run']['me_frame'] = [1, 2]
+        self.assertEqual(self._picked(mg7, 'mg7_cm.lhe'),
+                         self._picked(lo, 'lo.lhe'))
+
+    def test_mg7_card_with_a_removed_cpu_mode_still_imports(self):
+        """A card from before the backend renaming carries a cpu_mode that no
+        longer exists. RunCardMG7 refuses it for a run; read from the banner it
+        must not stop the import, which now parses <MG7RunCard> in every
+        spinmode (the density modes never used to)."""
+        import re
+        mg7 = banner.RunCardMG7()
+        mg7['generation']['events'] = self.NEVENTS
+        path = _write_production_lhe(self.tmpdir, mg7, 'old.lhe')
+        with open(path) as fsock:
+            text, count = re.subn(r'(?m)^cpu_mode\s*=.*$',
+                                  'cpu_mode = "cpu_128b"', fsock.read())
+        self.assertEqual(count, 1)
+        with open(path, 'w') as fsock:
+            fsock.write(text)
+
+        ms = interface_madspin.MadSpinInterface()
+        ms.do_import(path)
+        self.addCleanup(ms.events_file.close)
+        self.assertEqual(ms.options['Nevents_for_max_weight'],
+                         int(3 * self.NEVENTS**(1/3)))
+
+    def test_no_run_card_keeps_the_fallbacks(self):
+        picked = self._picked(None, 'none.lhe')
+        self.assertEqual(picked['Nevents_for_max_weight'], 75)
+        self.assertEqual(picked['nb_sigma'], 4.5)
+        self.assertEqual(picked['BW_cut'], 15.)
+
+    def test_reused_ms_dir_takes_the_new_run_card(self):
+        """run_from_pickle hands the pickled banner the run card of the events
+        decayed now. charge_card prefers <MG7RunCard>, so a stale one must not
+        survive next to the new card, nor the card parsed from it."""
+        replace = interface_madspin.MadSpinInterface._replace_run_card
+        mg7 = banner.Banner(_write_production_lhe(
+            self.tmpdir, banner.RunCardMG7(), 'mg7.lhe'))
+        lo = banner.Banner(_write_production_lhe(
+            self.tmpdir, banner.RunCardLO(), 'lo.lhe'))
+        bare = banner.Banner(_write_production_lhe(self.tmpdir, None, 'no.lhe'))
+
+        target = banner.Banner(lo)
+        target.charge_card('run_card')
+        replace(target, mg7)
+        self.assertNotIn('mgruncard', target)
+        self.assertEqual(target['mg7runcard'], mg7['mg7runcard'])
+        self.assertIsInstance(target.run_card, banner.RunCardMG7)
+
+        replace(target, lo)
+        self.assertNotIn('mg7runcard', target)
+        self.assertEqual(target['mgruncard'], lo['mgruncard'])
+        self.assertNotIsInstance(target.run_card, banner.RunCardMG7)
+
+        replace(target, bare)
+        self.assertEqual(target['mgruncard'], lo['mgruncard'])
 
 
 class TestOnshellProductionNorm(unittest.TestCase):
@@ -902,6 +1166,49 @@ class TestOnshellProductionNorm(unittest.TestCase):
         before = str(production)
         stub._onshell_production_norm(production, self.STATIC)
         self.assertEqual(str(production), before)
+
+
+class TestDecayBranchPairing(unittest.TestCase):
+    """The decay tree MadSpin builds must give each decaying leg the decay
+    branch MG attached to it in the full matrix element."""
+
+    def get_full_process(self, line):
+        import madgraph.core.helas_objects as helas_objects
+        cmd = Cmd.MasterCmd()
+        # concrete flavours: with the grouping, mu and u would be the merged
+        # codes 82/81 (the pairing checked here is the same)
+        cmd.exec_cmd('set apply_flavor_grouping False')
+        cmd.exec_cmd('import model sm')
+        cmd.exec_cmd('generate %s' % line)
+        mes = helas_objects.HelasDecayChainProcess(
+                        cmd._curr_amps[0]).combine_decay_chain_processes()
+        return mes[0].get('processes')[0]
+
+    def test_nested_identical_children(self):
+        """h > z z with two different z decays: MG puts the products of the
+        first decay line first, and the dc_branch tree (whose products are
+        numbered in the same walk as generate_configs_file) has to agree. It
+        dealt the decays LIFO, i.e. reversed."""
+
+        for zdecays, expected in [('(z > mu+ mu-), (z > u u~)', [-13, 13, 2, -2]),
+                                  ('(z > u u~), (z > mu+ mu-)', [2, -2, -13, 13])]:
+            proc = self.get_full_process(
+                        'e+ e- > z h, (h > z z, %s)' % zdecays)
+            self.assertEqual([l.get('id') for l in proc.get_legs_with_decays()][3:],
+                             expected)
+
+            tree = madspin.dc_branch_from_me(proc.get('decay_chains')[0])['tree']
+            products = [tree[res][d]['label']
+                        for res in range(-1, -len(tree)-1, -1)
+                        for d in ('d1', 'd2') if tree[res][d]['index'] > 0]
+            self.assertEqual(products, expected)
+
+            # the labels of the identical processes are dealt the same way
+            tree = madspin.dc_branch_from_me(proc.get('decay_chains')[0])
+            tree.add_decay_ids([proc.get('decay_chains')[0]])
+            self.assertEqual([tree['tree'][-2]['d1']['labels'],
+                              tree['tree'][-3]['d1']['labels']],
+                             [[expected[0]] * 2, [expected[2]] * 2])
 
 
 class TestEvent(unittest.TestCase):
@@ -1246,6 +1553,171 @@ class TestEventGetFlavorIndex(unittest.TestCase):
         ev.particle=  {1: {'pid': 2}, 2: {'pid': 21}, 3: {'pid': 24}, 4: {'pid': -24}, 5: {'pid': 2}} 
         flavor_index = ev.get_flavor_index(flavor_groups_prod, event_map)
         self.assertEqual(flavor_index, 2)   
+
+
+
+class TestRunFromPickleModel(unittest.TestCase):
+    """Reusing an ms_dir (``madspin.pkl``) in madspin_v1 mode.
+
+    ``save_status_to_pickle`` detaches the model before pickling, and
+    ``run_from_pickle`` never put it back: the restored event had no model, so
+    ``Event.get_tag`` returned the physical ``((-2, 2), (-6, 6))`` while
+    ``all_ME`` is keyed by the flavour-grouped ``((-81, 81), (-6, 6))``. Every
+    reuse died with a KeyError in ``load_event`` on the first quark-initiated
+    event -- mg7 and madevent samples alike, the sample that had built the
+    directory included.
+
+    It stayed hidden within a single process because the PDG -> merged-PDG map
+    used to be cached on the Event *class*, so a model-less event borrowed the
+    map of any event built before it.
+    """
+
+    QQ = ((-81, 81), (-6, 6))
+    GG = ((21, 21), (-6, 6))
+
+    class _Stop(Exception):
+        """Raised by the patched ending_run once every event has been read."""
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp(prefix='madspin_pickle_')
+        self.addCleanup(shutil.rmtree, self.tmpdir, True)
+        self.ms_dir = pjoin(self.tmpdir, 'msdir')
+        os.mkdir(self.ms_dir)
+        # LO p p > t t~ in the sm: 25 events, gg and q q~ in both orders.
+        # do_import gunzips its input in place, hence the copy.
+        events = pjoin(self.tmpdir, 'events.lhe.gz')
+        shutil.copy(pjoin(MG5DIR, 'tests', 'input_files', 'ttbar.lhe.gz'),
+                    events)
+        self.cmd = interface_madspin.MadSpinInterface()
+        self.cmd.do_set('ms_dir %s' % self.ms_dir)
+        self.cmd.do_import(events)
+
+    def _write_pickle(self):
+        """madspin.pkl as a first madspin_v1 run leaves it, written by the real
+        save_status_to_pickle: the two production topologies of p p > t t~,
+        keyed the way the flavour-grouped generation keys them."""
+        model = self.cmd.model
+        self.assertEqual(model.get('merged_particles')[81], [1, 2, 3, 4])
+        handler = madspin.decay_all_events.__new__(madspin.decay_all_events)
+        handler.options = self.cmd.options
+        handler.path_me = self.ms_dir
+        handler.banner = self.cmd.banner
+        handler.model = model
+        handler.evtfile = handler.curr_event = None
+        handler.mgcmd, handler.mscmd = self.cmd.mg5cmd, self.cmd
+        handler.width_estimator = None
+        handler.inverted_decay_mapping = {}
+        handler.all_decay = {}
+        handler.all_ME = madspin.AllMatrixElement(self.cmd.banner,
+                                                  self.cmd.options, [6], model)
+        for tag, initial in ((self.QQ, [81, -81]), (self.GG, [21, 21])):
+            handler.all_ME.add({'tag2order': {tag: (initial, [6, -6])},
+                                'decays': [], 'total_br': 0,
+                                'path': pjoin(self.ms_dir, 'production_me')},
+                               [tag])
+        handler.save_status_to_pickle(pjoin(self.ms_dir, 'madspin.pkl'))
+
+    def _reuse(self):
+        """run_from_pickle up to the decay: return, per event, the production
+        tag and the PDG codes in the order of the production ME."""
+        from unittest import mock
+        seen = []
+        def ending_run(handler):
+            while True:
+                tag, event_map = handler.load_event()
+                if tag == 0 == event_map:
+                    raise self._Stop
+                particle = handler.curr_event.particle
+                seen.append((tag, [particle[event_map[i] + 1]['pid']
+                                   for i in range(4)]))
+        with mock.patch.object(madspin.decay_all_events, 'ending_run',
+                               ending_run):
+            self.assertRaises(self._Stop, self.cmd.run_from_pickle)
+        return seen
+
+    def test_reuse_reads_quark_initiated_events(self):
+        """The bug: KeyError ((-1, 1), (-6, 6)) on the first d d~ event."""
+        self._write_pickle()
+        seen = self._reuse()
+        self.assertEqual(len(seen), 25)
+        self.assertEqual(set(tag for tag, _ in seen), {self.QQ, self.GG})
+        for tag, pids in seen:
+            self.assertEqual(pids[2:], [6, -6])
+            if tag == self.GG:
+                self.assertEqual(pids[:2], [21, 21])
+            else:
+                # quark in the first slot of the 81 -81 ME, whichever beam
+                # it came from: this sample has both orders
+                self.assertIn(pids[0], [1, 2, 3, 4])
+                self.assertEqual(pids[1], -pids[0])
+
+    def test_a_directory_grouped_differently_is_refused(self):
+        """The flavour indices handed to the compiled matrix elements are
+        positions within a merged group: a model that groups differently
+        must not be used in place of the one the directory was built with."""
+        import madgraph.iolibs.save_load_object as save_load_object
+        self._write_pickle()
+        path = pjoin(self.ms_dir, 'madspin.pkl')
+        handler = save_load_object.load_from_file(path)
+        handler.merged_particles = {81: [1, 2, 3, 4, 5]}
+        save_load_object.save_to_file(path, handler)
+        self.assertRaisesRegex(madspin.MadSpinError, 'flavour grouping',
+                               self._reuse)
+
+    def test_an_event_without_a_model_borrows_no_map(self):
+        """The map is per event and follows its model."""
+        def event(model):
+            ev = madspin.Event(model=model)
+            ev.particle = {
+                1: {'pid': -2, 'mothup1': 0, 'mothup2': 0},
+                2: {'pid': 2, 'mothup1': 0, 'mothup2': 0},
+                3: {'pid': 6, 'mothup1': 1, 'mothup2': 2},
+                4: {'pid': -6, 'mothup1': 1, 'mothup2': 2}}
+            return ev
+        grouped = event(self.cmd.model)
+        self.assertEqual(grouped.get_tag()[0], self.QQ)
+        # built after the grouped one: the old class-level cache handed it
+        # the sm map
+        self.assertEqual(event(None).get_tag()[0], ((-2, 2), (-6, 6)))
+        grouped.model = None
+        self.assertEqual(grouped.get_tag()[0], ((-2, 2), (-6, 6)))
+        grouped.model = self.cmd.model
+        self.assertEqual(grouped.get_tag()[0], self.QQ)
+
+
+class TestDcBranchFromDict(unittest.TestCase):
+    """save_status_to_pickle keeps all_decay as its repr, so a decay branch
+    comes back as a plain dict; get_identical_decay, which use_old_dir reruns,
+    calls generate_momenta on it. dc_branch_from_me.from_dict rebuilds it."""
+
+    def test_round_trip_through_the_repr(self):
+        w_decay = MG.Process({'legs': MG.LegList([
+            MG.Leg({'id': 24, 'state': False}), MG.Leg({'id': -11}),
+            MG.Leg({'id': 12})])})
+        t_decay = MG.Process({'legs': MG.LegList([
+            MG.Leg({'id': 6, 'state': False}), MG.Leg({'id': 24}),
+            MG.Leg({'id': 5})]),
+            'decay_chains': MG.ProcessList([w_decay])})
+        branch = madspin.dc_branch_from_me(t_decay)
+        back = madspin.dc_branch_from_me.from_dict(eval(repr(branch)))
+
+        self.assertIsInstance(back, madspin.dc_branch_from_me)
+        self.assertEqual(dict(back), dict(branch))
+        # t > w+ b, w+ > e+ ve: two decays, three external legs
+        self.assertEqual((branch.nb_decays, branch.nexternal), (2, 3))
+        self.assertEqual((back.nb_decays, back.nexternal), (2, 3))
+
+        mass = {6: 173.0, 24: 80.4, 5: 4.7}
+        width = {6: 1.5, 24: 2.05}
+        def momenta(dc_branch):
+            random.seed(7)
+            tree, jac, nb_sol = dc_branch.generate_momenta(
+                madspin.momentum(173.0, 0, 0, 0), True,
+                lambda pid: width.get(abs(pid), 0.),
+                lambda pid: mass.get(abs(pid), 0.), 15, 13000)
+            return sorted((i, str(tree[i]['momentum'])) for i in tree), jac
+        self.assertEqual(momenta(back), momenta(branch))
 
 
 
@@ -2114,6 +2586,7 @@ class TestDrawOneDecay(unittest.TestCase):
         get_decay_from_file = interface_madspin.MadSpinInterface.get_decay_from_file
         _draw_all_decays = interface_madspin.MadSpinInterface._draw_all_decays
         _draw_one_decay = interface_madspin.MadSpinInterface._draw_one_decay
+        _dealt_rank = staticmethod(interface_madspin.MadSpinInterface._dealt_rank)
         _draw_decay_group = interface_madspin.MadSpinInterface._draw_decay_group
         efficiency = 0.5
 
@@ -2148,14 +2621,20 @@ class TestDrawOneDecay(unittest.TestCase):
         self.assertEqual(got, [(0, 6), (1, -6), (2, 6)])
 
     def test_identical_parents_read_their_own_file(self):
-        """Two tops with two decay files: one file each, in order."""
-        production, evt_decayfile = self._setup()
-        out = self._Stub().get_decay_from_file(production, evt_decayfile, 10)
-        self.assertEqual(out[6], ['t0:0', 't1:0'])
+        """Two tops with two decay files: one file each -- which top gets
+        which is dealt at random (_dealt_rank)."""
+        import random
+        for seed in range(20):
+            random.seed(seed)
+            production, evt_decayfile = self._setup()
+            out = self._Stub().get_decay_from_file(production, evt_decayfile, 10)
+            self.assertEqual(sorted(out[6]), ['t0:0', 't1:0'])
 
     def test_joint_path_is_unchanged(self):
-        """get_decay_from_file must still consume the RNG in the same order and
-        return the same draws as before the refactor."""
+        """get_decay_from_file must consume the RNG in the same order and return
+        the same draws as the reference below -- the pre-refactor
+        implementation, plus the one deliberate change since: identical parents
+        dealt their channels by a shuffle drawn at the first of them."""
         import random
         for seed in range(50):
             random.seed(seed)
@@ -2168,11 +2647,13 @@ class TestDrawOneDecay(unittest.TestCase):
 
     @staticmethod
     def _reference(production, evt_decayfile):
-        """The implementation as it was before _draw_one_decay was extracted."""
+        """The implementation as it was before _draw_one_decay was extracted,
+        with the positional deal randomised (_dealt_rank)."""
         import random
         out = collections.defaultdict(list)
         particles = [p for p in production if int(p.status) == 1.0]
         ids = [particle.pid for particle in particles]
+        deal = {}
         for i, particle in enumerate(particles):
             if particle.pdg not in evt_decayfile:
                 continue
@@ -2182,7 +2663,11 @@ class TestDrawOneDecay(unittest.TestCase):
             if nb_decay == 1:
                 decay_file = evt_decayfile[particle.pdg][0]
             elif ids.count(particle.pdg) == nb_decay:
-                decay_file = evt_decayfile[particle.pdg][ids[:i].count(particle.pdg)]
+                if particle.pdg not in deal:
+                    deal[particle.pdg] = list(range(nb_decay))
+                    random.shuffle(deal[particle.pdg])
+                rank = deal[particle.pdg][ids[:i].count(particle.pdg)]
+                decay_file = evt_decayfile[particle.pdg][rank]
             else:
                 r = random.random()
                 tot = sum(evt_decayfile[particle.pdg][k].cross
@@ -2242,6 +2727,7 @@ class TestDecaySymmetryFactor(unittest.TestCase):
         get_decay_from_file = interface_madspin.MadSpinInterface.get_decay_from_file
         _draw_all_decays = interface_madspin.MadSpinInterface._draw_all_decays
         _draw_one_decay = interface_madspin.MadSpinInterface._draw_one_decay
+        _dealt_rank = staticmethod(interface_madspin.MadSpinInterface._dealt_rank)
         _draw_decay_group = interface_madspin.MadSpinInterface._draw_decay_group
         efficiency = 0.5
 
@@ -2263,16 +2749,16 @@ class TestDecaySymmetryFactor(unittest.TestCase):
         self.assertEqual(self.factor(decays), 1.0)
 
     def test_two_dealt_channels_for_two_parents_take_one_half(self):
-        """`decay z > e+ e-` + `decay z > mu+ mu-`: parent i is dealt channel i,
-        so only one of the two assignments is ever generated."""
+        """`decay z > e+ e-` + `decay z > mu+ mu-`: each parent is dealt one
+        channel, so one of the two assignments is generated per event."""
         decays = self._draw(2, 2)
-        self.assertEqual([d.ms_channel for d in decays[23]], [0, 1])
+        self.assertEqual(sorted(d.ms_channel for d in decays[23]), [0, 1])
         self.assertEqual([d.ms_positional for d in decays[23]], [True, True])
         self.assertEqual(self.factor(decays), 0.5)
 
     def test_three_dealt_channels_for_three_parents(self):
         decays = self._draw(3, 3)
-        self.assertEqual([d.ms_channel for d in decays[23]], [0, 1, 2])
+        self.assertEqual(sorted(d.ms_channel for d in decays[23]), [0, 1, 2])
         self.assertEqual(self.factor(decays), 1 / 6.)
 
     def test_a_single_parent_never_takes_a_factor(self):
@@ -2417,6 +2903,74 @@ class TestDrawOffshellMass(unittest.TestCase):
         pole, width, min_mass, max_mass = dec[0].reshuffle_info
         self.assertAlmostEqual(min_mass, 173.0 - 2 * 1.5)
         self.assertAlmostEqual(max_mass, 173.0 + 2 * 1.5)
+
+
+class TestDecayRunCardBwcutoff(unittest.TestCase):
+    """_decay_run_card_bwcutoff: the decay_*_* generation must use MadSpin's
+    BW_cut as its bwcutoff, since that run_card sets the window of every
+    sub-resonance (the W of t > w+ b, w+ > l+ vl). Before, the card was rebuilt
+    from the decay directory template and kept 15 even for a production run
+    with bwcutoff = 5."""
+
+    class _Stub(object):
+        _resolved_bw_cut = interface_madspin.MadSpinInterface._resolved_bw_cut
+        _decay_run_card_bwcutoff = \
+            interface_madspin.MadSpinInterface._decay_run_card_bwcutoff
+        def __init__(self, bw_cut, run_card_option=None):
+            self.options = {'BW_cut': bw_cut, 'run_card': run_card_option}
+
+    def _written_card(self):
+        """A decay directory card as it is re-read from disk: RunCard.read marks
+        every entry, bwcutoff = 15 included, as user_set."""
+        path = os.path.join(self.tmpdir, 'run_card.dat')
+        banner.RunCardLO().write(path)
+        card = banner.RunCard(path)
+        self.assertIn('bwcutoff', card.user_set)
+        self.assertEqual(card['bwcutoff'], 15)
+        return card
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_template_card_takes_bw_cut(self):
+        """No user run_card: BW_cut (resolved from the production bwcutoff)
+        replaces the template's 15, even though reading marked it user_set."""
+        card = self._written_card()
+        self._Stub(5.0)._decay_run_card_bwcutoff(card)
+        self.assertEqual(card['bwcutoff'], 5.0)
+
+    def test_unset_bw_cut_falls_back_to_15(self):
+        card = self._written_card()
+        card['bwcutoff'] = 7
+        self._Stub(-1)._decay_run_card_bwcutoff(card)
+        self.assertEqual(card['bwcutoff'], 15)
+
+    def test_set_run_card_other_entry_still_takes_bw_cut(self):
+        """"set run_card nevents 100" does not pin bwcutoff."""
+        opts = interface_madspin.MadSpinOptions()
+        opts['run_card'] = 'nevents 100'
+        stub = self._Stub(5.0, run_card_option=opts['run_card'])
+        stub._decay_run_card_bwcutoff(opts.run_card)
+        self.assertEqual(opts.run_card['bwcutoff'], 5.0)
+
+    def test_explicit_set_run_card_bwcutoff_wins(self):
+        """"set run_card bwcutoff 8" beats BW_cut."""
+        opts = interface_madspin.MadSpinOptions()
+        opts['run_card'] = 'bwcutoff 8'
+        stub = self._Stub(5.0, run_card_option=opts['run_card'])
+        stub._decay_run_card_bwcutoff(opts.run_card)
+        self.assertEqual(opts.run_card['bwcutoff'], 8)
+
+    def test_user_run_card_file_keeps_its_bwcutoff(self):
+        card = self._written_card()
+        card['bwcutoff'] = 12
+        stub = self._Stub(5.0, run_card_option='/some/run_card.dat')
+        stub._decay_run_card_bwcutoff(card)
+        self.assertEqual(card['bwcutoff'], 12)
 
 
 class TestPartialDensityContraction(unittest.TestCase):
@@ -6216,6 +6770,198 @@ class TestSequentialSlots(unittest.TestCase):
         self.assertEqual([p.pid for p in particles], [6, -6, 6, 21])
 
 
+class TestDensityBasisPosition(unittest.TestCase):
+    """_density_basis' ``position``: the Fortran legs GET_DENSITY opens the
+    helicity indices on. They must index the matrix element's leg order (the
+    order get_momenta lays the momenta out in), not the LHE record.
+
+    The record index used to be taken, which is wrong as soon as MadEvent writes
+    an s-channel resonance: for ``d d~ > z z d d~`` with a Z -> d d~ in the
+    window the record is ``d d~ Z(2) Z Z d d~``, positions came out [4, 5] --
+    the second Z and the outgoing d -- and Tr(rho_prod) was 20x |M_prod|^2
+    (SMEFTsim p p > z z j j, 28% of the production events).
+    """
+
+    class _Model(object):
+        class _P(dict):
+            pass
+        def get_particle(self, pid):
+            p = self._P()
+            p['spin'] = 3 if abs(pid) in (23, 24) else 2
+            return p
+
+    class _Stub(object):
+        _density_basis = interface_madspin.MadSpinInterface._density_basis
+        _density_leg_positions = \
+            interface_madspin.MadSpinInterface._density_leg_positions
+        get_allowed_hel = interface_madspin.MadSpinInterface.get_allowed_hel
+        _revert_merged = None
+        def __init__(self, orig_order):
+            self.orig_order = orig_order
+            self.model = TestDensityBasisPosition._Model()
+        def get_iden(self, event):
+            return 36
+        def get_pdir(self, event):
+            tag, _ = event.get_tag_and_order()
+            return 'P1_ddx_zzddx', self.orig_order, 'M0_', 0, tag
+        def _apply_production_polarization(self, decaying_pdg, helicities):
+            return helicities, None
+        def _apply_pure_interference(self, decaying_pdg, helicities, restriction):
+            return restriction, None
+        def _pure_interference_pdgs(self, decays_key):
+            return []
+
+    # id status mother1 mother2 : distinct energies so every leg is recognisable
+    RESONANT = [(1, -1, 0, 0, 400.), (-1, -1, 0, 0, 300.),
+                (23, 2, 1, 2, 150.), (23, 1, 1, 2, 210.), (23, 1, 1, 2, 190.),
+                (1, 1, 3, 3, 80.), (-1, 1, 3, 3, 70.)]
+    REORDERED = [(1, -1, 0, 0, 400.), (-1, -1, 0, 0, 300.),
+                 (1, 1, 1, 2, 80.), (23, 1, 1, 2, 210.), (-1, 1, 1, 2, 70.),
+                 (23, 1, 1, 2, 340.)]
+
+    @staticmethod
+    def _event(lines):
+        text = '<event>\n %d 1 +1.0e+00 1.0e+02 7.5e-03 1.1e-01\n' % len(lines)
+        for pid, status, m1, m2, energy in lines:
+            text += (' %d %d %d %d 0 0 +1.0e+00 +2.0e+00 +3.0e+00 %.6e 0.0e+00 0.0e+00 9.0e+00\n'
+                     % (pid, status, m1, m2, energy))
+        text += '</event>\n'
+        return lhe_parser.Event(text)
+
+    def _check_slots(self, event, orig_order, decays_key):
+        static = self._Stub(orig_order)._density_basis(event, decays_key)
+        momenta = event.get_momenta(orig_order)
+        self.assertEqual(len(static['position']), len(static['init_part']))
+        for pos, part in zip(static['position'], static['init_part']):
+            # the momentum GET_DENSITY sees at that leg is the slot's particle
+            self.assertEqual(momenta[pos - 1][0], part.E)
+            self.assertEqual(orig_order[0 if pos <= len(orig_order[0]) else 1]
+                             [pos - 1 - (0 if pos <= len(orig_order[0]) else len(orig_order[0]))],
+                             part.pid)
+        self.assertEqual(static['decaying_pdg'], [p.pid for p in static['init_part']])
+        return static
+
+    def test_status2_resonance_does_not_shift_the_positions(self):
+        order = [[1, -1], [23, 23, 1, -1]]
+        static = self._check_slots(self._event(self.RESONANT), order, (23,))
+        self.assertEqual(static['position'], [3, 4])
+        self.assertEqual(static['helicities'], [[-1, 0, 1], [-1, 0, 1]])
+
+    def test_positions_follow_the_matrix_element_order(self):
+        """Final state written d Z d~ Z in the record, Z Z d d~ in the ME."""
+        order = [[1, -1], [23, 23, 1, -1]]
+        static = self._check_slots(self._event(self.REORDERED), order, (23,))
+        self.assertEqual(static['position'], [3, 4])
+
+    def test_slots_grouped_by_pdg_in_decays_key_order(self):
+        order = [[1, -1], [23, 23, 1, -1]]
+        static = self._check_slots(self._event(self.RESONANT), order, (-1, 23))
+        self.assertEqual(static['position'], [6, 3, 4])
+        self.assertEqual(static['decaying_pdg'], [-1, 23, 23])
+
+    def test_order_missing_a_decaying_particle_is_an_error(self):
+        stub = self._Stub([[1, -1], [23, 1, -1]])
+        self.assertRaises(Exception, stub._density_basis,
+                          self._event(self.RESONANT), (23,))
+
+
+class TestF2pyBwcutoff(unittest.TestCase):
+    """_set_f2py_bwcutoff: the window of the $-syntax propagators pushed into
+    the standalone library must be the bwcutoff the events were generated with.
+    The standalone output used to hardcode 15; with a production at
+    bwcutoff = 5, `p p > z z j j $h` events 5-15 Gamma_H from the h pole had the
+    h in MadEvent's weight but not in MadSpin's |M_prod|^2, and a reshuffle
+    across the 15-width edge turned the resonance back on (weights ~1e5)."""
+
+    class _Banner(dict):
+        def get_detail(self, card, name):
+            assert (card, name) == ('run_card', 'bwcutoff')
+            return self['bwcutoff']
+
+    class _Module(object):
+        def __init__(self):
+            self.calls = []
+        def set_bwcutoff(self, value):
+            self.calls.append(value)
+
+    class _OldModule(object):
+        pass
+
+    class _RunCard(dict):
+        def __init__(self, bwcutoff, user_set):
+            dict.__init__(self, bwcutoff=bwcutoff)
+            self.user_set = set(['bwcutoff']) if user_set else set()
+
+    class _Options(dict):
+        pass
+
+    class _Stub(object):
+        MI = interface_madspin.MadSpinInterface
+        _resolved_bw_cut = MI._resolved_bw_cut
+        _production_bwcutoff = MI._production_bwcutoff
+        _decay_generation_bwcutoff = MI._decay_generation_bwcutoff
+        _set_f2py_bwcutoff = MI._set_f2py_bwcutoff
+        def __init__(self, bwcutoff=5.0, bw_cut=-1, run_card=None,
+                     proc='generate p p > z z j j $h'):
+            self.banner = TestF2pyBwcutoff._Banner(mg5proccard=proc)
+            if bwcutoff is not None:
+                self.banner['mgruncard'] = '...'
+                self.banner['bwcutoff'] = bwcutoff
+            self.options = TestF2pyBwcutoff._Options(
+                BW_cut=bw_cut, run_card='bwcutoff 8' if run_card else '')
+            if run_card is not None:
+                self.options.run_card = run_card
+
+    def test_production_module_gets_the_production_run_card_value(self):
+        mod = self._Module()
+        self._Stub(bwcutoff=5.0, bw_cut=10)._set_f2py_bwcutoff(mod, 'prod')
+        self.assertEqual(mod.calls, [5.0])
+
+    def test_decay_module_gets_the_decay_generation_value(self):
+        mod = self._Module()
+        self._Stub(bwcutoff=5.0, bw_cut=10)._set_f2py_bwcutoff(mod, 'decay')
+        self.assertEqual(mod.calls, [10.0])
+        mod = self._Module()
+        self._Stub(bwcutoff=5.0, bw_cut=-1)._set_f2py_bwcutoff(mod, 'decay')
+        self.assertEqual(mod.calls, [15.0])
+
+    def test_explicit_run_card_bwcutoff_wins_for_the_decays(self):
+        mod = self._Module()
+        stub = self._Stub(bw_cut=10, run_card=self._RunCard(8, user_set=True))
+        stub._set_f2py_bwcutoff(mod, 'decay')
+        self.assertEqual(mod.calls, [8.0])
+        mod = self._Module()
+        stub = self._Stub(bw_cut=10, run_card=self._RunCard(8, user_set=False))
+        stub._set_f2py_bwcutoff(mod, 'decay')
+        self.assertEqual(mod.calls, [10.0])
+
+    def test_no_run_card_leaves_the_library_default(self):
+        mod = self._Module()
+        self._Stub(bwcutoff=None)._set_f2py_bwcutoff(mod, 'prod')
+        self.assertEqual(mod.calls, [])
+
+    def test_old_library_without_the_setter_warns_only_for_dollar_processes(self):
+        # capture on the module's logger object itself: the test harness may
+        # raise the level of 'decay.stdout', which would filter a handler
+        records = []
+        class _Log(object):
+            def warning(self, msg, *args):
+                records.append(msg % args)
+        saved = interface_madspin.logger
+        interface_madspin.logger = _Log()
+        try:
+            self._Stub(proc='generate p p > z z j j')._set_f2py_bwcutoff(
+                                                    self._OldModule(), 'prod')
+            self.assertEqual(records, [])
+            stub = self._Stub()
+            stub._set_f2py_bwcutoff(self._OldModule(), 'prod')
+            stub._set_f2py_bwcutoff(self._OldModule(), 'decay')
+            self.assertEqual(len(records), 1)
+            self.assertIn('bwcutoff = 5', records[0])
+        finally:
+            interface_madspin.logger = saved
+
+
 class TestProductionJacobianForSlots(unittest.TestCase):
     """_production_jacobian_for: J_k, the production jacobian with the slots
     drawn so far offshell and the rest nominal. Each slot carries J_k/J_{k-1}.
@@ -6832,7 +7578,8 @@ class TestSequentialAcceptReject(unittest.TestCase):
                 pass
             def get_density(self, *args, **opts):
                 return rho
-            def _draw_one_decay(self, particle, index, ids, evt_decayfile, nb_remain):
+            def _draw_one_decay(self, particle, index, ids, evt_decayfile, nb_remain,
+                                deal=None):
                 import random
                 return ('cand', self._slot_of[index], random.randrange(pool))
             def _slot_density(self, decay, parent, hel, frame_boost=None):
@@ -7099,7 +7846,7 @@ class TestPAUpFrontMass(unittest.TestCase):
                 return outer._f(decay[0].new_mass) * outer._g(decay.index)
 
             def _draw_one_decay(self, particle, index, ids, evt_decayfile,
-                                nb_remain):
+                                nb_remain, deal=None):
                 import random
                 return TestPAUpFrontMass._Decay(self._slot_of[index],
                                                 random.randrange(outer.POOL))
@@ -8445,6 +9192,7 @@ class TestDecayGroupDraw(unittest.TestCase):
             interface_madspin.MadSpinInterface._resolve_group_rates
         _draw_decay_group = interface_madspin.MadSpinInterface._draw_decay_group
         _draw_one_decay = interface_madspin.MadSpinInterface._draw_one_decay
+        _dealt_rank = staticmethod(interface_madspin.MadSpinInterface._dealt_rank)
         _draw_all_decays = interface_madspin.MadSpinInterface._draw_all_decays
         get_decay_from_file = \
             interface_madspin.MadSpinInterface.get_decay_from_file
@@ -8540,7 +9288,7 @@ class TestDecayGroupDraw(unittest.TestCase):
 
     def test_identical_parents_inside_a_group_are_positional(self):
         """p p > t t t~ t~: the group's two lines for a pdg go to its two
-        particles in order."""
+        particles, one each (which one gets which is dealt at random)."""
         stub = self._Stub()
         stub.model = self._Model()
         stub.list_branches = {'t': ['a @1', 'b @1', 'c @2', 'd @2']}
@@ -8550,12 +9298,12 @@ class TestDecayGroupDraw(unittest.TestCase):
         production = [self._Part(6), self._Part(6)]
         evt_decayfile = {6: dict((i, self._Pool('c%d' % i)) for i in range(4))}
         out = stub.get_decay_from_file(production, evt_decayfile, 10)
-        self.assertEqual([d.split(':')[0] for d in out[6]], ['c0', 'c1'])
+        self.assertEqual(sorted(d.split(':')[0] for d in out[6]), ['c0', 'c1'])
 
         stub._decay_groups['prob'] = [0.0, 1.0]
         evt_decayfile = {6: dict((i, self._Pool('c%d' % i)) for i in range(4))}
         out = stub.get_decay_from_file(production, evt_decayfile, 10)
-        self.assertEqual([d.split(':')[0] for d in out[6]], ['c2', 'c3'])
+        self.assertEqual(sorted(d.split(':')[0] for d in out[6]), ['c2', 'c3'])
 
 
 class TestUnweightingDecisionTable(unittest.TestCase):
@@ -11465,6 +12213,9 @@ class TestMatrixElementParamCard(unittest.TestCase):
 
             def _set_f2py_beampol(self, mymod):
                 pass  # beam polarisation is not what is under test here
+
+            def _set_f2py_bwcutoff(self, mymod, prod_or_decay):
+                pass  # nor is the $-propagator window
         stub = Stub()
         stub.path_me = self.tmpdir
         stub.ms_me_subdir = 'madspin_me'
@@ -12800,3 +13551,546 @@ class TestDecayChainIdenticalFactor(unittest.TestCase):
         decays = {23: [self._decay(23, -11, 11), self._decay(23, -13, 13)],
                   24: [self._decay(24, -11, 12), self._decay(24, -13, 14)]}
         self.assertEqual(self.factor(production, decays), 0.25)
+
+
+class _DensityBasisModelStub(object):
+    """The two things _density_basis asks the model for: a particle's spin, and
+    name2pdg (through _pure_interference)."""
+
+    SPIN = {6: 2, -6: 2, 23: 3, 24: 3, -24: 3, 21: 3}
+
+    def get_particle(self, pdg):
+        spin = self.SPIN[pdg]
+        return {'spin': spin}
+
+    def get(self, key):
+        assert key == 'name2pdg'
+        return {'t': 6, 't~': -6, 'z': 23, 'w+': 24, 'w-': -24}
+
+
+class _DensityBasisStub(object):
+    """Just enough of MadSpinInterface to run the real _density_basis: the
+    matrix element's leg order (get_pdir) and the model's spins.
+
+    Everything that decides where the density matrix' legs are is the real
+    code; only what would need a compiled matrix element is stubbed.
+    """
+
+    def __init__(self, orig_order, prodpol=None):
+        self.options = interface_madspin.MadSpinOptions()
+        self.options['pure_interference'] = ''
+        self.model = _DensityBasisModelStub()
+        self._revert_merged = None
+        self._orig_order = orig_order
+        self._prodpol = prodpol or {}
+
+    def get_pdir(self, event):
+        return None, self._orig_order, None, None, None
+
+    def get_iden(self, event):
+        return 1
+
+    def _production_polarization(self):
+        return self._prodpol
+
+    _density_leg_positions = interface_madspin.MadSpinInterface._density_leg_positions
+    _density_basis = interface_madspin.MadSpinInterface._density_basis
+    _apply_production_polarization = \
+        interface_madspin.MadSpinInterface._apply_production_polarization
+    _apply_pure_interference = \
+        interface_madspin.MadSpinInterface._apply_pure_interference
+    _pure_interference = interface_madspin.MadSpinInterface._pure_interference
+    _pure_interference_pdgs = interface_madspin.MadSpinInterface._pure_interference_pdgs
+    _parse_pol_side = interface_madspin.MadSpinInterface._parse_pol_side
+    _POL_TOKENS = interface_madspin.MadSpinInterface._POL_TOKENS
+    _format_polarization_sequence = \
+        interface_madspin.MadSpinInterface._format_polarization_sequence
+    get_allowed_hel = interface_madspin.MadSpinInterface.get_allowed_hel
+    InvalidCmd = interface_madspin.MadSpinInterface.InvalidCmd
+
+
+class TestDensityLegPositions(unittest.TestCase):
+    """``position`` must name the leg of the *density matrix element*, not the
+    position in the LHE.
+
+    ``GET_DENSITY``'s ``POS`` indexes ``THISNHEL``/``P``, which ``get_density``
+    fills through ``Event.get_momenta(orig_order)`` -- i.e. in the matrix
+    element's leg order.  Reading the position off the event instead is the
+    same number only while the two orders agree.  They disagree as soon as a
+    process has several *identical* resonances: MadSpin generates the four-top
+    density as ``t t~ t t~`` while aMC@NLO writes the event as ``t t t~ t~``,
+    and every top's density block is then contracted with an anti-top's decay.
+    Nothing else notices -- the particles are identical, so |M|^2, the cross
+    section and every single-particle spectrum are untouched -- and the spin
+    correlations die silently and completely.
+
+    A single resonance pair cannot expose this (``t t~``/``z z`` orderings
+    cannot disagree), which is why the ZZ validation passed.  Hence the four
+    resonances here.
+    """
+
+    # the density matrix element MadSpin generates for p p > t t~ t t~
+    TTTT_ORDER = [(21, 21), (6, -6, 6, -6)]
+
+    @staticmethod
+    def _event(final_pdgs):
+        """A production event with ``final_pdgs`` in that order, every particle
+        carrying a momentum that identifies it uniquely."""
+        lines = ['<event>', ' %d 1 1.0 100.0 0.0078 0.118' % (2 + len(final_pdgs)),
+                 ' 21 -1 0 0 501 502 0.0 0.0  500.0 500.0 0.0 0. 1.',
+                 ' 21 -1 0 0 503 501 0.0 0.0 -500.0 500.0 0.0 0. 1.']
+        for k, pid in enumerate(final_pdgs):
+            lines.append(' %d 1 1 2 0 0 %s %s %s %s 173.0 0. 1.'
+                         % (pid, 11. * (k + 1), 22. * (k + 1),
+                            33. * (k + 1), 250. + k))
+        lines.append('</event>')
+        return lhe_parser.Event('\n'.join(lines))
+
+    @staticmethod
+    def _mom(part):
+        return (part.E, part.px, part.py, part.pz)
+
+    def _check_pairing(self, event, orig_order, decays_key):
+        """The contract the density contraction relies on: the momentum the
+        matrix element sees at leg ``position[k]`` is ``init_part[k]``.
+
+        ``init_part[k]`` is the k-th factor of the decay tensor product, and
+        ``position[k]`` is the leg whose helicity that factor is summed
+        against, so this is exactly the production-block <-> decay pairing.
+        """
+        stub = _DensityBasisStub(orig_order)
+        init_part, position = stub._density_leg_positions(event, decays_key)
+        # the momenta exactly as get_density builds them
+        momenta = event.get_momenta(orig_order)
+        me_pdgs = list(orig_order[0]) + list(orig_order[1])
+        for k, part in enumerate(init_part):
+            self.assertEqual(momenta[position[k] - 1], self._mom(part),
+                             'density leg %d does not carry init_part[%d]'
+                             % (position[k], k))
+            self.assertEqual(me_pdgs[position[k] - 1], part.pid)
+        return init_part, position
+
+    def test_leg_order_and_event_order_agree(self):
+        """mg7 / madevent write t t~ t t~, the order the density is generated
+        in: nothing to permute, and the fix must leave it alone."""
+        event = self._event([6, -6, 6, -6])
+        init_part, position = self._check_pairing(event, self.TTTT_ORDER, (6, -6))
+        # unchanged from the historical (event-order) answer, which is what
+        # keeps every already-correct sample bit-for-bit identical
+        self.assertEqual(position, [3, 5, 4, 6])
+
+    def test_amcatnlo_leg_order_is_remapped(self):
+        """aMC@NLO writes t t t~ t~ for the very same process. The event-order
+        position [3, 4, 5, 6] hands leg 4 -- an anti-top of the matrix element
+        -- to the second top's decay."""
+        event = self._event([6, 6, -6, -6])
+        init_part, position = self._check_pairing(event, self.TTTT_ORDER, (6, -6))
+        self.assertEqual(position, [3, 5, 4, 6])
+
+        # and this is what it used to be, for the record: the naive
+        # event-order formula, which pairs tops with anti-top legs
+        legacy = [i + 1 for pdg in (6, -6) for i in range(len(event))
+                  if event[i].pid == pdg and event[i].status == 1]
+        self.assertEqual(legacy, [3, 4, 5, 6])
+        me_pdgs = list(self.TTTT_ORDER[0]) + list(self.TTTT_ORDER[1])
+        self.assertEqual([me_pdgs[p - 1] for p in legacy], [6, -6, 6, -6])
+        self.assertNotEqual([me_pdgs[p - 1] for p in legacy],
+                            [p.pid for p in init_part])
+
+    def test_permuting_identical_resonances_changes_nothing(self):
+        """The whole point: the same physics event written in the two leg
+        orders must contract each resonance against its own decay.
+
+        Compared here as the (pdg, momentum) -> density leg map, because the
+        slot order itself follows the event."""
+        maps = []
+        for final in ([6, -6, 6, -6], [6, 6, -6, -6], [-6, 6, -6, 6],
+                      [6, -6, -6, 6]):
+            event = self._event(final)
+            init_part, position = self._check_pairing(event, self.TTTT_ORDER,
+                                                      (6, -6))
+            # identify each particle by its momentum, which _event made unique
+            maps.append(sorted((self._mom(p), leg)
+                               for p, leg in zip(init_part, position)))
+        # every ordering must map the four distinct momenta onto the four legs
+        # in a way that respects flavour; the legs of a given flavour are the
+        # only freedom left, and get_momenta fixes it the same way each time
+        for m in maps:
+            legs = [leg for _, leg in m]
+            self.assertEqual(sorted(legs), [3, 4, 5, 6])
+
+    def test_status_two_lines_do_not_shift_the_legs(self):
+        """get_mapping counts the external (|status| == 1) particles, so an
+        intermediate line in the LHE must not move anything -- the historical
+        formula counted every line."""
+        lines = ['<event>', ' 7 1 1.0 100.0 0.0078 0.118',
+                 ' 21 -1 0 0 501 502 0.0 0.0  500.0 500.0 0.0 0. 1.',
+                 ' 21 -1 0 0 503 501 0.0 0.0 -500.0 500.0 0.0 0. 1.',
+                 ' 25 2 1 2 0 0 0.0 0.0 0.0 600.0 125.0 0. 1.']
+        for k, pid in enumerate([6, -6, 6, -6]):
+            lines.append(' %d 1 1 2 0 0 %s %s %s %s 173.0 0. 1.'
+                         % (pid, 11. * (k + 1), 22. * (k + 1),
+                            33. * (k + 1), 250. + k))
+        lines.append('</event>')
+        event = lhe_parser.Event('\n'.join(lines))
+        _, position = self._check_pairing(event, self.TTTT_ORDER, (6, -6))
+        self.assertEqual(position, [3, 5, 4, 6])
+
+    def test_two_resonances_cannot_expose_it(self):
+        """Why this went unnoticed: with a single t t~ / z z pair the event
+        order and the matrix element's leg order cannot disagree."""
+        for order, final in ([[(21, 21), (6, -6)], [6, -6]],
+                             [[(21, 21), (23, 23)], [23, 23]]):
+            event = self._event(final)
+            decays_key = tuple(sorted(set(final), reverse=True))
+            _, position = self._check_pairing(event, order, decays_key)
+            legacy = [i + 1 for pdg in decays_key for i in range(len(event))
+                      if event[i].pid == pdg and event[i].status == 1]
+            self.assertEqual(position, legacy)
+
+    def test_density_basis_carries_the_mapped_positions(self):
+        """The whole prod_static the contraction runs on, not just the helper:
+        position, init_part and decaying_pdg must describe one and the same
+        list of particles."""
+        for final in ([6, -6, 6, -6], [6, 6, -6, -6]):
+            event = self._event(final)
+            stub = _DensityBasisStub(self.TTTT_ORDER)
+            static = stub._density_basis(event, (6, -6))
+            self.assertEqual(static['position'], [3, 5, 4, 6])
+            self.assertEqual(static['decaying_pdg'],
+                             [p.pid for p in static['init_part']])
+            self.assertEqual(static['decaying_pdg'], [6, 6, -6, -6])
+            self.assertEqual(static['nchanging'], 4)
+            # 2^4 helicity combinations for four spin-1/2 resonances
+            self.assertEqual(static['dimension'], 16)
+            momenta = event.get_momenta(self.TTTT_ORDER)
+            for k, part in enumerate(static['init_part']):
+                self.assertEqual(momenta[static['position'][k] - 1],
+                                 self._mom(part))
+
+
+class TestDecayChannelDeal(unittest.TestCase):
+    """When the card gives a pdg as many channels as the event has identical
+    parents (``decay t > w+ b, w+ > l+ vl`` and ``decay t > w+ b, w+ > j j`` on
+    a four-top event), each parent is dealt one channel. Which parent gets
+    which must not depend on the order the LHE writes them in.
+
+    Dealing in production order used to make it depend on the generator's
+    ordering of identical particles. That is exchangeable for a LO sample
+    (|M|^2 is symmetric under the swap) but not for aMC@NLO's: FKS keeps one
+    leg of each pair of identical emitters, and when the emitter is a top the
+    two tops of ``p p > t t~ t t~ [QCD]`` differ by ~130 GeV in pT depending on
+    their position -- the leptonic decay went to the softer one.
+    """
+
+    class _Part(object):
+        def __init__(self, pid):
+            self.pid = pid
+            self.pdg = pid
+            self.status = 1
+
+    class _Decay(object):
+        def __init__(self, tag):
+            self.tag = tag
+
+    class _Pool(object):
+        def __init__(self, tag):
+            self.tag = tag
+            self.cross = 1.0
+        def __next__(self):
+            return TestDecayChannelDeal._Decay(self.tag)
+
+    class _Stub(object):
+        get_decay_from_file = interface_madspin.MadSpinInterface.get_decay_from_file
+        _draw_all_decays = interface_madspin.MadSpinInterface._draw_all_decays
+        _draw_one_decay = interface_madspin.MadSpinInterface._draw_one_decay
+        _dealt_rank = staticmethod(interface_madspin.MadSpinInterface._dealt_rank)
+        _positional_deal = interface_madspin.MadSpinInterface._positional_deal
+        _draw_decay_group = interface_madspin.MadSpinInterface._draw_decay_group
+        efficiency = 0.5
+
+    def _pools(self):
+        return {6: {0: self._Pool('lep'), 1: self._Pool('had')},
+                -6: {0: self._Pool('tx')}}
+
+    def test_the_first_parent_is_not_always_dealt_the_first_channel(self):
+        """Over many production events the first top in the record takes the
+        leptonic channel half of the time -- not every time."""
+        import random
+        production = [self._Part(6), self._Part(6),
+                      self._Part(-6), self._Part(-6)]
+        n, first_lep = 2000, 0
+        for seed in range(n):
+            random.seed(seed)
+            out = self._Stub().get_decay_from_file(production, self._pools(), 10)
+            self.assertEqual(sorted(d.tag for d in out[6]), ['had', 'lep'])
+            first_lep += out[6][0].tag == 'lep'
+        # binomial(2000, 1/2): sigma = 22; the old deal gave exactly 2000
+        self.assertLess(abs(first_lep - n / 2.), 5 * math.sqrt(n / 4.))
+
+    def test_the_answer_does_not_depend_on_where_the_parents_sit(self):
+        """t t t~ t~ (aMC@NLO) and t t~ t t~ (madevent): same statistics."""
+        import random
+        fractions = []
+        for layout in ([6, 6, -6, -6], [6, -6, 6, -6]):
+            production = [self._Part(p) for p in layout]
+            hits = 0
+            for seed in range(1000):
+                random.seed(seed)
+                out = self._Stub().get_decay_from_file(production,
+                                                       self._pools(), 10)
+                hits += out[6][0].tag == 'lep'
+            fractions.append(hits / 1000.)
+        for f in fractions:
+            self.assertLess(abs(f - 0.5), 5 * math.sqrt(0.25 / 1000))
+
+    def test_a_deal_is_held_across_redraws(self):
+        """The sequential accept/reject redraws one slot at a time: a slot
+        must keep its channel however often it is redrawn, or two parents could
+        end up with the same one."""
+        import random
+        random.seed(3)
+        production = [self._Part(6), self._Part(-6), self._Part(6)]
+        ids = [p.pid for p in production]
+        stub = self._Stub()
+        deal = stub._positional_deal(ids, self._pools())
+        first = None
+        for trial in range(20):
+            got = [stub._draw_one_decay(production[i], i, ids, self._pools(),
+                                        10, deal=deal).tag for i in (0, 2)]
+            self.assertEqual(sorted(got), ['had', 'lep'])
+            first = first or got
+            self.assertEqual(got, first)
+
+    def test_dealt_rank_is_a_permutation(self):
+        import random
+        for n in range(1, 6):
+            for seed in range(20):
+                random.seed(seed)
+                deal = {}
+                ranks = [interface_madspin.MadSpinInterface._dealt_rank(
+                            23, k, n, deal) for k in range(n)]
+                self.assertEqual(sorted(ranks), list(range(n)))
+        # no deal: the old production-order rank
+        self.assertEqual(interface_madspin.MadSpinInterface._dealt_rank(
+                            23, 2, 3, None), 2)
+
+    def test_positional_deal_covers_exactly_the_positional_rule(self):
+        """Only the pdgs whose parents are dealt: as many channels as parents,
+        and more than one."""
+        stub = self._Stub()
+        pools = {6: {0: self._Pool('a'), 1: self._Pool('b')},     # 2 t, 2 lines
+                 -6: {0: self._Pool('c')},                        # 1 line
+                 23: {0: self._Pool('d'), 1: self._Pool('e')},    # 1 z, 2 lines
+                 24: {0: self._Pool('f'), 1: self._Pool('g')}}    # 3 W, 2 lines
+        deal = stub._positional_deal([6, -6, 6, -6, 23, 24, 24, 24], pools)
+        self.assertEqual(set(deal), {6})
+
+
+class TestSlotOrderAgreement(unittest.TestCase):
+    """Five pieces of MadSpin count the decaying particles of a production
+    event, and slot k has to mean the same particle -- and the same channel --
+    to all of them:
+
+    * ``_density_basis``' ``init_part``/``position`` (the density contraction),
+    * ``_sequential_slots`` (which particle the sequential scheme redraws),
+    * ``add_decays`` (which parent a decay is attached to in the written event),
+    * ``_z_slot_keys`` (which rate-factor table a slot is normalised with),
+    * ``_draw_one_decay`` (which channel a slot actually draws).
+
+    Each is correct on its own; these tests pin that they agree, on the
+    production ordering where it once went wrong (aMC@NLO's ``t t t~ t~``
+    against a density generated as ``t t~ t t~``).
+    """
+
+    TTTT_ORDER = [(21, 21), (6, -6, 6, -6)]
+    DECAYS_KEY = (6, -6)
+
+    @staticmethod
+    def _production(final):
+        lines = ['<event>', ' %d 1 1.0 100.0 0.0078 0.118' % (2 + len(final)),
+                 ' 21 -1 0 0 501 502 0.0 0.0  900.0 900.0 0.0 0. 9',
+                 ' 21 -1 0 0 503 501 0.0 0.0 -900.0 900.0 0.0 0. 9']
+        for k, pid in enumerate(final):
+            px, py, pz = 11. * (k + 1), 22. * (k + 1), 33. * (k + 1)
+            e = math.sqrt(173. ** 2 + px ** 2 + py ** 2 + pz ** 2)
+            lines.append(' %d 1 1 2 0 0 %r %r %r %r 173.0 0. 9'
+                         % (pid, px, py, pz, e))
+        lines.append('</event>')
+        return lhe_parser.Event('\n'.join(lines))
+
+    @staticmethod
+    def _decay_at_rest(parent, quark):
+        """``parent > w b``-like decay at rest, the quark flavour tagging it."""
+        w = 24 if parent > 0 else -24
+        text = '\n'.join([
+            '<event>', ' 3 1 1.0 100.0 0.0078 0.118',
+            ' %d -1 0 0 0 0 0.0 0.0 0.0 173.0 173.0 0. 9' % parent,
+            ' %d 1 1 1 0 0 0.0 0.0 %r %r 80.4 0. 9'
+            % (w, 67.9, math.sqrt(80.4 ** 2 + 67.9 ** 2)),
+            ' %d 1 1 1 0 0 0.0 0.0 %r %r 0.0 0. 9' % (quark, -67.9, 67.9),
+            '</event>'])
+        return lhe_parser.Event(text)
+
+    def test_sequential_slots_are_the_density_slots(self):
+        for final in ([6, 6, -6, -6], [6, -6, 6, -6], [-6, 6, 6, -6]):
+            production = self._production(final)
+            stub = _DensityBasisStub(self.TTTT_ORDER)
+            init_part, _ = stub._density_leg_positions(production,
+                                                       self.DECAYS_KEY)
+            particles, slot_to_index = \
+                interface_madspin.MadSpinInterface._sequential_slots(
+                    production, self.DECAYS_KEY)
+            self.assertEqual([particles[i] for i in slot_to_index], init_part)
+
+    def test_add_decays_attaches_slot_k_to_init_part_k(self):
+        """The weight is computed with decays[pdg][k] against init_part (the
+        k-th parent of that pdg in production order); the written event must
+        attach it to that same parent, or the decay written out is not the one
+        the density matrix was contracted with."""
+        for final in ([6, 6, -6, -6], [6, -6, 6, -6], [-6, -6, 6, 6]):
+            production = self._production(final)
+            init_part, _ = _DensityBasisStub(self.TTTT_ORDER)\
+                ._density_leg_positions(production, self.DECAYS_KEY)
+            parents = [(p.pid, _mom(p)) for p in init_part]
+            decays = {6: [self._decay_at_rest(6, 5), self._decay_at_rest(6, 3)],
+                      -6: [self._decay_at_rest(-6, -5),
+                           self._decay_at_rest(-6, -3)]}
+            tag_of_slot = [5, 3, -5, -3]
+            full = production.add_decays(decays)
+            for (pid, mom), tag in zip(parents, tag_of_slot):
+                parent = [p for p in full if p.status == 2 and p.pid == pid
+                          and _mom(p) == mom]
+                self.assertEqual(len(parent), 1)
+                children = [p.pid for p in full
+                            if getattr(p, 'mother1', None) is parent[0]]
+                self.assertIn(tag, children,
+                              '%s: slot of %s got %s' % (final, pid, children))
+
+    def test_z_tables_follow_the_channel_each_slot_draws(self):
+        """A slot's rate-factor table is keyed by the channel it is dealt, and
+        _draw_one_decay then draws exactly that channel for it."""
+        import random
+        pools = {6: {0: TestDecayChannelDeal._Pool('c0'),
+                     1: TestDecayChannelDeal._Pool('c1')},
+                 -6: {0: TestDecayChannelDeal._Pool('x0'),
+                      1: TestDecayChannelDeal._Pool('x1')}}
+        stub = TestDecayChannelDeal._Stub()
+        for seed in range(30):
+            random.seed(seed)
+            production = self._production([6, 6, -6, -6])
+            particles, slot_to_index = \
+                interface_madspin.MadSpinInterface._sequential_slots(
+                    production, self.DECAYS_KEY)
+            ids = [p.pid for p in particles]
+            deal = stub._positional_deal(ids, pools)
+            keys = interface_madspin.MadSpinInterface._z_slot_keys(
+                        particles, slot_to_index, deal)
+            for key, index in zip(keys, slot_to_index):
+                drawn = stub._draw_one_decay(particles[index], index, ids,
+                                             pools, 10, deal=deal)
+                self.assertEqual(int(key.split('_')[1]), int(drawn.tag[1]),
+                                 'slot keyed %s drew %s' % (key, drawn.tag))
+
+    def test_without_a_deal_the_z_keys_are_the_occurrences(self):
+        particles = [TestDecayChannelDeal._Part(p) for p in (6, -6, 6)]
+        self.assertEqual(interface_madspin.MadSpinInterface._z_slot_keys(
+                            particles, [0, 2, 1]), ['6_0', '6_1', '-6_0'])
+
+
+def _mom(part):
+    return (part.E, part.px, part.py, part.pz)
+
+
+class TestSetGlobalFlag(unittest.TestCase):
+    """MadSpin compiles its standalone trees with madspin.MS_GLOBAL_FLAG; the
+    libraries ``output standalone`` already built must then be rebuilt."""
+
+    def setUp(self):
+        import tempfile
+        self.tree = tempfile.mkdtemp(prefix='madspin_flag_')
+        os.mkdir(pjoin(self.tree, 'Source'))
+        shutil.copy(pjoin(MG5DIR, 'Template', 'LO', 'Source', '.make_opts'),
+                    pjoin(self.tree, 'Source', 'make_opts'))
+        # stands in for the objects 'output standalone' left behind
+        for lib in ('DHELAS', 'MODEL'):
+            os.mkdir(pjoin(self.tree, 'Source', lib))
+            with open(pjoin(self.tree, 'Source', lib, 'makefile'), 'w') as fsock:
+                fsock.write('clean:\n\trm -f stale.o\n')
+
+    def tearDown(self):
+        shutil.rmtree(self.tree)
+
+    def _touch_objects(self):
+        for lib in ('DHELAS', 'MODEL'):
+            open(pjoin(self.tree, 'Source', lib, 'stale.o'), 'w').close()
+
+    def _objects(self):
+        return [os.path.exists(pjoin(self.tree, 'Source', lib, 'stale.o'))
+                for lib in ('DHELAS', 'MODEL')]
+
+    def _global_flag(self):
+        with open(pjoin(self.tree, 'Source', 'make_opts')) as fsock:
+            text = fsock.read()
+        head = text.split('#end_of_make_opts_variables')[0]
+        return [l.split('=', 1)[1] for l in head.splitlines()
+                if l.startswith('GLOBAL_FLAG=')]
+
+    def test_flag_is_written_and_stale_objects_removed(self):
+        self._touch_objects()
+        madspin.set_global_flag(self.tree)
+        self.assertEqual(self._global_flag(), [madspin.MS_GLOBAL_FLAG])
+        self.assertEqual(self._objects(), [False, False])
+
+    def test_nothing_is_removed_once_the_flag_is_set(self):
+        madspin.set_global_flag(self.tree)
+        self._touch_objects()
+        madspin.set_global_flag(self.tree)
+        self.assertEqual(self._global_flag(), [madspin.MS_GLOBAL_FLAG])
+        self.assertEqual(self._objects(), [True, True])
+
+    def test_a_different_flag_rebuilds_again(self):
+        madspin.set_global_flag(self.tree)
+        self._touch_objects()
+        madspin.set_global_flag(self.tree, '-O0')
+        self.assertEqual(self._global_flag(), ['-O0'])
+        self.assertEqual(self._objects(), [False, False])
+
+
+class TestGlobalFlagGate(unittest.TestCase):
+    """MS_GLOBAL_FLAG is only used when the production has at least
+    MS_GLOBAL_FLAG_MIN_DECAYS particles to decay."""
+
+    def _events(self, decay_ids):
+        obj = madspin.decay_all_events.__new__(madspin.decay_all_events)
+        obj.all_ME = madspin.AllMatrixElement(None, {}, decay_ids, None)
+        return obj
+
+    def test_count_from_madspin_v1_topologies(self):
+        obj = self._events([6, -6])
+        obj.all_ME[((21, 21), (6, -6, 6, -6))] = {'base_order': ((21, 21), (6, -6, 6, -6))}
+        obj.all_ME[((21, 21), (6, -6, 23))] = {'base_order': ((21, 21), (6, -6, 23))}
+        self.assertEqual(obj.nb_decaying_in_production(), 4)
+
+    def test_count_from_density_production_only(self):
+        # the decay processes (type 'decay') must not be counted, and the
+        # decays of decay products (the W of a top) are not production decays
+        obj = self._events([6, -6, 23])
+        obj.all_me = {((21, 21), (-6, 6, 23)): {'type': 'production'},
+                      ((6,), (5, 24)): {'type': 'decay'}}
+        self.assertEqual(obj.nb_decaying_in_production(), 3)
+
+    def test_flag_only_from_the_threshold_on(self):
+        calls = []
+        orig = madspin.set_global_flag
+        madspin.set_global_flag = lambda tree, *a, **k: calls.append(tree)
+        try:
+            for ndecay in range(1, madspin.MS_GLOBAL_FLAG_MIN_DECAYS + 2):
+                obj = self._events([24, -24])
+                obj.all_me = {((2, -1), (24,) * ndecay): {'type': 'production'}}
+                obj.use_global_flag('tree%d' % ndecay)
+        finally:
+            madspin.set_global_flag = orig
+        self.assertEqual(calls, ['tree%d' % n for n in
+                                 range(madspin.MS_GLOBAL_FLAG_MIN_DECAYS,
+                                       madspin.MS_GLOBAL_FLAG_MIN_DECAYS + 2)])

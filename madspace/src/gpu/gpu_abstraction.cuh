@@ -31,6 +31,9 @@
 #define gpuEventDestroy cudaEventDestroy
 #define gpuStreamWaitEvent cudaStreamWaitEvent
 #define gpuEventRecord cudaEventRecord
+#define gpuEventQuery cudaEventQuery
+#define gpuEventSynchronize cudaEventSynchronize
+#define gpuErrorNotReady cudaErrorNotReady
 #define gpuDeviceSynchronize cudaDeviceSynchronize
 
 #define gpublasStatus_t cublasStatus_t
@@ -78,6 +81,9 @@
 #define gpuEventDestroy hipEventDestroy
 #define gpuStreamWaitEvent(stream, event) hipStreamWaitEvent(stream, event, 0)
 #define gpuEventRecord hipEventRecord
+#define gpuEventQuery hipEventQuery
+#define gpuEventSynchronize hipEventSynchronize
+#define gpuErrorNotReady hipErrorNotReady
 #define gpuDeviceSynchronize hipDeviceSynchronize
 
 #define gpublasStatus_t rocblas_status

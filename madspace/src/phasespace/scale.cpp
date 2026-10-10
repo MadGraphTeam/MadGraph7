@@ -9,7 +9,8 @@ EnergyScale::EnergyScale(
     bool fact_scale_fixed,
     double ren_scale,
     double fact_scale1,
-    double fact_scale2
+    double fact_scale2,
+    double scale_factor
 ) :
     FunctionGenerator(
         "EnergyScale",
@@ -23,7 +24,8 @@ EnergyScale::EnergyScale(
     _fact_scale_fixed(fact_scale_fixed),
     _ren_scale(ren_scale),
     _fact_scale1(fact_scale1),
-    _fact_scale2(fact_scale2) {}
+    _fact_scale2(fact_scale2),
+    _scale_factor(scale_factor) {}
 
 NamedVector<Value> EnergyScale::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
@@ -53,6 +55,10 @@ NamedVector<Value> EnergyScale::build_function_impl(
         break;
     default:
         throw std::runtime_error("invalid dynamical scale type");
+    }
+    // dynamical scale only; a fixed scale is an absolute value
+    if (_scale_factor != 1.) {
+        scale = fb.mul(scale, _scale_factor);
     }
     auto batch_size = fb.batch_size({momenta});
     return {

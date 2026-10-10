@@ -96,6 +96,18 @@ private:
  * selects one of the two @f$\cos\phi@f$ branches. See Sec. 2.2.5 of [1],
  * following [2, 3].
  *
+ * On its kinematic range @f$\tilde s_i@f$ is linear in @f$\cos\phi@f$, and
+ * @f$8\sqrt{-\Delta_4} = \sqrt{\lambda}\,(\tilde s^{\max} - \tilde s^{\min})
+ * \,|\sin\phi|@f$, so the measure is flat in @f$\phi@f$. Any density in
+ * @f$\tilde s_i@f$ that is finite at the kinematic limits leaves an
+ * integrable @f$1/|\sin\phi|@f$ in the weight, whose variance diverges
+ * logarithmically. With @p arcsine_s23 (the default) the random number of
+ * @f$\tilde s_i@f$ is first mapped by an arcsine map that is flat in
+ * @f$\phi/2@f$ between the limits of the sampled range, and only then handed
+ * to the power-law sampling of @ref Invariant (a Breit-Wigner is not
+ * supported there). The weight stays bounded at the kinematic limits, and
+ * the importance sampling of @f$\tilde s_i@f$ is kept.
+ *
  * `batch` is the leading batch dimension.
  *
  * **Inputs**
@@ -108,7 +120,8 @@ private:
  *
  * **Conditions**
  * - `momentum_in1` – `float`, shape `(batch, 4)` – first incoming momentum.
- * - `momentum_in2` – `float`, shape `(batch, 4)` – second incoming momentum.
+ * - `momentum_in2` – `float`, shape `(batch, 4)` – second incoming momentum;
+ *   `momentum12`, the system p1 + p2, when @p p12_condition is true.
  * - `momentum3` – `float`, shape `(batch, 4)` – recoil momentum defining the
  *   scattering plane.
  * - `etmin_1`, `etmin_2` – `float`, shape `(batch,)` – transverse-energy cuts.
@@ -148,6 +161,19 @@ public:
      * @param has_cut           If true, the `etmin_*`, `drcut` and `s23_min_cut`
      *                          conditions restrict the invariants to the region
      *                          passing the cuts; see @ref Cuts.
+     * @param arcsine_s23       If true, remap the random number of
+     *                          @f$\tilde s@f$ with the arcsine map in
+     *                          @f$\phi@f$ before the invariant sampling, which
+     *                          removes the @f$1/|\sin\phi|@f$ edge peak of the
+     *                          weight. Power-law sampling only: requires
+     *                          @p s_width = 0 (no resonance is expected in
+     *                          this block).
+     * @param p12_condition     If true, the second condition is the outgoing
+     *                          system `momentum12` = p1 + p2 itself instead
+     *                          of the second incoming momentum. A caller that
+     *                          holds it more precisely than pa + pb - p3 (a
+     *                          soft system next to the beams) keeps that
+     *                          precision.
      */
     TwoToThreeParticleScattering(
         double t_invariant_power = 0,
@@ -156,7 +182,9 @@ public:
         double s_invariant_power = 0,
         double s_mass = 0,
         double s_width = 0,
-        bool has_cut = false
+        bool has_cut = false,
+        bool arcsine_s23 = true,
+        bool p12_condition = false
     );
 
     /// Number of discrete inputs (1): which of the two two-body solutions.
@@ -174,9 +202,14 @@ private:
         const NamedVector<Value>& conditions
     ) const override;
 
+    std::array<Value, 3>
+    split_conditions(FunctionBuilder& fb, const NamedVector<Value>& conditions) const;
     Invariant _t_invariant;
     Invariant _s_invariant;
+    double _s_power, _s_mass;
     bool _has_cut;
+    bool _arcsine_s23;
+    bool _p12_condition;
 };
 
 } // namespace madspace

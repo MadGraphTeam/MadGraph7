@@ -21,7 +21,9 @@ making it faster or more accurate, up to and including training MadNIS.
 from __future__ import absolute_import
 
 import madgraph.interface.tutorials as tutorials
-from madgraph.interface.tutorials.session import Step, Tutorial
+from madgraph.interface.tutorials.session import (Step, Tutorial,
+                                                  counts_line,
+                                                  output_name)
 
 P = 'MG7>'
 RUN = 'MY_MG7_RUN'
@@ -56,15 +58,19 @@ Everything below lives in `Cards/run_card.toml`. Make an output to look at:
      title='welcome',
      solution='generate p p > t t~ j'),
 
-Step('generate', """
-Something with enough channels to be worth tuning.
+Step('generate', lambda interface: """
+%(counts)sEnough channels for the integrator to have decisions to make,
+which is what makes this worth tuning -- `p p > t t~` would not be.
 
 %(p)s output %(run)s
-""" % {'p': P, 'run': RUN},
+""" % {'p': P, 'run': RUN, 'counts': counts_line(interface)},
      title='pick a process worth tuning',
      solution='output %s' % RUN),
 
-Step('output', """
+Step('output', lambda interface: """
+That is an MG7 output, integrated by madspace: `%(run)s/` holds the process
+code, and everything below is one file inside it.
+
 `Cards/run_card.toml`, section by section. The ones you will actually touch
 are marked.
 
@@ -89,7 +95,6 @@ rescued by a better integrator:
   sde_strategy          diagrams or denominators -- how channels map to
                         diagrams
   t_channel, flat_mode  propagator, rambo or chili for the t-channel
-  decays                all, massive or none
   bw_cutoff             how far off-shell a Breit-Wigner is followed
   drop_qcd_s_channel    drop channels with no QCD resonance once the channel
                         count would exceed this -- the lever for processes
@@ -105,11 +110,14 @@ buys a better grid at a proportional cost; `damping` is what to reach for when
 the grid oscillates instead of settling.
 
 %(p)s history my_mg7_session.dat
-""" % {'p': P},
+""" % {'p': P, 'run': output_name(interface, RUN)},
      title='the run card, section by section',
      solution='history my_mg7_session.dat'),
 
 Step('history', lambda interface: """
+That file replays the session -- `import command my_mg7_session.dat`, or
+`./bin/madgraph my_mg7_session.dat` from a shell.
+
 **MadNIS, and why you probably do not need to configure it.**
 
 `[madnis] enable` is `"auto"`, and it means what it says. MG7 surveys the phase
@@ -157,11 +165,11 @@ you are getting; the default is not the one a MadEvent run would have used.
 Seeding works the way you would expect -- `set iseed 42` at the launch question
 sets `[run] seed`, and so does editing the run card directly.
 
-**Coming from a LO run card?** `madgraph/various/RunCardLO_to_MG7_mapping.md`
-maps the old names onto the new sections.
+**Coming from a LO run card?** The "Coming from MadEvent" page of the
+documentation maps the old names onto the new sections.
 
-**Gridpacks** work here too, via the `[gridpack]` section and
-`bin/gridpack.py`.
+**Gridpacks** work here too, via the `[gridpack]` section. The "Gridpacks"
+page of the documentation describes them.
 
 %(see_also)s
 

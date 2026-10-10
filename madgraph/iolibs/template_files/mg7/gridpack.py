@@ -50,6 +50,42 @@ def resolve_seed(seed: int) -> int:
     return seed
 
 
+def build_lhe_meta(event_generator, seed: int, systematics=None):
+    """The LHE header/<init> metadata of this gridpack run: the cards, beams
+    and PDF the gridpack was made with (data/lhe_meta.json), with the cross
+    section and seed of this run. ``systematics`` adds the <initrwgt> block,
+    for the writers that do not inject it themselves (header.lhe); leave it
+    unset for combine_to_lhe, which does."""
+    headers = []
+    data = {}
+    meta_path = os.path.join("data", "lhe_meta.json")
+    if os.path.exists(meta_path):
+        with open(meta_path) as f:
+            data = json.load(f)
+        headers = [ms.LHEHeader(name=h["name"], content=h["content"],
+                                escape_content=h["escape_content"])
+                   for h in data.pop("headers")]
+    headers.append(ms.LHEHeader(name="MG7Seed", content=str(seed)))
+    if systematics is not None and systematics.weight_ids:
+        headers.append(ms.LHEHeader(
+            name="initrwgt", content=systematics.initrwgt(), escape_content=False
+        ))
+    status = event_generator.status()
+    return ms.LHEMeta(
+        # positional: the pybind arg name for max_weight is non-kwarg-safe
+        processes=[ms.LHEProcess(status.mean, status.error, status.mean, 1)],
+        headers=headers,
+        **data,
+    )
+
+
+def write_lhe_header(run_path: str, meta) -> None:
+    """Write header.lhe next to events.npy: the <header>/<init> blocks the
+    npy formats otherwise drop, with no events."""
+    writer = ms.LHEFileWriter(os.path.join(run_path, "header.lhe"), meta)
+    del writer  # closes the file (writes the closing tag)
+
+
 def main() -> None:
     # load run card and metadata. Use the RunCardMG7 representation when the
     # madgraph package is importable; gridpacks are meant to be portable, so
@@ -95,7 +131,7 @@ def main() -> None:
         "--verbosity",
         type=str,
         default=run_args["verbosity"],
-        choices=["none", "pretty", "log", "auto"]
+        choices=["silent", "pretty", "log", "auto"]
     )
     parser.add_argument(
         "--output_format",
@@ -168,12 +204,15 @@ def main() -> None:
     config.max_cut_repetitions = gen_args["max_cut_repetitions"]
 
     # set up contexts
+    # run-time matrix-element parameters (bwcutoff) of the run that made the
+    # gridpack; gridpacks written before they were recorded used the default
+    me_parameters = madspace_data.get("me_parameters", {})
     global_dir = os.path.join("data", "globals")
     for context, backend in zip(contexts, backends):
         context.load_globals(global_dir)
         for me_path in madspace_data["matrix_elements"]:
             context.load_matrix_element(
-                me_path.format(device=backend), param_card_path
+                me_path.format(device=backend), param_card_path, me_parameters
             )
 
     # set up generators
@@ -196,7 +235,8 @@ def main() -> None:
     )
 
     # scale/PDF systematics (as configured when the gridpack was made)
-    systematics = load_systematics(run_card, backends, param_card_path)
+    systematics = load_systematics(run_card, backends, param_card_path,
+                                   me_parameters)
 
     # run generation
     event_generator.generate()
@@ -205,16 +245,26 @@ def main() -> None:
         event_generator.combine_to_compact_npy(
             os.path.join(run_path, "events.npy"), systematics
         )
+        write_lhe_header(run_path,
+                         build_lhe_meta(event_generator, seed, systematics))
+        # what npy_to_lhe needs to complete these events into LHE later
+        shutil.copy(os.path.join("data", "lhe.json"),
+                    os.path.join(run_path, "lhe_completer.json"))
     elif output_format == "lhe_npy":
         lhe_completer = ms.LHECompleter.load(os.path.join("data", "lhe.json"))
         event_generator.combine_to_lhe_npy(
             os.path.join(run_path, "events.npy"), lhe_completer, systematics
         )
+        write_lhe_header(run_path,
+                         build_lhe_meta(event_generator, seed, systematics))
     elif output_format == "lhe":
         lhe_completer = ms.LHECompleter.load(os.path.join("data", "lhe.json"))
         lhe_path = os.path.join(run_path, "events.lhe")
+        # the cross section is known once generate() has converged, which is
+        # before combine_to_lhe writes the <init> block
         event_generator.combine_to_lhe(
-            lhe_path, lhe_completer, ms.LHEMeta(), systematics
+            lhe_path, lhe_completer, build_lhe_meta(event_generator, seed),
+            systematics
         )
         # Ship the LHE compressed, as the launcher that produced this gridpack
         # does: the file is large and very compressible, and the consumers of
@@ -270,7 +320,8 @@ def _locate_pdf_file(stored_file):
         % stored_file)
 
 
-def load_systematics(run_card, backends=(), param_card_path=None):
+def load_systematics(run_card, backends=(), param_card_path=None,
+                     me_parameters=None):
     """Rebuild the ms.SystematicsCalculator saved with the gridpack
     (data/systematics.json) when [systematics] enable is set; None otherwise.
     The matrix elements of the mixed-order subprocesses are reloaded into a CPU
@@ -326,13 +377,19 @@ def load_systematics(run_card, backends=(), param_card_path=None):
                       "mixed-order subprocesses are dropped" % lib)
                 matrix_elements, flavor_remap = [], []
                 break
-            api = context.load_matrix_element(lib, param_card_path)
+            api = context.load_matrix_element(lib, param_card_path,
+                                              me_parameters or {})
             matrix_elements.append(ms.MatrixElement(
                 api,
                 [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
                  ms.MatrixElement.flavor_in],
                 [ms.MatrixElement.matrix_element_out],
                 False,
+                # the frame the events were generated with, not whatever the
+                # gridpack's run card says now: it has to match the matrix
+                # element inside the saved channel generators
+                data.get("me_frame", []),
+                data.get("incoming_count", 2),
             ))
     systematics = ms.SystematicsCalculator(
         config, subproc_args, nominal_pdf, nominal_alpha_s,

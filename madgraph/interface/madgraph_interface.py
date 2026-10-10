@@ -81,6 +81,7 @@ import madgraph.iolibs.import_v4 as import_v4
 import madgraph.iolibs.save_load_object as save_load_object
 
 import madgraph.interface.extended_cmd as cmd
+import madgraph.interface.coloring_logging as coloring_logging
 import madgraph.interface.tutorials as tutorials
 import madgraph.interface.tutorials.mixin as tutorial_mixin
 import madgraph.interface.launch_ext_program as launch_ext
@@ -124,6 +125,16 @@ logger_tuto = logging.getLogger('tutorial') # -> stdout include instruction in
 logger_tuto_nlo = logging.getLogger('tutorial_aMCatNLO') # deprecated, unused
 logger_tuto_madloop = logging.getLogger('tutorial_MadLoop') # deprecated, unused
 
+
+# The logo's blue (#3B6598). Empty under --plain (MG7_NO_COLOR).
+if os.environ.get('MG7_NO_COLOR'):
+    MG7_BLUE = ""
+elif os.environ.get('COLORTERM', '').lower() in ('truecolor', '24bit'):
+    MG7_BLUE = "\033[1;38;2;59;101;152m"
+else:
+    MG7_BLUE = "\033[1;34m" #fall back to bold blue
+MG7_RESET = "\033[0m" if MG7_BLUE else ""
+
 class DuplicateParticle(madgraph.InvalidCmd):
     """A particle name given twice where only one is meaningful.
 
@@ -132,13 +143,23 @@ class DuplicateParticle(madgraph.InvalidCmd):
     turn any *other* InvalidCmd -- an unknown particle name, say -- into that
     same misleading message.
     """
-
-
-# Central definition of the main interface prompt (bold blue "MG7> ")
-MG7_PROMPT = "\001\033[1;94m\002MG7> \001\033[0m\002"
+    
 # the same prompt without the colour escapes, for quoting commands inside
 # tutorial text and help messages
 MG7_PROMPT_TEXT = "MG7> "
+
+# Stock macOS Python just leaks escape bytes into
+# the line editor instead of rendering. Keep the prompt plain there.
+try:
+    _prompt_is_libedit = 'libedit' in readline.__doc__
+except Exception:
+    _prompt_is_libedit = False
+
+#left open so whole command in blue
+if _prompt_is_libedit or not MG7_BLUE:
+    MG7_PROMPT = MG7_PROMPT_TEXT
+else:
+    MG7_PROMPT = "\001%s\002MG7> " % MG7_BLUE
 
 # The banner (and every easter-egg variant of it in madgraph.various.misc) is
 # written as a block of BANNER_WIDTH columns: '*', 58 characters of content and
@@ -254,7 +275,7 @@ class CmdExtended(cmd.Cmd):
     intro_banner = "************************************************************\n" + \
         "*                                                          *\n" + \
         "*                     W E L C O M E to                     *\n" + \
-        "*                    M A D G R A P H 7                     *\n" + \
+        "*                    M A D G R A P H " + MG7_BLUE + "7" + MG7_RESET + "                     *\n" + \
         "*                                                          *\n" + \
         "*                                                          *\n" + \
         "*                        ..........                        *\n" + \
@@ -265,11 +286,11 @@ class CmdExtended(cmd.Cmd):
         "*                 .     M  M   M  M  ..                    *\n" + \
         "*                 ..    M   M M   M ..                     *\n" + \
         "*                  .    M    M    M.                       *\n" + \
-        "*                  ...               7777777               *\n" + \
-        "*                    ....                 7                *\n" + \
-        "*                       ................ 7                 *\n" + \
-        "*                                       7                  *\n" + \
-        "*                                      7                   *\n" + \
+        "*                  ...               " + MG7_BLUE + "7777777" + MG7_RESET + "               *\n" + \
+        "*                    ....                 " + MG7_BLUE + "7" + MG7_RESET + "                *\n" + \
+        "*                       ................ " + MG7_BLUE + "7" + MG7_RESET + "                 *\n" + \
+        "*                                       " + MG7_BLUE + "7" + MG7_RESET + "                  *\n" + \
+        "*                                      " + MG7_BLUE + "7" + MG7_RESET + "                   *\n" + \
         "*                                                          *\n" + \
         "%s" + \
         "*                                                          *\n" + \
@@ -453,6 +474,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   The following options are available:")
         logger.info("     --force        Overwrite without asking any existing installation.")
         logger.info("     --keep_source  Keep a local copy of the sources of the tools MadGraph7 installed from.")
+        logger.info("     --hepmc2       (pythia8) Build Pythia8 against HepMC2 instead of HepMC3.")
+        logger.info("                    Either way, main164 is also compiled for the other HepMC version.")
         logger.info(" ")
         logger.info("   \"install update\"",'$MG:BOLD')
         logger.info("   check if your MG5 installation is the latest one.")
@@ -595,9 +618,10 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("    available for future import with the command 'import model XXXX-NAME'")
         logger.info("    Changing the formula of a parameter/coupling is also possible but")
         logger.info("    requires to write a new UFO model (and is not compatible with --save)")
-        logger.info("    --explain=life (or --explain) reports what each command you")
+        logger.info("    --explain=life (the default) reports what each command you")
         logger.info("    enter changes in the model, --explain=final reports which of your")
-        logger.info("    choices is responsible for each coupling removed from it.")
+        logger.info("    choices is responsible for each coupling removed from it,")
+        logger.info("    --explain=off asks for no report at all.")
         logger.info("    --all lists every coupling instead of the first few of them.")
 
     def help_output(self):
@@ -641,6 +665,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --jamp_orbit=[True|False]: [madevent|standalone_fortran|mg7] look for the shared color-factor sub-expressions by whole orbits of the color basis symmetry.")
         logger.info("      --t_strategy: [madevent] allows to change ordering strategy for t-channel.")
         logger.info("      --hel_recycling=False: [madevent] forbids helicity recycling optimization")
+        logger.info("      --axial_gauge=True: [madevent|standalone_fortran] build the polarisation of massless vectors in the axial gauge of another external (lightlike) leg, so that whole diagrams vanish (default:False).")
         logger.info("      --mask=False: [madevent|standalone_fortran] disable flavor-mask optimization for grouped/merged flavors (default:True).")
         logger.info("      --prefix=int|proc: [standalone_fortran] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
         logger.info("   Examples:",'$MG:color:GREEN')
@@ -683,7 +708,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   at the same phase-space point.  Requires gfortran / g++.")
         logger.info("   Example: check language p p > e+ e-",'$MG:color:GREEN')
         logger.info("o precision:",'$MG:color:GREEN')
-        logger.info("   syntax: check precision m|f|v [m|f|v ...] process_definition [--nb_event=X] [--energy=]")
+        logger.info("   syntax: check precision m|f|v [m|f|v ...] process_definition [--nb_event=X] [--energy=] [--backend=]")
         logger.info("   Evaluate the madmatrix standalone output built in each of the given")
         logger.info("   floating point modes (m: colour algebra in single precision,")
         logger.info("   f: single precision everywhere, v: single precision amplitudes")
@@ -694,6 +719,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   matrix element by each of the two builds (and the speed-up), and")
         logger.info("   writes a plot of the difference. Requires g++ and make.")
         logger.info("   Several modes share one double precision reference and one plot.")
+        logger.info("   --backend selects the madmatrix BACKEND of every build (default auto:")
+        logger.info("   the widest SIMD flavour of the host): %s." % '|'.join(process_checks.PRECISION_BACKENDS))
         logger.info("   Example: check precision f m v g g > t t~ g --nb_event=100000",'$MG:color:GREEN')
         logger.info("o cms:",'$MG:color:GREEN')
         logger.info("   Check the complex mass scheme consistency by comparing")
@@ -1085,8 +1112,6 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > This allow to not run on the central disk. ")
         logger.info(" > This is not used by condor cluster (since condor has")
         logger.info("   its own way to prevent it).")
-        logger.info("mg5amc_py8_interface_path PATH",'$MG:color:GREEN')
-        logger.info(" > Necessary when showering events with Pythia8 from Madevent.")        
         logger.info("OLP ProgramName",'$MG:color:GREEN')
         logger.info(" > (default 'MadLoop') [Used for virtual generation]")
         logger.info(" > Chooses what One-Loop Program to use for the virtual")
@@ -1129,9 +1154,12 @@ class HelpToCmd(cmd.HelpCmd):
 # customize_model --explain
 #===============================================================================
 # 'life' reports what each command does while the question is answered,
-# 'final' reports which choice is responsible for what once it is closed.
-CUSTOMIZE_EXPLAIN_MODES = ['life', 'final']
-CUSTOMIZE_EXPLAIN_ALIAS = {'live': 'life'} # 'live' is the spelling one expects
+# 'final' reports which choice is responsible for what once it is closed,
+# 'off' asks for no report at all. 'life' is what one gets without asking.
+CUSTOMIZE_EXPLAIN_MODES = ['life', 'final', 'off']
+CUSTOMIZE_EXPLAIN_DEFAULT = 'life'
+CUSTOMIZE_EXPLAIN_ALIAS = {'live': 'life', # 'live' is the spelling one expects
+                           'none': 'off', 'false': 'off', 'no': 'off'}
 
 
 def natural_key(name):
@@ -1150,6 +1178,16 @@ def parse_explain_mode(arg):
         return None
     mode = arg.split('=', 1)[1].lower()
     return CUSTOMIZE_EXPLAIN_ALIAS.get(mode, mode)
+
+
+def resolve_explain_mode(args):
+    """the --explain mode a customize_model command line asks for: the last
+    --explain wins, the live report is what one gets without the option, and
+    None (no report at all) is what --explain=off asks for."""
+
+    mode = ([CUSTOMIZE_EXPLAIN_DEFAULT] + [parse_explain_mode(a) for a in args
+                                           if parse_explain_mode(a)])[-1]
+    return None if mode == 'off' else mode
 
 
 class CheckValidForCmd(cmd.CheckCmd):
@@ -1216,7 +1254,10 @@ class CheckValidForCmd(cmd.CheckCmd):
             self.help_display()
             raise self.InvalidCmd('Invalid arguments for display command: %s' % args[0])
 
-        if not self._curr_model:
+        # the model list is what you read *before* importing one -- the banner
+        # suggests it at startup -- and it lists model directories and the
+        # online database, never the loaded model
+        if not self._curr_model and args[0] not in ('modellist', 'model_list'):
             raise self.InvalidCmd("No model currently active, please import a model!")
 
         # check that either _curr_amps or _fks_multi_proc exists.
@@ -1319,6 +1360,7 @@ class CheckValidForCmd(cmd.CheckCmd):
 
         if args[0] == 'precision':
             user_options['--nb_event'] = '1000000'
+            user_options['--backend'] = 'auto'
 
         if args[0] in ['cms'] or args[0].lower()=='cmsoptions':
             # increase the default energy to 5000
@@ -1587,7 +1629,12 @@ class CheckValidForCmd(cmd.CheckCmd):
             # a bare 'tutorial' opens the menu -- or, with no terminal to ask
             # on, keeps its historical meaning of "start the first tutorial"
             args.append(self.ask_tutorial())
-        if len(args) != 1:
+        if len(args) == 2 and args[0] == 'skip':
+            # `tutorial skip N` goes to step N
+            if not args[1].isdigit():
+                raise self.InvalidCmd('tutorial skip takes a step number -- '
+                                      '`tutorial index` lists them')
+        elif len(args) != 1:
             self.help_tutorial()
             raise self.InvalidCmd('Too many arguments for tutorial')
         if args[0] not in self._tutorial_opts:
@@ -1712,6 +1759,11 @@ class CheckValidForCmd(cmd.CheckCmd):
             # Now that the options have been treated keep only the target tool
             # to install as argument.   
             args = args[:1]
+
+        if args[0] == 'mg5amc_py8_interface':
+            raise self.InvalidCmd("The MG5aMC_PY8_interface is not supported by "+
+                "MadGraph7: the Pythia8 shower runs Pythia8's main164, which is "+
+                "installed (and compiled if needed) with 'install pythia8'.")
 
         if args[0] not in self._install_opts + hidden_prog + self._advanced_install_opts: 
             self.help_install()
@@ -1901,8 +1953,11 @@ This will take effect only in a NEW terminal
                 mode = parse_explain_mode(arg)
                 if mode not in CUSTOMIZE_EXPLAIN_MODES:
                     raise self.InvalidCmd('Valid values for --explain are: %s '
-                        '(--explain alone means --explain=life).'
-                        % ', '.join(CUSTOMIZE_EXPLAIN_MODES))
+                        '(--explain alone means --explain=%s, which is also '
+                        'what you get without the option; --explain=off turns '
+                        'the report off).'
+                        % (', '.join(CUSTOMIZE_EXPLAIN_MODES),
+                           CUSTOMIZE_EXPLAIN_DEFAULT))
                 continue
             if arg.startswith('--save='):
                 if '-' in arg.split('=', 1)[1]:
@@ -2752,7 +2807,8 @@ class CompleteForCmd(cmd.CompleteCmd):
 
         # Format
         return self.list_completion(text, ['--save=', '--explain',
-                    '--explain=life', '--explain=final', '--all'])
+                    '--explain=life', '--explain=final', '--explain=off',
+                    '--all'])
 
 
     def complete_check(self, text, line, begidx, endidx, formatting=True):
@@ -2784,7 +2840,7 @@ class CompleteForCmd(cmd.CompleteCmd):
 
         options = ['--energy=']
         if len(args) >= 2 and args[1] == 'precision':
-            options.append('--nb_event=')
+            options.extend(['--nb_event=', '--backend='])
         if cms_options:
             options.extend(cms_options)
 
@@ -2988,12 +3044,15 @@ class CompleteForCmd(cmd.CompleteCmd):
 
         if mode and mode.startswith('standalone') and mode != 'standalone':
             # NB: `mode != 'standalone'` deliberately EXCLUDES the plain
-            # `standalone` (madmatrix) output, which is launched through its own
-            # bin/generate_events, not through SALauncher.  It is not a typo:
+            # `standalone` (madmatrix) output, which is launched through
+            # MadMatrixLauncher, not through SALauncher.  It is not a typo:
             # every *other* standalone_* mode (standalone_fortran, _cpp, _msP,
             # _msF, _rw) is run through SALauncher/MadLoopLauncher, for which
             # only force + the timing analysis options are relevant.
             opt = ['-f', '--force', '--timings=', '--nb_run=']
+            out['Options'] = self.list_completion(text, opt, line)
+        elif mode == 'standalone':
+            opt = ['-f', '--force']
             out['Options'] = self.list_completion(text, opt, line)
         elif line[0:begidx].endswith('--laststep='):
             opt = ['parton', 'pythia', 'pgs','delphes','auto']
@@ -3086,7 +3145,7 @@ class CompleteForCmd(cmd.CompleteCmd):
                         possible_options = ['f', 'noclean', 'nojpeg'],
                         possible_options_full = ['-f', '-noclean', '-nojpeg', '--noeps=True','--hel_recycling=False',
                                                  '--jamp_optim=', '--jamp_orbit=', '--t_strategy=', '--vector_size=4', '--nb_warp=1',
-                                                 '--mask=False', '--prefix=']):
+                                                 '--mask=False', '--prefix=', '--axial_gauge=True']):
         "Complete the output command"
 
         possible_format = list(self._export_formats)
@@ -3478,8 +3537,7 @@ class CompleteForCmd(cmd.CompleteCmd):
             options = ['--keep_source','--logging=']
             if args[1]=='pythia8':
                 options.append('--pythia8_tarball=')
-            elif args[1]=='mg5amc_py8_interface':
-                options.append('--mg5amc_py8_interface_tarball=') 
+                options.append('--hepmc2')
             elif args[1] in ['MadAnalysis5','MadAnalysis']:
                 #options.append('--no_MA5_further_install')
                 options.append('--no_root_in_MA5')
@@ -3520,7 +3578,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         """Names 'tutorial' accepts: every tutorial, its aliases, and the
         housekeeping sub-commands."""
         return (tutorials.names(include_aliases=True) +
-                ['stop', 'list', 'status', 'help'] +
+                ['stop', 'list', 'status', 'index', 'help'] +
                 list(self._tutorial_step_cmds))
     _switch_opts = ['mg5','aMC@NLO','ML5']
     _check_opts = ['full', 'timing', 'stability', 'profile', 'permutation',
@@ -3533,7 +3591,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     
     # The targets below are installed using the HEPToolsInstaller.py script
     _advanced_install_opts = ['pythia8','zlib','boost','lhapdf6','lhapdf5','collier',
-                              'hepmc','mg5amc_py8_interface','ninja','oneloop','MadAnalysis5',
+                              'hepmc','ninja','oneloop','MadAnalysis5',
                               'yoda', 'rivet', 'fastjet', 'fjcontrib', 'contur', 'cmake', 'eMELA',
                               'cudacpp', 'hepmc3', 'pythia8_hepmc3', 'DMTCP']
 
@@ -3578,6 +3636,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'hwpp_path': './herwigPP',
                        'thepeg_path': './thepeg',
                        'hepmc_path': './hepmc',
+                       'hepmc3_path': './HEPTools/hepmc3',
                        'madanalysis5_path':'./HEPTools/madanalysis5/madanalysis5',
                        'pythia-pgs_path':'./pythia-pgs',
                        'rivet_path' : './HEPTools/rivet',
@@ -3616,10 +3675,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'lhapdf_py2': None,
                        'lhapdf_py3': None,
                        'cluster_temp_path':None,
-                       'mg5amc_py8_interface_path': './HEPTools/MG5aMC_PY8_interface',
                        'cluster_local_path': None,
                        'cvmfs_lhapdf_path': misc.CVMFS_LHAPDF_PATH,
-                       'mg5amc_py8_interface_path': './HEPTools/MG5aMC_PY8_interface',
                        'OLP': 'MadLoop',
                        'cluster_nb_retry':1,
                        'cluster_retry_wait':300,
@@ -3630,6 +3687,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'acknowledged_v3.1_syntax': True,
                        'auto_update':7,
                        'heptools_install_dir': './HEPTools',
+                       'plain': False,
                        }
 
     options_madgraph= {'group_subprocesses': 'Auto',
@@ -3678,7 +3736,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     def preloop(self):
         """Initializing before starting the main loop"""
 
-        self.prompt = MG7_PROMPT
+        self.prompt = MG7_PROMPT_TEXT if self.options.get('plain') else MG7_PROMPT
         if madgraph.ReadWrite: # prevent on read-only disk
             self.do_install('update --mode=mg5_start')
 
@@ -4370,8 +4428,21 @@ This implies that with decay chains:
         elif args[0] == 'coupling_order':
             hierarchy = list(self._curr_model['order_hierarchy'].items())
             hierarchy.sort(key=operator.itemgetter(1))
-            for order in hierarchy:
-                print(' %s : weight = %s' % order)
+            # an order declared by the model can have no interaction left
+            # carrying it -- a restriction card typically removes all of them.
+            # Such an order is inert: it can not constrain a process.
+            active = self._curr_model.get('coupling_orders')
+            inert = []
+            for order, weight in hierarchy:
+                if order in active:
+                    print(' %s : weight = %s' % (order, weight))
+                else:
+                    print(' %s : weight = %s [inert]' % (order, weight))
+                    inert.append(order)
+            if inert:
+                print(' [inert]: no interaction of this model carries that'
+                      ' order (the restriction card likely removed them all),')
+                print('          so it can not be used to constrain a process.')
 
         elif args[0] == 'couplings' and len(args) == 1:
             if self._model_v4_path:
@@ -4655,9 +4726,9 @@ This implies that with decay chains:
                             "one, or 'tutorial help'.")
                 return
             session.suppress_next = True
-            return getattr(self, 'do_%s' % name)('')
+            return getattr(self, 'do_%s' % name)(' '.join(args[1:]))
 
-        if name in ('list', 'status', 'help'):
+        if name in ('list', 'status', 'index', 'help'):
             # informational: never (re)start anything, and never let the
             # postcmd hook mistake this for the tutorial's intro step
             session = getattr(self, '_tutorial_session', None)
@@ -4667,6 +4738,8 @@ This implies that with decay chains:
                 self.print_tutorial_list()
             elif name == 'status':
                 self.print_tutorial_status()
+            elif name == 'index':
+                self.print_tutorial_index()
             else:
                 self.print_tutorial_help()
             return
@@ -4711,12 +4784,16 @@ This implies that with decay chains:
         logger.info("   repeat      print the current step again")
         logger.info("   back        go back one step")
         logger.info("   skip        move on without doing this step")
+        logger.info("   skip N      go to step N, running the commands that "
+                    "lead there")
         logger.info("Anytime:", '$MG:BOLD')
         logger.info("   tutorial            choose a tutorial from the menu")
         logger.info("   tutorial NAME       start that one (switches if one is "
                     "already running)")
         logger.info("   tutorial list       show the tutorials on offer")
         logger.info("   tutorial status     how far you have got")
+        logger.info("   tutorial index      the steps of the running tutorial, "
+                    "numbered")
         logger.info("   tutorial help       this message")
         logger.info("   tutorial stop       leave tutorial mode")
         logger.info("A tutorial never blocks a command: anything you type runs "
@@ -4771,7 +4848,17 @@ This implies that with decay chains:
                     (session.tutorial.name, done, total), '$MG:BOLD')
         for i, step in enumerate(session.tutorial.steps):
             mark = '>' if i == session.index else ('x' if i in session.seen else ' ')
-            logger.info("  %s %2d. %s" % (mark, i + 1, step.title or step.key))
+            note = '   (answers a command in place)' if step.sticky else ''
+            logger.info("  %s %2d. %s%s"
+                        % (mark, i + 1, step.title or step.key, note))
+
+    def print_tutorial_index(self):
+        """`tutorial index`: the numbered steps, and how to go to one."""
+
+        self.print_tutorial_status()
+        if getattr(self, '_tutorial_session', None) is not None:
+            logger.info("'>' is where you are, 'x' what you have seen. "
+                        "'tutorial skip N' goes to step N.")
 
     def ask_tutorial(self, default=None):
         """Menu shown by a bare 'tutorial'.  Returns a name.
@@ -5046,6 +5133,12 @@ This implies that with decay chains:
                 except ValueError:
                     raise self.InvalidCmd("The value of the 'nb_event' option"+\
                                        " must be a number, not %s."%option[1])
+            elif option[0] == '--backend':
+                if option[1] not in process_checks.PRECISION_BACKENDS:
+                    raise self.InvalidCmd("The value of the 'backend' option must be"
+                            " one of %s, not %s." % ('|'.join(process_checks.PRECISION_BACKENDS),
+                                                     option[1]))
+                options['backend'] = option[1]
             elif option[0]=='--split_orders':
                 options['split_orders']=int(option[1])
             elif option[0]=='--helicity':
@@ -6408,7 +6501,10 @@ This implies that with decay chains:
                             # If not all merged components are in this multiparticle,
                             # record the present ones as a per-leg flavor restriction
                             # so diagram generation only allows those specific flavors.
-                            if not all(pdg in self._multiparticles[part_name]
+                            # Completeness is checked per sign: `u d s c d~`
+                            # holds every Q but only one Qx.
+                            sign = 1 if pid > 0 else -1
+                            if not all(sign * pdg in self._multiparticles[part_name]
                                        for pdg in self._curr_model.merged_particles[abs(merged_pdg)]):
                                 if pid not in flavor:
                                     flavor.append(pid)
@@ -7158,6 +7254,7 @@ This implies that with decay chains:
             self._curr_proc_defs = base_objects.ProcessDefinitionList()
             self._curr_matrix_elements = helas_objects.HelasMultiProcess()
             process_checks.store_aloha = []
+            self.advise_neglected_masses()
 
         elif args[0] == 'command':
 
@@ -7177,7 +7274,8 @@ This implies that with decay chains:
             ban = banner_module.Banner(args[1])
             # Check that this is MG5 banner
             if 'mg5proccard' in ban:
-                for line in ban['mg5proccard'].split('\n'):
+                # ProcCard joins the lines older versions wrapped with '\'
+                for line in banner_module.ProcCard(ban['mg5proccard'].split('\n')):
                     if line.startswith('#') or line.startswith('<'):
                         continue
                     self.exec_cmd(line)
@@ -7225,7 +7323,6 @@ This implies that with decay chains:
         for amp in amplitudes:
             mother = [l.get('id') for l in amp['process'].get('legs') \
                                                         if not l.get('state')]
-            misc.sprint(mother)
             if 1 == len(mother):
                 try:
                     decay_table = decay_tables[abs(mother[0])]
@@ -7241,13 +7338,10 @@ This implies that with decay chains:
                              else -x for x in child]
                 child.sort()
                 child.insert(0, len(child))
-                misc.sprint(child)
-                misc.sprint(list(decay_table.keys()))  
                 #check if the decay is present or not:
                 if tuple(child) not in list(decay_table.keys()):
                     if any(id in self._curr_model.get('merged_particles') for id in child):
                         all_keys =[list(k) for k in decay_table.keys()]
-                        misc.sprint(all_keys)
                         for one_key in all_keys:
                             for i,pid in enumerate(one_key):
                                 if i ==0:
@@ -7257,20 +7351,14 @@ This implies that with decay chains:
                                         one_key[i] = mid
                                     if -pid in pdgs:
                                         one_key[i] = -mid
-                        misc.sprint(all_keys)
                         for i,k in enumerate(all_keys):
-                            misc.sprint(k)
                             new_k = list(k[1:])
                             new_k.sort()
                             new_k.insert(0, k[0])
-                            misc.sprint(new_k) 
                             all_keys[i] = tuple(new_k)            
-                        misc.sprint(all_keys)
                         if tuple(child) not in all_keys:
-                            misc.sprint('to rm' , child)
                             to_remove.append(amp)
                     else:
-                        misc.sprint('to rm' , child)
                         to_remove.append(amp)
         def remove_amp(amps, to_remove):
             for amp in amps[:]:
@@ -7281,8 +7369,7 @@ This implies that with decay chains:
                     for decay in amp.get('decay_chains'):
                         remove_amp(decay.get('amplitudes'), to_remove)
         remove_amp(self._curr_amps, to_remove)
-        misc.sprint("Removed %s amplitudes that are not in the decay table" % len(to_remove))
-        misc.sprint("Remaining amplitudes: %s" % len(self._curr_amps))
+        logger.debug("Removed %s amplitudes that are not in the decay table" % len(to_remove))
 
 
     def import_ufo_model(self, model_name):
@@ -7575,6 +7662,45 @@ This implies that with decay chains:
 
         return self._fockstates
 
+    def install_pythia8_main164(self, prefix, config_file, add_options):
+        """Compile main164, the Pythia8 program MadEvent showers with, for both
+        HepMC2 and HepMC3 (installing the HepMC version Pythia8 was not
+        configured with if needed), so that the pythia8_card can pick either
+        with 'HEPMCoutput:format'. Record the HepMC3 installation in hepmc3_path
+        if none is set yet."""
+
+        pythia8_path = self.options['pythia8_path']
+        try:
+            misc.get_pythia8_main164(pythia8_path)
+        except (MadGraph5Error, OSError) as error:
+            logger.warning('Pythia8 is installed but its main164 could not be ' +
+                'compiled, so MadEvent cannot shower with it yet:\n%s' % error)
+            return
+        # the HepMC3 of a Pythia8 built against it (pythia8_hepmc3)
+        if not self.options['hepmc3_path'] and misc.find_hepmc(3, [pjoin(prefix, 'hepmc3')]):
+            self.options['hepmc3_path'] = pjoin(prefix, 'hepmc3')
+            self.exec_cmd('save options %s hepmc3_path' % config_file, printcmd=False, log=False)
+        native = misc.pythia8_hepmc_version(misc.find_pythia8_main164(pythia8_path)[1])
+        if native not in [2, 3]:
+            return
+        other = 5 - native
+        hepmc_tool = 'hepmc3' if other == 3 else 'hepmc'
+        hepmc_dir = pjoin(prefix, hepmc_tool)
+        if not misc.find_hepmc(other, [hepmc_dir]):
+            logger.info('Installing HepMC%d, so that Pythia8 can also write HepMC%d events.'
+                        % (other, other), '$MG:BOLD')
+            try:
+                self.advanced_install(hepmc_tool, additional_options=add_options+['--force'])
+            except self.InvalidCmd as error:
+                logger.warning('Pythia8 will only write HepMC%d events: %s' % (native, error))
+                return
+        try:
+            misc.get_pythia8_main164(pythia8_path, hepmc_version=other,
+                                     hepmc_paths=[hepmc_dir])
+        except (MadGraph5Error, OSError) as error:
+            logger.warning('main164 of Pythia8 could not be compiled for HepMC%d, ' % other +
+                'so that Pythia8 will only write HepMC%d events:\n%s' % (native, error))
+
     def advanced_install(self, tool_to_install,
                                HepToolsInstaller_web_address=None,
                                additional_options=[]):
@@ -7652,21 +7778,6 @@ This implies that with decay chains:
         prefix, config_file = self.heptools_install_target(
                                        self.options['heptools_install_dir'])
 
-        # Add the path of pythia8 if known and the MG5 path
-        if tool=='mg5amc_py8_interface':
-            #add_options.append('--mg5_path=%s'%MG5DIR)
-            # Warn about the soft dependency to gnuplot
-            if misc.which('gnuplot') is None:
-                logger.warning("==========")
-                logger.warning("The optional dependency 'gnuplot' for the tool"+\
-                 " 'mg5amc_py8_interface' was not found. We recommend that you"+\
-                 " install it so as to be able to view the plots related to "+\
-                                                      " merging with Pythia 8.")
-                logger.warning("==========")
-            if self.options['pythia8_path']:
-                add_options.append(
-                               '--with_pythia8=%s'%os.path.abspath(self.options['pythia8_path']))
-
         # Special rules for certain tools
         if tool in ['madanalysis5', 'rivet']:
             add_options.append('--mg5_path=%s'%MG5DIR)
@@ -7683,7 +7794,7 @@ This implies that with decay chains:
                 add_options.append('--with_delphes3=%s'%\
                    os.path.normpath(pjoin(MG5DIR,self.options['delphes_path'])))
 
-        if tool in ['pythia8','eMELA']:
+        if tool in ['pythia8', 'pythia8_hepmc3', 'eMELA']:
             # All what's below is to handle the lhapdf dependency of Pythia8
             lhapdf_config  = misc.which(self.options['lhapdf'])
             lhapdf_version = None
@@ -7799,13 +7910,10 @@ This implies that with decay chains:
             raise self.InvalidCmd("Installation of %s failed."%tool_to_install)
 
         # Post-installation treatment
-        if tool == 'pythia8':
+        if tool in ['pythia8', 'pythia8_hepmc3']:
             self.options['pythia8_path'] = pjoin(prefix,'pythia8')
             self.exec_cmd('save options %s pythia8_path' % config_file, printcmd=False, log=False)
-            # Automatically re-install the mg5amc_py8_interface after a fresh
-            # Pythia8 installation
-            self.advanced_install('mg5amc_py8_interface',
-                              additional_options=add_options+['--force'])          
+            self.install_pythia8_main164(prefix, config_file, add_options)
         elif tool == 'lhapdf6':
                 self.options['lhapdf_py3'] = pjoin(prefix,'lhapdf6_py3','bin', 'lhapdf-config')
                 self.exec_cmd('save options %s lhapdf_py3' % config_file)
@@ -7819,13 +7927,6 @@ This implies that with decay chains:
         elif tool == 'madanalysis5':
             self.options['madanalysis5_path'] = pjoin(prefix, 'madanalysis5','madanalysis5')
             self.exec_cmd('save options madanalysis5_path', printcmd=False, log=False)
-        elif tool == 'mg5amc_py8_interface':
-            # At this stage, pythia is guaranteed to be installed
-            if self.options['pythia8_path'] in ['',None,'None']:
-                self.options['pythia8_path'] = pjoin(prefix,'pythia8')
-            self.options['mg5amc_py8_interface_path'] = pjoin(prefix, 'MG5aMC_PY8_interface')
-            self.exec_cmd('save options %s mg5amc_py8_interface_path' % config_file, 
-                                                            printcmd=False, log=False)      
         elif tool == 'collier':
             self.options['collier'] = pjoin(prefix,'lib')
             self.exec_cmd('save options %s collier' % config_file, printcmd=False, log=False)      
@@ -7942,7 +8043,6 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
                           'lhapdf6':['arXiv:1412.7420'],
                           'lhapdf5':['arXiv:0605240'],
                           'hepmc':['CPC 134 (2001) 41-46'],
-                          'mg5amc_py8_interface':['arXiv:1410.3012','arXiv:XXXX.YYYYY'],
                           'ninja':['arXiv:1203.0291','arXiv:1403.1229','arXiv:1604.01363'],
                           'MadAnalysis5':['arXiv:1206.1599'],
                           'collier':['arXiv:1604.06792'],
@@ -8092,15 +8192,18 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
             # Now launch the advanced installation of the tool args[0]
             # path['HEPToolsInstaller'] is the online adress where to downlaod
             # the installers if necessary.
-            # Specify the path of the MG5_aMC_interface
-            MG5aMC_PY8_interface_path = path['MG5aMC_PY8_interface'] if \
-                                        'MG5aMC_PY8_interface' in path else 'NA'
-            add_options.append('--mg5amc_py8_interface_tarball=%s'%\
-                                                   MG5aMC_PY8_interface_path)
             add_options.extend(install_options['options_for_HEPToolsInstaller'])
             if not any(opt.startswith('--logging=') for opt in add_options):
                 add_options.append('--logging=%d' % logger.level)
-                
+            # Pythia8 is built against HepMC3 (the HepMC2 version of its main164
+            # is compiled afterwards), unless --hepmc2 asks for the HepMC2 build.
+            if name == 'pythia8':
+                if '--hepmc2' in add_options:
+                    add_options.remove('--hepmc2')
+                else:
+                    name = 'pythia8_hepmc3'
+                    add_options = [opt.replace('--pythia8_tarball=', '--pythia8_hepmc3_tarball=')
+                                   for opt in add_options]
 
             return self.advanced_install(name, path['HEPToolsInstaller'],
                                         additional_options = add_options)
@@ -8733,8 +8836,6 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                 fsock.write("version_nb   %s\n" % fail)
             fsock.write("last_check   %s\n" % int(time.time()))
             fsock.close()
-            logger.info('Refreshing installation of MG5aMC_PY8_interface.')
-            self.do_install('mg5amc_py8_interface',additional_options=['--force'])
             logger.info('Checking current version. (type ctrl-c to bypass the check)')
             subprocess.call([os.path.join('tests','test_manager.py')],
                                                                   cwd=MG5DIR)            
@@ -8787,15 +8888,22 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
 
         if not os.path.exists(config_path):
             files.cp(pjoin(MG5DIR,'input',misc.CONFIG_TEMPLATE_NAME), config_path)
-        if not os.path.exists(pjoin(MG5DIR,'input','default_run_card_lo.dat')) and madgraph.ReadWrite:
-            files.cp(pjoin(MG5DIR,'input','.default_run_card_lo.dat'), pjoin(MG5DIR,'input','default_run_card_lo.dat'))
-            files.cp(pjoin(MG5DIR,'input','.default_run_card_nlo.dat'), pjoin(MG5DIR,'input','default_run_card_nlo.dat'))
-            files.cp(pjoin(MG5DIR,'input','.default_run_card_mg7.toml'), pjoin(MG5DIR,'input','default_run_card_mg7.toml'))
+        if madgraph.ReadWrite:
+            # user-editable default files: run_card defaults (LO/NLO/mg7) and
+            # the launch switch defaults. Each is materialised from its own
+            # '.'-prefixed template, and checked on its own: a user who has an
+            # old installation carrying only some of them still gets the rest.
+            for name in ('default_run_card_lo.dat', 'default_run_card_nlo.dat',
+                         'default_run_card_mg7.toml', 'default_switch.txt'):
+                target = pjoin(MG5DIR, 'input', name)
+                template = pjoin(MG5DIR, 'input', '.%s' % name)
+                if not os.path.exists(target) and os.path.exists(template):
+                    files.cp(template, target)
 
         config_file = open(config_path)
 
         # read the file and extract information
-        logger.info('load MG5 configuration from %s ' % config_file.name)
+        logger.info('load MG7 configuration from %s ' % config_file.name)
         for line in config_file:
             if '#' in line:
                 line = line.split('#',1)[0]
@@ -8829,7 +8937,7 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
         # try absolute and relative path
         for key in self.options:
             if key in ['pythia8_path', 'hwpp_path', 'thepeg_path', 'hepmc_path',
-                       'mg5amc_py8_interface_path','madanalysis5_path']:
+                       'hepmc3_path', 'madanalysis5_path']:
                 if self.options[key] in ['None', None]:
                     self.options[key] = None 
                     continue
@@ -8838,12 +8946,6 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                 if key == 'pythia8_path' and not os.path.isfile(pjoin(MG5DIR, path, 'include', 'Pythia8', 'Pythia.h')):
                     if not os.path.isfile(pjoin(path,  'include', 'Pythia8', 'Pythia.h')):
                         self.options['pythia8_path'] = None
-                    else:
-                        continue
-                #this is for mg5amc_py8_interface_path
-                if key == 'mg5amc_py8_interface_path' and not os.path.isfile(pjoin(MG5DIR, path, 'MG5aMC_PY8_interface')):
-                    if not os.path.isfile(pjoin(path, 'MG5aMC_PY8_interface')):
-                        self.options['mg5amc_py8_interface_path'] = None
                     else:
                         continue
                 #this is for madanalysis5
@@ -8874,6 +8976,12 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                 elif key == 'hepmc_path' and not os.path.isfile(pjoin(MG5DIR, path, 'include', 'HepMC', 'HEPEVT_Wrapper.h')):
                     if not os.path.isfile(pjoin(path, 'include', 'HepMC', 'HEPEVT_Wrapper.h')):
                         self.options['hepmc_path'] = None
+                    else:
+                        continue
+                # this is for hepmc3 (hepmc_path being the HepMC2 installation)
+                elif key == 'hepmc3_path' and not os.path.isfile(pjoin(MG5DIR, path, 'include', 'HepMC3', 'GenEvent.h')):
+                    if not os.path.isfile(pjoin(path, 'include', 'HepMC3', 'GenEvent.h')):
+                        self.options['hepmc3_path'] = None
                     else:
                         continue
 
@@ -8948,10 +9056,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 else:
                     if key in self.options_madgraph:
                         self.history.append('set %s %s' % (key, self.options[key]))
-        
-        warnings = madevent_interface.MadEventCmd.mg5amc_py8_interface_consistency_warning(self.options)
-        if warnings:
-            logger.warning(warnings)
 
         # Configure the way to open a file:
         launch_ext.open_file.configure(self.options)
@@ -9037,14 +9141,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             return
 
         if args[0] == 'standalone':
-            class ext_program:
-                @staticmethod
-                def run():
-                    os.chdir(args[1])
-                    try:
-                        subprocess.run(os.path.join("bin", "generate_events"))
-                    except KeyboardInterrupt:
-                        pass
+            ext_program = launch_ext.MadMatrixLauncher(self, args[1],
+                                                options=self.options, **options)
 
         elif args[0].startswith('standalone'):
             if os.path.isfile(os.path.join(os.getcwd(),args[1],'Cards',\
@@ -9104,7 +9202,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     ME = amcatnlo_run.aMCatNLOCmd(me_dir=args[1],options=self.options)
                     ME.pass_in_web_mode()
                 # transfer interactive configuration
-                config_line = [l for l in self.history if l.strip().startswith('set')]
+                config_line = [l for l in self.history if l.strip().startswith('set')
+                               and not cmd.is_question_answer(l)]
                 for line in config_line:
                     ME.exec_cmd(line)
                 stop = self.define_child_cmd_interface(ME)
@@ -9120,7 +9219,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 else:
                     MW = madweight_interface.MadWeightCmd(me_dir=args[1],options=self.options)
                 # transfer interactive configuration
-                config_line = [l for l in self.history if l.strip().startswith('set')]
+                config_line = [l for l in self.history if l.strip().startswith('set')
+                               and not cmd.is_question_answer(l)]
                 for line in config_line:
                     MW.exec_cmd(line)
                 stop = self.define_child_cmd_interface(MW)                
@@ -9241,6 +9341,77 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
         shutil.move(pjoin(MG5DIR,'RunningCoupling'), pjoin(MG5DIR,'Template', 'Running'))
 
+    # Masses that a generation almost never wants. The light quarks are
+    # massless in every flavour scheme customize_model offers, and an electron
+    # or a muon mass buys nothing at collider energies. c, b and tau are left
+    # out on purpose: a massive b (the 4F scheme) or tau is a deliberate and
+    # very common choice, and this must not nag about it.
+    NEGLECTED_MASSES = [1, 2, 3, 11, 13]
+    # the model the advice below has already been given for.  MG7 re-imports
+    # the model behind the user's back -- 'set gauge', 'set
+    # complex_mass_scheme', and 'check gauge' four times over -- and each one
+    # comes through do_import, so without this the same paragraph is printed
+    # five times for one command.
+    _advised_masses_for = None
+
+    def advise_neglected_masses(self):
+        """Point at customize_model when the model keeps a light fermion mass.
+
+        A non-zero mass for u, d, s, e or mu costs something in every process
+        those particles appear in: the Yukawa vertices they enable bring extra
+        diagrams, and the helicity configurations which vanish for a massless
+        fermion stop vanishing. At collider energies the mass itself is
+        negligible, so that is a price paid for nothing, and no restriction has
+        to ship with the model for the user to drop it: the flavour and lepton
+        mass schemes are generic options of customize_model.
+
+        Said once per model: every re-import of the same one is MG7 rebuilding
+        it for a gauge or a scheme, and repeating the paragraph there is noise.
+
+        Informative only. A model may well mean those masses -- a low-energy
+        process, a Yukawa-sensitive one -- so this says what is there and what
+        can be done about it, and decides nothing.
+        """
+
+        model = self._curr_model
+        if not model:
+            return
+        try:
+            # said once per model: a re-import of the one in front of the user
+            # is MG7 rebuilding it, not a new model to comment on
+            identity = (model.get('name'), model.get('modelpath'))
+        except Exception:
+            identity = None
+        if identity is not None and identity == self._advised_masses_for:
+            return
+        self._advised_masses_for = identity
+
+        try:
+            massive = [pdg for pdg in self.NEGLECTED_MASSES
+                       if build_restrict_lib.is_massive(model, pdg)
+                       and build_restrict_lib.can_be_massive(model, pdg)]
+        except Exception:
+            # an informative message is never a reason to fail an import
+            return
+        if not massive:
+            return
+
+        names = ', '.join(build_restrict_lib.PARTICLE_NAME[pdg]
+                          for pdg in massive)
+        options = []
+        if any(pdg in build_restrict_lib.LIGHT_QUARKS for pdg in massive):
+            options.append("'flavour scheme'")
+        if any(pdg in build_restrict_lib.LEPTONS for pdg in massive):
+            options.append("'nb of massive leptons'")
+        logger.info("This model keeps a non-zero mass for %s. Such a mass is "
+            "negligible at collider energies but not free: it brings in the "
+            "Yukawa vertices of those particles and the helicity "
+            "configurations which would otherwise vanish, in every process "
+            "they appear in.\n  'customize_model' sets them to zero (option%s "
+            "%s), and 'customize_model --save=NAME' keeps the result as a "
+            "restriction you can import later.",
+            names, '' if len(options) == 1 else 's', ' and '.join(options))
+
     def get_customize_categories(self, model, reference_model):
         """the list of the options proposed by customize_model for a given
         model: the generic (model independent) ones and, on top of them, the
@@ -9311,6 +9482,21 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 options.append([])
             options[-1].append(rule)
         return options
+
+    @staticmethod
+    def get_loaded_restriction_card(model):
+        """The restriction card `model` was loaded with, parsed -- None when it
+        was loaded without one, or the card is not on disk anymore."""
+
+        card = getattr(model, 'restrict_card', None)
+        if isinstance(card, check_param_card.ParamCard):
+            return card
+        if isinstance(card, str) and os.path.isfile(card):
+            try:
+                return check_param_card.ParamCard(card)
+            except Exception:
+                return None
+        return None
 
     @staticmethod
     def get_reference_name(model):
@@ -10022,9 +10208,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
         name = ([a.split('=', 1)[1] for a in args if a.startswith('--save=')]
                                                                       + [None])[0]
-        # the last --explain given wins, None if there is none
-        explain = ([None] + [parse_explain_mode(a) for a in args
-                             if parse_explain_mode(a)])[-1]
+        explain = resolve_explain_mode(args)
         full = '--all' in args
         model_path = self._curr_model.get('modelpath')
         # the model as currently loaded: only used to know which of the generic
@@ -10063,9 +10247,18 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             explainer = RestrictionExplainer(self, model_path, baseline,
                                              externals, categories)
 
+        # the question starts from the restriction the model was loaded with:
+        # without it, what that restriction had fixed -- zeros, ones, merged
+        # parameters -- came back at its UFO value, so customizing
+        # SMEFTatNLO-NLO silently switched operators, masses and widths back on
         ask_instance = self.ask('', '0', [], ask_class=AskforCustomize,
                                 categories=categories, explainer=explainer,
-                                baseline_card=baseline, return_instance=True)[1]
+                                baseline_card=baseline,
+                                loaded_card=self.get_loaded_restriction_card(
+                                                            reference_model),
+                                loaded_name=self.get_reference_name(
+                                                            reference_model),
+                                return_instance=True)[1]
 
         set_zero = ask_instance.set_zero
         set_one = ask_instance.set_one
@@ -11140,6 +11333,26 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         
         self.options[args[0]] = args[1]
 
+    def set2_plain(self, args, log=True):
+        """Enable/Disable coloured output (equivalent to ./bin/madgraph --plain).
+        Example: set plain True
+        or: set plain False [Default]
+        """
+        args = ['plain'] + args
+        self.check_set(args)
+        if args[1] not in ['None', 'True', 'False']:
+            raise self.InvalidCmd('expected bool for plain')
+        self.options[args[0]] = eval(args[1])
+
+        if self.options['plain']:
+            os.environ['MG7_NO_COLOR'] = '1'
+            coloring_logging.NO_COLOR = True
+            self.prompt = MG7_PROMPT_TEXT
+        else:
+            os.environ.pop('MG7_NO_COLOR', None)
+            coloring_logging.NO_COLOR = False
+            self.prompt = MG7_PROMPT
+
     def set2_notification_center(self, args, log=True):
         """Enable/Disable the notification center (on desktop ubuntu/mac).
         Example: set notification_center True
@@ -11509,8 +11722,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 # not documented options:
 #   	            	contur_path         
 #delphes_path             	eps_viewer               	exrootanalysis_path
-#hepmc_path               	hwpp_path                	
-#mg5amc_py8_interface_path
+#hepmc_path               	hepmc3_path              	hwpp_path
 #pineappl                 	pythia-pgs_path          	pythia8_path
 #rivet_path               	                 	syscalc_path
 #thepeg_path              	yoda_path
@@ -11826,7 +12038,13 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # catch output dir
             output = [d for d in args if d.startswith('--output=')]
             if not output:
-                output = import_ufo.find_ufo_path(self._curr_model['name'])
+                # the model name can carry a restriction suffix and says
+                # nothing about where the model lives, so ask the model
+                # itself for the directory it was imported from.
+                try:
+                    output = self._curr_model.get('modelpath')
+                except Exception:
+                    output = import_ufo.find_ufo_path(self._curr_model['name'])
                 output = pjoin(output, format)
                 if not os.path.isdir(output):
                     os.mkdir(output)
@@ -11839,7 +12057,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             names = [d for d in args if not d.startswith('-')]
             wanted_lorentz = aloha_fct.guess_routine_from_name(names)
             # Create and write ALOHA Routine
-            aloha_model = create_aloha.AbstractALOHAModel(self._curr_model.get('name'))
+            aloha_model = create_aloha.AbstractALOHAModel.from_model(self._curr_model)
             aloha_model.add_Lorentz_object(self._curr_model.get('lorentz'))
             if wanted_lorentz:
                 aloha_model.compute_subset(wanted_lorentz)
@@ -12490,7 +12708,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # Create configuration file [path to executable] for amcatnlo
             filename = os.path.join(self._export_dir, 'Cards', 'amcatnlo_configuration.txt')
             opts_to_keep = ['lhapdf', 'fastjet', 'pythia8_path', 'hwpp_path', 'thepeg_path', 
-                                                                    'hepmc_path', 'eMELA']
+                                                     'hepmc_path', 'hepmc3_path', 'eMELA']
             to_keep = {}
             for opt in opts_to_keep:
                 if self.options[opt]:
@@ -12622,6 +12840,12 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 last_action_2 = 'none'
 
 
+
+    def get_model(self):
+        """the model of the current session. The card question of `launch` on
+        a standalone output calls this (via update_dependent) on its mother
+        interface, as it calls MadEventCmd.get_model for madevent."""
+        return self._curr_model
 
     # Calculate decay width
     def do_compute_widths(self, line, model=None, do2body=True, decaymodel=None):
@@ -13313,6 +13537,12 @@ class AskforCustomize(cmd.SmartQuestion):
         self.default_values = {}        # (lhablock, lhacode) -> value
         # customize_model --explain: report each command as it is entered
         self.explainer = opt.pop('explainer', None)
+        # the restriction the model was loaded with is where the question
+        # starts: its zeros, ones and merged parameters as rules, so that
+        # `done` rebuilds that very model and `set NAME free` releases one
+        self.loaded_restriction = None
+        self.start_from_restriction(opt.pop('loaded_card', None),
+                                    opt.pop('loaded_name', None))
 
         question = self.get_question()
         # determine the possible value and how they are linked to the restriction
@@ -13373,10 +13603,10 @@ class AskforCustomize(cmd.SmartQuestion):
 
         return self.all_categories
 
-    def reask(self, reprint_opt=True):
+    def reask(self, reprint_opt=True, line=None):
         """ """
         reprint_opt = True
-        cmd.SmartQuestion.reask(self, reprint_opt)
+        cmd.SmartQuestion.reask(self, reprint_opt, line=line)
 
     def do_set(self, line):
         """set one of the options of the question, or -when the first argument
@@ -13518,14 +13748,20 @@ class AskforCustomize(cmd.SmartQuestion):
             value = value[1:]
         if len(value) != 1:
             logger.warning('Invalid set command. For a parameter the syntax is:'
-                ' set NAME 0 / set NAME 1 / set NAME = OTHERNAME (NAME can be '
-                '\'BLOCK all\' for the 0 and 1 forms)')
+                ' set NAME 0 / set NAME 1 / set NAME = OTHERNAME / set NAME '
+                'free (NAME can be \'BLOCK all\' for the 0, 1 and free forms)')
             return
         value = value[0]
         if value == '0':
             self.apply_restriction(keys, 0)
         elif value == '1':
             self.apply_restriction(keys, 1)
+        elif value.lower() == 'free':
+            # back to the value it starts from: undoes one rule, where `clear`
+            # would undo every one of them
+            for key in keys:
+                self.forget_parameter(key)
+            self.explain_change()
         elif value.lower() in self.external_params:
             if len(keys) > 1:
                 logger.warning('A whole block can only be set to 0 or to 1, '
@@ -13533,9 +13769,9 @@ class AskforCustomize(cmd.SmartQuestion):
                 return
             self.do_set_equal('%s %s' % (args[0], value))
         else:
-            logger.warning('%s can only be set to 0, to 1 or to the value of '
-                'another external parameter (\'%s\' is not one of them).',
-                args[0], value)
+            logger.warning('%s can only be set to 0, to 1, to the value of '
+                'another external parameter, or free (\'%s\' is none of '
+                'them).', args[0], value)
 
     #===========================================================================
     # customization of a single parameter/coupling
@@ -13736,6 +13972,56 @@ class AskforCustomize(cmd.SmartQuestion):
             # informative only: a failure here must not stop the customization
             logger.warning('Could not report the effect of that command: %s',
                            error)
+
+    def start_from_restriction(self, card, name=None):
+        """Fill the rules with what the restriction card `card` does.
+
+        Mirrors what the restriction itself does to a card
+        (detect_special_parameters / detect_identical_parameters): a parameter
+        at 0 or 1 is fixed there, and parameters of the same block sharing a
+        value are merged.  Parameters an option of the question already covers
+        -- a massless b, a diagonal CKM -- are left to that option, so they are
+        not listed twice.  Two parameters merged with opposite signs cannot be
+        written as `set A = B`: they are left free.
+        """
+
+        if card is None:
+            return
+        by_lha = dict(((param.lhablock.lower(), tuple(param.lhacode)),
+                       (param.lhablock, tuple(param.lhacode)))
+                      for param in self.external_params.values())
+        covered = set()
+        for category in self.all_categories:
+            for option in category:
+                for lhablock, lhacode, _ in option.get_rules():
+                    if not isinstance(lhacode, (list, tuple)):
+                        lhacode = [lhacode]
+                    covered.add((lhablock.lower(), tuple(lhacode)))
+
+        zeros, ones, groups = [], [], {}
+        for block in card:
+            if block.startswith(('qnumbers', 'decay_table')) or 'info' in block:
+                continue
+            for param in card[block]:
+                lha = (block.lower(), tuple(param.lhacode))
+                if lha not in by_lha or lha in covered:
+                    continue
+                try:
+                    value = float(param.value)
+                except (TypeError, ValueError):
+                    continue # an 'auto' width
+                if value == 0.:
+                    zeros.append(by_lha[lha])
+                elif value == 1.:
+                    ones.append(by_lha[lha])
+                elif block.lower() != 'decay': # widths are never merged
+                    groups.setdefault((block.lower(), value), []).append(
+                                                                  by_lha[lha])
+        equal = [(key, keys[0]) for keys in groups.values() if len(keys) > 1
+                 for key in keys[1:]]
+        if zeros or ones or equal:
+            self.set_zero, self.set_one, self.set_equal = zeros, ones, equal
+            self.loaded_restriction = name or 'the loaded one'
 
     def forget_parameter(self, param):
         """remove any previous customization of a given parameter"""
@@ -14049,6 +14335,10 @@ class AskforCustomize(cmd.SmartQuestion):
         for name, expr in self.new_coupling:
             current.append('    %s = %s' % (name, expr))
         question += 'parameter/coupling modifications (use set_zero/set_one):\n'
+        if self.loaded_restriction:
+            question += ('    (starting from %s, the restriction the model was '
+                         'loaded with:\n     \'set NAME free\' releases one, '
+                         '\'clear\' all of them)\n' % self.loaded_restriction)
         if current:
             question += '\n'.join(current) + '\n'
         else:

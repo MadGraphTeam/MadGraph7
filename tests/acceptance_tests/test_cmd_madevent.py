@@ -14,6 +14,7 @@
 ################################################################################
 from __future__ import division
 from __future__ import absolute_import
+import collections
 import subprocess
 import unittest
 import json
@@ -512,6 +513,121 @@ class TestMECmdShell(unittest.TestCase):
         self.do('launch -f')
         
         self.check_parton_output('run_02_decayed_1', 100)           
+        
+    def _setup_madspin_ww_wz(self, *card_lines):
+        """p p > w+ w- plus p p > w+ z, decayed by madspin_v1.
+
+        The two productions have different total branching ratios -- W+W-
+        0.67 x 0.22, W+Z 0.67 x 0.07 -- so add_loose_decay gives W+Z a null
+        decay (decay_struct None) for the events that must be dropped. Both
+        are quark-initiated, so all_ME is keyed by flavour-grouped tags
+        ((-81, 81), (-24, 24)), and every decay product is a merged class
+        (j, l, vl)."""
+        self.out_dir = self.run_dir
+        self.generate(['p p > w+ w-', 'p p > w+ z'], 'sm')
+        with open(pjoin(self.out_dir, 'Cards', 'madspin_card.dat'), 'w') as ff:
+            for line in card_lines + ('set spinmode madspin_v1',
+                                      'set seed 11',
+                                      'decay w+ > j j',
+                                      'decay w- > l- vl~',
+                                      'decay z > l+ l-',
+                                      'launch'):
+                ff.write(line + '\n')
+        run_card = banner.RunCardLO(pjoin(self.out_dir, 'Cards', 'run_card.dat'))
+        run_card.set('nevents', 300)
+        run_card.set('use_syst', False)
+        run_card.write(pjoin(self.out_dir, 'Cards', 'run_card.dat'))
+
+    def _check_madspin_ww_wz(self, run):
+        """The decayed events of `run` (see _setup_madspin_ww_wz): flavour
+        consistent decays, no merged PDG code, and the null decay applied to
+        W+Z only."""
+        allowed = {24: [{2, -1}, {4, -3}], -24: [{11, -12}, {13, -14}],
+                   23: [{11, -11}, {13, -13}]}
+        def production(event):
+            return tuple(sorted(p.pid for p in event
+                                if p.status in (1, 2) and p.mother1
+                                and p.mother1.status == -1))
+
+        undecayed = collections.Counter(
+            production(e) for e in lhe_parser.EventFile(pjoin(
+                self.out_dir, 'Events', run, 'unweighted_events.lhe.gz')))
+        decayed = pjoin(self.out_dir, 'Events', run + '_decayed_1',
+                        'unweighted_events.lhe.gz')
+        # madevent logs a MadSpin crash and carries on: say so here
+        self.assertTrue(os.path.exists(decayed),
+                        'MadSpin wrote no decayed events for %s' % run)
+        written = collections.Counter()
+        for event in lhe_parser.EventFile(decayed):
+            written[production(event)] += 1
+            for p in event:
+                self.assertFalse(80 < abs(p.pid) < 90,
+                                 'merged PDG code %s written' % p.pid)
+                if p.pid in allowed:
+                    daughters = {d.pid for d in event if d.mother1 is p}
+                    self.assertIn(daughters, allowed[p.pid])
+        ww, wz = (-24, 24), (23, 24)
+        self.assertEqual(set(undecayed), {ww, wz})
+        # the larger total BR: every W+W- event is written
+        self.assertEqual(written[ww], undecayed[ww])
+        # the smaller one: kept with probability 0.07/0.22, so some but
+        # not all of the ~50 W+Z events (0 kept: ~1e-8)
+        self.assertGreater(written[wz], 0)
+        self.assertLess(written[wz], undecayed[wz])
+
+    def test_madspin_gridpack_unequal_br(self):
+        """Reuse an ms_dir in madspin_v1 mode, down to the decayed events.
+
+        Saving madspin.pkl used to crash on the null decay of W+Z
+        (switch_all_model_instance iterated its decay_struct, None). The
+        second launch reuses the directory: run_from_pickle used to restore
+        no model, so the production tags were looked up unmerged,
+        ((-2, 2), (-24, 24)), and load_event died with a KeyError.
+        """
+        ms_dir = pjoin(self.run_dir, 'MSDIR')
+        self._setup_madspin_ww_wz('set ms_dir %s' % ms_dir)
+
+        # build the directory
+        self.do('launch -f')
+        pkl = pjoin(ms_dir, 'madspin.pkl')
+        self.assertTrue(os.path.exists(pkl),
+                        'the first launch did not build the ms_dir')
+        built = os.stat(pkl).st_mtime_ns
+
+        # reuse it on a new sample
+        self.do('launch -f')
+        self.assertEqual(os.stat(pkl).st_mtime_ns, built,
+                         'the second launch should reuse madspin.pkl')
+
+        for run in ('run_01', 'run_02'):
+            self._check_madspin_ww_wz(run)
+
+    def test_madspin_use_old_dir(self):
+        """use_old_dir reruns madspin_v1 on the matrix elements the previous
+        run left in the same directory (production_me/all_ME.pkl).
+
+        That file is written by save_status_to_pickle: all_decay and the
+        decay structures as their repr, no model. The reload took it as it
+        was -- all_decay a string, the decay branches plain dicts, the tags
+        unmerged -- and a successful run deleted production_me anyway, so
+        there was nothing to reload in the first place.
+        """
+        self._setup_madspin_ww_wz('set use_old_dir True')
+
+        self.do('launch -f')
+        # MadSpin works in the process directory (the events are in Events/)
+        pkl = pjoin(self.out_dir, 'production_me', 'all_ME.pkl')
+        self.assertTrue(os.path.exists(pkl),
+                        'the first launch did not keep production_me')
+        built = os.stat(pkl).st_mtime_ns
+
+        self.do('launch -f')
+        # a reload that fails falls back to regenerating, which rewrites it
+        self.assertEqual(os.stat(pkl).st_mtime_ns, built,
+                         'the second launch should reload all_ME.pkl')
+
+        for run in ('run_01', 'run_02'):
+            self._check_madspin_ww_wz(run)
         
         
     def test_width_computation(self):
@@ -1237,10 +1353,13 @@ class TestMECmdShell(unittest.TestCase):
             switch_lines=None,
             toml_edits=[(r'\npdf = \[[^\]]*\]', '\npdf = %s' % pdf_entry),
                         # one histogram, to get the event-sample histograms
-                        # with their variation bands in info.json
-                        (r'\[histograms\]\n',
+                        # with their variation bands in info.json. The whole
+                        # section is replaced, not appended to: the output
+                        # writes process-specific defaults there (sqrt_s among
+                        # them), and a second sqrt_s.min is a TOML error.
+                        (r'\[histograms\]\n(?:(?!\[).*\n)*',
                          '[histograms]\nsqrt_s.min = 0.0\nsqrt_s.max = 2000.0\n'
-                         'sqrt_s.bin_count = 10\n')],
+                         'sqrt_s.bin_count = 10\n\n')],
             events=100)
 
         lhe_path = pjoin(run, 'events.lhe')
@@ -1562,6 +1681,11 @@ class TestMECmdShell(unittest.TestCase):
             'gridpack names backend %r but ships no matching library: %s'
             % (backend, os.listdir(libdir)))
 
+        # the launch wrote npy events (the mg7 default), but a gridpack feeds
+        # a shower/detector chain: its card has to default to LHE
+        self.assertRegex(card, r'(?m)^output_format\s*=\s*"lhe"',
+                         'the gridpack card does not default to LHE')
+
         # and it has to run
         gplog = pjoin(self.run_dir, 'mg7_gridpack_run.log')
         ret = subprocess.call(
@@ -1570,9 +1694,18 @@ class TestMECmdShell(unittest.TestCase):
             cwd=gridpack, env=env,
             stdout=open(gplog, 'w'), stderr=subprocess.STDOUT)
         self.assertEqual(ret, 0, 'mg7 gridpack run failed (see %s)' % gplog)
-        self.assertTrue(
-            glob.glob(pjoin(gridpack, 'Events', '*', 'events.lhe*')),
-            'gridpack run produced no events (see %s)' % gplog)
+        lhe = glob.glob(pjoin(gridpack, 'Events', '*', 'events.lhe.gz'))
+        self.assertTrue(lhe, 'gridpack run produced no LHE events (see %s)' % gplog)
+        # and its LHE header has to be complete: the cards, the beams and the
+        # cross section of this gridpack run, not an empty <init> block
+        import gzip as _gzip
+        with _gzip.open(lhe[0], 'rt') as stream:
+            header = stream.read().split('<event>', 1)[0]
+        for block in ('<MG5ProcCard>', '<slha>', '<MG7RunCard>', '<MG7Seed>'):
+            self.assertIn(block, header)
+        init = header.split('<init>', 1)[1].split('</init>', 1)[0].split()
+        self.assertEqual(init[:2], ['-11', '11'])
+        self.assertGreater(float(init[10]), 0., 'no cross section in <init>')
         # and it has to reweight: without a nominal alpha_s grid the gridpack
         # either crashed or dropped the weights it was configured to write.
         self.assertTrue(
@@ -2144,7 +2277,10 @@ class TestMECmdShell(unittest.TestCase):
         
         #target = 0.003795
         target =0.003837 # value from v3.7.2 for 250k events
-        self.assertTrue(abs(val1 - target) / err1 < 2., 'large difference between %s and %s +- %s (%s sigma)'%
+        # a single sample against a fixed reference: a 2 sigma window fails ~5%
+        # of the random sequences, so any change of the event generation (not of
+        # the cross-section) can trip it; 3 sigma keeps the check meaningful
+        self.assertTrue(abs(val1 - target) / err1 < 3., 'large difference between %s and %s +- %s (%s sigma)'%
                         (target, val1, err1, abs(val1 - target) / err1))
 
 
@@ -2456,13 +2592,14 @@ C
         #target = 166.36114 # value used as reference before changing sde_strategy
         # previously PDF was nn23lo1 (lhaid 230000) with this reference value
         # 165.84 (a 100k run, +- 0.05)
-        # NNPDF40_lo_as_01180: 124.4459 +- 0.1349 from a single 10k CI run --
-        # the dev machine cannot run this (its lhapdf python module is broken),
-        # so unlike the old number this one is NOT a 100k measurement and the
-        # 1-sigma tolerance below is correspondingly tight.
-        target = 124.45
-        self.assertTrue(abs(val1 - target) / err1 < 1., 'large difference between %s and %s +- %s'%
-                        (target, val1, err1))
+        # NNPDF40_lo_as_01180: 124.39 +- 0.033 from two 100k runs (124.389 and
+        # 124.395 +- 0.046, with and without the last-iteration normalisation of
+        # the reported cross-section); the former target 124.45 was a single 10k
+        # run. A 10k run is compared within 3 sigma (its error combined with
+        # the target's): 1 sigma fails a third of unbiased runs.
+        target, target_err = 124.39, 0.033
+        self.assertTrue(abs(val1 - target) / math.sqrt(err1**2 + target_err**2) < 3.,
+                        'large difference between %s and %s +- %s'% (target, val1, err1))
 
         
         # edit run_card -> fix scale
@@ -2475,10 +2612,11 @@ C
         err1 = self.cmd_line.results.current['error']
         # previously PDF was nn23lo1 (lhaid 230000) with this reference value
         # 165.71 (a 100k run, +- 0.06)
-        # NNPDF40_lo_as_01180: 124.3625 +- 0.1355 from a single 10k CI run
-        target = 124.36
-        self.assertTrue(abs(val1 - target) / err1 < 1., 'large difference between %s and %s +- %s'%
-                        (target, val1, err1))
+        # NNPDF40_lo_as_01180: 124.37 +- 0.033 from two 100k runs (124.377 and
+        # 124.367 +- 0.047); the former target 124.36 was a single 10k run
+        target, target_err = 124.37, 0.033
+        self.assertTrue(abs(val1 - target) / math.sqrt(err1**2 + target_err**2) < 3.,
+                        'large difference between %s and %s +- %s'% (target, val1, err1))
 
 
 
@@ -2708,6 +2846,56 @@ C
         target = 40.3 # fixed scale mz
 
         self.assertAlmostEqual(cross, 40.3, delta=max(1.0, 5 * error))
+
+    def test_decay_1to3_mg7(self):
+        """mg7 partial width of a 1 -> 3 decay: t > b e+ ve.
+
+        A process with one incoming particle is the special case of the mg7
+        chain, and it went unnoticed because the madevent fallback is what runs
+        without madspace:
+          - the default [histograms] are scaled by the mass of the decaying
+            particle, which used to be read from a 'parameter_dict' that only
+            a ModelReader has (a LoopModel crashed `output`);
+          - madspace's observables take the first two momenta to be the beams,
+            so the first decay product (the b here) dropped out of every
+            selection, and `z > mu+ mu-` asking for lepton_2 crashed the run.
+        So on top of the width (madevent: 0.1636 +- 0.0002 GeV, i.e.
+        Gamma(t > b w+) x BR(w+ > e+ ve)) the default histograms are checked:
+        no sqrt_s (madspace's adds up two beams), every momentum histogram
+        filled with the full width, and the e+ ve pair mass peaking at MW.
+        Self-skips where the mg7 runtime stack is unavailable.
+        """
+        import glob, json
+        datadir = _mg7_datadir_or_skip(self)
+        run_dir = pjoin(self.path, 'MG7_t_decay')
+        width, error = _run_mg7_xsec(self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate t > b e+ ve'],
+            run_dir, datadir)
+        self.assertAlmostEqual(width, 0.1636, delta=max(0.002, 5 * error))
+
+        info = json.load(open(sorted(glob.glob(
+            pjoin(run_dir, 'Events', '*', 'info.json')))[-1]))
+        hists = dict((h['name'], h) for h in info['event_histograms'])
+        self.assertNotIn('sqrt_s', list(hists))
+        momentum = [name for name in hists if name != 'weight']
+        for group in ('bottom', 'lepton', 'missing'):
+            self.assertIn('%s-pt' % group, momentum)
+        for name in momentum:
+            values = hists[name]['bin_values']
+            # the decay products of a 173 GeV top fit in the ranges, which
+            # are built from the top mass: nothing in under- or overflow
+            self.assertAlmostEqual(sum(values[1:-1]), width,
+                                   delta=0.01 * width, msg=name)
+            if name.endswith('-pt'):
+                # a particle left out of the selection is histogrammed at 0
+                self.assertLess(values[1], 0.5 * width, msg=name)
+        mll = hists['lepton-missing-pair_mass']
+        bin_width = (mll['max'] - mll['min']) / mll['bin_count']
+        peak = mll['bin_values'].index(max(mll['bin_values'])) - 1
+        self.assertLessEqual(mll['min'] + peak * bin_width, 80.419)
+        self.assertGreater(mll['min'] + (peak + 1) * bin_width, 80.419)
 
     def load_result(self, run_name):
         
@@ -3224,8 +3412,12 @@ class TestMEfromfile(unittest.TestCase):
                         count[1] += 1
                     break 
 
-        self.assertTrue(0.49<count[0]/10000.<0.51)       
-        self.assertTrue(0.49<count[1]/10000.<0.51)
+        # forward/backward balance of the muon: with 10000 events one fraction
+        # has a statistical error of 0.005, so the window is 4 sigma (0.49-0.51
+        # was 2 sigma and failed on the random stream alone; 100k events of the
+        # same run card give 0.5002 +- 0.0016)
+        self.assertTrue(0.48<count[0]/10000.<0.52)
+        self.assertTrue(0.48<count[1]/10000.<0.52)
 
 
         self.assertEqual(cwd, os.getcwd())
@@ -3385,8 +3577,13 @@ class TestMEfromfile(unittest.TestCase):
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
 
-        # Width : 1.3303e-05 ± 2.1e-08 (GeV) for 40k events
-        self.check_parton_output(cross= 1.3303e-05, error=tolerance*2.1e-08,target_event=40000)
+        # Width : 1.3760e-05 (GeV) for 40k events: mean of 8 seeds. The former
+        # 1.3303e-05 +- 2.1e-08 was the (x/sigma)^2 average of the refine
+        # iterations, biased low by ~3.5% (the reported cross-section is now the
+        # last iteration's mean). The error is the one a run reports (~7.5e-08):
+        # the 8 seeds lie within 2.5 sigma, the old estimator 4.4-5.8 sigma away.
+        # (The seed-to-seed spread, 1.6e-07, would let the old value pass.)
+        self.check_parton_output(cross= 1.3760e-05, error=tolerance*7.5e-08,target_event=40000)
 
         #
         #  START REAL CODE (3/3)
@@ -3416,8 +3613,10 @@ class TestMEfromfile(unittest.TestCase):
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
 
-        # Width : 3.9311e-12 ± 6.86e-15  (GeV) for 40k events
-        self.check_parton_output(cross=3.9311e-12, error=tolerance*6.86e-15,target_event=40000)
+        # Width : 3.9369e-12 (GeV) for 40k events, mean of 6 seeds (spread
+        # 1.7e-15); the former 3.9311e-12 was the (x/sigma)^2 average of the
+        # refine iterations (0.15% low). The error is kept as before.
+        self.check_parton_output(cross=3.9369e-12, error=tolerance*6.86e-15,target_event=40000)
 
     def test_generation_from_file_1(self):
         """ """

@@ -22,7 +22,8 @@ namespace madspace {
  * with @ref DynamicalScaleType selecting @f$E_\mathrm{T}@f$
  * (`transverse_energy`), @f$H_\mathrm{T}@f$ (`transverse_mass`),
  * @f$H_\mathrm{T}/2@f$ (`half_transverse_mass`) or @f$\sqrt{\hat s}@f$
- * (`partonic_energy`).
+ * (`partonic_energy`). The dynamical scale is multiplied by `scale_factor`,
+ * e.g. @f$H_\mathrm{T}/4@f$ is `half_transverse_mass` with `scale_factor = 0.5`.
  *
  * `batch` is the leading batch dimension.
  *
@@ -82,6 +83,8 @@ public:
      * @param ren_scale            Fixed renormalization-scale value.
      * @param fact_scale1          Fixed factorization scale for the first beam.
      * @param fact_scale2          Fixed factorization scale for the second beam.
+     * @param scale_factor         Factor on the dynamical scale; fixed scales are
+     *                             left alone.
      */
     EnergyScale(
         std::size_t particle_count,
@@ -90,7 +93,8 @@ public:
         bool fact_scale_fixed,
         double ren_scale,
         double fact_scale1,
-        double fact_scale2
+        double fact_scale2,
+        double scale_factor = 1.
     );
 
 private:
@@ -104,6 +108,7 @@ private:
     double _ren_scale;
     double _fact_scale1;
     double _fact_scale2;
+    double _scale_factor;
 };
 
 } // namespace madspace

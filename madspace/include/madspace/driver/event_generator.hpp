@@ -209,6 +209,8 @@ private:
     void finish_channel_job(const GeneratorBatchJob& job);
     std::size_t next_batch_event_count(std::size_t channel_index) const;
     std::size_t start_jobs();
+    std::size_t wait_for_result(std::size_t& in_flight);
+    void reset_jobs();
     void update_integral();
     void update_integral_status();
     void update_integral_fractions();

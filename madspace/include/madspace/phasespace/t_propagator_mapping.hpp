@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <vector>
 
 #include "madspace/phasespace/base.hpp"
@@ -31,6 +32,8 @@ namespace madspace {
  * **Conditions**
  * - `com_energy` – `float`, shape `(batch,)` – total collision energy.
  * - `mass_i` – `float`, shape `(batch,)` – the `kappa + 1` outgoing masses.
+ * - `x1`, `x2` – `float`, shape `(batch,)` – beam momentum fractions. Present
+ *   only when a rapidity bound is given (see the constructor).
  *
  * **Outputs**
  * - `momentum_i` – `float`, shape `(batch, 4)` – the `kappa + 3` momenta
@@ -56,17 +59,40 @@ public:
      *                          momentum transfer; see @ref Invariant.
      * @param pt_min            Per-outgoing-particle minimum transverse
      *                          momentum; empty disables the cut. See @ref Cuts.
+     * @param y_max             Per-outgoing-particle bound on the absolute lab
+     *                          rapidity, negative (or empty) for none. Only the
+     *                          first scattering of the chain, between the two
+     *                          beams, can use it: there |t| fixes both
+     *                          light-cone components of the peeled particle,
+     *                          so its bound and that of the recoil (the bound
+     *                          of all other particles, if each has one) narrow
+     *                          the |t| range exactly. The mapping then takes
+     *                          the beam momentum fractions `x1`, `x2` (`float`,
+     *                          shape `(batch,)`) as two further conditions.
      */
     TPropagatorMapping(
         const std::vector<std::size_t>& integration_order,
         double invariant_power = 0.8,
-        const std::vector<double>& pt_min = {}
+        const std::vector<double>& pt_min = {},
+        const std::vector<double>& y_max = {}
     );
     /// Number of uniform random inputs consumed by the forward mapping,
     /// equal to `3 * len(integration_order) - 1`.
     std::size_t random_dim() const { return 3 * _integration_order.size() - 1; }
+    /// Whether the first scattering is narrowed by rapidity bounds (and the
+    /// mapping therefore takes `x1`, `x2` as conditions).
+    bool has_rapidity_window() const { return _rapidity_window; }
 
 private:
+    // The public constructor with the first scattering's rapidity bounds
+    // {recoil, peeled particle, beam sign} worked out once.
+    TPropagatorMapping(
+        const std::array<double, 3>& first_step_bounds,
+        const std::vector<std::size_t>& integration_order,
+        double invariant_power,
+        const std::vector<double>& pt_min
+    );
+
     Result build_forward_impl(
         FunctionBuilder& fb,
         const NamedVector<Value>& inputs,
@@ -85,6 +111,7 @@ private:
     std::vector<bool> _sample_sides;
     std::vector<double> _pt_min;
     bool _has_cut;
+    bool _rapidity_window;
     Invariant _uniform_invariant;
     TwoToTwoParticleScattering _com_scattering;
     TwoToTwoParticleScattering _lab_scattering;

@@ -119,7 +119,9 @@ jobs:
       - name: Collect intermediate caches left behind by earlier runs
         run: |
           set -u
-          for prefix in lhapdf boost pythia8 emela contur looptools; do
+          # both generations: v2 (current) and the unversioned one before it
+          for prefix in lhapdf-v2 boost-v2 pythia8-v2 emela-v2 contur-v2 looptools-v2 \
+                        lhapdf boost pythia8 emela contur looptools; do
             # never let a gh hiccup fail the whole warm run: this is a cleanup,
             # not a precondition (hence the "|| true", which -o pipefail would
             # otherwise turn into a step failure).
@@ -157,13 +159,13 @@ jobs:
         if: inputs.reset_heptools
         run: |
           "$RUNNER_TEMP/delete_caches.sh" \
-            heptools-${{ env.CACHE_KEY }} \
-            lhapdf-${{ env.CACHE_KEY }} \
-            pythia8-${{ env.CACHE_KEY }} \
-            boost-${{ env.CACHE_KEY }} \
-            emela-${{ env.CACHE_KEY }} \
-            contur-${{ env.CACHE_KEY }} \
-            looptools-${{ env.CACHE_KEY }}
+            heptools-v2-${{ env.CACHE_KEY }} \
+            lhapdf-v2-${{ env.CACHE_KEY }} \
+            pythia8-v2-${{ env.CACHE_KEY }} \
+            boost-v2-${{ env.CACHE_KEY }} \
+            emela-v2-${{ env.CACHE_KEY }} \
+            contur-v2-${{ env.CACHE_KEY }} \
+            looptools-v2-${{ env.CACHE_KEY }}
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -302,7 +304,7 @@ jobs:
          uses: actions/cache@v5
          with:
            path: ~/.cache/HEPtools
-           key: lhapdf-${{ env.CACHE_KEY }}-${{ github.run_id }}
+           key: lhapdf-v2-${{ env.CACHE_KEY }}-${{ github.run_id }}
 
        - name: get mg5
          uses: actions/checkout@v5
@@ -372,7 +374,7 @@ jobs:
          uses: actions/cache@v5
          with:
            path: ~/.cache/HEPtools
-           key: pythia8-${{ env.CACHE_KEY }}-${{ github.run_id }}
+           key: pythia8-v2-${{ env.CACHE_KEY }}-${{ github.run_id }}
 
        - name: get mg5
          if: steps.cache-pythia8.outputs.cache-hit != 'true'
@@ -432,7 +434,7 @@ jobs:
          uses: actions/cache@v5
          with:
            path: ~/.cache/HEPtools
-           key: boost-${{ env.CACHE_KEY }}-${{ github.run_id }}
+           key: boost-v2-${{ env.CACHE_KEY }}-${{ github.run_id }}
 
        - name: get mg5
          if: steps.cache-boost.outputs.cache-hit != 'true'
@@ -483,7 +485,7 @@ jobs:
          uses: actions/cache@v5
          with:
            path: ~/.cache/HEPtools
-           key: emela-${{ env.CACHE_KEY }}-${{ github.run_id }}
+           key: emela-v2-${{ env.CACHE_KEY }}-${{ github.run_id }}
 
        - name: get mg5
          if: steps.cache-eMELA.outputs.cache-hit != 'true'
@@ -536,7 +538,7 @@ jobs:
 #         run: echo "CACHE_KEY=$ImageOS" >> $GITHUB_ENV
 #       - name: Delete lhapdf cache (included both in emela/pythia8 cache)
 #         run: |
-#             gh cache delete lhapdf-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
+#             gh cache delete lhapdf-v2-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
 #         env:
 #             GH_TOKEN: ${{ github.token }}
 
@@ -557,7 +559,7 @@ jobs:
          uses: actions/cache@v5
          with:
            path: ~/.cache/HEPtools
-           key: contur-${{ env.CACHE_KEY }}-${{ github.run_id }}
+           key: contur-v2-${{ env.CACHE_KEY }}-${{ github.run_id }}
 
        - name: get mg5
          if: steps.cache-contur.outputs.cache-hit != 'true'
@@ -602,7 +604,7 @@ jobs:
 
        #- name: Delete pythia8 cache (include in contur cache)
        #  run: |
-       #      gh cache delete pythia8-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
+       #      gh cache delete pythia8-v2-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
        #  env:
        #     GH_TOKEN: ${{ github.token }}
 
@@ -624,7 +626,7 @@ jobs:
        uses: actions/cache@v5
        with:
          path: ~/.cache/HEPtools
-         key: looptools-${{ env.CACHE_KEY }}-${{ github.run_id }}
+         key: looptools-v2-${{ env.CACHE_KEY }}-${{ github.run_id }}
       
      - name: get mg5
        if: steps.cache-nlo.outputs.cache-hit != 'true'
@@ -694,6 +696,14 @@ jobs:
   # window. Old generations disappear on their own via the 7-day-unused
   # eviction and the repo LRU.
   #
+  # The "v2" in "<name>-v2-<ImageOS>-<generation>" is the layout of the tree:
+  # v2 has Pythia8 built against HepMC3 (plus HepMC2 and a second main164) and
+  # no MG5aMC_PY8_interface. Branches that predate it only know the
+  # unversioned "<name>-<ImageOS>-" keys, so they keep restoring the previous
+  # tree (which their code expects) until they merge main; this workflow only
+  # builds, deletes and keeps warm the v2 entries. Bump it whenever the tree
+  # changes in a way older code cannot use.
+  #
   # run_id is unique per run, which is all that is needed (the prefix match
   # orders by creation time, not by key), and it is stable across "re-run
   # failed jobs" - which is exactly what keeps the recovery path documented
@@ -742,7 +752,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.cache/HEPtools
-          key: lhapdf-${{ env.CACHE_KEY }}-${{ github.run_id }}
+          key: lhapdf-v2-${{ env.CACHE_KEY }}-${{ github.run_id }}
           fail-on-cache-miss: true
 
       - name: Restore boost
@@ -750,7 +760,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.cache/HEPtools
-          key: boost-${{ env.CACHE_KEY }}-${{ github.run_id }}
+          key: boost-v2-${{ env.CACHE_KEY }}-${{ github.run_id }}
           fail-on-cache-miss: true
 
       - name: Restore pythia8
@@ -758,7 +768,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.cache/HEPtools
-          key: pythia8-${{ env.CACHE_KEY }}-${{ github.run_id }}
+          key: pythia8-v2-${{ env.CACHE_KEY }}-${{ github.run_id }}
           fail-on-cache-miss: true
 
       - name: Restore emela
@@ -766,7 +776,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.cache/HEPtools
-          key: emela-${{ env.CACHE_KEY }}-${{ github.run_id }}
+          key: emela-v2-${{ env.CACHE_KEY }}-${{ github.run_id }}
           fail-on-cache-miss: true
 
       - name: Restore contur
@@ -774,7 +784,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.cache/HEPtools
-          key: contur-${{ env.CACHE_KEY }}-${{ github.run_id }}
+          key: contur-v2-${{ env.CACHE_KEY }}-${{ github.run_id }}
           fail-on-cache-miss: true
 
       - name: Restore looptools
@@ -782,7 +792,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.cache/HEPtools
-          key: looptools-${{ env.CACHE_KEY }}-${{ github.run_id }}
+          key: looptools-v2-${{ env.CACHE_KEY }}-${{ github.run_id }}
           fail-on-cache-miss: true
 
       # Green sub-jobs are not proof that the tree is complete: a sub-cache may
@@ -808,7 +818,7 @@ jobs:
         if: env.ALL_SUBCACHES_OK == 'true'
         with:
           path: ~/.cache/HEPtools
-          key: heptools-${{ env.CACHE_KEY }}-${{ github.run_id }}
+          key: heptools-v2-${{ env.CACHE_KEY }}-${{ github.run_id }}
 
       # The sub-caches are deliberately transient: they exist only to hand
       # content to this job, and each is scoped to this run by the generation
@@ -818,12 +828,12 @@ jobs:
       - name: Cleanup intermediate caches (only if all succeeded and verified)
         if: env.ALL_SUBCACHES_OK == 'true'
         run: |
-          gh cache delete lhapdf-${{ env.CACHE_KEY }}-${{ github.run_id }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
-          gh cache delete boost-${{ env.CACHE_KEY }}-${{ github.run_id }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
-          gh cache delete pythia8-${{ env.CACHE_KEY }}-${{ github.run_id }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
-          gh cache delete emela-${{ env.CACHE_KEY }}-${{ github.run_id }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
-          gh cache delete contur-${{ env.CACHE_KEY }}-${{ github.run_id }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
-          gh cache delete looptools-${{ env.CACHE_KEY }}-${{ github.run_id }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
+          gh cache delete lhapdf-v2-${{ env.CACHE_KEY }}-${{ github.run_id }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
+          gh cache delete boost-v2-${{ env.CACHE_KEY }}-${{ github.run_id }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
+          gh cache delete pythia8-v2-${{ env.CACHE_KEY }}-${{ github.run_id }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
+          gh cache delete emela-v2-${{ env.CACHE_KEY }}-${{ github.run_id }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
+          gh cache delete contur-v2-${{ env.CACHE_KEY }}-${{ github.run_id }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
+          gh cache delete looptools-v2-${{ env.CACHE_KEY }}-${{ github.run_id }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -872,10 +882,9 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.cache/HEPtools
-          key: heptools-${{ env.CACHE_KEY }}-${{ github.run_id }}
+          key: heptools-v2-${{ env.CACHE_KEY }}-${{ github.run_id }}
           restore-keys: |
-            heptools-${{ env.CACHE_KEY }}-
-            heptools-${{ env.CACHE_KEY }}
+            heptools-v2-${{ env.CACHE_KEY }}-
 
       # The twice-weekly run is the only thing that regularly looks at the
       # combined cache, so it is also the place where a cache that was saved
@@ -892,7 +901,7 @@ jobs:
 
       - name: Warn when there is no combined cache to keep warm
         if: steps.touch-heptools.outputs.cache-matched-key == ''
-        run: echo "::warning::no heptools-${{ env.CACHE_KEY }}-* cache found; it will be rebuilt on the next push or manual dispatch."
+        run: echo "::warning::no heptools-v2-${{ env.CACHE_KEY }}-* cache found; it will be rebuilt on the next push or manual dispatch."
 
 
   # ---------------------------------------------------------------------------

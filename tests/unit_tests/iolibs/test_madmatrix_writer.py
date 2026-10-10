@@ -110,3 +110,61 @@ class TestMomentaInDenomPrecision(unittest.TestCase):
                             '1'):                          # no TMP at all
             self.assertEqual(writer.denominator_in_denom_precision(denominator),
                              denominator)
+
+
+class TestExternalWavefunctionCalls(unittest.TestCase):
+    """The external wavefunctions are built with the generic HELAS routines,
+    never with the z-axis-optimised ones.
+
+    ipzxxx/imzxxx/ixzxxx (and their o counterparts) assume px == py == 0 and
+    E == +-pz for the two incoming legs. That only holds in a frame where the
+    beams run along z, and the matrix element is called on momenta boosted into
+    whatever frame the run card's me_frame selects -- the rest frame of a single
+    final-state particle, say, where the incoming partons point nowhere in
+    particular. Using them would silently give the wrong amplitude there.
+    """
+
+    # the z-optimised variants defined in HelAmps_<model>.h
+    OPTIMISED = ('ipzxxx', 'imzxxx', 'ixzxxx', 'opzxxx', 'omzxxx', 'oxzxxx')
+
+    def external_calls(self, ids):
+        """The HELAS calls madmatrix writes for the external wavefunctions of
+        the process with the given (flavour grouped) particle ids."""
+        import madgraph.core.base_objects as base_objects
+        import madgraph.core.diagram_generation as diagram_generation
+        import madgraph.core.helas_objects as helas_objects
+        import models.import_ufo as import_ufo
+        from madmatrix import model_handling
+
+        model = import_ufo.import_model('sm')
+        legs = base_objects.LegList(
+            [base_objects.Leg({'id': pdg, 'state': i > 1})
+             for i, pdg in enumerate(ids)])
+        amplitude = diagram_generation.Amplitude(
+            base_objects.Process({'legs': legs, 'model': model}))
+        self.assertTrue(amplitude.get('diagrams'), ids)
+        matrix_element = helas_objects.HelasMatrixElement(amplitude)
+        writer = model_handling.MadMatrixUFOHelasCallWriter(model)
+        return [writer.get_wavefunction_call(wf)
+                for wf in matrix_element.get_all_wavefunctions()
+                if not wf.get('mothers')]
+
+    def test_massless_fermions_use_the_generic_routine(self):
+        """A massless quark in the initial state is exactly the case the base
+        GPUFOHelasCallWriter optimises away; madmatrix must not."""
+        # 81/-81 are the flavour-grouped light quarks, the mg7 model groups them
+        calls = self.external_calls([81, -81, 23, 21])   # q q~ > z g
+        self.assertEqual(len(calls), 4)
+        self.assertTrue(calls[0].startswith('ixxxxx<'), calls[0])
+        self.assertTrue(calls[1].startswith('oxxxxx<'), calls[1])
+        for call in calls:
+            for name in self.OPTIMISED:
+                self.assertNotIn(name, call)
+
+    def test_no_optimised_call_anywhere(self):
+        for ids in ([81, -81, 21, 21],      # q q~ > g g
+                    [21, 21, 21, 21],       # g g > g g
+                    [81, -81, 23, 21]):     # q q~ > z g
+            for call in self.external_calls(ids):
+                for name in self.OPTIMISED:
+                    self.assertNotIn(name, call, ids)
