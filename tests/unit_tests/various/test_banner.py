@@ -1596,6 +1596,192 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertTrue(rc.is_cut_name('cuts.jet-pt.max'))
         self.assertFalse(rc.is_cut_name('generation.events'))
 
+    def test_set_lo_cut(self):
+        """madevent cut names land in [cuts] as from_LO maps them, the "no
+        cut" sentinels removing the bound; [histograms] is left alone"""
+        rc = bannermod.RunCardMG7()
+        rc.dynamic_sections['histograms']['sqrt_s'] = \
+            {'min': 0., 'max': 2000., 'bin_count': 50}
+        self.assertEqual(rc.set_lo_cut('mmll', '200'),
+                         ('lepton-sfos_pair_mass', 'min', 200.0))
+        self.assertEqual(rc['cuts']['lepton-sfos_pair_mass'], {'min': 200.0})
+        rc.set_lo_cut('MMLLMAX', '1 TeV')
+        self.assertEqual(rc['cuts']['lepton-sfos_pair_mass'],
+                         {'min': 200.0, 'max': 1000.0})
+        # minimum 0 / maximum -1 mean "no cut"
+        self.assertEqual(rc.set_lo_cut('mmll', 0),
+                         ('lepton-sfos_pair_mass', 'min', None))
+        self.assertEqual(rc['cuts']['lepton-sfos_pair_mass'], {'max': 1000.0})
+        rc.set_lo_cut('mmllmax', -1)
+        self.assertNotIn('lepton-sfos_pair_mass', rc['cuts'])
+        # a maximum of 0 is a real cut, as in from_LO
+        rc.set_lo_cut('ptjmax', 0)
+        self.assertEqual(rc['cuts']['jet-pt'], {'min': 20.0, 'max': 0.0})
+        rc.set_lo_cut('etaj', -1)
+        self.assertNotIn('jet-eta_abs', rc['cuts'])
+        # sqrt_s is a cut and a histogram under the same key
+        rc.set_lo_cut('dsqrt_shat', '500')
+        self.assertEqual(rc['cuts']['sqrt_s'], {'min': 500.0})
+        self.assertEqual(rc['histograms']['sqrt_s'],
+                         {'min': 0., 'max': 2000., 'bin_count': 50})
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_cut, 'ptj', 'abc')
+
+    def test_set_lo_cut_composite(self):
+        """the ordered/summed cuts from_LO converts are settable too, and
+        bring the group they are written on when the card lacks it"""
+        rc = bannermod.RunCardMG7()
+        multiparticles = rc['multiparticles']
+        self.assertNotIn('parton', multiparticles)
+        self.assertNotIn('alllepton', multiparticles)
+        rc.set_lo_cut('ptj1min', 50)
+        rc.set_lo_cut('ht3min', 200)
+        self.assertEqual(rc['cuts']['jet_1-pt'], {'min': 50.0})
+        self.assertEqual(rc['cuts']['jet_1-jet_2-jet_3-pt-sum'], {'min': 200.0})
+        self.assertNotIn('parton', multiparticles)
+        rc.set_lo_cut('ihtmin', 100)
+        self.assertEqual(rc['cuts']['parton-pt-sum'], {'min': 100.0})
+        self.assertEqual(sorted(multiparticles['parton']),
+                         [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 21])
+        rc.set_lo_cut('ptllmin', 30)
+        self.assertEqual(rc['cuts']['alllepton-sum-pt'], {'min': 30.0})
+        self.assertEqual(list(multiparticles['alllepton']),
+                         list(multiparticles['lepton']) + list(multiparticles['missing']))
+        # a group the user defined is kept
+        multiparticles['alllepton'] = [11, -11]
+        rc.set_lo_cut('mmnl', 80)
+        self.assertEqual(multiparticles['alllepton'], [11, -11])
+        # "no cut" removes the cut, not the group
+        rc.set_lo_cut('ihtmin', 0)
+        self.assertNotIn('parton-pt-sum', rc['cuts'])
+        self.assertIn('parton', multiparticles)
+
+    def test_set_lo_param_value_translation(self):
+        """madevent codes become the mg7 names; mg7 values are left alone"""
+        rc = bannermod.RunCardMG7()
+        self.assertEqual(rc.set_lo_param('dynamical_scale_choice', '1'),
+                         ({'beam.dynamical_scale_choice': 'transverse_energy'}, []))
+        rc.set_lo_param('dynamical_scale_choice', 'shat')
+        self.assertEqual(rc['beam.dynamical_scale_choice'], 'partonic_energy')
+        # no mg7 equivalent: a warning, the value is kept
+        changes, warnings = rc.set_lo_param('dynamical_scale_choice', '0')
+        self.assertEqual(changes, {})
+        self.assertIn('user-defined', warnings[0])
+        self.assertEqual(rc['beam.dynamical_scale_choice'], 'partonic_energy')
+        self.assertIsNone(rc.set_lo_param('dynamical_scale_choice', 'transverse_mass'))
+        self.assertIsNone(rc.set_lo_param('dynamical_scale_choice', 'HT/4'))
+        rc.set_lo_param('sde_strategy', '2')
+        self.assertEqual(rc['phasespace.sde_strategy'], 'denominators')
+        rc.set_lo_param('sde_strategy', '1')
+        self.assertEqual(rc['phasespace.sde_strategy'], 'diagrams')
+        self.assertEqual(len(rc.set_lo_param('sde_strategy', '3')[1]), 1)
+        self.assertIsNone(rc.set_lo_param('sde_strategy', 'denominators'))
+        rc.set_lo_param('maxjetflavor', '5')
+        self.assertEqual(sorted(rc['multiparticles']['jet']),
+                         [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 21])
+        rc.set_lo_param('fixed_fac_scale', 'T')
+        self.assertIs(rc['beam.fixed_fact_scale'], True)
+        rc.set_lo_param('pdlabel', 'nn23lo')
+        self.assertEqual(rc['beam.pdf'], 'NNPDF23_lo_as_0130_qed')
+        # as in madevent, lhaid only counts with pdlabel lhapdf
+        changes, warnings = rc.set_lo_param('lhaid', '338500')
+        self.assertEqual((changes, rc['beam.pdf']), ({}, 'NNPDF23_lo_as_0130_qed'))
+        self.assertIn('pdlabel lhapdf', warnings[0])
+        rc.set_lo_param('pdlabel', 'lhapdf')
+        self.assertEqual(rc['beam.pdf'], 'NNPDF40MC_lo_as_01180')
+        changes, warnings = rc.set_lo_param('lhaid', '260000')
+        self.assertEqual((changes, rc['beam.pdf']), ({}, 'NNPDF40MC_lo_as_01180'))
+        self.assertIn('set beam.pdf', warnings[0])
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'maxjetflavor', '9')
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'ebeam1', 'abc')
+        self.assertEqual(rc.lo_set_warnings(), [])
+
+    def test_set_lo_param_beams_combine(self):
+        """per-beam settings combine within one question; what one mg7 entry
+        cannot hold is reported once, at the end"""
+        rc = bannermod.RunCardMG7()
+        rc.set('beam.e_cm', 13000., user=True)
+        # the second beam stays at its 6500 GeV until it is set too
+        rc.set_lo_param('ebeam1', '6800')
+        self.assertAlmostEqual(rc['beam.e_cm'], 2 * (6800. * 6500.) ** 0.5)
+        rc.set_lo_param('ebeam2', '6.8 TeV')
+        self.assertAlmostEqual(rc['beam.e_cm'], 13600.)
+        self.assertEqual(rc.lo_set_warnings(), [])
+        rc.set_lo_param('ebeam', '7 TeV')
+        self.assertAlmostEqual(rc['beam.e_cm'], 14000.)
+        # asymmetric beams: the same sqrt(s), and a warning at the end only
+        self.assertEqual(rc.set_lo_param('ebeam1', '7000')[1], [])
+        rc.set_lo_param('ebeam2', '4000')
+        self.assertAlmostEqual(rc['beam.e_cm'], 2 * (7000. * 4000.) ** 0.5)
+        warnings = rc.lo_set_warnings()
+        self.assertEqual(len(warnings), 1)
+        self.assertIn('ebeam1 = 7000 GeV and ebeam2 = 4000 GeV', warnings[0])
+        self.assertEqual(rc.lo_set_warnings(), [])    # said once
+
+        rc.set_lo_param('lpp1', '0')
+        rc.set_lo_param('lpp2', '0')
+        self.assertIs(rc['beam.leptonic'], True)
+        self.assertEqual(rc.lo_set_warnings(), [])
+        rc.set_lo_param('lpp1', '1')
+        self.assertIs(rc['beam.leptonic'], False)
+        self.assertIn('lpp1 = 1 and lpp2 = 0', rc.lo_set_warnings()[0])
+        self.assertIn('initial-state radiation', rc.set_lo_param('lpp1', '3')[1][0])
+        self.assertIn('lpp1 = 3 and lpp2 = 1', rc.lo_set_warnings()[0])
+
+        rc.set_lo_param('pdlabel1', 'nn23lo')
+        rc.set_lo_param('pdlabel2', 'cteq6l1')
+        self.assertEqual(rc['beam.pdf'], 'cteq6l1')
+        self.assertIn('pdlabel1 = nn23lo and pdlabel2 = cteq6l1',
+                      rc.lo_set_warnings()[0])
+        # lhaid then pdlabel lhapdf, as some scripts write them
+        rc.set_lo_param('lhaid', '230000')
+        self.assertEqual(rc['beam.pdf'], 'NNPDF23_lo_as_0130_qed')
+        rc.lo_set_warnings()
+
+        rc.set_lo_param('fixed_fac_scale1', 'T')
+        self.assertIs(rc['beam.fixed_fact_scale'], True)
+        self.assertIn('fixed_fac_scale1 = True and fixed_fac_scale2 = False',
+                      rc.lo_set_warnings()[0])
+
+    def test_set_lo_param_pdg_cuts(self):
+        """{pdg: value} cuts as written in a run_card.dat"""
+        rc = bannermod.RunCardMG7()
+        rc.set_lo_param('pt_min_pdg', '{6: 100, 25: 50}')
+        self.assertEqual(rc['cuts']['pdg6-pt'], {'min': 100.0})
+        self.assertEqual(rc['cuts']['pdg25-pt'], {'min': 50.0})
+        self.assertEqual(rc['multiparticles']['pdg6'], [6, -6])
+        rc.set_lo_param('eta_max_pdg', '{6: 2.5}')
+        self.assertEqual(rc['cuts']['pdg6-eta_abs'], {'max': 2.5})
+        changes, _ = rc.set_lo_param('pt_min_pdg', '{6: 0}')
+        self.assertEqual(changes, {'cuts.pdg6-pt': None})
+        self.assertNotIn('pdg6-pt', rc['cuts'])
+        # X X~ pairs only, whichever of the two is set first
+        rc.set_lo_param('mxx_only_part_antipart', '{6: True}')
+        rc.set_lo_param('mxx_min_pdg', '{6: 500}')
+        self.assertEqual(rc['cuts']['pdg6-sfos_pair_mass'], {'min': 500.0})
+        rc.set_lo_param('mxx_only_part_antipart', "{'default': False, 6: False}")
+        self.assertNotIn('pdg6-sfos_pair_mass', rc['cuts'])
+        self.assertEqual(rc['cuts']['pdg6-pair_mass'], {'min': 500.0})
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'pt_min_pdg', '{6: abc}')
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'pt_min_pdg', '100')
+
+    def test_set_lo_param_matches_from_LO(self):
+        """"set" lands where the run_card.dat conversion puts the same values"""
+        lo = bannermod.RunCardLO()
+        values = {'ebeam1': 6800., 'ebeam2': 6800., 'dynamical_scale_choice': 1,
+                  'sde_strategy': 2, 'maxjetflavor': 5, 'fixed_fac_scale': True,
+                  'pdlabel': 'nn23lo', 'lpp1': 1, 'lpp2': 1}
+        for name, value in values.items():
+            lo.set(name, value, user=True)
+        converted, _ = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        rc = bannermod.RunCardMG7()
+        for name, value in values.items():
+            self.assertIsNotNone(rc.set_lo_param(name, str(value)), name)
+        for key in ('beam.e_cm', 'beam.dynamical_scale_choice', 'beam.leptonic',
+                    'beam.fixed_fact_scale', 'beam.pdf', 'phasespace.sde_strategy'):
+            self.assertEqual(rc[key], converted[key], key)
+        self.assertEqual(rc['multiparticles']['jet'], converted['multiparticles']['jet'])
+        self.assertEqual(rc.lo_set_warnings(), [])
+
     def test_evaluate_math_and_masses(self):
         """values support arithmetic and mass references"""
         rc = bannermod.RunCardMG7()

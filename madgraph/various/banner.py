@@ -7298,6 +7298,284 @@ class RunCardMG7(RunCard):
         self.dynamic_sections['cuts'].setdefault(cut, collections.OrderedDict())[bound] = value
         return cut, bound, value
 
+    @staticmethod
+    def _lo_cut_is_active(bound, value):
+        """Whether a madevent cut value imposes a constraint: a minimum must be
+        positive, a maximum non-negative (-1 is madevent's "no cut")."""
+        return (bound == 'min' and value > 0) or (bound == 'max' and value >= 0)
+
+    def set_lo_cut(self, name, value):
+        """Set a cut from its madevent run_card name (``ptj``, ``mmll``,
+        ``etaj``, ``mmllmax``, ... see ``_LO_CUT_MAP``) in the ``[cuts]``
+        section, with the same conventions as :meth:`from_LO`: a "no cut"
+        value (minimum <= 0, maximum < 0) removes that bound, and the cut
+        itself once it has no bound left. A cut on one of the
+        ``_LO_CUT_GROUPS`` (``ihtmin``, ``ptllmin``, ...) also defines that
+        group in ``[multiparticles]``, unless the card already has it.
+        Returns ``(cut, bound, value)``, with value None when the bound was
+        removed."""
+        cut, bound = self._LO_CUT_MAP[name.lower()]
+        value = self.parse_energy(value)
+        if isinstance(value, str):
+            value = self.format_variable(value, float, name=name)
+        value = self._put_lo_cut(cut, bound, float(value))
+        if value is not None:
+            multiparticles = self.dynamic_sections['multiparticles']
+            for group, build in self._LO_CUT_GROUPS.items():
+                if cut.startswith(group + '-') and group not in multiparticles:
+                    multiparticles[group] = build(multiparticles)
+        return cut, bound, value
+
+    def _put_lo_cut(self, cut, bound, value):
+        """Set one bound of a [cuts] entry, or remove it (and the entry once
+        it has no bound left) for a madevent "no cut" value. Returns the value
+        set, None when the bound was removed."""
+        cuts = self.dynamic_sections['cuts']
+        if self._lo_cut_is_active(bound, value):
+            cuts.setdefault(cut, collections.OrderedDict())[bound] = value
+            return value
+        if cut in cuts:
+            cuts[cut].pop(bound, None)
+            if not cuts[cut]:
+                del cuts[cut]
+        return None
+
+    @staticmethod
+    def _lo_jet_group(maxjetflavor):
+        """The jet group of a madevent maxjetflavor: the quarks up to that
+        flavour, their antiquarks and the gluon."""
+        return list(range(1, maxjetflavor + 1)) + \
+            [-i for i in range(1, maxjetflavor + 1)] + [21]
+
+    @staticmethod
+    def _lo_pdg_group(pdg):
+        """Name and content of the group a madevent per-pdg cut is put on."""
+        return 'pdg%d' % abs(pdg), [abs(pdg), -abs(pdg)]
+
+    @staticmethod
+    def _lo_pair_observable(pdg, only_part_antipart):
+        """Observable of mxx_min_pdg for this pdg: X X~ pairs only when
+        mxx_only_part_antipart says so (for it, or by default)."""
+        return 'sfos_pair_mass' if only_part_antipart.get(
+            pdg, only_part_antipart.get('default', False)) else 'pair_mass'
+
+    def set_lo_param(self, name, value, masses=None):
+        """Apply ``set <name> <value>`` for a madevent parameter that mg7 does
+        not just rename (``_LO_SET_PARAMS``): its value needs translating
+        (``dynamical_scale_choice 3``, ``pdlabel nn23lo``, ...), or several
+        madevent settings make one mg7 entry (ebeam1 and ebeam2 give
+        beam.e_cm). Those are combined with what the earlier ``set`` commands
+        of the same launch question gave, the card supplying the rest, and
+        :meth:`lo_set_warnings` reports what still has no mg7 equivalent once
+        the question closes.
+
+        Returns None when ``value`` is already an mg7 value (``set
+        sde_strategy denominators``, ``set dynamical_scale_choice HT/4``),
+        for the caller to set as usual. Otherwise returns ``(changes,
+        warnings)``: the {mg7 key: new value} written (None for a removed
+        cut) and what of the request could not be followed. Raises
+        InvalidCmd for a value of the wrong type."""
+        name = name.lower()
+        text = str(value).split('#')[0].strip()
+        state = vars(self).setdefault('_lo_set_state', {})
+        beam = self['beam']
+        changes, warnings = collections.OrderedDict(), []
+
+        def put(key, val):
+            self.set(key, val, user=True)
+            changes[key] = self[key]
+
+        def number(val):
+            val = self.evaluate(val, masses)
+            if isinstance(val, str):
+                val = self.format_variable(val, float, name=name)
+            return float(val)
+
+        if name in ('dynamical_scale_choice', 'sde_strategy'):
+            code = text
+            if name == 'dynamical_scale_choice':
+                code = str(self._LO_DYNSCALE_SHORTCUTS.get(text.lower(), text))
+            if not re.match(r'^[-+]?\d+$', code):
+                return None
+            code = int(code)
+            if name == 'sde_strategy':
+                if code in (1, 2):
+                    put('phasespace.sde_strategy',
+                        'denominators' if code == 2 else 'diagrams')
+                else:
+                    warnings.append(
+                        'sde_strategy %d does not exist (1 = diagrams, '
+                        '2 = denominators): keeping %s'
+                        % (code, self['phasespace.sde_strategy']))
+            elif code in self._LO_DYNSCALE_MAP:
+                put('beam.dynamical_scale_choice', self._LO_DYNSCALE_MAP[code])
+            else:
+                what = {-1: ' (CKKW back-clustering)',
+                        0: ' (user-defined scale)'}.get(code, '')
+                warnings.append(
+                    'dynamical_scale_choice %d%s has no mg7 equivalent: '
+                    'keeping %s' % (code, what, beam['dynamical_scale_choice']))
+
+        elif name in ('ebeam', 'ebeam1', 'ebeam2'):
+            energy = number(text)
+            if energy <= 0:
+                raise InvalidCmd('%s must be positive' % name)
+            e_cm = float(beam['e_cm'])
+            energies = state.get('ebeam')
+            # start from the card again if its energy was changed another way
+            if not energies or not math.isclose(
+                    2. * math.sqrt(energies[0] * energies[1]), e_cm):
+                energies = state['ebeam'] = [e_cm / 2., e_cm / 2.]
+            for i in ((0, 1) if name == 'ebeam' else (int(name[-1]) - 1,)):
+                energies[i] = energy
+            put('beam.e_cm', 2. * math.sqrt(energies[0] * energies[1]))
+
+        elif name in ('lpp1', 'lpp2'):
+            lpp = self.format_variable(text, int, name=name)
+            leptonic = lambda lpps: all(l == 0 or abs(l) in (3, 4) for l in lpps)
+            lpps = state.get('lpp')
+            if not lpps or leptonic(lpps) != beam['leptonic']:
+                lpps = state['lpp'] = [0, 0] if beam['leptonic'] else [1, 1]
+            lpps[int(name[-1]) - 1] = lpp
+            if abs(lpp) in (3, 4):
+                warnings.append('%s=%d: mg7 lepton beams have no PDF, so there '
+                                'is no initial-state radiation' % (name, lpp))
+            elif lpp == -1:
+                warnings.append('%s=-1: mg7 has no antiproton beam, both beams '
+                                'use beam.pdf' % name)
+            elif lpp not in (0, 1):
+                warnings.append('%s=%d: no such beam in mg7 (1 = proton, '
+                                '0 = no PDF)' % (name, lpp))
+            put('beam.leptonic', leptonic(lpps))
+
+        elif name in ('pdlabel', 'pdlabel1', 'pdlabel2', 'lhaid'):
+            labels = state.setdefault('pdlabel', {})
+            if name == 'lhaid':
+                state['lhaid'] = self.format_variable(
+                    text.replace(',', ' ').split()[0] if text else text,
+                    int, name=name)
+                others = sorted(set(labels.values()) - {'lhapdf'})
+                if others:
+                    warnings.append('lhaid only applies with pdlabel lhapdf, '
+                                    'not %s: keeping beam.pdf = %s'
+                                    % (others[0], beam['pdf']))
+                    return changes, warnings
+                label = 'lhapdf'
+            else:
+                label = text.lower()
+                for i in ((1, 2) if name == 'pdlabel' else (int(name[-1]),)):
+                    labels[i] = label
+            lhaid = state.get('lhaid')
+            if label == 'lhapdf' and lhaid is not None:
+                if lhaid in self._LO_LHAID_MAP:
+                    put('beam.pdf', self._LO_LHAID_MAP[lhaid])
+                else:
+                    warnings.append('lhaid=%s is not an id mg7 knows: give the '
+                                    'LHAPDF set name with "set beam.pdf <name>" '
+                                    '(keeping %s)' % (lhaid, beam['pdf']))
+            elif label in self._LO_PDF_LABEL_MAP:
+                put('beam.pdf', self._LO_PDF_LABEL_MAP[label])
+            elif label in ('none', 'no'):
+                warnings.append('%s=%s: beams without PDF are "set '
+                                'beam.leptonic True" in mg7 (keeping beam.pdf '
+                                '= %s)' % (name, label, beam['pdf']))
+            elif label != 'lhapdf':
+                warnings.append('%s=%s has no mg7 equivalent: keeping '
+                                'beam.pdf = %s' % (name, label, beam['pdf']))
+
+        elif name in ('fixed_fac_scale', 'fixed_fac_scale1', 'fixed_fac_scale2'):
+            flag = self.format_variable(text, bool, name=name)
+            current = beam['fixed_fact_scale']
+            flags = state.setdefault('fixed_fac_scale', {1: current, 2: current})
+            for i in ((1, 2) if name == 'fixed_fac_scale' else (int(name[-1]),)):
+                flags[i] = flag
+            put('beam.fixed_fact_scale', flag)
+
+        elif name == 'maxjetflavor':
+            flavours = self.format_variable(text, int, name=name)
+            if not 0 <= flavours <= 6:
+                raise InvalidCmd('maxjetflavor must be between 0 and 6')
+            jet = self._lo_jet_group(flavours)
+            self.dynamic_sections['multiparticles']['jet'] = jet
+            changes['multiparticles.jet'] = jet
+
+        else:
+            # per-pdg cuts, written {pdg: value, ...} as in the run_card.dat
+            items = []
+            for item in text.strip().lstrip('{').rstrip('}').split(','):
+                if not item.strip():
+                    continue
+                if ':' not in item:
+                    raise InvalidCmd('%s takes {pdg: value, ...}, not %s'
+                                     % (name, text))
+                key, val = (x.strip().strip('\'"') for x in item.split(':', 1))
+                if key.lower() != 'default':
+                    key = self.format_variable(key, int, name=name)
+                items.append((key, val))
+            cuts = self.dynamic_sections['cuts']
+            multiparticles = self.dynamic_sections['multiparticles']
+            only_pairs = state.setdefault('mxx_only_part_antipart', {})
+            if name == 'mxx_only_part_antipart':
+                for key, val in items:
+                    only_pairs[key] = self.format_variable(val, bool, name=name)
+                # existing pair-mass cuts follow the new choice
+                for cut in list(cuts):
+                    match = re.match(r'^pdg(\d+)-(sfos_)?pair_mass$', cut)
+                    if not match:
+                        continue
+                    pdg = int(match.group(1))
+                    new = 'pdg%d-%s' % (pdg, self._lo_pair_observable(pdg, only_pairs))
+                    if new != cut:
+                        cuts[new] = cuts.pop(cut)
+                        changes['cuts.' + cut] = None
+                        changes['cuts.' + new] = cuts[new]
+            else:
+                for pdg, val in items:
+                    if pdg == 'default':
+                        continue
+                    if name == 'mxx_min_pdg':
+                        observable = self._lo_pair_observable(pdg, only_pairs)
+                        bound = 'min'
+                    else:
+                        observable, bound = self._LO_PDG_CUT_MAP[name]
+                    group, pids = self._lo_pdg_group(pdg)
+                    cut = '%s-%s' % (group, observable)
+                    if self._put_lo_cut(cut, bound, number(val)) is not None:
+                        multiparticles[group] = pids
+                    changes['cuts.' + cut] = cuts.get(cut)
+        return changes, warnings
+
+    def lo_set_warnings(self):
+        """What the madevent-style ``set`` commands of a launch question asked
+        for that mg7, with one energy, one PDF and one lepton flag for both
+        beams, cannot do. Meant for when the question closes: the combined
+        settings are forgotten afterwards, so the next question starts over."""
+        state = vars(self).pop('_lo_set_state', {})
+        beam = self['beam']
+        out = []
+        energies = state.get('ebeam')
+        if energies and not math.isclose(*energies) and math.isclose(
+                2. * math.sqrt(energies[0] * energies[1]), float(beam['e_cm'])):
+            out.append('ebeam1 = %g GeV and ebeam2 = %g GeV: mg7 collides beams '
+                       'of equal energy, so this runs at the same sqrt(s) = %g '
+                       'GeV in the centre-of-mass frame, without the boost'
+                       % (energies[0], energies[1], float(beam['e_cm'])))
+        lpps = state.get('lpp')
+        if lpps and len({l == 0 or abs(l) in (3, 4) for l in lpps}) > 1:
+            out.append('lpp1 = %d and lpp2 = %d: mg7 has one beam.leptonic for '
+                       'both beams (%s)' % (lpps[0], lpps[1], beam['leptonic']))
+        labels = state.get('pdlabel', {})
+        if labels.get(1, labels.get(2)) != labels.get(2, labels.get(1)):
+            out.append('pdlabel1 = %s and pdlabel2 = %s: mg7 uses one PDF for '
+                       'both beams (beam.pdf = %s)'
+                       % (labels[1], labels[2], beam['pdf']))
+        flags = state.get('fixed_fac_scale')
+        if flags and flags[1] != flags[2]:
+            out.append('fixed_fac_scale1 = %s and fixed_fac_scale2 = %s: mg7 has '
+                       'one beam.fixed_fact_scale for both beams (%s)'
+                       % (flags[1], flags[2], beam['fixed_fact_scale']))
+        return out
+
     # ------------------------------------------------------------------
     # expression evaluation (energy units + arithmetic + masses)
     # ------------------------------------------------------------------
@@ -7957,6 +8235,9 @@ class RunCardMG7(RunCard):
     # LO dynamical_scale_choice (int) -> MG7 string
     _LO_DYNSCALE_MAP = {1: 'transverse_energy', 2: 'transverse_mass',
                         3: 'half_transverse_mass', 4: 'partonic_energy'}
+    # the LO run_card's names for some of those codes ('ht' and 'ht/n' are
+    # handled by the launch question itself)
+    _LO_DYNSCALE_SHORTCUTS = {'et': 1, 'shat': 4, 'ckkw': -1}
     # LO cut parameter -> (MG7 cut key, bound)
     _LO_CUT_MAP = {
         'ptj': ('jet-pt', 'min'), 'ptjmax': ('jet-pt', 'max'),
@@ -8019,6 +8300,15 @@ class RunCardMG7(RunCard):
         'e_min_pdg': ('e', 'min'), 'e_max_pdg': ('e', 'max'),
         'eta_min_pdg': ('eta_abs', 'min'), 'eta_max_pdg': ('eta_abs', 'max'),
     }
+    # LO parameters that "set" translates with set_lo_param: not a plain
+    # rename (_LO_SCALAR_MAP) nor a cut (_LO_CUT_MAP); "ebeam" is madevent's
+    # shortcut for both beams. A set literal: set() is the method of this
+    # class here.
+    _LO_SET_PARAMS = {'ebeam', 'ebeam1', 'ebeam2', 'lpp1', 'lpp2', 'pdlabel', 'pdlabel1',
+                      'pdlabel2', 'lhaid', 'fixed_fac_scale', 'fixed_fac_scale1',
+                      'fixed_fac_scale2', 'dynamical_scale_choice', 'sde_strategy',
+                      'maxjetflavor', 'mxx_min_pdg', 'mxx_only_part_antipart',
+                      *_LO_PDG_CUT_MAP}
     # built-in LO pdlabel -> LHAPDF set name
     _LO_PDF_LABEL_MAP = {
         'nn23lo': 'NNPDF23_lo_as_0130_qed', 'nn23lo1': 'NNPDF23_lo_as_0130_qed',
@@ -8156,9 +8446,8 @@ class RunCardMG7(RunCard):
 
         # --- maxjetflavor -> jet multiparticle ---
         if 'maxjetflavor' in lo:
-            mjf = int(lo['maxjetflavor'])
             mg7.dynamic_sections['multiparticles']['jet'] = \
-                list(range(1, mjf + 1)) + [-i for i in range(1, mjf + 1)] + [21]
+                cls._lo_jet_group(int(lo['maxjetflavor']))
 
         # --- cuts (rebuild from the LO card) ---
         cuts = collections.OrderedDict()
@@ -8172,9 +8461,9 @@ class RunCardMG7(RunCard):
                 val = max(entry[bound], val) if bound == 'min' else min(entry[bound], val)
             entry[bound] = float(val)
 
-        def is_active(bound, val):
-            # LO: a minimum of 0 and a maximum below 0 switch the cut off
-            return (bound == 'min' and val > 0) or (bound == 'max' and val >= 0)
+        # LO: a minimum of 0 and a maximum below 0 switch the cut off (shared
+        # with set_lo_cut, i.e. "set ptj 0" in the launch question)
+        is_active = cls._lo_cut_is_active
 
         for loname, (cutkey, bound) in cls._LO_CUT_MAP.items():
             if loname in lo and is_active(bound, lo[loname]):
@@ -8185,18 +8474,17 @@ class RunCardMG7(RunCard):
         for loname, (observable, bound) in cls._LO_PDG_CUT_MAP.items():
             for pdg, val in lo[loname].items() if loname in lo else []:
                 if isinstance(pdg, int) and is_active(bound, val):
-                    group = 'pdg%d' % abs(pdg)
-                    multiparticles[group] = [abs(pdg), -abs(pdg)]
+                    group, pids = cls._lo_pdg_group(pdg)
+                    multiparticles[group] = pids
                     add_cut('%s-%s' % (group, observable), bound, val)
         if 'mxx_min_pdg' in lo:
             only_pairs = lo['mxx_only_part_antipart'] if 'mxx_only_part_antipart' in lo else {}
             for pdg, val in lo['mxx_min_pdg'].items():
                 if isinstance(pdg, int) and is_active('min', val):
-                    group = 'pdg%d' % abs(pdg)
-                    multiparticles[group] = [abs(pdg), -abs(pdg)]
+                    group, pids = cls._lo_pdg_group(pdg)
+                    multiparticles[group] = pids
                     # X X~ pairs only, or every pair of the group
-                    observable = 'sfos_pair_mass' if only_pairs.get(
-                        pdg, only_pairs.get('default', False)) else 'pair_mass'
+                    observable = cls._lo_pair_observable(pdg, only_pairs)
                     add_cut('%s-%s' % (group, observable), 'min', val)
 
         for group, build in cls._LO_CUT_GROUPS.items():
