@@ -790,6 +790,49 @@ class TestHistogramRegressions(unittest.TestCase):
         self.assertNotIn('Relative scale and PDF uncertainty',
                          '\n'.join(gnuplot_output))
 
+    def test_cli_keeps_amcatnlo_scale_and_pdf_columns(self):
+        """aMC@NLO's MADatNLO.HwU labels its columns 'dyn=-1 muR= 1.000
+        muF= 1.000' and 'PDF=334700 <set>': the default command line keeps
+        them, and so the bands, while --no_scale/--no_pdf still drop them."""
+        labels = ['central', 'stat_error',
+                  ('scale_adv', -1, 1.0, 1.0), ('scale_adv', -1, 2.0, 1.0),
+                  ('scale_adv', -1, 0.5, 1.0),
+                  ('pdf_adv', 334700, 'NNPDF40_nlo_as_01180_nf_4'),
+                  ('pdf_adv', 334701, 'NNPDF40_nlo_as_01180_nf_4')]
+        histo = self.make_hwu(labels, [2.0, 0.2, 2.0, 1.8, 2.2, 2.0, 2.1],
+                              title='tt inv m', n_bins=2)
+
+        with misc.TMP_directory() as tmpdir:
+            source = pjoin(tmpdir, 'MADatNLO.HwU')
+            histo.output(source)
+            with open(source) as stream:
+                self.assertIn('dyn=-1 muR= 1.000 muF= 1.000', stream.readline())
+
+            def header(*options):
+                out = pjoin(tmpdir, 'out')
+                result = subprocess.run(
+                    [sys.executable, histograms.__file__, source, source,
+                     '--out='+out, '--no_open']+list(options),
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    universal_newlines=True)
+                self.assertEqual(result.returncode, 0,
+                                 result.stdout+result.stderr)
+                with open(out+'.HwU') as stream:
+                    return stream.readline()
+
+            # the command of a two-run comparison, bands built
+            line = header('--matplotlib')
+            self.assertIn('dyn=-1 muR= 2.000 muF= 1.000', line)
+            self.assertIn('delta_mu_min -1 @aux', line)
+            self.assertIn('PDF=334701 NNPDF40_nlo_as_01180_nf_4', line)
+
+            line = header('--HwU', '--no_scale')
+            self.assertNotIn('muR=', line)
+            self.assertIn('PDF=334701 NNPDF40_nlo_as_01180_nf_4', line)
+            line = header('--HwU', '--no_pdf')
+            self.assertIn('dyn=-1 muR= 2.000 muF= 1.000', line)
+            self.assertNotIn('PDF=', line)
+
     def test_cli_accepts_run_id_and_rejects_incompatible_sums(self):
         xml_template = """<histfile>
 <run id="{run_id}" header="xmin;xmax;Weight;WeightError">

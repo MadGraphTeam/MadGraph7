@@ -6483,7 +6483,12 @@ if __name__ == "__main__":
     use_band      = None
     auto_open = True
     ratio_correlations = True
-    consider_reweights = ['pdf','scale','murmuf_scales','merging_scale','alpsfact']
+    # The weight label types kept by default (see HwU.get_HwU_wgt_label_type).
+    # 'scale_adv' and 'pdf_adv' are the "dyn=-1 muR= 1.000 muF= 1.000" and
+    # "PDF=334700 <set name>" labels of aMC@NLO's own MADatNLO.HwU: without
+    # them its scale and PDF columns, and so its bands, are dropped.
+    consider_reweights = ['pdf','pdf_adv','scale','scale_adv','murmuf_scales',
+                          'merging_scale','alpsfact']
 
     def log(msg):
         print("histograms.py :: %s"%str(msg))
@@ -6584,11 +6589,12 @@ if __name__ == "__main__":
     # Now remove from the weights considered all those not deemed necessary
     # in view of which uncertainties are selected
     if isinstance(consider_reweights, list):
-        naming_map={'pdf':'pdf','scale':'scale',
-                  'merging_scale':'merging_scale','alpsfact':'alpsfact'}
+        naming_map={'pdf':['pdf','pdf_adv'],'scale':['scale','scale_adv'],
+                  'merging_scale':['merging_scale'],'alpsfact':['alpsfact']}
         for key in naming_map:
-            if (not key in uncertainties) and (naming_map[key] in consider_reweights):
-                consider_reweights.remove(naming_map[key])
+            if not key in uncertainties:
+                consider_reweights = [label_type for label_type in
+                    consider_reweights if label_type not in naming_map[key]]
 
     n_files    = len([_ for _ in sys.argv[1:] if not _.startswith('--')])
     histo_norm = [1.0]*n_files
