@@ -226,13 +226,30 @@ class TreeInterferenceGenerationTest(unittest.TestCase):
 
 class TreeInterferenceOutputTest(unittest.TestCase):
     """Only the formats selecting squared split orders return the
-    interference alone: the others are refused before anything is written."""
+    interference alone (madevent, standalone_fortran, mg7, standalone): the
+    others are refused before anything is written."""
+
+    def test_madmatrix_formats_are_accepted(self):
+        """mg7 and the C++ standalone: the madmatrix color sum pairs the
+        amplitude split orders (CPU and GPU backends)."""
+        interface = generate('u u~ > z > e+ e- [treextree] u u~ > a > e+ e-')
+        tmpdir = tempfile.mkdtemp(prefix='treextree_')
+        try:
+            for fmt in ['mg7', 'standalone']:
+                out = os.path.join(tmpdir, fmt)
+                interface.exec_cmd('output %s %s -f' % (fmt, out),
+                                   printcmd=False, precmd=True,
+                                   errorhandling=False)
+                self.assertTrue(os.path.isdir(os.path.join(out, 'SubProcesses')),
+                                fmt)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_unsupported_formats_are_refused(self):
         interface = generate('u u~ > z > e+ e- [treextree] u u~ > a > e+ e-')
         tmpdir = tempfile.mkdtemp(prefix='treextree_')
         try:
-            for fmt in ['mg7', 'standalone', 'matchbox']:
+            for fmt in ['matchbox', 'matrix', 'mg7_v5']:
                 out = os.path.join(tmpdir, fmt)
                 self.assertRaisesRegex(InvalidCmd, 'cannot select the interference',
                                        interface.exec_cmd,

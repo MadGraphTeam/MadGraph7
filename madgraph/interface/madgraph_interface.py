@@ -956,8 +956,10 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > Both sides must have the same external legs, in the same order (the right-hand")
         logger.info("   legs may be wider multiparticles). For LIxtree the right process is optional:")
         logger.info("   by default it is the tree-level process with the same legs.")
-        logger.info(" > 'output madevent' integrates the interference (events with signed weights);")
-        logger.info("   for LIxtree, 'output standalone_fortran' evaluates it at a phase-space point.")
+        logger.info(" > 'output' (mg7) and 'output madevent' integrate the interference (events with")
+        logger.info("   signed weights); 'output standalone' and 'output standalone_fortran' evaluate")
+        logger.info("   it at a phase-space point. LIxtree needs a loop backend: 'output madevent' or")
+        logger.info("   'output standalone_fortran' only.")
 
     def help_add(self):
         logger.info("-- generate diagrams for a process and add to existing processes",'$MG:color:BLUE')

@@ -47,8 +47,12 @@ class NoDiagramException(InvalidCmd): pass
 #===============================================================================
 INTERFERENCE_ORDER = base_objects.INTERFERENCE_ORDER
 # Output formats able to select squared split orders, hence to return the
-# interference alone (the others would give |A_left + A_right|^2)
-TREE_INTERFERENCE_FORMATS = ['madevent', 'standalone_fortran']
+# interference alone (the others would give |A_left + A_right|^2): the Fortran
+# ones (GET_MATRIX) and the madmatrix ones (mg7, and standalone for the C++
+# matrix element), whose color sum pairs the amplitude split orders on every
+# backend, CPU and GPU (PR #244)
+TREE_INTERFERENCE_FORMATS = ['madevent', 'standalone_fortran', 'mg7',
+                             'standalone']
 
 def register_interference_order(model):
     """Add the hidden coupling order tagging the right-hand amplitudes of an

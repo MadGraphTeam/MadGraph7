@@ -126,21 +126,29 @@ class TreeXTreeStandaloneTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
+    output_format = 'standalone_fortran'
+
     def evaluate(self, name, process):
         """(momenta, matrix element) printed by the standalone check."""
         out_dir = pjoin(self.tmpdir, name)
         interface = MGCmd.MasterCmd()
         for command in ['import model sm', 'generate %s' % process,
-                        'output standalone_fortran %s -f' % out_dir]:
+                        'output %s %s -f' % (self.output_format, out_dir)]:
             interface.exec_cmd(command, printcmd=False, precmd=True,
                                errorhandling=False)
         sub_dir = pjoin(out_dir, 'SubProcesses')
         proc_dir = [pjoin(sub_dir, d) for d in os.listdir(sub_dir)
                     if d.startswith('P')][0]
-        subprocess.check_call(['make', 'check'], cwd=proc_dir,
+        if self.output_format == 'standalone_fortran':
+            build, check = ['make', 'check'], ['./check']
+        else:
+            # madmatrix: the default build mixes precisions (float color
+            # sum), which caps the comparison at ~1e-7; build it in double
+            build, check = ['make', 'FPTYPE=d', '-j4'], ['./check_sa.exe']
+        subprocess.check_call(build, cwd=proc_dir,
                               stdout=subprocess.DEVNULL,
                               stderr=subprocess.DEVNULL)
-        output = subprocess.run(['./check'], cwd=proc_dir, timeout=300,
+        output = subprocess.run(check, cwd=proc_dir, timeout=300,
                                 capture_output=True, text=True).stdout
         momenta = re.findall(r'^\s*[1-4]\s+(\S+\s+\S+\s+\S+\s+\S+)', output,
                              re.MULTILINE)
@@ -160,6 +168,14 @@ class TreeXTreeStandaloneTest(unittest.TestCase):
         expected = references['za'] - references['z'] - references['a']
         self.assertTrue(abs(expected) > 1e-3 * references['za'])
         self.assertAlmostEqual(interference / expected, 1., places=10)
+
+
+
+class TreeXTreeMadmatrixStandaloneTest(TreeXTreeStandaloneTest):
+    """The same comparison with the C++ matrix element of madmatrix ('output
+    standalone', the code mg7 runs), built in double precision."""
+
+    output_format = 'standalone'
 
 
 if __name__ == '__main__':
