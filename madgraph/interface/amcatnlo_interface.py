@@ -1178,10 +1178,15 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             else:
                 ME = run_interface.aMCatNLOCmd(me_dir=argss[0],options=self.options)
                 ME.pass_in_web_mode()
-            # transfer interactive configuration
-            config_line = [l for l in self.history if l.strip().startswith('set')
-                           and not extended_cmd.is_question_answer(l)]
-            for line in config_line:
+            # transfer interactive configuration.  Generation-time-only options
+            # (e.g. zerowidth_tchannel, whose T-channel-width treatment is baked
+            # into the matrix element at 'output' time) appear in the MG5 history
+            # but are NOT valid run-time 'set' options -- replaying them would
+            # raise in the run interface's check_set -- so set_lines_for_run
+            # leaves them out; a genuine run-time 'set zerowidth_tchannel' typed
+            # at the run prompt still goes straight to the run interface and
+            # correctly crashes.
+            for line in extended_cmd.set_lines_for_run(self.history):
                 ME.exec_cmd(line)
             stop = self.define_child_cmd_interface(ME)                
             return stop

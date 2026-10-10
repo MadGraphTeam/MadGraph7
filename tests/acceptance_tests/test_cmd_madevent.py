@@ -104,6 +104,23 @@ def _mg7_datadir_or_skip(test):
     return datadir
 
 
+def _set_toml_key(text, section, key, value):
+    """`text` (a run_card.toml) with `key` of the table `[section]` set to
+    `value`, whatever it was; the same key of any other table (the `enable`
+    of [vegas] next to the one of [systematics]) is left alone. A regex
+    spanning from the section header to the next `key = ...` would not stop
+    at the end of the table."""
+    lines, current = text.split('\n'), None
+    for i, line in enumerate(lines):
+        header = re.match(r'^\s*\[+\s*([^\]]+?)\s*\]+\s*(#.*)?$', line)
+        if header:
+            current = header.group(1)
+        elif current == section and \
+                re.match(r'^\s*%s\s*=' % re.escape(key), line):
+            lines[i] = '%s = %s' % (key, value)
+    return '\n'.join(lines)
+
+
 def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
     """Run an mg7 cross-section: execute `setup_cmds` (MG5 lines, ending with
     the generate), `output mg7 run_dir`, drive bin/generate_events with the
@@ -138,7 +155,7 @@ def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
     # defaults to true and is the one that actually costs the time here. The
     # cross-section these callers read does not depend on either.
     t = re.sub(r'^systematics = true$', 'systematics = false', t, flags=re.M)
-    t = re.sub(r'(?ms)^(\[systematics\].*?^enable = )true$', r'\1false', t)
+    t = _set_toml_key(t, 'systematics', 'enable', 'false')
     open(toml, 'w').write(t)
     env = dict(os.environ)
     env['LHAPDF_DATA_PATH'] = datadir

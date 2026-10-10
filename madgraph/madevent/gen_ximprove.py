@@ -131,8 +131,18 @@ class gensym(object):
         P_zero_result = []
         nb_tot_proc = len(subproc)
         job_list = {}      
-        
-          
+        # A directory routing through another group's matrix element (Track B
+        # crossing, crossgroup.mk) is surveyed BEFORE the bases: its survey,
+        # which runs the base's matrix element at its own (crossed) kinematics,
+        # gives rows the base's recycled optim has to cover (see
+        # crossgroup_shared.dat below).
+        def routed(subdir):
+            return os.path.exists(pjoin(self.me_dir, 'SubProcesses',
+                                        subdir.strip(), 'crossgroup.mk'))
+        subproc = [d for d in subproc if routed(d)] + \
+                  [d for d in subproc if not routed(d)]
+        surveys = {}
+
         for nb_proc,subdir in enumerate(subproc):
             self.cmd.update_status('Compiling for process %s/%s.' % \
                                (nb_proc+1,nb_tot_proc), level=None)
@@ -202,7 +212,8 @@ class gensym(object):
             zero_gc = list()
             all_zampperhel = set()
             all_bad_amps_perhel = set()
-            
+            all_csym_pairs = set()
+
             for line in stdout.splitlines():
                 if "="  not in line and ":" not in line:
                     continue
@@ -212,6 +223,9 @@ class gensym(object):
                         zero_gc.append(lsplit[0])
                 if 'Matrix Element/Good Helicity:' in line:
                     all_hel.add(tuple(line.split()[3:5]))
+                if 'CSYM PAIR:' in line:
+                    # (me_index, representative_hel, dropped_partner_hel)
+                    all_csym_pairs.add(tuple(line.split()[2:5]))
                 if 'Amplitude/ZEROAMP:' in line:
                     all_zamp.add(tuple(line.split()[1:3]))
                 if 'HEL/ZEROAMP:' in line:
@@ -221,6 +235,40 @@ class gensym(object):
                     if (nb_mat,nb_amp) in all_zamp:
                         continue
                     all_zampperhel.add(tuple(line.split()[1:4]))
+
+            surveys[subdir] = (set(all_hel), set(all_zamp), set(all_zampperhel))
+
+            # A matrix element shared by a crossing (crossgroup_shared.dat:
+            # `<me index> [P directories routing through it]`): its recycled
+            # optim is entered by every crossing that routes through it, so it
+            # must cover the rows each of them evaluates. Each crossing is
+            # scanned at its own kinematics, as madspace scans each crossing:
+            # a within-group router calls the base inside this very survey, a
+            # cross-group one in its own directory's survey, done first. An
+            # amplitude is only dropped where it vanishes for every caller.
+            shared = {}
+            sh_file = pjoin(Pdir, 'crossgroup_shared.dat')
+            if os.path.exists(sh_file):
+                for line in open(sh_file):
+                    vals = line.split()
+                    if vals:
+                        shared[vals[0]] = vals[1:]
+            for me_index, dep_dirs in shared.items():
+                for dep in dep_dirs:
+                    if dep not in surveys:
+                        raise Exception('%s routes through %s but was not '
+                                        'surveyed first' % (dep, subdir))
+                    d_hel, d_zamp, d_zph = surveys[dep]
+                    mine = set(h for (m, h) in all_hel if m == me_index)
+                    theirs = set(h for (m, h) in d_hel if m == me_index)
+                    all_zamp = set(z for z in all_zamp
+                                   if z[0] != me_index or z in d_zamp)
+                    all_zampperhel = set(
+                        z for z in all_zampperhel
+                        if z[0] != me_index or z[1] not in theirs or z in d_zph
+                    ) | set(z for z in d_zph
+                            if z[0] == me_index and z[1] not in mine)
+                    all_hel |= set((me_index, h) for h in theirs)
 
             if zero_gc and not gensym.done_warning_zero_coupling:
                 gensym.done_warning_zero_coupling = True
@@ -232,8 +280,18 @@ class gensym(object):
                 
             all_good_hels = collections.defaultdict(list)
             for me_index, hel in all_hel:
-                all_good_hels[me_index].append(int(hel))                           
-                               
+                all_good_hels[me_index].append(int(hel))
+
+            # C-parity de-duplication: (representative -> dropped partner) pairs
+            # per matrix element, reported by matrix<i>_orig.f. rep < flip, and
+            # both are good helicities with |M(rep)|^2 == |M(flip)|^2 at every
+            # scan point. The partner keeps its row (helicity table / |M|^2 sum)
+            # but its amplitudes are dropped from the recycled optim and its
+            # |M|^2 reused from the representative.
+            all_csym = collections.defaultdict(list)
+            for me_index, rep, flip in all_csym_pairs:
+                all_csym[me_index].append((int(rep), int(flip)))
+
             #print(all_hel)
             if self.run_card['hel_zeroamp']:
                 all_bad_amps = collections.defaultdict(list)
@@ -272,7 +330,21 @@ class gensym(object):
                 
         
             for matrix_file in misc.glob('matrix*orig.f', Pdir):
-    
+
+                # Track B cross-group crossing: a dependent P directory reuses a
+                # base group's compiled matrix element, so its matrix<i>_orig.f is
+                # a SYMLINK and crossgroup.mk symlinks the base's already-recycled
+                # matrix<i>_optim.o over it. Running the (expensive) recycler here
+                # is redundant -- the resulting matrix<i>_optim.f is never compiled
+                # (its .o comes from the base). But the P makefile discovers its
+                # matrix objects by the presence of matrix<i>_optim.f, so a
+                # placeholder must still exist: copy the source (cheap) instead of
+                # recycling. The base directory, whose source is a real file, bakes
+                # the shared optim over the UNION good-hel of the whole class.
+                if os.path.islink(matrix_file):
+                    files.cp(matrix_file, matrix_file.replace('orig', 'optim'))
+                    continue
+
                 split_file = matrix_file.split('/')
                 me_index = split_file[-1][len('matrix'):-len('_orig.f')]
 
@@ -286,17 +358,48 @@ class gensym(object):
 
                 # Convert to sorted list for reproducibility
                 #good_hels = sorted(list(good_hels))
-                good_hels = [str(x) for x in sorted(all_good_hels[me_index])]
+                # The rows of every caller: the survey already merged those of
+                # the crossings sharing this matrix element (see above).
+                good_set = set(all_good_hels[me_index])
+                shared_me = me_index in shared
+                good_hels = [str(x) for x in sorted(good_set)]
+
+                mtext = open(matrix_file).read()
+                nb_amp = int(re.findall(r'PARAMETER \(NGRAPHS=(\d+)\)', mtext)[0])
+
                 if self.run_card['hel_zeroamp']:
-                    
                     bad_amps = [str(x) for x in sorted(all_bad_amps[me_index])]
                     bad_amps_perhel = [x for x in sorted(all_bad_amps_perhel[me_index])]
                 else:
-                    bad_amps = [] 
+                    bad_amps = []
                     bad_amps_perhel = []
+
+                # C-parity de-duplication: for each surviving pair KEEP both rows
+                # in the helicity table (so the |M|^2 sum and the event-helicity
+                # CDF stay complete) but drop the partner's amplitudes -- add every
+                # (partner, graph) to bad_amps_perhel so its HELAS calls are never
+                # generated -- and reuse the representative's |M|^2 for it. The
+                # reuse indices are the OPTIM's re-indexed positions in good_hels
+                # (helicity indices are renumbered 1..len(good_hels) in the optim).
+                # Still disabled for a matrix element shared by a crossing
+                # (shared_me): the pairing is established for the base's own
+                # flavors only, and a crossing evaluates the same rows at its own
+                # kinematics, so the reuse is not obviously its mirror pairing. That costs only
+                # speed -- both rows of a pair get computed -- and not
+                # correctness, since AMP2/JAMP2 ratios do not depend on WHICH
+                # subset of the good configs is summed (they are the same for a
+                # row and its mirror).
+                csym_reuse_pairs = []
+                if not shared_me and all_csym[me_index]:
+                    opt_index = {h: i + 1 for i, h in enumerate(sorted(good_set))}
+                    bad_set = set(bad_amps_perhel)
+                    for rep, flip in all_csym[me_index]:
+                        if rep in good_set and flip in good_set:
+                            for a in range(1, nb_amp + 1):
+                                bad_set.add((flip, a))
+                            csym_reuse_pairs.append((opt_index[rep], opt_index[flip]))
+                    bad_amps_perhel = sorted(bad_set)
                 if __debug__:
-                    mtext = open(matrix_file).read()
-                    nb_amp = int(re.findall(r'PARAMETER \(NGRAPHS=(\d+)\)', mtext)[0])
                     logger.debug('(%s) nb_hel: %s zero amp: %s bad_amps_hel: %s/%s', split_file[-1], len(good_hels),len(bad_amps),len(bad_amps_perhel), len(good_hels)*nb_amp )
                 if len(good_hels) == 1:
                     files.cp(matrix_file, matrix_file.replace('orig','optim'))
@@ -305,10 +408,39 @@ class gensym(object):
                 
                 gauge = self.cmd.proc_characteristics['gauge']
                 recycler = hel_recycle.HelicityRecycler(good_hels, bad_amps, bad_amps_perhel, gauge=gauge)
+                # C-parity de-duplication: copy each dropped partner's |M|^2 from
+                # its representative (both are real fortran helicity indices).
+                if csym_reuse_pairs:
+                    recycler.template_dict['csym_reuse'] = '\n'.join(
+                        '      TS(%d) = TS(%d)' % (flip, rep)
+                        for rep, flip in sorted(csym_reuse_pairs)) + '\n'
+                # A crossing base's optim holds configs that are dead for
+                # whichever member is calling it: dead for the crossing when the
+                # base evaluates its own flavors, dead for the base when a
+                # dependent's crossing enters. Their |M|^2 is zero and costs the
+                # sum nothing, but their individual diagrams and JAMPs are not
+                # zero, so letting them into AMP2 (multi-channel) and JAMP2
+                # (colour flow) reweights channel and colour selection -- the
+                # g g > q q~ defect. Gate both on |M|^2 being non-zero, which is
+                # the same test the good-hel filter itself is trained on, so each
+                # caller accumulates over exactly its own good set as the
+                # unrecycled path does.
+                # Keyed on the matrix element being shared rather than on the
+                # union having grown: a within-group router's rows already come
+                # with the base's own survey.
+                if shared_me:
+                    recycler.template_dict['dead_row_if'] = \
+                        'IF (TS(%s).NE.0D0) THEN' % recycler.loop_var
+                    recycler.template_dict['dead_row_endif'] = 'ENDIF'
                 # In case of bugs you can play around with these:
                 recycler.hel_filt = self.run_card['hel_filtering']
                 recycler.amp_splt = self.run_card['hel_splitamp']
                 recycler.amp_filt = self.run_card['hel_zeroamp']
+                # The unrolled call sequence is the whole file at high
+                # multiplicity; write it out in slices of this many statements
+                # (0 keeps it inline) so that gfortran is not handed one
+                # multi-million-line basic block.
+                recycler.amp_chunk_size = self.run_card['amp_chunk_size']
 
                 recycler.set_input(matrix_file)
                 recycler.set_output(out_file)

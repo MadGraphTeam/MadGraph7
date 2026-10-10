@@ -482,6 +482,49 @@ class MG5_UFO_gauge_Runner(MG5Runner):
         self.type =  '%s_%s' %(self.cms, self.gauge)
         self.name =  'MG5_%s_%s' %(self.cms, self.gauge)
     
+    # Above this collision energy every electroweak resonance (M_W, M_Z, M_H,
+    # M_top ~ 80-173 GeV) is far off shell, so a fixed-width propagator can have
+    # its width dropped without hitting a pole. At/near a resonance (the 90 GeV
+    # runs sit on the Z pole) the width is physical and must be kept.
+    RESONANCE_SAFE_ENERGY = 300.0
+
+    def fix_energy_in_check(self, dir_name, energy):
+        """Set the collision energy (parent behaviour) and, for the fixed-width
+        runs *well above the resonances*, zero every width in the param_card.
+
+        Rationale: this test compares the complex-mass scheme against the
+        fixed-width scheme in several gauges. A finite width i*M*Gamma is what
+        breaks gauge/scheme invariance at O(Gamma) -- and the default treatment
+        keeps it for timelike (s-channel) but drops it for spacelike (t-channel)
+        propagators (aloha.t_channel_width / zerowidth_tchannel), an imbalance
+        the FD gauge is sensitive enough to fail on (e+ e- > e+ ve d u~ at
+        500 GeV). Off resonance the width is a pure O(Gamma) nuisance, so zero
+        every width in the fixed-width runs: the three fixed-width gauges then
+        agree exactly. On the Z pole (90 GeV) the width regulates a real
+        resonance, so it is kept there -- zeroing it would blow the propagator
+        up (e.g. b b~ > b b~ g). The complex-mass (cms='True') runs always keep
+        their widths: the width lives inside the complex mass and defines the
+        scheme.
+        """
+        if self.cms == 'False' and energy >= self.RESONANCE_SAFE_ENERGY:
+            self._zero_widths_in_param_card(dir_name)
+        return super(MG5_UFO_gauge_Runner, self).fix_energy_in_check(
+            dir_name, energy)
+
+    @staticmethod
+    def _zero_widths_in_param_card(dir_name):
+        """Rewrite every DECAY width to 0 in <dir>/Cards/param_card.dat."""
+        card = os.path.join(dir_name, 'Cards', 'param_card.dat')
+        if not os.path.exists(card):
+            return
+        with open(card) as fsock:
+            text = fsock.read()
+        # DECAY <pdg> <width> [ # comment] -> DECAY <pdg> 0.000000e+00 [ # ...]
+        text = re.sub(r'(?im)^(DECAY\s+\d+\s+)[+-]?\d*\.?\d+(?:[eEdD][+-]?\d+)?',
+                      r'\g<1>0.000000e+00', text)
+        with open(card, 'w') as fsock:
+            fsock.write(text)
+
     def format_mg5_proc_card(self, proc_list, model, orders):
         """Create a proc_card.dat string following v5 conventions."""
 
@@ -489,6 +532,16 @@ class MG5_UFO_gauge_Runner(MG5Runner):
         v5_string += "set automatic_html_opening False\n"
         v5_string += 'set complex_mass_scheme %s \n' % self.cms
         v5_string += 'set gauge %s \n' % self.gauge
+        # Keep the width in spacelike (t-channel) propagators. This matters for
+        # the on-resonance (90 GeV) runs, where widths are NOT zeroed below:
+        # the complex-mass scheme carries i*M*Gamma in every propagator (it
+        # lives in the complex mass M^2 -> M^2 - i*M*Gamma), t-channel included,
+        # whereas the default fixed-width treatment DROPS it for spacelike
+        # momenta -- an s/t imbalance that violates gauge invariance at
+        # O(Gamma). Above the resonances the widths are zeroed outright (see
+        # fix_energy_in_check), so this is a no-op there. Ignored for the CMS
+        # runs (the width already lives in the complex mass).
+        v5_string += 'set zerowidth_tchannel False \n'
         v5_string += "import model %s \n" % os.path.join(self.model_dir, model)
 
         couplings = MERunner.get_coupling_definitions(orders)

@@ -236,18 +236,28 @@ class make_info_html:
         return text
     
     def get_diagram_nb(self, proc, id):
-        
-        path = os.path.join(self.dir, 'SubProcesses', proc, 'matrix%s.f' % id)
+
         nb_diag = 0
-                
         pat = re.compile(r'''Amplitude\(s\) for diagram number (\d+)''' )
-        if not os.path.exists(path):
-            path = os.path.join(self.dir, 'SubProcesses', proc, 'matrix%s_orig.f' % id)
+        path = None
+        for suffix in ('%s.f', '%s_orig.f', '%s_router.f'):
+            cand = os.path.join(self.dir, 'SubProcesses', proc,
+                                'matrix' + suffix % id)
+            if os.path.exists(cand):
+                path = cand
+                break
+        # A crossing-router subprocess shares a base subprocess's matrix element
+        # (its matrix<i>_router.f holds no diagrams of its own), so it has no
+        # diagram-number comment: count 0.
+        if path is None:
+            return 0
         text = open(path).read()
+        match = None
         for match in re.finditer(pat, text):
             pass
-        nb_diag += int(match.groups()[0])
-        
+        if match is not None:
+            nb_diag += int(match.groups()[0])
+
         return nb_diag
             
             

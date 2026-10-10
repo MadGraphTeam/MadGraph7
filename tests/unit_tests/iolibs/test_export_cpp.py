@@ -924,7 +924,8 @@ class BrokenSymmetryCPPExportTest(unittest.TestCase):
             'broken_sym_component_old_factors': ",".join(str(v) for v in sym_data['component_old_factors']),
             'broken_sym_pid_list': ",".join(str(v) for v in sym_data['pid_list']),
             'broken_sym_block_starts': ",".join(str(v) for v in sym_data['block_starts']),
-            'broken_sym_block_lengths': ",".join(str(v) for v in sym_data['block_lengths'])
+            'broken_sym_block_lengths': ",".join(str(v) for v in sym_data['block_lengths']),
+            'ident_cross_function': ''
         }
         template_path = pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files',
                               'cpp_process_function_definitions.inc')
@@ -945,10 +946,12 @@ class DDMColorFlowMG7Test(unittest.TestCase):
     basis changes how the jamps are computed, never which color flows exist,
     so none of it may depend on the mode."""
 
-    def get_exporter(self, ids, ddm):
+    def get_exporter(self, ids, ddm, cls=None):
         """The mg7 exporter for the all-gluon process with npar = len(ids),
-        built with or without the DDM color basis."""
+        built with or without the DDM color basis. `cls` selects a subclass
+        (the madmatrix one shares this constructor)."""
 
+        cls = cls if cls else export_mg7.OneProcessExporterMG7
         color_amp.set_ddm_basis(ddm, with_flow=ddm)
         try:
             model = import_ufo.import_model('sm')
@@ -958,7 +961,7 @@ class DDMColorFlowMG7Test(unittest.TestCase):
             amplitude = diagram_generation.Amplitude(
                 base_objects.Process({'legs': legs, 'model': model}))
             matrix_element = helas_objects.HelasMatrixElement(amplitude)
-            return export_mg7.OneProcessExporterMG7(
+            return cls(
                 matrix_element, helas_call_writer.CPPUFOHelasCallWriter(model))
         finally:
             color_amp.set_ddm_basis(False)
@@ -986,6 +989,38 @@ class DDMColorFlowMG7Test(unittest.TestCase):
             for active_colors in ddm.active_color_map:
                 self.assertTrue(active_colors)
                 self.assertLess(max(active_colors), nflow)
+
+    def test_ddm_colordata_is_written_and_mode_independent(self):
+        """ColorData.h bakes the canonical color flow code of each flow, which
+        has to be decomposed on the flow basis: asking the DDM basis itself
+        raises (its elements are products of f's and have no single flow
+        each). That left a 0 byte header and no CPPProcess.cc at all for
+        every all-gluon process, silently and with a zero exit code."""
+
+        import madmatrix.model_handling as model_handling
+
+        written = {}
+        for npar in (4, 5):
+            for ddm in (False, True):
+                exporter = self.get_exporter(
+                    [21] * npar, ddm=ddm,
+                    cls=model_handling.OneProcessExporterMadMatrix)
+                exporter.path = tempfile.mkdtemp()
+                try:
+                    exporter.edit_colordata()
+                    with open(pjoin(exporter.path, 'ColorData.h')) as stream:
+                        # the color flow half: the color matrix before it is
+                        # the one of the basis the color sum runs on
+                        text = stream.read()
+                        written[(npar, ddm)] = text[text.index('namespace mgOnGpu'):]
+                finally:
+                    shutil.rmtree(exporter.path)
+                self.assertTrue(written[(npar, ddm)])
+                self.assertIn('colorflowcode_valid = true',
+                              written[(npar, ddm)])
+            # switching the color basis changes how the jamps are computed,
+            # never which color flows exist
+            self.assertEqual(written[(npar, True)], written[(npar, False)])
 
 
 #===============================================================================
