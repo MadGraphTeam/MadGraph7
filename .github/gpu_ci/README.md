@@ -18,15 +18,20 @@ allocation per workflow run, and every CI job of that run executes in it:
 
 | job | runs on | what it does |
 |---|---|---|
-| `start_runner` | GitHub | ssh to the cluster, `sbatch` `runner_batch.sh` on the GPU partition, wait until the runner is online (`remote_start_runner.sh`) |
+| `start_runner` | vmadgraph | ssh to the cluster, `sbatch` `runner_batch.sh` on the GPU partition, wait until the runner is online (`remote_start_runner.sh`) |
 | `build_madspace` | cluster | build madspace with `ENABLE_CUDA`/`ENABLE_HIP` for the GPU of the node (`build_madspace_gpu.sh`). The build is kept in `$GLOBALSCRATCH/mg7-gpu-ci/cache` and redone only when the madspace sources, the modules or the GPU architecture change |
 | `pp_ttx` | cluster | `generate p p > t t~`, `output mg7`, `device = ["cuda"]` or `["hip"]` in `run_card.toml`, `bin/generate_events -f`, check the cross section in `info.json` (`pp_ttx_mg7.sh`). The logs and cards are uploaded as an artifact, and the cross section is shown in the run summary |
+| `pp_jj` | cluster | the same with `generate p p > j j` (`PROCESS`/`TAG` of `pp_ttx_mg7.sh`): its jet cuts act on several objects, which `p p > t t~` has none of |
 | `stop_runner` | cluster | clean up, then create the stop file: `runner_batch.sh` stops the runner and the allocation ends |
 
 To add a CI job, give it `runs-on: [self-hosted, "${{ inputs.runner_label }}"]` and add it
 to the `needs` of `stop_runner`. It runs in the same allocation, after the others, so
 `time_limit` must cover all the jobs together. The first madspace build (OpenBLAS + GPU code)
-is the slow part.
+is the slow part. The default is kept short so that Slurm can backfill the allocation:
+20 minutes on lemaitre4 (successful runs take 1-12 minutes) and 30 minutes on manneback
+(usually 2-17 minutes, but the runner set-up and the checkout are sometimes slow there).
+Raise it from the Actions tab for a run that needs more, or in the caller workflow when a
+new job makes every run longer.
 
 Other safeguards:
 * **One run at a time per cluster.** The runner jobs of a cluster share the name
@@ -34,6 +39,12 @@ Other safeguards:
   first one has stopped. The workflows also use a concurrency group per cluster.
 * **Cancelled runs.** If a run is cancelled before its runner starts, the runner stops by
   itself after 10 minutes without a job.
+* **One vmadgraph runner per cluster.** `start_runner` holds its runner while the allocation
+  waits in the Slurm queue (up to 5 hours). It runs on `[self-hosted, vmadgraph,
+  vmadgraph-<cluster>]`, and each runner on the vmadgraph VM carries the label of one cluster
+  (`vmadgraph` → `vmadgraph-lemaitre4`, `vmadgraph-2` → `vmadgraph-manneback`), so a busy
+  cluster does not block the other one. The second runner runs under its own Unix user
+  (`ghrunner2`), because the ssh setup writes to `~/.ssh`.
 
 ## Security model
 
