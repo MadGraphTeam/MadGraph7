@@ -14,6 +14,7 @@
 
 #include <cfloat>
 #include <cmath>
+#include <string>
 #include <vector>
 #include <array>
 #include <utility>
@@ -193,10 +194,18 @@ extern "C"
 
   UmamiStatus umami_set_parameter(
     [[maybe_unused]] UmamiHandle handle,
-    [[maybe_unused]] char const* name,
-    [[maybe_unused]] double parameter_real,
+    char const* name,
+    double parameter_real,
     [[maybe_unused]] double parameter_imag )
   {
+    // Only the run card bw_cutoff so far (the $-excluded propagator window).
+    // It is shared by all the instances of this library, like the model
+    // parameters read by umami_initialize.
+    if( std::string( name ) == "bwcutoff" )
+    {
+      setBwCutoff( parameter_real );
+      return UMAMI_SUCCESS;
+    }
     return UMAMI_ERROR_NOT_IMPLEMENTED;
   }
 

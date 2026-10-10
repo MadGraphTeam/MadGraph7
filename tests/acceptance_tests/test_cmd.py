@@ -192,7 +192,6 @@ class TestCmdShell1(unittest.TestCase):
                     'eps_viewer': None, 
                     'automatic_html_opening': True, 
                     'pythia8_path': './HEPTools/pythia8',
-                    'mg5amc_py8_interface_path': './HEPTools/MG5aMC_PY8_interface',
                     'madanalysis5_path': './HEPTools/madanalysis5/madanalysis5',
                     'group_subprocesses': 'Auto',
                     'complex_mass_scheme': False,
@@ -201,6 +200,7 @@ class TestCmdShell1(unittest.TestCase):
                     'color_basis': 'auto',
                     'gauge': 'unitary',
                     'output_dependencies': 'external',
+                    'plain': False,
                     'dmtcp': None,
                     'lhapdf': 'lhapdf-config',
                     'lhapdf_py2': None,
@@ -222,6 +222,7 @@ class TestCmdShell1(unittest.TestCase):
                     'syscalc_path':'./SysCalc',
                     'collier':'./HEPTools/lib',
                     'hepmc_path': './hepmc',
+                    'hepmc3_path': './HEPTools/hepmc3',
                     'hwpp_path': './herwigPP',
                     'thepeg_path': './thepeg',
                     #'applgrid': 'applgrid-config',
@@ -3106,8 +3107,11 @@ set boost_choice [6, -6]
         msg = 'measured rho_avg = %r' % (rho_avg,)
         for i in range(len(rho_avg)):
             for j in range(len(rho_avg[0])):
-                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, places=3, msg=msg) #we ask 3 digits because we only use 50k events
-                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3, msg=msg)
+                # statistical error of a 50k-event average: at most 5e-4 per
+                # element (measured), so 3 digits (+-5e-4) is ~1 sigma and fails for
+                # most changes of the event generation; 2e-3 is 4 sigma
+                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, delta=2e-3, msg=msg)
+                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, delta=2e-3, msg=msg)
 
 
     def test_density_mode_user_interface(self):
@@ -3189,8 +3193,11 @@ set boost_choice [6, -6]
         msg = 'measured rho_avg = %r' % (rho_avg,)
         for i in range(len(rho_avg)):
             for j in range(len(rho_avg[0])):
-                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, places=3, msg=msg) #we ask 3 digits because we only use 50k events
-                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3, msg=msg)
+                # statistical error of a 50k-event average: at most 5e-4 per
+                # element (measured), so 3 digits (+-5e-4) is ~1 sigma and fails for
+                # most changes of the event generation; 2e-3 is 4 sigma
+                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, delta=2e-3, msg=msg)
+                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, delta=2e-3, msg=msg)
 
 
     def test_density_mode_ttbar(self):

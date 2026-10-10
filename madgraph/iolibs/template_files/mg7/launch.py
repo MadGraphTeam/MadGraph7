@@ -167,6 +167,14 @@ def resolve_auto_backend(build_path: str) -> str:
     return match.group(1)
 
 
+def me_parameters(run_card):
+    """Run-time parameters of the matrix-element libraries, passed to each
+    instance through umami_set_parameter by ms.Context.load_matrix_element:
+    the window of the $-excluded propagators is the run card bw_cutoff (the
+    one the phase space uses around the resonances too)."""
+    return {"bwcutoff": float(run_card["phasespace"]["bw_cutoff"])}
+
+
 @dataclass
 class Channel:
     phasespace_mapping: ms.PhaseSpaceMapping
@@ -257,6 +265,68 @@ class MadgraphProcess:
             self.merged_subprocess_data = None
 
         self.init_decay_mode()
+        self.init_me_frame()
+
+    def init_me_frame(self) -> None:
+        """Resolve the run card's me_frame into the list of external particles
+        whose momentum sum defines the frame the matrix element is evaluated in.
+
+        Empty (the default) means no boost: the matrix element sees the momenta
+        in the frame they are generated in. Unlike madevent, which hands its
+        matrix element momenta that are already in the partonic centre of mass,
+        madspace generates them in the lab frame, so asking for madevent's own
+        frame ([1, 2]) does mean an actual boost here. It changes nothing for a
+        Lorentz invariant matrix element (only the rounding), but it is what
+        defines the polarisation axes of a polarised one.
+
+        The particle numbers are checked here rather than only in madspace,
+        which would not see them until the integrands are built -- long after
+        the matrix-element libraries have been compiled. Every subprocess is
+        checked against its own particles: an output can mix multiplicities
+        (p p > z j and p p > z j j, say, for MLM merging), and madspace builds
+        one matrix element per subprocess, each refusing a particle it does not
+        have. That is stricter than madevent, which ignores the particles a
+        process does not have and so changes the frame from one multiplicity
+        to the next without a word.
+        """
+        me_frame = list(self.run_card["run"]["me_frame"])
+        pdgs = [clean_pids(meta["incoming"]) + clean_pids(meta["outgoing"])
+                for meta in self.subprocess_data]
+        counts = sorted({len(pdg_list) for pdg_list in pdgs})
+        for meta, pdg_list in zip(self.subprocess_data, pdgs):
+            for index in me_frame:
+                if 1 <= index <= len(pdg_list):
+                    continue
+                process = "%s > %s" % (
+                    " ".join(str(pid) for pid in meta["incoming"]),
+                    " ".join(str(pid) for pid in meta["outgoing"]),
+                )
+                mixed = (
+                    f"; this output mixes subprocesses with "
+                    f"{', '.join(str(count) for count in counts)} external "
+                    "particles, and me_frame has to name particles every one "
+                    "of them has"
+                    if len(counts) > 1 else ""
+                )
+                raise ValueError(
+                    f"me_frame particle {index} out of range: subprocess "
+                    f"{process} has {len(pdg_list)} external particles{mixed}"
+                )
+        if len(me_frame) == 1:
+            # A massless particle has no rest frame: its momentum squares to
+            # zero, so the boost divides by it and every momentum comes back as
+            # a NaN, silently. Name the mistake instead.
+            massless = [pdg_list[me_frame[0] - 1] for pdg_list in pdgs
+                        if self.get_mass(pdg_list[me_frame[0] - 1]) == 0.]
+            if massless:
+                raise ValueError(
+                    f"me_frame = {me_frame} asks for the rest frame of particle "
+                    f"{me_frame[0]}, which is massless (pdg "
+                    f"{sorted(set(massless))}) and has none. Name a massive "
+                    "particle, or several particles whose sum is massive."
+                )
+        self.me_frame = me_frame
+        self.incoming_count = 1 if self.is_decay else 2
 
     def init_decay_mode(self) -> None:
         """Decide whether this directory is a decay (1 -> n) or a collision.
@@ -863,6 +933,8 @@ class MadgraphProcess:
             "me_paths": [meta["me_path"] for meta in self.subprocess_data],
             "me_backend": me_backend,
             "flavor_remap": flavor_remap,
+            "me_frame": self.me_frame,
+            "incoming_count": self.incoming_count,
         }
         return self.systematics
 
@@ -929,13 +1001,16 @@ class MadgraphProcess:
                 matrix_elements.append(None)
                 continue
             api = context.load_matrix_element(
-                meta["me_path"].format(device=backend), self.param_card_path)
+                meta["me_path"].format(device=backend), self.param_card_path,
+                me_parameters(self.run_card))
             matrix_elements.append(ms.MatrixElement(
                 api,
                 [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
                  ms.MatrixElement.flavor_in],
                 [ms.MatrixElement.matrix_element_out],
                 False,
+                self.me_frame,
+                self.incoming_count,
             ))
         logger.info("systematics: re-evaluating the matrix element of %d mixed-order "
                     "subprocess(es) for the renormalisation scale variations", len(need))
@@ -966,7 +1041,10 @@ class MadgraphProcess:
                 continue
             all_pids = clean_pids(meta["incoming"]) + clean_pids(meta["outgoing"])
             values = ms.ObservableValues([
-                ms.Observable(all_pids, **item.observable_kwargs)
+                build_observable(
+                    observable_pids(meta, item.observable_kwargs),
+                    len(meta["incoming"]), item.observable_kwargs
+                )
                 for item in from_momenta
             ])
             observables.append(ms.SubprocessObservables(values, len(all_pids)))
@@ -1905,6 +1983,7 @@ class MadgraphProcess:
         data = {
             "channels": channel_files,
             "matrix_elements": matrix_elements,
+            "me_parameters": me_parameters(self.run_card),
             "source_hash": ms.SOURCE_HASH,
         }
         with open(os.path.join(data_path, "data.json"), "w") as f:
@@ -1977,6 +2056,128 @@ def clean_pids(pids: list[int]) -> list[int]:
     return pids_out
 
 
+# observables that tell a particle from its antiparticle, and so need the signed
+# pdg ids of the actual flavours rather than clean_pids' unsigned representatives
+_SIGNED_OBSERVABLES = {"sfos_pair_mass"}
+
+
+def _flavor_options(meta: dict, unmerged_meta: dict | None = None) -> list[list[int]]:
+    """Every flavour assignment (signed pdg ids, incoming then outgoing) a
+    subprocess evaluates with the same momenta."""
+    if "flavors" in meta:
+        return [
+            option for flavor in meta["flavors"] for option in flavor["options"]
+        ]
+    return [
+        option
+        for subproc in meta.get("subprocesses", [])
+        for option in _flavor_options(unmerged_meta[subproc])
+    ]
+
+
+def observable_pids(
+    meta: dict, observable_kwargs: dict, unmerged_meta: dict | None = None
+) -> list[int]:
+    """The pdg ids an observable of this subprocess is built with.
+
+    Most observables only select particles by group, which the unsigned
+    representatives of clean_pids do. One that pairs a particle with its
+    antiparticle needs the real signed flavours: those of the first flavour
+    assignment, provided every assignment of the subprocess forms the same
+    pairs -- the cut is applied once to momenta that all of them share.
+    """
+    all_pids = clean_pids(meta["incoming"]) + clean_pids(meta["outgoing"])
+    if observable_kwargs.get("observable") not in _SIGNED_OBSERVABLES:
+        return all_pids
+    options = _flavor_options(meta, unmerged_meta)
+    if not options:
+        raise ValueError(
+            f"{observable_kwargs.get('name')}: no flavour information for "
+            f"subprocess {meta['incoming']} > {meta['outgoing']}"
+        )
+    n_in = len(meta["incoming"])
+    groups = [set(group) for group in observable_kwargs["select_pids"]]
+    if len(groups) == 1:
+        groups = groups * 2
+
+    def sfos_pairs(pids):
+        out = range(n_in, len(pids))
+        return frozenset(
+            frozenset((i, j))
+            for i in out if pids[i] in groups[0]
+            for j in out if pids[j] in groups[1]
+            if i != j and pids[i] != 0 and pids[i] == -pids[j]
+        )
+
+    reference = sfos_pairs(options[0])
+    if any(sfos_pairs(option) != reference for option in options[1:]):
+        raise ValueError(
+            f"{observable_kwargs.get('name')}: the flavours grouped into subprocess "
+            f"{meta['incoming']} > {meta['outgoing']} pair the particles "
+            "differently, so a same-flavour opposite-sign cut cannot be applied "
+            "to their common momenta; regenerate the process after "
+            "'set apply_flavor_grouping False'"
+        )
+    return list(options[0])
+
+
+def build_observable(pids: list[int], n_in: int, observable_kwargs: dict):
+    """ms.Observable of a subprocess with `n_in` incoming particles.
+
+    madspace takes the first two momenta to be the beams (ignore_incoming), so
+    for a 1 -> N decay it would drop the first decay product from every
+    selection. There the selection runs over all the momenta instead, with the
+    incoming particle set to pdg id 0, which is in no group.
+    """
+    if n_in == 2:
+        return ms.Observable(pids, **observable_kwargs)
+    pids = [0] * n_in + list(pids[n_in:])
+    return ms.Observable(pids, **dict(observable_kwargs, ignore_incoming=False))
+
+
+def decay_products(meta: dict, unmerged_meta: dict | None = None) -> set[int]:
+    """Outgoing positions (0-based, beams excluded) of the particles that come
+    from an on-shell (decay-chain) propagator, as MadEvent's check_decay marks
+    them. Every channel of a subprocess shares its decay chains, so the first
+    channel tells, read through its first diagram's permutation."""
+    if not meta["channels"]:
+        return set()
+    channel = meta["channels"][0]
+    topo_channel = channel
+    if "vertices" not in channel:
+        topo_channel = unmerged_meta[channel["subprocess"]]["channels"][channel["channel"]]
+    on_shell = topo_channel.get("on_shell_propagators", [])
+    if not on_shell:
+        return set()
+    vertices = topo_channel["vertices"]
+    # the closing vertex creates no propagator
+    created = {vertex[-1]: vertex[:-1] for vertex in vertices[:-1]}
+
+    def legs(name):
+        if name in created:
+            return set().union(*(legs(child) for child in created[name]))
+        return {name}
+
+    n_in = len(meta["incoming"])
+    n_out = len(meta["outgoing"])
+    products = set()
+    for prop in on_shell:
+        external = legs(f"p{prop}")
+        incoming = {leg for leg in external if leg.startswith("i")}
+        outgoing = {int(leg[1:]) for leg in external if leg.startswith("o")}
+        if not incoming:
+            products |= outgoing
+        elif len(incoming) == n_in:
+            # built from the beams: the decay is everything else
+            products |= set(range(n_out)) - outgoing
+    # event[i] = topology[permutation[i]]
+    permutation = channel["diagrams"][0]["permutation"]
+    return {
+        i - n_in for i in range(n_in, len(permutation))
+        if permutation[i] - n_in in products
+    }
+
+
 def pid_is_qcd(pid: int):
     return abs(pid) in [21, 1, 2, 3, 4, 5, 6, 81]
 
@@ -1993,13 +2194,20 @@ def build_topologies(
     )):
         mass = process.get_mass(pid)
         width = process.get_width(pid)
+        bw_cutoff = process.run_card["phasespace"]["bw_cutoff"]
         if i in channel["on_shell_propagators"]:
-            bw_cutoff = process.run_card["phasespace"]["bw_cutoff"]
             e_min = mass - bw_cutoff * width
             e_max = mass + bw_cutoff * width
         else:
             e_min = 0
             e_max = 0
+        # $-excluded propagator: the matrix element vanishes within bw_cutoff
+        # widths of the pole, so do not pile the channel's points up there
+        # (a flat density in that window instead of the Breit-Wigner peak).
+        # Channels written before the exporter recorded them have none.
+        flat_window = 0.
+        if i in channel.get("dollar_propagators", ()) and width > 0:
+            flat_window = float(bw_cutoff)
         propagators.append(ms.Propagator(
             mass=mass,
             width=width,
@@ -2007,6 +2215,7 @@ def build_topologies(
             e_min=e_min,
             e_max=e_max,
             pdg_id=signed_pid,
+            flat_window=flat_window,
         ))
     vertices = channel["vertices"]
     diag = ms.Diagram(
@@ -2179,11 +2388,27 @@ class MadgraphSubprocess:
             self.process.get_mass(pid) for pid in clean_pids(self.meta["outgoing"])
         ]
         self.particle_count = len(self.incoming_masses) + len(self.outgoing_masses)
-        all_pids = clean_pids(self.meta["incoming"]) + clean_pids(self.meta["outgoing"])
+        # MadEvent's cut_decays = F: the decay products of on-shell propagators
+        # are left out of every cut selection (a pair cut then needs both
+        # members to be cut), while the histograms still see them
+        if self.process.run_card["phasespace"]["cut_decays"]:
+            uncut = set()
+        else:
+            uncut = decay_products(self.meta, self.unmerged_meta)
+        n_in = len(self.incoming_masses)
+
+        def cut_pids(observable_kwargs):
+            pids = observable_pids(self.meta, observable_kwargs, self.unmerged_meta)
+            # pdg id 0 is in no group, so the particle is never selected
+            return [0 if i - n_in in uncut else pid for i, pid in enumerate(pids)]
+
         self.cuts = (
             ms.Cuts([
                 ms.CutItem(
-                    observable=ms.Observable(all_pids, **cut_item.observable_kwargs),
+                    observable=build_observable(
+                        cut_pids(cut_item.observable_kwargs),
+                        n_in, cut_item.observable_kwargs
+                    ),
                     min=cut_item.min,
                     max=cut_item.max,
                     mode=cut_item.mode,
@@ -2223,7 +2448,12 @@ class MadgraphSubprocess:
         self.histograms = (
             ms.ObservableHistograms([
                 ms.HistItem(
-                    observable=ms.Observable(all_pids, **hist_item.observable_kwargs),
+                    observable=build_observable(
+                        observable_pids(
+                            self.meta, hist_item.observable_kwargs, self.unmerged_meta
+                        ),
+                        n_in, hist_item.observable_kwargs
+                    ),
                     min=hist_item.min,
                     max=hist_item.max,
                     bin_count=hist_item.bin_count,
@@ -2245,7 +2475,8 @@ class MadgraphSubprocess:
             for api_paths in all_api_paths:
                 for context, api_path in zip(self.process.contexts, api_paths):
                     mat = context.load_matrix_element(
-                        api_path, self.process.param_card_path
+                        api_path, self.process.param_card_path,
+                        me_parameters(self.process.run_card)
                     )
                 self.matrix_elements.append(mat)
 
@@ -2263,6 +2494,7 @@ class MadgraphSubprocess:
         drop_threshold = self.process.run_card["phasespace"]["drop_qcd_s_channel"]
         if drop_threshold >= 0 and channel_count > drop_threshold:
             mcdata = self.drop_qcd_s_channels(mcdata)
+        mcdata = self.drop_empty_channels(mcdata)
 
         channels = []
         t_channel_mode = self.t_channel_mode(
@@ -2526,7 +2758,73 @@ class MadgraphSubprocess:
                 for flavs in mcdata.active_flavors[index]:
                     covered_flavors.update(flavs)
 
-        kept_groups = sorted(kept_groups)
+        return self.keep_channel_groups(mcdata, sorted(kept_groups))
+
+    def drop_empty_channels(self, mcdata: MultiChannelData) -> MultiChannelData:
+        """Drop the channels whose phase space the cuts exclude entirely: a pair
+        mass cut whose floor lies at or above the top of an on-shell window of
+        the channel (ms.PhaseSpaceMapping.empty). Every point such a channel
+        generates fails the cuts, so it could only ever fail to find one.
+
+        If that leaves a flavour with no channel at all, its cross section is
+        zero -- typically a cut that excludes the window of a decay chain every
+        diagram shares -- and the run cannot sample it: that is reported as an
+        error naming the cause, rather than as the survey finding no point
+        passing the cuts."""
+        if self.cuts is None:
+            return mcdata
+        t_channel_mode = self.t_channel_mode(
+            self.process.run_card["phasespace"]["t_channel"]
+        )
+        empty = [
+            ms.PhaseSpaceMapping(
+                chan_topologies[0],
+                self.process.e_cm,
+                t_channel_mode=t_channel_mode,
+                cuts=self.cuts,
+                invariant_power=self.process.run_card["phasespace"]["invariant_power"],
+                permutations=chan_permutations,
+                leptonic=self.process.leptonic,
+            ).empty()
+            for chan_topologies, chan_permutations in zip(
+                mcdata.topologies, mcdata.permutations
+            )
+        ]
+        if not any(empty):
+            return mcdata
+        kept_groups = [index for index, is_empty in enumerate(empty) if not is_empty]
+        covered_flavors = {
+            flav
+            for index in kept_groups
+            for flavs in mcdata.active_flavors[index]
+            for flav in flavs
+        }
+        uncovered = sorted({
+            flav
+            for index, is_empty in enumerate(empty) if is_empty
+            for flavs in mcdata.active_flavors[index]
+            for flav in flavs
+        } - covered_flavors)
+        if uncovered:
+            raise ValueError(
+                f"subprocess {self.meta['incoming']} > {self.meta['outgoing']}: "
+                "the pair mass cuts exclude the whole on-shell window "
+                f"(bw_cutoff = {self.process.run_card['phasespace']['bw_cutoff']}) "
+                f"of every channel of flavour(s) {uncovered}, so their cross "
+                "section is zero; loosen the cut or remove that decay"
+            )
+        logger.info(
+            "subprocess %d: %d channel(s) dropped, the cuts exclude the "
+            "on-shell window they sample", self.subproc_id, len(empty) - len(kept_groups)
+        )
+        return self.keep_channel_groups(mcdata, kept_groups)
+
+    def keep_channel_groups(
+        self, mcdata: MultiChannelData, kept_groups: list[int]
+    ) -> MultiChannelData:
+        """Rebuild the multi-channel data with only the channel groups (indices
+        into mcdata.topologies) in kept_groups. Channel weights belonging to a
+        dropped channel are left unmapped."""
         if len(kept_groups) == len(mcdata.topologies):
             return mcdata
 
@@ -2741,8 +3039,14 @@ class MadgraphSubprocess:
             discrete_sym = None
 
         if flavor_count > 1:
+            # the flavor probabilities are conditioned on the PDF prior; a
+            # leptonic process (or a decay) has none, and the Integrand then
+            # passes no condition: declaring one anyway fails to build
+            # ("keys and values must have the same size"), e.g. z > q q~ with
+            # both u- and d-type rows
             discrete_flavor = ms.DiscreteSampler(
-                [flavor_count], f"{prefix}.discrete_flavor", [0]
+                [flavor_count], f"{prefix}.discrete_flavor",
+                [] if self.process.leptonic else [0]
             )
             for context in self.process.contexts:
                 discrete_flavor.initialize_globals(context)
@@ -2829,6 +3133,8 @@ class MadgraphSubprocess:
                     ms.Integrand.matrix_element_inputs,
                     ms.Integrand.matrix_element_outputs,
                     True,
+                    self.process.me_frame,
+                    self.process.incoming_count,
                 )
             else:
                 #TODO: not working in merged mode
@@ -2839,6 +3145,8 @@ class MadgraphSubprocess:
                     ms.Integrand.matrix_element_outputs,
                     self.meta["diagram_count"],
                     True,
+                    self.process.me_frame,
+                    self.process.incoming_count,
                 )
             pdf_grid = None if self.process.leptonic else self.process.pdf_grid
             pdf_arg = None if self.process.leptonic else ms.CachedPdf()
@@ -2937,7 +3245,7 @@ def load_mg5_options(me_dir=None) -> dict:
         'madanalysis5_path': None, 'exrootanalysis_path': None, 'delphes_path': None,
         'rivet_path': None, 'contur_path': None, 'f2py_compiler': None,
         'lhapdf': None, 'lhapdf_py3': None, 'lhapdf_py2': None, 'timeout': 0,
-        'mg5amc_py8_interface_path': None, 'heptools_install_dir': None,
+        'heptools_install_dir': None, 'hepmc3_path': None,
     }
     config_files = []
     base_config = misc.base_config_file()

@@ -281,8 +281,10 @@ class CheckValidForCmd(object):
 #        if not hasattr(model.get('particles')[0], 'partial_widths'):
 #            raise self.InvalidCmd, 'The UFO model does not include partial widths information. Impossible to compute widths automatically'
             
-        # check if the name are passed to default MG5
-        if '-modelname' not in open(pjoin(self.me_dir,'Cards','proc_card_mg5.dat')).read():
+        # check if the name are passed to default MG5 (through ProcCard: older
+        # versions wrapped a long 'import model' line, even inside '-modelname')
+        proc_card = banner_mod.ProcCard(pjoin(self.me_dir,'Cards','proc_card_mg5.dat'))
+        if '-modelname' not in proc_card.get('full_model_line'):
             model.pass_particles_name_in_mg_default()        
         model = model_reader.ModelReader(model)
         particles_name = dict([(p.get('name'), p.get('pdg_code'))
@@ -663,6 +665,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                        'hwpp_path': './herwigPP',
                        'thepeg_path': './thepeg',
                        'hepmc_path': './hepmc',
+                       'hepmc3_path': None,
                        'madanalysis5_path': './HEPTools/madanalysis5',
                        'pythia-pgs_path':'./pythia-pgs',
                        'delphes_path':'./Delphes',
@@ -4595,46 +4598,29 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         """ return the model name """
         if hasattr(self, 'model_name'):
             return self.model_name
-        
-        def join_line(old, to_add):
-            if old.endswith('\\'):
-                newline = old[:-1] + to_add
-            else:
-                newline = old + line
-            return newline
-            
-        
-        
-        model = 'sm'
+
+        # Older versions of ProcCard.write wrapped lines at 70 characters, even
+        # inside a token, and ProcCard.read joins them back. Reading the card
+        # also drops the generate/add process lines that precede the last
+        # 'import model'.
+        proc_card = banner_mod.ProcCard(os.path.join(self.me_dir, 'Cards',
+                                                     'proc_card_mg5.dat'))
+        # info['model'] is None for 'import model_v4 NAME' (and keeps a trailing
+        # comment), so take the name from the full line: the first argument
+        # that is not an option such as -modelname. Default: 'sm'.
+        args = proc_card.get('full_model_line').split('#')[0].split()[2:]
+        args = [arg for arg in args if not arg.startswith('-')]
+        model = args[0] if args else 'sm'
+
         proc = []
-        continuation_line = None
-        for line in open(os.path.join(self.me_dir,'Cards','proc_card_mg5.dat')):
-            line = line.split('#')[0]
-            if continuation_line:
-                line = line.strip()
-                if continuation_line == 'model':
-                    model = join_line(model, line)
-                elif continuation_line == 'proc':
-                    proc = join_line(proc, line)
-                if not line.endswith('\\'):
-                    continuation_line = None
-                continue
-            #line = line.split('=')[0]
-            if line.startswith('import') and 'model' in line:
-                model = line.split()[2]   
-                proc = []
-                if model.endswith('\\'):
-                    continuation_line = 'model'
-            elif line.startswith('generate'):
+        for line in proc_card:
+            line = line.split('#')[0].strip()
+            if line.startswith('generate'):
                 proc.append(line.split(None,1)[1])
-                if proc[-1].endswith('\\'):
-                    continuation_line = 'proc'
             elif line.startswith('add process'):
                 proc.append(line.split(None,2)[2])
-                if proc[-1].endswith('\\'):
-                    continuation_line = 'proc'
         self.model = model
-        self.process = proc 
+        self.process = proc
         return model
 
 
@@ -4716,6 +4702,37 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         return self.deal_multiple_categories(completion, formatting)
         
 
+    def get_hepmc_paths(self, hepmc_version):
+        """Installation prefixes where HepMC<hepmc_version> (2 or 3) may be:
+        the hepmc3_path (HepMC3) or hepmc_path (HepMC2) option first."""
+
+        hepmc_dir = 'hepmc3' if hepmc_version == 3 else 'hepmc'
+        option = 'hepmc3_path' if hepmc_version == 3 else 'hepmc_path'
+        hepmc_paths = [self.options.get(option)]
+        if self.options.get('heptools_install_dir'):
+            hepmc_paths.append(pjoin(self.options['heptools_install_dir'], hepmc_dir))
+        if not MADEVENT:
+            if self.options.get(option):
+                hepmc_paths.append(pjoin(MG5DIR, self.options[option]))
+            hepmc_paths.append(pjoin(MG5DIR, 'HEPTools', hepmc_dir))
+        return hepmc_paths
+
+    def get_auto_hepmc_version(self):
+        """The HepMC version of the shower output when it is set to 'auto':
+        HepMC3, unless a tool run on that output can only read HepMC2."""
+
+        if os.path.exists(pjoin(self.me_dir, 'Cards', 'madanalysis5_hadron_card.dat')):
+            logger.info('The shower writes HepMC2 events, the only HepMC version '+
+                        'that MadAnalysis5 reads.')
+            return 2
+        if os.path.exists(pjoin(self.me_dir, 'Cards', 'delphes_card.dat')) and \
+                self.options.get('delphes_path') and \
+                not os.path.exists(pjoin(self.options['delphes_path'], 'DelphesHepMC3')):
+            logger.info('The shower writes HepMC2 events, since this Delphes cannot '+
+                        'read HepMC3 (no DelphesHepMC3).')
+            return 2
+        return 3
+
     def update_make_opts(self, run_card=None):
         """update the make_opts file writing the environmental variables
         stored in make_opts_var"""
@@ -4746,6 +4763,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         """update the make_opts file writing the environmental variables
         of def_variables.
         if a value of the dictionary is None then it is not written.
+        Return True if the file had to be changed.
         """
         make_opts = path
         pattern = re.compile(r'^(\w+)\s*=\s*(.*)$',re.DOTALL)
@@ -4836,7 +4854,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             # never observe the file in the truncated state that open(...,'w')
             # would leave it in.
             misc.atomic_write(make_opts, content_variables + '\n'.join(content))
-        return       
+        return diff
 
 
 
@@ -7438,7 +7456,11 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 libs , paths = [], []
                 p = misc.subprocess.Popen([executable, '--libs'], stdout=subprocess.PIPE)
                 stdout, _ = p. communicate()
-                libs = [x[2:] for x in stdout.decode(errors='ignore').split() if x.startswith('-l') or paths.append(x[2:])]
+                # -l<lib> and -L<path> only: the -Wl,-rpath,<path> tokens are not
+                # paths (the shower puts EXTRAPATHS on the library path at run time)
+                tokens = stdout.decode(errors='ignore').split()
+                libs = [x[2:] for x in tokens if x.startswith('-l')]
+                paths = [x[2:] for x in tokens if x.startswith('-L')]
                 
                 # Add additional user-defined compilation flags
                 p = misc.subprocess.Popen([executable, '--config'], stdout=subprocess.PIPE)

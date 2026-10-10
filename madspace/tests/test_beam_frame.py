@@ -144,6 +144,67 @@ def test_mirror_beams(rng, pdf_asymmetric_only):
     assert np.asarray(r_inv)[ok] == approx(r[ok], abs=1e-6)
 
 
+def s_channel_two_body():
+    return ms.Topology(
+        ms.Diagram(
+            [0.0, 0.0],
+            [0.0, 0.0],
+            [ms.Propagator(0.0, 0.0)],
+            [["i0", "i1", "p0"], ["p0", "o0", "o1"]],
+        )
+    )
+
+
+def t_channel_two_body():
+    return ms.Topology(
+        ms.Diagram(
+            [0.0, 0.0],
+            [0.0, 0.0],
+            [ms.Propagator(0.0, 0.0)],
+            [["i0", "o0", "p0"], ["p0", "i1", "o1"]],
+        )
+    )
+
+
+@pytest.mark.parametrize("mirror_index", [None, 0, 1], ids=["plain", "mirror0", "mirror1"])
+@pytest.mark.parametrize("topology", [s_channel_two_body, t_channel_two_body])
+def test_rapidity_windows_hold_in_the_lab_frame(rng, topology, mirror_index):
+    """The pt and |eta| cuts narrow the sampled Y = log(x1 / x2) / 2 and the
+    angles of the first decay or scattering (test_cut_rapidity_windows). Those
+    are generated in the beams' frame while the cuts act in the lab, so every
+    event that passes the cuts in the lab must still lie inside the windows:
+    it maps back into the unit cube."""
+    e1, e2 = 7000.0, 1000.0
+    e_cm = 2 * math.sqrt(e1 * e2)
+    y0 = 0.5 * math.log(e1 / e2)
+    pids = [2, -2, 11, -11]
+    leptons = [[11, -11]]
+    cuts = ms.Cuts(
+        [
+            ms.CutItem(observable=ms.Observable(pids, "pt", leptons), min=10.0),
+            ms.CutItem(observable=ms.Observable(pids, "eta_abs", leptons), max=2.5),
+        ]
+    )
+    kwargs = dict(beam_rapidity=y0, mirror_beams=mirror_index is not None)
+    free = ms.PhaseSpaceMapping(topology(), e_cm, **kwargs)
+    windowed = ms.PhaseSpaceMapping(topology(), e_cm, cuts=cuts, **kwargs)
+    n = 200_000
+    conditions = (
+        [] if mirror_index is None else [np.full(n, mirror_index, dtype=np.int32)]
+    )
+    r = rng.random((n, free.random_dim()))
+    p, x1, x2, det = map(np.asarray, free.map_forward([r], conditions))
+    x1, x2 = np.broadcast_to(x1, (n,)), np.broadcast_to(x2, (n,))
+    keep = (det > 0) & (np.asarray(cuts(p)).reshape(-1) > 0.5)
+    # boosted far enough that the lab cut is not the beams'-frame one
+    assert (np.abs(0.5 * np.log(x1 / x2))[keep] > 2.5).any()
+    conditions = [c[keep] for c in conditions]
+    r_back, _ = windowed.map_inverse([p[keep], x1[keep], x2[keep]], conditions)
+    r_back = np.asarray(r_back)
+    assert np.all(np.isfinite(r_back))
+    assert r_back.min() > -1e-6 and r_back.max() < 1 + 1e-6
+
+
 # --- the mirror and the cuts -------------------------------------------------
 #
 # The initial-state mirror is the rotation by pi about x, (E, px, py, pz) ->
@@ -281,29 +342,30 @@ def test_mirror_beams_cuts_the_written_orientation(rng, observable, bounds, sepa
         mirror_beams=True,
         mode=mode,
     )
-    free = ms.PhaseSpaceMapping([0.0] * 4, e_cm, mirror_beams=True, mode=mode)
     r = rng.random((N, cut.random_dim()))
-    accepted, momenta, physical = {}, {}, {}
+    accepted, momenta = {}, {}
     for index in (0, 1):
         condition = np.full(N, index, dtype=np.int32)
-        accepted[index] = np.asarray(cut.map_forward([r], [condition])[3]) > 0
-        p, _, _, det = map(np.asarray, free.map_forward([r], [condition]))
-        momenta[index], physical[index] = p, det > 0
+        # the momenta of the cut mapping itself: an |eta| cut also narrows the
+        # sampled rapidity and angle windows, so a mapping without it would not
+        # give the same point for the same random numbers
+        p, _, _, det = map(np.asarray, cut.map_forward([r], [condition]))
+        momenta[index], accepted[index] = p, det > 0
 
-    ok = physical[0]
-    assert ok.any()
+    assert accepted[0].any()
     # orientation 1 is the pi rotation of orientation 0
-    assert momenta[1][ok] == approx(mirror(momenta[0][ok]), abs=1e-7)
-    # and both are cut on the momenta that come out, not on the other orientation
+    assert momenta[1] == approx(mirror(momenta[0]), abs=1e-7)
+    # and both are cut on the momenta that come out, not on the other
+    # orientation (every rambo point of a massless 2 -> 2 is physical)
     for index in (0, 1):
         obs = eta(momenta[index][:, 2:])
         if observable == "eta_abs":
             passed = (np.abs(obs) < bounds["max"]).all(axis=1)
         else:
             passed = (obs > bounds["min"]).all(axis=1)
-        assert (accepted[index][ok] == (passed & physical[index])[ok]).all()
+        assert (accepted[index] == passed).all()
     # which matters only if the cut can tell the two orientations apart
-    differ = (accepted[0][ok] != accepted[1][ok]).any()
+    differ = (accepted[0] != accepted[1]).any()
     assert differ == separates
 
 

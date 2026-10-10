@@ -131,7 +131,7 @@ def main() -> None:
         "--verbosity",
         type=str,
         default=run_args["verbosity"],
-        choices=["none", "pretty", "log", "auto"]
+        choices=["silent", "pretty", "log", "auto"]
     )
     parser.add_argument(
         "--output_format",
@@ -204,12 +204,15 @@ def main() -> None:
     config.max_cut_repetitions = gen_args["max_cut_repetitions"]
 
     # set up contexts
+    # run-time matrix-element parameters (bwcutoff) of the run that made the
+    # gridpack; gridpacks written before they were recorded used the default
+    me_parameters = madspace_data.get("me_parameters", {})
     global_dir = os.path.join("data", "globals")
     for context, backend in zip(contexts, backends):
         context.load_globals(global_dir)
         for me_path in madspace_data["matrix_elements"]:
             context.load_matrix_element(
-                me_path.format(device=backend), param_card_path
+                me_path.format(device=backend), param_card_path, me_parameters
             )
 
     # set up generators
@@ -232,7 +235,8 @@ def main() -> None:
     )
 
     # scale/PDF systematics (as configured when the gridpack was made)
-    systematics = load_systematics(run_card, backends, param_card_path)
+    systematics = load_systematics(run_card, backends, param_card_path,
+                                   me_parameters)
 
     # run generation
     event_generator.generate()
@@ -316,7 +320,8 @@ def _locate_pdf_file(stored_file):
         % stored_file)
 
 
-def load_systematics(run_card, backends=(), param_card_path=None):
+def load_systematics(run_card, backends=(), param_card_path=None,
+                     me_parameters=None):
     """Rebuild the ms.SystematicsCalculator saved with the gridpack
     (data/systematics.json) when [systematics] enable is set; None otherwise.
     The matrix elements of the mixed-order subprocesses are reloaded into a CPU
@@ -375,13 +380,19 @@ def load_systematics(run_card, backends=(), param_card_path=None):
                       "mixed-order subprocesses are dropped" % lib)
                 matrix_elements, flavor_remap = [], []
                 break
-            api = context.load_matrix_element(lib, param_card_path)
+            api = context.load_matrix_element(lib, param_card_path,
+                                              me_parameters or {})
             matrix_elements.append(ms.MatrixElement(
                 api,
                 [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
                  ms.MatrixElement.flavor_in],
                 [ms.MatrixElement.matrix_element_out],
                 False,
+                # the frame the events were generated with, not whatever the
+                # gridpack's run card says now: it has to match the matrix
+                # element inside the saved channel generators
+                data.get("me_frame", []),
+                data.get("incoming_count", 2),
             ))
     systematics = ms.SystematicsCalculator(
         config, subproc_args, nominal_pdf, nominal_alpha_s,

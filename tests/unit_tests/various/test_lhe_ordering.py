@@ -37,6 +37,7 @@ tie-breaking, that breaks the agreement fails here whichever order it breaks.
 """
 
 from __future__ import absolute_import
+import inspect
 import itertools
 import unittest
 
@@ -118,14 +119,17 @@ class TestOneSlotAssignment(unittest.TestCase):
             self.assertIn(leg, (pid, -pid),
                           'particle %d (pid %d) put on a leg %d'
                           % (i, part.pid, leg))
-            signs.add(leg == pid)
-        # a charge-reversed order reverses every leg, never only some
+            if pid not in (21, 22, 23, 25):
+                signs.add(leg == pid)
+        # a charge-reversed order reverses every leg (but the self-conjugate
+        # ones), never only some
         self.assertEqual(len(signs), 1)
 
         momenta = event.get_momenta(order, merged_map=merged_map)
         helicities = event.get_helicity(order, merged_map=merged_map)
         all_momenta = event.get_all_momenta(order, merged_map=merged_map)
         pdgs = event.get_pdg(momenta)
+        self.assertIsInstance(momenta, list)
         for i, part in enumerate(ext):
             slot = mapping[i]
             self.assertEqual(momenta[slot], _mom(part),
@@ -173,6 +177,17 @@ class TestOneSlotAssignment(unittest.TestCase):
         self.assertOneAssignment(_event([2, -2], [-6, -6, 6, 6]),
                                  [(-2, 2), (6, -6, 6, -6)])
 
+    def test_a_charge_reversed_order_with_self_conjugate_particles(self):
+        """charge conjugation keeps g, a, z, h: the retry must not look for a
+        -21 or a -23 the event cannot carry"""
+        self.assertOneAssignment(_event([-2, 1], [-24, 23]),
+                                 [(2, -1), (24, 23)])
+        self.assertOneAssignment(_event([-6], [-24, -5, 21]),
+                                 [(6,), (24, 5, 21)])
+        self.assertOneAssignment(_event([21, 21], [-6, 6, 25]),
+                                 [(21, 21), (-6, 6, 25)])
+        self.assertOneAssignment(_event([-1, 2], [25, -24, 22]),
+                                 [(1, -2), (25, 24, 22)])
     def test_merged_flavours(self):
         """apply_flavor_grouping: the matrix element carries 81 for every
         light quark, the event the concrete flavours."""
@@ -281,6 +296,107 @@ class TestBasicEventOrdering(unittest.TestCase):
                 flat = list(order[0]) + list(order[1])
                 for i, pdg in enumerate([21, 21] + list(final)):
                     self.assertEqual(flat[mapping[i]], pdg)
+
+
+def _chain_event(layout):
+    """u d~ > w+ z, w+ > e+ ve, z > e+ e-, written with its lines in
+    ``layout`` (names below). Each particle's momentum identifies it, and the
+    mothers follow the lines wherever they are written."""
+    parts = {'u': (2, -1, None, (0., 0., 223.), 0.),
+             'dx': (-1, -1, None, (0., 0., -133.), 0.),
+             'W': (24, 2, 'ini', (25., 37., 200.), 80.4),
+             'Z': (23, 2, 'ini', (-25., -37., -110.), 91.19),
+             'e+W': (-11, 1, 'W', (35., 12., 140.), 0.),
+             've': (12, 1, 'W', (-10., 25., 60.), 0.),
+             'e+Z': (-11, 1, 'Z', (-40., -30., -20.), 0.),
+             'e-': (11, 1, 'Z', (15., -7., -90.), 0.)}
+    idx = dict((name, k + 1) for k, name in enumerate(layout))
+    lines = [' %d 1 1.0 100.0 0.0078 0.118' % len(layout)]
+    for name in layout:
+        pid, status, mother, (px, py, pz), mass = parts[name]
+        if mother is None:
+            m1 = m2 = 0
+        elif mother == 'ini':
+            m1, m2 = idx['u'], idx['dx']
+        else:
+            m1 = m2 = idx[mother]
+        e = (mass ** 2 + px ** 2 + py ** 2 + pz ** 2) ** 0.5
+        hel = -1 if name == 'e+Z' else 1
+        lines.append(' %d %d %d %d 0 0 %r %r %r %r %r 0. %d'
+                     % (pid, status, m1, m2, px, py, pz, e, mass, hel))
+    return lhe_parser.Event('<event>\n' + '\n'.join(lines) + '\n</event>')
+
+
+class TestDecayChainLayout(unittest.TestCase):
+    """decay_chain=True: identical particles from different resonances are put
+    where a decay-chain matrix element expects them -- the products of each
+    resonance on consecutive legs -- whatever order the event writes them in.
+
+    u d~ > w+ z, w+ > e+ ve, z > e+ e- has legs u d~ e+ ve e+ e-: leg 3 is
+    the W's e+. Dealt in line order, an event writing the Z's e+ first put it
+    on leg 3, so the matrix element (and me_frame = [3, 4], "the W rest frame")
+    got an e+ ve pair that is not a W."""
+
+    ORDER = [(2, -1), (-11, 12, -11, 11)]
+    E_W = (35., 12., 140.)
+    LAYOUTS = [['u', 'dx', 'W', 'Z', 'e+W', 've', 'e+Z', 'e-'],
+               ['dx', 'u', 'Z', 'e-', 'e+Z', 'W', 've', 'e+W'],
+               ['u', 'dx', 'e+Z', 'Z', 'e-', 've', 'W', 'e+W'],
+               ['u', 'Z', 'dx', 'W', 'e+Z', 'e+W', 'e-', 've']]
+
+    def test_the_w_products_take_legs_3_and_4(self):
+        for layout in self.LAYOUTS:
+            event = _chain_event(layout)
+            p = event.get_momenta(self.ORDER, decay_chain=True)
+            self.assertEqual(p[2][1:], self.E_W, layout)
+            all_p = event.get_all_momenta(self.ORDER, decay_chain=True)
+            self.assertEqual(len(all_p), 1)
+            self.assertEqual(all_p[0], p)
+            # legs 3+4 rebuild the W line
+            w = lhe_parser.FourMomentum(p[2]) + lhe_parser.FourMomentum(p[3])
+            self.assertEqual((w.px, w.py, w.pz), (25., 37., 200.))
+
+    def test_the_helicity_follows_the_momentum(self):
+        """get_helicity is dealt with the same mapping (the Z's e+ carries
+        helicity -1, every other particle +1)"""
+        for layout in self.LAYOUTS:
+            event = _chain_event(layout)
+            hel = event.get_helicity(self.ORDER, decay_chain=True)
+            self.assertEqual(hel[2], 1, layout)
+            self.assertEqual(hel[4], -1, layout)
+
+    def test_the_default_keeps_the_line_order(self):
+        """MadSpin relies on the k-th e+ taking the k-th e+ slot; without the
+        option nothing changes"""
+        event = _chain_event(self.LAYOUTS[1])
+        p = event.get_momenta(self.ORDER)
+        self.assertEqual(p[2][1:], (-40., -30., -20.))
+
+    def test_a_process_not_written_as_a_chain_keeps_the_line_order(self):
+        """u d~ > e+ e+ ve e-: no assignment puts both resonances on
+        consecutive legs, and the two e+ are exchangeable in that matrix
+        element, so the line order stays"""
+        order = [(2, -1), (-11, -11, 12, 11)]
+        for layout in self.LAYOUTS:
+            event = _chain_event(layout)
+            self.assertEqual(event.get_momenta(order, decay_chain=True),
+                             event.get_momenta(order), layout)
+
+
+class TestBasicEventAccessors(unittest.TestCase):
+    """The NLO reweighting hands calculate_matrix_element an
+    NLO_PARTIALWEIGHT.BasicEvent where the LO one hands it an Event, and asks
+    both the same way. An option added to Event's accessors alone (decay_chain
+    once) is a TypeError on the NLO path only, which no unit test reached."""
+
+    def test_every_event_keyword_is_accepted(self):
+        basic = lhe_parser.NLO_PARTIALWEIGHT.BasicEvent
+        for name in ('get_momenta', 'get_all_momenta', 'get_helicity'):
+            wanted = inspect.signature(getattr(lhe_parser.Event, name))
+            got = inspect.signature(getattr(basic, name)).parameters
+            for param in wanted.parameters:
+                self.assertIn(param, got, '%s.%s lacks %s' % (basic.__name__,
+                                                               name, param))
 
 
 if __name__ == '__main__':

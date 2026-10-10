@@ -978,6 +978,99 @@ class TestPostProcessingIsSkippedWhenThereIsNothingToDo(unittest.TestCase):
 
 @unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
                      'madspace is not installed')
+class MG7MeFrameTest(unittest.TestCase):
+    """run_card me_frame -> the particle list the matrix element is boosted
+    into, and the number of incoming particles the boost starts from."""
+
+    # a collision of two gluons into a Z plus gluons, so that particle 3 is
+    # massive (a frame can be asked for it) and the others are not
+    MASSES = {21: 0.0, 23: 91.188}
+
+    def resolve(self, me_frame, is_decay, particle_count=4, outgoing=None):
+        """``outgoing``, if given, lists the final states of several
+        subprocesses of one output (g g > each of them)"""
+        from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
+        process = object.__new__(mg7_launch.MadgraphProcess)
+        process.run_card = {'run': {'me_frame': me_frame}}
+        process.is_decay = is_decay
+        incoming = [23] if is_decay else [21, 21]
+        if outgoing is None:
+            outgoing = [[23] + [21] * (particle_count - len(incoming) - 1)]
+        process.subprocess_data = [{'incoming': incoming, 'outgoing': final}
+                                   for final in outgoing]
+        process.get_mass = lambda pid: self.MASSES[pid]
+        process.init_me_frame()
+        return process.me_frame, process.incoming_count
+
+    def test_the_default_applies_no_boost(self):
+        """[] is the default: the matrix element sees the momenta in the frame
+        they are generated in, which is what mg7 did before me_frame existed."""
+        self.assertEqual(self.resolve([], False), ([], 2))
+        self.assertEqual(self.resolve([], True), ([], 1))
+
+    def test_an_explicit_frame_is_passed_through(self):
+        self.assertEqual(self.resolve([1, 2], False), ([1, 2], 2))
+        self.assertEqual(self.resolve([3], False), ([3], 2))   # the Z, massive
+        self.assertEqual(self.resolve([3, 4], False), ([3, 4], 2))
+
+    def test_a_decay_keeps_what_the_card_asks_for(self):
+        """[1] is a decay's equivalent of the partonic centre of mass, but the
+        card is never second-guessed: [1, 2] on a decay is the rest frame of
+        the decaying particle plus the first decay product, and is left alone."""
+        self.assertEqual(self.resolve([1], True), ([1], 1))
+        self.assertEqual(self.resolve([1, 2], True), ([1, 2], 1))
+
+    def test_a_massless_particle_has_no_rest_frame(self):
+        """Boosting to it divides by its vanishing mass and turns every
+        momentum into a NaN, with nothing to say what went wrong."""
+        with self.assertRaises(ValueError) as caught:
+            self.resolve([4], False)          # leg 4 is a gluon
+        self.assertIn('massless', str(caught.exception))
+        # two particles whose sum is massive are fine, even if each is massless
+        self.assertEqual(self.resolve([2, 4], False), ([2, 4], 2))
+
+    def test_out_of_range_particle_is_rejected_before_the_compile(self):
+        """madspace would catch this too, but only once the integrands are
+        built -- after every matrix-element library has been compiled."""
+        with self.assertRaises(ValueError) as caught:
+            self.resolve([5], False, particle_count=4)
+        self.assertIn('4 external particles', str(caught.exception))
+        with self.assertRaises(ValueError):
+            self.resolve([0], False)
+
+    def test_mixed_multiplicities_check_every_subprocess(self):
+        """An output can mix multiplicities (MLM merging). Every subprocess is
+        checked against its own particles, whichever comes first: the bigger
+        one first used to pass the range check, and the massless check then
+        indexed past the end of the smaller one (a bare IndexError)."""
+        mixed = [[23, 21, 21], [23, 21]]      # g g > z g g and g g > z g
+        for outgoing in (mixed, mixed[::-1]):
+            for me_frame in ([5], [3, 5]):
+                with self.assertRaises(ValueError) as caught:
+                    self.resolve(me_frame, False, outgoing=outgoing)
+                message = str(caught.exception)
+                self.assertIn('me_frame particle 5 out of range', message)
+                self.assertIn('21 21 > 23 21 has 4 external particles',
+                              message)
+                self.assertIn('mixes subprocesses with 4, 5', message)
+            # a particle every subprocess has is fine
+            self.assertEqual(self.resolve([3], False, outgoing=outgoing),
+                             ([3], 2))
+            self.assertEqual(self.resolve([3, 4], False, outgoing=outgoing),
+                             ([3, 4], 2))
+
+    def test_the_massless_check_covers_every_subprocess(self):
+        """Particle 4 is a Z in g g > z z g but a gluon in g g > z g."""
+        with self.assertRaises(ValueError) as caught:
+            self.resolve([4], False, outgoing=[[23, 23, 21], [23, 21]])
+        self.assertIn('massless (pdg [21])', str(caught.exception))
+        self.assertEqual(
+            self.resolve([4], False, outgoing=[[23, 23, 21], [23, 23]]),
+            ([4], 2))
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
 class TestForceLHEOutput(unittest.TestCase):
     """The events are written as npy by default; the run_card is switched to
     the LHE format only when something that reads LHE will run."""
@@ -1184,3 +1277,100 @@ class TestHistogramSwitches(unittest.TestCase):
         process.hist_data = [launch.HistItem(None, 0., 1., 10, 'weight', True)]
         self.assertIsNone(process.build_event_histograms())
         self.assertIsNone(process.event_histograms)
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class MG7ObservablePidsTest(unittest.TestCase):
+    """Which pdg ids a cut or histogram observable is built with.
+
+    Group selections work on clean_pids' unsigned representatives, but a
+    same-flavour opposite-sign pair needs the signed pdg ids of the actual
+    flavours, consistent over every flavour a subprocess groups together."""
+
+    def setUp(self):
+        from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
+        self.launch = mg7_launch
+
+    @staticmethod
+    def meta(outgoing, options):
+        return {
+            'incoming': [81, -81],
+            'outgoing': outgoing,
+            'flavors': [{'index': i, 'options': [option], 'mirror': False}
+                        for i, option in enumerate(options)],
+        }
+
+    @staticmethod
+    def kwargs(observable, groups=([11, -11, 13, -13],)):
+        return {'observable': observable, 'select_pids': list(groups),
+                'name': 'lepton-%s' % observable}
+
+    def test_unsigned_observables_keep_the_representatives(self):
+        meta = self.meta([-82, 82, 21, 21], [[2, -2, -11, 11, 21, 21]])
+        self.assertEqual(
+            self.launch.observable_pids(meta, self.kwargs('pair_mass')),
+            [1, 1, 11, 11, 21, 21])
+
+    def test_sfos_gets_the_signed_flavours(self):
+        meta = self.meta([-82, 82, 21, 21], [[2, -2, -11, 11, 21, 21],
+                                             [4, -4, -13, 13, 21, 21]])
+        self.assertEqual(
+            self.launch.observable_pids(meta, self.kwargs('sfos_pair_mass')),
+            [2, -2, -11, 11, 21, 21])
+
+    def test_sfos_refuses_flavours_that_pair_differently(self):
+        # e+ e- mu+ mu- and e+ mu- mu+ e-: the same momenta, different pairs
+        meta = self.meta([-82, 82, -82, 82], [[2, -2, -11, 11, -13, 13],
+                                              [2, -2, -11, 13, -13, 11]])
+        with self.assertRaises(ValueError) as error:
+            self.launch.observable_pids(meta, self.kwargs('sfos_pair_mass'))
+        self.assertIn('apply_flavor_grouping', str(error.exception))
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class MG7DecayProductsTest(unittest.TestCase):
+    """Which particles phasespace.cut_decays = false leaves uncut: those an
+    on-shell (decay-chain) propagator decays into, as MadEvent's check_decay."""
+
+    def setUp(self):
+        from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
+        self.launch = mg7_launch
+
+    @staticmethod
+    def meta(vertices, on_shell, permutation=(0, 1, 2, 3, 4)):
+        # p p > z j, z > e+ e-: outgoing e+ e- j
+        return {
+            'incoming': [21, 81],
+            'outgoing': [-82, 82, 81],
+            'channels': [{
+                'propagators': [81, 23],
+                'vertices': vertices,
+                'on_shell_propagators': on_shell,
+                'diagrams': [{'diagram': 1, 'permutation': list(permutation)}],
+            }],
+        }
+
+    def test_the_decay_chain_products(self):
+        meta = self.meta([['i1', 'i0', 'p0'], ['o0', 'o1', 'p1'],
+                          ['p0', 'o2', 'p1']], [1])
+        self.assertEqual(self.launch.decay_products(meta), {0, 1})
+
+    def test_no_decay_chain(self):
+        meta = self.meta([['i1', 'i0', 'p0'], ['o0', 'o1', 'p1'],
+                          ['p0', 'o2', 'p1']], [])
+        self.assertEqual(self.launch.decay_products(meta), set())
+
+    def test_a_propagator_built_from_the_beams(self):
+        # p1 = i0 + i1 - o2: it decays to everything but o2
+        meta = self.meta([['i0', 'i1', 'p0'], ['p0', 'o2', 'p1'],
+                          ['o0', 'o1', 'p1']], [1])
+        self.assertEqual(self.launch.decay_products(meta), {0, 1})
+
+    def test_read_through_the_permutation(self):
+        # event[i] = topology[permutation[i]]: the topology's o0, o1 sit at
+        # event outgoing positions 1 and 2
+        meta = self.meta([['i1', 'i0', 'p0'], ['o0', 'o1', 'p1'],
+                          ['p0', 'o2', 'p1']], [1], permutation=(0, 1, 4, 2, 3))
+        self.assertEqual(self.launch.decay_products(meta), {1, 2})

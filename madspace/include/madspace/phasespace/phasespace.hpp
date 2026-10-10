@@ -192,6 +192,11 @@ public:
     bool mirror_beams() const { return _mirror_beams; }
     /// The cuts, applied to the lab-frame momenta.
     const Cuts& cuts() const { return _cuts; }
+    /// True when the cuts exclude the whole region this mapping samples: a
+    /// pair mass cut puts a propagator's floor at or above the upper end of
+    /// its on-shell window. Every point then fails the cuts, so the channel
+    /// contributes nothing and should be dropped rather than sampled.
+    bool empty() const { return _empty; }
 
 private:
     Result build_forward_impl(
@@ -230,6 +235,11 @@ private:
     bool _leptonic;
     bool _map_luminosity;
     bool _two_to_one;
+    // bound on the absolute rapidity of the partonic system in the beams'
+    // centre-of-mass frame, log(x1 / x2) / 2, implied by the cuts; negative
+    // when they imply none
+    double _y_max_lab = -1.;
+    bool _empty = false;
     std::size_t _n_discrete;
     std::vector<Invariant> _s_invariants;
     std::variant<

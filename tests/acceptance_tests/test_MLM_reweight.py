@@ -172,15 +172,16 @@ def _iter_data_assignments(text):
 
 
 def parse_configs_inc(configs_path):
-    """Parse configs.inc and extract mapconfig(0) and SPROP content robustly."""
+    """Parse configs.inc and extract mapconfig(0), SPROP and TPRID content robustly."""
     if not os.path.exists(configs_path):
-        return {'nconfigs': 0, 'sprop_by_config': {}}
+        return {'nconfigs': 0, 'sprop_by_config': {}, 'tprid_by_config': {}}
 
     with open(configs_path) as f:
         text = f.read()
 
     nconfigs = 0
     sprop_by_config = {}
+    tprid_by_config = {}
 
     for lhs, rhs in _iter_data_assignments(text):
         # Handle direct MAPCONFIG(0) initialization
@@ -196,6 +197,14 @@ def parse_configs_inc(configs_path):
             numbers = re.findall(r'[+-]?\d+', rhs)
             if numbers:
                 nconfigs = max(nconfigs, int(numbers[0]))
+            continue
+
+        # Handle TPRID(branch,config) data statements (t-channel propagators).
+        tp_match = re.search(r'\bTPRID\s*\(\s*(-?\d+)\s*,\s*(\d+)\s*\)', lhs, re.I)
+        if tp_match:
+            config = int(tp_match.group(2))
+            pdgs = [int(x) for x in re.findall(r'[+-]?\d+', rhs)]
+            tprid_by_config.setdefault(config, []).extend(x for x in pdgs if x != 0)
             continue
 
         # Handle SPROP data statements.
@@ -217,7 +226,8 @@ def parse_configs_inc(configs_path):
     if nconfigs == 0 and sprop_by_config:
         nconfigs = max(sprop_by_config)
 
-    return {'nconfigs': nconfigs, 'sprop_by_config': sprop_by_config}
+    return {'nconfigs': nconfigs, 'sprop_by_config': sprop_by_config,
+            'tprid_by_config': tprid_by_config}
 
 
 def get_channel_count(Pdir):
@@ -229,13 +239,31 @@ def get_channel_count(Pdir):
     return parsed['nconfigs']
 
 
+def _flavor_blind_pdg(pdg):
+    """Map a propagator PDG code onto its apply_flavor_grouping class.
+
+    The flavor-grouped output writes merged codes (81 quarks, 82 charged
+    leptons, 83 neutrinos) where the ungrouped output has explicit flavors,
+    so the explicit codes are mapped onto the merged ones before comparing.
+    """
+    pdg = abs(pdg)
+    if 1 <= pdg <= 5:
+        return 81
+    if pdg in (11, 13, 15):
+        return 82
+    if pdg in (12, 14, 16):
+        return 83
+    return pdg
+
+
 def get_channel_topology(Pdir):
     """Read channel topology info from configs.inc to allow channel matching.
 
     Returns a dict mapping config_number -> topology_signature where the
-    signature is a tuple of (propagator_pdg_ids) that uniquely identifies
-    the diagram topology. This can be used to match corresponding channels
-    between apply_flavor_grouping=True/False outputs.
+    signature is a pair of sorted tuples (s-channel propagators, t-channel
+    propagators), with flavors mapped by _flavor_blind_pdg. This can be used
+    to match corresponding channels between apply_flavor_grouping=True/False
+    outputs.
 
     Returns:
         dict: {config_number: topology_signature}
@@ -244,39 +272,25 @@ def get_channel_topology(Pdir):
     topologies = {}
     for config in range(1, parsed['nconfigs'] + 1):
         sprops = parsed['sprop_by_config'].get(config, [])
-        topologies[config] = tuple(sorted(sprops))
+        tprops = parsed['tprid_by_config'].get(config, [])
+        topologies[config] = (tuple(sorted(_flavor_blind_pdg(x) for x in sprops)),
+                              tuple(sorted(_flavor_blind_pdg(x) for x in tprops)))
     return topologies
 
 
-def find_matching_channels(Pdir_fg_true, Pdir_fg_false):
-    """Find corresponding channels between flavor_grouping True and False outputs.
+def find_channels_with_topology(Pdirs, signature):
+    """Return the (Pdir, channel) pairs, over all Pdirs, whose topology is signature.
 
-    Compares the topology signatures of channels in both modes and returns
-    a list of (channel_true, channel_false) pairs that have matching topologies.
-
-    Args:
-        Pdir_fg_true: subprocess dir path for apply_flavor_grouping=True
-        Pdir_fg_false: subprocess dir path for apply_flavor_grouping=False
-
-    Returns:
-        list of (channel_fg_true, channel_fg_false) tuples
+    Without subprocess grouping, apply_flavor_grouping=False splits the
+    flavor combinations that a single flavor-grouped channel integrates over
+    several P directories (e.g. P0_uux_uux and P0_uux_ddx both carry the
+    s-channel gluon of q q~ > q q~), so a channel has to be compared with the
+    sum of all its counterparts.
     """
-    topo_true = get_channel_topology(Pdir_fg_true)
-    topo_false = get_channel_topology(Pdir_fg_false)
-
-    matches = []
-    used_false = set()
-
-    for ch_true, sig_true in sorted(topo_true.items()):
-        for ch_false, sig_false in sorted(topo_false.items()):
-            if ch_false in used_false:
-                continue
-            if sig_true == sig_false:
-                matches.append((ch_true, ch_false))
-                used_false.add(ch_false)
-                break
-
-    return matches
+    return [(Pdir, ch)
+            for Pdir in sorted(Pdirs)
+            for ch, sig in sorted(get_channel_topology(Pdir).items())
+            if sig == signature]
 
 
 def read_results_dat(results_path):
@@ -452,6 +466,12 @@ def run_single_channel(Pdir, channel, npoints=5000, maxiter=5, binary='madevent'
     # Write input config file
     config_path = write_run_config(Pdir, channel, npoints, maxiter)
 
+    # A Fortran STOP exits with 0 without writing results.dat: never read
+    # the one of a previous channel run in the same directory.
+    results_path = pjoin(Pdir, 'results.dat')
+    if os.path.exists(results_path):
+        os.remove(results_path)
+
     # Run madevent with stdin from config file
     with open(config_path) as config_in:
         proc = subprocess.Popen(
@@ -476,7 +496,6 @@ def run_single_channel(Pdir, channel, npoints=5000, maxiter=5, binary='madevent'
         return result
 
     # Try to read results from results.dat
-    results_path = pjoin(Pdir, 'results.dat')
     parsed = read_results_dat(results_path)
     if parsed:
         result['xsec'], result['error'], result['nevents'] = parsed
@@ -676,18 +695,27 @@ class TestMLMReweightAutoMatch(MLMReweightTestBase):
     """Test suite using automatic channel matching between flavor grouping modes.
 
     Instead of manually specifying channel numbers for each mode, this test
-    generates both outputs, uses topology matching to identify corresponding
-    channels, and then compares them.
+    generates both outputs without subprocess grouping, uses topology matching
+    to identify corresponding channels, and compares each flavor-grouped
+    channel with the sum of its counterparts over all ungrouped P directories.
     """
 
     def test_mlm_rewgt_auto_match_qq_to_qq(self):
-        """Compare MLM REWGT for q q~ > q q~ using automatic channel matching."""
+        """Compare MLM REWGT for q q~ > q q~ using automatic channel matching.
+
+        The s-channel gluon channel is the sensitive one: for the
+        q q~ > q' q~' rows the flavor-grouped clustering used to pick the q-q'
+        t-channel gluon of the merged graphs, which does not exist for those
+        flavors, so the event skipped the alpha_s reweighting of the d d~ > g
+        clustering (+13% on that channel at xqcut=20).
+        """
 
         process = 'q q~ > q q~'
         model = 'sm'
         defines = ['q = u d s c', 'q~ = u~ d~ s~ c~']
         xqcut = 20.0
-        npoints = 5000
+        # 5000 points leave the +13% above at only ~4 sigma
+        npoints = 50000
         maxiter = 5
 
         Pdirs_by_mode = {}
@@ -695,21 +723,6 @@ class TestMLMReweightAutoMatch(MLMReweightTestBase):
         for fg_mode in [True, False]:
             fg_label = 'fg_true' if fg_mode else 'fg_false'
             run_dir = pjoin(self.path, 'MLM_auto_%s' % fg_label)
-
-            def pick_pdir(path):
-                pdirs_list = get_Pdir(path)
-                subproc_dir = pjoin(path, 'SubProcesses')
-                if fg_mode:
-                    return pjoin(subproc_dir, sorted(pdirs_list)[0])
-                best_pdir = None
-                best_nchan = 0
-                for pname in pdirs_list:
-                    ppath = pjoin(subproc_dir, pname)
-                    nchan = get_channel_count(ppath)
-                    if nchan > best_nchan:
-                        best_nchan = nchan
-                        best_pdir = ppath
-                return best_pdir or pjoin(subproc_dir, sorted(pdirs_list)[0])
 
             _, Pdir, binary = self.prepare_mode_run(
                 run_dir=run_dir,
@@ -719,59 +732,62 @@ class TestMLMReweightAutoMatch(MLMReweightTestBase):
                 xqcut=xqcut,
                 apply_fg=fg_mode,
                 group_subprocesses=False,
-                pdir_selector=pick_pdir
             )
+            binaries = {Pdir: binary}
+            for pname in get_Pdir(run_dir):
+                other = pjoin(run_dir, 'SubProcesses', pname)
+                if other not in binaries:
+                    binaries[other] = compile_madevent(run_dir, other)
+                    self.assertIsNotNone(binaries[other],
+                        'Compilation failed (apply_flavor_grouping=%s, subproc=%s)' %
+                        (fg_mode, pname))
+            Pdirs_by_mode[fg_label] = binaries
 
-            Pdirs_by_mode[fg_label] = (Pdir, binary)
+        def run_sum(binaries, channels):
+            xsec, err2 = 0., 0.
+            for Pdir, ch in channels:
+                result = run_single_channel(Pdir, ch, npoints=npoints,
+                                            maxiter=maxiter, binary=binaries[Pdir])
+                self.assertEqual(result['return_code'], 0,
+                    'Run failed for %s channel %d' % (os.path.basename(Pdir), ch))
+                xsec += result['xsec']
+                err2 += result['error'] ** 2
+            return xsec, math.sqrt(err2)
 
-        # Find matching channels
-        matches = find_matching_channels(
-            Pdirs_by_mode['fg_true'][0],
-            Pdirs_by_mode['fg_false'][0]
-        )
+        def describe(channels):
+            return ' + '.join('%s ch=%d' % (os.path.basename(Pdir), ch)
+                              for Pdir, ch in channels)
 
-        self.assertGreater(len(matches), 0,
-            'No matching channels found between flavor grouping modes')
+        signatures = set()
+        for Pdir in Pdirs_by_mode['fg_true']:
+            signatures.update(get_channel_topology(Pdir).values())
+        self.assertGreater(len(signatures), 0, 'No channel found for fg=True')
 
-        if getattr(unittest, "debug", False):
-            misc.sprint('Found %d matching channel pairs' % len(matches))
+        for signature in sorted(signatures):
+            channels_t = find_channels_with_topology(Pdirs_by_mode['fg_true'], signature)
+            channels_f = find_channels_with_topology(Pdirs_by_mode['fg_false'], signature)
+            self.assertGreater(len(channels_f), 0,
+                'No fg=False channel matches the topology %s of %s' %
+                (signature, describe(channels_t)))
 
-        # Run and compare first matched channel pair
-        ch_true, ch_false = matches[0]
+            xsec_t, err_t = run_sum(Pdirs_by_mode['fg_true'], channels_t)
+            xsec_f, err_f = run_sum(Pdirs_by_mode['fg_false'], channels_f)
 
-        Pdir_true, binary_true = Pdirs_by_mode['fg_true']
-        Pdir_false, binary_false = Pdirs_by_mode['fg_false']
+            if getattr(unittest, "debug", False):
+                misc.sprint('  fg=True  %s: %s +- %s' % (describe(channels_t), xsec_t, err_t))
+                misc.sprint('  fg=False %s: %s +- %s' % (describe(channels_f), xsec_f, err_f))
 
-        result_true = run_single_channel(
-            Pdir_true, ch_true,
-            npoints=npoints, maxiter=maxiter, binary=binary_true)
-        self.assertEqual(result_true['return_code'], 0,
-            'Run failed for fg=True channel %d' % ch_true)
+            self.assertGreater(abs(xsec_t), 0,
+                'Zero xsec for fg=True %s' % describe(channels_t))
+            self.assertGreater(abs(xsec_f), 0,
+                'Zero xsec for fg=False %s' % describe(channels_f))
 
-        result_false = run_single_channel(
-            Pdir_false, ch_false,
-            npoints=npoints, maxiter=maxiter, binary=binary_false)
-        self.assertEqual(result_false['return_code'], 0,
-            'Run failed for fg=False channel %d' % ch_false)
-
-        # Compare cross-sections
-        xsec_t, err_t = result_true['xsec'], result_true['error']
-        xsec_f, err_f = result_false['xsec'], result_false['error']
-
-        if getattr(unittest, "debug", False):
-            misc.sprint('  fg=True  ch=%d: %s +- %s' % (ch_true, xsec_t, err_t))
-            misc.sprint('  fg=False ch=%d: %s +- %s' % (ch_false, xsec_f, err_f))
-
-        self.assertGreater(abs(xsec_t), 0,
-            'Zero xsec for fg=True channel %d' % ch_true)
-        self.assertGreater(abs(xsec_f), 0,
-            'Zero xsec for fg=False channel %d' % ch_false)
-
-        sigma_diff = sigma_difference(xsec_t, err_t, xsec_f, err_f)
-        self.assertLess(sigma_diff, 5,
-            'Cross-sections differ by %.1f sigma: '
-            'fg=True ch=%d (%s +- %s) vs fg=False ch=%d (%s +- %s)' %
-            (sigma_diff, ch_true, xsec_t, err_t, ch_false, xsec_f, err_f))
+            sigma_diff = sigma_difference(xsec_t, err_t, xsec_f, err_f)
+            self.assertLess(sigma_diff, 5,
+                'Cross-sections differ by %.1f sigma: '
+                'fg=True %s (%s +- %s) vs fg=False %s (%s +- %s)' %
+                (sigma_diff, describe(channels_t), xsec_t, err_t,
+                 describe(channels_f), xsec_f, err_f))
 
 
 # ============================================================================
