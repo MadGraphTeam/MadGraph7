@@ -139,6 +139,7 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_standalone_cpp_output_consistency -pA -t0 -l INFO
             ./tests/test_manager.py test_madmatrix_vs_fortran -pA -t0 -l INFO
+            ./tests/test_manager.py test_standalone_cpp_perf_alpha_s_from_param_card -pA -t0 -l INFO
 
       # ---- acceptancetest_33 ----
       - name: "acceptancetest_33"
@@ -229,6 +230,7 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_output_standalone_directory -pA -t0 -l INFO
+            ./tests/test_manager.py test_output_standalone_fortran_make_all_subprocesses -pA -t0 -l INFO
 
       # ---- acceptancetest_29 ----
       - name: "acceptancetest_29"
