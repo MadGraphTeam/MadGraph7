@@ -3,9 +3,11 @@ name: madgraph
 description: Run MadGraph7 for the user. Generate a process, compute an LO or
   NLO cross section, produce events (with cuts, scale/PDF uncertainties,
   histograms, showering, MC@NLO, MLM-merged multi-jet samples), draw its
-  Feynman diagrams, and report the results. Use when the user asks for a
-  cross section, a K-factor, events, merged samples, Feynman diagrams or a
-  MadGraph/MG7/MG5/aMC@NLO run, or asks why a MadGraph run failed.
+  Feynman diagrams, evaluate the matrix element at given phase-space points
+  (single or batched), and report the results. Use when the user asks for a
+  cross section, a K-factor, events, merged samples, Feynman diagrams, |M|^2
+  at given momenta, a standalone matrix element, or a MadGraph/MG7/MG5/aMC@NLO
+  run, or asks why a MadGraph run failed.
 ---
 
 # Running MadGraph7
@@ -22,11 +24,13 @@ never pipe them through stdin: write a script file and run it.
 | NLO cross section, K-factor, NLO+PS events | `generate p p > t t~ [QCD]` | aMC@NLO (`output`) | `reference/nlo.md` |
 | MLM-merged LO multi-jet sample | `generate ...` + `add process ... j` ... | `output madevent` | `reference/mlm.md` |
 | Feynman diagrams only | `generate ...` | none needed | `reference/diagrams.md` |
+| \|M\|² at given momenta (one point or a batch) | `generate ...` | `output standalone_fortran` / `output` / `output standalone` | `reference/matrix_element.md` |
 | something else mg7 lacks | `generate ...` | `output madevent` | `reference/troubleshooting.md` |
 
 The workflow below is common to all of them. Only the launch block and the
 result files differ. For diagrams only, steps 1-3 apply, without `output`
-or `launch`.
+or `launch`. For the matrix element at given points, steps 1-3 apply with
+an `output` but no `launch`. Then follow `reference/matrix_element.md`.
 
 ## The workflow
 
@@ -182,6 +186,10 @@ or `launch`.
 - `reference/mlm.md`: MLM merging with madevent and Pythia8 (xqcut and
   qCut, matched cross section, qCut scan).
 - `reference/diagrams.md`: drawing, reading and counting Feynman diagrams.
+- `reference/matrix_element.md`: |M|² at user-given momenta. It covers the
+  Fortran f2py module, madspace batches and the C++ standalone, plus the
+  conventions (averaging, identical-particle factor, precision, α_s,
+  flavours).
 - `reference/mg7_run_card.md`: every `set` you are likely to need, cut
   syntax, madevent-to-mg7 names, and the Pythia8 shower and MadSpin switches.
 - `reference/troubleshooting.md`: log grepping, harmless lines, failures that

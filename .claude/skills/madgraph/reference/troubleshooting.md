@@ -79,7 +79,8 @@ grouped light flavours (see `reference/diagrams.md`), not an error.
   before installing anything.
 - **Stray files in the working directory**: a crash leaves `debug` /
   `MG5_debug`, and runs can leave `nsqso_born.inc` and an empty
-  `additional_command`. Run scripts from a
+  `additional_command`. The Fortran matrix-element module writes
+  `param.log` into the current directory when it is initialised. Run scripts from a
   dedicated work directory, not from the repository root.
 - The `caffeinate` warning on macOS is harmless.
 
