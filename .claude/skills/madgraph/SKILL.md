@@ -1,10 +1,10 @@
 ---
 name: madgraph
-description: Run MadGraph7 for the user. Generate a process, compute an LO cross
-  section, produce parton-level events (with cuts, scale/PDF uncertainties,
-  histograms, showering), and report the results. Use when the user asks for a
-  cross section, events, distributions or a MadGraph/MG7/MG5 run, or asks why a
-  MadGraph run failed.
+description: Run MadGraph7 for the user. Generate a process, compute an LO or
+  NLO cross section, produce events (with cuts, scale/PDF uncertainties,
+  histograms, showering, MC@NLO), and report the results. Use when the user
+  asks for a cross section, a K-factor, events, distributions or a
+  MadGraph/MG7/MG5/aMC@NLO run, or asks why a MadGraph run failed.
 ---
 
 # Running MadGraph7
@@ -12,6 +12,17 @@ description: Run MadGraph7 for the user. Generate a process, compute an LO cross
 MadGraph7 is driven by **command scripts** passed to `./bin/madgraph` at the
 root of this repository. Never type commands into the interactive prompt, and
 never pipe them through stdin: write a script file and run it.
+
+## Which workflow
+
+| The user wants | Process syntax | Output | Read before setting anything |
+|---|---|---|---|
+| LO cross section / LO events | `generate p p > t t~` | mg7 (`output`) | `reference/mg7_run_card.md` |
+| NLO cross section, K-factor, NLO+PS events | `generate p p > t t~ [QCD]` | aMC@NLO (`output`) | `reference/nlo.md` |
+| something mg7 lacks (e.g. MLM merging) | `generate ...` | `output madevent` | `reference/troubleshooting.md` |
+
+The workflow below is common to all three. Only the launch block and the
+result files differ.
 
 ## The workflow
 
@@ -42,6 +53,10 @@ never pipe them through stdin: write a script file and run it.
      `set` lines edit the cards, and `done` starts the run. Settings are written
      into `<dir>/Cards/` and **persist** for the next launch of that directory.
    - Several `launch` blocks may follow one `output`, e.g. a scan.
+   - You can also split the work into two scripts: `generate` + `output`
+     first, then a launch-only script (`launch <dir>` ...). This lets you
+     inspect the generated cards (`Cards/`, `[multiparticles]`) before
+     choosing settings.
 
 2. **Run it**, merging stdout and stderr into a log, and keep the exit code:
 
@@ -72,12 +87,19 @@ never pipe them through stdin: write a script file and run it.
    runs:
 
    ```bash
-   python3 .claude/skills/madgraph/scripts/run_summary.py PROC_tt          # latest run
-   python3 .claude/skills/madgraph/scripts/run_summary.py PROC_tt run_02   # a given run
+   python3 <MG7>/.claude/skills/madgraph/scripts/run_summary.py PROC_tt          # latest run
+   python3 <MG7>/.claude/skills/madgraph/scripts/run_summary.py PROC_tt run_02   # a given run
+   python3 <MG7>/.claude/skills/madgraph/scripts/run_summary.py --combine PROC_tt run_01 run_02 run_03
    ```
 
+   Here `<MG7>` is the absolute path of this repository; the work directory is
+   usually elsewhere. `--combine` merges runs that differ only in their seed.
+
+   For NLO runs it reads `summary.txt` and the event weights instead.
    It prints the cross section with its MC error, the event count, the seed,
-   the collider, PDF, scale choice and **all active cuts**, the scale and PDF
+   the collider, PDF, scale choice, **the cuts that can act on this final
+   state** (and which defaults cannot), whether heavy particles were left
+   undecayed, the scale and PDF
    bands with their definitions, and where the events and plots are. The
    settings come from the run's own copy of the card, so they are what that
    run really used.
@@ -126,7 +148,8 @@ never pipe them through stdin: write a script file and run it.
 
 - If unsure of the particle names, run a script with `import model <model>`
   and `display particles` (or `display multiparticles`) first. In `sm`:
-  `p`/`j` contain the gluon and the u, d, s, c quarks and their antiquarks (no b),
+  `p`/`j` contain the gluon and the u, d, s, c quarks and their antiquarks
+  (no b: 4-flavour scheme; `import model sm-no_b_mass` adds the b),
   `l+`/`l-` = e and mu, `vl`/`vl~` = all three neutrinos, the top is `t`/`t~`.
 - Use `$ X` / `/ X` to exclude a propagating particle, `,` for decay chains
   (`p p > t t~, t > b w+, t~ > b~ w-`), and coupling-order constraints such
@@ -138,6 +161,8 @@ never pipe them through stdin: write a script file and run it.
 
 ## Reference files
 
+- `reference/nlo.md`: NLO with aMC@NLO (modes, settings, IR-safe cuts,
+  negative weights, reading the results, K-factors).
 - `reference/mg7_run_card.md`: every `set` you are likely to need, cut
   syntax, madevent-to-mg7 names, and the Pythia8 shower and MadSpin switches.
 - `reference/troubleshooting.md`: log grepping, harmless lines, failures that

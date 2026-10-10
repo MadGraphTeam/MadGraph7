@@ -18,7 +18,9 @@ slow!!!', ...)`, `stty: stdin isn't a terminal`, `Trying to add argument
 mode in DensityCard ... Did you mean ['matrix_normalisation']`, `Please set
 the 'fastjet'/'eMELA' variable ...` (only needed for NLO matching tools),
 `CRITICAL: MadSpin unweight efficiency` / `MadSpin phase timings` (MadSpin
-prints its statistics at CRITICAL level), `Using default gzip`.
+prints its statistics at CRITICAL level), `Using default gzip`. The NLO
+warnings (α_s update, Z width set to zero, missing run-card arguments,
+multiparticles at NLO) are explained in `reference/nlo.md`.
 
 ## Failures that do not look like failures
 
@@ -54,16 +56,21 @@ prints its statistics at CRITICAL level), `Using default gzip`.
   `docs/source/madspace/installation.rst`. A process directory created with
   another madspace build refuses to run ("source hash mismatch"): re-run
   `output` for it.
-- **PDF sets** are LHAPDF set names, downloaded on first use into the LHAPDF
-  data directory, so the first run needs network access. `lhapdf-config` is
-  found via the `lhapdf` option of `input/mg7_configuration.txt`. Without
-  LHAPDF, set it with `set lhapdf /path/to/lhapdf-config` in a script. Don't
-  `--no_save` that one; the user will want it kept, so ask them first.
+- **PDF sets** are downloaded on first use into the LHAPDF data directory,
+  so the first run needs network access. mg7 takes LHAPDF set names and
+  aMC@NLO takes lhaids. `lhapdf-config` comes from the `lhapdf` option of
+  `input/mg7_configuration.txt` or of the user's
+  `~/.mg7/mg7_configuration.txt` (`~/.mg5` is never read). To see what a
+  process directory will use: `grep -n lhapdf <dir>/Cards/*configuration.txt`.
+  The log confirms it with `Using LHAPDF v...`. If LHAPDF is missing, ask
+  the user before running `set lhapdf /path/to/lhapdf-config`. That one
+  should be saved, so without `--no_save`.
 - **Pythia8/Delphes/MadAnalysis5** are installed by MadGraph itself:
   `install pythia8` (asks for nothing; takes several minutes). Ask the user
   before installing anything.
 - **Stray files in the working directory**: a crash leaves `debug` /
-  `MG5_debug`, and some runs leave `nsqso_born.inc`. Run scripts from a
+  `MG5_debug`, and runs can leave `nsqso_born.inc` and an empty
+  `additional_command`. Run scripts from a
   dedicated work directory, not from the repository root.
 - The `caffeinate` warning on macOS is harmless.
 
@@ -72,7 +79,7 @@ prints its statistics at CRITICAL level), `Using default gzip`.
 The mg7 output is LO only. Use the madevent (Fortran) path when the user
 needs:
 - **NLO**: `generate p p > t t~ [QCD]` followed by a plain `output` produces an
-  aMC@NLO directory; the launch is the classic MG5 one.
+  aMC@NLO directory (see `reference/nlo.md`).
 - **MLM matching / merging** with `ickkw`, or other features of the classic run
   card that have no mg7 equivalent, or a comparison against an MG5 sample.
 
