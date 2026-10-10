@@ -3470,6 +3470,15 @@ def build_selector_cmd(mother=None):
                 self.run_card.allow_scan = True
             return getattr(self, "run_set", out)
 
+        def check_card_consistency(self):
+            super().check_card_consistency()
+            # madevent settings given per beam ("set ebeam1 ...") that the
+            # one-energy, one-PDF mg7 card could not follow: said once, at
+            # the end, so "set ebeam1 X" then "set ebeam2 X" stays quiet
+            if isinstance(getattr(self, "run_card", None), RunCardMG7):
+                for text in self.run_card.lo_set_warnings():
+                    logger.warning(text)
+
         def do_set(self, line, *args, **kwargs):
             # madevent-style shortcuts (lhc/lep/fixed_scale/no_parton_cut), cut
             # editing, energy units and arithmetic/mass expressions on the TOML
@@ -3555,6 +3564,35 @@ def build_selector_cmd(mother=None):
                                         nlow, cut, bound, val)
                         self.modified_card.add("run")
                         return
+
+                    # madevent parameters that are not a plain rename: the
+                    # value is translated ("set dynamical_scale_choice 3") or
+                    # several of them make one mg7 entry (ebeam1 + ebeam2 ->
+                    # beam.e_cm). mg7 values ("set sde_strategy denominators")
+                    # come back as None and go on to the generic editor.
+                    if rest and nlow in run_card._LO_SET_PARAMS:
+                        try:
+                            done = run_card.set_lo_param(nlow, rest, masses)
+                        except (_banner_mod.InvalidCmd, TypeError, ValueError) as error:
+                            logger.warning("ignoring 'set %s %s': %s", nlow, rest, error)
+                            return
+                        if done is not None:
+                            changes, warnings = done
+                            for key, val in changes.items():
+                                if val is None:
+                                    logger.info("set %s: removed %s from the run_card.toml",
+                                                nlow, key)
+                                else:
+                                    logger.info("set %s (mg7 %s) of the run_card.toml to %s",
+                                                nlow, key, val)
+                            for text in warnings:
+                                logger.warning(text)
+                            if changes:
+                                self.modified_card.add("run")
+                            elif not warnings:
+                                logger.info("set %s %s: nothing to change in the run_card.toml",
+                                            nlow, rest)
+                            return
 
                     # 'iseed' is the madevent spelling of the mg7 run.seed,
                     # but the two disagree on how to ask for a random seed:

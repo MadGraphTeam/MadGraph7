@@ -714,6 +714,49 @@ class MG7CmdTest(unittest.TestCase):
         self.assertNotIn('run', obj.modified_card)
         self.generic_do_set.assert_not_called()
 
+    def test_set_madevent_beam_and_scale_names(self):
+        """ebeam, the integer scale/strategy codes, maxjetflavor and the
+        per-pdg cuts are translated. The generic editor rejected the first
+        and aborted a launch script on the integer codes."""
+        obj = self.cut_selector()
+        obj.do_set('ebeam1 6800')
+        obj.do_set('run_card ebeam2 6800')
+        self.assertAlmostEqual(obj.run_card['beam']['e_cm'], 13600.)
+        obj.do_set('ebeam 7 TeV')
+        self.assertAlmostEqual(obj.run_card['beam']['e_cm'], 14000.)
+        obj.do_set('dynamical_scale_choice 1')
+        self.assertEqual(obj.run_card['beam']['dynamical_scale_choice'],
+                         'transverse_energy')
+        obj.do_set('dynamical_scale_choice 0')     # no equivalent: kept
+        self.assertEqual(obj.run_card['beam']['dynamical_scale_choice'],
+                         'transverse_energy')
+        obj.do_set('sde_strategy 2')
+        self.assertEqual(obj.run_card['phasespace']['sde_strategy'], 'denominators')
+        obj.do_set('maxjetflavor 5')
+        self.assertIn(5, obj.run_card['multiparticles']['jet'])
+        obj.do_set('pt_min_pdg {6: 100}')
+        self.assertEqual(dict(obj.run_card['cuts']['pdg6-pt']), {'min': 100.0})
+        self.assertIn('run', obj.modified_card)
+        self.generic_do_set.assert_not_called()
+
+    def test_set_mg7_values_still_reach_the_editor(self):
+        obj = self.cut_selector()
+        obj.do_set('dynamical_scale_choice transverse_mass')
+        obj.do_set('sde_strategy denominators')
+        obj.do_set('dynamical_scale_choice HT/4')
+        self.assertEqual(self.generic_do_set.call_count, 3)
+
+    def test_asymmetric_beams_are_reported_when_the_question_closes(self):
+        obj = self.cut_selector()
+        parent = type(obj).__mro__[1]
+        with mock.patch.object(parent, 'check_card_consistency'):
+            obj.do_set('ebeam1 7000')
+            obj.do_set('ebeam2 4000')
+            with self.assertLogs('madgraph7', level='WARNING') as logs:
+                obj.check_card_consistency()
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn('ebeam1 = 7000 GeV and ebeam2 = 4000 GeV', logs.output[0])
+
     def test_no_post_processing_keeps_the_npy_output(self):
         self.assertEqual(self.output_format({}), 'compact_npy')
         self.assertEqual(self.output_format(None), 'compact_npy')

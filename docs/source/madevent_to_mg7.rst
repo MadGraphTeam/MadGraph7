@@ -22,8 +22,18 @@ The cut names of the `Cuts`_ table are translated as well, so ``set mmll 200`` s
 ``lepton-sfos_pair_mass.min`` and ``set ptj1min 50`` sets ``jet_1-pt.min``. As in
 ``run_card.dat``, a minimum of zero or a negative maximum removes that bound. A cut on the
 ``parton`` or ``alllepton`` group also adds the group to ``[multiparticles]`` if it is not
-there yet. ``ptheavy`` and the per-pdg cuts (``pt_min_pdg``, ``mxx_min_pdg``, ...) are not
-translated, because they need a group of your own.
+there yet. The per-pdg cuts are written as in ``run_card.dat``, for example
+``set pt_min_pdg {6: 100}``, and put on a group ``pdg6 = [6, -6]``. ``ptheavy`` is not
+translated, because it needs a group of your own.
+
+The beam and PDF settings ``ebeam1``, ``ebeam2`` (and the shortcut ``set ebeam``),
+``lpp1``, ``lpp2``, ``pdlabel``, ``pdlabel1``, ``pdlabel2``, ``lhaid``, ``fixed_fac_scale``,
+``fixed_fac_scale1``, ``fixed_fac_scale2`` and ``maxjetflavor`` are translated as in the tables
+below, and so are the numbers of ``dynamical_scale_choice`` (``set dynamical_scale_choice 3``)
+and ``sde_strategy``. MG7 has one energy, one PDF and one lepton flag for both beams, so the
+two values of a pair are combined: ``set ebeam1 7000`` followed by ``set ebeam2 4000`` runs at
+the same :math:`\sqrt{s}` in the centre-of-mass frame. What cannot be represented this way is
+reported once the launch question closes.
 
 All other settings must use their new names.
 
