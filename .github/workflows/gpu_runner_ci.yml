@@ -7,6 +7,7 @@
 #   build_madspace  cluster runner  madspace with the CUDA/HIP backend (cached on the cluster)
 #   pp_ttx          cluster runner  p p > t t~ with mg7 on the GPU
 #   pp_jj           cluster runner  p p > j j with mg7 on the GPU (cuts on several jets)
+#   interference    cluster runner  squared split orders (interference), .github/gpu_ci/interference_gpu.sh
 #   ...             cluster runner  more CI jobs: same runs-on, and add them to stop_runner's needs
 #   stop_runner     cluster runner  clean up and end the allocation (no ssh key needed)
 #
@@ -69,6 +70,10 @@ on:
         default: 'NNPDF23_lo_as_0130_qed'
       keep_workdir:
         description: 'Keep the run directory on the cluster even if every job succeeds'
+        type: boolean
+        default: false
+      interference:
+        description: 'Also run the interference (squared split-order) checks, .github/gpu_ci/interference_gpu.sh'
         type: boolean
         default: false
 
@@ -185,6 +190,56 @@ jobs:
           path: results/
           if-no-files-found: warn
 
+  interference:
+    # input interference (true on push): squared split orders on the GPU backend of madmatrix,
+    # standalone and through umami, and an interference sample with mg7
+    needs: build_madspace
+    if: inputs.interference
+    runs-on: [self-hosted, "${{ inputs.runner_label }}"]
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash -l -eo pipefail {0}
+    env:
+      BACKEND: ${{ inputs.backend }}
+      MODULES: ${{ inputs.modules }}
+      GPU_ARCH: ${{ inputs.gpu_arch }}
+      # no PDF_SET: the mg7 check runs with the PDF set of its reference
+      VENV: ${{ needs.build_madspace.outputs.venv }}
+      MADSPACE_PREFIX: ${{ needs.build_madspace.outputs.madspace_prefix }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: run directory
+        run: echo "WORKDIR=${GLOBALSCRATCH:-$HOME}/mg7-gpu-ci/runs/$RUN_TAG/interference" >> "$GITHUB_ENV"
+      - name: interference on the GPU
+        run: .github/gpu_ci/interference_gpu.sh
+      - name: collect logs
+        if: always()
+        run: |
+          mkdir -p results
+          (cd "$WORKDIR" && tar -cf - --ignore-failed-read summary.txt checks.log *.mg5 *.log \
+              PROC_uux/Cards PROC_uux/Events/*/info.json 2> /dev/null) | tar -xf - -C results || true
+          find results -type f | sort
+      - name: job summary
+        if: always()
+        run: |
+          {
+            echo "### interference on ${{ inputs.cluster }} ($BACKEND)"
+            if [ -f results/summary.txt ]; then
+              echo "| | |"
+              echo "|---|---|"
+              sed 's/^\([^=]*\)=\(.*\)$/| \1 | \2 |/' results/summary.txt
+            else
+              echo "No summary.txt: the job stopped early, see the log of the 'interference on the GPU' step."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpu-interference-${{ inputs.cluster }}-${{ inputs.backend }}
+          path: results/
+          if-no-files-found: warn
+
   pp_jj:
     # p p > j j: cuts on several objects (the jets), which p p > t t~ does not have
     needs: build_madspace
@@ -238,7 +293,7 @@ jobs:
 
   stop_runner:
     # must list every job that runs on the self-hosted runner
-    needs: [start_runner, build_madspace, pp_ttx, pp_jj]
+    needs: [start_runner, build_madspace, pp_ttx, pp_jj, interference]
     if: always() && needs.start_runner.result == 'success'
     runs-on: [self-hosted, "${{ inputs.runner_label }}"]
     defaults:

@@ -2079,12 +2079,22 @@ class TestRunCardMG7Histograms(unittest.TestCase):
     def test_weight_distribution(self):
         """'weight' is the reserved key for the event weight itself
 
-        It is binned in units of the cross section, so the range does not
+        It is binned in units of the unit weight, so the range does not
         depend on the process (an unweighted sample is a spike at 1).
         """
         rc = self.build([[mg7_proc([21, 21], [6, -6])]])
         weight = rc['histograms']['weight']
         self.assertEqual(weight['min'], 0.)
+        self.assertGreater(weight['max'], 1.)
+
+    def test_weight_distribution_of_an_interference(self):
+        """a squared-order constraint can give negative weights, at -1: the
+        range is symmetric so that they are not lost in the underflow"""
+        proc = mg7_proc([21, 21], [6, -6])
+        proc['squared_orders'] = {'HIG': 1}
+        rc = self.build([[proc]])
+        weight = rc['histograms']['weight']
+        self.assertEqual(weight['min'], -weight['max'])
         self.assertGreater(weight['max'], 1.)
 
     def test_round_trip(self):
