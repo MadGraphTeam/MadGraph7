@@ -667,7 +667,9 @@ Plots and the HwU file are made from these.</p>
 the numbers are still written to <code class="docutils literal notranslate"><span class="pre">info.json</span></code>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">write_hwu</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Also write the histograms as <code class="docutils literal notranslate"><span class="pre">MADatLO.HwU</span></code>. This is the format MG5_aMC writes as
-<code class="docutils literal notranslate"><span class="pre">MADatNLO.HwU</span></code> for NLO runs.</p>
+<code class="docutils literal notranslate"><span class="pre">MADatNLO.HwU</span></code> for NLO runs, with the same conventions: the cross section per bin
+(not divided by the bin width, unlike the plots), and the same scale-variation
+columns. <code class="docutils literal notranslate"><span class="pre">madgraph/various/histograms.py</span></code> reads both files together.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">verbosity</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>)</dt><dd><p>Amount of console output: <code class="docutils literal notranslate"><span class="pre">silent</span></code>, <code class="docutils literal notranslate"><span class="pre">pretty</span></code> or <code class="docutils literal notranslate"><span class="pre">log</span></code>. <code class="docutils literal notranslate"><span class="pre">auto</span></code> is <code class="docutils literal notranslate"><span class="pre">pretty</span></code> in
 a terminal and <code class="docutils literal notranslate"><span class="pre">log</span></code> otherwise.</p>
