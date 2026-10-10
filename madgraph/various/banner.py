@@ -6755,11 +6755,9 @@ class RunCardMG7(RunCard):
             comment="how the run creating the gridpack ends: regular (with events), "
                     "minimal or fix_max_weight (no events)")
         self.add_toml_param('gridpack', 'temp_output_dir', "", gridpack=True,
-            comment="gridpack runs only: directory for the temporary npy files; "
-                    "\"\" uses the run folder")
+            comment="directory for the temporary npy files; \"\" uses the output directory")
         self.add_toml_param('gridpack', 'output_dir', "", gridpack=True,
-            comment="gridpack runs only: directory for the output files; "
-                    "\"\" uses the run folder")
+            comment="directory for the output files; \"\" creates a new run folder in Events")
 
         # ----------------------------- [beam] -------------------------
         self.add_toml_param('beam', 'e_cm', 13000.0,
