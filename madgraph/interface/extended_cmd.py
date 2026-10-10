@@ -2906,8 +2906,10 @@ class ControlSwitch(SmartQuestion):
         allowed_args = [ repr(i)+';' for i in range(1, 1+len(self.to_control))] 
         for key in self.switch:
             allowed_args += ['%s=%s;' % (key,s) for s in self.get_allowed(key)]
-        # adding special mode
-        allowed_args += [key[4:]+';' for key in dir(self) if key.startswith('ans_')]
+        # adding special mode ('@' is spelled '__at__' in the method name, e.g.
+        # ans_amc__at__nlo, so give the answer back the spelling users type)
+        allowed_args += [key[4:].replace('__at__', '@')+';' for key in dir(self)
+                         if key.startswith('ans_')]
         allowed_args += [arg[:-1] for arg in allowed_args if arg[-1] == ';']
         if 'allow_arg' in opts:
             allowed_args += opts['allow_arg']
