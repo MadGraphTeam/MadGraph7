@@ -68,8 +68,8 @@ jobs:
       time_limit: ${{ inputs.time_limit || '00:30:00' }}
       extra_sbatch: ${{ inputs.extra_sbatch }}
       keep_workdir: ${{ inputs.keep_workdir || false }}
-      # opt-in on "Run workflow" only for now (no inputs on push: false)
-      interference: ${{ inputs.interference || false }}
+      # on push (no inputs) always; on "Run workflow" as ticked (default ticked)
+      interference: ${{ github.event_name == 'push' || inputs.interference }}
     # needed for the called workflow to see the CECI_KEY secret of its `ceci-gpu`
     # environment (the repository itself has no other secrets)
     secrets: inherit

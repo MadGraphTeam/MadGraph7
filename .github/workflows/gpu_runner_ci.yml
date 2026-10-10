@@ -7,7 +7,7 @@
 #   build_madspace  cluster runner  madspace with the CUDA/HIP backend (cached on the cluster)
 #   pp_ttx          cluster runner  p p > t t~ with mg7 on the GPU
 #   pp_jj           cluster runner  p p > j j with mg7 on the GPU (cuts on several jets)
-#   interference    cluster runner  opt-in: squared split orders (interference), .github/gpu_ci/interference_gpu.sh
+#   interference    cluster runner  squared split orders (interference), .github/gpu_ci/interference_gpu.sh
 #   ...             cluster runner  more CI jobs: same runs-on, and add them to stop_runner's needs
 #   stop_runner     cluster runner  clean up and end the allocation (no ssh key needed)
 #
@@ -191,7 +191,7 @@ jobs:
           if-no-files-found: warn
 
   interference:
-    # opt-in (input interference): squared split orders on the GPU backend of madmatrix,
+    # input interference (true on push): squared split orders on the GPU backend of madmatrix,
     # standalone and through umami, and an interference sample with mg7
     needs: build_madspace
     if: inputs.interference
