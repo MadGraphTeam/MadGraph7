@@ -22,6 +22,7 @@ allocation per workflow run, and every CI job of that run executes in it:
 | `build_madspace` | cluster | build madspace with `ENABLE_CUDA`/`ENABLE_HIP` for the GPU of the node (`build_madspace_gpu.sh`). The build is kept in `$GLOBALSCRATCH/mg7-gpu-ci/cache` and redone only when the madspace sources, the modules or the GPU architecture change |
 | `pp_ttx` | cluster | `generate p p > t t~`, `output mg7`, `device = ["cuda"]` or `["hip"]` in `run_card.toml`, `bin/generate_events -f`, check the cross section in `info.json` (`pp_ttx_mg7.sh`). The logs and cards are uploaded as an artifact, and the cross section is shown in the run summary |
 | `pp_jj` | cluster | the same with `generate p p > j j` (`PROCESS`/`TAG` of `pp_ttx_mg7.sh`): its jet cuts act on several objects, which `p p > t t~` has none of |
+| `madspace_ops` | cluster | madspace GPU runtime operations against the CPU runtime on the same inputs (`madspace_ops_gpu.sh`, `madspace_checks.py`; torch puts the inputs on the GPU): a histogram with underflow and overflow bins, an elementwise kernel on a rank-4 tensor |
 | `stop_runner` | cluster | clean up, then create the stop file: `runner_batch.sh` stops the runner and the allocation ends |
 
 To add a CI job, give it `runs-on: [self-hosted, "${{ inputs.runner_label }}"]` and add it

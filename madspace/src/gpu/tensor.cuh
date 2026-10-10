@@ -216,7 +216,7 @@ __global__ void run_kernel(std::size_t batch_size, V... views) {
         std::size_t size1 = first_view.size(1);
         std::size_t size2 = first_view.size(2);
         std::size_t size3 = first_view.size(3);
-        if (index >= batch_size * size1 * size2) {
+        if (index >= batch_size * size1 * size2 * size3) {
             return;
         }
         std::size_t i = index % batch_size;
