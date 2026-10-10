@@ -577,9 +577,9 @@ class MadgraphProcess:
         ]
 
     # [histograms] key that means "the distribution of the event weight",
-    # normalised to the cross section (the mean weight), rather than an
-    # observable of the momenta: an unweighted sample is a spike at 1 and a
-    # partially unweighted one shows its spread, whatever the cross section.
+    # normalised to the unit weight sigma_abs, rather than an observable of the
+    # momenta: an unweighted sample is a spike at 1 (and at -1 for its negative
+    # weights) and a partially unweighted one shows its spread.
     weight_histogram_key = "weight"
 
     def init_histograms(self) -> None:
@@ -1045,8 +1045,8 @@ class MadgraphProcess:
                 for item in from_momenta
             ])
             observables.append(ms.SubprocessObservables(values, len(all_pids)))
-        # the weight histograms are drawn in units of the cross section, which
-        # is what the mean event weight is once the events are combined
+        # the weight histograms are drawn in units of the unit weight sigma_abs
+        # (the cross section of a sample without negative weights)
         self.event_histograms_context = context
         self.event_histograms = ms.EventHistograms(
             context, specs, observables,

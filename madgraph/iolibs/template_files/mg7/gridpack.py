@@ -135,7 +135,7 @@ def main() -> None:
         "--verbosity",
         type=str,
         default=run_args["verbosity"],
-        choices=["none", "pretty", "log", "auto"]
+        choices=["silent", "pretty", "log", "auto"]
     )
     parser.add_argument(
         "--output_format",
