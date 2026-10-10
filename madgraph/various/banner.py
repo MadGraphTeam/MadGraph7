@@ -6689,57 +6689,43 @@ class RunCardMG7(RunCard):
         self.add_param('run_tag', 'tag_1', include=False)
 
         # ----------------------------- [run] --------------------------
-        self.add_toml_param('run', 'run_name', "run", gridpack=True)
+        self.add_toml_param('run', 'run_name', "run", gridpack=True,
+            comment="name of the run; events go to Events/<run_name>_NN")
         self.add_toml_param('run', 'seed', -1, gridpack=True,
-            comment="every run is reproducible: the same seed reproduces the run "
-                    "bit-identically. -1 draws a fresh random seed each run instead "
-                    "of fixing one here; the seed actually used is still recorded "
-                    "(the MG7Seed tag in the LHE file, or the info.json status "
-                    "file), so the run can be reproduced later")
+            comment="random seed; -1 draws a fresh one, which is recorded in the output")
         self.add_toml_param('run', 'device', ["cpu"], typelist=str, gridpack=True,
             allowed=['cpu', 'cuda', 'hip', '*'],
-            comment="list of devices; each entry is cpu, cuda or hip, optionally followed by a device index (e.g. \"cuda:1\")")
+            comment="list of devices, each cpu, cuda or hip with an optional index (e.g. \"cuda:1\")")
         self.add_toml_param('run', 'cpu_mode', "auto", gridpack=True,
             allowed=['auto', 'scalar', 'simd_128', 'simd_256', 'simd_512', 'avx512y'],
-            comment="SIMD width used by the 'cpu' devices; 'auto' detects the widest one supported by the host")
+            comment="SIMD width on cpu devices; auto picks the widest one the host supports")
         self.add_toml_param('run', 'precision', "color32", gridpack=True,
             allowed=['all64', 'all32', 'color32', 'denom64'],
-            comment="matrix-element floating-point precision: all64 (FP64), all32 (FP32), "
-                    "color32 (colour FP32, rest FP64), "
-                    "denom64 (momenta + propagator denominator FP64, rest FP32)")
+            comment="matrix element precision: all64, all32, color32 (FP32 color sum) or denom64 (FP64 momenta and propagator denominators)")
         self.add_toml_param('run', 'simd_vector_size', -1,
-            comment="-1 chooses automatically; on x86: 1, 4, 8; on Apple silicon: 1, 2")
+            comment="-1 chooses automatically; x86: 1, 4, 8; Apple silicon: 1, 2")
         self.add_toml_param('run', 'cpu_thread_pool_size', -1, gridpack=True,
-            comment="-1 sets count automatically based on number of CPUs")
-        self.add_toml_param('run', 'gpu_thread_pool_size', 1, gridpack=True)
-        self.add_toml_param('run', 'combine_thread_pool_size', -1, gridpack=True)
+            comment="threads for the cpu devices; -1 chooses automatically")
+        self.add_toml_param('run', 'gpu_thread_pool_size', 1, gridpack=True,
+            comment="threads per gpu device")
+        self.add_toml_param('run', 'combine_thread_pool_size', -1, gridpack=True,
+            comment="threads for combining the channel results; -1 chooses automatically")
         self.add_toml_param('run', 'output_format', "lhe_npy", gridpack=True,
             allowed=['compact_npy', 'lhe_npy', 'lhe'],
-            comment="compact_npy/lhe_npy also write header.lhe next to events.npy, "
-                    "with the run/param card, beam and cross-section info that the "
-                    ".npy file itself does not carry")
+            comment="event file format; the npy formats also write header.lhe")
         self.add_toml_param('run', 'weighted_histograms', False,
-            comment="fill the [histograms] with the weighted events during the "
-                    "integration (info.json \"histograms\"); costs an observable "
-                    "evaluation per phase-space point")
+            comment="fill the [histograms] with weighted events during integration")
         self.add_toml_param('run', 'postprocessing_histograms', True,
-            comment="fill the [histograms] with the final events and all their "
-                    "scale/PDF weights (info.json \"event_histograms\"); the "
-                    "plots and the HwU file are drawn from these")
+            comment="fill the [histograms] with the final events, including scale/PDF weights")
         self.add_toml_param('run', 'make_plots', True,
-            comment="draw the [histograms] distributions, with their scale and "
-                    "PDF bands, into Events/<run>/plots. Needs matplotlib; a "
-                    "run without it writes the numbers to info.json as usual "
-                    "and draws nothing.")
+            comment="plot the [histograms] into Events/<run>/plots (needs matplotlib)")
         self.add_toml_param('run', 'write_hwu', False,
-            comment="also write the [histograms] distributions as MADatLO.HwU "
-                    "next to the events, in the format aMC@NLO writes as "
-                    "MADatNLO.HwU (madgraph/various/histograms.py plots and "
-                    "compares those). The same numbers are in info.json either "
-                    "way.")
+            comment="also write the [histograms] as MADatLO.HwU")
         self.add_toml_param('run', 'verbosity', "auto", gridpack=True,
-            allowed=['silent', 'pretty', 'log', 'auto'])
-        self.add_toml_param('run', 'dummy_matrix_element', False)
+            allowed=['silent', 'pretty', 'log', 'auto'],
+            comment="amount of console output; auto is pretty in a terminal and log otherwise")
+        self.add_toml_param('run', 'dummy_matrix_element', False,
+            comment="skip the matrix element evaluation, for testing")
         # Lorentz frame the matrix element is evaluated in, as a list of the
         # external particles whose momenta are summed up to define it (same
         # convention as the legacy run_card me_frame). The default [] means no
@@ -6757,174 +6743,229 @@ class RunCardMG7(RunCard):
                     "Lorentz invariant (polarised) matrix element")
 
         # ---------------------------- [gridpack] ----------------------
-        self.add_toml_param('gridpack', 'save_gridpack', False)
-        self.add_toml_param('gridpack', 'include_source', False)
-        self.add_toml_param('gridpack', 'include_madspace', True)
-        self.add_toml_param('gridpack', 'include_madspace_source', False)
+        self.add_toml_param('gridpack', 'save_gridpack', False,
+            comment="create a gridpack at the end of the run")
+        self.add_toml_param('gridpack', 'include_source', False,
+            comment="ship the source code instead of the compiled libraries")
+        self.add_toml_param('gridpack', 'include_madspace', True,
+            comment="include the installed madspace package")
+        self.add_toml_param('gridpack', 'include_madspace_source', False,
+            comment="include the madspace source code")
 
         # ----------------------------- [beam] -------------------------
-        self.add_toml_param('beam', 'e_cm', 13000.0)
-        self.add_toml_param('beam', 'leptonic', False)
-        # NNPDF4.0 LO, 5-flavour scheme, alpha_s(M_Z) = 0.118 -- the same set
-        # the legacy LO run_card now defaults to (lhaid 331900). It carries a
-        # 100-member error set, which is what makes the [systematics] 'errorset'
-        # PDF variation meaningful (the earlier NNPDF40MC_lo_as_01180 default
-        # had a single member and produced none), at ~54 MB rather than ~0.7 MB.
-        # NNPDF4.0 has no 4-flavour LO counterpart, so unlike the NLO card there
-        # is no scheme-dependent choice here: this set is used whatever the
-        # b-quark treatment.
-        self.add_toml_param('beam', 'pdf', "NNPDF40_lo_as_01180")
-        # Default to the dynamical scale set by dynamical_scale_choice below
-        # (half_transverse_mass, i.e. HT/2) rather than to the fixed ren_scale
-        # / fact_scale values. Those fixed values are kept as the fallback used
-        # when a user turns either of these back on.
-        self.add_toml_param('beam', 'fixed_ren_scale', False)
-        self.add_toml_param('beam', 'fixed_fact_scale', False)
-        self.add_toml_param('beam', 'ren_scale', 91.188)
-        self.add_toml_param('beam', 'fact_scale1', 91.188)
-        self.add_toml_param('beam', 'fact_scale2', 91.188)
-        self.add_toml_param('beam', 'scale_factor', 1.0)
+        self.add_toml_param('beam', 'e_cm', 13000.0,
+            comment="center-of-mass energy in GeV; units are accepted, e.g. \"13 TeV\"")
+        self.add_toml_param('beam', 'leptonic', False,
+            comment="lepton collider: no PDFs, beam energy fixed")
+        self.add_toml_param('beam', 'pdf', "NNPDF40_lo_as_01180",
+            comment="LHAPDF set name")
+        self.add_toml_param('beam', 'fixed_ren_scale', False,
+            comment="use ren_scale instead of the dynamical scale")
+        self.add_toml_param('beam', 'fixed_fact_scale', False,
+            comment="use fact_scale1 and fact_scale2 instead of the dynamical scale")
+        self.add_toml_param('beam', 'ren_scale', 91.188,
+            comment="fixed renormalization scale in GeV")
+        self.add_toml_param('beam', 'fact_scale1', 91.188,
+            comment="fixed factorization scale of beam 1 in GeV")
+        self.add_toml_param('beam', 'fact_scale2', 91.188,
+            comment="fixed factorization scale of beam 2 in GeV")
+        self.add_toml_param('beam', 'scale_factor', 1.0,
+            comment="multiplies the dynamical scale; fixed scales are unaffected")
         self.add_toml_param('beam', 'dynamical_scale_choice', "half_transverse_mass",
             allowed=['transverse_energy', 'transverse_mass',
-                     'half_transverse_mass', 'partonic_energy'])
+                     'half_transverse_mass', 'partonic_energy'],
+            comment="dynamical scale used unless the scale is fixed")
 
         # -------------------------- [generation] ----------------------
-        self.add_toml_param('generation', 'events', 100000, gridpack=True)
-        self.add_toml_param('generation', 'max_overweight_truncation', 0.001, gridpack=True)
-        self.add_toml_param('generation', 'freeze_max_weight_after', 100000, gridpack=True)
-        self.add_toml_param('generation', 'cpu_batch_size', 1000, gridpack=True)
-        self.add_toml_param('generation', 'gpu_batch_size', 64000, gridpack=True)
-        self.add_toml_param('generation', 'survey_min_iters', 3)
-        self.add_toml_param('generation', 'survey_max_iters', 3)
-        self.add_toml_param('generation', 'survey_target_precision', 0.1)
-        self.add_toml_param('generation', 'cut_efficiency_threshold', 0.7, gridpack=True)
-        self.add_toml_param('generation', 'max_cut_repetitions', 1000, gridpack=True)
-        # legacy alias of systematics.enable (kept so that older cards still
-        # read; not written to new cards)
+        self.add_toml_param('generation', 'events', 100000, gridpack=True,
+            comment="number of unweighted events")
+        self.add_toml_param('generation', 'max_overweight_truncation', 0.001, gridpack=True,
+            comment="fraction of the weight distribution tail ignored when setting the unweighting maximum")
+        self.add_toml_param('generation', 'freeze_max_weight_after', 100000, gridpack=True,
+            comment="number of events after which the unweighting maximum is frozen")
+        self.add_toml_param('generation', 'cpu_batch_size', 1000, gridpack=True,
+            comment="events per batch on cpu devices")
+        self.add_toml_param('generation', 'gpu_batch_size', 64000, gridpack=True,
+            comment="events per batch on gpu devices")
+        self.add_toml_param('generation', 'survey_min_iters', 3,
+            comment="minimum number of survey iterations")
+        self.add_toml_param('generation', 'survey_max_iters', 3,
+            comment="maximum number of survey iterations")
+        self.add_toml_param('generation', 'survey_target_precision', 0.1,
+            comment="relative precision at which the survey stops")
+        self.add_toml_param('generation', 'cut_efficiency_threshold', 0.7, gridpack=True,
+            comment="batches with a lower fraction of events passing the cuts are resampled")
+        self.add_toml_param('generation', 'max_cut_repetitions', 1000, gridpack=True,
+            comment="maximum number of resampling attempts per batch")
+        # legacy alias of systematics.enable, read from old cards but never written
         self.add_toml_param('generation', 'systematics', False, hidden=True)
 
         # --------------------------- [systematics] --------------------
-        # scale/PDF variation weights computed by madspace when the events are
-        # written (LHE <rwgt> blocks / npy columns), replacing the systematics.py
-        # post-processing step.
         self.add_toml_param('systematics', 'enable', True, gridpack=True,
-            comment="compute scale/PDF variation weights when writing the events")
+            comment="compute scale and PDF variation weights")
         self.add_toml_param('systematics', 'mur', [0.5, 1.0, 2.0], typelist=float, gridpack=True,
-            comment="renormalisation scale variation factors")
+            comment="renormalization scale factors")
         self.add_toml_param('systematics', 'muf', [0.5, 1.0, 2.0], typelist=float, gridpack=True,
-            comment="factorisation scale variation factors")
+            comment="factorization scale factors")
         self.add_toml_param('systematics', 'together', True, gridpack=True,
             comment="true: all mur x muf combinations; false: vary one scale at a time")
         self.add_toml_param('systematics', 'dynamical_scale', [], typelist=str, gridpack=True,
-            comment="alternative dynamical scale choices to evaluate the weights with: transverse_energy, transverse_mass, half_transverse_mass, partonic_energy")
+            comment="alternative dynamical scale choices, as for beam.dynamical_scale_choice")
         self.add_toml_param('systematics', 'pdf', ['errorset'], typelist=str, gridpack=True,
-            comment="PDF variations: 'errorset' (all members of the nominal set), 'central', LHAPDF set names or ids, optionally with @member")
+            comment="'errorset', 'central', LHAPDF set names or ids, or '<set>@<member>'")
         self.add_toml_param('systematics', 'write_inputs', False, gridpack=True,
-            comment="also write the per-event reweighting inputs (x1/x2/scales columns in npy, <mgrwt> block in LHE)")
+            comment="store x1, x2 and the scales for each event")
 
         # ------------------------- [postprocessing] -------------------
-        # LHE-level post-processing of the generated event file (only applied
-        # when output_format = "lhe", which enabling any of them forces); mirrors what madevent drives from the
-        # legacy run_card (add_time_of_flight and systematics.py).
         self.add_toml_param('postprocessing', 'time_of_flight', -1.0,
-            comment="threshold (in mm) below which the invariant livetime is not written (-1 means not written)")
+            comment="threshold in mm below which the livetime is not written; -1 disables")
         self.add_toml_param('postprocessing', 'systematics', False,
-            comment="legacy: recompute the scale/PDF uncertainties with systematics.py (LHAPDF) after the generation; superseded by the [systematics] section")
+            comment="legacy systematics.py run on the lhe file; use [systematics] instead")
         self.add_toml_param('postprocessing', 'systematics_muf', [0.5, 1.0, 2.0], typelist=float,
-            comment="factorisation scale variation factors")
+            comment="factorization scale factors for systematics.py")
         self.add_toml_param('postprocessing', 'systematics_mur', [0.5, 1.0, 2.0], typelist=float,
-            comment="renormalisation scale variation factors")
+            comment="renormalization scale factors for systematics.py")
         self.add_toml_param('postprocessing', 'systematics_pdf', ['errorset'], typelist=str,
-            comment="PDF sets/uncertainties (e.g. 'errorset', 'central', a lhaid)")
+            comment="PDF variations for systematics.py")
         self.add_toml_param('postprocessing', 'systematics_str_options', "",
-            comment="extra raw options forwarded to systematics.py (e.g. '--together=mur,muf')")
+            comment="extra options passed to systematics.py, e.g. '--together=mur,muf'")
 
         # ----------------------------- [vegas] ------------------------
-        self.add_toml_param('vegas', 'enable', True)
-        self.add_toml_param('vegas', 'bins', 64)
-        self.add_toml_param('vegas', 'damping', 0.4)
-        self.add_toml_param('vegas', 'optimization_patience', 5)
-        self.add_toml_param('vegas', 'optimization_threshold', 0.9)
-        self.add_toml_param('vegas', 'start_batch_size', 1000)
-        self.add_toml_param('vegas', 'max_batch_size', 32000)
+        self.add_toml_param('vegas', 'enable', True,
+            comment="use VEGAS grids for the phase-space sampling")
+        self.add_toml_param('vegas', 'bins', 64,
+            comment="number of grid bins per dimension")
+        self.add_toml_param('vegas', 'damping', 0.4,
+            comment="damping of the grid updates")
+        self.add_toml_param('vegas', 'optimization_patience', 5,
+            comment="survey iterations without improvement before the optimization stops")
+        self.add_toml_param('vegas', 'optimization_threshold', 0.9,
+            comment="relative improvement that counts as progress")
+        self.add_toml_param('vegas', 'start_batch_size', 1000,
+            comment="events per batch in the first survey iteration")
+        self.add_toml_param('vegas', 'max_batch_size', 32000,
+            comment="largest batch size during the survey")
 
         # -------------------------- [phasespace] ----------------------
-        self.add_toml_param('phasespace', 'merge_subprocesses', False)
+        self.add_toml_param('phasespace', 'merge_subprocesses', False,
+            comment="merge subprocesses with the same diagram topologies into shared channels")
         self.add_toml_param('phasespace', 'mode', "multichannel",
-            allowed=['auto', 'multichannel', 'flat', 'both'])
+            allowed=['auto', 'multichannel', 'flat', 'both'],
+            comment="multichannel: channels from the diagrams; flat: a single channel; both: multichannel with the smallest channels replaced by a flat one; auto: both if MadNIS is enabled, else multichannel")
         self.add_toml_param('phasespace', 'sde_strategy', "diagrams",
-            allowed=['diagrams', 'denominators'])
-        self.add_toml_param('phasespace', 'decays', "all",
-            allowed=['all', 'massive', 'none'])
+            allowed=['diagrams', 'denominators'],
+            comment="channel weights from the squared diagrams or from the propagator denominators")
         self.add_toml_param('phasespace', 't_channel', "propagator",
-            allowed=['propagator', 'rambo', 'chili'])
+            allowed=['propagator', 'rambo', 'chili'],
+            comment="t-channel phase-space parametrization")
         self.add_toml_param('phasespace', 'flat_mode', "rambo",
-            allowed=['propagator', 'rambo', 'chili'])
-        self.add_toml_param('phasespace', 'combine_channel_threshold', 0.01)
+            allowed=['propagator', 'rambo', 'chili'],
+            comment="phase-space parametrization of the flat channel")
+        self.add_toml_param('phasespace', 'combine_channel_threshold', 0.01,
+            comment="in both mode, channels making up this fraction of the cross section are replaced by a flat channel")
         self.add_toml_param('phasespace', 'drop_qcd_s_channel', 20,
-            comment="drop multichannel channels without a QCD s-channel resonance "
-                    "once the channel count would otherwise exceed this many "
-                    "(-1 keeps all channels)")
-        self.add_toml_param('phasespace', 'invariant_power', 0.7)
-        self.add_toml_param('phasespace', 'bw_cutoff', 15)
+            comment="channel count above which channels without a QCD s-channel resonance are dropped; -1 keeps all")
+        self.add_toml_param('phasespace', 'invariant_power', 0.7,
+            comment="exponent of the 1/s^p sampling of propagator invariants")
+        self.add_toml_param('phasespace', 'bw_cutoff', 15,
+            comment="number of widths around the mass sampled with a Breit-Wigner")
         self.add_toml_param('phasespace', 'cut_decays', False,
-            comment="apply the [cuts] to the decay products of on-shell "
-                    "(decay-chain) propagators too; false leaves them uncut, "
-                    "as MadEvent's cut_decays")
-        self.add_toml_param('phasespace', 'adaptive_symmetry_sampling', True)
+            comment="apply the [cuts] to the decay products of on-shell particles")
+        self.add_toml_param('phasespace', 'adaptive_symmetry_sampling', True,
+            comment="sample symmetric channels adaptively")
 
         # ----------------------------- [madnis] -----------------------
-        self.add_toml_param('madnis', 'enable', False, allowed=["auto", True, False], auto=True)
-        self.add_toml_param('madnis', 'flow_hidden_dim', 64, auto=True)
-        self.add_toml_param('madnis', 'flow_layers', 3, auto=True)
-        self.add_toml_param('madnis', 'flow_spline_bins', 10)
+        self.add_toml_param('madnis', 'enable', False, allowed=["auto", True, False], auto=True,
+            comment="train MadNIS networks to improve the sampling; auto decides by process")
+        self.add_toml_param('madnis', 'flow_hidden_dim', 64, auto=True,
+            comment="hidden units per layer of the flow subnetworks")
+        self.add_toml_param('madnis', 'flow_layers', 3, auto=True,
+            comment="hidden layers of the flow subnetworks")
+        self.add_toml_param('madnis', 'flow_spline_bins', 10,
+            comment="number of spline bins per flow transformation")
         self.add_toml_param('madnis', 'flow_activation', "leaky_relu",
-            allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'])
-        self.add_toml_param('madnis', 'flow_invert_spline', False)
-        self.add_toml_param('madnis', 'discrete_hidden_dim', 64, auto=True)
-        self.add_toml_param('madnis', 'discrete_layers', 3)
+            allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'],
+            comment="activation function of the flow subnetworks")
+        self.add_toml_param('madnis', 'flow_invert_spline', False,
+            comment="apply the flow splines in the inverse direction")
+        self.add_toml_param('madnis', 'discrete_hidden_dim', 64, auto=True,
+            comment="hidden units per layer of the discrete-dimension network")
+        self.add_toml_param('madnis', 'discrete_layers', 3,
+            comment="hidden layers of the discrete-dimension network")
         self.add_toml_param('madnis', 'discrete_activation', "leaky_relu",
-            allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'])
-        self.add_toml_param('madnis', 'cwnet_hidden_dim', 64, auto=True)
-        self.add_toml_param('madnis', 'cwnet_layers', 3)
+            allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'],
+            comment="activation function of the discrete-dimension network")
+        self.add_toml_param('madnis', 'cwnet_hidden_dim', 64, auto=True,
+            comment="hidden units per layer of the channel weight network")
+        self.add_toml_param('madnis', 'cwnet_layers', 3,
+            comment="hidden layers of the channel weight network")
         self.add_toml_param('madnis', 'cwnet_activation', "leaky_relu",
-            allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'])
+            allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'],
+            comment="activation function of the channel weight network")
         self.add_toml_param('madnis', 'loss', "stratified_variance",
-            allowed=['stratified_variance', 'kl_divergence', 'rkl_divergence'])
-        self.add_toml_param('madnis', 'train_batches', 1000)
-        self.add_toml_param('madnis', 'log_interval', 100)
-        self.add_toml_param('madnis', 'batch_size_offset', 512)
-        self.add_toml_param('madnis', 'batch_size_per_channel', 128, auto=True)
-        self.add_toml_param('madnis', 'generator_target_size_factor', 32)
-        self.add_toml_param('madnis', 'gpu_generator_batch_granularity', 1000)
-        self.add_toml_param('madnis', 'lr', 3e-4, auto=True)
-        self.add_toml_param('madnis', 'lr_decay', 0.01)
-        self.add_toml_param('madnis', 'lr_max', 3e-3)
+            allowed=['stratified_variance', 'kl_divergence', 'rkl_divergence'],
+            comment="training loss")
+        self.add_toml_param('madnis', 'train_batches', 1000,
+            comment="number of training batches")
+        self.add_toml_param('madnis', 'log_interval', 100,
+            comment="batches between two entries in the training log")
+        self.add_toml_param('madnis', 'batch_size_offset', 512,
+            comment="events added to the training batch size of every channel")
+        self.add_toml_param('madnis', 'batch_size_per_channel', 128, auto=True,
+            comment="minimum training events per active channel")
+        self.add_toml_param('madnis', 'generator_target_size_factor', 32,
+            comment="number of training batches buffered per channel by the sample generator")
+        self.add_toml_param('madnis', 'gpu_generator_batch_granularity', 1000,
+            comment="gpu sample generation batch sizes are rounded to a multiple of this")
+        self.add_toml_param('madnis', 'lr', 3e-4, auto=True,
+            comment="learning rate")
+        self.add_toml_param('madnis', 'lr_decay', 0.01,
+            comment="decay of the exponential lr_scheduler, which is currently not selectable")
+        self.add_toml_param('madnis', 'lr_max', 3e-3,
+            comment="peak rate of the one-cycle lr_scheduler, which is currently not selectable")
         self.add_toml_param('madnis', 'lr_scheduler', "cosine",
-            allowed=['none', 'cosine'])
-        self.add_toml_param('madnis', 'adam_beta1', 0.9)
-        self.add_toml_param('madnis', 'adam_beta2', 0.999)
-        self.add_toml_param('madnis', 'adam_eps', 1e-8)
-        self.add_toml_param('madnis', 'adam_weight_decay', 1e-4)
-        self.add_toml_param('madnis', 'grad_clip_threshold', 0.003)
-        self.add_toml_param('madnis', 'train_mcw', True)
-        self.add_toml_param('madnis', 'buffer_capacity', 60000)
-        self.add_toml_param('madnis', 'minimum_buffer_size', 10000)
-        self.add_toml_param('madnis', 'buffered_steps_fraction', 0.8)
-        self.add_toml_param('madnis', 'buffer_skip_batches', 1000)
-        self.add_toml_param('madnis', 'buffer_unweighting_quantile', 0.95)
-        self.add_toml_param('madnis', 'uniform_channel_ratio', 0.5)
-        self.add_toml_param('madnis', 'integration_history_length', 100)
-        self.add_toml_param('madnis', 'max_stored_channel_weights', 100)
-        self.add_toml_param('madnis', 'channel_dropping_threshold', 0.01)
-        self.add_toml_param('madnis', 'channel_dropping_interval', 100)
-        self.add_toml_param('madnis', 'drop_zero_integrands', True)
-        self.add_toml_param('madnis', 'batch_size_threshold', 0.5)
-        self.add_toml_param('madnis', 'channel_grouping_mode', "uniform",
-            allowed=['none', 'uniform', 'learned'])
-        self.add_toml_param('madnis', 'fixed_cwnet_fraction', 0.33, auto=True)
-        self.add_toml_param('madnis', 'softclip_threshold', 30.0)
-        self.add_toml_param('madnis', 'compressed_channel_weight_count', 50)
+            allowed=['none', 'cosine'],
+            comment="learning rate schedule")
+        self.add_toml_param('madnis', 'adam_beta1', 0.9,
+            comment="Adam first-moment decay rate")
+        self.add_toml_param('madnis', 'adam_beta2', 0.999,
+            comment="Adam second-moment decay rate")
+        self.add_toml_param('madnis', 'adam_eps', 1e-8,
+            comment="Adam numerical stability constant")
+        self.add_toml_param('madnis', 'adam_weight_decay', 1e-4,
+            comment="Adam weight decay")
+        self.add_toml_param('madnis', 'grad_clip_threshold', 0.003,
+            comment="maximum gradient norm; 0 disables clipping")
+        self.add_toml_param('madnis', 'buffer_capacity', 60000,
+            comment="replay buffer size per channel; 0 disables buffering")
+        self.add_toml_param('madnis', 'minimum_buffer_size', 10000,
+            comment="buffered samples needed before training on the buffer starts")
+        self.add_toml_param('madnis', 'buffered_steps_fraction', 0.8,
+            comment="fraction of training steps done on buffered samples")
+        self.add_toml_param('madnis', 'buffer_skip_batches', 1000,
+            comment="initial batches that are not stored in the buffer")
+        self.add_toml_param('madnis', 'buffer_unweighting_quantile', 0.95,
+            comment="weight quantile used as the maximum when unweighting buffered samples")
+        self.add_toml_param('madnis', 'uniform_channel_ratio', 0.5,
+            comment="fraction of the training batch spread uniformly over channels")
+        self.add_toml_param('madnis', 'integration_history_length', 100,
+            comment="integration history entries kept per channel")
+        self.add_toml_param('madnis', 'max_stored_channel_weights', 100,
+            comment="prior channel weights stored per buffered sample")
+        self.add_toml_param('madnis', 'channel_dropping_threshold', 0.01,
+            comment="channels below this fraction of the integral are dropped")
+        self.add_toml_param('madnis', 'channel_dropping_interval', 100,
+            comment="batches between two channel dropping checks")
+        self.add_toml_param('madnis', 'drop_zero_integrands', True,
+            comment="ignore points with zero integrand in the training")
+        self.add_toml_param('madnis', 'batch_size_threshold', 0.5,
+            comment="new samples are drawn until a training batch holds this fraction of its nominal size")
+        self.add_toml_param('madnis', 'fixed_cwnet_fraction', 0.33, auto=True,
+            comment="fraction of the training with a frozen channel weight network")
+        self.add_toml_param('madnis', 'softclip_threshold', 30.0,
+            comment="soft clipping threshold of the channel weights; 0 disables it")
+        self.add_toml_param('madnis', 'compressed_channel_weight_count', 50,
+            comment="channel weights kept per event in the compressed loss")
 
         # ----------------- dynamic (free-form) sections ---------------
         self.dynamic_sections['multiparticles'] = collections.OrderedDict([
@@ -7946,6 +7987,40 @@ class RunCardMG7(RunCard):
         'mmll': ('lepton-sfos_pair_mass', 'min'),
         'mmllmax': ('lepton-sfos_pair_mass', 'max'),
         'dsqrt_shat': ('sqrt_s', 'min'), 'dsqrt_shatmax': ('sqrt_s', 'max'),
+        # leading jet / lepton: "at least one passes" is the hardest one passing
+        'xptj': ('jet_1-pt', 'min'), 'xptl': ('lepton_1-pt', 'min'),
+        # jet HT, and inclusive HT over the group of all partons
+        'htjmin': ('jet-pt-sum', 'min'), 'htjmax': ('jet-pt-sum', 'max'),
+        'ihtmin': ('parton-pt-sum', 'min'), 'ihtmax': ('parton-pt-sum', 'max'),
+        # all leptons including neutrinos taken together
+        'ptllmin': ('alllepton-sum-pt', 'min'), 'ptllmax': ('alllepton-sum-pt', 'max'),
+        'mmnl': ('alllepton-sum-mass', 'min'), 'mmnlmax': ('alllepton-sum-mass', 'max'),
+    }
+    for _code, _group in (('j', 'jet'), ('b', 'bottom'), ('a', 'photon'), ('l', 'lepton')):
+        _LO_CUT_MAP['eta%smin' % _code] = ('%s-eta_abs' % _group, 'min')
+        _LO_CUT_MAP['e%s' % _code] = ('%s-e' % _group, 'min')
+        _LO_CUT_MAP['e%smax' % _code] = ('%s-e' % _group, 'max')
+    # cuts on the pt of the n-th hardest jet or lepton
+    for _n in range(1, 5):
+        for _code, _group in (('j', 'jet'), ('l', 'lepton')):
+            _LO_CUT_MAP['pt%s%dmin' % (_code, _n)] = ('%s_%d-pt' % (_group, _n), 'min')
+            _LO_CUT_MAP['pt%s%dmax' % (_code, _n)] = ('%s_%d-pt' % (_group, _n), 'max')
+    # HT of the n hardest jets
+    for _n in range(2, 5):
+        for _bound in ('min', 'max'):
+            _LO_CUT_MAP['ht%d%s' % (_n, _bound)] = (
+                '-'.join('jet_%d' % i for i in range(1, _n + 1)) + '-pt-sum', _bound)
+    del _code, _group, _n, _bound
+    # groups the cuts above need beyond the default [multiparticles]
+    _LO_CUT_GROUPS = {
+        'parton': lambda mp: [1, 2, 3, 4, 5, -1, -2, -3, -4, -5, 21],
+        'alllepton': lambda mp: list(mp['lepton']) + list(mp['missing']),
+    }
+    # LO per-pdg cut -> (MG7 observable, bound); one group [pdg, -pdg] each
+    _LO_PDG_CUT_MAP = {
+        'pt_min_pdg': ('pt', 'min'), 'pt_max_pdg': ('pt', 'max'),
+        'e_min_pdg': ('e', 'min'), 'e_max_pdg': ('e', 'max'),
+        'eta_min_pdg': ('eta_abs', 'min'), 'eta_max_pdg': ('eta_abs', 'max'),
     }
     # built-in LO pdlabel -> LHAPDF set name
     _LO_PDF_LABEL_MAP = {
@@ -7975,19 +8050,11 @@ class RunCardMG7(RunCard):
         'clusinfo', 'auto_ptj_mjj', 'pdgs_for_merging_cut',
         # bias
         'bias_module', 'bias_parameters',
-        # unsupported cuts
-        'etajmin', 'etabmin', 'etaamin', 'etalmin',
-        'ej', 'eb', 'ea', 'el', 'ejmax', 'ebmax', 'eamax', 'elmax',
-        'ptj1min', 'ptj1max', 'ptj2min', 'ptj2max', 'ptj3min', 'ptj3max',
-        'ptj4min', 'ptj4max', 'ptl1min', 'ptl1max', 'ptl2min', 'ptl2max',
-        'ptl3min', 'ptl3max', 'ptl4min', 'ptl4max', 'cutuse',
-        'htjmin', 'htjmax', 'ihtmin', 'ihtmax', 'ht2min', 'ht3min', 'ht4min',
-        'ht2max', 'ht3max', 'ht4max', 'xptj', 'xptb', 'xpta', 'xptl',
-        'ptllmin', 'ptllmax', 'mmnl', 'mmnlmax', 'ptheavy', 'ptonium',
-        'etaonium', 'ptgmin', 'r0gamma', 'xn', 'epsgamma', 'isoem',
-        'xetamin', 'deltaeta',
-        'pt_min_pdg', 'pt_max_pdg', 'e_min_pdg', 'e_max_pdg', 'eta_min_pdg',
-        'eta_max_pdg', 'mxx_min_pdg', 'mxx_only_part_antipart',
+        # unsupported cuts: needs the opposite-hemisphere condition on the two
+        # hardest jets, any-of-the-ordered-cuts logic, photon isolation, or a
+        # per-process group of heavy particles
+        'cutuse', 'ptheavy', 'ptonium', 'etaonium', 'ptgmin', 'r0gamma', 'xn',
+        'epsgamma', 'isoem', 'xetamin', 'deltaeta',
         # systematics detail / eva / event frame
         'systematics_program', 'systematics_arguments', 'sys_scalefact',
         'sys_alpsfact', 'sys_matchscale', 'sys_pdf', 'sys_scalecorrelation',
@@ -8098,13 +8165,46 @@ class RunCardMG7(RunCard):
 
         # --- cuts (rebuild from the LO card) ---
         cuts = collections.OrderedDict()
+        multiparticles = mg7.dynamic_sections['multiparticles']
+
+        def add_cut(cutkey, bound, val):
+            # two LO cuts can land on the same bound (ptj1min and xptj): the
+            # tighter one wins
+            entry = cuts.setdefault(cutkey, collections.OrderedDict())
+            if bound in entry:
+                val = max(entry[bound], val) if bound == 'min' else min(entry[bound], val)
+            entry[bound] = float(val)
+
+        def is_active(bound, val):
+            # LO: a minimum of 0 and a maximum below 0 switch the cut off
+            return (bound == 'min' and val > 0) or (bound == 'max' and val >= 0)
+
         for loname, (cutkey, bound) in cls._LO_CUT_MAP.items():
-            if loname not in lo:
-                continue
-            val = lo[loname]
-            active = (bound == 'min' and val > 0) or (bound == 'max' and val >= 0)
-            if active:
-                cuts.setdefault(cutkey, collections.OrderedDict())[bound] = float(val)
+            if loname in lo and is_active(bound, lo[loname]):
+                add_cut(cutkey, bound, lo[loname])
+
+        # cuts on one particle type, given by pdg id: a group [pdg, -pdg] each
+        # (the name has no "_<number>", which would select the n-th hardest)
+        for loname, (observable, bound) in cls._LO_PDG_CUT_MAP.items():
+            for pdg, val in lo[loname].items() if loname in lo else []:
+                if isinstance(pdg, int) and is_active(bound, val):
+                    group = 'pdg%d' % abs(pdg)
+                    multiparticles[group] = [abs(pdg), -abs(pdg)]
+                    add_cut('%s-%s' % (group, observable), bound, val)
+        if 'mxx_min_pdg' in lo:
+            only_pairs = lo['mxx_only_part_antipart'] if 'mxx_only_part_antipart' in lo else {}
+            for pdg, val in lo['mxx_min_pdg'].items():
+                if isinstance(pdg, int) and is_active('min', val):
+                    group = 'pdg%d' % abs(pdg)
+                    multiparticles[group] = [abs(pdg), -abs(pdg)]
+                    # X X~ pairs only, or every pair of the group
+                    observable = 'sfos_pair_mass' if only_pairs.get(
+                        pdg, only_pairs.get('default', False)) else 'pair_mass'
+                    add_cut('%s-%s' % (group, observable), 'min', val)
+
+        for group, build in cls._LO_CUT_GROUPS.items():
+            if any(key.startswith(group + '-') for key in cuts):
+                multiparticles[group] = build(multiparticles)
         mg7.dynamic_sections['cuts'] = cuts
 
         # --- report the non-default settings we could not transfer ---
