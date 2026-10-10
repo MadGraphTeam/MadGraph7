@@ -4555,7 +4555,9 @@ This implies that with decay chains:
                 print(self.boundstate_string(key))
 
         elif args[0] == 'coupling_order':
-            hierarchy = list(self._curr_model['order_hierarchy'].items())
+            hierarchy = [(order, weight) for order, weight in
+                         self._curr_model['order_hierarchy'].items()
+                         if order != base_objects.INTERFERENCE_ORDER]
             hierarchy.sort(key=operator.itemgetter(1))
             # an order declared by the model can have no interaction left
             # carrying it -- a restriction card typically removes all of them.
@@ -6278,7 +6280,8 @@ This implies that with decay chains:
         if self.options['default_unset_couplings'] != 99 and \
                                                      (orders or squared_orders): 
                            
-                to_set = [name for name in self._curr_model.get('coupling_orders')
+                to_set = [name for name in base_objects.visible_orders(
+                                       self._curr_model.get('coupling_orders'))
                           if name not in orders and name not in squared_orders]
                 if to_set:
                     logger.info('the following coupling will be allowed up to the maximal value of %s: %s' % 

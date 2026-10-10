@@ -2989,7 +2989,11 @@ class MultiProcess(base_objects.PhysicsObject):
         hierarchy = list(hierarchydef.items())
         hierarchy.sort()
         for key, value in hierarchydef.items():
-            if value>1:
+            # an order of hierarchy 0 (like the hidden INTERFERENCE_ORDER)
+            # does not enter WEIGHTED
+            if value == 0:
+                continue
+            elif value>1:
                 tmp.append('%s*%s' % (value,key))
             else:
                 tmp.append('%s' % key)
@@ -2997,7 +3001,7 @@ class MultiProcess(base_objects.PhysicsObject):
         # Run diagram generation with increasing max_order_now until
         # we manage to get diagrams
         while max_order_now < max_WEIGHTED_order:
-            logger.info("Trying coupling order WEIGHTED<=%d: WEIGTHED IS %s" % (max_order_now, wgtdef))
+            logger.info("Trying coupling order WEIGHTED<=%d: WEIGHTED IS %s" % (max_order_now, wgtdef))
 
             oldloglevel = logger.level
             logger.setLevel(logging.WARNING)
