@@ -1648,6 +1648,44 @@ class TestRunCardMG7(unittest.TestCase):
         rc.set('beam.ebeam2', 0, user=True)
         self.assertRaises(bannermod.InvalidRunCard, rc.check_validity)
 
+    def test_set_lo_beam_param(self):
+        """madevent beam settings (set ebeam/lpp/pdlabel/lhaid at the launch
+        question) go to the per-beam entries"""
+        rc = bannermod.RunCardMG7()
+        beams = lambda key: (rc['beam'][key + '1'], rc['beam'][key + '2'])
+        rc.set_lo_beam_param('ebeam', '6.8 TeV')
+        self.assertEqual(beams('ebeam'), (6800.0, 6800.0))
+        rc.set_lo_beam_param('ebeam2', 'mz*40', masses={'mz': 91.188})
+        self.assertEqual(beams('ebeam'), (6800.0, 3647.52))
+        rc.set_lo_beam_param('pdlabel', 'nn23lo1')
+        self.assertEqual(beams('pdf'), ('NNPDF23_lo_as_0130_qed',) * 2)
+        rc.set_lo_beam_param('pdlabel1', 'cteq6l1')
+        self.assertEqual(beams('pdf'), ('cteq6l1', 'NNPDF23_lo_as_0130_qed'))
+        # the set is chosen by lhaid: 'lhapdf' alone changes nothing
+        rc.set_lo_beam_param('pdlabel', 'lhapdf')
+        self.assertEqual(beams('pdf'), ('cteq6l1', 'NNPDF23_lo_as_0130_qed'))
+        # an id outside the built-in table, through the LHAPDF index
+        index_dir = tempfile.mkdtemp()
+        try:
+            with open(os.path.join(index_dir, 'pdfsets.index'), 'w') as fsock:
+                fsock.write('244800 NNPDF23_nlo_as_0119_qed 5\n')
+            rc.set_lo_beam_param('lhaid', '244800', data_paths=[index_dir])
+        finally:
+            shutil.rmtree(index_dir)
+        self.assertEqual(beams('pdf'), ('NNPDF23_nlo_as_0119_qed',) * 2)
+        for name, value in (('lhaid', '999999'), ('pdlabel2', 'isronlyll'),
+                            ('pdlabel2', 'none'), ('lpp1', '2'), ('lpp', 'p')):
+            self.assertRaises(bannermod.InvalidRunCard,
+                              rc.set_lo_beam_param, name, value)
+        self.assertEqual(beams('pdf'), ('NNPDF23_nlo_as_0119_qed',) * 2)
+        # one lepton/hadron switch for both beams
+        rc.set_lo_beam_param('lpp', '0')
+        self.assertTrue(rc['beam']['leptonic'])
+        rc.set_lo_beam_param('lpp1', '1')
+        self.assertFalse(rc['beam']['leptonic'])
+        rc.set_lo_beam_param('pdlabel', 'none')
+        self.assertTrue(rc['beam']['leptonic'])
+
     def test_read_card_with_e_cm_and_pdf(self):
         """a card written before the per-beam keys still reads"""
         rc = bannermod.RunCardMG7()
@@ -1776,6 +1814,20 @@ class TestRunCardMG7(unittest.TestCase):
         buf = io.StringIO()
         mg7.write(buf, template=self.template)
         tomllib.loads(buf.getvalue())
+
+    def test_from_LO_conversion_per_beam(self):
+        """asymmetric beam energies and PDFs are kept per beam"""
+        lo = bannermod.RunCardLO()
+        lo['ebeam1'] = 7000
+        lo['ebeam2'] = 4000
+        lo['pdlabel1'] = 'nn23lo1'
+        lo['pdlabel2'] = 'cteq6l1'
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual((mg7['beam']['ebeam1'], mg7['beam']['ebeam2']), (7000.0, 4000.0))
+        self.assertAlmostEqual(mg7['beam']['e_cm'], 2 * (7000.0 * 4000.0) ** 0.5)
+        self.assertEqual((mg7['beam']['pdf1'], mg7['beam']['pdf2']),
+                         ('NNPDF23_lo_as_0130_qed', 'cteq6l1'))
+        self.assertNotIn('pdlabel', ' '.join(dropped))
 
     def test_from_LO_conversion_of_composite_cuts(self):
         """ordered, HT, summed-momentum, energy and per-pdg LO cuts are ported"""

@@ -7427,6 +7427,85 @@ class RunCardMG7(RunCard):
         self.set('beam.leptonic', name in ('lep', 'ilc'), user=True)
         return float(val)
 
+    # madevent beam settings understood by set_lo_beam_param
+    lo_beam_params = ('ebeam', 'ebeam1', 'ebeam2', 'lpp', 'lpp1', 'lpp2',
+                      'pdlabel', 'pdlabel1', 'pdlabel2', 'lhaid')
+
+    def set_lo_beam_param(self, name, value, masses=None, data_paths=()):
+        """``set <name> <value>`` with a madevent beam setting (lo_beam_params);
+        returns a description of what was set. A name ending in 1 or 2 acts
+        on that beam, the others on both.
+
+        * ebeam: the beam energies, with units and expressions as for any
+          energy.
+        * pdlabel / lhaid: the PDF set, through the label and id tables of
+          the run_card.dat conversion (an lhaid also through pdfsets.index).
+          'lhapdf' alone changes nothing, since the set comes from lhaid;
+          'none' on both beams is a lepton collider.
+        * lpp: mg7 has one switch for both beams, beam.leptonic, true for
+          0 (no PDF) and +-3/+-4 (e/mu), false for +-1.
+
+        Raises InvalidRunCard for a value mg7 cannot represent."""
+        name = name.lower()
+        beams = (name[-1],) if name[-1] in '12' else ('1', '2')
+        which = 'beam ' + beams[0] if len(beams) == 1 else 'both beams'
+        value = str(value).strip()
+
+        if name.startswith('ebeam'):
+            energy = self.evaluate(value, masses)
+            if isinstance(energy, str):
+                energy = self.format_variable(energy, float, name=name)
+            for beam in beams:
+                self.set('beam.ebeam' + beam, float(energy), user=True)
+            return 'beam energy of %s: %s GeV' % (which, float(energy))
+
+        if name.startswith('lpp'):
+            try:
+                lpp = int(value)
+            except ValueError:
+                raise InvalidRunCard('%s = %s: not an integer' % (name, value))
+            if abs(lpp) not in (0, 1, 3, 4):
+                raise InvalidRunCard('%s = %s: beam type not representable in mg7'
+                                     % (name, lpp))
+            leptonic = abs(lpp) != 1
+            beam_types = getattr(self, '_lo_beam_leptonic', {})
+            beam_types.update((beam, leptonic) for beam in beams)
+            self._lo_beam_leptonic = beam_types
+            if len(set(beam_types.values())) > 1:
+                logger.warning('mg7 cannot collide a lepton beam with a hadron '
+                               'beam: beam.leptonic = %s now applies to both',
+                               leptonic)
+            if lpp == -1:
+                logger.warning('%s = -1: mg7 has no antiproton beam and keeps '
+                               'the proton PDF', name)
+            self.set('beam.leptonic', leptonic, user=True)
+            return 'beam.leptonic = %s' % leptonic
+
+        if name == 'lhaid':
+            label, lhaid = 'lhapdf', value.split()[0] if value else value
+            try:
+                lhaid = int(lhaid)
+            except ValueError:
+                raise InvalidRunCard('lhaid = %s: not an integer' % value)
+        else:
+            label, lhaid = value, None
+            if label.lower() == 'lhapdf':
+                return ('unchanged: mg7 always uses LHAPDF, the set is chosen '
+                        'with lhaid or beam.pdf1/pdf2')
+            if label.lower() in ('none', 'no'):
+                if len(beams) == 1:
+                    raise InvalidRunCard('%s = none: only a lepton collider has '
+                                         'no PDF in mg7, on both beams' % name)
+                self.set('beam.leptonic', True, user=True)
+                return 'beam.leptonic = True'
+        pdf = self._resolve_pdf_label(label, lhaid, [], data_paths)
+        if pdf is None:
+            raise InvalidRunCard('%s = %s: unknown %s' % (
+                name, value, 'LHAPDF id' if name == 'lhaid' else 'PDF label'))
+        for beam in beams:
+            self.set('beam.pdf' + beam, pdf, user=True)
+        return 'PDF of %s: %s' % (which, pdf)
+
     def set_fixed_scale(self, value, masses=None):
         """``set fixed_scale X``: switch to fixed scales and set them all to X
         (X may use units, arithmetic or a mass reference, e.g. ``mz``)."""
@@ -8110,26 +8189,59 @@ class RunCardMG7(RunCard):
     }
 
     @classmethod
-    def _resolve_pdf(cls, lo, dropped):
-        """Map the LO pdlabel/lhaid to an LHAPDF set name (or None to keep the
-        MG7 default, recording the reason in ``dropped``)."""
-        pdlabel = str(lo['pdlabel']).lower() if 'pdlabel' in lo else ''
-        if str(lo['pdlabel1']).lower() != str(lo['pdlabel2']).lower():
-            dropped.append('pdlabel1/pdlabel2 differ (mg7 uses a single pdf)')
+    def _lhaid_to_pdf_name(cls, lhaid, data_paths=()):
+        """LHAPDF set name of the set whose central member is ``lhaid``: the
+        common ids of _LO_LHAID_MAP, else the pdfsets.index of ``data_paths``
+        or $LHAPDF_DATA_PATH; None when neither knows it."""
+        if lhaid in cls._LO_LHAID_MAP:
+            return cls._LO_LHAID_MAP[lhaid]
+        search = list(data_paths)
+        if os.environ.get('LHAPDF_DATA_PATH'):
+            search += os.environ['LHAPDF_DATA_PATH'].split(os.pathsep)
+        for base in search:
+            try:
+                with open(os.path.join(base, 'pdfsets.index')) as fsock:
+                    for line in fsock:
+                        parts = line.split()
+                        if len(parts) >= 2 and parts[0] == str(lhaid):
+                            return parts[1]
+            except OSError:
+                continue
+        return None
+
+    @classmethod
+    def _resolve_pdf_label(cls, pdlabel, lhaid, dropped, data_paths=()):
+        """Map one LO pdlabel (and the lhaid for 'lhapdf') to an LHAPDF set
+        name, or None to keep the MG7 default, recording the reason in
+        ``dropped`` (nothing for 'none': that beam has no PDF)."""
+        pdlabel = str(pdlabel).lower()
         if pdlabel in ('none', '', 'no'):
             return None
         if pdlabel == 'lhapdf':
-            lhaid = lo['lhaid']
             if isinstance(lhaid, list):
                 lhaid = lhaid[0]
-            if lhaid in cls._LO_LHAID_MAP:
-                return cls._LO_LHAID_MAP[lhaid]
-            dropped.append('lhaid=%s (unknown LHAPDF id; keeping mg7 default pdf)' % lhaid)
-            return None
+            name = cls._lhaid_to_pdf_name(lhaid, data_paths)
+            if name is None:
+                dropped.append('lhaid=%s (unknown LHAPDF id; keeping mg7 default pdf)' % lhaid)
+            return name
         if pdlabel in cls._LO_PDF_LABEL_MAP:
             return cls._LO_PDF_LABEL_MAP[pdlabel]
         dropped.append('pdlabel=%s (unknown PDF label; keeping mg7 default pdf)' % pdlabel)
         return None
+
+    @classmethod
+    def _resolve_pdf(cls, lo, dropped):
+        """Map the LO pdlabel/lhaid to an LHAPDF set name per beam, (pdf1,
+        pdf2), None keeping the MG7 default of that beam. pdlabel1/pdlabel2
+        are only read when they differ: pdlabel holds the common value."""
+        lhaid = lo['lhaid'] if 'lhaid' in lo else None
+        labels = [str(lo['pdlabel%d' % i]).lower() if 'pdlabel%d' % i in lo else ''
+                  for i in (1, 2)]
+        if labels[0] == labels[1]:
+            pdlabel = lo['pdlabel'] if 'pdlabel' in lo else ''
+            name = cls._resolve_pdf_label(pdlabel, lhaid, dropped)
+            return name, name
+        return tuple(cls._resolve_pdf_label(label, lhaid, dropped) for label in labels)
 
     @classmethod
     def from_LO(cls, lo, warn=True):
@@ -8199,9 +8311,9 @@ class RunCardMG7(RunCard):
             mg7.set('run.me_frame', list(lo['me_frame']) or [1, 2])
 
         # --- PDF ---
-        pdf_name = cls._resolve_pdf(lo, dropped)
-        if pdf_name:
-            mg7.set('beam.pdf', pdf_name)
+        for beam, pdf_name in zip((1, 2), cls._resolve_pdf(lo, dropped)):
+            if pdf_name:
+                mg7.set('beam.pdf%d' % beam, pdf_name)
 
         # --- maxjetflavor -> jet multiparticle ---
         if 'maxjetflavor' in lo:
