@@ -44,9 +44,11 @@ done
   `run_card.toml`.
 - **The first NLO output of an installation compiles CutTools, IREGI and
   StdHEP** (several minutes, once). Measured afterwards on 18 cores: about
-  1 min to generate p p > z j, and 1-1.5 min per fixed-order run of
-  p p > t t~ or p p > z j at `req_acc_FO 0.01`. Larger multiplicities cost
-  much more: start small and extrapolate.
+  1 min to generate p p > z j, and 30 s-1.5 min per fixed-order run of
+  p p > t t~ or p p > z j (at `req_acc_FO` 0.01 down to 0.001; a tighter
+  target costs less than you would expect). The precision of
+  distributions is another matter, see `reference/plots.md`. Larger
+  multiplicities cost much more: start small and extrapolate.
 - `p p > z j` gives a **stable on-shell Z** (its width is set to zero, so
   there is no branching ratio). If the user wants leptons, generate
   `p p > e+ e- j [QCD]` instead, and say which one you did.
