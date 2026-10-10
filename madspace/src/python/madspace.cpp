@@ -216,6 +216,18 @@ PYBIND11_MODULE(_madspace_py, m) {
     py::classh<Value>(m, "Value", pydoc::doc("Value"))
         .def(py::init<me_int_t>(), py::arg("value"), pydoc::doc("Value::Value#2"))
         .def(py::init<double>(), py::arg("value"), pydoc::doc("Value::Value#3"))
+        // constant (non-batched) tensors, e.g. the frame_mask of
+        // boost_to_frame or the permutations of permute_momenta
+        .def(
+            py::init<const std::vector<me_int_t>&, const std::vector<int>&>(),
+            py::arg("values"),
+            py::arg("shape") = std::vector<int>{}
+        )
+        .def(
+            py::init<const std::vector<double>&, const std::vector<int>&>(),
+            py::arg("values"),
+            py::arg("shape") = std::vector<int>{}
+        )
         .def("__str__", &to_string<Value>)
         .def("__repr__", &to_string<Value>)
         .def_readonly("type", &Value::type, pydoc::doc("Value::type"))
@@ -425,13 +437,21 @@ PYBIND11_MODULE(_madspace_py, m) {
         py::arg("index") = 0,
         pydoc::doc("default_hip_context")
     );
+    m.def("get_stream", &caller_stream, pydoc::doc("caller_stream"));
+    m.def(
+        "set_stream",
+        &set_caller_stream,
+        py::arg("stream"),
+        pydoc::doc("set_caller_stream")
+    );
 
     py::classh<FunctionRuntime>(m, "FunctionRuntime", py::dynamic_attr())
         .def(py::init<Function>(), py::arg("function"))
         .def(py::init<Function, ContextPtr>(), py::arg("function"), py::arg("context"))
         .def("call", &FunctionRuntime::call)
         .def("call_with_grad", &FunctionRuntime::call_with_grad)
-        .def("call_backward", &FunctionRuntime::call_backward);
+        .def("call_backward", &FunctionRuntime::call_backward)
+        .def("release_inputs", &FunctionRuntime::release_inputs);
 
     auto& fb =
         py::classh<FunctionBuilder>(m, "FunctionBuilder", pydoc::doc("FunctionBuilder"))
@@ -742,7 +762,9 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readonly("e_max", &Propagator::e_max, pydoc::doc("Propagator::e_max"))
         .def_readonly("pdg_id", &Propagator::pdg_id, pydoc::doc("Propagator::pdg_id"))
         .def_readonly(
-            "flat_window", &Propagator::flat_window, pydoc::doc("Propagator::flat_window")
+            "flat_window",
+            &Propagator::flat_window,
+            pydoc::doc("Propagator::flat_window")
         );
 
     py::classh<TPropagatorMapping, Mapping>(
@@ -1340,7 +1362,9 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<MatrixElement::MatrixElementInput>&,
                 const std::vector<MatrixElement::MatrixElementOutput>&,
                 std::size_t,
-                bool>(),
+                bool,
+                const std::vector<me_int_t>&,
+                std::size_t>(),
             py::arg("matrix_element_index"),
             py::arg("particle_count"),
             // C++ defaults to {momenta_in} / {matrix_element_out}; kept required
@@ -1350,6 +1374,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("outputs"),
             py::arg("diagram_count") = 1,
             py::arg("sample_random_inputs") = false,
+            py::arg("me_frame") = std::vector<me_int_t>{},
+            py::arg("incoming_count") = 2,
             pydoc::doc("MatrixElement::MatrixElement")
         )
         .def(
@@ -1357,11 +1383,15 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const MatrixElementApi&,
                 const std::vector<MatrixElement::MatrixElementInput>&,
                 const std::vector<MatrixElement::MatrixElementOutput>&,
-                bool>(),
+                bool,
+                const std::vector<me_int_t>&,
+                std::size_t>(),
             py::arg("matrix_element_api"),
             py::arg("inputs"),
             py::arg("outputs"),
             py::arg("sample_random_inputs") = false,
+            py::arg("me_frame") = std::vector<me_int_t>{},
+            py::arg("incoming_count") = 2,
             pydoc::doc("MatrixElement::MatrixElement#2")
         )
         .def(
@@ -1385,6 +1415,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             "external_inputs",
             &MatrixElement::external_inputs,
             pydoc::doc("MatrixElement::external_inputs")
+        )
+        .def(
+            "frame_mask",
+            &MatrixElement::frame_mask,
+            pydoc::doc("MatrixElement::frame_mask")
+        )
+        .def(
+            "reference_mask",
+            &MatrixElement::reference_mask,
+            pydoc::doc("MatrixElement::reference_mask")
         );
 
     py::classh<MLP, FunctionGenerator> mlp(m, "MLP", pydoc::doc("MLP"));
@@ -2517,7 +2557,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         &compute_generation_batch_event_count,
         py::arg("count_target"),
         py::arg("count_unweighted"),
-        py::arg("count_opt"),
+        py::arg("count_requested"),
         py::arg("abs_cross_section_count"),
         py::arg("abs_cross_section_rel_error"),
         py::arg("config"),

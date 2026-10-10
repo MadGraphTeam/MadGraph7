@@ -543,6 +543,108 @@ Beams:LHEF='events_ouaf.lhe.gz'
 
 
 
+def wrap_like_older_versions(text):
+    """the proc card as ProcCard.write used to write it: every line cut at 70
+    characters, wherever that falls, with a '\\' continuation"""
+    out = []
+    for line in text.split('\n'):
+        while len(line) > 70:
+            out.append(line[:70] + '\\')
+            line = line[70:]
+        out.append(line)
+    return '\n'.join(out)
+
+
+class TestProcCardWrappedLines(unittest.TestCase):
+    """Older versions of ProcCard.write wrapped lines at 70 characters
+    wherever that falls, so a command-line option can be split across two
+    lines of proc_card_mg5.dat (old outputs, banners of old event files).
+    Options must be read back through ProcCard, never by grepping the file.
+    The writer now keeps every command on one line."""
+
+    prefix = 'output standalone_fortran '
+    options = ' --density=3,4 -f'
+
+    def write_and_reread(self, lines, wrap=True):
+        """write the card (wrapped as older versions did if wrap) and read
+        it back"""
+        card = bannermod.ProcCard()
+        for line in lines:
+            card.append(line)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = pjoin(tmpdir, 'proc_card_mg5.dat')
+            card.write(path)
+            with open(path) as stream:
+                raw = stream.read()
+            if wrap:
+                raw = wrap_like_older_versions(raw)
+                with open(path, 'w') as stream:
+                    stream.write(raw)
+            return raw, bannermod.ProcCard(path)
+
+    def test_write_keeps_long_lines_whole(self):
+        output = self.prefix + '/' + 'd' * 80 + self.options
+        generate = ('generate p p > t t~, (t > w+ b, w+ > e+ ve), '
+                    '(t~ > w- b~, w- > mu- vm~) @0 QED=2 QCD=2')
+        raw, card = self.write_and_reread([generate, output], wrap=False)
+        lines = raw.split('\n')
+        self.assertIn(output, lines)
+        self.assertIn(generate, lines)
+        self.assertFalse(any(line.endswith('\\') for line in lines))
+        self.assertEqual(card.get_output_options(), {'density': '3,4'})
+
+    def test_density_option_survives_every_wrap_position(self):
+        # slide the 70-character cut through the whole option, value included
+        start = 70 - len(self.prefix) - len(self.options) - 1
+        split_in_flag = 0
+        for path_length in range(start, 70 - len(self.prefix)):
+            output_dir = '/' + 'd' * (path_length - 1)
+            output = self.prefix + output_dir + self.options
+            raw, card = self.write_and_reread(
+                ['import model loop_sm',
+                 'generate g g > z* g [sqrvirt=QCD]',
+                 output])
+            if not any('--density' in line for line in raw.split('\n')):
+                split_in_flag += 1
+            self.assertIn(output, card)
+            self.assertEqual(card.get_output_options(), {'density': '3,4'},
+                             msg='wrapped as:\n%s' % raw)
+        # the regression case is in the sweep: '-\' then '-density=3,4 -f'
+        self.assertGreater(split_in_flag, 0)
+
+    def test_regression_layout(self):
+        # the layout seen in a worktree, cut between the two dashes:
+        # '--density' starts at column 69
+        output_dir = '/' + 'd' * (69 - len(self.prefix) - 3) + 's'
+        raw, card = self.write_and_reread(
+            ['generate g g > z* g [sqrvirt=QCD]',
+             self.prefix + output_dir + self.options])
+        self.assertIn('s -\\\n-density=3,4 -f\n', raw)
+        self.assertEqual(card.get_output_options(), {'density': '3,4'})
+
+    def test_last_output_options(self):
+        _, card = self.write_and_reread(
+            ['generate e+ e- > mu+ mu-',
+             'output standalone /tmp/a --prefix=int --hel_recycling=False'],
+            wrap=False)
+        self.assertEqual(card.get_output_options(),
+                         {'prefix': 'int', 'hel_recycling': 'False'})
+
+        _, card = self.write_and_reread(
+            ['generate e+ e- > mu+ mu-', 'output standalone /tmp/a -f'])
+        self.assertEqual(card.get_output_options(), {})
+
+        _, card = self.write_and_reread(['generate e+ e- > mu+ mu-'])
+        self.assertEqual(card.get_output_options(), {})
+
+    def test_wrapped_modelname(self):
+        # '-modelname' starts at column 66: cut as '-mode\' / 'lname'
+        model = '/' + 'm' * (65 - len('import model ') - 1) + ' -modelname'
+        raw, card = self.write_and_reread(['import model %s' % model])
+        self.assertNotIn('-modelname', raw)
+        self.assertIn('-modelname', card.get('full_model_line'))
+
+
 import re
 import shutil
 class TestRunCardNLOMeFrame(unittest.TestCase):
@@ -1628,6 +1730,22 @@ class TestRunCardMG7(unittest.TestCase):
         mg7.write(buf, template=self.template)
         tomllib.loads(buf.getvalue())
 
+    def test_from_LO_me_frame(self):
+        """me_frame is carried over, the LO default included: madevent's [1,2]
+        is the partonic c.m., mg7's own default [] the lab frame"""
+        lo = bannermod.RunCardLO()
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['run']['me_frame'], [1, 2])
+        lo.set('me_frame', [3, 4], user=True)
+        lo.update_system_parameter_for_include()     # frame_id 24
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['run']['me_frame'], [3, 4])
+        self.assertNotIn('frame', ' '.join(dropped))
+        # no leg selected: madevent stays in the partonic c.m.
+        lo.set('me_frame', [], user=True)
+        mg7, _ = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['run']['me_frame'], [1, 2])
+
     def test_int_with_operator_is_not_silently_zero(self):
         """'ht/4' used to parse as 0, i.e. dynamical_scale_choice = user hook"""
         fmt = bannermod.ConfigFile.format_variable
@@ -1658,6 +1776,34 @@ class TestRunCardMG7(unittest.TestCase):
         rc['beam']['fixed_fact_scale'] = False
         rc['beam']['scale_factor'] = 0.0
         self.assertRaises(bannermod.InvalidRunCard, rc.check_validity)
+
+    def test_removed_cpu_mode_refused_for_a_run_reported_from_a_banner(self):
+        """A cpu_mode that no longer exists (a card from before the backend
+        renaming) is a hard error for a card that will be run. Read back from
+        an event file's <MG7RunCard> it is only reported and the default kept,
+        so that the tools reading the sample do not abort on it."""
+        out = io.StringIO()
+        bannermod.RunCardMG7().write(out, template=self.template)
+        text, count = re.subn(r'(?m)^cpu_mode\s*=.*$', 'cpu_mode = "cpu_128b"',
+                              out.getvalue())
+        self.assertEqual(count, 1)
+
+        self.assertRaises(bannermod.InvalidRunCard,
+                          bannermod.RunCardMG7, text, consistency=False)
+
+        with self.assertLogs('madevent.cards', level='WARNING') as cm:
+            rc = bannermod.RunCardMG7(text, consistency=False, from_banner=True)
+        self.assertIn("cpu_mode='cpu_128b'", ' '.join(cm.output))
+        self.assertEqual(rc['run']['cpu_mode'], 'auto')
+        # the leniency ends with the read
+        self.assertRaises(bannermod.InvalidRunCard,
+                          rc.__setitem__, 'run.cpu_mode', 'cpu_128b')
+
+        mybanner = bannermod.Banner()
+        mybanner['mg7runcard'] = text
+        with self.assertLogs('madevent.cards', level='WARNING'):
+            self.assertEqual(mybanner.get('run_card', 'nevents'),
+                             rc['generation']['events'])
 
     def test_defaults_and_section_access(self):
         """default values are accessible through nested-section views"""
@@ -1834,8 +1980,35 @@ class TestRunCardMG7Histograms(unittest.TestCase):
     def test_decay_process_uses_the_decaying_mass(self):
         """a 1 -> N width has no collider energy to scale the ranges with"""
         rc = self.build([[mg7_proc([6], [5, 24])]], ninitial=1)
-        self.assertEqual(rc['histograms']['sqrt_s']['max'], 200.)
         self.assertEqual(rc['histograms']['bottom-pt']['max'], 100.)
+        self.assertEqual(rc['histograms']['bottom-w-pair_mass']['max'], 200.)
+        # madspace's sqrt_s is that of two beams
+        self.assertNotIn('sqrt_s', rc['histograms'])
+
+    def test_decaying_mass_without_parameter_dict(self):
+        """only a ModelReader has a 'parameter_dict'
+
+        At output time (MadSpin's mg7 decays) the model can be a plain Model
+        or a LoopModel: its LoopModel.get('parameter_dict') used to raise a
+        PhysicsObjectError, and a Model gave 0. MW is an internal parameter
+        of sm-full, so it has to be evaluated from the external ones.
+        """
+        import models.import_ufo as import_ufo
+        import madgraph.core.base_objects as base_objects
+        import madgraph.loop.loop_base_objects as loop_base_objects
+
+        full = import_ufo.import_model('sm-full')
+        for cls in (base_objects.Model, loop_base_objects.LoopModel):
+            model = cls()
+            for key in model:
+                if key in full:
+                    model[key] = full[key]
+            self.assertNotIn('parameter_dict', model)
+            proc = mg7_proc([24], [-11, 12], model=model)
+            mass = bannermod.RunCardMG7._decaying_mass([[proc]])
+            self.assertAlmostEqual(mass, 80.419, places=3)
+            # evaluated on the side: the model itself is not touched
+            self.assertIsNone(model.get_parameter('mdl_MW').value)
 
     def test_every_pair_gets_an_invariant_mass(self):
         rc = self.build([[mg7_proc([21, 21], [6, -6, 25])]])

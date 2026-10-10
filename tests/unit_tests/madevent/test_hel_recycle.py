@@ -205,3 +205,49 @@ class TestDoMultiline(unittest.TestCase):
         for pad in range(40):
             line = '        JAMPF(2,1)=+2D0*(' + 'X' * pad + ')'
             self.assertWrapIsValid(line)
+
+
+class TestGoodHelIds(unittest.TestCase):
+    """NHEL(0,k) of the recycled matrix element is the 1-based id of that
+    helicity in the original NHEL table.
+
+    SMATRIX returns it as the selected helicity and get_nhel reads the LHE
+    spin column back from it, where row 0 is the number of spin states: a
+    0-based id puts every event on the previous combination."""
+
+    # e+ e- > mu+ mu- ordering, only the four helicity conserving ones survive
+    ALL_HEL = [(-1, 1, 1, -1), (-1, 1, 1, 1), (-1, 1, -1, -1), (-1, 1, -1, 1),
+               (1, -1, 1, -1), (1, -1, 1, 1), (1, -1, -1, -1), (1, -1, -1, 1)]
+    GOOD = ['1', '4', '5', '8']
+
+    def recycled_nhel_lines(self, hel_filt):
+        recycler = hel_recycle.HelicityRecycler(self.GOOD)
+        recycler.hel_filt = hel_filt
+        recycler.prepare_bools()
+        for i, hel in enumerate(self.ALL_HEL, 1):
+            recycler.get_good_hel('      DATA (NHEL(I,%4d),I=1,4) /%s/\n'
+                                  % (i, ','.join('%2d' % h for h in hel)))
+        recycler.get_good_hel('C     ----------\n')
+        lines = recycler.template_dict['helicity_lines'].split('\n')
+        return dict((tuple(int(h) for h in l.split('/')[1].split(',')[1:]),
+                     int(l.split('/')[1].split(',')[0]))
+                    for l in lines if 'NHEL' in l)
+
+    def assertOriginalIds(self, nhel, expected_hel):
+        self.assertEqual(sorted(nhel), sorted(expected_hel))
+        for hel, old_id in nhel.items():
+            self.assertEqual(self.ALL_HEL[old_id - 1], hel)
+
+    def test_hel_recycling_ids_with_filtering(self):
+        """hel_filtering = True keeps the good helicities with their own id"""
+
+        nhel = self.recycled_nhel_lines(True)
+        self.assertOriginalIds(nhel,
+                               [self.ALL_HEL[int(i) - 1] for i in self.GOOD])
+
+    def test_hel_recycling_ids_without_filtering(self):
+        """hel_filtering = False keeps them all, ids still start at 1"""
+
+        nhel = self.recycled_nhel_lines(False)
+        self.assertOriginalIds(nhel, self.ALL_HEL)
+        self.assertEqual(min(nhel.values()), 1)

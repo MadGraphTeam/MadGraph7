@@ -580,6 +580,9 @@ class HelasWavefunction(base_objects.PhysicsObject):
     
     supported_analytical_info = ['wavefunction_rank','interaction_rank']
 
+    class FlavorTagError(Exception):
+        """No flavor tag can be assigned to this wavefunction (raised by
+        tag_external_flavor and propagate_flavor_tag)."""
 
     @staticmethod
     def spin_to_size(spin):
@@ -1633,7 +1636,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
             curr_flav_index = model['merged_particles'][merged_id].index(curr_id) 
             self[tag_name] =  curr_flav_index + 1 
         else:
-            raise Exception('Not Implemented')
+            raise self.FlavorTagError('Not Implemented')
 
     def propagate_flavor_tag(self, model, tag_name='flavortag', fct=None, check_valid_input=True):
         """Propagate the flavor tag from the mothers to the wavefunction.
@@ -1711,11 +1714,11 @@ class HelasWavefunction(base_objects.PhysicsObject):
                     # for this example, we need to find the flavor of the neutrino
                     # A single flavor should be valid from the coupling.
                     if len(coup.get('flavors')) != 1:
-                        raise Exception('Flavor propagation for merged particle with no merged input is ambiguous')
+                        raise self.FlavorTagError('Flavor propagation for merged particle with no merged input is ambiguous')
                     flv_coup = next(iter(coup.get('flavors').keys()))
                     flav_output = [ f for f in flv_coup if f != 0]
                     if len(flav_output) != 1:
-                        raise Exception('Flavor propagation for merged particle with no merged input is ambiguous')
+                        raise self.FlavorTagError('Flavor propagation for merged particle with no merged input is ambiguous')
                     self[tag_name] = flav_output[0]
                     return return_fct(self, True, model, tag_name)
 
@@ -4901,8 +4904,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # We need one copy of the decay element diagrams for each
         # old_wf to be replaced, since we need different wavefunction
         # numbers for them
-        decay_elements = [copy.deepcopy(d) for d in \
-                          [ decay.get('diagrams') ] * len(old_wfs)]
+        decay_elements = [copy.deepcopy(decay.get('diagrams'),
+                                        decay.shared_models_memo())
+                          for old_wf in old_wfs]
 
         # Need to replace Particle in all wavefunctions to avoid
         # deepcopy
@@ -5023,7 +5027,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                             # Don't want to affect original decay
                             # wavefunctions, so need to deepcopy
                             decay_diag_wfs = copy.deepcopy(\
-                                                    decay_diag.get('wavefunctions'))
+                                                    decay_diag.get('wavefunctions'),
+                                                    decay.shared_models_memo())
                             # Need to replace Particle in all
                             # wavefunctions to avoid deepcopy
                             for i, wf in enumerate(decay_diag.get('wavefunctions')):
@@ -5190,6 +5195,16 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                                    self.get('diagrams')[\
                                      diagram.get('number') - numdecay - 1:\
                                      diagram.get('number') - 1]], [])
+
+                # The loop below only acts on wavefunctions already present
+                # in earlier_wfs: skip building the (costly) mother arrays of
+                # all later wavefunctions when there is none, e.g. always for
+                # the first copy (numdecay == 0, the only one for a decay
+                # with a single diagram).
+                earlier_numbers = {w.get('number') for w in earlier_wfs}
+                if not any(w.get('number') in earlier_numbers
+                           for w in diagram.get('wavefunctions')):
+                    continue
 
                 later_wfs = sum([d.get('wavefunctions') for d in \
                                    self.get('diagrams')[\
@@ -5536,6 +5551,18 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         return max([sum([ len(d.get('wavefunctions')) for d in \
                        self.get('diagrams')])] + extra)
         
+    def shared_models_memo(self):
+        """A copy.deepcopy memo that keeps the models shared: every
+        wavefunction and amplitude keeps its model as attribute (see
+        HelasWavefunction.set), so a plain deepcopy of a diagram also copies
+        the complete model.  Use a new memo for each deepcopy."""
+        memo = {}
+        for obj in self.get_all_wavefunctions() + self.get_all_amplitudes():
+            model = getattr(obj, 'model', None)
+            if model is not None:
+                memo[id(model)] = model
+        return memo
+
     def get_all_wavefunctions(self):
         """Gives a list of all wavefunctions for this ME"""
 
@@ -5894,25 +5921,168 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             itertools.product(*[to_map.get(abs(id), [1]) for id in pdgs]),
             itertools.product(*[to_map.get(abs(id), [abs(id)]) for id in pdgs]),
         ):
-            # actual pdg codes (with the sign), before the initial-state flip
-            pdg = [one_flavor[i] if id > 0 else -one_flavor[i]
-                   for i, id in enumerate(pdgs)]
+            candidate = self._flavor_candidate(one_flavor, one_flavor_pdg,
+                                    pdgs, pdg_signs, restrictions, ninit)
+            if candidate is not None:
+                yield (one_flavor,) + candidate
 
-            # apply the per-leg flavor restriction (None => leg unconstrained)
-            if not any(all(rf is None or pdg[i] in rf
-                           for i, rf in enumerate(restricted_flavor))
-                       for restricted_flavor in restrictions):
-                continue
+    @staticmethod
+    def _flavor_candidate(one_flavor, one_flavor_pdg, pdgs, pdg_signs,
+                          restrictions, ninit):
+        """(signed_pdg, signature) of one external-flavor assignment, or None
+        if the per-leg restriction rejects it (see _iter_candidate_flavors)."""
 
-            signed_pdg = [flav * sign
-                          for flav, sign in zip(one_flavor_pdg, pdg_signs)]
+        # actual pdg codes (with the sign), before the initial-state flip
+        pdg = [one_flavor[i] if id > 0 else -one_flavor[i]
+               for i, id in enumerate(pdgs)]
 
-            # dedup signature: flip initial states, then sort init/final apart
-            for i in range(ninit):
-                pdg[i] = -pdg[i]
-            signature = tuple(sorted(pdg[:ninit]) + sorted(pdg[ninit:]))
+        # apply the per-leg flavor restriction (None => leg unconstrained)
+        if not any(all(rf is None or pdg[i] in rf
+                       for i, rf in enumerate(restricted_flavor))
+                   for restricted_flavor in restrictions):
+            return None
 
-            yield one_flavor, signed_pdg, signature
+        signed_pdg = [flav * sign
+                      for flav, sign in zip(one_flavor_pdg, pdg_signs)]
+
+        # dedup signature: flip initial states, then sort init/final apart
+        for i in range(ninit):
+            pdg[i] = -pdg[i]
+        signature = tuple(sorted(pdg[:ninit]) + sorted(pdg[ninit:]))
+
+        return signed_pdg, signature
+
+    class FlavorTreeUnsupported(Exception):
+        """The diagram structure is outside what _valid_flavors_per_diagram
+        handles (e.g. overlapping sub-trees); use the full enumeration."""
+
+    def _valid_flavors_per_diagram(self, model, pdgs, to_map):
+        """For every diagram, the set of external-flavor assignments (per-leg
+        flavor tuples, as yielded by _iter_candidate_flavors) for which
+        HelasDiagram.check_flavor accepts it, without enumerating the full
+        product of the per-leg flavors.
+
+        The flavortag of a wavefunction only depends on the flavors of the
+        external legs below it, so the valid partial assignments are built
+        bottom-up: a wavefunction keeps {assignment of its external legs: tag}
+        for the combinations of its mothers' entries that propagate_flavor_tag
+        accepts, and an invalid entry (tag 0) is dropped since it invalidates
+        every descendant.  The cost then scales with the number of *valid*
+        assignments.  For a decay chain this is roughly the product of the
+        valid assignments of each decay rather than the product of the flavors
+        of all the merged legs (4^10 candidates for p p > w+ w+ w- w- with
+        hadronic decays).
+
+        Raises FlavorTreeUnsupported if two mothers share an external leg or
+        an amplitude does not cover every leg.  Lets the
+        HelasWavefunction.FlavorTagError of a tag computation through.
+        """
+
+        # NB: no comprehension variable may be called `id` in this function:
+        # the nested helpers call the builtin id(), which makes it a cell
+        # variable, and python 3.12 leaves that cell unbound after an inlined
+        # comprehension over `id` (UnboundLocalError in id(node)).
+        nleg = len(pdgs)
+        leg_values = [to_map.get(abs(pdg), [1]) for pdg in pdgs]
+        tables = {}      # id(node) -> {partial assignment: tag}
+        prop_cache = {}  # (id(node), mother tags) -> tag (0 = invalid)
+        tagged = []      # nodes whose 'flavortag' must be dropped at the end
+
+        def table(node, is_amp=False):
+            key = id(node)
+            if key in tables:
+                return tables[key]
+            mothers = node.get('mothers')
+            out = {}
+            if not mothers:
+                n = node.get('number_external')
+                if not 0 < n <= nleg:
+                    raise self.FlavorTreeUnsupported(n)
+                flavor = [1] * nleg
+                assignment = [None] * nleg
+                tagged.append(node)
+                for value in leg_values[n - 1]:
+                    flavor[n - 1] = value
+                    assignment[n - 1] = value
+                    node.tag_external_flavor(flavor, model)
+                    out[tuple(assignment)] = node['flavortag']
+            else:
+                subs = [table(m) for m in mothers]
+                tagged.append(node)
+                for combo in itertools.product(*[list(s.items()) for s in subs]):
+                    tags = tuple(tag for _, tag in combo)
+                    ckey = (key, tags)
+                    if ckey not in prop_cache:
+                        for mother, tag in zip(mothers, tags):
+                            mother['flavortag'] = tag
+                        if is_amp:
+                            valid = node.propagate_flavor_tag(model)
+                            prop_cache[ckey] = 1 if valid else 0
+                        else:
+                            node.propagate_flavor_tag(model,
+                                                      check_valid_input=True)
+                            prop_cache[ckey] = node['flavortag']
+                    if not prop_cache[ckey]:
+                        continue
+                    assignment = [None] * nleg
+                    for part, _ in combo:
+                        for i, value in enumerate(part):
+                            if value is not None:
+                                if assignment[i] is not None:
+                                    raise self.FlavorTreeUnsupported(i)
+                                assignment[i] = value
+                    out[tuple(assignment)] = prop_cache[ckey]
+            tables[key] = out
+            return out
+
+        ancestors = {}   # id(node) -> set of id() of node and its ancestors
+        def get_ancestors(node):
+            key = id(node)
+            if key not in ancestors:
+                out = {key}
+                for mother in node.get('mothers'):
+                    out |= get_ancestors(mother)
+                ancestors[key] = out
+            return ancestors[key]
+
+        def project(assignment, node):
+            # restriction of a full assignment to the legs below node (the
+            # key of tables[id(node)])
+            legs = next(iter(tables[id(node)]), None)
+            if legs is None:
+                return None
+            return tuple(value if leg is not None else None
+                         for value, leg in zip(assignment, legs))
+
+        try:
+            out = []
+            for diag in self.get('diagrams'):
+                # check_flavor rejects the diagram if any of its wavefunctions,
+                # or any mother of its wavefunctions and amplitudes, is
+                # invalid, and accepts it if one of its amplitudes is valid.
+                required = list(diag.get('wavefunctions'))
+                for obj in list(diag.get('wavefunctions')) + \
+                                               list(diag.get('amplitudes')):
+                    required.extend(obj.get('mothers'))
+                for node in required:
+                    table(node)
+                valid = set()
+                for amp in diag.get('amplitudes'):
+                    amp_table = table(amp, is_amp=True)
+                    # an amplitude's validity implies that of its ancestors
+                    anc = get_ancestors(amp)
+                    extra = [node for node in required if id(node) not in anc]
+                    for assignment in amp_table:
+                        if None in assignment:
+                            raise self.FlavorTreeUnsupported(assignment)
+                        if all(project(assignment, node) in tables[id(node)]
+                               for node in extra):
+                            valid.add(assignment)
+                out.append(valid)
+            return out
+        finally:
+            for node in tagged:
+                node.pop('flavortag', None)
 
     def set_excluded_flavors(self, flavors):
         """Declare external-flavor assignments this module does NOT cover.
@@ -6059,36 +6229,85 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # at all remain orphans.
         enumerate_all = self.enumerate_all_flavors
 
-        for one_flavor, signed_pdg, signature in self._iter_candidate_flavors(
-                pdgs, pdg_signs, to_map, restrictions, ninit):
-            if not enumerate_all and signature in checked:
-                if checked[signature]:
-                    # genuine permutation duplicate of a validated flavor
+        # For a decay chain every invalid assignment is re-checked (see above),
+        # so the enumeration (else branch) costs (product of the per-leg
+        # flavors) x (number of diagrams): hours for p p > w+ w+ w- w- with
+        # hadronic decays.  Build the valid assignments bottom-up instead and
+        # visit only those, in the same (product) order: as the enumeration
+        # keeps the first *valid* assignment of each signature of a decay
+        # chain, this gives the same result.
+        diag_flavors = None
+        if is_decay_chain:
+            try:
+                diag_flavors = self._valid_flavors_per_diagram(model, pdgs,
+                                                               to_map)
+            except (self.FlavorTreeUnsupported,
+                    HelasWavefunction.FlavorTagError) as error:
+                # A FlavorTagError may come from a wavefunction that only
+                # appears in diagrams the enumeration rejects before reaching
+                # it (check_flavor stops at the first invalid wavefunction):
+                # leave it to the enumeration, which raises it if it does.
+                logger.debug('flavors of %s: full enumeration (%s)' % (
+                    self.get('processes')[0].nice_string().replace(
+                        'Process: ', ''), error))
+        if diag_flavors is not None:
+            position = [dict((value, i) for i, value in
+                             enumerate(to_map.get(abs(pdg), [1])))
+                        for pdg in pdgs]
+            valid = {flavor for flavors in diag_flavors for flavor in flavors}
+            for one_flavor in sorted(valid,
+                    key=lambda f: [pos[v] for pos, v in zip(position, f)]):
+                one_flavor_pdg = tuple(value if abs(pdg) in to_map else abs(pdg)
+                                       for value, pdg in zip(one_flavor, pdgs))
+                candidate = self._flavor_candidate(one_flavor, one_flavor_pdg,
+                                    pdgs, pdg_signs, restrictions, ninit)
+                if candidate is None:
                     continue
-                elif not is_decay_chain:
-                    # known-invalid signature; sound to skip for a plain ME
+                signed_pdg, signature = candidate
+                if not enumerate_all and signature in checked:
                     continue
-                # decay-chain ME: a cached False may hide a valid sibling
-                # assignment sharing this (too coarse) signature, so fall
-                # through and re-check this specific flavor assignment.
-
-            # populate every diagram's store for this flavor
-            if self.check_flavor_for_all_diagrams(one_flavor, model):
-                # A flavor this module has been told it does not cover (see
-                # set_excluded_flavors) is still CHECKED -- the per-diagram
-                # store stays an honest record of what the diagrams support --
-                # but it is not offered, so it gets no bit in the flavor masks
-                # and no row anywhere downstream. Everything that describes the
-                # module's flavor content (compute_flavor_masks, the PDG
-                # tables, get_external_flavors_with_iden, the generated FLAVOR
-                # table) reads allowed_flavors, so dropping it here is the one
-                # place that needs to know.
+                for diag, flavors in zip(self.get('diagrams'), diag_flavors):
+                    if one_flavor in flavors:
+                        diag.valid_flavors.add(one_flavor)
+                # An excluded flavor (set_excluded_flavors) keeps its record in
+                # the per-diagram store but gets no row: see the enumeration
+                # branch below.
                 if tuple(one_flavor) not in excluded_flavors:
                     flavor_list.append(one_flavor)
                     pdg_list.append(signed_pdg)
                 checked[signature] = True
-            else:
-                checked[signature] = False
+        else:
+            for one_flavor, signed_pdg, signature in \
+                    self._iter_candidate_flavors(pdgs, pdg_signs, to_map,
+                                                 restrictions, ninit):
+                if not enumerate_all and signature in checked:
+                    if checked[signature]:
+                        # genuine permutation duplicate of a validated flavor
+                        continue
+                    elif not is_decay_chain:
+                        # known-invalid signature; sound to skip for a plain ME
+                        continue
+                    # decay-chain ME: a cached False may hide a valid sibling
+                    # assignment sharing this (too coarse) signature, so fall
+                    # through and re-check this specific flavor assignment.
+
+                # populate every diagram's store for this flavor
+                if self.check_flavor_for_all_diagrams(one_flavor, model):
+                    # A flavor this module has been told it does not cover (see
+                    # set_excluded_flavors) is still CHECKED -- the per-diagram
+                    # store stays an honest record of what the diagrams support
+                    # -- but it is not offered, so it gets no bit in the flavor
+                    # masks and no row anywhere downstream. Everything that
+                    # describes the module's flavor content (compute_flavor_
+                    # masks, the PDG tables, get_external_flavors_with_iden,
+                    # the generated FLAVOR table) reads allowed_flavors, so
+                    # dropping it here is the one place that needs to know.
+                    if tuple(one_flavor) not in excluded_flavors:
+                        flavor_list.append(one_flavor)
+                        pdg_list.append(signed_pdg)
+                    checked[signature] = True
+                else:
+                    checked[signature] = False
 
         self['allowed_flavors'] = flavor_list
         self['allowed_flavors_pdgs'] = pdg_list
@@ -6271,20 +6490,18 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                     out.update(store_dropped(wf, def_wfct))
             return out
         
-        def restore_dropped(wft, dropped_wfct, def_wfct, diag):
-            """diag is the diagram to which assiciated the wfct 
-               wft is the wfct to check recursively (and be sure that it is not dropped)
+        def restore_dropped(wft, dropped_wfct, def_wfct, restored):
+            """wft is the wfct to check recursively (and be sure that it is not dropped)
                dropped_wfct is the dict of dropped wfct (key is the wfct number and value the wfct object)
-               def_wfct is the set of currently defined wfct number (so not need to restore it)"""
+               def_wfct is the set of currently defined wfct number (so not need to restore it)
+               restored collects the wfct taken back from dropped_wfct"""
 
             for wf in wft.get('mothers')[:]:
                 if wf.get('number') in dropped_wfct:
-                    tmp = diag.get('wavefunctions')
-                    tmp.insert(0,dropped_wfct[wf.get('number')])
-                    del dropped_wfct[wf.get('number')]
+                    restored.append(dropped_wfct.pop(wf.get('number')))
                     def_wfct.add(wf.get('number'))
                     # start recursion
-                    restore_dropped(wf, dropped_wfct, def_wfct, diag)
+                    restore_dropped(wf, dropped_wfct, def_wfct, restored)
                 else:
                     def_wfct.add(wf.get('number'))
                     
@@ -6320,12 +6537,20 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             else:
                 # need to check if the wfct has not been dropped already
                 if debug: misc.sprint('keeping diagram -> check wfcts')
+                restored = []
                 for wf in diag['wavefunctions'][:]:
                     def_wfct.add(wf.get('number'))
-                    restore_dropped(wf, dropped_wfct, def_wfct, diag)
+                    restore_dropped(wf, dropped_wfct, def_wfct, restored)
                 for wf in diag['amplitudes'][:]:
                     def_wfct.add(wf.get('number'))
-                    restore_dropped(wf, dropped_wfct, def_wfct, diag)
+                    restore_dropped(wf, dropped_wfct, def_wfct, restored)
+                # Put the restored wfcts in front in their creation order
+                # (wfct numbers grow along the generation, so mothers stay
+                # before daughters), not in recursion order: the external
+                # wfcts must stay sorted by leg, since insert_decay reads the
+                # leg offset of a decay from its first final-state wfct.
+                restored.sort(key=lambda wf: wf.get('number'))
+                diag['wavefunctions'][:0] = restored
 
         initial_len = len(self.get('diagrams'))
 
@@ -7728,7 +7953,8 @@ class HelasDecayChainProcess(base_objects.PhysicsObject):
                 # Avoid Python copying the complete model every time
                 for i, process in enumerate(core_process.get('processes')):
                     process.set('model',base_objects.Model())
-                matrix_element = copy.deepcopy(core_process)
+                matrix_element = copy.deepcopy(core_process,
+                                            core_process.shared_models_memo())
                 # Avoid Python copying the complete model every time
                 for i, process in enumerate(matrix_element.get('processes')):
                     process.set('model', model_bk)

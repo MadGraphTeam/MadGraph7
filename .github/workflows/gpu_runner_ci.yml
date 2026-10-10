@@ -2,10 +2,11 @@
 # allocation per workflow run: all the CI jobs below share that allocation.
 # Called by gpu_manneback_cuda.yml and gpu_lemaitre4_hip.yml; see .github/gpu_ci/README.md.
 #
-#   start_runner    GitHub-hosted   ssh to the cluster (key of the `ceci-gpu` environment),
+#   start_runner    vmadgraph       ssh to the cluster (key of the `ceci-gpu` environment),
 #                                   sbatch the runner on the GPU partition, wait until online
 #   build_madspace  cluster runner  madspace with the CUDA/HIP backend (cached on the cluster)
 #   pp_ttx          cluster runner  p p > t t~ with mg7 on the GPU
+#   pp_jj           cluster runner  p p > j j with mg7 on the GPU (cuts on several jets)
 #   crossing_folding cluster runner p p > w+ j, j j, w+ j j folded (--use_crossing=True) vs
 #                                   expanded, on the GPU and on cpu; cpu-made gridpacks (w+ j)
 #   ...             cluster runner  more CI jobs: same runs-on, and add them to stop_runner's needs
@@ -53,7 +54,7 @@ on:
       time_limit:
         description: 'Slurm --time of the runner allocation, i.e. of all the CI jobs together'
         type: string
-        default: '02:00:00'
+        default: '00:20:00'
       extra_sbatch:
         description: 'Extra sbatch options, space separated, no quotes'
         type: string
@@ -79,7 +80,9 @@ env:
 
 jobs:
   start_runner:
-    runs-on: vmadgraph # the other MadGraph7 workflows use ubuntu-24.04
+    # one vmadgraph runner per cluster (labels vmadgraph-lemaitre4 / vmadgraph-manneback), so a
+    # run waiting in one cluster's Slurm queue does not block the other; see .github/gpu_ci/README.md
+    runs-on: [self-hosted, vmadgraph, "vmadgraph-${{ inputs.cluster }}"]
     # holds CECI_KEY; restrict it to the main branch (and optionally add reviewers)
     environment: ceci-gpu
     timeout-minutes: 300 # mostly the time the runner job waits in the Slurm queue
@@ -184,6 +187,57 @@ jobs:
           path: results/
           if-no-files-found: warn
 
+  pp_jj:
+    # p p > j j: cuts on several objects (the jets), which p p > t t~ does not have
+    needs: build_madspace
+    runs-on: [self-hosted, "${{ inputs.runner_label }}"]
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash -l -eo pipefail {0}
+    env:
+      BACKEND: ${{ inputs.backend }}
+      MODULES: ${{ inputs.modules }}
+      GPU_ARCH: ${{ inputs.gpu_arch }}
+      NEVENTS: ${{ inputs.nevents }}
+      PROCESS: p p > j j
+      TAG: pp_jj
+      PDF_SET: ${{ inputs.pdf_set }}
+      VENV: ${{ needs.build_madspace.outputs.venv }}
+      MADSPACE_PREFIX: ${{ needs.build_madspace.outputs.madspace_prefix }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: run directory
+        run: echo "WORKDIR=${GLOBALSCRATCH:-$HOME}/mg7-gpu-ci/runs/$RUN_TAG/pp_jj" >> "$GITHUB_ENV"
+      - name: p p > j j on the GPU
+        run: .github/gpu_ci/pp_ttx_mg7.sh
+      - name: collect logs and cards
+        if: always()
+        run: |
+          mkdir -p results
+          (cd "$WORKDIR" && tar -cf - --ignore-failed-read summary.txt pp_jj.mg7 output.log generate_events.log \
+              PROC_pp_jj/Cards PROC_pp_jj/Events/*/info.json PROC_pp_jj/Events/*/*.log 2> /dev/null) | tar -xf - -C results || true
+          find results -type f | sort
+      - name: job summary
+        if: always()
+        run: |
+          {
+            echo "### p p > j j on ${{ inputs.cluster }} ($BACKEND)"
+            if [ -f results/summary.txt ]; then
+              echo "| | |"
+              echo "|---|---|"
+              sed 's/^\([^=]*\)=\(.*\)$/| \1 | \2 |/' results/summary.txt
+            else
+              echo "No summary.txt: the job stopped early, see the log of the 'p p > j j on the GPU' step."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpu-pp_jj-${{ inputs.cluster }}-${{ inputs.backend }}
+          path: results/
+          if-no-files-found: warn
+
   crossing_folding:
     needs: build_madspace
     runs-on: [self-hosted, "${{ inputs.runner_label }}"]
@@ -235,7 +289,7 @@ jobs:
 
   stop_runner:
     # must list every job that runs on the self-hosted runner
-    needs: [start_runner, build_madspace, pp_ttx, crossing_folding]
+    needs: [start_runner, build_madspace, pp_ttx, pp_jj, crossing_folding]
     if: always() && needs.start_runner.result == 'success'
     runs-on: [self-hosted, "${{ inputs.runner_label }}"]
     defaults:

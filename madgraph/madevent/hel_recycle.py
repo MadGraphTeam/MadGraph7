@@ -933,10 +933,14 @@ class HelicityRecycler():
         elif self.nhel_started:
             self.nhel_started = False
             
+            # the value is the 1-based id of the helicity in the original
+            # NHEL table: SMATRIX returns it (NHEL(0,I)) as the selected
+            # helicity, which get_nhel then reads back for the LHE spin column
             if self.hel_filt:
-                External.good_hel = dict([ (self.all_hel[int(i)-1],int(i)) for i in self.good_elements ])
+                hel_ids = [int(i) for i in self.good_elements]
             else:
-                External.good_hel = dict([(v,i) for i,v in enumerate(self.all_hel)])
+                hel_ids = range(1, len(self.all_hel)+1)
+            External.good_hel = dict([(self.all_hel[i-1], i) for i in hel_ids])
 
             External.map_hel=dict([(hel,i) for i,hel in  enumerate(External.good_hel)])
             # good_helicity needs the position of a helicity tuple in the FULL
