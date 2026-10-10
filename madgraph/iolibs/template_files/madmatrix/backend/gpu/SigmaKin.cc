@@ -43,12 +43,11 @@ namespace madmatrix
   // a CPPProcess-generated constant (see process_class.inc/set_color_flow_lines_cpp).
   constexpr int ncolor_flow = CPPProcess::ncolor_flow;
 
-  // Squared split orders are implemented for the CPU backends only: the device jamp
-  // buffers hold a single jamp vector per helicity (ncolor, not njampso), so a GPU build
-  // of such a process would silently sum the wrong thing. Refuse it at compile time.
-  static_assert( nampso == 1,
-                 "The squared split-order color sum is implemented for the CPU backends only: use a CPU "
-                 "backend, or generate the process with a constraint that leaves a single amplitude split order." );
+  // Squared split orders (nampso > 1): the jamps carry an amplitude-order index,
+  // njampso = ncolor * nampso of them per helicity (EvaluateDiagrams.inc offsets each
+  // amplitude onto the vector of its order), and color_sum_kernel pairs them, as
+  // backend/{cpu,simd} do. The device jamp buffers and DeviceAccessJamp are sized
+  // njampso, which is ncolor without split orders.
 
   // Helicity/flavor tables and SM parameter/coupling storage, populated once
   // by CPPProcess's constructor/initProc via the setters below.
@@ -170,7 +169,7 @@ namespace madmatrix
                    const fptype_momenta* allmomenta,   // input: momenta[nevt*npar*4]
                    const fptype* allcouplings,         // input: couplings[nevt*ndcoup*2]
                    const unsigned int* iflavorVec,     // input: indices of the flavor combinations
-                   fptype_amp* allJamps,               // output: jamp[2*ncolor*nevt] buffer for one helicity _within a super-buffer for dcNGoodHel helicities_
+                   fptype_amp* allJamps,               // output: jamp[2*njampso*nevt] buffer for one helicity _within a super-buffer for dcNGoodHel helicities_
                    bool storeChannelWeights,
                    fptype_amp* allNumerators,          // input/output: multichannel numerators[nevt], add helicity ihel
                    fptype_amp* allDenominators,        // input/output: multichannel denominators[nevt], add helicity ihel
@@ -221,7 +220,8 @@ namespace madmatrix
     // jamp: sum (for one event) of the invariant amplitudes for all Feynman diagrams in a
     // given color combination (NB: vector cxtype_v IS initialized to 0, but scalar cxtype
     // is NOT, if "= {}" is missing!)
-    cxtype_amp_sv jamp_sv[ncolor] = {};
+    // (njampso = ncolor * nampso: one vector per amplitude split order, just ncolor without them)
+    cxtype_amp_sv jamp_sv[njampso] = {};
     // jampTmp: partial sums of amplitudes that several color flows share, so that they are
     // computed only once (see MadMatrixUFOHelasCallWriter.build_jamp_plan); no "= {}", each
     // one is assigned before it is ever read.
@@ -230,7 +230,11 @@ namespace madmatrix
     // === Calculate wavefunctions and amplitudes for all diagrams in all processes
 
     constexpr size_t nxcoup = ndcoup + nIPC; // both dependent and independent couplings
-    const fptype* allCOUPs[nxcoup];
+    // nxcoup can be 0: a process with no alpha_s-dependent coupling whose couplings are
+    // all flavor couplings (cIPF, e.g. u u~ > u u~ QED^2==4 with flavor grouping), and a
+    // zero-sized array is not allowed in device code (the host compilers take it as an
+    // extension): size them at least 1, as cIPD/cIPC above
+    const fptype* allCOUPs[nxcoup > 0 ? nxcoup : 1];
 #ifdef __CUDACC__ // this must be __CUDACC__
 #pragma nv_diagnostic push
 #pragma nv_diag_suppress 186 // e.g. <<warning #186-D: pointless comparison of unsigned integer with zero>>
@@ -244,7 +248,7 @@ namespace madmatrix
 #endif
     // CUDA kernels take input/output buffers with momenta/MEs for all events
     const fptype_momenta* momenta = allmomenta;
-    const fptype* COUPs[nxcoup];
+    const fptype* COUPs[nxcoup > 0 ? nxcoup : 1];
     for( size_t ixcoup = 0; ixcoup < nxcoup; ixcoup++ ) COUPs[ixcoup] = allCOUPs[ixcoup];
     const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread) in grid
     fptype_amp* numerators = &allNumerators[ievt * ndiagrams];
@@ -273,7 +277,7 @@ namespace madmatrix
     FLV_COUPLING_ARRAY<nDPF, nMF, CD_ACCESS::flv_stride> flvCOUPs_dep{ cDPF_partner1, cDPF_partner2, dpf_value };
 
     // Reset color flows (reset jamp_sv) at the beginning of a new event or event page
-    for( int i = 0; i < ncolor; i++ ) { jamp_sv[i] = cxzero_sv<cxtype_amp_sv>(); }
+    for( int i = 0; i < njampso; i++ ) { jamp_sv[i] = cxzero_sv<cxtype_amp_sv>(); }
 
     // Numerators for the current event (CUDA); denominators are no longer
     // accumulated here: they are derived as the sum of numerators later.
@@ -300,7 +304,7 @@ namespace madmatrix
     {
       constexpr int ihel0 = 0;
       using J_ACCESS = DeviceAccessJamp;
-      for( int icol = 0; icol < ncolor; icol++ )
+      for( int icol = 0; icol < njampso; icol++ )
         J_ACCESS::kernelAccessIcolIhelNhel( allJamps, icol, ihel0, dcNGoodHel ) = jamp_sv[icol];
     }
 
@@ -318,7 +322,7 @@ namespace madmatrix
                        fptype* allMEs,                   // output: allMEs[nevt], |M|^2 final_avg_over_helicities
                        fptype_amp* allNumerators,        // output: multichannel numerators[nevt], running_sum_over_helicities
                        fptype_amp* allDenominators,      // output: multichannel denominators[nevt], running_sum_over_helicities
-                       fptype_amp_sv* allJamps,          // tmp: jamp[ncolor*2*nevt] _for one helicity_ (reused in the getGoodHel helicity loop)
+                       fptype_amp_sv* allJamps,          // tmp: jamp[njampso*2*nevt] _for one helicity_ (reused in the getGoodHel helicity loop)
                        bool* isGoodHel,                  // output: isGoodHel[ncomb] - host array
                        const int nevt )                  // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
   { /* clang-format on */
@@ -477,13 +481,42 @@ namespace madmatrix
   //--------------------------------------------------------------------------
 
   __global__ void
-  add_and_select_hel( int* allselhel,          // output: helicity selection[nevt]
-                      const fptype* allrndhel, // input: random numbers[nevt] for helicity selection
-                      fptype* ghelAllMEs,      // input/tmp: allMEs for nGoodHel <= ncomb individual/runningsum helicities (index is ighel)
-                      fptype* allMEs,          // output: allMEs[nevt], final sum over helicities
-                      const int nevt )         // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+  add_and_select_hel( int* allselhel,                   // output: helicity selection[nevt]
+                      const fptype* allrndhel,          // input: random numbers[nevt] for helicity selection
+                      fptype* ghelAllMEs,               // input/tmp: allMEs for nGoodHel <= ncomb individual/runningsum helicities (index is ighel)
+                      fptype* allMEs,                   // output: allMEs[nevt], final sum over helicities
+                      const int nevt,                   // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+                      const bool sampleSignedHelicity ) // input: see sigmaKin
   {
     const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread)
+    if constexpr( nampso > 1 )
+    {
+      if( sampleSignedHelicity )
+      {
+        // A helicity can contribute negatively to an interference: choose it as madevent
+        // does (see select_helicity_signed in backend/{cpu,simd}/SigmaKin.cc), helicity i
+        // with probability |T_i| / sum_j |T_j|, and give the event sign(T_i) * sum_j |T_j|,
+        // whose average over the choice is sum_j T_j. ghelAllMEs holds the T_i themselves.
+        fptype absTotal = 0;
+        for( int ighel = 0; ighel < dcNGoodHel; ighel++ )
+          absTotal += fabs( ghelAllMEs[ighel * nevt + ievt] );
+        allMEs[ievt] = 0;
+        if( absTotal == 0 ) return; // selhel left alone, as in the positive case
+        fptype absSum = 0;
+        int ighelLast = -1; // last non-vanishing helicity, in case rndhel is not below 1
+        for( int ighel = 0; ighel < dcNGoodHel; ighel++ )
+        {
+          const fptype t = ghelAllMEs[ighel * nevt + ievt];
+          if( t == 0 ) continue;
+          ighelLast = ighel;
+          absSum += fabs( t );
+          if( allrndhel[ievt] < absSum / absTotal ) break; // the last ratio is exactly 1
+        }
+        allselhel[ievt] = dcGoodHel[ighelLast] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+        allMEs[ievt] = copysign( absTotal, ghelAllMEs[ighelLast * nevt + ievt] );
+        return;
+      }
+    }
     // Compute the sum of MEs over all good helicities (defer this after the helicity loop to avoid breaking streams parallelism)
     for( int ighel = 0; ighel < dcNGoodHel; ighel++ )
     {
@@ -620,7 +653,8 @@ namespace madmatrix
             gpuStream_t* ghelStreams,           // input: cuda streams (index is ighel: only the first nGoodHel <= ncomb are non-null)
             const bool async,
             const int gpublocks,                // input: cuda gpublocks
-            const int gputhreads )              // input: cuda gputhreads
+            const int gputhreads,               // input: cuda gputhreads
+            const bool sampleSignedHelicity )   // input: choose the helicity on |T_i| and return sign(T_i)*sum|T| (split orders only)
   /* clang-format on */
   {
     mgDebugInitialise();
@@ -636,7 +670,7 @@ namespace madmatrix
     // Reset the "matrix elements" - running sums of |M|^2 over helicities for the given event
     const int nevt = gpublocks * gputhreads;
     gpuMemset( allMEs, 0, nevt * sizeof( fptype ) );
-    gpuMemset( ghelAllJamps, 0, cNGoodHel * ncolor * mgOnGpu::nx2 * nevt * sizeof( fptype_amp ) );
+    gpuMemset( ghelAllJamps, 0, cNGoodHel * njampso * mgOnGpu::nx2 * nevt * sizeof( fptype_amp ) );
     gpuMemset( colAllJamp2s, 0, ncolor_flow * nevt * sizeof( fptype_amp ) );
     // The numerators buffer has NO helicity dimension: all good helicities accumulate in place via
     // atomicAdd, so it is zeroed once as [nevt][ndiagrams]. The denominators are derived from the
@@ -672,7 +706,7 @@ namespace madmatrix
       // (3) Wait for all helicity streams to complete, then finally compute the ME sum over all helicities and choose one helicity and one color
     }
     // Event-by-event random choice of helicity #403 and ME sum over helicities (defer this after the helicity loop to avoid breaking streams parallelism)
-    gpuLaunchKernel( add_and_select_hel, gpublocks, gputhreads, allselhel, allrndhel, ghelAllMEs, allMEs, gpublocks * gputhreads );
+    gpuLaunchKernel( add_and_select_hel, gpublocks, gputhreads, allselhel, allrndhel, ghelAllMEs, allMEs, gpublocks * gputhreads, sampleSignedHelicity );
 
     gpuLaunchKernel( normalise_output, gpublocks, gputhreads, allMEs, iflavorVec, ghelAllNumerators, ghelAllDenominators, allChannelIds, storeChannelWeights, mulChannelWeight, helcolDenominators[0] );
 

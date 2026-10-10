@@ -84,6 +84,8 @@ class TestPlotHelpers(unittest.TestCase):
         # empty bins are ignored rather than forcing a linear axis
         self.assertEqual(plots._y_scale([1000.0, 1.0, 0.0]), 'log')
         self.assertEqual(plots._y_scale([0.0, 5.0]), 'linear')
+        # an interference: a log axis would hide the negative bins
+        self.assertEqual(plots._y_scale([1000.0, 1.0, -3.0]), 'linear')
 
     def test_bands(self):
         bands = plots._bands(make_histogram(), 4, 25.0)

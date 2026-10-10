@@ -336,12 +336,14 @@ class CheckXsecProcessesMG7Test(unittest.TestCase):
             overweight_max = _OVERWEIGHT_FACTOR * _max_overweight_truncation(toml)
 
         ref_x = entry['cross']
-        reldiff = abs(got - ref_x) / ref_x if ref_x else float('inf')
+        # abs(ref_x): an interference has a negative cross section, and a
+        # negative relative difference would always pass
+        reldiff = abs(got - ref_x) / abs(ref_x) if ref_x else float('inf')
         # the tolerance covers genuine differences; the MC error of the run
         # (and of the reference) comes on top of it, so that fewer events do
         # not turn statistical fluctuations into failures
         sigma = math.sqrt(err ** 2 + (entry.get('error') or 0.0) ** 2)
-        allowed = _TOLERANCE + (_NSIGMA * sigma / ref_x if ref_x else 0.0)
+        allowed = _TOLERANCE + (_NSIGMA * sigma / abs(ref_x) if ref_x else 0.0)
         xsec_ok = reldiff <= allowed
         overweight_ok = overweight is None or overweight <= overweight_max
         problems = []

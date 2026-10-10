@@ -173,6 +173,17 @@ See :doc:`gridpacks` for details.
     When fewer than this fraction of the points in a batch pass the cuts, the batch is
     sampled again, up to the given number of times.
 
+``interference_helicity`` (``"exact"``)
+    How the helicity of an interference matrix element is handled, that is of a process
+    whose squared split orders keep a cross term (e.g. ``QCD^2==2``) and so can give
+    negative weights. Such a cross term can be negative for some helicities and positive
+    for others. ``"exact"`` does as madevent: the helicity of each event is drawn with
+    probability :math:`|T_i|/\sum_j |T_j|` and the event gets the weight
+    :math:`\mathrm{sign}(T_i)\sum_j |T_j|`, so the events carry their exact helicities
+    at the price of a larger variance (more negative weights). ``"summed"`` gives each
+    event the helicity sum as its weight (smaller variance) and writes its helicities as
+    9 (unknown) in the LHE file. Processes without such a cross term are not affected.
+
 [systematics]
 -------------
 
@@ -404,7 +415,9 @@ bins:
     jet_1-pt.bin_count = 50
 
 The entry ``weight`` is not an observable of the momenta. It is the distribution of the
-event weight in units of the cross section. A fully unweighted sample is a spike at 1.
+event weight in units of the unit weight :math:`\sigma_\mathrm{abs}`, the integral of
+the absolute value of the weights. A fully unweighted sample is a spike at 1, and its
+negative weights (from an interference) a spike at -1.
 
 ``output`` writes a default set of histograms for the final state of your process. ``set
 histograms OFF`` at the launch question removes them and ``set histograms default``

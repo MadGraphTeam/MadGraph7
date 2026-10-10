@@ -16,13 +16,15 @@ own -- so the arithmetic lives here once and both format what it returns.
 The conventions, which are the part worth getting right:
 
 * **scale** is measured against the nominal cross section, up as
-  ``(max - nominal) / nominal`` and down as ``(nominal - min) / nominal``. Both
-  come back as positive magnitudes; the caller supplies the sign. This matches
-  what systematics.py wrote, so a scan column does not shift when a run moves
-  from the legacy path to the native one.
+  ``(max - nominal) / |nominal|`` and down as ``(nominal - min) / |nominal|``.
+  Both come back as positive magnitudes; the caller supplies the sign. This
+  matches what systematics.py wrote, so a scan column does not shift when a run
+  moves from the legacy path to the native one. The absolute value is for an
+  interference, whose nominal can be negative: the band stays [min, max] and
+  the percentages stay positive.
 * **PDF** uncertainties are absolute in the summary, and are measured against
-  the set's own ``central`` -- for a replicas set that is the replica mean, not
-  the nominal member. An entry with no ``central`` had none that could be
+  the set's own ``central`` (in absolute value, as for the scale) -- for a
+  replicas set that is the replica mean, not the nominal member. An entry with no ``central`` had none that could be
   computed, and is skipped rather than measured against something else.
 
 This module deliberately imports nothing: it is pure arithmetic over a dict, so
@@ -60,8 +62,8 @@ def scale_percentages(summary):
     low, high = band.get('min'), band.get('max')
     if low is None or high is None:
         return None
-    return ((high - nominal) / nominal * 100.,
-            (nominal - low) / nominal * 100.)
+    return ((high - nominal) / abs(nominal) * 100.,
+            (nominal - low) / abs(nominal) * 100.)
 
 
 def pdf_percentages(summary):
@@ -80,5 +82,5 @@ def pdf_percentages(summary):
         central = entry.get('central')
         if up is None or down is None or not central:
             continue
-        out.append((entry, up / central * 100., down / central * 100.))
+        out.append((entry, up / abs(central) * 100., down / abs(central) * 100.))
     return out

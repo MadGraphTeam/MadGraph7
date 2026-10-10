@@ -69,6 +69,8 @@ survey_max_iters = %(generation.survey_max_iters)s
 survey_target_precision = %(generation.survey_target_precision)s
 cut_efficiency_threshold = %(generation.cut_efficiency_threshold)s
 max_cut_repetitions = %(generation.max_cut_repetitions)s
+# helicity of an interference |M|^2: "exact" (as madevent) or "summed" (written as 9)
+interference_helicity = %(generation.interference_helicity)s # options: exact, summed
 
 [systematics]
 enable = %(systematics.enable)s
@@ -123,7 +125,7 @@ $cuts
 
 [histograms]
 # <observable>.min, .max and .bin_count; "jet_1-pt" selects the hardest jet
-# "weight" histograms the event weight
+# "weight" histograms the event weight over the unit weight sigma_abs
 $histograms
 
 [madnis]
