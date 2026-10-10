@@ -6899,9 +6899,6 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'cwnet_activation', "leaky_relu",
             allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'],
             comment="activation function of the channel weight network")
-        self.add_toml_param('madnis', 'loss', "stratified_variance",
-            allowed=['stratified_variance', 'kl_divergence', 'rkl_divergence'],
-            comment="training loss")
         self.add_toml_param('madnis', 'train_batches', 1000,
             comment="number of training batches")
         self.add_toml_param('madnis', 'log_interval', 100,
@@ -6916,10 +6913,6 @@ class RunCardMG7(RunCard):
             comment="gpu sample generation batch sizes are rounded to a multiple of this")
         self.add_toml_param('madnis', 'lr', 3e-4, auto=True,
             comment="learning rate")
-        self.add_toml_param('madnis', 'lr_decay', 0.01,
-            comment="decay of the exponential lr_scheduler, which is currently not selectable")
-        self.add_toml_param('madnis', 'lr_max', 3e-3,
-            comment="peak rate of the one-cycle lr_scheduler, which is currently not selectable")
         self.add_toml_param('madnis', 'lr_scheduler', "cosine",
             allowed=['none', 'cosine'],
             comment="learning rate schedule")
@@ -6947,16 +6940,12 @@ class RunCardMG7(RunCard):
             comment="fraction of the training batch spread uniformly over channels")
         self.add_toml_param('madnis', 'integration_history_length', 100,
             comment="integration history entries kept per channel")
-        self.add_toml_param('madnis', 'max_stored_channel_weights', 100,
-            comment="prior channel weights stored per buffered sample")
         self.add_toml_param('madnis', 'channel_dropping_threshold', 0.01,
             comment="channels below this fraction of the integral are dropped")
         self.add_toml_param('madnis', 'channel_dropping_interval', 100,
             comment="batches between two channel dropping checks")
         self.add_toml_param('madnis', 'drop_zero_integrands', True,
             comment="ignore points with zero integrand in the training")
-        self.add_toml_param('madnis', 'batch_size_threshold', 0.5,
-            comment="new samples are drawn until a training batch holds this fraction of its nominal size")
         self.add_toml_param('madnis', 'fixed_cwnet_fraction', 0.33, auto=True,
             comment="fraction of the training with a frozen channel weight network")
         self.add_toml_param('madnis', 'softclip_threshold', 30.0,

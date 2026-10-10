@@ -3118,17 +3118,6 @@ class MadgraphSubprocess:
         #for i in integrands: print(i.function())
         return integrands
 
-    def train_madnis(self, phasespace: PhaseSpace, status_func) -> None:
-        # do import here to make pytorch and MadNIS optional dependencies
-        from .train_madnis import train_madnis
-        train_madnis(
-            self.build_integrands(phasespace, madnis_training=True),
-            phasespace,
-            self.process.run_card["madnis"],
-            self.process.contexts[0],
-            status_func
-        )
-
 
 _ROOTED_OPTIONS = ('lhapdf', 'lhapdf_py3', 'lhapdf_py2', 'heptools_install_dir')
 

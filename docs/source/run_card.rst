@@ -441,9 +441,6 @@ Training
 ``batch_size_offset`` (``512``)
     Number of events added to the training batch size of every channel.
 
-``loss`` (``"stratified_variance"``)
-    Training loss: ``stratified_variance``, ``kl_divergence`` or ``rkl_divergence``.
-
 ``log_interval`` (``100``)
     Batches between two entries in the training log.
 
@@ -453,10 +450,6 @@ Training
 
 ``integration_history_length`` (``100``)
     Number of batches for which the mean and variance of each channel are kept.
-
-``batch_size_threshold`` (``0.5``)
-    New samples are drawn until a training batch holds at least this fraction of its nominal
-    size.
 
 ``drop_zero_integrands`` (``true``)
     Ignore points with a vanishing integrand in the training.
@@ -471,9 +464,6 @@ Training
 ``compressed_channel_weight_count`` (``50``)
     Number of channel weights kept per event in the multichannel weight loss.
 
-``max_stored_channel_weights`` (``100``)
-    Number of prior channel weights stored for each buffered sample.
-
 Optimizer
 ^^^^^^^^^
 
@@ -483,10 +473,6 @@ Optimizer
 ``lr_scheduler`` (``"cosine"``)
     ``cosine`` decays the learning rate to zero over the training. ``none`` keeps it
     constant.
-
-``lr_decay`` (``0.01``), ``lr_max`` (``3e-3``)
-    Parameters of the exponential and one-cycle schedules. They have no effect with the
-    schedulers currently available.
 
 ``adam_beta1`` (``0.9``), ``adam_beta2`` (``0.999``), ``adam_eps`` (``1e-8``), ``adam_weight_decay`` (``1e-4``)
     Adam parameters.
