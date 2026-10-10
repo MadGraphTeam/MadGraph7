@@ -1730,6 +1730,71 @@ class TestRunCardMG7(unittest.TestCase):
         mg7.write(buf, template=self.template)
         tomllib.loads(buf.getvalue())
 
+    def test_from_LO_conversion_of_composite_cuts(self):
+        """ordered, HT, summed-momentum, energy and per-pdg LO cuts are ported"""
+        lo = bannermod.RunCardLO()
+        lo['ptj1min'] = 100
+        lo['ptj2min'] = 50
+        lo['xptj'] = 120          # lands on the same bound as ptj1min: tighter wins
+        lo['htjmin'] = 300
+        lo['ihtmin'] = 400
+        lo['ht2min'] = 150
+        lo['ptllmin'] = 30
+        lo['mmnl'] = 60
+        lo['mmnlmax'] = 500
+        lo['etajmin'] = 1.0
+        lo['ej'] = 50
+        lo['pt_min_pdg'] = {6: 100}
+        lo['eta_max_pdg'] = {6: 2.5}
+        lo['mxx_min_pdg'] = {6: 250, 25: 100}
+        lo['mxx_only_part_antipart'] = {'default': False, 6: True}
+        lo['cutuse'] = 1          # not representable
+        lo['xetamin'] = 2         # not representable
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        cuts = mg7['cuts']
+        self.assertEqual(cuts['jet_1-pt'], {'min': 120.0})
+        self.assertEqual(cuts['jet_2-pt'], {'min': 50.0})
+        self.assertEqual(cuts['jet-pt-sum'], {'min': 300.0})
+        self.assertEqual(cuts['parton-pt-sum'], {'min': 400.0})
+        self.assertEqual(cuts['jet_1-jet_2-pt-sum'], {'min': 150.0})
+        self.assertEqual(cuts['alllepton-sum-pt'], {'min': 30.0})
+        self.assertEqual(cuts['alllepton-sum-mass'], {'min': 60.0, 'max': 500.0})
+        self.assertEqual(cuts['jet-eta_abs'], {'max': 5.0, 'min': 1.0})
+        self.assertEqual(cuts['jet-e'], {'min': 50.0})
+        # one group [pdg, -pdg] per particle; X X~ pairs only where asked for
+        self.assertEqual(cuts['pdg6-pt'], {'min': 100.0})
+        self.assertEqual(cuts['pdg6-eta_abs'], {'max': 2.5})
+        self.assertEqual(cuts['pdg6-sfos_pair_mass'], {'min': 250.0})
+        self.assertEqual(cuts['pdg25-pair_mass'], {'min': 100.0})
+        groups = mg7['multiparticles']
+        self.assertEqual(groups['pdg6'], [6, -6])
+        self.assertEqual(groups['alllepton'], groups['lepton'] + groups['missing'])
+        self.assertIn(5, groups['parton'])
+        joined = ' '.join(dropped)
+        self.assertIn('cutuse', joined)
+        self.assertIn('xetamin', joined)
+        self.assertNotIn('ptj1min', joined)
+        # no cut means no extra group
+        plain, _ = bannermod.RunCardMG7.from_LO(bannermod.RunCardLO(), warn=False)
+        self.assertNotIn('alllepton', plain['multiparticles'])
+        self.assertNotIn('parton', plain['multiparticles'])
+
+    def test_from_LO_me_frame(self):
+        """me_frame is carried over, the LO default included: madevent's [1,2]
+        is the partonic c.m., mg7's own default [] the lab frame"""
+        lo = bannermod.RunCardLO()
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['run']['me_frame'], [1, 2])
+        lo.set('me_frame', [3, 4], user=True)
+        lo.update_system_parameter_for_include()     # frame_id 24
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['run']['me_frame'], [3, 4])
+        self.assertNotIn('frame', ' '.join(dropped))
+        # no leg selected: madevent stays in the partonic c.m.
+        lo.set('me_frame', [], user=True)
+        mg7, _ = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['run']['me_frame'], [1, 2])
+
     def test_int_with_operator_is_not_silently_zero(self):
         """'ht/4' used to parse as 0, i.e. dynamical_scale_choice = user hook"""
         fmt = bannermod.ConfigFile.format_variable

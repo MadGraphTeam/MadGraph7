@@ -131,7 +131,7 @@ def main() -> None:
         "--verbosity",
         type=str,
         default=run_args["verbosity"],
-        choices=["none", "pretty", "log", "auto"]
+        choices=["silent", "pretty", "log", "auto"]
     )
     parser.add_argument(
         "--output_format",
@@ -385,6 +385,11 @@ def load_systematics(run_card, backends=(), param_card_path=None,
                  ms.MatrixElement.flavor_in],
                 [ms.MatrixElement.matrix_element_out],
                 False,
+                # the frame the events were generated with, not whatever the
+                # gridpack's run card says now: it has to match the matrix
+                # element inside the saved channel generators
+                data.get("me_frame", []),
+                data.get("incoming_count", 2),
             ))
     systematics = ms.SystematicsCalculator(
         config, subproc_args, nominal_pdf, nominal_alpha_s,
