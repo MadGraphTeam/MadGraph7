@@ -15,7 +15,9 @@ existing scripts keep working. These are ``nevents``, ``gridpack``, ``fixed_ren_
 ``scale``, ``dsqrt_q2fact1``, ``dsqrt_q2fact2``, ``scalefact``, ``bwcutoff``, ``cut_decays``
 and ``use_syst``. The shortcuts ``set lhc``, ``set lep``, ``set fixed_scale``,
 ``set no_parton_cut`` and ``set dynamical_scale_choice HT/n`` work as before, and so does
-``set iseed``. MadEvent draws a random seed for ``iseed = 0``. MG7 does the same for
+``set iseed``. The beam settings ``ebeam``, ``ebeam1``, ``ebeam2``, ``lpp``, ``lpp1``,
+``lpp2``, ``pdlabel``, ``pdlabel1``, ``pdlabel2`` and ``lhaid`` are translated as in the
+table below. MadEvent draws a random seed for ``iseed = 0``. MG7 does the same for
 ``seed = -1`` and treats ``0`` as an ordinary fixed seed, so ``set iseed 0`` is translated.
 All other settings must use their new names.
 
@@ -43,8 +45,8 @@ Beams and PDFs
         ``"NNPDF40_lo_as_01180"``. ``set beam.pdf`` sets both beams.
     * - ``pdlabel1``, ``pdlabel2``
       - ``beam.pdf1``, ``beam.pdf2``
-      - The conversion of a ``run_card.dat`` uses the same set for both beams. Set
-        ``beam.pdf1`` and ``beam.pdf2`` by hand to use different ones.
+      - One set per beam. A beam without PDF exists only for a lepton collider, as
+        ``beam.leptonic``.
 
 Scales
 ------
