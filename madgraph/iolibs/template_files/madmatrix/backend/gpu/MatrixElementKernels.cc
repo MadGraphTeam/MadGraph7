@@ -206,7 +206,7 @@ namespace madmatrix
       throw std::runtime_error( sstr.str() );
     }
     // Create the "one-helicity" jamp buffer that will be used for helicity filtering
-    m_pHelJamps.reset( new DeviceBufferAmp( ProcessData::ncolor * mgOnGpu::nx2 * this->nevt() ) );
+    m_pHelJamps.reset( new DeviceBufferAmp( ProcessData::njampso * mgOnGpu::nx2 * this->nevt() ) );
     // Create the "one-helicity" numerator and denominator buffers that will be used for helicity filtering
     m_pHelNumerators.reset( new DeviceBufferSimple( this->nevt() * ProcessData::ndiagrams ) );
     m_pHelDenominators.reset( new DeviceBufferSimple( this->nevt() ) );
@@ -221,8 +221,17 @@ namespace madmatrix
       if( blasEnv && std::string( blasEnv ) != "" )
       {
 #ifndef MGONGPU_HAS_NO_BLAS
-        m_blasColorSum = true; // fixme? eventually set default=true and decode "Y" and "N" choices?
-        std::cout << "INFO: Env variable CUDACPP_RUNTIME_BLASCOLORSUM is set and non-empty: enable BLAS" << std::endl;
+        if constexpr( ProcessData::nampso > 1 )
+        {
+          // the BLAS color sum contracts one ncolor jamp vector per helicity: it cannot pair
+          // the jamps of several amplitude split orders, which color_sum_kernel does
+          std::cout << "WARNING! Env variable CUDACPP_RUNTIME_BLASCOLORSUM is set and non-empty, but the BLAS color sum does not pair split amplitude orders: disable BLAS" << std::endl;
+        }
+        else
+        {
+          m_blasColorSum = true; // fixme? eventually set default=true and decode "Y" and "N" choices?
+          std::cout << "INFO: Env variable CUDACPP_RUNTIME_BLASCOLORSUM is set and non-empty: enable BLAS" << std::endl;
+        }
 #else
         throw std::runtime_error( "Env variable CUDACPP_RUNTIME_BLASCOLORSUM is set and non-empty, but BLAS was disabled at build time" );
 #endif
@@ -319,7 +328,7 @@ namespace madmatrix
     m_pHelMEs.reset( new DeviceBufferSimple( nGoodHel * nevt ) );
     // ... Create the "many-helicity" super-buffer of nGoodHel ME buffers (dynamically allocated because nGoodHel is determined at runtime)
     // ... (calling reset here deletes the previously created "one-helicity" buffers used for helicity filtering)
-    m_pHelJamps.reset( new DeviceBufferAmp( nGoodHel * ProcessData::ncolor * mgOnGpu::nx2 * nevt ) );
+    m_pHelJamps.reset( new DeviceBufferAmp( nGoodHel * ProcessData::njampso * mgOnGpu::nx2 * nevt ) );
     // ... Create the numerator and denominator buffers. These no longer carry a helicity dimension:
     // ... the numerators are accumulated in place over all good helicities via atomicAdd in calculate_jamps
     // ... ([nevt][ndiagrams]) and the denominators are derived from them ([nevt]).

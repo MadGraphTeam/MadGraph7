@@ -50,7 +50,9 @@ namespace madmatrix
     static __device__ inline cxtype_amp_ref
     kernelAccessIcolIhelNhel( fptype_amp* buffer, const int icol, const int ihel, const int nhel )
     {
-      const int ncolor = ProcessData::ncolor; // the number of leading colors
+      // the number of jamps: ncolor per amplitude split order (njampso == ncolor
+      // without split orders); the real and the imaginary planes are that long
+      const int ncolor = ProcessData::njampso;
       const int nevt = gridDim.x * blockDim.x;
       const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
       // (ONE HELICITY) Original "old" striding for CUDA kernels: ncolor separate 2*nevt matrices for each color (ievt last)
@@ -65,7 +67,9 @@ namespace madmatrix
     static __device__ inline const cxtype
     kernelAccessIcolIhelNhelConst( const fptype_amp* buffer, const int icol, const int ihel, const int nhel )
     {
-      const int ncolor = ProcessData::ncolor; // the number of leading colors
+      // the number of jamps: ncolor per amplitude split order (njampso == ncolor
+      // without split orders); the real and the imaginary planes are that long
+      const int ncolor = ProcessData::njampso;
       const int nevt = gridDim.x * blockDim.x;
       const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
       // (ONE HELICITY) Original "old" striding for CUDA kernels: ncolor separate 2*nevt matrices for each color (ievt last)

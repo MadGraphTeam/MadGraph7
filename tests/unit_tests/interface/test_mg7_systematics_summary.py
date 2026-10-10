@@ -78,6 +78,27 @@ class TestPercentages(unittest.TestCase):
         self.assertAlmostEqual(up, 0.02 * _Summary.NOMINAL / entry['central'] * 100)
         self.assertAlmostEqual(down, up)
 
+    def test_a_negative_nominal_keeps_positive_magnitudes(self):
+        """An interference (e.g. p p > u u~ QCD^2==2) has a negative total.
+        Dividing by the signed nominal printed 'Scale variation: +-24.1%
+        --30%'; the band must still read '+up% -down%'."""
+
+        nominal = -9680.6
+        summary = _Summary.full()
+        summary['nominal']['cross_section'] = nominal
+        # the envelope of a negative total: max is the least negative
+        summary['scale']['min'] = 1.30 * nominal
+        summary['scale']['max'] = 0.759 * nominal
+        summary['pdf'][0]['central'] = nominal
+        summary['pdf'][0]['uncertainty_up'] = 0.0695 * abs(nominal)
+        summary['pdf'][0]['uncertainty_down'] = 0.0695 * abs(nominal)
+        up, down = systematics_summary.scale_percentages(summary)
+        self.assertAlmostEqual(up, 24.1, places=3)
+        self.assertAlmostEqual(down, 30.0, places=3)
+        _entry, pup, pdown = systematics_summary.pdf_percentages(summary)[0]
+        self.assertAlmostEqual(pup, 6.95, places=3)
+        self.assertAlmostEqual(pdown, 6.95, places=3)
+
     def test_a_set_without_an_uncertainty_is_left_out(self):
         """errorset on a one-member set: the entry exists, the uncertainty
         does not. Reporting zero would be a lie."""

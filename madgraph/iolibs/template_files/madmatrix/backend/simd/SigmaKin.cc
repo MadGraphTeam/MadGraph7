@@ -33,6 +33,7 @@
 
 #include <cassert>
 #include <cstdlib> // for std::abort (crossing guard in EvaluateDiagrams.inc)
+#include <cmath>
 #include <cstring>
 #include <iostream>
 #include <limits>
@@ -436,14 +437,17 @@ namespace madmatrix
       const int ievt0 = ievt00 + iParity * neppV;
 
       constexpr size_t nxcoup = ndcoup + nIPC; // both dependent and independent couplings
-      const fptype* allCOUPs[nxcoup];
+      // nxcoup can be 0 (no alpha_s-dependent coupling, and only flavor couplings, e.g.
+      // u u~ > u u~ QED^2==4 with flavor grouping): a zero-sized array is only a compiler
+      // extension (and refused in GPU device code), so size them at least 1, as cIPD/cIPC
+      const fptype* allCOUPs[nxcoup > 0 ? nxcoup : 1];
       for( size_t idcoup = 0; idcoup < ndcoup; idcoup++ )
         allCOUPs[idcoup] = CD_ACCESS::idcoupAccessBufferConst( allcouplings, idcoup ); // dependent couplings, vary event-by-event
       for( size_t iicoup = 0; iicoup < nIPC; iicoup++ )
         allCOUPs[ndcoup + iicoup] = CI_ACCESS::iicoupAccessBufferConst( cIPC, iicoup ); // independent couplings, fixed for all events
       // C++ kernels take input/output buffers with momenta/MEs for one specific event (the first in the current event page)
       const fptype_momenta* momenta = M_ACCESS::ieventAccessRecordConst( allmomenta, ievt0 );
-      const fptype* COUPs[nxcoup];
+      const fptype* COUPs[nxcoup > 0 ? nxcoup : 1];
       for( size_t idcoup = 0; idcoup < ndcoup; idcoup++ )
         COUPs[idcoup] = CD_ACCESS::ieventAccessRecordConst( allCOUPs[idcoup], ievt0 ); // dependent couplings, vary event-by-event
       for( size_t iicoup = 0; iicoup < nIPC; iicoup++ )
@@ -824,6 +828,50 @@ namespace madmatrix
   }
 
   //--------------------------------------------------------------------------
+  // Helicity choice when a helicity can contribute negatively: a squared split-order
+  // selection that keeps an interference (nampso > 1). As madevent does
+  // (matrix_madevent_group_v4.inc), helicity i is chosen with probability
+  // |T_i| / sum_j |T_j| and the event gets sign(T_i) * sum_j |T_j|, whose average over
+  // the choice is sum_j T_j: the chosen helicity then reproduces the signed per-helicity
+  // |M|^2. Choosing on the signed running sum, as the positive case does, would not:
+  // with mixed signs it is not a distribution, and a negative total turns it upside down.
+  // ighelSum[ighel] is the running sum of T_j over the good helicities j <= ighel, as the
+  // helicity loop leaves it. Returns the |M|^2 of the event (before the helicity/color
+  // average and the channel weight) and sets selhel; a vanishing |M|^2 returns 0 and
+  // leaves selhel alone, as the positive case does.
+  static inline fptype
+  select_helicity_signed( const fptype* ighelSum,       // input: running sums over the good helicities
+                          const int ngood,              // input: number of good helicities in ighelSum
+                          const unsigned int flavor_id, // input: flavor (crossing) index of the event
+                          const fptype rndhel,          // input: random number for the helicity choice
+                          int& selhel )                 // output: chosen helicity (Fortran range [1,ncomb])
+  {
+    fptype absTotal = 0;
+    for( int ighel = 0; ighel < ngood; ighel++ )
+      absTotal += std::abs( ighelSum[ighel] - ( ighel > 0 ? ighelSum[ighel - 1] : 0 ) );
+    if( absTotal == 0 ) return 0;
+    fptype absSum = 0, absLo = 0, absHi = 0;
+    int ighelLast = -1; // last non-vanishing helicity, in case rndhel is not below 1
+    for( int ighel = 0; ighel < ngood; ighel++ )
+    {
+      const fptype t = ighelSum[ighel] - ( ighel > 0 ? ighelSum[ighel - 1] : 0 );
+      if( t == 0 ) continue;
+      ighelLast = ighel;
+      absLo = absSum;
+      absSum += std::abs( t );
+      absHi = absSum;
+      if( rndhel < absSum / absTotal ) // the last ratio is exactly 1 (same terms, same order)
+        break;
+    }
+    const fptype tLast = ighelSum[ighelLast] - ( ighelLast > 0 ? ighelSum[ighelLast - 1] : 0 );
+    // The same row choice as the positive case (selected_helicity): the lane's own
+    // crossed helicity code with crossing, and the C-parity partner of a
+    // de-duplicated representative picked within its |T| bin [absLo, absHi)
+    selhel = selected_helicity( ighelLast, flavor_id, rndhel * absTotal, absLo, absHi ); // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+    return std::copysign( absTotal, tLast );
+  }
+
+  //--------------------------------------------------------------------------
   // Evaluate |M|^2, part independent of incoming flavour
 
   void
@@ -841,7 +889,8 @@ namespace madmatrix
             fptype_amp* allDenominators,       // tmp: multichannel denominators[nevt], running_sum_over_helicities
             unsigned int* allDiagramIdsOut,    // output: multichannel channelIds[nevt] (1 to #diagrams)
             bool mulChannelWeight,             // if true, multiply channel weight to ME output
-            const int nevt )                   // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+            const int nevt,                    // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+            const bool sampleSignedHelicity )  // input: choose the helicity on |T_i| and return sign(T_i)*sum|T| (split orders only)
   {
     mgDebugInitialise();
 
@@ -892,7 +941,7 @@ namespace madmatrix
     const int nGoodLoop = use_crossing ? cNGoodMaxCross : cNGoodHel;
 #ifdef _OPENMP
     // OMP multithreading #575 (NB: tested only with gcc11 so far)
-#define _OMPLIST0 allcouplings, allMEs, allmomenta, allrndcol, allrndhel, allselcol, allselhel, cGoodHel, nGoodLoop, npagV2
+#define _OMPLIST0 allcouplings, allMEs, allmomenta, allrndcol, allrndhel, allselcol, allselhel, cGoodHel, nGoodLoop, npagV2, sampleSignedHelicity
 #define _OMPLIST1 , allDenominators, allNumerators, allChannelIds, allDiagramIdsOut, allrnddiagram, iflavorVec, mgOnGpu::icolamp, mgOnGpu::channel2iconfig
 #pragma omp parallel for default( none ) shared( _OMPLIST0 _OMPLIST1 )
 #undef _OMPLIST0
@@ -1002,6 +1051,27 @@ namespace madmatrix
       for( int ieppV = 0; ieppV < neppV; ++ieppV )
       {
         const int ievt = ievt00 + ieppV;
+        if constexpr( nampso > 1 )
+        {
+          if( sampleSignedHelicity )
+          {
+            fptype ighelSum[ncomb];
+            for( int ighel = 0; ighel < nGoodLoop; ighel++ )
+#if defined MGONGPU_CPPSIMD
+              ighelSum[ighel] = MEs_ighel[ighel][ieppV];
+#else
+              ighelSum[ighel] = MEs_ighel[ighel];
+#endif
+            *E_ACCESS::ieventAccessRecord( allMEs, ievt ) = select_helicity_signed( ighelSum, nGoodLoop, iflavorVec[ievt], allrndhel[ievt], allselhel[ievt] );
+#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+            const int ievt2 = ievt00 + ieppV + neppV;
+            for( int ighel = 0; ighel < nGoodLoop; ighel++ )
+              ighelSum[ighel] = MEs_ighel2[ighel][ieppV];
+            *E_ACCESS::ieventAccessRecord( allMEs, ievt2 ) = select_helicity_signed( ighelSum, nGoodLoop, iflavorVec[ievt2], allrndhel[ievt2], allselhel[ievt2] );
+#endif
+            continue;
+          }
+        }
         for( int ighel = 0; ighel < nGoodLoop; ighel++ )
         {
 #if defined MGONGPU_CPPSIMD

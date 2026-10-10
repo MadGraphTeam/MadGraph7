@@ -2418,7 +2418,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         lines = []
         lines.append('  // The squared order each pair of amplitude orders'
                      ' contributes to (symmetric)')
-        lines.append('  static constexpr int sqSoIndex[nampso][nampso] = {')
+        # __device__: the GPU color sum reads them in a kernel (an empty macro
+        # on the CPU backends), as for mgOnGpu::icolamp
+        lines.append('  __device__ constexpr int sqSoIndex[nampso][nampso] = {')
         lines.append(',\n'.join('    { %s }' % ', '.join(str(i) for i in row)
                                 for row in so['sqsoindex']))
         lines.append('  };')
@@ -2426,7 +2428,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         for k, (name, keep) in enumerate(zip(so['names'], so['chosen'])):
             lines.append('  //   %d) %s%s' % (k, name,
                                               '' if keep else '   [dropped]'))
-        lines.append('  static constexpr bool chosenSqso[nsqampso] = { %s };'
+        lines.append('  __device__ constexpr bool chosenSqso[nsqampso] = { %s };'
                      % ', '.join('true' if k else 'false'
                                  for k in so['chosen']))
         return '\n'.join(lines)
@@ -2451,8 +2453,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             replace_dict['sqso_tables'] = self.get_sqso_table_lines()
         else:
             replace_dict['sqso_tables'] = '\n'.join([
-                '  static constexpr int sqSoIndex[nampso][nampso] = { { 0 } };',
-                '  static constexpr bool chosenSqso[nsqampso] = { true };'])
+                '  __device__ constexpr int sqSoIndex[nampso][nampso] = { { 0 } };',
+                '  __device__ constexpr bool chosenSqso[nsqampso] = { true };'])
 
         # we don't sort self.multi_channel_map, and we rely on MadSpace sorting
         # so, diagrams there may be unsorted

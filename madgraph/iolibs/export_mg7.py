@@ -543,6 +543,18 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         qcd_power = (qcd_orders.pop()
                      if len(qcd_orders) == 1 and None not in qcd_orders else -1)
 
+        # an interference: squared split orders that drop a component, so that a
+        # helicity can contribute negatively (madmatrix select_helicity_signed);
+        # with [generation] interference_helicity = "summed" the |M|^2 is the
+        # helicity sum and the LHE helicities of this subprocess are written as 9
+        interference = False
+        try:
+            from madgraph.iolibs.export_v4 import split_order_tables
+            so = split_order_tables(self.matrix_element)
+            interference = bool(so) and so['nampso'] > 1 and not all(so['chosen'])
+        except Exception as error:
+            logger.debug('could not determine the split orders: %s', error)
+
         return (
             {
                 "incoming": self.incoming,
@@ -566,6 +578,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 "pdg_color_types": pdg_color_types,
                 "diagram_count": len(self.diagrams),
                 "helicities": list(self.matrix_element.get_helicity_matrix()),
+                "interference": interference,
             },
             self.diagram_tags,
             self.subprocess_class,
