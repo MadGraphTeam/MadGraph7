@@ -3343,8 +3343,16 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         # Specify namespace for Helas calls
         call = call + '( momenta,'
         if argument.get('spin') != 1:
-            # For non-scalars, need mass and helicity
-            call = call + 'm_pars->%s, cHel[ihel][%d],'
+            # For non-scalars, need mass and helicity. A leg marked off-shell
+            # ('*', MadSpin's decaying particles) takes the invariant mass of its
+            # momentum, as the Fortran output does (offshell_mass, SigmaKin.cc).
+            # 'offshell' is part of the call key, but the leg number is wf's own:
+            # argument is whichever wavefunction first had this key.
+            if argument.get('offshell'):
+                call = call + 'offshell_mass<M_ACCESS>( m_pars->%%s, momenta, %d ), cHel[ihel][%%d],' \
+                    % (wf.get('number_external') - 1)
+            else:
+                call = call + 'm_pars->%s, cHel[ihel][%d],'
         else:
             # AV This seems to be for scalars (spin==1???), pass neither mass nor helicity (#351)
             ###call = call + 'm_pars->%s,'

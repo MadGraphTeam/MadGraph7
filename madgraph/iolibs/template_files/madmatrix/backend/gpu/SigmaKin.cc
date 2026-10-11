@@ -154,6 +154,20 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  // The mass an external leg marked off-shell ('*': MadSpin's decaying particles)
+  // is evaluated with. The Fortran output and the scalar C++ backend take the
+  // invariant mass of its momentum; the GPU kernels keep the pole mass, the same
+  // as long as the momenta are on shell, which is all mg7 generates (off-shell
+  // momenta need the scalar backend, see madmatrix.density).
+  template<class M_ACCESS>
+  __device__ inline fptype_amp
+  offshell_mass( const fptype_amp poleMass, const fptype_momenta*, const int )
+  {
+    return poleMass;
+  }
+
+  //--------------------------------------------------------------------------
+
   // Accumulate a multichannel numerator contribution in place. All good-helicity
   // blocks/streams for a given event race on the same numerator slot (the helicity
   // dimension has been removed to save memory), so an atomicAdd is mandatory.

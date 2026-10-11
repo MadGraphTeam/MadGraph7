@@ -52,6 +52,7 @@ import madgraph.various.lhe_parser as lhe_parser
 import models.import_ufo as import_ufo
 import models.check_param_card as check_param_card
 import MadSpin.decay as madspin
+import madmatrix.density as madmatrix_density
 
 logger = logging.getLogger('decay.stdout') # -> stdout
 logger_stderr = logging.getLogger('decay.stderr') # ->stderr
@@ -362,6 +363,11 @@ class MadSpinOptions(banner.ConfigFile):
         self.add_param('sequential_debug', False, comment='the up-front-mass unweighting schemes (sequential, sequential_global_retry): on every accepted chain, recompute the joint weight for the same production event, virtualities and decays and check that the product of the stage weights reproduces it (times the number of helicity states). Deterministic check of the decomposition itself -- the tabulated factor cancels out of it -- at roughly the cost of a joint trial per event. Debugging only.')
         self.add_param('decay_generator', 'mg7', allowed=['mg7', 'madevent'],
                        comment='which backend generates the decay-event pools: mg7 (madmatrix/madspace) or the legacy Fortran madevent')
+        self.add_param('density_backend', 'madmatrix', allowed=['madmatrix', 'fortran'],
+                       comment='density spin modes (madspin/full, PA, onshell): what evaluates the production and decay '
+                       'density matrices and |M|^2. madmatrix: the C++ libraries of a madmatrix standalone output '
+                       '(madmatrix.density); fortran: the f2py modules of a standalone_fortran --density output. '
+                       'A loop-induced production always takes fortran (madmatrix has no loop matrix elements).')
 
     def __setitem__(self, name, value, change_userdefine=False, raiseerror=False):
         """Let an old card keep an unweighting scheme we no longer advertise.
@@ -11756,10 +11762,18 @@ class MadSpinInterface(extended_cmd.Cmd):
         else:
             raise ValueError("The only acceptable values of prod_or_decay are 'prod' and 'decay'")
 
-        # production and decay are built with distinct MENUM (2 vs 1) so
-        # their f2py modules / dependent libraries don't clash in-process
-        # (see decay_all_events_onshell.compile).
-        mymod = self._load_f2py_matrix_module(sp_path, menum=menum)
+        tree = os.path.dirname(sp_path)
+        if madmatrix_density.is_output(tree):
+            # density_backend = madmatrix: the C++ libraries of a madmatrix
+            # standalone output, with the f2py module's method names (see
+            # madmatrix/density.py), built with a LIBTAG of their own by
+            # decay_all_events_onshell.compile
+            mymod = madmatrix_density.MadDensityLibrary(tree)
+        else:
+            # production and decay are built with distinct MENUM (2 vs 1) so
+            # their f2py modules / dependent libraries don't clash in-process
+            # (see decay_all_events_onshell.compile).
+            mymod = self._load_f2py_matrix_module(sp_path, menum=menum)
         self.f2py_module[i] = mymod
 
         all_prefix[i] = self.f2py_module[i].get_prefix()
@@ -12446,35 +12460,31 @@ class MadSpinInterface(extended_cmd.Cmd):
             final_state=True)
         if frame_boost is not None:
             p = self._boost_momenta(p, frame_boost, rest_leg=frame_rest_leg)
-        P = rwgt_interface.ReweightInterface.invert_momenta(p)
         n_changing = len(position)
         if n_changing == 0:
             raise ValueError("Error in get_density: 'position' must contain at least one position index")
         if len(allow_hel) % n_changing != 0:
             raise ValueError("Error in get_density: inconsistent 'allow_hel' and 'position' lengths")
-        
-        # PY_GET_DENSITY(PDGS, PROCID, P, POS, ALLOW_HEL, ALPHAS, SCALE2)
-        if self.all_me[tag]['type'] == 'production':
-            # misc.sprint("Computation of the production density matrix")
-            density_array = self.f2py_module[0].py_get_density(pdgs=pdgs, 
-                                                                procid=-1, 
-                                                                p=P, 
-                                                                pos=position, 
-                                                                allow_hel=allow_hel, 
-                                                                alphas=event.aqcd,
-                                                                scale2=event.scale**2)
 
+        if self.all_me[tag]['type'] == 'production':
+            module = self.f2py_module[0]
         elif self.all_me[tag]['type'] == 'decay':
-            # misc.sprint("Computation of the decay density matrix")
-            density_array = self.f2py_module[1].py_get_density(pdgs=pdgs, 
-                                                                procid=-1, 
-                                                                p=P, 
-                                                                pos=position, 
-                                                                allow_hel=allow_hel, 
-                                                                alphas=event.aqcd,
-                                                                scale2=event.scale**2)
+            module = self.f2py_module[1]
         else:
             raise ValueError("The key 'type' of sel.all_me can only take as values 'production' or 'decay'.")
+        if isinstance(module, madmatrix_density.MadDensityLibrary):
+            # the momenta as they are, (E, px, py, pz) per leg
+            density_array = module.density(pdgs, p, position, allow_hel, event.aqcd)
+        else:
+            # PY_GET_DENSITY(PDGS, PROCID, P, POS, ALLOW_HEL, ALPHAS, SCALE2)
+            P = rwgt_interface.ReweightInterface.invert_momenta(p)
+            density_array = module.py_get_density(pdgs=pdgs,
+                                                  procid=-1,
+                                                  p=P,
+                                                  pos=position,
+                                                  allow_hel=allow_hel,
+                                                  alphas=event.aqcd,
+                                                  scale2=event.scale**2)
 
 
         #print(f"density_array = {density_array}") 
@@ -12565,6 +12575,18 @@ class MadSpinInterface(extended_cmd.Cmd):
 
         out = [None] * len(events)
         for (next_, npdg, module_index), idx in groups.items():
+            module = self.f2py_module[module_index]
+            if isinstance(module, madmatrix_density.MadDensityLibrary):
+                inter = module.density_batch([pdgs[k] for k in idx],
+                                             [momenta[k] for k in idx],
+                                             position, allow_hel,
+                                             [events[k].aqcd for k in idx])
+                for c, k in enumerate(idx):
+                    out[k] = madspin.DensityMatrix(inter[c],
+                                                   n_changing,
+                                                   allow_hel,
+                                                   dimension)
+                continue
             nbatch = len(idx)
             # (0:3, next, nbatch) fortran-ordered. get_momenta hands back one
             # (E,px,py,pz) tuple per particle, so the transpose that
@@ -12580,7 +12602,6 @@ class MadSpinInterface(extended_cmd.Cmd):
                 scale2[c] = events[k].scale ** 2
             # PY_GET_DENSITY_BATCH(PDGS, PROCID, P, POS, ALLOW_HEL, ALPHAS,
             #                      SCALE2, NBATCH, NEXT)
-            module = self.f2py_module[module_index]
             inter = module.py_get_density_batch(pdgs=all_pdgs,
                                                procid=-1,
                                                p=P,
@@ -12721,11 +12742,10 @@ class MadSpinInterface(extended_cmd.Cmd):
                 # own momenta
                 p = lhe_parser.project_massless_partons(
                     p, pdg_for_call, self.model, n_initial=len(orig_order[0]))
-                p_inv = rwgt_interface.ReweightInterface.invert_momenta(p)
                 if event[0].color1 == 599 and event.aqcd==0:
-                    new_value = self.all_f2py[pdir](pdg_for_call, p_inv, 0.113, 0)
+                    new_value = self.all_f2py[pdir](pdg_for_call, p, 0.113, 0)
                 else:
-                    new_value = self.all_f2py[pdir](pdg_for_call, p_inv, event.aqcd, event.scale, -1)
+                    new_value = self.all_f2py[pdir](pdg_for_call, p, event.aqcd, event.scale)
                 #if the process is Loop-Induced, smatrixhel returns the tuple (value, returncode), we need to keep only the value
                 if isinstance(new_value, tuple):
                     new_value = new_value[0]
@@ -12805,15 +12825,29 @@ class MadSpinInterface(extended_cmd.Cmd):
             # pdg is passed per call (not captured here) so that callers can
             # substitute concrete event PDGs when the ME legs use merged IDs.
             if self.options['spinmode'] in ['onshell_v1', 'madspin_v1']:
-                self.all_f2py[pdir] = lambda pdg_list, *args : mymod.smatrixhel(pdg_list, 0, *args)
+                module = mymod
+            elif self.all_me[tag]['type'] == 'production':
+                module = mymod[0]
+            elif self.all_me[tag]['type'] == 'decay':
+                module = mymod[1]
             else:
-                if self.all_me[tag]['type'] == 'production':
-                    self.all_f2py[pdir] = lambda pdg_list, *args : mymod[0].smatrixhel(pdg_list, 0, *args)
-                elif self.all_me[tag]['type'] == 'decay':
-                    self.all_f2py[pdir] = lambda pdg_list, *args : mymod[1].smatrixhel(pdg_list, 0, *args)
-                else:
-                    raise ValueError("The key 'type' of self.all_me can only take as values 'production' or 'decay'.")
+                raise ValueError("The key 'type' of self.all_me can only take as values 'production' or 'decay'.")
+            self.all_f2py[pdir] = self._matrix_element_call(module)
             return self.calculate_matrix_element(event)
+
+    @staticmethod
+    def _matrix_element_call(module):
+        """(pdgs, momenta, alpha_s, scale) -> the helicity-summed |M|^2 of
+        module, the momenta being (E, px, py, pz) per leg in the leg order of the
+        process."""
+        if isinstance(module, madmatrix_density.MadDensityLibrary):
+            return lambda pdg_list, p, alphas, scale: \
+                module.matrix_element(pdg_list, p, alphas)
+        # f2py: momenta as the Fortran P(0:3, NEXTERNAL), and the helicity sum is
+        # NHEL = -1
+        invert = rwgt_interface.ReweightInterface.invert_momenta
+        return lambda pdg_list, p, alphas, scale: \
+            module.smatrixhel(pdg_list, 0, invert(p), alphas, scale, -1)
         
         
     def generate_all_matrix_element(self):
