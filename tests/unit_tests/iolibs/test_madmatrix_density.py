@@ -20,9 +20,15 @@ import os
 import shutil
 import tempfile
 
+from unittest import skipIf
+
 import tests.unit_tests as unittest
 
 import madmatrix.density as density
+
+# importing madmatrix.density works without numpy (most CI runners have none);
+# loading and evaluating a library does not
+needs_numpy = skipIf(density.np is None, 'madmatrix.density needs numpy')
 
 
 class _Sub(object):
@@ -43,6 +49,7 @@ def _library(table):
     return lib
 
 
+@needs_numpy
 class TestMadMatrixDensityDispatch(unittest.TestCase):
 
     def setUp(self):
@@ -79,6 +86,7 @@ class TestMadMatrixDensityDispatch(unittest.TestCase):
         self.assertRaises(density.MadDensityError, self.lib.dispatch, [3, 3, 23, 3, 3])
 
 
+@needs_numpy
 class TestMadMatrixDensityFiles(unittest.TestCase):
 
     def setUp(self):

@@ -5607,6 +5607,15 @@ class decay_all_events_onshell(decay_all_events):
             # a loop-induced production (get_LO_definition_from_NLO leaves its
             # [sqrvirt=...]/[virt=...] in place): MadLoop, only in the Fortran
             return 'fortran'
+        mgcmd = getattr(self, 'mgcmd', None)
+        if mgcmd is not None and mgcmd.options.get('complex_mass_scheme'):
+            # the complex-mass scheme (set from the banner's proc card): the
+            # parameters madmatrix writes for it do not compile, and its
+            # output only fails at the build, which output_density_me cannot
+            # catch
+            logger.info('MadSpin: complex-mass scheme, the density matrices '
+                        'come from the Fortran matrix elements')
+            return 'fortran'
         return 'madmatrix'
 
     def output_density_me(self, path, backend):

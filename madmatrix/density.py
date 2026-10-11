@@ -29,7 +29,12 @@ import itertools
 import json
 import os
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    # MadSpin imports this module whatever its spinmode, and the test runner
+    # imports every test module: only evaluating a density needs numpy
+    np = None
 
 PROCESSES_FILE = 'madmatrix_processes.json'
 
@@ -173,6 +178,8 @@ class MadDensityLibrary(object):
     def __init__(self, output_dir, backend='scalar', libtag=None):
         """libtag: the LIBTAG the libraries were built with, None to read it
         off the library names."""
+        if np is None:
+            raise MadDensityError('madmatrix.density needs numpy')
         self.output_dir = output_dir
         self.backend = backend
         table = os.path.join(output_dir, 'SubProcesses', PROCESSES_FILE)

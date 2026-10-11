@@ -7177,6 +7177,29 @@ class TestDecayLoopShortcuts(unittest.TestCase):
         self.assertIsNone(stub._decay_lab_boost(parent, None))
 
 
+class TestDensityBackendChoice(unittest.TestCase):
+    """decay_all_events_onshell.density_backend: madmatrix, unless the Fortran
+    is asked for, the production is loop induced (MadLoop) or the sample uses
+    the complex-mass scheme, whose madmatrix parameters do not compile."""
+
+    @staticmethod
+    def _choose(commandline, backend='madmatrix', cms=False, with_cmd=True):
+        stub = type('Stub', (), {})()
+        stub.options = {'density_backend': backend}
+        stub.mgcmd = type('Cmd', (), {'options': {'complex_mass_scheme': cms}})() \
+                     if with_cmd else None
+        return madspin.decay_all_events_onshell.density_backend(stub, commandline)
+
+    def test_choice(self):
+        self.assertEqual(self._choose('generate p p > t t~'), 'madmatrix')
+        self.assertEqual(self._choose('generate p p > t t~', backend='fortran'),
+                         'fortran')
+        self.assertEqual(self._choose('generate g g > z z [sqrvirt=QCD]'), 'fortran')
+        self.assertEqual(self._choose('generate p p > t t~', cms=True), 'fortran')
+        self.assertEqual(self._choose('generate p p > t t~', with_cmd=False),
+                         'madmatrix')
+
+
 class TestMassShuffleKernel(unittest.TestCase):
     """Event.mass_shuffle_jacobian / mass_shuffle_frame: the RAMBO reshuffling
     jacobian evaluated from n numbers per particle, with no Event, no
