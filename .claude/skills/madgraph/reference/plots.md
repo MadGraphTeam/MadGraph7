@@ -81,10 +81,13 @@ difference of two observables (such as Δ|y| = |y_t| − |y_t̄|) cannot be
 booked: use section 4.
 
 **Reading the output.**
-- The plots and `MADatLO.HwU` show **dσ/dx** (the cross section per bin
-  divided by the bin width). Under- and overflow are dropped, so the
-  integral is σ inside the plotted range. The log or linear axis is chosen
-  automatically.
+- The **plots** show **dσ/dx** (the cross section per bin divided by the
+  bin width). Under- and overflow are dropped, so the integral is σ inside
+  the plotted range. The log or linear axis is chosen automatically.
+- **`MADatLO.HwU` holds σ per bin**, like every HwU file (aMC@NLO's too):
+  its values sum to σ inside the range. MadGraph7 versions before PR #259
+  wrote dσ/dx there. To check a file, compare `sum(central value)` with the
+  run's σ.
 - The histograms come from the unweighted events, so the statistical error
   per bin scales with the number of events in it. 20k events gave about 1%
   near the m_tt peak and 20-30% in the 1.4 TeV tail. Ask for enough events
@@ -117,8 +120,8 @@ perl -pi -e 's/^FO_ANALYSE = .*/FO_ANALYSE = analysis_HwU_pp_ttx.o/' PROC/Cards/
   `analysis_fill`, and set `FO_ANALYSE = <new name>.o`.
 - The shipped analyses book each histogram twice, without and with their
   own cuts (titles ending in `cuts`).
-- **`MADatNLO.HwU` holds σ per bin, NOT dσ/dx**, unlike the mg7 files. Its
-  values sum to σ inside the range. Divide by the bin width for a dσ/dx
+- **`MADatNLO.HwU` holds σ per bin, NOT dσ/dx** (as every HwU file does).
+  Its values sum to σ inside the range. Divide by the bin width for a dσ/dx
   plot.
 - **Precision**: a bin needs far more than the total. At `req_acc_FO 0.002`
   one t t̄ run gave 0.1% on σ but 10-20% per 35 GeV bin above 900 GeV, with
@@ -135,14 +138,15 @@ perl -pi -e 's/^FO_ANALYSE = .*/FO_ANALYSE = analysis_HwU_pp_ttx.o/' PROC/Cards/
 ```bash
 python3 <MG7>/madgraph/various/histograms.py \
     PROC/Events/run_05_LO/MADatNLO.HwU PROC/Events/run_04/MADatNLO.HwU \
-    --out=plots/mtt --matplotlib --no_open --keep_all_weights \
+    --out=plots/mtt --matplotlib --no_open \
     --assign_types=LO,NLO --titles="tt inv m" --rebin=4
 cd plots && python3 mtt.py          # writes plots/mtt.pdf
 ```
 
-- **`--keep_all_weights` is required for aMC@NLO files**: without it, their
-  scale columns (`dyn=-1 muR= ... muF= ...`) are silently dropped, and the
-  plot has no bands.
+- The scale bands are kept and drawn. MadGraph7 versions before PR #259
+  silently dropped aMC@NLO's scale columns (`dyn=-1 muR= ... muF= ...`).
+  There, add `--keep_all_weights`, and check that the output header still
+  lists them.
 - `--out` takes a path **without extension**; with one it fails.
 - **The ratio panel is relative to the first file.** Put the reference
   first: LO then NLO gives a "K-factor" panel.
@@ -151,9 +155,9 @@ cd plots && python3 mtt.py          # writes plots/mtt.pdf
   page).
 - Histograms are matched **by title and binning**: compare files of the
   same analysis (the `lo` and `nlo` runs of one directory, or two mg7 runs
-  with the same `[histograms]`). Never pair an mg7 HwU with an aMC@NLO HwU:
-  their titles differ, **and** so do their normalisations (dσ/dx versus σ
-  per bin).
+  with the same `[histograms]`). An mg7 HwU and an aMC@NLO HwU have the
+  same normalisation, but their titles and binnings differ (`t_1-t_2-pair_mass`
+  against `tt inv m`), so they do not pair. Read both yourself (below).
 - The result is a quick look, not a figure to hand over. The x label is
   "bin", there is an extra "rel. unc." panel, and empty bins below a
   threshold draw a ratio of 0. For a deliverable, read the HwU files and
@@ -187,9 +191,9 @@ scale = np.array([h[k] for k in h if "muR" in k])    # 9 columns (central includ
 band_lo, band_hi = scale.min(0) / width, scale.max(0) / width
 ```
 
-- The scale columns contain `muR`. aMC@NLO writes 9 of them (central
-  included); mg7 writes 8 plus the central value.
-- For mg7 files, do not divide by the width: they are already dσ/dx.
+- The scale columns contain `muR`: 9 of them, central included, in both
+  aMC@NLO and (since PR #259) mg7 files.
+- Both are σ per bin: divide by the width for dσ/dx.
 - **Seeds**: weight each run's bins by 1/dy²
   (`mean = Σ v/dy² / Σ 1/dy²`, `error = (Σ 1/dy²)^-1/2`), or simply weight
   whole runs by 1/(total MC error)². Average the scale columns the same way.

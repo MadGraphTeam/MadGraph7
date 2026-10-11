@@ -57,11 +57,11 @@ then extrapolate.
 - **Parameters**: read from the param card when the library is loaded or
   initialised. To change a mass, coupling or width, edit the card (or point
   to another one) and reload.
-- **α_s** is an input of every call (Fortran argument, madspace array),
-  except in the C++ `check_sa.exe perf` mode, which **ignores the card and
-  uses α_s = 0.118**. For another α_s there, use the other routes or rescale
-  by (α_s/0.118)^qcd_power (`qcd_power` is in `subprocesses.json`; this only
-  works when every diagram has the same QCD order).
+- **α_s** is an input of every call (Fortran argument, madspace array).
+  The C++ `check_sa.exe` takes it from `aS` in the param card. Before PR
+  #258, its `perf` mode ignored the card and used 0.118: on an older
+  installation, check by doubling `aS` (a pure-QCD |M|² must scale by
+  2^qcd_power).
 - **Precision**: the C++ backends (mg7 and `output standalone`) build in
   **mixed precision by default**, which gives about 1e-7 relative error (e+
   e- > mu+ mu-: 1.1242219363e-02 against the exact 1.1242220471e-02). For
@@ -141,10 +141,11 @@ me = am.smatrixhel([21, 21, 6, -6], -1, P.T.copy(), 0.118, 0.0, -1)
 - `procid = -1` matches any process; `scale2 = 0` means α_s is used as
   given.
 - Without `--prefix=int`, every `P*` directory has its own module, all named
-  `matrix2py`. Only one can be imported per Python process, a plain `make`
-  in `SubProcesses` builds only the first one (use `make all`), and those
+  `matrix2py`. Only one can be imported per Python process, and those
   modules take a 1-based flavour index with **`nhel = 0` as the helicity
-  sum**. Prefer `--prefix=int` and `all_matrix2py`.
+  sum**. Prefer `--prefix=int` and `all_matrix2py`. (Before PR #258, a plain
+  `make` in `SubProcesses` built only the first module; `make all` builds
+  them all.)
 - There is no batching: loop in Python (about 5 µs per point for 2 → 2).
 
 ## Route 2: madspace, batched (mg7 output)
@@ -238,7 +239,8 @@ cd TT_CPP/SubProcesses/P1_gg_ttx && make FPTYPE=d -j8
 - `./check_sa.exe` with no argument evaluates one random point at 1000 GeV
   for every flavour, which is a quick sanity check. That mode does use the
   card's α_s.
-- **α_s = 0.118 in perf mode, whatever the card says** (see Conventions).
+- α_s comes from `aS` in `Cards/param_card.dat` (see Conventions for older
+  versions).
 
 ## Checking a result
 
