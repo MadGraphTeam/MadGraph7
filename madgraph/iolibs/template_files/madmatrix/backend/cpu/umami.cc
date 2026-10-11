@@ -315,8 +315,16 @@ extern "C"
     }
 
     constexpr std::size_t vector_size = MemoryAccessMomentaBase::neppM;
-    // need to round to round to double page size for some reason
+    // The kernels run on one SIMD page of events at a time (neppM == neppV events,
+    // a single event for the scalar backend), and on two pages at a time in mixed
+    // precision (double amplitudes, float colour algebra): the batch is rounded up
+    // to that, and no further. Every extra event is computed for nothing: a call
+    // with one event used to evaluate two of them on the scalar backend.
+#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
     constexpr std::size_t page_size2 = 2 * vector_size;
+#else
+    constexpr std::size_t page_size2 = vector_size;
+#endif
     std::vector<std::size_t> permutation;
     std::size_t rounded_count;
 
@@ -339,9 +347,6 @@ extern "C"
         if ( vcount == 0 )
         {
           vindex = voffset * page_size2;
-          for ( std::size_t i = 0; i < page_size2; ++i) {
-            flavor_indices[voffset * page_size2 + i] = flav;
-          }
           voffset += 1;
         }
         permutation[i_event] = vindex + vcount;
@@ -364,29 +369,32 @@ extern "C"
     HostBufferBase<fptype_amp, false> denominators( rounded_count );
     HostBufferBase<int, false> helicity_index( rounded_count );
     HostBufferBase<int, false> color_index( rounded_count );
-    if ( sort_flavors ) {
-      for( std::size_t i_event = 0; i_event < count; ++i_event )
-      {
-        std::size_t i_sorted = permutation[i_event];
-        transpose_momenta( &momenta_in[offset], momenta.data(), i_event, i_sorted, stride );
-        helicity_random[i_sorted] = random_helicity_in ? random_helicity_in[i_event + offset] : 0.5;
-        color_random[i_sorted] = random_color_in ? random_color_in[i_event + offset] : 0.5;
-        diagram_random[i_sorted] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
-        g_s[i_sorted] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
-      }
-    } else {
-      for( std::size_t i_event = 0; i_event < count; ++i_event )
-      {
-        transpose_momenta( &momenta_in[offset], momenta.data(), i_event, i_event, stride );
-        helicity_random[i_event] = random_helicity_in ? random_helicity_in[i_event + offset] : 0.5;
-        color_random[i_event] = random_color_in ? random_color_in[i_event + offset] : 0.5;
-        diagram_random[i_event] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
-        g_s[i_event] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
-        flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_event + offset] : 0;
-      }
-      for ( std::size_t i_event = count; i_event < rounded_count; ++i_event ) {
-        flavor_indices[i_event] = 0;
-      }
+    // The input event of each lane. The padding lanes, which complete the last page
+    // of a flavor, are copies of the first event of their page, as on GPUs. Left at
+    // zero (momenta and g_s), they evaluated to nan, and the good-helicity filter of
+    // the first call (a helicity is kept if its |M|^2 is not 0 for one of its first
+    // events) took that for a non-zero value whenever a padding lane was among
+    // them, as in a first call with a single event: every helicity was then kept
+    // for the rest of the run, the vanishing ones of a q q~ initial state included.
+    std::vector<std::size_t> source( rounded_count, count );
+    for( std::size_t i_event = 0; i_event < count; ++i_event )
+    {
+      source[sort_flavors ? permutation[i_event] : i_event] = i_event;
+    }
+    for( std::size_t lane = 0; lane < rounded_count; ++lane )
+    {
+      // a page is opened by an event, so its first lane is never padding
+      if( source[lane] == count ) source[lane] = source[lane - lane % page_size2];
+    }
+    for( std::size_t lane = 0; lane < rounded_count; ++lane )
+    {
+      const std::size_t i_event = source[lane];
+      transpose_momenta( &momenta_in[offset], momenta.data(), i_event, lane, stride );
+      helicity_random[lane] = random_helicity_in ? random_helicity_in[i_event + offset] : 0.5;
+      color_random[lane] = random_color_in ? random_color_in[i_event + offset] : 0.5;
+      diagram_random[lane] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
+      g_s[lane] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
+      flavor_indices[lane] = flavor_indices_in ? flavor_indices_in[i_event + offset] : 0;
     }
     computeDependentCouplings( g_s.data(), couplings.data(), rounded_count );
 
@@ -501,5 +509,13 @@ extern "C"
     InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
     delete instance;
     return UMAMI_SUCCESS;
+  }
+
+  // A madmatrix extension, not part of UMAMI: the number of helicity combinations
+  // kept by the good-helicity filter, which runs at the first umami_matrix_element
+  // call (0 before it). Like the filter, it is shared by every instance.
+  int madmatrix_good_helicity_count()
+  {
+    return sigmaKin_getNGoodHel();
   }
 }
