@@ -19,7 +19,7 @@ namespace madspace {
  *
  * Alternates sampling batches from the channels' @ref Integrand /
  * @ref ChannelWeightNetwork (online) or a replay buffer of past samples
- * (buffered) with @ref AdamOptimizer steps on the KL-divergence loss,
+ * (buffered) with @ref AdamOptimizer steps on the stratified variance loss,
  * periodically drops underperforming channels, and tracks progress in a
  * status history for reporting. @ref MultiMadnisTraining coordinates one
  * `MadnisTraining` per subprocess.
