@@ -9034,6 +9034,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     if key in self.options_madgraph:
                         self.history.append('set %s %s' % (key, self.options[key]))
 
+        # Check for the minimal required gcc version
+        warnings = misc.check_gcc_version('13')
+        if warnings:
+            logger.warning(warnings)
+
         # Configure the way to open a file:
         launch_ext.open_file.configure(self.options)
         # Configure the way to compress a file:
