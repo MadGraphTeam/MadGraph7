@@ -573,8 +573,9 @@ extern "C"
   }
 
   // A madmatrix extension, not part of UMAMI: the number of helicity combinations
-  // kept by the good-helicity filter, which runs at the first umami_matrix_element
-  // call (0 before it). Like the filter, it is shared by every instance.
+  // kept by the good-helicity filter, which runs at the first umami_initialize (at
+  // the first umami_matrix_element call where RAMBO has no phase space; 0 before
+  // it). Like the filter, it is shared by every instance.
   int madmatrix_good_helicity_count()
   {
     return sigmaKin_getNGoodHel();

@@ -1573,6 +1573,27 @@ class TestCmdShell2(unittest.TestCase,
         The helicities are chosen once per loaded library, so each first call
         runs in its own process.
         """
+        self._check_umami_first_call([('scalar', 'd', 1e-12),
+                                      ('simd_128', 'd', 1e-12),
+                                      ('simd_128', 'm', 1e-6)])
+
+    def test_standalone_umami_first_call_gpu(self):
+        """test_standalone_umami_first_call on GPUs (BACKEND=cuda, hip).
+
+        There, umami_matrix_element takes device buffers, and umami_initialize
+        copies its RAMBO points over to choose the good helicities. Skipped
+        without nvcc and hipcc on the PATH, or without a device.
+        """
+        builds = [(backend, fptype, rtol)
+                  for backend, compiler in (('cuda', 'nvcc'), ('hip', 'hipcc'))
+                  if misc.which(compiler)
+                  for fptype, rtol in (('d', 1e-12), ('m', 1e-6))]
+        if not builds:
+            raise unittest.SkipTest('neither nvcc nor hipcc on the PATH')
+        self._check_umami_first_call(builds)
+
+    def _check_umami_first_call(self, builds):
+        """test_standalone_umami_first_call for these (backend, fptype, rtol)"""
         import glob
         import json
         import textwrap
@@ -1587,8 +1608,42 @@ class TestCmdShell2(unittest.TestCase,
         helper = pjoin(self.out_dir, 'umami_first_call.py')
         with open(helper, 'w') as fsock:
             fsock.write(textwrap.dedent('''\
-                import ctypes, json, math, sys
+                import ctypes, ctypes.util, json, math, subprocess, sys
                 lib = ctypes.CDLL(sys.argv[1])
+                gpu = sys.argv[4] if sys.argv[4] in ('cuda', 'hip') else None
+                if gpu:
+                    # umami takes device buffers: the CUDA/HIP runtime of the library, or
+                    # (cudart is linked statically by default) one sharing its device context
+                    name = 'cudart' if gpu == 'cuda' else 'amdhip64'
+                    ldd = subprocess.run(['ldd', sys.argv[1]], capture_output=True, text=True).stdout
+                    paths = [line.split('=>')[1].split()[0] for line in ldd.splitlines()
+                             if 'lib%s' % name in line and '=>' in line]
+                    runtime = ctypes.CDLL(paths[0] if paths else
+                                          ctypes.util.find_library(name) or 'lib%s.so' % name)
+                    ndevice = ctypes.c_int(0)
+                    if runtime[gpu + 'GetDeviceCount'](ctypes.byref(ndevice)) != 0 or not ndevice.value:
+                        print(json.dumps({'skip': 'no %s device' % gpu}))
+                        sys.exit(0)
+
+                def buffer(host):  # what umami reads or writes: host, or a device copy
+                    if not gpu:
+                        return ctypes.addressof(host)
+                    pointer = ctypes.c_void_p()
+                    size = ctypes.c_size_t(ctypes.sizeof(host))
+                    assert runtime[gpu + 'Malloc'](ctypes.byref(pointer), size) == 0
+                    # cudaMemcpyHostToDevice == hipMemcpyHostToDevice == 1
+                    assert runtime[gpu + 'Memcpy'](pointer, ctypes.c_void_p(ctypes.addressof(host)), size, 1) == 0
+                    return pointer.value
+
+                def release(pointers, output, host):  # output back into host, the device copies freed
+                    if gpu:
+                        assert runtime[gpu + 'DeviceSynchronize']() == 0
+                        # cudaMemcpyDeviceToHost == hipMemcpyDeviceToHost == 2
+                        assert runtime[gpu + 'Memcpy'](ctypes.c_void_p(ctypes.addressof(host)), ctypes.c_void_p(output),
+                                                       ctypes.c_size_t(ctypes.sizeof(host)), 2) == 0
+                        for pointer in pointers:
+                            assert runtime[gpu + 'Free'](ctypes.c_void_p(pointer)) == 0
+
                 handle = ctypes.c_void_p()
                 assert lib.umami_initialize(ctypes.byref(handle), sys.argv[2].encode()) == 0
                 npar = 4
@@ -1609,15 +1664,17 @@ class TestCmdShell2(unittest.TestCase,
                                 mom[n * (npar * mu + ipart) + i] = p[mu]
                     flav = (ctypes.c_uint * n)(*flavors)
                     me = (ctypes.c_double * n)()
+                    pointers = [buffer(mom), buffer(flav), buffer(me)]
                     # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_IN_FLAVOR_INDEX = 2,
                     # UMAMI_OUT_MATRIX_ELEMENT = 0
                     status = lib.umami_matrix_element(
                         handle, ctypes.c_size_t(n), ctypes.c_size_t(n), ctypes.c_size_t(0),
                         ctypes.c_size_t(2), (ctypes.c_int * 2)(0, 2),
-                        (ctypes.c_void_p * 2)(ctypes.addressof(mom), ctypes.addressof(flav)),
+                        (ctypes.c_void_p * 2)(pointers[0], pointers[1]),
                         ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
-                        (ctypes.c_void_p * 1)(ctypes.addressof(me)))
+                        (ctypes.c_void_p * 1)(pointers[2]))
                     assert status == 0, status
+                    release(pointers, pointers[2], me)
                     return list(me)
 
                 first = {'single': [0], 'batch': list(range(16)), 'forward': ['forward']}[sys.argv[3]]
@@ -1630,9 +1687,7 @@ class TestCmdShell2(unittest.TestCase,
                 '''))
 
         devnull = open(os.devnull, 'w')
-        for backend, fptype, rtol in [('scalar', 'd', 1e-12),
-                                      ('simd_128', 'd', 1e-12),
-                                      ('simd_128', 'm', 1e-6)]:
+        for backend, fptype, rtol in builds:
             build = 'BACKEND=%s FPTYPE=%s' % (backend, fptype)
             subprocess.call(['make', 'cleanall'], stdout=devnull,
                             stderr=devnull, cwd=proc_dir)
@@ -1645,8 +1700,10 @@ class TestCmdShell2(unittest.TestCase,
             runs = {}
             for first in ('single', 'batch', 'forward'):
                 out = subprocess.check_output(
-                    [sys.executable, helper, lib, card, first])
+                    [sys.executable, helper, lib, card, first, backend])
                 runs[first] = json.loads(out.decode().strip().splitlines()[-1])
+                if 'skip' in runs[first]:
+                    raise unittest.SkipTest(runs[first]['skip'])
             reference = runs['single']
             self.assertGreater(reference['good'], 0, build)
             self.assertLess(reference['good'], 16,
