@@ -973,17 +973,12 @@ loss. Change the network shapes last.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">batch_size_offset</span></code> (<code class="docutils literal notranslate"><span class="pre">512</span></code>)</dt><dd><p>Number of events added to the training batch size of every channel.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">loss</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;stratified_variance&quot;</span></code>)</dt><dd><p>Training loss: <code class="docutils literal notranslate"><span class="pre">stratified_variance</span></code>, <code class="docutils literal notranslate"><span class="pre">kl_divergence</span></code> or <code class="docutils literal notranslate"><span class="pre">rkl_divergence</span></code>.</p>
-</dd>
 <dt><code class="docutils literal notranslate"><span class="pre">log_interval</span></code> (<code class="docutils literal notranslate"><span class="pre">100</span></code>)</dt><dd><p>Batches between two entries in the training log.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">uniform_channel_ratio</span></code> (<code class="docutils literal notranslate"><span class="pre">0.5</span></code>)</dt><dd><p>Fraction of the training batch spread uniformly over the channels. The rest is
 distributed according to the channel integrals.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">integration_history_length</span></code> (<code class="docutils literal notranslate"><span class="pre">100</span></code>)</dt><dd><p>Number of batches for which the mean and variance of each channel are kept.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">batch_size_threshold</span></code> (<code class="docutils literal notranslate"><span class="pre">0.5</span></code>)</dt><dd><p>New samples are drawn until a training batch holds at least this fraction of its nominal
-size.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">drop_zero_integrands</span></code> (<code class="docutils literal notranslate"><span class="pre">true</span></code>)</dt><dd><p>Ignore points with a vanishing integrand in the training.</p>
 </dd>
@@ -994,8 +989,6 @@ starts training afterwards.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">compressed_channel_weight_count</span></code> (<code class="docutils literal notranslate"><span class="pre">50</span></code>)</dt><dd><p>Number of channel weights kept per event in the multichannel weight loss.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">max_stored_channel_weights</span></code> (<code class="docutils literal notranslate"><span class="pre">100</span></code>)</dt><dd><p>Number of prior channel weights stored for each buffered sample.</p>
-</dd>
 </dl>
 </section>
 <section id="optimizer">
@@ -1005,9 +998,6 @@ starts training afterwards.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">lr_scheduler</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;cosine&quot;</span></code>)</dt><dd><p><code class="docutils literal notranslate"><span class="pre">cosine</span></code> decays the learning rate to zero over the training. <code class="docutils literal notranslate"><span class="pre">none</span></code> keeps it
 constant.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">lr_decay</span></code> (<code class="docutils literal notranslate"><span class="pre">0.01</span></code>), <code class="docutils literal notranslate"><span class="pre">lr_max</span></code> (<code class="docutils literal notranslate"><span class="pre">3e-3</span></code>)</dt><dd><p>Parameters of the exponential and one-cycle schedules. They have no effect with the
-schedulers currently available.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">adam_beta1</span></code> (<code class="docutils literal notranslate"><span class="pre">0.9</span></code>), <code class="docutils literal notranslate"><span class="pre">adam_beta2</span></code> (<code class="docutils literal notranslate"><span class="pre">0.999</span></code>), <code class="docutils literal notranslate"><span class="pre">adam_eps</span></code> (<code class="docutils literal notranslate"><span class="pre">1e-8</span></code>), <code class="docutils literal notranslate"><span class="pre">adam_weight_decay</span></code> (<code class="docutils literal notranslate"><span class="pre">1e-4</span></code>)</dt><dd><p>Adam parameters.</p>
 </dd>
