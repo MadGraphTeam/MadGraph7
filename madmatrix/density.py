@@ -112,6 +112,11 @@ class _Subprocess(object):
         # than ctypes pointer objects
         lib.madmatrix_density.argtypes = [size_t, ptr, ptr, ptr, cint, ptr, cint, ptr, ptr]
         lib.madmatrix_density.restype = cint
+        # absent from the libraries built before it was introduced
+        self.c_density_boosted = getattr(lib, 'madmatrix_density_boosted', None)
+        if self.c_density_boosted is not None:
+            self.c_density_boosted.argtypes = [size_t, ptr, ptr, ptr, ptr, cint, ptr, cint, ptr, ptr]
+            self.c_density_boosted.restype = cint
         lib.madmatrix_matrix_element.argtypes = [size_t, ptr, ptr, ptr, ptr]
         lib.madmatrix_matrix_element.restype = cint
         lib.madmatrix_set_beampol.argtypes = [ctypes.c_double, ctypes.c_double]
@@ -224,6 +229,12 @@ class MadDensityLibrary(object):
             for leg, pdg in zip(sub.legs, pdgs):
                 self._merged[abs(pdg)] = abs(leg)
         self._card_alphas = 0.118
+
+    @property
+    def supports_boost(self):
+        """Whether density() takes a boost: every library has
+        madmatrix_density_boosted (those built before it was added do not)."""
+        return all(sub.c_density_boosted is not None for sub in self.subprocesses)
 
     # ------------------------------------------------------------------
     # set-up, once per run
@@ -354,11 +365,15 @@ class MadDensityLibrary(object):
     # ------------------------------------------------------------------
     # evaluation
     # ------------------------------------------------------------------
-    def density(self, pdgs, momenta, pos, allow_hel, alphas):
+    def density(self, pdgs, momenta, pos, allow_hel, alphas, boost=None):
         """The density at one point: momenta[npar][4] (E, px, py, pz) in the
         leg order of the process, pos the 1-based open legs, allow_hel the
         n_comb*len(pos) helicities they take (combination major). Returns the
-        n_comb*(n_comb+1)/2 entries rho(I,J), I <= J, I outer."""
+        n_comb*(n_comb+1)/2 entries rho(I,J), I <= J, I outer.
+
+        boost: the lab momentum (E, px, py, pz) of the frame the momenta are
+        given in -- a decay generated at rest and its parent -- to have them
+        boosted to the lab in the library rather than here."""
         hel = self._helicities(pos, allow_hel)
         sub, iflavor, perm = self.dispatch(pdgs, hel.frozen)
         if sub.handle is None:
@@ -367,13 +382,27 @@ class MadDensityLibrary(object):
         sub.alphas.value = self._alphas(alphas)
         sub.flavor.value = iflavor
         out = np.empty(hel.ninter, dtype=np.complex128)
-        status = sub.c_density(1, buf.buffer_info()[0], sub.alphas_address, sub.flavor_address,
-                               hel.n_changing, hel.pos_address, hel.n_comb,
-                               hel.allow_hel_address, _address(out))
+        if boost is None:
+            status = sub.c_density(1, buf.buffer_info()[0], sub.alphas_address,
+                                   sub.flavor_address, hel.n_changing, hel.pos_address,
+                                   hel.n_comb, hel.allow_hel_address, _address(out))
+        else:
+            boost = array.array('d', boost)
+            status = self._boosted(sub)(1, buf.buffer_info()[0], boost.buffer_info()[0],
+                                        sub.alphas_address, sub.flavor_address,
+                                        hel.n_changing, hel.pos_address, hel.n_comb,
+                                        hel.allow_hel_address, _address(out))
         if status != 0:
             raise MadDensityError('%s: madmatrix_density refused the request (status %s)'
                                   % (sub.path, status))
         return out
+
+    @staticmethod
+    def _boosted(sub):
+        if sub.c_density_boosted is None:
+            raise MadDensityError('%s predates madmatrix_density_boosted: regenerate the '
+                                  'output to pass the momenta with a boost' % sub.path)
+        return sub.c_density_boosted
 
     def density_batch(self, all_pdgs, momenta, pos, allow_hel, alphas):
         """density() for several points sharing the open legs and helicities.

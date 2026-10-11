@@ -48,6 +48,20 @@ extern "C"
                          const int* allow_hel,
                          double* inter );
 
+  // madmatrix_density for momenta given in the rest frame of a boost:
+  // boosts[count][4] is, per event, the lab momentum of the frame its momenta are
+  // in (a MadSpin decay is generated at rest, and boosted along its parent).
+  int madmatrix_density_boosted( size_t count,
+                                 const double* momenta,
+                                 const double* boosts,
+                                 const double* alpha_s,
+                                 const unsigned int* flavor,
+                                 int n_changing,
+                                 const int* pos,
+                                 int n_comb,
+                                 const int* allow_hel,
+                                 double* inter );
+
   // |M|^2 summed over helicities and colors, averaged as the Fortran SMATRIX:
   // divided by iden, times the identical-particle factor of the flavor and with
   // the beam polarisation. Returns 0, or non-zero for an invalid request.

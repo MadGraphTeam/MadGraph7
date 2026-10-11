@@ -3367,6 +3367,18 @@ class TestCmdShell2(unittest.TestCase,
         for mt, mw in ((173., 80.419), (176., 78.), (165., 84.)):
             for pdgs in ([6, 5, -11, 12], [6, 5, -13, 14]):
                 check('dec', pdgs, decay(mt, mw), [1], two)
+        # a decay at rest boosted by the library (MadSpin's decays) is the decay
+        # boosted beforehand
+        self.assertTrue(mm['dec'].supports_boost)
+        w, b = two_body(171., 79., 4.7)
+        l, v = (boost(q, w) for q in two_body(79., 0, 0))
+        at_rest = [(171., 0., 0., 0.), b, l, v]
+        top = (math.sqrt(171.**2 + 300.**2), 120., -80., math.sqrt(300.**2 - 120.**2 - 80.**2))
+        lab = [boost(q, top) for q in at_rest]
+        for pdgs in ([6, 5, -11, 12], [6, 5, -13, 14]):
+            ref = mm['dec'].density(pdgs, lab, [1], two, 0.118)
+            got = mm['dec'].density(pdgs, at_rest, [1], two, 0.118, boost=top)
+            self.assertLess(abs(ref - got).max(), 1e-12 * abs(ref).max())
         # a batch is the same as the points one by one
         points = [decay(rng.uniform(165., 180.), rng.uniform(75., 85.)) for _ in range(9)]
         pdgs = [[6, 5, -11, 12] if k % 2 else [6, 5, -13, 14] for k in range(9)]

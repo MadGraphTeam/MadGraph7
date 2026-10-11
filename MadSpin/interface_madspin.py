@@ -348,6 +348,8 @@ class MadSpinOptions(banner.ConfigFile):
         self.add_param('decay_event_mult', 1E0, comment='Produce more events than needed so that MadSpin does not have to regenerate decay events')
         self.add_param('nb_core', 0, comment='Number of cores for the MadSpin parallel unweighting (0 = use the global MG5 nb_core). nb_core>1 enables the process-parallel unweighting path.')
         self.add_param('density_keep_jacobian', True, comment='PA spinmode only: fold the offshell-reshuffling phase-space jacobian into the accept/reject weight (default) instead of applying the reshuffle as a post-acceptance kinematic dressing (False). Ignored by the madspin/full spinmodes, which always include that jacobian.')
+        self.add_param('offshell_min_recoil', 0.5,
+                       comment="madspin/full spinmodes only: the smallest fraction of its momentum the production may keep when it is reshuffled onto the sampled virtualities (RAMBO's chi, the factor every production three-momentum is scaled by in the partonic rest frame). Only applied when a massless particle recoils against the resonances: a virtuality drawn up to sqrt(shat) then pushes that particle soft, far below the cuts the production was generated with, and the weight grows like 1/chi -- its mean over the decay phase space diverges logarithmically, so no maximum weight can bound it. A draw below the floor gets weight zero. The floor never reaches the pole: chi >= 1/2 still allows m^2 up to (shat + M^2)/2. 0 disables it.")
         self.add_param('unweighting', 'auto',
                        allowed=['auto', 'joint', 'sequential',
                                 'sequential_global_retry',
@@ -1180,6 +1182,9 @@ class MadSpinInterface(extended_cmd.Cmd):
                     logger.critical("value of bwcutoff set to %s from the input file. This is much too large value for Madspin and the validity of the Narrow-width-Approximation. Please ensure that you overwrite that value via \"set BW_cut X\"  to a smaller value (like X=10)", self.options['BW_cut'])
             
             self.frame_and_beampol_from_run_card(self.options, run_card)
+            # only aMC@NLO puts massless partons on a Monte-Carlo mass shell
+            # (see _project_massless)
+            self._input_on_mc_mass_shell = isinstance(run_card, banner.RunCardNLO)
 
         else:
             if not self.options['Nevents_for_max_weight']:
@@ -5568,7 +5573,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                     sequential_stats[key] += value
                 nb_try += sum(v for k, v in seq_stats.items()
                               if k.startswith('nb_try_'))
-                full_evt = lhe_parser.Event(str(production))
+                full_evt = production.copy()
                 full_evt = full_evt.add_decays(decays)
                 if density_needs_reshuffle:
                     # the decays already carry their sampled virtualities; this
@@ -5648,7 +5653,11 @@ class MadSpinInterface(extended_cmd.Cmd):
                 # jacobian (mass_shuffle's chi telescopes, so the kinematics are
                 # unchanged, but the jacobian and MEdenom_prod are not).
                 offshell_density = density_method and not density_pole_approximation
-                prod_trial = lhe_parser.Event(str(production)) if offshell_density else production
+                prod_trial = production.copy() if offshell_density else production
+                if offshell_density:
+                    # what the trial does not change is worked out once, on
+                    # production (_hoisted_production)
+                    prod_trial._ms_hoist_source = production
 
                 if prod_density_cached is None or not density_pole_approximation:
                     full_evt, wgt, prod_density_cached = self.get_onshell_evt_and_wgt(
@@ -5665,7 +5674,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                     # trial, including rejected ones (must not mutate the shared
                     # production event). The offshell/madspin path does NOT enter
                     # here: its reshuffle jacobian is already inside wgt.
-                    full_evt = lhe_parser.Event(str(production))
+                    full_evt = production.copy()
                     full_evt = full_evt.add_decays(decays)
                     jac = full_evt.reshuffle_production()
 
@@ -5748,7 +5757,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                         # get_onshell already built it (fixed_order / density_debug),
                         # reuse that event rather than build the same one twice.
                         if full_evt is None:
-                            full_evt = lhe_parser.Event(str(prod_trial))
+                            full_evt = prod_trial.copy()
                             full_evt = full_evt.add_decays(decays)
                     elif (density_needs_reshuffle
                             and density_pole_approximation
@@ -5763,13 +5772,13 @@ class MadSpinInterface(extended_cmd.Cmd):
                         # accept/reject test. For 2 -> 1 production no mass was
                         # sampled and reshuffle_production short-circuits
                         # (NWA-style no-op).
-                        full_evt = lhe_parser.Event(str(production))
+                        full_evt = production.copy()
                         full_evt = full_evt.add_decays(decays)
                         jac = full_evt.reshuffle_production()
                     elif full_evt is None:
                         # No-reshuffle density mode still needs a concrete event to write out.
                         if density_method and density_pole_approximation:
-                            full_evt = lhe_parser.Event(str(production))
+                            full_evt = production.copy()
                         else:
                             full_evt = production
                         full_evt = full_evt.add_decays(decays)
@@ -7968,8 +7977,19 @@ class MadSpinInterface(extended_cmd.Cmd):
                 # per-draw onshell copy so repeated draws don't compound and so the
                 # reshuffle jacobian (now folded into wgt) is taken from the onshell
                 # reference each draw.
-                prod_draw = lhe_parser.Event(str(base_event)) if offshell_density else base_event
-                if density_matrix_prod is None:
+                prod_draw = base_event.copy() if offshell_density else base_event
+                if offshell_density:
+                    prod_draw._ms_hoist_source = base_event
+                # Offshell, every draw reshuffles the production to its own mass
+                # set, so its density has to be evaluated again -- as the decay
+                # loop does on every trial. Reusing the first draw's measured the
+                # bound on another weight than the one the accept/reject tests:
+                # t t~ leptonic, 3 overweight events of 10^4 up to a factor 3.05,
+                # against 1 at 1.06 once evaluated per draw; on u u~ > z g one
+                # first draw near sqrt(shat) put a whole production event at 172x
+                # the mean weight. Evaluated per draw, the bound is the true one,
+                # which a soft recoil leaves unbounded but for offshell_min_recoil.
+                if density_matrix_prod is None or offshell_density:
                     _, wgt, density_matrix_prod = self.get_onshell_evt_and_wgt(
                         prod_draw, decays, decay_dict, build_event=False)
                     # This first trial populated production._ms_density_static,
@@ -7990,7 +8010,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                     # PA with explicit jacobian tracking: reshuffle to expose the
                     # jacobian in the max weight. Offshell/madspin does NOT enter
                     # here -- its reshuffle jacobian is already inside wgt.
-                    full_evt = lhe_parser.Event(str(base_event))
+                    full_evt = base_event.copy()
                     full_evt = full_evt.add_decays(decays)
                     jac = full_evt.reshuffle_production()
                 maxwgt = max(abs(wgt*jac) if signed else wgt*jac, maxwgt)
@@ -9883,7 +9903,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         is left to reshuffle_production, which is why this is not a function of
         the top-level masses alone.
         """
-        probe = lhe_parser.Event(str(production))
+        probe = production.copy()
         finals = [p for p in probe if int(p.status) == 1]
         for slot, (new_mass, info) in slot_masses.items():
             particle = finals[slot_to_index[slot]]
@@ -9935,7 +9955,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         feeds the Lorentz map applied afterwards -- so this probe is what enters
         the accept/reject weight and the final ``reshuffle_production`` merely
         recomputes it."""
-        probe = lhe_parser.Event(str(decay))
+        probe = decay.copy()
         probe[0].new_mass = decay[0].new_mass
         probe[0].reshuffle_info = decay[0].reshuffle_info
         try:
@@ -9943,10 +9963,31 @@ class MadSpinInterface(extended_cmd.Cmd):
         except Exception:
             return 0
 
+    def _decay_lab_boost(self, parent, frame_boost):
+        """(E, px, py, pz) of parent when the decay density can be evaluated on
+        the decay still at rest, the library boosting it along parent: madmatrix
+        decays (built with madmatrix_density_boosted) and no frame_id boost.
+        None otherwise, and the decay event is boosted here. A rejected trial
+        then never boosts its decays in python; add_decays boosts the accepted
+        ones, which it does for a decay at rest."""
+        if frame_boost is not None:
+            return None
+        module = self.f2py_module[1]
+        if not isinstance(module, madmatrix_density.MadDensityLibrary) \
+                or not module.supports_boost:
+            return None
+        return (parent.E, parent.px, parent.py, parent.pz)
+
     def _slot_density(self, decay, parent, hel, frame_boost=None):
         """The decay density matrix of one slot, in the lab frame of its parent
         (and then in the ``frame_id`` frame, when there is one -- see
         ``get_density``)."""
+        lab_boost = self._decay_lab_boost(parent, frame_boost)
+        if lab_boost is not None:
+            # the decay stays at rest (add_decays boosts the accepted one)
+            return self.get_density(decay, position=[1], allow_hel=hel,
+                                    ncomb=len(hel), dimension=len(hel),
+                                    lab_boost=lab_boost)
         rest_leg = None
         if frame_boost is not None:
             rest_leg = self._decay_frame_rest_leg(parent, frame_boost)
@@ -10023,6 +10064,38 @@ class MadSpinInterface(extended_cmd.Cmd):
         gap = math.atan((pole**2-min_mass**2)/pole/width)
         gap += math.atan((max_mass**2-pole**2)/pole/width)
         return pole, width, min_mass, max_mass, gap/math.pi
+
+    def _offshell_min_recoil(self, production):
+        """The ``offshell_min_recoil`` floor to reshuffle ``production`` with,
+        or 0 when it does not apply.
+
+        It applies when a massless final-state particle of the production is
+        reshuffled without a virtuality of its own, i.e. recoils against the
+        resonances. That is the case where the offshell weight diverges: for
+        ``u u~ > z g`` at fixed shat and angle, |M_prod|^2 ~ 1/(shat - m^2)^2
+        while the reshuffling jacobian only goes like chi = (shat - m^2) /
+        (shat - M^2), so w ~ 1/chi and its mean over the Breit-Wigner diverges
+        for every event whose window reaches sqrt(shat). Measured on that
+        process (BW_cut = 15): 25% of the production events, and a
+        max-weight bound anywhere between 200 and 3600 times the mean weight
+        over 8 production samples. With the floor at 0.5, which removes 0.4% of
+        the draws, all 8 decay at 8.9 to 11.9 trials per event with at most 2
+        of 10000 events over the bound (largest factor 1.14), and the decayed
+        distributions in the region the floor keeps are unchanged. With only
+        massive particles (a t t~ threshold) the weight stays bounded, and the
+        floor is not applied.
+
+        Call it once the resonances carry their ``new_mass``.
+        """
+        floor = self.options['offshell_min_recoil']
+        if not floor or floor <= 0:
+            return 0.
+        for particle in production:
+            if int(particle.status) != 1 or hasattr(particle, 'new_mass'):
+                continue
+            if abs(particle.mass) < 1e-6:
+                return float(floor)
+        return 0.
 
     def _draw_mass_value(self, pdg, budget):
         """Sample one resonance virtuality from its Breit-Wigner, capped at the
@@ -10118,7 +10191,7 @@ class MadSpinInterface(extended_cmd.Cmd):
             return (density_prod, jac_prod, slot_mass,
                     prod_static['init_part'], frame_boost)
 
-        prod_off = lhe_parser.Event(str(production))
+        prod_off = production.copy()
         finals = [p for p in prod_off if int(p.status) == 1]
         for slot, (mass, info, _) in slot_mass.items():
             part = finals[slot_to_index[slot]]
@@ -10127,7 +10200,11 @@ class MadSpinInterface(extended_cmd.Cmd):
         # _allow_retry=False so the drawn masses stay put (a retry would resample
         # them and diverge from the masses we reshuffle each decay to); an
         # impossible set is reported as -1 and the caller restarts.
-        jac_reshuffle = prod_off.reshuffle_production(_allow_retry=False)
+        # a mass set below the recoil floor is refused like an infeasible one:
+        # the caller redraws the set, which is what a zero mass-set weight
+        # amounts to in a chain that redraws until it accepts
+        jac_reshuffle = prod_off.reshuffle_production(
+            _allow_retry=False, min_recoil=self._offshell_min_recoil(prod_off))
         if jac_reshuffle in (0, -1):
             return None
         # the frame is derived from the *reshuffled* production, since that is
@@ -10160,9 +10237,8 @@ class MadSpinInterface(extended_cmd.Cmd):
         value is a different projection from the one the numerator is built
         from, so the trace of the on-shell rho *in that frame* is taken instead.
 
-        Evaluated on a round-tripped copy, like ``_upfront_production``'s
-        ``prod_off``, so the two sides of the ratio see the same %.10e
-        truncation.
+        Evaluated on a copy, like ``_upfront_production``'s ``prod_off``, so
+        the two sides of the ratio see the same momenta.
 
         Any residual inaccuracy of the boosted density evaluation is already
         inside the numerator of every ``me_frame`` run; taking the denominator
@@ -10171,7 +10247,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         frame_boost = self._frame_boost(production)
         if frame_boost is None:
             return self.calculate_matrix_element(production)
-        prod_on = lhe_parser.Event(str(production))
+        prod_on = production.copy()
         rho_on = self.get_density(prod_on, prod_static['position'],
                                   prod_static['allowed_hel'],
                                   prod_static['ncomb'],
@@ -10480,18 +10556,17 @@ class MadSpinInterface(extended_cmd.Cmd):
         if keep_jac:
             frame = getattr(production, '_ms_shuffle_frame', None)
             if frame is None:
-                # from the *round-tripped* event, because that is what
-                # _production_jacobian_for reshuffles: str() truncates every
-                # momentum to %.10e, and the bound has to dominate the weight
-                # the accept/reject actually computes, not an idealised one.
-                probe = lhe_parser.Event(str(production))
+                # from a copy, because that is what _production_jacobian_for
+                # reshuffles: the bound has to dominate the weight the
+                # accept/reject actually computes, not an idealised one.
+                probe = production.copy()
                 finals = [p for p in probe if int(p.status) == 1]
                 frame = lhe_parser.Event.mass_shuffle_frame(
                     [lhe_parser.FourMomentum(p) for p in finals], probe.sqrts)
                 production._ms_shuffle_frame = frame
                 production._ms_shuffle_sqrts = probe.sqrts
                 # the undrawn slots keep their nominal mass, and it is the
-                # round-tripped one reshuffle_production reads
+                # copied one reshuffle_production reads
                 production._ms_shuffle_masses = [p.mass for p in finals]
             masses = list(production._ms_shuffle_masses)
             for slot, mass in corner.items():
@@ -10649,7 +10724,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         deterministic: any scheme whose per-chain weight product is not the
         joint weight is wrong, whatever a lineshape comparison happens to show.
         """
-        prod_copy = lhe_parser.Event(str(production))
+        prod_copy = production.copy()
         decays_copy = collections.defaultdict(list)
         jac_bw = 1.0
         # ``slot`` below is a free-running index over the grouped walk of
@@ -10674,7 +10749,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         slot = 0
         for pdg, decay_list in decays.items():
             for decay in decay_list:
-                copy = lhe_parser.Event(str(decay))
+                copy = decay.copy()
                 if not offshell and parents is not None:
                     assert parents[slot].pid == pdg, \
                         ('sequential_debug: slot %d of the accepted chain is a '
@@ -10731,11 +10806,11 @@ class MadSpinInterface(extended_cmd.Cmd):
             rebuilt = collections.defaultdict(list)
             for pdg, decay_list in decays.items():
                 for decay in decay_list:
-                    copy = lhe_parser.Event(str(decay))
+                    copy = decay.copy()
                     copy[0].new_mass = decay[0].new_mass
                     copy[0].reshuffle_info = decay[0].reshuffle_info
                     rebuilt[pdg].append(copy)
-            full_evt = lhe_parser.Event(str(production)).add_decays(rebuilt)
+            full_evt = production.copy().add_decays(rebuilt)
             jac_full = full_evt.reshuffle_production(_allow_retry=False)
             if jac_full in (0, -1):
                 # the chain kept this mass set, so this should not happen; skip
@@ -11188,7 +11263,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                                 # reshuffle_production rebuild consistent kinematics.
                                 # Reshuffling/boosting it in place leaves it on the
                                 # offshell parent and add_decays then rejects it.
-                                dcopy = lhe_parser.Event(str(decay))
+                                dcopy = decay.copy()
                                 dcopy[0].new_mass = mass[0]
                                 dcopy[0].reshuffle_info = mass[1]
                                 # jac_dec_k: the decay reshuffling jacobian. Joint
@@ -11562,7 +11637,7 @@ class MadSpinInterface(extended_cmd.Cmd):
             # mismatch out before the two are combined -- see
             # _decay_chain_identical_factor.
             iden_ratio = self._decay_chain_identical_factor(production, decays)
-            full_event = lhe_parser.Event(str(production))
+            full_event = production.copy()
             full_event = full_event.add_decays(decays)
             #print(f"full_event = {full_event}")
             full_me = self.calculate_matrix_element(full_event) * iden_ratio
@@ -11611,7 +11686,7 @@ class MadSpinInterface(extended_cmd.Cmd):
             if build_event or self.options['density_debug']:
                 # Create full event from production and decays
                 if density_pole_approximation:
-                    full_event = lhe_parser.Event(str(production))
+                    full_event = production.copy()
                 else:
                     full_event = production          
                 # add_decays is non-destructive: ``decays`` survives this, which
@@ -11855,9 +11930,15 @@ class MadSpinInterface(extended_cmd.Cmd):
         prod_static = getattr(production, '_ms_density_static', None)
         density_pole_approximation = self._density_pole_approximation()
         density_do_reshuffle = self._density_do_reshuffle()
+        hoisted_norm = None
         if not density_pole_approximation or \
             (not prod_static or prod_static.get('decays_key') != decays_key):
-            prod_static = self._density_basis(production, decays_key)
+            hoist_source = getattr(production, '_ms_hoist_source', None)
+            if hoist_source is not None:
+                prod_static, hoisted_norm = self._hoisted_production(
+                                        hoist_source, production, decays_key)
+            else:
+                prod_static = self._density_basis(production, decays_key)
             production._ms_density_static = prod_static
 
             use_new_mass = (
@@ -11905,8 +11986,8 @@ class MadSpinInterface(extended_cmd.Cmd):
                 # the frame axis on. That is safe: the denominator is a constant
                 # per production event, identical across its joint trials, so it
                 # cancels out of the accept/reject.
-                MEdenom_prod = self._onshell_production_norm(production,
-                                                             prod_static)
+                MEdenom_prod = hoisted_norm if hoisted_norm is not None else \
+                    self._onshell_production_norm(production, prod_static)
                 MEdenom_decay = 1.0
                 for key in decays:
                     for dec in decays[key]:
@@ -11914,7 +11995,22 @@ class MadSpinInterface(extended_cmd.Cmd):
                 # now doing the reshuffling
                 # doing the reshuffling for each part:
                 jac = 1.0
-                jac *= production.reshuffle_production()
+                jac *= production.reshuffle_production(
+                    min_recoil=self._offshell_min_recoil(production))
+                if jac == 0:
+                    # below offshell_min_recoil (reshuffle_production retries
+                    # every other failure): a zero weight, i.e. an ordinary
+                    # rejection for the accept/reject and a zero-weight event
+                    # for decay_output = weighted. Nothing was reshuffled, so
+                    # the decays are left as they came.
+                    if getattr(self, '_pi_probe_c', False):
+                        self._pi_unrestricted_me = 0.0
+                    if self._polarization_weights_enabled():
+                        combinations = self._polarization_combinations(
+                            prod_static) or []
+                        self._pol_weight_ratios = dict(
+                            (wid, 0.0) for wid, _ in combinations) or None
+                    return 0.0, None, MEdenom_prod, MEdenom_decay, 0.0
                 # reshuffle_production may have resampled a resonance's new_mass
                 # (its jac==-1 retry) so the set of masses fits sqrt(shat). Push the
                 # (possibly resampled) production masses back onto the matching decay
@@ -12015,6 +12111,17 @@ class MadSpinInterface(extended_cmd.Cmd):
                 if decay_densities is not None:
                     # Boosted and evaluated by the caller, in one batched call.
                     density_dec_tmp = decay_densities[decaying_idx + i_decay_event]
+                elif self._decay_lab_boost(init_part[decaying_idx + i_decay_event],
+                                           frame_boost) is not None:
+                    # evaluated at rest, boosted by the library; the event itself
+                    # is boosted by add_decays if this trial is accepted
+                    part = init_part[decaying_idx + i_decay_event]
+                    density_dec_tmp = self.get_density(
+                        current_decay_event, position=[1],
+                        allow_hel=helicities[decaying_idx + i_decay_event],
+                        ncomb=len(helicities[decaying_idx + i_decay_event]),
+                        dimension=len(helicities[decaying_idx + i_decay_event]),
+                        lab_boost=(part.E, part.px, part.py, part.pz))
                 else:
                     # boost to lab frame using corresponding production particle momentum
                     part = init_part[decaying_idx + i_decay_event]
@@ -12109,6 +12216,29 @@ class MadSpinInterface(extended_cmd.Cmd):
             dec_diag *= MEdenom_decay
         return me, density_prod, prod_diag, dec_diag, jac_reshuffle
 
+
+    def _hoisted_production(self, source, trial, decays_key):
+        """The production-event part of calculate_matrix_element_from_density
+        for ``trial``, a copy of ``source`` that the trial reshuffles: the
+        density basis and the on-shell |M_prod|^2 depend on the production
+        event and on which pdgs decay only, so they are worked out
+        once on ``source`` and handed to every copy -- the decaying particles
+        re-pointed to the copy's own, which are the ones the trial reshuffles.
+        """
+        cache = source.__dict__.get('_ms_hoisted')
+        if cache is None:
+            cache = source._ms_hoisted = {}
+        entry = cache.get(decays_key)
+        if entry is None:
+            static = self._density_basis(source, decays_key)
+            index = [next(i for i, q in enumerate(source) if q is part)
+                     for part in static['init_part']]
+            entry = cache[decays_key] = (static, index,
+                                         self._onshell_production_norm(source, static))
+        static, index, norm = entry
+        trial_static = dict(static)
+        trial_static['init_part'] = [trial[i] for i in index]
+        return trial_static, norm
 
     def get_density_matrix_indices(self, nhel_decay):
         #print("------")
@@ -12373,7 +12503,7 @@ class MadSpinInterface(extended_cmd.Cmd):
 
     def get_density(self, event, position, allow_hel, ncomb, dimension,
                     frame_boost=None, frame_rest_leg=-1, hel_restriction=None,
-                    hel_restriction_trace=None):
+                    hel_restriction_trace=None, lab_boost=None):
         """``frame_boost`` is the momentum whose rest frame ``frame_id`` picks
         (see ``_frame_boost``); the momenta are boosted there before the matrix
         element sees them, which is what defines the axis the initial-state
@@ -12455,9 +12585,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         # moves an ordinary reweight weight by ~1e-6 -- enough to break a
         # 6-significant-figure comparison, for no gain where there is no
         # frame to be consistent with.
-        p = lhe_parser.project_massless_partons(
-            p, pdgs, self.model, n_initial=len(orig_order[0]),
-            final_state=True)
+        p = self._project_massless(p, pdgs, len(orig_order[0]), final_state=True)
         if frame_boost is not None:
             p = self._boost_momenta(p, frame_boost, rest_leg=frame_rest_leg)
         n_changing = len(position)
@@ -12473,9 +12601,14 @@ class MadSpinInterface(extended_cmd.Cmd):
         else:
             raise ValueError("The key 'type' of sel.all_me can only take as values 'production' or 'decay'.")
         if isinstance(module, madmatrix_density.MadDensityLibrary):
-            # the momenta as they are, (E, px, py, pz) per leg
-            density_array = module.density(pdgs, p, position, allow_hel, event.aqcd)
+            # the momenta as they are, (E, px, py, pz) per leg; lab_boost (a
+            # decay still at rest, see _decay_lab_boost) is applied by the
+            # library
+            density_array = module.density(pdgs, p, position, allow_hel, event.aqcd,
+                                           boost=lab_boost)
         else:
+            if lab_boost is not None:
+                raise ValueError('get_density: lab_boost needs the madmatrix backend')
             # PY_GET_DENSITY(PDGS, PROCID, P, POS, ALLOW_HEL, ALPHAS, SCALE2)
             P = rwgt_interface.ReweightInterface.invert_momenta(p)
             density_array = module.py_get_density(pdgs=pdgs,
@@ -12569,8 +12702,7 @@ class MadSpinInterface(extended_cmd.Cmd):
             pdgs[k] = event.get_pdg(p) if need_raw_pdg else pdg_template
             # same Monte-Carlo-mass projection as get_density, initial and
             # final state, on a copy
-            momenta[k] = lhe_parser.project_massless_partons(
-                p, pdgs[k], self.model, n_initial=len(orig_order[0]))
+            momenta[k] = self._project_massless(p, pdgs[k], len(orig_order[0]))
             groups.setdefault((len(p), len(pdgs[k]), module_index), []).append(k)
 
         out = [None] * len(events)
@@ -12657,6 +12789,20 @@ class MadSpinInterface(extended_cmd.Cmd):
         return idens[pos]
 
 
+    def _all_momenta(self, event, orig_order):
+        """event.get_all_momenta(orig_order): the momenta for every assignment
+        of identical final-state particles to the legs. With no (merged) pdg
+        repeated in the final state there is only the one get_momenta gives,
+        and that is what get_all_momenta returns then too, after redoing the
+        same mapping to find nothing to permute."""
+        merged = self._revert_merged or None
+        finals = [p.pid for p in event if p.status == 1]
+        if merged:
+            finals = [merged.get(pid, pid) for pid in finals]
+        if len(set(finals)) == len(finals):
+            return [event.get_momenta(orig_order, merged_map=merged)]
+        return event.get_all_momenta(orig_order, merged_map=merged)
+
     def get_pdir(self,event):
         # Use the merged-PDG tag (same as calculate_matrix_element). MadSpin's
         # all_me is keyed by the merged-particle representation when
@@ -12699,6 +12845,22 @@ class MadSpinInterface(extended_cmd.Cmd):
         self._pdir_cache[event_tag] = (pdir, orig_order, prefix, pos, tag)
         return pdir,orig_order, prefix, pos, tag
 
+    # no run_card in the banner: the partons may be anywhere, keep projecting
+    _input_on_mc_mass_shell = True
+
+    def _project_massless(self, momenta, pdgs, n_initial, final_state=False):
+        """lhe_parser.project_massless_partons, skipped where there is
+        nothing to project: only aMC@NLO puts massless partons on a Monte-Carlo
+        mass shell, so neither an LO production event nor a decay (one initial
+        leg), which MadSpin generated itself, needs it. Run anyway it rescales
+        legs whose mass is a rounding error -- the projection triggers on any
+        m^2 != 0 -- for ~40 us per density matrix."""
+        if n_initial == 1 or not self._input_on_mc_mass_shell:
+            return momenta
+        return lhe_parser.project_massless_partons(momenta, pdgs, self.model,
+                                                   n_initial=n_initial,
+                                                   final_state=final_state)
+
     # Two model_init are used, one for the production and one the decay (to support LO decay + NLO production or different models for each side)
     model_init_prod = True
     model_init_decay = True
@@ -12720,9 +12882,9 @@ class MadSpinInterface(extended_cmd.Cmd):
             orig_order = self.all_me[tag]['order']
         pdir = self.all_me[tag]['pdir']
         if pdir in self.all_f2py:
-            all_p = event.get_all_momenta(orig_order, merged_map=self._revert_merged or None)
-            if self.options['identical_particle_in_prod_and_decay'] == "crash" and\
-                len(all_p)> 1:
+            all_p = self._all_momenta(event, orig_order)
+            identical = self.options['identical_particle_in_prod_and_decay']
+            if identical == "crash" and len(all_p)> 1:
                 raise Exception("Ambiguous particle in production and decay. crash as requested by 'identical_particle_in_prod_and_decay'")
             # When the ME legs use merged-particle IDs (apply_flavor_grouping
             # is on for MadSpin), smatrixhel still needs the concrete raw PDGs
@@ -12740,8 +12902,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                 # undo the Monte-Carlo mass shell aMC@NLO writes its partons
                 # on, initial and final state -- on a copy, the event keeps its
                 # own momenta
-                p = lhe_parser.project_massless_partons(
-                    p, pdg_for_call, self.model, n_initial=len(orig_order[0]))
+                p = self._project_massless(p, pdg_for_call, len(orig_order[0]))
                 if event[0].color1 == 599 and event.aqcd==0:
                     new_value = self.all_f2py[pdir](pdg_for_call, p, 0.113, 0)
                 else:
@@ -12749,14 +12910,14 @@ class MadSpinInterface(extended_cmd.Cmd):
                 #if the process is Loop-Induced, smatrixhel returns the tuple (value, returncode), we need to keep only the value
                 if isinstance(new_value, tuple):
                     new_value = new_value[0]
-                if self.options['identical_particle_in_prod_and_decay'] == "average":
+                if identical == "average":
                     out += new_value
                 else:
                     if abs(out)< abs(new_value):
                         out = new_value
-                if self.options['identical_particle_in_prod_and_decay'] == 'first':
+                if identical == 'first':
                     return out
-            if self.options['identical_particle_in_prod_and_decay'] == "average":
+            if identical == "average":
                 return out/len(all_p)
             else:
                 return out

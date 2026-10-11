@@ -17,6 +17,7 @@
 #include "ProcessData.h"
 #include "SigmaKin.h" // calculate_jamps, computeDependentCouplings, getHelicities
 
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <map>
@@ -254,13 +255,34 @@ namespace madmatrix
       }
     }
 
+    // One momentum given in the rest frame of b, the momentum of that frame in
+    // the lab, taken to the lab: HELAS boostx, with the arithmetic of MadSpin's
+    // lhe_parser.Event.boost (MadSpin decays are generated at rest).
+    inline void boost_from_rest_frame( double p[4], const double b[4] )
+    {
+      const double pnorm = b[1] * b[1] + b[2] * b[2] + b[3] * b[3];
+      if( pnorm == 0. ) return; // b at rest: nothing to do
+      const double mass = std::sqrt( std::max( b[0] * b[0] - pnorm, 0. ) );
+      const double invMass = 1. / mass;
+      const double k = ( b[0] - mass ) / pnorm;
+      const double s3 = p[1] * b[1] + p[2] * b[2] + p[3] * b[3];
+      const double lf = ( p[0] + k * s3 ) * invMass;
+      p[0] = ( p[0] * b[0] + s3 ) * invMass;
+      p[1] += b[1] * lf;
+      p[2] += b[2] * lf;
+      p[3] += b[3] * lf;
+    }
+
     // The density (or, with no open leg, the helicity sum) of count events, each
     // divided by iden: out[count][ninter]. Groups the events by flavor, since all
     // the events of a page must share it, padding each group to whole pages with
     // copies of its first event (zero momenta would give nan, see umami.cc).
+    // boosts, if not null, holds per event the lab momentum of the frame its
+    // momenta are given in (boost_from_rest_frame).
     int
     evaluate( const size_t count,
               const double* momenta,
+              const double* boosts,
               const double* alpha_s,
               const unsigned int* flavor,
               const int nChanging,
@@ -298,8 +320,13 @@ namespace madmatrix
           const size_t i = s.events[k < nreal ? k : 0];
           const size_t ipage = k / neppM, ivec = k % neppM;
           for( int ipar = 0; ipar < npar; ipar++ )
+          {
+            double p[4] = { momenta[( i * npar + ipar ) * 4], momenta[( i * npar + ipar ) * 4 + 1],
+                            momenta[( i * npar + ipar ) * 4 + 2], momenta[( i * npar + ipar ) * 4 + 3] };
+            if( boosts ) boost_from_rest_frame( p, boosts + i * 4 );
             for( int imom = 0; imom < 4; imom++ )
-              allmomenta[ipage * npar * 4 * neppM + ipar * 4 * neppM + imom * neppM + ivec] = momenta[( i * npar + ipar ) * 4 + imom];
+              allmomenta[ipage * npar * 4 * neppM + ipar * 4 * neppM + imom * neppM + ivec] = p[imom];
+          }
           gs[k] = std::sqrt( 4. * M_PI * alpha_s[i] );
           flavors[k] = iflavor;
         }
@@ -332,7 +359,23 @@ extern "C"
                          double* inter )
   {
     if( n_changing < 1 ) return 1;
-    return madmatrix::evaluate( count, momenta, alpha_s, flavor, n_changing, pos, n_comb, allow_hel,
+    return madmatrix::evaluate( count, momenta, nullptr, alpha_s, flavor, n_changing, pos, n_comb, allow_hel,
+                                reinterpret_cast<std::complex<double>*>( inter ) );
+  }
+
+  int madmatrix_density_boosted( size_t count,
+                                 const double* momenta,
+                                 const double* boosts,
+                                 const double* alpha_s,
+                                 const unsigned int* flavor,
+                                 int n_changing,
+                                 const int* pos,
+                                 int n_comb,
+                                 const int* allow_hel,
+                                 double* inter )
+  {
+    if( n_changing < 1 || !boosts ) return 1;
+    return madmatrix::evaluate( count, momenta, boosts, alpha_s, flavor, n_changing, pos, n_comb, allow_hel,
                                 reinterpret_cast<std::complex<double>*>( inter ) );
   }
 
@@ -343,7 +386,7 @@ extern "C"
                                 double* me )
   {
     std::vector<std::complex<double>> sum( count );
-    const int status = madmatrix::evaluate( count, momenta, alpha_s, flavor, 0, nullptr, 1, nullptr, sum.data() );
+    const int status = madmatrix::evaluate( count, momenta, nullptr, alpha_s, flavor, 0, nullptr, 1, nullptr, sum.data() );
     if( status != 0 ) return status;
     for( size_t i = 0; i < count; i++ )
       me[i] = sum[i].real() * madmatrix::broken_symmetry_factor( flavor[i] );
