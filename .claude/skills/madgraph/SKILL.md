@@ -5,11 +5,12 @@ description: Run MadGraph7 for the user. Generate a process, compute an LO or
   histograms, showering, MC@NLO, MLM-merged multi-jet samples), draw its
   Feynman diagrams, evaluate the matrix element at given phase-space points
   (single or batched), plot distributions (bands, LO/NLO ratios, custom
-  observables), and report the results. Use when the user asks for a
+  observables), decay events with MadSpin (spin modes), reweight events to
+  other parameters or models (LO/NLO), and report the results. Use when the user asks for a
   cross section, a K-factor, events, merged samples, Feynman diagrams, |M|^2
   at given momenta, a standalone matrix element, a plot or histogram of a
-  distribution, or a MadGraph/MG7/MG5/aMC@NLO run, or asks why a MadGraph run
-  failed.
+  distribution, decays/spin correlations/MadSpin, reweighting, or a
+  MadGraph/MG7/MG5/aMC@NLO run, or asks why a MadGraph run failed.
 ---
 
 # Running MadGraph7
@@ -28,6 +29,8 @@ never pipe them through stdin: write a script file and run it.
 | Feynman diagrams only | `generate ...` | none needed | `reference/diagrams.md` |
 | plots of distributions, overlays, ratios | `generate ...` (LO) or `... [QCD]` (NLO) | `output` | `reference/plots.md` |
 | \|M\|² at given momenta (one point or a batch) | `generate ...` | `output standalone_fortran` / `output` / `output standalone` | `reference/matrix_element.md` |
+| decays with spin correlations (MadSpin) | production with stable resonances | any | `reference/madspin.md` |
+| the same events with other parameters / model (reweighting) | as for the events | any | `reference/reweight.md` |
 | something else mg7 lacks | `generate ...` | `output madevent` | `reference/troubleshooting.md` |
 
 The workflow below is common to all of them. Only the launch block and the
@@ -72,7 +75,7 @@ an `output` but no `launch`. Then follow `reference/matrix_element.md`.
 2. **Run it**, merging stdout and stderr into a log, and keep the exit code:
 
    ```bash
-   /path/to/MadGraph7/bin/madgraph run_tt.mg7 > run_tt.log 2>&1; echo "exit=$?"
+   /path/to/MadGraph7/bin/madgraph run_tt.mg7 > run_tt.log 2>&1 < /dev/null; echo "exit=$?"
    ```
 
    `bin/madgraph` runs with the first `python3` on PATH (>= 3.12). If the
@@ -80,7 +83,9 @@ an `output` but no `launch`. Then follow `reference/matrix_element.md`.
    run it from there.
 
    Runs can take from seconds to hours. For anything beyond a quick check, run
-   it in the background and poll the log; don't block on it. For mg7, use
+   it in the background and poll the log; don't block on it. Keep `< /dev/null`:
+   some steps (reweighting, MadSpin) ask a question of their own that the
+   script cannot answer, and with stdin open the run waits forever. For mg7, use
    `grep "integral:" run.log | tail -1`. For madevent and aMC@NLO, use
    `grep -E "Idle:|Cross-section|Total cross section" run.log | tail -3`. If the RSD in those lines runs into the hundreds while
    `unw. eff.` stays at 0, the integrand is divergent (a missing cut). Stop the
@@ -133,6 +138,10 @@ an `output` but no `launch`. Then follow `reference/matrix_element.md`.
 - Point to the event file and plots (paths relative to the work directory).
 - These are **LO** numbers unless the process was generated with `[QCD]`. Say
   so if the user may expect NLO accuracy.
+- One run's MC error can under-cover (a 10k-event mg7 run came out 2.3σ
+  below a 100k run of the same setup). For statements at the 1% level or
+  below, run several seeds and combine them (`run_summary.py --combine`), or
+  use one large run.
 
 ## Choosing settings
 
@@ -167,11 +176,16 @@ an `output` but no `launch`. Then follow `reference/matrix_element.md`.
   `p`/`j` contain the gluon and the u, d, s, c quarks and their antiquarks
   (no b: 4-flavour scheme; `import model sm-no_b_mass` adds the b),
   `l+`/`l-` = e and mu, `vl`/`vl~` = all three neutrinos, the top is `t`/`t~`.
-- For a decaying resonance (W -> mu nu, Z -> e e, ...), choose between:
-  - the full final state (`p p > mu+ vm`), which includes off-shell effects
-    and is the default choice;
+- For a decaying resonance (W -> mu nu, Z -> e e, t -> b l nu, ...), choose
+  between:
+  - the full final state (`p p > mu+ vm`). It includes off-shell and
+    non-resonant diagrams; this is the default for a single W or Z, but
+    expensive for many legs (t t~ to 6 particles);
   - a decay chain (`p p > w+, w+ > mu+ vm`), which forces it on shell;
-  - a stable resonance, decayed later by MadSpin or the shower.
+  - a stable resonance decayed afterwards by MadSpin
+    (`reference/madspin.md`). This keeps the spin correlations and line
+    shapes but not the non-resonant diagrams. It is the usual choice for
+    tops and for several decay channels from one sample.
 
   Say which one you used.
 - Use `$ X` / `/ X` to exclude a propagating particle, `,` for decay chains
@@ -189,6 +203,12 @@ an `output` but no `launch`. Then follow `reference/matrix_element.md`.
 - `reference/mlm.md`: MLM merging with madevent and Pythia8 (xqcut and
   qCut, matched cross section, qCut scan).
 - `reference/diagrams.md`: drawing, reading and counting Feynman diagrams.
+- `reference/madspin.md`: decays with MadSpin. It covers the spin modes
+  (measured differences), the decay syntax, standalone use on an LHE file,
+  normalisation, and NLO samples.
+- `reference/reweight.md`: reweighting. It covers the card, at generation
+  or after the fact, reading the new weights, the validity, helicity and
+  colour limitations, and NLO modes (and what works today).
 - `reference/plots.md`: distributions from the mg7 `[histograms]`, the NLO
   fixed-order analyses, overlays and ratios with `histograms.py`, and your
   own observables from `events.npy` or LHE files.

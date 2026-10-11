@@ -23,7 +23,10 @@ the next one was found), `value '[]' for entry 'bypass_check' is not
 valid` (madevent launches; unrelated to the "not valid for current
 question" launch trap),
 `CRITICAL: MadSpin unweight efficiency` / `MadSpin phase timings` (MadSpin
-prints its statistics at CRITICAL level), `Using default gzip`. The NLO
+prints its statistics at CRITICAL level), `Using default gzip`,
+`ERROR: I/O error (2): No such file or directory` at the very end of an mg7
+run with MadSpin or reweighting (MadGraph tries to save `HTML/results.pkl`,
+which mg7 outputs do not have; the results are complete). The NLO
 warnings (α_s update, Z width set to zero, missing run-card arguments,
 multiparticles at NLO) are explained in `reference/nlo.md`.
 
@@ -44,6 +47,13 @@ grouped light flavours (see `reference/diagrams.md`), not an error.
 | no `.lhe.gz` in an mg7 run | the default output is `events.npy` | `set output_format lhe`, or convert with `<dir>/bin/npy_to_lhe` |
 
 ## The run does not finish
+
+- **It waits for input**: the log ends with a question
+  (`[0, done, 1, param, enter path]`, `Do you want to edit a card`). The
+  script was run with stdin open. Kill it and rerun with `< /dev/null`.
+- **`AlreadyRunning: Another instance of the program is currently
+  running`**: a killed or crashed run left its lock file. If no MadGraph
+  process is really running on that directory, delete `<dir>/RunWeb`.
 
 - **Divergent integrand.** Signature: `RSD` in the hundreds or more,
   `unw. eff.: 0.00000`, and the sample count running into billions, while the

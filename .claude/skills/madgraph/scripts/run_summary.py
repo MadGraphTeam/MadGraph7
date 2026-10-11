@@ -499,6 +499,77 @@ def lhapdf_configs(proc_dir):
     yield "lhapdf-config"
 
 
+def reweight_summary(run_dir, quoted_xsec=None):
+    """New cross sections of the reweighting weights (<weightgroup
+    name='mg_reweighting'>) found in the run's LHE files: mean of each new
+    weight, ratio to the mean original weight, spread of the per-event
+    ratios and the effective number of events."""
+    for name in ("unweighted_events.lhe.gz", "events.lhe.gz"):
+        path = os.path.join(run_dir, name)
+        if not os.path.exists(path):
+            continue
+        ids, in_group, header = [], False, True
+        sums, sum_w0, count = {}, 0.0, 0
+        stats = {}
+        in_event = first = False
+        current = {}
+        with gzip.open(path, "rt") as fsock:
+            for line in fsock:
+                if header:
+                    if "<weightgroup" in line and "mg_reweighting" in line:
+                        in_group = True
+                    elif in_group and "<weight id=" in line:
+                        ids.append(re.search(r"id=['\"]([^'\"]+)", line).group(1))
+                    elif "</weightgroup>" in line:
+                        in_group = False
+                    elif "</header>" in line or "<init>" in line:
+                        header = False
+                        if not ids:
+                            break
+                    continue
+                if line.startswith("<event"):
+                    in_event = first = True
+                    current = {}
+                elif in_event and first:
+                    w0 = float(line.split()[2])
+                    first = False
+                elif in_event and "<wgt id=" in line:
+                    match = re.search(r"<wgt id=['\"]([^'\"]+)['\"]>\s*(\S+)", line)
+                    if match and match.group(1) in ids:
+                        current[match.group(1)] = float(match.group(2))
+                elif line.startswith("</event"):
+                    in_event = False
+                    count += 1
+                    sum_w0 += w0
+                    for key, value in current.items():
+                        st = stats.setdefault(key, [0.0, 0.0, float("inf"), -float("inf"), 0])
+                        st[0] += value
+                        st[1] += value * value
+                        if w0:
+                            ratio = value / w0
+                            st[2] = min(st[2], ratio)
+                            st[3] = max(st[3], ratio)
+                        st[4] += 1
+        if not ids or not count:
+            continue
+        mean0 = sum_w0 / count
+        print("reweighting : %s (%d events)" % (os.path.join(os.path.basename(run_dir), name), count))
+        for key in ids:
+            if key not in stats:
+                print("  %-20s missing from the events" % key)
+                continue
+            total, total2, rmin, rmax, n = stats[key]
+            neff = total * total / total2 if total2 else 0
+            ratio = total / count / mean0 if mean0 else float("nan")
+            line = "  %-20s sigma = %.6g pb (ratio to original %.5f" % (key, total / count, ratio)
+            if quoted_xsec:
+                line += ", x quoted sigma = %.6g pb" % (ratio * quoted_xsec)
+            print(line + "); per-event new/old in [%.3g, %.3g], N_eff = %.0f" % (rmin, rmax, neff))
+        print("              quote the ratio times the run's cross section; check the "
+              "validity conditions (reference/reweight.md)")
+        return
+
+
 def pdf_name(proc_dir, lhaid):
     """LHAPDF set name of an lhaid, from the pdfsets.index of the LHAPDF
     MadGraph uses for this process directory (None if not found)."""
@@ -515,6 +586,43 @@ def pdf_name(proc_dir, lhaid):
         except (OSError, subprocess.SubprocessError):
             continue
     return None
+
+
+def print_madspin_card(run_dir):
+    """Spin mode, seed and decays of a MadSpin output, from the <madspin>
+    block of its LHE header, plus the number of events."""
+    path = os.path.join(run_dir, "unweighted_events.lhe.gz")
+    if not os.path.exists(path):
+        return
+    header, count = [], 0
+    with gzip.open(path, "rt") as fsock:
+        for line in fsock:
+            if count == 0 and "<event" not in line:
+                header.append(line)
+            if line.startswith("<event"):
+                count += 1
+    match = re.search(r"<madspin>(.*?)</madspin>", "".join(header), re.S)
+    print("events      : %d" % count)
+    if not match:
+        return
+    options, decays = {}, []
+    for line in match.group(1).splitlines():
+        line = line.split("#", 1)[0].strip()
+        words = line.split()
+        if len(words) >= 3 and words[0] == "set":
+            options[words[1].lower()] = " ".join(words[2:])
+        elif words[:1] == ["decay"]:
+            decays.append(line[len("decay"):].strip())
+    print("MadSpin     : spinmode %s, seed %s, BW_cut %s, decay_generator %s"
+          % (options.get("spinmode", "madspin (default)"),
+             options.get("seed", "not set (random)"),
+             options.get("bw_cut", "from the run card"),
+             options.get("decay_generator", "mg7 (default)")))
+    for decay in decays:
+        print("  decay     : %s" % decay)
+    if options.get("decay_generator", "mg7") == "mg7":
+        print("              decays are NOT reproducible with decay_generator mg7, "
+              "even with a seed (use decay_generator madevent)")
 
 
 def madevent_numbers(run_dir, banner):
@@ -545,7 +653,9 @@ def summarise_madevent(proc_dir, run_dir, banner):
         fail("no cross section in %s: did the run finish?" % banner)
     if decayed:
         print("note        : MadSpin-decayed sample, cross section includes "
-              "the branching ratios")
+              "the branching ratios (and, in the density spin modes, the "
+              "Breit-Wigner truncation at BW_cut)")
+        print_madspin_card(run_dir)
     card = lambda key: grab(r"^\s*(\S+)\s*=\s*%s\b" % key)
     mlm = card("ickkw") == "1"
     if err is not None:
@@ -676,6 +786,16 @@ def summarise_mlm(run_dir, xsec, err, nevt, card):
 
 
 def amcatnlo_xsec(run_dir):
+    """Total cross section and MC error. The last res_<n>.txt has them at full
+    precision (second line after 'Total:'); summary.txt only has 4 digits."""
+    res = sorted(glob.glob(os.path.join(run_dir, "res_*.txt")),
+                 key=lambda f: int(re.findall(r"res_(\d+)", f)[0]))
+    if res:
+        with open(res[-1]) as fsock:
+            match = re.search(r"Total:\s*\n\s*\S+\s*\+-\s*\S+.*\n\s*(\S+)\s*\+-\s*(\S+)",
+                              fsock.read())
+        if match:
+            return float(match.group(1)), float(match.group(2))
     with open(os.path.join(run_dir, "summary.txt")) as fsock:
         match = re.search(r"Total cross section:\s*(\S+)\s*\+-\s*(\S+)\s*pb",
                           fsock.read())
@@ -769,6 +889,11 @@ def main():
     else:
         fail("neither info.json nor a banner in %s: the run did not finish"
              % run_dir)
+    try:
+        quoted = run_xsec(proc_dir, run_dir).get("")
+    except SystemExit:
+        quoted = None
+    reweight_summary(run_dir, quoted[0] if quoted else None)
     files = sorted(os.listdir(run_dir))
     events = [f for f in files if f.startswith(("events", "unweighted_events"))
               or f.endswith((".lhe.gz", ".hepmc.gz", ".hepmc"))]

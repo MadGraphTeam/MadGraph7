@@ -67,6 +67,9 @@ Rule when the user did not say:
 - b quarks in the final state (Z b b~, t t~ b b~, b b~): **4F** (`sm`), which
   keeps the b mass.
 - Top pairs: either. The difference is small, so keep the default and state it.
+- W+W− and other processes where a 5F b-initiated real emission contains a
+  top resonance (g b → W W b): **4F**, which keeps that top contribution
+  out of the NLO correction.
 
 The `WARNING: Use of multiparticles is non-trivial for NLO process generation
 ...` printed at generation is about exactly this choice. Once you have
@@ -124,6 +127,7 @@ All classic names work at NLO: `set ptj 20`, `set ebeam1 6800`, `set lhaid ...`.
 | PDF band | `set reweight_pdf True` | **off by default** |
 | scale band | `set reweight_scale True` | on: 9-point envelope, muR and muF x 0.5/1/2 independently |
 | scale choice | `set dynamical_scale_choice 3` (or 1, 2, 4) | -1 = default = H_T/2, half the sum of the final-state transverse masses |
+| model parameters | `set param_card <block> <id> <value>` (e.g. `set param_card sminputs 1 127.9`), `set mt 172.5` | derived parameters (M_W in `sm`) follow |
 | fixed scale | `set fixed_ren_scale True`, `set fixed_fac_scale True`, `set muR_ref_fixed 172.5`, `set muF_ref_fixed 172.5` | |
 | jets | `set jetalgo -1`, `set jetradius 0.4`, `set ptj 30`, `set etaj 2.5` | **kT with R = 0.7**, ptj 10, no eta cut. Use anti-kT with R = 0.4 unless the user says otherwise |
 | leptons | `set ptl ...`, `set etal ...`, `set mll_sf 60`, `set drll ...` | mll_sf 30, the others off |
