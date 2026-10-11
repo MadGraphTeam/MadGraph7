@@ -733,7 +733,8 @@ public:
         return copy(*impl->device, hint);
     }
 
-    /// Whether the elements are stored without gaps in row-major order.
+    /// Whether the elements are stored without gaps in column-major (Fortran)
+    /// order, i.e. the first index varies fastest.
     bool is_contiguous() const { return impl->contiguous_dims == impl->shape.size(); }
 
     /// Number of leading dimensions that are contiguous.

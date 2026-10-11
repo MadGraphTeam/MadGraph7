@@ -6748,6 +6748,16 @@ class RunCardMG7(RunCard):
             comment="include the installed madspace package")
         self.add_toml_param('gridpack', 'include_madspace_source', False,
             comment="include the madspace source code")
+        self.add_toml_param('gridpack', 'compress', False,
+            comment="compress the gridpack into a tarball")
+        self.add_toml_param('gridpack', 'run_mode', "minimal",
+            allowed=['regular', 'minimal', 'fix_max_weight'],
+            comment="how the run creating the gridpack ends: regular (with events), "
+                    "minimal or fix_max_weight (no events)")
+        self.add_toml_param('gridpack', 'temp_output_dir', "", gridpack=True,
+            comment="directory for the temporary npy files; \"\" uses the output directory")
+        self.add_toml_param('gridpack', 'output_dir', "", gridpack=True,
+            comment="directory for the output files; \"\" creates a new run folder in Events")
 
         # ----------------------------- [beam] -------------------------
         self.add_toml_param('beam', 'e_cm', 13000.0,

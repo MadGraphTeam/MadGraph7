@@ -414,6 +414,7 @@ void ChannelEventGenerator::optimize_vegas(const GeneratorBatchJob& job) {
         }
     }
     _best_rsd = std::min(rsd, _best_rsd);
+    _status.iters_without_improvement = _iters_without_improvement;
     ++_status.iterations;
 }
 
@@ -638,7 +639,9 @@ std::size_t ChannelEventGenerator::next_vegas_batch_size() {
 
 void ChannelEventGenerator::clear_events() {
     _status.count_unweighted = 0;
-    _max_weight = 0;
+    if (!_max_weight_fixed) {
+        _max_weight = 0;
+    }
     _unweighted_count = 0;
     _unweighted_accept_count = 0;
     _status.count_opt = 0;
@@ -656,7 +659,8 @@ void ChannelEventGenerator::clear_events() {
 }
 
 void ChannelEventGenerator::update_max_weight(Tensor weights) {
-    if (_status.count_unweighted > _config.freeze_max_weight_after) {
+    if (_max_weight_fixed ||
+        _status.count_unweighted > _config.freeze_max_weight_after) {
         return;
     }
 
@@ -686,7 +690,7 @@ void ChannelEventGenerator::set_target_count(std::size_t target_count) {
     // (e.g. generate()'s round-one seed) would otherwise never be corrected: a
     // channel that has met its smaller target is not revisited. Tighten the cap
     // now; unweight_all() re-unweights the whole file against it at the end.
-    if (target_count < old_target && _max_weight != 0 &&
+    if (target_count < old_target && _max_weight != 0 && !_max_weight_fixed &&
         _status.count_unweighted <= _config.freeze_max_weight_after) {
         apply_truncation_budget();
     }
@@ -809,9 +813,20 @@ void ChannelEventGenerator::write_events(
 
 void ChannelEventGenerator::save(const std::string& file_name) const {
     std::ofstream f(file_name);
+    f << to_json();
+}
+
+std::string ChannelEventGenerator::to_json(bool include_estimates) const {
     json j;
     j = *this;
-    f << j.dump();
+    if (include_estimates) {
+        j["max_weight"] = _max_weight;
+        double error = _abs_cross_section.error();
+        if (_abs_cross_section.count() > 1 && std::isfinite(error) && error > 0) {
+            j["abs_integral"] = {{"mean", _abs_cross_section.mean()}, {"error", error}};
+        }
+    }
+    return j.dump();
 }
 
 ChannelEventGenerator ChannelEventGenerator::load(
@@ -822,7 +837,23 @@ ChannelEventGenerator ChannelEventGenerator::load(
     const GeneratorConfig& config
 ) {
     std::ifstream f(channel_file);
-    json channel = json::parse(f);
+    if (!f) {
+        throw std::runtime_error(std::format("Could not open file '{}'", channel_file));
+    }
+    std::string text(
+        (std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>()
+    );
+    return load_json(text, contexts, event_file, weight_file, config);
+}
+
+ChannelEventGenerator ChannelEventGenerator::load_json(
+    const std::string& channel_json,
+    const std::vector<ContextPtr>& contexts,
+    const std::string& event_file,
+    const std::string& weight_file,
+    const GeneratorConfig& config
+) {
+    json channel = json::parse(channel_json);
     std::optional<Function> hist_function;
     std::vector<Histogram> histograms;
     if (!channel.at("histogram_function").is_null()) {
@@ -838,7 +869,7 @@ ChannelEventGenerator ChannelEventGenerator::load(
         }
     }
 
-    return ChannelEventGenerator(
+    ChannelEventGenerator generator(
         contexts,
         channel.at("particle_count").get<std::size_t>(),
         channel.at("integrand_channel_function").get<Function>(),
@@ -853,6 +884,49 @@ ChannelEventGenerator ChannelEventGenerator::load(
         config,
         histograms
     );
+    if (channel.contains("max_weight") && channel.at("max_weight").get<double>() > 0) {
+        generator.set_fixed_max_weight(channel.at("max_weight").get<double>());
+    }
+    if (channel.contains("abs_integral")) {
+        generator.set_abs_integral_prior(
+            channel.at("abs_integral").at("mean").get<double>(),
+            channel.at("abs_integral").at("error").get<double>()
+        );
+    }
+    return generator;
+}
+
+void ChannelEventGenerator::set_fixed_max_weight(double max_weight) {
+    if (!(max_weight > 0)) {
+        throw std::invalid_argument("The fixed maximum weight must be positive");
+    }
+    _max_weight = max_weight;
+    _max_weight_fixed = true;
+    _unweighted_count = 0;
+    _unweighted_accept_count = 0;
+}
+
+void ChannelEventGenerator::set_abs_integral_prior(double mean, double error) {
+    if (!(mean > 0) || !(error > 0) || !std::isfinite(mean) || !std::isfinite(error)) {
+        throw std::invalid_argument("The integral prior must be positive and finite");
+    }
+    _abs_integral_prior = {mean, error};
+}
+
+double ChannelEventGenerator::abs_integral_estimate() const {
+    double mean = _abs_cross_section.mean();
+    if (!_abs_integral_prior) {
+        return mean;
+    }
+    auto [prior_mean, prior_error] = *_abs_integral_prior;
+    double error = _abs_cross_section.error();
+    // too few samples for a variance
+    if (_abs_cross_section.count() < 2 || !std::isfinite(error) || !(error > 0)) {
+        return prior_mean;
+    }
+    double prior_weight = 1. / (prior_error * prior_error);
+    double weight = 1. / (error * error);
+    return (prior_mean * prior_weight + mean * weight) / (prior_weight + weight);
 }
 
 void madspace::to_json(nlohmann::json& j, const ChannelEventGenerator& channel) {

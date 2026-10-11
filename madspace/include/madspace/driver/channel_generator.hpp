@@ -39,6 +39,15 @@ public:
         const std::string& weight_file,
         const GeneratorConfig& config
     );
+    /// Like @ref load, from the JSON text produced by @ref to_json instead of
+    /// a file.
+    static ChannelEventGenerator load_json(
+        const std::string& channel_json,
+        const std::vector<ContextPtr>& contexts,
+        const std::string& event_file,
+        const std::string& weight_file,
+        const GeneratorConfig& config
+    );
 
     /**
      * @param contexts          One context per device to run on.
@@ -83,6 +92,18 @@ public:
     EventFile& weight_file() { return _weight_file; }
     /// Current maximum-weight estimate, used for unweighting.
     double max_weight() const { return _max_weight; }
+    /// Use `max_weight` for unweighting from now on, instead of estimating it
+    /// from the generated events. Must be positive.
+    void set_fixed_max_weight(double max_weight);
+    /// Set the integral of the absolute weights known from an earlier run, with
+    /// its standard error. Both must be positive.
+    void set_abs_integral_prior(double mean, double error);
+    /// Whether @ref set_abs_integral_prior was called.
+    bool has_abs_integral_prior() const { return _abs_integral_prior.has_value(); }
+    /// The integral of the absolute weights: the mean of this run, combined
+    /// with the prior (if any) weighted by the inverse variances. Used to share
+    /// the events between channels.
+    double abs_integral_estimate() const;
     /// Current generation batch size.
     std::size_t batch_size() const { return _batch_size; }
     /// Whether a VEGAS grid or channel-weight optimization pass is still
@@ -143,6 +164,12 @@ public:
     void write_events(const TensorVec& unweighted_events, double job_max_weight);
     /// Serialize this generator's state to `file_name`; see @ref load.
     void save(const std::string& file_name) const;
+    /// The JSON text that @ref save writes; see @ref load_json. With
+    /// `include_estimates`, the current maximum weight and the integral of the
+    /// absolute weights are stored as well. @ref load_json then keeps the
+    /// maximum weight fixed and uses the integral as a prior, see
+    /// @ref abs_integral_estimate.
+    std::string to_json(bool include_estimates = false) const;
 
 private:
     void apply_truncation_budget();
@@ -205,6 +232,9 @@ private:
     RunningIntegral _cross_section;
     RunningIntegral _abs_cross_section;
     double _max_weight = 0.;
+    bool _max_weight_fixed = false;
+    // mean and standard error
+    std::optional<std::pair<double, double>> _abs_integral_prior;
     std::size_t _count_requested_opt = 0;
     // Monotonic per-job counters keying each job's deterministic random stream;
     // never reset. Separate for survey/generate so neither depends on the other.

@@ -36,19 +36,20 @@ DataType str_to_dtype(std::string dtype) {
     }
 }
 
-json parse_header(std::fstream& file_stream) {
-    char magic_num[8];
-    file_stream.read(magic_num, 8);
-    if (std::memcmp(magic_num, "\x93NUMPY\x01\x00", 8) != 0) {
+constexpr std::size_t npy_preamble_size = 10;
+
+/// Check the magic number and version of the first 10 bytes of an npy file and
+/// return the length of the header that follows.
+std::size_t parse_preamble(const char* bytes) {
+    if (std::memcmp(bytes, "\x93NUMPY\x01\x00", 8) != 0) {
         throw std::runtime_error("invalid header of npy file");
     }
-    union {
-        uint16_t size;
-        char chars[2];
-    } header_size;
-    file_stream.read(&header_size.chars[0], 2);
-    std::string header(header_size.size, '\0');
-    file_stream.read(header.data(), header_size.size);
+    // little-endian 16 bit length
+    return static_cast<std::size_t>(static_cast<unsigned char>(bytes[8])) |
+        (static_cast<std::size_t>(static_cast<unsigned char>(bytes[9])) << 8);
+}
+
+json parse_header_text(std::string header) {
     header.erase(
         std::remove_if(
             header.begin(), header.end(), [](char x) { return std::isspace(x); }
@@ -78,6 +79,62 @@ json parse_header(std::fstream& file_stream) {
         header[pos] = '"';
     }
     return json::parse(header);
+}
+
+json parse_header(std::fstream& file_stream) {
+    char preamble[npy_preamble_size];
+    file_stream.read(preamble, npy_preamble_size);
+    if (file_stream.fail()) {
+        throw std::runtime_error("invalid header of npy file");
+    }
+    std::string header(parse_preamble(preamble), '\0');
+    file_stream.read(header.data(), header.size());
+    return parse_header_text(std::move(header));
+}
+
+/// The dtype and shape described by the parsed header of a tensor npy file.
+std::pair<DataType, SizeVec> parse_tensor_header(json header) {
+    if (!header.is_object()) {
+        throw std::runtime_error("Invalid header");
+    }
+    json descr = header.at("descr");
+    json fortran_order = header.at("fortran_order");
+    json header_shape = header.at("shape");
+    if (!descr.is_string() || !fortran_order.is_boolean() ||
+        !fortran_order.get<bool>() || !header_shape.is_array()) {
+        throw std::runtime_error("Invalid file header");
+    }
+    DataType dtype = str_to_dtype(descr);
+    SizeVec shape;
+    for (auto& size : header_shape) {
+        if (!size.is_number_unsigned()) {
+            throw std::runtime_error("Invalid file header");
+        }
+        shape.push_back(size.get<std::size_t>());
+    }
+    return {dtype, shape};
+}
+
+/// The npy header of `tensor`: 128 bytes, padded with spaces.
+std::string tensor_header(const Tensor& tensor) {
+    using namespace std::string_literals;
+    // magic, version 1.0, little-endian header length of 118
+    std::string header = "\x93NUMPY\x01\x00"s;
+    header.push_back(static_cast<char>(118));
+    header.push_back('\0');
+    header += std::format(
+        "{{'descr':'{}','fortran_order':True,'shape':(", dtype_to_str(tensor.dtype())
+    );
+    for (std::size_t size : tensor.shape()) {
+        header += std::format("{},", size);
+    }
+    header += ")}";
+    if (header.size() > 127) {
+        throw std::runtime_error("Tensor has too many dimensions to save");
+    }
+    header.resize(127, ' ');
+    header.push_back('\n');
+    return header;
 }
 
 std::vector<std::pair<std::string, std::string>>
@@ -154,8 +211,13 @@ std::tuple<std::size_t, std::size_t> write_event_header(
     }
     file_stream.put('\n');
     file_stream.seekp(8);
-    uint16_t header_size_short = header_size - 10;
-    file_stream.write(reinterpret_cast<char*>(&header_size_short), 2);
+    // little-endian 16 bit length
+    std::size_t header_length = header_size - npy_preamble_size;
+    char length_bytes[2] = {
+        static_cast<char>(header_length & 0xff),
+        static_cast<char>((header_length >> 8) & 0xff)
+    };
+    file_stream.write(length_bytes, 2);
     file_stream.seekp(header_size);
     return {header_size, shape_pos};
 }
@@ -167,25 +229,7 @@ Tensor madspace::load_tensor(const std::string& file) {
     if (file_stream.fail()) {
         throw std::runtime_error(std::format("Could not open file '{}'", file));
     }
-    json header = parse_header(file_stream);
-    if (!header.is_object()) {
-        throw std::runtime_error("Invalid header");
-    }
-    json descr = header.at("descr");
-    json fortran_order = header.at("fortran_order");
-    json header_shape = header.at("shape");
-    if (!descr.is_string() || !fortran_order.is_boolean() ||
-        !fortran_order.get<bool>() || !header_shape.is_array()) {
-        throw std::runtime_error("Invalid file header");
-    }
-    DataType dtype = str_to_dtype(descr);
-    SizeVec shape;
-    for (auto& size : header_shape) {
-        if (!size.is_number_unsigned()) {
-            throw std::runtime_error("Invalid file header");
-        }
-        shape.push_back(size.get<std::size_t>());
-    }
+    auto [dtype, shape] = parse_tensor_header(parse_header(file_stream));
     Tensor tensor(dtype, shape);
     file_stream.read(static_cast<char*>(tensor.data()), tensor.byte_size());
     if (file_stream.fail()) {
@@ -195,22 +239,43 @@ Tensor madspace::load_tensor(const std::string& file) {
 }
 
 void madspace::save_tensor(const std::string& file, Tensor tensor) {
-    using namespace std::string_literals;
     Tensor cpu_tensor = tensor.cpu().contiguous();
     std::ofstream file_stream(file, std::ios::binary);
-    file_stream << "\x93NUMPY\x01\x00\x76\x00{'descr':'"s
-                << dtype_to_str(tensor.dtype()) << "','fortran_order':True,'shape':(";
-    for (std::size_t size : tensor.shape()) {
-        file_stream << size << ",";
-    }
-    file_stream << ")}";
-    for (int i = file_stream.tellp(); i < 127; ++i) {
-        file_stream.put(' ');
-    }
-    file_stream.put('\n');
+    std::string header = tensor_header(tensor);
+    file_stream.write(header.data(), header.size());
     file_stream.write(
         static_cast<const char*>(cpu_tensor.data()), cpu_tensor.byte_size()
     );
+}
+
+Tensor madspace::load_tensor(TarReader& tar, const std::string& name) {
+    std::vector<char> data = tar.read(name);
+    if (data.size() < npy_preamble_size) {
+        throw std::runtime_error(std::format("Invalid npy file '{}'", name));
+    }
+    std::size_t header_length = parse_preamble(data.data());
+    std::size_t data_offset = npy_preamble_size + header_length;
+    if (data.size() < data_offset) {
+        throw std::runtime_error(std::format("Invalid npy file '{}'", name));
+    }
+    auto [dtype, shape] = parse_tensor_header(
+        parse_header_text(std::string(data.data() + npy_preamble_size, header_length))
+    );
+    Tensor tensor(dtype, shape);
+    if (data.size() - data_offset != tensor.byte_size()) {
+        throw std::runtime_error(std::format("Wrong data size in npy file '{}'", name));
+    }
+    std::memcpy(tensor.data(), data.data() + data_offset, tensor.byte_size());
+    return tensor;
+}
+
+void madspace::save_tensor(TarWriter& tar, const std::string& name, Tensor tensor) {
+    Tensor cpu_tensor = tensor.cpu().contiguous();
+    std::string header = tensor_header(tensor);
+    std::vector<char> data(header.size() + cpu_tensor.byte_size());
+    std::memcpy(data.data(), header.data(), header.size());
+    std::memcpy(data.data() + header.size(), cpu_tensor.data(), cpu_tensor.byte_size());
+    tar.add(name, data.data(), data.size());
 }
 
 EventFile::EventFile(

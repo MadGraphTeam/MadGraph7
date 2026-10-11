@@ -16,8 +16,13 @@ start a run:
     set save_gridpack true
     launch
 
-The gridpack is written to ``Events/<run_name>_NN/gridpack`` after the run. It is a plain
-directory. Pack it with ``tar`` to move it to another machine.
+The gridpack is written to ``Events/<run_name>_NN/gridpack``, or to ``gridpack`` in the
+``output_dir`` of the ``[gridpack]`` section if it is set. It is a plain directory. With
+``compress = true``, it is packed into ``gridpack.tar.gz`` instead, ready to be moved to
+another machine.
+
+By default, the run stops once the gridpack is ready and does not generate events. See
+:ref:`gridpack-run-mode` for the other options.
 
 A gridpack contains:
 
@@ -33,7 +38,7 @@ A gridpack contains:
     The trained phase-space channels and the information needed to write LHE files and
     the scale and PDF weights.
 
-``lib/`` or ``src/`` and ``SubProcesses/``
+``lib/`` or ``src/``, ``SubProcesses/`` and ``backend/``
     The matrix elements, see :ref:`gridpack-matrix-elements`.
 
 ``madspace/``
@@ -41,6 +46,33 @@ A gridpack contains:
 
 ``Events/``
     Empty. The output of each gridpack run goes here.
+
+.. _gridpack-run-mode:
+
+Ending the run
+^^^^^^^^^^^^^^
+
+``run_mode`` in the ``[gridpack]`` section sets how the run that creates the gridpack
+ends:
+
+``minimal`` (default)
+    No events are generated. The gridpack is stored right after the MadNIS training or,
+    with VEGAS, once the grid of every channel has converged. This is the fastest way
+    to create a gridpack. Each gridpack run then estimates the maximum weights and the
+    channel integrals on its own.
+
+``fix_max_weight``
+    No events are generated. Each channel runs until ``freeze_max_weight_after``
+    unweighted events are reached. Its maximum weight is stored in the gridpack and kept
+    fixed in every gridpack run, so all runs unweight against the same maximum. The
+    channel integrals are stored as well and combined with the ones of the gridpack run
+    to share the events between the channels from the start. Creating the gridpack takes
+    longer, especially for channels with a low unweighting efficiency, but the gridpack
+    runs do not have to estimate the maximum weights first. This helps if each run only
+    generates a few events.
+
+``regular``
+    The events of the run are generated as usual, then the gridpack is stored.
 
 Generating events
 -----------------
@@ -51,7 +83,10 @@ Run the script from anywhere:
 
     ./bin/generate_events --events 10000 --seed 42
 
-Each call creates a new directory ``Events/<run_name>_NN``. A gridpack generates LHE files
+Each call creates a new directory ``Events/<run_name>_NN``. Use ``--output_dir`` to write
+the output to a given directory instead, and ``--temp_output_dir`` to put the large
+temporary npy files of the channels somewhere else, for example on a fast local disk of a
+cluster node. Relative paths on the command line refer to the current directory. A gridpack generates LHE files
 by default, since it usually feeds a shower or detector simulation. The file is
 compressed to ``events.lhe.gz``. Use ``--output_format`` to get one of the npy formats
 instead.
@@ -108,6 +143,9 @@ gridpack is created.
     * -
       - ``cut_efficiency_threshold``, ``max_cut_repetitions``
       - Card only.
+    * - ``[gridpack]``
+      - ``output_dir``, ``temp_output_dir``
+      - ``--output_dir``, ``--temp_output_dir``
     * - ``[systematics]``
       - ``enable``, ``mur``, ``muf``, ``together``, ``dynamical_scale``, ``pdf``,
         ``write_inputs``
@@ -115,6 +153,8 @@ gridpack is created.
 
 An option on the command line overrides the card. The settings have the same meaning as in
 the main run card, see :doc:`run_card`. ``./bin/generate_events --help`` lists all options.
+Relative ``output_dir`` and ``temp_output_dir`` paths in the card refer to the gridpack
+directory. Both are reset to ``""`` when the gridpack is created.
 
 The card names the ``cpu_mode`` that the gridpack was built with, which can differ from the
 ``"auto"`` of the original run card. The matrix element libraries carry this name. If you
@@ -143,7 +183,8 @@ Matrix elements
     that you used. A gridpack can only run on devices for which a library exists.
 
 ``include_source = true``
-    The source code is copied to ``src/`` and ``SubProcesses/`` and ``lib/`` stays empty.
+    The source code is copied to ``src/``, ``SubProcesses/`` and ``backend/`` and ``lib/``
+    stays empty.
     This is useful if the gridpack has to run on a different platform. The gridpack does
     not compile anything by itself, so build the libraries once before the first run:
 
@@ -179,8 +220,9 @@ If both options are on, the compiled copy is used and the source is only a fallb
 rebuilding it. The compiled copy has to match the platform. The source code makes the
 gridpack portable.
 
-The script warns if the ``madspace`` it uses differs from the one that created the gridpack.
-In this case, the results can be wrong.
+The script stops with an error if the ``madspace`` it uses differs from the one that
+created the gridpack, since the results can be wrong in this case. Use
+``--ignore_source_hash`` to run anyway, which only prints a warning.
 
 The options can be combined. The smallest gridpack sets ``include_madspace = false`` and
 relies on an installed ``madspace``. A fully portable gridpack sets ``include_source = true``

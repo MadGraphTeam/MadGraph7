@@ -43,6 +43,13 @@ save_gridpack = %(gridpack.save_gridpack)s
 include_source = %(gridpack.include_source)s
 include_madspace = %(gridpack.include_madspace)s
 include_madspace_source = %(gridpack.include_madspace_source)s
+compress = %(gridpack.compress)s
+# end of a run creating a gridpack; options: regular, minimal (no events), fix_max_weight (no events)
+run_mode = %(gridpack.run_mode)s
+# temporary npy files; "" uses the output directory
+temp_output_dir = %(gridpack.temp_output_dir)s
+# output files; "" creates a new run folder in Events
+output_dir = %(gridpack.output_dir)s
 
 [beam]
 e_cm = %(beam.e_cm)s

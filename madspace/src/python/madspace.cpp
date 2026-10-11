@@ -1313,7 +1313,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             &PhaseSpaceMapping::channel_count,
             pydoc::doc("PhaseSpaceMapping::channel_count")
         )
-        .def("empty", &PhaseSpaceMapping::empty, pydoc::doc("PhaseSpaceMapping::empty"));
+        .def(
+            "empty", &PhaseSpaceMapping::empty, pydoc::doc("PhaseSpaceMapping::empty")
+        );
 
     py::classh<MultiChannelFunction, FunctionGenerator>(
         m, "MultiChannelFunction", pydoc::doc("MultiChannelFunction")
@@ -2646,6 +2648,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("GeneratorStatus::iterations")
         )
         .def_readwrite(
+            "iters_without_improvement",
+            &GeneratorStatus::iters_without_improvement,
+            pydoc::doc("GeneratorStatus::iters_without_improvement")
+        )
+        .def_readwrite(
             "optimized",
             &GeneratorStatus::optimized,
             pydoc::doc("GeneratorStatus::optimized")
@@ -3088,6 +3095,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("config"),
             pydoc::doc("ChannelEventGenerator::load")
         )
+        .def_static(
+            "load_json",
+            &ChannelEventGenerator::load_json,
+            py::arg("channel_json"),
+            py::arg("contexts"),
+            py::arg("event_file"),
+            py::arg("weight_file"),
+            py::arg("config"),
+            pydoc::doc("ChannelEventGenerator::load_json")
+        )
         .def(
             py::init<
                 const std::vector<ContextPtr>&,
@@ -3118,6 +3135,18 @@ PYBIND11_MODULE(_madspace_py, m) {
             &ChannelEventGenerator::save,
             py::arg("save"),
             pydoc::doc("ChannelEventGenerator::save")
+        )
+        .def(
+            "to_json",
+            &ChannelEventGenerator::to_json,
+            py::arg("include_estimates") = false,
+            pydoc::doc("ChannelEventGenerator::to_json")
+        )
+        .def(
+            "set_fixed_max_weight",
+            &ChannelEventGenerator::set_fixed_max_weight,
+            py::arg("max_weight"),
+            pydoc::doc("ChannelEventGenerator::set_fixed_max_weight")
         );
 
     py::classh<PdfMemberSpec>(m, "PdfMemberSpec", pydoc::doc("PdfMemberSpec"))
@@ -3624,6 +3653,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             "generate",
             &EventGenerator::generate,
             pydoc::doc("EventGenerator::generate")
+        )
+        .def(
+            "optimize",
+            &EventGenerator::optimize,
+            pydoc::doc("EventGenerator::optimize")
+        )
+        .def(
+            "fix_max_weights",
+            &EventGenerator::fix_max_weights,
+            pydoc::doc("EventGenerator::fix_max_weights")
         )
         .def(
             "combine_to_compact_npy",
