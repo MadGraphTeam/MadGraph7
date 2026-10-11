@@ -181,6 +181,14 @@ class Switcher(object):
         res=loopRE.search(re.split(r'\s\-\-', line,1)[0])
         if res:
             orders=res.group('orders').split() if res.group('orders') else []
+            # interference of two amplitude sets (keyword case-insensitive):
+            # 'left [LIxtree=QCD] right' is a loop-induced process, routed
+            # like [noborn=], 'left [treextree] right' a tree-level one.
+            interference = MGcmd.interference_mode_of(res.group('option'), orders)
+            if interference == 'LIxtree':
+                return ('NLO', 'LIxtree', orders if res.group('option') else [])
+            elif interference == 'treextree':
+                return ('tree', 'treextree', [])
             if res.group('option') and len(res.group('option').split())==1:
                 if res.group('option').split()[0]=='tree':
                     return ('tree',res.group('option').split()[0],orders)
@@ -219,11 +227,15 @@ class Switcher(object):
                     self.change_principal_cmd('aMC@NLO', allow_switch)
                 elif nlo_mode in ['virt', 'sqrvirt']:
                     self.change_principal_cmd('MadLoop', allow_switch)
-                elif nlo_mode == 'noborn': 
+                elif nlo_mode in ['noborn', 'LIxtree']:
+                    # LIxtree: loop-induced amplitude interfered with a tree.
+                    # Report a malformed line before the model is touched.
+                    if nlo_mode == 'LIxtree':
+                        MGcmd.split_interference_line(proc_line)
                     if self.current_interface == "MadGraph":
                         allow_switch = True
                     self.change_principal_cmd('MadLoop', allow_switch)
-                    self.cmd.validate_model(self, loop_type=nlo_mode,
+                    self.cmd.validate_model(self, loop_type='noborn',
                                                             coupling_type=orders)
                     self.change_principal_cmd('MadGraph', allow_switch)
                     return self.cmd.create_loop_induced(self, line, *args, **opts)
