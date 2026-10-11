@@ -23,7 +23,7 @@ C
       INTEGER NGRAPHS
       PARAMETER (NGRAPHS=   2)
 C     
-C     ARGUMENTS 
+C     ARGUMENTS
 C     
       REAL*8 P(0:3,NEXTERNAL-1)
       DOUBLE PRECISION ANS_SUMMED
@@ -67,7 +67,7 @@ C
 C     
 C     BEGIN CODE
 C     
-C     look for orders which match the born order constraint 
+C     look for orders which match the born order constraint
 
       FORCE_IJGLU_ZERO = .FALSE.
 
@@ -157,7 +157,7 @@ C          different coupling combinations
      $      AMP_SPLIT(ORDERS_TO_AMP_SPLIT_POS(AMP_ORDERS)) = ANS(1,I)
         ENDIF
       ENDDO
-C     this is to avoid fake non-zero contributions 
+C     this is to avoid fake non-zero contributions
       IF (ABS(ANS_SUMMED).LT.MAX_VAL*TINY) ANS_SUMMED=0D0
 
       WGT_ME_BORN=ANS_SUMMED
@@ -190,7 +190,7 @@ C              given split order
 C             will be multiplied by the corresponding squared coupling
               IF (K.EQ.J) AMP_ORDERS(K) = AMP_ORDERS(K) + 2
             ENDDO
-C           this is to avoid fake non-zero contributions 
+C           this is to avoid fake non-zero contributions
             IF (ABS(ANS(1,I)).GT.MAX_VAL*TINY)
      $        AMP_SPLIT_CNT(ORDERS_TO_AMP_SPLIT_POS(AMP_ORDERS),1,J) =
      $        ANS(1,I)
@@ -199,7 +199,7 @@ C           this is to avoid fake non-zero contributions
      $        ANS(2,I)
           ENDIF
         ENDDO
-C       this is to avoid fake non-zero contributions 
+C       this is to avoid fake non-zero contributions
         IF (ABS(ANS_CNT(1,J)).LT.MAX_VAL*TINY) ANS_CNT(1,J)=(0D0,0D0)
         IF (ABS(ANS_CNT(2,J)).LT.MAX_VAL*TINY) ANS_CNT(2,J)=(0D0,0D0)
       ENDDO
@@ -238,7 +238,7 @@ C
       INTEGER NGRAPHS
       PARAMETER (NGRAPHS=   2)
 C     
-C     ARGUMENTS 
+C     ARGUMENTS
 C     
       REAL*8 P(0:3,NEXTERNAL-1)
       INTEGER NHEL(NEXTERNAL-1)
@@ -286,12 +286,12 @@ C     stuff for the LO2
 C     
 C     BEGIN CODE
 C     
-C     look for orders which match the born order constraint 
+C     look for orders which match the born order constraint
 
       IDEN=IDEN_VALUES(NFKSPROCESS)
       FORCE_IJGLU_ZERO = .TRUE.
 
-      CALL BORN(P,NHEL,HELL,ANS,BORNS)
+      CALL BORN(P,NHEL,HELL,0,ANS,BORNS)
 
       ANS_SUMMED = 0D0
       MAX_VAL = 0D0
@@ -331,7 +331,7 @@ C       the following is for the LO2
         ENDIF
       ENDDO
 
-C     this is to avoid fake non-zero contributions 
+C     this is to avoid fake non-zero contributions
       IF (ABS(ANS_SUMMED).LT.MAX_VAL*TINY) ANS_SUMMED=0D0
 
       RETURN
@@ -358,6 +358,7 @@ C     CONSTANTS
 C     
       INCLUDE 'nexternal.inc'
       INCLUDE 'born_nhel.inc'
+      INCLUDE 'coupl.inc'
       INTEGER     NCOMB
       PARAMETER ( NCOMB=  36 )
       INTEGER NAMPSO, NSQAMPSO
@@ -367,15 +368,15 @@ C
       INTEGER NGRAPHS
       PARAMETER (NGRAPHS=   2)
 C     
-C     ARGUMENTS 
+C     ARGUMENTS
 C     
       REAL*8 P1(0:3,NEXTERNAL-1)
       COMPLEX*16 ANS(2,0:NSQAMPSO)
 C     
-C     LOCAL VARIABLES 
+C     LOCAL VARIABLES
 C     
-      INTEGER IHEL,IDEN,I,J,JJ,GLU_IJ
-      REAL*8 BORNS(2,0:NSQAMPSO)
+      INTEGER IHEL,IDEN,I,J,JJ,GLU_IJ,BMODE
+      REAL*8 BORNS(2,0:NSQAMPSO), BORNRHO(NSQAMPSO)
       COMPLEX*16 BORNTILDE
       INTEGER NTRY(1)
       DATA NTRY /1*0/
@@ -441,11 +442,55 @@ C
       INTEGER NFKSPROCESS
       COMMON/C_NFKSPROCESS/NFKSPROCESS
       LOGICAL COND_IJ
+      LOGICAL BORN_CACHE_OK
+      INTEGER BORN_CACHE_NFKS
+      COMMON /C_BORN_CACHE/ BORN_CACHE_OK, BORN_CACHE_NFKS
+      COMPLEX*16 BORN_CACHE_ANS(2,0:NSQAMPSO)
+      SAVE BORN_CACHE_ANS
+      LOGICAL CHECK_BORN_AMPS, BORN_CHECKS_AMPS
+      COMMON /C_BORN_AMPS_CHECK/ CHECK_BORN_AMPS, BORN_CHECKS_AMPS
+      DOUBLE PRECISION SAVEMOM4(0:3,NEXTERNAL-1)
+      DOUBLE COMPLEX SAVED_COUP(2)
+      SAVE SAVEMOM4, SAVED_COUP
 C     ----------
 C     BEGIN CODE
 C     ----------
       IDEN=IDEN_VALUES(NFKSPROCESS)
       GLU_IJ = IJ_VALUES(NFKSPROCESS)
+C     set_ren_scale (or sreal_deg) kept the cached amplitudes instead
+C      of
+C     discarding them: discard them here unless the couplings of the
+C     Born and the momenta are exactly the ones they were computed with
+      IF (CALCULATEDBORN .AND. CHECK_BORN_AMPS) THEN
+        IF (SAVED_COUP(1).NE.GC_68) CALCULATEDBORN=.FALSE.
+        IF (SAVED_COUP(2).NE.GC_76) CALCULATEDBORN=.FALSE.
+        DO J=1,NEXTERNAL-1
+          DO I=0,3
+            IF (P1(I,J).NE.SAVEMOM4(I,J)) CALCULATEDBORN=.FALSE.
+          ENDDO
+        ENDDO
+      ENDIF
+      CHECK_BORN_AMPS=.FALSE.
+      IF (CALCULATEDBORN) THEN
+        DO J=1,NEXTERNAL-1
+          IF (SAVEMOM(J,1).NE.P1(0,J) .OR. SAVEMOM(J,2).NE.P1(3,J))
+     $      THEN
+            CALCULATEDBORN=.FALSE.
+            WRITE (*,*) 'momenta not the same in Born'
+            STOP
+          ENDIF
+        ENDDO
+      ENDIF
+C     A repeated call: the same momenta as the last evaluation (the
+C     amplitudes are cached), the same FKS configuration, and nothing
+C     has touched the cached amplitudes since (BORN_CACHE_OK, reset by
+C     BORN for IMODE = 0). The result, the colour density RHO and
+C     AMP2/JAMP2 are still those of the last evaluation.
+      IF (CALCULATEDBORN .AND. BORN_CACHE_OK .AND.
+     $  NFKSPROCESS.EQ.BORN_CACHE_NFKS) THEN
+        ANS(:,:) = BORN_CACHE_ANS(:,:)
+        RETURN
+      ENDIF
       NTRY(NFKSPROCESS)=NTRY(NFKSPROCESS)+1
       IF (NTRY(NFKSPROCESS).LT.2) THEN
         IF (GLU_IJ.EQ.0) THEN
@@ -466,21 +511,14 @@ C     ----------
           JAMP2(JJ,I)=0D0
         ENDDO
       ENDDO
-      IF (CALCULATEDBORN) THEN
-        DO J=1,NEXTERNAL-1
-          IF (SAVEMOM(J,1).NE.P1(0,J) .OR. SAVEMOM(J,2).NE.P1(3,J))
-     $      THEN
-            CALCULATEDBORN=.FALSE.
-            WRITE (*,*) 'momenta not the same in Born'
-            STOP
-          ENDIF
-        ENDDO
-      ENDIF
       IF (.NOT.CALCULATEDBORN) THEN
         DO J=1,NEXTERNAL-1
           SAVEMOM(J,1)=P1(0,J)
           SAVEMOM(J,2)=P1(3,J)
+          SAVEMOM4(0:3,J)=P1(0:3,J)
         ENDDO
+        SAVED_COUP(1)=GC_68
+        SAVED_COUP(2)=GC_76
         DO J=1,MAX_BHEL
           DO JJ=1,NGRAPHS
             SAVEAMP(JJ,J)=(0D0,0D0)
@@ -492,6 +530,16 @@ C     ----------
         ANS(2,I) = 0D0
       ENDDO
       HEL_FAC=1D0
+C     The JAMPs of every helicity are summed into the colour density
+C     RHO (BORN_RHO_ADD); the Born and the colour-linked Borns are then
+C     traces of RHO with their colour matrix. The Born of each helicity
+C     is only needed on the first call, to find the good helicities.
+      CALL BORN_RHO_RESET()
+      IF (NTRY(NFKSPROCESS).LT.2) THEN
+        BMODE=1
+      ELSE
+        BMODE=2
+      ENDIF
       DO IHEL=1,NCOMB
 C       the following lines are to avoid segfaults when glu_ij=0
         COND_IJ=SKIP(NFKSPROCESS).EQ.0
@@ -504,81 +552,87 @@ C       .0) then
      $     +SKIP(NFKSPROCESS),NFKSPROCESS) .OR. NTRY(NFKSPROCESS) .LT.
      $      2) ) THEN
 
-            CALL BORN(P1,NHEL(1,IHEL),IHEL,T,BORNS)
+            CALL BORN(P1,NHEL(1,IHEL),IHEL,BMODE,T,BORNS)
             DO I=1,NSQAMPSO
-              ANS(1,I)=ANS(1,I)+T(1,I)
               ANS(2,I)=ANS(2,I)+T(2,I)
             ENDDO
-            IF ( BORNS(1,0).NE.0D0 .AND. .NOT. GOODHEL(IHEL
-     $       ,NFKSPROCESS) ) THEN
-              GOODHEL(IHEL,NFKSPROCESS)=.TRUE.
-            ENDIF
-            IF ( BORNS(2,0).NE.0D0 .AND. .NOT. GOODHEL(IHEL
-     $       +SKIP(NFKSPROCESS),NFKSPROCESS) ) THEN
-              GOODHEL(IHEL+SKIP(NFKSPROCESS),NFKSPROCESS)=.TRUE.
+            IF (BMODE.EQ.1) THEN
+              IF ( BORNS(1,0).NE.0D0 .AND. .NOT. GOODHEL(IHEL
+     $         ,NFKSPROCESS) ) THEN
+                GOODHEL(IHEL,NFKSPROCESS)=.TRUE.
+              ENDIF
+              IF ( BORNS(2,0).NE.0D0 .AND. .NOT. GOODHEL(IHEL
+     $         +SKIP(NFKSPROCESS),NFKSPROCESS) ) THEN
+                GOODHEL(IHEL+SKIP(NFKSPROCESS),NFKSPROCESS)=.TRUE.
+              ENDIF
             ENDIF
           ENDIF
         ENDIF
       ENDDO
+      CALL BORN_RHO_TRACE(0,BORNRHO)
       DO I=1,NSQAMPSO
-        ANS(1,I)=ANS(1,I)/DBLE(IDEN)
+        ANS(1,I)=BORNRHO(I)/DBLE(IDEN)
         ANS(2,I)=ANS(2,I)/DBLE(IDEN)
         ANS(1,0)=ANS(1,0)+ANS(1,I)
         ANS(2,0)=ANS(2,0)+ANS(2,I)
       ENDDO
       CALCULATEDBORN=.TRUE.
+      BORN_CACHE_ANS(:,:)=ANS(:,:)
+      BORN_CACHE_NFKS=NFKSPROCESS
+      BORN_CACHE_OK=.TRUE.
       END
 
 
-      SUBROUTINE BORN(P,NHEL,HELL,ANS,BORNS)
+      SUBROUTINE BORN(P,NHEL,HELL,IMODE,ANS,BORNS)
 C     
 C     Generated by MadGraph7 v. %(version)s, %(date)s
 C     By the MadGraph7 Development Team
 C     Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
 C     RETURNS AMPLITUDE SQUARED SUMMED/AVG OVER COLORS
 C     FOR THE POINT WITH EXTERNAL LINES W(0:6,NEXTERNAL-1)
+C     
+C     The amplitudes are computed by GET_AMP_BORN and the Born JAMPs by
+C     GET_JAMP_BORN. IMODE selects what is done with the JAMPs:
+C     IMODE = 0 : the Born of this helicity (BORN_COLOR_SQUARE with the
+C     Born colour matrix) in ANS(1,:) and BORNS
+C     IMODE = 1 : the same, and the JAMPs are also added to the colour
+C     density RHO (BORN_RHO_ADD)
+C     IMODE = 2 : the JAMPs are only added to RHO; ANS(1,:) and BORNS
+C     are zero
+C     The Born and the colour-linked Borns summed over helicities are
+C      then
+C     traces of RHO (BORN_RHO_TRACE). The spin-correlated Born ANS(2,:)
+C     pairs the two helicities of the FKS gluon, so it is computed
+C      here for
+C     every IMODE.
 
 C     Process: d~ d > z z [ LOonly = QCD QED ] QCD^2=2 QED^2=4
 C     
-      USE ALOHA_OBJECT
       IMPLICIT NONE
 C     
 C     CONSTANTS
 C     
       INTEGER NAMPSO, NSQAMPSO
       PARAMETER (NAMPSO=1, NSQAMPSO=1)
-      INTEGER    NGRAPHS,    NEIGEN
-      PARAMETER (NGRAPHS=   2,NEIGEN=  1)
-      INTEGER    NWAVEFUNCS, NCOLOR
-      PARAMETER (NWAVEFUNCS=5, NCOLOR=1)
-      REAL*8     ZERO
-      PARAMETER (ZERO=0D0)
-      COMPLEX*16 IMAG1
-      PARAMETER (IMAG1 = (0D0,1D0))
+      INTEGER    NGRAPHS
+      PARAMETER (NGRAPHS=   2)
+      INTEGER    NCOLOR
+      PARAMETER (NCOLOR=1)
       INCLUDE 'nexternal.inc'
       INCLUDE 'born_nhel.inc'
-      INCLUDE 'coupl.inc'
 C     
-C     ARGUMENTS 
+C     ARGUMENTS
 C     
       REAL*8 P(0:3,NEXTERNAL-1),BORNS(2,0:NSQAMPSO)
-      INTEGER NHEL(NEXTERNAL-1), HELL
+      INTEGER NHEL(NEXTERNAL-1), HELL, IMODE
       COMPLEX*16 ANS(2,NSQAMPSO)
 C     
-C     LOCAL VARIABLES 
+C     LOCAL VARIABLES
 C     
-      INTEGER I,J,M,N,IHEL,BACK_HEL,GLU_IJ
-      INTEGER IC(NEXTERNAL-1),NMO
-      PARAMETER (NMO=NEXTERNAL-1)
-      DATA IC /NMO*1/
-      INTEGER FLAVOR(NEXTERNAL-1)
-      DATA FLAVOR /NMO*1/
-      INTEGER CF(NCOLOR*(NCOLOR+1)/2)
-      INTEGER CF_INDEX, DENOM
-      COMPLEX*16 ZTEMP, AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO), JAMPH(2,
-     $  NCOLOR,NAMPSO)
-      TYPE(ALOHA) W(NWAVEFUNCS)
-      COMPLEX*16 TMP_JAMP(0)
+      INTEGER I,J,IHEL,BACK_HEL,GLU_IJ,IHSAVE,IFLIP
+      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO), JAMPH(2, NCOLOR
+     $ ,NAMPSO)
+      COMPLEX*16 RES(NSQAMPSO)
 C     
 C     GLOBAL VARIABLES
 C     
@@ -597,26 +651,21 @@ C
       LOGICAL COND_IJ
       LOGICAL FORCE_IJGLU_ZERO
       COMMON /TO_FORCE_IJGLU/ FORCE_IJGLU_ZERO
-
-C     
-C     FUNCTION
-C     
-      INTEGER SQSOINDEXB
+      LOGICAL BORN_CACHE_OK
+      INTEGER BORN_CACHE_NFKS
+      COMMON /C_BORN_CACHE/ BORN_CACHE_OK, BORN_CACHE_NFKS
 
       INTEGER IJ_VALUES(1)
       DATA IJ_VALUES / 0 /
-C     
-C     COLOR DATA
-C     
-      DATA DENOM/1/
-      DATA (CF(I),I=  1,  1) /3/
-C     1 T(1,2)
 C     ----------
 C     BEGIN CODE
 C     ----------
-      JAMP(:,:) = (0D0,0D0)
+C     a single-helicity call (SBORN_ONEHEL) adds to AMP2/JAMP2 and may
+C     overwrite saved amplitudes: the cached SBORN result is stale
+      IF (IMODE.EQ.0) BORN_CACHE_OK=.FALSE.
       BORNS(:,:) =0D0
       ANS(:,:) = (0D0, 0D0)
+      JAMPH(:,:,:) = (0D0, 0D0)
 
       GLU_IJ = IJ_VALUES(NFKSPROCESS)
       IF (FORCE_IJGLU_ZERO) GLU_IJ = 0
@@ -641,91 +690,624 @@ C     ----------
           IF (GLU_IJ.NE.0) THEN
             IF (NHEL(GLU_IJ).NE.0) NHEL(GLU_IJ) = IHEL
           ENDIF
+C         helicity slot of the saved amplitudes: hell for the helicity
+C         passed in, hell+skip for the flipped one of the FKS gluon
+          IF(IHEL.EQ.BACK_HEL)THEN
+            IHSAVE=HELL
+          ELSEIF(IHEL.EQ.-BACK_HEL)THEN
+            IHSAVE=HELL+SKIP(NFKSPROCESS)
+          ELSE
+            WRITE(*,*) 'ERROR #1 in born.f'
+            STOP
+          ENDIF
           IF (.NOT. CALCULATEDBORN) THEN
-            CALL OXXXXX(P(0,1),ZERO,NHEL(1),-1, FLAVOR(1),W(1))
-            CALL IXXXXX(P(0,2),ZERO,NHEL(2),+1, FLAVOR(2),W(2))
-            CALL VXXXXX(P(0,3),MDL_MZ,NHEL(3),+1,W(3))
-            CALL VXXXXX(P(0,4),MDL_MZ,NHEL(4),+1,W(4))
-            CALL FFV2_3_1(W(1),W(3),GC_68,GC_76,ZERO,ZERO,W(5))
-C           Amplitude(s) for diagram number 1
-            CALL FFV2_3_0(W(2),W(5),W(4),GC_68,GC_76,AMP(1))
-            CALL FFV2_3_1(W(1),W(4),GC_68,GC_76,ZERO,ZERO,W(5))
-C           Amplitude(s) for diagram number 2
-            CALL FFV2_3_0(W(2),W(5),W(3),GC_68,GC_76,AMP(2))
-            DO I=1,NGRAPHS
-              IF(IHEL.EQ.BACK_HEL)THEN
-                SAVEAMP(I,HELL)=AMP(I)
-              ELSEIF(IHEL.EQ.-BACK_HEL)THEN
-                SAVEAMP(I,HELL+SKIP(NFKSPROCESS))=AMP(I)
-              ELSE
-                WRITE(*,*) 'ERROR #1 in born.f'
-                STOP
-              ENDIF
-            ENDDO
-          ELSEIF (CALCULATEDBORN) THEN
-            DO I=1,NGRAPHS
-              IF(IHEL.EQ.BACK_HEL)THEN
-                AMP(I)=SAVEAMP(I,HELL)
-              ELSEIF(IHEL.EQ.-BACK_HEL)THEN
-                AMP(I)=SAVEAMP(I,HELL+SKIP(NFKSPROCESS))
-              ELSE
-                WRITE(*,*) 'ERROR #1 in born.f'
-                STOP
-              ENDIF
+            CALL GET_AMP_BORN(P,NHEL,AMP)
+            SAVEAMP(1:NGRAPHS,IHSAVE)=AMP(1:NGRAPHS)
+          ELSE
+            AMP(1:NGRAPHS)=SAVEAMP(1:NGRAPHS,IHSAVE)
+          ENDIF
+          CALL GET_JAMP_BORN(AMP,JAMP)
+          IFLIP=2-(1+BACK_HEL*IHEL)/2
+          IF (IMODE.GE.1) CALL BORN_RHO_ADD(JAMP)
+          IF (IMODE.LE.1) THEN
+C           the Born of this helicity: the Born colour matrix
+            CALL BORN_COLOR_SQUARE(0,JAMP,RES)
+            DO I = 1, NSQAMPSO
+              BORNS(IFLIP,I)=BORNS(IFLIP,I)+DBLE(RES(I))
             ENDDO
           ENDIF
-C         JAMPs contributing to orders QCD=0 QED=2
-          JAMP(1,1) = (-1.000000000000000D+00)*AMP(1)+(
-     $     -1.000000000000000D+00)*AMP(2)
-          DO M = 1, NAMPSO
-            CF_INDEX = 0
-            DO I = 1, NCOLOR
-              ZTEMP = (0.D0,0.D0)
-              DO J = I, NCOLOR
-                CF_INDEX = CF_INDEX + 1
-                ZTEMP = ZTEMP + CF(CF_INDEX)*JAMP(J,M)
-              ENDDO
-              DO N = 1, NAMPSO
-                BORNS(2-(1+BACK_HEL*IHEL)/2,SQSOINDEXB(M,N))=BORNS(2
-     $           -(1+BACK_HEL*IHEL)/2,SQSOINDEXB(M,N))+ZTEMP
-     $           *DCONJG(JAMP(I,N))
-              ENDDO
-            ENDDO
-          ENDDO
           DO I = 1, NGRAPHS
             AMP2(I)=AMP2(I)+AMP(I)*DCONJG(AMP(I))
           ENDDO
           DO J = 1,NAMPSO
             DO I = 1, NCOLOR
               JAMP2(I,J)=JAMP2(I,J)+JAMP(I,J)*DCONJG(JAMP(I,J))
-              JAMPH(2-(1+BACK_HEL*IHEL)/2,I,J)=JAMP(I,J)
+              JAMPH(IFLIP,I,J)=JAMP(I,J)
             ENDDO
           ENDDO
         ENDIF
       ENDDO
-      BORNS(:,:) = BORNS(:,:)/DENOM
       DO I = 1, NSQAMPSO
         BORNS(1,0)=BORNS(1,0)+BORNS(1,I)
         BORNS(2,0)=BORNS(2,0)+BORNS(2,I)
         ANS(1,I) = BORNS(1,I) + BORNS(2,I)
       ENDDO
+C     the spin-correlated Born: the Born colour matrix between the
+C      JAMPs
+C     of the two helicities of the FKS gluon
+      CALL BORN_COLOR_CONTRACT(0,JAMPH(2,:,:),JAMPH(1,:,:),RES)
+      ANS(2,:) = RES(:)
+      IF (GLU_IJ.NE.0) NHEL(GLU_IJ) = BACK_HEL
+      END
+
+
+      SUBROUTINE GET_AMP_BORN(P,NHEL,AMP)
+C     
+C     Generated by MadGraph7 v. %(version)s, %(date)s
+C     By the MadGraph7 Development Team
+C     Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
+C     Returns the Born amplitudes AMP(NGRAPHS) for the helicity
+C     configuration NHEL (the HELAS calls)
+C     Process: d~ d > z z [ LOonly = QCD QED ] QCD^2=2 QED^2=4
+C     
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+C     
+C     CONSTANTS
+C     
+      INTEGER    NGRAPHS,    NEIGEN
+      PARAMETER (NGRAPHS=   2,NEIGEN=  1)
+      INTEGER    NWAVEFUNCS
+      PARAMETER (NWAVEFUNCS=5)
+      REAL*8     ZERO
+      PARAMETER (ZERO=0D0)
+      COMPLEX*16 IMAG1
+      PARAMETER (IMAG1 = (0D0,1D0))
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'coupl.inc'
+C     
+C     ARGUMENTS
+C     
+      REAL*8 P(0:3,NEXTERNAL-1)
+      INTEGER NHEL(NEXTERNAL-1)
+      COMPLEX*16 AMP(NGRAPHS)
+C     
+C     LOCAL VARIABLES
+C     
+      INTEGER IC(NEXTERNAL-1),NMO
+      PARAMETER (NMO=NEXTERNAL-1)
+      DATA IC /NMO*1/
+      INTEGER FLAVOR(NEXTERNAL-1)
+      DATA FLAVOR /NMO*1/
+      TYPE(ALOHA) W(NWAVEFUNCS)
+C     ----------
+C     BEGIN CODE
+C     ----------
+      CALL OXXXXX(P(0,1),ZERO,NHEL(1),-1, FLAVOR(1),W(1))
+      CALL IXXXXX(P(0,2),ZERO,NHEL(2),+1, FLAVOR(2),W(2))
+      CALL VXXXXX(P(0,3),MDL_MZ,NHEL(3),+1,W(3))
+      CALL VXXXXX(P(0,4),MDL_MZ,NHEL(4),+1,W(4))
+      CALL FFV2_3_1(W(1),W(3),GC_68,GC_76,ZERO,ZERO,W(5))
+C     Amplitude(s) for diagram number 1
+      CALL FFV2_3_0(W(2),W(5),W(4),GC_68,GC_76,AMP(1))
+      CALL FFV2_3_1(W(1),W(4),GC_68,GC_76,ZERO,ZERO,W(5))
+C     Amplitude(s) for diagram number 2
+      CALL FFV2_3_0(W(2),W(5),W(3),GC_68,GC_76,AMP(2))
+      END
+
+
+      SUBROUTINE GET_JAMP_BORN(AMP,JAMP)
+C     
+C     Generated by MadGraph7 v. %(version)s, %(date)s
+C     By the MadGraph7 Development Team
+C     Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
+C     Returns the Born JAMPs (colour-ordered amplitudes, in the Born
+C      colour
+C     basis) for each amplitude split order
+C     Process: d~ d > z z [ LOonly = QCD QED ] QCD^2=2 QED^2=4
+C     
+      IMPLICIT NONE
+C     
+C     CONSTANTS
+C     
+      INTEGER NAMPSO
+      PARAMETER (NAMPSO=1)
+      INTEGER    NGRAPHS
+      PARAMETER (NGRAPHS=   2)
+      INTEGER    NCOLOR
+      PARAMETER (NCOLOR=1)
+      COMPLEX*16 IMAG1
+      PARAMETER (IMAG1 = (0D0,1D0))
+C     
+C     ARGUMENTS
+C     
+      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
+C     
+C     LOCAL VARIABLES
+C     
+      COMPLEX*16 TMP_JAMP(0)
+C     ----------
+C     BEGIN CODE
+C     ----------
+      JAMP(:,:) = (0D0,0D0)
+C     JAMPs contributing to orders QCD=0 QED=2
+      JAMP(1,1) = (-1.000000000000000D+00)*AMP(1)+(-1.000000000000000D
+     $ +00)*AMP(2)
+      END
+
+
+      SUBROUTINE BORN_COLOR_CONTRACT(ILINK,JAMPA,JAMPB,RES)
+C     
+C     Generated by MadGraph7 v. %(version)s, %(date)s
+C     By the MadGraph7 Development Team
+C     Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
+C     Contracts two sets of Born JAMPs with one of the colour
+C      matrices, all
+C     expressed in the Born colour basis:
+C     ILINK = 0      : the Born colour matrix
+C     ILINK = 1..NLINKS : the colour-linked Born for the ILINK-th link
+C     (the same numbering as sborn_sf and born_links.dat)
+C     For each squared split order it returns
+C     RES = sum_ij S_ij (JAMPA(j,M) conj(JAMPB(i,N))
+C     + JAMPA(i,M) conj(JAMPB(j,N)))/2
+C     i.e. the symmetrised interference needed for the spin-correlated
+C      Born.
+C     For JAMPA = JAMPB use the cheaper BORN_COLOR_SQUARE, or, summed
+C      over
+C     helicities, BORN_RHO_TRACE. The matrices are symmetric: only the
+C     upper triangle is stored, with the off-diagonal entries doubled,
+C      as
+C     integers over DENOM(ILINK) (BLOCK DATA BORN_COLOR_DATA).
+C     Process: d~ d > z z [ LOonly = QCD QED ] QCD^2=2 QED^2=4
+C     
+      IMPLICIT NONE
+C     
+C     CONSTANTS
+C     
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=1, NSQAMPSO=1)
+      INTEGER    NCOLOR, NCF, NLINKS
+      PARAMETER (NCOLOR=1, NCF=NCOLOR*(NCOLOR+1)/2)
+      PARAMETER (NLINKS=1)
+C     
+C     ARGUMENTS
+C     
+      INTEGER ILINK
+      COMPLEX*16 JAMPA(NCOLOR,NAMPSO), JAMPB(NCOLOR,NAMPSO)
+      COMPLEX*16 RES(NSQAMPSO)
+C     
+C     LOCAL VARIABLES
+C     
+      INTEGER I,J,M,N,CF_INDEX
+      COMPLEX*16 ZTEMP
+      INTEGER CF(NCF,0:NLINKS), DENOM(0:NLINKS)
+      COMMON /C_BORN_COLOR_MATRICES/ CF, DENOM
+      INTEGER SQSO(NAMPSO,NAMPSO)
+      LOGICAL FIRSTTIME
+      DATA FIRSTTIME /.TRUE./
+      SAVE SQSO, FIRSTTIME
+C     
+C     FUNCTION
+C     
+      INTEGER SQSOINDEXB
+C     ----------
+C     BEGIN CODE
+C     ----------
+C     the squared split-order index of each (M,N) pair, looked up once
+      IF (FIRSTTIME) THEN
+        DO M = 1, NAMPSO
+          DO N = 1, NAMPSO
+            SQSO(M,N) = SQSOINDEXB(M,N)
+          ENDDO
+        ENDDO
+        FIRSTTIME = .FALSE.
+      ENDIF
+      RES(:) = (0D0,0D0)
       DO M = 1, NAMPSO
+        DO N = 1, NAMPSO
+          ZTEMP = (0D0,0D0)
+          CF_INDEX = 0
+          DO I = 1, NCOLOR
+            DO J = I, NCOLOR
+              CF_INDEX = CF_INDEX + 1
+              IF (CF(CF_INDEX,ILINK).NE.0) ZTEMP = ZTEMP + CF(CF_INDEX
+     $         ,ILINK)*(JAMPA(J,M)*DCONJG(JAMPB(I,N))+JAMPA(I,M)
+     $         *DCONJG(JAMPB(J,N)))
+            ENDDO
+          ENDDO
+          RES(SQSO(M,N)) = RES(SQSO(M,N)) + ZTEMP
+        ENDDO
+      ENDDO
+      RES(:) = RES(:)/(2D0*DENOM(ILINK))
+      END
+
+
+      SUBROUTINE BORN_COLOR_SQUARE(ILINK,JAMP,RES)
+C     
+C     Generated by MadGraph7 v. %(version)s, %(date)s
+C     By the MadGraph7 Development Team
+C     Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
+C     conj(JAMP).S.JAMP for each squared split order, S being the Born
+C      colour
+C     matrix (ILINK = 0) or the one of the ILINK-th colour link, all
+C      in the
+C     Born colour basis. Only the real part of RES is meaningful.
+C     Process: d~ d > z z [ LOonly = QCD QED ] QCD^2=2 QED^2=4
+C     
+      IMPLICIT NONE
+C     
+C     CONSTANTS
+C     
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=1, NSQAMPSO=1)
+      INTEGER    NCOLOR, NCF, NLINKS
+      PARAMETER (NCOLOR=1, NCF=NCOLOR*(NCOLOR+1)/2)
+      PARAMETER (NLINKS=1)
+C     
+C     ARGUMENTS
+C     
+      INTEGER ILINK
+      COMPLEX*16 JAMP(NCOLOR,NAMPSO), RES(NSQAMPSO)
+C     
+C     LOCAL VARIABLES
+C     
+      INTEGER I,J,M,N,CF_INDEX
+      COMPLEX*16 ZTEMP, ZSUM, ZT(NCOLOR)
+      INTEGER CF(NCF,0:NLINKS), DENOM(0:NLINKS)
+      COMMON /C_BORN_COLOR_MATRICES/ CF, DENOM
+      INTEGER SQSO(NAMPSO,NAMPSO)
+      LOGICAL FIRSTTIME
+      DATA FIRSTTIME /.TRUE./
+      SAVE SQSO, FIRSTTIME
+C     
+C     FUNCTION
+C     
+      INTEGER SQSOINDEXB
+C     ----------
+C     BEGIN CODE
+C     ----------
+C     the squared split-order index of each (M,N) pair, looked up once
+      IF (FIRSTTIME) THEN
+        DO M = 1, NAMPSO
+          DO N = 1, NAMPSO
+            SQSO(M,N) = SQSOINDEXB(M,N)
+          ENDDO
+        ENDDO
+        FIRSTTIME = .FALSE.
+      ENDIF
+      RES(:) = (0D0,0D0)
+      DO M = 1, NAMPSO
+C       ZT = S.JAMP(:,M), using the packed upper triangle
         CF_INDEX = 0
         DO I = 1, NCOLOR
-          ZTEMP = (0.D0,0.D0)
+          ZTEMP = (0D0,0D0)
           DO J = I, NCOLOR
-            CF_INDEX = CF_INDEX +1
-            DO  N = 1, NAMPSO
-              ANS(2,SQSOINDEXB(M,N))= ANS(2,SQSOINDEXB(M,N)) +
-     $          CF(CF_INDEX)*(JAMPH(2,J,M)*DCONJG(JAMPH(1,I,N))
-     $         +JAMPH(2,I,M)*DCONJG(JAMPH(1,J,N)))
+            CF_INDEX = CF_INDEX + 1
+            ZTEMP = ZTEMP + CF(CF_INDEX,ILINK)*JAMP(J,M)
+          ENDDO
+          ZT(I) = ZTEMP
+        ENDDO
+        DO N = 1, NAMPSO
+          ZSUM = (0D0,0D0)
+          DO I = 1, NCOLOR
+            ZSUM = ZSUM + ZT(I)*DCONJG(JAMP(I,N))
+          ENDDO
+          RES(SQSO(M,N)) = RES(SQSO(M,N)) + ZSUM
+        ENDDO
+      ENDDO
+      RES(:) = RES(:)/DENOM(ILINK)
+      END
+
+
+      SUBROUTINE BORN_RHO_RESET()
+C     
+C     Generated by MadGraph7 v. %(version)s, %(date)s
+C     By the MadGraph7 Development Team
+C     Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
+C     Sets the colour density RHO of the Born JAMPs (BORN_RHO_ADD) to
+C      zero.
+C     Process: d~ d > z z [ LOonly = QCD QED ] QCD^2=2 QED^2=4
+C     
+      IMPLICIT NONE
+C     
+C     CONSTANTS
+C     
+      INTEGER NSQAMPSO
+      PARAMETER (NSQAMPSO=1)
+      INTEGER    NCOLOR, NCF
+      PARAMETER (NCOLOR=1, NCF=NCOLOR*(NCOLOR+1)/2)
+C     
+C     GLOBAL VARIABLES
+C     
+      DOUBLE PRECISION RHO(NCF,NSQAMPSO)
+      COMMON /C_BORN_RHO/ RHO
+C     ----------
+C     BEGIN CODE
+C     ----------
+      RHO(:,:) = 0D0
+      END
+
+
+      SUBROUTINE BORN_RHO_ADD(JAMP)
+C     
+C     Generated by MadGraph7 v. %(version)s, %(date)s
+C     By the MadGraph7 Development Team
+C     Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
+C     Adds the Born JAMPs of one helicity to the colour density
+C     RHO(ij,K) = sum_hel sum_(M,N) Re(JAMP(j,M) conj(JAMP(i,N)))
+C     for i <= j (packed as the colour matrices), the sum running over
+C      the
+C     pairs of amplitude split orders (M,N) of the squared split order
+C      K.
+C     All the colour matrices S are real and symmetric, so the
+C      helicity sum
+C     of conj(JAMP).S.JAMP is the trace sum_ij S_ij RHO(ij,K)
+C     (BORN_RHO_TRACE): the sum over helicities is done once, for the
+C      Born
+C     and for all the colour-linked Borns.
+C     Process: d~ d > z z [ LOonly = QCD QED ] QCD^2=2 QED^2=4
+C     
+      IMPLICIT NONE
+C     
+C     CONSTANTS
+C     
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=1, NSQAMPSO=1)
+      INTEGER    NCOLOR, NCF
+      PARAMETER (NCOLOR=1, NCF=NCOLOR*(NCOLOR+1)/2)
+C     
+C     ARGUMENTS
+C     
+      COMPLEX*16 JAMP(NCOLOR,NAMPSO)
+C     
+C     LOCAL VARIABLES
+C     
+      INTEGER I,J,M,N,K,CF_INDEX
+      DOUBLE PRECISION RHO(NCF,NSQAMPSO)
+      COMMON /C_BORN_RHO/ RHO
+      INTEGER SQSO(NAMPSO,NAMPSO)
+      LOGICAL FIRSTTIME
+      DATA FIRSTTIME /.TRUE./
+      SAVE SQSO, FIRSTTIME
+C     
+C     FUNCTION
+C     
+      INTEGER SQSOINDEXB
+C     ----------
+C     BEGIN CODE
+C     ----------
+C     the squared split-order index of each (M,N) pair, looked up once
+      IF (FIRSTTIME) THEN
+        DO M = 1, NAMPSO
+          DO N = 1, NAMPSO
+            SQSO(M,N) = SQSOINDEXB(M,N)
+          ENDDO
+        ENDDO
+        FIRSTTIME = .FALSE.
+      ENDIF
+      DO M = 1, NAMPSO
+C       (M,M): Re(JAMP(j,M) conj(JAMP(i,M))) is symmetric in i,j
+        K = SQSO(M,M)
+        CF_INDEX = 0
+        DO I = 1, NCOLOR
+          DO J = I, NCOLOR
+            CF_INDEX = CF_INDEX + 1
+            RHO(CF_INDEX,K) = RHO(CF_INDEX,K) + DBLE(JAMP(J,M))
+     $       *DBLE(JAMP(I,M)) + DIMAG(JAMP(J,M))*DIMAG(JAMP(I,M))
+          ENDDO
+        ENDDO
+C       (M,N) and (N,M) for N > M share the squared split order
+        DO N = M+1, NAMPSO
+          K = SQSO(M,N)
+          CF_INDEX = 0
+          DO I = 1, NCOLOR
+            DO J = I, NCOLOR
+              CF_INDEX = CF_INDEX + 1
+              RHO(CF_INDEX,K) = RHO(CF_INDEX,K) + DBLE(JAMP(J,M))
+     $         *DBLE(JAMP(I,N)) + DIMAG(JAMP(J,M))*DIMAG(JAMP(I,N)) +
+     $          DBLE(JAMP(I,M))*DBLE(JAMP(J,N)) + DIMAG(JAMP(I,M))
+     $         *DIMAG(JAMP(J,N))
             ENDDO
           ENDDO
         ENDDO
-
       ENDDO
-      ANS(2,:) = ANS(2,:)/(2D0*DENOM)
-      IF (GLU_IJ.NE.0) NHEL(GLU_IJ) = BACK_HEL
+      END
+
+
+      SUBROUTINE BORN_RHO_TRACE(ILINK,RES)
+C     
+C     Generated by MadGraph7 v. %(version)s, %(date)s
+C     By the MadGraph7 Development Team
+C     Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
+C     The Born (ILINK = 0) or the ILINK-th colour-linked Born, summed
+C      over
+C     the helicities added to the colour density RHO since the last
+C     BORN_RHO_RESET, for each squared split order (not divided by
+C      IDEN):
+C     RES(K) = sum_ij S_ij RHO(ij,K)
+C     Process: d~ d > z z [ LOonly = QCD QED ] QCD^2=2 QED^2=4
+C     
+      IMPLICIT NONE
+C     
+C     CONSTANTS
+C     
+      INTEGER NSQAMPSO
+      PARAMETER (NSQAMPSO=1)
+      INTEGER    NCOLOR, NCF, NLINKS
+      PARAMETER (NCOLOR=1, NCF=NCOLOR*(NCOLOR+1)/2)
+      PARAMETER (NLINKS=1)
+C     
+C     ARGUMENTS
+C     
+      INTEGER ILINK
+      DOUBLE PRECISION RES(NSQAMPSO)
+C     
+C     LOCAL VARIABLES
+C     
+      INTEGER K,CF_INDEX
+      DOUBLE PRECISION TEMP
+      INTEGER CF(NCF,0:NLINKS), DENOM(0:NLINKS)
+      COMMON /C_BORN_COLOR_MATRICES/ CF, DENOM
+      DOUBLE PRECISION RHO(NCF,NSQAMPSO)
+      COMMON /C_BORN_RHO/ RHO
+C     ----------
+C     BEGIN CODE
+C     ----------
+      DO K = 1, NSQAMPSO
+        TEMP = 0D0
+        DO CF_INDEX = 1, NCF
+          TEMP = TEMP + CF(CF_INDEX,ILINK)*RHO(CF_INDEX,K)
+        ENDDO
+        RES(K) = TEMP/DENOM(ILINK)
+      ENDDO
+      END
+
+
+      BLOCK DATA BORN_COLOR_DATA
+C     The colour matrices in the Born colour basis: index 0 is the
+C      Born one,
+C     1..NLINKS the colour links (upper triangle, off-diagonal entries
+C      doubled,
+C     integers over DENOM)
+      IMPLICIT NONE
+      INTEGER    NCOLOR, NCF, NLINKS
+      PARAMETER (NCOLOR=1, NCF=NCOLOR*(NCOLOR+1)/2)
+      PARAMETER (NLINKS=1)
+      INTEGER I
+      INTEGER CF(NCF,0:NLINKS), DENOM(0:NLINKS)
+      COMMON /C_BORN_COLOR_MATRICES/ CF, DENOM
+      LOGICAL BORN_CACHE_OK
+      INTEGER BORN_CACHE_NFKS
+      COMMON /C_BORN_CACHE/ BORN_CACHE_OK, BORN_CACHE_NFKS
+      DATA BORN_CACHE_OK /.FALSE./, BORN_CACHE_NFKS /0/
+      LOGICAL CHECK_BORN_AMPS, BORN_CHECKS_AMPS
+      COMMON /C_BORN_AMPS_CHECK/ CHECK_BORN_AMPS, BORN_CHECKS_AMPS
+      DATA CHECK_BORN_AMPS /.FALSE./
+      DATA BORN_CHECKS_AMPS /.TRUE./
+      DATA DENOM(0)/1/
+      DATA (CF(I,0),I=1,1) /3/
+      DATA DENOM(1)/1/
+      DATA (CF(I,1),I=1,1) /-4/
+      END
+
+
+      SUBROUTINE SB_SF_LINK(P,ILINK,ANS_SUMMED)
+C     
+C     Generated by MadGraph7 v. %(version)s, %(date)s
+C     By the MadGraph7 Development Team
+C     Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
+C     
+C     The ILINK-th colour-linked Born, summed over the split orders
+C     required for the counterterms (the values per split order are
+C     stored in AMP_SPLIT_CNT). It is the trace of the colour density
+C     left by the last Born call with the colour matrix of the link
+C     (BORN_RHO_TRACE), so SBORN must have been called before at the
+C     same momenta.
+C     
+C     Process: d~ d > z z [ LOonly = QCD QED ] QCD^2=2 QED^2=4
+C     
+      IMPLICIT NONE
+C     
+C     CONSTANTS
+C     
+      INCLUDE 'nexternal.inc'
+      INTEGER NSQAMPSO
+      PARAMETER (NSQAMPSO=1)
+C     
+C     ARGUMENTS
+C     
+      REAL*8 P(0:3,NEXTERNAL-1), ANS_SUMMED
+      INTEGER ILINK
+C     
+C     VARIABLES
+C     
+      INTEGER I,J,IDEN
+      INCLUDE 'orders.inc'
+      REAL*8 ANS(0:NSQAMPSO), RES(NSQAMPSO)
+      LOGICAL KEEP_ORDER_CNT(NSPLITORDERS, NSQAMPSO)
+      COMMON /C_KEEP_ORDER_CNT/ KEEP_ORDER_CNT
+      INTEGER AMP_ORDERS(NSPLITORDERS)
+      DOUBLE PRECISION TINY
+      PARAMETER (TINY = 1D-12)
+      DOUBLE PRECISION MAX_VAL
+      INTEGER IDEN_VALUES(1)
+      DATA IDEN_VALUES / 72 /
+C     
+C     GLOBAL VARIABLES
+C     
+      DOUBLE PRECISION SAVEMOM(NEXTERNAL-1,2)
+      COMMON/TO_SAVEMOM/SAVEMOM
+      LOGICAL CALCULATEDBORN
+      COMMON/CCALCULATEDBORN/CALCULATEDBORN
+      INTEGER NFKSPROCESS
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      LOGICAL CHECK_BORN_AMPS, BORN_CHECKS_AMPS
+      COMMON /C_BORN_AMPS_CHECK/ CHECK_BORN_AMPS, BORN_CHECKS_AMPS
+C     
+C     FUNCTIONS
+C     
+      INTEGER GETORDPOWFROMINDEX_B
+      INTEGER ORDERS_TO_AMP_SPLIT_POS
+C     ----------
+C     BEGIN CODE
+C     ----------
+      IDEN=IDEN_VALUES(NFKSPROCESS)
+      IF (CALCULATEDBORN) THEN
+        DO J=1,NEXTERNAL-1
+          IF (SAVEMOM(J,1).NE.P(0,J) .OR. SAVEMOM(J,2).NE.P(3,J)) THEN
+            CALCULATEDBORN=.FALSE.
+            WRITE(*,*) 'Error in sb_sf: momenta not the same in the'
+     $       //' born'
+            STOP
+          ENDIF
+        ENDDO
+      ELSE
+        WRITE(*,*) 'Error in sb_sf: color_linked borns should be'
+     $   //' called only with calculatedborn = true'
+        STOP
+      ENDIF
+      IF (CHECK_BORN_AMPS) THEN
+        WRITE(*,*) 'Error in sb_sf: the Born must be called again'
+     $   //' first'
+        STOP
+      ENDIF
+      ANS(:) = 0D0
+      CALL BORN_RHO_TRACE(ILINK,RES)
+      DO I=1,NSQAMPSO
+        ANS(I)=RES(I)/DBLE(IDEN)
+        ANS(0)=ANS(0)+ANS(I)
+      ENDDO
+
+C     color-linked borns are called for QCD-type emissions
+      ANS_SUMMED = 0D0
+      MAX_VAL = 0D0
+
+C     reset the amp_split_cnt array
+      AMP_SPLIT_CNT(1:AMP_SPLIT_SIZE,1:2,1:NSPLITORDERS) = DCMPLX(0D0
+     $ ,0D0)
+
+      DO I = 1, NSQAMPSO
+        MAX_VAL = MAX(MAX_VAL, ABS(ANS(I)))
+      ENDDO
+
+      DO I = 1, NSQAMPSO
+        IF (KEEP_ORDER_CNT(QCD_POS, I)) THEN
+          ANS_SUMMED = ANS_SUMMED + ANS(I)
+          DO J = 1, NSPLITORDERS
+            AMP_ORDERS(J) = GETORDPOWFROMINDEX_B(J, I)
+C           take into account the fact that this is for QCD
+            IF (J.EQ.QCD_POS) AMP_ORDERS(J) = AMP_ORDERS(J) + 2
+          ENDDO
+          IF(ABS(ANS(I)).GT.MAX_VAL*TINY)
+     $      AMP_SPLIT_CNT(ORDERS_TO_AMP_SPLIT_POS(AMP_ORDERS),1
+     $     ,QCD_POS) = ANS(I)
+        ENDIF
+      ENDDO
+
+C     this is to avoid fake non-zero contributions
+      IF (ABS(ANS_SUMMED).LT.MAX_VAL*TINY) ANS_SUMMED=0D0
+
+      RETURN
       END
 
 
@@ -748,7 +1330,7 @@ C
       INTEGER FUNCTION SQSOINDEXB(AMPORDERA,AMPORDERB)
 C     
 C     This functions plays the role of the interference matrix. It can
-C      be hardcoded or 
+C      be hardcoded or
 C     made more elegant using hashtables if its execution speed ever
 C      becomes a relevant
 C     factor. From two split order indices of the jamps, it return the

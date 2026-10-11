@@ -9,9 +9,11 @@ computed from the member weights -- histograms.py has to rebuild it and needs
 the LHAPDF python module to do so, which is not always installed.
 
 The y axis is the differential cross section dsigma/dx, the same convention as
-HwU and as MadBoard's browser plots: the cross section in a bin divided by the
-bin width, so the area under the curve is the cross section. The under/overflow
-bins that the madspace arrays carry are dropped, again as both of those do.
+MadBoard's browser plots: the cross section in a bin divided by the bin width,
+so the area under the curve is the cross section. (The HwU file of a run,
+hwu_output.py, keeps the cross section per bin instead, as HwU files do.) The
+under/overflow bins that the madspace arrays carry are dropped, as both of
+those do.
 
 matplotlib is imported lazily and only here: a run without it still writes
 every number to info.json, it just draws nothing.

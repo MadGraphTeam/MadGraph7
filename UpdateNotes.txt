@@ -5,7 +5,14 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
-   OM: multi_run: the merge of the runs (merge.pl) is now done in python, 5 to 10
+   OM: Bug fix: 'check_sa.exe perf' of 'output standalone' ignored the alpha_s
+       of the param card and always used 0.118 (the 'matrix' mode was right).
+       With --momenta/-e and --dump-me, the matrix elements at user points are
+       now evaluated with the card alpha_s.
+   OM: Bug fix: in 'output standalone_fortran' (without --prefix), a plain
+       'make' in SubProcesses built the python module of the first P directory
+       only. It now builds all of them, like 'make all'.
+   OM: multi_run:the merge of the runs (merge.pl) is now done in python, 5 to 10
        times faster. Fix the normalisation for event_norm=sum (the merged sample was
        N_run times too large) and the <rwgt> weights (systematics/reweighting), which
        were not rescaled with the central weight. The relative weights of the events
