@@ -3516,6 +3516,23 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             replace_dict.update({
                 'smatrixhel_userhel': '      USERHEL=HEL',
                 'helreset_cross': '',
+                # C-parity scan of the plain flavors only
+                'csym_doc_ntry':
+                    'C     NTRY_CSYM counts only the uncrossed (cross 0) calls:'
+                    ' CSYM is built and\nC     applied for the base process'
+                    ' only, because a crossing permutes/sign-flips\nC     the'
+                    ' helicities so FLIP (a base-row negation) is no longer'
+                    ' the crossed\nC     C-parity partner. Crossed flavours'
+                    ' therefore keep the full helicity sum.',
+                'csym_doc_dedup':
+                    'C     C-parity de-duplication is only safe for the plain'
+                    ' unpolarized helicity\nC     sum of the uncrossed process'
+                    ' (FLAV_IDX in [1,NFLAV]) and only once its own\nC     scan'
+                    ' has settled (NTRY_CSYM>=20).',
+                'csym_ntry': 'NTRY_CSYM(FLAV_USE)',
+                'csym_gate_a': '.AND.FLAV_IDX.LE.NFLAV',
+                'csym_gate_b': ' .AND. FLAV_IDX.LE.NFLAV',
+                'csym_gate_c': 'FLAV_IDX.LE.NFLAV.AND.',
                 'crossing_routines': '',
                 'iden_cross_lines': '',
                 'smatrix_cross_decl':
@@ -3574,8 +3591,26 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             (key, value % {'proc_prefix': prefix, 'ncross': ncross,
                            'den_factor_line': replace_dict['den_factor_line']})
             for key, value in self.CROSSING_SNIPPETS.items()))
-        # the per-index try counters are reset with the shared filter
-        replace_dict['helreset_cross'] = '\n   NTRYX(:) = 0'
+        # the per-index try and C-parity scan counters are reset with the
+        # shared filter and verdict
+        replace_dict['helreset_cross'] = \
+            '\n   NTRYX(:) = 0\n   NTRY_CSYMX(:) = 0'
+        # C-parity: every extended index scans the shared verdict CSYM over
+        # its own first calls (see smatrix_cross_decl), and de-duplicates
+        replace_dict.update({
+            'csym_doc_ntry':
+                'C     NTRY_CSYM is the plain flavors\' counter; the scan runs per'
+                ' extended index\nC     (NTRY_CSYMX): a crossed call evaluates'
+                ' the base rows (APPLY_CROSSING_ROWS),\nC     so FLIP is its'
+                ' C-parity partner too, and each crossing scans the shared\n'
+                'C     verdict CSYM over its own first calls.',
+            'csym_doc_dedup':
+                'C     C-parity de-duplication is only safe for the plain'
+                ' unpolarized helicity\nC     sum, and only once the scan of'
+                ' this extended index has settled (>=20).',
+            'csym_ntry': 'NTRY_CSYMX(FLAV_IDX)',
+                             'csym_gate_a': '', 'csym_gate_b': '',
+                             'csym_gate_c': ''})
         # SMATRIXHEL takes the requested process's OWN helicity code; SMATRIX
         # compares it with the base rows, so translate it once (CROSS_HELCODE).
         replace_dict['smatrixhel_userhel'] = (
@@ -3653,7 +3688,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 'so_csym_incr': '',
                 # No crossing -> every call is uncrossed, so the plain NTRY is
                 # the C-parity scan counter and no call has to be excluded.
-                'so_csym_ntry': 'NTRY',
+                'so_csym_ntry': 'NTRY(FLAV_USE)',
                 'so_dedup_cross': '',
                 'so_goodhel_gate':
                     '           IF (GOODHEL(IHEL,FLAV_USE) .OR. NTRY(FLAV_USE)'
@@ -3720,18 +3755,17 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 ' NHEL,\n'
                 '     &   JC, PUSE, NHELUSE, ICUSE, DUMFLAV)\n'
                 '      ENDIF' % {'p': prefix},
-            'so_csym_decl':
-                'C     NTRY_CSYM counts only the uncrossed (cross 0) calls: the'
-                ' C-parity pairing\nC     is scanned, and applied, for the'
-                ' base process only.\n'
-                '      INTEGER NTRY_CSYM(NFLAV)\n'
-                '      DATA NTRY_CSYM/NNTRY_FLAV*0/',
-            'so_csym_reset': '      NTRY_CSYM(i) = 0',
+            # C-parity: the verdict CSYM(FLAV_USE) is shared by every
+            # crossing (each evaluates the base rows, so FLIP is its partner
+            # too); every extended index scans it over its own first calls.
+            # NTRY_CSYMX is declared with NFLAVX below and reset with it.
+            'so_csym_decl': '',
+            'so_csym_reset': '',
             'so_csym_incr':
-                '      IF(USERHEL.EQ.-1.AND.FLAV_IDX.LE.NFLAV)\n'
-                '     &   NTRY_CSYM(FLAV_USE)=NTRY_CSYM(FLAV_USE)+1',
-            'so_csym_ntry': 'NTRY_CSYM',
-            'so_dedup_cross': ' .AND. FLAV_IDX.LE.NFLAV',
+                '      IF(USERHEL.EQ.-1)\n'
+                '     &   NTRY_CSYMX(FLAV_IDX)=NTRY_CSYMX(FLAV_IDX)+1',
+            'so_csym_ntry': 'NTRY_CSYMX(FLAV_IDX)',
+            'so_dedup_cross': '',
             'so_goodhel_gate':
                 'C     The shared filter, open to every row while this'
                 ' extended index trains.\n'
@@ -3798,8 +3832,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             'C     extended index still trains it for itself (massive legs).\n'
             '      INTEGER NFLAVX\n'
             '      PARAMETER (NFLAVX=NFLAV*%d)\n'
-            '      INTEGER NTRYX(NFLAVX)\n'
-            '      DATA NTRYX/NFLAVX*0/'
+            '      INTEGER NTRYX(NFLAVX), NTRY_CSYMX(NFLAVX)\n'
+            '      DATA NTRYX/NFLAVX*0/\n'
+            '      DATA NTRY_CSYMX/NFLAVX*0/'
             % len(self.output_crossing_table(matrix_element)))
 
     def fill_crossing_replace_dict_me(self, matrix_element, replace_dict,
@@ -4208,7 +4243,12 @@ C     the frame, and every crossing is evaluated in its own.
       INTEGER NFLAVX
       PARAMETER (NFLAVX=NFLAV*%(ncross)d)
       INTEGER NTRYX(NFLAVX)
-      DATA NTRYX/NFLAVX*0/""",
+      DATA NTRYX/NFLAVX*0/
+C     Likewise the C-parity verdict CSYM(FLAV_USE) is shared: a crossed call
+C     evaluates the base rows, so FLIP is its partner too. Each extended index
+C     scans it over its own first calls (NTRY_CSYMX).
+      INTEGER NTRY_CSYMX(NFLAVX)
+      DATA NTRY_CSYMX/NFLAVX*0/""",
 
         'smatrix_cross_decode': """C     CROSS = (FLAV_IDX-1)/NFLAV is the crossing to apply. IDENUSE is 0 for a
 C     crossing that cannot be applied, whose matrix element is identically zero.
@@ -8777,10 +8817,12 @@ C       so this also stays correct for split-order processes.
                     '      ANS=ANS/DBLE(IDEN)*%sBROKEN_SYM(FLAVOR)' % prefix,
                 'hr_helcheck':
                     '      IF (FLAV_IDX.LT.1 .OR. FLAV_IDX.GT.NFLAV) RETURN',
+                'hr_helsel_decl': '',
                 'hr_warmup_ncross': '1',
                 'hr_warmup_cross_decl': '',
                 'hr_warmup_cross_skip': '',
                 'hr_warmup_cross_apply': '',
+                'hr_warmup_cross_mass': '',
             })
             return
 
@@ -8833,27 +8875,66 @@ C       so this also stays correct for split-order processes.
                 '        ANS=ANS/DBLE(IDENUSE*%(p)sGET_IDENT_CROSS(CROSSUSE,\n'
                 '     &   FLAVOR))\n'
                 '      ENDIF' % {'p': prefix},
+            'hr_helsel_decl':
+                '\n      INTEGER CROSSUSE, FLAV_USE, IDENUSE, BHEL, DUMFLAV\n'
+                '      INTEGER %(p)sGET_SPINCOL_CROSS, %(p)sGET_IDENT_CROSS\n'
+                '      REAL*8 PUSE(0:3,NEXTERNAL)\n'
+                '      INTEGER ICUSE(NEXTERNAL), NHELDUM(NEXTERNAL)\n'
+                '      INTEGER NHELOUT(NEXTERNAL)' % {'p': prefix},
             'hr_helcheck':
-                'C     A crossed FLAV_IDX would need the base row that maps onto'
-                ' each baked\nC     (crossed) row, which the recycled table does not'
-                ' carry.\n'
+                'C     A crossed FLAV_IDX evaluates the baked BASE rows (each'
+                ' helicity times\nC     IC, as APPLY_CROSSING_ROWS feeds SMATRIX),'
+                ' so the crossed process\'s own\nC     code HEL selects the base'
+                ' row CROSS_HELCODE names.\n'
+                '      IF (FLAV_IDX.LT.1) RETURN\n'
                 '      IF (FLAV_IDX.GT.NFLAV) THEN\n'
-                "        WRITE(*,*) 'SMATRIXHEL: a crossed FLAV_IDX is not"
-                " supported with --hel_recycling'\n"
-                '        STOP 1\n'
-                '      ENDIF\n'
-                '      IF (FLAV_IDX.LT.1) RETURN',
+                '        CROSSUSE = (FLAV_IDX-1) / NFLAV\n'
+                '        FLAV_USE = MOD(FLAV_IDX-1, NFLAV) + 1\n'
+                '        IDENUSE = %(p)sGET_SPINCOL_CROSS(CROSSUSE)\n'
+                '        IF (IDENUSE.EQ.0) RETURN\n'
+                '        CALL %(p)sCROSS_HELCODE(FLAV_IDX, HEL, BHEL)\n'
+                '        DO K = 1, NEXTERNAL\n'
+                '          JC(K) = +1\n'
+                '          NHELDUM(K) = 0\n'
+                '        ENDDO\n'
+                '        CALL %(p)sAPPLY_CROSSING(FLAV_IDX, P, NHELDUM, JC,\n'
+                '     &   PUSE, NHELOUT, ICUSE, DUMFLAV)\n'
+                '        CALL %(p)sGET_FLAVOR(FLAV_USE, FLAVOR)\n'
+                '        CALL %(p)sMATRIX(PUSE, ICUSE, FLAV_USE, TS)\n'
+                '        DO K = 1, NCOMB\n'
+                '          IF (HELALLOW(NHEL(0,K)).EQ.BHEL) ANS = ANS + TS(K)\n'
+                '        ENDDO\n'
+                '        ANS = ANS / DBLE(IDENUSE*%(p)sGET_IDENT_CROSS(CROSSUSE,\n'
+                '     &   FLAVOR))\n'
+                '        ANS = ANS * HELAVGFACTOR\n'
+                '        RETURN\n'
+                '      ENDIF' % {'p': prefix},
             'hr_warmup_ncross': str(replace_dict.get(
                 'ncross', 1)),
             'hr_warmup_cross_decl':
                 '      INTEGER %(p)sGET_SPINCOL_CROSS\n'
-                '      EXTERNAL %(p)sGET_SPINCOL_CROSS' % {'p': prefix},
+                '      EXTERNAL %(p)sGET_SPINCOL_CROSS\n'
+                '      INTEGER XPINV(NEXTERNAL), XSGNI(NEXTERNAL)' % {'p': prefix},
             'hr_warmup_cross_skip':
                 'C         Skip a crossing that cannot be applied: its matrix'
                 ' element is\nC         identically zero, so it needs no helicity'
                 ' row.\n'
                 '          IF (CROSS.NE.0) THEN\n'
                 '            IF (%(p)sGET_SPINCOL_CROSS(CROSS).EQ.0) CYCLE\n'
+                '          ENDIF' % {'p': prefix},
+            'hr_warmup_cross_mass':
+                'C         A crossing is scanned at points of the process it'
+                ' crosses into, in\nC         its own slot order and frame (the'
+                ' momenta are then crossed into the\nC         base slots as'
+                ' SMATRIX does): the helicity zeros of a massive leg\nC        '
+                ' depend on the frame, and the leg moved by the crossing must'
+                ' stay on shell.\n'
+                '          IF (CROSS.NE.0) THEN\n'
+                '            CALL %(p)sGET_CROSS_PINV(FLAV_EXT, XPINV, XSGNI,'
+                ' DUMFLAV)\n'
+                '            DO I=1, NEXTERNAL\n'
+                '              PMASSX(I) = PMASS(XPINV(I))\n'
+                '            ENDDO\n'
                 '          ENDIF' % {'p': prefix},
             'hr_warmup_cross_apply':
                 'C           Cross the momenta and the NSF flags exactly as'

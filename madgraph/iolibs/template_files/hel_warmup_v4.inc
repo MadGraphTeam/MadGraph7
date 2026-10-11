@@ -42,6 +42,9 @@ C     LOCAL
       INTEGER JC(NEXTERNAL), ICUSE(NEXTERNAL)
       INTEGER NHELDUM(NEXTERNAL), NHELOUT(NEXTERNAL), DUMFLAV
       INTEGER NHROW(NEXTERNAL)
+C     PMASSX: the masses of the process a crossing crosses into, slot by slot
+C     (its own leg order): its points are generated in its own frame
+      REAL*8 PMASSX(NEXTERNAL)
       REAL*8 SQRTS, T, ANS, TSARR(NCOMB)
       LOGICAL GOODHEL(NCOMB)
 C     C-parity de-duplication. FLIP(I) is the row whose helicity configuration
@@ -100,14 +103,18 @@ C     makes the recycled matrix.f a valid union over all of them.
 %(hr_warmup_cross_skip)s
           NPSUSE = NPS
           IF (CROSS.NE.0) NPSUSE = NPSCROSS
+          DO I=1, NEXTERNAL
+            PMASSX(I) = PMASS(I)
+          ENDDO
+%(hr_warmup_cross_mass)s
           DO ITRY=1, NPSUSE
             IF (NINCOMING.EQ.1) THEN
-              SQRTS = PMASS(1)
+              SQRTS = PMASSX(1)
             ELSE
               SQRTS = 500D0 + 250D0*ITRY
               IF (SQRTS.LE.2D0*TOTALMASS) SQRTS = 2.1D0*TOTALMASS + 100D0*ITRY
             ENDIF
-            CALL GET_MOMENTA(SQRTS, PMASS, P)
+            CALL GET_MOMENTA(SQRTS, PMASSX, P)
             DO I=1, NEXTERNAL
               JC(I) = +1
             ENDDO

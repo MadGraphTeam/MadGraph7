@@ -2044,7 +2044,7 @@ class TestGoodHelCParityDedup(unittest.TestCase):
             shutil.rmtree(self.tmpdir)
 
     # ------------------------------------------------------------------
-    def _generate(self, process, name):
+    def _generate(self, process, name, out_options=''):
         """Standalone-output `process`, build the C-parity driver, return its
         P* dir."""
         outdir = pjoin(self.tmpdir, name)
@@ -2053,7 +2053,8 @@ class TestGoodHelCParityDedup(unittest.TestCase):
         self.cmd.exec_cmd('set apply_flavor_grouping True')
         self.cmd.exec_cmd('import model sm')
         self.cmd.exec_cmd('generate %s --use_crossing=True' % process)
-        self.cmd.exec_cmd('output standalone_fortran %s -f' % outdir)
+        self.cmd.exec_cmd(('output standalone_fortran %s -f %s'
+                           % (outdir, out_options)).strip())
 
         subproc_root = pjoin(outdir, 'SubProcesses')
         pdirs = [pjoin(subproc_root, entry)
@@ -2105,7 +2106,7 @@ class TestGoodHelCParityDedup(unittest.TestCase):
       INTEGER NCOMB
       PARAMETER (NCOMB=%(ncomb)d)
       REAL*8 P(0:3,NEXTERNAL), ANS, ANSFLIP
-      INTEGER I, J, MODE, NREP, IHEL, CODE, FCODE, IDEN_STAR
+      INTEGER I, J, MODE, NREP, IHEL, CODE, FCODE, IDEN_STAR, FIDX
       INTEGER NHEL_STAR(NEXTERNAL,NCOMB)
       INTEGER THIS(NEXTERNAL), FLIPPED(NEXTERNAL)
       call setpara('param_card.dat')
@@ -2132,11 +2133,12 @@ C        rows of a pair, so the two values are directly comparable.
      &        'PAIR=', IHEL, CODE, FCODE, ANS, ANSFLIP
          ENDDO
       ELSE
-C        The plain unpolarized sum, repeatedly: NTRY_CSYM crosses its
-C        threshold part way through and the fast phase takes over.
-         READ(42,*) NREP
+C        The plain unpolarized sum at (extended) index FIDX, repeatedly:
+C        its C-parity scan counter crosses its threshold part way through and
+C        the fast phase takes over.
+         READ(42,*) NREP, FIDX
          DO I=1,NREP
-            CALL SMATRIX(P,1,ANS)
+            CALL SMATRIX(P,FIDX,ANS)
             WRITE(*,'(A,1X,I6,1X,ES25.17)') 'ANS=', I, ANS
          ENDDO
       ENDIF
@@ -2168,10 +2170,11 @@ C        threshold part way through and the fast phase takes over.
                         % (pdir, output))
         return pairs
 
-    def _repeated_sums(self, pdir):
-        """The unpolarized SMATRIX value of each of `nrepeat` successive calls."""
+    def _repeated_sums(self, pdir, flav_idx=1):
+        """The unpolarized SMATRIX value of each of `nrepeat` successive calls
+        at (extended) index `flav_idx`."""
         output = self._probe(pdir, ['2'] + self._momentum_lines()
-                             + ['%d' % self.nrepeat])
+                             + ['%d %d' % (self.nrepeat, flav_idx)])
         values = [float(value)
                   for _call, value in re.findall(r'ANS=\s+(\d+)\s+(\S+)', output)]
         self.assertEqual(len(values), self.nrepeat,
@@ -2179,7 +2182,7 @@ C        threshold part way through and the fast phase takes over.
                          % (self.nrepeat, pdir, len(values), output))
         return values
 
-    def _assert_sum_is_stable(self, pdir, label):
+    def _assert_sum_is_stable(self, pdir, label, flav_idx=1):
         """Every repeated call must give the first call's value.
 
         Call 1 is in the scan phase (full helicity sum, both members of every
@@ -2187,7 +2190,7 @@ C        threshold part way through and the fast phase takes over.
         wrong -- a missing factor of two, or a de-duplication applied to a
         flavor whose pairs do not match -- the value steps part way through.
         """
-        values = self._repeated_sums(pdir)
+        values = self._repeated_sums(pdir, flav_idx)
         reference = values[0]
         self.assertNotEqual(reference, 0.0,
                             '%s gives a null matrix element' % label)
@@ -2246,6 +2249,19 @@ C        threshold part way through and the fast phase takes over.
         """The reuse engages here, and must not move the answer."""
         pdir = self._generate(PROC_CPARITY_PAIRED, 'Proc_cparity_qcd_sum')
         self._assert_sum_is_stable(pdir, PROC_CPARITY_PAIRED)
+
+    def test_dedup_leaves_a_crossed_sum_unchanged(self):
+        """A crossed index de-duplicates too: it evaluates the base rows (the
+        legs that changed side negated), so the base mirror is its C-parity
+        partner, and it scans the shared verdict over its own first calls
+        before reusing it. Its sum must not move across that threshold
+        either. u u~ > g g with every applicable crossing written out
+        (--crossing_table=all); FLAV_IDX 2 is crossing row 1, massless like
+        the base, so the same points serve it."""
+        pdir = self._generate(PROC_CPARITY_PAIRED, 'Proc_cparity_qcd_crossed',
+                              out_options='--crossing_table=all')
+        self._assert_sum_is_stable(pdir, '%s crossed' % PROC_CPARITY_PAIRED,
+                                   flav_idx=2)
 
     def test_refused_dedup_leaves_the_broken_sum_unchanged(self):
         """The regression: the reuse must refuse itself here.

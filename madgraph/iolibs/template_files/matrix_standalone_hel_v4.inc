@@ -43,7 +43,7 @@ C     I is the implied-DO variable of the recycled NHEL DATA statements below.
       INTEGER FLAVOR(NEXTERNAL)
       INTEGER %(proc_prefix)sBROKEN_SYM
       INTEGER NHEL(0:NEXTERNAL,NCOMB)
-      INTEGER HELALLOW(NCOMBFULL)
+      INTEGER HELALLOW(NCOMBFULL)%(hr_helsel_decl)s
 ${helicity_lines}
 %(hel_allow_data)s
 %(den_factor_line)s

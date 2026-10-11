@@ -275,7 +275,7 @@ C     C-parity de-duplication is only safe for the plain unpolarized helicity
 C     sum of the UNCROSSED process and only once its own scan has settled.
 C     ... and never with a polarised beam: a row and its C-parity flip carry
 C     OPPOSITE beam helicities, so after the beam weight they are not equal.
-      DEDUP = %(so_csym_ntry)s(FLAV_USE).GE.20 .AND. CSYM(FLAV_USE)
+      DEDUP = %(so_csym_ntry)s.GE.20 .AND. CSYM(FLAV_USE)
      &        .AND. USERHEL.EQ.-1 .AND. POLARIZATIONS(0,0).EQ.-1%(so_dedup_cross)s
      &        .AND. ABS(BEAMPOL(1)).LE.1D0 .AND. ABS(BEAMPOL(2)).LE.1D0
 C     A crossed flavor evaluates the BASE helicity table, so NHEL(JJ,IHEL) is
@@ -303,7 +303,7 @@ C             flavor index: the crossing was applied once, above.
 C             Scan phase: cache |M|^2 to test the C-parity partner below --
 C             BEFORE the beam weight, which makes a row and its flip differ
 C             by design.
-              IF (%(so_csym_ntry)s(FLAV_USE).LT.20%(so_dedup_cross)s) THEN
+              IF (%(so_csym_ntry)s.LT.20%(so_dedup_cross)s) THEN
                 DO I=1,NSQAMPSO
                   TSTORE(I,IHEL)=T(I)
                 ENDDO
@@ -351,7 +351,7 @@ C     and because the verdict is all-or-nothing that turns the reuse off for the
 C     whole flavor. There is no way to reach the fast phase without having run
 C     this block: the two are gated on the same counter (NTRY<20 here,
 C     NTRY>=20 for DEDUP), which nothing but this routine advances.
-      IF (USERHEL.EQ.-1.AND.%(so_csym_ntry)s(FLAV_USE).LT.20
+      IF (USERHEL.EQ.-1.AND.%(so_csym_ntry)s.LT.20
      &    .AND.POLARIZATIONS(0,0).EQ.-1%(so_dedup_cross)s) THEN
 C     A pair of rows that are BOTH numerically zero differ only by roundoff,
 C     and a purely RELATIVE test on that noise fails at random -- one such pair

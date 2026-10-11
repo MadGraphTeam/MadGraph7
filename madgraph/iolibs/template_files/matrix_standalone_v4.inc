@@ -110,9 +110,7 @@ C     (FLIP(IHEL)=IHEL) or a single pair with |M(IHEL)|^2 != |M(FLIP)|^2 at any
 C     scan point clears it for good. Halving the whole loop (rather than an
 C     arbitrary subset of rows) is what keeps any per-row accumulation done
 C     inside MATRIX uniformly scaled, so the same rule is used by every backend.
-C     NTRY_CSYM counts only the uncrossed (cross 0) calls: CSYM is built and
-C     applied for the base process only, so crossed flavours keep the full
-C     helicity sum (they would need a scan of their own).
+%(csym_doc_ntry)s
       INTEGER FLIP(NCOMB), NTRY_CSYM(NFLAV)
       LOGICAL CSYM(NFLAV), DEDUP
       REAL*8 TSTORE(NCOMB)
@@ -186,8 +184,8 @@ C     flavor, so it is indexed by FLAV_USE rather than by the full FLAV_IDX.
       CALL %(proc_prefix)sGET_FLAVOR(FLAV_USE, FLAVOR)
       CALL %(proc_prefix)sFILL_NHEL()
       IF(USERHEL.EQ.-1) NTRY(FLAV_USE)=NTRY(FLAV_USE)+1
-      IF(USERHEL.EQ.-1.AND.FLAV_IDX.LE.NFLAV)
-     &   NTRY_CSYM(FLAV_USE)=NTRY_CSYM(FLAV_USE)+1
+      IF(USERHEL.EQ.-1%(csym_gate_a)s)
+     &   %(csym_ntry)s=%(csym_ntry)s+1
       DO IHEL=1,NEXTERNAL
          JC(IHEL) = +1
       ENDDO
@@ -205,15 +203,13 @@ C     For this reason, we simply remove the filterin when there is only three ex
           ENDDO
         ENDDO
       ENDIF
-C     C-parity de-duplication is only safe for the plain unpolarized helicity
-C     sum of the uncrossed process (FLAV_IDX in [1,NFLAV]) and only once its own
-C     scan has settled (NTRY_CSYM>=20).
+%(csym_doc_dedup)s
 C     ... and never with a polarised beam: a row and its C-parity flip carry
 C     OPPOSITE beam helicities, so once the beam weight below is applied they
 C     no longer have equal |M|^2 and doubling the representative is wrong.
-      DEDUP = NTRY_CSYM(FLAV_USE).GE.20 .AND. CSYM(FLAV_USE)
+      DEDUP = %(csym_ntry)s.GE.20 .AND. CSYM(FLAV_USE)
      &        .AND. USERHEL.EQ.-1
-     &        .AND. POLARIZATIONS(0,0).EQ.-1 .AND. FLAV_IDX.LE.NFLAV
+     &        .AND. POLARIZATIONS(0,0).EQ.-1%(csym_gate_b)s
      &        .AND. ABS(BEAMPOL(1)).LE.1D0 .AND. ABS(BEAMPOL(2)).LE.1D0
 C     A polarised beam is only defined against the beam's own leg, and a
 C     crossed flavor evaluates the BASE helicity table (tau: the slots are not
@@ -245,7 +241,7 @@ C                   Scan phase (uncrossed only): cache |M|^2 to test the
 C                   C-parity partner below. Cached BEFORE the beam-polarisation
 C                   weight: the scan compares the bare |M|^2 of a row and its
 C                   flip, which beam polarisation would make differ by design.
-                    IF (FLAV_IDX.LE.NFLAV.AND.NTRY_CSYM(FLAV_USE).LT.20)
+                    IF (%(csym_gate_c)s%(csym_ntry)s.LT.20)
      &                  TSTORE(IHEL)=T
 C                   Fast phase: the representative carries its skipped partner's
 C                   identical contribution. DEDUP is off whenever a beam is
@@ -281,8 +277,8 @@ C before the helicity loop.
 C     Scan phase: drop the C-parity pairing of any row whose fully flipped
 C     partner gave a different |M|^2 (parity/C violation). One mismatch at any
 C     scan point permanently invalidates the pair (robust, like the zero-filter).
-      IF (USERHEL.EQ.-1.AND.FLAV_IDX.LE.NFLAV
-     &    .AND.NTRY_CSYM(FLAV_USE).LT.20
+      IF (USERHEL.EQ.-1%(csym_gate_a)s
+     &    .AND.%(csym_ntry)s.LT.20
      &    .AND.POLARIZATIONS(0,0).EQ.-1) THEN
 C     A pair of rows that are BOTH numerically zero differ only by roundoff,
 C     and a purely RELATIVE test on that noise fails at random -- one such pair
