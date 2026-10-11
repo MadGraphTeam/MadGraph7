@@ -5942,6 +5942,9 @@ c Particle types (=color/charges) of i_fks, j_fks and fks_mother
       common /c_extra_cnt/iextra_cnt, isplitorder_born, isplitorder_cnt
       logical calculatedBorn
       common/ccalculatedBorn/calculatedBorn
+      logical check_born_amps, born_checks_amps
+      common/c_born_amps_check/check_born_amps,born_checks_amps
+      logical discard_born
 
 C keep track of each split orders
       integer iamp
@@ -6058,7 +6061,18 @@ c A factor gS^2 is included in the Altarelli-Parisi kernels
 
       collrem_xi=0.d0
       collrem_lxi=0.d0
-      calculatedborn=.false.
+c The Born is evaluated at p_born_used. The cached amplitudes must be
+c discarded (before, and after since they are then at p_born_coll) when
+c that is p_born_coll, i.e. for the collinear counterterm without event
+c projection. Otherwise a Born that checks its cached amplitudes
+c (born_checks_amps) only recomputes them if they are not at p_born_used.
+      discard_born=(xi_i_fks.gt.0d0.and..not.use_evpr)
+     &     .or. .not.born_checks_amps
+      if (discard_born) then
+        calculatedborn=.false.
+      else
+        check_born_amps=.true.
+      endif
       do iord = 1, nsplitorders
         if (.not.split_type(iord).or.(iord.ne.qed_pos.and.iord.ne.qcd_pos)) cycle
 
@@ -6123,7 +6137,9 @@ c has to be inserted here
         endif
 
       enddo
-      calculatedborn=.false.
+      if (discard_born) then
+        calculatedborn=.false.
+      endif
 
       return
       end

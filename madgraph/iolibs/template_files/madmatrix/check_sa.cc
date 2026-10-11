@@ -205,6 +205,8 @@ namespace
       << "  --dump-me <file>  (perf only) Write the matrix element of every event, raw doubles.\n"
       << "  --energy <GeV>    (perf only) Ecms for RAMBO (default 1500 GeV).\n"
       << "\n"
+      << "Both modes read the parameters, alpha_s included, from ../../Cards/param_card.dat.\n"
+      << "\n"
       << "perf-mode defaults if positional args are omitted:\n"
       << "  #blocksPerGrid = 64, #threadsPerBlock = 256, #iterations = 1.\n";
     return ret;
@@ -302,10 +304,19 @@ namespace
     os << std::string( SEP79, '-' ) << std::endl;
   }
 
+  // alpha_s of the param card, so the couplings match the Fortran/C++ 'check'
+  // drivers (UMAMI otherwise falls back to a hardcoded g_s, alpha_s = 0.118).
+  double param_card_alpha_s()
+  {
+    SLHAReader slha( "../../Cards/param_card.dat", false );
+    return slha.get_block_entry( "sminputs", 3, 1.180000e-01 );
+  }
+
   // Run sigmaKin via UMAMI for `nevt` events and copy back the MEs.
-  // Both the momenta (UMAMI SoA layout) and the per-event flavor buffer must be set
-  // by the caller. On GPU the buffers are device pointers and `hstMEs` receives the
-  // host-side copy; on CPU `umamiMEs` is the output buffer.
+  // The momenta (UMAMI SoA layout), the per-event flavor and the per-event
+  // alpha_s buffers must be set by the caller. On GPU the buffers are device
+  // pointers and `hstMEs` receives the host-side copy; on CPU `umamiMEs` is the
+  // output buffer.
   bool run_umami(
     UmamiHandle handle,
     unsigned int nevt,
@@ -314,24 +325,26 @@ namespace
 #ifdef MGONGPUCPP_GPUIMPL
     const DeviceBufferBase<double>& devUmamiMomenta,
     const DeviceBufferBase<unsigned int>& devFlv,
+    const DeviceBufferBase<double>& devAlphaS,
     DeviceBufferBase<double>& devUmamiMEs,
     std::vector<double>& hstMEs
 #else
     const std::vector<double>& umamiMomenta,
     const std::vector<unsigned int>& flvVec,
+    const std::vector<double>& alphasVec,
     std::vector<double>& umamiMEs
 #endif
   )
   {
-    constexpr unsigned int UmamiInKeyNum = 2;
+    constexpr unsigned int UmamiInKeyNum = 3;
     timermap.start( "3a SigmaKin" );
-    UmamiInputKey in_keys[UmamiInKeyNum] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX };
+    UmamiInputKey in_keys[UmamiInKeyNum] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_ALPHA_S };
     UmamiOutputKey out_keys[1] = { UMAMI_OUT_MATRIX_ELEMENT };
 #ifdef MGONGPUCPP_GPUIMPL
-    const void* inputs[UmamiInKeyNum] = { devUmamiMomenta.data(), devFlv.data() };
+    const void* inputs[UmamiInKeyNum] = { devUmamiMomenta.data(), devFlv.data(), devAlphaS.data() };
     void* outputs[1] = { devUmamiMEs.data() };
 #else
-    const void* inputs[UmamiInKeyNum] = { umamiMomenta.data(), flvVec.data() };
+    const void* inputs[UmamiInKeyNum] = { umamiMomenta.data(), flvVec.data(), alphasVec.data() };
     void* outputs[1] = { umamiMEs.data() };
 #endif
     UmamiStatus st = umami_matrix_element(
@@ -680,11 +693,7 @@ namespace
     std::vector<std::vector<double>> point =
       classic_rambo::get_momenta( CPPProcess::npari, (double)kEnergy, massesD, rambowgt );
 
-    // alpha_s from the param card so the couplings match the Fortran/C++
-    // 'check' drivers (UMAMI otherwise falls back to a hardcoded g_s).
-    SLHAReader slha( "../../Cards/param_card.dat", false );
-    const double alphaS = slha.get_block_entry( "sminputs", 3, 1.180000e-01 );
-    std::vector<double> alphasVec( nevt, alphaS );
+    std::vector<double> alphasVec( nevt, param_card_alpha_s() );
 #ifdef MGONGPUCPP_GPUIMPL
     DeviceBufferBase<double> devAlphaS( nevt );
     gpuMemcpy( devAlphaS.data(), alphasVec.data(), nevt * sizeof( double ), gpuMemcpyHostToDevice );
@@ -858,6 +867,9 @@ namespace
     std::vector<double> hstUmamiMEs( nevt );
     // perf-mode runs a single flavor, so the device-side flavor buffer is filled once.
     gpuMemcpy( devFlv.data(), flvVec.data(), nevt * sizeof( unsigned int ), gpuMemcpyHostToDevice );
+    std::vector<double> alphasVec( nevt, param_card_alpha_s() );
+    DeviceBufferBase<double> devAlphaS( nevt );
+    gpuMemcpy( devAlphaS.data(), alphasVec.data(), nevt * sizeof( double ), gpuMemcpyHostToDevice );
 #else
     HostBufferRndNumMomenta hstRndmom( nevt );
     HostBufferMomenta hstMomenta( nevt );
@@ -865,6 +877,7 @@ namespace
     std::vector<double> umamiMomenta( (std::size_t)4 * CPPProcess::npar * nevt );
     std::vector<double> umamiMEs( nevt );
     std::vector<unsigned int> flvVec( nevt, flavorID );
+    std::vector<double> alphasVec( nevt, param_card_alpha_s() );
 #endif
 
     std::unique_ptr<RandomNumberKernelBase> prnk(
@@ -1000,9 +1013,9 @@ namespace
       double wavetime = 0;
       if( !run_umami( umami_handle, nevt, timermap, wavetime,
 #ifdef MGONGPUCPP_GPUIMPL
-                      devUmamiMomenta, devFlv, devUmamiMEs, hstUmamiMEs
+                      devUmamiMomenta, devFlv, devAlphaS, devUmamiMEs, hstUmamiMEs
 #else
-                      umamiMomenta, flvVec, umamiMEs
+                      umamiMomenta, flvVec, alphasVec, umamiMEs
 #endif
                       ) )
       {

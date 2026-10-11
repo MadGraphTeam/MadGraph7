@@ -5361,14 +5361,18 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                             pjoin(self.dir_path,'SubProcesses','check_sa.py'))
         else:
             # create a single makefile to compile all the subprocesses
-            text = '''\n# For python linking (require f2py part of numpy)\nifeq ($(origin MENUM),undefined)\n  MENUM=2\nendif\n''' 
+            text = '''\n# For python linking (require f2py part of numpy)\nifeq ($(origin MENUM),undefined)\n  MENUM=2\nendif\n'''
             deppython = ''
+            rules = ''
             for Pdir in os.listdir(pjoin(self.dir_path,'SubProcesses')):
                 if os.path.isdir(pjoin(self.dir_path, 'SubProcesses', Pdir)):
-                    text += '%(0)s/matrix$(MENUM)py.so:\n\tcd %(0)s;make matrix$(MENUM)py.so\n'% {'0': Pdir}
+                    rules += '%(0)s/matrix$(MENUM)py.so:\n\tcd %(0)s;make matrix$(MENUM)py.so\n'% {'0': Pdir}
                     deppython += ' %(0)s/matrix$(MENUM)py.so ' % {'0': Pdir}
-            text+='all: %s\n\techo \'done\'' % deppython
-            
+            # 'all' must be the first rule: it is the default goal of a plain
+            # 'make', which would otherwise build only the first P directory.
+            text += 'all: %s\n\techo \'done\'\n' % deppython
+            text += rules
+
             ff = open(pjoin(self.dir_path, 'SubProcesses', 'makefile'),'a')
             ff.write(text)
             ff.close()
@@ -13937,7 +13941,19 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
             amcatnlo_options['export_format']='FKS5_optimized'
         return ExporterClass(cmd._export_dir, amcatnlo_options)
 
-    # Then treat the EW sudakov Standalone output     
+    # Then the FKS Born building-block standalone output (output standalone_fortran --fks)
+    elif output_type=='amcatnlo_sa':
+        import madgraph.iolibs.export_fks as export_fks
+        amcatnlo_options = dict(opt)
+        amcatnlo_options.update(MadLoop_SA_options)
+        amcatnlo_options['running'] = cmd._curr_model.get('running_elements')
+        amcatnlo_options['mp'] = len(cmd._fks_multi_proc.get_virt_amplitudes()) > 0
+        amcatnlo_options['fks_limits'] = getattr(cmd, '_fks_limits', False)
+        logger.info("Writing out the FKS Born building blocks in a standalone format")
+        amcatnlo_options['export_format']='FKS5_optimized'
+        return export_fks.ProcessExporterFortranFKS_SA(cmd._export_dir, amcatnlo_options)
+
+    # Then treat the EW sudakov Standalone output
     elif output_type=='ewsudsa':
         import madgraph.iolibs.export_fks as export_fks
         ExporterClass=None

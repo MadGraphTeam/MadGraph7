@@ -2033,6 +2033,15 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("types"),
             pydoc::doc("Unweighter::Unweighter")
         );
+    py::classh<BufferUnweighter, FunctionGenerator>(
+        m, "BufferUnweighter", pydoc::doc("BufferUnweighter")
+    )
+        .def(
+            py::init<const NamedVector<Type>&, double>(),
+            py::arg("types"),
+            py::arg("quantile") = 0.0,
+            pydoc::doc("BufferUnweighter::BufferUnweighter")
+        );
     py::classh<Integrand, FunctionGenerator>(m, "Integrand", pydoc::doc("Integrand"))
         .def(
             py::init<

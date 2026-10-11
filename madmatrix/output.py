@@ -248,21 +248,17 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     def check_split_orders(self, matrix_element):
         """Report what a squared-order constraint will produce here.
 
-        Supported: the jamps carry an amplitude-order index and the color sum
-        pairs them (color_sum_cpu_splitorders in backend/{cpu,simd}/color_sum.cc,
-        the Fortran GET_MATRIX contract),
-        so a '^2' constraint that keeps only some squared orders gets the
-        contribution it asked for rather than the total. That is what makes the
-        interference case work -- `u u~ > t t~ QED^2==2` keeps all three
-        diagrams and wants the QCD-EW cross term alone, which no amount of
-        dropping diagrams at generation can produce.
+        The jamps carry an amplitude-order index and the color sum pairs them
+        (color_sum_cpu_splitorders in backend/{cpu,simd}/color_sum.cc and
+        color_sum_kernel in backend/gpu/color_sum.cc, the Fortran GET_MATRIX
+        contract), so a '^2' constraint that keeps only some squared orders gets
+        the contribution it asked for rather than the total. That is what makes
+        the interference case work -- `u u~ > u u~ QED^2==2` keeps every diagram
+        and wants the QCD-EW cross term alone, which no amount of dropping
+        diagrams at generation can produce.
 
-        Not supported: a GPU build of such a process. The device jamp buffers
-        are sized for one jamp vector per helicity (ncolor, not njampso), and
-        the backend is a make-time choice rather than an output-time one, so
-        the refusal cannot live here: backend/gpu/SigmaKin.cc static_asserts
-        nampso == 1 instead. Say so now rather than let a GPU build be
-        the first the user hears of it.
+        The BLAS color sums (CPU: compile time, GPU: CUDACPP_RUNTIME_BLASCOLORSUM)
+        cannot pair split orders and are not used for such a process.
         """
 
         so = export_v4.split_order_tables(matrix_element)
@@ -274,8 +270,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         logger.info(
             "%s: '%s' has %d squared-order components (%s); keeping %s%s. "
             "The jamps are split over %d amplitude orders and the color sum "
-            "pairs them; CPU backends only (a GPU build of this process will "
-            "not compile, by design).",
+            "pairs them.",
             self.__class__.format_name,
             process.nice_string().replace('Process: ', ''),
             so['nsqampso'], ', '.join(so['names']),
