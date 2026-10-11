@@ -78,16 +78,14 @@ namespace madmatrix
   // flav picks the flavor combination as usual (and is constant across a SIMD
   // page, see umami.cc), while the crossing-table row K may differ from lane
   // to lane. calculate_jamps permutes each lane's momenta into the base slot
-  // order (the preamble of EvaluateDiagrams.inc), the good-helicity scan runs
-  // once per row of the table (the crossings this ME records), and sigmaKin
-  // evaluates every lane on ITS crossing's
-  // ighel-th good helicity: the good-helicity union over the crossings is
-  // never materialised on the hot path (per-lane helicity). With crossing off
-  // cNcross is 1 and every crossing branch below is discarded at compile time.
-  constexpr int cNcross = use_crossing ? ProcessTables::ncross : 1;
-  static int cGoodHelOfCross[cNcross][ncomb]; // per-crossing good-hel rows
-  static int cNGoodPerCross[cNcross];         // #good hel per crossing
-  static int cNGoodMaxCross;                  // max over crossings: the per-lane loop bound
+  // order (the preamble of EvaluateDiagrams.inc) and evaluates, in every lane,
+  // the SAME helicity row of the base table: a leg that changed side is fed
+  // the opposite helicity (with its NSF flag, see _crossing_external_block),
+  // which is the same all-outgoing configuration. The crossed amplitude being
+  // the analytic continuation of the base one, the crossings share their zero
+  // rows, so ONE good-helicity list (cGoodHel) serves every lane: the scan
+  // below takes the union over the crossings this ME records, which only
+  // differs from the base's own by the frame-dependent rows of a massive leg.
 
   // C-parity good-helicity de-duplication. Two helicity rows that are exact
   // mirrors (every helicity negated) give an identical |M|^2 under a parity/C
@@ -98,16 +96,14 @@ namespace madmatrix
   // rate. That halves the sigmaKin trip count and the calculate_jamps + colour
   // sum calls. The verdict is taken in the (serial) good-helicity scan, so
   // sigmaKin only ever reads these tables and stays thread-safe. It is
-  // all-or-nothing: one unpaired good row or one mismatched pair turns it off
-  // (per crossing on the crossed path, where lanes of one page may carry
-  // different crossings, so the weight and the 50/50 are applied per lane;
-  // the verdict is then made uniform across crossings, see sigmaKin_getGoodHel).
+  // all-or-nothing: one unpaired good row or one mismatched pair turns it off.
+  // With crossing the pairing is the same for every crossing (each evaluates
+  // the base row, so the mirror of a row is the base mirror), and the scan
+  // tests every crossing: one verdict for all of them.
   static int cFlip[ncomb];            // C-parity partner: every helicity negated (an involution)
   static bool cCsymScanned;           // the validating scan actually ran (never trust a default)
-  static bool cCsymBad;               // uncrossed: latched when ANY pair mismatched at a scan point
-  static bool cCsymOk;                // uncrossed: the de-duplication is on
-  static bool cCsymBadCross[cNcross]; // crossed: per crossing, a pair mismatched
-  static bool cCsymOkCross[cNcross];  // crossed: per crossing, the de-duplication is on
+  static bool cCsymBad;               // latched when ANY pair mismatched at a scan point (any crossing)
+  static bool cCsymOk;                // the de-duplication is on
 
   // Initial-state spin*color average of the process crossing-table row
   // `cross` crosses into (the product of the per-leg spin*color of the base
@@ -159,21 +155,16 @@ namespace madmatrix
 
   // Crossed-event selected helicity code (allselhel). For a crossed event the
   // reported helicity is the CROSSED process's own canonical code, not the
-  // base row: input slot k carries the helicity label of the base leg pinv[k]
-  // it is fed to, copied (no sign flip -- the NSF sign lives in IC), and the
-  // crossed config is then encoded in mixed radix over the crossed process's
-  // own per-leg states (xhel_states row K, see the exporter). That is the code
-  // the expanded output of the crossed process reports, the one the madevent
-  // output writes for a routed event, and the one an `output mg7` crossed entry
-  // decodes with its own helicity table. Row 0 is the identity (base row+1), so
-  // the non-crossing path is unchanged.
-  //
-  // The label copy with NO NSF sign flip is the right transform: the crossed
-  // evaluation feeds the leg's helicity value with its NSF flag, which is what
-  // keeps it physical. Validated against the expanded output at one phase-space
-  // point and the same random numbers (test_moved_leg_reports_its_own_helicity:
-  // u u~ > z g folded onto u g > u z, which moves the z into a quark slot), and
-  // for the madevent output on the LHE helicities.
+  // base row: input slot k carries base leg pinv[k], which the crossed lane
+  // evaluated with the base row's helicity negated when the leg changed side
+  // (xic[k] = -1, see _crossing_external_block). The NSF flag keeps that fed
+  // value physical, so it is the crossed leg's helicity, encoded in mixed
+  // radix over the crossed process's own per-leg states (xhel_states row K,
+  // see the exporter). That is the code the expanded output of the crossed
+  // process reports, the one the madevent output writes for a routed event,
+  // and the one an `output mg7` crossed entry decodes with its own helicity
+  // table. Row 0 is the identity (base row+1), so the non-crossing path is
+  // unchanged; a row out of the table reports 0 (its |M|^2 is 0).
   //
   // xhel_states MUST be the allow_reverse=True per-leg order (see the exporter).
   inline int
@@ -181,12 +172,13 @@ namespace madmatrix
   {
     const int xcross = (int)( flavor_id / nmaxflavor );
     if( xcross == 0 ) return base_ihel + 1;
+    if( xcross >= ncross ) return 0;
     int xperm[npar], xic[npar];
-    cross_pinv( xcross, xperm, xic ); // NSF sign in xic is not used here
+    cross_pinv( xcross, xperm, xic );
     int code = 0;
     for( int k = 0; k < npar; k++ )
     {
-      const int val = (int)cHel[base_ihel][xperm[k]];
+      const int val = (int)cHel[base_ihel][xperm[k]] * xic[k];
       const int slot = xcross * npar + k; // this crossing's own states for slot k
       int d = 0;
       for( int dd = 0; dd < xhel_nhstate[slot]; dd++ )
@@ -211,11 +203,8 @@ namespace madmatrix
   // uniform on that interval, so its position within the bin is an independent
   // U(0,1). Drawing a fresh random number instead would desynchronise the
   // stream shared with the Fortran integrator.
-  // Uncrossed: returns the 0-based row. Crossed: the lane evaluated ITS
-  // crossing's ighel-th good helicity (cGoodHelOfCross, see calculate_jamps),
-  // so the row is read from that same per-crossing list -- reading a union list
-  // would name a row the lane never evaluated, whose |M|^2 may be zero -- and
-  // is returned as the 1-based crossed code.
+  // Returns the 0-based base row; every lane, crossed or not, evaluated the
+  // ighel-th row of the one good-helicity list.
   inline int
   csym_selected_row( const int ihel, const fptype rnd, const fptype lo, const fptype hi )
   {
@@ -225,43 +214,25 @@ namespace madmatrix
     return ( ( rnd - lo ) < (fptype)0.5 * w ) ? ihel : cFlip[ihel];
   }
 
-  inline int
-  selected_hel_code_lane_csym( int ighel, unsigned int flavor_id, fptype rnd, fptype lo, fptype hi )
-  {
-    const int lcross = (int)( flavor_id / nmaxflavor );
-    if( lcross >= cNcross ) return 0; // no such row: its |M|^2 is 0, nothing to report
-    const int lngood = cNGoodPerCross[lcross];
-    // ighel < lngood always holds when the CDF selected this lane's row (the
-    // rows past lngood add nothing to the running sum); the clamp only keeps a
-    // degenerate lane inside the table.
-    int lbase = cGoodHelOfCross[lcross][( ighel < lngood ) ? ighel : ( lngood > 0 ? lngood - 1 : 0 )];
-    if( cCsymOkCross[lcross] )
-    {
-      const fptype w = hi - lo;
-      if( w > (fptype)0 && !( ( rnd - lo ) < (fptype)0.5 * w ) ) lbase = cFlip[lbase];
-    }
-    return selected_hel_code( lbase, flavor_id );
-  }
-
   // The reported (Fortran-indexed, [1,ncomb]) helicity of one lane
   inline int
   selected_helicity( int ighel, unsigned int flavor_id, fptype rnd, fptype lo, fptype hi )
   {
+    const int row = csym_selected_row( cGoodHel[ighel], rnd, lo, hi );
     if constexpr( use_crossing )
-      return selected_hel_code_lane_csym( ighel, flavor_id, rnd, lo, hi );
+      return selected_hel_code( row, flavor_id );
     else
-      return csym_selected_row( cGoodHel[ighel], rnd, lo, hi ) + 1;
+      return row + 1;
   }
 
   // Whether the helicity sum of the lane with this flavor id is C-parity
-  // de-duplicated (its representatives then each stand for two rows)
+  // de-duplicated (its representatives then each stand for two rows): one
+  // verdict for every crossing, see sigmaKin_getGoodHel
   inline bool
   csym_lane_on( unsigned int flavor_id )
   {
-    if constexpr( use_crossing )
-      return flavor_id / nmaxflavor < (unsigned int)cNcross && cCsymOkCross[flavor_id / nmaxflavor];
-    else
-      return cCsymOk;
+    (void)flavor_id;
+    return cCsymOk;
   }
 
   void setHelicitiesAndFlavors( const short* tHel, const short* tFlavors )
@@ -384,10 +355,8 @@ namespace madmatrix
                    fptype_amp* allNumerators,          // input/output: multichannel numerators[nevt], add helicity ihel
                    fptype_amp* allDenominators,        // input/output: multichannel denominators[nevt], add helicity ihel
                    fptype_amp_sv* jamp2_sv,            // output: jamp2[nParity][ncolor_flow][neppV] for color choice (nullptr if disabled)
-                   const int ievt00,                   // input: first event number in current C++ event page
-                   const int _ighel = -1 )             // input: crossing only, the good-hel index each lane reads its own crossing's helicity row at (-1: the scalar ihel)
+                   const int ievt00 )                  // input: first event number in current C++ event page
   {
-    (void)_ighel; // only read by the crossing external calls of EvaluateDiagrams.inc
     using M_ACCESS = HostAccessMomenta;         // non-trivial access: buffer includes all events
     using W_ACCESS = HostAccessWavefunctions;   // TRIVIAL ACCESS (no kernel splitting yet): buffer for one event
     using A_ACCESS = HostAccessAmplitudes;      // TRIVIAL ACCESS (no kernel splitting yet): buffer for one event
@@ -555,7 +524,6 @@ namespace madmatrix
     fptype me_scan[ncomb][neppV];
     cCsymScanned = false;
     cCsymBad = false;
-    for( int c = 0; c < cNcross; c++ ) { cCsymBadCross[c] = false; cCsymOkCross[c] = false; }
     for( int h = 0; h < ncomb; h++ )
     {
       cFlip[h] = h;
@@ -566,14 +534,11 @@ namespace madmatrix
         if( same ) { cFlip[h] = j; break; }
       }
     }
-    // Crossing: the good helicities of every crossing separately (the union in
-    // isGoodHel is still what the caller gets back)
-    static bool goodPerCross[cNcross][ncomb];
-    for( int c = 0; c < cNcross; c++ ) for( int h = 0; h < ncomb; h++ ) goodPerCross[c][h] = false;
     // Crossing: sample every extended flavor id, i.e. every row of the
     // crossing table -- the crossings this ME records (every applicable one
-    // only with --crossing_table=all) -- times every flavor, so the scan
-    // covers the crossed helicity rows. Each row costs a full ncomb-helicity
+    // only with --crossing_table=all) -- times every flavor, and OR them into
+    // the one list: each crossing is evaluated in its own frame, where a
+    // massive leg can need a row the base does not. Each row costs a full ncomb-helicity
     // calculate_jamps scan, which is why the table carries no merely
     // applicable crossing by default (scanning those was a 46x one-off
     // startup cost on g g > t t~ g g g: 48 applicable, 0 recorded).
@@ -618,17 +583,11 @@ namespace madmatrix
         {
           const int ievt = ievt00 + ieppV;
           if( allMEs[ievt] != 0 ) // NEW IMPLEMENTATION OF GETGOODHEL (#630): COMPARE EACH HELICITY CONTRIBUTION TO 0
-          {
             isGoodHel[ihel] = true;
-            goodPerCross[xcross][ihel] = true;
-          }
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
           const int ievt2 = ievt00 + ieppV + neppV;
           if( allMEs[ievt2] != 0 ) // NEW IMPLEMENTATION OF GETGOODHEL (#630): COMPARE EACH HELICITY CONTRIBUTION TO 0
-          {
             isGoodHel[ihel] = true;
-            goodPerCross[xcross][ihel] = true;
-          }
 #endif
         }
       }
@@ -640,8 +599,7 @@ namespace madmatrix
       // u u~ > g g sit at |M|^2 ~ 1e-30 out of ~10), silently disabling the
       // dedup. A row that far below the largest cannot bias the helicity sum
       // whichever way it is paired, while a genuine parity violation shows up
-      // at the relative level. Latched per crossing, so that one
-      // parity-violating crossing cannot disable the others.
+      // at the relative level. One verdict for every crossing.
       {
         fptype mmax = (fptype)0.;
         for( int h = 0; h < ncomb; h++ )
@@ -663,10 +621,7 @@ namespace madmatrix
               const fptype aa = a < (fptype)0. ? -a : a;
               const fptype bb = b < (fptype)0. ? -b : b;
               if( d > (fptype)1e-6 * ( aa + bb ) && d > (fptype)1e-12 * mmax )
-              {
                 cCsymBad = true;
-                cCsymBadCross[xcross] = true;
-              }
             }
           }
         }
@@ -674,60 +629,6 @@ namespace madmatrix
       cCsymScanned = true; // a full ncomb-row comparison has been made
     }
     } // end loop over flavor combinations (per-flavor good-helicity union)
-    if constexpr( use_crossing )
-    {
-      for( int c = 0; c < cNcross; c++ )
-      {
-        int n = 0;
-        for( int h = 0; h < ncomb; h++ ) if( goodPerCross[c][h] ) { cGoodHelOfCross[c][n] = h; n++; }
-        cNGoodPerCross[c] = n;
-        // Per-crossing C-parity verdict: the validating scan ran, no pair
-        // mismatched for THIS crossing, and every good row of this crossing
-        // sits in a distinct pair whose partner is also good for it.
-        bool ok = cCsymScanned && !cCsymBadCross[c] && n > 0;
-        for( int h = 0; h < ncomb && ok; h++ )
-          if( goodPerCross[c][h] && ( cFlip[h] == h || !goodPerCross[c][cFlip[h]] ) ) ok = false;
-#ifdef MGONGPU_NOCSYM
-        ok = false; // ablation knob: force the full helicity sum
-#endif
-        cCsymOkCross[c] = ok;
-      }
-      // ALL-OR-NOTHING ACROSS CROSSINGS -- no longer needed for correctness.
-      // Reducing only some crossings leaves cNGoodPerCross non-uniform, so the
-      // lanes of a SHORTER crossing reach the ighel >= cNGoodPerCross padding
-      // rows (-1 in calculate_jamps). Such a row masks the wavefunctions of
-      // the helicity-carrying external legs but keeps their momenta, so the
-      // lane adds an exact 0 to |M|^2, to the multichannel numerators and to
-      // jamp2, and the helicity choice never lands on it (its stretch of the
-      // running CDF is flat). It used to zero the momenta too, and the
-      // massless propagators then turned the lane into 0/0 = NaN. The counts
-      // can differ without any de-duplication too: a row at |M|^2 ~ 1e-30 in
-      // one crossing can be an exact zero (not good) in another. A forced
-      // split verdict on g g > q q~ folding crossings 3 and 23 reproduces the
-      // uniform |M|^2 of every lane, alone or mixed in one page, to rounding
-      // (NaN with the old mask).
-      // Kept anyway, because a split buys little and is unexercised: the loop
-      // bound is the LONGEST crossing's count, so halving only some crossings
-      // saves a trip only when the longest is among them; and C-parity is a
-      // property of the amplitude all crossings share, so a split verdict only
-      // arises from a numerically degenerate row -- never observed on a real
-      // process, and the helicity choice has not been checked under one.
-      bool allok = cCsymScanned;
-      for( int c = 0; c < cNcross; c++ )
-        if( cNGoodPerCross[c] > 0 && !cCsymOkCross[c] ) allok = false;
-      for( int c = 0; c < cNcross; c++ )
-      {
-        if( !allok ) { cCsymOkCross[c] = false; continue; }
-        if( !cCsymOkCross[c] ) continue;
-        int r = 0;
-        for( int g = 0; g < cNGoodPerCross[c]; g++ )
-          if( cGoodHelOfCross[c][g] < cFlip[cGoodHelOfCross[c][g]] ) { cGoodHelOfCross[c][r] = cGoodHelOfCross[c][g]; r++; }
-        for( int g = r; g < ncomb; g++ ) cGoodHelOfCross[c][g] = 0;
-        cNGoodPerCross[c] = r;
-      }
-      cNGoodMaxCross = 0;
-      for( int c = 0; c < cNcross; c++ ) if( cNGoodPerCross[c] > cNGoodMaxCross ) cNGoodMaxCross = cNGoodPerCross[c];
-    }
   }
 
   //--------------------------------------------------------------------------
@@ -747,7 +648,6 @@ namespace madmatrix
     }
     cNGoodHel = nGoodHel;
     for( int ihel = 0; ihel < ncomb; ihel++ ) cGoodHel[ihel] = goodHel[ihel];
-    if constexpr( !use_crossing ) // the crossed path reduces its per-crossing lists in sigmaKin_getGoodHel
     {
       // All-or-nothing C-parity verdict. cCsymScanned is the load-bearing term:
       // if the validating scan never ran (cached good helicities, an API caller
@@ -936,9 +836,8 @@ namespace madmatrix
     const int npagV2 = npagV; // loop on one SIMD page (neppV events) at a time
 #endif
     // The good-helicity loop bound: the (possibly C-parity halved) good
-    // helicity count, or with crossing the largest per-crossing one (each lane
-    // then evaluates its own crossing's ighel-th good helicity)
-    const int nGoodLoop = use_crossing ? cNGoodMaxCross : cNGoodHel;
+    // helicity count, the same for every lane (crossed or not)
+    const int nGoodLoop = cNGoodHel;
 #ifdef _OPENMP
     // OMP multithreading #575 (NB: tested only with gcc11 so far)
 #define _OMPLIST0 allcouplings, allMEs, allmomenta, allrndcol, allrndhel, allselcol, allselhel, cGoodHel, nGoodLoop, npagV2, sampleSignedHelicity
@@ -986,14 +885,12 @@ namespace madmatrix
         static thread_local std::vector<cxtype_sv> ghelJamp_sv( (size_t)ncomb * nParity * ncolor );
         for( int ighel = 0; ighel < nGoodLoop; ighel++ )
         {
-          // With crossing each lane evaluates its own crossing's ighel-th good
-          // helicity, derived per lane inside calculate_jamps (ihel is a dummy)
-          const int ihel = use_crossing ? 0 : cGoodHel[ighel];
+          const int ihel = cGoodHel[ighel];
           cxtype_sv* jamp_sv = ghelJamp_sv.data() + (size_t)ighel * nParity * ncolor;
           for( int i = 0; i < nParity * ncolor; i++ ) jamp_sv[i] = cxzero_sv<cxtype_sv>(); // calculate_jamps accumulates into jamp_sv
           // **NB! in "mixed" precision, using SIMD, calculate_jamps computes MEs for TWO neppV pages with a single channelId! #924
           bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
-          calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00, use_crossing ? ighel : -1 );
+          calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
         }
         // The C-parity weight is NOT optional here: with the de-duplication on,
         // every helicity this loop just computed stands for two. The scalar loop
@@ -1013,9 +910,7 @@ namespace madmatrix
       {
         for( int ighel = 0; ighel < nGoodLoop; ighel++ )
         {
-          // With crossing each lane evaluates its own crossing's ighel-th good
-          // helicity, derived per lane inside calculate_jamps (ihel is a dummy)
-          const int ihel = use_crossing ? 0 : cGoodHel[ighel];
+          const int ihel = cGoodHel[ighel];
           // Snapshot the running |M|^2 sum before this helicity's contribution is
           // added, so the C-parity step below can add the very same contribution again
           const fptype_sv me1before = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
@@ -1025,7 +920,7 @@ namespace madmatrix
           cxtype_amp_sv jamp_sv[nParity * njampso] = {}; // fixed nasty bug (omitting 'nParity' caused memory corruptions after calling calculate_jamps)
           // **NB! in "mixed" precision, using SIMD, calculate_jamps computes MEs for TWO neppV pages with a single channelId! #924
           bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
-          calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00, use_crossing ? ighel : -1 );
+          calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
           color_sum_cpu( allMEs, jamp_sv, ievt00 );
           MEs_ighel[ighel] = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT

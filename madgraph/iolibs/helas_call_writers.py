@@ -2085,11 +2085,13 @@ class CPPUFOHelasCallWriter(UFOHelasCallWriter):
         byte-for-byte. When True the momentum is read through perm[] (base
         slot n takes the momentum of input slot perm[n]) and the NSF flag is
         multiplied by ic[], so a leg the crossing moved between the initial and
-        the final state flips (helas folds the momentum sign change and the
-        helicity flip out of that flag). The helicity stays the base slot's
-        own (tau, as in the fortran APPLY_CROSSING_TABLE): read through perm[]
-        it would feed a slot helicity values of another leg's state set -- a
-        quark helicity 0 when a Z moves in."""
+        the final state flips (helas folds the momentum sign change out of that
+        flag). The helicity is the base slot's own, times the same ic[] (as the
+        fortran APPLY_CROSSING_ROWS): every crossing then evaluates the same
+        helicity configuration of row ihel, so they share one good-helicity
+        filter. Read through perm[] it would instead feed a slot helicity
+        values of another leg's state set -- a quark helicity 0 when a Z moves
+        in."""
         n = wf.get('number_external') - 1
         me = wf.get('me_id') - 1
         if not is_boson:
@@ -2099,7 +2101,7 @@ class CPPUFOHelasCallWriter(UFOHelasCallWriter):
             # For bosons (incl. scalars), need initial/final
             nsf = (-1) ** (wf.get('state') == 'initial')
         cross = getattr(self, 'use_crossing_ic', False)
-        hel_tok = 'hel[%d]' % n
+        hel_tok = ('hel[%d]*ic[%d]' % (n, n)) if cross else ('hel[%d]' % n)
         nsf_tok = ('%+d*ic[%d]' % (nsf, n)) if cross else ('%+d' % nsf)
         if spin == 1:
             return '%s(p[perm[%d]],%s,w[%d]);' % (routine, n, nsf_tok, me)

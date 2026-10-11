@@ -148,17 +148,56 @@ C     LOCAL
         P(3,XK) = P_IN(3,PERM(XK))
         IC(XK) = SGN(XK)*IC_IN(PERM(XK))
       ENDDO
-C     TAU, not sigma: the helicity slots are NOT permuted, only sign-flipped,
-C     and the sign is carried by IC above (HELAS builds its spinors from
-C     nhel*nsf). IC stays aligned with the MOMENTA -- it is also the NSF
-C     direction flag -- so slot XK gets P_IN(PERM(XK)) and NHEL_IN(XK), and the
-C     effective helicity is NHEL_IN(XK)*SGN(XK). Row H of the table is thus a
-C     base row evaluated at the crossed kinematics; which rows are non-zero is
-C     scanned per crossing (its own good-helicity filter), and CROSS_HELCODE
-C     gives the crossed process's own code of a row.
+C     The helicity slots are NOT permuted: IC stays aligned with the MOMENTA
+C     -- it is also the NSF direction flag -- so slot XK gets P_IN(PERM(XK))
+C     and NHEL_IN(XK), and a crossed leg is evaluated with the physical
+C     helicity NHEL_IN(XK) of the particle it has become. This is the view of
+C     a caller holding helicities of the crossed process (GET_DENSITY_IDX,
+C     GET_ALL_INTER_IDX, an f2py caller before GET_AMP). SMATRIX evaluates its
+C     own base table instead, through APPLY_CROSSING_ROWS.
       DO XR = 1, NROW
         DO XK = 1, NEXTERNAL
           NHEL(XK,XR) = NHEL_IN(XK,XR)
+        ENDDO
+      ENDDO
+
+      RETURN
+      END
+
+
+      SUBROUTINE %(proc_prefix)sAPPLY_CROSSING_ROWS(FLAV_IDX_IN, NROW,
+     & P_IN, NHEL_IN, IC_IN, P, NHEL, IC, FLAV_IDX)
+C     APPLY_CROSSING_TABLE for the BASE helicity table SMATRIX loops over:
+C     row H is one helicity configuration of the base process read with every
+C     leg outgoing, and each crossing evaluates that SAME configuration. A leg
+C     that changes side therefore carries the opposite physical helicity,
+C     NHEL_IN(XK,H)*SGN(XK) (SGN also flips its NSF flag, see GET_CROSS_PERM).
+C     The crossed amplitude is the analytic continuation of the base one, so
+C     a row vanishes for every crossing when it vanishes for the base: one
+C     good-helicity filter serves them all. The exception is a massive leg,
+C     whose helicity depends on the frame (each crossing is evaluated in its
+C     own); each crossing therefore still trains the shared filter itself.
+C     CROSS_HELCODE translates the crossed process's own helicity code into
+C     the row H that evaluates it.
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+C     ARGUMENTS
+      INTEGER FLAV_IDX_IN, NROW
+      REAL*8 P_IN(0:3,NEXTERNAL)
+      INTEGER NHEL_IN(NEXTERNAL,NROW), IC_IN(NEXTERNAL)
+      REAL*8 P(0:3,NEXTERNAL)
+      INTEGER NHEL(NEXTERNAL,NROW), IC(NEXTERNAL)
+      INTEGER FLAV_IDX
+C     LOCAL
+      INTEGER PERM(NEXTERNAL), SGN(NEXTERNAL)
+      INTEGER XK, XR, XF
+
+      CALL %(proc_prefix)sAPPLY_CROSSING_TABLE(FLAV_IDX_IN, NROW, P_IN,
+     & NHEL_IN, IC_IN, P, NHEL, IC, FLAV_IDX)
+      CALL %(proc_prefix)sGET_CROSS_PERM(FLAV_IDX_IN, PERM, SGN, XF)
+      DO XR = 1, NROW
+        DO XK = 1, NEXTERNAL
+          NHEL(XK,XR) = SGN(XK)*NHEL(XK,XR)
         ENDDO
       ENDDO
 
@@ -303,16 +342,17 @@ C     BCODE: the base helicity code SMATRIX evaluates for the helicity code CODE
 C     the process FLAV_IDX_IN names. CODE is that process's OWN canonical code
 C     -- the one its expanded output takes, the one the madevent output writes
 C     for a routed event and the C++ backends report for a crossed one. Input
-C     slot K of the crossed process carries base leg PINV(K) (tau: the helicity
-C     slots are not permuted, the leg keeps its own helicity states, in the same
-C     order), so its digit is the digit of base leg PINV(K). An uncrossed index,
-C     or a CODE < 1 (no helicity requested), comes back unchanged.
+C     slot K of the crossed process carries base leg B=PINV(K), with the helicity
+C     states of that leg in the same order, and SMATRIX evaluates a base row with
+C     the side-changing legs' helicities negated (APPLY_CROSSING_ROWS): the
+C     crossed leg's helicity H is base value SGNI(K)*H. An uncrossed index, or a
+C     CODE < 1 (no helicity requested), comes back unchanged.
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INTEGER    MAXHEL
       PARAMETER (MAXHEL=%(maxhel)d)
       INTEGER FLAV_IDX_IN, CODE, BCODE
-      INTEGER PINV(NEXTERNAL), SGNI(NEXTERNAL), XF, I, K, R
+      INTEGER PINV(NEXTERNAL), SGNI(NEXTERNAL), XF, I, K, R, B, V
       INTEGER DIG(NEXTERNAL)
       INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
 %(nhstate_data)s
@@ -322,8 +362,13 @@ C     or a CODE < 1 (no helicity requested), comes back unchanged.
       CALL %(proc_prefix)sGET_CROSS_PINV(FLAV_IDX_IN, PINV, SGNI, XF)
       R = CODE - 1
       DO K = NEXTERNAL, 1, -1
-        DIG(PINV(K)) = MOD(R, NHSTATE(PINV(K)))
-        R = R / NHSTATE(PINV(K))
+        B = PINV(K)
+        V = SGNI(K)*STATES(MOD(R, NHSTATE(B))+1, B)
+        R = R / NHSTATE(B)
+        DIG(B) = 0
+        DO I = 1, NHSTATE(B)
+          IF (STATES(I,B).EQ.V) DIG(B) = I-1
+        ENDDO
       ENDDO
       R = 0
       DO K = 1, NEXTERNAL

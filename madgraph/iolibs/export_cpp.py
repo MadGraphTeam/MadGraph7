@@ -1514,10 +1514,12 @@ class OneProcessExporterCPP(object):
             "// No such row: an identically-zero matrix element.\n"
             "if (cross < 0 || cross >= ncross || spincol_cross(cross) == 0)\n"
             "    return 0.;\n"
-            "// The good-helicity filter of a crossed index: every crossing is\n"
-            "// scanned at its own kinematics, as madspace does (goodhel stays the\n"
-            "// base's own flavors'). xid is the crossed index, -1 uncrossed.\n"
-            "static bool goodhelx[ncross * nflavors][ncomb] = {};\n"
+            "// One good-helicity filter, goodhel[flav_use], serves every\n"
+            "// crossing: each evaluates the same helicity rows (the legs that\n"
+            "// changed side negated, hel*ic). A crossed index keeps its own try\n"
+            "// counter and adds the rows it finds while training (the helicity\n"
+            "// of a massive leg depends on the frame, and each crossing is\n"
+            "// evaluated in its own). xid is the crossed index, -1 uncrossed.\n"
             "static int ntryx[ncross * nflavors] = {};\n"
             "const int xid = cross > 0 ? flavor_id : -1;\n"
             "if (xid >= 0) ntryx[xid]++;"
@@ -1646,21 +1648,17 @@ class OneProcessExporterCPP(object):
                 '  int spincol_cross(int cross);\n'
                 '  int ident_cross(int cross, const int* flavor);',
             'ident_cross_function': ident_cross_function,
-            # C-parity de-duplication only for the uncrossed process (cross 0):
-            # a crossing permutes/sign-flips the helicities so a base-row flip
-            # is not the crossed C-parity partner (crossed flavors: full sum).
+            # C-parity de-duplication only for the uncrossed process (cross 0),
+            # the only one its scan runs on (crossed flavors: full sum).
             'csym_dedup_ok': 'cross == 0',
-            # Each crossed index has its own filter (goodhelx, scanned at its
-            # own kinematics); the base's own flavors keep goodhel, whose igood
-            # list the C-parity verdict and the sampling mode read.
+            # One filter for the base and every crossing of it; the try
+            # counter is the crossed index's own.
             'cross_ghidx_setup': '',
             'cross_goodhel_gate':
-                '(xid >= 0 ? (goodhelx[xid][ihel] || ntryx[xid] < 2)'
-                ' : (goodhel[flav_use][ihel] || ntry[flav_use] < 2))',
+                'goodhel[flav_use][ihel] ||'
+                ' (xid >= 0 ? ntryx[xid] : ntry[flav_use]) < 2',
             'cross_goodhel_train':
-                'if (t != 0. && xid >= 0){\n'
-                '                goodhelx[xid][ihel] = true;\n'
-                '            } else if (t != 0. && !goodhel[flav_use][ihel]){\n'
+                'if (t != 0. && !goodhel[flav_use][ihel]){\n'
                 '                goodhel[flav_use][ihel]=true;\n'
                 '                igood[flav_use][ngood[flav_use]] = ihel;\n'
                 '                ngood[flav_use] ++;\n'

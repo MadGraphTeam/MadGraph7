@@ -41,6 +41,7 @@ C     LOCAL
       REAL*8 PUSE(0:3,NEXTERNAL)
       INTEGER JC(NEXTERNAL), ICUSE(NEXTERNAL)
       INTEGER NHELDUM(NEXTERNAL), NHELOUT(NEXTERNAL), DUMFLAV
+      INTEGER NHROW(NEXTERNAL)
       REAL*8 SQRTS, T, ANS, TSARR(NCOMB)
       LOGICAL GOODHEL(NCOMB)
 C     C-parity de-duplication. FLIP(I) is the row whose helicity configuration
@@ -89,9 +90,9 @@ C     refused rather than applied to part of the table.
 
 C     Loop over every flavor index: a helicity that contributes for ANY flavor
 C     must be kept, since one recycled matrix.f serves them all. Same for the
-C     crossings: the recycled table bakes its helicity rows, and under a
-C     crossing those rows are used as the CROSSED configurations, so a row that
-C     any crossing needs must survive. Measuring each crossing here is what
+C     crossings: every crossing evaluates the same rows (the legs that changed
+C     side negated), so they mostly share their zeros, but a massive leg's
+C     helicity depends on the frame. Measuring each crossing here is what
 C     makes the recycled matrix.f a valid union over all of them.
       DO IFLV=1, NFLAV
         DO CROSS=0, NCROSS-1
@@ -116,7 +117,13 @@ C     makes the recycled matrix.f a valid union over all of them.
             ANS = 0D0
             DO IHEL=1, NCOMB
               %(proc_prefix)sCUR_IHEL = IHEL
-              T = %(proc_prefix)sMATRIX(PUSE, NHEL(1,IHEL), ICUSE, IFLV)
+C             Row IHEL is one helicity configuration for every crossing: the
+C             legs that changed side (ICUSE=-1) take the opposite helicity,
+C             as in SMATRIX (APPLY_CROSSING_ROWS) and in the recycled calls.
+              DO I=1, NEXTERNAL
+                NHROW(I) = NHEL(I,IHEL)*ICUSE(I)
+              ENDDO
+              T = %(proc_prefix)sMATRIX(PUSE, NHROW, ICUSE, IFLV)
               TSARR(IHEL) = T
               ANS = ANS + T
             ENDDO

@@ -3611,39 +3611,21 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
 #endif
 """
 
-    @staticmethod
-    def _hel_state_values(spin, mass):
-        """Helicity values of an external leg (matching Particle.get_helicity_
-        states) so the per-lane blend can loop over exactly the states cHel
-        holds. Scalars (spin 1) have none. Massive vectors add the 0 state."""
-        massless = mass in ('ZERO', 'zero')
-        if spin == 2:                     # fermion
-            return [-1, 1]
-        if spin == 3:                     # vector
-            return [-1, 1] if massless else [-1, 0, 1]
-        if spin == 5:                     # spin-2
-            return [-2, 2] if massless else [-2, -1, 0, 1, 2]
-        return None                       # spin 1 scalar (no helicity)
-
     def _crossing_external_block(self, wf, argument):
         """External HELAS call under crossing symmetry (C++/SIMD).
 
         Reads the per-event permuted momenta (xmom, in crossed slot order) and
         applies the per-event NSF sign flip by computing the wavefunction twice
-        (nsf = +base and -base) and blending lane-wise through icsign.
-
-        Helicity is PER-LANE: each lane's helicity row is _ihlane[lane] (set by
-        sigmaKin from the event's crossing; nullptr -> the scalar ihel, used by
-        getGoodHel). For a helicity-carrying leg the wavefunction is built for
-        each of the leg's helicity states and accumulated weighted by a per-lane
-        mask (does this lane want state _v?), so a single pass computes each
-        lane's own good helicity. Only the wavefunction is masked: a lane past
-        its crossing's last good helicity (a padding row, every mask 0) must
-        keep its momentum, or it evaluates 0/0 propagators and returns NaN
-        instead of an exact zero. get_amp downstream stays fully SIMD. Scalars
-        carry no helicity, so their block is the plain NSF blend. GPU: one
-        event per thread, a direct call on the input slot xperm[s] (see
-        _crossing_preamble)."""
+        and blending lane-wise through icsign. Every lane evaluates the same
+        base helicity row ihel: a lane whose leg changed side (icsign -1) is
+        fed the opposite helicity together with the opposite NSF flag, which is
+        the same all-outgoing configuration (see sigmaKin, and the Fortran
+        APPLY_CROSSING_ROWS). So the two calls are (+nsf, +h) and (-nsf, -h),
+        h = cHel[ihel][s], and the one good-helicity list serves every lane.
+        get_amp downstream stays fully SIMD. Scalars carry no helicity, so
+        their two calls only differ by the NSF flag. GPU: one event per
+        thread, a direct call on the input slot xperm[s] with the helicity and
+        the NSF flag both times xic[s] (see _crossing_preamble)."""
         routine = helas_call_writers.HelasCallWriter.mother_dict[
             argument.get_spin_state_number()].lower()
         routine = routine + 'x' * (6 - len(routine))
@@ -3658,7 +3640,6 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         else:
             nsf = - (-1) ** wf.get_with_flow('is_part')
         mass = wf.get('mass')
-        states = self._hel_state_values(spin, mass)
 
         def one_call(sign, obj, hel=None):
             if spin == 1:
@@ -3669,59 +3650,26 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                        (routine, mass, hel, sign, s, obj, s)
             return self.format_coupling(call)
 
+        hel = None if spin == 1 else '(int)cHel[ihel][%d]' % s
         lines = ['#ifndef MGONGPUCPP_GPUIMPL']
-        if states is None:
-            # Scalar: no helicity, plain NSF blend (unchanged).
-            lines.append('      ' + one_call(nsf, 'aloha_x[0]'))
-            lines.append('      ' + one_call(-nsf, 'aloha_x[1]'))
-            lines.append('      { const fptype_sv _sp = ( icsign[%d] + (fptype)1. ) * (fptype)0.5;' % s)
-            lines.append('        const fptype_sv _sm = ( (fptype)1. - icsign[%d] ) * (fptype)0.5;' % s)
-            lines.append('        for( int _k = 0; _k < np4; _k++ ) pvec_sv[%d][_k] = _sp * pvec_x[0][_k] + _sm * pvec_x[1][_k];' % me)
-            lines.append('        for( int _k = 0; _k < nw6; _k++ ) w_sv[%d][_k] = _sp * w_x[0][_k] + _sm * w_x[1][_k];' % me)
-            lines.append('        aloha_obj[%d].flv_index = aloha_x[0].flv_index; }' % me)
-        else:
-            stlist = ', '.join(str(v) for v in states)
-            lines.append('      { static const int _st%d[%d] = { %s };' % (s, len(states), stlist))
-            lines.append('        bool _first%d = true;' % s)
-            lines.append('        for( int _vi = 0; _vi < %d; _vi++ ) {' % len(states))
-            lines.append('          const int _v = _st%d[_vi];' % s)
-            lines.append('          ' + one_call(nsf, 'aloha_x[0]', '_v'))
-            lines.append('          ' + one_call(-nsf, 'aloha_x[1]', '_v'))
-            lines.append('          const fptype_sv _sp = ( icsign[%d] + (fptype)1. ) * (fptype)0.5;' % s)
-            lines.append('          const fptype_sv _sm = ( (fptype)1. - icsign[%d] ) * (fptype)0.5;' % s)
-            lines.append('          fptype_sv _hm{};')
-            # Per-lane helicity row, derived PER PAGE (ievt0 = this iParity page's
-            # first event) so mixed precision (nParity=2) picks the right page.
-            # _ighel<0 -> scalar ihel (getGoodHel scan / non-crossing).
-            lines.append('          for( int _ie = 0; _ie < neppV; _ie++ ) {')
-            lines.append('            int _hr;')
-            lines.append('            if( _ighel < 0 ) { _hr = ihel; }')
-            lines.append('            else { const int _cr = (int)( iflavorVec[ievt0 + _ie] / nmaxflavor ); _hr = ( _cr < cNcross && _ighel < cNGoodPerCross[_cr] ) ? cGoodHelOfCross[_cr][_ighel] : -1; }')
-            lines.append('            reinterpret_cast<fptype*>( &_hm )[_ie] = ( _hr >= 0 && (int)cHel[_hr][%d] == _v ) ? (fptype)1. : (fptype)0.;' % s)
-            lines.append('          }')
-            # The momentum is helicity independent: set it once, unmasked, so a
-            # padding lane (_hr = -1, every _hm 0) gets a zero wavefunction but
-            # keeps finite propagators, hence an exact-zero contribution. With
-            # a masked (zero) momentum its massless propagators gave 0/0 = NaN.
-            lines.append('          if( _first%d ) {' % s)
-            lines.append('            for( int _k = 0; _k < np4; _k++ ) pvec_sv[%d][_k] = _sp * pvec_x[0][_k] + _sm * pvec_x[1][_k];' % me)
-            lines.append('            for( int _k = 0; _k < nw6; _k++ ) w_sv[%d][_k] = _hm * ( _sp * w_x[0][_k] + _sm * w_x[1][_k] );' % me)
-            lines.append('            _first%d = false;' % s)
-            lines.append('          } else {')
-            lines.append('            for( int _k = 0; _k < nw6; _k++ ) w_sv[%d][_k] += _hm * ( _sp * w_x[0][_k] + _sm * w_x[1][_k] );' % me)
-            lines.append('          } }')
-            lines.append('        aloha_obj[%d].flv_index = aloha_x[0].flv_index; }' % me)
+        lines.append('      ' + one_call(nsf, 'aloha_x[0]', hel))
+        lines.append('      ' + one_call(-nsf, 'aloha_x[1]', hel and '-' + hel))
+        lines.append('      { const fptype_sv _sp = ( icsign[%d] + (fptype)1. ) * (fptype)0.5;' % s)
+        lines.append('        const fptype_sv _sm = ( (fptype)1. - icsign[%d] ) * (fptype)0.5;' % s)
+        lines.append('        for( int _k = 0; _k < np4; _k++ ) pvec_sv[%d][_k] = _sp * pvec_x[0][_k] + _sm * pvec_x[1][_k];' % me)
+        lines.append('        for( int _k = 0; _k < nw6; _k++ ) w_sv[%d][_k] = _sp * w_x[0][_k] + _sm * w_x[1][_k];' % me)
+        lines.append('        aloha_obj[%d].flv_index = aloha_x[0].flv_index; }' % me)
         lines.append('#else')
         # GPU: one event per thread. Its crossing-table row was read by the
         # preamble: base slot s takes the momentum of input slot xperm[s] (the
         # ipar argument), charge conjugated through the NSF sign when xic[s] is
-        # -1; ihel is the thread's own good helicity row (calculate_jamps).
+        # -1, and fed the base row's helicity times the same sign.
         if spin == 1:
             gpu = '%s( momenta, %+d * xic[%d], cFlavors[iflavor][%d], aloha_obj[%d], xperm[%d] );' % \
                   (routine, nsf, s, s, me, s)
         else:
-            gpu = '%s( momenta, m_pars->%s, cHel[ihel][%d], %+d * xic[%d], cFlavors[iflavor][%d], aloha_obj[%d], xperm[%d] );' % \
-                  (routine, mass, s, nsf, s, s, me, s)
+            gpu = '%s( momenta, m_pars->%s, cHel[ihel][%d] * xic[%d], %+d * xic[%d], cFlavors[iflavor][%d], aloha_obj[%d], xperm[%d] );' % \
+                  (routine, mass, s, s, nsf, s, s, me, s)
         lines.append('      ' + self.format_coupling(gpu))
         lines.append('#endif\n')
         return '\n'.join(lines)

@@ -443,11 +443,20 @@ class External(MathsObject):
         old_name = old_args[-1].replace(' ','')
         graph.kill_old(old_name)
 
+        # A crossing-aware matrix element passes its NSF flag as <nsf>*IC(i)
+        # (helas_call_writers, use_crossing_ic). A crossed call evaluates each
+        # row with the legs that changed side negated (APPLY_CROSSING_ROWS), so
+        # the baked helicity value takes the same IC(i) factor.
+        ic_factor = ''
         if 'NHEL' in old_args[2].upper():
             nhel_index = re.search(r'\(.*?\)', old_args[2]).group()
             ext_num = int(nhel_index[1:-1]) - 1
             new_hels = sorted(list(External.hel_ranges[ext_num]), reverse=True)
             new_hels = [int_to_string(i) for i in new_hels]
+            if len(old_args) > 3 and \
+                    re.search(r'\*\s*IC\(\s*%d\s*\)' % (ext_num + 1),
+                              old_args[3], re.I):
+                ic_factor = '*IC(%d)' % (ext_num + 1)
         else:
             # Spinor must be a scalar so give it hel = 0
             ext_num = int(re.search(r'\(0,(\d+)\)', old_args[0]).group(1)) -1
@@ -460,6 +469,7 @@ class External(MathsObject):
             this_args[2] = hel
 
             this_wavfunc = External(this_args, old_name)
+            this_wavfunc.args[2] = hel + ic_factor
             this_wavfunc.set_name(len(graph.external_wavs) + len(graph.internal_wavs) +1)
 
             graph.store_wav(this_wavfunc)

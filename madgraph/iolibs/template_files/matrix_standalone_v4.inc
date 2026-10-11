@@ -111,9 +111,8 @@ C     scan point clears it for good. Halving the whole loop (rather than an
 C     arbitrary subset of rows) is what keeps any per-row accumulation done
 C     inside MATRIX uniformly scaled, so the same rule is used by every backend.
 C     NTRY_CSYM counts only the uncrossed (cross 0) calls: CSYM is built and
-C     applied for the base process only, because a crossing permutes/sign-flips
-C     the helicities so FLIP (a base-row negation) is no longer the crossed
-C     C-parity partner. Crossed flavours therefore keep the full helicity sum.
+C     applied for the base process only, so crossed flavours keep the full
+C     helicity sum (they would need a scan of their own).
       INTEGER FLIP(NCOMB), NTRY_CSYM(NFLAV)
       LOGICAL CSYM(NFLAV), DEDUP
       REAL*8 TSTORE(NCOMB)
@@ -199,7 +198,7 @@ C     for which some of the spin-2 helicity configurations are zero. But they ar
 C     if the point is boosted on the z-axis. Remember that HELAS helicity amplitudes are no longer
 C     lorentz invariant with expternal spin-2 particles (only the helicity sum is).
 C     For this reason, we simply remove the filterin when there is only three external particles.
-      IF (NEXTERNAL.LE.3) THEN%(three_leg_cross)s
+      IF (NEXTERNAL.LE.3) THEN
         DO IHEL=1,NCOMB
           DO J=1,NFLAV
             GOODHEL(IHEL,J)=.TRUE.

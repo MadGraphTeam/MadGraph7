@@ -213,6 +213,9 @@ class gensym(object):
             all_zampperhel = set()
             all_bad_amps_perhel = set()
             all_csym_pairs = set()
+            # matrix elements whose C-parity scan failed for some caller (a
+            # crossed one included, see me_csym_bad_report)
+            all_csym_bad = set()
 
             for line in stdout.splitlines():
                 if "="  not in line and ":" not in line:
@@ -226,6 +229,8 @@ class gensym(object):
                 if 'CSYM PAIR:' in line:
                     # (me_index, representative_hel, dropped_partner_hel)
                     all_csym_pairs.add(tuple(line.split()[2:5]))
+                if 'CSYM BAD:' in line:
+                    all_csym_bad.add(line.split()[2])
                 if 'Amplitude/ZEROAMP:' in line:
                     all_zamp.add(tuple(line.split()[1:3]))
                 if 'HEL/ZEROAMP:' in line:
@@ -236,13 +241,16 @@ class gensym(object):
                         continue
                     all_zampperhel.add(tuple(line.split()[1:4]))
 
-            surveys[subdir] = (set(all_hel), set(all_zamp), set(all_zampperhel))
+            surveys[subdir] = (set(all_hel), set(all_zamp), set(all_zampperhel),
+                               set(all_csym_pairs), set(all_csym_bad))
 
             # A matrix element shared by a crossing (crossgroup_shared.dat:
             # `<me index> [P directories routing through it]`): its recycled
             # optim is entered by every crossing that routes through it, so it
-            # must cover the rows each of them evaluates. Each crossing is
-            # scanned at its own kinematics, as madspace scans each crossing:
+            # must cover the rows each of them evaluates: the same rows for
+            # every crossing (APPLY_CROSSING_ROWS) up to the frame-dependent
+            # ones of a massive leg, so each crossing is still scanned at its
+            # own kinematics:
             # a within-group router calls the base inside this very survey, a
             # cross-group one in its own directory's survey, done first. An
             # amplitude is only dropped where it vanishes for every caller.
@@ -258,7 +266,7 @@ class gensym(object):
                     if dep not in surveys:
                         raise Exception('%s routes through %s but was not '
                                         'surveyed first' % (dep, subdir))
-                    d_hel, d_zamp, d_zph = surveys[dep]
+                    d_hel, d_zamp, d_zph, d_csym, d_bad = surveys[dep]
                     mine = set(h for (m, h) in all_hel if m == me_index)
                     theirs = set(h for (m, h) in d_hel if m == me_index)
                     all_zamp = set(z for z in all_zamp
@@ -269,6 +277,11 @@ class gensym(object):
                     ) | set(z for z in d_zph
                             if z[0] == me_index and z[1] not in mine)
                     all_hel |= set((me_index, h) for h in theirs)
+                    # C-parity: the dependent evaluates the base rows too, so
+                    # the pairs it confirmed join the base's, and a mismatch it
+                    # found keeps the full helicity sum for everyone.
+                    all_csym_pairs |= set(c for c in d_csym if c[0] == me_index)
+                    all_csym_bad |= d_bad & set([me_index])
 
             if zero_gc and not gensym.done_warning_zero_coupling:
                 gensym.done_warning_zero_coupling = True
@@ -381,16 +394,16 @@ class gensym(object):
                 # generated -- and reuse the representative's |M|^2 for it. The
                 # reuse indices are the OPTIM's re-indexed positions in good_hels
                 # (helicity indices are renumbered 1..len(good_hels) in the optim).
-                # Still disabled for a matrix element shared by a crossing
-                # (shared_me): the pairing is established for the base's own
-                # flavors only, and a crossing evaluates the same rows at its own
-                # kinematics, so the reuse is not obviously its mirror pairing. That costs only
-                # speed -- both rows of a pair get computed -- and not
-                # correctness, since AMP2/JAMP2 ratios do not depend on WHICH
-                # subset of the good configs is summed (they are the same for a
-                # row and its mirror).
+                # A matrix element shared by a crossing (shared_me) is entered
+                # by every caller with the base rows (APPLY_CROSSING_ROWS), so
+                # the base FLIP is their C-parity partner too: the reuse holds
+                # unless some caller's scan -- this survey's or a dependent
+                # directory's -- found a mismatch (CSYM BAD). Without it both
+                # rows of a pair get computed: speed only, since AMP2/JAMP2
+                # ratios do not depend on WHICH subset of the good configs is
+                # summed (they are the same for a row and its mirror).
                 csym_reuse_pairs = []
-                if not shared_me and all_csym[me_index]:
+                if all_csym[me_index] and me_index not in all_csym_bad:
                     opt_index = {h: i + 1 for i, h in enumerate(sorted(good_set))}
                     bad_set = set(bad_amps_perhel)
                     for rep, flip in all_csym[me_index]:

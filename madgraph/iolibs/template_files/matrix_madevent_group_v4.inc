@@ -173,7 +173,7 @@ C     FLIP table (CSYM_DONE is local to each SMATRIX<i>).
       ENDDO
       CSYM_DONE = .TRUE.
     ENDIF
-    DEDUP = NCSCAN(%(me_flav_key)s,%(proc_id)s).GE.20 .AND. CSYMBAD(%(me_flav_key)s,%(proc_id)s).EQ.0 .AND. (%(me_csym_cross_ok)s)
+    DEDUP = %(me_csym_nscan)s.GE.20 .AND. CSYMBAD(%(me_flav_key)s,%(proc_id)s).EQ.0 .AND. (%(me_csym_cross_ok)s)
 
     IF (multi_channel) THEN
         DO I=1,NDIAGS
@@ -227,8 +227,8 @@ C       So also require the difference to be significant against TSMAX, the
 C       largest |M|^2 of this scan point: a row that far down cannot bias the
 C       helicity sum whichever way it is paired, while a genuine parity
 C       violation still shows up at the relative level.
-      IF (%(me_csym_cross_ok)s.AND.NCSCAN(%(me_flav_key)s,%(proc_id)s).LT.20) THEN
-        NCSCAN(%(me_flav_key)s,%(proc_id)s)=NCSCAN(%(me_flav_key)s,%(proc_id)s)+1
+      IF (%(me_csym_cross_ok)s.AND.%(me_csym_nscan)s.LT.20) THEN
+%(me_csym_nscan_incr)s
         TSMAX=0D0
         DO I=1,NCOMB
           IF (DABS(TS(I)).GT.TSMAX) TSMAX=DABS(TS(I))
@@ -237,7 +237,7 @@ C       violation still shows up at the relative level.
           IF (FLIP(I).GT.I) THEN
             IF (DABS(TS(I)-TS(FLIP(I))).GT.1D-6*(DABS(TS(I))+DABS(TS(FLIP(I))))
      &          .AND.DABS(TS(I)-TS(FLIP(I))).GT.1D-12*TSMAX) THEN
-              CSYMBAD(%(me_flav_key)s,%(proc_id)s)=1
+              CSYMBAD(%(me_flav_key)s,%(proc_id)s)=1%(me_csym_bad_report)s
             ENDIF
           ENDIF
         ENDDO
@@ -249,7 +249,7 @@ C     C-symmetric. The optimizer drops the partner's amplitudes from
 C     matrix<i>_optim.f and reuses TS(rep) for it.
 C     NTRY (not NCSCAN, which saturates at 20) provides the one-shot trigger;
 C     in init_mode the full-sum branch runs every call, so the two coincide.
-      IF (init_mode.AND.%(me_csym_cross_ok)s.AND.CSYMBAD(%(me_flav_key)s,%(proc_id)s).EQ.0.AND.NCSCAN(%(me_flav_key)s,%(proc_id)s).GE.20.AND.NTRY(%(me_flav_key)s,%(proc_id)s).EQ.20) THEN
+      IF (init_mode.AND.%(me_csym_cross_ok)s.AND.CSYMBAD(%(me_flav_key)s,%(proc_id)s).EQ.0.AND.%(me_csym_nscan)s.GE.20.AND.%(me_goodhel_ntry)s.EQ.20) THEN
         DO I=1,NCOMB
           IF (I.LT.FLIP(I).AND.DABS(TS(I)).GT.ANS*LIMHEL/NCOMB) THEN
             PRINT *, 'CSYM PAIR: %(proc_id)s ', I, FLIP(I)
