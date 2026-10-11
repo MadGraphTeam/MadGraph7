@@ -139,7 +139,12 @@ c     Convention for loop computations
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -295,7 +300,12 @@ c$$$      fi(4) = dcmplx(p(3),0.D0)*(-nsf)
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -404,7 +414,12 @@ c     Convention for loop computations
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = cmplx( sqrt(pp3*rHalf/pp), KIND=16 )
             if ( pp3.eq.rZero ) then
                chi(2) = cmplx(-nh ,KIND=16)
@@ -556,7 +571,12 @@ c            pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -676,7 +696,12 @@ c$$$      fo(4) = dcmplx(p(3),0.D0)*(nsf)
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -787,7 +812,12 @@ c            pp = min(p(0),sqrt(p(1)**2+p(2)**2+p(3)**2))
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = cmplx( sqrt(pp3*rHalf/pp) ,KIND=16)
             if ( pp3.eq.rZero ) then
                chi(2) = cmplx(-nh ,KIND=16)
