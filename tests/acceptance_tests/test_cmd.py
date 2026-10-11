@@ -1691,10 +1691,12 @@ class TestCmdShell2(unittest.TestCase,
             build = 'BACKEND=%s FPTYPE=%s' % (backend, fptype)
             subprocess.call(['make', 'cleanall'], stdout=devnull,
                             stderr=devnull, cwd=proc_dir)
-            self.assertEqual(0, subprocess.call(
-                ['make', 'BACKEND=' + backend, 'FPTYPE=' + fptype],
-                stdout=devnull, stderr=devnull, cwd=proc_dir),
-                'the %s library did not build' % build)
+            # the end of the build log in the message (the GPU CI has nothing else)
+            make = subprocess.run(['make', 'BACKEND=' + backend, 'FPTYPE=' + fptype],
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                  cwd=proc_dir)
+            self.assertEqual(0, make.returncode, 'the %s library did not build:\n%s'
+                             % (build, make.stdout.decode(errors='replace')[-3000:]))
             lib = glob.glob(pjoin(self.out_dir, 'lib',
                                   'libmadmatrix_P*_%s.so' % backend))[0]
             runs = {}
