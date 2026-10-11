@@ -11,7 +11,9 @@
 #include "SigmaKin.h" // sigmaKin_getGoodHel/setGoodHel
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
+#include "rambo.h" // RAMBO points to choose the good helicities on (umami_initialize)
 
+#include <algorithm>
 #include <cfloat>
 #include <cmath>
 #include <string>
@@ -116,6 +118,61 @@ namespace
 
   std::vector<double> g_externalMasses;
 
+  // The helicity filter (sigmaKin_getGoodHel) runs once per library and keeps a
+  // helicity if its |M|^2 is not 0 for one of the first events. Run at the first
+  // umami_matrix_element call, it depended on what that call held: a first batch of
+  // special points, where some helicities happen to vanish (the forward direction of
+  // u u~ > e+ e-, say), dropped them for the rest of the run, and every later |M|^2
+  // was wrong. It runs instead here, at initialization, on RAMBO points: the matrix
+  // element is evaluated there once (the filter itself scans every flavor). Where
+  // RAMBO has no phase space (2 > 1, a decay below threshold), this does nothing and
+  // the first call still chooses.
+  void choose_good_helicities( UmamiHandle handle )
+  {
+    constexpr int npar = ProcessData::npar;
+    constexpr int npari = ProcessData::npari;
+    constexpr std::size_t nevt = 16; // the events sigmaKin_getGoodHel looks at
+    std::vector<double> masses( g_externalMasses.begin(), g_externalMasses.end() );
+    double mfinal = 0, mtotal = 0;
+    for( int ipar = 0; ipar < npar; ++ipar )
+    {
+      mtotal += masses[ipar];
+      if( ipar >= npari ) mfinal += masses[ipar];
+    }
+    // rambo exits on a closed phase space: check it first
+    if( npar - npari < 2 || ( npari == 1 && !( masses[0] > mfinal ) ) ) return;
+    const double energy = std::max( 1500., 2 * mtotal ); // a decay is at rest instead
+    // A private generator: the shared one (rambo::rn) makes the points of the check
+    // drivers, which must not move.
+    rambo::Random random;
+    random.rmarin( 1802, 9373 );
+    auto draw = [&random]( int )
+    {
+      double r = random.ranmar();
+      while( r <= 1e-16 ) r = random.ranmar();
+      return r;
+    };
+    std::vector<double> momenta( nevt * npar * 4 ); // momenta[nevt * ( npar * mu + ipar ) + ievt]
+    for( std::size_t ievt = 0; ievt < nevt; ++ievt )
+    {
+      double weight = 0;
+      const std::vector<std::vector<double>> p = rambo::get_momenta( npari, energy, masses, weight, draw );
+      for( int ipar = 0; ipar < npar; ++ipar )
+      {
+        // on shell, or rambo did not converge: leave the choice to the first call
+        const double m2 = p[ipar][0] * p[ipar][0] - p[ipar][1] * p[ipar][1] - p[ipar][2] * p[ipar][2] - p[ipar][3] * p[ipar][3];
+        if( std::abs( m2 - masses[ipar] * masses[ipar] ) > 1e-6 * energy * energy ) return;
+        for( int mu = 0; mu < 4; ++mu ) momenta[nevt * ( npar * mu + ipar ) + ievt] = p[ipar][mu];
+      }
+    }
+    std::vector<double> matrix_elements( nevt );
+    const UmamiInputKey input_keys[] = { UMAMI_IN_MOMENTA };
+    const void* inputs[] = { momenta.data() };
+    const UmamiOutputKey output_keys[] = { UMAMI_OUT_MATRIX_ELEMENT };
+    void* outputs[] = { matrix_elements.data() };
+    umami_matrix_element( handle, nevt, nevt, 0, 1, input_keys, inputs, 1, output_keys, outputs );
+  }
+
 }
 
 extern "C"
@@ -192,6 +249,9 @@ extern "C"
 
     auto instance = new InterfaceInstance();
     *handle = instance;
+    // once per library, like the filter (a thread-safe static initialization)
+    static const bool good_helicities = ( choose_good_helicities( instance ), true );
+    (void)good_helicities;
     return UMAMI_SUCCESS;
   }
 

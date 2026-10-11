@@ -1545,30 +1545,33 @@ class TestCmdShell2(unittest.TestCase,
                 self.assertAlmostEqual(value, helicity_sum,
                                        delta=1e-12 * abs(helicity_sum))
 
-    def test_standalone_umami_padding(self):
-        """umami pads a batch with real events, and no more than its kernels need.
+    def test_standalone_umami_first_call(self):
+        """the helicities kept, and the |M|^2, do not depend on the first umami call.
 
-        umami_matrix_element rounds a batch up to the event pages its kernels
-        run on. It rounded to two SIMD pages whatever the precision (a call with
-        one event computed two on the scalar backend), and left the padding
-        events at zero, which evaluate to nan. The good-helicity filter runs at
-        the first call and keeps a helicity if its |M|^2 is not 0 for one of the
-        first events: a padding event among them kept every helicity for the
-        rest of the run, twice the work for a q q~ initial state. The padding
-        events are now copies of a real one, as on GPUs.
+        The good helicities are chosen once per library: a helicity is kept if
+        its |M|^2 is not 0 for one of the first events. They were chosen at
+        the first umami_matrix_element call, so that
+        * a first call of special points dropped, for the rest of the run, the
+          helicities that vanish there: after one event in the exact forward
+          direction, u u~ > e+ e- came out wrong by factors 5 to 100;
+        * a first call shorter than a SIMD page was padded with zero events,
+          which evaluate to nan, and every helicity was kept (twice the work
+          for a q q~ initial state).
+        They are now chosen at initialization, on RAMBO points, and the
+        padding events of a batch are copies of real ones.
 
         p p > e+ e- has two flavor indices (d and u type) and only 4 of its 16
-        helicities do not vanish (massless quark and lepton lines). For the
-        scalar backend and for simd_128 in double and in mixed precision (one
-        and two SIMD pages at a time):
+        helicities do not vanish. For the scalar backend and simd_128 in double
+        and in mixed precision (one and two SIMD pages at a time), with a first
+        call of one generic event, of 16 events, or of one forward event:
+        * the same helicities are kept, fewer than 16
+          (madmatrix_good_helicity_count);
+        * the same |M|^2 come out afterwards, and a batch whose flavors
+          alternate, leaving partial pages, gives the |M|^2 of single-event
+          calls, event by event.
 
-        * a first call with one event keeps the helicities that a first call
-          with 16 events keeps (madmatrix_good_helicity_count), fewer than 16;
-        * a batch whose flavors alternate, leaving partial pages, gives the
-          |M|^2 of single-event calls, event by event.
-
-        The filter is set once per loaded library, so each first call runs in
-        its own process.
+        The helicities are chosen once per loaded library, so each first call
+        runs in its own process.
         """
         import glob
         import json
@@ -1581,7 +1584,7 @@ class TestCmdShell2(unittest.TestCase,
         proc_dir = [pjoin(proc_root, d) for d in os.listdir(proc_root)
                     if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))][0]
         card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
-        helper = pjoin(self.out_dir, 'umami_padding.py')
+        helper = pjoin(self.out_dir, 'umami_first_call.py')
         with open(helper, 'w') as fsock:
             fsock.write(textwrap.dedent('''\
                 import ctypes, json, math, sys
@@ -1590,8 +1593,9 @@ class TestCmdShell2(unittest.TestCase,
                 assert lib.umami_initialize(ctypes.byref(handle), sys.argv[2].encode()) == 0
                 npar = 4
 
-                def point(k):  # u u~ > e+ e- at sqrt(s) = 1 TeV, k-th direction
-                    e, ct, phi = 500., math.cos(0.3 + 0.37 * k), 0.7 * k
+                def point(k):  # q q~ > e+ e- at sqrt(s) = 1 TeV: k-th direction, or forward
+                    e = 500.
+                    ct, phi = (1., 0.) if k == 'forward' else (math.cos(0.3 + 0.37 * k), 0.7 * k)
                     st = math.sqrt(1 - ct * ct)
                     p3 = [e * st * math.cos(phi), e * st * math.sin(phi), e * ct]
                     return [[e, 0, 0, e], [e, 0, 0, -e], [e] + p3, [e] + [-x for x in p3]]
@@ -1616,8 +1620,8 @@ class TestCmdShell2(unittest.TestCase,
                     assert status == 0, status
                     return list(me)
 
-                nfirst = int(sys.argv[3])
-                evaluate(range(nfirst), [k % 2 for k in range(nfirst)])
+                first = {'single': [0], 'batch': list(range(16)), 'forward': ['forward']}[sys.argv[3]]
+                evaluate(first, [k % 2 if k != 'forward' else 1 for k in first])
                 flavors = [0, 1, 1, 0, 1, 0, 0]
                 print(json.dumps({
                     'good': lib.madmatrix_good_helicity_count(),
@@ -1639,19 +1643,24 @@ class TestCmdShell2(unittest.TestCase,
             lib = glob.glob(pjoin(self.out_dir, 'lib',
                                   'libmadmatrix_P*_%s.so' % backend))[0]
             runs = {}
-            for nfirst in (1, 16):
+            for first in ('single', 'batch', 'forward'):
                 out = subprocess.check_output(
-                    [sys.executable, helper, lib, card, str(nfirst)])
-                runs[nfirst] = json.loads(out.decode().strip().splitlines()[-1])
-            self.assertEqual(runs[1]['good'], runs[16]['good'],
-                             '%s: the helicities kept depend on the size of '
-                             'the first call' % build)
-            self.assertGreater(runs[1]['good'], 0, build)
-            self.assertLess(runs[1]['good'], 16,
+                    [sys.executable, helper, lib, card, first])
+                runs[first] = json.loads(out.decode().strip().splitlines()[-1])
+            reference = runs['single']
+            self.assertGreater(reference['good'], 0, build)
+            self.assertLess(reference['good'], 16,
                             '%s: no helicity was filtered out' % build)
-            for run in runs.values():
-                for batch, single in zip(run['batch'], run['single']):
+            for first, run in runs.items():
+                self.assertEqual(run['good'], reference['good'],
+                                 '%s: a first call of %s events keeps other '
+                                 'helicities' % (build, first))
+                for batch, single, ref in zip(run['batch'], run['single'],
+                                              reference['single']):
                     self.assertGreater(single, 0, build)
+                    self.assertAlmostEqual(single, ref, delta=rtol * ref,
+                                           msg='%s: the |M|^2 depend on the first '
+                                               'call (%s)' % (build, first))
                     self.assertAlmostEqual(batch, single, delta=rtol * single,
                                            msg='%s: batch and single-event '
                                                '|M|^2 differ' % build)
