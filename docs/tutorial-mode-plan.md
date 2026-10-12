@@ -492,10 +492,9 @@ saying so, and assume an mg7 output directory already exists.
    how to tell an integration is badly channelled rather than merely slow.
 4. **Turning on MadNIS**: `madnis.enable = True`, and what changes in the run.
 5. The `[madnis]` knobs in the order a user should touch them:
-   `train_batches`, `batch_size_per_channel`, `lr` / `lr_scheduler`,
-   `loss` (`stratified_variance` / `kl_divergence` / `rkl_divergence`), and only
+   `train_batches`, `batch_size_per_channel`, `lr` / `lr_scheduler`, and only
    then the network shape (`flow_*`, `discrete_*`, `cwnet_*`).
-6. Running the training, reading the log, `train_madnis.py`; CPU vs GPU and
+6. Running the training, reading the log; CPU vs GPU and
    what torch is needed for.
 7. Measuring the win honestly: cross section, unweighting efficiency and wall
    time, VEGAS vs MadNIS vs MadEvent on the same process.
