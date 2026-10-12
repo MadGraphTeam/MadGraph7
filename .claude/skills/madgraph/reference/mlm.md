@@ -92,7 +92,7 @@ one you used.
 ## Results
 
 ```bash
-python3 <MG7>/.claude/skills/madgraph/scripts/run_summary.py PROC_wjj_mlm
+python3 <skill>/scripts/run_summary.py PROC_wjj_mlm
 ```
 
 It prints:

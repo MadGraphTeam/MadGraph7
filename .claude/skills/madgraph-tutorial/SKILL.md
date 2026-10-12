@@ -1,6 +1,7 @@
 ---
 name: madgraph-tutorial
-description: Teach the user MadGraph7 through its built-in interactive
+description: >-
+  Teach the user MadGraph7 through its built-in interactive
   tutorials (the `tutorial` command) instead of improvising lessons. Use when
   the user wants to learn MadGraph or one of its features, asks for a
   tutorial, says they are new to MadGraph, or asks "how do I learn / get
@@ -193,5 +194,5 @@ order, each with its `title=`.
 
 If the user stops learning and asks for a cross section, a sample or a plot
 ("now do it for p p > t t~ j at 13.6 TeV"), use the **madgraph** skill:
-Claude runs the scripts and reports the result. Offer to explain what the
+you run the scripts and report the result. Offer to explain what the
 script did in terms of the tutorial they just followed.

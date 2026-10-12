@@ -147,7 +147,7 @@ Summarise with the bundled script, using the absolute path to the
 installation:
 
 ```bash
-python3 <MG7>/.claude/skills/madgraph/scripts/run_summary.py PROC_zj_nlo run_01
+python3 <skill>/scripts/run_summary.py PROC_zj_nlo run_01
 ```
 
 It prints the cross section to quote, the bands, the seed, the scale choice,
@@ -181,7 +181,7 @@ Whenever the number matters (a K-factor, a comparison, anything below about
 1%), run 3-5 seeds (one launch block per seed) and combine them:
 
 ```bash
-python3 <MG7>/.claude/skills/madgraph/scripts/run_summary.py --combine PROC_zj_nlo run_01 run_03 run_04
+python3 <skill>/scripts/run_summary.py --combine PROC_zj_nlo run_01 run_03 run_04
 ```
 
 This gives the weighted mean, with its error scaled by sqrt(χ²/ndf) when the

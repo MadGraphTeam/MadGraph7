@@ -475,15 +475,33 @@ MADEVENT_CUTS = [
 ]
 
 
+def find_mg_root(proc_dir):
+    """The MadGraph7 directory (the one containing bin/madgraph): searched
+    upwards from the process directory, the working directory and this
+    script, so that the skill works wherever it is installed
+    (.claude/skills, .agents/skills, a user-level skills directory)."""
+    for start in (proc_dir, os.getcwd(), os.path.dirname(os.path.abspath(__file__))):
+        path = os.path.abspath(start)
+        while True:
+            if os.path.isfile(os.path.join(path, "bin", "madgraph")) and \
+                    os.path.isdir(os.path.join(path, "madgraph")):
+                return path
+            parent = os.path.dirname(path)
+            if parent == path:
+                break
+            path = parent
+    return None
+
+
 def lhapdf_configs(proc_dir):
     """Candidate lhapdf-config executables, most specific first: the process
     directory, this installation, the user's MadGraph7 config, then PATH."""
-    mg_root = os.path.abspath(os.path.join(os.path.dirname(__file__),
-                                           "..", "..", "..", ".."))
     files = [os.path.join(proc_dir, "Cards", card) for card in
              ("me5_configuration.txt", "amcatnlo_configuration.txt")]
-    files += [os.path.join(mg_root, "input", "mg7_configuration.txt"),
-              os.path.expanduser("~/.mg7/mg7_configuration.txt")]
+    mg_root = find_mg_root(proc_dir)
+    if mg_root:
+        files.append(os.path.join(mg_root, "input", "mg7_configuration.txt"))
+    files.append(os.path.expanduser("~/.mg7/mg7_configuration.txt"))
     for path in files:
         try:
             with open(path) as fsock:

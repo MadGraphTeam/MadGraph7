@@ -1,6 +1,7 @@
 ---
 name: madgraph
-description: Run MadGraph7 for the user. Generate a process, compute an LO or
+description: >-
+  Run MadGraph7 for the user. Generate a process, compute an LO or
   NLO cross section, produce events (with cuts, scale/PDF uncertainties,
   histograms, showering, MC@NLO, MLM-merged multi-jet samples), draw its
   Feynman diagrams, evaluate the matrix element at given phase-space points
@@ -18,6 +19,16 @@ description: Run MadGraph7 for the user. Generate a process, compute an LO or
 MadGraph7 is driven by **command scripts** passed to `./bin/madgraph` at the
 root of this repository. Never type commands into the interactive prompt, and
 never pipe them through stdin: write a script file and run it.
+
+In the commands below:
+- `<MG7>` is the absolute path of the MadGraph7 directory (the one
+  containing `bin/madgraph`);
+- `<skill>` is the directory containing this SKILL.md
+  (`<MG7>/.claude/skills/madgraph` or `<MG7>/.agents/skills/madgraph`,
+  depending on the agent).
+
+Reference files (`reference/...`) and scripts (`scripts/...`) are relative to
+`<skill>`.
 
 ## Which workflow
 
@@ -111,9 +122,9 @@ an `output` but no `launch`. Then follow `reference/matrix_element.md`.
    runs:
 
    ```bash
-   python3 <MG7>/.claude/skills/madgraph/scripts/run_summary.py PROC_tt          # latest run
-   python3 <MG7>/.claude/skills/madgraph/scripts/run_summary.py PROC_tt run_02   # a given run
-   python3 <MG7>/.claude/skills/madgraph/scripts/run_summary.py --combine PROC_tt run_01 run_02 run_03
+   python3 <skill>/scripts/run_summary.py PROC_tt          # latest run
+   python3 <skill>/scripts/run_summary.py PROC_tt run_02   # a given run
+   python3 <skill>/scripts/run_summary.py --combine PROC_tt run_01 run_02 run_03
    ```
 
    Here `<MG7>` is the absolute path of this repository; the work directory is
