@@ -947,9 +947,13 @@ class TestImportRunCard(unittest.TestCase):
         self.assertGreater(picked['Nevents_for_max_weight'], 75)
         self.assertAlmostEqual(picked['nb_sigma'], math.log(self.NEVENTS, 7.7))
         self.assertEqual(picked['BW_cut'], 12.)
-        self.assertEqual(picked['frame_id'], 6)
+        # mg7's default me_frame [] is the lab frame (0), not madevent's
+        # partonic c.m. (6): see test_the_mg7_me_frame_reaches_madspin
+        self.assertEqual(picked['frame_id'], 0)
         self.assertEqual(picked['beampol'], [0., 0.])
-        self.assertEqual(picked, self._picked(lo, 'lo.lhe'))
+        mg7['run']['me_frame'] = [1, 2]
+        self.assertEqual(self._picked(mg7, 'mg7_cm.lhe'),
+                         self._picked(lo, 'lo.lhe'))
 
     def test_mg7_card_with_a_removed_cpu_mode_still_imports(self):
         """A card from before the backend renaming carries a cpu_mode that no

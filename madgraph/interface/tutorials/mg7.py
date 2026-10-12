@@ -95,7 +95,6 @@ rescued by a better integrator:
   sde_strategy          diagrams or denominators -- how channels map to
                         diagrams
   t_channel, flat_mode  propagator, rambo or chili for the t-channel
-  decays                all, massive or none
   bw_cutoff             how far off-shell a Breit-Wigner is followed
   drop_qcd_s_channel    drop channels with no QCD resonance once the channel
                         count would exceed this -- the lever for processes
@@ -166,12 +165,12 @@ you are getting; the default is not the one a MadEvent run would have used.
 Seeding works the way you would expect -- `set iseed 42` at the launch question
 sets `[run] seed`, and so does editing the run card directly.
 
-**Coming from a LO run card?** `madgraph/various/RunCardLO_to_MG7_mapping.md`
-maps the old names onto the new sections.
+**Coming from a LO run card?** The "Coming from MadEvent" page of the
+documentation maps the old names onto the new sections.
 
-**Gridpacks** work here too, via the `[gridpack]` section and
-`bin/generate_events`. With `run_mode = "fix_max_weight"`, the gridpack also
-ships `bin/event_stream.py`, a Python API that streams events in memory.
+**Gridpacks** work here too, via the `[gridpack]` section. The "Gridpacks"
+page of the documentation describes them, including `bin/event_stream.py`, a
+Python API that streams events in memory.
 
 %(see_also)s
 
