@@ -21,6 +21,9 @@ never pipe them through stdin: write a script file and run it.
 
 ## Which workflow
 
+If the user wants to **learn** MadGraph rather than get a result, use the
+`madgraph-tutorial` skill (the built-in interactive tutorials).
+
 | The user wants | Process syntax | Output | Read before setting anything |
 |---|---|---|---|
 | LO cross section / LO events | `generate p p > t t~` | mg7 (`output`) | `reference/mg7_run_card.md` |
