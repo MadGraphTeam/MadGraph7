@@ -67,6 +67,7 @@
 #error You must CHOOSE (ONE AND) ONLY ONE of MGONGPU_CPPCXTYPE_STDCOMPLEX or MGONGPU_CPPCXTYPE_CXSMPL for C++
 #endif
 
+// NB: namespace madmatrix includes types which are defined in exactly the same way for CPU and GPU builds (see #318 and #725)
 namespace madmatrix
 {
   // Floating point type (for everything but color algebra #537): fptype

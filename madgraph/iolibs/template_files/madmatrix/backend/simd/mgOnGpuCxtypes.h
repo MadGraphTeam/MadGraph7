@@ -31,6 +31,7 @@
 // COMPLEX TYPES: SIMPLE COMPLEX CLASS (cxsmpl)
 //==========================================================================
 
+// NB: namespace madmatrix includes types which are defined in exactly the same way for CPU and GPU builds (see #318 and #725)
 namespace madmatrix /* clang-format off */
 {
   // The number of floating point types in a complex type (real, imaginary)

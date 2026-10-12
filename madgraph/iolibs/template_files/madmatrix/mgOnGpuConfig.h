@@ -166,6 +166,7 @@
 #endif
 #endif
 
+// NB: namespace madmatrix includes types which are defined in exactly the same way for CPU and GPU builds (see #318 and #725)
 namespace madmatrix
 {
 
