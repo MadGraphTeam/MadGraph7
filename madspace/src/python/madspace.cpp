@@ -1863,6 +1863,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                     );
                     ++i;
                 }
+                py::gil_scoped_release release;
                 return opt.step(tensors);
             },
             py::arg("inputs"),
@@ -2481,6 +2482,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "train_step",
             &MadnisTraining::train_step,
+            py::call_guard<py::gil_scoped_release>(),
             py::arg("batch_index"),
             pydoc::doc("MadnisTraining::train_step")
         )
@@ -2538,6 +2540,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "train",
             &MultiMadnisTraining::train,
+            py::call_guard<py::gil_scoped_release>(),
             pydoc::doc("MultiMadnisTraining::train")
         )
         .def(
@@ -3710,17 +3713,20 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "survey",
             &EventGenerator::survey,
+            py::call_guard<py::gil_scoped_release>(),
             py::arg("survey_pass") = 0,
             pydoc::doc("EventGenerator::survey")
         )
         .def(
             "generate",
             &EventGenerator::generate,
+            py::call_guard<py::gil_scoped_release>(),
             pydoc::doc("EventGenerator::generate")
         )
         .def(
             "combine_to_compact_npy",
             &EventGenerator::combine_to_compact_npy,
+            py::call_guard<py::gil_scoped_release>(),
             py::arg("file_name"),
             py::arg("systematics") = nullptr,
             py::arg("histograms") = nullptr,
@@ -3729,6 +3735,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "combine_to_lhe_npy",
             &EventGenerator::combine_to_lhe_npy,
+            py::call_guard<py::gil_scoped_release>(),
             py::arg("file_name"),
             py::arg("lhe_completer"),
             py::arg("systematics") = nullptr,
@@ -3738,6 +3745,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "combine_to_lhe",
             &EventGenerator::combine_to_lhe,
+            py::call_guard<py::gil_scoped_release>(),
             py::arg("file_name"),
             py::arg("lhe_completer"),
             py::arg_v("meta", LHEMeta{}, "LHEMeta()"),
@@ -3838,6 +3846,8 @@ PYBIND11_MODULE(_madspace_py, m) {
     );
 
     auto abort_check_function = [] {
+        // the long-running calls release the GIL
+        py::gil_scoped_acquire acquire;
         if (PyErr_CheckSignals() != 0) {
             throw py::error_already_set();
         }
