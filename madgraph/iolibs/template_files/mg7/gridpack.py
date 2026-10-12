@@ -71,9 +71,13 @@ def build_lhe_meta(event_generator, seed: int, systematics=None):
             name="initrwgt", content=systematics.initrwgt(), escape_content=False
         ))
     status = event_generator.status()
+    # IDWTUP and XMAXUP of this run, as launch.lhe_weight_info: negative when
+    # the sample can hold negative weights, and the unit weight sigma_abs
+    negative = status.mean < 0 or status.mean_abs > abs(status.mean) * (1 + 1e-12)
+    data["weight_mode"] = -4 if negative else 3
     return ms.LHEMeta(
         # positional: the pybind arg name for max_weight is non-kwarg-safe
-        processes=[ms.LHEProcess(status.mean, status.error, status.mean, 1)],
+        processes=[ms.LHEProcess(status.mean, status.error, status.mean_abs, 1)],
         headers=headers,
         **data,
     )
@@ -138,7 +142,7 @@ def main() -> None:
         "--verbosity",
         type=str,
         default=run_args["verbosity"],
-        choices=["none", "pretty", "log", "auto"]
+        choices=["silent", "pretty", "log", "auto"]
     )
     parser.add_argument(
         "--output_format",
@@ -394,6 +398,11 @@ def load_systematics(run_card, backends=(), param_card_path=None,
                  ms.MatrixElement.flavor_in],
                 [ms.MatrixElement.matrix_element_out],
                 False,
+                # the frame the events were generated with, not whatever the
+                # gridpack's run card says now: it has to match the matrix
+                # element inside the saved channel generators
+                data.get("me_frame", []),
+                data.get("incoming_count", 2),
             ))
     systematics = ms.SystematicsCalculator(
         config, subproc_args, nominal_pdf, nominal_alpha_s,

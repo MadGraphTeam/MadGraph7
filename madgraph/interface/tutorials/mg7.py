@@ -95,7 +95,6 @@ rescued by a better integrator:
   sde_strategy          diagrams or denominators -- how channels map to
                         diagrams
   t_channel, flat_mode  propagator, rambo or chili for the t-channel
-  decays                all, massive or none
   bw_cutoff             how far off-shell a Breit-Wigner is followed
   drop_qcd_s_channel    drop channels with no QCD resonance once the channel
                         count would exceed this -- the lever for processes
@@ -145,10 +144,9 @@ and then touch things in this order:
 
   1. `train_batches`, `batch_size_per_channel` -- how much training, and how
      much per channel. Everything else is secondary.
-  2. `lr`, `lr_scheduler` (none or cosine), `lr_decay`. If the loss is noisy,
+  2. `lr`, `lr_scheduler` (none or cosine). If the loss is noisy,
      lower the rate before touching the network.
-  3. `loss` -- stratified_variance, kl_divergence or rkl_divergence.
-  4. only then the network shape: `flow_hidden_dim`, `flow_layers`,
+  3. only then the network shape: `flow_hidden_dim`, `flow_layers`,
      `flow_spline_bins`, `flow_activation`; `discrete_*` for the discrete
      dimensions; `cwnet_*` for the channel-weight network.
 
@@ -166,11 +164,11 @@ you are getting; the default is not the one a MadEvent run would have used.
 Seeding works the way you would expect -- `set iseed 42` at the launch question
 sets `[run] seed`, and so does editing the run card directly.
 
-**Coming from a LO run card?** `madgraph/various/RunCardLO_to_MG7_mapping.md`
-maps the old names onto the new sections.
+**Coming from a LO run card?** The "Coming from MadEvent" page of the
+documentation maps the old names onto the new sections.
 
-**Gridpacks** work here too, via the `[gridpack]` section and
-`bin/gridpack.py`.
+**Gridpacks** work here too, via the `[gridpack]` section. The "Gridpacks"
+page of the documentation describes them.
 
 %(see_also)s
 

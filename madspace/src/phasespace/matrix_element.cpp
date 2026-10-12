@@ -1,6 +1,35 @@
 #include "madspace/phasespace/matrix_element.hpp"
 
+#include <format>
+#include <utility>
+
 using namespace madspace;
+
+namespace {
+
+/// A per-particle 0/1 selector, 1 for every one-based particle number in
+/// `indices`. `what` names the setting the numbers came from, for the error.
+std::vector<me_int_t> particle_mask(
+    std::size_t particle_count,
+    const std::vector<me_int_t>& indices,
+    const char* what
+) {
+    std::vector<me_int_t> mask(particle_count, 0);
+    for (me_int_t index : indices) {
+        if (index < 1 || std::cmp_greater(index, particle_count)) {
+            throw std::invalid_argument(std::format(
+                "{} particle {} out of range, this process has {} external particles",
+                what,
+                index,
+                particle_count
+            ));
+        }
+        mask.at(index - 1) = 1;
+    }
+    return mask;
+}
+
+} // namespace
 
 MatrixElement::MatrixElement(
     std::size_t matrix_element_index,
@@ -8,7 +37,9 @@ MatrixElement::MatrixElement(
     const std::vector<MatrixElementInput>& inputs,
     const std::vector<MatrixElementOutput>& outputs,
     std::size_t diagram_count,
-    bool sample_random_inputs
+    bool sample_random_inputs,
+    const std::vector<me_int_t>& me_frame,
+    std::size_t incoming_count
 ) :
     FunctionGenerator(
         "MatrixElement",
@@ -95,7 +126,35 @@ MatrixElement::MatrixElement(
     _outputs(outputs),
     _particle_count(particle_count),
     _diagram_count(diagram_count),
-    _sample_random_inputs(sample_random_inputs) {}
+    _sample_random_inputs(sample_random_inputs),
+    _frame_mask(
+        me_frame.empty() ? std::vector<me_int_t>()
+                         : particle_mask(particle_count, me_frame, "me_frame")
+    ),
+    _reference_mask([&] {
+        if (_frame_mask.empty()) {
+            return std::vector<me_int_t>();
+        }
+        if (incoming_count == 0) {
+            // an empty list would build an all-zero mask, which the kernel
+            // reads as "no frame" and passes through
+            throw std::invalid_argument(
+                "a process needs at least one incoming particle to define the "
+                "frame me_frame is reached from"
+            );
+        }
+        std::vector<me_int_t> incoming;
+        for (std::size_t i = 1; i <= incoming_count; ++i) {
+            incoming.push_back(static_cast<me_int_t>(i));
+        }
+        auto mask = particle_mask(particle_count, incoming, "incoming_count");
+        // asking for the rest frame of the incoming system is the reference
+        // frame itself: one boost gets there
+        if (mask == _frame_mask) {
+            mask.clear();
+        }
+        return mask;
+    }()) {}
 
 NamedVector<Value> MatrixElement::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
@@ -155,6 +214,27 @@ NamedVector<Value> MatrixElement::build_function_impl(
              input == random_diagram_in)) {
             matrix_args.push_back(random.at(random_index));
             ++random_index;
+        } else if (input == momenta_in && !_frame_mask.empty()) {
+            // Evaluate the matrix element in the frame the run card asked for
+            // (me_frame). Only the matrix element sees the boosted momenta:
+            // everything else -- cuts, scales, momentum fractions, the event
+            // that gets written out -- keeps using the momenta as generated.
+            //
+            // madevent defines that frame as a single boost away from the rest
+            // frame of the incoming system, because that is the frame its
+            // matrix element is handed the momenta in. madspace generates them
+            // in the lab frame instead, so it has to go through that rest frame
+            // rather than boost straight there: two boosts along different
+            // directions do not compose into the boost between the end frames,
+            // and the Wigner rotation left over would rotate the polarisation
+            // axes (it drops out only for a Lorentz invariant matrix element,
+            // which is exactly the case where none of this matters).
+            Value momenta = args.at(arg_index);
+            if (!_reference_mask.empty()) {
+                momenta = fb.boost_to_frame(momenta, _reference_mask);
+            }
+            matrix_args.push_back(fb.boost_to_frame(momenta, _frame_mask));
+            ++arg_index;
         } else {
             matrix_args.push_back(args.at(arg_index));
             ++arg_index;

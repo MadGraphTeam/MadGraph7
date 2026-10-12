@@ -46,11 +46,21 @@ public:
         bool return_contiguous_grads
     ) override;
     void set_seed(DerivedSeed seed) override;
+    void release_inputs() override;
     Context& context() { return *_context; }
     gpublasHandle_t gpublas_handle() { return _gpublas_handle.get(); }
     GpuRandom& rng() { return _rng->get().get(); }
 
 private:
+    struct LastStream {
+        bool pending = false;
+        gpuEvent_t event;
+    };
+    struct HeldInputs {
+        std::vector<std::pair<gpuEvent_t, TensorVec>> items;
+        std::vector<gpuEvent_t> free_events;
+    };
+
     std::vector<std::tuple<std::size_t, std::size_t, Tensor, bool>>
     load_pool_size_cache(bool backward);
     void update_pool_size_cache(
@@ -60,8 +70,21 @@ private:
     void update_cached_tensors(
         const std::vector<std::pair<std::size_t, Tensor>>& tensors, bool backward
     );
+    void fork_streams(
+        gpuStream_t main_stream,
+        const std::vector<gpuStream_t>& streams,
+        const std::vector<gpuEvent_t>& events
+    ) const;
+    void join_streams(
+        gpuStream_t main_stream,
+        const std::vector<gpuStream_t>& streams,
+        const std::vector<gpuEvent_t>& events
+    ) const;
+    void switch_stream(gpuStream_t main_stream);
+    void hold_inputs(const TensorVec& inputs, gpuStream_t stream, bool legacy_caller);
     std::vector<Instruction> _instructions;
     SizeVec _output_indices;
+    std::vector<bool> _copy_output_grads;
     std::size_t _input_count;
     TensorVec _locals_init;
     std::vector<bool> _requires_grad_init;
@@ -71,7 +94,9 @@ private:
     ContextPtr _context;
     ThreadResource<std::vector<gpuStream_t>> _streams;
     ThreadResource<std::vector<gpuEvent_t>> _events;
-    std::vector<std::size_t> _wait_events;
+    ThreadResource<LastStream>& _last_stream;
+    std::optional<std::size_t> _fork_event;
+    std::vector<std::size_t> _join_events;
     std::vector<std::size_t> _backward_wait_events;
     ThreadResource<gpublasHandle_t>& _gpublas_handle;
     std::optional<std::reference_wrapper<ThreadResource<GpuRandom>>> _rng;
@@ -82,6 +107,7 @@ private:
         _pool_size_cache_backward;
     ThreadResource<TensorVec> _prev_caches;
     ThreadResource<TensorVec> _prev_caches_backward;
+    ThreadResource<HeldInputs> _held_inputs;
 };
 
 extern "C" Runtime*

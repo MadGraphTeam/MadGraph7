@@ -170,8 +170,52 @@ def me_parameters(run_card):
     """Run-time parameters of the matrix-element libraries, passed to each
     instance through umami_set_parameter by ms.Context.load_matrix_element:
     the window of the $-excluded propagators is the run card bw_cutoff (the
-    one the phase space uses around the resonances too)."""
-    return {"bwcutoff": float(run_card["phasespace"]["bw_cutoff"])}
+    one the phase space uses around the resonances too), and with
+    [generation] interference_helicity = "summed" the helicity sum as the
+    |M|^2 of an interference (see interference_helicities_summed). That one is
+    only sent when asked for: a library made before it existed refuses an
+    unknown parameter."""
+    parameters = {"bwcutoff": float(run_card["phasespace"]["bw_cutoff"])}
+    if interference_helicities_summed(run_card):
+        parameters["interference_helicity_summed"] = 1.
+    return parameters
+
+
+def interference_helicities_summed(run_card):
+    """Whether [generation] interference_helicity is "summed".
+
+    For an interference (squared split orders dropping a component), a helicity
+    can contribute negatively. "exact", the default, draws the helicity of each
+    event on |T_i| and gives the event sign(T_i) * sum_j |T_j|, as madevent does:
+    the helicity of the event is exact, at the cost of a larger sum|w| (about 2x
+    the events for the same precision). "summed" keeps the helicity sum sum_j T_j
+    as the weight (lower variance), and the helicity then means nothing: it is
+    written as 9 in the LHE (lhe_helicities)."""
+    return run_card["generation"].get("interference_helicity", "exact") == "summed"
+
+
+def lhe_helicities(meta, run_card):
+    """The helicity table the LHE completer writes for a subprocess: its own,
+    or 9 for every particle of an interference subprocess whose |M|^2 is the
+    helicity sum (interference_helicities_summed)."""
+    helicities = meta["helicities"]
+    if meta.get("interference") and interference_helicities_summed(run_card):
+        return [[9] * len(row) for row in helicities]
+    return helicities
+
+
+def lhe_weight_info(status):
+    """(IDWTUP, XMAXUP) for the LHE <init> block of a run with this generator
+    status. The events are unweighted to +-sigma_abs, keeping the sign of the
+    integrand, and XMAXUP is that unit weight rather than the signed cross
+    section. A sample that can hold negative weights -- an interference --
+    declares it with IDWTUP = -4, as madevent does: the cross section is then
+    the mean of the signed event weights. With -3 a shower takes it as
+    |XSECUP| times the mean sign instead (Pythia8 does), which is not the
+    cross section, and +3 is for positive weights only. gridpack.py applies the
+    same rule inline, since it must not import this module."""
+    negative = status.mean < 0 or status.mean_abs > abs(status.mean) * (1 + 1e-12)
+    return (-4 if negative else 3), status.mean_abs
 
 
 @dataclass
@@ -264,6 +308,75 @@ class MadgraphProcess:
             self.merged_subprocess_data = None
 
         self.init_decay_mode()
+        self.init_me_frame()
+        if interference_helicities_summed(self.run_card):
+            count = sum(1 for meta in self.subprocess_data if meta.get("interference"))
+            if count:
+                logger.info(
+                    "interference_helicity = summed: the weight of the %d interference "
+                    "subprocess(es) is the helicity sum, and their helicities are "
+                    "written as 9 in the LHE", count)
+
+    def init_me_frame(self) -> None:
+        """Resolve the run card's me_frame into the list of external particles
+        whose momentum sum defines the frame the matrix element is evaluated in.
+
+        Empty (the default) means no boost: the matrix element sees the momenta
+        in the frame they are generated in. Unlike madevent, which hands its
+        matrix element momenta that are already in the partonic centre of mass,
+        madspace generates them in the lab frame, so asking for madevent's own
+        frame ([1, 2]) does mean an actual boost here. It changes nothing for a
+        Lorentz invariant matrix element (only the rounding), but it is what
+        defines the polarisation axes of a polarised one.
+
+        The particle numbers are checked here rather than only in madspace,
+        which would not see them until the integrands are built -- long after
+        the matrix-element libraries have been compiled. Every subprocess is
+        checked against its own particles: an output can mix multiplicities
+        (p p > z j and p p > z j j, say, for MLM merging), and madspace builds
+        one matrix element per subprocess, each refusing a particle it does not
+        have. That is stricter than madevent, which ignores the particles a
+        process does not have and so changes the frame from one multiplicity
+        to the next without a word.
+        """
+        me_frame = list(self.run_card["run"]["me_frame"])
+        pdgs = [clean_pids(meta["incoming"]) + clean_pids(meta["outgoing"])
+                for meta in self.subprocess_data]
+        counts = sorted({len(pdg_list) for pdg_list in pdgs})
+        for meta, pdg_list in zip(self.subprocess_data, pdgs):
+            for index in me_frame:
+                if 1 <= index <= len(pdg_list):
+                    continue
+                process = "%s > %s" % (
+                    " ".join(str(pid) for pid in meta["incoming"]),
+                    " ".join(str(pid) for pid in meta["outgoing"]),
+                )
+                mixed = (
+                    f"; this output mixes subprocesses with "
+                    f"{', '.join(str(count) for count in counts)} external "
+                    "particles, and me_frame has to name particles every one "
+                    "of them has"
+                    if len(counts) > 1 else ""
+                )
+                raise ValueError(
+                    f"me_frame particle {index} out of range: subprocess "
+                    f"{process} has {len(pdg_list)} external particles{mixed}"
+                )
+        if len(me_frame) == 1:
+            # A massless particle has no rest frame: its momentum squares to
+            # zero, so the boost divides by it and every momentum comes back as
+            # a NaN, silently. Name the mistake instead.
+            massless = [pdg_list[me_frame[0] - 1] for pdg_list in pdgs
+                        if self.get_mass(pdg_list[me_frame[0] - 1]) == 0.]
+            if massless:
+                raise ValueError(
+                    f"me_frame = {me_frame} asks for the rest frame of particle "
+                    f"{me_frame[0]}, which is massless (pdg "
+                    f"{sorted(set(massless))}) and has none. Name a massive "
+                    "particle, or several particles whose sum is massive."
+                )
+        self.me_frame = me_frame
+        self.incoming_count = 1 if self.is_decay else 2
 
     def init_decay_mode(self) -> None:
         """Decide whether this directory is a decay (1 -> n) or a collision.
@@ -464,9 +577,9 @@ class MadgraphProcess:
         ]
 
     # [histograms] key that means "the distribution of the event weight",
-    # normalised to the cross section (the mean weight), rather than an
-    # observable of the momenta: an unweighted sample is a spike at 1 and a
-    # partially unweighted one shows its spread, whatever the cross section.
+    # normalised to the unit weight sigma_abs, rather than an observable of the
+    # momenta: an unweighted sample is a spike at 1 (and at -1 for its negative
+    # weights) and a partially unweighted one shows its spread.
     weight_histogram_key = "weight"
 
     def init_histograms(self) -> None:
@@ -817,6 +930,8 @@ class MadgraphProcess:
             "me_paths": [meta["me_path"] for meta in self.subprocess_data],
             "me_backend": me_backend,
             "flavor_remap": flavor_remap,
+            "me_frame": self.me_frame,
+            "incoming_count": self.incoming_count,
         }
         return self.systematics
 
@@ -891,6 +1006,8 @@ class MadgraphProcess:
                  ms.MatrixElement.flavor_in],
                 [ms.MatrixElement.matrix_element_out],
                 False,
+                self.me_frame,
+                self.incoming_count,
             ))
         logger.info("systematics: re-evaluating the matrix element of %d mixed-order "
                     "subprocess(es) for the renormalisation scale variations", len(need))
@@ -921,15 +1038,15 @@ class MadgraphProcess:
                 continue
             all_pids = clean_pids(meta["incoming"]) + clean_pids(meta["outgoing"])
             values = ms.ObservableValues([
-                ms.Observable(
+                build_observable(
                     observable_pids(meta, item.observable_kwargs),
-                    **item.observable_kwargs
+                    len(meta["incoming"]), item.observable_kwargs
                 )
                 for item in from_momenta
             ])
             observables.append(ms.SubprocessObservables(values, len(all_pids)))
-        # the weight histograms are drawn in units of the cross section, which
-        # is what the mean event weight is once the events are combined
+        # the weight histograms are drawn in units of the unit weight sigma_abs
+        # (the cross section of a sample without negative weights)
         self.event_histograms_context = context
         self.event_histograms = ms.EventHistograms(
             context, specs, observables,
@@ -937,10 +1054,13 @@ class MadgraphProcess:
         return self.event_histograms
 
     def _mean_event_weight(self) -> float:
-        """The cross section the generation converged to, used as the unit of
-        the weight histograms. 0 (the raw weight) when it is not available."""
+        """The unit weight of the unweighted events, sigma_abs, used as the
+        unit of the weight histograms: the cross section of a positive sample,
+        and for one with negative weights (an interference) what puts them at
+        +-1 rather than dividing by a signed, possibly small, total. 0 (the raw
+        weight) when it is not available."""
         try:
-            return float(self.event_generator.status().mean)
+            return float(self.event_generator.status().mean_abs)
         except Exception as error:
             logger.debug("no cross section for the weight histograms: %s", error)
             return 0.
@@ -1273,8 +1393,11 @@ class MadgraphProcess:
         index = 0
         for phasespace in phasespaces_multi:
             channel_count = len(phasespace.channels)
+            # rank the channels by the integral of |w|: a channel whose signed
+            # integral cancels (an interference) can still carry most of the
+            # variance, and folding it into the flat channel would blow it up
             cross_sections.append([
-                abs(status.mean)
+                status.mean_abs
                 for status in channel_status[index:index + channel_count]
             ])
             index += channel_count
@@ -1697,6 +1820,7 @@ class MadgraphProcess:
         pdf_group = -1 if self.leptonic else 0
         status = self.event_generator.status()
         xsec, err = status.mean, status.error
+        weight_mode, max_weight = lhe_weight_info(status)
         with open(self.param_card_path) as f:
             param_text = f.read()
         with open(os.path.join("Cards", "run_card.toml")) as f:
@@ -1721,9 +1845,9 @@ class MadgraphProcess:
             beam1_energy=energies[0], beam2_energy=energies[1],
             beam1_pdf_authors=pdf_group, beam2_pdf_authors=pdf_group,
             beam1_pdf_id=lhaid, beam2_pdf_id=lhaid,
-            weight_mode=3,
+            weight_mode=weight_mode,
             # positional: the pybind arg name for max_weight is non-kwarg-safe
-            processes=[ms.LHEProcess(xsec, err, xsec, 1)],
+            processes=[ms.LHEProcess(xsec, err, max_weight, 1)],
             headers=headers,
         )
 
@@ -1753,7 +1877,7 @@ class MadgraphProcess:
                     int(key): value
                     for key, value in meta["pdg_color_types"].items()
                 },
-                helicities = meta["helicities"],
+                helicities = lhe_helicities(meta, self.run_card),
                 pdg_ids = [flavor["options"] for flavor in meta["flavors"]],
             )
             for mcdata, meta in zip(all_mcdata, self.subprocess_data)
@@ -2000,6 +2124,20 @@ def observable_pids(
             "'set apply_flavor_grouping False'"
         )
     return list(options[0])
+
+
+def build_observable(pids: list[int], n_in: int, observable_kwargs: dict):
+    """ms.Observable of a subprocess with `n_in` incoming particles.
+
+    madspace takes the first two momenta to be the beams (ignore_incoming), so
+    for a 1 -> N decay it would drop the first decay product from every
+    selection. There the selection runs over all the momenta instead, with the
+    incoming particle set to pdg id 0, which is in no group.
+    """
+    if n_in == 2:
+        return ms.Observable(pids, **observable_kwargs)
+    pids = [0] * n_in + list(pids[n_in:])
+    return ms.Observable(pids, **dict(observable_kwargs, ignore_incoming=False))
 
 
 def decay_products(meta: dict, unmerged_meta: dict | None = None) -> set[int]:
@@ -2272,9 +2410,9 @@ class MadgraphSubprocess:
         self.cuts = (
             ms.Cuts([
                 ms.CutItem(
-                    observable=ms.Observable(
+                    observable=build_observable(
                         cut_pids(cut_item.observable_kwargs),
-                        **cut_item.observable_kwargs
+                        n_in, cut_item.observable_kwargs
                     ),
                     min=cut_item.min,
                     max=cut_item.max,
@@ -2297,11 +2435,11 @@ class MadgraphSubprocess:
         self.histograms = (
             ms.ObservableHistograms([
                 ms.HistItem(
-                    observable=ms.Observable(
+                    observable=build_observable(
                         observable_pids(
                             self.meta, hist_item.observable_kwargs, self.unmerged_meta
                         ),
-                        **hist_item.observable_kwargs
+                        n_in, hist_item.observable_kwargs
                     ),
                     min=hist_item.min,
                     max=hist_item.max,
@@ -2482,7 +2620,8 @@ class MadgraphSubprocess:
             #    if resonance not in seen_resonances:
             #        has_unseen_resonances = True
             #        seen_resonances.add(flav)
-            if has_unseen_flavors or has_unseen_resonances or cum_cs / tot_cs < threshold:
+            if has_unseen_flavors or has_unseen_resonances or not tot_cs \
+                    or cum_cs / tot_cs < threshold:
                 kept_channels.append(index)
         if len(kept_channels) >= len(cross_sections) - 1:
             return multi_phasespace
@@ -2967,6 +3106,8 @@ class MadgraphSubprocess:
                     ms.Integrand.matrix_element_inputs,
                     ms.Integrand.matrix_element_outputs,
                     True,
+                    self.process.me_frame,
+                    self.process.incoming_count,
                 )
             else:
                 #TODO: not working in merged mode
@@ -2977,6 +3118,8 @@ class MadgraphSubprocess:
                     ms.Integrand.matrix_element_outputs,
                     self.meta["diagram_count"],
                     True,
+                    self.process.me_frame,
+                    self.process.incoming_count,
                 )
             pdf_grid = None if self.process.leptonic else self.process.pdf_grid
             pdf_arg = None if self.process.leptonic else ms.CachedPdf()
@@ -3033,17 +3176,6 @@ class MadgraphSubprocess:
         #print(integrands[1].function())
         #for i in integrands: print(i.function())
         return integrands
-
-    def train_madnis(self, phasespace: PhaseSpace, status_func) -> None:
-        # do import here to make pytorch and MadNIS optional dependencies
-        from .train_madnis import train_madnis
-        train_madnis(
-            self.build_integrands(phasespace, madnis_training=True),
-            phasespace,
-            self.process.run_card["madnis"],
-            self.process.contexts[0],
-            status_func
-        )
 
 
 _ROOTED_OPTIONS = ('lhapdf', 'lhapdf_py3', 'lhapdf_py2', 'heptools_install_dir')

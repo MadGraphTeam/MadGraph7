@@ -4322,7 +4322,8 @@ class Event(list):
         return jac
         
     
-    def get_helicity(self, get_order=None, allow_reversed=True, merged_map=None):
+    def get_helicity(self, get_order=None, allow_reversed=True, merged_map=None,
+                     decay_chain=False):
         """return a list with the helicities in the order asked for
 
         The helicity at slot i has to belong to the particle whose momentum
@@ -4332,7 +4333,7 @@ class Event(list):
         retry dropped merged_map, so an event needing both could not be
         mapped at all. Crossing stays off, as it always was here: a crossed
         leg's helicity would need its sign flipped as well, and nothing asks
-        for that.
+        for that. Ask it with the same decay_chain as get_momenta.
         """
 
         if get_order is None:
@@ -4342,7 +4343,8 @@ class Event(list):
 
         event_pos2order, _ = self.get_mapping(get_order, allow_reversed,
                                               allow_crossing=False,
-                                              merged_map=merged_map)
+                                              merged_map=merged_map,
+                                              decay_chain=decay_chain)
         out = [9] * (len(get_order[0]) + len(get_order[1]))
         curr_pos = -1
         for part in self:
@@ -4564,7 +4566,8 @@ class Event(list):
         return re.sub('[\n]+', '\n', out)
     
 
-    def get_mapping(self, get_order, allow_reversed=True, allow_crossing=True, merged_map=None):
+    def get_mapping(self, get_order, allow_reversed=True, allow_crossing=True, merged_map=None,
+                    decay_chain=False):
         """return the mapping between the order asked for and the order in the event
             return two dictionary: one from the order of the event to the order asked for
             and one from the order asked for to the order of the event.
@@ -4575,7 +4578,16 @@ class Event(list):
             {1:2, 2:1, 3:5, 4:3, 5:4}, {2:1, 1:2, 5:3, 4:5, 3:4}  
 
             Note that get_order received merged pid value not the actual pid (like in the event)
-            In that case the merged map allow to pass from the actual pid to the merged one.          
+            In that case the merged map allow to pass from the actual pid to the merged one.
+
+            With allow_reversed, an event that only matches the
+            charge-conjugated order is mapped onto that one (self-conjugate
+            particles keep their id).
+
+            With decay_chain, identical final-state particles coming from
+            different resonances are dealt their slots so that the decay
+            products of every resonance of the event sit on consecutive slots
+            (see _follow_decay_chains) instead of in the event's line order.
         """
 
         if not merged_map:
@@ -4619,9 +4631,21 @@ class Event(list):
                 elif not allow_reversed:
                     raise error
                 else:
-                    # try the allow_reversed option and change all particle/anti-particle
-                    order = [[-i for i in get_order[0]],[-i for i in get_order[1]]]
-                    return self.get_mapping(order, False, allow_crossing, merged_map)
+                    # try the allow_reversed option and change all particle/anti-particle.
+                    # Charge conjugation leaves a self-conjugate particle (g, a,
+                    # z, h, ...) as it is. Without the model, an id the event
+                    # carries while it never carries its negative is taken as
+                    # one; negating it could only fail (no slot of the event
+                    # fits it).
+                    pids = set(map(p.pid) for p in self if abs(p.status) == 1)
+                    conj = lambda i: i if (i in pids and -i not in pids) else -i
+                    order = [[conj(i) for i in get_order[0]],
+                             [conj(i) for i in get_order[1]]]
+                    try:
+                        return self.get_mapping(order, False, allow_crossing,
+                                                merged_map, decay_chain)
+                    except ValueError:
+                        raise error
 
             # Now ind should be defined and correspond to the position in the curr_block
             # compute now the associate postion in the original order
@@ -4635,13 +4659,107 @@ class Event(list):
             # store the mapping
             out1[curr_pos] = position   
             out2[position] = curr_pos
-        return out1, out2    
+        if decay_chain:
+            out1 = self._follow_decay_chains(out1)
+            out2 = dict((v, k) for k, v in out1.items())
+        return out1, out2
+
            
 
-    def get_momenta(self, get_order, allow_reversed=True, allow_crossing=True, merged_map=None):
+    def _follow_decay_chains(self, event_pos2order, max_trials=5040):
+        """Re-deal the slots of identical final-state particles that come from
+        different resonances, so that the decay products of every resonance
+        (status 2 line) of the event take consecutive slots.
+
+        That is how MG5 lays out a decay-chain process: each decaying particle
+        of the production is replaced, in place, by its decay products, so in
+        ``u d~ > w+ z, w+ > e+ ve, z > e+ e-`` legs 3-4 are the W's and legs
+        5-6 the Z's. Dealing the two e+ in line order put the Z's e+ on leg 3
+        whenever the event wrote it first -- the matrix element then saw an
+        e+ ve pair that is not a W, and me_frame = [3, 4] was not the W rest
+        frame.
+
+        The first assignment (line order first) that keeps every resonance on
+        consecutive slots wins, so an event already in that layout is left as
+        it is. When none does -- a process not written as a decay chain, for
+        which the identical particles are exchangeable anyway -- the line
+        order is kept.
+        """
+        import itertools
+        externals = [part for part in self if abs(part.status) == 1]
+
+        def mothers(part):
+            return [m for m in (part.mother1, part.mother2)
+                    if m is not None and hasattr(m, 'status')]
+
+        def ancestors(part):
+            seen = []
+            todo = mothers(part)
+            while todo:
+                mother = todo.pop()
+                if any(mother is m for m in seen):
+                    continue
+                seen.append(mother)
+                todo.extend(mothers(mother))
+            return seen
+
+        # final-state descendants of each resonance, as positions in externals
+        lineage = [ancestors(part) if part.status == 1 else []
+                   for part in externals]
+        chains = []
+        for resonance in self:
+            if resonance.status != 2:
+                continue
+            chain = [pos for pos, anc in enumerate(lineage)
+                     if any(resonance is m for m in anc)]
+            if len(chain) > 1:
+                chains.append(chain)
+        if not chains:
+            return event_pos2order
+
+        # the identical particles that can be swapped: same pdg, not all
+        # from the same mother
+        groups = []
+        for pid in set(part.pid for part in externals if part.status == 1):
+            members = [pos for pos, part in enumerate(externals)
+                       if part.status == 1 and part.pid == pid]
+            if len(members) < 2:
+                continue
+            direct = [mothers(externals[pos]) for pos in members]
+            first = direct[0][0] if direct[0] else None
+            if all(d and d[0] is first for d in direct):
+                continue
+            groups.append(members)
+        if not groups:
+            return event_pos2order
+
+        def consecutive(mapping):
+            for chain in chains:
+                slots = [mapping[pos] for pos in chain]
+                if max(slots) - min(slots) + 1 != len(slots):
+                    return False
+            return True
+
+        if consecutive(event_pos2order):
+            return event_pos2order
+        slots = [[event_pos2order[pos] for pos in members]
+                 for members in groups]
+        trials = itertools.product(*[itertools.permutations(s) for s in slots])
+        for trial in itertools.islice(trials, max_trials):
+            mapping = dict(event_pos2order)
+            for members, perm in zip(groups, trial):
+                for pos, slot in zip(members, perm):
+                    mapping[pos] = slot
+            if consecutive(mapping):
+                return mapping
+        return event_pos2order
+
+    def get_momenta(self, get_order, allow_reversed=True, allow_crossing=True, merged_map=None,
+                    decay_chain=False):
         """return the momenta vector in the order asked for"""
         
-        event_pos2order, orderevent_2pos = self.get_mapping(get_order, allow_reversed, allow_crossing, merged_map)
+        event_pos2order, orderevent_2pos = self.get_mapping(get_order, allow_reversed, allow_crossing, merged_map,
+                                                            decay_chain)
         curr_pos = -1
         out = [''] *(len(get_order[0])+len(get_order[1]))
         for i, part in enumerate(self):
@@ -4697,14 +4815,17 @@ class Event(list):
 
         return out
 
-    def get_all_momenta(self, get_order, allow_reversed=True, debug_output=None, merged_map=None, permutate_two_decay=False):
+    def get_all_momenta(self, get_order, allow_reversed=True, debug_output=None, merged_map=None, permutate_two_decay=False,
+                        decay_chain=False):
         """ same as get_momenta but return all valid permutation of the final state 
               where identical particle does NOT have the same parent
               for easier development debug output allow to return internal variable for the unittest to check
               permutate_two_decay allow to also consider the case with flip between two decay products
+              decay_chain: see get_mapping
         """  
 
-        p = self.get_momenta(get_order, allow_reversed, merged_map=merged_map)
+        p = self.get_momenta(get_order, allow_reversed, merged_map=merged_map,
+                             decay_chain=decay_chain)
 
         # When the ME legs use merged-particle IDs, event PDGs need the same
         # remap before being looked up in get_order[1]; otherwise
@@ -4729,7 +4850,8 @@ class Event(list):
         # no charge-reversed or crossed order was involved; with one it could
         # not find the pdg at all.
         event_pos2order, _ = self.get_mapping(get_order, allow_reversed,
-                                              merged_map=merged_map)
+                                              merged_map=merged_map,
+                                              decay_chain=decay_chain)
         curr_pos = -1
         for part in self:
             if abs(part.status) != 1:
@@ -5816,10 +5938,13 @@ class NLO_PARTIALWEIGHT(object):
             out.sort()
             return (tuple(initial), tuple(out)), order
 
-        def get_mapping(self, get_order, allow_reversed=True, allow_crossing=True, merged_map=None):
-            """return (event_pos2order, orderevent_2pos); allow_crossing is ignored for API compatibility"""
+        def get_mapping(self, get_order, allow_reversed=True, allow_crossing=True, merged_map=None,
+                        decay_chain=False):
+            """return (event_pos2order, orderevent_2pos); allow_crossing and
+            decay_chain are ignored for API compatibility (a BasicEvent carries
+            no resonance lines, no mothers)"""
 
-            _ = allow_crossing
+            _ = (allow_crossing, decay_chain)
 
             if merged_map:
                 def map_pdg(x):
@@ -5865,8 +5990,14 @@ class NLO_PARTIALWEIGHT(object):
                 out2[position] = pos
             return out1, out2
         
-        def get_momenta(self, get_order, allow_reversed=True, merged_map=None):
-            """return the momenta vector in the order asked for"""
+        def get_momenta(self, get_order, allow_reversed=True, allow_crossing=True,
+                        merged_map=None, decay_chain=False):
+            """return the momenta vector in the order asked for
+
+            allow_crossing and decay_chain are accepted for the reweighting,
+            which asks Event and BasicEvent alike, and ignored: a BasicEvent
+            carries momenta and pdgs only -- no resonance lines, no mothers --
+            so its line order is all there is to go on."""
              
             #avoid to modify the input
             order = [list(get_order[0]), list(get_order[1])] 
@@ -5921,19 +6052,22 @@ class NLO_PARTIALWEIGHT(object):
                 
             return out
 
-        def get_all_momenta(self, get_order, allow_reversed=True, debug_output=None, merged_map=None):
+        def get_all_momenta(self, get_order, allow_reversed=True, debug_output=None, merged_map=None,
+                            permutate_two_decay=False, decay_chain=False):
             """ same as get_momenta but return all valid permutation of the final state 
                     where identical particle does NOT have the same parent
                     for easier development debug output allow to return internal variable for the unittest to check
+                    permutate_two_decay/decay_chain: accepted like Event's, ignored (no mothers here)
             """  
 
 
             return [self.get_momenta(get_order, allow_reversed, merged_map=merged_map)]
             
             
-        def get_helicity(self, get_order=None, allow_reversed=True, merged_map=None):
+        def get_helicity(self, get_order=None, allow_reversed=True, merged_map=None,
+                         decay_chain=False):
             """Return default helicities; keep signature compatible with Event.get_helicity."""
-            _ = (allow_reversed, merged_map)
+            _ = (allow_reversed, merged_map, decay_chain)
             if get_order:
                 return [9] * (len(get_order[0]) + len(get_order[1]))
             return [9] * len(self)

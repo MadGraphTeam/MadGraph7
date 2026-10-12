@@ -1,6 +1,7 @@
 #pragma once
 
-#include <stdint.h>
+#include <cstdint>
+#include <optional>
 #include <typeindex>
 #include <unordered_map>
 
@@ -322,6 +323,12 @@ ContextPtr default_cuda_context(std::size_t index = 0);
 ContextPtr default_hip_context(std::size_t index = 0);
 /// Process-wide default context for `device`, created on first call.
 ContextPtr default_device_context(DevicePtr device);
+
+/// GPU stream that runtime calls on this thread run on without synchronizing;
+/// 0 for the legacy default stream.
+std::optional<std::uintptr_t> caller_stream();
+/// Set the stream returned by @ref caller_stream for this thread.
+void set_caller_stream(std::optional<std::uintptr_t> stream);
 
 /// `name`, namespaced under `prefix` as `"prefix.name"`; `name` unchanged if
 /// `prefix` is empty. Used to build unique global names for repeated

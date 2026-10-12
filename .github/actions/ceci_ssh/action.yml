@@ -44,7 +44,10 @@ runs:
         ' > ~/.ssh/id_ceci
         chmod 600 ~/.ssh/id_ceci
         # check that ssh can load the key; on failure explain why, without printing the key
-        if ! ssh-keygen -y -P '' -f ~/.ssh/id_ceci > /dev/null 2> /tmp/keycheck; then
+        # the error file is per job: a fixed /tmp path is shared by all the runners of the host,
+        # and one written by another Unix user cannot be overwritten
+        keycheck=$(mktemp)
+        if ! ssh-keygen -y -P '' -f ~/.ssh/id_ceci > /dev/null 2> "$keycheck"; then
           first=$(head -n 1 ~/.ssh/id_ceci)
           case $first in
             '') hint="the secret is empty in this job (not set in the ceci-gpu environment, or the calling workflow lacks 'secrets: inherit')" ;;
@@ -59,9 +62,11 @@ runs:
               hint="header '$first', ${#body} base64 characters ($b64 base64): the key is truncated, altered or protected by a passphrase" ;;
             *) hint="no '-----BEGIN ... PRIVATE KEY-----' line found" ;;
           esac
-          echo "::error::the CECI_KEY secret is not a usable private ssh key ($(tr -d '\n' < /tmp/keycheck)): $hint"
+          echo "::error::the CECI_KEY secret is not a usable private ssh key ($(tr -d '\n' < "$keycheck")): $hint"
+          rm -f "$keycheck"
           exit 1
         fi
+        rm -f "$keycheck"
         echo "CECI key: $(ssh-keygen -l -f ~/.ssh/id_ceci)"
         # Pinned host keys. If a cluster gets a new key, update this list with
         # e.g. `ssh manneback ssh-keyscan manneback`.
