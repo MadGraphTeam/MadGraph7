@@ -84,7 +84,9 @@ fixed parameters. Their entries are described below.
 
 ``write_hwu`` (``false``)
     Also write the histograms as ``MADatLO.HwU``. This is the format MG5_aMC writes as
-    ``MADatNLO.HwU`` for NLO runs.
+    ``MADatNLO.HwU`` for NLO runs, with the same conventions: the cross section per bin
+    (not divided by the bin width, unlike the plots), and the same scale-variation
+    columns. ``madgraph/various/histograms.py`` reads both files together.
 
 ``verbosity`` (``"auto"``)
     Amount of console output: ``silent``, ``pretty`` or ``log``. ``auto`` is ``pretty`` in
@@ -197,6 +199,17 @@ See :doc:`gridpacks` for details.
 ``cut_efficiency_threshold`` (``0.7``), ``max_cut_repetitions`` (``1000``)
     When fewer than this fraction of the points in a batch pass the cuts, the batch is
     sampled again, up to the given number of times.
+
+``interference_helicity`` (``"exact"``)
+    How the helicity of an interference matrix element is handled, that is of a process
+    whose squared split orders keep a cross term (e.g. ``QCD^2==2``) and so can give
+    negative weights. Such a cross term can be negative for some helicities and positive
+    for others. ``"exact"`` does as madevent: the helicity of each event is drawn with
+    probability :math:`|T_i|/\sum_j |T_j|` and the event gets the weight
+    :math:`\mathrm{sign}(T_i)\sum_j |T_j|`, so the events carry their exact helicities
+    at the price of a larger variance (more negative weights). ``"summed"`` gives each
+    event the helicity sum as its weight (smaller variance) and writes its helicities as
+    9 (unknown) in the LHE file. Processes without such a cross term are not affected.
 
 [systematics]
 -------------
@@ -429,7 +442,9 @@ bins:
     jet_1-pt.bin_count = 50
 
 The entry ``weight`` is not an observable of the momenta. It is the distribution of the
-event weight in units of the cross section. A fully unweighted sample is a spike at 1.
+event weight in units of the unit weight :math:`\sigma_\mathrm{abs}`, the integral of
+the absolute value of the weights. A fully unweighted sample is a spike at 1, and its
+negative weights (from an interference) a spike at -1.
 
 ``output`` writes a default set of histograms for the final state of your process. ``set
 histograms OFF`` at the launch question removes them and ``set histograms default``
@@ -466,9 +481,6 @@ Training
 ``batch_size_offset`` (``512``)
     Number of events added to the training batch size of every channel.
 
-``loss`` (``"stratified_variance"``)
-    Training loss: ``stratified_variance``, ``kl_divergence`` or ``rkl_divergence``.
-
 ``log_interval`` (``100``)
     Batches between two entries in the training log.
 
@@ -478,10 +490,6 @@ Training
 
 ``integration_history_length`` (``100``)
     Number of batches for which the mean and variance of each channel are kept.
-
-``batch_size_threshold`` (``0.5``)
-    New samples are drawn until a training batch holds at least this fraction of its nominal
-    size.
 
 ``drop_zero_integrands`` (``true``)
     Ignore points with a vanishing integrand in the training.
@@ -496,9 +504,6 @@ Training
 ``compressed_channel_weight_count`` (``50``)
     Number of channel weights kept per event in the multichannel weight loss.
 
-``max_stored_channel_weights`` (``100``)
-    Number of prior channel weights stored for each buffered sample.
-
 Optimizer
 ^^^^^^^^^
 
@@ -508,10 +513,6 @@ Optimizer
 ``lr_scheduler`` (``"cosine"``)
     ``cosine`` decays the learning rate to zero over the training. ``none`` keeps it
     constant.
-
-``lr_decay`` (``0.01``), ``lr_max`` (``3e-3``)
-    Parameters of the exponential and one-cycle schedules. They have no effect with the
-    schedulers currently available.
 
 ``adam_beta1`` (``0.9``), ``adam_beta2`` (``0.999``), ``adam_eps`` (``1e-8``), ``adam_weight_decay`` (``1e-4``)
     Adam parameters.

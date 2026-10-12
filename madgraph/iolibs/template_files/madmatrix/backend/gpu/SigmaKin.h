@@ -52,13 +52,17 @@ namespace madmatrix
             unsigned int* allDiagramIdsOut,      // output: multichannel channelIds[nevt] (1 to #diagrams)
             bool mulChannelWeight,               // if true, multiply channel weight to ME output
             fptype* ghelAllMEs,                  // tmp: allMEs super-buffer for nGoodHel <= ncomb individual helicities (index is ighel)
-            fptype_amp* ghelAllJamps,            // tmp: allJamps super-buffer[2][ncol][nGoodHel][nevt] for nGoodHel <= ncomb individual helicities
+            fptype_amp* ghelAllJamps,            // tmp: allJamps super-buffer[2][njampso][nGoodHel][nevt] for nGoodHel <= ncomb individual helicities
             fptype_colour* ghelAllBlasTmp,       // tmp: allBlasTmp super-buffer for nGoodHel <= ncomb individual helicities
             gpuBlasHandle_t* pBlasHandle,        // input: cuBLAS/hipBLAS handle
             gpuStream_t* ghelStreams,            // input: cuda streams (index is ighel: only the first nGoodHel <= ncomb are non-null)
             const bool async,                    // input: if true, run everything asynchronously in first stream in ghelStreams
             const int gpublocks,                 // input: cuda gpublocks
-            const int gputhreads );              // input: cuda gputhreads
+            const int gputhreads,                // input: cuda gputhreads
+            // input: when the |M|^2 keeps an interference (squared split orders, nampso > 1),
+            // choose the helicity on |T_i| and return sign(T_i) * sum_j |T_j| as madevent does,
+            // so that the chosen helicity is exact; false returns sum_j T_j (no effect otherwise)
+            const bool sampleSignedHelicity = false );
 
   // Setters: called once by CPPProcess (P1-generated) to populate this file's
   // otherwise-internal storage, since it can no longer be written directly

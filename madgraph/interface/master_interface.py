@@ -181,6 +181,14 @@ class Switcher(object):
         res=loopRE.search(re.split(r'\s\-\-', line,1)[0])
         if res:
             orders=res.group('orders').split() if res.group('orders') else []
+            # interference of two amplitude sets (keyword case-insensitive):
+            # 'left [LIxtree=QCD] right' is a loop-induced process, routed
+            # like [noborn=], 'left [treextree] right' a tree-level one.
+            interference = MGcmd.interference_mode_of(res.group('option'), orders)
+            if interference == 'LIxtree':
+                return ('NLO', 'LIxtree', orders if res.group('option') else [])
+            elif interference == 'treextree':
+                return ('tree', 'treextree', [])
             if res.group('option') and len(res.group('option').split())==1:
                 if res.group('option').split()[0]=='tree':
                     return ('tree',res.group('option').split()[0],orders)
@@ -219,11 +227,15 @@ class Switcher(object):
                     self.change_principal_cmd('aMC@NLO', allow_switch)
                 elif nlo_mode in ['virt', 'sqrvirt']:
                     self.change_principal_cmd('MadLoop', allow_switch)
-                elif nlo_mode == 'noborn': 
+                elif nlo_mode in ['noborn', 'LIxtree']:
+                    # LIxtree: loop-induced amplitude interfered with a tree.
+                    # Report a malformed line before the model is touched.
+                    if nlo_mode == 'LIxtree':
+                        MGcmd.split_interference_line(proc_line)
                     if self.current_interface == "MadGraph":
                         allow_switch = True
                     self.change_principal_cmd('MadLoop', allow_switch)
-                    self.cmd.validate_model(self, loop_type=nlo_mode,
+                    self.cmd.validate_model(self, loop_type='noborn',
                                                             coupling_type=orders)
                     self.change_principal_cmd('MadGraph', allow_switch)
                     return self.cmd.create_loop_induced(self, line, *args, **opts)
@@ -496,25 +508,35 @@ class Switcher(object):
     def do_launch(self, line, *argss, **opts):
         args = cmd.Cmd.split_arg(line)
         # check if a path is given
-        if len(args) >=1:
+        path = None
+        if args and not args[0].startswith('-'):
             if os.path.isdir(args[0]):
                 path = os.path.realpath(args[0])
             elif os.path.isdir(pjoin(MG5DIR,args[0])):
                 path = pjoin(MG5DIR,args[0])
             elif  MG4DIR and os.path.isdir(pjoin(MG4DIR,args[0])):
                 path = pjoin(MG4DIR,args[0])
-            else:
-                path=None
+        if not path and not any(not a.startswith('-') for a in args) \
+                                            and getattr(self, '_done_export', None):
+            # no directory on the line: reuse the directory of the last output
+            # and inject it as an explicit path, so the principal command is
+            # selected from the actual output type. Without this, a bare
+            # 'launch' after 'output standalone_fortran --fks' keeps the aMC@NLO run
+            # interface (the principal command set by the [QCD] generation) and
+            # wrongly prompts for the MC@NLO/shower run configuration instead of
+            # building/running the lightweight FKS 'check_fks'.
+            path = self._done_export[0]
+            line = ('%s %s' % (path, line)).strip()
         # if there is a path, find what output has been done
-            if path:
-                type = self.cmd.find_output_type(self, path) 
-                if type in ['standalone_fortran', 'standalone_cpp_family',
-                            'pythia8', 'madevent']:
-                    self.change_principal_cmd('MadGraph')
-                elif type == 'aMC@NLO':
-                    self.change_principal_cmd('aMC@NLO')
-                elif type == 'MadLoop':
-                    self.change_principal_cmd('MadLoop')
+        if path:
+            type = self.cmd.find_output_type(self, path)
+            if type in ['standalone_fortran', 'standalone_cpp_family',
+                        'pythia8', 'madevent', 'amcatnlo_fks_sa']:
+                self.change_principal_cmd('MadGraph')
+            elif type == 'aMC@NLO':
+                self.change_principal_cmd('aMC@NLO')
+            elif type == 'MadLoop':
+                self.change_principal_cmd('MadLoop')
 
         return self.cmd.do_launch(self, line, *argss, **opts)
         
