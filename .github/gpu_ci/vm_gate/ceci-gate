@@ -68,6 +68,8 @@ def log(message):
     try:
         os.makedirs(STATE, mode=0o700, exist_ok=True)
         with open(os.path.join(STATE, "gate.log"), "a") as f:
+            # no raw newline from the arguments: one decision per line, no forged entries
+            message = message.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
             f.write("%s caller=%s %s\n" % (time.strftime("%Y-%m-%dT%H:%M:%S"), CALLER, message))
     except OSError as e:
         print("ceci-gate: cannot write the log: %s" % e, file=sys.stderr)
