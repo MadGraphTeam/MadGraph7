@@ -42,10 +42,11 @@ C
       INTEGER PDG_FOR_FLAVOR(NEXTERNAL,MAXFLAVOR)
       INTEGER FLAV_IDX
       INTEGER %(proc_prefix)sGET_FLAVOR_INDEX
-C     Signed per-leg PDG of a crossed process (filled by GET_PDG_FOR_FLAVOR),
-C     the base leg each of its legs is fed from, its masses, its phase-space
-C     point and a per-leg loop index; used only by the crossing-symmetry
-C     demonstration below.
+C     Signed per-leg PDG of a crossed process (filled by
+C     GET_PDG_FOR_FLAVOR), the base leg each of its legs is fed
+C     from, its masses, its phase-space point and a per-leg loop
+C     index; used only by the crossing-symmetry demonstration
+C     below.
       INTEGER XPDG(NEXTERNAL)
       INTEGER XPINV(NEXTERNAL), XSGNI(NEXTERNAL), XDUM
       REAL*8 XPMASS(NEXTERNAL), XP(0:3,NEXTERNAL), XSQRTS

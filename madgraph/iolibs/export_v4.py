@@ -3518,17 +3518,17 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 'helreset_cross': '',
                 # C-parity scan of the plain flavors only
                 'csym_doc_ntry':
-                    'C     NTRY_CSYM counts only the uncrossed (cross 0) calls:'
-                    ' CSYM is built and\nC     applied for the base process'
-                    ' only, because a crossing permutes/sign-flips\nC     the'
-                    ' helicities so FLIP (a base-row negation) is no longer'
-                    ' the crossed\nC     C-parity partner. Crossed flavours'
-                    ' therefore keep the full helicity sum.',
+                    'C     NTRY_CSYM counts only the uncrossed (cross 0) calls: CSYM\n'
+                    'C     is built and applied for the base process only, because a\n'
+                    'C     crossing permutes/sign-flips the helicities so FLIP (a\n'
+                    'C     base-row negation) is no longer the crossed C-parity\n'
+                    'C     partner. Crossed flavours therefore keep the full helicity\n'
+                    'C     sum.',
                 'csym_doc_dedup':
-                    'C     C-parity de-duplication is only safe for the plain'
-                    ' unpolarized helicity\nC     sum of the uncrossed process'
-                    ' (FLAV_IDX in [1,NFLAV]) and only once its own\nC     scan'
-                    ' has settled (NTRY_CSYM>=20).',
+                    'C     C-parity de-duplication is only safe for the plain\n'
+                    'C     unpolarized helicity sum of the uncrossed process\n'
+                    'C     (FLAV_IDX in [1,NFLAV]) and only once its own scan has\n'
+                    'C     settled (NTRY_CSYM>=20).',
                 'csym_ntry': 'NTRY_CSYM(FLAV_USE)',
                 'csym_gate_a': '.AND.FLAV_IDX.LE.NFLAV',
                 'csym_gate_b': ' .AND. FLAV_IDX.LE.NFLAV',
@@ -3552,33 +3552,33 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                     '                    T=%sMATRIX(P ,NHEL(1,IHEL),JC(1),FLAV_USE)'
                     % prefix,
                 'smatrix_iden_line':
-                    'C     IDEN carries the identical-particle factor of the'
-                    ' representative\nC     flavor; BROKEN_SYM corrects it for'
-                    ' the actual one.'
-                    '\n      ANS=ANS/DBLE(IDEN)*%sBROKEN_SYM(FLAVOR)' % prefix,
+                    'C     IDEN carries the identical-particle factor of the\n'
+                    'C     representative flavor; BROKEN_SYM corrects it for the\n'
+                    'C     actual one.\n'
+                    '      ANS=ANS/DBLE(IDEN)*%sBROKEN_SYM(FLAVOR)' % prefix,
                 'inter_rescale_decl': '',
                 'inter_rescale_body':
-                    'C     The static IDEN GET_INTER divides by carries the'
-                    ' identical-particle\nC     factor of the representative'
-                    ' flavor, so BROKEN_SYM must correct it for\nC     the actual'
-                    ' one, exactly as SMATRIX does with ANS/IDEN*BROKEN_SYM.'
-                    '\n      RESCALE = DBLE(%sBROKEN_SYM(FLAVOR))' % prefix,
+                    'C     The static IDEN GET_INTER divides by carries the\n'
+                    'C     identical-particle factor of the representative flavor, so\n'
+                    'C     BROKEN_SYM must correct it for the actual one, exactly as\n'
+                    'C     SMATRIX does with ANS/IDEN*BROKEN_SYM.\n'
+                    '      RESCALE = DBLE(%sBROKEN_SYM(FLAVOR))' % prefix,
                 'density_cross_apply': self.CROSS_PASSTHROUGH % {
                     'nhel_copy': 'NHELUSE(:,:) = NHEL(:,:)'},
                 'allinter_cross_apply': '      IC(:)=1\n' + self.CROSS_PASSTHROUGH % {
                     'nhel_copy': 'NHELUSE(:) = NHEL(:)'},
                 'pdg_cross_snippets': self.PDG_CROSS_SNIPPETS_OFF,
                 'nhel_idx_decl':
-                    'C     Generated without crossing symmetry: FLAV_IDX_IN is a'
-                    ' plain\nC     flavor index, so only BROKEN_SYM can move the'
-                    ' denominator.',
+                    'C     Generated without crossing symmetry: FLAV_IDX_IN is a\n'
+                    'C     plain flavor index, so only BROKEN_SYM can move the\n'
+                    'C     denominator.',
                 'nhel_idx_body':
-                    'C     Mirrors SMATRIX exactly: ANS=ANS/IDEN*BROKEN_SYM means'
-                    ' the effective\nC     denominator is IDEN/BROKEN_SYM. The'
-                    ' division is exact -- BROKEN_SYM is\nC     the ratio of the'
-                    ' representative to the actual identical-particle\nC     count,'
-                    ' and IDEN carries the representative one as a factor.'
-                    '\n      IDEN_STAR = IDEN_STAR / %sBROKEN_SYM(FLAVOR)' % prefix,
+                    'C     Mirrors SMATRIX exactly: ANS=ANS/IDEN*BROKEN_SYM means the\n'
+                    'C     effective denominator is IDEN/BROKEN_SYM. The division is\n'
+                    'C     exact -- BROKEN_SYM is the ratio of the representative to\n'
+                    'C     the actual identical-particle count, and IDEN carries the\n'
+                    'C     representative one as a factor.\n'
+                    '      IDEN_STAR = IDEN_STAR / %sBROKEN_SYM(FLAVOR)' % prefix,
             })
             return
 
@@ -3599,15 +3599,15 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # its own first calls (see smatrix_cross_decl), and de-duplicates
         replace_dict.update({
             'csym_doc_ntry':
-                'C     NTRY_CSYM is the plain flavors\' counter; the scan runs per'
-                ' extended index\nC     (NTRY_CSYMX): a crossed call evaluates'
-                ' the base rows (APPLY_CROSSING_ROWS),\nC     so FLIP is its'
-                ' C-parity partner too, and each crossing scans the shared\n'
-                'C     verdict CSYM over its own first calls.',
+                "C     NTRY_CSYM is the plain flavors' counter; the scan runs per\n"
+                'C     extended index (NTRY_CSYMX): a crossed call evaluates the\n'
+                'C     base rows (APPLY_CROSSING_ROWS), so FLIP is its C-parity\n'
+                'C     partner too, and each crossing scans the shared verdict\n'
+                'C     CSYM over its own first calls.',
             'csym_doc_dedup':
-                'C     C-parity de-duplication is only safe for the plain'
-                ' unpolarized helicity\nC     sum, and only once the scan of'
-                ' this extended index has settled (>=20).',
+                'C     C-parity de-duplication is only safe for the plain\n'
+                'C     unpolarized helicity sum, and only once the scan of this\n'
+                'C     extended index has settled (>=20).',
             'csym_ntry': 'NTRY_CSYMX(FLAV_IDX)',
                              'csym_gate_a': '', 'csym_gate_b': '',
                              'csym_gate_c': ''})
@@ -3635,10 +3635,11 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             '      INTEGER %(prefix)sGET_SPINCOL_CROSS\n'
             '      INTEGER %(prefix)sGET_IDENT_CROSS' % {'prefix': prefix})
         replace_dict['nhel_idx_body'] = (
-            'C     Mirrors SMATRIX branch for branch: IDEN/BROKEN_SYM uncrossed,\n'
-            'C     GET_SPINCOL_CROSS*GET_IDENT_CROSS crossed. Keeping the CROSS=0\n'
-            'C     branch on the old path (rather than letting the crossed formula\n'
-            'C     cover it) is what guarantees no change for existing callers.\n'
+            'C     Mirrors SMATRIX branch for branch: IDEN/BROKEN_SYM\n'
+            'C     uncrossed, GET_SPINCOL_CROSS*GET_IDENT_CROSS crossed.\n'
+            'C     Keeping the CROSS=0 branch on the old path (rather than\n'
+            'C     letting the crossed formula cover it) is what guarantees\n'
+            'C     no change for existing callers.\n'
             '      IF (NHI_CROSS .EQ. 0) THEN\n'
             '        IDEN_STAR = IDEN_STAR / %(prefix)sBROKEN_SYM(FLAVOR)\n'
             '      ELSE\n'
@@ -3702,9 +3703,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                     '                GOODHEL(IHEL,FLAV_USE)=.TRUE.\n'
                     '              ENDIF',
                 'so_iden_line':
-                    'C     IDEN carries the identical-particle factor of the'
-                    ' representative\nC     flavor; BROKEN_SYM corrects it for'
-                    ' the actual one.\n'
+                    'C     IDEN carries the identical-particle factor of the\n'
+                    'C     representative flavor; BROKEN_SYM corrects it for the\n'
+                    'C     actual one.\n'
                     '      DO I=1,NSQAMPSO\n'
                     '        ANS(I)=ANS(I)/DBLE(IDEN)*%sBROKEN_SYM(FLAVOR)\n'
                     '      ENDDO' % prefix,
@@ -3716,10 +3717,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
         replace_dict.update({
             'so_cross_decl':
-                'C     CROSSUSE is the crossing carried by FLAV_IDX and IDENUSE'
-                ' the initial\nC     state spin*color average of the process it'
-                ' crosses into. PUSE/NHELUSE/ICUSE\nC     are the crossed'
-                ' momenta, helicity table and NSF flags, built once per call.\n'
+                'C     CROSSUSE is the crossing carried by FLAV_IDX and IDENUSE\n'
+                'C     the initial state spin*color average of the process it\n'
+                'C     crosses into. PUSE/NHELUSE/ICUSE are the crossed momenta,\n'
+                'C     helicity table and NSF flags, built once per call.\n'
                 '      INTEGER IDENUSE, CROSSUSE\n'
                 '      INTEGER %(p)sGET_SPINCOL_CROSS\n'
                 '      INTEGER %(p)sGET_IDENT_CROSS\n'
@@ -3735,9 +3736,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 '        RETURN\n'
                 '      ENDIF',
             'so_cross_decode':
-                'C     CROSS = (FLAV_IDX-1)/NFLAV is the crossing to apply.'
-                ' IDENUSE is 0 for a\nC     crossing that cannot be applied,'
-                ' whose matrix element is identically zero.\n'
+                'C     CROSS = (FLAV_IDX-1)/NFLAV is the crossing to apply.\n'
+                'C     IDENUSE is 0 for a crossing that cannot be applied, whose\n'
+                'C     matrix element is identically zero.\n'
                 '      CROSSUSE = (FLAV_IDX-1) / NFLAV\n'
                 '      IDENUSE = %(p)sGET_SPINCOL_CROSS(CROSSUSE)\n'
                 '      IF (IDENUSE.EQ.0) THEN\n'
@@ -3745,14 +3746,13 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 '        RETURN\n'
                 '      ENDIF' % {'p': prefix},
             'so_cross_apply':
-                'C     Apply the crossing ONCE, here, rather than once per'
-                ' helicity: it is a\nC     fixed slot permutation, identical'
-                ' for every row, so the whole NHEL table\nC     goes through in'
-                ' one sweep together with the momenta and the NSF flags.\n'
+                'C     Apply the crossing ONCE, here, rather than once per\n'
+                'C     helicity: it is a fixed slot permutation, identical for\n'
+                'C     every row, so the whole NHEL table goes through in one\n'
+                'C     sweep together with the momenta and the NSF flags.\n'
                 '      IF(USERHEL.EQ.-1) NTRYX(FLAV_IDX)=NTRYX(FLAV_IDX)+1\n'
                 '      IF (CROSSUSE.NE.0) THEN\n'
-                '        CALL %(p)sAPPLY_CROSSING_ROWS(FLAV_IDX, NCOMB, P,'
-                ' NHEL,\n'
+                '        CALL %(p)sAPPLY_CROSSING_ROWS(FLAV_IDX, NCOMB, P, NHEL,\n'
                 '     &   JC, PUSE, NHELUSE, ICUSE, DUMFLAV)\n'
                 '      ENDIF' % {'p': prefix},
             # C-parity: the verdict CSYM(FLAV_USE) is shared by every
@@ -3767,10 +3767,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             'so_csym_ntry': 'NTRY_CSYMX(FLAV_IDX)',
             'so_dedup_cross': '',
             'so_goodhel_gate':
-                'C     The shared filter, open to every row while this'
-                ' extended index trains.\n'
-                '           IF (GOODHEL(IHEL,FLAV_USE) .OR. NTRYX(FLAV_IDX)'
-                ' .LT. 20 .OR.USERHEL.NE.-1) THEN',
+                'C     The shared filter, open to every row while this extended\n'
+                'C     index trains.\n'
+                '           IF (GOODHEL(IHEL,FLAV_USE) .OR. NTRYX(FLAV_IDX) .LT. 20 .OR.USERHEL.NE.-1) THEN',
             'so_matrix_call':
                 '              IF (CROSSUSE.EQ.0) THEN\n'
                 '                CALL %(p)sMATRIX(P ,NHEL(1,IHEL),JC(1),'
@@ -3785,13 +3784,13 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 '                GOODHEL(IHEL,FLAV_USE)=.TRUE.\n'
                 '              ENDIF',
             'so_iden_line':
-                'C     Uncrossed: IDEN carries the representative'
-                ' identical-particle factor and\nC     BROKEN_SYM corrects it'
-                ' per flavor. Crossed: BROKEN_SYM\'s tables describe\n'
-                'C     the uncrossed final state, so rebuild the denominator as'
-                ' initial state\nC     spin*color (per crossing) times the'
-                ' identical final state factor of the\nC     actual crossed'
-                ' flavors.\n'
+                'C     Uncrossed: IDEN carries the representative\n'
+                'C     identical-particle factor and BROKEN_SYM corrects it per\n'
+                "C     flavor. Crossed: BROKEN_SYM's tables describe the\n"
+                'C     uncrossed final state, so rebuild the denominator as\n'
+                'C     initial state spin*color (per crossing) times the\n'
+                'C     identical final state factor of the actual crossed\n'
+                'C     flavors.\n'
                 '      IF (CROSSUSE.EQ.0) THEN\n'
                 '        DO I=1,NSQAMPSO\n'
                 '          ANS(I)=ANS(I)/DBLE(IDEN)*%(p)sBROKEN_SYM(FLAVOR)\n'
@@ -3803,14 +3802,13 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 '        ENDDO\n'
                 '      ENDIF' % {'p': prefix},
             'so_getamp_guard':
-                'C     Contract guard: an extended FLAV_IDX (one carrying a'
-                ' crossing) reaching\nC     this routine would be silently'
-                ' truncated to its flavor part and give the\nC     uncrossed'
-                ' amplitude. Fail loudly and return zero instead.\n'
+                'C     Contract guard: an extended FLAV_IDX (one carrying a\n'
+                'C     crossing) reaching this routine would be silently\n'
+                'C     truncated to its flavor part and give the uncrossed\n'
+                'C     amplitude. Fail loudly and return zero instead.\n'
                 '      IF (FLAV_IDX.LT.1 .OR. FLAV_IDX.GT.NFLAV) THEN\n'
                 "        WRITE(*,*) 'ERROR: GET_AMP got FLAV_IDX', FLAV_IDX\n"
-                "        WRITE(*,*) 'GET_AMP needs a reduced index and crossed"
-                " P/NHEL/IC.'\n"
+                "        WRITE(*,*) 'GET_AMP needs a reduced index and crossed P/NHEL/IC.'\n"
                 '        DO AMP_I = 1, NGRAPHS\n'
                 '          AMP(AMP_I) = (0D0, 0D0)\n'
                 '        ENDDO\n'
@@ -3827,9 +3825,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # One filter shared by every crossing, a try counter per extended
         # index (see CROSSING_SNIPPETS smatrix_cross_decl).
         replace_dict['so_cross_decl'] += '\n' + (
-            'C     GOODHEL(.,FLAV_USE) serves every crossing (they evaluate the\n'
-            'C     same helicity configurations, see APPLY_CROSSING_ROWS); each\n'
-            'C     extended index still trains it for itself (massive legs).\n'
+            'C     GOODHEL(.,FLAV_USE) serves every crossing (they evaluate\n'
+            'C     the same helicity configurations, see\n'
+            'C     APPLY_CROSSING_ROWS); each extended index still trains it\n'
+            'C     for itself (massive legs).\n'
             '      INTEGER NFLAVX\n'
             '      PARAMETER (NFLAVX=NFLAV*%d)\n'
             '      INTEGER NTRYX(NFLAVX), NTRY_CSYMX(NFLAVX)\n'
@@ -4077,10 +4076,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             'smatrix_me_iden_line': (
                 'C     A crossed call is returned UNNORMALISED: it comes from the\n'
                 'C     subprocess the crossing serves (a router, or the DSIG of a\n'
-                'C     cross-group dependent), which divides by its own denominator\n'
-                'C     for its own event row (XG_DEN). IPSEL counts the rows of THAT\n'
-                'C     subprocess, so FLAVOR_ROW(:,IPSEL) above names no event row\n'
-                'C     of the crossed process.\n'
+                'C     cross-group dependent), which divides by its own\n'
+                'C     denominator for its own event row (XG_DEN). IPSEL counts\n'
+                'C     the rows of THAT subprocess, so FLAVOR_ROW(:,IPSEL) above\n'
+                'C     names no event row of the crossed process.\n'
                 '      IF (CROSSUSE.EQ.0) THEN\n'
                 '        ANS=ANS/DBLE(IDEN)*BROKEN_SYM%(pid)s(FLAVOR_FOR_SYM)\n'
                 '      ENDIF'
@@ -4152,8 +4151,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
     # (decl, decode, apply) for GET_PDG_FOR_FLAVOR without crossing: FLAV_IDX_IN
     # is a bare flavor index, so there is nothing to permute or conjugate.
     PDG_CROSS_SNIPPETS_OFF = (
-        'C     Generated without crossing symmetry: FLAV_IDX_IN is a plain\n'
-        'C     flavor index, so the PDGs are read straight off the table.',
+        'C     Generated without crossing symmetry: FLAV_IDX_IN is a\n'
+        'C     plain flavor index, so the PDGs are read straight off the\n'
+        'C     table.',
         '      FP_FLAV = FLAV_IDX_IN',
         """      DO FP_I = 1, NEXTERNAL
         PDGS(FP_I) = FP_PDG_TABLE(FP_I, FP_FLAV)
@@ -4171,9 +4171,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
       INTEGER %(proc_prefix)sGET_SPINCOL_CROSS""",
         '      CALL %(proc_prefix)sGET_CROSS_PINV(FLAV_IDX_IN, FP_PERM, FP_SGN,\n'
         '     & FP_FLAV)',
-        """C     A crossing with a null spin*color entry is one SMATRIX itself maps
-C     to a zero matrix element (out of range, or not applicable). Report no
-C     PDGs for it rather than a signature that cannot be evaluated.
+        """C     A crossing with a null spin*color entry is one SMATRIX
+C     itself maps to a zero matrix element (out of range, or not
+C     applicable). Report no PDGs for it rather than a signature
+C     that cannot be evaluated.
       FP_CROSS = (FLAV_IDX_IN-1) / NFLAV
       IF (%(proc_prefix)sGET_SPINCOL_CROSS(FP_CROSS) .EQ. 0) THEN
         RETURN
@@ -4190,10 +4191,11 @@ C     PDGs for it rather than a signature that cannot be evaluated.
     # routines only: GET_CROSS_PINV does not exist without them).
     F2PY_CROSSING_WRAPPER = """      SUBROUTINE PY_%(proc_prefix)sGET_CROSSING(FLAV_IDX, PINV, SGNI,
      &     FLAV_OUT)
-C     The crossing FLAV_IDX selects, in the input-slot view: the crossed
-C     process sees base leg PINV(K) (charge conjugated when SGNI(K)=-1) in
-C     its slot K; FLAV_OUT is the base flavor (0 for an index naming no
-C     crossing). See GET_CROSS_PINV.
+C     The crossing FLAV_IDX selects, in the input-slot view: the
+C     crossed process sees base leg PINV(K) (charge conjugated
+C     when SGNI(K)=-1) in its slot K; FLAV_OUT is the base
+C     flavor (0 for an index naming no crossing). See
+C     GET_CROSS_PINV.
       IMPLICIT NONE
       INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
@@ -4222,36 +4224,42 @@ CF2PY INTENT(OUT) :: FLAV_OUT
     # The crossing-aware variants of the same holes. Kept here rather than in
     # the template because the template can only hold one variant per hole.
     CROSSING_SNIPPETS = {
-        'smatrix_cross_decl': """C     CROSSUSE is the crossing carried by FLAV_IDX and IDENUSE the initial
-C     state spin*color average of the process it crosses into.
+        'smatrix_cross_decl': """C     CROSSUSE is the crossing carried by FLAV_IDX and IDENUSE
+C     the initial state spin*color average of the process it
+C     crosses into.
       INTEGER IDENUSE, CROSSUSE
       INTEGER %(proc_prefix)sGET_SPINCOL_CROSS
       INTEGER %(proc_prefix)sGET_IDENT_CROSS
-C     Crossed copies of the arguments, built ONCE per SMATRIX call (see the
-C     BEGIN CODE section). They are only touched when a crossing is actually
-C     requested, so the uncrossed path pays nothing for them.
+C     Crossed copies of the arguments, built ONCE per SMATRIX
+C     call (see the BEGIN CODE section). They are only touched
+C     when a crossing is actually requested, so the uncrossed
+C     path pays nothing for them.
       REAL*8 PUSE(0:3,NEXTERNAL)
       INTEGER NHELUSE(NEXTERNAL,NCOMB)
       INTEGER ICUSE(NEXTERNAL)
       INTEGER DUMFLAV
-C     ONE good-helicity filter, GOODHEL(.,FLAV_USE), serves every crossing:
-C     SMATRIX evaluates the same all-outgoing helicity configuration of row
-C     IHEL for each of them (APPLY_CROSSING_ROWS), so they share their zero
-C     rows. Each extended index keeps its own try counter NTRYX and adds the
-C     rows it finds while it is below it: a massive leg's helicity depends on
-C     the frame, and every crossing is evaluated in its own.
+C     ONE good-helicity filter, GOODHEL(.,FLAV_USE), serves
+C     every crossing: SMATRIX evaluates the same all-outgoing
+C     helicity configuration of row IHEL for each of them
+C     (APPLY_CROSSING_ROWS), so they share their zero rows. Each
+C     extended index keeps its own try counter NTRYX and adds
+C     the rows it finds while it is below it: a massive leg's
+C     helicity depends on the frame, and every crossing is
+C     evaluated in its own.
       INTEGER NFLAVX
       PARAMETER (NFLAVX=NFLAV*%(ncross)d)
       INTEGER NTRYX(NFLAVX)
       DATA NTRYX/NFLAVX*0/
-C     Likewise the C-parity verdict CSYM(FLAV_USE) is shared: a crossed call
-C     evaluates the base rows, so FLIP is its partner too. Each extended index
-C     scans it over its own first calls (NTRY_CSYMX).
+C     Likewise the C-parity verdict CSYM(FLAV_USE) is shared: a
+C     crossed call evaluates the base rows, so FLIP is its
+C     partner too. Each extended index scans it over its own
+C     first calls (NTRY_CSYMX).
       INTEGER NTRY_CSYMX(NFLAVX)
       DATA NTRY_CSYMX/NFLAVX*0/""",
 
-        'smatrix_cross_decode': """C     CROSS = (FLAV_IDX-1)/NFLAV is the crossing to apply. IDENUSE is 0 for a
-C     crossing that cannot be applied, whose matrix element is identically zero.
+        'smatrix_cross_decode': """C     CROSS = (FLAV_IDX-1)/NFLAV is the crossing to apply.
+C     IDENUSE is 0 for a crossing that cannot be applied, whose
+C     matrix element is identically zero.
       CROSSUSE = (FLAV_IDX-1) / NFLAV
       IDENUSE = %(proc_prefix)sGET_SPINCOL_CROSS(CROSSUSE)
       IF (IDENUSE.EQ.0) THEN
@@ -4260,18 +4268,21 @@ C     crossing that cannot be applied, whose matrix element is identically zero.
       ENDIF""",
 
         'smatrix_cross_apply': """      IF(USERHEL.EQ.-1) NTRYX(FLAV_IDX)=NTRYX(FLAV_IDX)+1
-C     Apply the crossing ONCE, here, rather than once per helicity: the
-C     momenta and the NSF/NSV flags move into the base slots in one go (the
-C     crossing-table row is a fixed slot permutation, identical for every
-C     helicity row; the side-changing legs of every row are negated). When CROSSUSE
-C     is 0 nothing is copied at all and the loop below passes the original
-C     arrays straight through, exactly as it did before crossings existed.
+C     Apply the crossing ONCE, here, rather than once per
+C     helicity: the momenta and the NSF/NSV flags move into the
+C     base slots in one go (the crossing-table row is a fixed
+C     slot permutation, identical for every helicity row; the
+C     side-changing legs of every row are negated). When
+C     CROSSUSE is 0 nothing is copied at all and the loop below
+C     passes the original arrays straight through, exactly as it
+C     did before crossings existed.
       IF (CROSSUSE.NE.0) THEN
         CALL %(proc_prefix)sAPPLY_CROSSING_ROWS(FLAV_IDX, NCOMB, P, NHEL,
      &   JC, PUSE, NHELUSE, ICUSE, DUMFLAV)
       ENDIF""",
 
-        'smatrix_goodhel_gate': """C     The shared filter, open to every row while this extended index trains.
+        'smatrix_goodhel_gate': """C     The shared filter, open to every row while this extended
+C     index trains.
                 IF (GOODHEL(IHEL,FLAV_USE) .OR. NTRYX(FLAV_IDX).LT.20 .OR. USERHEL.NE.-1) THEN""",
 
         'smatrix_goodhel_train': """                    IF (T .NE. 0D0 .AND. .NOT.GOODHEL(IHEL,FLAV_USE)) THEN
@@ -4285,12 +4296,14 @@ C     arrays straight through, exactly as it did before crossings existed.
      &                 ,FLAV_USE)
                     ENDIF""",
 
-        'smatrix_iden_line': """C     Uncrossed: keep the historical path untouched (IDEN carries the
-C     representative's identical factor and BROKEN_SYM corrects it per flavor).
-C     Crossed: BROKEN_SYM's tables describe the uncrossed final state and
-C     cannot express the crossed one, so rebuild the denominator instead as
-C     initial state spin*color (per crossing) times the identical final state
-C     factor of the actual crossed flavors (per flavor).
+        'smatrix_iden_line': """C     Uncrossed: keep the historical path untouched (IDEN
+C     carries the representative's identical factor and
+C     BROKEN_SYM corrects it per flavor). Crossed: BROKEN_SYM's
+C     tables describe the uncrossed final state and cannot
+C     express the crossed one, so rebuild the denominator
+C     instead as initial state spin*color (per crossing) times
+C     the identical final state factor of the actual crossed
+C     flavors (per flavor).
       IF (CROSSUSE.EQ.0) THEN
         ANS=ANS/DBLE(IDEN)*%(proc_prefix)sBROKEN_SYM(FLAVOR)
       ELSE
@@ -4305,14 +4318,16 @@ C     factor of the actual crossed flavors (per flavor).
 
         'inter_rescale_body': """      CROSS = (FLAV_IDX-1)/NFLAV
       IF (CROSS.EQ.0) THEN
-C     Uncrossed: the static IDEN carries the identical-particle factor of the
-C     representative flavor, so BROKEN_SYM must correct it for the actual one,
-C     exactly as SMATRIX does with ANS/IDEN*BROKEN_SYM.
+C     Uncrossed: the static IDEN carries the identical-particle
+C     factor of the representative flavor, so BROKEN_SYM must
+C     correct it for the actual one, exactly as SMATRIX does
+C     with ANS/IDEN*BROKEN_SYM.
         RESCALE = DBLE(%(proc_prefix)sBROKEN_SYM(FLAVOR))
       ELSE
-C     Crossed: BROKEN_SYM's tables describe the uncrossed final state and are
-C     useless here; rebuild the whole denominator instead (see SMATRIX) and
-C     undo the IDEN that GET_INTER divided by.
+C     Crossed: BROKEN_SYM's tables describe the uncrossed final
+C     state and are useless here; rebuild the whole denominator
+C     instead (see SMATRIX) and undo the IDEN that GET_INTER
+C     divided by.
         DCROSS = %(proc_prefix)sGET_SPINCOL_CROSS(CROSS)
      &   * %(proc_prefix)sGET_IDENT_CROSS(CROSS, FLAVOR)
         IF (DCROSS.EQ.0) THEN
@@ -4324,9 +4339,10 @@ C     undo the IDEN that GET_INTER divided by.
 
         'density_cross_apply': """      CALL %(proc_prefix)sAPPLY_CROSSING_TABLE(FLAV_IDX, NB_NHEL, P, NHEL,
      & IC, PUSE, NHELUSE, ICUSE, DUMFLAV)
-C     POS is given in the caller's (crossed) slots while the matrix element
-C     runs over the base slots; PERM(K) is the caller slot sitting in base slot
-C     K (GET_CROSS_PERM), so the base slot of POS is the K with PERM(K)=POS.
+C     POS is given in the caller's (crossed) slots while the
+C     matrix element runs over the base slots; PERM(K) is the
+C     caller slot sitting in base slot K (GET_CROSS_PERM), so
+C     the base slot of POS is the K with PERM(K)=POS.
       CALL %(proc_prefix)sGET_CROSS_PERM(FLAV_IDX, PERM, SGN, DUMFLAV)
       DO IPART=1,N_CHANGING
         DO I=1,NEXTERNAL
@@ -4334,8 +4350,9 @@ C     K (GET_CROSS_PERM), so the base slot of POS is the K with PERM(K)=POS.
         ENDDO
       ENDDO""",
 
-        'allinter_cross_apply': """C     IC starts at +1 everywhere; APPLY_CROSSING flips it for the legs that the
-C     crossing carried by FLAV_IDX moves across.
+        'allinter_cross_apply': """C     IC starts at +1 everywhere; APPLY_CROSSING flips it for
+C     the legs that the crossing carried by FLAV_IDX moves
+C     across.
       IC(:)=1
       CALL %(proc_prefix)sAPPLY_CROSSING(FLAV_IDX, P, NHEL, IC, PUSE,
      & NHELUSE, ICUSE, DUMFLAV)
@@ -7666,13 +7683,15 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         nhel_template = """subroutine %(f2py_prefix)sf77_%(prefix)sget_nhel_entry(NHEL)
         integer NHEL(%(next)s,%(ncombs)s)
         integer idendummy
-C       Fill NHEL through GET_NHEL rather than reading the PROCESS_NHEL common
-C       directly. With the canonical helicity encoder/decoder the table is
-C       materialized at runtime (GET_NHEL calls FILL_NHEL), so an early caller
-C       -- e.g. reweighting building its per-config helicity map at init, before
-C       any matrix-element evaluation -- would otherwise read a table of zeros.
-C       Every standalone matrix.f defines GET_NHEL (materializing or DATA-backed),
-C       so this also stays correct for split-order processes.
+C       Fill NHEL through GET_NHEL rather than reading the
+C       PROCESS_NHEL common directly. With the canonical helicity
+C       encoder/decoder the table is materialized at runtime
+C       (GET_NHEL calls FILL_NHEL), so an early caller -- e.g.
+C       reweighting building its per-config helicity map at init,
+C       before any matrix-element evaluation -- would otherwise
+C       read a table of zeros. Every standalone matrix.f defines
+C       GET_NHEL (materializing or DATA-backed), so this also
+C       stays correct for split-order processes.
         call %(prefix)sget_nhel(idendummy, NHEL)
         return
         end
@@ -8805,8 +8824,8 @@ C       so this also stays correct for split-order processes.
         if not use_crossing:
             replace_dict.update({
                 'hr_cross_decl':
-                    'C     Generated without crossing symmetry: FLAV_IDX is a'
-                    ' plain flavor index.',
+                    'C     Generated without crossing symmetry: FLAV_IDX is a plain\n'
+                    'C     flavor index.',
                 'hr_cross_decode':
                     '      FLAV_USE = FLAV_IDX\n'
                     '      IF (FLAV_IDX.LT.1 .OR. FLAV_IDX.GT.NFLAV) RETURN',
@@ -8828,24 +8847,24 @@ C       so this also stays correct for split-order processes.
 
         replace_dict.update({
             'hr_cross_decl':
-                'C     CROSSUSE is the crossing carried by FLAV_IDX and IDENUSE the'
-                ' initial\nC     state spin*color average of the process it crosses'
-                ' into. PUSE/ICUSE are\nC     the crossed momenta and NSF flags,'
-                ' built once per SMATRIX call.\n'
+                'C     CROSSUSE is the crossing carried by FLAV_IDX and IDENUSE\n'
+                'C     the initial state spin*color average of the process it\n'
+                'C     crosses into. PUSE/ICUSE are the crossed momenta and NSF\n'
+                'C     flags, built once per SMATRIX call.\n'
                 '      INTEGER IDENUSE, CROSSUSE\n'
                 '      INTEGER %(p)sGET_SPINCOL_CROSS\n'
                 '      INTEGER %(p)sGET_IDENT_CROSS\n'
                 '      REAL*8 PUSE(0:3,NEXTERNAL)\n'
                 '      INTEGER ICUSE(NEXTERNAL)\n'
-                'C     APPLY_CROSSING permutes a helicity row together with the'
-                ' momenta; the\nC     recycled driver has no row to permute, so it'
-                ' feeds a dummy one.\n'
+                'C     APPLY_CROSSING permutes a helicity row together with the\n'
+                'C     momenta; the recycled driver has no row to permute, so it\n'
+                'C     feeds a dummy one.\n'
                 '      INTEGER NHELDUM(NEXTERNAL), NHELOUT(NEXTERNAL)\n'
                 '      INTEGER DUMFLAV' % {'p': prefix},
             'hr_cross_decode':
-                'C     CROSS = (FLAV_IDX-1)/NFLAV is the crossing to apply. IDENUSE'
-                ' is 0 for a\nC     crossing that cannot be applied, whose matrix'
-                ' element is identically zero.\n'
+                'C     CROSS = (FLAV_IDX-1)/NFLAV is the crossing to apply.\n'
+                'C     IDENUSE is 0 for a crossing that cannot be applied, whose\n'
+                'C     matrix element is identically zero.\n'
                 '      CROSSUSE = (FLAV_IDX-1) / NFLAV\n'
                 '      FLAV_USE = MOD(FLAV_IDX-1, NFLAV) + 1\n'
                 '      IF (FLAV_IDX.LT.1) RETURN\n'
@@ -8864,11 +8883,11 @@ C       so this also stays correct for split-order processes.
                 '        CALL %(p)sMATRIX(PUSE, ICUSE, FLAV_USE, TS)\n'
                 '      ENDIF' % {'p': prefix},
             'hr_iden_line':
-                'C     Uncrossed: IDEN carries the representative identical-particle'
-                '\nC     factor and BROKEN_SYM corrects it per flavor. Crossed:'
-                ' rebuild the\nC     denominator as initial state spin*color (per'
-                ' crossing) times the\nC     identical final state factor of the'
-                ' actual crossed flavors.\n'
+                'C     Uncrossed: IDEN carries the representative\n'
+                'C     identical-particle factor and BROKEN_SYM corrects it per\n'
+                'C     flavor. Crossed: rebuild the denominator as initial state\n'
+                'C     spin*color (per crossing) times the identical final state\n'
+                'C     factor of the actual crossed flavors.\n'
                 '      IF (CROSSUSE.EQ.0) THEN\n'
                 '        ANS=ANS/DBLE(IDEN)*%(p)sBROKEN_SYM(FLAVOR)\n'
                 '      ELSE\n'
@@ -8882,10 +8901,10 @@ C       so this also stays correct for split-order processes.
                 '      INTEGER ICUSE(NEXTERNAL), NHELDUM(NEXTERNAL)\n'
                 '      INTEGER NHELOUT(NEXTERNAL)' % {'p': prefix},
             'hr_helcheck':
-                'C     A crossed FLAV_IDX evaluates the baked BASE rows (each'
-                ' helicity times\nC     IC, as APPLY_CROSSING_ROWS feeds SMATRIX),'
-                ' so the crossed process\'s own\nC     code HEL selects the base'
-                ' row CROSS_HELCODE names.\n'
+                'C     A crossed FLAV_IDX evaluates the baked BASE rows (each\n'
+                'C     helicity times IC, as APPLY_CROSSING_ROWS feeds SMATRIX),\n'
+                "C     so the crossed process's own code HEL selects the base row\n"
+                'C     CROSS_HELCODE names.\n'
                 '      IF (FLAV_IDX.LT.1) RETURN\n'
                 '      IF (FLAV_IDX.GT.NFLAV) THEN\n'
                 '        CROSSUSE = (FLAV_IDX-1) / NFLAV\n'
@@ -8916,29 +8935,26 @@ C       so this also stays correct for split-order processes.
                 '      EXTERNAL %(p)sGET_SPINCOL_CROSS\n'
                 '      INTEGER XPINV(NEXTERNAL), XSGNI(NEXTERNAL)' % {'p': prefix},
             'hr_warmup_cross_skip':
-                'C         Skip a crossing that cannot be applied: its matrix'
-                ' element is\nC         identically zero, so it needs no helicity'
-                ' row.\n'
+                'C         Skip a crossing that cannot be applied: its matrix element\n'
+                'C         is identically zero, so it needs no helicity row.\n'
                 '          IF (CROSS.NE.0) THEN\n'
                 '            IF (%(p)sGET_SPINCOL_CROSS(CROSS).EQ.0) CYCLE\n'
                 '          ENDIF' % {'p': prefix},
             'hr_warmup_cross_mass':
-                'C         A crossing is scanned at points of the process it'
-                ' crosses into, in\nC         its own slot order and frame (the'
-                ' momenta are then crossed into the\nC         base slots as'
-                ' SMATRIX does): the helicity zeros of a massive leg\nC        '
-                ' depend on the frame, and the leg moved by the crossing must'
-                ' stay on shell.\n'
+                'C         A crossing is scanned at points of the process it crosses\n'
+                'C         into, in its own slot order and frame (the momenta are\n'
+                'C         then crossed into the base slots as SMATRIX does): the\n'
+                'C         helicity zeros of a massive leg depend on the frame, and\n'
+                'C         the leg moved by the crossing must stay on shell.\n'
                 '          IF (CROSS.NE.0) THEN\n'
-                '            CALL %(p)sGET_CROSS_PINV(FLAV_EXT, XPINV, XSGNI,'
-                ' DUMFLAV)\n'
+                '            CALL %(p)sGET_CROSS_PINV(FLAV_EXT, XPINV, XSGNI, DUMFLAV)\n'
                 '            DO I=1, NEXTERNAL\n'
                 '              PMASSX(I) = PMASS(XPINV(I))\n'
                 '            ENDDO\n'
                 '          ENDIF' % {'p': prefix},
             'hr_warmup_cross_apply':
-                'C           Cross the momenta and the NSF flags exactly as'
-                ' SMATRIX does.\n'
+                'C           Cross the momenta and the NSF flags exactly as SMATRIX\n'
+                'C           does.\n'
                 '            IF (CROSS.NE.0) THEN\n'
                 '              NHELDUM(:) = 0\n'
                 '              CALL %(p)sAPPLY_CROSSING(FLAV_EXT, P, NHELDUM, JC,\n'
@@ -10805,9 +10821,11 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         args = ('P,NHEL,%sIVEC,FLAVOR,W,AMP%s' %
                 (replace_dict['chunk_ic_arg'],
                  replace_dict['amp_chunk_mask_arg']))
-        driver = ['C     The HELAS call sequence lives in matrix%s_origamp<k>.f, one'
+        driver = ['C     The HELAS call sequence lives in matrix%s_origamp<k>.f,\n'
+                  'C     one'
                   % proc_id,
-                  'C     subroutine per %d statements, so that the amplitudes can be'
+                  'C     subroutine per %d statements, so that the amplitudes can\n'
+                  'C     be'
                   % chunk_size,
                   'C     compiled apart from the JAMP and colour blocks below.']
         for i, chunk in enumerate(chunks):
@@ -11458,10 +11476,11 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         if (id(matrix_element) in getattr(self, '_crossgroup_base_mes', set())
                 or id(matrix_element) in getattr(self, '_router_base_mes', set())):
             replace_dict['xg_jamp2_decl'] = (
-                'C     Crossing base: publish this ME\'s per-flow JAMP2 so a'
-                '\nC     crossed dependent can reselect colour in its own flow space.'
-                '\n      DOUBLE PRECISION XG_JAMP2(0:MAXFLOW,VECSIZE_MEMMAX)'
-                '\n      COMMON/TO_XG_JAMP2/XG_JAMP2')
+                "C     Crossing base: publish this ME's per-flow JAMP2 so a\n"
+                'C     crossed dependent can reselect colour in its own flow\n'
+                'C     space.\n'
+                '      DOUBLE PRECISION XG_JAMP2(0:MAXFLOW,VECSIZE_MEMMAX)\n'
+                '      COMMON/TO_XG_JAMP2/XG_JAMP2')
             replace_dict['xg_jamp2_pub'] = (
                 '      DO I=0,INT(JAMP2(0))'
                 '\n        XG_JAMP2(I,IVEC) = JAMP2(I)'
@@ -12030,7 +12049,8 @@ c of an explicit polarisation in the process
         lines = [
             '      DOUBLE PRECISION FUNCTION XG_DEN%s(IFLAV)' % proc_id,
             'C     Denominator of this subprocess for the current event (IDEN',
-            'C     over BROKEN_SYM of its flavor row IPSEL), for a matrix element',
+            'C     over BROKEN_SYM of its flavor row IPSEL), for a matrix\n'
+            'C     element',
             'C     evaluated by a crossed base, which leaves it unnormalised.',
             '      IMPLICIT NONE',
             "      INCLUDE 'nexternal.inc'",

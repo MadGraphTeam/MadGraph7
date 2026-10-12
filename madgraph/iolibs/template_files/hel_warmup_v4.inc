@@ -1,15 +1,18 @@
       PROGRAM %(proc_prefix)sHEL_WARMUP
 C**************************************************************************
-C     Helicity-recycling warm-up driver (standalone --hel_recycling).
-C     Links against matrix_orig.f (the un-recycled per-helicity MATRIX with
-C     init_mode instrumentation) and evaluates it over several RAMBO phase-
-C     space points and every flavor index, recording:
-C       * which helicity combinations ever contribute (good helicities), and
+C     Helicity-recycling warm-up driver (standalone
+C     --hel_recycling). Links against matrix_orig.f (the
+C     un-recycled per-helicity MATRIX with init_mode
+C     instrumentation) and evaluates it over several RAMBO
+C     phase- space points and every flavor index, recording:
+C       * which helicity combinations ever contribute (good
+C       helicities), and
 C       * which amplitudes are zero (globally, or per helicity),
-C     then prints them in the exact format hel_recycle.py / gen_ximprove.py
-C     parse ('Matrix Element/Good Helicity:', 'Amplitude/ZEROAMP:',
-C     'HEL/ZEROAMP:'). The generation step re-runs hel_recycle with this
-C     information to drop the dead work from the final matrix.f.
+C     then prints them in the exact format hel_recycle.py /
+C     gen_ximprove.py parse ('Matrix Element/Good Helicity:',
+C     'Amplitude/ZEROAMP:', 'HEL/ZEROAMP:'). The generation step
+C     re-runs hel_recycle with this information to drop the dead
+C     work from the final matrix.f.
 C**************************************************************************
       use model_object
       IMPLICIT NONE
@@ -22,13 +25,14 @@ C**************************************************************************
       PARAMETER (NFLAV=%(nflav)d)
       INTEGER    NPS
       PARAMETER (NPS=16)
-C     Phase-space points per CROSSED configuration (the uncrossed one keeps the
-C     full NPS): a crossing only adds rows to the union, so a coarser scan is
-C     enough and keeps the probe cheap when NCROSS is large.
+C     Phase-space points per CROSSED configuration (the
+C     uncrossed one keeps the full NPS): a crossing only adds
+C     rows to the union, so a coarser scan is enough and keeps
+C     the probe cheap when NCROSS is large.
       INTEGER    NPSCROSS
       PARAMETER (NPSCROSS=4)
-C     Crossing codes to scan. 1 (identity only) when the process was generated
-C     without crossing symmetry.
+C     Crossing codes to scan. 1 (identity only) when the process
+C     was generated without crossing symmetry.
       INTEGER    NCROSS
       PARAMETER (NCROSS=%(hr_warmup_ncross)s)
       REAL*8     LIMHEL
@@ -42,17 +46,19 @@ C     LOCAL
       INTEGER JC(NEXTERNAL), ICUSE(NEXTERNAL)
       INTEGER NHELDUM(NEXTERNAL), NHELOUT(NEXTERNAL), DUMFLAV
       INTEGER NHROW(NEXTERNAL)
-C     PMASSX: the masses of the process a crossing crosses into, slot by slot
-C     (its own leg order): its points are generated in its own frame
+C     PMASSX: the masses of the process a crossing crosses into,
+C     slot by slot (its own leg order): its points are generated
+C     in its own frame
       REAL*8 PMASSX(NEXTERNAL)
       REAL*8 SQRTS, T, ANS, TSARR(NCOMB)
       LOGICAL GOODHEL(NCOMB)
-C     C-parity de-duplication. FLIP(I) is the row whose helicity configuration
-C     is the full negation of row I (an involution); CSYM stays true only while
-C     EVERY pair gave the same |M|^2 at EVERY sampled point, flavor and
-C     crossing -- the same all-or-nothing verdict the standard SMATRIX reaches
-C     at run time. A self-paired row (all helicities zero) disables it, since
-C     then the pairing halves nothing.
+C     C-parity de-duplication. FLIP(I) is the row whose helicity
+C     configuration is the full negation of row I (an
+C     involution); CSYM stays true only while EVERY pair gave
+C     the same |M|^2 at EVERY sampled point, flavor and crossing
+C     -- the same all-or-nothing verdict the standard SMATRIX
+C     reaches at run time. A self-paired row (all helicities
+C     zero) disables it, since then the pairing halves nothing.
       INTEGER FLIP(NCOMB)
       LOGICAL CSYM
 %(flip_data)s
@@ -83,20 +89,23 @@ C-----
         GOODHEL(I) = .FALSE.
       ENDDO
 
-C     FLIP is generated data (the C-parity partner of every row). A
-C     self-paired row has no distinct partner, so the whole de-duplication is
-C     refused rather than applied to part of the table.
+C     FLIP is generated data (the C-parity partner of every
+C     row). A self-paired row has no distinct partner, so the
+C     whole de-duplication is refused rather than applied to
+C     part of the table.
       CSYM = .TRUE.
       DO IHEL=1,NCOMB
         IF (FLIP(IHEL).EQ.IHEL) CSYM = .FALSE.
       ENDDO
 
-C     Loop over every flavor index: a helicity that contributes for ANY flavor
-C     must be kept, since one recycled matrix.f serves them all. Same for the
-C     crossings: every crossing evaluates the same rows (the legs that changed
-C     side negated), so they mostly share their zeros, but a massive leg's
-C     helicity depends on the frame. Measuring each crossing here is what
-C     makes the recycled matrix.f a valid union over all of them.
+C     Loop over every flavor index: a helicity that contributes
+C     for ANY flavor must be kept, since one recycled matrix.f
+C     serves them all. Same for the crossings: every crossing
+C     evaluates the same rows (the legs that changed side
+C     negated), so they mostly share their zeros, but a massive
+C     leg's helicity depends on the frame. Measuring each
+C     crossing here is what makes the recycled matrix.f a valid
+C     union over all of them.
       DO IFLV=1, NFLAV
         DO CROSS=0, NCROSS-1
           FLAV_EXT = CROSS*NFLAV + IFLV
@@ -124,9 +133,10 @@ C     makes the recycled matrix.f a valid union over all of them.
             ANS = 0D0
             DO IHEL=1, NCOMB
               %(proc_prefix)sCUR_IHEL = IHEL
-C             Row IHEL is one helicity configuration for every crossing: the
-C             legs that changed side (ICUSE=-1) take the opposite helicity,
-C             as in SMATRIX (APPLY_CROSSING_ROWS) and in the recycled calls.
+C             Row IHEL is one helicity configuration for every crossing:
+C             the legs that changed side (ICUSE=-1) take the opposite
+C             helicity, as in SMATRIX (APPLY_CROSSING_ROWS) and in the
+C             recycled calls.
               DO I=1, NEXTERNAL
                 NHROW(I) = NHEL(I,IHEL)*ICUSE(I)
               ENDDO
@@ -137,11 +147,12 @@ C             as in SMATRIX (APPLY_CROSSING_ROWS) and in the recycled calls.
             DO IHEL=1, NCOMB
               IF (DABS(TSARR(IHEL)) .GT. ANS*LIMHEL/NCOMB) GOODHEL(IHEL)=.TRUE.
             ENDDO
-C           One mismatch anywhere permanently invalidates the C-parity reuse.
-C           A pair whose BOTH members sit below the good-helicity threshold is
-C           pure round-off (those rows are dropped from the recycled table
-C           anyway), so comparing them relatively would reject the reuse on
-C           noise -- e.g. 1.5D-30 against 3.1D-31 for a dead row of g g > t t~.
+C           One mismatch anywhere permanently invalidates the C-parity
+C           reuse. A pair whose BOTH members sit below the
+C           good-helicity threshold is pure round-off (those rows are
+C           dropped from the recycled table anyway), so comparing them
+C           relatively would reject the reuse on noise -- e.g. 1.5D-30
+C           against 3.1D-31 for a dead row of g g > t t~.
             IF (CSYM) THEN
               DO IHEL=1, NCOMB
                 IF (FLIP(IHEL).GT.IHEL) THEN
@@ -163,9 +174,10 @@ C           noise -- e.g. 1.5D-30 against 3.1D-31 for a dead row of g g > t t~.
           WRITE(*,*) 'Matrix Element/Good Helicity: 1 ', IHEL
         ENDIF
       ENDDO
-C     Surviving C-parity pairs (representative first). The exporter drops the
-C     partner's amplitudes from the recycled matrix.f and copies the
-C     representative's |M|^2 into it instead.
+C     Surviving C-parity pairs (representative first). The
+C     exporter drops the partner's amplitudes from the recycled
+C     matrix.f and copies the representative's |M|^2 into it
+C     instead.
       IF (CSYM) THEN
         DO IHEL=1, NCOMB
           IF (FLIP(IHEL).GT.IHEL .AND. GOODHEL(IHEL)
@@ -391,7 +403,8 @@ C***********************************************************************
 
 
       SUBROUTINE RANMAR(RVEC)
-C     Universal random number generator proposed by Marsaglia and Zaman.
+C     Universal random number generator proposed by Marsaglia
+C     and Zaman.
       IMPLICIT REAL*8(A-H,O-Z)
       COMMON/ RASET1 / RANU(97),RANC,RANCD,RANCM
       COMMON/ RASET2 / IRANMR,JRANMR

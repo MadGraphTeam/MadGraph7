@@ -45,13 +45,16 @@ CF2PY double precision, intent(in) :: SCALE2
   use model_object
   use aloha_object
   IMPLICIT NONE
-C Same as f77_smatrixhel, but selecting the matrix element by its slot in
-C get_pdg_order/get_prefix (PROCINDEX, 1-based) and taking the extended flavor
-C index (FLAV_IDX = K*NFLAV + flav) as given rather than resolving it from
-C the PDG codes. This is the only way in to a FOLDED crossed subprocess: it has
-C no PDG entry of its own, so the dispatch above cannot name it, and the FLAVOR
-C array cannot express a crossing (see matrix_standalone_f2py_flav_idx.inc).
-C The alphas/scale2 setup is deliberately the same as in f77_smatrixhel.
+C Same as f77_smatrixhel, but selecting the matrix element
+C by its slot in get_pdg_order/get_prefix (PROCINDEX,
+C 1-based) and taking the extended flavor index (FLAV_IDX =
+C K*NFLAV + flav) as given rather than resolving it from the
+C PDG codes. This is the only way in to a FOLDED crossed
+C subprocess: it has no PDG entry of its own, so the
+C dispatch above cannot name it, and the FLAVOR array cannot
+C express a crossing (see
+C matrix_standalone_f2py_flav_idx.inc). The alphas/scale2
+C setup is deliberately the same as in f77_smatrixhel.
 CF2PY double precision, intent(in), dimension(0:3,npdg) :: p
 CF2PY integer, intent(in) :: procindex
 CF2PY integer, intent(in) :: flav_idx

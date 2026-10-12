@@ -1,29 +1,37 @@
       SUBROUTINE %(proc_prefix)sGET_CROSS_PERM(FLAV_IDX_IN, PERM, SGN,
      & FLAV_IDX)
-C     Decode the crossing carried by FLAV_IDX_IN into a slot permutation.
+C     Decode the crossing carried by FLAV_IDX_IN into a slot
+C     permutation.
 C
-C       CROSS    = (FLAV_IDX_IN-1) / NFLAV       ! row of the crossing table
-C       FLAV_IDX = mod(FLAV_IDX_IN-1, NFLAV) + 1 ! used for masking/...
+C       CROSS    = (FLAV_IDX_IN-1) / NFLAV       ! row of the
+C       crossing table
+C       FLAV_IDX = mod(FLAV_IDX_IN-1, NFLAV) + 1 ! used for
+C       masking/...
 C
-C     The crossing table is generated for this matrix element: row CROSS is a
-C     full slot permutation, row 0 the identity, so FLAV_IDX_IN in [1,NFLAV]
-C     keeps old callers untouched. It holds only the crossings this matrix
-C     element serves (see madgraph/iolibs/crossing_table.py), in the base-slot
+C     The crossing table is generated for this matrix element:
+C     row CROSS is a full slot permutation, row 0 the identity,
+C     so FLAV_IDX_IN in [1,NFLAV] keeps old callers untouched.
+C     It holds only the crossings this matrix element serves
+C     (see madgraph/iolibs/crossing_table.py), in the base-slot
 C     view the matrix element needs:
-C       PERM(L) : the input slot whose momentum lands in base slot L,
-C       SGN(L)  : -1 when that leg crosses between the initial and the final
+C       PERM(L) : the input slot whose momentum lands in base slot
+C       L,
+C       SGN(L)  : -1 when that leg crosses between the initial and
+C       the final
 C                 state (the NSF/NSV flag of base slot L), else +1.
-C     GET_CROSS_PINV gives the same row in the input-slot view (PDG,
-C     denominator). Flipping the NSF/NSV flag is what crosses a leg: helas
-C     stores the momentum as p*nsf and uses nhel*nsf, so the momentum sign
-C     change and the helicity flip both follow from it. Momenta therefore stay
-C     physical (positive energy), which matters because the helas spinors take
-C     dsqrt(p(0)+pp).
+C     GET_CROSS_PINV gives the same row in the input-slot view
+C     (PDG, denominator). Flipping the NSF/NSV flag is what
+C     crosses a leg: helas stores the momentum as p*nsf and uses
+C     nhel*nsf, so the momentum sign change and the helicity
+C     flip both follow from it. Momenta therefore stay physical
+C     (positive energy), which matters because the helas spinors
+C     take dsqrt(p(0)+pp).
 C
-C     FLAV_IDX comes back 0 for an index beyond the table (or for a row that
-C     names no crossing); PERM/SGN are then the identity, so a caller that
-C     gathers momenta with them never reads out of range; 0 is what
-C     GET_PDG_FOR_FLAVOR and GET_AMP already treat as "not a flavor".
+C     FLAV_IDX comes back 0 for an index beyond the table (or
+C     for a row that names no crossing); PERM/SGN are then the
+C     identity, so a caller that gathers momenta with them never
+C     reads out of range; 0 is what GET_PDG_FOR_FLAVOR and
+C     GET_AMP already treat as "not a flavor".
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INTEGER NFLAV
@@ -67,14 +75,17 @@ C     LOCAL
 
       SUBROUTINE %(proc_prefix)sGET_CROSS_PINV(FLAV_IDX_IN, PINV, SGNI,
      & FLAV_IDX)
-C     The crossing of FLAV_IDX_IN in the input-slot view (see GET_CROSS_PERM):
-C       PINV(K) : the base slot receiving input slot K (the inverse of PERM),
+C     The crossing of FLAV_IDX_IN in the input-slot view (see
+C     GET_CROSS_PERM):
+C       PINV(K) : the base slot receiving input slot K (the
+C       inverse of PERM),
 C       SGNI(K) : -1 when input slot K is a crossed leg, else +1.
-C     The crossed process sees base leg PINV(K), charge conjugated when
-C     SGNI(K)=-1, in its slot K: this is what the PDG signature, the spin*color
-C     average and the identical-particle factor are built from. Both views are
-C     needed because a crossing is in general not an involution (u u~ > g g off
-C     g g > u u~ is a 4-cycle).
+C     The crossed process sees base leg PINV(K), charge
+C     conjugated when SGNI(K)=-1, in its slot K: this is what
+C     the PDG signature, the spin*color average and the
+C     identical-particle factor are built from. Both views are
+C     needed because a crossing is in general not an involution
+C     (u u~ > g g off g g > u u~ is a 4-cycle).
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INTEGER NFLAV
@@ -118,14 +129,16 @@ C     LOCAL
 
       SUBROUTINE %(proc_prefix)sAPPLY_CROSSING_TABLE(FLAV_IDX_IN, NROW,
      & P_IN, NHEL_IN, IC_IN, P, NHEL, IC, FLAV_IDX)
-C     Apply the crossing carried by FLAV_IDX_IN to one set of momenta / NSF
-C     flags and to NROW helicity rows at once (see GET_CROSS_PERM).
+C     Apply the crossing carried by FLAV_IDX_IN to one set of
+C     momenta / NSF flags and to NROW helicity rows at once (see
+C     GET_CROSS_PERM).
 C
-C     SMATRIX uses this to permute its whole NHEL table in a single sweep
-C     before the helicity loop: the permutation does not depend on the row, so
-C     decoding it once per SMATRIX call rather than once per helicity is both
-C     cheaper and the reason MATRIX/GET_AMP can stay pure.
-C     P/NHEL/IC must not alias P_IN/NHEL_IN/IC_IN.
+C     SMATRIX uses this to permute its whole NHEL table in a
+C     single sweep before the helicity loop: the permutation
+C     does not depend on the row, so decoding it once per
+C     SMATRIX call rather than once per helicity is both cheaper
+C     and the reason MATRIX/GET_AMP can stay pure. P/NHEL/IC
+C     must not alias P_IN/NHEL_IN/IC_IN.
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
 C     ARGUMENTS
@@ -148,13 +161,15 @@ C     LOCAL
         P(3,XK) = P_IN(3,PERM(XK))
         IC(XK) = SGN(XK)*IC_IN(PERM(XK))
       ENDDO
-C     The helicity slots are NOT permuted: IC stays aligned with the MOMENTA
-C     -- it is also the NSF direction flag -- so slot XK gets P_IN(PERM(XK))
-C     and NHEL_IN(XK), and a crossed leg is evaluated with the physical
-C     helicity NHEL_IN(XK) of the particle it has become. This is the view of
-C     a caller holding helicities of the crossed process (GET_DENSITY_IDX,
-C     GET_ALL_INTER_IDX, an f2py caller before GET_AMP). SMATRIX evaluates its
-C     own base table instead, through APPLY_CROSSING_ROWS.
+C     The helicity slots are NOT permuted: IC stays aligned with
+C     the MOMENTA -- it is also the NSF direction flag -- so
+C     slot XK gets P_IN(PERM(XK)) and NHEL_IN(XK), and a crossed
+C     leg is evaluated with the physical helicity NHEL_IN(XK) of
+C     the particle it has become. This is the view of a caller
+C     holding helicities of the crossed process
+C     (GET_DENSITY_IDX, GET_ALL_INTER_IDX, an f2py caller before
+C     GET_AMP). SMATRIX evaluates its own base table instead,
+C     through APPLY_CROSSING_ROWS.
       DO XR = 1, NROW
         DO XK = 1, NEXTERNAL
           NHEL(XK,XR) = NHEL_IN(XK,XR)
@@ -167,17 +182,20 @@ C     own base table instead, through APPLY_CROSSING_ROWS.
 
       SUBROUTINE %(proc_prefix)sAPPLY_CROSSING_ROWS(FLAV_IDX_IN, NROW,
      & P_IN, NHEL_IN, IC_IN, P, NHEL, IC, FLAV_IDX)
-C     APPLY_CROSSING_TABLE for the BASE helicity table SMATRIX loops over:
-C     row H is one helicity configuration of the base process read with every
-C     leg outgoing, and each crossing evaluates that SAME configuration. A leg
-C     that changes side therefore carries the opposite physical helicity,
-C     NHEL_IN(XK,H)*SGN(XK) (SGN also flips its NSF flag, see GET_CROSS_PERM).
-C     The crossed amplitude is the analytic continuation of the base one, so
-C     a row vanishes for every crossing when it vanishes for the base: one
-C     good-helicity filter serves them all. The exception is a massive leg,
-C     whose helicity depends on the frame (each crossing is evaluated in its
-C     own); each crossing therefore still trains the shared filter itself.
-C     CROSS_HELCODE translates the crossed process's own helicity code into
+C     APPLY_CROSSING_TABLE for the BASE helicity table SMATRIX
+C     loops over: row H is one helicity configuration of the
+C     base process read with every leg outgoing, and each
+C     crossing evaluates that SAME configuration. A leg that
+C     changes side therefore carries the opposite physical
+C     helicity, NHEL_IN(XK,H)*SGN(XK) (SGN also flips its NSF
+C     flag, see GET_CROSS_PERM). The crossed amplitude is the
+C     analytic continuation of the base one, so a row vanishes
+C     for every crossing when it vanishes for the base: one
+C     good-helicity filter serves them all. The exception is a
+C     massive leg, whose helicity depends on the frame (each
+C     crossing is evaluated in its own); each crossing therefore
+C     still trains the shared filter itself. CROSS_HELCODE
+C     translates the crossed process's own helicity code into
 C     the row H that evaluates it.
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
@@ -207,9 +225,10 @@ C     LOCAL
 
       SUBROUTINE %(proc_prefix)sAPPLY_CROSSING(FLAV_IDX_IN, P_IN, NHEL_IN,
      & IC_IN, P, NHEL, IC, FLAV_IDX)
-C     Single helicity row flavour of APPLY_CROSSING_TABLE; kept public so that
-C     an external (f2py) caller holding an extended FLAV_IDX can pre-apply the
-C     crossing before calling GET_AMP, which is pure and rejects an extended
+C     Single helicity row flavour of APPLY_CROSSING_TABLE; kept
+C     public so that an external (f2py) caller holding an
+C     extended FLAV_IDX can pre-apply the crossing before
+C     calling GET_AMP, which is pure and rejects an extended
 C     index (see its contract).
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
@@ -228,14 +247,16 @@ C     index (see its contract).
 
 
       INTEGER FUNCTION %(proc_prefix)sGET_SPINCOL_CROSS(CROSS)
-C     Initial-state spin*color average of the process crossing-table row CROSS
-C     crosses into: the product of the per-leg spin*color (conjugation
-C     invariant) of the base legs the row puts in the initial slots, computed
-C     once at generation (XSPINCOL). A row beyond the table, or one that names
-C     no crossing, returns 0, which SMATRIX / GET_PDG_FOR_FLAVOR /
-C     GET_ALL_INTER_CROSSED all map to a null result: this is the single gate
-C     that says whether a CROSS row is applicable at all. The flavor-dependent
-C     half is GET_IDENT_CROSS.
+C     Initial-state spin*color average of the process
+C     crossing-table row CROSS crosses into: the product of the
+C     per-leg spin*color (conjugation invariant) of the base
+C     legs the row puts in the initial slots, computed once at
+C     generation (XSPINCOL). A row beyond the table, or one that
+C     names no crossing, returns 0, which SMATRIX /
+C     GET_PDG_FOR_FLAVOR / GET_ALL_INTER_CROSSED all map to a
+C     null result: this is the single gate that says whether a
+C     CROSS row is applicable at all. The flavor-dependent half
+C     is GET_IDENT_CROSS.
       IMPLICIT NONE
       INTEGER NCROSS
       PARAMETER (NCROSS=%(ncross)d)
@@ -254,33 +275,40 @@ C     half is GET_IDENT_CROSS.
 
 
       INTEGER FUNCTION %(proc_prefix)sGET_IDENT_CROSS(CROSS, FLAVOR)
-C     Identical final state factor (product of n!) of the crossed process.
+C     Identical final state factor (product of n!) of the
+C     crossed process.
 C
-C     Flavor dependent, hence computed here rather than tabulated on CROSS:
-C     d d~ > g u u~ crossed gives d g > d u u~ with nothing identical, while
-C     d d~ > g d d~ crossed gives d g > d d d~ with two identical d. BROKEN_SYM
-C     cannot be reused for this: its tables describe the uncrossed final state.
+C     Flavor dependent, hence computed here rather than
+C     tabulated on CROSS: d d~ > g u u~ crossed gives d g > d u
+C     u~ with nothing identical, while d d~ > g d d~ crossed
+C     gives d g > d d d~ with two identical d. BROKEN_SYM cannot
+C     be reused for this: its tables describe the uncrossed
+C     final state.
 C
-C     Two crossed final legs are identical when they carry the same flavor
-C     group (same representative PDG, conjugated already when the leg swapped
-C     side) and the same position inside it. Neither the per-slot representative
-C     PDG nor the FLAVOR source slot is tabulated per crossing: both follow from
-C     the table row (GET_CROSS_PINV) applied to two NEXTERNAL-long base tables
-C     -- IDS_BASE, the base PDG of each leg, and ANTIPID_BASE, its charge
-C     conjugate for a leg that swapped side.
+C     Two crossed final legs are identical when they carry the
+C     same flavor group (same representative PDG, conjugated
+C     already when the leg swapped side) and the same position
+C     inside it. Neither the per-slot representative PDG nor the
+C     FLAVOR source slot is tabulated per crossing: both follow
+C     from the table row (GET_CROSS_PINV) applied to two
+C     NEXTERNAL-long base tables -- IDS_BASE, the base PDG of
+C     each leg, and ANTIPID_BASE, its charge conjugate for a leg
+C     that swapped side.
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INTEGER CROSS
       INTEGER FLAVOR(NEXTERNAL)
       INTEGER IDS_BASE(0:NEXTERNAL-1)
       INTEGER ANTIPID_BASE(0:NEXTERNAL-1)
-C     COUNTABLE(leg)=1 for a single external leg, 0 for a leaf locked inside a
-C     decay block. A crossing never moves a block leaf (the crossing table has
-C     no row that would), so decay products keep their base slots and must
-C     be skipped here: their contribution to the identical-final factor is
-C     resonance-level, carried whole by IDENT_RESONANCE. For a non-decay process
-C     every leg is countable and IDENT_RESONANCE is 1, so this is the plain leaf
-C     count it always was.
+C     COUNTABLE(leg)=1 for a single external leg, 0 for a leaf
+C     locked inside a decay block. A crossing never moves a
+C     block leaf (the crossing table has no row that would), so
+C     decay products keep their base slots and must be skipped
+C     here: their contribution to the identical-final factor is
+C     resonance-level, carried whole by IDENT_RESONANCE. For a
+C     non-decay process every leg is countable and
+C     IDENT_RESONANCE is 1, so this is the plain leaf count it
+C     always was.
       INTEGER COUNTABLE(0:NEXTERNAL-1)
       INTEGER IDENT_RESONANCE
       PARAMETER (IDENT_RESONANCE=%(ident_resonance)d)
@@ -291,9 +319,10 @@ C     count it always was.
       INTEGER PINV(NEXTERNAL), SGNI(NEXTERNAL), BPID(NEXTERNAL)
       LOGICAL USED(NEXTERNAL)
 
-C     The crossed process sees base leg PINV(K) in its slot K, conjugated
-C     when SGNI(K)=-1 (GET_CROSS_PINV): read each slot's representative PDG
-C     straight off IDS_BASE (ANTIPID_BASE where the leg changed side).
+C     The crossed process sees base leg PINV(K) in its slot K,
+C     conjugated when SGNI(K)=-1 (GET_CROSS_PINV): read each
+C     slot's representative PDG straight off IDS_BASE
+C     (ANTIPID_BASE where the leg changed side).
       CALL %(proc_prefix)sGET_CROSS_PINV(CROSS*NFLAV+1, PINV, SGNI, XIDX)
       IF (XIDX .LT. 1) THEN
         %(proc_prefix)sGET_IDENT_CROSS = 0
@@ -307,12 +336,13 @@ C     straight off IDS_BASE (ANTIPID_BASE where the leg changed side).
         ENDIF
       ENDDO
 
-C     FLAVOR is not permuted by the crossing, so slot K reads FLAVOR(PINV(K)),
-C     the actual flavor of the base leg that moved into it. Start from
-C     IDENT_RESONANCE (the resonance-level part of the identical factor, which a
-C     crossing never changes) and multiply in the n! of the countable final legs
-C     only -- a decay-block leaf is skipped, its symmetry already inside
-C     IDENT_RESONANCE.
+C     FLAVOR is not permuted by the crossing, so slot K reads
+C     FLAVOR(PINV(K)), the actual flavor of the base leg that
+C     moved into it. Start from IDENT_RESONANCE (the
+C     resonance-level part of the identical factor, which a
+C     crossing never changes) and multiply in the n! of the
+C     countable final legs only -- a decay-block leaf is
+C     skipped, its symmetry already inside IDENT_RESONANCE.
       DO K = 1, NEXTERNAL
         USED(K) = .FALSE.
       ENDDO
@@ -338,15 +368,18 @@ C     IDENT_RESONANCE.
       END
 
       SUBROUTINE %(proc_prefix)sCROSS_HELCODE(FLAV_IDX_IN, CODE, BCODE)
-C     BCODE: the base helicity code SMATRIX evaluates for the helicity code CODE of
-C     the process FLAV_IDX_IN names. CODE is that process's OWN canonical code
-C     -- the one its expanded output takes, the one the madevent output writes
-C     for a routed event and the C++ backends report for a crossed one. Input
-C     slot K of the crossed process carries base leg B=PINV(K), with the helicity
-C     states of that leg in the same order, and SMATRIX evaluates a base row with
-C     the side-changing legs' helicities negated (APPLY_CROSSING_ROWS): the
-C     crossed leg's helicity H is base value SGNI(K)*H. An uncrossed index, or a
-C     CODE < 1 (no helicity requested), comes back unchanged.
+C     BCODE: the base helicity code SMATRIX evaluates for the
+C     helicity code CODE of the process FLAV_IDX_IN names. CODE
+C     is that process's OWN canonical code -- the one its
+C     expanded output takes, the one the madevent output writes
+C     for a routed event and the C++ backends report for a
+C     crossed one. Input slot K of the crossed process carries
+C     base leg B=PINV(K), with the helicity states of that leg
+C     in the same order, and SMATRIX evaluates a base row with
+C     the side-changing legs' helicities negated
+C     (APPLY_CROSSING_ROWS): the crossed leg's helicity H is
+C     base value SGNI(K)*H. An uncrossed index, or a CODE < 1
+C     (no helicity requested), comes back unchanged.
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INTEGER    MAXHEL

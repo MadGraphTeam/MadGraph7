@@ -2,13 +2,14 @@
 C
 %(process_lines)s
 C
-C     One slice of the HELAS call sequence of MATRIX%(proc_id)s, in a file
-C     of its own: as one basic block inside one routine the sequence is
-C     what makes a high-multiplicity matrix element uncompilable, and
-C     split up it can also carry its own optimisation flag (AMP_FLAG).
-C     The slices run in order and share W and AMP by reference: a
-C     wavefunction slot is reused many times over the sequence, so a
-C     slot number does not identify a wavefunction and the whole
+C     One slice of the HELAS call sequence of MATRIX%(proc_id)s,
+C     in a file of its own: as one basic block inside one
+C     routine the sequence is what makes a high-multiplicity
+C     matrix element uncompilable, and split up it can also
+C     carry its own optimisation flag (AMP_FLAG). The slices run
+C     in order and share W and AMP by reference: a wavefunction
+C     slot is reused many times over the sequence, so a slot
+C     number does not identify a wavefunction and the whole
 C     array has to be threaded through.
 C
       use aloha_object
@@ -42,11 +43,11 @@ C
 C   Needed for v4 models
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
-C     The fake widths are recomputed here rather than read out of the
-C     matrix element, which keeps them SAVEd locals: sharing them would
-C     mean turning those into a common block, i.e. editing every matrix
-C     element whether it is chunked or not. A handful of operations,
-C     done once.
+C     The fake widths are recomputed here rather than read out
+C     of the matrix element, which keeps them SAVEd locals:
+C     sharing them would mean turning those into a common block,
+C     i.e. editing every matrix element whether it is chunked or
+C     not. A handful of operations, done once.
 	%(fake_width_declaration)s
 	logical first
 	data first /.true./

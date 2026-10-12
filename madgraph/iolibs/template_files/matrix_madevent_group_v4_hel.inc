@@ -117,9 +117,10 @@ C ----------
     TS(:) = 0d0
 
     call MATRIX%(proc_id)s(%(hel_matrix_call_args)s)
-C   C-parity de-duplication: a dropped partner's HELAS calls were never
-C   generated, so its TS() is 0 here; copy the representative's identical |M|^2
-C   back into it (the recycled MATRIX above computed only the representatives).
+C   C-parity de-duplication: a dropped partner's HELAS calls
+C   were never generated, so its TS() is 0 here; copy the
+C   representative's identical |M|^2 back into it (the
+C   recycled MATRIX above computed only the representatives).
 ${csym_reuse}
     DO I=1,NCOMB
        T=TS(I)

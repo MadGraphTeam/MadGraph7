@@ -3,15 +3,16 @@ C
 %(process_lines)s
 C
 C     One slice of the helicity-recycled HELAS call sequence of
-C     MATRIX%(proc_id)s, in a file of its own. That unrolled sequence is
-C     essentially the whole recycled matrix element, and as one basic
-C     block inside one routine it is what makes it uncompilable; split up
-C     it can also carry its own optimisation flag (AMP_FLAG).
-C     The slices run in order and share W, TMP and AMP by reference:
-C     hel_recycle reuses a wavefunction slot many times over the
-C     sequence (so a slot number does not identify a wavefunction), and
-C     TMP carries the P1N result of a split amplitude into its
-C     CombineAmp partner, which a slice boundary may fall between.
+C     MATRIX%(proc_id)s, in a file of its own. That unrolled
+C     sequence is essentially the whole recycled matrix element,
+C     and as one basic block inside one routine it is what makes
+C     it uncompilable; split up it can also carry its own
+C     optimisation flag (AMP_FLAG). The slices run in order and
+C     share W, TMP and AMP by reference: hel_recycle reuses a
+C     wavefunction slot many times over the sequence (so a slot
+C     number does not identify a wavefunction), and TMP carries
+C     the P1N result of a split amplitude into its CombineAmp
+C     partner, which a slice boundary may fall between.
 C
       use aloha_object
       use model_object
@@ -47,11 +48,11 @@ C
 C   Needed for v4 models
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
-C     The fake widths are recomputed here rather than read out of the
-C     matrix element, which keeps them SAVEd locals: sharing them would
-C     mean turning those into a common block, i.e. editing every matrix
-C     element whether it is chunked or not. A handful of operations,
-C     done once.
+C     The fake widths are recomputed here rather than read out
+C     of the matrix element, which keeps them SAVEd locals:
+C     sharing them would mean turning those into a common block,
+C     i.e. editing every matrix element whether it is chunked or
+C     not. A handful of operations, done once.
 	%(fake_width_declaration)s
 	logical first
 	data first /.true./
