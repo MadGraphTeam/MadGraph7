@@ -7,6 +7,9 @@
 #ifndef MGONGPUCONFIG_H
 #define MGONGPUCONFIG_H 1
 
+// Deliberately kept: the mgOnGpu* file names, include guards and MGONGPU_* macros (only the namespace is madmatrix).
+// A later rename must also update the 'mgOnGpu*.*' include-order regex in madmatrix/contrib/.clang-format.
+
 // This build ships mgOnGpuVectors.h (the SIMD vector types). The headers every backend
 // shares (CPPProcess.h, Parameters.h, HelAmps_<model>.h) include it on this macro, not on
 // whether some mgOnGpuVectors.h happens to be reachable on the include path.

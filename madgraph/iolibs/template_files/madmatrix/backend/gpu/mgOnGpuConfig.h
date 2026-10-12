@@ -7,6 +7,9 @@
 #ifndef MGONGPUCONFIG_H
 #define MGONGPUCONFIG_H 1
 
+// Deliberately kept: the mgOnGpu* file names, include guards and MGONGPU_* macros (only the namespace is madmatrix).
+// A later rename must also update the 'mgOnGpu*.*' include-order regex in madmatrix/contrib/.clang-format.
+
 #include <sstream>
 #include <string>
 
