@@ -3151,6 +3151,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             &ChannelEventGenerator::load_json,
             py::arg("channel_json"),
             py::arg("contexts"),
+            py::kw_only(),
             py::arg("event_file") = "",
             py::arg("weight_file") = "",
             py::arg("config"),
