@@ -154,28 +154,10 @@ C     to MATRIX / GET_AMP.
       LOGICAL GOODHEL(NCOMB,NFLAV)
       DATA NTRY/NNTRY_FLAV*0/
       DATA GOODHEL/NGOODHEL_FLAV*.FALSE./
-C     C-parity helicity de-duplication (see the helicity loop
-C     below): FLIP(IHEL) is the row with every helicity negated
-C     (built once by the generator, an involution); TSTORE
-C     caches the per-squared-order |M|^2 vector within a scan
-C     point; DEDUP turns the reuse on in the fast phase only.
-C     The reuse is ALL-OR-NOTHING per flavor: CSYM(J) stays true
-C     only while EVERY row is in a genuine matched pair -- a
-C     self-paired row (FLIP(IHEL)=IHEL) or a single pair whose
-C     |M|^2 differ at any scan point clears it for good. Halving
-C     the whole loop (rather than an arbitrary subset of rows)
-C     is what keeps any per-row accumulation uniformly scaled,
-C     so the same rule is used by every backend. The scan is
-C     counted separately from NTRY only when the crossing
-C     machinery is written out: a crossing permutes and
-C     sign-flips the helicities, so a base-row negation is no
-C     longer the C-parity partner and a CROSSED call must not
-C     advance the scan (nor use its verdict). Without crossing
-C     every call is uncrossed and NTRY is that counter. The pair
-C     test runs per squared-order component, not on their sum:
-C     two components could in principle cancel into an equal
-C     total, and the doubling below is applied component by
-C     component.
+C     C-parity: FLIP(IHEL) is the row with every helicity
+C     negated. If each row and its flip give the same |M|^2
+C     (checked on the first calls, per squared order), only
+C     one row of each pair is computed and counted twice.
       INTEGER FLIP(NCOMB)
       LOGICAL CSYM(NFLAV), DEDUP
       REAL*8 TSTORE(NSQAMPSO,NCOMB)
@@ -194,25 +176,10 @@ C     this template used to rely on).
       INTEGER NHEL(NEXTERNAL,NCOMB)
       COMMON/%(proc_prefix)sPROCESS_NHEL/NHEL
 
-C     DELIBERATE DIVERGENCE from matrix_standalone_v4.inc, which
-C     publishes the canonical code list through a common and
-C     matches USERHEL against it. (The routine names it and the
-C     other entry points this template leaves out are spelled in
-C     the commit message and in
-C     test_splitorders_template_carries_the_non_crossing_standalone_api,
-C     not here: matrix_template_provides answers by searching
-C     the template text, so naming a routine in a comment would
-C     make it claim the routine exists.)
-C     Here the external helicity label stays the ROW NUMBER,
-C     because that is what this template's callers pass: MadLoop
-C     hands SMATRIXHEL_SPLITORDERS its own USERHEL, which the
-C     EW-Sudakov driver fills from `do
-C     chosen_hel=1,SDK_GET_NCOMB()` (Template/NLO/SubProcesses/
-C     check_sudakov.f) -- a row index into the same enumeration.
-C     The two labels coincide for every unpolarized process (the
-C     code of row i is exactly i); they differ only under a
-C     {0}/{L}-style restriction, and relabelling there would
-C     silently move the Born of a polarized NLO run.
+C     USERHEL selects one helicity configuration: here it is its
+C     row in the NHEL table, which is what the NLO callers pass.
+C     Without polarized legs this row number is also the
+C     helicity code of the other standalone outputs.
       INTEGER USERHEL
       DATA USERHEL/-1/
       COMMON/%(proc_prefix)sHELUSERCHOICE/USERHEL
