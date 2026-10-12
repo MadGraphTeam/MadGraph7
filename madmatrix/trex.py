@@ -188,7 +188,7 @@ class TREX_OneProcessExporter(model_handling.OneProcessExporterMadMatrix):
         """Generate mgOnGpuConfig.h, CPPProcess.cc, CPPProcess.h, check_sa.cc, gXXX.cu links"""
         super().generate_process_files()
         # for TREX for now no /backend
-        self.edit_mgonGPU()
+        self.edit_config()
         self.edit_rwgt_header()
         self.edit_rwgt_runner()
         

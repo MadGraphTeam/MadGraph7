@@ -2253,9 +2253,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ff.close()
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (add debug printouts and multichannel handling #473) 
-    def edit_mgonGPU(self):
-        """Generate mgOnGpuConfig.h"""
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_mgonGPU')
+    def edit_config(self):
+        """Generate the config header src/mgOnGpuConfig.h"""
+        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_config')
         template = open(pjoin(self.template_path,'madmatrix','mgOnGpuConfig.h'),'r').read()
         replace_dict = {}
         nexternal, nincoming = self.matrix_elements[0].get_nexternal_ninitial()
