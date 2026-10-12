@@ -7,9 +7,9 @@
 // Use ./runTest.exe --gtest_filter=*misc to run only testmisc.cc tests
 // ----------------------------------------------------------------------------
 
-#include "mgOnGpuConfig.h"
+#include "madmatrixConfig.h"
 
-#include "mgOnGpuVectors.h"
+#include "madmatrixVectors.h"
 
 #include "constexpr_math.h"
 #include "ProcessData.h"

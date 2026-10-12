@@ -7,19 +7,18 @@
 #ifndef MGONGPUCONFIG_H
 #define MGONGPUCONFIG_H 1
 
-// Deliberately kept: the mgOnGpu* file names, include guards and MGONGPU_* macros (only the namespace is madmatrix).
-// A later rename must also update the 'mgOnGpu*.*' include-order regex in madmatrix/contrib/.clang-format.
+// Deliberately kept: the include guards and MGONGPU_* macros (the namespace and the file names are madmatrix).
 
 #include <sstream>
 #include <string>
 
-// This build ships mgOnGpuVectors.h (the SIMD vector types). The headers every backend
+// This build ships madmatrixVectors.h (the SIMD vector types). The headers every backend
 // shares (CPPProcess.h, Parameters.h, HelAmps_<model>.h) include it on this macro, not on
-// whether some mgOnGpuVectors.h happens to be reachable on the include path.
+// whether some madmatrixVectors.h happens to be reachable on the include path.
 #define MGONGPU_HAS_VECTORS_H 1
 
 // simd backend: always built with a plain host compiler, never nvcc/hipcc, so the
-// GPU-backend selection macro (see gpu/mgOnGpuConfig.h) is deliberately never
+// GPU-backend selection macro (see gpu/madmatrixConfig.h) is deliberately never
 // defined here - single-file, all-backend headers rely on that to pick branches.
 
 // Choose floating point precision (for everything but color algebra #537)

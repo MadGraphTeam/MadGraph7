@@ -13,7 +13,7 @@
 
 #include "CPPProcess.h"
 
-#include "mgOnGpuConfig.h"
+#include "madmatrixConfig.h"
 
 %(hel_amps_h)s
 #include "MemoryAccessAmplitudes.h"

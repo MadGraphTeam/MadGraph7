@@ -7,7 +7,7 @@
 #ifndef constexpr_math_h
 #define constexpr_math_h 1
 
-#include "mgOnGpuConfig.h"
+#include "madmatrixConfig.h"
 
 #include <cassert>
 #include <cmath>

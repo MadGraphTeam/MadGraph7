@@ -23,7 +23,7 @@
 //
 //==========================================================================
 
-#include "mgOnGpuConfig.h"
+#include "madmatrixConfig.h"
 
 #include "CPPProcess.h"
 #ifdef MGONGPUCPP_GPUIMPL

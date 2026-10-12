@@ -7,7 +7,7 @@
 #ifndef MemoryAccessWeights_H
 #define MemoryAccessWeights_H 1
 
-#include "mgOnGpuConfig.h"
+#include "madmatrixConfig.h"
 
 #include "MemoryAccessHelpers.h"
 

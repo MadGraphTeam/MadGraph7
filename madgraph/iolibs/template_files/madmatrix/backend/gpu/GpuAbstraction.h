@@ -7,7 +7,7 @@
 #ifndef MG5AMC_GPUABSTRACTION_H
 #define MG5AMC_GPUABSTRACTION_H 1
 
-#include "mgOnGpuConfig.h"
+#include "madmatrixConfig.h"
 
 #include <cassert>
 

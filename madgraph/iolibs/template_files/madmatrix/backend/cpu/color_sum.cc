@@ -6,11 +6,11 @@
 
 #include "color_sum.h"
 
-#include "mgOnGpuConfig.h"
+#include "madmatrixConfig.h"
 
 #include "ColorData.h" // P1-generated: colorMatrix/colorDenom
 #include "MemoryAccessMatrixElements.h"
-#include "mgOnGpuCxtypes.h"
+#include "madmatrixCxtypes.h"
 
 namespace madmatrix
 {

@@ -7,7 +7,7 @@
 #ifndef MADGRAPHTEST_H_
 #define MADGRAPHTEST_H_ 1
 
-#include "mgOnGpuConfig.h"
+#include "madmatrixConfig.h"
 
 #include "CPPProcess.h"
 

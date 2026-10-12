@@ -7,14 +7,13 @@
 #ifndef MGONGPUCONFIG_H
 #define MGONGPUCONFIG_H 1
 
-// Deliberately kept: the mgOnGpu* file names, include guards and MGONGPU_* macros (only the namespace is madmatrix).
-// A later rename must also update the 'mgOnGpu*.*' include-order regex in madmatrix/contrib/.clang-format.
+// Deliberately kept: the include guards and MGONGPU_* macros (the namespace and the file names are madmatrix).
 
 #include <sstream>
 #include <string>
 
 // cpu backend: always built with a plain host compiler, never nvcc/hipcc, so the
-// GPU-backend selection macro (see gpu/mgOnGpuConfig.h) is deliberately never
+// GPU-backend selection macro (see gpu/madmatrixConfig.h) is deliberately never
 // defined here - single-file, all-backend headers rely on that to pick branches.
 
 // Choose floating point precision (for everything but color algebra #537)

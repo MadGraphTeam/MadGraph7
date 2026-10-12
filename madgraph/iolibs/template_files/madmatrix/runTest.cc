@@ -7,7 +7,7 @@
 // Use ./runTest.exe --gtest_filter=*xxx to run only testxxx.cc tests
 // ----------------------------------------------------------------------------
 
-#include "mgOnGpuConfig.h"
+#include "madmatrixConfig.h"
 
 #ifdef MGONGPUCPP_GPUIMPL
 #include "GpuAbstraction.h"

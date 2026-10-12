@@ -7,9 +7,9 @@
 #ifndef MGONGPUCXTYPES_H
 #define MGONGPUCXTYPES_H 1
 
-#include "mgOnGpuConfig.h"
+#include "madmatrixConfig.h"
 
-#include "mgOnGpuFptypes.h"
+#include "madmatrixFptypes.h"
 
 #include <cassert>
 #include <iostream>
@@ -870,7 +870,7 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-  // all needed from mgOnGpuVectors.h for gpu
+  // all needed from madmatrixVectors.h for gpu
   const int neppV = 1;
 
   // Printout to std::cout for user defined types

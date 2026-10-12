@@ -7,9 +7,9 @@
 #ifndef MemoryBuffers_H
 #define MemoryBuffers_H 1
 
-#include "mgOnGpuConfig.h"
+#include "madmatrixConfig.h"
 
-#include "mgOnGpuCxtypes.h"
+#include "madmatrixCxtypes.h"
 
 #include "ProcessData.h"
 #include "Parameters.h"

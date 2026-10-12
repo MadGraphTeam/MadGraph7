@@ -7,7 +7,7 @@
 #ifndef MGONGPUFPTYPES_H
 #define MGONGPUFPTYPES_H 1
 
-#include "mgOnGpuConfig.h"
+#include "madmatrixConfig.h"
 
 #include <algorithm>
 #include <cmath>

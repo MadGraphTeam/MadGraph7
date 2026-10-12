@@ -7,9 +7,9 @@
 #ifndef MGONGPUCXTYPES_H
 #define MGONGPUCXTYPES_H 1
 
-#include "mgOnGpuConfig.h"
+#include "madmatrixConfig.h"
 
-#include "mgOnGpuFptypes.h"
+#include "madmatrixFptypes.h"
 
 #include <cassert>
 #include <iostream>
@@ -448,7 +448,7 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-  // all needed from mgOnGpuVectors.h for cpu
+  // all needed from madmatrixVectors.h for cpu
   const int neppV = 1;
 
 #ifndef MGONGPU_CPPCXTYPE_CXSMPL // operator<< for cxsmpl has already been defined!

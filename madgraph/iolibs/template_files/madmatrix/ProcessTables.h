@@ -15,7 +15,7 @@
 #ifndef PROCESSTABLES_H
 #define PROCESSTABLES_H 1
 
-#include "mgOnGpuConfig.h" // for __device__
+#include "madmatrixConfig.h" // for __device__
 #include "ProcessData.h"
 #include "Parameters.h" // for FLV_COUPLING::max_flavor
 

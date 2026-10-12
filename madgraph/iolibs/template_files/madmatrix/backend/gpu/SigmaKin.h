@@ -11,8 +11,8 @@
 #ifndef SIGMAKIN_H
 #define SIGMAKIN_H 1
 
-#include "mgOnGpuConfig.h"
-#include "mgOnGpuCxtypes.h" // for cxtype, fptype_amp_sv
+#include "madmatrixConfig.h"
+#include "madmatrixCxtypes.h" // for cxtype, fptype_amp_sv
 #include "GpuAbstraction.h"
 
 namespace madmatrix

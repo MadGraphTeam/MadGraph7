@@ -14,12 +14,12 @@
 #ifndef MG5_%(process_file_name)s_H
 #define MG5_%(process_file_name)s_H 1
 
-#include "mgOnGpuConfig.h"
+#include "madmatrixConfig.h"
 
-#ifdef MGONGPU_HAS_VECTORS_H // the simd backend (see its mgOnGpuConfig.h)
-#include "mgOnGpuVectors.h"
+#ifdef MGONGPU_HAS_VECTORS_H // the simd backend (see its madmatrixConfig.h)
+#include "madmatrixVectors.h"
 #else
-#include "mgOnGpuCxtypes.h"
+#include "madmatrixCxtypes.h"
 #endif
 
 #include "Parameters.h"

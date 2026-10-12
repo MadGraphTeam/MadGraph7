@@ -6,7 +6,7 @@
 #ifndef MemoryAccessIflavorVec_H
 #define MemoryAccessIflavorVec_H 1
 
-#include "mgOnGpuConfig.h"
+#include "madmatrixConfig.h"
 
 #include "MemoryAccessHelpers.h"
 #include "MemoryAccessVectors.h"

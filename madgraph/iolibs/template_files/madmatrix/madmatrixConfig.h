@@ -7,12 +7,11 @@
 #ifndef MGONGPUCONFIG_H
 #define MGONGPUCONFIG_H 1
 
-// Deliberately kept: the mgOnGpu* file names, include guards and MGONGPU_* macros (only the namespace is madmatrix).
-// A later rename must also update the 'mgOnGpu*.*' include-order regex in madmatrix/contrib/.clang-format.
+// Deliberately kept: the include guards and MGONGPU_* macros (the namespace and the file names are madmatrix).
 
-// This build ships mgOnGpuVectors.h (the SIMD vector types). The headers every backend
+// This build ships madmatrixVectors.h (the SIMD vector types). The headers every backend
 // shares (CPPProcess.h, Parameters.h, HelAmps_<model>.h) include it on this macro, not on
-// whether some mgOnGpuVectors.h happens to be reachable on the include path.
+// whether some madmatrixVectors.h happens to be reachable on the include path.
 #define MGONGPU_HAS_VECTORS_H 1
 
 // Is this a GPU (CUDA, HIP) or CPU implementation?
@@ -20,7 +19,7 @@
 #define MGONGPUCPP_GPUIMPL cuda
 #elif defined __HIPCC__
 #define MGONGPUCPP_GPUIMPL hip
-#include "hip/hip_runtime.h" // needed for blockDim, blockIdx, threadIdx: better in mgOnGpuConfig.h than in GpuAbstraction.h
+#include "hip/hip_runtime.h" // needed for blockDim, blockIdx, threadIdx: better in madmatrixConfig.h than in GpuAbstraction.h
 #else
 #undef MGONGPUCPP_GPUIMPL
 #endif

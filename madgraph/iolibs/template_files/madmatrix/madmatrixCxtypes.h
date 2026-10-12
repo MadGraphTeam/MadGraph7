@@ -7,9 +7,9 @@
 #ifndef MGONGPUCXTYPES_H
 #define MGONGPUCXTYPES_H 1
 
-#include "mgOnGpuConfig.h"
+#include "madmatrixConfig.h"
 
-#include "mgOnGpuFptypes.h"
+#include "madmatrixFptypes.h"
 
 #include <iostream>
 #include <type_traits>

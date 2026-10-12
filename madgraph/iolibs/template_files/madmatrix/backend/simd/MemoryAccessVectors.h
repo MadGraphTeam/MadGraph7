@@ -7,9 +7,9 @@
 #ifndef MemoryAccessVectors_H
 #define MemoryAccessVectors_H 1
 
-#include "mgOnGpuConfig.h"
+#include "madmatrixConfig.h"
 
-#include "mgOnGpuVectors.h"
+#include "madmatrixVectors.h"
 
 namespace madmatrix // this is only needed for CPU SIMD vectorization
 {

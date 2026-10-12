@@ -7,7 +7,7 @@
 #ifndef RAMBOSAMPLINGKERNELS_H
 #define RAMBOSAMPLINGKERNELS_H 1
 
-#include "mgOnGpuConfig.h"
+#include "madmatrixConfig.h"
 
 #include "MemoryBuffers.h"
 

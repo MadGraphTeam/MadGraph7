@@ -11,9 +11,9 @@
 #ifndef MASSLESS_RAMBO_H
 #define MASSLESS_RAMBO_H 1
 
-#include "mgOnGpuConfig.h"
+#include "madmatrixConfig.h"
 
-#include "mgOnGpuFptypes.h"
+#include "madmatrixFptypes.h"
 
 #include "CPPProcess.h"
 
