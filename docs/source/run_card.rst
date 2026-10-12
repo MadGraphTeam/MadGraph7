@@ -308,6 +308,28 @@ VEGAS grids adapt the phase-space sampling during the survey.
     Learn the probabilities of the permutations of identical particles instead of using
     equal ones.
 
+[custom_functions]
+------------------
+
+Shared libraries with user-written functions, created with ``bin/init_custom_func``. Paths
+are relative to the process directory. An empty string disables the function. See
+:doc:`custom_functions` for details.
+
+``cut`` (``""``)
+    Custom cut, for example ``"lib/custom_cut.so"``. It is applied on top of the
+    ``[cuts]``.
+
+``scale`` (``""``)
+    Custom scale. It replaces ``dynamical_scale_choice``.
+
+``pdf`` (``""``)
+    Custom parton density. It replaces the PDF set, but :math:`\alpha_s` still comes from
+    ``[beam] pdf``. The systematics are disabled.
+
+``bias`` (``""``)
+    Custom event bias. Events are generated with the weight times the bias and written with
+    the weight divided by the bias.
+
 .. _run-card-multiparticles:
 
 [multiparticles]
