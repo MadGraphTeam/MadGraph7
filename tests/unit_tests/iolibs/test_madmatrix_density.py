@@ -101,9 +101,11 @@ class TestMadMatrixDensityFiles(unittest.TestCase):
         open(os.path.join(self.tmp, 'lib', name), 'w').close()
 
     def test_make_variables(self):
-        self.assertEqual(density.make_variables(), ['PGOAL=lib', 'BACKEND=scalar'])
+        self.assertEqual(density.make_variables(),
+                         ['PGOAL=lib', 'BACKEND=scalar', 'DENSITY=1'])
         self.assertEqual(density.build_command(4, 'simd_128', '_ms2d'),
-                         ['make', '-j4', 'PGOAL=lib', 'BACKEND=simd_128', 'LIBTAG=_ms2d'])
+                         ['make', '-j4', 'PGOAL=lib', 'BACKEND=simd_128', 'DENSITY=1',
+                          'LIBTAG=_ms2d'])
 
     def test_find_libtag(self):
         self.assertRaises(density.MadDensityError, density.find_libtag, self.tmp)

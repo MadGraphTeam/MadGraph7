@@ -50,8 +50,10 @@ def is_output(path):
 
 def make_variables(backend='scalar', libtag=''):
     """The make variables building what this module loads (the libraries, not
-    the standalone check_sa.exe) when make runs in SubProcesses."""
-    variables = ['PGOAL=lib', 'BACKEND=%s' % backend]
+    the standalone check_sa.exe) when make runs in SubProcesses. DENSITY=1
+    adds Density.o, which only this module calls: other builds of the same
+    output (check_sa, mg7) leave it out."""
+    variables = ['PGOAL=lib', 'BACKEND=%s' % backend, 'DENSITY=1']
     if libtag:
         variables.append('LIBTAG=%s' % libtag)
     return variables

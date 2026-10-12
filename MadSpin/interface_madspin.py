@@ -143,6 +143,17 @@ class MadSpinStaleParameters(madspin.MadSpinError):
     pass
 
 
+class MadSpinStaleDirectory(madspin.MadSpinError):
+    """A reused ``ms_dir``/``use_old_dir`` directory was built by another
+    MadSpin version (or by one that did not record its version).
+
+    What such a directory caches -- the maximum weights of the unweighting,
+    the matrix-element libraries, the pickled setup -- is only valid for the
+    code that computed it: a new version may bound another weight, or load
+    libraries the old one never built."""
+    pass
+
+
 class MadSpinZeroBranchingRatio(madspin.MadSpinError):
     """The branching ratio MadSpin is about to apply to every event is zero (or
     not a number). Raised instead of writing the events.
@@ -2304,8 +2315,10 @@ class MadSpinInterface(extended_cmd.Cmd):
             self._warn_ignored_decay_groups(spinmode)
 
         # Before any mode is dispatched, and before anything cached in a reused
-        # directory is read back: everything in there was computed from a
-        # param_card, and none of it is re-measured on reuse.
+        # directory is read back: everything in there was computed by one
+        # MadSpin version from one param_card, and none of it is re-measured
+        # on reuse.
+        self._check_reused_version()
         self._check_reused_param_card()
 
         if spinmode in ["none"]:
@@ -3080,6 +3093,13 @@ class MadSpinInterface(extended_cmd.Cmd):
     # says whether the cache may be reused at all -- see
     # _check_reused_param_card.
     PARAM_CARD_STAMP = 'ms_param_card.dat'
+    # The version a reused directory was built by (_check_reused_version).
+    # MS_DIR_FORMAT is bumped whenever what such a directory caches changes
+    # meaning without the MadGraph version changing: 1 = density matrices
+    # from madmatrix, offshell max-weight scan evaluated per draw,
+    # offshell_min_recoil.
+    VERSION_STAMP = 'ms_version.dat'
+    MS_DIR_FORMAT = 1
 
     def _reused_directory(self):
         """The directory whose already-built content this run would reuse, or
@@ -3117,6 +3137,64 @@ class MadSpinInterface(extended_cmd.Cmd):
         """
         return any(misc.glob(pattern, directory)
                    for pattern in self.CACHED_MATERIAL)
+
+    def _ms_dir_version(self):
+        """What a reused directory must have been built by: the format of what
+        MadSpin caches there, and the MadGraph version."""
+        return 'format %d\nmadgraph %s\n' % (self.MS_DIR_FORMAT,
+                                              misc.get_pkg_info()['version'])
+
+    def _check_reused_version(self):
+        """Refuse to reuse a directory built by another MadSpin version.
+
+        The directory is stamped (VERSION_STAMP) when it is first built; one
+        that holds cached material and a different stamp -- or none, i.e. a
+        MadSpin older than the stamp -- is not reused: its maximum weights may
+        bound another weight than this version computes, its libraries may not
+        be the ones this version loads. Same life cycle as the param_card
+        stamp of _check_reused_param_card."""
+        reusing = self._reused_directory()
+        directory = reusing or (self.options['curr_dir'] and
+                                os.path.realpath(self.options['curr_dir']))
+        if not directory:
+            return
+        stamp = pjoin(directory, self.VERSION_STAMP)
+        if not reusing and not os.path.exists(stamp):
+            return  # nothing reuses this directory; do not leave a file behind
+        current = self._ms_dir_version()
+        if reusing and self._holds_cached_material(directory):
+            try:
+                with open(stamp) as fsock:
+                    recorded = fsock.read()
+            except (IOError, OSError):
+                recorded = None
+            if recorded != current:
+                describe = lambda text: ', '.join(text.split('\n')).strip(', ')
+                raise MadSpinStaleDirectory(
+                    "MadSpin is reusing %s, which was built by %s; this run "
+                    "is %s.\n"
+                    "\n"
+                    "What that directory caches -- the maximum weights of the "
+                    "unweighting, the matrix-element libraries, the pickled "
+                    "setup -- is only valid for the version that computed it.\n"
+                    "\n"
+                    "Point 'ms_dir'/'use_old_dir' at a fresh directory (or "
+                    "remove %s) and rerun, so everything is rebuilt by this "
+                    "version."
+                    % (directory,
+                       'MadSpin ' + describe(recorded) if recorded else
+                       'a MadSpin that did not record its version',
+                       describe(current), directory))
+            return
+        # first use of this directory, or a rebuild of one already stamped
+        try:
+            if not os.path.isdir(directory):
+                os.makedirs(directory)
+            with open(stamp, 'w') as fsock:
+                fsock.write(current)
+        except (IOError, OSError) as error:
+            logger.debug('could not record the version of %s: %s',
+                         directory, error)
 
     def _check_reused_param_card(self):
         """Refuse to reuse a directory that was built with other parameters.
@@ -10085,6 +10163,10 @@ class MadSpinInterface(extended_cmd.Cmd):
         massive particles (a t t~ threshold) the weight stays bounded, and the
         floor is not applied.
 
+        Massless means massless in the model: aMC@NLO writes its partons on
+        the shower's Monte-Carlo mass shell (0.32 GeV quarks, a 0.75 GeV gluon
+        with HERWIG6), and such a recoil goes soft all the same.
+
         Call it once the resonances carry their ``new_mass``.
         """
         floor = self.options['offshell_min_recoil']
@@ -10093,9 +10175,18 @@ class MadSpinInterface(extended_cmd.Cmd):
         for particle in production:
             if int(particle.status) != 1 or hasattr(particle, 'new_mass'):
                 continue
-            if abs(particle.mass) < 1e-6:
+            if abs(particle.mass) < 1e-6 or self._model_massless(particle.pid):
                 return float(floor)
         return 0.
+
+    def _model_massless(self, pid):
+        """lhe_parser._model_leg_is_massless for MadSpin's model, cached per
+        pdg (it runs on every offshell trial)."""
+        cache = self.__dict__.setdefault('_ms_model_massless', {})
+        if pid not in cache:
+            cache[pid] = lhe_parser._model_leg_is_massless(
+                getattr(self, 'model', None), pid)
+        return cache[pid]
 
     def _draw_mass_value(self, pdg, budget):
         """Sample one resonance virtuality from its Breit-Wigner, capped at the
@@ -11604,14 +11695,19 @@ class MadSpinInterface(extended_cmd.Cmd):
         decay_me = 1.0
         decay_me_debug = 1.0
         jac = 1.0
-        tag, order = production.get_tag_and_order(self._revert_merged or None)
-        try:
-            info = self.generate_all.all_me[tag]
-        except:
-            misc.sprint(self.generate_all.all_me)
-            misc.sprint(production)
-            misc.sprint(decays)
-            raise
+        # a production event (all of whose offshell trial copies share its
+        # flavours) is checked once, not on every trial
+        checked = getattr(production, '_ms_hoist_source', None) or production
+        if not checked.__dict__.get('_ms_tag_checked'):
+            tag, order = production.get_tag_and_order(self._revert_merged or None)
+            try:
+                info = self.generate_all.all_me[tag]
+            except:
+                misc.sprint(self.generate_all.all_me)
+                misc.sprint(production)
+                misc.sprint(decays)
+                raise
+            checked._ms_tag_checked = True
         
         # Calculate decay ME
         if self.generate_all.mode == 'onshell':
@@ -11644,7 +11740,14 @@ class MadSpinInterface(extended_cmd.Cmd):
             #print(f"full_me = {full_me}")
         else:
             #offshell mode
-            full_dqrts = production.sqrts
+            source = getattr(production, '_ms_hoist_source', None)
+            if source is None:
+                full_dqrts = production.sqrts
+            else:
+                # the trial copies all have the sqrt(shat) of their source
+                full_dqrts = source.__dict__.get('_ms_sqrts')
+                if full_dqrts is None:
+                    full_dqrts = source._ms_sqrts = source.sqrts
             jac = 1
             # 2 -> 1 production: the single resonance virtuality is fully fixed
             # by sqrt(shat); there is no recoil phase space, so RAMBO cannot
@@ -11696,10 +11799,13 @@ class MadSpinInterface(extended_cmd.Cmd):
                 full_event = full_event.add_decays(decays)
             
                 #print(f"full event 2 = {full_event}")
-                if self.options['density_debug']:
+                # a mass set the recoil floor refused (jac_reshuffle 0) has
+                # weight zero and nothing reshuffled to compare with
+                if self.options['density_debug'] and jac_reshuffle != 0:
                     me1 = self.calculate_matrix_element(full_event)
                     #print(f"me1 = {me1} , me2 = {full_me} , ratio = {me1/full_me}")
-                    if abs(1-me1/full_me) > self.options['density_tolerance']:
+                    if (abs(full_me - me1) > self.options['density_tolerance'] * abs(full_me)
+                            if full_me else me1 != 0):
                         print(f"full = {me1} , density = {full_me} , ratio = {me1/full_me}")	    
                         print(full_event)
                         print(production)
@@ -12501,6 +12607,53 @@ class MadSpinInterface(extended_cmd.Cmd):
             out[rest_leg - 1] = (out[rest_leg - 1][0], 0., 0., 0.)
         return out
 
+    def _density_flavour(self, event):
+        """What get_density needs of the flavours of event, for every event
+        with the same particles (pid, status) in the same order, which is all
+        that get_pdir, get_mapping (no decay_chain) and get_pdg look at:
+        (orig_order, tag, legs, pdgs), legs[k] = (index in the event, crossed)
+        of the k-th leg of the matrix element -- what get_momenta reads off
+        get_mapping -- and pdgs the raw ones when the legs are merged
+        particles, as get_pdg finds them. None (and get_density takes its
+        general path) when no single assignment exists.
+
+        The trial copies of a production event and the decays of a channel
+        all share one entry: get_pdir, get_mapping and get_pdg were redone on
+        every trial (~5 us per call)."""
+        key = tuple((part.pid, part.status) for part in event)
+        cache = self.__dict__.setdefault('_ms_density_flavours', {})
+        try:
+            return cache[key]
+        except KeyError:
+            pass
+        _, orig_order, _, _, tag = self.get_pdir(event)
+        try:
+            event_pos2order, _ = event.get_mapping(
+                orig_order, merged_map=self._revert_merged or None)
+        except Exception:
+            cache[key] = None
+            return None
+        ninitial = len(orig_order[0])
+        legs = [None] * (ninitial + len(orig_order[1]))
+        position = -1
+        for index, part in enumerate(event):
+            if abs(part.status) != 1:
+                continue
+            position += 1
+            leg = event_pos2order[position]
+            legs[leg] = (index, (part.status == -1 and leg >= ninitial) or
+                                (part.status == 1 and leg < ninitial))
+        if None in legs:
+            cache[key] = None
+            return None
+        pdgs = list(orig_order[0]) + list(orig_order[1])
+        merged_particles = self.model.get('merged_particles') or {}
+        if self._revert_merged and any(abs(pid) in merged_particles for pid in pdgs):
+            pdgs = [-event[index].pid if crossed else event[index].pid
+                    for index, crossed in legs]
+        cache[key] = (orig_order, tag, legs, pdgs)
+        return cache[key]
+
     def get_density(self, event, position, allow_hel, ncomb, dimension,
                     frame_boost=None, frame_rest_leg=-1, hel_restriction=None,
                     hel_restriction_trace=None, lab_boost=None):
@@ -12519,52 +12672,65 @@ class MadSpinInterface(extended_cmd.Cmd):
         callers pass ``_decay_frame_rest_leg``'s answer instead.
         """
 
-        orig_order = getattr(event, '_ms_orig_order_for_density', None)
-        if orig_order is None:
-            _, orig_order, _, _, tag = self.get_pdir(event)
-            event._ms_orig_order_for_density = orig_order
-            # cache the tag get_pdir resolved rather than recomputing it: it is
-            # the MERGED-pdg tag (all_me is keyed by 81/-81, not by the raw
-            # event pdgs, so a bare get_tag_and_order() raises KeyError on the
-            # lookup below -- e.g. ((-1, 1), (23, 23)) against ((-81, 81),
-            # (23, 23))), and get_pdir also owns the 1 -> N antiparticle
-            # fallback, which no recomputation here would reproduce.
-            event._ms_tag_for_density = tag
-        else: #in any case, we need tag to differentiate between production and decay
-            tag = getattr(event, '_ms_tag_for_density', None)
-            if tag is None:
-                tag, _ = event.get_tag_and_order(
-                    merged_particle=self._revert_merged or None)
-
-
-        # Fast path: single-point momentum extraction without permutation
-        # construction. With apply_flavor_grouping, orig_order contains the
-        # merged-particle PDGs (e.g. 81) while the event carries the raw
-        # PDGs (e.g. 1, 2, 3): get_momenta must be told about the merge so
-        # that final.index(pdg) succeeds.
-        try:
-            p = event.get_momenta(orig_order, merged_map=self._revert_merged or None)
-        except Exception:
-            # Safety fallback for unusual event structures.
-            all_p = event.get_all_momenta(orig_order, merged_map=self._revert_merged or None)
-            assert len(all_p) == 1, "Error: get_density can only be called for a single phase-space point"
-            p = all_p[0]
-        # f77_density runs `flavormapping` on the pdgs we pass: when the ME
-        # legs use merged-particle IDs, we must pass the concrete raw PDGs
-        # from the event for this permutation so the flavormapping picks
-        # the right per-particle flavor index for GET_DENSITY. Same logic
-        # as calculate_matrix_element's pdg_for_call handling.
-        # This has to happen while `p` is still the event's own momenta:
-        # get_pdg identifies particles by exact momentum equality, so it must
-        # run before the projection below and before any frame boost.
-        pdg_template = list(orig_order[0]) + list(orig_order[1])
-        merged_particles = self.model.get('merged_particles') or {}
-        need_raw_pdg = (self._revert_merged and
-                        any(abs(pid) in merged_particles for pid in pdg_template))
-        if need_raw_pdg:
-            pdgs = event.get_pdg(p)
+        # The flavour structure of the event -- the matrix element's order, its
+        # tag, where each of its legs sits in the event, the pdgs to pass -- is
+        # shared by every event with the same particles in the same order:
+        # the trial copies of one production event, the decays of a channel
+        # (_density_flavour).
+        flavour = self._density_flavour(event)
+        if flavour is not None:
+            orig_order, tag, legs, flavour_pdgs = flavour
+            p = [(-part.E, -part.px, -part.py, -part.pz) if flip else
+                 (part.E, part.px, part.py, part.pz)
+                 for part, flip in [(event[i], flip) for i, flip in legs]]
+            pdgs = list(flavour_pdgs)
         else:
-            pdgs = pdg_template
+            orig_order = getattr(event, '_ms_orig_order_for_density', None)
+            if orig_order is None:
+                _, orig_order, _, _, tag = self.get_pdir(event)
+                event._ms_orig_order_for_density = orig_order
+                # cache the tag get_pdir resolved rather than recomputing it: it is
+                # the MERGED-pdg tag (all_me is keyed by 81/-81, not by the raw
+                # event pdgs, so a bare get_tag_and_order() raises KeyError on the
+                # lookup below -- e.g. ((-1, 1), (23, 23)) against ((-81, 81),
+                # (23, 23))), and get_pdir also owns the 1 -> N antiparticle
+                # fallback, which no recomputation here would reproduce.
+                event._ms_tag_for_density = tag
+            else: #in any case, we need tag to differentiate between production and decay
+                tag = getattr(event, '_ms_tag_for_density', None)
+                if tag is None:
+                    tag, _ = event.get_tag_and_order(
+                        merged_particle=self._revert_merged or None)
+
+
+            # Fast path: single-point momentum extraction without permutation
+            # construction. With apply_flavor_grouping, orig_order contains the
+            # merged-particle PDGs (e.g. 81) while the event carries the raw
+            # PDGs (e.g. 1, 2, 3): get_momenta must be told about the merge so
+            # that final.index(pdg) succeeds.
+            try:
+                p = event.get_momenta(orig_order, merged_map=self._revert_merged or None)
+            except Exception:
+                # Safety fallback for unusual event structures.
+                all_p = event.get_all_momenta(orig_order, merged_map=self._revert_merged or None)
+                assert len(all_p) == 1, "Error: get_density can only be called for a single phase-space point"
+                p = all_p[0]
+            # f77_density runs `flavormapping` on the pdgs we pass: when the ME
+            # legs use merged-particle IDs, we must pass the concrete raw PDGs
+            # from the event for this permutation so the flavormapping picks
+            # the right per-particle flavor index for GET_DENSITY. Same logic
+            # as calculate_matrix_element's pdg_for_call handling.
+            # This has to happen while `p` is still the event's own momenta:
+            # get_pdg identifies particles by exact momentum equality, so it must
+            # run before the projection below and before any frame boost.
+            pdg_template = list(orig_order[0]) + list(orig_order[1])
+            merged_particles = self.model.get('merged_particles') or {}
+            need_raw_pdg = (self._revert_merged and
+                            any(abs(pid) in merged_particles for pid in pdg_template))
+            if need_raw_pdg:
+                pdgs = event.get_pdg(p)
+            else:
+                pdgs = pdg_template
         # aMC@NLO writes its LHE with the partons on the Monte-Carlo mass
         # shell while the matrix element is a massless one; undo that here, in
         # the lab, *before* the frame boost (see

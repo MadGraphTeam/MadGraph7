@@ -5574,7 +5574,7 @@ class decay_all_events_onshell(decay_all_events):
             backend = self.density_backend(commandline_production)
             logger.info(commandline_production)
             mgcmd.exec_cmd(commandline_production, precmd=True)
-            self.output_density_me(pjoin(path_me, ms_me_subdir), backend)
+            self.output_density_me(pjoin(path_me, ms_me_subdir), backend, 'p')
 
             # store information about the production matrix elements
             fill_all_me(self, "production")
@@ -5585,7 +5585,7 @@ class decay_all_events_onshell(decay_all_events):
             logger.info(commandline_decay)
             mgcmd.exec_cmd(commandline_decay, precmd=True)
             self.output_density_me(pjoin(path_me, ms_me_decay_subdir),
-                                   self.density_backend(commandline_decay))
+                                   self.density_backend(commandline_decay), 'd')
 
             # store information about the decay matrix elements
             fill_all_me(self, "decay")
@@ -5618,9 +5618,18 @@ class decay_all_events_onshell(decay_all_events):
             return 'fortran'
         return 'madmatrix'
 
-    def output_density_me(self, path, backend):
+    def density_libtag(self, side):
+        """The LIBTAG of the madmatrix libraries of one density tree (side 'p'
+        production, 'd' decay). Production and decay live in one process, as do
+        the trees of a second MadSpin run, and the loader tells libraries apart
+        by their name only."""
+        return '_ms%d%s' % (getattr(self.mscmd, '_ms_run_id', 1), side)
+
+    def output_density_me(self, path, backend, side):
         """Write the matrix elements just generated to path, for the density
-        modes. A madmatrix output that fails falls back to the Fortran one.
+        modes (side 'p' production, 'd' decay). A madmatrix output is built
+        right away, while these processes are still the current ones: one that
+        cannot be written or does not compile is replaced by the Fortran one.
         Returns the backend written; MadSpinInterface.create_f2py_module tells
         the two apart from what it finds in path."""
         if backend == 'madmatrix':
@@ -5628,11 +5637,17 @@ class decay_all_events_onshell(decay_all_events):
             logger.info(commandline)
             try:
                 self.mgcmd.exec_cmd(commandline, precmd=True)
+                misc.compile(madmatrix_density.make_variables(
+                                 libtag=self.density_libtag(side)),
+                             cwd=pjoin(path, 'SubProcesses'), mode='cpp',
+                             nb_core=self.mgcmd.options['nb_core'])
                 return backend
             except Exception as error:
-                logger.warning('MadSpin could not write its density matrix elements '
-                               'with madmatrix (%s): falling back to the Fortran '
-                               'standalone output.', error)
+                logger.warning('MadSpin could not write or build its density matrix '
+                               'elements with madmatrix (%s): falling back to the '
+                               'Fortran standalone output.',
+                               str(error).strip().split('\n')[0])
+                logger.debug('madmatrix failure: %s', error)
                 if os.path.exists(path):
                     shutil.rmtree(path)
         commandline = 'output standalone_fortran %s --prefix=int --density=1 -f' % path
@@ -5845,12 +5860,12 @@ class decay_all_events_onshell(decay_all_events):
         for subdir, fortran_args, side in trees:
             tree = pjoin(self.path_me, subdir)
             if madmatrix_density.is_output(tree):
-                # The C++ libraries madmatrix.density loads. Production and decay
-                # live in one process, as do the trees of a second MadSpin run, and
-                # the loader tells libraries apart by their name only: the same
-                # reason the Fortran side changes MENUM and PROCNAME above.
+                # The C++ libraries madmatrix.density loads, which
+                # output_density_me already built (make has nothing left to do
+                # then); named per tree for the same reason the Fortran side
+                # changes MENUM and PROCNAME above (density_libtag).
                 misc.compile(madmatrix_density.make_variables(
-                                 libtag='_ms%d%s' % (ms_run_id, side)),
+                                 libtag=self.density_libtag(side)),
                              cwd=pjoin(tree, 'SubProcesses'), mode='cpp',
                              nb_core=self.mgcmd.options['nb_core'])
                 continue

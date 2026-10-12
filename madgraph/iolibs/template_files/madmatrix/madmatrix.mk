@@ -796,8 +796,10 @@ processid_short=$(shell basename $(CURDIR))
 
 MADMATRIX_LIB = madmatrix$(LIBTAG)_$(processid_short)_$(BACKEND)
 objects_lib=$(BUILDDIR)/CPPProcess.o $(BUILDDIR)/color_sum.o $(BUILDDIR)/MatrixElementKernels.o $(BUILDDIR)/CrossSectionKernels.o $(BUILDDIR)/umami.o $(BUILDDIR)/SigmaKin.o
-# The spin-density matrices for MadSpin (backend/common/Density.h), C++ backends only
-ifeq ($(GPUCC),)
+# The spin-density matrices for MadSpin (backend/common/Density.h): C++ backends,
+# and only in the builds madmatrix/density.py asks for (DENSITY=1, the scalar
+# libraries MadSpin loads), not in every library of every output
+ifeq ($(DENSITY)$(GPUCC),1)
   objects_lib += $(BUILDDIR)/Density.o
 endif
 

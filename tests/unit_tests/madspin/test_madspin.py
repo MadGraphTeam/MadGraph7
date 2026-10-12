@@ -84,7 +84,7 @@ def _borrow_decision_helpers(namespace):
                  # channels once per production event, before any draw
                  '_positional_deal', '_dealt_rank',
                  # the offshell mass stage reshuffles with the recoil floor
-                 '_offshell_min_recoil'):
+                 '_offshell_min_recoil', '_model_massless'):
         namespace[name] = inspect.getattr_static(
             interface_madspin.MadSpinInterface, name)
 
@@ -7200,6 +7200,127 @@ class TestDensityBackendChoice(unittest.TestCase):
                          'madmatrix')
 
 
+class TestDensityOutputFallback(unittest.TestCase):
+    """decay_all_events_onshell.output_density_me builds a madmatrix output
+    right away, while its processes are still the current ones, so that one
+    which does not compile (e.g. a model whose parameters the C++ code
+    generation cannot write) is replaced by the Fortran output."""
+
+    def _output(self, compile_error=None):
+        import tempfile
+        commands, builds = [], []
+
+        class Cmd(object):
+            options = {'nb_core': 1}
+
+            def exec_cmd(self, line, precmd=True):
+                commands.append(line)
+
+        stub = type('Stub', (), {})()
+        stub.mgcmd = Cmd()
+        stub.mscmd = type('MSCmd', (), {'_ms_run_id': 3})()
+        stub.density_libtag = \
+            madspin.decay_all_events_onshell.density_libtag.__get__(stub)
+
+        def fake_compile(args, **opts):
+            builds.append((list(args), opts.get('cwd')))
+            if compile_error:
+                raise Exception(compile_error)
+
+        path = tempfile.mkdtemp()
+        original = madspin.misc.compile
+        madspin.misc.compile = fake_compile
+        try:
+            backend = madspin.decay_all_events_onshell.output_density_me(
+                stub, path, 'madmatrix', 'p')
+        finally:
+            madspin.misc.compile = original
+            if os.path.exists(path):
+                shutil.rmtree(path)
+        return backend, commands, builds, path
+
+    def test_built_right_away(self):
+        backend, commands, builds, path = self._output()
+        self.assertEqual(backend, 'madmatrix')
+        self.assertEqual(len(commands), 1)
+        self.assertTrue(commands[0].startswith('output standalone '))
+        self.assertIn('LIBTAG=_ms3p', builds[0][0])
+        self.assertEqual(builds[0][1], os.path.join(path, 'SubProcesses'))
+
+    def test_build_failure_falls_back_to_fortran(self):
+        backend, commands, builds, _ = self._output(
+            "Parameters.h: error: use of undeclared identifier 'COND'")
+        self.assertEqual(backend, 'fortran')
+        self.assertEqual(len(builds), 1)
+        self.assertTrue(commands[0].startswith('output standalone '))
+        self.assertTrue(commands[1].startswith('output standalone_fortran '))
+
+
+class TestReusedDirectoryVersion(unittest.TestCase):
+    """_check_reused_version: a reused ms_dir must have been built by this
+    MadSpin version (cache format and MadGraph version); one stamped by
+    another version, or not stamped at all, is refused once it holds cached
+    material."""
+
+    MI = interface_madspin.MadSpinInterface
+
+    def setUp(self):
+        import tempfile
+        self.directory = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.directory, ignore_errors=True)
+
+    def _stub(self, ms_dir=True):
+        MI = self.MI
+
+        class Stub(object):
+            VERSION_STAMP = MI.VERSION_STAMP
+            MS_DIR_FORMAT = MI.MS_DIR_FORMAT
+            CACHED_MATERIAL = MI.CACHED_MATERIAL
+            _reused_directory = MI._reused_directory
+            _holds_cached_material = MI._holds_cached_material
+            _ms_dir_version = MI._ms_dir_version
+            _check_reused_version = MI._check_reused_version
+
+        stub = Stub()
+        stub.options = {'ms_dir': self.directory if ms_dir else '',
+                        'use_old_dir': False, 'curr_dir': self.directory}
+        return stub
+
+    def _stamp(self):
+        path = os.path.join(self.directory, self.MI.VERSION_STAMP)
+        return open(path).read() if os.path.exists(path) else None
+
+    def _cache(self):
+        open(os.path.join(self.directory, 'max_wgt'), 'w').write('1.0\n')
+
+    def test_first_use_is_stamped_and_reused(self):
+        stub = self._stub()
+        stub._check_reused_version()
+        self.assertEqual(self._stamp(), stub._ms_dir_version())
+        self._cache()
+        stub._check_reused_version()          # same version: reused
+
+    def test_unstamped_cache_is_refused(self):
+        self._cache()
+        self.assertRaisesRegex(interface_madspin.MadSpinStaleDirectory,
+                               'did not record its version',
+                               self._stub()._check_reused_version)
+
+    def test_other_version_is_refused(self):
+        self._cache()
+        open(os.path.join(self.directory, self.MI.VERSION_STAMP), 'w').write(
+            'format 0\nmadgraph 0.0.0\n')
+        self.assertRaisesRegex(interface_madspin.MadSpinStaleDirectory,
+                               'format 0, madgraph 0.0.0',
+                               self._stub()._check_reused_version)
+
+    def test_nothing_written_without_ms_dir(self):
+        self._stub(ms_dir=False)._check_reused_version()
+        self.assertIsNone(self._stamp())
+
+
 class TestMassShuffleKernel(unittest.TestCase):
     """Event.mass_shuffle_jacobian / mass_shuffle_frame: the RAMBO reshuffling
     jacobian evaluated from n numbers per particle, with no Event, no
@@ -8767,10 +8888,21 @@ class TestOffshellRecoilFloor(unittest.TestCase):
     class _Stub(object):
         _offshell_min_recoil = \
             interface_madspin.MadSpinInterface._offshell_min_recoil
+        _model_massless = interface_madspin.MadSpinInterface._model_massless
 
-        def __init__(self, floor):
+        def __init__(self, floor, model=None):
             self.options = interface_madspin.MadSpinOptions()
             self.options['offshell_min_recoil'] = floor
+            self.model = model
+
+    class _Model(object):
+        """The two questions _model_leg_is_massless asks: a gluon massless,
+        everything else massive."""
+        def get(self, key):
+            return None
+
+        def get_particle(self, pdg):
+            return {'mass': 'ZERO' if abs(pdg) == 21 else 'MZ'}
 
     def test_the_default_floor(self):
         self.assertEqual(
@@ -8789,6 +8921,15 @@ class TestOffshellRecoilFloor(unittest.TestCase):
         self.assertEqual(self._Stub(0)._offshell_min_recoil(
             self._with_mass(100.0)), 0.)
 
+    def test_floor_applies_to_a_recoil_on_a_shower_mass_shell(self):
+        """aMC@NLO writes its gluons with HERWIG6's 0.75 GeV Monte-Carlo
+        mass: massless all the same for the model, and soft all the same when
+        the Z is drawn up to sqrt(shat)."""
+        shower_gluon = self._with_mass(100.0, gluon_mass=0.75)
+        self.assertEqual(self._Stub(0.5)._offshell_min_recoil(shower_gluon), 0.)
+        self.assertEqual(self._Stub(0.5, self._Model())
+                         ._offshell_min_recoil(shower_gluon), 0.5)
+
     # -- where the two offshell paths consume it ------------------------
 
     DECAY = """<event>
@@ -8801,6 +8942,7 @@ class TestOffshellRecoilFloor(unittest.TestCase):
     class _PathStub(object):
         _offshell_min_recoil = \
             interface_madspin.MadSpinInterface._offshell_min_recoil
+        _model_massless = interface_madspin.MadSpinInterface._model_massless
         calculate_matrix_element_from_density = \
             interface_madspin.MadSpinInterface \
             .calculate_matrix_element_from_density

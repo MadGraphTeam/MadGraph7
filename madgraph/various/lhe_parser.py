@@ -3910,10 +3910,18 @@ class Event(list):
         oldm = [p.mass_sqr for p in momenta]
         newm = [m**2 for m in new_mass]
         tot_mom = sum(momenta, FourMomentum())
-        lor = tot_mom.get_lorentz_map(FourMomentum(sqrts, 0, 0, 0))
-        back_lor =FourMomentum(sqrts, 0, 0, 0).get_lorentz_map(tot_mom)
-        for i,m in enumerate(momenta):
-            momenta[i] = m.apply_lorentzmap(lor)
+        # Momenta that already sum to rest -- a decay generated at rest, i.e.
+        # every MadSpin decay reshuffle -- need neither map: both boosts would
+        # have a zero velocity, which _apply_boost_beta skips, so the numbers
+        # are the same without the ~4 us it costs to build and apply them.
+        # Only taken where from_p1_to_p2's p1^2 == p2^2 check would pass.
+        at_rest = (tot_mom.px == 0 and tot_mom.py == 0 and tot_mom.pz == 0 and
+                   abs(tot_mom.E**2 - sqrts**2) <= 1e-6 * max(tot_mom.E**2, sqrts**2))
+        if not at_rest:
+            lor = tot_mom.get_lorentz_map(FourMomentum(sqrts, 0, 0, 0))
+            back_lor =FourMomentum(sqrts, 0, 0, 0).get_lorentz_map(tot_mom)
+            for i,m in enumerate(momenta):
+                momenta[i] = m.apply_lorentzmap(lor)
 
         failed = (momenta, 0, 0.) if return_chi else (momenta, 0)
         if sum(new_mass) > new_sqrts:
@@ -3955,8 +3963,9 @@ class Event(list):
         jac /= sum(k.norm_sq/k.E for k in new_momenta)
 
         # boost back the events in the lab-frame
-        for i,m in enumerate(new_momenta):
-            new_momenta[i] = m.apply_lorentzmap(back_lor)
+        if not at_rest:
+            for i,m in enumerate(new_momenta):
+                new_momenta[i] = m.apply_lorentzmap(back_lor)
 
         if return_chi:
             return new_momenta, jac, chi
