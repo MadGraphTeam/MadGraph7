@@ -4,8 +4,8 @@
 // Further modified by: J. Teig, A. Valassi (2022-2024).
 // Integrated with the MadGraph7 project in Feb 2026.
 
-#ifndef MGONGPUCXTYPES_H
-#define MGONGPUCXTYPES_H 1
+#ifndef MADMATRIXCXTYPES_H
+#define MADMATRIXCXTYPES_H 1
 
 #include "madmatrixConfig.h"
 
@@ -871,4 +871,4 @@ namespace madmatrix
 
 //==========================================================================
 
-#endif // MGONGPUCXTYPES_H
+#endif // MADMATRIXCXTYPES_H

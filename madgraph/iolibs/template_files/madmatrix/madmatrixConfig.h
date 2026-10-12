@@ -4,10 +4,10 @@
 // Further modified by: S. Hageboeck, O. Mattelaer, S. Roiser, J. Teig, A. Valassi (2020-2024).
 // Integrated with the MadGraph7 project in Feb 2026.
 
-#ifndef MGONGPUCONFIG_H
-#define MGONGPUCONFIG_H 1
+#ifndef MADMATRIXCONFIG_H
+#define MADMATRIXCONFIG_H 1
 
-// Deliberately kept: the include guards and MGONGPU_* macros (the namespace and the file names are madmatrix).
+// Deliberately kept: the MGONGPU_* and MGONGPUCPP_* macros (the namespace, file names and include guards are madmatrix).
 
 // This build ships madmatrixVectors.h (the SIMD vector types). The headers every backend
 // shares (CPPProcess.h, Parameters.h, HelAmps_<model>.h) include it on this macro, not on
@@ -331,4 +331,4 @@ ispoweroftwo( int n )
 #endif
 #endif
 
-#endif // MGONGPUCONFIG_H
+#endif // MADMATRIXCONFIG_H

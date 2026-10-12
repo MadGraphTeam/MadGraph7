@@ -4,8 +4,8 @@
 // Further modified by: A. Valassi (2020-2024).
 // Integrated with the MadGraph7 project in Feb 2026.
 
-#ifndef MGONGPUNVTX_H
-#define MGONGPUNVTX_H 1
+#ifndef MADMATRIXNVTX_H
+#define MADMATRIXNVTX_H 1
 
 // Provides macros for simply use of NVTX, if a compiler macro USE_NVTX is defined.
 // Original author Peter Heywood <p.heywood@sheffield.ac.uk>
@@ -72,4 +72,4 @@ namespace nvtx
 
 #endif
 
-#endif // MGONGPUNVTX_H 1
+#endif // MADMATRIXNVTX_H 1

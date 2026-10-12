@@ -4,8 +4,8 @@
 // Further modified by: S. Roiser, A. Valassi, Z. Wettersten (2020-2024).
 // Integrated with the MadGraph7 project in Feb 2026.
 
-#ifndef MGONGPUVECTORS_H
-#define MGONGPUVECTORS_H 1
+#ifndef MADMATRIXVECTORS_H
+#define MADMATRIXVECTORS_H 1
 
 #include "madmatrixCxtypes.h"
 #include "madmatrixFptypes.h"
@@ -1148,4 +1148,4 @@ namespace madmatrix
 
 } // end namespace madmatrix
 
-#endif // MGONGPUVECTORS_H
+#endif // MADMATRIXVECTORS_H

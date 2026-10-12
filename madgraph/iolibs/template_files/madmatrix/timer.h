@@ -4,8 +4,8 @@
 // Further modified by: O. Mattelaer, S. Roiser, A. Valassi (2020-2024).
 // Integrated with the MadGraph7 project in Feb 2026.
 
-#ifndef MGONGPUTIMER_H
-#define MGONGPUTIMER_H 1
+#ifndef MADMATRIXTIMER_H
+#define MADMATRIXTIMER_H 1
 
 #include <chrono>
 #include <iostream>
@@ -70,4 +70,4 @@ namespace madmatrix
   }
 
 }
-#endif // MGONGPUTIMER_H
+#endif // MADMATRIXTIMER_H

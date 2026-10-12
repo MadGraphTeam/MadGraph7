@@ -4,8 +4,8 @@
 // Further modified by: O. Mattelaer, S. Roiser, A. Valassi (2020-2024).
 // Integrated with the MadGraph7 project in Feb 2026.
 
-#ifndef MGONGPUTIMERMAP_H
-#define MGONGPUTIMERMAP_H 1
+#ifndef MADMATRIXTIMERMAP_H
+#define MADMATRIXTIMERMAP_H 1
 
 #include <cassert>
 #include <fstream>
@@ -159,4 +159,4 @@ namespace madmatrix
 
 }
 
-#endif // MGONGPUTIMERMAP_H
+#endif // MADMATRIXTIMERMAP_H
