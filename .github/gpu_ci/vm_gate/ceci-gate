@@ -9,7 +9,9 @@ workflow run it is called for
   - belongs to MadGraphTeam/MadGraph7 (not a fork) and is in progress,
   - comes from the expected workflow file (gpu_lemaitre4_hip.yml, gpu_manneback_cuda.yml,
     gpu_cluster_modules.yml),
-  - was started, or re-run, by a GitHub login listed in /etc/ceci-gate/allowed_actors,
+  - was started, or re-run, by a GitHub login listed in /etc/ceci-gate/allowed_actors, OR
+    runs the code of a branch listed in /etc/ceci-gate/allowed_branches (e.g. main: then any
+    commit landing on it is tested, whoever pushed or merged it),
   - has its start_runner (or modules) job running right now on the runner of the calling
     Unix user,
 and it only runs the scripts installed next to it in /usr/local/share/ceci-gate, never code
@@ -38,7 +40,8 @@ import urllib.request
 REPO = "MadGraphTeam/MadGraph7"
 GATE_USER = "ceci"
 SHARE = "/usr/local/share/ceci-gate"          # root-owned copies of the cluster-side scripts
-ALLOWED_ACTORS = "/etc/ceci-gate/allowed_actors"
+ALLOWED_ACTORS = "/etc/ceci-gate/allowed_actors"      # GitHub logins, one per line
+ALLOWED_BRANCHES = "/etc/ceci-gate/allowed_branches"  # optional: branch names, one per line
 STATE = "/var/lib/ceci/gate"                  # gate.log and the started/ locks
 TOKEN_FILE = "/var/lib/ceci/.github_token"    # optional, against the 60 requests/hour limit
 # calling Unix user -> name of its GitHub runner
@@ -104,11 +107,13 @@ def github(path):
         refuse("GitHub API %s: %s" % (path, e))
 
 
-def allowed_actors():
-    check(os.path.isfile(ALLOWED_ACTORS) and trusted(ALLOWED_ACTORS),
-          "%s is missing, or not root-owned, or writable by others" % ALLOWED_ACTORS)
-    with open(ALLOWED_ACTORS) as f:
-        return {line.split("#")[0].strip().lower() for line in f} - {""}
+def listed(path, required):
+    """the entries of a root-owned list file, one per line, # comments"""
+    if not required and not os.path.exists(path):
+        return set()
+    check(os.path.isfile(path) and trusted(path), "%s is missing, or not root-owned, or writable by others" % path)
+    with open(path) as f:
+        return {line.split("#")[0].strip() for line in f} - {""}
 
 
 def check_run(run_id, attempt, workflow, events, job_name):
@@ -124,15 +129,22 @@ def check_run(run_id, attempt, workflow, events, job_name):
     check(wf.get("event") in events, "run %s was triggered by %s, not %s" % (run_id, wf.get("event"), "/".join(events)))
     check(wf.get("status") == "in_progress", "run %s is %s, not in progress" % (run_id, wf.get("status")))
     actor = ((wf.get("triggering_actor") or wf.get("actor") or {}).get("login") or "?")
-    check(actor.lower() in allowed_actors(),
-          "run %s attempt %s was started by %s, who is not in %s on this VM" % (run_id, attempt, actor, ALLOWED_ACTORS))
+    branch = wf.get("head_branch") or "?"
+    who = "started by %s on branch %s" % (actor, branch)
+    if actor.lower() in {a.lower() for a in listed(ALLOWED_ACTORS, True)}:
+        who += " (listed login)"
+    elif branch in listed(ALLOWED_BRANCHES, False):  # branch names are case-sensitive
+        who += " (listed branch)"
+    else:
+        refuse("run %s attempt %s was %s: neither the login (%s) nor the branch (%s) is listed on this VM"
+               % (run_id, attempt, who, ALLOWED_ACTORS, ALLOWED_BRANCHES))
     # the job can be reported in progress a few seconds after it started
     for wait in (0, 5, 10, 20):
         time.sleep(wait)
         jobs = github("actions/runs/%s/attempts/%s/jobs?per_page=100" % (run_id, attempt)).get("jobs", [])
         if any(j.get("status") == "in_progress" and j.get("runner_name") == runner
                and j.get("name", "").split(" / ")[-1] == job_name for j in jobs):
-            return actor
+            return who
     refuse("no %s job of run %s attempt %s is running on runner %s" % (job_name, run_id, attempt, runner))
 
 
@@ -199,12 +211,12 @@ def cmd_start_runner(a):
     for opt in extra:
         check(EXTRA_SBATCH.fullmatch(opt) is not None, "extra sbatch option %r not allowed" % opt)
 
-    actor = check_run(a.run_id, a.attempt, c["workflow"], ("push", "workflow_dispatch"), "start_runner")
+    who = check_run(a.run_id, a.attempt, c["workflow"], ("push", "workflow_dispatch"), "start_runner")
     lock("%s-%s-%s" % (a.cluster, a.run_id, a.attempt))
-    log("ACCEPTED start-runner %s run=%s attempt=%s actor=%s %s %s %s %s %s %s" % (
-        a.cluster, a.run_id, a.attempt, actor, a.partition, a.gres, a.cpus, a.mem, a.time, " ".join(extra)))
-    print("ceci-gate: run %s attempt %s started by %s, allowed: starting the runner %s on %s"
-          % (a.run_id, a.attempt, actor, c["label"], a.cluster))
+    log("ACCEPTED start-runner %s run=%s attempt=%s %s :: %s %s %s %s %s %s" % (
+        a.cluster, a.run_id, a.attempt, who, a.partition, a.gres, a.cpus, a.mem, a.time, " ".join(extra)))
+    print("ceci-gate: run %s attempt %s %s, allowed: starting the runner %s on %s"
+          % (a.run_id, a.attempt, who, c["label"], a.cluster))
 
     if execute(["scp", "-q", "-o", "BatchMode=yes", share("runner_batch.sh"), share("job_started_hook.sh"),
             "%s:mg7-gpu-ci/runner-%s/" % (a.cluster, c["label"])]) != 0:
@@ -224,10 +236,10 @@ def cmd_modules(a):
           "partition %r not allowed on %s %s" % (a.partition, a.cluster, c["partitions"]))
     check(a.gres == "" or GRES.fullmatch(a.gres) is not None, "--gres %r not allowed" % a.gres)
 
-    actor = check_run(a.run_id, a.attempt, MODULES_WORKFLOW, ("workflow_dispatch",), "modules")
+    who = check_run(a.run_id, a.attempt, MODULES_WORKFLOW, ("workflow_dispatch",), "modules")
     lock("modules-%s-%s-%s" % (a.cluster, a.run_id, a.attempt))
-    log("ACCEPTED modules %s run=%s attempt=%s actor=%s pattern=%r partition=%r gres=%r" % (
-        a.cluster, a.run_id, a.attempt, actor, a.pattern, a.partition, a.gres))
+    log("ACCEPTED modules %s run=%s attempt=%s %s :: pattern=%r partition=%r gres=%r" % (
+        a.cluster, a.run_id, a.attempt, who, a.pattern, a.partition, a.gres))
     return remote(a.cluster, "remote_modules.sh", [a.pattern, a.partition, a.gres])
 
 

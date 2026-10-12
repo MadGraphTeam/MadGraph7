@@ -16,8 +16,8 @@
 #   - the ssh key is not on GitHub: only the Unix user `ceci` of the vmadgraph VM holds it,
 #     and the CI reaches the cluster through /usr/local/sbin/ceci-gate (.github/gpu_ci/vm_gate),
 #     which checks with the GitHub API that the run is in progress, comes from
-#     gpu_lemaitre4_hip.yml or gpu_manneback_cuda.yml and was started by a GitHub login
-#     listed on the VM (/etc/ceci-gate/allowed_actors);
+#     gpu_lemaitre4_hip.yml or gpu_manneback_cuda.yml, and was started by a GitHub login or
+#     is on a branch listed on the VM (/etc/ceci-gate/allowed_actors, allowed_branches);
 #   - the runner refuses every job that is not part of the workflow run that started it
 #     (.github/gpu_ci/job_started_hook.sh), so no other run can use it.
 

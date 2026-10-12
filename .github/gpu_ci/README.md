@@ -59,8 +59,10 @@ repository, and 3 organisation owners can change any repository setting. Hence:
   Before it touches a cluster, the gate asks the GitHub API whether the run it is called for
   is in progress, comes from `gpu_lemaitre4_hip.yml`, `gpu_manneback_cuda.yml` or
   `gpu_cluster_modules.yml` of this repository (not a fork), was started or re-run by a login
-  listed in `/etc/ceci-gate/allowed_actors` on the VM, and has its `start_runner` (or `modules`)
-  job running right now on the calling runner. It also bounds the Slurm options, starts each
+  listed in `/etc/ceci-gate/allowed_actors` on the VM **or** is on a branch listed in
+  `/etc/ceci-gate/allowed_branches` (e.g. `main`, so that every commit landing there is tested,
+  whoever pushed or merged it), and has its `start_runner` (or `modules`) job running right now
+  on the calling runner. It also bounds the Slurm options, starts each
   run attempt once, and logs every decision in `/var/lib/ceci/gate/gate.log`. Who may use the
   cluster is thus decided on the VM: no repository setting, branch or workflow edit changes it.
 * **The runner only executes the jobs of the run that started it.** Its job-started hook,
@@ -73,7 +75,10 @@ repository, and 3 organisation owners can change any repository setting. Hence:
   install it there again (step 1).
 
 What an allowed run executes on the cluster is still the code of its commit: dispatch only
-branches you trust.
+branches you trust. A listed branch is only as safe as GitHub keeps it: whoever can push to it
+gets their code run on the cluster. List only branches that a ruleset restricts (pull requests
+for `main`, updates by named people for the others), knowing that the organisation owners can
+change rulesets.
 
 ## One-time setup (VM administrator)
 
@@ -94,8 +99,10 @@ branches you trust.
    install -d -o root -g root -m 755 /usr/local/share/ceci-gate /etc/ceci-gate
    install -o root -g root -m 755 remote_start_runner.sh runner_batch.sh job_started_hook.sh \
      remote_modules.sh /usr/local/share/ceci-gate/
-   # the GitHub logins whose runs may use the cluster, one per line
+   # the GitHub logins whose runs may use the cluster, and the branches whose runs may use
+   # it whoever started them, one per line
    echo oliviermattelaer > /etc/ceci-gate/allowed_actors
+   echo main > /etc/ceci-gate/allowed_branches
    echo 'github-runner, ghrunner2 ALL=(ceci) NOPASSWD: /usr/local/sbin/ceci-gate' > /tmp/g \
      && visudo -cf /tmp/g && install -m 440 /tmp/g /etc/sudoers.d/ceci-gate; rm -f /tmp/g
    ```
