@@ -1800,9 +1800,17 @@ C               ENDIF""")%replace_dict
         # This is to decide wether once to reuse old wavefunction to store new
         # ones (provided they are not used further in the code.)
         bornME.optimization = True
-        return super(LoopProcessExporterFortranSA,self).write_matrix_element_v4(
-                                                  writer, bornME, fortran_model, 
+        calls = super(LoopProcessExporterFortranSA,self).write_matrix_element_v4(
+                                                  writer, bornME, fortran_model,
                            proc_prefix=matrix_element.rep_dict['proc_prefix'])
+        # check_sudakov.f in the NLO P* directory includes the nsqso_born.inc
+        # written next to born_matrix.f in its MadLoop V0* subdirectory
+        nsqso_born = pjoin(os.path.dirname(os.path.abspath(writer.name)),
+                           'nsqso_born.inc')
+        if os.path.exists(nsqso_born):
+            files.cp(nsqso_born, pjoin(os.path.dirname(nsqso_born),
+                                       os.path.pardir))
+        return calls
 
     def write_born_amps_and_wfs(self, writer, matrix_element, fortran_model,
                                                                  noSplit=False): 

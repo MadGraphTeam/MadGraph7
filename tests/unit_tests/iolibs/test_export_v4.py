@@ -157,6 +157,39 @@ class IOExportV4IOTest(IOTests.IOTestManager,
 
     tearDown = test_file_writers.CheckFileCreate.clean_files
 
+    def test_standalone_includes_next_to_matrix_file(self):
+        """The standalone output does not chdir to the process directory, so
+        the files written along matrix.f must be placed relative to it, not
+        to the directory MG was started from (nor its parent)."""
+
+        tmpdir = tempfile.mkdtemp()
+        startdir = pjoin(tmpdir, 'parent', 'start')
+        procdir = pjoin(tmpdir, 'SubProcesses', 'P1_epem_aaa')
+        os.makedirs(startdir)
+        os.makedirs(procdir)
+        old_cwd = os.getcwd()
+        os.chdir(startdir)
+        try:
+            myproc = copy.copy(self.mymatrixelement.get('processes')[0])
+            myproc.set('split_orders', ['QED'])
+            matrix_element = helas_objects.HelasMatrixElement(
+                diagram_generation.Amplitude({'process': myproc}))
+            writer = writers.FortranWriter(pjoin(procdir, 'matrix.f'))
+            export_v4.ProcessExporterFortranSA().write_matrix_element_v4(
+                writer, matrix_element, self.myfortranmodel)
+            writer.close()
+
+            self.assertEqual(os.listdir(startdir), [])
+            self.assertEqual(os.listdir(pjoin(tmpdir, 'parent')), ['start'])
+            self.assertEqual(sorted(os.listdir(procdir)),
+                    ['check_sa_born_splitOrders.f', 'matrix.f',
+                     'nsqso_born.inc'])
+            self.assertIn('PARAMETER (NSQSO_BORN=1)',
+                          open(pjoin(procdir, 'nsqso_born.inc')).read())
+        finally:
+            os.chdir(old_cwd)
+            shutil.rmtree(tmpdir)
+
     def test_flavor_mask_placeholders_present_in_nonstandalone_templates(self):
         template_dir = pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files')
         template_names = [

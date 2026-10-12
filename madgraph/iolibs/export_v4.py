@@ -6245,16 +6245,21 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             # that explicitely writes out the contribution from each squared order.
             # The original driver still works and is compiled with 'make' while
             # the splitOrders one is compiled with 'make check_sa_born_splitOrders'
-            if self.opt['export_format'] not in ['standalone_msP', 'standalone_msF']:
-                check_sa_writer=writers.FortranWriter('check_sa_born_splitOrders.f')
+            if writer and self.opt['export_format'] not in ['standalone_msP', 'standalone_msF']:
+                check_sa_writer=writers.FortranWriter(pjoin(
+                    os.path.dirname(os.path.abspath(writer.name)),
+                    'check_sa_born_splitOrders.f'))
                 self.write_check_sa_splitOrders(squared_orders,split_orders,
                   nexternal,ninitial,proc_prefix,check_sa_writer)
 
-        if write:
-            writers.FortranWriter('nsqso_born.inc').writelines(
+        # The include files go next to the matrix element file: the standalone
+        # output does not chdir to the process directory.
+        if write and writer:
+            writers.FortranWriter(pjoin(
+                os.path.dirname(os.path.abspath(writer.name)),
+                'nsqso_born.inc')).writelines(
                 """INTEGER NSQSO_BORN
                    PARAMETER (NSQSO_BORN=%d)"""%replace_dict['nSqAmpSplitOrders'])
-            files.cp('nsqso_born.inc', '..')
 
         replace_dict['jamp_lines'] = '\n'.join(jamp_lines)
 
