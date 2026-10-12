@@ -180,3 +180,35 @@ class TestDefaultSwitchFile(unittest.TestCase):
         self.assertEqual(self.defaults(),
                          {'shower': 'OFF', 'detector': 'OFF',
                           'analysis': 'OFF'})
+
+
+class ShortcutSwitch(ext_cmd.ControlSwitch):
+    """A switch question with an '@' shortcut, like the aMC@NLO one."""
+
+    default_switch_file = None
+    to_control = [('shower', 'shower program')]
+
+    def get_allowed_shower(self):
+        return ['PYTHIA8', 'OFF']
+
+    def set_default_shower(self):
+        self.switch['shower'] = 'OFF'
+
+    def ans_amc__at__nlo(self, value):
+        self.switch['shower'] = 'PYTHIA8'
+
+
+class TestSwitchShortcuts(unittest.TestCase):
+    """Mode shortcuts (lo, nlo, aMC@NLO, ...) answered from a script."""
+
+    def test_at_shortcut_is_a_valid_scripted_answer(self):
+        """'@' is spelled '__at__' in the ans_ method name. The answers a
+           script may give were built from that name, so 'aMC@NLO' in a
+           command file was rejected ('not valid for current question'), the
+           launch ran with the previous mode, and every later line of the
+           launch block was executed after the run."""
+        mother = FakeMother()
+        question = ShortcutSwitch(ShortcutSwitch.to_control, mother,
+                                  mother_interface=mother)
+        self.assertIn('aMC@NLO'.lower(), question.allow_arg)
+        self.assertNotIn('amc__at__nlo', question.allow_arg)
