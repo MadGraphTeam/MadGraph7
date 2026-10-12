@@ -84,7 +84,7 @@ def _borrow_decision_helpers(namespace):
                  # channels once per production event, before any draw
                  '_positional_deal', '_dealt_rank',
                  # the offshell mass stage reshuffles with the recoil floor
-                 '_offshell_min_recoil', '_model_massless'):
+                 '_offshell_min_recoil', '_recoil_massless', '_model_massless'):
         namespace[name] = inspect.getattr_static(
             interface_madspin.MadSpinInterface, name)
 
@@ -8888,6 +8888,7 @@ class TestOffshellRecoilFloor(unittest.TestCase):
     class _Stub(object):
         _offshell_min_recoil = \
             interface_madspin.MadSpinInterface._offshell_min_recoil
+        _recoil_massless = interface_madspin.MadSpinInterface._recoil_massless
         _model_massless = interface_madspin.MadSpinInterface._model_massless
 
         def __init__(self, floor, model=None):
@@ -8908,27 +8909,88 @@ class TestOffshellRecoilFloor(unittest.TestCase):
         self.assertEqual(
             interface_madspin.MadSpinOptions()['offshell_min_recoil'], 0.5)
 
+    def test_the_floor_option(self):
+        self.assertEqual(self._Stub(0.5)._offshell_min_recoil(), 0.5)
+        self.assertEqual(self._Stub(0)._offshell_min_recoil(), 0.)
+        self.assertEqual(self._Stub(-1)._offshell_min_recoil(), 0.)
+
     def test_floor_applies_to_a_massless_recoil_only(self):
-        stub = self._Stub(0.5)
-        self.assertEqual(stub._offshell_min_recoil(self._with_mass(100.0)),
-                         0.5)
-        # a massive recoil (t t~-like threshold) keeps a bounded weight
+        """chi(118) = 0.30: refused with a massless gluon recoiling; a 5 GeV
+        recoil (a t t~-like threshold) keeps a bounded weight and the floor is
+        inert there (chi ~ 0.24 at 112 GeV)."""
         self.assertEqual(
-            stub._offshell_min_recoil(self._with_mass(100.0, gluon_mass=5.0)),
-            0.)
-        # the resonance itself does not count: it carries its new_mass
-        self.assertEqual(stub._offshell_min_recoil(self._event()), 0.5)
-        self.assertEqual(self._Stub(0)._offshell_min_recoil(
-            self._with_mass(100.0)), 0.)
+            self._with_mass(118.0).reshuffle_production(min_recoil=0.5), 0)
+        heavy, free = (self._with_mass(112.0, gluon_mass=5.0) for _ in range(2))
+        jac = heavy.reshuffle_production(min_recoil=0.5)
+        self.assertNotEqual(jac, 0)
+        self.assertEqual(jac, free.reshuffle_production())
 
     def test_floor_applies_to_a_recoil_on_a_shower_mass_shell(self):
         """aMC@NLO writes its gluons with HERWIG6's 0.75 GeV Monte-Carlo
-        mass: massless all the same for the model, and soft all the same when
-        the Z is drawn up to sqrt(shat)."""
-        shower_gluon = self._with_mass(100.0, gluon_mass=0.75)
-        self.assertEqual(self._Stub(0.5)._offshell_min_recoil(shower_gluon), 0.)
-        self.assertEqual(self._Stub(0.5, self._Model())
-                         ._offshell_min_recoil(shower_gluon), 0.5)
+        mass: massless all the same for the model (_recoil_massless), and soft
+        all the same when the Z is drawn up to sqrt(shat)."""
+        stub = self._Stub(0.5, self._Model())
+        self.assertNotEqual(self._with_mass(118.0, gluon_mass=0.75)
+                            .reshuffle_production(min_recoil=0.5), 0)
+        self.assertEqual(self._with_mass(118.0, gluon_mass=0.75)
+                         .reshuffle_production(
+                             min_recoil=0.5,
+                             recoil_massless=stub._recoil_massless), 0)
+
+    def _decayed_top_event(self):
+        """u u~ > t t~ at sqrt(shat) = 360 with the top already decayed in the
+        event, t (status 2) > b w+ (status 2) > u d~; MadSpin decays the t~."""
+        FM = lhe_parser.FourMomentum
+
+        def two_body(P, m1, m2, cth, phi):
+            M = P.mass
+            q = math.sqrt((M * M - (m1 + m2) ** 2) * (M * M - (m1 - m2) ** 2)) / (2 * M)
+            sth = math.sqrt(1 - cth * cth)
+            d = (sth * math.cos(phi), sth * math.sin(phi), cth)
+            a = FM(E=math.sqrt(m1 * m1 + q * q), px=q * d[0], py=q * d[1], pz=q * d[2])
+            b = FM(E=math.sqrt(m2 * m2 + q * q), px=-q * d[0], py=-q * d[1], pz=-q * d[2])
+            return a.boost(P), b.boost(P)
+
+        b1, b2 = FM(E=180., pz=180.), FM(E=180., pz=-180.)
+        top, antitop = two_body(b1 + b2, 172.6, 173.0, 0.35, 0.2)
+        bottom, w = two_body(top, 4.7, 80.2, -0.5, 1.1)
+        up, downbar = two_body(w, 0., 0., 0.1, 2.0)
+        rows = [(2, -1, 0, 0, b1, 0.), (-2, -1, 0, 0, b2, 0.),
+                (6, 2, 1, 2, top, 172.6), (-6, 1, 1, 2, antitop, 173.0),
+                (5, 1, 3, 3, bottom, 4.7), (24, 2, 3, 3, w, 80.2),
+                (2, 1, 6, 6, up, 0.), (-1, 1, 6, 6, downbar, 0.)]
+        lines = ['<event>', ' %d  1 +1.0e+00 1.0e+02 7.5e-03 1.3e-01' % len(rows)]
+        for pid, status, m1, m2, p, mass in rows:
+            lines.append(' %d %d %d %d 0 0 %.10e %.10e %.10e %.10e %.10e 0. 9.'
+                         % (pid, status, m1, m2, p.px, p.py, p.pz, p.E, mass))
+        lines.append('</event>')
+        return lhe_parser.Event('\n'.join(lines))
+
+    def test_floor_ignores_the_daughters_of_a_decayed_resonance(self):
+        """RAMBO rescales the massive t and t~ only: the massless u d~ of the
+        top's W move rigidly with the top and never go soft, so a t~ drawn
+        near threshold (chi(185) ~ 0.41) is not refused."""
+        event, free = self._decayed_top_event(), self._decayed_top_event()
+        for e in (event, free):
+            e[3].new_mass = 185.0
+        jac = event.reshuffle_production(min_recoil=0.5)
+        self.assertNotEqual(jac, 0)
+        self.assertEqual(jac, free.reshuffle_production())
+        self.assertEqual(str(event), str(free))
+
+    def test_a_redrawn_mass_set_keeps_the_floor(self):
+        """A first mass set above sqrt(shat) is redrawn (_allow_retry); the
+        redrawn one -- chi(118) = 0.30 -- is refused like any other."""
+        event = self._with_mass(125.0)
+        for particle in event:
+            if particle.pid == 23:
+                particle.reshuffle_info = (self.MZ, 2.4414, 54.567, 125.0)
+        original = inspect.getattr_static(lhe_parser.Event, 'generate_random_mass')
+        lhe_parser.Event.generate_random_mass = staticmethod(lambda *args: 118.0)
+        try:
+            self.assertEqual(event.reshuffle_production(min_recoil=0.5), 0)
+        finally:
+            lhe_parser.Event.generate_random_mass = original
 
     # -- where the two offshell paths consume it ------------------------
 
@@ -8942,6 +9004,7 @@ class TestOffshellRecoilFloor(unittest.TestCase):
     class _PathStub(object):
         _offshell_min_recoil = \
             interface_madspin.MadSpinInterface._offshell_min_recoil
+        _recoil_massless = interface_madspin.MadSpinInterface._recoil_massless
         _model_massless = interface_madspin.MadSpinInterface._model_massless
         calculate_matrix_element_from_density = \
             interface_madspin.MadSpinInterface \

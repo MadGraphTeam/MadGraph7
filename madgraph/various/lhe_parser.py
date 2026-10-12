@@ -4167,7 +4167,8 @@ class Event(list):
                 copy.reshuffle_info = orig.reshuffle_info
         return probe.reshuffle_production(_allow_retry=False)
 
-    def reshuffle_production(self, _allow_retry=True, min_recoil=0.):
+    def reshuffle_production(self, _allow_retry=True, min_recoil=0.,
+                             recoil_massless=None):
         """ particle that need new mass have the "new_mass" attribute
 
         _allow_retry: on a kinematically impossible mass set, resample the
@@ -4179,7 +4180,17 @@ class Event(list):
         partonic rest frame -- falls below it. Returns 0 and leaves the event
         untouched, whatever _allow_retry says: this is a cut on the mass set,
         which the caller turns into a zero weight, not an infeasible set to
-        be redrawn in place.
+        be redrawn in place. A mass set redrawn after an infeasible one is
+        held to the same floor.
+
+        It applies only when a massless particle recoils: one of the
+        particles RAMBO rescales -- the top-level final state, see
+        split_event_by_onshell_propagator -- carries no virtuality of its own
+        and is massless by recoil_massless(particle) (default: its LHE mass is
+        zero). A resonance drawn up to sqrt(shat) then pushes it soft and the
+        weight grows like 1/chi. The decay products of a resonance already
+        decayed in the event are moved rigidly with it, never go soft, and do
+        not count.
         """
 
         # create a nice data structure for the reshuffling
@@ -4187,6 +4198,11 @@ class Event(list):
 
         #filter outsubdecay
         production = [p for p in subdiags if not isinstance(p, list)]
+        if min_recoil:
+            massless = recoil_massless or (lambda p: abs(p.mass) < 1e-6)
+            if not any(massless(p) for p in production
+                       if p.status != -1 and not hasattr(p, 'new_mass')):
+                min_recoil = 0.
 
         old_momenta = [FourMomentum(p) for p in production if p.status!=-1]
         new_masses = [getattr(p, 'new_mass', p.mass) for p in production if p.status!=-1]
@@ -4237,7 +4253,9 @@ class Event(list):
             Event.nb_reshuffle_issue +=1
             if jac != -1:
                 misc.sprint('jac was 0 -> retry', Event.nb_reshuffle_issue)
-            return self.reshuffle_production(_allow_retry=_allow_retry)
+            return self.reshuffle_production(_allow_retry=_allow_retry,
+                                             min_recoil=min_recoil,
+                                             recoil_massless=recoil_massless)
 
         
         #modify the momenta of the particles:

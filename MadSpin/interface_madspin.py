@@ -10143,41 +10143,39 @@ class MadSpinInterface(extended_cmd.Cmd):
         gap += math.atan((max_mass**2-pole**2)/pole/width)
         return pole, width, min_mass, max_mass, gap/math.pi
 
-    def _offshell_min_recoil(self, production):
-        """The ``offshell_min_recoil`` floor to reshuffle ``production`` with,
-        or 0 when it does not apply.
+    def _offshell_min_recoil(self):
+        """The ``offshell_min_recoil`` floor (0 when disabled), for
+        reshuffle_production, which applies it only when one of the particles
+        it rescales -- the top-level final state of the production -- is a
+        massless recoil (_recoil_massless).
 
-        It applies when a massless final-state particle of the production is
-        reshuffled without a virtuality of its own, i.e. recoils against the
-        resonances. That is the case where the offshell weight diverges: for
-        ``u u~ > z g`` at fixed shat and angle, |M_prod|^2 ~ 1/(shat - m^2)^2
-        while the reshuffling jacobian only goes like chi = (shat - m^2) /
-        (shat - M^2), so w ~ 1/chi and its mean over the Breit-Wigner diverges
-        for every event whose window reaches sqrt(shat). Measured on that
-        process (BW_cut = 15): 25% of the production events, and a
-        max-weight bound anywhere between 200 and 3600 times the mean weight
-        over 8 production samples. With the floor at 0.5, which removes 0.4% of
-        the draws, all 8 decay at 8.9 to 11.9 trials per event with at most 2
-        of 10000 events over the bound (largest factor 1.14), and the decayed
-        distributions in the region the floor keeps are unchanged. With only
-        massive particles (a t t~ threshold) the weight stays bounded, and the
-        floor is not applied.
-
-        Massless means massless in the model: aMC@NLO writes its partons on
-        the shower's Monte-Carlo mass shell (0.32 GeV quarks, a 0.75 GeV gluon
-        with HERWIG6), and such a recoil goes soft all the same.
-
-        Call it once the resonances carry their ``new_mass``.
+        That is the case where the offshell weight diverges: for ``u u~ > z
+        g`` at fixed shat and angle, |M_prod|^2 ~ 1/(shat - m^2)^2 while the
+        reshuffling jacobian only goes like chi = (shat - m^2) / (shat - M^2),
+        so w ~ 1/chi and its mean over the Breit-Wigner diverges for every
+        event whose window reaches sqrt(shat). Measured on that process
+        (BW_cut = 15): 25% of the production events, and a max-weight bound
+        anywhere between 200 and 3600 times the mean weight over 8 production
+        samples. With the floor at 0.5, which removes 0.4% of the draws, all 8
+        decay at 8.9 to 11.9 trials per event with at most 2 of 10000 events
+        over the bound (largest factor 1.14), and the decayed distributions in
+        the region the floor keeps are unchanged. With only massive particles
+        rescaled (a t t~ threshold, or t t~ with the top already decayed in the
+        event: its decay products move rigidly with it) the weight stays
+        bounded, and the floor is not applied.
         """
         floor = self.options['offshell_min_recoil']
         if not floor or floor <= 0:
             return 0.
-        for particle in production:
-            if int(particle.status) != 1 or hasattr(particle, 'new_mass'):
-                continue
-            if abs(particle.mass) < 1e-6 or self._model_massless(particle.pid):
-                return float(floor)
-        return 0.
+        return float(floor)
+
+    def _recoil_massless(self, particle):
+        """Whether a particle reshuffle_production rescales recoils as a
+        massless one: massless in the event, or in the model -- aMC@NLO writes
+        its partons on the shower's Monte-Carlo mass shell (0.32 GeV quarks, a
+        0.75 GeV gluon with HERWIG6), and such a recoil goes soft all the
+        same."""
+        return abs(particle.mass) < 1e-6 or self._model_massless(particle.pid)
 
     def _model_massless(self, pid):
         """lhe_parser._model_leg_is_massless for MadSpin's model, cached per
@@ -10295,7 +10293,8 @@ class MadSpinInterface(extended_cmd.Cmd):
         # the caller redraws the set, which is what a zero mass-set weight
         # amounts to in a chain that redraws until it accepts
         jac_reshuffle = prod_off.reshuffle_production(
-            _allow_retry=False, min_recoil=self._offshell_min_recoil(prod_off))
+            _allow_retry=False, min_recoil=self._offshell_min_recoil(),
+            recoil_massless=self._recoil_massless)
         if jac_reshuffle in (0, -1):
             return None
         # the frame is derived from the *reshuffled* production, since that is
@@ -12102,7 +12101,8 @@ class MadSpinInterface(extended_cmd.Cmd):
                 # doing the reshuffling for each part:
                 jac = 1.0
                 jac *= production.reshuffle_production(
-                    min_recoil=self._offshell_min_recoil(production))
+                    min_recoil=self._offshell_min_recoil(),
+                    recoil_massless=self._recoil_massless)
                 if jac == 0:
                     # below offshell_min_recoil (reshuffle_production retries
                     # every other failure): a zero weight, i.e. an ordinary
