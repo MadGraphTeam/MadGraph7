@@ -108,6 +108,44 @@ extern "C" double custom_bias(int particle_count, const int* pdg_ids, const doub
 }
 '''
 
+# the same functions in Python with numpy, and the cut with torch
+_PY_HEADER = 'import numpy as np\nFRAMEWORK = "numpy"\n'
+
+_CUT_NUMPY = _PY_HEADER + '''
+def custom_cut(momenta, pdg_ids):
+    pt = np.hypot(momenta[:, 2:4, 1], momenta[:, 2:4, 2])
+    return np.where((pt >= %(cut)r).all(axis=1), 1., 0.)
+''' % {'cut': _TOP_PT_CUT}
+
+_CUT_TORCH = '''import torch
+FRAMEWORK = "torch"
+
+def custom_cut(momenta, pdg_ids):
+    pt = torch.hypot(momenta[:, 2:4, 1], momenta[:, 2:4, 2])
+    return (pt >= %(cut)r).all(dim=1).double()
+''' % {'cut': _TOP_PT_CUT}
+
+_SCALE_NUMPY = _PY_HEADER + '''
+def custom_scale(momenta, pdg_ids):
+    final = momenta[:, 2:]
+    return np.sqrt(np.maximum(final[..., 0] ** 2 - final[..., 3] ** 2, 0.)).sum(axis=1) / 2.
+'''
+
+_PDF_NUMPY = _PY_HEADER + '''import lhapdf
+pdf_set = lhapdf.mkPDF("%(pdf)s", 0)
+
+def custom_pdf(beam_index, pdg_id, x, q):
+    return np.array([pdf_set.xfxQ(int(i), a, b) for i, a, b in zip(pdg_id, x, q)])
+''' % {'pdf': _REFERENCE_PDF}
+
+_BIAS_NUMPY = _PY_HEADER + '''
+def custom_bias(momenta, pdg_ids):
+    pt2 = momenta[:, 2, 1] ** 2 + momenta[:, 2, 2] ** 2
+    return np.maximum(pt2 / 100. ** 2, 1.)
+'''
+
+_EXTENSIONS = {'cpp': 'cpp', 'python-numpy': 'py', 'python-torch': 'py'}
+
 
 def _set(text, key, value):
     """Set ``key = value`` (first occurrence at the start of a line)."""
@@ -204,18 +242,33 @@ class MG7CustomFunctionsTest(unittest.TestCase):
         text = open(toml).read()
         open(toml, 'w').write(edit(text))
 
-    def init_custom_function(self, proc_dir, kind, body):
-        """bin/init_custom_func for ``kind`` in C++, with ``body``; the run
-        builds it."""
+    def init_custom_function(self, proc_dir, kind, body, language='cpp'):
+        """bin/init_custom_func for ``kind`` in ``language``, with ``body``;
+        the run builds C++ functions."""
         log = pjoin(proc_dir, 'init_custom_func.log')
         with open(log, 'w') as logfh:
             ret = subprocess.call(
                 [sys.executable, pjoin(proc_dir, 'bin', 'init_custom_func'),
-                 '-f', kind, '-l', 'cpp', '-y', '--no-build'],
+                 '-f', kind, '-l', language, '-y', '--no-build'],
                 cwd=proc_dir, stdout=logfh, stderr=subprocess.STDOUT)
         self.assertEqual(ret, 0, 'bin/init_custom_func failed:\n%s' % _tail(log))
-        with open(pjoin(proc_dir, 'custom_%s' % kind, 'custom_%s.cpp' % kind), 'w') as f:
+        body_file = 'custom_%s.%s' % (kind, _EXTENSIONS[language])
+        with open(pjoin(proc_dir, 'custom_%s' % kind, body_file), 'w') as f:
             f.write(body)
+
+    def builtin_reference(self, name, edit):
+        """The run with the built-in setting ``edit``, shared by the languages."""
+        cls = type(self)
+        if not hasattr(cls, 'builtin_runs'):
+            cls.builtin_runs = {}
+        if name not in cls.builtin_runs:
+            builtin = self.copy_process(name)
+            self.edit_card(builtin, edit)
+            cls.builtin_runs[name] = self.run_process(builtin)
+        return cls.builtin_runs[name]
+
+    def copy_for(self, kind, language):
+        return self.copy_process('%s_%s' % (kind.upper(), language.upper().replace('-', '_')))
 
     def run_process(self, proc_dir):
         """Run bin/generate_events: (cross section, error, LHE path)."""
@@ -241,16 +294,13 @@ class MG7CustomFunctionsTest(unittest.TestCase):
             '%s: %.5g +- %.3g pb against %.5g +- %.3g pb'
             % (what, got[0], got[1], ref[0], ref[1]))
 
-    def test_custom_cut_mg7(self):
-        builtin = self.copy_process('CUT_BUILTIN')
-        self.edit_card(builtin, lambda t: t.replace(
+    def check_cut(self, language, body):
+        ref = self.builtin_reference('CUT_BUILTIN', lambda t: t.replace(
             '[cuts]\n', '[cuts]\ntop-pt.min = %r\n' % _TOP_PT_CUT))
-        ref = self.run_process(builtin)
-
-        custom = self.copy_process('CUT_CUSTOM')
-        self.init_custom_function(custom, 'cut', _CUT_BODY)
+        custom = self.copy_for('cut', language)
+        self.init_custom_function(custom, 'cut', body, language)
         got = self.run_process(custom)
-        self.assertCompatible(got, ref, 'custom cut')
+        self.assertCompatible(got, ref, 'custom cut in %s' % language)
 
         _, _, momenta = _read_lhe(got[2])
         for event in momenta:
@@ -258,28 +308,44 @@ class MG7CustomFunctionsTest(unittest.TestCase):
                 # up to the precision of the LHE file
                 self.assertGreaterEqual(_pt(p), _TOP_PT_CUT * (1 - 1e-6))
 
-    def test_custom_scale_mg7(self):
+    def test_custom_cut_mg7(self):
+        self.check_cut('cpp', _CUT_BODY)
+
+    def test_custom_cut_numpy_mg7(self):
+        self.check_cut('python-numpy', _CUT_NUMPY)
+
+    def test_custom_cut_torch_mg7(self):
+        check = subprocess.run([sys.executable, '-c', 'import numpy, torch'],
+                               capture_output=True)
+        if check.returncode != 0:
+            self.skipTest('torch is unavailable')
+        self.check_cut('python-torch', _CUT_TORCH)
+
+    def check_scale(self, language, body):
         def dynamic(text):
             text = _set(text, 'fixed_ren_scale', 'false')
             text = _set(text, 'fixed_fact_scale', 'false')
             return _set(text, 'dynamical_scale_choice', '"half_transverse_mass"')
 
-        builtin = self.copy_process('SCALE_BUILTIN')
-        self.edit_card(builtin, dynamic)
-        ref = self.run_process(builtin)
-
-        custom = self.copy_process('SCALE_CUSTOM')
+        ref = self.builtin_reference('SCALE_BUILTIN', dynamic)
+        custom = self.copy_for('scale', language)
         # partonic_energy differs from H_T/2, so the custom function must win
         self.edit_card(custom, lambda t: _set(
             dynamic(t), 'dynamical_scale_choice', '"partonic_energy"'))
-        self.init_custom_function(custom, 'scale', _SCALE_BODY)
+        self.init_custom_function(custom, 'scale', body, language)
         got = self.run_process(custom)
-        self.assertCompatible(got, ref, 'custom scale')
+        self.assertCompatible(got, ref, 'custom scale in %s' % language)
 
         _, scales, momenta = _read_lhe(got[2])
         for scale, event in zip(scales, momenta):
             ht = sum(math.sqrt(max(p[0] ** 2 - p[3] ** 2, 0.)) for p in event[2:])
             self.assertAlmostEqual(scale / (ht / 2), 1., places=5)
+
+    def test_custom_scale_mg7(self):
+        self.check_scale('cpp', _SCALE_BODY)
+
+    def test_custom_scale_numpy_mg7(self):
+        self.check_scale('python-numpy', _SCALE_NUMPY)
 
     def test_custom_pdf_mg7(self):
         lhapdf_config = misc.resolve_lhapdf().config
@@ -300,12 +366,28 @@ class MG7CustomFunctionsTest(unittest.TestCase):
         got = self.run_process(custom)
         self.assertCompatible(got, type(self).reference, 'custom pdf')
 
-    def test_custom_bias_mg7(self):
-        custom = self.copy_process('BIAS_CUSTOM')
-        ref = type(self).reference
-        self.init_custom_function(custom, 'bias', _BIAS_BODY)
+    def test_custom_pdf_numpy_mg7(self):
+        check = subprocess.run([sys.executable, '-c', 'import lhapdf'],
+                               capture_output=True)
+        if check.returncode != 0:
+            self.skipTest('the lhapdf Python module is unavailable')
+        custom = self.copy_for('pdf', 'python-numpy')
+        self.init_custom_function(custom, 'pdf', _PDF_NUMPY, 'python-numpy')
         got = self.run_process(custom)
-        self.assertCompatible(got, ref, 'biased cross section')
+        self.assertCompatible(got, type(self).reference, 'custom pdf in numpy')
+
+    def test_custom_bias_mg7(self):
+        self.check_bias('cpp', _BIAS_BODY)
+
+    def test_custom_bias_numpy_mg7(self):
+        self.check_bias('python-numpy', _BIAS_NUMPY)
+
+    def check_bias(self, language, body):
+        custom = self.copy_for('bias', language)
+        ref = type(self).reference
+        self.init_custom_function(custom, 'bias', body, language)
+        got = self.run_process(custom)
+        self.assertCompatible(got, ref, 'biased cross section in %s' % language)
 
         def tail(lhe, threshold=250.):
             weights, _, momenta = _read_lhe(lhe)
@@ -327,20 +409,41 @@ class MG7CustomFunctionsTest(unittest.TestCase):
         self.assertGreater(fraction, 2 * ref_fraction,
                            'the bias should put more events into the tail')
 
-    def test_init_custom_func_languages_mg7(self):
-        ms = type(self).ms
-        if ms is None or not hasattr(ms, 'CustomFunction'):
-            self.skipTest('madspace with custom functions unavailable')
+    def check_defaults(self, ms, context, apis):
+        """The default functions of bin/init_custom_func evaluated through
+        madspace: 1 for cut and bias, sqrt(s_hat) for scale, the toy pdf."""
         import numpy as np
-        compilers = {'c': 'cc', 'cpp': 'c++', 'fortran': 'gfortran',
-                     'cuda': 'nvcc', 'hip': 'hipcc'}
-        from madgraph.iolibs.template_files.mg7 import init_custom_func
-
-        expected = {'cut': 1., 'bias': 1.}
         momenta = np.array([[[500., 0., 0., 500.], [500., 0., 0., -500.],
                               [500., 100., 50., 200.], [500., -100., -50., -200.]],
                              [[300., 0., 0., 300.], [200., 0., 0., -200.],
                               [250., 30., 0., 100.], [250., -30., 0., 0.]]])
+        for kind in ('cut', 'scale', 'bias'):
+            function = ms.CustomFunction(
+                apis[kind], getattr(ms.CustomFunction, kind), 4, [[21, 21, 6, -6]])
+            values = ms.FunctionRuntime(function.function(), context)(momenta)
+            for value, event in zip(np.array(values), momenta):
+                if kind == 'scale':
+                    p = [a + b for a, b in zip(event[0], event[1])]
+                    target = math.sqrt(p[0] ** 2 - p[1] ** 2 - p[2] ** 2 - p[3] ** 2)
+                else:
+                    target = 1.
+                self.assertAlmostEqual(value, target, places=9)
+        pdf = ms.PartonDensity(ms.CustomPdf(apis['pdf']), [21, 2], 0)
+        values = ms.FunctionRuntime(pdf.function(), context)(
+            np.array([0.1, 0.5]), np.array([100., 100.]))
+        for x, row in zip([0.1, 0.5], np.array(values)):
+            toy = math.sqrt(x) * (1 - x) ** 3
+            self.assertAlmostEqual(row[0], 3 * toy, places=12)
+            self.assertAlmostEqual(row[1], 0.5 * toy, places=12)
+
+    def test_init_custom_func_languages_mg7(self):
+        ms = type(self).ms
+        if ms is None or not hasattr(ms, 'CustomFunction'):
+            self.skipTest('madspace with custom functions unavailable')
+        compilers = {'c': 'cc', 'cpp': 'c++', 'fortran': 'gfortran',
+                     'cuda': 'nvcc', 'hip': 'hipcc'}
+        from madgraph.iolibs.template_files.mg7 import init_custom_func
+
         tested = []
         for language, compiler in compilers.items():
             if shutil.which(compiler) is None:
@@ -356,26 +459,31 @@ class MG7CustomFunctionsTest(unittest.TestCase):
             if language in ('cuda', 'hip'):
                 continue
             context = ms.Context(device=ms.cpu_device(), thread_count=1)
-            for kind in ('cut', 'scale', 'bias'):
-                api = context.load_matrix_element(
+            self.check_defaults(ms, context, {
+                kind: context.load_matrix_element(
                     pjoin(me_dir, 'lib', 'custom_%s.so' % kind), '')
-                function = ms.CustomFunction(
-                    api, getattr(ms.CustomFunction, kind), 4, [[21, 21, 6, -6]])
-                values = ms.FunctionRuntime(function.function(), context)(momenta)
-                for value, event in zip(np.array(values), momenta):
-                    if kind == 'scale':
-                        p = [a + b for a, b in zip(event[0], event[1])]
-                        target = math.sqrt(p[0] ** 2 - p[1] ** 2 - p[2] ** 2 - p[3] ** 2)
-                    else:
-                        target = expected[kind]
-                    self.assertAlmostEqual(value, target, places=9)
-            api = context.load_matrix_element(pjoin(me_dir, 'lib', 'custom_pdf.so'), '')
-            pdf = ms.PartonDensity(ms.CustomPdf(api), [21, 2], 0)
-            values = ms.FunctionRuntime(pdf.function(), context)(
-                np.array([0.1, 0.5]), np.array([100., 100.]))
-            for x, row in zip([0.1, 0.5], np.array(values)):
-                toy = math.sqrt(x) * (1 - x) ** 3
-                self.assertAlmostEqual(row[0], 3 * toy, places=12)
-                self.assertAlmostEqual(row[1], 0.5 * toy, places=12)
+                for kind in ('cut', 'scale', 'pdf', 'bias')})
+
+        from madgraph.iolibs.template_files.mg7.custom_function_loader import (
+            load_custom_function)
+        for language in ('python-numpy', 'python-torch'):
+            if language == 'python-torch':
+                try:
+                    import torch
+                except Exception:
+                    continue
+            me_dir = pjoin(self.path, 'LANG_%s' % language)
+            os.makedirs(me_dir)
+            context = ms.Context(device=ms.cpu_device(), thread_count=2)
+            apis = {}
+            for kind in ('cut', 'scale', 'pdf', 'bias'):
+                ret = init_custom_func.main(me_dir=me_dir, argv=[
+                    '-f', kind, '-l', language, '-y', '--no-set-run-card'])
+                self.assertEqual(ret, 0, '%s %s failed' % (language, kind))
+                path = pjoin(me_dir, 'custom_%s' % kind, 'custom_%s.py' % kind)
+                self.assertTrue(os.path.exists(path))
+                apis[kind] = load_custom_function(ms, [context], ['cpu'], kind, path)[0]
+            self.check_defaults(ms, context, apis)
+            tested.append(language)
         if not tested:
             self.skipTest('no compiler found')

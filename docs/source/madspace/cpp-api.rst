@@ -165,6 +165,7 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    cpp/TensorView
    cpp/ThreadPool
    cpp/ThreadResource
+   cpp/UmamiFunctions
    cpp/UnalignedRef
    cpp/Variation
    cpp/VegasGridOptimizer

@@ -18,11 +18,12 @@ MG7 can call your own code for four parts of the calculation:
     An event bias. More events are generated where the bias is large, and their weights
     are lowered to compensate.
 
-You write the function for a single phase-space point in C, C++, Fortran, CUDA or HIP.
-MG7 builds it into a shared library and calls it on batches of events. The library
-implements the :doc:`UMAMI interface <madspace/umami-api>`, the same interface the
-matrix elements use. A generated wrapper takes care of that, so you only write the
-function itself.
+You write the function either for a single phase-space point in C, C++, Fortran, CUDA or
+HIP, or for a whole batch of points in Python with numpy or PyTorch. MG7 builds a compiled
+function into a shared library and calls it on batches of events. The library implements
+the :doc:`UMAMI interface <madspace/umami-api>`, the same interface the matrix elements
+use. A generated wrapper takes care of that, so you only write the function itself. A
+Python function needs no build. MG7 imports it and calls it through the same interface.
 
 Creating a custom function
 --------------------------
@@ -39,11 +40,13 @@ function and language you want:
       3. pdf      a parton density x f(x, Q)
       4. bias     an event bias for the unweighting
     Which language do you want to write it in?
-      1. c        C
-      2. cpp      C++
-      3. fortran  Fortran
-      4. cuda     CUDA, for runs on NVIDIA GPUs
-      5. hip      HIP, for runs on AMD GPUs
+      1. c             C
+      2. cpp           C++
+      3. fortran       Fortran
+      4. cuda          CUDA, for runs on NVIDIA GPUs
+      5. hip           HIP, for runs on AMD GPUs
+      6. python-numpy  Python with numpy, for CPU runs, no compilation
+      7. python-torch  Python with PyTorch, for CPU or GPU runs, no compilation
 
 The same choices are available as options:
 
@@ -56,7 +59,7 @@ defaults (``cut`` and ``cpp``) for the options you leave out instead of asking.
 ``--force`` overwrites an existing directory. ``--no-build`` skips the build.
 ``--no-set-run-card`` leaves the run card unchanged.
 
-The script creates a directory ``custom_<function>``:
+For a compiled language, the script creates a directory ``custom_<function>``:
 
 ``custom_<function>.<ext>``
     The function body. This is the only file you edit.
@@ -71,6 +74,9 @@ The script creates a directory ``custom_<function>``:
 ``Makefile``
     Builds ``lib/custom_<function>.so``.
 
+For ``python-numpy`` and ``python-torch``, the directory only holds the function,
+``custom_<function>.py``.
+
 By default, the script builds the default function right away and enables it in
 ``Cards/run_card.toml``:
 
@@ -78,6 +84,13 @@ By default, the script builds the default function right away and enables it in
 
     [custom_functions]
     cut = "lib/custom_cut.so"
+
+A Python function is enabled with the path of its file:
+
+.. code-block:: toml
+
+    [custom_functions]
+    cut = "custom_cut/custom_cut.py"
 
 ``bin/generate_events`` runs ``make`` in ``custom_<function>`` before each run. Your
 changes are therefore picked up without a manual rebuild. The build output goes to
@@ -137,6 +150,80 @@ What the functions return:
     :math:`|w|\,b`. The written events carry the weight divided by :math:`b`. Distributions
     filled with the event weights therefore stay unbiased, while regions with a large bias
     get more events. The reported cross section does not include the bias.
+
+Python functions
+----------------
+
+A Python function is called once per batch of phase-space points, with arrays that hold
+one entry per point. The file defines the function ``custom_<function>`` and the
+framework it uses:
+
+.. code-block:: python
+
+    import numpy as np
+
+    FRAMEWORK = "numpy"  # or "torch"
+
+    def custom_cut(momenta, pdg_ids):
+        ...
+
+The cut, scale and bias functions take ``(momenta, pdg_ids)``:
+
+``momenta``
+    float64, shape ``(batch, particle_count, 4)``. The momenta ``(E, px, py, pz)`` of the
+    external particles in GeV, lab frame, incoming particles first.
+
+``pdg_ids``
+    int32, shape ``(batch, particle_count)``. Their PDG ids, as for the compiled
+    functions.
+
+The PDF function takes ``(beam_index, pdg_id, x, q)``, each with shape ``(batch,)``.
+``beam_index`` and ``pdg_id`` are int32, ``x`` and ``q`` are float64.
+
+Every function returns a float64 array of shape ``(batch,)``, with the same meaning as for
+the compiled functions. MG7 checks the type, the dtype, the shape and the device of the
+result. With numpy the arguments are numpy arrays, and with ``FRAMEWORK = "torch"`` they are
+torch tensors. They are views of MG7's own buffers, so they must not be modified or kept
+after the call.
+
+numpy functions run on the CPU only. torch functions run on the device of the run, so the
+same file works for CPU and GPU runs. On the GPU the function runs on the CUDA or HIP stream
+of the MG7 runtime, and the arguments and the result stay on the GPU.
+
+The same cut as in the C++ example below, with numpy:
+
+.. code-block:: python
+
+    import numpy as np
+
+    FRAMEWORK = "numpy"
+
+    def custom_cut(momenta, pdg_ids):
+        pt = np.hypot(momenta[:, 2:4, 1], momenta[:, 2:4, 2])
+        return np.where((pt >= 150.).all(axis=1), 1., 0.)
+
+:math:`H_T/2` with torch, for CPU or GPU runs:
+
+.. code-block:: python
+
+    import torch
+
+    FRAMEWORK = "torch"
+
+    def custom_scale(momenta, pdg_ids):
+        final = momenta[:, 2:]
+        mt = torch.sqrt(torch.clamp(final[..., 0] ** 2 - final[..., 3] ** 2, min=0.))
+        return mt.sum(dim=1) / 2.
+
+On the CPU, MG7 splits each batch over the threads of ``cpu_thread_pool_size`` and calls
+the function from these threads. Python runs one call at a time, but numpy and torch
+release this lock inside their array operations, so vectorized functions still run
+partly in parallel. MG7 limits torch to one thread on the CPU, so that it does not start
+threads of its own on top. numpy uses several threads only for linear algebra, such as
+matrix products. If your function relies on it, set ``OMP_NUM_THREADS=1``.
+
+The Python API behind these functions is ``madspace.PythonFunction``. It can also be used
+directly with madspace.
 
 Examples
 --------
@@ -220,7 +307,8 @@ and ``MADGRAPH_HIP_ARCHITECTURE`` overrides.
 
 The language decides the device the function runs on. C, C++ and Fortran functions run on
 the CPU, and CUDA and HIP functions run on the GPU. Use the language that matches the
-``device`` of the run.
+``device`` of the run. Python functions are not built. numpy functions run on the CPU, and
+torch functions run on the device of the run.
 
 Limitations
 -----------
@@ -230,5 +318,7 @@ Limitations
 - With a custom bias, the weighted integration histograms of ``[run]
   weighted_histograms`` include the bias. The event weights do not.
 - Decays ignore a custom scale and a custom PDF.
-- A gridpack stores the custom libraries it was made with. They cannot be changed in the
-  gridpack.
+- A gridpack stores the custom libraries and Python files it was made with. They cannot
+  be changed in the gridpack. A Python function in a gridpack needs the same Python
+  packages, such as numpy or torch, where the gridpack runs.
+- Python functions with torch support only the first GPU of a machine.

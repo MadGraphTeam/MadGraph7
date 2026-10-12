@@ -311,13 +311,13 @@ VEGAS grids adapt the phase-space sampling during the survey.
 [custom_functions]
 ------------------
 
-Shared libraries with user-written functions, created with ``bin/init_custom_func``. Paths
-are relative to the process directory. An empty string disables the function. See
-:doc:`custom_functions` for details.
+User-written functions, created with ``bin/init_custom_func``. Each one is a shared
+library (``.so``) or a Python file (``.py``). Paths are relative to the process directory.
+An empty string disables the function. See :doc:`custom_functions` for details.
 
 ``cut`` (``""``)
-    Custom cut, for example ``"lib/custom_cut.so"``. It is applied on top of the
-    ``[cuts]``.
+    Custom cut, for example ``"lib/custom_cut.so"`` or ``"custom_cut/custom_cut.py"``. It
+    is applied on top of the ``[cuts]``.
 
 ``scale`` (``""``)
     Custom scale. It replaces ``dynamical_scale_choice``.
