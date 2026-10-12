@@ -185,7 +185,7 @@ class TREX_OneProcessExporter(model_handling.OneProcessExporterMadMatrix):
     # note: also generating standard check_sa.cc and gcheck_sa.cu files, which
     # are not used in the REX reweighting
     def generate_process_files(self):
-        """Generate mgOnGpuConfig.h, CPPProcess.cc, CPPProcess.h, check_sa.cc, gXXX.cu links"""
+        """Generate madmatrixConfig.h, CPPProcess.cc, CPPProcess.h, check_sa.cc, gXXX.cu links"""
         super().generate_process_files()
         # for TREX for now no /backend
         self.edit_config()
@@ -207,7 +207,7 @@ class TREX_ProcessExporter(output.ProcessExporterMadMatrix):
     # for TREX for now no /backend
     from_template['src'] = from_template['src'] + output.relative_path_list(
         output.ProcessExporterMadMatrix.madmatrix_templates,
-        ['mgOnGpuFptypes.h', 'mgOnGpuCxtypes.h', 'mgOnGpuVectors.h', 'constexpr_math.h']
+        ['madmatrixFptypes.h', 'madmatrixCxtypes.h', 'madmatrixVectors.h', 'constexpr_math.h']
     ) + [t+'librex.so', t+'libtearex.so',
         t+'Rex.h', t+'teaRex.h',
         r+'rwgt_instance.h', r+'rwgt_instance.cc']

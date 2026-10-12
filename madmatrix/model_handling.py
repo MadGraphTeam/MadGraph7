@@ -1817,8 +1817,8 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         # Add Arithmetics include guarded by MADARITH_DOUBLEEXPANSION (only when that path is generated)
         if arith_doubleexpansion:
             file_h = file_h.replace(
-                '#include "mgOnGpuConfig.h"',
-                '#include "mgOnGpuConfig.h"\n#ifdef MADARITH_DOUBLEEXPANSION\n#include "Arithmetics/Double.h"\n#endif'
+                '#include "madmatrixConfig.h"',
+                '#include "madmatrixConfig.h"\n#ifdef MADARITH_DOUBLEEXPANSION\n#include "Arithmetics/Double.h"\n#endif'
             )
         writers.CPPWriter(model_h_file).writelines(file_h, formatting=False)
         logger.info('Created file %s in directory %s' \
@@ -2115,7 +2115,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (invert .cc/.cu, add debug printouts)
     def generate_process_files(self):
-        """Generate mgOnGpuConfig.h, CPPProcess.cc, CPPProcess.h, check_sa.cc, gXXX.cu links"""
+        """Generate madmatrixConfig.h, CPPProcess.cc, CPPProcess.h, check_sa.cc, gXXX.cu links"""
         ###misc.sprint('Entering OneProcessExporterMadMatrix.generate_process_files')
         self.edit_colordata() # AV new file (NB this is Sigma-specific, should not be a symlink to Subprocesses)
         self.edit_colorflows()
@@ -2254,9 +2254,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (add debug printouts and multichannel handling #473) 
     def edit_config(self):
-        """Generate the config header src/mgOnGpuConfig.h"""
+        """Generate the config header src/madmatrixConfig.h"""
         ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_config')
-        template = open(pjoin(self.template_path,'madmatrix','mgOnGpuConfig.h'),'r').read()
+        template = open(pjoin(self.template_path,'madmatrix','madmatrixConfig.h'),'r').read()
         replace_dict = {}
         nexternal, nincoming = self.matrix_elements[0].get_nexternal_ninitial()
         replace_dict['nincoming'] = nincoming
@@ -2264,7 +2264,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['nbhel'] = self.matrix_elements[0].get_helicity_combinations() # number of helicity combinations
         ###replace_dict['nwavefunc'] = self.matrix_elements[0].get_number_of_wavefunctions() # this is the correct P1-specific nwf, now in CPPProcess.h (#644)
         replace_dict['wavefuncsize'] = 6
-        ff = open(pjoin(self.path, '..','..','src','mgOnGpuConfig.h'),'w')
+        ff = open(pjoin(self.path, '..','..','src','madmatrixConfig.h'),'w')
         ff.write(template % replace_dict)
         ff.close()
 

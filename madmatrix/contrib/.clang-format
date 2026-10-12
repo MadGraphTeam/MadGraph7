@@ -103,11 +103,11 @@ IncludeCategories:
     Priority:        6 # AV was 2
     SortPriority:    0
     CaseSensitive:   false
-  - Regex:           'mgOnGpuConfig.h'
+  - Regex:           'madmatrixConfig.h'
     Priority:        1 # AV new
     SortPriority:    0
     CaseSensitive:   false
-  - Regex:           'mgOnGpu*.*'
+  - Regex:           'madmatrix.*'
     Priority:        2 # AV new
     SortPriority:    0
     CaseSensitive:   false
