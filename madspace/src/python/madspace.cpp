@@ -10,6 +10,7 @@
 #include "madspace/driver.hpp"
 #include "madspace/phasespace.hpp"
 #include "madspace/util.hpp"
+#include "python_function.hpp"
 
 namespace py = pybind11;
 using namespace madspace;
@@ -358,6 +359,17 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("Context::load_matrix_element")
         )
         .def(
+            "_add_python_function",
+            &add_python_function,
+            py::arg("function"),
+            py::arg("input_keys"),
+            py::arg("required_input_keys"),
+            py::arg("output_keys"),
+            py::arg("framework"),
+            py::arg("name"),
+            py::return_value_policy::reference_internal
+        )
+        .def(
             "define_global",
             &Context::define_global,
             py::arg("name"),
@@ -444,6 +456,51 @@ PYBIND11_MODULE(_madspace_py, m) {
         py::arg("stream"),
         pydoc::doc("set_caller_stream")
     );
+
+    m.def(
+        "_tensor_view",
+        &tensor_view,
+        py::arg("address"),
+        py::arg("dtype"),
+        py::arg("shape"),
+        py::arg("stride"),
+        py::arg("offset"),
+        py::arg("device")
+    );
+    py::dict umami_input_keys, umami_output_keys;
+    for (auto [name, key] : std::initializer_list<std::pair<const char*, int>>{
+             {"momenta", UMAMI_IN_MOMENTA},
+             {"alpha_s", UMAMI_IN_ALPHA_S},
+             {"flavor_index", UMAMI_IN_FLAVOR_INDEX},
+             {"random_color", UMAMI_IN_RANDOM_COLOR},
+             {"random_helicity", UMAMI_IN_RANDOM_HELICITY},
+             {"random_diagram", UMAMI_IN_RANDOM_DIAGRAM},
+             {"helicity_index", UMAMI_IN_HELICITY_INDEX},
+             {"diagram_index", UMAMI_IN_DIAGRAM_INDEX},
+             {"channel_index", UMAMI_IN_CHANNEL_INDEX},
+             {"particle_count", UMAMI_IN_PARTICLE_COUNT},
+             {"pdg_ids", UMAMI_IN_PDG_IDS},
+             {"momentum_fraction", UMAMI_IN_MOMENTUM_FRACTION},
+             {"scale", UMAMI_IN_SCALE},
+             {"pdg_id", UMAMI_IN_PDG_ID},
+             {"beam_index", UMAMI_IN_BEAM_INDEX},
+         }) {
+        umami_input_keys[name] = key;
+    }
+    for (auto [name, key] : std::initializer_list<std::pair<const char*, int>>{
+             {"matrix_element", UMAMI_OUT_MATRIX_ELEMENT},
+             {"color_index", UMAMI_OUT_COLOR_INDEX},
+             {"helicity_index", UMAMI_OUT_HELICITY_INDEX},
+             {"diagram_index", UMAMI_OUT_DIAGRAM_INDEX},
+             {"cut", UMAMI_OUT_CUT},
+             {"scale", UMAMI_OUT_SCALE},
+             {"pdf", UMAMI_OUT_PDF},
+             {"bias", UMAMI_OUT_BIAS},
+         }) {
+        umami_output_keys[name] = key;
+    }
+    m.attr("_UMAMI_INPUT_KEYS") = umami_input_keys;
+    m.attr("_UMAMI_OUTPUT_KEYS") = umami_output_keys;
 
     py::classh<FunctionRuntime>(m, "FunctionRuntime", py::dynamic_attr())
         .def(py::init<Function>(), py::arg("function"))
