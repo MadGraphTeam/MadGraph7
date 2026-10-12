@@ -955,6 +955,71 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readonly_static("missing_pids", &Observable::missing_pids)
         .def_readonly_static("photon_pids", &Observable::photon_pids);
 
+    py::classh<CustomFunction, FunctionGenerator> custom_function(
+        m, "CustomFunction", pydoc::doc("CustomFunction")
+    );
+    add_enum<CustomFunction::CustomFunctionType>(
+        custom_function,
+        "CustomFunctionType",
+        {
+            {"cut", CustomFunction::cut},
+            {"scale", CustomFunction::scale},
+            {"bias", CustomFunction::bias},
+        }
+    );
+    custom_function
+        .def(
+            py::init<
+                std::size_t,
+                CustomFunction::CustomFunctionType,
+                std::size_t,
+                const nested_vector2<me_int_t>&>(),
+            py::arg("function_index"),
+            py::arg("type"),
+            py::arg("particle_count"),
+            py::arg("pdg_id_options") = nested_vector2<me_int_t>{},
+            pydoc::doc("CustomFunction::CustomFunction")
+        )
+        .def(
+            py::init<
+                const MatrixElementApi&,
+                CustomFunction::CustomFunctionType,
+                std::size_t,
+                const nested_vector2<me_int_t>&>(),
+            py::arg("function_api"),
+            py::arg("type"),
+            py::arg("particle_count"),
+            py::arg("pdg_id_options") = nested_vector2<me_int_t>{},
+            pydoc::doc("CustomFunction::CustomFunction#2")
+        )
+        .def(
+            "function_index",
+            &CustomFunction::function_index,
+            pydoc::doc("CustomFunction::function_index")
+        )
+        .def("type", &CustomFunction::type, pydoc::doc("CustomFunction::type"))
+        .def(
+            "dynamic_pdg_ids",
+            &CustomFunction::dynamic_pdg_ids,
+            pydoc::doc("CustomFunction::dynamic_pdg_ids")
+        );
+    py::classh<CustomPdf>(m, "CustomPdf", pydoc::doc("CustomPdf"))
+        .def(
+            py::init<std::size_t>(),
+            py::arg("function_index"),
+            pydoc::doc("CustomPdf::CustomPdf")
+        )
+        .def(
+            py::init<const MatrixElementApi&>(),
+            py::arg("function_api"),
+            pydoc::doc("CustomPdf::CustomPdf#2")
+        )
+        .def_readonly(
+            "function_index",
+            &CustomPdf::function_index,
+            pydoc::doc("CustomPdf::function_index")
+        );
+
     auto cuts = py::classh<Cuts, FunctionGenerator>(m, "Cuts", pydoc::doc("Cuts"));
     add_enum<Cuts::CutMode>(
         cuts,
@@ -991,13 +1056,17 @@ PYBIND11_MODULE(_madspace_py, m) {
             "min", &Cuts::PairMassAny::min, pydoc::doc("Cuts::PairMassAny::min")
         );
     cuts.def(
-            py::init<const std::vector<Cuts::CutItem>&>(),
+            py::init<
+                const std::vector<Cuts::CutItem>&,
+                const std::optional<CustomFunction>&>(),
             py::arg("cut_data"),
+            py::arg("custom_cut") = std::nullopt,
             pydoc::doc("Cuts::Cuts")
     )
         .def(
-            py::init<std::size_t>(),
+            py::init<std::size_t, const std::optional<CustomFunction>&>(),
             py::arg("particle_count"),
+            py::arg("custom_cut") = std::nullopt,
             pydoc::doc("Cuts::Cuts#2")
         )
         .def("sqrt_s_min", &Cuts::sqrt_s_min, pydoc::doc("Cuts::sqrt_s_min"))
@@ -1313,7 +1382,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             &PhaseSpaceMapping::channel_count,
             pydoc::doc("PhaseSpaceMapping::channel_count")
         )
-        .def("empty", &PhaseSpaceMapping::empty, pydoc::doc("PhaseSpaceMapping::empty"));
+        .def(
+            "empty", &PhaseSpaceMapping::empty, pydoc::doc("PhaseSpaceMapping::empty")
+        );
 
     py::classh<MultiChannelFunction, FunctionGenerator>(
         m, "MultiChannelFunction", pydoc::doc("MultiChannelFunction")
@@ -1341,6 +1412,12 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"helicity_in", MatrixElement::helicity_in},
             {"diagram_in", MatrixElement::diagram_in},
             {"channel_in", MatrixElement::channel_in},
+            {"particle_count_in", MatrixElement::particle_count_in},
+            {"pdg_ids_in", MatrixElement::pdg_ids_in},
+            {"momentum_fraction_in", MatrixElement::momentum_fraction_in},
+            {"scale_in", MatrixElement::scale_in},
+            {"pdg_id_in", MatrixElement::pdg_id_in},
+            {"beam_index_in", MatrixElement::beam_index_in},
         }
     );
     add_enum<MatrixElement::MatrixElementOutput>(
@@ -1352,6 +1429,10 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"color_index_out", MatrixElement::color_index_out},
             {"helicity_index_out", MatrixElement::helicity_index_out},
             {"diagram_index_out", MatrixElement::diagram_index_out},
+            {"cut_out", MatrixElement::cut_out},
+            {"scale_out", MatrixElement::scale_out},
+            {"pdf_out", MatrixElement::pdf_out},
+            {"bias_out", MatrixElement::bias_out},
         }
     );
     matrix_element
@@ -1862,6 +1943,14 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("dynamic_pid") = false,
             py::arg("prefix") = "",
             pydoc::doc("PartonDensity::PartonDensity")
+        )
+        .def(
+            py::init<const CustomPdf&, const std::vector<int>&, int, bool>(),
+            py::arg("custom_pdf"),
+            py::arg("pids"),
+            py::arg("beam_index"),
+            py::arg("dynamic_pid") = false,
+            pydoc::doc("PartonDensity::PartonDensity#2")
         );
 
     py::classh<AlphaSGrid>(m, "AlphaSGrid", pydoc::doc("AlphaSGrid"))
@@ -1951,7 +2040,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 double,
                 double,
-                double>(),
+                double,
+                const std::optional<CustomFunction>&>(),
             py::arg("particle_count"),
             py::arg("dynamical_scale_type"),
             py::arg("ren_scale_fixed"),
@@ -1960,6 +2050,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("fact_scale1"),
             py::arg("fact_scale2"),
             py::arg("scale_factor") = 1.,
+            py::arg("custom_scale") = std::nullopt,
             pydoc::doc("EnergyScale::EnergyScale#4")
         );
 
@@ -2051,7 +2142,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const Integrand::AdaptiveDiscrete&,
                 const Integrand::AdaptiveDiscrete&,
                 const nested_vector2<me_int_t>&,
-                const std::optional<PdfGrid>&,
+                const Integrand::PdfSource&,
                 const std::optional<RunningCoupling>&,
                 const std::optional<EnergyScale>&,
                 const std::optional<PropagatorChannelWeights>&,
@@ -2072,14 +2163,15 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<std::size_t>&,
                 const std::vector<std::size_t>&,
                 const std::vector<std::size_t>&,
-                std::size_t>(),
+                std::size_t,
+                const std::optional<CustomFunction>&>(),
             py::arg("mapping"),
             py::arg("diff_xs"),
             py::arg("adaptive_map") = std::monostate{},
             py::arg("discrete_sym") = std::monostate{},
             py::arg("discrete_flavor") = std::monostate{},
             py::arg("pid_options") = nested_vector2<me_int_t>{},
-            py::arg("pdf_grid") = std::nullopt,
+            py::arg("pdf_grid") = std::monostate{},
             py::arg("running_coupling") = std::nullopt,
             py::arg("energy_scale") = std::nullopt,
             py::arg("prop_chan_weights") = std::nullopt,
@@ -2101,6 +2193,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("flavor_subproc_indices") = std::vector<std::size_t>{},
             py::arg("flavor_per_subproc_remap") = std::vector<std::size_t>{},
             py::arg("compressed_channel_weight_count") = 50,
+            py::arg("custom_bias") = std::nullopt,
             pydoc::doc("Integrand::Integrand")
         )
         .def(

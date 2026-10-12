@@ -3,6 +3,7 @@
 #include "madspace/phasespace/channel_weight_network.hpp"
 #include "madspace/phasespace/channel_weights.hpp"
 #include "madspace/phasespace/cross_section.hpp"
+#include "madspace/phasespace/custom_function.hpp"
 #include "madspace/phasespace/discrete_flow.hpp"
 #include "madspace/phasespace/discrete_sampler.hpp"
 #include "madspace/phasespace/flow.hpp"
@@ -45,6 +46,8 @@ namespace madspace {
  *   `float`, shape `(batch,)` – scales and momentum fractions.
  * - `random` – `float`, shape `(batch, mapping.random_dim())` – the underlying
  *   random numbers.
+ * - `bias` – `float`, shape `(batch,)` – the event bias, present only with a
+ *   custom bias. `weight` then includes the bias factor.
  *
  * **References**
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
@@ -57,6 +60,8 @@ public:
     /// The optional adaptive sampler for a set of discrete choices.
     using AdaptiveDiscrete =
         std::variant<std::monostate, DiscreteSampler, DiscreteFlow>;
+    /// The optional parton density: an LHAPDF grid or a user-supplied library.
+    using PdfSource = std::variant<std::monostate, PdfGrid, CustomPdf>;
 
     /// The @ref MatrixElement inputs an `Integrand` supplies.
     inline static const std::vector<MatrixElement::MatrixElementInput>
@@ -91,7 +96,8 @@ public:
      *                                          the flavour choice.
      * @param pid_options                       Allowed initial-parton flavour
      *                                          combinations.
-     * @param pdf_grid                          Optional shared @ref PdfGrid.
+     * @param pdf_grid                          Optional shared @ref PdfGrid or
+     *                                          @ref CustomPdf.
      * @param running_coupling                  Optional shared
      *                                          @ref RunningCoupling.
      * @param energy_scale                      Optional shared @ref EnergyScale.
@@ -126,6 +132,10 @@ public:
      * @param flavor_per_subproc_remap          Per-sub-process flavour remap.
      * @param compressed_channel_weight_count   Channel-weight entries kept per
      *                                          event.
+     * @param custom_bias                       Optional user-supplied event
+     *                                          bias of type CustomFunction::bias.
+     *                                          Its PDG-id options must match
+     *                                          @p pid_options.
      */
     Integrand(
         const PhaseSpaceMapping& mapping,
@@ -134,7 +144,7 @@ public:
         const AdaptiveDiscrete& discrete_sym = std::monostate{},
         const AdaptiveDiscrete& discrete_flavor = std::monostate{},
         const nested_vector2<me_int_t>& pid_options = {},
-        const std::optional<PdfGrid>& pdf_grid = std::nullopt,
+        const PdfSource& pdf_grid = std::monostate{},
         const std::optional<RunningCoupling>& running_coupling = std::nullopt,
         const std::optional<EnergyScale>& energy_scale = std::nullopt,
         const std::optional<PropagatorChannelWeights>& prop_chan_weights = std::nullopt,
@@ -155,7 +165,8 @@ public:
         const std::vector<std::size_t>& flavor_diff_xs_indices = {},
         const std::vector<std::size_t>& flavor_subproc_indices = {},
         const std::vector<std::size_t>& flavor_per_subproc_remap = {},
-        std::size_t compressed_channel_weight_count = 50
+        std::size_t compressed_channel_weight_count = 50,
+        const std::optional<CustomFunction>& custom_bias = std::nullopt
     );
     /// Total number of particles, incoming and outgoing.
     std::size_t particle_count() const { return _mapping.particle_count(); }
@@ -259,6 +270,7 @@ private:
     std::vector<me_int_t> _flavor_diff_xs_indices;
     std::vector<me_int_t> _flavor_subproc_indices;
     std::vector<me_int_t> _flavor_per_subproc_remap;
+    std::optional<CustomFunction> _custom_bias;
 
     friend class IntegrandProbability;
     friend class IntegrandChannelPart;

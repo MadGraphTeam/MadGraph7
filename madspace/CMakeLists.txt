@@ -240,6 +240,7 @@ add_library(
     src/phasespace/madnis.cpp
     src/phasespace/rambo.cpp
     src/phasespace/cuts.cpp
+    src/phasespace/custom_function.cpp
     src/phasespace/observable.cpp
     src/phasespace/histograms.cpp
     src/phasespace/chili.cpp
