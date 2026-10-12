@@ -40,6 +40,7 @@ Builders that assemble compute-graph functions for channel weights, energy scale
 .. toctree::
    :maxdepth: 1
 
+   python/BufferUnweighter
    python/CachedPdf
    python/CachedScale
    python/ChannelWeightNetwork
@@ -122,6 +123,7 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    python/EventGenerator
    python/EventHistogramSpec
    python/EventHistograms
+   python/EventStream
    python/GeneratorConfig
    python/GeneratorStatus
    python/Histogram
@@ -177,3 +179,6 @@ Lower-level helpers and containers.
 
    python/NamedTypes
    python/NamedValues
+   python/get_stream
+   python/set_stream
+   python/stream

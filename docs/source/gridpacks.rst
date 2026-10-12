@@ -102,28 +102,8 @@ Streaming events from Python
 ----------------------------
 
 A gridpack created with ``run_mode = "fix_max_weight"`` also contains
-``bin/event_stream.py``. It generates events in memory, without writing any files:
-
-.. code-block:: python
-
-    import sys
-    sys.path.insert(0, "<gridpack>/bin")
-    from event_stream import EventStream
-
-    with EventStream(device="cpu", seed=42) as stream:
-        for batch in stream.batches(10000, output_type="torch", max_events=100000):
-            batch.px  # shape (10000, max_particle_count)
-
-The stream is endless. Iterating over ``stream`` yields ``LHEEvent`` objects, and
-``batches`` yields ``EventBatch`` dataclasses with numpy arrays or torch tensors, padded to
-the largest particle count (see ``particle_mask``). The constructor takes the device, the
-seed, the batch sizes and the thread pool size, with defaults from ``grid_run_card.toml``.
-Background threads keep a buffer of events for every channel, and every event picks its
-channel at random according to the current cross section estimates. ``stream.integral``
-and ``stream.integral_error`` give the current estimate.
-
-The weights are ``1`` (``-1`` for negative events), except for overweight events. The
-events only depend on the seed, not on the number of threads or the batch sizes.
+``bin/event_stream.py``. Its ``EventStream`` class generates events in memory and returns
+them to a Python program, without writing any files. See :doc:`event_stream`.
 
 Run card settings
 -----------------

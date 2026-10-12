@@ -59,25 +59,45 @@ class EventBatch:
     ``particle_mask``. numpy arrays or CPU torch tensors, depending on the
     ``output_type`` of :meth:`EventStream.batches`."""
 
+    #: Process ID of the event (IDPRUP).
     process_id: Any
+    #: Event weight, +-1 or larger in magnitude for overweight events (XWGTUP).
     weight: Any
+    #: Renormalization scale in GeV (SCALUP).
     scale: Any
+    #: QED coupling (AQEDUP).
     alpha_qed: Any
+    #: QCD coupling (AQCDUP).
     alpha_qcd: Any
+    #: Number of particles of the event, including resonances (NUP).
     particle_count: Any
+    #: True for the particle slots below ``particle_count``.
     particle_mask: Any
+    #: PDG ID of the particle (IDUP).
     pdg_id: Any
+    #: -1 for incoming, 1 for outgoing particles, 2 for resonances (ISTUP).
     status_code: Any
+    #: Index of the first mother, counting from 1; 0 if there is none (MOTHUP).
     mother1: Any
+    #: Index of the second mother, counting from 1; 0 if there is none (MOTHUP).
     mother2: Any
+    #: Color line, 0 for a color singlet (ICOLUP).
     color: Any
+    #: Anti-color line (ICOLUP).
     anti_color: Any
+    #: x component of the momentum in GeV.
     px: Any
+    #: y component of the momentum in GeV.
     py: Any
+    #: z component of the momentum in GeV.
     pz: Any
+    #: Energy in GeV.
     energy: Any
+    #: Mass in GeV.
     mass: Any
+    #: Proper lifetime c*tau in mm, 0 if not tracked (VTIMUP).
     lifetime: Any
+    #: Cosine of the spin angle, or 9 if the spin is not specified (SPINUP).
     spin: Any
 
     def __len__(self) -> int:
@@ -105,6 +125,9 @@ class EventStream:
         ignore_source_hash: run even if madspace differs from the version the
             gridpack was made with (can lead to errors or incorrect results).
     """
+
+    #: The seed of the stream; a seed of -1 is replaced by the random seed drawn.
+    seed: int
 
     def __init__(
         self,

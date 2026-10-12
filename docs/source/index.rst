@@ -28,6 +28,7 @@ If you need a stable release, use the
    first_steps
    run_card
    gridpacks
+   event_stream
    madevent_to_mg7
 
 .. toctree::
