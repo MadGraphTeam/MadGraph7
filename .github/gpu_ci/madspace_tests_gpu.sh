@@ -30,6 +30,20 @@ if [ -n "$MISSING" ]; then
     echo "Installing $MISSING into $DEPS"
     python3 -m pip install --quiet --target="$DEPS" $MISSING
 fi
+# manneback has only a CPU build of PyTorch among its modules: then a CUDA wheel, kept in
+# the cache, goes before it in the path
+if [ "$BACKEND" = cuda ] && ! python3 -c 'import sys, torch; sys.exit(not torch.cuda.is_available())' 2> /dev/null; then
+    TORCH_WHEEL=${TORCH_WHEEL:-torch==2.8.0}
+    TORCH_INDEX=${TORCH_INDEX:-https://download.pytorch.org/whl/cu128}
+    TORCH_DIR=$DEPS-$(printf '%s %s' "$TORCH_WHEEL" "$TORCH_INDEX" | sha1sum | cut -c1-8)
+    if [ ! -e "$TORCH_DIR/.ready" ]; then
+        echo "The torch of the modules has no CUDA: installing $TORCH_WHEEL from $TORCH_INDEX into $TORCH_DIR"
+        rm -rf "$TORCH_DIR"
+        python3 -m pip install --quiet --target="$TORCH_DIR" --index-url "$TORCH_INDEX" "$TORCH_WHEEL"
+        touch "$TORCH_DIR/.ready"
+    fi
+    export PYTHONPATH=$TORCH_DIR:$PYTHONPATH
+fi
 python3 -c 'import torch; print("torch", torch.__version__, "GPU available:", torch.cuda.is_available())'
 
 rm -rf "$WORKDIR"
