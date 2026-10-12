@@ -177,6 +177,7 @@ set(
     ${MADSPACE_GENERATED_DIR}/python/instruction_set.hpp
     ${MADSPACE_GENERATED_DIR}/cpu/runtime_mixin.inc
     ${MADSPACE_GENERATED_DIR}/cpu/runtime_backward_mixin.inc
+    ${MADSPACE_GENERATED_DIR}/cpu/kernel_checks.inc
     ${MADSPACE_GENERATED_DIR}/gpu/runtime_mixin.inc
     ${MADSPACE_GENERATED_DIR}/gpu/runtime_backward_mixin.inc
 )
@@ -472,6 +473,7 @@ foreach(
         src/cpu/kernel_definitions.hpp
         ${MADSPACE_GENERATED_DIR}/cpu/runtime_mixin.inc
         ${MADSPACE_GENERATED_DIR}/cpu/runtime_backward_mixin.inc
+        ${MADSPACE_GENERATED_DIR}/cpu/kernel_checks.inc
         src/cpu/tensor.hpp
         src/cpu/simd.hpp
         src/cpu/simd_arm.hpp

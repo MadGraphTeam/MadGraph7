@@ -1,6 +1,7 @@
 #include "madspace/compgraphs/function.hpp"
 #include "madspace/util.hpp"
 
+#include <algorithm>
 #include <format>
 #include <fstream>
 #include <stdexcept>
@@ -306,58 +307,81 @@ FunctionBuilder::instruction(InstructionPtr instruction, const ValueVec& args) {
 
     // perform simple arithmetic operations on constant arguments
     int opcode = instruction->opcode();
-    if (variable_args == 0) {
-        switch (opcode) {
-        case opcodes::add: {
-            double arg0 = std::get<double>(args.at(0).literal_value);
-            double arg1 = std::get<double>(args.at(1).literal_value);
-            return {arg0 + arg1};
-        }
-        case opcodes::sub: {
-            double arg0 = std::get<double>(args.at(0).literal_value);
-            double arg1 = std::get<double>(args.at(1).literal_value);
-            return {arg0 - arg1};
-        }
-        case opcodes::mul: {
-            double arg0 = std::get<double>(args.at(0).literal_value);
-            double arg1 = std::get<double>(args.at(1).literal_value);
-            return {arg0 * arg1};
-        }
-        case opcodes::sqrt: {
-            double arg0 = std::get<double>(args.at(0).literal_value);
-            return {std::sqrt(arg0)};
-        }
-        case opcodes::square: {
-            double arg0 = std::get<double>(args.at(0).literal_value);
-            return {arg0 * arg0};
-        }
-        case opcodes::min: {
-            double arg0 = std::get<double>(args.at(0).literal_value);
-            double arg1 = std::get<double>(args.at(1).literal_value);
-            return {std::min(arg0, arg1)};
-        }
-        case opcodes::max: {
-            double arg0 = std::get<double>(args.at(0).literal_value);
-            double arg1 = std::get<double>(args.at(1).literal_value);
-            return {std::max(arg0, arg1)};
-        }
-        }
-    } else if (variable_args == 1 && args.size() == 2) {
-        std::size_t var_index = args.at(0).local_index == -1;
-        auto& var_arg = args.at(var_index);
-        auto& const_arg = args.at(1 - var_index);
+    auto is_float_literal = [](const Value& arg) {
+        return arg.local_index == -1 &&
+            std::holds_alternative<double>(arg.literal_value);
+    };
+    auto is_int_literal = [](const Value& arg) {
+        return arg.local_index == -1 &&
+            std::holds_alternative<me_int_t>(arg.literal_value);
+    };
+    bool all_float_literals = args.size() > 0 &&
+        std::all_of(args.begin(), args.end(), is_float_literal);
+    bool all_int_literals =
+        args.size() > 0 && std::all_of(args.begin(), args.end(), is_int_literal);
+    if (all_float_literals) {
+        auto arg = [&](std::size_t index) {
+            return std::get<double>(args.at(index).literal_value);
+        };
         switch (opcode) {
         case opcodes::add:
+            return {arg(0) + arg(1)};
         case opcodes::sub:
-            if (std::get<double>(const_arg.literal_value) == 0.) {
-                return {var_arg};
-            }
-            break;
+            return {arg(0) - arg(1)};
         case opcodes::mul:
-            if (std::get<double>(const_arg.literal_value) == 1.) {
-                return {var_arg};
+            return {arg(0) * arg(1)};
+        case opcodes::sqrt:
+            return {std::sqrt(arg(0))};
+        case opcodes::square:
+            return {arg(0) * arg(0)};
+        case opcodes::min:
+            return {std::min(arg(0), arg(1))};
+        case opcodes::max:
+            return {std::max(arg(0), arg(1))};
+        }
+    }
+    // a stack of scalar literals is a single tensor literal
+    if (opcode == opcodes::stack) {
+        if (all_float_literals) {
+            std::vector<double> values;
+            for (auto& arg : args) {
+                values.push_back(std::get<double>(arg.literal_value));
             }
-            break;
+            return {Value(values)};
+        } else if (all_int_literals) {
+            std::vector<me_int_t> values;
+            for (auto& arg : args) {
+                values.push_back(std::get<me_int_t>(arg.literal_value));
+            }
+            return {Value(values)};
+        }
+    }
+    // identities x + 0, 0 + x, x - 0 and x * 1, 1 * x
+    if (variable_args == 1 && args.size() == 2) {
+        bool const_first = is_float_literal(args.at(0));
+        bool const_second = is_float_literal(args.at(1));
+        if (const_first != const_second) {
+            auto& var_arg = args.at(const_first ? 1 : 0);
+            double const_val =
+                std::get<double>(args.at(const_first ? 0 : 1).literal_value);
+            switch (opcode) {
+            case opcodes::add:
+                if (const_val == 0.) {
+                    return {var_arg};
+                }
+                break;
+            case opcodes::sub:
+                // only x - 0, as 0 - x = -x
+                if (const_second && const_val == 0.) {
+                    return {var_arg};
+                }
+                break;
+            case opcodes::mul:
+                if (const_val == 1.) {
+                    return {var_arg};
+                }
+                break;
+            }
         }
     }
 

@@ -11,8 +11,8 @@ KERNELSPEC void kernel_chili_forward(
     FIn<T, 1> r,
     FIn<T, 0> e_cm,
     FIn<T, 1> m_out,
-    FIn<T, 1> pt_min,
-    FIn<T, 1> y_max,
+    FSIn<T, 1> pt_min,
+    FSIn<T, 1> y_max,
     FOut<T, 2> p_ext,
     FOut<T, 0> det
 ) {
@@ -134,8 +134,8 @@ KERNELSPEC void kernel_chili_inverse(
     FIn<T, 2> p_ext,
     FIn<T, 0> e_cm,
     FIn<T, 1> m_out,
-    FIn<T, 1> pt_min,
-    FIn<T, 1> y_max,
+    FSIn<T, 1> pt_min,
+    FSIn<T, 1> y_max,
     FOut<T, 1> r,
     FOut<T, 0> det
 ) {

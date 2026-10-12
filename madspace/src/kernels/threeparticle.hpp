@@ -711,8 +711,8 @@ KERNELSPEC void kernel_s23_arcsine_sample(
     FIn<T, 0> s_max,
     FIn<T, 0> s_phys_min,
     FIn<T, 0> s_phys_max,
-    FIn<T, 0> power,
-    FIn<T, 0> mass,
+    FSIn<T, 0> power,
+    FSIn<T, 0> mass,
     FOut<T, 0> u,
     FOut<T, 0> u_c,
     FOut<T, 0> det
@@ -757,8 +757,8 @@ KERNELSPEC void kernel_s23_arcsine_sample_inverse(
     FIn<T, 0> s_max,
     FIn<T, 0> s_phys_min,
     FIn<T, 0> s_phys_max,
-    FIn<T, 0> power,
-    FIn<T, 0> mass,
+    FSIn<T, 0> power,
+    FSIn<T, 0> mass,
     FOut<T, 0> r,
     FOut<T, 0> det
 ) {
