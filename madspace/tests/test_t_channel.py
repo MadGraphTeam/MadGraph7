@@ -175,7 +175,8 @@ def test_t_channel_momentum_conservation(masses, rng, mode):
     p_in = torch.sum(p_ext[:, :2], dim=1)
     p_out = torch.sum(p_ext[:, 2:], dim=1)
 
-    assert_approx(p_out, p_in, rel=1e-6, abs=1e-9)
+    # the transverse components are 0 up to the rounding of momenta of order CM_ENERGY
+    assert_approx(p_out, p_in, rel=1e-6, abs=1e-12 * CM_ENERGY)
 
 
 def test_t_channel_inverse(masses, rng, mode):
@@ -300,7 +301,8 @@ def test_color_ordered_color_orders(rng, color_order, out_masses, _label):
     # (1) momentum conservation
     p_in = torch.sum(p_ext[:, :2], dim=1)
     p_out = torch.sum(p_ext[:, 2:], dim=1)
-    assert_approx(p_out, p_in, rel=1e-6, abs=1e-9)
+    # the transverse components are 0 up to the rounding of momenta of order CM_ENERGY
+    assert_approx(p_out, p_in, rel=1e-6, abs=1e-12 * CM_ENERGY)
 
     # (2) on-shell external masses (energy-scaled FP floor for deep boost chains)
     m_ext_true = torch.tensor(masses).expand(BATCH_SIZE, -1)
