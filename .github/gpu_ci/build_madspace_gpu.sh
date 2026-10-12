@@ -21,7 +21,7 @@ case $BACKEND in
     cuda)
         nvidia-smi
         ARCH=${GPU_ARCH:-$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | sed -n 1p | tr -d .)}
-        GPU_FLAGS=(-Ccmake.define.ENABLE_CUDA=ON "-Ccmake.define.CMAKE_CUDA_ARCHITECTURES=$ARCH") ;;
+        GPU_FLAGS=(-Ccmake.define.ENABLE_CUDA=ON "-Ccmake.define.CMAKE_CUDA_ARCHITECTURES=$ARCH" "-Ccmake.define.CMAKE_CUDA_FLAGS=--fmad=false") ;;
     hip)
         rocm-smi || true
         ARCH=${GPU_ARCH:-$(rocm_agent_enumerator 2> /dev/null | grep -v gfx000 | sort -u | sed -n 1p || true)}
@@ -51,7 +51,7 @@ fi
 
 # madspace build (per madspace source tree, backend and architecture)
 SRC=$(git -C "$REPO" rev-parse HEAD:madspace)
-PREFIX=$ENV_DIR/madspace-$SRC-$BACKEND-$ARCH
+PREFIX=$ENV_DIR/madspace-$SRC-$BACKEND-$ARCH-nofmad
 if [ -e "$PREFIX/.ready" ]; then
     echo "Reusing the madspace build $PREFIX"
     touch "$PREFIX" # keeps it out of the 30-day clean-up below
