@@ -214,6 +214,8 @@ def main() -> None:
     global_dir = os.path.join("data", "globals")
     for context, backend in zip(contexts, backends):
         context.load_globals(global_dir)
+        for path in madspace_data.get("custom_functions", []):
+            context.load_matrix_element(path, param_card_path)
         for me_path in madspace_data["matrix_elements"]:
             context.load_matrix_element(
                 me_path.format(device=backend), param_card_path, me_parameters
