@@ -42,6 +42,8 @@ LANGUAGES = {
     "fortran": ("f90", "Fortran"),
     "cuda": ("cu", "CUDA, for runs on NVIDIA GPUs"),
     "hip": ("cu", "HIP, for runs on AMD GPUs"),
+    "python-numpy": ("py", "Python with numpy, for CPU runs, no compilation"),
+    "python-torch": ("py", "Python with PyTorch, for CPU or GPU runs, no compilation"),
 }
 
 _NONINTERACTIVE = (not sys.stdin.isatty()) or any(a in ("-y", "--yes") for a in sys.argv[1:])
@@ -69,8 +71,9 @@ def ask_choice(title, options, default):
     """Numbered menu over ``options`` (name -> description), returns a name."""
     names = list(options)
     lines = [title]
+    width = max(len(name) for name in names)
     for i, name in enumerate(names, 1):
-        lines.append(f"  {i}. {name:8s} {options[name]}")
+        lines.append(f"  {i}. {name:{width}s} {options[name]}")
     print("\n".join(lines))
     choices = names + [str(i) for i in range(1, len(names) + 1)]
     while True:
@@ -98,7 +101,8 @@ def build_parser():
         prog="bin/init_custom_func",
         description=(
             "Create a skeleton for a custom cut, scale, PDF or bias function in "
-            "custom_<function>/ and build it into lib/custom_<function>.so."
+            "custom_<function>/. Compiled languages are built into "
+            "lib/custom_<function>.so, Python functions need no build."
         ),
     )
     parser.add_argument("-f", "--function", choices=list(FUNCTIONS))
@@ -121,10 +125,30 @@ def build_parser():
     return parser
 
 
+def is_python(language):
+    return language.startswith("python-")
+
+
+def function_path(function, language):
+    """The run card path of the function, relative to the process directory."""
+    if is_python(language):
+        return os.path.join(f"custom_{function}", f"custom_{function}.py")
+    return os.path.join("lib", f"custom_{function}.so")
+
+
 def write_files(out_dir, function, language):
-    """Write the wrapper, the function body, umami.h and the Makefile."""
+    """Write the function body and, for compiled languages, the wrapper,
+    umami.h and the Makefile."""
     extension = LANGUAGES[language][0]
     body_file = f"custom_{function}.{extension}"
+    if is_python(language):
+        framework = language.split("-", 1)[1]
+        os.makedirs(out_dir, exist_ok=True)
+        shutil.copy(
+            os.path.join(TEMPLATE_DIR, f"{function}_{framework}.py"),
+            os.path.join(out_dir, body_file),
+        )
+        return body_file
     values = {
         "kind": function,
         "function_name": f"custom_{function}",
@@ -194,12 +218,16 @@ def main(me_dir=None, argv=None):
         shutil.rmtree(out_dir)
 
     body_file = write_files(out_dir, function, language)
-    lib_path = os.path.join("lib", f"custom_{function}.so")
+    lib_path = function_path(function, language)
     print(f"Created {os.path.relpath(out_dir, me_dir)}/. Write your function in "
           f"{os.path.relpath(os.path.join(out_dir, body_file), me_dir)}.")
 
     do_build = args.build
-    if do_build is None:
+    if is_python(language):
+        if do_build:
+            print("Python functions need no build.")
+        do_build = False
+    elif do_build is None:
         do_build = ask_yes_no("Build the default function now?", True)
     if do_build and not build(out_dir):
         return 1
@@ -212,7 +240,7 @@ def main(me_dir=None, argv=None):
         print(f"Enabled it in Cards/run_card.toml: custom_functions.{function} = \"{lib_path}\".")
     else:
         print(f"To enable it, set custom_functions.{function} = \"{lib_path}\" in Cards/run_card.toml.")
-    if not do_build:
+    if not do_build and not is_python(language):
         print(f"Build it with `make -C {os.path.relpath(out_dir, me_dir)}`. "
               "bin/generate_events also rebuilds it before a run.")
     return 0

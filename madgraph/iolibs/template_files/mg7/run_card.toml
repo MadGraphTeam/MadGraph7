@@ -115,7 +115,8 @@ cut_decays = %(phasespace.cut_decays)s # apply the [cuts] to decay products of o
 adaptive_symmetry_sampling = %(phasespace.adaptive_symmetry_sampling)s
 
 [custom_functions]
-# shared libraries built with bin/init_custom_func, e.g. "lib/custom_cut.so"
+# functions created with bin/init_custom_func: a .so library, e.g. "lib/custom_cut.so",
+# or a Python file, e.g. "custom_cut/custom_cut.py"
 # paths are relative to the process directory; "" disables the function
 cut = %(custom_functions.cut)s
 scale = %(custom_functions.scale)s # replaces dynamical_scale_choice

@@ -38,6 +38,7 @@ from madgraph.iolibs.template_files.mg7 import hwu_output
 from madgraph.iolibs.template_files.mg7 import plots
 from madgraph.iolibs.template_files.mg7 import systematics_summary
 from madgraph.iolibs.template_files.mg7 import npy_to_lhe
+from madgraph.iolibs.template_files.mg7.custom_function_loader import load_custom_function
 from madgraph.various.banner import RunCardMG7
 from madgraph.various import misc
 from madgraph.interface.extended_cmd import Cmd
@@ -518,9 +519,9 @@ class MadgraphProcess:
     CUSTOM_FUNCTION_KINDS = ("cut", "scale", "pdf", "bias")
 
     def init_custom_functions(self) -> None:
-        """Build and load the libraries of [custom_functions]. They are loaded
-        before the matrix elements, so that they have the same index in every
-        context and in a gridpack made from this run."""
+        """Load the functions of [custom_functions], building the libraries
+        first. They are loaded before the matrix elements, so that they have the
+        same index in every context and in a gridpack made from this run."""
         self.custom_functions = {}
         self.custom_function_paths = []
         for kind in self.CUSTOM_FUNCTION_KINDS:
@@ -528,18 +529,18 @@ class MadgraphProcess:
             if not path:
                 continue
             build_dir = f"custom_{kind}"
-            if os.path.isfile(os.path.join(build_dir, "Makefile")):
+            if path.endswith(".so") and os.path.isfile(os.path.join(build_dir, "Makefile")):
                 self.build_custom_function(build_dir)
             if not os.path.isfile(path):
                 raise RuntimeError(
-                    f"[custom_functions] {kind} = {path!r}: library not found. "
-                    "Create it with bin/init_custom_func."
+                    f"[custom_functions] {kind} = {path!r}: file not found. "
+                    "Create a .so library or a .py file with bin/init_custom_func."
                 )
-            apis = [context.load_matrix_element(path, "") for context in self.contexts]
+            apis = load_custom_function(ms, self.contexts, self.device_types, kind, path)
             if len({api.index() for api in apis}) != 1:
-                raise RuntimeError(f"custom {kind} library loaded at different indices")
+                raise RuntimeError(f"custom {kind} function loaded at different indices")
             self.custom_functions[kind] = apis[0]
-            self.custom_function_paths.append(path)
+            self.custom_function_paths.append([kind, path])
             logger.info("Using the custom %s function %s", kind, path)
 
     @staticmethod
@@ -1983,7 +1984,7 @@ class MadgraphProcess:
             shutil.copytree("SubProcesses", os.path.join(gridpack_path, "SubProcesses"))
         else:
             shutil.copytree("lib", lib_path)
-        for path in self.custom_function_paths:
+        for _, path in self.custom_function_paths:
             target = path if os.path.isabs(path) else os.path.join(gridpack_path, path)
             if not os.path.exists(target):
                 os.makedirs(os.path.dirname(target), exist_ok=True)
@@ -2055,6 +2056,10 @@ class MadgraphProcess:
         gen_events_file = os.path.join(bin_path, "generate_events")
         shutil.copy(
             os.path.join(os.path.dirname(__file__), "gridpack.py"), gen_events_file
+        )
+        shutil.copy(
+            os.path.join(os.path.dirname(__file__), "custom_function_loader.py"),
+            os.path.join(bin_path, "custom_function_loader.py"),
         )
         os.chmod(gen_events_file, 0o755)
 

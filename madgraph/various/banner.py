@@ -6886,13 +6886,13 @@ class RunCardMG7(RunCard):
         # ------------------------- [custom_functions] -----------------
         # user functions built with bin/init_custom_func; "" disables them
         self.add_toml_param('custom_functions', 'cut', "",
-            comment="custom cut library, e.g. lib/custom_cut.so")
+            comment="custom cut, a .so library or a .py file, e.g. lib/custom_cut.so")
         self.add_toml_param('custom_functions', 'scale', "",
-            comment="custom scale library, replaces dynamical_scale_choice")
+            comment="custom scale, replaces dynamical_scale_choice")
         self.add_toml_param('custom_functions', 'pdf', "",
-            comment="custom PDF library, replaces the PDF set (not alpha_s)")
+            comment="custom PDF, replaces the PDF set (not alpha_s)")
         self.add_toml_param('custom_functions', 'bias', "",
-            comment="custom event bias library")
+            comment="custom event bias")
 
         # ----------------------------- [madnis] -----------------------
         self.add_toml_param('madnis', 'enable', False, allowed=["auto", True, False], auto=True,
