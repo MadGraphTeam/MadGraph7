@@ -11,9 +11,13 @@ than in test_systematics.py.
 import json
 
 import numpy as np
+import pytest
 from pytest import approx
 
 import madspace as ms
+
+# host-side: EventHistograms fills from python lists on an explicit CPU context
+pytestmark = pytest.mark.cpu_only
 
 
 def random_momenta(n, seed=5):
@@ -40,6 +44,7 @@ def random_momenta(n, seed=5):
         out.append(p_in + [[ea, px, py, pza], [eb, -px, -py, pzb]])
     return out
 
+
 def test_weight_histogram():
     """A from_weight histogram bins the event weight over the reference one,
     so an unweighted sample is a spike at 1 whatever the cross section."""
@@ -47,11 +52,15 @@ def test_weight_histogram():
     momenta = random_momenta(n, seed=11)
     ctx = ms.Context(device=ms.cpu_device(), thread_count=1)
     pids = [2, 2, 2, 2]
-    obs = ms.ObservableValues([
-        ms.Observable(pids, observable="sqrt_s", select_pids=[], name="sqrt_s"),
-    ])
-    specs = [ms.EventHistogramSpec("sqrt_s", 0.0, 2000.0, 8),
-             ms.EventHistogramSpec("weight", 0.0, 5.0, 10, from_weight=True)]
+    obs = ms.ObservableValues(
+        [
+            ms.Observable(pids, observable="sqrt_s", select_pids=[], name="sqrt_s"),
+        ]
+    )
+    specs = [
+        ms.EventHistogramSpec("sqrt_s", 0.0, 2000.0, 8),
+        ms.EventHistogramSpec("weight", 0.0, 5.0, 10, from_weight=True),
+    ]
     # half the events carry twice the reference weight
     weight = np.full(n, 3.0)
     weight[::2] = 6.0
@@ -84,4 +93,4 @@ def test_weight_histogram_alone():
     data = json.loads(hists.to_json())
     values = data[0]["bin_values"]
     assert sum(values) == approx(2.0)
-    assert values[3] == approx(2.0)   # the bin holding w/<w> = 1
+    assert values[3] == approx(2.0)  # the bin holding w/<w> = 1
