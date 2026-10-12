@@ -12,6 +12,7 @@
 #include <thrust/fill.h>
 #include <thrust/gather.h>
 #include <thrust/iterator/constant_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
 #include <thrust/sequence.h>
 #include <thrust/sort.h>
 
@@ -38,8 +39,10 @@ void op_matrix_element(
     std::size_t input_count = locals[instruction.input_indices[1]].index_value();
     std::size_t output_count = locals[instruction.input_indices[2]].index_value();
     TensorVec contiguous_inputs(input_count);
-    std::vector<UmamiInputKey> input_keys(input_count + 1);
-    std::vector<UmamiOutputKey> output_keys(output_count);
+    std::vector<UmamiInputKey> input_keys(input_count);
+    // one more output: the stream (UMAMI_OUT_GPU_STREAM), so that the matrix element runs
+    // in stream order with the rest of the function, not on the default stream
+    std::vector<UmamiOutputKey> output_keys(output_count + 1);
     std::vector<void*> input_ptrs(input_count), output_ptrs(output_count + 1);
     for (std::size_t i = 0; i < input_count; ++i) {
         input_keys[i] = static_cast<UmamiInputKey>(
@@ -113,7 +116,7 @@ void op_matrix_element(
         input_count,
         input_keys.data(),
         input_ptrs.data(),
-        output_count,
+        output_count + 1,
         output_keys.data(),
         output_ptrs.data()
     );
@@ -1405,7 +1408,8 @@ void op_histogram(
     Tensor square_weights_tmp(
         DataType::dt_float, {padded_size}, device, AllocHint::temporary
     );
-    Tensor reduce_tmp(DataType::dt_float, {n_bins}, device, AllocHint::temporary);
+    // the keys reduce_by_key writes: the n_bins bins, the underflow and the overflow bin
+    Tensor reduce_tmp(DataType::dt_float, {n_bins + 2}, device, AllocHint::temporary);
 
     launch_kernel(
         kernel_prepare_hist,
@@ -1431,7 +1435,19 @@ void op_histogram(
     auto weights_ptr =
         thrust::device_pointer_cast(static_cast<double*>(weights_tmp.data()));
     auto values_ptr = thrust::device_pointer_cast(static_cast<double*>(values.data()));
-    thrust::sort_by_key(policy, indices_ptr, indices_ptr + padded_size, weights_ptr);
+    auto square_weights_ptr =
+        thrust::device_pointer_cast(static_cast<double*>(square_weights_tmp.data()));
+    auto square_values_ptr =
+        thrust::device_pointer_cast(static_cast<double*>(square_values.data()));
+    // one sort of the bin indices, carrying the weights AND the squared weights along:
+    // sorting the indices again for the squared weights (as before) left these in the
+    // event order, so the squared weights of the wrong events were summed in each bin
+    thrust::sort_by_key(
+        policy,
+        indices_ptr,
+        indices_ptr + padded_size,
+        thrust::make_zip_iterator(thrust::make_tuple(weights_ptr, square_weights_ptr))
+    );
     thrust::reduce_by_key(
         policy,
         indices_ptr,
@@ -1439,14 +1455,6 @@ void op_histogram(
         weights_ptr,
         reduce_tmp_ptr,
         values_ptr
-    );
-
-    auto square_weights_ptr =
-        thrust::device_pointer_cast(static_cast<double*>(square_weights_tmp.data()));
-    auto square_values_ptr =
-        thrust::device_pointer_cast(static_cast<double*>(square_values.data()));
-    thrust::sort_by_key(
-        policy, indices_ptr, indices_ptr + padded_size, square_weights_ptr
     );
     thrust::reduce_by_key(
         policy,
