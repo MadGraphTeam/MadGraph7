@@ -503,6 +503,18 @@ class MG7CmdTest(unittest.TestCase):
         # a bare word is the run name
         self.assertEqual(cmd._parse_run_options('myrun')['name'], 'myrun')
 
+    def test_crash_on_error_is_inherited_from_mg5(self):
+        """The options are filtered down to the launcher's tool paths, which
+        used to drop crash_on_error: a crash inside an mg7 launch then went
+        back to the prompt and MG5 exited 0, even with crash_on_error True."""
+        cmd = self.launch.MG7Cmd(me_dir=self.me_dir,
+                                 options={'crash_on_error': True})
+        self.assertIs(cmd.options['crash_on_error'], True)
+        cmd = self.launch.MG7Cmd(me_dir=self.me_dir,
+                                 options={'crash_on_error': 'never'})
+        self.assertEqual(cmd.options['crash_on_error'], 'never')
+        self.assertNotIn('crash_on_error', self.make_cmd().options)
+
     def test_laststep_parton_switches_every_tool_off(self):
         cmd = self.make_cmd()
         switch = {'shower': 'Pythia8', 'madspin': 'ON', 'reweight': 'OFF'}

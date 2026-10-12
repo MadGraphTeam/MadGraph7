@@ -3297,6 +3297,11 @@ class MG7Cmd(Cmd):
             # configured in the session that is doing the launching.
             self.options.update({k: v for k, v in options.items()
                                  if k in self.options and v is not None})
+            # and so does its error policy: with crash_on_error a failing
+            # launch has to stop the script with a non-zero exit code, as a
+            # madevent launch does, instead of returning to the prompt.
+            if 'crash_on_error' in options:
+                self.options['crash_on_error'] = options['crash_on_error']
         self.plugin_path = []
         self.proc_characteristics = {'grouped_matrix': False, 'limitations': []}
         self._model = None  # lazily imported by get_model()
