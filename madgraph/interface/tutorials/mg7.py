@@ -144,10 +144,9 @@ and then touch things in this order:
 
   1. `train_batches`, `batch_size_per_channel` -- how much training, and how
      much per channel. Everything else is secondary.
-  2. `lr`, `lr_scheduler` (none or cosine), `lr_decay`. If the loss is noisy,
+  2. `lr`, `lr_scheduler` (none or cosine). If the loss is noisy,
      lower the rate before touching the network.
-  3. `loss` -- stratified_variance, kl_divergence or rkl_divergence.
-  4. only then the network shape: `flow_hidden_dim`, `flow_layers`,
+  3. only then the network shape: `flow_hidden_dim`, `flow_layers`,
      `flow_spline_bins`, `flow_activation`; `discrete_*` for the discrete
      dimensions; `cwnet_*` for the channel-weight network.
 
@@ -169,7 +168,8 @@ sets `[run] seed`, and so does editing the run card directly.
 documentation maps the old names onto the new sections.
 
 **Gridpacks** work here too, via the `[gridpack]` section. The "Gridpacks"
-page of the documentation describes them.
+page of the documentation describes them, including `bin/event_stream.py`, a
+Python API that streams events in memory.
 
 %(see_also)s
 
