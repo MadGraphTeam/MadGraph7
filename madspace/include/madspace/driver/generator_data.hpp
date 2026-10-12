@@ -243,6 +243,8 @@ struct GeneratorBatchJob {
     // for them and isn't read.
     std::size_t split_job_count;
     Tensor weights;
+    // per-event bias, empty without a custom bias
+    Tensor biases;
     TensorVec events;
     TensorVec unweighted_events;
     TensorVec hists;

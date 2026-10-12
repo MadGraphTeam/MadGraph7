@@ -150,10 +150,11 @@ Integrand::Integrand(
                         ret_types.push_back("partial_weight_product", batch_float);
                     }
                 }
-                ret_types.push_back("random", batch_float_array(mapping.random_dim()));
+                // before "random": the outputs after it feed the discrete histograms
                 if (custom_bias) {
                     ret_types.push_back("bias", batch_float);
                 }
+                ret_types.push_back("random", batch_float_array(mapping.random_dim()));
                 if (mapping.channel_count() > 1 &&
                     !std::holds_alternative<std::monostate>(discrete_sym)) {
                     ret_types.push_back("channel_index_in_group", batch_int);
@@ -1004,12 +1005,12 @@ NamedVector<Value> Integrand::build_common_part(
                 );
             }
         }
-        outputs.push_back("random", optional_cut(args.at("r")));
         if (bias_acc) {
             outputs.push_back(
                 "bias", scatter_or_drop(fb.full({1., batch_size_val}), bias_acc)
             );
         }
+        outputs.push_back("random", optional_cut(args.at("r")));
         if (has_permutations &&
             !std::holds_alternative<std::monostate>(_discrete_sym)) {
             outputs.push_back(
