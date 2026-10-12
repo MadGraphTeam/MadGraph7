@@ -49,6 +49,8 @@ python3 -c 'import torch; print("torch", torch.__version__, "GPU available:", to
 rm -rf "$WORKDIR"
 mkdir -p "$WORKDIR"
 cd "$WORKDIR"
+section "TEMP diagnostic"
+python3 "$HERE/diag_color_ordered.py" 2>&1 | tee diag.log || true
 section "madspace tests on $BACKEND ($GPU_NAME)"
 STATUS=0
 MADSPACE_TEST_DEVICE=$BACKEND python3 -m pytest "$REPO/madspace/tests" -ra -p no:cacheprovider \
