@@ -1109,6 +1109,27 @@ class ReweightInterface(extended_cmd.Cmd):
         else:
             return super(ReweightInterface,self).default(line, log=log)
 
+    def check_answer_in_input_file(self, question_instance, default, path=False, line=None):
+        """The reweight card is the whole input of this interface. The
+        param_card question opened by a launch block is answered by the lines
+        that follow it, and ends with the card or with the next launch/change
+        line: the question then takes its default (done) quietly. The base
+        version reads stdin instead whenever stdin is not a tty (haspiping),
+        so a script run with stdin left open waited there forever."""
+
+        if line is None and self.inputfile:
+            line = self.get_stored_line()
+            if not line:
+                line = next(self.inputfile, None)
+                if line is None:
+                    return str(default)
+            if line.split() and line.split()[0] in ['launch', 'change']:
+                self.store_line(line)
+                return str(default)
+        with misc.TMP_variable(self, 'haspiping', False):
+            return super(ReweightInterface, self).check_answer_in_input_file(
+                                        question_instance, default, path, line)
+
     def write_reweighted_event(self, event, tag_name, **opt):
         """a function for running in multicore"""
         

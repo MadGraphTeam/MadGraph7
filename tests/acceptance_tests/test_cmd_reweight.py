@@ -332,6 +332,83 @@ class TestMECmdRWGT(unittest.TestCase):
             self.assertTrue(misc.equal(rwgt_data['MYNLO_tree'], event2.wgt, 3), '(event %s) %s != %s ' % (i, rwgt_data['MYNLO_tree'], event2.wgt))
         #misc.sprint(solutions)
             
+    def test_mg7_reweighting_at_generation(self):
+        """reweight=ON on an mg7 output. Its weights average to sigma: the log
+        printed sum(weights), N_events times sigma, for the original and the
+        new cross sections. The launch runs as an agent drives it, with stdin
+        a pipe left open, where the param_card question of each launch block
+        used to read stdin -- and wait forever -- once the card stopped
+        answering it. The end of the run must not report an I/O error (an mg7
+        output has no HTML/ for results.pkl)."""
+
+        def run(name, script, stdin):
+            cmd_path = pjoin(self.path, '%s.mg5' % name)
+            log_path = pjoin(self.path, '%s.log' % name)
+            with open(cmd_path, 'w') as fsock:
+                fsock.write("set crash_on_error True --no_save\n"
+                            "set automatic_html_opening False --no_save\n"
+                            "set notification_center False --no_save\n"
+                            + script % {'dir': self.run_dir})
+            with open(log_path, 'w') as log_file:
+                proc = subprocess.Popen(
+                    [sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'), cmd_path],
+                    cwd=self.path, stdin=stdin,
+                    stdout=log_file, stderr=subprocess.STDOUT)
+                try:
+                    return_code = proc.wait(timeout=600)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                    self.fail('%s waited for input (or ran too long)' % name)
+                finally:
+                    if proc.stdin:
+                        proc.stdin.close()
+            with open(log_path) as log_file:
+                log = log_file.read()
+            self.assertEqual(return_code, 0, log[-3000:])
+            return log
+
+        run('output', "import model sm\ngenerate e+ e- > mu+ mu-\noutput %(dir)s\n",
+            subprocess.DEVNULL)
+        with open(pjoin(self.run_dir, 'Cards', 'reweight_card.dat'), 'w') as fsock:
+            fsock.write("launch --rwgt_name=wz26\nset decay 23 2.6\n"
+                        "launch --rwgt_name=wz23\nset decay 23 2.3\n")
+        # on the Z pole, where the cross section goes as 1/width^2
+        log = run('launch', "launch %(dir)s\nreweight=ON\nset nevents 1000\n"
+                            "set iseed 7\nset beam.e_cm 91.188\n"
+                            "set output_format lhe\ndone\n",
+                  subprocess.PIPE)
+        for line in ('Do you want to edit a card', 'I/O error'):
+            self.assertFalse(line in log, '"%s" in the log' % line)
+
+        lhe = lhe_parser.EventFile(pjoin(self.run_dir, 'Events', 'run_01',
+                                         'unweighted_events.lhe.gz'))
+        nb_event, mean = 0, {'orig': 0.}
+        for event in lhe:
+            nb_event += 1
+            mean['orig'] += event.wgt
+            for name, wgt in event.parse_reweight().items():
+                if name in ('wz26', 'wz23'):
+                    mean[name] = mean.get(name, 0.) + wgt
+        self.assertEqual(nb_event, 1000)
+        mean = dict((name, value / nb_event) for name, value in mean.items())
+
+        # INFO: Original cross-section: X +- E pb (cross-section from sum of weights: Y)
+        # INFO: wz26 : X +- E pb
+        orig = re.search(r'cross-section from sum of weights: ([0-9.eE+-]+)\)', log)
+        self.assertIsNotNone(orig)
+        logged = {'orig': float(orig.group(1))}
+        for name in ('wz26', 'wz23'):
+            new = re.search(r'%s : ([0-9.eE+-]+) \+-' % name, log)
+            self.assertIsNotNone(new, name)
+            logged[name] = float(new.group(1))
+        self.assertEqual(sorted(logged), sorted(mean))
+        for name in mean:
+            self.assertAlmostEqual(logged[name] / mean[name], 1., places=6, msg=name)
+        # a wider Z lowers the peak
+        self.assertLess(mean['wz26'], mean['orig'])
+        self.assertLess(mean['orig'], mean['wz23'])
+
     def test_scan_reweighting(self):
         """ testing that we can use the scan syntax and that we can assign name to weight
         """
