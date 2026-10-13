@@ -636,6 +636,176 @@ class TestFKSStandalone(unittest.TestCase):
                     (record['subprocess'], record['configuration'],
                      record['pdgs']))
 
+    # Point 1 of the real-emission throughput benchmark (RAMBO at sqrt(s) =
+    # 1 TeV, seed 12345, momenta in the order of g g > g g g g) and |M|^2 of
+    # the real g g > g g g g there from MG5aMC v3.8.0, at alpha_s = 0.118.
+    GGGGGG_POINT = (
+        (5.00000000000000000e+02, 0.0, 0.0, 5.00000000000000000e+02),
+        (5.00000000000000000e+02, 0.0, 0.0, -5.00000000000000000e+02),
+        (2.71415971622457903e+02, 2.29831399887524555e+02,
+         -1.38894948452979037e+02, 3.93998803519499958e+01),
+        (2.07563041407746653e+02, 1.46691345098497493e+02,
+         1.46680505580990911e+02, -6.99247553676969247e+00),
+        (2.66799015476846705e+02, -1.81953907107772324e+02,
+         -1.00153487182916479e+02, -1.67462740192355142e+02),
+        (2.54221971492948654e+02, -1.94568837878249724e+02,
+         9.23679300549046474e+01, 1.35055335377174828e+02))
+    GGGGGG_MG5AMC_380 = 3.2818692843658304e-06
+
+    @staticmethod
+    def _real_cf_driver_source():
+        """The real of one FKS configuration at one point, through the scalar
+        and through the batched (one lane) production entry points."""
+        return r"""      PROGRAM CHECK_REAL_CF
+      USE COUPLINGS
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'orders.inc'
+      INCLUDE 'nFKSconfigs.inc'
+      INCLUDE 'coupl.inc'
+      INTEGER I,J,NFKSPROCESS
+      DOUBLE PRECISION P(0:3,NEXTERNAL),WGT
+      DOUBLE PRECISION RET_AMP_SPLIT(AMP_SPLIT_SIZE)
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      INCLUDE 'fks_info.inc'
+      CALL SETPARA('param_card.dat')
+C     alpha_s = 0.118 computed as SETPARA does, whatever the card says
+      G=2D0*DSQRT(0.118D0*3.141592653589793D0)
+      CALL UPDATE_AS_PARAM()
+      CALL ALLOCATE_COUPLINGS(1)
+      CALL UPDATE_AS_PARAM_VEC(1)
+      READ(*,*) NFKSPROCESS
+      DO J=1,NEXTERNAL
+        READ(*,*) (P(I,J),I=0,3)
+      ENDDO
+C     the scalar call also sets up the split-order selection that the
+C     batched one reuses, as set_goodhel does in a run
+      CALL SMATRIX_REAL(P,RET_AMP_SPLIT,WGT)
+      WRITE(*,*) 'REAL_SCALAR',WGT
+      CALL SMATRIX_REAL_VEC(P,RET_AMP_SPLIT,WGT,1,NFKSPROCESS,
+     $     REAL_FLAVOR_INDEX_D(NFKSPROCESS))
+      WRITE(*,*) 'REAL_BATCHED',WGT
+      END
+"""
+
+    @staticmethod
+    def _real_me_number(subproc, process):
+        """N of the matrix_N.f of a P directory computing the real `process`,
+        or None."""
+        for path in sorted(glob.glob(pjoin(subproc, 'matrix_*.f'))):
+            with open(path) as stream:
+                match = re.search(r'^C\s+Process:\s+(.*?)\s*\[',
+                                  stream.read(), re.M)
+            if match and match.group(1).split() == process.split():
+                return int(re.search(r'matrix_(\d+)\.f$', path).group(1))
+        return None
+
+    @staticmethod
+    def _color_matrix_entries(source):
+        """{routine: (NCOLOR, indices of CF given a value by its DATA
+        statements)} for every routine of a matrix_N.f holding a colour
+        matrix."""
+        entries = {}
+        for unit in re.split(r'\n(?=\s{6}(?:RECURSIVE\s+)?SUBROUTINE\s)',
+                             source):
+            name = re.match(r'\s*(?:RECURSIVE\s+)?SUBROUTINE\s+(\w+)', unit)
+            ncolor = re.search(r'\bNCOLOR=(\d+)', unit)
+            if not name or not ncolor or \
+                    not re.search(r'^\s+INTEGER\s+CF\(', unit, re.M):
+                continue
+            indices = set()
+            for first, last in re.findall(
+                    r'DATA\s*\(CF\(I\),\s*I=\s*(\d+)\s*,\s*(\d+)\s*\)', unit):
+                indices.update(range(int(first), int(last) + 1))
+            entries[name.group(1)] = (int(ncolor.group(1)), indices)
+        return entries
+
+    def test_fks_real_color_matrix_gg_gggg(self):
+        """The real g g > g g g g of g g > g g g [real=QCD] carries its colour
+        matrix and gives the value of MG5aMC v3.8.0.
+
+        Its 120 colour flows are above the size from which
+        get_color_matrix_encoding compresses the colour matrix, to be rebuilt
+        at run time by INIT_CF. The FKS templates have no INIT_CF: MATRIX_<N>
+        and MATRIX_<N>_VEC were written with the denominator alone, CF stayed
+        empty and the real was exactly zero at every point, in the scalar and
+        in the batched path alike.
+        """
+        path = pjoin(self.tmpdir, 'gg_ggg_real')
+        cmd = self._new_cmd()
+        self._run(cmd, 'import model sm')
+        self._run(cmd, 'generate g g > g g g [real=QCD]')
+        self._run(cmd, 'output %s -f' % path)
+
+        found = [(subproc, self._real_me_number(subproc, 'g g > g g g g'))
+                 for subproc in sorted(glob.glob(
+                     pjoin(path, 'SubProcesses', 'P*')))]
+        found = [(subproc, number) for subproc, number in found if number]
+        self.assertEqual(len(found), 1, found)
+        subproc, number = found[0]
+
+        with open(pjoin(subproc, 'matrix_%d.f' % number)) as stream:
+            entries = self._color_matrix_entries(stream.read())
+        self.assertEqual(sorted(entries),
+                         ['MATRIX_%d' % number, 'MATRIX_%d_VEC' % number])
+        for routine, (ncolor, indices) in entries.items():
+            self.assertEqual(ncolor, 120, routine)
+            size = ncolor * (ncolor + 1) // 2
+            self.assertEqual(indices, set(range(1, size + 1)),
+                             '%s: %d of the %d colour matrix entries written'
+                             % (routine, len(indices), size))
+
+        # an FKS configuration whose real emission this is
+        with open(pjoin(subproc, 'real_me_chooser.f')) as stream:
+            scalar = stream.read().split(
+                'RECURSIVE SUBROUTINE SMATRIX_REAL_VEC', 1)[0]
+        rows = [int(row) for row, real in re.findall(
+                    r'NFKSPROCESS\.EQ\.(\d+)\)\s*THEN\s*'
+                    r'CALL\s+SMATRIX(\d+)_AMP\(', scalar, re.I)
+                if int(real) == number]
+        self.assertTrue(rows, 'no FKS configuration calls SMATRIX%d' % number)
+
+        misc.compile(cwd=pjoin(path, 'Source'))
+        # the P directory makefile includes the analysis options a launch
+        # writes: the dummy analysis, as the aMC@NLO launch writes it
+        analyse_opts = pjoin(path, 'SubProcesses', 'analyse_opts')
+        if not os.path.isfile(analyse_opts):
+            with open(analyse_opts, 'w') as stream:
+                stream.write('FO_ANALYSE=analysis_dummy.o dbook.o '
+                             'open_output_files_dummy.o HwU_dummy.o\n')
+        objects = [os.path.basename(source)[:-2] + '.o' for source in
+                   sorted(glob.glob(pjoin(subproc, 'matrix_*.f')))]
+        objects += ['real_me_chooser.o', 'splitorders_stuff.o',
+                    'check_real_cf.o']
+        with open(pjoin(subproc, 'check_real_cf.f'), 'w') as stream:
+            stream.write(self._real_cf_driver_source())
+        misc.compile(objects, cwd=subproc)
+        executable = pjoin(subproc, 'check_real_cf')
+        subprocess.check_call(
+            ['gfortran', '-o', executable] + objects + [
+                '-L%s' % pjoin(path, 'lib'), '-ldhelas', '-lmodel'],
+            cwd=subproc)
+        stdin = '%d\n' % rows[0] + ''.join(
+            ' '.join('%.17e' % component for component in momentum) + '\n'
+            for momentum in self.GGGGGG_POINT)
+        output = subprocess.check_output(
+            [executable], input=stdin.encode(), cwd=subproc,
+            stderr=subprocess.STDOUT).decode(errors='replace')
+
+        values = {}
+        for line in output.splitlines():
+            tokens = line.split()
+            if len(tokens) == 2 and tokens[0] in ('REAL_SCALAR',
+                                                  'REAL_BATCHED'):
+                values[tokens[0]] = self._fortran_float(tokens[1])
+        self.assertEqual(sorted(values), ['REAL_BATCHED', 'REAL_SCALAR'],
+                         output)
+        for entry_point, value in sorted(values.items()):
+            self.assertAlmostEqual(
+                value, self.GGGGGG_MG5AMC_380,
+                delta=abs(self.GGGGGG_MG5AMC_380) * 1e-12,
+                msg='%s: g g > g g g g at the reference point' % entry_point)
+
     @staticmethod
     def _mixed_wj_driver_source():
         """Fixed-point real/extra-counterterm oracle for mixed W+j output."""
