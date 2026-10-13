@@ -7353,6 +7353,19 @@ class RunCardMG7(RunCard):
         return 'pdg%d' % abs(pdg), [abs(pdg), -abs(pdg)]
 
     @staticmethod
+    def _lo_pdg_dict(mapping):
+        """A madevent {pdg: value} parameter with integer pdg keys: a
+        run_card.dat is read with string keys ({'6': 100.0}). 'default' is
+        kept as such."""
+        out = {}
+        for key, val in (mapping or {}).items():
+            if str(key).strip().lower() == 'default':
+                out['default'] = val
+            elif re.match(r'^\s*[-+]?\d+\s*$', str(key)):
+                out[int(key)] = val
+        return out
+
+    @staticmethod
     def _lo_pair_observable(pdg, only_part_antipart):
         """Observable of mxx_min_pdg for this pdg: X X~ pairs only when
         mxx_only_part_antipart says so (for it, or by default)."""
@@ -8472,15 +8485,16 @@ class RunCardMG7(RunCard):
         # cuts on one particle type, given by pdg id: a group [pdg, -pdg] each
         # (the name has no "_<number>", which would select the n-th hardest)
         for loname, (observable, bound) in cls._LO_PDG_CUT_MAP.items():
-            for pdg, val in lo[loname].items() if loname in lo else []:
-                if isinstance(pdg, int) and is_active(bound, val):
+            for pdg, val in cls._lo_pdg_dict(lo[loname] if loname in lo else {}).items():
+                if pdg != 'default' and is_active(bound, val):
                     group, pids = cls._lo_pdg_group(pdg)
                     multiparticles[group] = pids
                     add_cut('%s-%s' % (group, observable), bound, val)
         if 'mxx_min_pdg' in lo:
-            only_pairs = lo['mxx_only_part_antipart'] if 'mxx_only_part_antipart' in lo else {}
-            for pdg, val in lo['mxx_min_pdg'].items():
-                if isinstance(pdg, int) and is_active('min', val):
+            only_pairs = cls._lo_pdg_dict(
+                lo['mxx_only_part_antipart'] if 'mxx_only_part_antipart' in lo else {})
+            for pdg, val in cls._lo_pdg_dict(lo['mxx_min_pdg']).items():
+                if pdg != 'default' and is_active('min', val):
                     group, pids = cls._lo_pdg_group(pdg)
                     multiparticles[group] = pids
                     # X X~ pairs only, or every pair of the group

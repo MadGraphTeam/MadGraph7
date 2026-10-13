@@ -1965,6 +1965,25 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertNotIn('alllepton', plain['multiparticles'])
         self.assertNotIn('parton', plain['multiparticles'])
 
+    def test_from_LO_pdg_cuts_read_from_a_run_card(self):
+        """the per-pdg cuts of a run_card.dat file, which is read with string
+        pdg keys ({'6': 100.0}), are converted too"""
+        lo = bannermod.RunCardLO()
+        lo.set('pt_min_pdg', '{6: 100}', user=True)
+        lo.set('mxx_min_pdg', '{6: 250, 25: 100}', user=True)
+        lo.set('mxx_only_part_antipart', '{6: True}', user=True)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, 'run_card.dat')
+            lo.write(path)
+            lo = bannermod.RunCardLO(path)
+        self.assertEqual(lo['pt_min_pdg'], {'6': 100.0})
+        mg7, _ = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        cuts = mg7['cuts']
+        self.assertEqual(cuts['pdg6-pt'], {'min': 100.0})
+        self.assertEqual(cuts['pdg6-sfos_pair_mass'], {'min': 250.0})
+        self.assertEqual(cuts['pdg25-pair_mass'], {'min': 100.0})
+        self.assertEqual(mg7['multiparticles']['pdg25'], [25, -25])
+
     def test_from_LO_me_frame(self):
         """me_frame is carried over, the LO default included: madevent's [1,2]
         is the partonic c.m., mg7's own default [] the lab frame"""
