@@ -53,6 +53,11 @@ concurrency:
 
 jobs:
   lemaitre4:
+    # a called workflow gets at most the permissions of its caller: actions: write for its
+    # watchdog, which cancels the run when the Slurm allocation ends before stop_runner ran
+    permissions:
+      contents: read
+      actions: write
     uses: ./.github/workflows/gpu_runner_ci.yml
     with:
       cluster: lemaitre4
