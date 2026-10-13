@@ -21,6 +21,7 @@ from __future__ import division
 
 from __future__ import absolute_import
 import ast
+import collections
 import contextlib
 import logging
 import math
@@ -2264,16 +2265,21 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                 if reweight_mode == 'density':
                     command.append('--mode=density')
                 p = misc.Popen(command, stdout = subprocess.PIPE, stderr = subprocess.STDOUT, cwd=os.getcwd())
-                while p.poll() is None:
-                    line = p.stdout.readline().decode(errors='ignore')
+                # the error message of a failing child is in the lines that
+                # are not printed: keep the last ones for the exception
+                last_lines = collections.deque(maxlen=20)
+                for line in iter(p.stdout.readline, b''):
+                    line = line.decode(errors='ignore')
+                    last_lines.append(line.rstrip('\n'))
                     if any(t in line for t in ['INFO:', 'WARNING:', 'CRITICAL:', 'ERROR:', 'root:','KEEP:']) and \
                        not '***********' in line:
                             print(line[:-1].replace('INFO', 'REWEIGHT').replace('KEEP:',''))
                     elif __debug__ and line:
                         logger.debug(line[:-1])
+                p.wait()
                 if p.returncode !=0:
-                    logger.error("Reweighting failed")
-                    return
+                    raise MadGraph5Error('Reweighting failed (exit status %s). '
+                        'Last lines of its output:\n%s' % (p.returncode, '\n'.join(last_lines)))
                 self.results = self.load_results_db()
                 # forbid this function to create an empty item in results.
                 try:

@@ -239,6 +239,75 @@ class TestMECmdRWGT(unittest.TestCase):
             self.assertEqual(event.wgt, rwgt_data['MYNLO_nlo'])
             self.assertIn('MYNLO_lo', rwgt_data)
             
+    def test_nlo_reweighting_new_parameter(self):
+        """ NLO-mode reweighting of p p > e+ e- [QCD] to a larger Z width.
+        The virtual (rw_mevirt) must be importable and evaluated with the new
+        width. Its finite part is proportional to the Born here, so the NLO
+        weights must follow the LO ones.
+        """
+
+        me_cmd = self.get_aMCcmd(pjoin(_pickle_path, 'dy_nlo.lhe.gz'))
+
+        cmd_lines = """
+        change mode LO+NLO
+        launch --rwgt_name=wz26
+        set decay 23 2.6
+        """
+
+        ff = open(pjoin(self.run_dir, 'Cards', 'reweight_card.dat'),'w')
+        ff.write(cmd_lines)
+        ff.close()
+
+        with misc.stdchannel_redirected(sys.stdout, os.devnull):
+            me_cmd.exec_cmd('reweight run_01 --from_cards', precmd=True)
+
+        lhe = lhe_parser.EventFile(pjoin(self.run_dir,'Events','run_01', 'events.lhe.gz'))
+        orig, lo, nlo = 0., 0., 0.
+        for event in lhe:
+            rwgt_data = event.parse_reweight()
+            orig += event.wgt
+            lo += rwgt_data['wz26_lo']
+            nlo += rwgt_data['wz26_nlo']
+        # sigma ~ 1/Gamma_Z: the weights do move
+        self.assertLess(lo/orig, 0.97)
+        # with the virtual left at the original width, nlo/lo = 1.015
+        self.assertAlmostEqual(nlo/lo, 1., delta=1e-3)
+
+    def test_reweighting_failure_out_of_process(self):
+        """ aMC@NLO runs the reweighting in child processes, split over the
+        cores. A failing child must make the reweighting fail: it used to exit
+        0, the parent carried on and, on several cores, the children waiting
+        for the first one to compile waited forever.
+        """
+
+        me_cmd = self.get_aMCcmd(pjoin(_pickle_path, 'dy_nlo.lhe.gz'))
+
+        # raises while the card is read
+        ff = open(pjoin(self.run_dir, 'Cards', 'reweight_card.dat'),'w')
+        ff.write('change identical_particle_in_prod_and_decay not_an_option\nlaunch\n')
+        ff.close()
+
+        # the child alone: the single command mode of bin/internal
+        child = misc.Popen([sys.executable,
+                            pjoin(self.run_dir, 'bin', 'internal', 'amcatnlo_run_interface.py'),
+                            '--web', 'reweight', 'run_01', '-from_cards'],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           cwd=self.run_dir)
+        child.wait()
+        self.assertNotEqual(child.returncode, 0)
+
+        # the same through the parent, on one core and on several
+        me_cmd.force_run = False
+        me_cmd.options['run_mode'] = 2
+        me_cmd.options['nb_core'] = 1
+        with misc.stdchannel_redirected(sys.stdout, os.devnull):
+            self.assertRaisesRegex(MadGraph5Error, 'Reweighting failed',
+                    me_cmd.exec_cmd, 'reweight run_01 -from_cards', precmd=True)
+        me_cmd.options['nb_core'] = 2
+        with misc.stdchannel_redirected(sys.stdout, os.devnull):
+            self.assertRaisesRegex(Exception, 'non zero status',
+                    me_cmd.exec_cmd, 'reweight run_01 -from_cards', precmd=True)
+
     @test_manager.bypass_for_py3
     def test_nlo_output2(self):
         """ check identical re-weighting in ttbar 
