@@ -25,6 +25,7 @@ allocation per workflow run, and every CI job of that run executes in it:
 | `madspace_ops` | cluster | madspace GPU runtime operations against the CPU runtime on the same inputs (`madspace_ops_gpu.sh`, `madspace_checks.py`; torch puts the inputs on the GPU): a histogram with underflow and overflow bins, an elementwise kernel on a rank-4 tensor |
 | `interference` | cluster | squared split orders on the GPU backend of madmatrix (`interference_gpu.sh`, `interference_checks.py`): standalone `u u~ > u u~` constraints, the helicity choice of an interference matrix element through umami (exact and summed), and `p p > u u~ QCD^2==2` with mg7 against its CPU reference. Input `interference`, on by default and on push |
 | `stop_runner` | cluster | clean up, then create the stop file: `runner_batch.sh` stops the runner and the allocation ends |
+| `watchdog` | vmadgraph | from the start of the runner to the end of the allocation: if the allocation ends before `stop_runner` completed, cancel the run (`ceci-gate watch-runner`, `remote_watch_runner.sh`) |
 
 To add a CI job, give it `runs-on: [self-hosted, "${{ inputs.runner_label }}"]` and add it
 to the `needs` of `stop_runner`. It runs in the same allocation, after the others, so
@@ -41,12 +42,29 @@ Other safeguards:
   first one has stopped. The workflows also use a concurrency group per cluster.
 * **Cancelled runs.** If a run is cancelled before its runner starts, the runner stops by
   itself after 10 minutes without a job.
+* **Allocations that end early.** When Slurm ends the allocation before `stop_runner` ran
+  (time limit, node failure, preemption, or the runner stopped after 10 minutes without a
+  job), the runner dies with it. The job in progress fails, but the jobs not started yet,
+  `stop_runner` included, would wait 24 hours for the runner, and the concurrency group would
+  hold every later run of the cluster for as long. The `watchdog` job prevents that from the
+  vmadgraph runner, which outlives the allocation: `ceci-gate watch-runner` keeps one ssh
+  connection to the login node, where `remote_watch_runner.sh` polls `squeue` every 20 s for
+  the runner job of the run (Slurm comment `mg7-run-<run id>-<attempt>`) and returns when it
+  has ended, with its final state from `sacct`. If `stop_runner` has not completed by then on
+  GitHub, the watchdog force-cancels the run (a plain cancel would still queue `stop_runner`,
+  whose `if:` holds `always()`). The run then only says "The run was canceled forcefully by
+  @github-actions[bot]": the force-cancel drops the annotations and summaries of the run, so
+  the Slurm state (e.g. `TIMEOUT`) is in the log of the watchdog, step "wait for the end of
+  the allocation".
+  The watchdog is the only job whose token may write (`actions: write`, to cancel the run),
+  which the callers must grant: the jobs on the cluster only read.
 * **One vmadgraph runner per cluster.** `start_runner` holds its runner while the allocation
-  waits in the Slurm queue (up to 5 hours). It runs on `[self-hosted, vmadgraph,
-  vmadgraph-<cluster>]`, and each runner on the vmadgraph VM carries the label of one cluster
-  (`vmadgraph` → `vmadgraph-lemaitre4`, `vmadgraph-2` → `vmadgraph-manneback`), so a busy
-  cluster does not block the other one. The two runners run under their own Unix users,
-  `github-runner` and `ghrunner2`.
+  waits in the Slurm queue (up to 5 hours), then `watchdog` holds it until the allocation has
+  ended. Both run on `[self-hosted, vmadgraph, vmadgraph-<cluster>]`, and each runner on the
+  vmadgraph VM carries the label of one cluster (`vmadgraph` → `vmadgraph-lemaitre4`,
+  `vmadgraph-2` → `vmadgraph-manneback`), so a busy cluster does not block the other one. A
+  *list cluster modules* run (`gpu_cluster_modules.yml`) waits until the run of its cluster
+  has ended. The two runners run under their own Unix users, `github-runner` and `ghrunner2`.
 
 ## Security model
 
@@ -61,8 +79,8 @@ repository, and 3 organisation owners can change any repository setting. Hence:
   `gpu_cluster_modules.yml` of this repository (not a fork), was started or re-run by a login
   listed in `/etc/ceci-gate/allowed_actors` on the VM **or** is on a branch listed in
   `/etc/ceci-gate/allowed_branches` (e.g. `main`, so that every commit landing there is tested,
-  whoever pushed or merged it), and has its `start_runner` (or `modules`) job running right now
-  on the calling runner. It also bounds the Slurm options, starts each
+  whoever pushed or merged it), and has its `start_runner` (or `modules`, or `watchdog`) job
+  running right now on the calling runner. It also bounds the Slurm options, starts each
   run attempt once, and logs every decision in `/var/lib/ceci/gate/gate.log`. Who may use the
   cluster is thus decided on the VM: no repository setting, branch or workflow edit changes it.
 * **The runner only executes the jobs of the run that started it.** Its job-started hook,
@@ -70,8 +88,8 @@ repository, and 3 organisation owners can change any repository setting. Hence:
   Any other job fails before its first step: another run, a branch, or a fork PR that
   targets the runner label while it is online.
 * **Cluster files come from the VM.** `ceci-gate` copies `runner_batch.sh` and
-  `job_started_hook.sh` to the cluster at every start, and pipes `remote_start_runner.sh` and
-  `remote_modules.sh`, all from `/usr/local/share/ceci-gate`. After a change to one of them,
+  `job_started_hook.sh` to the cluster at every start, and pipes `remote_start_runner.sh`,
+  `remote_watch_runner.sh` and `remote_modules.sh`, all from `/usr/local/share/ceci-gate`. After a change to one of them,
   install it there again (step 1).
 
 What an allowed run executes on the cluster is still the code of its commit: dispatch only
@@ -98,7 +116,7 @@ change rulesets.
    install -o root -g root -m 755 vm_gate/ceci-gate /usr/local/sbin/ceci-gate
    install -d -o root -g root -m 755 /usr/local/share/ceci-gate /etc/ceci-gate
    install -o root -g root -m 755 remote_start_runner.sh runner_batch.sh job_started_hook.sh \
-     remote_modules.sh /usr/local/share/ceci-gate/
+     remote_modules.sh remote_watch_runner.sh /usr/local/share/ceci-gate/
    # the GitHub logins whose runs may use the cluster, and the branches whose runs may use
    # it whoever started them, one per line
    echo oliviermattelaer > /etc/ceci-gate/allowed_actors
@@ -111,8 +129,8 @@ change rulesets.
    ping lemaitre4` must print the login node, while `sudo -u github-runner cat
    /var/lib/ceci/.ssh/id_ceci` must be denied. The runner names and Unix users (`RUNNERS`), the
    clusters, their runner labels and partitions (`CLUSTERS`) and the Slurm bounds are set at the
-   top of `ceci-gate`. The gate makes 2-5 unauthenticated GitHub API calls per start (60 per hour
-   per IP); a read-only token in `/var/lib/ceci/.github_token` (mode 600, owner `ceci`) lifts
+   top of `ceci-gate`. The gate makes 2-5 unauthenticated GitHub API calls per start, and 2 per
+   watch (one per run, more if the ssh connection drops), out of 60 per hour per IP; a read-only token in `/var/lib/ceci/.github_token` (mode 600, owner `ceci`) lifts
    that limit.
 
 2. **Runners**, once per cluster, from a clone of the repository:
@@ -138,6 +156,14 @@ change rulesets.
 
 ## Troubleshooting
 
+* **A run is "canceled forcefully by @github-actions[bot]".** The watchdog found the
+  allocation gone before `stop_runner` ran. The last lines of its log give the Slurm job and
+  its state, e.g. `ALLOCATION_ENDED 10134442 TIMEOUT 00:04:10 00:04:00`. `TIMEOUT`: the jobs
+  together need more than `time_limit`, raise it. The runner log on the cluster tells the rest.
+* **`watchdog` fails with "cannot watch the allocation of the runner through ceci-gate".**
+  The gate on the VM predates `watch-runner`, or `remote_watch_runner.sh` is missing from
+  `/usr/local/share/ceci-gate`: install both again (step 1). Its log on the VM is
+  `/var/lib/ceci/gate/gate.log`.
 * **`start_runner` fails with "Runner registration has been deleted".** GitHub removes a
   self-hosted runner that has not connected for 14 days. Run the install command of step 2 again.
 * **A runner job is stuck on the cluster.** Look for it with

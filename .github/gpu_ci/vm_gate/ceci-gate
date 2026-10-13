@@ -12,8 +12,8 @@ workflow run it is called for
   - was started, or re-run, by a GitHub login listed in /etc/ceci-gate/allowed_actors, OR
     runs the code of a branch listed in /etc/ceci-gate/allowed_branches (e.g. main: then any
     commit landing on it is tested, whoever pushed or merged it),
-  - has its start_runner (or modules) job running right now on the runner of the calling
-    Unix user,
+  - has its start_runner (or modules, or watchdog) job running right now on the runner of
+    the calling Unix user,
 and it only runs the scripts installed next to it in /usr/local/share/ceci-gate, never code
 from the checkout. Who may use the clusters is thus decided on this VM, not on GitHub.
 Every decision is logged in /var/lib/ceci/gate/gate.log. Setup: .github/gpu_ci/README.md.
@@ -22,6 +22,9 @@ Every decision is logged in /var/lib/ceci/gate/gate.log. Setup: .github/gpu_ci/R
     ceci-gate start-runner CLUSTER RUN_ID RUN_ATTEMPT [--partition P] [--gres G] [--cpus N]
                            [--mem M] [--time HH:MM:SS] [--extra 'SBATCH OPTIONS']
     ceci-gate modules CLUSTER RUN_ID RUN_ATTEMPT [--pattern REGEXP] [--partition P] [--gres G]
+    ceci-gate watch-runner CLUSTER RUN_ID RUN_ATTEMPT
+        waits until the Slurm job of the runner started for that run attempt has ended, then
+        prints `ALLOCATION_ENDED JOBID STATE...`; read-only on the cluster (squeue, sacct)
 
 Written for the python3 of Rocky Linux 8 (3.6).
 """
@@ -68,6 +71,8 @@ def log(message):
     try:
         os.makedirs(STATE, mode=0o700, exist_ok=True)
         with open(os.path.join(STATE, "gate.log"), "a") as f:
+            # no raw newline from the arguments: one decision per line, no forged entries
+            message = message.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
             f.write("%s caller=%s %s\n" % (time.strftime("%Y-%m-%dT%H:%M:%S"), CALLER, message))
     except OSError as e:
         print("ceci-gate: cannot write the log: %s" % e, file=sys.stderr)
@@ -180,10 +185,10 @@ def execute(cmd, stdin=None):
     return subprocess.call(cmd, stdin=stdin if stdin is not None else subprocess.DEVNULL, env=env())
 
 
-def remote(cluster, script, args):
+def remote(cluster, script, args, ssh_options=()):
     """ssh CLUSTER bash -l -s -- ARGS < SHARE/SCRIPT"""
     with open(share(script), "rb") as f:
-        return execute(["ssh", "-o", "BatchMode=yes", cluster,
+        return execute(["ssh", "-o", "BatchMode=yes"] + list(ssh_options) + [cluster,
                     "bash -l -s -- " + " ".join(shlex.quote(a) for a in args)], stdin=f)
 
 
@@ -243,6 +248,19 @@ def cmd_modules(a):
     return remote(a.cluster, "remote_modules.sh", [a.pattern, a.partition, a.gres])
 
 
+def cmd_watch_runner(a):
+    c = CLUSTERS[a.cluster]
+    # no lock(): the watchdog calls again when the connection drops
+    who = check_run(a.run_id, a.attempt, c["workflow"], ("push", "workflow_dispatch"), "watchdog")
+    log("ACCEPTED watch-runner %s run=%s attempt=%s %s" % (a.cluster, a.run_id, a.attempt, who))
+    run_tag = "mg7-run-%s-%s" % (a.run_id, a.attempt)  # RUN_TAG of gpu_runner_ci.yml
+    # one connection for the whole run; the keepalives notice a dead one
+    status = remote(a.cluster, "remote_watch_runner.sh", [c["label"], run_tag],
+                    ["-o", "ServerAliveInterval=60", "-o", "ServerAliveCountMax=5"])
+    log("watch-runner %s run=%s attempt=%s ended with status %d" % (a.cluster, a.run_id, a.attempt, status))
+    return status
+
+
 def main():
     if pwd.getpwuid(os.getuid()).pw_name != GATE_USER:
         sys.exit("ceci-gate must run as %s: sudo -u %s %s ..." % (GATE_USER, GATE_USER, sys.argv[0]))
@@ -253,7 +271,8 @@ def main():
     s = sub.add_parser("ping", help="check the ssh access to a cluster")
     s.add_argument("cluster", choices=sorted(CLUSTERS))
     s.set_defaults(func=cmd_ping)
-    for name, func in (("start-runner", cmd_start_runner), ("modules", cmd_modules)):
+    for name, func in (("start-runner", cmd_start_runner), ("modules", cmd_modules),
+                       ("watch-runner", cmd_watch_runner)):
         s = sub.add_parser(name)
         s.add_argument("cluster", choices=sorted(CLUSTERS))
         s.add_argument("run_id", type=lambda x: x if re.fullmatch(r"\d{1,20}", x) else refuse("bad run id %r" % x))
@@ -266,7 +285,7 @@ def main():
             s.add_argument("--mem", default="32G")
             s.add_argument("--time", default="00:20:00")
             s.add_argument("--extra", default="")
-        else:
+        elif name == "modules":
             s.add_argument("--pattern", default=".")
             s.add_argument("--partition", default="")
             s.add_argument("--gres", default="")
