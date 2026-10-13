@@ -33,7 +33,8 @@ ChannelWeightNetwork::ChannelWeightNetwork(
     std::size_t layers,
     MLP::Activation activation,
     const std::string& prefix,
-    bool include_preprocessing
+    bool include_preprocessing,
+    DataType precision
 ) :
     FunctionGenerator(
         "ChannelWeightNetwork",
@@ -48,7 +49,8 @@ ChannelWeightNetwork::ChannelWeightNetwork(
         hidden_dim,
         layers,
         activation,
-        prefix
+        prefix,
+        precision
     ),
     _channel_count(channel_count),
     _mask_name(prefixed_name(prefix, "active_channels_mask")) {}

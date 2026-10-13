@@ -1451,17 +1451,20 @@ PYBIND11_MODULE(_madspace_py, m) {
                std::size_t,
                std::size_t,
                MLP::Activation,
-               const std::string&>(),
+               const std::string&,
+               DataType>(),
            py::arg("input_dim"),
            py::arg("output_dim"),
            py::arg("hidden_dim") = 32,
            py::arg("layers") = 3,
            py::arg("activation") = MLP::leaky_relu,
            py::arg("prefix") = "",
+           py::arg("precision") = DataType::dt_float64,
            pydoc::doc("MLP::MLP")
     )
         .def("input_dim", &MLP::input_dim, pydoc::doc("MLP::input_dim"))
         .def("output_dim", &MLP::output_dim, pydoc::doc("MLP::output_dim"))
+        .def("precision", &MLP::precision, pydoc::doc("MLP::precision"))
         .def(
             "initialize_globals",
             &MLP::initialize_globals,
@@ -1486,7 +1489,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::size_t,
                 std::size_t,
                 MLP::Activation,
-                bool>(),
+                bool,
+                DataType>(),
             py::arg("input_dim"),
             py::arg("condition_dim") = 0,
             py::arg("prefix") = "",
@@ -1495,6 +1499,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("subnet_layers") = 3,
             py::arg("subnet_activation") = MLP::leaky_relu,
             py::arg("invert_spline") = true,
+            py::arg("subnet_precision") = DataType::dt_float64,
             pydoc::doc("Flow::Flow")
         )
         .def("input_dim", &Flow::input_dim, pydoc::doc("Flow::input_dim"))
@@ -1573,7 +1578,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::size_t,
                 MLP::Activation,
                 const std::string&,
-                bool>(),
+                bool,
+                DataType>(),
             py::arg("channel_count"),
             py::arg("particle_count"),
             py::arg("hidden_dim") = 32,
@@ -1581,6 +1587,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("activation") = MLP::leaky_relu,
             py::arg("prefix") = "",
             py::arg("include_preprocessing") = true,
+            py::arg("precision") = DataType::dt_float64,
             pydoc::doc("ChannelWeightNetwork::ChannelWeightNetwork")
         )
         .def("mlp", &ChannelWeightNetwork::mlp, pydoc::doc("ChannelWeightNetwork::mlp"))
@@ -1650,7 +1657,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::size_t,
                 std::size_t,
                 std::size_t,
-                MLP::Activation>(),
+                MLP::Activation,
+                DataType>(),
             py::arg("option_counts"),
             py::arg("prefix") = "",
             py::arg("dims_with_prior") = std::vector<std::size_t>{},
@@ -1658,6 +1666,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("subnet_hidden_dim") = 32,
             py::arg("subnet_layers") = 3,
             py::arg("subnet_activation") = MLP::leaky_relu,
+            py::arg("subnet_precision") = DataType::dt_float64,
             pydoc::doc("DiscreteFlow::DiscreteFlow")
         )
         .def(

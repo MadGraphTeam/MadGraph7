@@ -6,7 +6,8 @@ import torch
 import madspace as ms
 from madspace.torch import FunctionModule
 
-torch.manual_seed(1234)
+# a local generator, so that the global RNG state seen by other tests is unchanged
+GEN = torch.Generator().manual_seed(1234)
 
 N = 103
 DIMS_IN = 7
@@ -43,10 +44,12 @@ def test_activation(name, precision):
     fb.output(0, getattr(fb, name)(fb.input(0)))
     module = FunctionModule(fb.function())
 
-    x = (3 * torch.randn((N, DIMS_IN), dtype=torch_dtype)).requires_grad_()
+    x = (
+        3 * torch.randn((N, DIMS_IN), dtype=torch_dtype, generator=GEN)
+    ).requires_grad_()
     out = module(x)
     assert out.dtype == torch_dtype
-    out_grad = torch.randn_like(out)
+    out_grad = torch.randn(out.shape, dtype=out.dtype, generator=GEN)
     (out * out_grad).sum().backward()
 
     x_ref = x.detach().clone().requires_grad_()
@@ -72,13 +75,15 @@ def test_matmul(precision):
     fb.output(0, fb.matmul(fb.input(0), fb.input(1), fb.input(2)))
     module = FunctionModule(fb.function())
 
-    x = torch.randn((N, DIMS_IN), dtype=torch_dtype, requires_grad=True)
+    x = torch.randn((N, DIMS_IN), dtype=torch_dtype, generator=GEN, requires_grad=True)
     # single inputs are passed without batch dimension
-    w = torch.randn((DIMS_OUT, DIMS_IN), dtype=torch_dtype, requires_grad=True)
-    b = torch.randn((DIMS_OUT,), dtype=torch_dtype, requires_grad=True)
+    w = torch.randn(
+        (DIMS_OUT, DIMS_IN), dtype=torch_dtype, generator=GEN, requires_grad=True
+    )
+    b = torch.randn((DIMS_OUT,), dtype=torch_dtype, generator=GEN, requires_grad=True)
     y = module(x, w, b)
     assert y.dtype == torch_dtype
-    y_grad = torch.randn_like(y)
+    y_grad = torch.randn(y.shape, dtype=y.dtype, generator=GEN)
     (y * y_grad).sum().backward()
 
     refs = [t.detach().clone().requires_grad_() for t in (x, w, b)]
@@ -102,7 +107,7 @@ def test_convert_roundtrip():
     fb.output(1, fb.convert_float64(fb.relu(single)))
     module = FunctionModule(fb.function())
 
-    x = torch.randn((N, 3), dtype=torch.float64, requires_grad=True)
+    x = torch.randn((N, 3), dtype=torch.float64, generator=GEN, requires_grad=True)
     single_out, out = module(x)
     assert single_out.dtype == torch.float32
     assert out.dtype == torch.float64
@@ -120,5 +125,45 @@ def test_literal_converted_for_float32():
     # float64 literals are converted when the instruction dispatches to float32
     fb.output(0, fb.matmul(fb.input(0), ms.Value([2.0], [1, 1]), ms.Value([1.0])))
     module = FunctionModule(fb.function())
-    x = torch.randn((N, 1), dtype=torch.float32)
+    x = torch.randn((N, 1), dtype=torch.float32, generator=GEN)
     torch.testing.assert_close(module(x), 2 * x + 1)
+
+
+def test_flow_float32_subnets(tmp_path):
+    """A flow with float32 subnetworks matches the float64 one with the same
+    (rounded) weights; the Jacobian and the output stay in float64."""
+    ctx = ms.default_context()
+    flows = {
+        dtype: ms.Flow(
+            4, prefix=f"fp32_test_{name}", subnet_precision=dtype, invert_spline=False
+        )
+        for name, dtype in [("f32", ms.DataType.float32), ("f64", ms.DataType.float64)]
+    }
+    for flow in flows.values():
+        flow.initialize_globals(ctx, 42)
+    # randomize all weights (the last layers start at zero) and round to float32
+    names_f64 = [n for n in ctx.global_names() if n.startswith("fp32_test_f64")]
+    for name in names_f64:
+        weights = ctx.get_global(name).torch()
+        weights[:] = (
+            0.3
+            * torch.randn(weights.shape, generator=GEN, dtype=torch.float32).double()
+        )
+        ctx.get_global(name.replace("f64", "f32")).torch()[:] = weights.float()
+
+    r = torch.rand((N, 4), dtype=torch.float64, generator=GEN)
+    out32, det32 = flows[ms.DataType.float32].map_forward([r])
+    out64, det64 = flows[ms.DataType.float64].map_forward([r])
+    assert out32.dtype == det32.dtype == torch.float64
+    torch.testing.assert_close(out32, out64, rtol=1e-4, atol=1e-5)
+    torch.testing.assert_close(det32, det64, rtol=1e-4, atol=1e-5)
+
+    # float32 globals survive saving and loading
+    ctx.save_globals(str(tmp_path))
+    loaded = ms.Context()
+    loaded.load_globals(str(tmp_path))
+    for name in names_f64:
+        name32 = name.replace("f64", "f32")
+        global32 = loaded.get_global(name32).torch()
+        assert global32.dtype == torch.float32
+        torch.testing.assert_close(global32, ctx.get_global(name32).torch())

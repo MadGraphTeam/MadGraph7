@@ -142,7 +142,7 @@ void vegas_init(
     }
 
     if (!is_cpu) {
-        bias_global.copy_from(bias_tensor);
+        bias_global.copy_from(bias_tensor.cast(bias_global.dtype()));
     }
 }
 
@@ -156,7 +156,8 @@ Flow::Flow(
     std::size_t subnet_hidden_dim,
     std::size_t subnet_layers,
     MLP::Activation subnet_activation,
-    bool invert_spline
+    bool invert_spline,
+    DataType subnet_precision
 ) :
     Mapping(
         "Flow",
@@ -198,13 +199,15 @@ Flow::Flow(
                  subnet_hidden_dim,
                  subnet_layers,
                  subnet_activation,
-                 prefixed_name(prefix, std::format("subnet{}a", block_index + 1))),
+                 prefixed_name(prefix, std::format("subnet{}a", block_index + 1)),
+                 subnet_precision),
              MLP(indices1.size() + condition_dim,
                  indices2.size() * (3 * bin_count + 1),
                  subnet_hidden_dim,
                  subnet_layers,
                  subnet_activation,
-                 prefixed_name(prefix, std::format("subnet{}b", block_index + 1))),
+                 prefixed_name(prefix, std::format("subnet{}b", block_index + 1)),
+                 subnet_precision),
              indices1,
              indices2}
         );
