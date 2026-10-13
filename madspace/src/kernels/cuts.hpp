@@ -29,22 +29,27 @@ kernel_cut_one(FIn<T, 0> obs, FIn<T, 0> min, FIn<T, 0> max, FOut<T, 0> w) {
     w = where((obs < min) | (obs > max), FVal<T>(0.), 1.);
 }
 
+// The window [min, max] is one pair of scalars applied to every observable of the
+// vector, as the instruction set declares them (cut_all/cut_any: min, max [float]).
+// They must be FIn<T, 0>: as FIn<T, 1> the runtime built a 2-dimensional view of
+// these 1-dimensional tensors, from shape/stride entries that were never set, and
+// min[i] read out of bounds (a memory fault on HIP, silently min[0] elsewhere).
 template <typename T>
 KERNELSPEC void
-kernel_cut_all(FIn<T, 1> obs, FIn<T, 1> min, FIn<T, 1> max, FOut<T, 0> w) {
+kernel_cut_all(FIn<T, 1> obs, FIn<T, 0> min, FIn<T, 0> max, FOut<T, 0> w) {
     FVal<T> cut = 1.;
     for (std::size_t i = 0; i < obs.size(); ++i) {
-        cut = where((obs[i] < min[i]) | (obs[i] > max[i]), 0., cut);
+        cut = where((obs[i] < min) | (obs[i] > max), 0., cut);
     }
     w = cut;
 }
 
 template <typename T>
 KERNELSPEC void
-kernel_cut_any(FIn<T, 1> obs, FIn<T, 1> min, FIn<T, 1> max, FOut<T, 0> w) {
+kernel_cut_any(FIn<T, 1> obs, FIn<T, 0> min, FIn<T, 0> max, FOut<T, 0> w) {
     FVal<T> cut = 0.;
     for (std::size_t i = 0; i < obs.size(); ++i) {
-        cut = where((obs[i] < min[i]) | (obs[i] > max[i]), cut, 1.);
+        cut = where((obs[i] < min) | (obs[i] > max), cut, 1.);
     }
     w = cut;
 }

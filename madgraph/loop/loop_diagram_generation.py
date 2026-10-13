@@ -30,6 +30,13 @@ from madgraph import MadGraph5Error
 from madgraph import InvalidCmd
 logger = logging.getLogger('madgraph.loop_diagram_generation')
 
+#===============================================================================
+# Interference of a loop-induced amplitude with tree-level ones (LIxtree): see
+# the helpers in diagram_generation, shared with the tree x tree case
+#===============================================================================
+INTERFERENCE_ORDER = base_objects.INTERFERENCE_ORDER
+register_interference_order = diagram_generation.register_interference_order
+
 def ldg_debug_info(msg,val, force=False):
     # This subroutine has typically quite large DEBUG info.
     # So even in debug mode, they are turned off by default.
@@ -758,6 +765,11 @@ class LoopAmplitude(diagram_generation.Amplitude):
             self['process']['orders'].update(user_orders)
             return False
 
+        # 'left [LIxtree=QCD] right': the tree-level amplitudes of the
+        # right-hand process, interfered with the loop-induced ones
+        if self['process'].get_interference_mode() == 'LIxtree':
+            self.set_interference_trees()
+
         # We add here the UV renormalization contribution built in
         # LoopUVCTDiagram. It is done before the squared order selection because
         # it is possible that some UV-renorm. diagrams are removed as well.
@@ -865,6 +877,9 @@ class LoopAmplitude(diagram_generation.Amplitude):
         if not self['process']['has_born'] and not self['loop_diagrams']:
             self['process']['squared_orders'].clear()
             self['process']['squared_orders'].update(user_squared_orders)
+            # nothing left to interfere with the trees of a LIxtree process
+            # (they would otherwise keep this amplitude alive)
+            self['loop_UVCT_diagrams'] = base_objects.DiagramList()
             return False
 
 
@@ -876,6 +891,12 @@ class LoopAmplitude(diagram_generation.Amplitude):
         # user_filter() function which by default does nothing but in which you
         # will find examples of common filters.
         self.user_filter(model,self['structure_repository'], filter=loop_filter)
+
+        # LIxtree: the filters above may have removed every loop that some
+        # interfering trees were paired with; such trees no longer contribute
+        # to the interference and are dropped
+        if self['process'].get_interference_mode() == 'LIxtree':
+            self.drop_orphan_interference_trees()
 
         # Set the necessary UV/R2 CounterTerms for each loop diagram generated
         self.set_LoopCT_vertices()
@@ -900,7 +921,11 @@ class LoopAmplitude(diagram_generation.Amplitude):
         # Give some info about the run
         nLoopDiag = 0
         nCT={'UV':0,'R2':0}
+        nInterferenceTrees = 0
         for ldiag in self['loop_UVCT_diagrams']:
+            if ldiag['UVCT_orders'].get(INTERFERENCE_ORDER):
+                nInterferenceTrees += 1
+                continue
             nCT[ldiag['type'][:2]]+=len(ldiag['UVCT_couplings'])
         for ldiag in self['loop_diagrams']:
             nLoopDiag+=1
@@ -917,7 +942,9 @@ class LoopAmplitude(diagram_generation.Amplitude):
         logger.info("Contributing diagrams generated: "+\
           "%d Born, %d%s loops, %d R2, %d UV"%(len(self['born_diagrams']),
                     len(self['loop_diagrams']),'(+%d)'%nLoopsIdentified \
-                            if nLoopsIdentified>0 else '' ,nCT['R2'],nCT['UV']))
+                            if nLoopsIdentified>0 else '' ,nCT['R2'],nCT['UV'])+\
+          (", %d interfering tree%s" % (nInterferenceTrees,
+            's' if nInterferenceTrees > 1 else '') if nInterferenceTrees else ''))
         
         ldg_debug_info("#Diags after filtering",len(self['loop_diagrams']))
         ldg_debug_info("# of different structures identified",\
@@ -1029,9 +1056,16 @@ class LoopAmplitude(diagram_generation.Amplitude):
                                                            key=lambda el: el[1])
         
         
+        # the hidden INTERFERENCE_ORDER is not printed
+        shown = [i for i, order in enumerate(sorted_hierarchy[:-1])
+                                               if order != INTERFERENCE_ORDER]
+        def SO_string(SO):
+            return '(%s,W%d)' % (','.join('%d' % SO[i] for i in shown), SO[-1])
+
         logger.debug("Coupling order combinations considered:"+\
-                                            " (%s)"%','.join(sorted_hierarchy))
-        
+                    " (%s)"%','.join([sorted_hierarchy[i] for i in shown] +
+                                                                 ['WEIGHTED']))
+
         # Now check what is left
         born_considered = []
         loop_considered = []
@@ -1069,14 +1103,12 @@ class LoopAmplitude(diagram_generation.Amplitude):
             if len(considered)==0:
                 logger.debug(" > %s : None"%name)
             else:
-                logger.debug(" > %s : %s"%(name,' '.join(['(%s,W%d)'%(
-                            ','.join(list('%d'%s for s in c[:-1])),c[-1]) 
-                                                         for c in considered])))
-            
+                logger.debug(" > %s : %s"%(name,' '.join(
+                                        [SO_string(c) for c in considered])))
+
             if len(extra)!=0:
-                logger.debug(" > %s (not selected but available): %s"%(name,' '.
-                    join(['(%s,W%d)'%(','.join(list('%d'%s for s in e[:-1])),
-                                                       e[-1]) for e in extra])))
+                logger.debug(" > %s (not selected but available): %s"%(name,
+                                    ' '.join([SO_string(e) for e in extra])))
                 
         # In case it is needed, the considered orders are returned 
         # (it is used by some of the unit tests)
@@ -1203,6 +1235,76 @@ class LoopAmplitude(diagram_generation.Amplitude):
 
         return totloopsuccessful
 
+
+    def set_interference_trees(self):
+        """For an interference process 'left [LIxtree=QCD] right', generate
+        the tree-level diagrams of the right-hand process with the external
+        legs of this (loop-induced) process, and store them among the
+        'loop_UVCT_diagrams': like a UV counterterm, a tree diagram is a
+        loop-less amplitude that the loop amplitudes are squared against.
+        Each one carries one unit of the hidden order INTERFERENCE_ORDER in
+        its 'UVCT_orders' and a unit 'UVCT_couplings' factor, so that the
+        squared-order constraint INTERF^2==1 (see
+        prepare_interference_process) keeps 2 Re(A_loop A_tree^*) only.
+        Returns the number of tree diagrams added (0 if the right-hand
+        process has none for these legs, in which case the squared-order
+        selection then discards this subprocess)."""
+
+        process = self['process']
+        model = process.get('model')
+        register_interference_order(model)
+        tree_process = diagram_generation.specialise_interference_process(process)
+
+        try:
+            tree_amplitude = diagram_generation.Amplitude(tree_process)
+            tree_diagrams = tree_amplitude.get('diagrams')
+        except (InvalidCmd, diagram_generation.NoDiagramException):
+            tree_diagrams = []
+
+        for diagram in tree_diagrams:
+            tree = loop_base_objects.LoopUVCTDiagram({
+                            'vertices': copy.deepcopy(diagram.get('vertices'))})
+            tree.set('type', 'UVtree')
+            tree.set('UVCT_couplings', [1])
+            tree.set('UVCT_orders', {INTERFERENCE_ORDER: 1})
+            tree.calculate_orders(model)
+            self['loop_UVCT_diagrams'].append(tree)
+
+        if not tree_diagrams:
+            logger.info("No tree-level diagram of %s: no interference."
+                        % tree_process.nice_string(prefix=False))
+        ldg_debug_info("#Interfering tree diagrams", len(tree_diagrams))
+        return len(tree_diagrams)
+
+    def drop_orphan_interference_trees(self):
+        """Remove the interfering trees of a LIxtree process (see
+        set_interference_trees) of which no remaining loop diagram forms a
+        product passing the squared-order constraints. The squared-order
+        selection keeps a tree as long as one loop partner exists, but the loop
+        filters applied after it (Furry, wave-function corrections, vanishing
+        tadpoles, perturbative orders, user loop filter) can remove that
+        partner. Returns the number of trees removed."""
+
+        squared_orders = dict((order, value) for order, value in
+                              self['process']['squared_orders'].items()
+                              if value >= 0)
+        sqorders_types = copy.copy(self['process'].get('sqorders_types'))
+        if 'WEIGHTED' not in sqorders_types:
+            sqorders_types['WEIGHTED'] = '<='
+        kept = base_objects.DiagramList()
+        removed = 0
+        for diagram in self['loop_UVCT_diagrams']:
+            if not diagram['UVCT_orders'].get(INTERFERENCE_ORDER) or \
+                   any(diagram.pass_squared_order_constraints(loop,
+                                          squared_orders, sqorders_types)
+                       for loop in self['loop_diagrams']):
+                kept.append(diagram)
+            else:
+                removed += 1
+        self['loop_UVCT_diagrams'] = kept
+        if removed:
+            ldg_debug_info("#Orphan interfering trees removed", removed)
+        return removed
 
     def set_Born_CT(self):
         """ Scan all born diagrams and add for each all the corresponding UV 

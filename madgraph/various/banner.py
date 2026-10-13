@@ -5269,7 +5269,14 @@ class RunCardLO(RunCard):
         interference = False
         for proc in proc_def:
             for oneproc in proc:
-                if '^2' in oneproc.nice_string():
+                # a squared-order selection: an explicit squared-order
+                # constraint or an interference process ('[LIxtree=QCD]',
+                # '[treextree]', whose constraint is hidden)
+                if hasattr(oneproc, 'has_squared_order_selection'):
+                    selection = oneproc.has_squared_order_selection()
+                else:
+                    selection = '^2' in oneproc.nice_string()
+                if selection:
                     interference = True
                     break
             else:
@@ -6794,6 +6801,11 @@ class RunCardMG7(RunCard):
             comment="batches with a lower fraction of events passing the cuts are resampled")
         self.add_toml_param('generation', 'max_cut_repetitions', 1000, gridpack=True,
             comment="maximum number of resampling attempts per batch")
+        self.add_toml_param('generation', 'interference_helicity', 'exact',
+            allowed=['exact', 'summed'],
+            comment="helicity of an interference |M|^2 (squared split orders keeping a cross term):\n"
+                    " exact: drawn on |T_i|, the event gets the sign of T_i (as madevent)\n"
+                    " summed: the helicity sum as the weight, helicities written as 9 in the LHE")
         # legacy alias of systematics.enable, read from old cards but never written
         self.add_toml_param('generation', 'systematics', False, hidden=True)
 
@@ -6899,9 +6911,6 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'cwnet_activation', "leaky_relu",
             allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'],
             comment="activation function of the channel weight network")
-        self.add_toml_param('madnis', 'loss', "stratified_variance",
-            allowed=['stratified_variance', 'kl_divergence', 'rkl_divergence'],
-            comment="training loss")
         self.add_toml_param('madnis', 'train_batches', 1000,
             comment="number of training batches")
         self.add_toml_param('madnis', 'log_interval', 100,
@@ -6916,10 +6925,6 @@ class RunCardMG7(RunCard):
             comment="gpu sample generation batch sizes are rounded to a multiple of this")
         self.add_toml_param('madnis', 'lr', 3e-4, auto=True,
             comment="learning rate")
-        self.add_toml_param('madnis', 'lr_decay', 0.01,
-            comment="decay of the exponential lr_scheduler, which is currently not selectable")
-        self.add_toml_param('madnis', 'lr_max', 3e-3,
-            comment="peak rate of the one-cycle lr_scheduler, which is currently not selectable")
         self.add_toml_param('madnis', 'lr_scheduler', "cosine",
             allowed=['none', 'cosine'],
             comment="learning rate schedule")
@@ -6947,16 +6952,12 @@ class RunCardMG7(RunCard):
             comment="fraction of the training batch spread uniformly over channels")
         self.add_toml_param('madnis', 'integration_history_length', 100,
             comment="integration history entries kept per channel")
-        self.add_toml_param('madnis', 'max_stored_channel_weights', 100,
-            comment="prior channel weights stored per buffered sample")
         self.add_toml_param('madnis', 'channel_dropping_threshold', 0.01,
             comment="channels below this fraction of the integral are dropped")
         self.add_toml_param('madnis', 'channel_dropping_interval', 100,
             comment="batches between two channel dropping checks")
         self.add_toml_param('madnis', 'drop_zero_integrands', True,
             comment="ignore points with zero integrand in the training")
-        self.add_toml_param('madnis', 'batch_size_threshold', 0.5,
-            comment="new samples are drawn until a training batch holds this fraction of its nominal size")
         self.add_toml_param('madnis', 'fixed_cwnet_fraction', 0.33, auto=True,
             comment="fraction of the training with a frozen channel weight network")
         self.add_toml_param('madnis', 'softclip_threshold', 30.0,
@@ -7902,9 +7903,12 @@ class RunCardMG7(RunCard):
     max_histogram_pairs = 10
     histogram_bin_count = 50
     histogram_eta_max = 5.0
-    # the event weight is histogrammed in units of the cross section (the mean
-    # weight), so this range does not depend on the process: a fully unweighted
-    # sample is a spike at 1, and a partially unweighted one spreads around it.
+    # the event weight is histogrammed in units of the unit weight (sigma_abs,
+    # the cross section of a positive sample), so this range does not depend on
+    # the process: a fully unweighted sample is a spike at 1, and a partially
+    # unweighted one spreads around it. A process with a squared-order
+    # constraint (an interference) can have negative weights, at -1: its range
+    # is made symmetric.
     histogram_weight_max = 5.0
 
     @staticmethod
@@ -8197,9 +8201,16 @@ class RunCardMG7(RunCard):
         # "weight" is not an observable of the momenta: it is the reserved key
         # for the distribution of the event weight itself (see
         # MadgraphProcess.weight_histogram_key in the mg7 launcher)
+        signed = False
+        try:
+            signed = any(oneproc.get('squared_orders')
+                         for proc in proc_def for oneproc in proc)
+        except (TypeError, KeyError, AttributeError):
+            pass
         histograms['weight'] = collections.OrderedDict(
-            [('min', 0.), ('max', self.histogram_weight_max),
-             ('bin_count', bins)])
+            [('min', -self.histogram_weight_max if signed else 0.),
+             ('max', self.histogram_weight_max),
+             ('bin_count', 2 * bins if signed else bins)])
 
     def remove_all_histograms(self):
         """Drop every histogram (the `set histograms OFF` shortcut)."""
