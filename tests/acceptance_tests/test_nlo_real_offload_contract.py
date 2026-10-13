@@ -165,12 +165,21 @@ class TestNLORealFortranOracle(unittest.TestCase):
             local_counts[real_me] = int(match.group(1))
         return row_to_me, local_counts
 
-    def _driver_source(self, row_to_me, local_counts, vector=False):
-        """Build a fixed-form driver without modifying production wrappers."""
+    def _driver_source(self, row_to_me, local_counts, vector=False,
+                       fortran_vector=False):
+        """Build a fixed-form driver without modifying production wrappers.
+
+        With fortran_vector, the batched Fortran real ME of lane 1 is
+        recorded, after the scalar one on the same point and FKS row (which
+        sets the split-order and helicity filters, as set_goodhel does), for
+        an exact comparison."""
 
         real_mes = sorted(local_counts)
-        lines = [
-            '      PROGRAM CHECK_REAL_ORACLE',
+        vector = vector or fortran_vector
+        lines = ['      PROGRAM CHECK_REAL_ORACLE']
+        if fortran_vector:
+            lines.append('      USE COUPLINGS')
+        lines.extend([
             '      IMPLICIT NONE',
             "      INCLUDE 'nexternal.inc'",
             "      INCLUDE 'orders.inc'",
@@ -183,12 +192,17 @@ class TestNLORealFortranOracle(unittest.TestCase):
             '      COMMON/C_NFKSPROCESS/NFKSPROCESS',
             "      INCLUDE 'fks_info.inc'",
             "      INCLUDE 'amp_split_orders.inc'",
-        ]
+        ])
         for real_me in real_mes:
             lines.append(
                 '      INTEGER GETORDPOWFROMINDEX%d' % real_me)
+        if fortran_vector:
+            lines.append(
+                '      DOUBLE PRECISION SWGT,SGLOBAL(AMP_SPLIT_SIZE)')
+        lines.append("      CALL SETPARA('param_card.dat')")
+        if fortran_vector:
+            lines.append('      CALL ALLOCATE_COUPLINGS(1)')
         lines.extend([
-            "      CALL SETPARA('param_card.dat')",
             '      READ(*,*) NPOINTS',
             '      DO K=1,NPOINTS',
             '        READ(*,*) GIN',
@@ -197,6 +211,10 @@ class TestNLORealFortranOracle(unittest.TestCase):
             '        ENDDO',
             '        G=GIN',
             '        CALL UPDATE_AS_PARAM()',
+        ])
+        if fortran_vector:
+            lines.append('        CALL UPDATE_AS_PARAM_VEC(1)')
+        lines.extend([
             '        DO NFKSPROCESS=1,FKS_CONFIGS',
             '          NME=0',
             '          NLOCAL=0',
@@ -215,6 +233,8 @@ class TestNLORealFortranOracle(unittest.TestCase):
                 '          CALL SMATRIX_REAL_VEC(P,GLOBAL,WGT,1,',
                 '     $      NFKSPROCESS,',
                 '     $      REAL_FLAVOR_INDEX_D(NFKSPROCESS))']
+        if fortran_vector:
+            real_call.insert(0, '          CALL SMATRIX_REAL(P,SGLOBAL,SWGT)')
         lines.extend([
             '          GLOBAL(:)=0D0',
             '          LOCAL(:)=0D0',
@@ -257,6 +277,15 @@ class TestNLORealFortranOracle(unittest.TestCase):
             '     $        GLOBAL(J)',
             '          ENDDO',
             "          WRITE(*,*) 'ORACLE_SUM',WGT",
+        ])
+        if fortran_vector:
+            lines.extend([
+                '          DO J=1,AMP_SPLIT_SIZE',
+                "            WRITE(*,*) 'ORACLE_SCALAR_GLOBAL',J,SGLOBAL(J)",
+                '          ENDDO',
+                "          WRITE(*,*) 'ORACLE_SCALAR_SUM',SWGT",
+            ])
+        lines.extend([
             "          WRITE(*,*) 'ORACLE_END'",
             '        ENDDO',
             '      ENDDO',
@@ -276,18 +305,22 @@ class TestNLORealFortranOracle(unittest.TestCase):
                 for momentum in point['momenta'])
         return ('\n'.join(lines) + '\n').encode()
 
-    def _compile_and_run(self, output_path, case):
+    def _compile_and_run(self, output_path, case, fortran_vector=False):
         subproc = pjoin(output_path, 'SubProcesses', case['subprocess'])
         row_to_me, local_counts = self._real_me_contract(subproc)
         selected_rows = case['selected_rows']
         self.assertEqual(selected_rows, sorted(row_to_me))
 
-        driver = self._driver_source(row_to_me, local_counts)
-        driver_path = pjoin(subproc, 'check_real_oracle.f')
+        name = 'check_real_oracle%s' % ('_fvec' if fortran_vector else '')
+        driver = self._driver_source(row_to_me, local_counts,
+                                     fortran_vector=fortran_vector)
+        driver_path = pjoin(subproc, name + '.f')
         with open(driver_path, 'w') as stream:
             stream.write(driver)
 
         misc.compile(cwd=pjoin(output_path, 'Source'))
+        if fortran_vector:
+            misc.compile(['couplmod'], cwd=subproc)
         matrix_objects = [
             os.path.basename(path)[:-2] + '.o' for path in
             sorted(glob.glob(pjoin(subproc, 'matrix_*.f')))]
@@ -296,11 +329,10 @@ class TestNLORealFortranOracle(unittest.TestCase):
                    for obj in matrix_objects),
             sorted(local_counts))
         objects = matrix_objects + [
-            'real_me_chooser.o', 'splitorders_stuff.o',
-            'check_real_oracle.o']
+            'real_me_chooser.o', 'splitorders_stuff.o', name + '.o']
         misc.compile(objects, cwd=subproc)
 
-        executable = pjoin(subproc, 'check_real_oracle')
+        executable = pjoin(subproc, name)
         subprocess.check_call(
             ['gfortran', '-o', executable] + objects +
             ['-L%s' % pjoin(output_path, 'lib'), '-ldhelas', '-lmodel'],
@@ -471,6 +503,11 @@ class TestNLORealFortranOracle(unittest.TestCase):
                 current['%s_squared_orders' % tag].append(component)
             elif tag == 'sum':
                 current['summed'] = cls._fortran_float(tokens[1])
+            elif tag == 'scalar_global':
+                current.setdefault('scalar_global', []).append(
+                    cls._fortran_float(tokens[2]))
+            elif tag == 'scalar_sum':
+                current['scalar_summed'] = cls._fortran_float(tokens[1])
             elif tag == 'end':
                 records.append(current)
                 current = None
@@ -577,6 +614,33 @@ class TestNLORealFortranOracle(unittest.TestCase):
         output_path = self._generate_case(name)
         actual = self._compile_and_run(output_path, case)
         self._assert_case(case, actual)
+
+    def _run_fortran_vector_case(self, name):
+        """The batched Fortran real ME (SMATRIX_REAL_VEC) reproduces the
+        oracle and, bit for bit, the scalar SMATRIX_REAL.
+
+        Once the scalar routine has set the helicity filter, the batched one
+        must apply it, including the reuse of a helicity identical to an
+        earlier one: a batched sum which recomputes those helicities differs
+        from the scalar one in the last bits. On the first point the scalar
+        routine still computes every helicity, so the exact comparison
+        starts at the second point."""
+        case = self.oracle['cases'][name]
+        output_path = self._generate_case(name)
+        actual = self._compile_and_run(output_path, case,
+                                       fortran_vector=True)
+        self._assert_case(case, actual)
+        for record in actual:
+            if record['point'] == 1:
+                continue
+            label = 'point %d FKS row %d' % (
+                record['point'], record['fks_row'])
+            self.assertEqual(record['summed'], record['scalar_summed'],
+                             label)
+            self.assertEqual(
+                [component['value'] for component in
+                 record['global_squared_orders']],
+                record['scalar_global'], label)
 
     @staticmethod
     def _bridge(process_path):
@@ -1174,6 +1238,12 @@ class TestNLORealFortranOracle(unittest.TestCase):
 
     def test_grouped_mixed_wj_real_components(self):
         self._run_case('grouped_mixed_wj')
+
+    def test_grouped_qcd_ttx_fortran_vector_real(self):
+        self._run_fortran_vector_case('grouped_qcd_ttx')
+
+    def test_grouped_mixed_wj_fortran_vector_real(self):
+        self._run_fortran_vector_case('grouped_mixed_wj')
 
     def test_grouped_qcd_ttx_madmatrix_scalar_components(self):
         self._run_madmatrix_case('grouped_qcd_ttx')
