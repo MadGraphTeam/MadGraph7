@@ -4966,7 +4966,7 @@ RESTART = %(mint_mode)s
             execpath = exe
         else:
             raise aMCatNLOError('Cannot find executable %s in %s' \
-                % (exe, os.getcwd()))
+                % (exe, cwd or os.getcwd()))
         # check that the executable has exec permissions
         if self.cluster_mode == 1 and not os.access(execpath, os.X_OK):
             subprocess.call(['chmod', '+x', exe], cwd=cwd)
@@ -5000,7 +5000,7 @@ RESTART = %(mint_mode)s
                           'reweight_xsec_events.output',
                           'scale_pdf_dependence.dat']
             for name in rwgt_files:
-                open(pjoin(cwd or os.getcwd(), name), "w").close()
+                open(pjoin(cwd, name), "w").close()
             input_files.extend(rwgt_files)
             output_files.extend(rwgt_files)
 

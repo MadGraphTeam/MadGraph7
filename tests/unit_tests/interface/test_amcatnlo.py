@@ -26,6 +26,7 @@ import madgraph.interface.amcatnlo_interface as mecmd
 import madgraph.interface.amcatnlo_run_interface as amcatnlo_run
 import madgraph.various.misc as misc
 import os
+import re
 import shutil
 import tempfile
 from io import StringIO
@@ -128,6 +129,27 @@ class TestNoFileOutsideOutputDir(unittest.TestCase):
         os.chdir(self.old_cwd)
         shutil.rmtree(self.tmpdir)
 
+    @staticmethod
+    def bare_cmd():
+        """an aMCatNLOCmd with just what run_exe needs"""
+        cmd = amcatnlo_run.aMCatNLOCmd.__new__(amcatnlo_run.aMCatNLOCmd)
+        # no RunWeb to remove when the bare instance is deleted
+        cmd.stop_for_runweb = True
+        cmd.cluster_mode = 2
+        return cmd
+
+    def test_missing_executable_names_job_directory(self):
+        """The error names the directory where the executable was looked
+        for, not the one MG was started from."""
+
+        jobdir = pjoin(self.tmpdir, 'SubProcesses', 'P0_gg_ttx', 'GF1')
+        os.makedirs(jobdir)
+        self.assertRaisesRegex(amcatnlo_run.aMCatNLOError,
+            'Cannot find executable reweight_xsec_events.local in %s$'
+                                                     % re.escape(jobdir),
+            self.bare_cmd().run_exe, 'reweight_xsec_events.local',
+            ['events.lhe', '1'], 'Running reweight', cwd=jobdir)
+
     def test_reweight_job_files_in_job_directory(self):
         """The files of a reweight job (multicore/cluster) are relative to the
         job directory, so they must be created there."""
@@ -143,10 +165,7 @@ class TestNoFileOutsideOutputDir(unittest.TestCase):
         with open(pjoin(jobdir, 'events.lhe.rwgt'), 'w') as stale:
             stale.write('</LesHouchesEvents>\n')
 
-        cmd = amcatnlo_run.aMCatNLOCmd.__new__(amcatnlo_run.aMCatNLOCmd)
-        # no RunWeb to remove when the bare instance is deleted
-        cmd.stop_for_runweb = True
-        cmd.cluster_mode = 2
+        cmd = self.bare_cmd()
         cmd.cluster = FakeCluster()
         cmd.get_pdf_input_filename = lambda: ''
         cmd.run_exe('reweight_xsec_events.local', ['events.lhe', '1'],
