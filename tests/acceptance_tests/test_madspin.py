@@ -154,6 +154,9 @@ class TestMadSpin(unittest.TestCase):
                         stdout=stdout,stderr=stderr)
 
         self.assertTrue(os.path.exists(pjoin(self.path, 'test_spinmode_none_decayed.lhe.gz')))
+        # the input is decompressed to be read: it has to be compressed back
+        self.assertTrue(os.path.exists(pjoin(self.path, 'test_spinmode_none.lhe.gz')))
+        self.assertFalse(os.path.exists(pjoin(self.path, 'test_spinmode_none.lhe')))
         lhe = lhe_parser.EventFile(pjoin(self.path, 'test_spinmode_none_decayed.lhe.gz'))
         self.assertEqual(100, len(lhe))
         
