@@ -686,10 +686,9 @@ class ReweightInterface(extended_cmd.Cmd):
                     output[(tag_name,name)].write(str(new_evt))
 
         # check normalisation of the events:
-        if self.run_card and 'event_norm' in self.run_card:
-            if self.run_card['event_norm'] in ['average','bias']:
-                for key, value in cross.items():
-                    cross[key] = value / (event_nb+1)
+        if self.run_card and self.run_card.get_event_norm() in ['average','bias']:
+            for key, value in cross.items():
+                cross[key] = value / (event_nb+1)
                 
         running_time = misc.format_timer(time.time()-start)
         logger.info('All event done  (nb_event: %s) %s' % (event_nb+1, running_time))     
