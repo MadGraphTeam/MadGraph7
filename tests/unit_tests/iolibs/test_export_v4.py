@@ -10838,17 +10838,22 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
         self.assertEqual(len(calls), 3)
         for call in calls:
             self.assertIn('M0_GET_FLAVOR_INDEX,M0_GET_FLAVOR,5,2,12', call)
-        # the density and interference wrappers freeze the legs whose helicity
-        # is an open index of rho (POS); smatrixhel has no such leg.
+        # the density wrapper freezes the legs whose helicity is an open
+        # index of rho (POS); smatrixhel has no such leg.
         self.assertEqual(len([c for c in calls
-                              if 'N_CHANGING,POS,.TRUE.' in c]), 2)
+                              if 'N_CHANGING,POS,.TRUE.' in c]), 1)
         # smatrixhel also disarms the repair when a single helicity row was
-        # asked for: that row names the legs by position.
+        # asked for: that row names the legs by position. So does
+        # get_all_inter, whose NHEL fixes every other leg by position.
         self.assertEqual(len([c for c in calls
                               if '0,MS_NOFROZEN,NHEL.LT.1' in c]), 1)
+        self.assertEqual(len([c for c in calls
+                              if 'N_CHANGING,POS,.FALSE.' in c]), 1)
         # and every matrix element is handed the repaired momenta, not P
         for callee in ('M0_SMATRIXHEL(', 'M0_GET_DENSITY(', 'M0_GET_ALL_INTER('):
             self.assertIn('CALL %sPFIX' % callee, text)
+        # GET_ALL_INTER takes NHEL second (and overwrites its POS entries)
+        self.assertIn('CALL M0_GET_ALL_INTER(PFIX, LNHEL, POS,', text)
 
     def test_nothing_changes_without_merged_particles(self):
         """No merged particle means one all-ones flavor per ME and no ordering
@@ -10858,3 +10863,4 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
         self.assertNotIn('PFIX', text)
         for callee in ('M0_SMATRIXHEL(', 'M0_GET_DENSITY(', 'M0_GET_ALL_INTER('):
             self.assertIn('CALL %sP' % callee, text)
+        self.assertIn('CALL M0_GET_ALL_INTER(P, LNHEL, POS,', text)
