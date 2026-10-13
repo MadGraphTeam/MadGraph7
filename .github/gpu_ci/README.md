@@ -27,8 +27,9 @@ allocation per workflow run, and every CI job of that run executes in it:
 | `stop_runner` | cluster | clean up, then create the stop file: `runner_batch.sh` stops the runner and the allocation ends |
 | `watchdog` | vmadgraph | from the start of the runner to the end of the allocation: if the allocation ends before `stop_runner` completed, cancel the run (`ceci-gate watch-runner`, `remote_watch_runner.sh`) |
 
-To add a CI job, give it `runs-on: [self-hosted, "${{ inputs.runner_label }}"]` and add it
-to the `needs` of `stop_runner`. It runs in the same allocation, after the others, so
+To add a CI job, give it `needs: [start_runner, ...]`,
+`if: needs.start_runner.outputs.attempt == github.run_attempt` (see *Re-runs* below) and
+`runs-on: [self-hosted, "${{ inputs.runner_label }}"]`, and add it to the `needs` of `stop_runner`. It runs in the same allocation, after the others, so
 `time_limit` must cover all the jobs together. The first madspace build (OpenBLAS + GPU code)
 is the slow part. The default is kept short so that Slurm can backfill the allocation:
 20 minutes on lemaitre4 (successful runs take 1-12 minutes) and 30 minutes on manneback
@@ -58,6 +59,16 @@ Other safeguards:
   the allocation".
   The watchdog is the only job whose token may write (`actions: write`, to cancel the run),
   which the callers must grant: the jobs on the cluster only read.
+* **Re-runs: "Re-run all jobs" only.** "Re-run failed jobs", or re-running one job, does not
+  re-run `start_runner`, which succeeded: no runner is started for the new attempt. Its jobs for
+  the runner label would wait 24 hours, with no watchdog to cancel them (it is not re-run
+  either), and the concurrency group would hold every later run of the cluster. Hence
+  `start_runner` outputs the attempt it ran in, which such a re-run reuses, and the other jobs
+  compare it with `github.run_attempt`. In an attempt without `start_runner`, the cluster jobs
+  are skipped, and `stop_runner` (and `watchdog`, if it is re-run) run on the vmadgraph runner
+  instead, where they fail at once: the run ends within a minute or so, failed, with
+  "... Use "Re-run all jobs"." "Re-run all jobs" runs `start_runner` again, which starts a
+  new runner for the new attempt (`mg7-run-<run id>-<attempt>`).
 * **One vmadgraph runner per cluster.** `start_runner` holds its runner while the allocation
   waits in the Slurm queue (up to 5 hours), then `watchdog` holds it until the allocation has
   ended. Both run on `[self-hosted, vmadgraph, vmadgraph-<cluster>]`, and each runner on the
@@ -160,6 +171,9 @@ change rulesets.
   allocation gone before `stop_runner` ran. The last lines of its log give the Slurm job and
   its state, e.g. `ALLOCATION_ENDED 10134442 TIMEOUT 00:04:10 00:04:00`. `TIMEOUT`: the jobs
   together need more than `time_limit`, raise it. The runner log on the cluster tells the rest.
+* **`stop_runner` or `watchdog` fails with "re-runs some jobs only, without start_runner",
+  and the cluster jobs are skipped.** The run was re-run with "Re-run failed jobs", or one of
+  its jobs alone, which cannot start a runner: re-run it with "Re-run all jobs".
 * **`watchdog` fails with "cannot watch the allocation of the runner through ceci-gate".**
   The gate on the VM predates `watch-runner`, or `remote_watch_runner.sh` is missing from
   `/usr/local/share/ceci-gate`: install both again (step 1). Its log on the VM is
