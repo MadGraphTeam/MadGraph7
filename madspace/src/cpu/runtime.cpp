@@ -182,7 +182,7 @@ void op_matmul(
     std::size_t batch_size = input.size(0);
     std::size_t dims_in = input.size(1);
     std::size_t dims_out = weight.size(1);
-    output = Tensor(DataType::dt_float, {batch_size, dims_out}, device);
+    output = Tensor(DataType::dt_float64, {batch_size, dims_out}, device);
     output.copy_from(bias_orig, device);
     if (batch_size == 0) {
         return;
@@ -220,17 +220,17 @@ void backward_op_matmul(
 
     if (!input_grad) {
         input_grad =
-            Tensor(DataType::dt_float, input.shape(), device, AllocHint::local_grad);
+            Tensor(DataType::dt_float64, input.shape(), device, AllocHint::local_grad);
         // input_grad.zero(device);
     }
     if (!weight_grad) {
         weight_grad =
-            Tensor(DataType::dt_float, weight.shape(), device, AllocHint::local_grad);
+            Tensor(DataType::dt_float64, weight.shape(), device, AllocHint::local_grad);
         // weight_grad.zero(device);
     }
     if (!bias_grad) {
         bias_grad =
-            Tensor(DataType::dt_float, {1, dims_out}, device, AllocHint::local_grad);
+            Tensor(DataType::dt_float64, {1, dims_out}, device, AllocHint::local_grad);
         // bias_grad.zero(device);
     }
     if (batch_size == 0) {
@@ -287,7 +287,7 @@ void op_nonzero(
     auto& input = locals[instruction.input_indices[0]];
     auto batch_size = input.size(0);
     auto& output = locals[instruction.output_indices[0]];
-    Tensor output_tmp(DataType::dt_int, {batch_size});
+    Tensor output_tmp(DataType::dt_int32, {batch_size});
     auto input_view_flat = input.flat_view<double, 1>(0);
     auto output_view_flat = output_tmp.flat_view<me_int_t, 1>(0);
     device.submit(
@@ -332,13 +332,13 @@ void batch_gather_impl(
 ) {
     Sizes out_shape = values.shape();
     out_shape[0] = indices.size(0);
-    if (values.dtype() == DataType::dt_float) {
-        selection = Tensor(DataType::dt_float, out_shape, device);
+    if (values.dtype() == DataType::dt_float64) {
+        selection = Tensor(DataType::dt_float64, out_shape, device);
         batch_gather_impl_body<kernel_copy<CpuTypes>, dim, double>(
             indices, values, selection, device
         );
-    } else if (values.dtype() == DataType::dt_int) {
-        selection = Tensor(DataType::dt_int, out_shape, device);
+    } else if (values.dtype() == DataType::dt_int32) {
+        selection = Tensor(DataType::dt_int32, out_shape, device);
         batch_gather_impl_body<kernel_copy_int<CpuTypes>, dim, me_int_t>(
             indices, values, selection, device
         );
@@ -396,11 +396,11 @@ template <int dim, typename D>
 void batch_scatter_impl(
     Tensor& indices, Tensor& source, Tensor& output, const D& device
 ) {
-    if (source.dtype() == DataType::dt_float) {
+    if (source.dtype() == DataType::dt_float64) {
         batch_scatter_impl_body<kernel_copy<CpuTypes>, dim, double>(
             indices, source, output, device
         );
-    } else if (source.dtype() == DataType::dt_int) {
+    } else if (source.dtype() == DataType::dt_int32) {
         batch_scatter_impl_body<kernel_copy_int<CpuTypes>, dim, me_int_t>(
             indices, source, output, device
         );
@@ -462,7 +462,7 @@ void op_batch_split_by_index(
         views.reserve(count);
         for (auto [size, output_index] : zip(sizes, instruction.output_indices)) {
             auto& output = locals[output_index];
-            output = Tensor(DataType::dt_int, {size}, device);
+            output = Tensor(DataType::dt_int32, {size}, device);
             views.push_back(output.view<me_int_t, 1>());
         }
         std::fill(sizes.begin(), sizes.end(), 0);
@@ -509,7 +509,7 @@ void batch_reduce_sum_mean_impl(
     auto& input = locals[instruction.input_indices[0]];
     auto& output = locals[instruction.output_indices[0]];
     std::size_t batch_size = input.size(0);
-    output = Tensor(DataType::dt_float, {keepdim ? batch_size : 1}, device);
+    output = Tensor(DataType::dt_float64, {keepdim ? batch_size : 1}, device);
     device.sync_barrier();
 
     auto input_view_flat = input.flat_view<double, 1>(0);
@@ -553,7 +553,7 @@ void batch_reduce_sum_mean_backward_impl(
     auto& output_grad = local_grads[instruction.output_indices[0]];
     if (!input_grad) {
         input_grad =
-            Tensor(DataType::dt_float, input.shape(), device, AllocHint::local_grad);
+            Tensor(DataType::dt_float64, input.shape(), device, AllocHint::local_grad);
         // input_grad.zero(device);
     }
     device.sync_barrier();
@@ -674,7 +674,7 @@ void op_offset_indices(
     auto& sizes_out = locals[instruction.input_indices[1]].batch_sizes();
     std::size_t total_size = std::accumulate(sizes_out.begin(), sizes_out.end(), 0);
     auto& output = locals[instruction.output_indices[0]];
-    output = Tensor(DataType::dt_int, {total_size}, device);
+    output = Tensor(DataType::dt_int32, {total_size}, device);
     auto flat_view = output.flat_view<me_int_t, 1>(0);
 
     std::size_t sum_offset = 0, sum_out = 0;
@@ -709,7 +709,7 @@ void op_quantile(
         return;
     }
 
-    output = Tensor(DataType::dt_float, {1}, device);
+    output = Tensor(DataType::dt_float64, {1}, device);
     device.foreach (
         input.size(0),
         [&](std::size_t count, std::size_t offset) {
@@ -738,7 +738,7 @@ void op_random(
     auto batch_size = locals[instruction.input_indices[0]].batch_sizes()[0];
     auto& output = locals[instruction.output_indices[0]];
     auto dim = instruction.output_shapes[0][0];
-    output = Tensor(DataType::dt_float, {batch_size, dim}, device);
+    output = Tensor(DataType::dt_float64, {batch_size, dim}, device);
     auto flat_view = output.flat_view<double, 1>(2);
     auto& runtime = instruction.runtime;
     device.foreach (
@@ -760,7 +760,7 @@ void op_random_int(
     auto batch_size = locals[instruction.input_indices[0]].batch_sizes()[0];
     auto max_val = locals[instruction.input_indices[1]].batch_sizes()[0];
     auto& output = locals[instruction.output_indices[0]];
-    output = Tensor(DataType::dt_float, {batch_size}, device);
+    output = Tensor(DataType::dt_float64, {batch_size}, device);
     auto flat_view = output.flat_view<me_int_t, 1>(0);
     auto& runtime = instruction.runtime;
     device.foreach (
@@ -788,8 +788,8 @@ void op_unweight(
     auto& uw_weights = locals[instruction.output_indices[1]];
 
     auto batch_size = weights.size(0);
-    Tensor indices_tmp(DataType::dt_int, {batch_size});
-    Tensor uw_weights_tmp(DataType::dt_float, {batch_size});
+    Tensor indices_tmp(DataType::dt_int32, {batch_size});
+    Tensor uw_weights_tmp(DataType::dt_float64, {batch_size});
 
     auto weights_view_flat = weights.flat_view<double, 1>(0);
     auto max_weight_view_flat = max_weight.flat_view<double, 1>(0);
@@ -846,8 +846,8 @@ void op_histogram(
     Sizes shape(out_shape.size() + 1);
     shape[0] = 1;
     std::copy(out_shape.begin(), out_shape.end(), shape.begin() + 1);
-    values = Tensor(DataType::dt_float, shape, device);
-    square_values = Tensor(DataType::dt_float, shape, device);
+    values = Tensor(DataType::dt_float64, shape, device);
+    square_values = Tensor(DataType::dt_float64, shape, device);
     device.sync_barrier();
 
     auto weights_view_flat = weights.flat_view<double, 1>(0);
@@ -915,8 +915,8 @@ void op_vegas_histogram(
     Sizes shape(out_shape.size() + 1);
     shape[0] = 1;
     std::copy(out_shape.begin(), out_shape.end(), shape.begin() + 1);
-    values = Tensor(DataType::dt_float, shape, device);
-    counts = Tensor(DataType::dt_int, shape, device);
+    values = Tensor(DataType::dt_float64, shape, device);
+    counts = Tensor(DataType::dt_int32, shape, device);
     device.sync_barrier();
 
     auto input_view_flat = input.flat_view<double, 2>(0);
@@ -974,8 +974,8 @@ void op_discrete_histogram(
     Sizes shape(out_shape.size() + 1);
     shape[0] = 1;
     std::copy(out_shape.begin(), out_shape.end(), shape.begin() + 1);
-    values = Tensor(DataType::dt_float, shape, device);
-    counts = Tensor(DataType::dt_int, shape, device);
+    values = Tensor(DataType::dt_float64, shape, device);
+    counts = Tensor(DataType::dt_int32, shape, device);
 
     std::size_t batch_size = locals[instruction.batch_size_index].size(0);
 
@@ -1132,8 +1132,9 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
         );
         for (auto& in : instr.inputs) {
             auto& local = function.locals().at(in.local_index);
-            bool is_literal = !std::holds_alternative<std::monostate>(local.literal_value);
-            bool is_int_intermediate = local.type.dtype == DataType::dt_int &&
+            bool is_literal =
+                !std::holds_alternative<std::monostate>(local.literal_value);
+            bool is_int_intermediate = local.type.dtype == DataType::dt_int32 &&
                 static_cast<std::size_t>(in.local_index) >= function.inputs().size() &&
                 !global_locals.contains(in.local_index);
             _instructions.back().discard_input_grad.push_back(
@@ -1373,7 +1374,7 @@ std::pair<TensorVec, TensorVec> CpuRuntime::run_backward_single(
     }
 
     Tensor all_global_grads(
-        DataType::dt_float, {_grad_global_total_size}, AllocHint::global_grad
+        DataType::dt_float64, {_grad_global_total_size}, AllocHint::global_grad
     );
     // all_global_grads.zero();
     TensorVec global_grads = all_global_grads.split_and_reshape(_grad_global_shapes);
@@ -1392,9 +1393,9 @@ std::pair<TensorVec, TensorVec> CpuRuntime::run_backward_single(
         for (auto [output_index, output_dtype] :
              zip(instr.output_indices, instr.output_dtypes)) {
             auto& grad = local_grads[output_index];
-            if (!grad && output_dtype == DataType::dt_float) {
+            if (!grad && output_dtype == DataType::dt_float64) {
                 grad = Tensor(
-                    DataType::dt_float,
+                    DataType::dt_float64,
                     locals[output_index].shape(),
                     device,
                     AllocHint::local_grad
@@ -1567,7 +1568,7 @@ std::pair<TensorVec, TensorVec> CpuRuntime::run_backward_concurrent(
     }
 
     Tensor all_global_grads(
-        DataType::dt_float, {_grad_global_total_size}, AllocHint::global_grad
+        DataType::dt_float64, {_grad_global_total_size}, AllocHint::global_grad
     );
     // all_global_grads.zero();
     TensorVec global_grads = all_global_grads.split_and_reshape(_grad_global_shapes);
@@ -1606,9 +1607,9 @@ std::pair<TensorVec, TensorVec> CpuRuntime::run_backward_concurrent(
                     for (auto [output_index, output_dtype] :
                          zip(instr.output_indices, instr.output_dtypes)) {
                         auto& grad = local_grads[output_index];
-                        if (!grad && output_dtype == DataType::dt_float) {
+                        if (!grad && output_dtype == DataType::dt_float64) {
                             grad = Tensor(
-                                DataType::dt_float,
+                                DataType::dt_float64,
                                 locals[output_index].shape(),
                                 device,
                                 AllocHint::local_grad

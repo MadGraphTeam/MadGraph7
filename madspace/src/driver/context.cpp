@@ -12,7 +12,9 @@ using namespace madspace;
 using json = nlohmann::json;
 
 namespace {
-UmamiStatus umami_key_query_not_implemented(bool const**, int*) { return UMAMI_ERROR_NOT_IMPLEMENTED; }
+UmamiStatus umami_key_query_not_implemented(bool const**, int*) {
+    return UMAMI_ERROR_NOT_IMPLEMENTED;
+}
 thread_local std::optional<std::uintptr_t> current_caller_stream;
 } // namespace
 
@@ -160,8 +162,7 @@ void MatrixElementApi::throw_error(const std::string& message) const {
     );
 }
 
-const MatrixElementApi&
-Context::load_matrix_element(
+const MatrixElementApi& Context::load_matrix_element(
     const std::string& file,
     const std::string& param_card,
     const std::unordered_map<std::string, double>& parameters
@@ -364,7 +365,7 @@ Tensor Context::cached_tensor(std::size_t size) {
         }
     }
     std::size_t word_count = (size + 7) / 8;
-    Tensor new_tensor(DataType::dt_float, {word_count}, device());
+    Tensor new_tensor(DataType::dt_float64, {word_count}, device());
     tensors.insert(tensors.begin() + size_pos, new_tensor);
     return new_tensor;
 }

@@ -57,7 +57,7 @@ NamedVector<Value> ChannelWeightNetwork::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
     auto mask =
-        fb.global(_mask_name, DataType::dt_float, {static_cast<int>(_channel_count)});
+        fb.global(_mask_name, DataType::dt_float64, {static_cast<int>(_channel_count)});
     // auto net_input =
     //     _preprocessing.build_function(fb, {args["momenta"], args["x1"], args["x2"]});
     // auto net_output = _mlp.build_function(fb, net_input.values()).at(0);
@@ -73,14 +73,14 @@ void ChannelWeightNetwork::initialize_globals(
 ) const {
     _mlp.initialize_globals(context, seed);
 
-    context->define_global(_mask_name, DataType::dt_float, {_channel_count});
+    context->define_global(_mask_name, DataType::dt_float64, {_channel_count});
     bool is_cpu = context->device() == cpu_device();
     auto mask_global = context->global(_mask_name);
     Tensor mask;
     if (is_cpu) {
         mask = mask_global;
     } else {
-        mask = Tensor(DataType::dt_float, mask_global.shape());
+        mask = Tensor(DataType::dt_float64, mask_global.shape());
     }
     auto mask_view = mask.view<double, 2>()[0];
     for (std::size_t i = 0; i < mask_view.size(); ++i) {

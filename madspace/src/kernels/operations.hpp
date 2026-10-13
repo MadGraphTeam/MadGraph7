@@ -81,13 +81,12 @@ void backward_batch_foreach(
             if (!input_grad || input_grad.size(0) != batch_size) {
                 Sizes shape = input.shape();
                 shape[0] = batch_size;
-                input_grad =
-                    Tensor(input.dtype(), shape, device, AllocHint::temporary);
+                input_grad = Tensor(input.dtype(), shape, device, AllocHint::temporary);
             }
         } else if (!input_grad) {
             auto& input = locals[input_index];
-            /*if (input.size(0) != batch_size && input.dtype() == DataType::dt_float) {
-                throw std::runtime_error("backward not possible for broadcasting args");
+            /*if (input.size(0) != batch_size && input.dtype() == DataType::dt_float64)
+            { throw std::runtime_error("backward not possible for broadcasting args");
             }*/
             input_grad = Tensor(
                 input.dtype(),
@@ -135,7 +134,7 @@ void backward_op_stack(
         auto& input_grad = local_grads[input_index];
         if (!input_grad) {
             input_grad = Tensor(
-                DataType::dt_float,
+                DataType::dt_float64,
                 locals[input_index].shape(),
                 device,
                 instruction.input_grad_alloc_hints[i]
@@ -186,7 +185,7 @@ void backward_op_unstack(
     auto& input_grad = local_grads[input_index];
     if (!input_grad) {
         input_grad = Tensor(
-            DataType::dt_float,
+            DataType::dt_float64,
             locals[input_index].shape(),
             device,
             instruction.input_grad_alloc_hints[0]
@@ -216,7 +215,7 @@ void backward_op_pop(
     auto input_grad = local_grads[input_index];
     if (!input_grad) {
         input_grad = Tensor(
-            DataType::dt_float,
+            DataType::dt_float64,
             locals[input_index].shape(),
             device,
             instruction.input_grad_alloc_hints[0]
@@ -269,7 +268,7 @@ void backward_op_batch_cat(
         auto& input_grad = local_grads[input_index];
         if (!input_grad) {
             input_grad = Tensor(
-                DataType::dt_float,
+                DataType::dt_float64,
                 locals[input_index].shape(),
                 device,
                 instruction.input_grad_alloc_hints[i]
@@ -305,7 +304,7 @@ void backward_op_batch_split(
     auto& input_grad = local_grads[input_index];
     if (!input_grad) {
         input_grad = Tensor(
-            DataType::dt_float,
+            DataType::dt_float64,
             locals[input_index].shape(),
             device,
             instruction.input_grad_alloc_hints[0]
@@ -357,7 +356,7 @@ void backward_op_cat(
         auto& input_grad = local_grads[input_index];
         if (!input_grad) {
             input_grad = Tensor(
-                DataType::dt_float,
+                DataType::dt_float64,
                 locals[input_index].shape(),
                 device,
                 instruction.input_grad_alloc_hints[i]
@@ -471,7 +470,7 @@ void backward_op_rqs_reshape(
     auto& input_grad = local_grads[input_index];
     if (!input_grad) {
         input_grad = Tensor(
-            DataType::dt_float,
+            DataType::dt_float64,
             locals[input_index].shape(),
             device,
             instruction.input_grad_alloc_hints[0]

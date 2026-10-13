@@ -46,7 +46,7 @@ void vegas_init(
     auto grid_tensor = context->global(grid_name).cpu();
     bool is_cpu = false; // context->device() == cpu_device();
     Tensor bias_tensor =
-        is_cpu ? bias_global : Tensor(DataType::dt_float, bias_global.shape());
+        is_cpu ? bias_global : Tensor(DataType::dt_float64, bias_global.shape());
     auto bias_view = bias_tensor.view<double, 2>()[0];
     auto grid_view = grid_tensor.view<double, 3>()[0];
     std::size_t n_dims = grid_tensor.size(1);

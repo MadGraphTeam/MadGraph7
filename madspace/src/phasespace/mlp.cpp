@@ -19,12 +19,12 @@ Value build_layer(
 ) {
     auto weight = fb.global(
         prefixed_name(prefix, std::format("layer{}.weight", layer_index)),
-        DataType::dt_float,
+        DataType::dt_float64,
         {output_dim, input_dim}
     );
     auto bias = fb.global(
         prefixed_name(prefix, std::format("layer{}.bias", layer_index)),
-        DataType::dt_float,
+        DataType::dt_float64,
         {output_dim}
     );
     auto linear_out = fb.matmul(input, weight, bias);
@@ -59,18 +59,18 @@ void initialize_layer(
         prefixed_name(prefix, std::format("layer{}.weight", layer_index));
     auto bias_name = prefixed_name(prefix, std::format("layer{}.bias", layer_index));
     auto weight_tensor_global = context->define_global(
-        weight_name, DataType::dt_float, {output_dim, input_dim}, true
+        weight_name, DataType::dt_float64, {output_dim, input_dim}, true
     );
     auto bias_tensor_global =
-        context->define_global(bias_name, DataType::dt_float, {output_dim}, true);
+        context->define_global(bias_name, DataType::dt_float64, {output_dim}, true);
     Tensor weight_tensor, bias_tensor;
     bool is_cpu = context->device() == cpu_device();
     if (is_cpu) {
         weight_tensor = weight_tensor_global;
         bias_tensor = bias_tensor_global;
     } else {
-        weight_tensor = Tensor(DataType::dt_float, {1, output_dim, input_dim});
-        bias_tensor = Tensor(DataType::dt_float, {1, output_dim});
+        weight_tensor = Tensor(DataType::dt_float64, {1, output_dim, input_dim});
+        bias_tensor = Tensor(DataType::dt_float64, {1, output_dim});
     }
 
     auto weight_view = weight_tensor.view<double, 3>()[0];

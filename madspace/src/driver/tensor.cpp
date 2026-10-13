@@ -276,7 +276,7 @@ Tensor Tensor::simd_padded_literal(
     auto [dtype, buffer] = std::visit(
         [&]<typename T>(const std::vector<T>& vec) {
             auto dtype =
-                std::is_same_v<T, me_int_t> ? DataType::dt_int : DataType::dt_float;
+                std::is_same_v<T, me_int_t> ? DataType::dt_int32 : DataType::dt_float64;
             std::vector<T> padded(count * lanes);
             for (std::size_t j = 0; j < count; ++j) {
                 std::fill_n(padded.begin() + j * lanes, lanes, vec[j]);
@@ -294,7 +294,16 @@ Tensor Tensor::simd_padded_literal(
         stride_prod *= shape[i];
     }
     Tensor ret(new TensorImpl{
-        dtype, shape, device, buffer.data(), false, std::nullopt, buffer.impl, 1, stride, 1
+        dtype,
+        shape,
+        device,
+        buffer.data(),
+        false,
+        std::nullopt,
+        buffer.impl,
+        1,
+        stride,
+        1
     });
     ret.impl->simd_padded = true;
     // non-negative integer scalars double as batch sizes, see the scalar constructor

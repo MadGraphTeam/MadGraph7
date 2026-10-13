@@ -148,8 +148,9 @@ PYBIND11_MODULE(_madspace_py, m) {
         m,
         "DataType",
         {
-            {"int", DataType::dt_int},
-            {"float", DataType::dt_float},
+            {"int32", DataType::dt_int32},
+            {"float32", DataType::dt_float32},
+            {"float64", DataType::dt_float64},
             {"batch_sizes", DataType::batch_sizes},
         },
         "",

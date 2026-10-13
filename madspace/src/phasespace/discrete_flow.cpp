@@ -112,7 +112,7 @@ Mapping::Result DiscreteFlow::build_transform(
         if (dim_index == 0 && _first_prob_name) {
             probs = fb.global(
                 _first_prob_name.value(),
-                DataType::dt_float,
+                DataType::dt_float64,
                 {static_cast<int>(option_count)}
             );
         } else {

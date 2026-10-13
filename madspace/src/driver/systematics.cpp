@@ -115,7 +115,9 @@ double SystematicsCalculator::dynamical_scale(
         return std::sqrt(std::max(0., e_tot * e_tot - pz_tot * pz_tot));
     }
     default:
-        throw std::invalid_argument(std::format("invalid dynamical scale choice {}", dyn));
+        throw std::invalid_argument(
+            std::format("invalid dynamical scale choice {}", dyn)
+        );
     }
 }
 
@@ -203,7 +205,9 @@ SystematicsCalculator::SystematicsCalculator(
         std::string prefix = std::format("{}.alpha_s{}", _prefix, index);
         grid.initialize_globals(_context, prefix);
         RunningCoupling coupling(grid, prefix);
-        _alpha_s_runtimes.push_back(build_runtime(coupling.function(), _context, false));
+        _alpha_s_runtimes.push_back(
+            build_runtime(coupling.function(), _context, false)
+        );
         return index;
     };
     add_alpha_s(nominal_alpha_s.value());
@@ -242,13 +246,15 @@ SystematicsCalculator::SystematicsCalculator(
                 remap = me_flavor_remap.at(i);
             }
             if (remap.size() < _subproc_args.at(i).beam_pdgs.size()) {
-                throw std::invalid_argument(std::format(
-                    "SystematicsCalculator: flavor remap of subprocess {} has {} "
-                    "entries, {} flavors expected",
-                    i,
-                    remap.size(),
-                    _subproc_args.at(i).beam_pdgs.size()
-                ));
+                throw std::invalid_argument(
+                    std::format(
+                        "SystematicsCalculator: flavor remap of subprocess {} has {} "
+                        "entries, {} flavors expected",
+                        i,
+                        remap.size(),
+                        _subproc_args.at(i).beam_pdgs.size()
+                    )
+                );
             }
             _matrix_elements.at(i) = MatrixElementData{
                 .runtime = build_runtime(me->function(), _context, false),
@@ -269,22 +275,27 @@ SystematicsCalculator::SystematicsCalculator(
     std::map<std::string, std::size_t> alpha_s_indices;
     for (auto& spec : _config.pdf_members) {
         if (!_config.has_pdf) {
-            _warnings.push_back(std::format(
-                "PDF variation {} member {} ignored: the beams have no PDF",
-                spec.set_name,
-                spec.member
-            ));
+            _warnings.push_back(
+                std::format(
+                    "PDF variation {} member {} ignored: the beams have no PDF",
+                    spec.set_name,
+                    spec.member
+                )
+            );
             continue;
         }
         bool same_set = spec.set_lhaid == _config.nominal_lhaid;
         if (!same_set && !_mur_supported) {
-            _warnings.push_back(std::format(
-                "PDF variation {} member {} ignored: the events have no uniform "
-                "alpha_s power and no matrix element to re-evaluate, so the alpha_s "
-                "of a different PDF set cannot be applied",
-                spec.set_name,
-                spec.member
-            ));
+            _warnings.push_back(
+                std::format(
+                    "PDF variation {} member {} ignored: the events have no uniform "
+                    "alpha_s power and no matrix element to re-evaluate, so the "
+                    "alpha_s "
+                    "of a different PDF set cannot be applied",
+                    spec.set_name,
+                    spec.member
+                )
+            );
             continue;
         }
         std::size_t alpha_s_index;
@@ -367,11 +378,10 @@ void SystematicsCalculator::build_variations() {
 
     // PDF variations: when members of the nominal set are requested, the group
     // starts with the nominal member itself so that the group is complete
-    bool has_nominal_set_members = std::any_of(
-        _members.begin(),
-        _members.end(),
-        [&](auto& spec) { return spec.set_lhaid == _config.nominal_lhaid; }
-    );
+    bool has_nominal_set_members =
+        std::any_of(_members.begin(), _members.end(), [&](auto& spec) {
+            return spec.set_lhaid == _config.nominal_lhaid;
+        });
     if (has_nominal_set_members) {
         _variations.push_back({id++, 1., 1., -1, -1});
     }
@@ -498,9 +508,9 @@ std::vector<double> SystematicsCalculator::evaluate_pdf(
     if (count == 0) {
         return values;
     }
-    Tensor x_tensor(DataType::dt_float, {count});
-    Tensor q_tensor(DataType::dt_float, {count});
-    Tensor slot_tensor(DataType::dt_int, {count});
+    Tensor x_tensor(DataType::dt_float64, {count});
+    Tensor q_tensor(DataType::dt_float64, {count});
+    Tensor slot_tensor(DataType::dt_int32, {count});
     auto x_view = x_tensor.view<double, 1>();
     auto q_view = q_tensor.view<double, 1>();
     auto slot_view = slot_tensor.view<me_int_t, 1>();
@@ -530,7 +540,7 @@ std::vector<double> SystematicsCalculator::evaluate_alpha_s(
     if (count == 0) {
         return values;
     }
-    Tensor q_tensor(DataType::dt_float, {count});
+    Tensor q_tensor(DataType::dt_float64, {count});
     auto q_view = q_tensor.view<double, 1>();
     for (std::size_t i = 0; i < count; ++i) {
         q_view[i] = q[i];
@@ -548,8 +558,9 @@ std::vector<double> SystematicsCalculator::evaluate_alpha_s(
     return values;
 }
 
-std::vector<std::array<double, 4>>
-SystematicsCalculator::event_momenta(EventBuffer& buffer, std::size_t event_index) const {
+std::vector<std::array<double, 4>> SystematicsCalculator::event_momenta(
+    EventBuffer& buffer, std::size_t event_index
+) const {
     std::vector<std::array<double, 4>> momenta;
     for (std::size_t j = 0; j < buffer.particle_count(); ++j) {
         auto particle = buffer.particle(event_index, j);
@@ -571,9 +582,9 @@ std::vector<double> SystematicsCalculator::matrix_elements(
     auto& me_data = _matrix_elements.at(subproc).value();
     std::size_t count = indices.size();
     std::size_t pc = me_data.particle_count;
-    Tensor momenta(DataType::dt_float, {count, pc, 4});
-    Tensor alpha_s_tensor(DataType::dt_float, {count});
-    Tensor flavor(DataType::dt_int, {count});
+    Tensor momenta(DataType::dt_float64, {count, pc, 4});
+    Tensor alpha_s_tensor(DataType::dt_float64, {count});
+    Tensor flavor(DataType::dt_int32, {count});
     auto mom_view = momenta.view<double, 3>();
     auto alpha_view = alpha_s_tensor.view<double, 1>();
     auto flavor_view = flavor.view<me_int_t, 1>();
@@ -606,8 +617,9 @@ std::vector<double> SystematicsCalculator::matrix_elements(
     return values;
 }
 
-LOReweightInfo
-SystematicsCalculator::reweight_info(EventBuffer& buffer, std::size_t event_index) const {
+LOReweightInfo SystematicsCalculator::reweight_info(
+    EventBuffer& buffer, std::size_t event_index
+) const {
     auto& layout = buffer.layout();
     bool has_beam1 = layout_has(layout, "fact_scale1");
     bool has_beam2 = layout_has(layout, "fact_scale2");
@@ -727,41 +739,42 @@ void SystematicsCalculator::compute(
     // (nominal grid: every scale variation; member grids: the nominal scales)
     std::vector<std::vector<double>> r_pdf(count, std::vector<double>(var_count, 1.));
     if (use_pdf) {
-        auto evaluate_variations = [&](const PdfEvaluator& evaluator,
-                                       const std::vector<std::size_t>& var_indices) {
-            std::vector<double> x, q;
-            std::vector<me_int_t> slots;
-            for (auto& in : inputs) {
-                for (std::size_t k : var_indices) {
-                    auto& var = _variations.at(k);
-                    if (has_beam1) {
-                        x.push_back(in.x1);
-                        q.push_back(var.muf * scale_of(in, var.dyn, in.muf1));
-                        slots.push_back(in.slot1);
-                    }
-                    if (has_beam2) {
-                        x.push_back(in.x2);
-                        q.push_back(var.muf * scale_of(in, var.dyn, in.muf2));
-                        slots.push_back(in.slot2);
+        auto evaluate_variations =
+            [&](const PdfEvaluator& evaluator,
+                const std::vector<std::size_t>& var_indices) {
+                std::vector<double> x, q;
+                std::vector<me_int_t> slots;
+                for (auto& in : inputs) {
+                    for (std::size_t k : var_indices) {
+                        auto& var = _variations.at(k);
+                        if (has_beam1) {
+                            x.push_back(in.x1);
+                            q.push_back(var.muf * scale_of(in, var.dyn, in.muf1));
+                            slots.push_back(in.slot1);
+                        }
+                        if (has_beam2) {
+                            x.push_back(in.x2);
+                            q.push_back(var.muf * scale_of(in, var.dyn, in.muf2));
+                            slots.push_back(in.slot2);
+                        }
                     }
                 }
-            }
-            auto values = evaluate_pdf(evaluator, x, q, slots);
-            for (std::size_t i = 0, n = 0; i < count; ++i) {
-                for (std::size_t k : var_indices) {
-                    double product = 1.;
-                    if (has_beam1) {
-                        product *= values[n++];
+                auto values = evaluate_pdf(evaluator, x, q, slots);
+                for (std::size_t i = 0, n = 0; i < count; ++i) {
+                    for (std::size_t k : var_indices) {
+                        double product = 1.;
+                        if (has_beam1) {
+                            product *= values[n++];
+                        }
+                        if (has_beam2) {
+                            product *= values[n++];
+                        }
+                        r_pdf[i][k] = inputs[i].nominal_product == 0.
+                            ? 0.
+                            : product / inputs[i].nominal_product;
                     }
-                    if (has_beam2) {
-                        product *= values[n++];
-                    }
-                    r_pdf[i][k] = inputs[i].nominal_product == 0.
-                        ? 0.
-                        : product / inputs[i].nominal_product;
                 }
-            }
-        };
+            };
         std::vector<std::size_t> nominal_grid_vars;
         std::vector<std::vector<std::size_t>> member_vars(_member_pdfs.size());
         for (std::size_t k = 0; k < var_count; ++k) {
@@ -842,7 +855,8 @@ void SystematicsCalculator::compute(
             if (in.use_me || in.qcd_power == 0) {
                 continue;
             }
-            ratio[i] = in.alpha_s == 0. ? 0. : std::pow(varied[i] / in.alpha_s, in.qcd_power);
+            ratio[i] =
+                in.alpha_s == 0. ? 0. : std::pow(varied[i] / in.alpha_s, in.qcd_power);
         }
         for (auto& [subproc, indices] : me_events) {
             std::vector<double> alpha_s(indices.size());
@@ -1000,8 +1014,7 @@ json SystematicsCalculator::summary() const {
     json result{
         {"variations", variations},
         {"nominal",
-         {{"pdf_set", _config.nominal_set_name},
-          {"pdf_lhaid", _config.nominal_lhaid}}},
+         {{"pdf_set", _config.nominal_set_name}, {"pdf_lhaid", _config.nominal_lhaid}}},
         {"event_count", _event_count},
         {"warnings", _warnings},
     };

@@ -147,7 +147,8 @@ MemPool::MemPool(
             pool.parent_tensor = parent_tensor;
             pool.capacity = parent_tensor.byte_size();
         } else {
-            pool.parent_tensor = Tensor(DataType::dt_float, {word_count}, async_device);
+            pool.parent_tensor =
+                Tensor(DataType::dt_float64, {word_count}, async_device);
             pool.capacity = word_count * 8;
         }
         pool.needed_size = word_count * 8;
@@ -307,12 +308,13 @@ void AsyncGpuDevice::memcpy(void* to, void* from, std::size_t size) const {
 }
 
 void AsyncGpuDevice::tensor_copy(const Tensor& source, Tensor& target) const {
-    if (source.dtype() == DataType::dt_float && target.dtype() == DataType::dt_float) {
+    if (source.dtype() == DataType::dt_float64 &&
+        target.dtype() == DataType::dt_float64) {
         tensor_foreach_dynamic<kernel_copy<GpuTypes>, 1, 1>(
             {&source}, {&target}, target.size(0), *this
         );
-    } else if (source.dtype() == DataType::dt_int &&
-               target.dtype() == DataType::dt_int) {
+    } else if (source.dtype() == DataType::dt_int32 &&
+               target.dtype() == DataType::dt_int32) {
         tensor_foreach_dynamic<kernel_copy_int<GpuTypes>, 1, 1>(
             {&source}, {&target}, target.size(0), *this
         );
@@ -322,7 +324,7 @@ void AsyncGpuDevice::tensor_copy(const Tensor& source, Tensor& target) const {
 }
 
 void AsyncGpuDevice::tensor_zero(Tensor& tensor) const {
-    if (tensor.dtype() == DataType::dt_float) {
+    if (tensor.dtype() == DataType::dt_float64) {
         if (tensor.is_contiguous()) {
             check_error(gpuMemsetAsync(tensor.data(), 0, tensor.byte_size(), _stream));
         } else {
@@ -330,7 +332,7 @@ void AsyncGpuDevice::tensor_zero(Tensor& tensor) const {
                 {&tensor}, {&tensor}, tensor.size(0), *this
             );
         }
-    } else if (tensor.dtype() == DataType::dt_int) {
+    } else if (tensor.dtype() == DataType::dt_int32) {
         if (tensor.is_contiguous()) {
             check_error(gpuMemsetAsync(tensor.data(), 0, tensor.byte_size(), _stream));
         } else {

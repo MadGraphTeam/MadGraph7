@@ -37,7 +37,7 @@ def to_numpy(tensor, torch):
 
 
 def check_histogram(torch, device, n=100000, n_bins=40):
-    out_type = ms.Type(ms.DataType.float, ms.BatchSize.one, [n_bins + 2])
+    out_type = ms.Type(ms.DataType.float64, ms.BatchSize.one, [n_bins + 2])
     fb = ms.FunctionBuilder(
         ms.NamedTypes([(name, ms.batch_float) for name in ('x', 'w', 'lo', 'hi')]),
         ms.NamedTypes([('values', out_type), ('square_values', out_type)]),
@@ -62,7 +62,7 @@ def check_histogram(torch, device, n=100000, n_bins=40):
 
 
 def check_rank4_add(torch, device, n=4096):
-    rank4 = ms.Type(ms.DataType.float, ms.batch_size, [2, 3, 4])
+    rank4 = ms.Type(ms.DataType.float64, ms.batch_size, [2, 3, 4])
     fb = ms.FunctionBuilder(ms.NamedTypes([('x', rank4)]), ms.NamedTypes([('y', rank4)]))
     x = fb.input(0)
     fb.output(0, fb.add(x, x))

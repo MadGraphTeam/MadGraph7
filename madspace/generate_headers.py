@@ -181,12 +181,16 @@ def instruction_set_python(commands, out_dir):
         f.write("}\n}\n")
 
 
+# yaml shorthands for the default element types
+DTYPE_NAMES = {"float": "float64", "int": "int32"}
+
+
 def format_type(data):
     type = data["type"]
     if type[0] == "size":
-        return f'{{DataType::dt_int, true, {{"{type[1]}"}}, true}}'
+        return f'{{DataType::dt_int32, true, {{"{type[1]}"}}, true}}'
 
-    dtype = f"DataType::dt_{type[0]}"
+    dtype = f"DataType::dt_{DTYPE_NAMES.get(type[0], type[0])}"
     single = len(type) > 1 and type[1] == "single"
     single_str = "true" if single else "false"
     shape = ", ".join(
@@ -354,8 +358,10 @@ def runtime_backward_mixin(commands, device, out_dir):
 
 
 def is_single_input(arg):
-    return isinstance(arg.get("type"), list) and len(arg["type"]) > 1 and (
-        arg["type"][1] == "single"
+    return (
+        isinstance(arg.get("type"), list)
+        and len(arg["type"]) > 1
+        and (arg["type"][1] == "single")
     )
 
 
