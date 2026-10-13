@@ -7,9 +7,10 @@ using namespace madspace::gpu;
 using namespace madspace::kernels;
 
 namespace {
-void wait_for_calls() {
-    if (GpuDevice::unsynchronized_calls) {
-        check_error(gpuDeviceSynchronize());
+// Wait for work still queued on the stream a tensor is ordered on.
+void wait_for_tensor(const Tensor& tensor) {
+    if (auto stream = tensor.stream()) {
+        check_error(gpuStreamSynchronize(reinterpret_cast<gpuStream_t>(*stream)));
     }
 }
 } // namespace
@@ -34,6 +35,10 @@ void GpuDevice::free_on_stream(void* ptr, void* stream) const {
     check_error(gpuFreeAsync(ptr, static_cast<gpuStream_t>(stream)));
 }
 
+void* GpuDevice::default_free_stream() const {
+    return static_cast<void*>(gpuStreamPerThread);
+}
+
 void GpuDevice::order_streams(void* from, void* to) const {
     activate();
     static thread_local std::vector<gpuEvent_t> events;
@@ -55,28 +60,30 @@ void GpuDevice::memcpy(void* to, void* from, std::size_t size) const {
 
 void GpuDevice::tensor_copy(const Tensor& source, Tensor& target) const {
     activate();
-    wait_for_calls();
+    wait_for_tensor(source);
+    wait_for_tensor(target);
     AsyncGpuDevice(*this, gpuStreamPerThread, 0).tensor_copy(source, target);
     check_error(gpuStreamSynchronize(gpuStreamPerThread));
 }
 
 void GpuDevice::tensor_zero(Tensor& tensor) const {
     activate();
-    wait_for_calls();
+    wait_for_tensor(tensor);
     AsyncGpuDevice(*this, gpuStreamPerThread, 0).tensor_zero(tensor);
     check_error(gpuStreamSynchronize(gpuStreamPerThread));
 }
 
 void GpuDevice::tensor_add(const Tensor& source, Tensor& target) const {
     activate();
-    wait_for_calls();
+    wait_for_tensor(source);
+    wait_for_tensor(target);
     AsyncGpuDevice(*this, gpuStreamPerThread, 0).tensor_add(source, target);
     check_error(gpuStreamSynchronize(gpuStreamPerThread));
 }
 
 void GpuDevice::tensor_cpu(const Tensor& source, Tensor& target) const {
     activate();
-    wait_for_calls();
+    wait_for_tensor(source);
     check_error(
         gpuMemcpy(target.data(), source.data(), source.byte_size(), gpuMemcpyDefault)
     );
@@ -95,7 +102,10 @@ void GpuDevice::adam_step(
     double weight_decay
 ) const {
     activate();
-    wait_for_calls();
+    wait_for_tensor(gradient);
+    wait_for_tensor(parameter);
+    wait_for_tensor(exp_avg);
+    wait_for_tensor(exp_avg_sq);
     AsyncGpuDevice device(*this, gpuStreamPerThread, 0);
     tensor_foreach_dynamic<kernel_adam_step<GpuTypes>, 1, 3>(
         {&gradient},
