@@ -113,12 +113,22 @@ read_event_header(std::fstream& file_stream, const DataLayout& layout) {
     std::size_t event_field_count = layout.event_layout().size();
     std::size_t particle_field_count = layout.particle_layout().size();
     if (!descr.is_array() || descr.size() < event_field_count ||
-        (descr.size() - event_field_count) % particle_field_count != 0 ||
         !fortran_order.is_boolean() || fortran_order.get<bool>() ||
-        header_shape.is_array() || header_shape.size() != 1) {
+        !header_shape.is_array() || header_shape.size() != 1) {
         throw std::runtime_error("Invalid header for event file");
     }
-    std::size_t particle_count = (descr.size() - event_field_count) / 5;
+    std::size_t particle_descr_count = descr.size() - event_field_count;
+    std::size_t particle_count = 0;
+    if (particle_field_count == 0) {
+        if (particle_descr_count != 0) {
+            throw std::runtime_error("Invalid header for event file");
+        }
+    } else {
+        if (particle_descr_count % particle_field_count != 0) {
+            throw std::runtime_error("Invalid header for event file");
+        }
+        particle_count = particle_descr_count / particle_field_count;
+    }
     std::size_t event_count = header_shape.at(0).get<std::size_t>();
 
     auto field_descr = full_descr(particle_count, layout);
@@ -129,7 +139,8 @@ read_event_header(std::fstream& file_stream, const DataLayout& layout) {
             throw std::runtime_error("Invalid header for event file");
         }
     }
-    std::size_t header_size = 0;
+    // parse_header leaves the stream at the end of the header
+    std::size_t header_size = file_stream.tellg();
     return {header_size, particle_count, event_count};
 }
 
@@ -245,11 +256,17 @@ EventFile::EventFile(
     } else {
         std::tie(_header_size, _particle_count, _event_count) =
             read_event_header(_file_stream, layout);
-        if (mode == EventFile::load) {
-            std::tie(_header_size, _shape_pos) =
-                write_event_header(_file_stream, particle_count, layout, _header_size);
-        }
+        _event_size = layout.event_size() + _particle_count * layout.particle_size();
         _capacity = _event_count;
+        if (mode == EventFile::append) {
+            // rewrite the header with an open shape, filled in on close
+            _file_stream.seekp(0);
+            std::tie(_header_size, _shape_pos) =
+                write_event_header(_file_stream, _particle_count, layout, _header_size);
+            seek(_event_count);
+        } else {
+            seek(0);
+        }
     }
 }
 
