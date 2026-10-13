@@ -158,6 +158,19 @@ def test_flow_float32_subnets(tmp_path):
     torch.testing.assert_close(out32, out64, rtol=1e-4, atol=1e-5)
     torch.testing.assert_close(det32, det64, rtol=1e-4, atol=1e-5)
 
+    # gradients with respect to the input and the float32 weights
+    grads = {}
+    for dtype, flow in flows.items():
+        module = FunctionModule(flow.forward_function(), ctx)
+        r_grad = r.clone().requires_grad_()
+        out, det = module(r_grad)
+        (out.sum() + det.log().sum()).backward()
+        weight = next(p for n, p in module.global_params.items() if "weight" in n)
+        assert weight.grad.dtype == weight.dtype
+        grads[dtype] = (r_grad.grad, weight.grad.double())
+    for g32, g64 in zip(grads[ms.DataType.float32], grads[ms.DataType.float64]):
+        torch.testing.assert_close(g32, g64, rtol=1e-3, atol=1e-4)
+
     # float32 globals survive saving and loading
     ctx.save_globals(str(tmp_path))
     loaded = ms.Context()

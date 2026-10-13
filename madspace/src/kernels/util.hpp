@@ -37,7 +37,7 @@ template <typename T>
 KERNELSPEC void backward_kernel_gather(
     IIn<T, 0> index,
     FIn<T, 0> output_grad,
-    FOut<T, 0> index_grad,
+    IOut<T, 0> index_grad,
     FOut<T, 1> choices_grad
 ) {
     choices_grad.scatter_add(index, output_grad);
@@ -78,7 +78,7 @@ KERNELSPEC void backward_kernel_select(
     ISIn<T, 1> indices,
     FIn<T, 1> output_grad,
     FOut<T, 1> input_grad,
-    FOut<T, 1> indices_grad
+    IOut<T, 1> indices_grad
 ) {
     for (std::size_t i = 0; i < indices.size(); ++i) {
         input_grad.scatter_add(indices[i], output_grad[i]);
