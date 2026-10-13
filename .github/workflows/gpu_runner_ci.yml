@@ -409,6 +409,9 @@ jobs:
         shell: bash
         # force-cancel: a plain cancel would still queue stop_runner (if: always()) for the dead runner
         run: |
+          # first let the runner upload the error and the summary of the step above: the
+          # cancellation drops what it has not sent yet (run 38393703863)
+          sleep 15
           printf 'Authorization: Bearer %s\n' "$GH_TOKEN" |
             curl -sS --fail --max-time 60 -X POST -H @- -H 'Accept: application/vnd.github+json' \
               "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/force-cancel"
