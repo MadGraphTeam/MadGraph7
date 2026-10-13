@@ -121,22 +121,41 @@ void CpuDevice::adam_step(
     double bias_corr2_sqrt,
     double weight_decay
 ) const {
-    tensor_foreach_dynamic<
-        kernel_adam_step<CpuTypes>,
-        kernel_adam_step<SimdTypes>,
-        1,
-        3>(
-        {&gradient},
-        {&parameter, &exp_avg, &exp_avg_sq},
-        gradient.size(0),
-        *this,
-        step_size,
-        beta1,
-        beta2,
-        eps,
-        bias_corr2_sqrt,
-        weight_decay
-    );
+    if (parameter.dtype() == DataType::dt_float32) {
+        tensor_foreach_dynamic<
+            kernel_adam_step<CpuTypes32>,
+            kernel_adam_step<SimdTypes32>,
+            1,
+            3>(
+            {&gradient},
+            {&parameter, &exp_avg, &exp_avg_sq},
+            gradient.size(0),
+            *this,
+            static_cast<float>(step_size),
+            static_cast<float>(beta1),
+            static_cast<float>(beta2),
+            static_cast<float>(eps),
+            static_cast<float>(bias_corr2_sqrt),
+            static_cast<float>(weight_decay)
+        );
+    } else {
+        tensor_foreach_dynamic<
+            kernel_adam_step<CpuTypes>,
+            kernel_adam_step<SimdTypes>,
+            1,
+            3>(
+            {&gradient},
+            {&parameter, &exp_avg, &exp_avg_sq},
+            gradient.size(0),
+            *this,
+            step_size,
+            beta1,
+            beta2,
+            eps,
+            bias_corr2_sqrt,
+            weight_decay
+        );
+    }
 }
 
 void AsyncCpuDevice::tensor_copy(const Tensor& source, Tensor& target) const {

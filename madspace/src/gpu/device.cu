@@ -107,18 +107,33 @@ void GpuDevice::adam_step(
     wait_for_tensor(exp_avg);
     wait_for_tensor(exp_avg_sq);
     AsyncGpuDevice device(*this, gpuStreamPerThread, 0);
-    tensor_foreach_dynamic<kernel_adam_step<GpuTypes>, 1, 3>(
-        {&gradient},
-        {&parameter, &exp_avg, &exp_avg_sq},
-        gradient.size(0),
-        device,
-        step_size,
-        beta1,
-        beta2,
-        eps,
-        bias_corr2_sqrt,
-        weight_decay
-    );
+    if (parameter.dtype() == DataType::dt_float32) {
+        tensor_foreach_dynamic<kernel_adam_step<GpuTypes32>, 1, 3>(
+            {&gradient},
+            {&parameter, &exp_avg, &exp_avg_sq},
+            gradient.size(0),
+            device,
+            static_cast<float>(step_size),
+            static_cast<float>(beta1),
+            static_cast<float>(beta2),
+            static_cast<float>(eps),
+            static_cast<float>(bias_corr2_sqrt),
+            static_cast<float>(weight_decay)
+        );
+    } else {
+        tensor_foreach_dynamic<kernel_adam_step<GpuTypes>, 1, 3>(
+            {&gradient},
+            {&parameter, &exp_avg, &exp_avg_sq},
+            gradient.size(0),
+            device,
+            step_size,
+            beta1,
+            beta2,
+            eps,
+            bias_corr2_sqrt,
+            weight_decay
+        );
+    }
     check_error(gpuStreamSynchronize(gpuStreamPerThread));
 }
 

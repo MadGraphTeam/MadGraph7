@@ -700,6 +700,9 @@ public:
     }
     /// A copy of this tensor on the CPU, or `*this` if it is already there.
     Tensor cpu() const { return cpu(*impl->device); }
+    /// A contiguous CPU copy with the element type converted to `dtype`, or the
+    /// CPU tensor itself if it already has that type.
+    Tensor cast(DataType dtype) const;
 
     template <typename D>
     /// Sets every element to zero.

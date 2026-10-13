@@ -1295,6 +1295,13 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
         if (context->global_requires_grad(name)) {
             _requires_grad_init.at(value.local_index) = true;
             _grad_global_indices.push_back(value.local_index);
+            // the gradients of all globals are stored in one contiguous tensor
+            if (_grad_global_total_size > 0 && global.dtype() != _grad_global_dtype) {
+                throw std::invalid_argument(
+                    "all globals that require a gradient must have the same dtype"
+                );
+            }
+            _grad_global_dtype = global.dtype();
             _grad_global_shapes.push_back(global.shape());
             _grad_global_total_size += global.shape().product();
         }
@@ -1472,7 +1479,7 @@ std::pair<TensorVec, TensorVec> CpuRuntime::run_backward_single(
     }
 
     Tensor all_global_grads(
-        DataType::dt_float64, {_grad_global_total_size}, AllocHint::global_grad
+        _grad_global_dtype, {_grad_global_total_size}, AllocHint::global_grad
     );
     // all_global_grads.zero();
     TensorVec global_grads = all_global_grads.split_and_reshape(_grad_global_shapes);
@@ -1666,7 +1673,7 @@ std::pair<TensorVec, TensorVec> CpuRuntime::run_backward_concurrent(
     }
 
     Tensor all_global_grads(
-        DataType::dt_float64, {_grad_global_total_size}, AllocHint::global_grad
+        _grad_global_dtype, {_grad_global_total_size}, AllocHint::global_grad
     );
     // all_global_grads.zero();
     TensorVec global_grads = all_global_grads.split_and_reshape(_grad_global_shapes);

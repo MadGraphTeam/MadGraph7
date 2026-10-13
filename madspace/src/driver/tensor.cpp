@@ -1,5 +1,6 @@
 #include "madspace/driver/tensor.hpp"
 
+#include <algorithm>
 #include <variant>
 
 using namespace madspace;
@@ -229,6 +230,44 @@ std::size_t Tensor::init_stride() {
     }
     impl->contiguous_dims = impl->shape.size();
     return stride_prod * dtype_size();
+}
+
+Tensor Tensor::cast(DataType dtype) const {
+    Tensor source = cpu().contiguous();
+    if (source.dtype() == dtype) {
+        return source;
+    }
+    Tensor target(dtype, source.shape());
+    std::size_t count = source.shape().product();
+    auto convert = [&]<typename From>(From* from) {
+        switch (dtype) {
+        case DataType::dt_int32:
+            std::copy_n(from, count, static_cast<me_int_t*>(target.data()));
+            break;
+        case DataType::dt_float32:
+            std::copy_n(from, count, static_cast<float*>(target.data()));
+            break;
+        case DataType::dt_float64:
+            std::copy_n(from, count, static_cast<double*>(target.data()));
+            break;
+        default:
+            throw std::invalid_argument("invalid dtype in cast");
+        }
+    };
+    switch (source.dtype()) {
+    case DataType::dt_int32:
+        convert(static_cast<me_int_t*>(source.data()));
+        break;
+    case DataType::dt_float32:
+        convert(static_cast<float*>(source.data()));
+        break;
+    case DataType::dt_float64:
+        convert(static_cast<double*>(source.data()));
+        break;
+    default:
+        throw std::invalid_argument("invalid dtype in cast");
+    }
+    return target;
 }
 
 Tensor Tensor::simd_padded_literal(
