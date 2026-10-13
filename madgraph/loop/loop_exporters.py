@@ -1800,9 +1800,20 @@ C               ENDIF""")%replace_dict
         # This is to decide wether once to reuse old wavefunction to store new
         # ones (provided they are not used further in the code.)
         bornME.optimization = True
-        return super(LoopProcessExporterFortranSA,self).write_matrix_element_v4(
-                                                  writer, bornME, fortran_model, 
-                           proc_prefix=matrix_element.rep_dict['proc_prefix'])
+        replace_dict = super(LoopProcessExporterFortranSA,self).write_matrix_element_v4(
+                                                  writer, bornME, fortran_model,
+                           proc_prefix=matrix_element.rep_dict['proc_prefix'],
+                           return_replace_dict=True)
+        if not replace_dict:
+            return 0
+        # The MadLoop drivers include the number of squared split orders of
+        # the born, next to born_matrix.f.
+        writers.FortranWriter(pjoin(
+            os.path.dirname(os.path.abspath(writer.name)),
+            'nsqso_born.inc')).writelines(
+                """INTEGER NSQSO_BORN
+                   PARAMETER (NSQSO_BORN=%d)"""%replace_dict['nSqAmpSplitOrders'])
+        return replace_dict['return_value']
 
     def write_born_amps_and_wfs(self, writer, matrix_element, fortran_model,
                                                                  noSplit=False): 
