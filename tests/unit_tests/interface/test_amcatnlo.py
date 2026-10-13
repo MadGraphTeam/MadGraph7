@@ -139,6 +139,9 @@ class TestNoFileOutsideOutputDir(unittest.TestCase):
         jobdir = pjoin(self.tmpdir, 'SubProcesses', 'P0_gg_ttx', 'GF1')
         os.makedirs(jobdir)
         open(pjoin(jobdir, 'reweight_xsec_events.local'), 'w').close()
+        # complete output of a previous reweighting of this directory
+        with open(pjoin(jobdir, 'events.lhe.rwgt'), 'w') as stale:
+            stale.write('</LesHouchesEvents>\n')
 
         cmd = amcatnlo_run.aMCatNLOCmd.__new__(amcatnlo_run.aMCatNLOCmd)
         # no RunWeb to remove when the bare instance is deleted
@@ -153,7 +156,9 @@ class TestNoFileOutsideOutputDir(unittest.TestCase):
         job_files = ['events.lhe.rwgt', 'reweight_xsec_events.output',
                      'scale_pdf_dependence.dat']
         for name in job_files:
-            self.assertTrue(os.path.exists(pjoin(jobdir, name)), name)
+            # present (for the transfer to the node) but empty: a job that
+            # fails cannot leave the stale events in place
+            self.assertEqual(os.path.getsize(pjoin(jobdir, name)), 0, name)
         submitted = cmd.cluster.submitted
         self.assertEqual(submitted['cwd'], jobdir)
         # copied back from the node into cwd, so relative to it

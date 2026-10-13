@@ -4993,12 +4993,14 @@ RESTART = %(mint_mode)s
             input_files.append(args[0])
             # The file names are relative to the job directory (cwd), as the
             # cluster copies them from and back to there: create them in
-            # cwd, not in the directory MG was started from.
+            # cwd, not in the directory MG was started from. They are
+            # emptied, so that the outputs of a previous reweighting of the
+            # same directory cannot pass for those of a job that failed.
             rwgt_files = ['%s.rwgt' % os.path.basename(args[0]),
                           'reweight_xsec_events.output',
                           'scale_pdf_dependence.dat']
             for name in rwgt_files:
-                open(pjoin(cwd or os.getcwd(), name), "a").close()
+                open(pjoin(cwd or os.getcwd(), name), "w").close()
             input_files.extend(rwgt_files)
             output_files.extend(rwgt_files)
 

@@ -1807,14 +1807,12 @@ C               ENDIF""")%replace_dict
         if not replace_dict:
             return 0
         # The MadLoop drivers include the number of squared split orders of
-        # the born, next to born_matrix.f. check_sudakov.f in the NLO P*
-        # directory includes it from the MadLoop V0* subdirectory below it.
-        nsqso_born = pjoin(os.path.dirname(os.path.abspath(writer.name)),
-                           'nsqso_born.inc')
-        writers.FortranWriter(nsqso_born).writelines(
+        # the born, next to born_matrix.f.
+        writers.FortranWriter(pjoin(
+            os.path.dirname(os.path.abspath(writer.name)),
+            'nsqso_born.inc')).writelines(
                 """INTEGER NSQSO_BORN
                    PARAMETER (NSQSO_BORN=%d)"""%replace_dict['nSqAmpSplitOrders'])
-        files.cp(nsqso_born, pjoin(os.path.dirname(nsqso_born), os.path.pardir))
         return replace_dict['return_value']
 
     def write_born_amps_and_wfs(self, writer, matrix_element, fortran_model,
