@@ -920,7 +920,7 @@ class FKSProcess(object):
         # are imposed)
         if not pert_orders:
             if not self.born_amp['process']['orders']:
-                pert_orders = model['coupling_orders']
+                pert_orders = MG.visible_orders(model['coupling_orders'])
             else:
                 pert_orders = self.born_amp['process']['perturbation_couplings']
 

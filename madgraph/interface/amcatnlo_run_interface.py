@@ -4966,7 +4966,7 @@ RESTART = %(mint_mode)s
             execpath = exe
         else:
             raise aMCatNLOError('Cannot find executable %s in %s' \
-                % (exe, os.getcwd()))
+                % (exe, cwd or os.getcwd()))
         # check that the executable has exec permissions
         if self.cluster_mode == 1 and not os.access(execpath, os.X_OK):
             subprocess.call(['chmod', '+x', exe], cwd=cwd)
@@ -4991,15 +4991,18 @@ RESTART = %(mint_mode)s
             input_files.append(pjoin(cwd, os.path.pardir, 'leshouche_info.dat'))
             input_files.append(pjoin(cwd, os.path.pardir, 'orderstags_glob.dat'))
             input_files.append(args[0])
-            open('%s.rwgt' % os.path.basename(args[0]), "a").close()
-            open('reweight_xsec_events.output', "a").close()
-            open('scale_pdf_dependence.dat', "a").close()
-            input_files.append('%s.rwgt' % os.path.basename(args[0]))
-            input_files.append('reweight_xsec_events.output')
-            input_files.append('scale_pdf_dependence.dat')
-            output_files.append('%s.rwgt' % os.path.basename(args[0]))
-            output_files.append('reweight_xsec_events.output')
-            output_files.append('scale_pdf_dependence.dat')
+            # The file names are relative to the job directory (cwd), as the
+            # cluster copies them from and back to there: create them in
+            # cwd, not in the directory MG was started from. They are
+            # emptied, so that the outputs of a previous reweighting of the
+            # same directory cannot pass for those of a job that failed.
+            rwgt_files = ['%s.rwgt' % os.path.basename(args[0]),
+                          'reweight_xsec_events.output',
+                          'scale_pdf_dependence.dat']
+            for name in rwgt_files:
+                open(pjoin(cwd, name), "w").close()
+            input_files.extend(rwgt_files)
+            output_files.extend(rwgt_files)
 
             return self.cluster.submit2(exe, args, cwd=cwd, 
                              input_files=input_files, output_files=output_files,

@@ -3177,17 +3177,6 @@ class MadgraphSubprocess:
         #for i in integrands: print(i.function())
         return integrands
 
-    def train_madnis(self, phasespace: PhaseSpace, status_func) -> None:
-        # do import here to make pytorch and MadNIS optional dependencies
-        from .train_madnis import train_madnis
-        train_madnis(
-            self.build_integrands(phasespace, madnis_training=True),
-            phasespace,
-            self.process.run_card["madnis"],
-            self.process.contexts[0],
-            status_func
-        )
-
 
 _ROOTED_OPTIONS = ('lhapdf', 'lhapdf_py3', 'lhapdf_py2', 'heptools_install_dir')
 
@@ -3308,6 +3297,11 @@ class MG7Cmd(Cmd):
             # configured in the session that is doing the launching.
             self.options.update({k: v for k, v in options.items()
                                  if k in self.options and v is not None})
+            # and so does its error policy: with crash_on_error a failing
+            # launch has to stop the script with a non-zero exit code, as a
+            # madevent launch does, instead of returning to the prompt.
+            if 'crash_on_error' in options:
+                self.options['crash_on_error'] = options['crash_on_error']
         self.plugin_path = []
         self.proc_characteristics = {'grouped_matrix': False, 'limitations': []}
         self._model = None  # lazily imported by get_model()
