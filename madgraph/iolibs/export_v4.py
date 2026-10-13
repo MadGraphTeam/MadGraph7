@@ -8336,12 +8336,6 @@ C       so this also stays correct for split-order processes.
             # Set lowercase/uppercase Fortran code
             writers.FortranWriter.downcase = False
 
-        # Where the matrix element is being written, so that the files that
-        # belong beside it (the split-orders driver, nsqso_born.inc) land there
-        # too. Empty -- i.e. the current directory -- when the caller passed a
-        # bare filename, which is what MadLoop does after chdir'ing.
-        me_dir = os.path.dirname(writer.name) if writer else ''
-
         if 'sa_symmetry' not in self.opt:
             self.opt['sa_symmetry']=False
         # --use_crossing of the generate command (default on, see
@@ -8558,24 +8552,17 @@ C       so this also stays correct for split-order processes.
             # that explicitely writes out the contribution from each squared order.
             # The original driver still works and is compiled with 'make' while
             # the splitOrders one is compiled with 'make check_sa_born_splitOrders'
-            if self.opt['export_format'] not in ['standalone_msP', 'standalone_msF']:
-                # It goes next to the matrix element it calls, not into whatever
-                # directory MG5 happens to be running from: MadLoop chdir's into
-                # the subprocess first (so me_dir is empty there and nothing
-                # changes), the standalone exporters do not.
-                check_sa_writer=writers.FortranWriter(
-                    pjoin(me_dir, 'check_sa_born_splitOrders.f'))
+            # It goes next to the matrix element file: the standalone output
+            # does not chdir to the process directory.
+            if write and writer and \
+               self.opt['export_format'] not in ['standalone_msP', 'standalone_msF']:
+                check_sa_writer=writers.FortranWriter(pjoin(
+                    os.path.dirname(os.path.abspath(writer.name)),
+                    'check_sa_born_splitOrders.f'))
                 self.write_check_sa_splitOrders(squared_orders,split_orders,
                   nexternal,ninitial,
                   self.get_proc_prefix(matrix_element, proc_prefix),
                   check_sa_writer)
-
-        if write:
-            nsqso = pjoin(me_dir, 'nsqso_born.inc')
-            writers.FortranWriter(nsqso).writelines(
-                """INTEGER NSQSO_BORN
-                   PARAMETER (NSQSO_BORN=%d)"""%replace_dict['nSqAmpSplitOrders'])
-            files.cp(nsqso, pjoin(me_dir, '..'))
 
         replace_dict['jamp_lines'] = '\n'.join(jamp_lines)
 

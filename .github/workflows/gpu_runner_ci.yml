@@ -11,8 +11,17 @@
 #                                   expanded, on the GPU and on cpu; cpu-made gridpacks (w+ j)
 #   madspace_ops    cluster runner  madspace GPU operations against the CPU runtime, .github/gpu_ci/madspace_checks.py
 #   interference    cluster runner  squared split orders (interference), .github/gpu_ci/interference_gpu.sh
-#   ...             cluster runner  more CI jobs: same runs-on, and add them to stop_runner's needs
+#   ...             cluster runner  more CI jobs: same needs, if and runs-on, and add them to
+#                                   stop_runner's needs
 #   stop_runner     cluster runner  clean up and end the allocation (no ssh key needed)
+#   watchdog        vmadgraph       wait for the end of the allocation; if it ends before stop_runner
+#                                   ran (time limit, node failure...), cancel the run, whose jobs
+#                                   left would otherwise wait 24 hours for the dead runner
+#
+# Re-run with "Re-run all jobs" only. "Re-run failed jobs" (or one job) does not re-run
+# start_runner, so no runner is started for that attempt: the cluster jobs are skipped, and
+# stop_runner (and the watchdog, if re-run) fail at once on the vmadgraph runner. They detect it
+# from the output `attempt` of start_runner, which such a re-run reuses from an older attempt.
 #
 # The runner runs under a personal cluster account, hence:
 #   - the ssh key is not on GitHub: only the Unix user `ceci` of the vmadgraph VM holds it,
@@ -84,6 +93,10 @@ on:
         type: boolean
         default: false
 
+# the jobs on the cluster runner (personal account) only read; the watchdog raises its own
+permissions:
+  contents: read
+
 env:
   RUN_TAG: mg7-run-${{ github.run_id }}-${{ github.run_attempt }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -102,6 +115,10 @@ jobs:
       MEM: ${{ inputs.mem }}
       TIME_LIMIT: ${{ inputs.time_limit }}
       EXTRA_SBATCH: ${{ inputs.extra_sbatch }}
+    outputs:
+      # the attempt that started the runner. A re-run of failed jobs (or of one job) does not
+      # re-run this job, and reuses this output: the other jobs compare it with github.run_attempt
+      attempt: ${{ github.run_attempt }}
     steps:
       # ceci-gate starts the runner `runner_label` of the cluster (fixed in ceci-gate), with the
       # cluster scripts installed on the VM, not the ones of this checkout
@@ -113,6 +130,8 @@ jobs:
 
   build_madspace:
     needs: start_runner
+    # only in the attempt that started the runner, see stop_runner
+    if: needs.start_runner.outputs.attempt == github.run_attempt
     runs-on: [self-hosted, "${{ inputs.runner_label }}"]
     timeout-minutes: 90
     defaults:
@@ -134,7 +153,8 @@ jobs:
         run: .github/gpu_ci/build_madspace_gpu.sh
 
   pp_ttx:
-    needs: build_madspace
+    needs: [start_runner, build_madspace]
+    if: needs.start_runner.outputs.attempt == github.run_attempt
     runs-on: [self-hosted, "${{ inputs.runner_label }}"]
     timeout-minutes: 90
     defaults:
@@ -184,8 +204,8 @@ jobs:
   interference:
     # input interference (true on push): squared split orders on the GPU backend of madmatrix,
     # standalone and through umami, and an interference sample with mg7
-    needs: build_madspace
-    if: inputs.interference
+    needs: [start_runner, build_madspace]
+    if: inputs.interference && needs.start_runner.outputs.attempt == github.run_attempt
     runs-on: [self-hosted, "${{ inputs.runner_label }}"]
     timeout-minutes: 90
     defaults:
@@ -233,7 +253,8 @@ jobs:
 
   pp_jj:
     # p p > j j: cuts on several objects (the jets), which p p > t t~ does not have
-    needs: build_madspace
+    needs: [start_runner, build_madspace]
+    if: needs.start_runner.outputs.attempt == github.run_attempt
     runs-on: [self-hosted, "${{ inputs.runner_label }}"]
     timeout-minutes: 90
     defaults:
@@ -333,7 +354,8 @@ jobs:
 
   madspace_ops:
     # madspace GPU runtime operations against the CPU runtime (histogram, rank-4 kernels)
-    needs: build_madspace
+    needs: [start_runner, build_madspace]
+    if: needs.start_runner.outputs.attempt == github.run_attempt
     runs-on: [self-hosted, "${{ inputs.runner_label }}"]
     timeout-minutes: 30
     defaults:
@@ -379,13 +401,24 @@ jobs:
     # must list every job that runs on the self-hosted runner
     needs: [start_runner, build_madspace, pp_ttx, pp_jj, crossing_folding, madspace_ops, interference]
     if: always() && needs.start_runner.result == 'success'
-    runs-on: [self-hosted, "${{ inputs.runner_label }}"]
+    # In an attempt that did not start the runner (a re-run of failed jobs, or of one job), a job
+    # for the runner label would wait 24 hours, holding the concurrency group of the cluster.
+    # There, stop_runner runs on the vmadgraph runner of the cluster instead, and fails at once.
+    runs-on: ${{ needs.start_runner.outputs.attempt == github.run_attempt && fromJSON(format('["self-hosted", "{0}"]', inputs.runner_label)) || fromJSON(format('["self-hosted", "vmadgraph", "vmadgraph-{0}"]', inputs.cluster)) }}
     defaults:
       run:
         shell: bash -l -eo pipefail {0}
     env:
       CLEAN: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !inputs.keep_workdir }}
     steps:
+      - name: check that this attempt started the runner
+        if: needs.start_runner.outputs.attempt != github.run_attempt
+        shell: bash
+        env:
+          STARTED: ${{ needs.start_runner.outputs.attempt }}
+        run: |
+          echo "::error::attempt $GITHUB_RUN_ATTEMPT re-runs some jobs only, without start_runner: its runner, started in attempt ${STARTED:-?}, is gone, so the cluster jobs were skipped. Use \"Re-run all jobs\"."
+          exit 1
       - name: clean up the run directories
         run: |
           RUNS=${GLOBALSCRATCH:-$HOME}/mg7-gpu-ci/runs
@@ -394,3 +427,72 @@ jobs:
           find "$RUNS" -mindepth 1 -maxdepth 1 -type d -mtime +14 -exec rm -rf {} + || true
       - name: end the Slurm allocation
         run: touch "$CI_STOP_FILE" # set by runner_batch.sh, which then stops the runner
+
+  watchdog:
+    # Slurm can end the allocation before stop_runner ran: time limit, node failure, preemption.
+    # The runner dies with it, and the jobs not started yet, stop_runner included, then wait
+    # 24 hours for it, holding the concurrency group of the cluster (no later run starts).
+    # The watchdog stays on the vmadgraph runner, which outlives the allocation: ceci-gate
+    # watch-runner returns when the Slurm job of the runner has ended, and unless stop_runner
+    # has completed by then, the run is cancelled.
+    needs: start_runner
+    runs-on: [self-hosted, vmadgraph, "vmadgraph-${{ inputs.cluster }}"]
+    timeout-minutes: 250 # above the longest allocation ceci-gate accepts (MAX_MINUTES = 240)
+    permissions:
+      actions: write # list the jobs of this run, and cancel it
+    env:
+      CLUSTER: ${{ inputs.cluster }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # a re-run of this job alone, or with the failed jobs, has no allocation to watch (see stop_runner)
+      - name: check that this attempt started the runner
+        if: needs.start_runner.outputs.attempt != github.run_attempt
+        shell: bash
+        env:
+          STARTED: ${{ needs.start_runner.outputs.attempt }}
+        run: |
+          echo "::error::attempt $GITHUB_RUN_ATTEMPT re-runs some jobs only, without start_runner: its runner, started in attempt ${STARTED:-?}, is gone, so there is nothing to watch. Use \"Re-run all jobs\"."
+          exit 1
+      - name: wait for the end of the allocation
+        id: watch
+        shell: bash
+        run: |
+          WATCH=$RUNNER_TEMP/watch-runner.log
+          ENDED=
+          # ceci-gate keeps one ssh connection open for the whole run: call again if it drops
+          for TRY in $(seq 10); do
+            sudo -n -u ceci /usr/local/sbin/ceci-gate watch-runner "$CLUSTER" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 2>&1 | tee "$WATCH" || true
+            ENDED=$(sed -n 's/^ALLOCATION_ENDED //p' "$WATCH")
+            [ -n "$ENDED" ] && break
+            echo "::warning::ceci-gate watch-runner stopped before the end of the allocation (try $TRY of 10)"
+            sleep 60
+          done
+          if [ -z "$ENDED" ]; then
+            echo "::error::cannot watch the allocation of the runner through ceci-gate (is it up to date on the VM? .github/gpu_ci/README.md). If the allocation ends early, cancel this run by hand."
+            exit 1
+          fi
+          # the normal end: stop_runner completed, then runner_batch.sh stopped the runner
+          for _ in $(seq 12); do
+            STOP=$(printf 'Authorization: Bearer %s\n' "$GH_TOKEN" | # not on the command line
+              curl -sS --fail --max-time 60 -H @- -H 'Accept: application/vnd.github+json' \
+                "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" |
+              python3 -c 'import json, sys; print(" ".join(j["status"] for j in json.load(sys.stdin)["jobs"] if j["name"].split(" / ")[-1] == "stop_runner"))') || STOP="?"
+            if [ "$STOP" = completed ]; then
+              echo "The allocation ended after stop_runner: $ENDED"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "early=true" >> "$GITHUB_OUTPUT"
+          # only this log keeps it: the force-cancel drops the annotations and summaries of the run
+          echo "::error::the Slurm allocation of the runner ended before stop_runner ran ($ENDED): cancelling the run, whose jobs left would wait 24 hours for the runner. If the state is TIMEOUT, raise time_limit."
+          exit 1
+      - name: cancel the run
+        if: failure() && steps.watch.outputs.early == 'true'
+        shell: bash
+        # force-cancel: a plain cancel would still queue stop_runner (if: always()) for the dead runner
+        run: |
+          printf 'Authorization: Bearer %s\n' "$GH_TOKEN" |
+            curl -sS --fail --max-time 60 -X POST -H @- -H 'Accept: application/vnd.github+json' \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/force-cancel"
+          echo "Cancellation of run $GITHUB_RUN_ID requested"

@@ -97,8 +97,10 @@ class Switcher(object):
         # tutorial runs: they are deliberately not routed through self.cmd
         self.to_preserve += tutorial_mixin.mixin_command_names()
 
-        ff = open(pjoin(os.getcwd(), 'additional_command'), 'w')
-        
+        # only created when a command is missing, so that switching
+        # interface leaves no empty file in the user's directory
+        ff = None
+
         for key in dir(self):
             # by pass all not over-writable command
             if key in self.to_preserve:
@@ -112,12 +114,15 @@ class Switcher(object):
         return self.cmd.%(key)s(self, *args, **opts)
         
 """ % {'key': key}
-            logger.warning("""Command %s not define in the Master. 
+            if ff is None:
+                ff = open(pjoin(os.getcwd(), 'additional_command'), 'w')
+            logger.warning("""Command %s not define in the Master.
             The line to add to the master_interface.py are written in 'additional_command' file""" % key)
             ff.write(text)
             correct = False
-               
-            
+        if ff is not None:
+            ff.close()
+
         # Check that all function define in more than one subclass is define
         # in the Switcher or in one of the MasterClass
         define = {}
