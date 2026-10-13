@@ -6247,7 +6247,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             # the splitOrders one is compiled with 'make check_sa_born_splitOrders'
             # It goes next to the matrix element file: the standalone output
             # does not chdir to the process directory.
-            if writer and self.opt['export_format'] not in ['standalone_msP', 'standalone_msF']:
+            if write and writer and \
+               self.opt['export_format'] not in ['standalone_msP', 'standalone_msF']:
                 check_sa_writer=writers.FortranWriter(pjoin(
                     os.path.dirname(os.path.abspath(writer.name)),
                     'check_sa_born_splitOrders.f'))

@@ -160,8 +160,9 @@ class IOExportV4IOTest(IOTests.IOTestManager,
     def test_standalone_files_next_to_matrix_file(self):
         """The standalone output does not chdir to the process directory, so
         the split-orders driver written along matrix.f must be placed next to
-        it, not in the directory MG was started from (nor its parent).
-        nsqso_born.inc is only written for a MadLoop born_matrix.f."""
+        it, not in the directory MG was started from (nor its parent), and
+        only when writing is requested. nsqso_born.inc is only written for a
+        MadLoop born_matrix.f."""
 
         tmpdir = tempfile.mkdtemp()
         startdir = pjoin(tmpdir, 'parent', 'start')
@@ -184,6 +185,19 @@ class IOExportV4IOTest(IOTests.IOTestManager,
             self.assertEqual(os.listdir(pjoin(tmpdir, 'parent')), ['start'])
             self.assertEqual(sorted(os.listdir(procdir)),
                     ['check_sa_born_splitOrders.f', 'matrix.f'])
+
+            # write=False only returns the replace_dict: no driver either
+            os.remove(pjoin(procdir, 'check_sa_born_splitOrders.f'))
+            writer = writers.FortranWriter(pjoin(procdir, 'matrix.f'))
+            replace_dict = export_v4.ProcessExporterFortranSA(
+                ).write_matrix_element_v4(writer, matrix_element,
+                                          self.myfortranmodel, write=False)
+            writer.close()
+
+            self.assertEqual(replace_dict['nSqAmpSplitOrders'], 1)
+            self.assertEqual(os.path.getsize(pjoin(procdir, 'matrix.f')), 0)
+            self.assertEqual(os.listdir(procdir), ['matrix.f'])
+            self.assertEqual(os.listdir(startdir), [])
         finally:
             os.chdir(old_cwd)
             shutil.rmtree(tmpdir)
