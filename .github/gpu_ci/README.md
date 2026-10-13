@@ -52,7 +52,10 @@ Other safeguards:
   the runner job of the run (Slurm comment `mg7-run-<run id>-<attempt>`) and returns when it
   has ended, with its final state from `sacct`. If `stop_runner` has not completed by then on
   GitHub, the watchdog force-cancels the run (a plain cancel would still queue `stop_runner`,
-  whose `if:` holds `always()`), and the run summary gives the Slurm state, e.g. `TIMEOUT`.
+  whose `if:` holds `always()`). The run then only says "The run was canceled forcefully by
+  @github-actions[bot]": the force-cancel drops the annotations and summaries of the run, so
+  the Slurm state (e.g. `TIMEOUT`) is in the log of the watchdog, step "wait for the end of
+  the allocation".
   The watchdog is the only job whose token may write (`actions: write`, to cancel the run),
   which the callers must grant: the jobs on the cluster only read.
 * **One vmadgraph runner per cluster.** `start_runner` holds its runner while the allocation
@@ -153,10 +156,10 @@ change rulesets.
 
 ## Troubleshooting
 
-* **A run is cancelled with "the Slurm allocation of the runner ended before stop_runner
-  ran".** The watchdog found the allocation gone: see its run summary for the Slurm state.
-  `TIMEOUT`: the jobs together need more than `time_limit`, raise it. The runner log on the
-  cluster tells the rest.
+* **A run is "canceled forcefully by @github-actions[bot]".** The watchdog found the
+  allocation gone before `stop_runner` ran. The last lines of its log give the Slurm job and
+  its state, e.g. `ALLOCATION_ENDED 10134442 TIMEOUT 00:04:10 00:04:00`. `TIMEOUT`: the jobs
+  together need more than `time_limit`, raise it. The runner log on the cluster tells the rest.
 * **`watchdog` fails with "cannot watch the allocation of the runner through ceci-gate".**
   The gate on the VM predates `watch-runner`, or `remote_watch_runner.sh` is missing from
   `/usr/local/share/ceci-gate`: install both again (step 1). Its log on the VM is

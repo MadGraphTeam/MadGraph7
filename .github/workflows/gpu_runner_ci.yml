@@ -398,20 +398,14 @@ jobs:
             sleep 10
           done
           echo "early=true" >> "$GITHUB_OUTPUT"
+          # only this log keeps it: the force-cancel drops the annotations and summaries of the run
           echo "::error::the Slurm allocation of the runner ended before stop_runner ran ($ENDED): cancelling the run, whose jobs left would wait 24 hours for the runner. If the state is TIMEOUT, raise time_limit."
-          {
-            echo "### The runner allocation on $CLUSTER ended early"
-            echo "Slurm job, state, elapsed, time limit: \`$ENDED\`. The jobs that had not completed could not run, and the run was cancelled. If the state is TIMEOUT, raise \`time_limit\` (all the CI jobs share the allocation)."
-          } >> "$GITHUB_STEP_SUMMARY"
           exit 1
       - name: cancel the run
         if: failure() && steps.watch.outputs.early == 'true'
         shell: bash
         # force-cancel: a plain cancel would still queue stop_runner (if: always()) for the dead runner
         run: |
-          # first let the runner upload the error and the summary of the step above: the
-          # cancellation drops what it has not sent yet (run 38393703863)
-          sleep 15
           printf 'Authorization: Bearer %s\n' "$GH_TOKEN" |
             curl -sS --fail --max-time 60 -X POST -H @- -H 'Accept: application/vnd.github+json' \
               "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/force-cancel"
