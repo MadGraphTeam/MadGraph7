@@ -90,10 +90,28 @@ struct SimdTypes {
     using IVal = IVec;
     using BVal = BVec;
 };
+
+struct SimdTypes32 {
+    template <int dim>
+    using FIn = const cpu::VectorizedTensorView<FVec32, float, dim, false>;
+    template <int dim>
+    using IIn = const cpu::VectorizedTensorView<IVec32, me_int_t, dim, false>;
+    template <int dim>
+    using FOut = cpu::VectorizedTensorView<FVec32, float, dim, false>;
+    template <int dim>
+    using IOut = cpu::VectorizedTensorView<IVec32, me_int_t, dim, false>;
+    template <int dim>
+    using FSIn = const cpu::SingleVectorizedTensorView<FVec32, float, dim, false>;
+    template <int dim>
+    using ISIn = const cpu::SingleVectorizedTensorView<IVec32, me_int_t, dim, false>;
+    using FVal = FVec32;
+    using IVal = IVec32;
+    using BVal = BVec32;
+};
 #else  // USE_SIMD
 using SimdTypes = CpuTypes;
-#endif // USE_SIMD
 using SimdTypes32 = CpuTypes32;
+#endif // USE_SIMD
 
 } // namespace kernels
 } // namespace madspace

@@ -3,6 +3,8 @@
 #include <sleef.h>
 
 constexpr int simd_vec_size = 4;
+// float32 vectors have twice the lanes of the float64 ones
+constexpr int simd_vec_size_f32 = 8;
 
 inline __m128i truncate_i64_to_i32(__m256i arg) {
     __m256 x = _mm256_castsi256_ps(arg);
@@ -12,6 +14,7 @@ inline __m128i truncate_i64_to_i32(__m256i arg) {
 }
 
 struct FVec {
+    static constexpr int lanes = simd_vec_size;
     FVec() = default;
     FVec(__m256d _v) : v(_v) {};
     FVec(double _v) : v(_mm256_set1_pd(_v)) {};
@@ -25,6 +28,7 @@ struct FVec {
 };
 
 struct IVec {
+    static constexpr int lanes = simd_vec_size;
     IVec() = default;
     IVec(__m256i _v) : v(_v) {};
     IVec(int _v) : v(_mm256_set1_epi64x(_v)) {};
@@ -38,6 +42,7 @@ struct IVec {
 };
 
 struct BVec {
+    static constexpr int lanes = simd_vec_size;
     BVec() = default;
     BVec(__m256d _v) : v(_v) {};
     BVec(__m256i _v) : v(_mm256_castsi256_pd(_v)) {};
@@ -60,7 +65,11 @@ mem_indices(std::size_t batch_stride, std::size_t index_stride, IVec indices) {
 }
 
 inline FVec vgather(
-    double* base_ptr, std::size_t batch_stride, std::size_t index_stride, IVec indices
+    VecTag<FVec>,
+    double* base_ptr,
+    std::size_t batch_stride,
+    std::size_t index_stride,
+    IVec indices
 ) {
     return _mm256_i32gather_pd(
         base_ptr, mem_indices(batch_stride, index_stride, indices), 8
@@ -68,7 +77,11 @@ inline FVec vgather(
 }
 
 inline IVec vgather(
-    int* base_ptr, std::size_t batch_stride, std::size_t index_stride, IVec indices
+    VecTag<IVec>,
+    int* base_ptr,
+    std::size_t batch_stride,
+    std::size_t index_stride,
+    IVec indices
 ) {
     return _mm256_cvtepi32_epi64(_mm_i32gather_epi32(
         base_ptr, mem_indices(batch_stride, index_stride, indices), 4
@@ -76,16 +89,20 @@ inline IVec vgather(
 }
 
 // contiguous loads and stores of the lanes of one batch element
-inline FVec vload(double* base_ptr) { return _mm256_loadu_pd(base_ptr); }
+inline FVec vload(VecTag<FVec>, double* base_ptr) { return _mm256_loadu_pd(base_ptr); }
 
-inline IVec vload(int* base_ptr) {
+inline IVec vload(VecTag<IVec>, int* base_ptr) {
     return _mm256_cvtepi32_epi64(_mm_loadu_si128(reinterpret_cast<__m128i*>(base_ptr)));
 }
 
 // the same value in every lane
-inline FVec vload_broadcast(double* base_ptr) { return _mm256_broadcast_sd(base_ptr); }
+inline FVec vload_broadcast(VecTag<FVec>, double* base_ptr) {
+    return _mm256_broadcast_sd(base_ptr);
+}
 
-inline IVec vload_broadcast(int* base_ptr) { return _mm256_set1_epi64x(*base_ptr); }
+inline IVec vload_broadcast(VecTag<IVec>, int* base_ptr) {
+    return _mm256_set1_epi64x(*base_ptr);
+}
 
 inline void vscatter(
     double* base_ptr,
@@ -130,7 +147,9 @@ inline void vscatter(
     }
 }
 
-inline void vstore(double* base_ptr, FVec values) { _mm256_storeu_pd(base_ptr, values); }
+inline void vstore(double* base_ptr, FVec values) {
+    _mm256_storeu_pd(base_ptr, values);
+}
 
 inline void vstore(int* base_ptr, IVec values) {
     _mm_storeu_si128(reinterpret_cast<__m128i*>(base_ptr), truncate_i64_to_i32(values));
@@ -212,4 +231,239 @@ inline FVec expm1(FVec arg1) { return Sleef_expm1d4_u10avx2(arg1); }
 inline FVec erf(FVec arg1) { return Sleef_erfd4_u10avx2(arg1); }
 inline FVec fma(FVec arg1, FVec arg2, FVec arg3) {
     return _mm256_fmadd_pd(arg1, arg2, arg3);
+}
+
+// float32 family: eight lanes, with int32 indices and masks of the same width
+
+struct FVec32 {
+    static constexpr int lanes = simd_vec_size_f32;
+    FVec32() = default;
+    FVec32(__m256 _v) : v(_v) {};
+    FVec32(double _v) : v(_mm256_set1_ps(static_cast<float>(_v))) {};
+    explicit FVec32(__m256i _v) : v(_mm256_cvtepi32_ps(_v)) {};
+    operator __m256() { return v; }
+    FVec32 operator+=(FVec32 _v) {
+        v = _mm256_add_ps(v, _v);
+        return v;
+    }
+    __m256 v;
+};
+
+struct IVec32 {
+    static constexpr int lanes = simd_vec_size_f32;
+    IVec32() = default;
+    IVec32(__m256i _v) : v(_v) {};
+    IVec32(int _v) : v(_mm256_set1_epi32(_v)) {};
+    explicit IVec32(__m256 _v) : v(_mm256_cvttps_epi32(_v)) {};
+    operator __m256i() { return v; }
+    IVec32 operator+=(IVec32 _v) {
+        v = _mm256_add_epi32(v, _v);
+        return v;
+    }
+    __m256i v;
+};
+
+struct BVec32 {
+    static constexpr int lanes = simd_vec_size_f32;
+    BVec32() = default;
+    BVec32(__m256 _v) : v(_v) {};
+    BVec32(__m256i _v) : v(_mm256_castsi256_ps(_v)) {};
+    BVec32(bool _v) : v(_mm256_castsi256_ps(_mm256_set1_epi32(_v ? -1 : 0))) {};
+    operator __m256() { return v; }
+    operator __m256i() { return _mm256_castps_si256(v); }
+    __m256 v;
+};
+
+inline __m256i
+mem_indices32(std::size_t batch_stride, std::size_t index_stride, IVec32 indices) {
+    return _mm256_add_epi32(
+        _mm256_mullo_epi32(indices, _mm256_set1_epi32(index_stride)),
+        _mm256_mullo_epi32(
+            _mm256_set1_epi32(batch_stride), _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0)
+        )
+    );
+}
+
+inline FVec32 vgather(
+    VecTag<FVec32>,
+    float* base_ptr,
+    std::size_t batch_stride,
+    std::size_t index_stride,
+    IVec32 indices
+) {
+    return _mm256_i32gather_ps(
+        base_ptr, mem_indices32(batch_stride, index_stride, indices), 4
+    );
+}
+
+inline IVec32 vgather(
+    VecTag<IVec32>,
+    int* base_ptr,
+    std::size_t batch_stride,
+    std::size_t index_stride,
+    IVec32 indices
+) {
+    return _mm256_i32gather_epi32(
+        base_ptr, mem_indices32(batch_stride, index_stride, indices), 4
+    );
+}
+
+inline FVec32 vload(VecTag<FVec32>, float* base_ptr) {
+    return _mm256_loadu_ps(base_ptr);
+}
+
+inline IVec32 vload(VecTag<IVec32>, int* base_ptr) {
+    return _mm256_loadu_si256(reinterpret_cast<__m256i*>(base_ptr));
+}
+
+inline FVec32 vload_broadcast(VecTag<FVec32>, float* base_ptr) {
+    return _mm256_broadcast_ss(base_ptr);
+}
+
+inline IVec32 vload_broadcast(VecTag<IVec32>, int* base_ptr) {
+    return _mm256_set1_epi32(*base_ptr);
+}
+
+inline void vscatter(
+    float* base_ptr,
+    std::size_t batch_stride,
+    std::size_t index_stride,
+    IVec32 indices,
+    FVec32 values
+) {
+    float values_buf[8];
+    int indices_buf[8];
+    _mm256_storeu_ps(values_buf, values);
+    _mm256_storeu_si256(
+        reinterpret_cast<__m256i*>(indices_buf),
+        mem_indices32(batch_stride, index_stride, indices)
+    );
+    for (int i = 0; i < 8; ++i) {
+        base_ptr[indices_buf[i]] = values_buf[i];
+    }
+}
+
+inline void vscatter(
+    int* base_ptr,
+    std::size_t batch_stride,
+    std::size_t index_stride,
+    IVec32 indices,
+    IVec32 values
+) {
+    int values_buf[8];
+    int indices_buf[8];
+    _mm256_storeu_si256(reinterpret_cast<__m256i*>(values_buf), values);
+    _mm256_storeu_si256(
+        reinterpret_cast<__m256i*>(indices_buf),
+        mem_indices32(batch_stride, index_stride, indices)
+    );
+    for (int i = 0; i < 8; ++i) {
+        base_ptr[indices_buf[i]] = values_buf[i];
+    }
+}
+
+inline void vstore(float* base_ptr, FVec32 values) {
+    _mm256_storeu_ps(base_ptr, values);
+}
+
+inline void vstore(int* base_ptr, IVec32 values) {
+    _mm256_storeu_si256(reinterpret_cast<__m256i*>(base_ptr), values);
+}
+
+inline FVec32 where(BVec32 arg1, FVec32 arg2, FVec32 arg3) {
+    return _mm256_blendv_ps(arg3, arg2, arg1);
+}
+inline IVec32 where(BVec32 arg1, IVec32 arg2, IVec32 arg3) {
+    return _mm256_blendv_epi8(arg3, arg2, arg1);
+}
+inline std::size_t single_index(IVec32 arg) {
+    return _mm_cvtsi128_si32(_mm256_castsi256_si128(arg));
+}
+inline FVec32 min(FVec32 arg1, FVec32 arg2) { return _mm256_min_ps(arg1, arg2); }
+inline FVec32 max(FVec32 arg1, FVec32 arg2) { return _mm256_max_ps(arg1, arg2); }
+
+inline BVec32 operator==(FVec32 arg1, FVec32 arg2) {
+    return _mm256_cmp_ps(arg1, arg2, _CMP_EQ_OQ);
+}
+inline BVec32 operator!=(FVec32 arg1, FVec32 arg2) {
+    return _mm256_cmp_ps(arg1, arg2, _CMP_NEQ_UQ);
+}
+inline BVec32 operator>(FVec32 arg1, FVec32 arg2) {
+    return _mm256_cmp_ps(arg1, arg2, _CMP_GT_OQ);
+}
+inline BVec32 operator<(FVec32 arg1, FVec32 arg2) {
+    return _mm256_cmp_ps(arg1, arg2, _CMP_LT_OQ);
+}
+inline BVec32 operator>=(FVec32 arg1, FVec32 arg2) {
+    return _mm256_cmp_ps(arg1, arg2, _CMP_GE_OQ);
+}
+inline BVec32 operator<=(FVec32 arg1, FVec32 arg2) {
+    return _mm256_cmp_ps(arg1, arg2, _CMP_LE_OQ);
+}
+
+inline BVec32 operator&(BVec32 arg1, BVec32 arg2) {
+    return _mm256_and_si256(arg1, arg2);
+}
+inline BVec32 operator|(BVec32 arg1, BVec32 arg2) {
+    return _mm256_or_si256(arg1, arg2);
+}
+inline BVec32 operator!(BVec32 arg1) {
+    return _mm256_xor_si256(arg1, _mm256_cmpeq_epi32(arg1, arg1));
+}
+
+inline BVec32 operator==(IVec32 arg1, IVec32 arg2) {
+    return _mm256_cmpeq_epi32(arg1, arg2);
+}
+inline BVec32 operator!=(IVec32 arg1, IVec32 arg2) { return !(arg1 == arg2); }
+inline BVec32 operator>(IVec32 arg1, IVec32 arg2) {
+    return _mm256_cmpgt_epi32(arg1, arg2);
+}
+inline BVec32 operator>=(IVec32 arg1, IVec32 arg2) {
+    return (arg1 > arg2) | (arg1 == arg2);
+}
+inline BVec32 operator<(IVec32 arg1, IVec32 arg2) { return !(arg1 >= arg2); }
+inline BVec32 operator<=(IVec32 arg1, IVec32 arg2) { return !(arg1 > arg2); }
+
+inline FVec32 operator-(FVec32 arg1) {
+    return _mm256_sub_ps(_mm256_set1_ps(0.f), arg1);
+}
+inline FVec32 operator+(FVec32 arg1, FVec32 arg2) { return _mm256_add_ps(arg1, arg2); }
+inline FVec32 operator-(FVec32 arg1, FVec32 arg2) { return _mm256_sub_ps(arg1, arg2); }
+inline FVec32 operator*(FVec32 arg1, FVec32 arg2) { return _mm256_mul_ps(arg1, arg2); }
+inline FVec32 operator/(FVec32 arg1, FVec32 arg2) { return _mm256_div_ps(arg1, arg2); }
+inline IVec32 operator-(IVec32 arg1) {
+    return _mm256_sub_epi32(_mm256_setzero_si256(), arg1);
+}
+inline IVec32 operator+(IVec32 arg1, IVec32 arg2) {
+    return _mm256_add_epi32(arg1, arg2);
+}
+inline IVec32 operator-(IVec32 arg1, IVec32 arg2) {
+    return _mm256_sub_epi32(arg1, arg2);
+}
+
+inline BVec32 isnan(FVec32 arg) { return arg != arg; }
+
+inline FVec32 sqrt(FVec32 arg1) { return Sleef_sqrtf8_u05avx2(arg1); }
+inline FVec32 sin(FVec32 arg1) { return Sleef_sinf8_u10avx2(arg1); }
+inline FVec32 cos(FVec32 arg1) { return Sleef_cosf8_u10avx2(arg1); }
+inline FVec32 sinh(FVec32 arg1) { return Sleef_sinhf8_u10avx2(arg1); }
+inline FVec32 asinh(FVec32 arg1) { return Sleef_asinhf8_u10avx2(arg1); }
+inline FVec32 cosh(FVec32 arg1) { return Sleef_coshf8_u10avx2(arg1); }
+inline FVec32 tanh(FVec32 arg1) { return Sleef_tanhf8_u10avx2(arg1); }
+inline FVec32 atan2(FVec32 arg1, FVec32 arg2) {
+    return Sleef_atan2f8_u10avx2(arg1, arg2);
+}
+inline FVec32 pow(FVec32 arg1, FVec32 arg2) { return Sleef_powf8_u10avx2(arg1, arg2); }
+inline FVec32 fabs(FVec32 arg1) { return Sleef_fabsf8_avx2(arg1); }
+inline FVec32 log(FVec32 arg1) { return Sleef_logf8_u10avx2(arg1); }
+inline FVec32 tan(FVec32 arg1) { return Sleef_tanf8_u10avx2(arg1); }
+inline FVec32 atan(FVec32 arg1) { return Sleef_atanf8_u10avx2(arg1); }
+inline FVec32 acos(FVec32 arg1) { return Sleef_acosf8_u10avx2(arg1); }
+inline FVec32 atanh(FVec32 arg1) { return Sleef_atanhf8_u10avx2(arg1); }
+inline FVec32 exp(FVec32 arg1) { return Sleef_expf8_u10avx2(arg1); }
+inline FVec32 log1p(FVec32 arg1) { return Sleef_log1pf8_u10avx2(arg1); }
+inline FVec32 expm1(FVec32 arg1) { return Sleef_expm1f8_u10avx2(arg1); }
+inline FVec32 erf(FVec32 arg1) { return Sleef_erff8_u10avx2(arg1); }
+inline FVec32 fma(FVec32 arg1, FVec32 arg2, FVec32 arg3) {
+    return _mm256_fmadd_ps(arg1, arg2, arg3);
 }

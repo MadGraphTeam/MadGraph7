@@ -1307,7 +1307,7 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
                     // padded so that the vectorized kernels can load it like a
                     // batched tensor, see Tensor::simd_padded_literal
                     _locals_init[local.local_index] = Tensor::simd_padded_literal(
-                        LiteralValue(val), simd_vec_size, cpu_device()
+                        LiteralValue(val), simd_vec_size_max, cpu_device()
                     );
                 },
                 [](std::monostate val) {}

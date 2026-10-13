@@ -803,7 +803,7 @@ public:
 
     /// Maximum number of stored elements (value elements times lanes) of a
     /// literal for which @ref simd_padded_literal pads the storage.
-    static constexpr std::size_t max_simd_padded_size = 256;
+    static constexpr std::size_t max_simd_padded_size = 512;
 
     /**
      * Literal constant for the CPU SIMD kernels.
