@@ -537,7 +537,7 @@ Tensor madspace_py::dlpack_to_tensor(
                 std::format(
                     "Argument {}: wrong input dimension. Expected {}, got {}",
                     arg_index + 1,
-                    expected_type->shape.size() + 1,
+                    expected_type->shape.size() + is_batch,
                     dl_tensor->ndim
                 )
             );
@@ -563,7 +563,7 @@ Tensor madspace_py::dlpack_to_tensor(
         }
         if (expected_type) {
             for (int j = is_batch; j < dl_tensor->ndim; ++j) {
-                if (shape.at(j) != expected_type->shape.at(j - is_batch)) {
+                if (dl_tensor->shape[j] != expected_type->shape.at(j - is_batch)) {
                     throw std::invalid_argument(
                         std::format(
                             "Argument {}, dimension {}: shape mismatch. Expected {}, "
@@ -571,7 +571,7 @@ Tensor madspace_py::dlpack_to_tensor(
                             arg_index + 1,
                             j,
                             expected_type->shape.at(j - is_batch),
-                            shape.at(j)
+                            dl_tensor->shape[j]
                         )
                     );
                 }

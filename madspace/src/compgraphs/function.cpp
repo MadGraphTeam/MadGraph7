@@ -264,6 +264,32 @@ ValueVec FunctionBuilder::instruction(const std::string& name, const ValueVec& a
 }
 
 ValueVec
+FunctionBuilder::precision_instruction(const std::string& name, const ValueVec& args) {
+    auto is_literal = [](const Value& arg) {
+        return !std::holds_alternative<std::monostate>(arg.literal_value);
+    };
+    DataType dtype = DataType::dt_float64;
+    for (auto& arg : args) {
+        if (!is_literal(arg) && is_float(arg.type.dtype)) {
+            dtype = arg.type.dtype;
+            break;
+        }
+    }
+    if (dtype == DataType::dt_float64) {
+        return instruction(name + "_float64", args);
+    }
+    ValueVec converted_args;
+    for (auto& arg : args) {
+        converted_args.push_back(
+            is_literal(arg) && arg.type.dtype == DataType::dt_float64
+                ? convert_float32(arg)
+                : arg
+        );
+    }
+    return instruction(name + "_float32", converted_args);
+}
+
+ValueVec
 FunctionBuilder::instruction(InstructionPtr instruction, const ValueVec& args) {
     // check argument types and determine if all arguments are constant
     auto params = args;
@@ -315,8 +341,8 @@ FunctionBuilder::instruction(InstructionPtr instruction, const ValueVec& args) {
         return arg.local_index == -1 &&
             std::holds_alternative<me_int_t>(arg.literal_value);
     };
-    bool all_float_literals = args.size() > 0 &&
-        std::all_of(args.begin(), args.end(), is_float_literal);
+    bool all_float_literals =
+        args.size() > 0 && std::all_of(args.begin(), args.end(), is_float_literal);
     bool all_int_literals =
         args.size() > 0 && std::all_of(args.begin(), args.end(), is_int_literal);
     if (all_float_literals) {

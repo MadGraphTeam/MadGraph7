@@ -308,47 +308,71 @@ void AsyncGpuDevice::memcpy(void* to, void* from, std::size_t size) const {
 }
 
 void AsyncGpuDevice::tensor_copy(const Tensor& source, Tensor& target) const {
-    if (source.dtype() == DataType::dt_float64 &&
-        target.dtype() == DataType::dt_float64) {
+    if (source.dtype() != target.dtype()) {
+        throw std::runtime_error("invalid dtype in copy");
+    }
+    switch (source.dtype()) {
+    case DataType::dt_float64:
         tensor_foreach_dynamic<kernel_copy<GpuTypes>, 1, 1>(
             {&source}, {&target}, target.size(0), *this
         );
-    } else if (source.dtype() == DataType::dt_int32 &&
-               target.dtype() == DataType::dt_int32) {
+        break;
+    case DataType::dt_float32:
+        tensor_foreach_dynamic<kernel_copy<GpuTypes32>, 1, 1>(
+            {&source}, {&target}, target.size(0), *this
+        );
+        break;
+    case DataType::dt_int32:
         tensor_foreach_dynamic<kernel_copy_int<GpuTypes>, 1, 1>(
             {&source}, {&target}, target.size(0), *this
         );
-    } else {
+        break;
+    default:
         throw std::runtime_error("invalid dtype in copy");
     }
 }
 
 void AsyncGpuDevice::tensor_zero(Tensor& tensor) const {
-    if (tensor.dtype() == DataType::dt_float64) {
-        if (tensor.is_contiguous()) {
-            check_error(gpuMemsetAsync(tensor.data(), 0, tensor.byte_size(), _stream));
-        } else {
-            tensor_foreach_dynamic<kernel_zero<GpuTypes>, 1, 1>(
-                {&tensor}, {&tensor}, tensor.size(0), *this
-            );
-        }
-    } else if (tensor.dtype() == DataType::dt_int32) {
-        if (tensor.is_contiguous()) {
-            check_error(gpuMemsetAsync(tensor.data(), 0, tensor.byte_size(), _stream));
-        } else {
-            tensor_foreach_dynamic<kernel_zero_int<GpuTypes>, 1, 1>(
-                {&tensor}, {&tensor}, tensor.size(0), *this
-            );
-        }
-    } else {
+    if (tensor.dtype() == DataType::batch_sizes) {
         throw std::runtime_error("invalid dtype in zero");
+    }
+    if (tensor.is_contiguous()) {
+        check_error(gpuMemsetAsync(tensor.data(), 0, tensor.byte_size(), _stream));
+        return;
+    }
+    switch (tensor.dtype()) {
+    case DataType::dt_float64:
+        tensor_foreach_dynamic<kernel_zero<GpuTypes>, 1, 1>(
+            {&tensor}, {&tensor}, tensor.size(0), *this
+        );
+        break;
+    case DataType::dt_float32:
+        tensor_foreach_dynamic<kernel_zero<GpuTypes32>, 1, 1>(
+            {&tensor}, {&tensor}, tensor.size(0), *this
+        );
+        break;
+    default:
+        tensor_foreach_dynamic<kernel_zero_int<GpuTypes>, 1, 1>(
+            {&tensor}, {&tensor}, tensor.size(0), *this
+        );
+        break;
     }
 }
 
 void AsyncGpuDevice::tensor_add(const Tensor& source, Tensor& target) const {
-    tensor_foreach_dynamic<kernel_add_inplace<GpuTypes>, 1, 1>(
-        {&source}, {&target}, target.size(0), *this
-    );
+    if (source.dtype() == DataType::dt_float32 &&
+        target.dtype() == DataType::dt_float32) {
+        tensor_foreach_dynamic<kernel_add_inplace<GpuTypes32>, 1, 1>(
+            {&source}, {&target}, target.size(0), *this
+        );
+    } else if (source.dtype() == DataType::dt_float64 &&
+               target.dtype() == DataType::dt_float64) {
+        tensor_foreach_dynamic<kernel_add_inplace<GpuTypes>, 1, 1>(
+            {&source}, {&target}, target.size(0), *this
+        );
+    } else {
+        throw std::runtime_error("invalid dtype in add");
+    }
 }
 
 void AsyncGpuDevice::tensor_cpu(const Tensor& source, Tensor& target) const {

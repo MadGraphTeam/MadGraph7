@@ -125,6 +125,25 @@ void op_matrix_element(
     }
 }
 
+template <typename F, typename... Args>
+auto gpublas_gemm(Args... args) {
+    if constexpr (std::is_same_v<F, float>) {
+        return gpublasSgemm(args...);
+    } else {
+        return gpublasDgemm(args...);
+    }
+}
+
+template <typename F, typename... Args>
+auto gpublas_gemv(Args... args) {
+    if constexpr (std::is_same_v<F, float>) {
+        return gpublasSgemv(args...);
+    } else {
+        return gpublasDgemv(args...);
+    }
+}
+
+template <typename F>
 void op_matmul(
     const GpuRuntime::Instruction& instruction,
     TensorVec& locals,
@@ -141,10 +160,7 @@ void op_matmul(
     std::size_t dims_in = input.size(1);
     std::size_t dims_out = weight.size(1);
     output = Tensor(
-        DataType::dt_float64,
-        {batch_size, dims_out},
-        device,
-        instruction.output_alloc_hints[0]
+        dtype_of<F>(), {batch_size, dims_out}, device, instruction.output_alloc_hints[0]
     );
     output.copy_from(bias, device);
     if (batch_size == 0) {
@@ -153,36 +169,39 @@ void op_matmul(
 
     gpublasHandle_t handle = instruction.runtime.gpublas_handle();
     check_error(gpublasSetStream(handle, device.stream()));
-    double alpha = 1., beta = 1.;
-    check_error(gpublasDgemm(
-        handle,
-        GPUBLAS_OP_N,
-        GPUBLAS_OP_T,
-        batch_size,
-        dims_out,
-        dims_in,
-        &alpha,
-        static_cast<double*>(input.data()),
-        batch_size,
-        static_cast<double*>(weight.data()),
-        dims_out,
-        &beta,
-        static_cast<double*>(output.data()),
-        batch_size
-    ));
+    F alpha = 1., beta = 1.;
+    check_error(
+        gpublas_gemm<F>(
+            handle,
+            GPUBLAS_OP_N,
+            GPUBLAS_OP_T,
+            batch_size,
+            dims_out,
+            dims_in,
+            &alpha,
+            static_cast<F*>(input.data()),
+            batch_size,
+            static_cast<F*>(weight.data()),
+            dims_out,
+            &beta,
+            static_cast<F*>(output.data()),
+            batch_size
+        )
+    );
     input.reset(device);
     weight.reset(device);
     bias.reset(device);
 }
 
-__global__ void
-kernel_one(std::size_t batch_size, GpuTensorView<double, 1, true> output) {
+template <typename F>
+__global__ void kernel_one(std::size_t batch_size, GpuTensorView<F, 1, true> output) {
     me_int_t i = blockDim.x * blockIdx.x + threadIdx.x;
     if (i < batch_size) {
         output[i] = 1.;
     }
 }
 
+template <typename F>
 void backward_op_matmul(
     const GpuRuntime::Instruction& instruction,
     TensorVec& locals,
@@ -205,30 +224,18 @@ void backward_op_matmul(
 
     if (!input_grad) {
         input_grad = Tensor(
-            DataType::dt_float64,
-            input.shape(),
-            device,
-            instruction.input_grad_alloc_hints[0]
+            dtype_of<F>(), input.shape(), device, instruction.input_grad_alloc_hints[0]
         );
-        // input_grad.zero(device);
     }
     if (!weight_grad) {
         weight_grad = Tensor(
-            DataType::dt_float64,
-            weight.shape(),
-            device,
-            instruction.input_grad_alloc_hints[1]
+            dtype_of<F>(), weight.shape(), device, instruction.input_grad_alloc_hints[1]
         );
-        // weight_grad.zero(device);
     }
     if (!bias_grad) {
         bias_grad = Tensor(
-            DataType::dt_float64,
-            {1, dims_out},
-            device,
-            instruction.input_grad_alloc_hints[2]
+            dtype_of<F>(), {1, dims_out}, device, instruction.input_grad_alloc_hints[2]
         );
-        // bias_grad.zero(device);
     }
     if (batch_size == 0) {
         input.reset(device);
@@ -237,66 +244,72 @@ void backward_op_matmul(
         return;
     }
 
-    double alpha = 1., beta = 1.;
+    F alpha = 1., beta = 1.;
     gpublasHandle_t handle = instruction.runtime.gpublas_handle();
     gpuStream_t stream = device.stream();
     check_error(gpublasSetStream(handle, stream));
 
     // compute input_grad += output_grad * weight
-    check_error(gpublasDgemm(
-        handle,
-        GPUBLAS_OP_N,
-        GPUBLAS_OP_N,
-        batch_size,
-        dims_in,
-        dims_out,
-        &alpha,
-        static_cast<double*>(output_grad.data()),
-        batch_size,
-        static_cast<double*>(weight.data()),
-        dims_out,
-        &beta,
-        static_cast<double*>(input_grad.data()),
-        batch_size
-    ));
+    check_error(
+        gpublas_gemm<F>(
+            handle,
+            GPUBLAS_OP_N,
+            GPUBLAS_OP_N,
+            batch_size,
+            dims_in,
+            dims_out,
+            &alpha,
+            static_cast<F*>(output_grad.data()),
+            batch_size,
+            static_cast<F*>(weight.data()),
+            dims_out,
+            &beta,
+            static_cast<F*>(input_grad.data()),
+            batch_size
+        )
+    );
 
     // compute weight_grad += output_grad.T * input
-    check_error(gpublasDgemm(
-        handle,
-        GPUBLAS_OP_T,
-        GPUBLAS_OP_N,
-        dims_out,
-        dims_in,
-        batch_size,
-        &alpha,
-        static_cast<double*>(output_grad.data()),
-        batch_size,
-        static_cast<double*>(input.data()),
-        batch_size,
-        &beta,
-        static_cast<double*>(weight_grad.data()),
-        dims_out
-    ));
+    check_error(
+        gpublas_gemm<F>(
+            handle,
+            GPUBLAS_OP_T,
+            GPUBLAS_OP_N,
+            dims_out,
+            dims_in,
+            batch_size,
+            &alpha,
+            static_cast<F*>(output_grad.data()),
+            batch_size,
+            static_cast<F*>(input.data()),
+            batch_size,
+            &beta,
+            static_cast<F*>(weight_grad.data()),
+            dims_out
+        )
+    );
 
     // compute bias_grad += sum_i output_grad_ij
-    Tensor ones(DataType::dt_float64, {batch_size}, device, AllocHint::temporary);
+    Tensor ones(dtype_of<F>(), {batch_size}, device, AllocHint::temporary);
     launch_kernel(
-        kernel_one, batch_size, device.stream(), batch_size, ones.view<double, 1>()
+        kernel_one<F>, batch_size, device.stream(), batch_size, ones.view<F, 1>()
     );
-    check_error(gpublasDgemv(
-        handle,
-        GPUBLAS_OP_T,
-        batch_size,
-        dims_out,
-        &alpha,
-        static_cast<double*>(output_grad.data()),
-        batch_size,
-        static_cast<double*>(ones.data()),
-        1,
-        &beta,
-        static_cast<double*>(bias_grad.data()),
-        1
-    ));
+    check_error(
+        gpublas_gemv<F>(
+            handle,
+            GPUBLAS_OP_T,
+            batch_size,
+            dims_out,
+            &alpha,
+            static_cast<F*>(output_grad.data()),
+            batch_size,
+            static_cast<F*>(ones.data()),
+            1,
+            &beta,
+            static_cast<F*>(bias_grad.data()),
+            1
+        )
+    );
     ones.reset(device);
     input.reset(device);
     weight.reset(device);
@@ -2186,9 +2199,9 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
             for (auto [output_index, output_dtype] :
                  zip(instr.output_indices, instr.output_dtypes)) {
                 auto& grad = local_grads[output_index];
-                if (!grad && output_dtype == DataType::dt_float64) {
+                if (!grad && is_float(output_dtype)) {
                     grad = Tensor(
-                        DataType::dt_float64,
+                        output_dtype,
                         locals[output_index].shape(),
                         device,
                         AllocHint::local_grad

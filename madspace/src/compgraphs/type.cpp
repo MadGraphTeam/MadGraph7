@@ -293,7 +293,6 @@ void madspace::from_json(const json& j, Value& value) {
             value = Value(j_data.get<std::vector<me_int_t>>(), shape);
         }
         break;
-    case DataType::dt_float32:
     case DataType::dt_float64:
         if (shape.size() == 0) {
             value = unescape_special_values(j_data);
@@ -304,9 +303,8 @@ void madspace::from_json(const json& j, Value& value) {
             }
             value = Value(tensor, shape);
         }
-        // float32 literals are stored as double and only converted at runtime
-        value.type.dtype = dtype;
         break;
+    case DataType::dt_float32:
     case DataType::batch_sizes:
         throw std::invalid_argument("invalid data type");
     }

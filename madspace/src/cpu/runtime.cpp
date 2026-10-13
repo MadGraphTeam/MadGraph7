@@ -29,6 +29,22 @@ extern "C" void dgemm_(
     int* ldc
 );
 
+extern "C" void sgemm_(
+    char* transa,
+    char* transb,
+    int* m,
+    int* n,
+    int* k,
+    float* alpha,
+    float* a,
+    int* lda,
+    float* b,
+    int* ldb,
+    float* beta,
+    float* c,
+    int* ldc
+);
+
 extern "C" void dgemv_(
     char* trans,
     int* m,
@@ -42,6 +58,68 @@ extern "C" void dgemv_(
     double* y,
     int* incy
 );
+
+extern "C" void sgemv_(
+    char* trans,
+    int* m,
+    int* n,
+    float* alpha,
+    float* a,
+    int* lda,
+    float* x,
+    int* incx,
+    float* beta,
+    float* y,
+    int* incy
+);
+
+namespace {
+
+template <typename F>
+void gemm(
+    char transa,
+    char transb,
+    int m,
+    int n,
+    int k,
+    F alpha,
+    F* a,
+    int lda,
+    F* b,
+    int ldb,
+    F beta,
+    F* c,
+    int ldc
+) {
+    if constexpr (std::is_same_v<F, float>) {
+        sgemm_(&transa, &transb, &m, &n, &k, &alpha, a, &lda, b, &ldb, &beta, c, &ldc);
+    } else {
+        dgemm_(&transa, &transb, &m, &n, &k, &alpha, a, &lda, b, &ldb, &beta, c, &ldc);
+    }
+}
+
+template <typename F>
+void gemv(
+    char trans,
+    int m,
+    int n,
+    F alpha,
+    F* a,
+    int lda,
+    F* x,
+    int incx,
+    F beta,
+    F* y,
+    int incy
+) {
+    if constexpr (std::is_same_v<F, float>) {
+        sgemv_(&trans, &m, &n, &alpha, a, &lda, x, &incx, &beta, y, &incy);
+    } else {
+        dgemv_(&trans, &m, &n, &alpha, a, &lda, x, &incx, &beta, y, &incy);
+    }
+}
+
+} // namespace
 
 using namespace madspace;
 using namespace madspace::cpu;
@@ -170,7 +248,7 @@ void op_matrix_element(
     );
 }
 
-template <typename D>
+template <typename F, typename D>
 void op_matmul(
     const CpuRuntime::Instruction& instruction, TensorVec& locals, const D& device
 ) {
@@ -182,7 +260,7 @@ void op_matmul(
     std::size_t batch_size = input.size(0);
     std::size_t dims_in = input.size(1);
     std::size_t dims_out = weight.size(1);
-    output = Tensor(DataType::dt_float64, {batch_size, dims_out}, device);
+    output = Tensor(dtype_of<F>(), {batch_size, dims_out}, device);
     output.copy_from(bias_orig, device);
     if (batch_size == 0) {
         return;
@@ -190,18 +268,25 @@ void op_matmul(
 
     device.sync_barrier();
     device.submit([=]() mutable {
-        char transa = 'N', transb = 'T';
-        int m = batch_size, n = dims_out, k = dims_in;
-        double alpha = 1., beta = 1.;
-        int lda = batch_size, ldb = dims_out, ldc = batch_size;
-        double* a = static_cast<double*>(input.data());
-        double* b = static_cast<double*>(weight.data());
-        double* c = static_cast<double*>(output.data());
-        dgemm_(&transa, &transb, &m, &n, &k, &alpha, a, &lda, b, &ldb, &beta, c, &ldc);
+        gemm<F>(
+            'N',
+            'T',
+            batch_size,
+            dims_out,
+            dims_in,
+            1.,
+            static_cast<F*>(input.data()),
+            batch_size,
+            static_cast<F*>(weight.data()),
+            dims_out,
+            1.,
+            static_cast<F*>(output.data()),
+            batch_size
+        );
     });
 }
 
-template <typename D>
+template <typename F, typename D>
 void backward_op_matmul(
     const CpuRuntime::Instruction& instruction,
     TensorVec& locals,
@@ -220,18 +305,14 @@ void backward_op_matmul(
 
     if (!input_grad) {
         input_grad =
-            Tensor(DataType::dt_float64, input.shape(), device, AllocHint::local_grad);
-        // input_grad.zero(device);
+            Tensor(dtype_of<F>(), input.shape(), device, AllocHint::local_grad);
     }
     if (!weight_grad) {
         weight_grad =
-            Tensor(DataType::dt_float64, weight.shape(), device, AllocHint::local_grad);
-        // weight_grad.zero(device);
+            Tensor(dtype_of<F>(), weight.shape(), device, AllocHint::local_grad);
     }
     if (!bias_grad) {
-        bias_grad =
-            Tensor(DataType::dt_float64, {1, dims_out}, device, AllocHint::local_grad);
-        // bias_grad.zero(device);
+        bias_grad = Tensor(dtype_of<F>(), {1, dims_out}, device, AllocHint::local_grad);
     }
     if (batch_size == 0) {
         return;
@@ -240,42 +321,59 @@ void backward_op_matmul(
 
     // compute input_grad += output_grad * weight
     device.submit([=]() mutable {
-        char transa = 'N', transb = 'N';
-        int m = batch_size, n = dims_in, k = dims_out;
-        double alpha = 1., beta = 1.;
-        int lda = batch_size, ldb = dims_out, ldc = batch_size;
-        double* a = static_cast<double*>(output_grad.data());
-        ;
-        double* b = static_cast<double*>(weight.data());
-        double* c = static_cast<double*>(input_grad.data());
-        ;
-        dgemm_(&transa, &transb, &m, &n, &k, &alpha, a, &lda, b, &ldb, &beta, c, &ldc);
+        gemm<F>(
+            'N',
+            'N',
+            batch_size,
+            dims_in,
+            dims_out,
+            1.,
+            static_cast<F*>(output_grad.data()),
+            batch_size,
+            static_cast<F*>(weight.data()),
+            dims_out,
+            1.,
+            static_cast<F*>(input_grad.data()),
+            batch_size
+        );
     });
 
     // compute weight_grad += output_grad.T * input
     device.submit([=]() mutable {
-        char transa = 'T', transb = 'N';
-        int m = dims_out, n = dims_in, k = batch_size;
-        double alpha = 1., beta = 1.;
-        int lda = batch_size, ldb = batch_size, ldc = dims_out;
-        double* a = static_cast<double*>(output_grad.data());
-        double* b = static_cast<double*>(input.data());
-        double* c = static_cast<double*>(weight_grad.data());
-        dgemm_(&transa, &transb, &m, &n, &k, &alpha, a, &lda, b, &ldb, &beta, c, &ldc);
+        gemm<F>(
+            'T',
+            'N',
+            dims_out,
+            dims_in,
+            batch_size,
+            1.,
+            static_cast<F*>(output_grad.data()),
+            batch_size,
+            static_cast<F*>(input.data()),
+            batch_size,
+            1.,
+            static_cast<F*>(weight_grad.data()),
+            dims_out
+        );
     });
 
     // compute bias_grad += sum_i output_grad_ij
     device.submit([=]() mutable {
         // TODO: we should probably do this differently...
-        std::vector<double> ones(batch_size, 1.);
-        char trans = 'T';
-        int m = batch_size, n = dims_out;
-        double alpha = 1., beta = 1.;
-        int lda = batch_size, incx = 1, incy = 1;
-        double* a = static_cast<double*>(output_grad.data());
-        double* x = ones.data();
-        double* y = static_cast<double*>(bias_grad.data());
-        dgemv_(&trans, &m, &n, &alpha, a, &lda, x, &incx, &beta, y, &incy);
+        std::vector<F> ones(batch_size, 1.);
+        gemv<F>(
+            'T',
+            batch_size,
+            dims_out,
+            1.,
+            static_cast<F*>(output_grad.data()),
+            batch_size,
+            ones.data(),
+            1,
+            1.,
+            static_cast<F*>(bias_grad.data()),
+            1
+        );
     });
 }
 
@@ -1393,9 +1491,9 @@ std::pair<TensorVec, TensorVec> CpuRuntime::run_backward_single(
         for (auto [output_index, output_dtype] :
              zip(instr.output_indices, instr.output_dtypes)) {
             auto& grad = local_grads[output_index];
-            if (!grad && output_dtype == DataType::dt_float64) {
+            if (!grad && is_float(output_dtype)) {
                 grad = Tensor(
-                    DataType::dt_float64,
+                    output_dtype,
                     locals[output_index].shape(),
                     device,
                     AllocHint::local_grad
@@ -1607,9 +1705,9 @@ std::pair<TensorVec, TensorVec> CpuRuntime::run_backward_concurrent(
                     for (auto [output_index, output_dtype] :
                          zip(instr.output_indices, instr.output_dtypes)) {
                         auto& grad = local_grads[output_index];
-                        if (!grad && output_dtype == DataType::dt_float64) {
+                        if (!grad && is_float(output_dtype)) {
                             grad = Tensor(
-                                DataType::dt_float64,
+                                output_dtype,
                                 locals[output_index].shape(),
                                 device,
                                 AllocHint::local_grad

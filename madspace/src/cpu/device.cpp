@@ -10,40 +10,61 @@ namespace {
 
 template <typename D>
 void tensor_copy_impl(const Tensor& source, Tensor& target, const D& device) {
-    if (source.dtype() == DataType::dt_float64 &&
-        target.dtype() == DataType::dt_float64) {
+    if (source.dtype() != target.dtype()) {
+        throw std::runtime_error("invalid dtype in copy");
+    }
+    switch (source.dtype()) {
+    case DataType::dt_float64:
         tensor_foreach_dynamic_single<
             kernel_copy<CpuTypes>,
             kernel_copy<SimdTypes>,
             1,
             1>({&source}, {&target}, target.size(0), device);
-    } else if (source.dtype() == DataType::dt_int32 &&
-               target.dtype() == DataType::dt_int32) {
+        break;
+    case DataType::dt_float32:
+        tensor_foreach_dynamic_single<
+            kernel_copy<CpuTypes32>,
+            kernel_copy<SimdTypes32>,
+            1,
+            1>({&source}, {&target}, target.size(0), device);
+        break;
+    case DataType::dt_int32:
         tensor_foreach_dynamic_single<
             kernel_copy_int<CpuTypes>,
             kernel_copy_int<SimdTypes>,
             1,
             1>({&source}, {&target}, target.size(0), device);
-    } else {
+        break;
+    default:
         throw std::runtime_error("invalid dtype in copy");
     }
 }
 
 template <typename D>
 void tensor_zero_impl(Tensor& tensor, const D& device) {
-    if (tensor.dtype() == DataType::dt_float64) {
+    switch (tensor.dtype()) {
+    case DataType::dt_float64:
         tensor_foreach_dynamic_single<
             kernel_zero<CpuTypes>,
             kernel_zero<SimdTypes>,
             1,
             1>({&tensor}, {&tensor}, tensor.size(0), device);
-    } else if (tensor.dtype() == DataType::dt_int32) {
+        break;
+    case DataType::dt_float32:
+        tensor_foreach_dynamic_single<
+            kernel_zero<CpuTypes32>,
+            kernel_zero<SimdTypes32>,
+            1,
+            1>({&tensor}, {&tensor}, tensor.size(0), device);
+        break;
+    case DataType::dt_int32:
         tensor_foreach_dynamic_single<
             kernel_zero_int<CpuTypes>,
             kernel_zero_int<SimdTypes>,
             1,
             1>({&tensor}, {&tensor}, tensor.size(0), device);
-    } else {
+        break;
+    default:
         throw std::runtime_error("invalid dtype in zero");
     }
 }
@@ -52,11 +73,28 @@ template <typename D>
 void tensor_add_impl(const Tensor& source, Tensor& target, const D& device) {
     // a broadcast target (e.g. the gradient of a literal or global) accumulates
     // the whole source batch
-    tensor_foreach_dynamic_single<
-        kernel_add_inplace<CpuTypes>,
-        kernel_add_inplace<SimdTypes>,
-        1,
-        1>({&source}, {&target}, std::max(source.size(0), target.size(0)), device);
+    std::size_t batch_size = std::max(source.size(0), target.size(0));
+    if (source.dtype() != target.dtype()) {
+        throw std::runtime_error("invalid dtype in add");
+    }
+    switch (source.dtype()) {
+    case DataType::dt_float64:
+        tensor_foreach_dynamic_single<
+            kernel_add_inplace<CpuTypes>,
+            kernel_add_inplace<SimdTypes>,
+            1,
+            1>({&source}, {&target}, batch_size, device);
+        break;
+    case DataType::dt_float32:
+        tensor_foreach_dynamic_single<
+            kernel_add_inplace<CpuTypes32>,
+            kernel_add_inplace<SimdTypes32>,
+            1,
+            1>({&source}, {&target}, batch_size, device);
+        break;
+    default:
+        throw std::runtime_error("invalid dtype in add");
+    }
 }
 
 } // namespace
