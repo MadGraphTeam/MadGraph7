@@ -205,6 +205,11 @@ private:
     RunningIntegral _cross_section;
     RunningIntegral _abs_cross_section;
     double _max_weight = 0.;
+    // Expected number of accepted events, sum of min(|w| / max_weight, 1) over the
+    // committed generate stages, rescaled like count_unweighted when the max
+    // weight rises. Decides when the max weight is frozen: unlike count_unweighted
+    // it only depends on the generate stages, which commit in a fixed order.
+    double _expected_unweighted = 0.;
     std::size_t _count_requested_opt = 0;
     // Monotonic per-job counters keying each job's deterministic random stream;
     // never reset. Separate for survey/generate so neither depends on the other.
