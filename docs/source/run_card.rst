@@ -557,3 +557,8 @@ function. The activations are ``relu``, ``leaky_relu``, ``elu``, ``gelu``, ``sig
 
 ``cwnet_hidden_dim`` (``"auto"``), ``cwnet_layers`` (``3``), ``cwnet_activation`` (``"leaky_relu"``)
     Size and activation of the channel weight network.
+
+``nn_float_precision`` (``"float64"``)
+    Floating-point precision of the weights and the evaluation of all networks,
+    ``float32`` or ``float64``. The rest of the computation, including the network
+    outputs, softmaxes and Jacobians, stays in double precision.

@@ -149,6 +149,9 @@ cwnet_hidden_dim = %(madnis.cwnet_hidden_dim)s
 cwnet_layers = %(madnis.cwnet_layers)s
 cwnet_activation = %(madnis.cwnet_activation)s # options: relu, leaky_relu, elu, gelu, sigmoid, softplus
 
+# precision of all networks
+nn_float_precision = %(madnis.nn_float_precision)s # options: float32, float64
+
 # training parameters
 train_batches = %(madnis.train_batches)s
 log_interval = %(madnis.log_interval)s

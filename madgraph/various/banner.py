@@ -6913,6 +6913,9 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'cwnet_activation', "leaky_relu",
             allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'],
             comment="activation function of the channel weight network")
+        self.add_toml_param('madnis', 'nn_float_precision', "float64",
+            allowed=['float32', 'float64'],
+            comment="floating-point precision of the weights and the evaluation of all networks")
         self.add_toml_param('madnis', 'train_batches', 1000,
             comment="number of training batches")
         self.add_toml_param('madnis', 'log_interval', 100,
