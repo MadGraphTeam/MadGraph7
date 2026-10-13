@@ -157,10 +157,11 @@ class IOExportV4IOTest(IOTests.IOTestManager,
 
     tearDown = test_file_writers.CheckFileCreate.clean_files
 
-    def test_standalone_includes_next_to_matrix_file(self):
+    def test_standalone_files_next_to_matrix_file(self):
         """The standalone output does not chdir to the process directory, so
-        the files written along matrix.f must be placed relative to it, not
-        to the directory MG was started from (nor its parent)."""
+        the split-orders driver written along matrix.f must be placed next to
+        it, not in the directory MG was started from (nor its parent).
+        nsqso_born.inc is only written for a MadLoop born_matrix.f."""
 
         tmpdir = tempfile.mkdtemp()
         startdir = pjoin(tmpdir, 'parent', 'start')
@@ -182,10 +183,7 @@ class IOExportV4IOTest(IOTests.IOTestManager,
             self.assertEqual(os.listdir(startdir), [])
             self.assertEqual(os.listdir(pjoin(tmpdir, 'parent')), ['start'])
             self.assertEqual(sorted(os.listdir(procdir)),
-                    ['check_sa_born_splitOrders.f', 'matrix.f',
-                     'nsqso_born.inc'])
-            self.assertIn('PARAMETER (NSQSO_BORN=1)',
-                          open(pjoin(procdir, 'nsqso_born.inc')).read())
+                    ['check_sa_born_splitOrders.f', 'matrix.f'])
         finally:
             os.chdir(old_cwd)
             shutil.rmtree(tmpdir)
