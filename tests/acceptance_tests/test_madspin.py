@@ -397,6 +397,11 @@ decay z > l+ l-
         self.assertIsNotNone(
             re.search(r'MadSpin\s+unweight\s+efficiency', log),
             msg='mg7 + MadSpin: density-mode summary line not found in log')
+        # store_result used to save the madevent results database to
+        # HTML/results.pkl, which the mg7 output does not have
+        self.assertEqual(
+            [line for line in log.splitlines() if 'I/O error' in line], [])
+        self.assertFalse(os.path.exists(pjoin(self.run_dir, 'crossx.html')))
 
     def test_madspin_wplus_all_all_flavor_balance(self):
         """`w+ > all all` should populate e/mu decay modes with similar rates."""
