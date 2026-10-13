@@ -28,6 +28,7 @@ directory; exit status 1 if a check fails.
 import argparse
 import glob
 import json
+import math
 import os
 import random
 import re
@@ -113,15 +114,17 @@ def check_mssm_gpu_vs_cpu(repo, backend, npoints=1024):
         flavor = [rng.randrange(nflavor) for _ in range(npoints)]
         (me_cpu,) = cpu(points, alpha_s=alpha_s, flavor=flavor)
         (me_gpu,) = gpu(points, alpha_s=alpha_s, flavor=flavor)
-        worst, iworst = 0., -1
-        for ievt, (a, b) in enumerate(zip(me_cpu, me_gpu)):
-            rel = abs(a - b) / abs(a) if a != 0 else (0. if b == 0 else float('inf'))
-            if not rel <= worst:  # also catches nan
-                worst, iworst = rel, ievt
-        if not worst < 1e-9:
-            problems.append('%s: event %d %s %.10e vs %s %.10e (rel %.1e)'
-                            % (sub, iworst, backend, me_gpu[iworst], CPU_BACKEND,
-                               me_cpu[iworst], worst))
+        rels = [abs(a - b) / abs(a) if a != 0 else (0. if b == 0 else float('inf'))
+                for a, b in zip(me_cpu, me_gpu)]
+        # every event that is not within the tolerance, a nan included (it fails any
+        # comparison, so it must not go through a running maximum, which would drop it)
+        bad = [ievt for ievt, rel in enumerate(rels) if not rel < 1e-9]
+        worst = max((rel for rel in rels if not math.isnan(rel)), default=0.)
+        if bad:
+            first = bad[0]
+            problems.append('%s: %d of %d events differ, first event %d %s %.10e vs %s %.10e (rel %.1e)'
+                            % (sub, len(bad), npoints, first, backend, me_gpu[first],
+                               CPU_BACKEND, me_cpu[first], rels[first]))
         if not any(v != 0 for v in me_cpu):
             problems.append('%s: all |M|^2 vanish' % sub)
         scaling = me_gpu[1] / me_gpu[0] / (0.12 / 0.10) ** 2 - 1 if me_gpu[0] else float('inf')
