@@ -1739,7 +1739,9 @@ class ProcessTest(unittest.TestCase):
                        'overall_orders': {},
                        'born_sq_orders': {},
                        'NLO_mode':'tree',
-                       'split_orders':[]}
+                       'split_orders':[],
+                       'interference_mode': '',
+                       'interference_process': None}
 
         self.myprocess = base_objects.Process(self.mydict)
 
@@ -1827,7 +1829,9 @@ class ProcessTest(unittest.TestCase):
         goal = goal + "    \'has_born\': True,\n"
         goal = goal + "    \'NLO_mode\': 'tree',\n"
         goal = goal + "    \'split_orders\': [],\n"
-        goal = goal + "    \'born_sq_orders\': {}\n}"
+        goal = goal + "    \'born_sq_orders\': {},\n"
+        goal = goal + "    \'interference_mode\': '',\n"
+        goal = goal + "    \'interference_process\': None\n}"
 
         for a, b in zip(goal.split('\n'), str(self.myprocess).split('\n')):
             self.assertEqual(a,b)
@@ -2160,7 +2164,9 @@ class ProcessDefinitionTest(unittest.TestCase):
                        'overall_orders':{},
                        'sqorders_types':{},
                        'NLO_mode':'tree',
-                       'split_orders':[]}
+                       'split_orders':[],
+                       'interference_mode': '',
+                       'interference_process': None}
 
         self.my_process_definition = base_objects.ProcessDefinition(self.mydict)
 
@@ -2226,7 +2232,11 @@ class ProcessDefinitionTest(unittest.TestCase):
         myleglist = base_objects.LegList(mylist)
         my_new_process_definition = copy.copy(self.my_process_definition)
         my_new_process_definition['born_sq_orders'] = {'QCD':99, 'QED':99}
+        my_new_process_definition['interference_mode'] = 'treextree'
+        my_new_process_definition['interference_process'] = \
+                                       base_objects.ProcessDefinition({'id': 0})
         testproc = my_new_process_definition.get_process_with_legs(myleglist)
+        self.assertEqual(testproc['interference_mode'], 'treextree')
 
         for (k, v) in testproc.items():
             if k not in list(self.my_process_definition.keys()): continue
@@ -2403,7 +2413,9 @@ class ProcessDefinitionTest(unittest.TestCase):
         goal = goal + "    \'has_born\': True,\n"
         goal = goal + "    \'NLO_mode\': 'tree',\n"
         goal = goal + "    \'split_orders\': [],\n"                
-        goal = goal + "    \'born_sq_orders\': {}\n}"                
+        goal = goal + "    \'born_sq_orders\': {},\n"
+        goal = goal + "    \'interference_mode\': '',\n"
+        goal = goal + "    \'interference_process\': None\n}"                
         self.assertEqual(goal, str(self.my_process_definition))
 
 #===============================================================================
