@@ -87,12 +87,13 @@ full_descr(std::size_t particle_count, const DataLayout& layout) {
         layout.event_layout().size() + particle_count * layout.particle_layout().size()
     );
     for (auto& field : layout.event_layout()) {
-        field_descr.emplace_back(field.name, field.type);
+        field_descr.emplace_back(field.name, FieldLayout::dtype(field.type));
     }
     for (std::size_t i = 1; i <= particle_count; ++i) {
         for (auto& field : layout.particle_layout()) {
             field_descr.push_back(
-                {std::format("part{}_{}", i, field.name), field.type}
+                {std::format("part{}_{}", i, field.name),
+                 FieldLayout::dtype(field.type)}
             );
         }
     }
