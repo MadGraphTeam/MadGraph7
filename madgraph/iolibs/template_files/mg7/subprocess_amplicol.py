@@ -13,6 +13,7 @@ import os
 from typing import TYPE_CHECKING
 
 from madgraph.iolibs.template_files.mg7.common import lhe_helicities, ms
+from madgraph.iolibs.template_files.mg7.observables import clean_pids
 from madgraph.iolibs.template_files.mg7.subprocess_madmatrix import (
     Channel,
     MadgraphSubprocess,
@@ -72,6 +73,27 @@ def amplicol_subproc_args(meta: dict, process: MadgraphProcess) -> ms.SubprocArg
 
 
 class AmplicolSubprocess(MadgraphSubprocess):
+    def __init__(self, process, meta, subproc_id, unmerged_meta=None):
+        super().__init__(process, meta, subproc_id, unmerged_meta)
+        self.check_flavor_blind_cuts()
+
+    def check_flavor_blind_cuts(self):
+        """AmpliCol groups the flavours and identical-particle orderings that
+        share a matrix element into one channel, so its cuts, built for the
+        first flavour, must select the same particles for all of them."""
+        options = [
+            clean_pids(pdgs) for flavor in self.meta["flavors"]
+            for pdgs in flavor["options"]
+        ]
+        for item in self.process.cut_data:
+            for group in item.observable_kwargs["select_pids"]:
+                if len({tuple(pid in group for pid in pdgs) for pdgs in options}) > 1:
+                    raise RuntimeError(
+                        f"the cut {item.observable_kwargs['name']} does not select "
+                        f"the same particles in all flavours of the [amplicol] "
+                        f"subprocess {self.meta['incoming']} > {self.meta['outgoing']}"
+                    )
+
     def load_matrix_elements(self, all_api_paths, api_path_formats, member_metas):
         run_args = self.process.run_card["run"]
         if any(device != "cpu" for device in self.process.device_types):
