@@ -3971,11 +3971,13 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "optimize",
             &EventGenerator::optimize,
+            py::call_guard<py::gil_scoped_release>(),
             pydoc::doc("EventGenerator::optimize")
         )
         .def(
             "fix_max_weights",
             &EventGenerator::fix_max_weights,
+            py::call_guard<py::gil_scoped_release>(),
             pydoc::doc("EventGenerator::fix_max_weights")
         )
         .def(
