@@ -160,6 +160,25 @@ cc         call setpara('param_card.dat')
       end
 
       
+      subroutine set_alphaS_vec_from_scalar(vecid)
+c The immediately preceding set_alphaS call has already computed the scales
+c and scalar couplings for the same momenta. Refresh only the vector-model
+c couplings for this slot; repeating the scale/PDF work is unnecessary.
+      use couplings, only: G_vec
+      implicit none
+      include 'coupl.inc'
+      include 'timing_variables.inc'
+      integer vecid
+
+      call cpu_time(tBefore)
+      G_vec(vecid)=g
+      call update_as_param_vec(vecid)
+      call cpu_time(tAfter)
+      t_coupl=t_coupl+(tAfter-tBefore)
+      return
+      end
+
+
       subroutine set_alphaS_vec(xp,vecid)
 c This subroutine sets the values of the renormalization, factorization,
 c and Ellis-Sexton scales, and computes the value of alpha_S through the
