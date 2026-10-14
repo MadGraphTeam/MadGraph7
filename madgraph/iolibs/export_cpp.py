@@ -3512,6 +3512,14 @@ class ProcessExporterMG7(ProcessExporterCPP):
         self.amplicol_model = cmd._curr_model
         self.amplicol_nb_core = cmd.options.get('nb_core')
 
+    def amplicol_processes(self):
+        """MG processes standing for the [amplicol] processes."""
+        if not getattr(self, 'amplicol_defs', None):
+            return []
+        import madgraph.iolibs.export_amplicol as export_amplicol
+        return export_amplicol.representative_processes(
+            self.amplicol_defs, self.amplicol_model)
+
     def export_amplicol(self):
         """The [amplicol] processes, as subprocesses after the madmatrix ones."""
         if not getattr(self, 'amplicol_defs', None):
@@ -3613,6 +3621,8 @@ class ProcessExporterMG7(ProcessExporterCPP):
                              for me in matrix_elements['matrix_elements']]
         except (KeyError, TypeError):
             processes = None
+        if self.amplicol_processes():
+            processes = (processes or []) + [self.amplicol_processes()]
 
         if processes:
             run_card.create_default_for_process(self.proc_characteristic,
@@ -3649,8 +3659,12 @@ class ProcessExporterMG7(ProcessExporterCPP):
         else:
             me_list = []
 
-        procs = []
-        qcd_orders = set()
+        procs = list(self.amplicol_processes())
+        qcd_orders = set(entry['qcd_power'] for entry in self.process_info
+                         if entry.get('backend') == 'amplicol')
+        if procs:
+            pc['nexternal'] = max(pc['nexternal'], len(procs[0].get('legs')))
+            pc['ninitial'] = 2
         for me in me_list:
             if not me.get('processes'):
                 continue

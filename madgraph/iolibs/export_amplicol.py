@@ -132,6 +132,30 @@ def generate_artifact(pyamplicol, artifact, accuracy, expression, multiparticles
                                           mode='replace')
 
 
+def representative_processes(proc_defs, model):
+    """Processes standing for the [amplicol] definitions where the output needs
+    MG processes (run card defaults, proc_characteristics): every initial state,
+    with the first particle of each final-state leg."""
+    import itertools
+    import madgraph.core.base_objects as base_objects
+    processes = []
+    for procdef in proc_defs:
+        legs = procdef.get('legs')
+        initial = [leg.get('ids') for leg in legs if not leg.get('state')]
+        final = [leg.get('ids')[0] for leg in legs if leg.get('state')]
+        for ids in itertools.product(*initial):
+            pdgs = list(ids) + final
+            processes.append(base_objects.Process({
+                'legs': base_objects.LegList([
+                    base_objects.Leg({'id': pdg, 'number': number + 1,
+                                      'state': number >= len(ids)})
+                    for number, pdg in enumerate(pdgs)]),
+                'model': model,
+                'id': procdef.get('id'),
+            }))
+    return processes
+
+
 def color_types(model, pdgs):
     types = {}
     for pdg in pdgs:
@@ -177,6 +201,7 @@ def subprocess_entries(metadata, model, rel_dir, me_path, ratio_path):
             'umami_channel': channel_index,
             'phasespace_order': channel['phasespace_order'],
             'masses': provider['masses'],
+            'supports_alpha_s': provider['supports_alpha_s'],
             'flavors': flavors,
             # tree level with the minimal coupling orders: every coloured
             # parton beyond the first two comes with one power of alpha_s

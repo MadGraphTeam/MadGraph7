@@ -12544,7 +12544,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # have been defined with multiparticle labels, because then
             # branching ratios necessitates to keep subprocesses independent.
             # That applies only if there is more than one subprocess of course.
-            if self._curr_amps[0].get_ninitial() == 1 and \
+            if self._curr_amps and self._curr_amps[0].get_ninitial() == 1 and \
                                                      len(self._curr_amps)>1:
                 
                 processes = [amp.get('process') for amp in self._curr_amps if 'process' in  list(amp.keys())]
@@ -12940,7 +12940,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                       
                       
         matrix_elements = self._curr_matrix_elements.get_matrix_elements()
-        if any(l.get('flavor') is None for l in matrix_elements[0].get('processes')[0].get('legs')):
+        if matrix_elements and any(l.get('flavor') is None for l in matrix_elements[0].get('processes')[0].get('legs')):
             [m.get_external_flavors() for m in matrix_elements]  #precompute all flavors
         # Just the matrix.f files
         if self._export_format == 'matrix':
