@@ -1918,7 +1918,13 @@ class LoopHelasMatrixElement(helas_objects.HelasMatrixElement):
         if process.get('has_born'):
             ref_orders = [bao[0] for bao in born_amp_orders]
         else:
-            ref_orders = [lao[0] for lao in loop_orders+ct_amp_orders]
+            # Without Born, the loop amplitudes are squared against all the
+            # loop-less ones too: the tree-level amplitudes of an interference
+            # process (LIxtree) are stored as UVCT amplitudes. Their squared
+            # orders must be known even if only the interference is selected,
+            # since the generated code evaluates every product.
+            ref_orders = [lao[0] for lao in loop_orders+ct_amp_orders+
+                                                               uvct_amp_orders]
         
         # Temporarily we set squared_orders to be a dictionary with keys being
         # the actual contributing squared_orders and the values are the list 

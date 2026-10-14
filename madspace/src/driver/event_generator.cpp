@@ -397,7 +397,9 @@ std::size_t EventGenerator::next_batch_event_count(std::size_t channel_index) co
     return compute_generation_batch_event_count(
         status.count_target,
         status.count_unweighted,
-        status.count_opt,
+        // Not count_opt: start_jobs() splits batches by nominal size, and a job
+        // repeating batches to pass cuts yields more raw points than that.
+        channel->count_requested_opt(),
         abs_cross_section.count(),
         abs_cross_section.rel_error(),
         _config
@@ -1440,7 +1442,7 @@ void EventGenerator::print_gen_update_pretty(bool done) {
     if (!std::isnan(_status.error)) {
         int_str = format_with_error(_status.mean, _status.error);
         if (std::abs(_status.error) < std::abs(_status.mean)) {
-            rel_str = std::format("{:.4f} %", _status.error / _status.mean * 100);
+            rel_str = std::format("{:.4f} %", _status.error / std::abs(_status.mean) * 100);
         }
         rsd_str = std::format("{:.3f}", _status.rel_std_dev);
         uweff_str = std::format(
@@ -1526,7 +1528,7 @@ void EventGenerator::print_gen_update_log(bool done) {
     _last_print_time = now;
 
     std::string rel_str = std::abs(_status.error) < std::abs(_status.mean)
-        ? std::format("{:.4f} %", _status.error / _status.mean * 100)
+        ? std::format("{:.4f} %", _status.error / std::abs(_status.mean) * 100)
         : "";
     Logger::info(
         std::format(

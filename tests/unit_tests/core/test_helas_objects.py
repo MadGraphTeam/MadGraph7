@@ -16,6 +16,7 @@ from __future__ import absolute_import
 from madgraph.iolibs import helas_call_writers
 """Unit test library for the helas_objects module"""
 import unittest as uni
+from unittest import mock
 import copy
 
 import tests.unit_tests as unittest
@@ -5957,6 +5958,220 @@ class TestFlavorStoreDecayChain(unittest.TestCase):
                     "has_flavor/check_flavor disagree for %r on a decay "
                     "diagram" % (flv,))
 
+
+#===============================================================================
+# TestDecayChainFlavorTree  (bottom-up flavor pass of decay-chain MEs)
+#===============================================================================
+class TestDecayChainFlavorTree(unittest.TestCase):
+    """populate_flavor_validity builds the valid flavors of a decay-chain ME
+    bottom-up (_valid_flavors_per_diagram) instead of checking every flavor
+    assignment of the merged legs on every diagram, which took hours for
+    p p > w+ w+ w- w- with hadronic decays.  It must give exactly what that
+    enumeration gives: same allowed flavors, in the same order, and the same
+    per-diagram stores.  The decays are identical (z z) or not (w+ w-), so
+    several assignments share a signature across the decay sub-trees.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.model = import_ufo.import_model(
+            'sm', options={'apply_flavor_grouping': True})
+        # command-line processes, with and without flavor grouping
+        import madgraph.interface.master_interface as Cmd
+        cls.cmd = Cmd.MasterCmd()
+        cls.cmd.exec_cmd('import model sm')
+        cls.cmd_no_grouping = Cmd.MasterCmd()
+        cls.cmd_no_grouping.exec_cmd('set apply_flavor_grouping False')
+        cls.cmd_no_grouping.exec_cmd('import model sm')
+
+    def build(self, bosons):
+        q = 81
+        legs = [base_objects.Leg({'id': q, 'number': 1, 'state': False}),
+                base_objects.Leg({'id': -q, 'number': 2, 'state': False})]
+        legs += [base_objects.Leg({'id': b, 'number': 3 + i, 'state': True})
+                 for i, b in enumerate(bosons)]
+        core = base_objects.Process({'legs': base_objects.LegList(legs),
+                                     'model': self.model,
+                                     'orders': {'QED': 2, 'QCD': 0}})
+        decays = base_objects.ProcessList()
+        for b in misc.make_unique(bosons):
+            decays.append(base_objects.Process({
+                'legs': base_objects.LegList([
+                    base_objects.Leg({'id': b, 'number': 1, 'state': False}),
+                    base_objects.Leg({'id': q, 'number': 2, 'state': True}),
+                    base_objects.Leg({'id': -q, 'number': 3, 'state': True})]),
+                'model': self.model,
+                'orders': {'QED': 1, 'QCD': 0}}))
+        core.set('decay_chains', decays)
+        amp = diagram_generation.DecayChainAmplitude(core)
+        mes = helas_objects.HelasDecayChainProcess(amp).\
+            combine_decay_chain_processes()
+        self.assertEqual(len(mes), 1)
+        return mes[0]
+
+    @staticmethod
+    def flavor_store(me):
+        return (list(me.get('allowed_flavors')),
+                [list(pdgs) for pdgs in me.get('allowed_flavors_pdgs')],
+                [sorted(diag.valid_flavors) for diag in me.get('diagrams')])
+
+    def test_tree_pass_matches_enumeration(self):
+        """Same flavor store with the bottom-up pass and with the enumeration
+        (the fallback, forced here)."""
+        HME = helas_objects.HelasMatrixElement
+        for bosons, nflavors in [((24, -24), 16), ((23, 23), 40)]:
+            with self.subTest(bosons=bosons):
+                with mock.patch.object(HME, 'check_flavor_for_all_diagrams',
+                        autospec=True,
+                        side_effect=HME.check_flavor_for_all_diagrams) as calls:
+                    me = self.build(bosons)
+                # only the core and decay MEs enumerate their (16) flavors;
+                # the enumeration of the full ME takes ~4^6 calls.
+                self.assertLessEqual(calls.call_count, 48)
+                with mock.patch.object(HME, '_valid_flavors_per_diagram',
+                                    side_effect=HME.FlavorTreeUnsupported):
+                    reference = self.build(bosons)
+                self.assertEqual(self.flavor_store(me),
+                                 self.flavor_store(reference))
+                self.assertEqual(len(me.get('allowed_flavors')), nflavors)
+
+    def test_tree_pass_error_handling(self):
+        """A FlavorTagError of the bottom-up pass falls back to the
+        enumeration; any other error is a bug and propagates."""
+        HME = helas_objects.HelasMatrixElement
+        expected = self.flavor_store(self.build((24, -24)))
+        with mock.patch.object(HME, '_valid_flavors_per_diagram',
+                side_effect=helas_objects.HelasWavefunction.FlavorTagError):
+            self.assertEqual(self.flavor_store(self.build((24, -24))),
+                             expected)
+        with mock.patch.object(HME, '_valid_flavors_per_diagram',
+                               side_effect=TypeError):
+            self.assertRaises(TypeError, self.build, (24, -24))
+
+    @staticmethod
+    def generate(cmd, line):
+        cmd.exec_cmd('generate %s' % line)
+        return helas_objects.HelasMultiProcess(
+            cmd._curr_amps).get_matrix_elements()
+
+    def check_process(self, line, compare_enumeration=True):
+        """For the decay chain `line` with flavor grouping: the enumeration is
+        never used for a decay-chain ME, the flavor stores are those of the
+        enumeration, and the physical channels (sorted initial, sorted final
+        pdgs) are those of the same process without flavor grouping."""
+        HME = helas_objects.HelasMatrixElement
+        enumerated = []
+        enumerate_flavor = HME.check_flavor_for_all_diagrams
+        def spy(me, *args):
+            if me.get('processes')[0].get('decay_chains'):
+                enumerated.append(me.get('processes')[0].nice_string())
+            return enumerate_flavor(me, *args)
+        with mock.patch.object(HME, 'check_flavor_for_all_diagrams',
+                               autospec=True, side_effect=spy):
+            mes = self.generate(self.cmd, line)
+        self.assertFalse(enumerated)
+        self.assertTrue(any(me.get('processes')[0].get('decay_chains')
+                            for me in mes))
+
+        if compare_enumeration:
+            with mock.patch.object(HME, '_valid_flavors_per_diagram',
+                                   side_effect=HME.FlavorTreeUnsupported):
+                reference = self.generate(self.cmd, line)
+            # get_external_flavors applies the (lazy) diagram trimming
+            for me in mes + reference:
+                me.get_external_flavors()
+            self.assertEqual([self.flavor_store(me) for me in mes],
+                             [self.flavor_store(me) for me in reference])
+
+        channels = set()
+        for me in mes:
+            ninit = me.get_nexternal_ninitial()[1]
+            for pdgs in me.get_external_flavors(return_pdgs=True)[1]:
+                channels.add((tuple(sorted(pdgs[:ninit])),
+                              tuple(sorted(pdgs[ninit:]))))
+        expected = set()
+        for me in self.generate(self.cmd_no_grouping, line):
+            for proc in me.get('processes'):
+                ninit = len(proc.get_initial_ids())
+                pdgs = [leg.get('id') for leg in proc.get_legs_with_decays()]
+                expected.add((tuple(sorted(pdgs[:ninit])),
+                              tuple(sorted(pdgs[ninit:]))))
+        self.assertEqual(channels, expected)
+        return channels
+
+    def test_tree_pass_ttbar_nested_decays(self):
+        """Semi-leptonic t t~ with nested decays: merged quarks in the
+        initial state and in the w+ decay, merged leptons and neutrinos in
+        the w- decay."""
+        channels = self.check_process('p p > t t~, (t > b w+, w+ > j j), '
+                                      '(t~ > b~ w-, w- > l- vl~)')
+        self.assertEqual(len(channels), 20)
+
+    def test_tree_pass_vbs_same_sign_ww(self):
+        """Same-sign W scattering: the w exchange ties the flavors of the
+        four merged quark legs, the two identical w+ decays share a
+        signature across their sub-trees.  The enumeration is compared on
+        the restricted decay (it takes ~15 s for l+ vl)."""
+        channels = self.check_process('p p > w+ w+ j j QCD=0, w+ > l+ vl',
+                                      compare_enumeration=False)
+        self.assertEqual(len(channels), 36)
+        channels = self.check_process('p p > w+ w+ j j QCD=0, w+ > e+ ve')
+        self.assertEqual(len(channels), 12)
+
+
+#===============================================================================
+# TestTrimmedDecayChainLegNumbering
+#===============================================================================
+class TestTrimmedDecayChainLegNumbering(unittest.TestCase):
+    """With flavor grouping, go > u u~ n1 (MSSM_SLHA2) becomes
+    go > _quark _anti_quark n1 restricted to u, and the trimming drops the
+    d/s/c-squark diagrams, among them the first one, which introduced the
+    external wavefunctions.  remove_diagrams_without_flavor used to restore
+    them in recursion order (legs 1, 3, 2, 4), and insert_decay, which takes
+    the leg offset of a decay from its first final-state wavefunction, then
+    numbered the decay legs one too low: they collided with production leg 2
+    and p p > go go, go > u u~ n1 died building the colour matrix
+    ("1 Nc^2 T(-1003,-1001) cannot be simplified to a number")."""
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.interface.master_interface as Cmd
+        cls.cmd = Cmd.MasterCmd()
+        cls.cmd.exec_cmd('set apply_flavor_grouping True')
+        cls.cmd.exec_cmd('import model MSSM_SLHA2')
+
+    def generate(self, line):
+        self.cmd.exec_cmd(line)
+        return helas_objects.HelasMultiProcess(
+            self.cmd._curr_amps).get_matrix_elements()
+
+    def test_trimmed_decay_keeps_external_leg_order(self):
+        """The trimmed decay ME lists its external wavefunctions by leg."""
+        mes = self.generate('generate go > u u~ n1')
+        self.assertEqual(len(mes), 1)
+        me = mes[0]
+        self.assertTrue(me._flavor_trimmed)
+        self.assertEqual(len(me.get('diagrams')), 4)
+        externals = [wf.get('number_external') for wf in
+                     me.get('diagrams')[0].get('wavefunctions')
+                     if not wf.get('mothers')]
+        self.assertEqual(externals, [1, 2, 3, 4])
+
+    def test_gluino_decay_chain_leg_numbering(self):
+        """Every external leg of the decay-chain MEs is the particle of the
+        process leg with that number (the colour matrix builds)."""
+        mes = self.generate('generate p p > go go, go > u u~ n1')
+        self.assertEqual(len(mes), 2)
+        for me in mes:
+            expected = dict((leg.get('number'), set([abs(leg.get('id'))]))
+                for leg in me.get('processes')[0].get_legs_with_decays())
+            self.assertEqual(len(expected), 8)
+            found = {}
+            for wf in me.get_all_wavefunctions():
+                if not wf.get('mothers'):
+                    found.setdefault(wf.get('number_external'), set()).add(
+                        abs(wf.get('pdg_code')))
+            self.assertEqual(found, expected)
 
 
 

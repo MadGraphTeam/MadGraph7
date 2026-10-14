@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdio>
 #include <stdexcept>
 #include <utility>
 
@@ -18,9 +19,9 @@ namespace gpu {
 // every RNG-consuming instruction draws from its own non-overlapping substream.
 constexpr std::size_t RNG_ENGINE_COUNT = 1 << 12;
 
-// The low SEED_STREAM_BITS of the effective 128-bit seed are the per-engine stream index
-// (engine i uses shared_seed | i); the rest is shared across the whole bank. DerivedSeed
-// reserves exactly these bits (max_stream_count == 1 << 16).
+// The low SEED_STREAM_BITS of the effective 128-bit seed are the per-engine stream
+// index (engine i uses shared_seed | i); the rest is shared across the whole bank.
+// DerivedSeed reserves exactly these bits (max_stream_count == 1 << 16).
 constexpr int SEED_STREAM_BITS = 16;
 constexpr std::size_t Q_TABLE_SIZE = std::size_t(1) << SEED_STREAM_BITS;
 static_assert(
@@ -37,10 +38,11 @@ struct MixmaxSeedPrefix {
     std::uint64_t state[MIXMAX_D];
 };
 
-// bits [64,128) (the global run seed) come from `run_skip` (cached by the caller); apply
-// the rest of the shared bits, [SEED_STREAM_BITS, 64), on top
-inline MixmaxSeedPrefix
-mixmax_seed_prefix(const std::array<std::uint32_t, 4>& seed_parts, const RunSeedSkip& run_skip) {
+// bits [64,128) (the global run seed) come from `run_skip` (cached by the caller);
+// apply the rest of the shared bits, [SEED_STREAM_BITS, 64), on top
+inline MixmaxSeedPrefix mixmax_seed_prefix(
+    const std::array<std::uint32_t, 4>& seed_parts, const RunSeedSkip& run_skip
+) {
     MixmaxSeedPrefix prefix;
     for (int i = 0; i < MIXMAX_D; ++i) {
         prefix.state[i] = run_skip.state[i];
@@ -264,21 +266,12 @@ public:
         void* ptr;
         check_error(gpuMalloc(&ptr, sizeof(mixmax_engine) * RNG_ENGINE_COUNT));
         _engines = static_cast<mixmax_engine*>(ptr);
-        check_error(
-            gpuMalloc(&ptr, sizeof(std::uint64_t) * Q_TABLE_SIZE * MIXMAX_D)
-        );
+        check_error(gpuMalloc(&ptr, sizeof(std::uint64_t) * Q_TABLE_SIZE * MIXMAX_D));
         _q_table = static_cast<std::uint64_t*>(ptr);
         _run_skip.update(_seed.seed_parts[0], _seed.seed_parts[1]);
         _prefix = mixmax_seed_prefix(_seed.seed_parts, _run_skip);
     }
-    ~GpuRandom() {
-        if (_engines) {
-            gpuFree(_engines);
-        }
-        if (_q_table) {
-            gpuFree(_q_table);
-        }
-    }
+    ~GpuRandom() { release(); }
     GpuRandom(const GpuRandom&) = delete;
     GpuRandom& operator=(const GpuRandom&) = delete;
     GpuRandom(GpuRandom&& other) noexcept :
@@ -293,12 +286,7 @@ public:
         other._q_table = nullptr;
     }
     GpuRandom& operator=(GpuRandom&& other) noexcept {
-        if (_engines) {
-            gpuFree(_engines);
-        }
-        if (_q_table) {
-            gpuFree(_q_table);
-        }
+        release();
         _engines = other._engines;
         _q_table = other._q_table;
         _seed = other._seed;
@@ -335,9 +323,10 @@ public:
         }
         MixmaxSeedPrefix prefix = _prefix;
         kernel_rng_seed_apply<<<
-            rng_grid_1d(RNG_ENGINE_COUNT), RNG_SEED_BLOCK, 0, stream>>>(
-            _engines, RNG_ENGINE_COUNT, _q_table, prefix
-        );
+            rng_grid_1d(RNG_ENGINE_COUNT),
+            RNG_SEED_BLOCK,
+            0,
+            stream>>>(_engines, RNG_ENGINE_COUNT, _q_table, prefix);
         check_error();
         _pending = false;
     }
@@ -352,9 +341,23 @@ private:
         for (int r = 1; r < SEED_STREAM_BITS; ++r) {
             kernel_q_level<<<blocks, RNG_SEED_BLOCK, 0, stream>>>(_q_table, r);
         }
-        kernel_q_to_coeff<<<
-            rng_grid_1d(Q_TABLE_SIZE), RNG_SEED_BLOCK, 0, stream>>>(_q_table, kr_inv);
+        kernel_q_to_coeff<<<rng_grid_1d(Q_TABLE_SIZE), RNG_SEED_BLOCK, 0, stream>>>(
+            _q_table, kr_inv
+        );
         check_error();
+    }
+
+    // called from the destructor and noexcept move, so errors are reported, not thrown
+    void release() noexcept {
+        for (void* ptr : {static_cast<void*>(_engines), static_cast<void*>(_q_table)}) {
+            if (!ptr) {
+                continue;
+            }
+            gpuError_t error = gpuFree(ptr);
+            if (error != gpuSuccess) {
+                std::fprintf(stderr, "GPU error: %s\n", gpuGetErrorString(error));
+            }
+        }
     }
 
     mixmax_engine* _engines = nullptr;

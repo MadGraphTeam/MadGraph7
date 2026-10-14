@@ -574,7 +574,33 @@ class TestCmdShell2(unittest.TestCase,
                                                'SubProcesses', 'P0_epem_epem')))
         self.assertTrue(os.path.exists(os.path.join(self.out_dir,
                                                'Cards', 'proc_card_mg5.dat')))
-    
+
+    def test_output_standalone_fortran_make_all_subprocesses(self):
+        """A plain 'make' in the SubProcesses directory of a standalone_fortran
+        output (without --prefix) must build the python module of every P
+        directory. The per-directory rules used to come before 'all', so the
+        default goal was the module of the first P directory only."""
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+
+        self.do('import model sm')
+        self.do('generate p p > t t~')
+        self.do('output standalone_fortran %s' % self.out_dir)
+
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        dirs = sorted(d for d in os.listdir(proc_root)
+                      if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+        self.assertGreaterEqual(len(dirs), 2, dirs)
+
+        # a dry run is enough: the per-directory rules call a plain 'make'
+        # (not $(MAKE)), so -n prints them without needing f2py
+        dry_run = subprocess.run(['make', '-n'], cwd=proc_root,
+                                 capture_output=True, text=True)
+        self.assertEqual(dry_run.returncode, 0, dry_run.stderr)
+        for d in dirs:
+            self.assertIn('cd %s;make matrix2py.so' % d, dry_run.stdout)
+
     def test_custom_propa(self):
         """check that using custom propagator is working"""
         
@@ -1395,6 +1421,130 @@ class TestCmdShell2(unittest.TestCase,
                                msg='the squared-order components do not add up '
                                    'to the total this backend computes')
 
+    def test_standalone_interference_helicity_choice(self):
+        """the helicity drawn for an interference |M|^2 follows madevent.
+
+        A helicity can contribute negatively to an interference, so choosing it
+        on the signed running sum over the helicities (the positive case)
+        picks it with no meaningful probability. madmatrix follows madevent
+        instead when the caller draws the helicity (umami's random helicity
+        input, i.e. event generation): helicity i with probability
+        |T_i| / sum_j |T_j|, and the event gets sign(T_i) * sum_j |T_j|. That
+        averages back to the helicity sum sum_j T_j, which is what is returned
+        when no random number is given.
+
+        ``u u~ > t t~ g QED^2==2`` (the QCD-EW interference behind the tt~
+        charge asymmetry) has helicities of both signs at almost every RAMBO
+        point. Each point is evaluated on a uniform grid of helicity random
+        numbers, through the umami interface of the library:
+
+        * |M|^2 is the same, sum_j |T_j|, for every draw;
+        * every helicity always comes with the same sign;
+        * the average over the grid is the helicity sum, to the grid step;
+        * the points with mixed signs give both signs, with
+          sum_j |T_j| > |sum_j T_j|: the signed choice gives a constant |M|^2,
+          and would fail here.
+        """
+        import ctypes
+        import glob
+        import struct
+
+        self.do('import model sm')
+        self.do('generate u u~ > t t~ g QED^2==2')
+        self.do('output standalone %s -f' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        proc_dir = [pjoin(proc_root, d) for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))][0]
+        devnull = open(os.devnull, 'w')
+        self.assertEqual(0, subprocess.call(['make', 'FPTYPE=d'], stdout=devnull,
+                                            stderr=devnull, cwd=proc_dir))
+        npar, npoints, ngrid = 5, 16, 4000
+        momfile = pjoin(proc_dir, 'momenta.bin')
+        subprocess.call(['./check_sa.exe', 'perf', '--dump-momenta', momfile,
+                         '1', str(npoints), '1'], cwd=proc_dir,
+                        stdout=devnull, stderr=devnull)
+        raw = open(momfile, 'rb').read()
+        momenta = struct.unpack('%dd' % (len(raw) // 8), raw)
+        self.assertEqual(len(momenta), npoints * npar * 4)
+
+        # The process library finds its common library through its own
+        # loader-relative rpath: no RTLD_GLOBAL preload, which would leak this
+        # process's symbols into every library loaded later in this (shared)
+        # test process.
+        libdir = pjoin(self.out_dir, 'lib')
+        lib = ctypes.CDLL(glob.glob(pjoin(libdir, 'libmadmatrix_P*.so'))[0])
+        handle = ctypes.c_void_p()
+        card = pjoin(self.out_dir, 'Cards', 'param_card.dat').encode()
+        self.assertEqual(0, lib.umami_initialize(ctypes.byref(handle), card))
+        self.addCleanup(lib.umami_free, handle)
+        # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_IN_RANDOM_HELICITY = 4,
+        # UMAMI_OUT_MATRIX_ELEMENT = 0, UMAMI_OUT_HELICITY_INDEX = 3
+        IN_MOMENTA, IN_RANDOM_HELICITY = 0, 4
+        OUT_MATRIX_ELEMENT, OUT_HELICITY_INDEX = 0, 3
+
+        def evaluate(point, draw):
+            count = ngrid if draw else 1
+            mom = (ctypes.c_double * (4 * npar * count))()
+            for ipart in range(npar):  # momenta[count * (npar * mu + ipart) + ievt]
+                for mu in range(4):
+                    start = count * (npar * mu + ipart)
+                    mom[start:start + count] = [point[ipart * 4 + mu]] * count
+            me = (ctypes.c_double * count)()
+            hel = (ctypes.c_int * count)()
+            rnd = (ctypes.c_double * count)(
+                *[(k + 0.5) / count for k in range(count)])
+            in_keys = [IN_MOMENTA] + ([IN_RANDOM_HELICITY] if draw else [])
+            inputs = [mom] + ([rnd] if draw else [])
+            out_keys = [OUT_MATRIX_ELEMENT] + ([OUT_HELICITY_INDEX] if draw else [])
+            outputs = [me] + ([hel] if draw else [])
+            status = lib.umami_matrix_element(
+                handle, ctypes.c_size_t(count), ctypes.c_size_t(count),
+                ctypes.c_size_t(0), ctypes.c_size_t(len(in_keys)),
+                (ctypes.c_int * len(in_keys))(*in_keys),
+                (ctypes.c_void_p * len(inputs))(
+                    *[ctypes.addressof(a) for a in inputs]),
+                ctypes.c_size_t(len(out_keys)),
+                (ctypes.c_int * len(out_keys))(*out_keys),
+                (ctypes.c_void_p * len(outputs))(
+                    *[ctypes.addressof(a) for a in outputs]))
+            self.assertEqual(status, 0)
+            return list(me), list(hel)
+
+        mixed = 0
+        for ipoint in range(npoints):
+            point = momenta[ipoint * npar * 4:(ipoint + 1) * npar * 4]
+            (helicity_sum,), _ = evaluate(point, False)
+            me, hel = evaluate(point, True)
+            abs_sum = abs(me[0])
+            signs = {}
+            for value, ihel in zip(me, hel):
+                self.assertAlmostEqual(abs(value), abs_sum, delta=1e-12 * abs_sum)
+                self.assertEqual(signs.setdefault(ihel, value > 0), value > 0,
+                                 'helicity %d came with both signs' % ihel)
+            # the grid step bounds the error of each helicity's interval
+            self.assertAlmostEqual(sum(me) / ngrid, helicity_sum,
+                                   delta=len(signs) * abs_sum / ngrid)
+            if len(set(signs.values())) == 2:
+                mixed += 1
+                self.assertGreater(abs_sum, abs(helicity_sum) * (1 + 1e-6))
+        # 15 of the 16 points when this test was written
+        self.assertGreater(mixed, npoints // 2)
+
+        # run card [generation] interference_helicity = "summed": the instance
+        # keeps the helicity sum as the |M|^2 of every draw (mg7 then writes the
+        # helicities as 9)
+        lib.umami_set_parameter.argtypes = [ctypes.c_void_p, ctypes.c_char_p,
+                                            ctypes.c_double, ctypes.c_double]
+        self.assertEqual(0, lib.umami_set_parameter(
+            handle, b'interference_helicity_summed', 1., 0.))
+        for ipoint in range(4):
+            point = momenta[ipoint * npar * 4:(ipoint + 1) * npar * 4]
+            (helicity_sum,), _ = evaluate(point, False)
+            me, _hel = evaluate(point, True)
+            for value in me:
+                self.assertAlmostEqual(value, helicity_sum,
+                                       delta=1e-12 * abs(helicity_sum))
+
     def test_standalone_cpp(self):
         """test that the scalar C++ standalone exporter is working
 
@@ -1862,6 +2012,88 @@ class TestCmdShell2(unittest.TestCase,
             self.assertLessEqual(abs(vector - scalar), 1e-5 * scalar,
                                  'the scalar and vectorised backends disagree '
                                  'in %s: %s vs %s' % (d, scalar, vector))
+
+    def test_standalone_cpp_perf_alpha_s_from_param_card(self):
+        """check_sa.exe 'perf' mode must use the alpha_s of the param card,
+        as the 'matrix' mode does.
+
+        With --momenta (or -e) and --dump-me, perf mode is how the matrix
+        element is evaluated at user-given points. It did not pass alpha_s to
+        umami_matrix_element, so UMAMI fell back to its hard-coded g_s
+        (alpha_s = 0.118) whatever the card said.
+
+        g g > t t~ is compared to the analytic result (Ellis, Stirling, Webber,
+        table 10.2) at the card alpha_s, then at twice that value. The top
+        width in the t-channel propagators moves MadGraph away from it by about
+        3e-6 at this point.
+        """
+        import array
+        import math
+        import models.check_param_card as check_param_card
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        self.do('import model sm')
+        self.do('generate g g > t t~')
+        self.do('output standalone %s' % self.out_dir)
+
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        dirs = [d for d in os.listdir(proc_root)
+                if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))]
+        self.assertEqual(len(dirs), 1, dirs)
+        proc_dir = pjoin(proc_root, dirs[0])
+        devnull = open(os.devnull, 'w')
+        subprocess.call(['make', 'FPTYPE=d'], stdout=devnull, stderr=devnull,
+                        cwd=proc_dir)
+        self.assertTrue(os.path.exists(pjoin(proc_dir, 'check_sa.exe')),
+                        'check_sa.exe did not build in %s' % proc_dir)
+
+        card_path = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        card = check_param_card.ParamCard(card_path)
+        mt = card['mass'].get(6).value
+
+        # one on-shell point in the partonic centre-of-mass frame
+        energy, theta, phi = 500., 0.7, 0.3
+        pabs = math.sqrt(energy**2 - mt**2)
+        p3 = [energy, pabs * math.sin(theta) * math.cos(phi),
+              pabs * math.sin(theta) * math.sin(phi), pabs * math.cos(theta)]
+        p4 = [energy] + [-x for x in p3[1:]]
+        point = [energy, 0., 0., energy] + [energy, 0., 0., -energy] + p3 + p4
+        # repeated 8 times: perf mode needs a multiple of the SIMD width
+        with open(pjoin(proc_dir, 'pts.bin'), 'wb') as fsock:
+            array.array('d', point * 8).tofile(fsock)
+
+        s = 4 * energy**2
+        tau1 = 2 * energy * (p3[0] - p3[3]) / s   # 2 p1.p3 / s
+        tau2 = 2 * energy * (p3[0] + p3[3]) / s   # 2 p2.p3 / s
+        rho = 4 * mt**2 / s
+        def analytic(alpha_s):
+            return (4 * math.pi * alpha_s)**2 \
+                * (1. / (6 * tau1 * tau2) - 3. / 8.) \
+                * (tau1**2 + tau2**2 + rho - rho**2 / (4 * tau1 * tau2))
+
+        def perf_mes(tag):
+            dump = 'me_%s.bin' % tag
+            subprocess.call(['./check_sa.exe', 'perf', '--momenta', 'pts.bin',
+                             '--dump-me', dump, '1', '8', '1'],
+                            stdout=devnull, stderr=devnull, cwd=proc_dir)
+            self.assertTrue(os.path.exists(pjoin(proc_dir, dump)),
+                            'check_sa.exe perf wrote no %s' % dump)
+            mes = array.array('d')
+            with open(pjoin(proc_dir, dump), 'rb') as fsock:
+                mes.frombytes(fsock.read())
+            self.assertEqual(len(mes), 8)
+            return mes
+
+        alpha_s = card['sminputs'].get(3).value
+        for tag, value in (('card', alpha_s), ('doubled', 2 * alpha_s)):
+            card['sminputs'].get(3).value = value
+            card.write(card_path)
+            expected = analytic(value)
+            for me in perf_mes(tag):
+                self.assertLessEqual(abs(me - expected), 1e-4 * expected,
+                                     'alpha_s = %s: %s instead of %s'
+                                     % (value, me, expected))
 
     def test_madmatrix_vs_fortran(self):
         """Cross-check that standalone (madmatrix) reproduces the

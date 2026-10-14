@@ -637,6 +637,27 @@ NamedVector<Value> Integrand::build_common_part(
     auto flavor_id = args.at("flavor_id");
     auto batch_size_val = fb.batch_size({args.at("weight_before_cuts")});
 
+    // The matrix element is evaluated on the momenta the event is written
+    // with, which for the mirrored half of a beam-swapped subprocess is the
+    // mirrored set (mirror_momenta: py, pz -> -py, -pz, the rotation by pi
+    // about x that moves each leg onto the other beam). This is what madevent
+    // does too -- it flips the momentum array that then goes to both the matrix
+    // element and the event record (super_auto_dsig_group_v4.inc, "Flip momenta
+    // (rotate around x axis)") -- and it is what the systematics reweighting
+    // here already assumes, since that reads the momenta back out of the event
+    // buffer.
+    //
+    // Feeding the unmirrored momenta instead only ever worked because |M|^2 is
+    // invariant under that rotation. A polarised matrix element is not, once it
+    // is evaluated in a frame that holds the polarised particle at rest: HELAS
+    // quantises such a particle along the *frame* z axis (the pp == 0 branch of
+    // vxxxxx) rather than along its own momentum, the mirror flips that axis,
+    // and the + and - states swap. Measured at 48% on g q > z{+} q evaluated in
+    // the Z rest frame.
+    auto momenta_me = args.index_map().contains("momenta_mirror_acc")
+        ? args.at("momenta_mirror_acc")
+        : momenta_acc;
+
     auto scatter_or_drop = [&](Value default_value, Value value) -> Value {
         if (_drop_cuts_and_rescale) {
             return value;
@@ -680,7 +701,7 @@ NamedVector<Value> Integrand::build_common_part(
 
     // Evaluate differential cross section
     ValueVec xs_args{
-        momenta_acc,
+        momenta_me,
         _flavor_remap.size() > 0 ? fb.gather_int(flavor_id, _flavor_remap) : flavor_id,
     };
     xs_args.push_back(x1_acc);

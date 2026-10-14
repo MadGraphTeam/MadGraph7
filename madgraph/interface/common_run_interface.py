@@ -281,8 +281,10 @@ class CheckValidForCmd(object):
 #        if not hasattr(model.get('particles')[0], 'partial_widths'):
 #            raise self.InvalidCmd, 'The UFO model does not include partial widths information. Impossible to compute widths automatically'
             
-        # check if the name are passed to default MG5
-        if '-modelname' not in open(pjoin(self.me_dir,'Cards','proc_card_mg5.dat')).read():
+        # check if the name are passed to default MG5 (through ProcCard: older
+        # versions wrapped a long 'import model' line, even inside '-modelname')
+        proc_card = banner_mod.ProcCard(pjoin(self.me_dir,'Cards','proc_card_mg5.dat'))
+        if '-modelname' not in proc_card.get('full_model_line'):
             model.pass_particles_name_in_mg_default()        
         model = model_reader.ModelReader(model)
         particles_name = dict([(p.get('name'), p.get('pdg_code'))
@@ -4596,46 +4598,29 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         """ return the model name """
         if hasattr(self, 'model_name'):
             return self.model_name
-        
-        def join_line(old, to_add):
-            if old.endswith('\\'):
-                newline = old[:-1] + to_add
-            else:
-                newline = old + line
-            return newline
-            
-        
-        
-        model = 'sm'
+
+        # Older versions of ProcCard.write wrapped lines at 70 characters, even
+        # inside a token, and ProcCard.read joins them back. Reading the card
+        # also drops the generate/add process lines that precede the last
+        # 'import model'.
+        proc_card = banner_mod.ProcCard(os.path.join(self.me_dir, 'Cards',
+                                                     'proc_card_mg5.dat'))
+        # info['model'] is None for 'import model_v4 NAME' (and keeps a trailing
+        # comment), so take the name from the full line: the first argument
+        # that is not an option such as -modelname. Default: 'sm'.
+        args = proc_card.get('full_model_line').split('#')[0].split()[2:]
+        args = [arg for arg in args if not arg.startswith('-')]
+        model = args[0] if args else 'sm'
+
         proc = []
-        continuation_line = None
-        for line in open(os.path.join(self.me_dir,'Cards','proc_card_mg5.dat')):
-            line = line.split('#')[0]
-            if continuation_line:
-                line = line.strip()
-                if continuation_line == 'model':
-                    model = join_line(model, line)
-                elif continuation_line == 'proc':
-                    proc = join_line(proc, line)
-                if not line.endswith('\\'):
-                    continuation_line = None
-                continue
-            #line = line.split('=')[0]
-            if line.startswith('import') and 'model' in line:
-                model = line.split()[2]   
-                proc = []
-                if model.endswith('\\'):
-                    continuation_line = 'model'
-            elif line.startswith('generate'):
+        for line in proc_card:
+            line = line.split('#')[0].strip()
+            if line.startswith('generate'):
                 proc.append(line.split(None,1)[1])
-                if proc[-1].endswith('\\'):
-                    continuation_line = 'proc'
             elif line.startswith('add process'):
                 proc.append(line.split(None,2)[2])
-                if proc[-1].endswith('\\'):
-                    continuation_line = 'proc'
         self.model = model
-        self.process = proc 
+        self.process = proc
         return model
 
 
@@ -4778,6 +4763,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         """update the make_opts file writing the environmental variables
         of def_variables.
         if a value of the dictionary is None then it is not written.
+        Return True if the file had to be changed.
         """
         make_opts = path
         pattern = re.compile(r'^(\w+)\s*=\s*(.*)$',re.DOTALL)
@@ -4868,7 +4854,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             # never observe the file in the truncated state that open(...,'w')
             # would leave it in.
             misc.atomic_write(make_opts, content_variables + '\n'.join(content))
-        return       
+        return diff
 
 
 

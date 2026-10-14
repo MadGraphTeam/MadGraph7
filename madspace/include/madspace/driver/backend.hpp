@@ -24,6 +24,7 @@ public:
         bool return_contiguous_grads = false
     ) = 0;
     virtual void set_seed(DerivedSeed seed) = 0;
+    virtual void release_inputs() {}
 
     friend std::unique_ptr<Runtime>
     build_runtime(const Function& function, ContextPtr context, bool concurrent);

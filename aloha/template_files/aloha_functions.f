@@ -125,7 +125,12 @@ c#endif
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -288,7 +293,12 @@ c#endif
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -769,6 +779,72 @@ c#endif
          endif
 
       endif
+c
+      return
+      end
+
+
+      subroutine vxxxxxr(p,vmass,nhel,nsv,r , vc)
+c
+c This subroutine computes a VECTOR wavefunction in the axial gauge
+c defined by the reference momentum r, i.e. such that r.epsilon = 0.
+c
+c It is vxxxxx followed by the residual gauge transformation
+c
+c     eps'^mu = eps^mu - (r.eps)/(r.p) p^mu
+c
+c which, for a massless p, preserves eps'.p = 0, eps'.eps' = 0 and
+c eps'.eps'* = -1 exactly, and therefore returns the same helicity
+c state up to a little-group phase (which cancels in |M|^2).
+c
+c Choosing r to be the (lightlike) momentum of another external leg
+c makes eps.r vanish -- and, when several legs share the same r, makes
+c eps_i.eps_j vanish for same-chirality pairs -- so that whole HELAS
+c currents and amplitudes become identically zero.  See
+c arXiv:2312.07447.
+c
+c r is ignored for a massive vector, where p^2 /= 0 spoils the
+c normalisation, and whenever r.p vanishes (in particular when r is p
+c itself, which is how a leg with no useful reference is written out).
+c
+c input:
+c       real    p(0:3)         : four-momentum of vector boson
+c       real    vmass          : mass          of vector boson
+c       integer nhel = -1, 0, 1: helicity      of vector boson
+c                                (0 is forbidden if vmass=0.0)
+c       integer nsv  = -1 or 1 : +1 for final, -1 for initial
+c       real    r(0:3)         : gauge reference momentum
+c
+c output:
+c       complex vc % W(4)      : vector wavefunction       epsilon^mu(v)
+c
+      use aloha_object
+      implicit none
+      double precision p(0:3), r(0:3), vmass
+      integer nhel, nsv
+      type(aloha) vc
+
+      double precision rdotp
+      double complex rdote, cfac
+
+      call vxxxxx(p,vmass,nhel,nsv , vc)
+
+      if ( vmass.ne.0d0 ) return
+      if ( abs(nhel).ne.1 ) return
+
+      rdotp = r(0)*vc % P(0) - r(1)*vc % P(1)
+     &      - r(2)*vc % P(2) - r(3)*vc % P(3)
+      if ( rdotp.eq.0d0 ) return
+
+      rdote = r(0)*vc % W(1) - r(1)*vc % W(2)
+     &      - r(2)*vc % W(3) - r(3)*vc % W(4)
+      if ( rdote.eq.(0d0,0d0) ) return
+
+      cfac = rdote/rdotp
+      vc % W(1) = vc % W(1) - cfac*vc % P(0)
+      vc % W(2) = vc % W(2) - cfac*vc % P(1)
+      vc % W(3) = vc % W(3) - cfac*vc % P(2)
+      vc % W(4) = vc % W(4) - cfac*vc % P(3)
 c
       return
       end

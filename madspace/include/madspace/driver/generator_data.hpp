@@ -122,7 +122,8 @@ struct GeneratorConfig {
  *
  * @param count_target                 Total unweighted events wanted.
  * @param count_unweighted             Unweighted events generated so far.
- * @param count_opt                    Weighted events generated so far.
+ * @param count_requested              Weighted events requested so far, counting
+ *                                     each job at its nominal batch size.
  * @param abs_cross_section_count      Events behind the current cross-section
  *                                     estimate.
  * @param abs_cross_section_rel_error  Relative error of that estimate.
@@ -131,7 +132,7 @@ struct GeneratorConfig {
 std::size_t compute_generation_batch_event_count(
     std::size_t count_target,
     double count_unweighted,
-    std::size_t count_opt,
+    std::size_t count_requested,
     std::size_t abs_cross_section_count,
     double abs_cross_section_rel_error,
     const GeneratorConfig& config
@@ -261,6 +262,9 @@ struct GeneratorBatchJob {
     // and shrunk to fit by start_job(). False for a steady-state generation batch,
     // dispatched incrementally as device-sized sub-jobs (see ReadyJob).
     bool is_vegas_batch = false;
+    // Nominal batch size start_job() requested; the job generates more raw points
+    // when it repeats batches to get enough of them past the cuts.
+    std::size_t requested_event_count = 0;
 };
 
 void to_json(nlohmann::json& j, const GeneratorStatus& status);

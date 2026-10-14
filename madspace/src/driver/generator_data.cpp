@@ -8,13 +8,16 @@ using namespace madspace;
 std::size_t madspace::compute_generation_batch_event_count(
     std::size_t count_target,
     double count_unweighted,
-    std::size_t count_opt,
+    std::size_t count_requested,
     std::size_t abs_cross_section_count,
     double abs_cross_section_rel_error,
     const GeneratorConfig& config
 ) {
-    double efficiency = count_opt > 0
-        ? std::max(count_unweighted / static_cast<double>(count_opt), 1. / count_opt)
+    double efficiency = count_requested > 0
+        ? std::max(
+              count_unweighted / static_cast<double>(count_requested),
+              1. / count_requested
+          )
         : 1.;
 
     double true_remaining =

@@ -74,7 +74,7 @@ jobs:
     #   acceptancetest_mg7_output_directory acceptancetest_mg7_gridpack
     #   acceptancetest_mg7_ungroup_decay acceptancetest_mg7_group_subprocess
     #   acceptancetest_mg7_merged_flavor_uq acceptancetest_mg7_e_e_collision
-    #   acceptancetest_mg7_generation_heft acceptancetest_mg7_time_of_flight
+    #   acceptancetest_mg7_decay_1to3 acceptancetest_mg7_generation_heft acceptancetest_mg7_time_of_flight
     # Each keeps its own steps, run even when an earlier one failed.
     needs: build_madspace
     runs-on: ubuntu-24.04
@@ -151,6 +151,18 @@ jobs:
             cd $GITHUB_WORKSPACE
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_e_e_collision_mg7 -pA -t0 -l INFO
+
+      # ---- acceptancetest_mg7_decay_1to3 ----
+      # mg7 partial width of t > b e+ ve, pinned to madevent (0.1636 GeV), and
+      # the default histograms of a 1 -> N process: built from the top mass and
+      # selecting every decay product (madspace's observables assume two beams).
+      # Self-skips if the madspace + LHAPDF stack is unavailable.
+      - name: "acceptancetest_mg7_decay_1to3"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_decay_1to3_mg7 -pA -t0 -l INFO
 
       # ---- acceptancetest_mg7_generation_heft ----
       # KNOWN-FAILING (not xfail): mg7 runs HEFT g g > b b~ HIW but its cross
@@ -245,6 +257,21 @@ jobs:
             # make the cached lhapdf-config resolvable so the test finds the data dir
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_flavor_grouping_consistency_mg7 -pA -t0 -l INFO
+
+      # ---- acceptancetest_mg7_polarised_mirror ----
+      # The initial-state mirror against a polarised (non Lorentz invariant)
+      # matrix element: sigma(p p > z{+} j) and sigma(p p > z{-} j) evaluated in
+      # the Z rest frame (me_frame = [3]) must agree, because the two beams of a
+      # symmetric pp collider cannot be told apart and the mirror is what
+      # averages over them. Guards that the matrix element is evaluated on the
+      # momenta the event is written with. Self-skips if the madspace + LHAPDF
+      # stack is unavailable.
+      - name: "acceptancetest_mg7_polarised_mirror"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_polarised_mirror_symmetry_mg7 -pA -t0 -l INFO
 
       # ---- acceptancetest_mg7_vegas_reproducibility ----
       # mg7 seeded-generation reproducibility (p p > t t~, plain VEGAS-optimized

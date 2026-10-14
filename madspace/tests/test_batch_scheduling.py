@@ -1,7 +1,7 @@
 """Unit tests for compute_generation_batch_event_count, the pure function that
 sizes a channel's next steady-state generation batch (see
-generator_data.hpp/.cpp). The result is a raw (pre-unweighting) event count;
-device-specific job splitting happens later, at dispatch time.
+generator_data.hpp/.cpp). The result is a weighted event count in nominal
+batch units; device-specific job splitting happens later, at dispatch time.
 """
 
 import math
@@ -20,7 +20,7 @@ def make_config():
 def batch_events(
     count_target,
     count_unweighted,
-    count_opt,
+    count_requested,
     cross_section_count,
     cross_section_rel_error,
     config,
@@ -28,7 +28,7 @@ def batch_events(
     return ms.compute_generation_batch_event_count(
         count_target,
         count_unweighted,
-        count_opt,
+        count_requested,
         cross_section_count,
         cross_section_rel_error,
         config,
@@ -41,7 +41,7 @@ def test_confident_channel_hits_cap():
     # crawling towards the target.
     config = make_config()
     events = batch_events(100000, 0.0, 0, 10000, 0.001, config)
-    # efficiency defaults to 1 (count_opt == 0), so no raw/unweighted inflation.
+    # efficiency defaults to 1 (count_requested == 0), so no raw/unweighted inflation.
     expected = math.ceil(0.6 * 100000)
     assert events == expected
 
@@ -106,7 +106,7 @@ def test_never_overshoots_true_remaining():
 
 
 def test_zero_efficiency_does_not_diverge():
-    # count_opt > 0 but zero observed successes must not blow up the raw event
+    # count_requested > 0 but zero observed successes must not blow up the raw event
     # request (division by zero) or the caller (a real device batch) would
     # never make progress against a runaway target.
     config = make_config()

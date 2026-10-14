@@ -205,6 +205,17 @@ c         itmin = itmin + 1
       call sample_full(ndim,ncall,itmax,itmin,dsig,ninvar,nconfigs,VECSIZE_USED)
 
 c
+c     madevent_forhel runs with init_mode: report which amplitudes stayed
+c     zero, per helicity, so that gen_ximprove can feed them to the helicity
+c     recycler.  Without this the hel_zeroamp optimisation never sees any
+c     data (none_pass is the only other caller, and that is an error path).
+c     print_zero_amp is an empty stub for non-grouped output.
+c
+      if (init_mode) then
+         call print_zero_amp()
+      endif
+
+c
 c     Now write out events to permanent file
 c
       if (twgt .gt. 0d0) maxwgt=maxwgt/twgt
