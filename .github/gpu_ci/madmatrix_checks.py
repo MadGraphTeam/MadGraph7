@@ -1,44 +1,50 @@
 #!/usr/bin/env python3
-"""The GPU backend of madmatrix against its scalar CPU backend, through umami.
+"""The GPU backend of madmatrix against its scalar CPU backend, with check_sa.exe.
 
 Run by madmatrix_gpu.sh (job madmatrix of gpu_runner_ci.yml) in its run directory.
+Every evaluation is a ``check_sa.exe perf`` run of the standalone output, one executable
+per backend (check_sa_<backend>.exe), on the same events: the momenta, alpha_s, flavour
+and random numbers of every event go in as raw binary files (--momenta, --alphas,
+--flavors, --rnd-hel, --rnd-col) and the |M|^2, helicities and colours come out the
+same way (--dump-me, --dump-hel, --dump-col). An abort of the GPU runtime fails the run
+of check_sa.exe, so only the check it belongs to.
 
 1. mssm_gpu_vs_cpu: MSSM ``p p > go go`` (both subprocesses), whose squark-quark-gluino
    couplings are running flavour couplings (nDPF > 0, gathered per event into
-   dpf_value), on random points with a random alpha_s and flavour per event: the GPU
+   dpf_value), on RAMBO points with a random alpha_s and flavour per event: the GPU
    |M|^2 equal the CPU ones event by event (the GPU gather used to address its one-event
    dpf_value with the offset of the event in the all-events coupling buffer, out of
-   bounds past the first event page), and scale as alpha_s^2.
-2. zero_me: ``b b~ > ta+ ta- / z a`` (s-channel Higgs only) with the tau Yukawa coupling
-   set to 0 in the param card, so that no helicity survives the helicity filtering: the
-   GPU library returns |M|^2 = 0 and no helicity (-1), and for the colour either none
-   (-1) or the only colour flow (0, what a -ffast-math build makes of 0/0, as the CPU
-   one), never stale memory; it used to abort on the invalid launch configuration
+   bounds past the first event page), and scale as alpha_s^2 (--alphas 0.10 and 0.12).
+2. zero_me: ``b b~ > ta+ ta- / z a`` (s-channel Higgs only): |M|^2 > 0 with the default
+   param card, then the tau Yukawa coupling set to 0, so that no helicity survives the
+   helicity filtering: both backends return |M|^2 = 0 and no helicity (-1), and for the
+   colour either none (-1) or the only colour flow (0, what a -ffast-math build makes of
+   0/0), never stale memory; the GPU used to abort on the invalid launch configuration
    (gridDim.y = 0) of the helicity loop.
-3. nonblocking_stream: ``g g > t t~ g`` with umami handed a non-blocking stream (as a
-   torch side stream, which does not synchronise with the default stream) gives the same
-   |M|^2 and helicities as on the default stream, call after call: every memset, kernel
-   and copy of the matrix element must go to the stream umami is given.
+3. nonblocking_stream: ``g g > t t~ g``, 4 calls of 16384 events, with umami handed a
+   non-blocking stream (--nonblocking-stream, as a torch side stream, which does not
+   synchronise with the default stream) gives the same |M|^2 and helicities as on the
+   default stream: every memset, kernel and copy of the matrix element must go to the
+   stream umami is given, the helicity filtering of the first call included.
 
-Each check runs in a process of its own (--only NAME): an abort of the GPU runtime
-fails that check, not the others. Writes summary.txt (key=value lines) in the current
-directory; exit status 1 if a check fails.
+Any CPU backend but scalar (simd_128, ...) works too, to try the script without a GPU;
+check 3 is then skipped. Writes summary.txt (key=value lines) in the current directory;
+exit status 1 if a check fails.
 """
 
 import argparse
+import array
 import glob
-import json
 import math
 import os
 import random
 import re
+import shutil
 import subprocess
 import sys
 import time
 
-from umami_harness import (GPU_BACKENDS, OUT_COLOR_INDEX, OUT_HELICITY_INDEX,
-                           OUT_MATRIX_ELEMENT, Umami, rambo)
-
+GPU_BACKENDS = ('cuda', 'hip')
 CPU_BACKEND = 'scalar'
 CHECKS = ('mssm_gpu_vs_cpu', 'zero_me', 'nonblocking_stream')
 
@@ -59,63 +65,96 @@ def run(cmd, cwd=None, log=None):
         return subprocess.call(cmd, cwd=cwd, stdout=out, stderr=subprocess.STDOUT)
 
 
+def write(path, typecode, values):
+    """A raw binary file of check_sa.exe: 'd' double, 'I' 32-bit unsigned int."""
+    with open(path, 'wb') as f:
+        array.array(typecode, values).tofile(f)
+    return os.path.abspath(path)
+
+
+def read(path, typecode):
+    """A file written by check_sa.exe: 'd' (--dump-me), 'i' (--dump-hel, --dump-col)."""
+    values = array.array(typecode)
+    with open(path, 'rb') as f:
+        values.frombytes(f.read())
+    return values
+
+
 def output(repo, name, model, process, backends):
-    """output standalone + make for these backends in every subprocess: the output
-    directory and its subprocess names."""
+    """output standalone + make for these backends in every subprocess, keeping the
+    check_sa.exe of each as check_sa_<backend>.exe: the subprocess directories."""
     with open(name + '.mg5', 'w') as f:
         f.write('import model %s\ngenerate %s\noutput standalone %s -f\n' % (model, process, name))
     if run([sys.executable, os.path.join(repo, 'bin', 'madgraph'), name + '.mg5'],
            log=name + '.log') != 0:
         raise RuntimeError('madgraph failed, see %s.log' % name)
-    subprocesses = sorted(os.path.basename(d)
-                          for d in glob.glob(os.path.join(name, 'SubProcesses', 'P*')))
-    if not subprocesses:
+    proc_dirs = sorted(glob.glob(os.path.join(name, 'SubProcesses', 'P*')))
+    if not proc_dirs:
         raise RuntimeError('no subprocess directory for %s' % process)
     jobs = os.environ.get('SLURM_CPUS_PER_TASK', '4')
-    for sub in subprocesses:
+    for proc_dir in proc_dirs:
         for backend in backends:
-            log = '%s_%s_%s_make.log' % (name, sub, backend)
+            log = '%s_%s_%s_make.log' % (name, os.path.basename(proc_dir), backend)
+            # check_sa.exe is relinked for the backend of each make (its libraries carry
+            # the backend in their name)
             if run(['make', '-j', jobs, 'BACKEND=' + backend, 'FPTYPE=d'],
-                   cwd=os.path.join(name, 'SubProcesses', sub), log=log) != 0:
+                   cwd=proc_dir, log=log) != 0:
                 raise RuntimeError('make failed, see %s' % log)
-    return subprocesses
+            shutil.copy(os.path.join(proc_dir, 'check_sa.exe'),
+                        os.path.join(proc_dir, 'check_sa_%s.exe' % backend))
+    return proc_dirs
 
 
-def library(name, sub, backend):
-    return os.path.join(name, 'lib', 'libmadmatrix_%s_%s.so' % (sub, backend))
+def check_sa(proc_dir, backend, args, log):
+    """check_sa_<backend>.exe perf <args> in proc_dir (it reads ../../Cards/param_card.dat)."""
+    cmd = ['./check_sa_%s.exe' % backend, 'perf'] + [str(a) for a in args]
+    status = run(cmd, cwd=proc_dir, log=log)
+    if status != 0:
+        raise RuntimeError('%s failed (exit status %d), see %s' % (' '.join(cmd), status, log))
 
 
-def card(name):
-    return os.path.join(name, 'Cards', 'param_card.dat')
+def dump(prefix, what):
+    return os.path.abspath('%s_%s.bin' % (prefix, what))
 
 
 # ---------------------------------------------------------------------------
 # 1. running flavour couplings (MSSM p p > go go): GPU against CPU
 # ---------------------------------------------------------------------------
 
-def check_mssm_gpu_vs_cpu(repo, backend, npoints=1024):
+def check_mssm_gpu_vs_cpu(backend, repo, nevt=1024):
     section('MSSM p p > go go, running flavour couplings: %s against %s' % (backend, CPU_BACKEND))
     name = 'mssm_gogo'
-    subprocesses = output(repo, name, 'MSSM_SLHA2', 'p p > go go', (CPU_BACKEND, backend))
+    proc_dirs = output(repo, name, 'MSSM_SLHA2', 'p p > go go', (CPU_BACKEND, backend))
     rng = random.Random(11)
     problems, details = [], []
-    for sub in subprocesses:
-        data = open(os.path.join(name, 'SubProcesses', sub, 'ProcessData.h')).read()
+    for proc_dir in proc_dirs:
+        sub = os.path.basename(proc_dir)
+        data = open(os.path.join(proc_dir, 'ProcessData.h')).read()
         ndpf = int(re.search(r'constexpr int nDPF = (\d+);', data).group(1))
         nflavor = int(re.search(r'constexpr int nmaxflavor = (\d+);', data).group(1))
         if ndpf == 0:
             problems.append('%s: nDPF = 0, no running flavour coupling to check' % sub)
-        cpu = Umami(CPU_BACKEND, library(name, sub, CPU_BACKEND), card(name))
-        gpu = Umami(backend, library(name, sub, backend), card(name))
-        points = [rambo(gpu.masses[2:], 3000., rng, gpu.masses[:2]) for _ in range(npoints)]
-        # the first two events: one point at two values of alpha_s
-        points[1] = points[0]
-        alpha_s = [0.10, 0.12] + [rng.uniform(0.09, 0.14) for _ in range(npoints - 2)]
-        flavor = [rng.randrange(nflavor) for _ in range(npoints)]
-        (me_cpu,) = cpu(points, alpha_s=alpha_s, flavor=flavor)
-        (me_gpu,) = gpu(points, alpha_s=alpha_s, flavor=flavor)
+        prefix = '%s_%s' % (name, sub)
+        # one batch of nevt events, the same on both backends
+        batch = [1, nevt, 1]
+        momenta = dump(prefix, 'momenta')
+        check_sa(proc_dir, CPU_BACKEND, ['--energy', 3000, '--dump-momenta', momenta] + batch,
+                 prefix + '_rambo.log')
+        alphas = write(prefix + '_alphas.bin', 'd', [rng.uniform(0.09, 0.14) for _ in range(nevt)])
+        flavors = write(prefix + '_flavors.bin', 'I', [rng.randrange(nflavor) for _ in range(nevt)])
+        me = {}
+        for tag, run_backend, alphas_arg in (('cpu', CPU_BACKEND, alphas), ('gpu', backend, alphas),
+                                             ('gpu010', backend, '0.10'), ('gpu012', backend, '0.12')):
+            out = dump(prefix, 'me_' + tag)
+            check_sa(proc_dir, run_backend, ['--momenta', momenta, '--alphas', alphas_arg,
+                                             '--flavors', flavors, '--dump-me', out] + batch,
+                     '%s_%s.log' % (prefix, tag))
+            me[tag] = read(out, 'd')
+        if not len(me['cpu']) == len(me['gpu']) == nevt:
+            problems.append('%s: %d CPU and %d GPU |M|^2 for %d events'
+                            % (sub, len(me['cpu']), len(me['gpu']), nevt))
         rels = [abs(a - b) / abs(a) if a != 0 else (0. if b == 0 else float('inf'))
-                for a, b in zip(me_cpu, me_gpu)]
+                for a, b in zip(me['cpu'], me['gpu'])]
         # every event that is not within the tolerance, a nan included (it fails any
         # comparison, so it must not go through a running maximum, which would drop it)
         bad = [ievt for ievt, rel in enumerate(rels) if not rel < 1e-9]
@@ -123,17 +162,20 @@ def check_mssm_gpu_vs_cpu(repo, backend, npoints=1024):
         if bad:
             first = bad[0]
             problems.append('%s: %d of %d events differ, first event %d %s %.10e vs %s %.10e (rel %.1e)'
-                            % (sub, len(bad), npoints, first, backend, me_gpu[first],
-                               CPU_BACKEND, me_cpu[first], rels[first]))
-        if not any(v != 0 for v in me_cpu):
+                            % (sub, len(bad), nevt, first, backend, me['gpu'][first],
+                               CPU_BACKEND, me['cpu'][first], rels[first]))
+        if not any(v != 0 for v in me['cpu']):
             problems.append('%s: all |M|^2 vanish' % sub)
-        scaling = me_gpu[1] / me_gpu[0] / (0.12 / 0.10) ** 2 - 1 if me_gpu[0] else float('inf')
-        if not abs(scaling) < 1e-9:
-            problems.append('%s: |M|^2 not ~ alpha_s^2 (ratio - 1 = %.1e)' % (sub, scaling))
+        # |M|^2 ~ alpha_s^2, event by event
+        ratio = (0.12 / 0.10) ** 2
+        scaling = [b / a / ratio - 1 if a != 0 else float('inf')
+                   for a, b in zip(me['gpu010'], me['gpu012'])]
+        bad = [ievt for ievt, s in enumerate(scaling) if not abs(s) < 1e-9]
+        if bad or len(scaling) != nevt:
+            problems.append('%s: |M|^2 not ~ alpha_s^2 in %d of %d events (first: ratio - 1 = %.1e)'
+                            % (sub, len(bad), nevt, scaling[bad[0]] if bad else float('nan')))
         details.append('%s nDPF %d, %d flavours, max rel diff %.1e' % (sub, ndpf, nflavor, worst))
         print('  ' + details[-1])
-        cpu.free()
-        gpu.free()
     check('mssm_gpu_vs_cpu', not problems, '; '.join(problems[:3]) or '; '.join(details))
 
 
@@ -141,109 +183,108 @@ def check_mssm_gpu_vs_cpu(repo, backend, npoints=1024):
 # 2. a subprocess with no good helicity
 # ---------------------------------------------------------------------------
 
-def check_zero_me(repo, backend, npoints=64):
-    section('no good helicity: b b~ > ta+ ta- / z a with ymtau = 0 (%s)' % backend)
+def check_zero_me(backend, repo, nevt=64):
+    section('no good helicity: b b~ > ta+ ta- / z a with ymtau = 0 (%s, %s)' % (backend, CPU_BACKEND))
     name = 'zero_me'
-    (sub,) = output(repo, name, 'sm', 'b b~ > ta+ ta- / z a', (CPU_BACKEND, backend))
-    text = open(card(name)).read()
+    (proc_dir,) = output(repo, name, 'sm', 'b b~ > ta+ ta- / z a', (CPU_BACKEND, backend))
+    card = os.path.join(name, 'Cards', 'param_card.dat')
+    text = open(card).read()
     zero_card, count = re.subn(r'(?mi)^(\s*15\s+)\S+(\s*#\s*ymtau)', r'\g<1>0.000000e+00\2', text)
     if count != 1:
-        raise RuntimeError('no ymtau in %s' % card(name))
-    zero_path = os.path.join(name, 'Cards', 'param_card_ymtau0.dat')
-    open(zero_path, 'w').write(zero_card)
+        raise RuntimeError('no ymtau in %s' % card)
     rng = random.Random(5)
-    # the helicity filtering runs once per library (and process): the GPU library only
-    # ever sees the card with ymtau = 0, the CPU library the default one (|M|^2 != 0)
-    gpu = Umami(backend, library(name, sub, backend), zero_path)
-    cpu = Umami(CPU_BACKEND, library(name, sub, CPU_BACKEND), card(name))
-    points = [rambo(gpu.masses[2:], 500., rng, gpu.masses[:2]) for _ in range(npoints)]
-    rnd = [rng.random() for _ in range(npoints)]
-    outputs = (OUT_MATRIX_ELEMENT, OUT_HELICITY_INDEX, OUT_COLOR_INDEX)
-    me, hel, col = gpu(points, random_helicity=rnd, random_color=rnd, outputs=outputs)
-    (me_default,) = cpu(points)
-    problems = []
-    if any(v != 0 for v in me):
-        problems.append('|M|^2 not 0: %s' % me[:4])
-    if set(hel) != {-1} or not set(col) <= {-1, 0}:
-        problems.append('helicities %s, colours %s (expected -1, and -1 or 0)'
-                        % (sorted(set(hel))[:4], sorted(set(col))[:4]))
-    if not all(v > 0 for v in me_default):
-        problems.append('|M|^2 with the default card not > 0: %s' % me_default[:4])
-    gpu.free()
-    cpu.free()
+    batch = [1, nevt, 1]
+    momenta = dump(name, 'momenta')
+    check_sa(proc_dir, CPU_BACKEND, ['--energy', 500, '--dump-momenta', momenta,
+                                     '--dump-me', dump(name, 'me_default')] + batch,
+             name + '_default.log')
+    me_default = read(dump(name, 'me_default'), 'd')
+    rnd = write(name + '_rnd.bin', 'd', [rng.random() for _ in range(nevt)])
+    # check_sa.exe reads the param card at every run: from here on ymtau = 0 (the
+    # helicity filtering runs at the first call of each run)
+    open(card, 'w').write(zero_card)
+    problems, seen = [], []
+    for run_backend in (backend, CPU_BACKEND):
+        prefix = '%s_%s' % (name, run_backend)
+        check_sa(proc_dir, run_backend, ['--momenta', momenta, '--rnd-hel', rnd, '--rnd-col', rnd,
+                                         '--dump-me', dump(prefix, 'me'),
+                                         '--dump-hel', dump(prefix, 'hel'),
+                                         '--dump-col', dump(prefix, 'col')] + batch,
+                 prefix + '.log')
+        me, hel, col = (read(dump(prefix, 'me'), 'd'), read(dump(prefix, 'hel'), 'i'),
+                        read(dump(prefix, 'col'), 'i'))
+        if len(me) != nevt or any(v != 0 for v in me):
+            problems.append('%s: |M|^2 not 0: %s' % (run_backend, list(me[:4])))
+        if set(hel) != {-1} or not set(col) <= {-1, 0}:
+            problems.append('%s: helicities %s, colours %s (expected -1, and -1 or 0)'
+                            % (run_backend, sorted(set(hel))[:4], sorted(set(col))[:4]))
+        seen.append('%s colour %s' % (run_backend, sorted(set(col))))
+    if len(me_default) != nevt or not all(v > 0 for v in me_default):
+        problems.append('|M|^2 with the default card not > 0: %s' % list(me_default[:4]))
     check('zero_me', not problems, '; '.join(problems) or
-          '%d events: |M|^2 = 0, helicity -1, colour %s (default card: %.3e)'
-          % (npoints, sorted(set(col)), me_default[0]))
+          '%d events: |M|^2 = 0, helicity -1, %s (default card: %.3e)'
+          % (nevt, ', '.join(seen), me_default[0]))
 
 
 # ---------------------------------------------------------------------------
 # 3. a non-blocking stream
 # ---------------------------------------------------------------------------
 
-def check_nonblocking_stream(repo, backend, npoints=16384, ncalls=4):
+def check_nonblocking_stream(backend, repo, ncalls=4):
     section('g g > t t~ g on a non-blocking stream (%s)' % backend)
+    if backend not in GPU_BACKENDS:
+        check('nonblocking_stream', True, 'skipped: %s is not a GPU backend' % backend)
+        return
     name = 'ggttxg'
-    (sub,) = output(repo, name, 'sm', 'g g > t t~ g', (backend,))
+    (proc_dir,) = output(repo, name, 'sm', 'g g > t t~ g', (backend,))
+    # ncalls calls (iterations) of 64 x 256 = 16384 events, the RAMBO points of check_sa.exe
+    # (the same in both runs: one seed per iteration)
+    batch = [64, 256, ncalls]
+    nevt = 64 * 256 * ncalls
     rng = random.Random(3)
-    gpu = Umami(backend, library(name, sub, backend), card(name))
-    points = [rambo(gpu.masses[2:], 1000., rng) for _ in range(npoints)]
-    rnd = [rng.random() for _ in range(npoints)]
-    outputs = (OUT_MATRIX_ELEMENT, OUT_HELICITY_INDEX)
-    stream = gpu.memory.nonblocking_stream()
-    # the first call on the non-blocking stream: it also runs the helicity filtering
-    calls = [gpu(points, random_helicity=rnd, outputs=outputs, stream=stream)]
-    reference = gpu(points, random_helicity=rnd, outputs=outputs)  # default stream
-    calls += [gpu(points, random_helicity=rnd, outputs=outputs, stream=stream)
-              for _ in range(ncalls - 1)]
-    gpu.memory.stream_destroy(stream)
-    gpu.free()
-    me_ref, hel_ref = reference
+    rnd = write(name + '_rnd.bin', 'd', [rng.random() for _ in range(nevt)])
+    me, hel = {}, {}
+    for tag, extra in (('default', []), ('nonblocking', ['--nonblocking-stream'])):
+        prefix = '%s_%s' % (name, tag)
+        check_sa(proc_dir, backend, extra + ['--energy', 1000, '--rnd-hel', rnd,
+                                             '--dump-me', dump(prefix, 'me'),
+                                             '--dump-hel', dump(prefix, 'hel')] + batch,
+                 prefix + '.log')
+        me[tag], hel[tag] = read(dump(prefix, 'me'), 'd'), read(dump(prefix, 'hel'), 'i')
     problems = []
-    for icall, (me, hel) in enumerate(calls):
-        bad_me = sum(1 for a, b in zip(me, me_ref) if not abs(a - b) <= 1e-12 * abs(b))
-        bad_hel = sum(1 for a, b in zip(hel, hel_ref) if a != b)
+    if not len(me['default']) == len(me['nonblocking']) == nevt:
+        problems.append('%d and %d |M|^2 for %d events' % (len(me['default']), len(me['nonblocking']), nevt))
+    for icall in range(ncalls):
+        events = slice(icall * nevt // ncalls, (icall + 1) * nevt // ncalls)
+        pairs = list(zip(me['nonblocking'][events], me['default'][events]))
+        bad_me = sum(1 for a, b in pairs if not abs(a - b) <= 1e-12 * abs(b))
+        bad_hel = sum(1 for a, b in zip(hel['nonblocking'][events], hel['default'][events]) if a != b)
         if bad_me or bad_hel:
             problems.append('call %d: %d |M|^2 and %d helicities differ' % (icall, bad_me, bad_hel))
-    if not all(v > 0 for v in me_ref) or min(hel_ref) < 0:
+    if not all(v > 0 for v in me['default']) or min(hel['default'], default=-1) < 0:
         problems.append('default stream: |M|^2 <= 0 or no helicity')
     check('nonblocking_stream', not problems, '; '.join(problems[:3]) or
-          '%d calls of %d events identical to the default stream' % (ncalls, npoints))
+          '%d calls of %d events identical to the default stream' % (ncalls, nevt // ncalls))
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     parser.add_argument('--repo', required=True)
     parser.add_argument('--backend', required=True)
-    parser.add_argument('--only', choices=CHECKS,
-                        help='run this check here and write its result to NAME.json')
+    parser.add_argument('--only', choices=CHECKS, action='append',
+                        help='run this check only (repeatable)')
     args = parser.parse_args()
-    if args.only:
-        step = globals()['check_' + args.only]
-        try:
-            step(args.repo, args.backend)
-        except Exception as error:
-            check(args.only, False, 'error: %s' % error)
-        json.dump(results, open(args.only + '.json', 'w'))
-        return 0
-    if args.backend not in GPU_BACKENDS:
-        parser.error('the checks compare a GPU backend (%s) with the CPU one'
-                     % ', '.join(GPU_BACKENDS))
+    if args.backend == CPU_BACKEND:
+        parser.error('the checks compare a backend with %s: give another one' % CPU_BACKEND)
     start = time.time()
-    summary, failures = {}, []
-    for name in CHECKS:
-        if os.path.exists(name + '.json'):
-            os.remove(name + '.json')
-        status = subprocess.call([sys.executable, os.path.abspath(__file__), '--repo', args.repo,
-                                  '--backend', args.backend, '--only', name])
+    for name in args.only or CHECKS:
         try:
-            outcome = json.load(open(name + '.json'))
-        except (OSError, ValueError):
-            outcome = {name: (False, 'crashed (exit status %d)' % status)}
-            print('FAIL %s: %s' % (name, outcome[name][1]), flush=True)
-        for key, (ok, detail) in outcome.items():
-            summary[key] = ('ok' if ok else 'FAILED') + ' (%s)' % detail
-            if not ok:
-                failures.append(key)
+            globals()['check_' + name](args.backend, args.repo)
+        except Exception as error:
+            check(name, False, 'error: %s' % error)
+    summary = {key: ('ok' if ok else 'FAILED') + ' (%s)' % detail
+               for key, (ok, detail) in results.items()}
+    failures = [key for key, (ok, _detail) in results.items() if not ok]
     summary['node'] = os.uname().nodename
     summary['gpu'] = os.environ.get('GPU_NAME', 'none')
     summary['backend'] = args.backend

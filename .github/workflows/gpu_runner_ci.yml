@@ -251,7 +251,7 @@ jobs:
           if-no-files-found: warn
 
   madmatrix:
-    # the GPU backend of madmatrix against its CPU backend through umami: running flavour
+    # the GPU backend of madmatrix against its CPU backend with check_sa.exe: running flavour
     # couplings (MSSM), a subprocess with no good helicity, a non-blocking stream
     needs: [start_runner, build_madspace]
     if: needs.start_runner.outputs.attempt == github.run_attempt
@@ -275,7 +275,7 @@ jobs:
         if: always()
         run: |
           mkdir -p results
-          (cd "$WORKDIR" && tar -cf - --ignore-failed-read summary.txt checks.log *.json *.mg5 *.log 2> /dev/null) | tar -xf - -C results || true
+          (cd "$WORKDIR" && tar -cf - --ignore-failed-read summary.txt checks.log *.mg5 *.log 2> /dev/null) | tar -xf - -C results || true
           find results -type f | sort
       - name: job summary
         if: always()

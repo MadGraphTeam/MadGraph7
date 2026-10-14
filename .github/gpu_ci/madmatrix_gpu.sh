@@ -1,6 +1,6 @@
 #!/bin/bash -l
 # Runs on the self-hosted runner (GPU node): job madmatrix of gpu_runner_ci.yml.
-# The GPU backend of madmatrix against its CPU backend, through umami: see
+# The GPU backend of madmatrix against its CPU backend, with check_sa.exe: see
 # madmatrix_checks.py for what is checked.
 # Environment: as pp_ttx_mg7.sh (BACKEND, MODULES, GPU_ARCH, VENV, WORKDIR); no madspace
 # and no PDF set needed (standalone outputs only).
