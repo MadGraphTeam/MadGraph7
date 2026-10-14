@@ -20,6 +20,7 @@
 #include "madspace/driver/status_file.hpp"
 #include "madspace/driver/systematics.hpp"
 #include "madspace/driver/vegas_optimizer.hpp"
+#include "madspace/driver/weighting_pipeline.hpp"
 #include "madspace/phasespace.hpp"
 
 namespace madspace {
@@ -54,13 +55,18 @@ public:
      * @param status_file Optional status file progress is periodically
      *                    written to.
      * @param config      Generator configuration.
+     * @param groups      Groups of channels with re- and unweighting steps
+     *                    after their first unweighting, see @ref WeightingStep.
+     *                    The integrals and event counts are then those after
+     *                    the last step.
      */
     EventGenerator(
         const std::vector<ContextPtr>& contexts,
         const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
         std::uint64_t seed,
         std::shared_ptr<StatusFile> status_file = nullptr,
-        const GeneratorConfig& config = default_config
+        const GeneratorConfig& config = default_config,
+        const std::vector<WeightingGroup>& groups = {}
     );
     EventGenerator(EventGenerator&&) = default;
     EventGenerator& operator=(EventGenerator&&) = default;
@@ -184,6 +190,7 @@ private:
     // dispatch, drained with priority by start_jobs().
     std::vector<std::vector<std::size_t>> _context_unweight_queue;
     ResultQueue _result_queue;
+    std::unique_ptr<WeightingPipeline> _pipeline;
 
     // Base seed for reproducible event generation.
     std::uint64_t _seed;
@@ -229,18 +236,25 @@ private:
     void reset_jobs();
     void update_integral();
     void update_integral_status();
-    void update_integral_fractions();
+    // With `final_step`, the integrals after the weighting steps are used. They
+    // only change in a fixed order once the steps are drained.
+    void update_integral_fractions(bool final_step = true);
     void update_counts();
     void reset_start_time();
     void add_timing_data(const std::string& key);
     void unweight_all();
-    std::tuple<std::vector<CombineChannelData>, std::size_t, double> init_combine();
+    std::tuple<std::vector<CombineChannelData>, std::size_t, std::vector<double>>
+    init_combine();
     void read_and_combine(
         std::vector<CombineChannelData>& channel_data,
         EventBuffer& buffer,
-        double norm_factor,
+        const std::vector<double>& norm_factors,
         MixMaxRandom& rand_gen
     );
+    // run the re- and unweighting steps of all collected events
+    void drain_pipeline();
+    // start the jobs of the steps whose batches are full
+    std::size_t start_pipeline_jobs();
     // Layout of the combined events as read from the channel files
     DataLayout combined_layout() const;
     // Layout of the written events: the reweighting inputs are dropped unless

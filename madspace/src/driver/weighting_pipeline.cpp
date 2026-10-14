@@ -1,0 +1,553 @@
+#include "madspace/driver/weighting_pipeline.hpp"
+
+#include <cmath>
+#include <format>
+#include <stdexcept>
+
+#include "madspace/util.hpp"
+
+using namespace madspace;
+
+namespace {
+
+std::vector<double> to_vector(const Tensor& tensor) {
+    auto view = tensor.view<double, 1>();
+    std::vector<double> ret(view.size());
+    for (std::size_t i = 0; i < ret.size(); ++i) {
+        ret[i] = view[i];
+    }
+    return ret;
+}
+
+template <typename T>
+void compact_vector(std::vector<T>& vec, const std::vector<me_int_t>& indices) {
+    if (vec.empty()) {
+        return;
+    }
+    std::vector<T> ret;
+    ret.reserve(indices.size());
+    for (auto index : indices) {
+        ret.push_back(vec.at(index));
+    }
+    vec = std::move(ret);
+}
+
+Function gather_function(const NamedVector<Type>& types) {
+    NamedVector<Type> arg_types{{"indices", batch_int}};
+    arg_types.insert_back(types);
+    FunctionBuilder fb(arg_types, types);
+    for (std::size_t i = 0; i < types.size(); ++i) {
+        fb.output(i, fb.batch_gather(fb.input(0), fb.input(i + 1)));
+    }
+    return fb.function();
+}
+
+Function concat_function(const NamedVector<Type>& types) {
+    NamedVector<Type> arg_types;
+    for (std::size_t part = 1; part <= 2; ++part) {
+        for (auto [key, type] : zip(types.keys(), types)) {
+            arg_types.push_back(std::format("arg{}_{}", part, key), type);
+        }
+    }
+    FunctionBuilder fb(arg_types, types);
+    int count = static_cast<int>(types.size());
+    for (int i = 0; i < count; ++i) {
+        auto [cat, sizes] = fb.batch_cat({fb.input(i), fb.input(i + count)});
+        fb.output(i, cat);
+    }
+    return fb.function();
+}
+
+} // namespace
+
+void WeightingPipeline::Chunk::clear() {
+    source.reset();
+    keep.reset();
+    events.clear();
+    cpu_events.clear();
+    weights.clear();
+    matrix_elements.clear();
+    biases.clear();
+    overweights.clear();
+    ratio_products.clear();
+    for (auto& step_ratios : ratios) {
+        step_ratios.clear();
+    }
+}
+
+void WeightingPipeline::Chunk::compact(const std::vector<me_int_t>& indices) {
+    compact_vector(weights, indices);
+    compact_vector(matrix_elements, indices);
+    compact_vector(biases, indices);
+    compact_vector(overweights, indices);
+    compact_vector(ratio_products, indices);
+    for (auto& step_ratios : ratios) {
+        compact_vector(step_ratios, indices);
+    }
+}
+
+WeightingPipeline::WeightingPipeline(
+    const std::vector<ContextPtr>& contexts,
+    const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
+    const std::vector<WeightingGroup>& groups,
+    const GeneratorConfig& config
+) :
+    _contexts(contexts),
+    _channels(channels),
+    _config(config),
+    _channel_groups(channels.size(), -1),
+    _channel_sequences(channels.size()),
+    _next_sequences(channels.size()),
+    _ready(channels.size()) {
+    const std::array<MatrixElement::MatrixElementOutput, 3> index_outputs{
+        MatrixElement::color_index_out,
+        MatrixElement::helicity_index_out,
+        MatrixElement::diagram_index_out,
+    };
+    for (std::size_t group_index = 0; auto& group_config : groups) {
+        if (group_config.steps.empty() || group_config.channel_indices.empty()) {
+            throw std::invalid_argument(
+                "a weighting group needs at least one channel and one step"
+            );
+        }
+        for (auto channel_index : group_config.channel_indices) {
+            if (channel_index >= channels.size()) {
+                throw std::invalid_argument(
+                    "channel index of weighting group too large"
+                );
+            }
+            if (_channel_groups.at(channel_index) != -1) {
+                throw std::invalid_argument(
+                    "a channel can only belong to one weighting group"
+                );
+            }
+            _channel_groups.at(channel_index) = static_cast<int>(group_index);
+        }
+
+        auto& first_channel = channels.at(group_config.channel_indices.at(0));
+        NamedVector<Type> types = first_channel->event_types();
+        for (auto channel_index : group_config.channel_indices) {
+            auto& channel = channels.at(channel_index);
+            auto& channel_types = channel->event_types();
+            if (channel_types.keys() != types.keys() ||
+                !std::equal(
+                    channel_types.begin(), channel_types.end(), types.begin()
+                ) ||
+                channel->provided_indices() != first_channel->provided_indices()) {
+                throw std::invalid_argument(
+                    "the channels of a weighting group need the same events"
+                );
+            }
+        }
+        auto& index_map = types.index_map();
+        if (!index_map.contains("matrix_element")) {
+            throw std::invalid_argument(
+                "a weighting group needs integrands that return the matrix element"
+            );
+        }
+        std::size_t step_count = group_config.steps.size();
+        types.push_back(
+            "step_random",
+            batch_float_array(WeightingStepFunction::random_count * step_count)
+        );
+
+        Group group{
+            .momenta = static_cast<int>(index_map.at("momenta")),
+            .alpha_s = static_cast<int>(index_map.at("alpha_qcd")),
+            .flavor = static_cast<int>(index_map.at("matrix_element_flavor")),
+            .me_index = index_map.contains("matrix_element_index")
+                ? static_cast<int>(index_map.at("matrix_element_index"))
+                : -1,
+            .color = static_cast<int>(index_map.at("color_index")),
+            .helicity = static_cast<int>(index_map.at("helicity_index")),
+            .diagram = static_cast<int>(index_map.at("diagram_index")),
+            .random = static_cast<int>(types.size() - 1),
+        };
+
+        std::vector<Function> step_functions;
+        auto provided = first_channel->provided_indices();
+        for (std::size_t step_index = 0; auto& step : group_config.steps) {
+            if (step.matrix_elements.size() > 1 && group.me_index == -1) {
+                throw std::invalid_argument(
+                    "several matrix elements in a weighting step, but the integrand "
+                    "has only one"
+                );
+            }
+            group.multiple_matrix_elements.push_back(step.matrix_elements.size() > 1);
+            group.settings.push_back({
+                .unweight = step.mode == WeightingStep::unweight,
+                .max_overweight_truncation = step.max_overweight_truncation,
+                .freeze_max_weight_after = step.freeze_max_weight_after,
+            });
+            std::array<bool, 3> write_indices{};
+            for (std::size_t i = 0; i < index_outputs.size(); ++i) {
+                auto output = index_outputs.at(i);
+                auto& outputs = step.matrix_elements.at(0).outputs();
+                bool returns =
+                    std::find(outputs.begin(), outputs.end(), output) != outputs.end();
+                bool overrides =
+                    std::find(
+                        step.override_outputs.begin(),
+                        step.override_outputs.end(),
+                        output
+                    ) != step.override_outputs.end();
+                write_indices.at(i) = returns && (!provided.at(i) || overrides);
+                provided.at(i) = provided.at(i) || returns;
+            }
+            step_functions.push_back(
+                WeightingStepFunction(
+                    step,
+                    first_channel->particle_count(),
+                    write_indices,
+                    step_index,
+                    step_count
+                )
+                    .function()
+            );
+            ++step_index;
+        }
+
+        Function gather = gather_function(types);
+        Function concat = concat_function(types);
+        for (auto& context : contexts) {
+            ContextRuntimes runtimes{
+                .gather = build_runtime(gather, context, false),
+                .concat = build_runtime(concat, context, false),
+            };
+            for (auto& function : step_functions) {
+                runtimes.steps.push_back(build_runtime(function, context, false));
+            }
+            group.runtimes.push_back(std::move(runtimes));
+        }
+        group.buffers.assign(
+            contexts.size(), std::vector<std::vector<ChunkPtr>>(step_count + 1)
+        );
+        group.buffer_sizes.assign(
+            contexts.size(), std::vector<std::size_t>(step_count + 1)
+        );
+        for (auto channel_index : group_config.channel_indices) {
+            channels.at(channel_index)->set_weighting_steps(group.settings);
+            _next_sequences.at(channel_index).assign(step_count + 1, 0);
+            _ready.at(channel_index).resize(step_count + 1);
+        }
+        _groups.push_back(std::move(group));
+        ++group_index;
+    }
+}
+
+std::size_t WeightingPipeline::batch_size(std::size_t context_index) const {
+    return _contexts.at(context_index)->device()->device_type() == DeviceType::cpu
+        ? _config.cpu_batch_size
+        : _config.gpu_batch_size;
+}
+
+void WeightingPipeline::add_events(GeneratorBatchJob& job) {
+    auto& channel = _channels.at(job.channel_index);
+    auto chunk = std::make_shared<Chunk>();
+    chunk->channel_index = job.channel_index;
+    chunk->sequence = _channel_sequences.at(job.channel_index)++;
+    chunk->epoch = channel->event_epoch();
+    chunk->context_index = job.context_index;
+    chunk->generated_count = job.weights.size(0);
+    chunk->count_target = job.count_target;
+    chunk->source = std::make_shared<TensorVec>(std::move(job.unweighted_events));
+    chunk->weights = to_vector(job.step_host.at(0));
+    chunk->matrix_elements = to_vector(job.step_host.at(1));
+    if (job.step_host.size() > 2) {
+        chunk->biases = to_vector(job.step_host.at(2));
+    }
+    chunk->max_weight = job.max_weight;
+    for (double weight : chunk->weights) {
+        chunk->overweights.push_back(std::max(1., std::abs(weight) / job.max_weight));
+        chunk->ratio_products.push_back(std::copysign(1., weight));
+    }
+    channel->add_first_step_events(chunk->size(), job.max_weight);
+    job.unweighted_events.clear();
+    job.step_host.clear();
+    ++_chunk_count;
+    advance(chunk, 1);
+}
+
+void WeightingPipeline::advance(ChunkPtr chunk, std::size_t stage) {
+    if (chunk->size() == 0) {
+        set_ready(chunk, stage);
+        return;
+    }
+    auto& group = _groups.at(_channel_groups.at(chunk->channel_index));
+    group.buffers.at(chunk->context_index).at(stage - 1).push_back(chunk);
+    group.buffer_sizes.at(chunk->context_index).at(stage - 1) += chunk->size();
+}
+
+void WeightingPipeline::set_ready(ChunkPtr chunk, std::size_t stage) {
+    std::size_t channel_index = chunk->channel_index;
+    auto& ready = _ready.at(channel_index).at(stage - 1);
+    auto& next_sequence = _next_sequences.at(channel_index).at(stage - 1);
+    ready.emplace(chunk->sequence, chunk);
+    while (!ready.empty() && ready.begin()->first == next_sequence) {
+        ChunkPtr next_chunk = ready.begin()->second;
+        ready.erase(ready.begin());
+        ++next_sequence;
+        commit_stage(next_chunk, stage);
+    }
+}
+
+void WeightingPipeline::commit_stage(ChunkPtr chunk, std::size_t stage) {
+    auto& channel = _channels.at(chunk->channel_index);
+    std::size_t step_count = channel->weighting_steps().size();
+    // the events of the channel were cleared since
+    bool stale = chunk->epoch != channel->event_epoch();
+    if (stale) {
+        chunk->clear();
+    }
+    if (stage <= step_count) {
+        if (!stale && chunk->size() > 0) {
+            decide(*chunk, stage);
+        } else {
+            chunk->ratios.emplace_back();
+            chunk->max_weights.push_back(0.);
+        }
+        advance(chunk, stage + 1);
+        return;
+    }
+    if (!stale) {
+        channel->write_step_events(
+            chunk->cpu_events,
+            chunk->weights,
+            chunk->max_weight,
+            chunk->ratios,
+            chunk->max_weights,
+            chunk->biases,
+            chunk->generated_count
+        );
+    }
+    --_chunk_count;
+}
+
+void WeightingPipeline::decide(Chunk& chunk, std::size_t step) {
+    auto& channel = _channels.at(chunk.channel_index);
+    auto& settings = channel->weighting_steps().at(step - 1);
+    std::size_t count = chunk.size();
+    std::vector<double> ratios(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        double previous = chunk.matrix_elements.at(i);
+        ratios.at(i) =
+            previous != 0. ? chunk.step_matrix_elements.at(i) / previous : 0.;
+        chunk.ratio_products.at(i) *= ratios.at(i);
+    }
+    std::vector<me_int_t> keep;
+    if (settings.unweight) {
+        // the overweight of the last unweighting times the ratios since, see
+        // evaluate_step_chain()
+        std::vector<double> values(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            values.at(i) =
+                chunk.overweights.at(i) * std::abs(chunk.ratio_products.at(i));
+        }
+        channel->update_step_max_weight(step, values, chunk.count_target);
+        double max_weight = channel->step_max_weight(step);
+        for (std::size_t i = 0; i < count; ++i) {
+            double value = values.at(i);
+            if (value > 0. && value > chunk.step_random.at(i) * max_weight) {
+                keep.push_back(static_cast<me_int_t>(i));
+            }
+            chunk.overweights.at(i) = std::max(1., value / max_weight);
+            chunk.ratio_products.at(i) = std::copysign(1., chunk.ratio_products.at(i));
+        }
+        channel->add_step_accepted(step, static_cast<double>(keep.size()));
+        chunk.max_weights.push_back(max_weight);
+    } else {
+        for (std::size_t i = 0; i < count; ++i) {
+            if (ratios.at(i) != 0.) {
+                keep.push_back(static_cast<me_int_t>(i));
+            }
+        }
+        chunk.max_weights.push_back(0.);
+    }
+    chunk.ratios.push_back(std::move(ratios));
+    chunk.matrix_elements = std::move(chunk.step_matrix_elements);
+    chunk.step_matrix_elements.clear();
+    chunk.step_random.clear();
+    if (keep.size() < count) {
+        chunk.compact(keep);
+        chunk.keep = std::move(keep);
+    }
+    if (chunk.size() == 0) {
+        chunk.source.reset();
+        chunk.keep.reset();
+    }
+}
+
+std::size_t WeightingPipeline::start_jobs(ResultQueue& result_queue, bool flush) {
+    std::size_t started = 0;
+    for (std::size_t group_index = 0; auto& group : _groups) {
+        for (std::size_t context_index = 0; context_index < _contexts.size();
+             ++context_index) {
+            auto& buffers = group.buffers.at(context_index);
+            auto& sizes = group.buffer_sizes.at(context_index);
+            for (std::size_t stage = 1; stage <= buffers.size(); ++stage) {
+                auto& buffer = buffers.at(stage - 1);
+                auto& size = sizes.at(stage - 1);
+                if (buffer.empty() || (!flush && size < batch_size(context_index))) {
+                    continue;
+                }
+                std::size_t job_id = job_id_flag | _job_counter++;
+                auto& job =
+                    _jobs
+                        .emplace(
+                            job_id,
+                            Job{
+                                .group = group_index,
+                                .stage = stage,
+                                .context_index = context_index,
+                                .chunks = std::move(buffer),
+                            }
+                        )
+                        .first->second;
+                buffer.clear();
+                size = 0;
+                result_queue.submit(
+                    _contexts.at(context_index)->thread_pool(), job_id, [this, &job] {
+                        run_job(job);
+                    }
+                );
+                ++started;
+            }
+        }
+        ++group_index;
+    }
+    return started;
+}
+
+void WeightingPipeline::gather_events(Chunk& chunk, ContextRuntimes& runtimes) {
+    auto& source = *chunk.source;
+    std::size_t count = chunk.size();
+    if (!chunk.keep && chunk.offset == 0 && source.at(0).size(0) == count) {
+        chunk.events = source;
+    } else {
+        Tensor indices(DataType::dt_int, {count});
+        auto view = indices.view<me_int_t, 1>();
+        for (std::size_t i = 0; i < count; ++i) {
+            view[i] = static_cast<me_int_t>(
+                chunk.offset + (chunk.keep ? chunk.keep->at(i) : i)
+            );
+        }
+        auto device = _contexts.at(chunk.context_index)->device();
+        if (device != cpu_device()) {
+            Tensor device_indices(DataType::dt_int, {count}, device);
+            device_indices.copy_from(indices);
+            indices = device_indices;
+        }
+        TensorVec args{indices};
+        args.insert(args.end(), source.begin(), source.end());
+        chunk.events = runtimes.gather->run(args);
+    }
+    chunk.source.reset();
+    chunk.keep.reset();
+    chunk.offset = 0;
+}
+
+void WeightingPipeline::run_job(Job& job) {
+    auto& group = _groups.at(job.group);
+    auto& runtimes = group.runtimes.at(job.context_index);
+    for (auto& chunk : job.chunks) {
+        gather_events(*chunk, runtimes);
+    }
+    if (job.stage > group.settings.size()) {
+        // after the last step, the events go to the CPU to be written
+        for (auto& chunk : job.chunks) {
+            for (auto& tensor : chunk->events) {
+                chunk->cpu_events.push_back(tensor.cpu());
+            }
+            chunk->events.clear();
+        }
+        return;
+    }
+
+    std::vector<TensorVec> parts;
+    for (auto& chunk : job.chunks) {
+        parts.push_back(std::move(chunk->events));
+        chunk->events.clear();
+    }
+    // concatenate pairwise, so every event is copied log(chunks) times
+    while (parts.size() > 1) {
+        std::vector<TensorVec> next_parts;
+        for (std::size_t i = 0; i < parts.size(); i += 2) {
+            if (i + 1 == parts.size()) {
+                next_parts.push_back(std::move(parts.at(i)));
+            } else {
+                TensorVec args = parts.at(i);
+                args.insert(args.end(), parts.at(i + 1).begin(), parts.at(i + 1).end());
+                next_parts.push_back(runtimes.concat->run(args));
+            }
+        }
+        parts = std::move(next_parts);
+    }
+    TensorVec events = std::move(parts.at(0));
+
+    TensorVec step_args{
+        events.at(group.momenta), events.at(group.alpha_s), events.at(group.flavor)
+    };
+    if (group.multiple_matrix_elements.at(job.stage - 1)) {
+        step_args.push_back(events.at(group.me_index));
+    }
+    step_args.push_back(events.at(group.color));
+    step_args.push_back(events.at(group.helicity));
+    step_args.push_back(events.at(group.diagram));
+    step_args.push_back(events.at(group.random));
+    TensorVec outputs = runtimes.steps.at(job.stage - 1)->run(step_args);
+    auto matrix_elements = to_vector(outputs.at(0).cpu());
+    auto random = to_vector(outputs.at(4).cpu());
+    events.at(group.color) = outputs.at(1);
+    events.at(group.helicity) = outputs.at(2);
+    events.at(group.diagram) = outputs.at(3);
+
+    auto shared_events = std::make_shared<TensorVec>(std::move(events));
+    std::size_t offset = 0;
+    for (auto& chunk : job.chunks) {
+        std::size_t count = chunk->size();
+        chunk->source = shared_events;
+        chunk->offset = offset;
+        chunk->step_matrix_elements.assign(
+            matrix_elements.begin() + offset, matrix_elements.begin() + offset + count
+        );
+        chunk->step_random.assign(
+            random.begin() + offset, random.begin() + offset + count
+        );
+        offset += count;
+    }
+}
+
+void WeightingPipeline::commit_job(std::size_t job_id) {
+    auto node = _jobs.extract(job_id);
+    auto& job = node.mapped();
+    for (auto& chunk : job.chunks) {
+        set_ready(chunk, job.stage);
+    }
+}
+
+void WeightingPipeline::reset() {
+    _jobs.clear();
+    for (auto& group : _groups) {
+        for (auto& buffers : group.buffers) {
+            for (auto& buffer : buffers) {
+                buffer.clear();
+            }
+        }
+        for (auto& sizes : group.buffer_sizes) {
+            std::fill(sizes.begin(), sizes.end(), 0);
+        }
+    }
+    for (auto& channel_ready : _ready) {
+        for (auto& ready : channel_ready) {
+            ready.clear();
+        }
+    }
+    // the sequences continue, as the dropped chunks are never committed
+    for (std::size_t channel_index = 0; channel_index < _channels.size();
+         ++channel_index) {
+        for (auto& next_sequence : _next_sequences.at(channel_index)) {
+            next_sequence = _channel_sequences.at(channel_index);
+        }
+    }
+    _chunk_count = 0;
+}

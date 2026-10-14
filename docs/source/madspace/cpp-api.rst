@@ -70,6 +70,7 @@ Builders that assemble compute-graph functions for channel weights, energy scale
    cpp/SubchannelWeights
    cpp/Unweighter
    cpp/VegasHistogram
+   cpp/WeightingStepFunction
 
 Phase-space building blocks
 ---------------------------
@@ -85,6 +86,7 @@ Supporting types shared by the mappings: topologies, cuts, observables and densi
    cpp/PdfGrid
    cpp/Propagator
    cpp/Topology
+   cpp/WeightingStep
    cpp/initialize_vegas_grid
 
 Compute graph
@@ -158,6 +160,8 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    cpp/Runtime
    cpp/Sizes
    cpp/StatusFile
+   cpp/StepChainResult
+   cpp/StepSettings
    cpp/SubprocessObservables
    cpp/SubprocessSystArgs
    cpp/SystematicsCalculator
@@ -172,6 +176,8 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    cpp/UnalignedRef
    cpp/Variation
    cpp/VegasGridOptimizer
+   cpp/WeightingGroup
+   cpp/WeightingPipeline
    cpp/available_backends
    cpp/compute_generation_batch_event_count
    cpp/cpu_device

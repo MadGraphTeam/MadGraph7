@@ -136,27 +136,25 @@ void madspace::sum_channel_status(
     const ChannelEventGenerator* bad_channel = nullptr;
     for (auto& channel : channels) {
         auto& chan_status = channel->status();
-        auto& cross_section = channel->cross_section();
-        auto& abs_cross_section = channel->abs_cross_section();
+        auto integral = channel->result_integral();
         // special case for channels with 0 samples, as they have nan variance
-        if (bad_channel == nullptr && cross_section.count() > 0 &&
-            (!std::isfinite(cross_section.mean()) ||
-             !std::isfinite(cross_section.variance()) ||
-             !std::isfinite(abs_cross_section.mean()) ||
-             !std::isfinite(abs_cross_section.variance()))) {
+        if (bad_channel == nullptr && integral.count > 0 &&
+            (!std::isfinite(integral.mean) || !std::isfinite(integral.variance) ||
+             !std::isfinite(integral.mean_abs) ||
+             !std::isfinite(integral.variance_abs))) {
             bad_channel = channel.get();
         }
-        total_mean += cross_section.mean();
-        total_mean_abs += abs_cross_section.mean();
-        if (cross_section.count() > 0) {
-            total_var += cross_section.variance() / cross_section.count();
-            total_var_abs += abs_cross_section.variance() / abs_cross_section.count();
+        total_mean += integral.mean;
+        total_mean_abs += integral.mean_abs;
+        if (integral.count > 0) {
+            total_var += integral.variance / integral.count;
+            total_var_abs += integral.variance_abs / integral.count;
         }
         total_count += chan_status.count;
         total_count_opt += chan_status.count_opt;
         total_count_after_cuts += chan_status.count_after_cuts;
         total_count_after_cuts_opt += chan_status.count_after_cuts_opt;
-        total_integ_count += cross_section.count();
+        total_integ_count += integral.count;
         iterations = std::max(chan_status.iterations, iterations);
         if (!chan_status.optimized) {
             optimized = false;
@@ -168,9 +166,9 @@ void madspace::sum_channel_status(
             ? std::format(
                   "channel '{}' after {} samples (mean={}, variance={})",
                   bad_channel->status().name,
-                  bad_channel->cross_section().count(),
-                  bad_channel->cross_section().mean(),
-                  bad_channel->cross_section().variance()
+                  bad_channel->result_integral().count,
+                  bad_channel->result_integral().mean,
+                  bad_channel->result_integral().variance
               )
             : std::format("the sum over channels (mean={})", total_mean);
         throw std::runtime_error(

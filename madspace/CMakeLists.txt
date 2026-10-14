@@ -224,6 +224,7 @@ add_library(
     src/driver/event_histograms.cpp
     src/driver/madnis_training.cpp
     src/driver/random.cpp
+    src/driver/weighting_pipeline.cpp
     src/compgraphs/type.cpp
     src/compgraphs/function.cpp
     src/compgraphs/instruction.cpp
@@ -260,6 +261,7 @@ add_library(
     src/phasespace/matrix_element.cpp
     src/phasespace/cross_section.cpp
     src/phasespace/scale.cpp
+    src/phasespace/weighting_step.cpp
     include/madspace/util.hpp
     include/madspace/driver.hpp
     include/madspace/driver/adam_optimizer.hpp
@@ -279,6 +281,7 @@ add_library(
     include/madspace/driver/logger.hpp
     include/madspace/driver/madnis_training.hpp
     include/madspace/driver/random.hpp
+    include/madspace/driver/weighting_pipeline.hpp
     include/madspace/compgraphs.hpp
     include/madspace/compgraphs/type.hpp
     include/madspace/compgraphs/function.hpp
@@ -317,6 +320,7 @@ add_library(
     include/madspace/phasespace/matrix_element.hpp
     include/madspace/phasespace/cross_section.hpp
     include/madspace/phasespace/scale.hpp
+    include/madspace/phasespace/weighting_step.hpp
     include/madspace/mixmax/mixmax.hpp
     include/madspace/mixmax/mixmax_skip_N17.c
 )

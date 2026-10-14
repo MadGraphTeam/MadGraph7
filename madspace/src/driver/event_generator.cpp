@@ -22,7 +22,8 @@ EventGenerator::EventGenerator(
     const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
     std::uint64_t seed,
     std::shared_ptr<StatusFile> status_file,
-    const GeneratorConfig& config
+    const GeneratorConfig& config,
+    const std::vector<WeightingGroup>& groups
 ) :
     _config(config),
     _status{
@@ -56,6 +57,11 @@ EventGenerator::EventGenerator(
     _channel_unweight_order(channels.size()),
     _channel_unweight_ready(channels.size()),
     _context_unweight_queue(contexts.size()),
+    _pipeline(
+        groups.empty()
+            ? nullptr
+            : std::make_unique<WeightingPipeline>(contexts, channels, groups, config)
+    ),
     _seed(seed),
     _status_file(status_file) {}
 
@@ -84,7 +90,11 @@ void EventGenerator::commit_generate_job(GeneratorBatchJob& job) {
 
 void EventGenerator::commit_unweight_job(GeneratorBatchJob& job) {
     auto& channel = _channels.at(job.channel_index);
-    channel->write_events(job.unweighted_events, job.max_weight);
+    if (_pipeline && _pipeline->contains(job.channel_index)) {
+        _pipeline->add_events(job);
+    } else {
+        channel->write_events(job.unweighted_events, job.max_weight);
+    }
     update_counts();
     --_channel_job_counts.at(job.channel_index);
     --_context_job_counts.at(job.context_index);
@@ -185,6 +195,16 @@ void EventGenerator::run_generate(GenerateMode mode) {
         // Wait for the round to fully commit before resyncing cross-channel fractions.
         while (round_in_flight > 0) {
             std::size_t job_id = wait_for_result(round_in_flight);
+            if (WeightingPipeline::owns_job(job_id)) {
+                _pipeline->commit_job(job_id);
+                update_counts();
+                print_gen_update(false);
+                std::size_t job_id_refill = _job_id;
+                std::size_t refill_unweight_dispatched = start_jobs();
+                round_in_flight += (_job_id - job_id_refill) +
+                    refill_unweight_dispatched + start_pipeline_jobs();
+                continue;
+            }
             auto& job = _running_jobs.at(job_id);
             if (job.unweighted_events.size() == 0) {
                 auto& ready = _channel_ready_gen.at(job.channel_index);
@@ -212,8 +232,10 @@ void EventGenerator::run_generate(GenerateMode mode) {
             }
             std::size_t job_id_refill = _job_id;
             std::size_t refill_unweight_dispatched = start_jobs();
-            round_in_flight += (_job_id - job_id_refill) + refill_unweight_dispatched;
+            round_in_flight += (_job_id - job_id_refill) + refill_unweight_dispatched +
+                start_pipeline_jobs();
         }
+        drain_pipeline();
 
         if (mode == GenerateMode::optimize_only) {
             if (std::none_of(_channels.begin(), _channels.end(), [](auto& channel) {
@@ -291,6 +313,15 @@ void EventGenerator::survey(std::size_t survey_pass) {
         done = true;
         while (in_flight > 0) {
             std::size_t job_id = wait_for_result(in_flight);
+            if (WeightingPipeline::owns_job(job_id)) {
+                _pipeline->commit_job(job_id);
+                update_counts();
+                std::size_t job_id_refill = _job_id;
+                std::size_t refill_unweight_dispatched = start_jobs();
+                in_flight += (_job_id - job_id_refill) + refill_unweight_dispatched +
+                    start_pipeline_jobs();
+                continue;
+            }
             auto& job = _running_jobs.at(job_id);
             if (job.unweighted_events.size() == 0) {
                 // Generate-stage completion, globally ordered via
@@ -339,7 +370,13 @@ void EventGenerator::survey(std::size_t survey_pass) {
                     order.pop_front();
                     auto& uw_job = _running_jobs.at(commit_id);
                     auto& channel = _channels.at(uw_job.channel_index);
-                    channel->write_events(uw_job.unweighted_events, uw_job.max_weight);
+                    if (_pipeline && _pipeline->contains(uw_job.channel_index)) {
+                        _pipeline->add_events(uw_job);
+                    } else {
+                        channel->write_events(
+                            uw_job.unweighted_events, uw_job.max_weight
+                        );
+                    }
                     update_counts();
                     auto& channel_job_count =
                         _channel_job_counts.at(uw_job.channel_index);
@@ -358,9 +395,11 @@ void EventGenerator::survey(std::size_t survey_pass) {
             }
             std::size_t job_id_refill = _job_id;
             std::size_t refill_unweight_dispatched = start_jobs();
-            in_flight += (_job_id - job_id_refill) + refill_unweight_dispatched;
+            in_flight += (_job_id - job_id_refill) + refill_unweight_dispatched +
+                start_pipeline_jobs();
             print_survey_update(false, done_event_count, total_event_count, iter);
         }
+        drain_pipeline();
     }
     print_survey_update(true, done_event_count, total_event_count, iter - 1);
 }
@@ -392,6 +431,9 @@ std::size_t EventGenerator::wait_for_result(std::size_t& in_flight) {
 
 void EventGenerator::reset_jobs() {
     _running_jobs.clear();
+    if (_pipeline) {
+        _pipeline->reset();
+    }
     _ready_jobs.clear();
     _ready_job_rr_cursor = 0;
     _ready_gen.clear();
@@ -525,30 +567,45 @@ std::size_t EventGenerator::start_jobs() {
     return unweight_dispatched;
 }
 
+std::size_t EventGenerator::start_pipeline_jobs() {
+    return _pipeline ? _pipeline->start_jobs(_result_queue, false) : 0;
+}
+
+// Batches no longer have to be full: the steps don't depend on the batching.
+void EventGenerator::drain_pipeline() {
+    if (!_pipeline) {
+        return;
+    }
+    std::size_t in_flight = 0;
+    while (_pipeline->busy()) {
+        in_flight += _pipeline->start_jobs(_result_queue, true);
+        if (in_flight == 0) {
+            throw std::logic_error("weighting steps stuck without running jobs");
+        }
+        _pipeline->commit_job(wait_for_result(in_flight));
+        update_counts();
+    }
+    update_integral_status();
+}
+
 void EventGenerator::update_integral() {
     update_integral_status();
-    update_integral_fractions();
+    update_integral_fractions(false);
 }
 
 void EventGenerator::update_integral_status() {
     sum_channel_status(_channels, _status);
 }
 
-void EventGenerator::update_integral_fractions() {
-    // With an integral known from an earlier run, the sum of the channel estimates
-    // normalizes the fractions; without, this is _status.mean_abs.
-    double total_estimate = _status.mean_abs;
-    if (std::any_of(_channels.begin(), _channels.end(), [](auto& channel) {
-            return channel->has_abs_integral_prior();
-        })) {
-        total_estimate = 0.;
-        for (auto& channel : _channels) {
-            total_estimate += channel->abs_integral_estimate();
-        }
+void EventGenerator::update_integral_fractions(bool final_step) {
+    // the sum of the channel estimates normalizes the fractions
+    double total_estimate = 0.;
+    for (auto& channel : _channels) {
+        total_estimate += channel->abs_integral_estimate(final_step);
     }
     for (auto [channel, integral_fraction] :
          zip(_channels, _channel_integral_fractions)) {
-        integral_fraction = channel->abs_integral_estimate() / total_estimate;
+        integral_fraction = channel->abs_integral_estimate(final_step) / total_estimate;
     }
 
     // Distribute events between channels, ensure sum is exactly target_count
@@ -578,7 +635,12 @@ void EventGenerator::update_integral_fractions() {
     for (auto [channel, count, fraction] :
          zip(_channels, counts, _channel_integral_fractions)) {
         if (_generate_mode == GenerateMode::fix_max_weights) {
-            count = fraction > 0 ? _config.freeze_max_weight_after : 0;
+            // the maxima of all steps have to freeze
+            std::size_t freeze_count = _config.freeze_max_weight_after;
+            for (auto& step : channel->weighting_steps()) {
+                freeze_count = std::max(freeze_count, step.freeze_max_weight_after);
+            }
+            count = fraction > 0 ? freeze_count : 0;
         }
         channel->set_target_count(count);
     }
@@ -616,7 +678,7 @@ void EventGenerator::combine_to_compact_npy(
     _systematics = systematics;
     _event_histograms = histograms;
     MixMaxRandom select_rng(DerivedSeed(_seed, DerivedSeed::combine_select));
-    auto [channel_data, particle_count, norm_factor] = init_combine();
+    auto [channel_data, particle_count, norm_factors] = init_combine();
     DataLayout layout = combined_layout();
     DataLayout out_layout = output_layout(
         EventRecord::f_weight | EventRecord::f_subproc_index |
@@ -632,7 +694,7 @@ void EventGenerator::combine_to_compact_npy(
     print_combine_init();
     while (true) {
         _abort_check_function();
-        read_and_combine(channel_data, buffer, norm_factor, select_rng);
+        read_and_combine(channel_data, buffer, norm_factors, select_rng);
         if (buffer.event_count() == 0) {
             break;
         }
@@ -665,7 +727,7 @@ void EventGenerator::combine_to_lhe_npy(
     std::uint64_t seed = _seed;
     MixMaxRandom select_rng(DerivedSeed(seed, DerivedSeed::combine_select));
     MixMaxRandom rand_gen(DerivedSeed(seed, DerivedSeed::lhe_complete));
-    auto [channel_data, particle_count, norm_factor] = init_combine();
+    auto [channel_data, particle_count, norm_factors] = init_combine();
     DataLayout in_layout = combined_layout();
     DataLayout out_layout =
         output_layout(EventRecord::f_lhe_event, ParticleRecord::f_lhe_particle);
@@ -681,7 +743,7 @@ void EventGenerator::combine_to_lhe_npy(
     print_combine_init();
     while (true) {
         _abort_check_function();
-        read_and_combine(channel_data, buffer, norm_factor, select_rng);
+        read_and_combine(channel_data, buffer, norm_factors, select_rng);
         if (buffer.event_count() == 0) {
             break;
         }
@@ -718,7 +780,7 @@ void EventGenerator::combine_to_lhe(
     std::uint64_t seed = _seed;
     MixMaxRandom select_rng(DerivedSeed(seed, DerivedSeed::combine_select));
     ThreadPool pool(_config.combine_thread_count);
-    auto [channel_data, particle_count, norm_factor] = init_combine();
+    auto [channel_data, particle_count, norm_factors] = init_combine();
     struct CombineBuffers {
         EventBuffer in_buffer;
         std::string out_buffer;
@@ -761,7 +823,7 @@ void EventGenerator::combine_to_lhe(
         while (idle_buffers.size() > 0 && !done) {
             std::size_t slot = idle_buffers.back();
             auto& [in_buffer, out_buffer, syst_weights] = buffers.at(slot);
-            read_and_combine(channel_data, in_buffer, norm_factor, select_rng);
+            read_and_combine(channel_data, in_buffer, norm_factors, select_rng);
             if (in_buffer.event_count() == 0) {
                 done = true;
                 break;
@@ -1045,12 +1107,16 @@ std::vector<Histogram> EventGenerator::histograms() const {
     return hists;
 }
 
-std::tuple<std::vector<EventGenerator::CombineChannelData>, std::size_t, double>
+std::tuple<
+    std::vector<EventGenerator::CombineChannelData>,
+    std::size_t,
+    std::vector<double>>
 EventGenerator::init_combine() {
     std::vector<EventGenerator::CombineChannelData> channel_data;
     std::size_t count_sum = 0;
     std::size_t particle_count = 0;
     double weight_sum = 0.;
+    std::vector<double> channel_weight_sums;
     for (auto& channel : _channels) {
         particle_count =
             std::max(particle_count, channel->event_file().particle_count());
@@ -1059,24 +1125,39 @@ EventGenerator::init_combine() {
         std::size_t count = channel->status().count_target;
         count_sum += count;
         channel->event_file().seek(0);
-        weight_sum += channel->channel_weight_sum(count);
+        channel_weight_sums.push_back(channel->channel_weight_sum(count));
+        weight_sum += channel_weight_sums.back();
         channel->weight_file().seek(0);
         channel_data.push_back({
             .cum_count = count_sum,
             .event_buffer = EventBuffer(
                 0, channel->event_file().particle_count(), channel->event_file_layout()
             ),
-            .weight_buffer = EventBuffer(0, 0, weight_file_layout),
+            .weight_buffer = EventBuffer(
+                0, channel->weight_record_count(), channel->weight_layout()
+            ),
             .buffer_index = 0,
         });
     }
-    return {channel_data, particle_count, _status.mean_abs * count_sum / weight_sum};
+    std::vector<double> norm_factors;
+    for (auto [channel, channel_weight_sum] : zip(_channels, channel_weight_sums)) {
+        // After reweighting steps the mean event weights differ between
+        // channels, so the events of each channel are normalized separately
+        norm_factors.push_back(
+            _pipeline
+                ? (channel_weight_sum > 0
+                       ? channel->status().mean_abs * count_sum / channel_weight_sum
+                       : 0.)
+                : _status.mean_abs * count_sum / weight_sum
+        );
+    }
+    return {channel_data, particle_count, norm_factors};
 }
 
 void EventGenerator::read_and_combine(
     std::vector<EventGenerator::CombineChannelData>& channel_data,
     EventBuffer& buffer,
-    double norm_factor,
+    const std::vector<double>& norm_factors,
     MixMaxRandom& rand_gen
 ) {
     std::size_t batch_size = 1000;
@@ -1096,7 +1177,8 @@ void EventGenerator::read_and_combine(
         std::for_each(sampled_chan, channel_data.end(), [](auto& chan) {
             --chan.cum_count;
         });
-        auto& channel = _channels.at(sampled_chan - channel_data.begin());
+        std::size_t channel_index = sampled_chan - channel_data.begin();
+        auto& channel = _channels.at(channel_index);
 
         double weight = 0.;
         while (true) {
@@ -1119,7 +1201,9 @@ void EventGenerator::read_and_combine(
             sampled_chan->buffer_index,
             buffer,
             event_index,
-            unweighted_event_weight(weight, channel->max_weight()) * norm_factor,
+            channel->unweighted_weight(
+                sampled_chan->weight_buffer, sampled_chan->buffer_index
+            ) * norm_factors.at(channel_index),
             static_cast<int>(channel->status().subprocess),
             extra_flags
         );

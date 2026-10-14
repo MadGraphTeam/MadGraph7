@@ -3361,6 +3361,102 @@ PYBIND11_MODULE(_madspace_py, m) {
             &ChannelEventGenerator::set_fixed_max_weight,
             py::arg("max_weight"),
             pydoc::doc("ChannelEventGenerator::set_fixed_max_weight")
+        )
+        .def(
+            "max_weight",
+            &ChannelEventGenerator::max_weight,
+            pydoc::doc("ChannelEventGenerator::max_weight")
+        )
+        .def(
+            "step_max_weight",
+            &ChannelEventGenerator::step_max_weight,
+            py::arg("step"),
+            pydoc::doc("ChannelEventGenerator::step_max_weight")
+        )
+        .def(
+            "set_fixed_step_max_weight",
+            &ChannelEventGenerator::set_fixed_step_max_weight,
+            py::arg("step"),
+            py::arg("max_weight"),
+            pydoc::doc("ChannelEventGenerator::set_fixed_step_max_weight")
+        );
+
+    py::classh<WeightingStep> weighting_step(
+        m, "WeightingStep", pydoc::doc("WeightingStep")
+    );
+    add_enum<WeightingStep::Mode>(
+        weighting_step,
+        "Mode",
+        {
+            {"unweight", WeightingStep::unweight},
+            {"reweight", WeightingStep::reweight},
+        }
+    );
+    weighting_step
+        .def(
+            py::init([](const std::vector<MatrixElement>& matrix_elements,
+                        WeightingStep::Mode mode,
+                        double max_overweight_truncation,
+                        std::size_t freeze_max_weight_after,
+                        const std::vector<MatrixElement::MatrixElementOutput>&
+                            override_outputs) {
+                return WeightingStep{
+                    .matrix_elements = matrix_elements,
+                    .mode = mode,
+                    .max_overweight_truncation = max_overweight_truncation,
+                    .freeze_max_weight_after = freeze_max_weight_after,
+                    .override_outputs = override_outputs,
+                };
+            }),
+            py::arg("matrix_elements"),
+            py::arg("mode") = WeightingStep::unweight,
+            py::arg("max_overweight_truncation") = 0.01,
+            py::arg("freeze_max_weight_after") = 10000,
+            py::arg("override_outputs") =
+                std::vector<MatrixElement::MatrixElementOutput>{},
+            pydoc::doc("WeightingStep")
+        )
+        .def_readwrite(
+            "matrix_elements",
+            &WeightingStep::matrix_elements,
+            pydoc::doc("WeightingStep::matrix_elements")
+        )
+        .def_readwrite("mode", &WeightingStep::mode, pydoc::doc("WeightingStep::mode"))
+        .def_readwrite(
+            "max_overweight_truncation",
+            &WeightingStep::max_overweight_truncation,
+            pydoc::doc("WeightingStep::max_overweight_truncation")
+        )
+        .def_readwrite(
+            "freeze_max_weight_after",
+            &WeightingStep::freeze_max_weight_after,
+            pydoc::doc("WeightingStep::freeze_max_weight_after")
+        )
+        .def_readwrite(
+            "override_outputs",
+            &WeightingStep::override_outputs,
+            pydoc::doc("WeightingStep::override_outputs")
+        );
+
+    py::classh<WeightingGroup>(m, "WeightingGroup", pydoc::doc("WeightingGroup"))
+        .def(
+            py::init([](const std::vector<std::size_t>& channel_indices,
+                        const std::vector<WeightingStep>& steps) {
+                return WeightingGroup{
+                    .channel_indices = channel_indices, .steps = steps
+                };
+            }),
+            py::arg("channel_indices"),
+            py::arg("steps"),
+            pydoc::doc("WeightingGroup")
+        )
+        .def_readwrite(
+            "channel_indices",
+            &WeightingGroup::channel_indices,
+            pydoc::doc("WeightingGroup::channel_indices")
+        )
+        .def_readwrite(
+            "steps", &WeightingGroup::steps, pydoc::doc("WeightingGroup::steps")
         );
 
     py::classh<PdfMemberSpec>(m, "PdfMemberSpec", pydoc::doc("PdfMemberSpec"))
@@ -3845,7 +3941,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<std::shared_ptr<ChannelEventGenerator>>&,
                 std::uint64_t,
                 std::shared_ptr<StatusFile>,
-                const GeneratorConfig&>(),
+                const GeneratorConfig&,
+                const std::vector<WeightingGroup>&>(),
             py::arg("contexts"),
             py::arg("channels"),
             py::arg("seed"),
@@ -3855,6 +3952,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 EventGenerator::default_config,
                 "EventGenerator.default_config"
             ),
+            py::arg("groups") = std::vector<WeightingGroup>{},
             pydoc::doc("EventGenerator::EventGenerator")
         )
         .def(

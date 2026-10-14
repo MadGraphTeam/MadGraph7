@@ -34,6 +34,13 @@ EventStream::EventStream(
         if (channels.empty()) {
             throw std::invalid_argument("EventStream needs at least one channel");
         }
+        for (auto& channel : channels) {
+            if (!channel->weighting_steps().empty()) {
+                throw std::invalid_argument(
+                    "EventStream does not support weighting steps yet"
+                );
+            }
+        }
         return combined_event_layout(
             channels.at(0)->event_layout_extra_flags(),
             channels.at(0)->particle_layout_extra_flags()

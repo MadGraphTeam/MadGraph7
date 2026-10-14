@@ -19,3 +19,4 @@
 #include "driver/tensor.hpp"
 #include "driver/thread_pool.hpp"
 #include "driver/vegas_optimizer.hpp"
+#include "driver/weighting_pipeline.hpp"
