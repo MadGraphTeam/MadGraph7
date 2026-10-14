@@ -4046,12 +4046,27 @@ PYBIND11_MODULE(_madspace_py, m) {
 
     py::classh<EventStream>(m, "EventStream", pydoc::doc("EventStream"))
         .def(
-            py::init<
-                ContextPtr,
-                const std::vector<std::shared_ptr<ChannelEventGenerator>>&,
-                std::uint64_t,
-                const LHECompleter&,
-                const GeneratorConfig&>(),
+            py::init(
+                [](ContextPtr context,
+                   const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
+                   std::uint64_t seed,
+                   const LHECompleter& lhe_completer,
+                   const GeneratorConfig& config) {
+                    // Destroying the stream waits for its running jobs, which can
+                    // need the GIL, e.g. for matrix elements in Python
+                    return std::shared_ptr<EventStream>(
+                        new EventStream(context, channels, seed, lhe_completer, config),
+                        [](EventStream* stream) {
+                            if (PyGILState_Check()) {
+                                py::gil_scoped_release release;
+                                delete stream;
+                            } else {
+                                delete stream;
+                            }
+                        }
+                    );
+                }
+            ),
             py::arg("context"),
             py::arg("channels"),
             py::arg("seed"),
