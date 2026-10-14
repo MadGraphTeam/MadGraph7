@@ -78,6 +78,16 @@ module driver_vec
     ! independent MINT point, so it must choose its own group.
     integer, allocatable, public :: lane_group(:), lane_nbody(:)
     double precision, allocatable, public :: lane_vol1(:), lane_born_vol1(:)
+    ! Event-record state that the scalar driver kept in common blocks until
+    ! the event was written: the fold of the S-events (picked in
+    ! update_shower_scale_Sevents), the alpha_S coupling written as AQCDUP,
+    ! and the colour partner and MC scale of the #aMCatNLO line. Every
+    ! accepted lane of a batch is written as an event, so each lane keeps
+    ! its own copy.
+    integer, allocatable, public :: lane_ifold_S(:)
+    double precision, allocatable, public :: lane_g(:)
+    integer, allocatable, public :: lane_ipartner_lhe(:,:)
+    double precision, allocatable, public :: lane_scale1_lhe(:,:)
 
     ! Momenta
 
@@ -177,6 +187,13 @@ module driver_vec
     allocate(real_active(FKS_configs,vector_size))
     allocate(lane_group(vector_size), lane_nbody(vector_size))
     allocate(lane_vol1(vector_size), lane_born_vol1(vector_size))
+    allocate(lane_ifold_S(vector_size), lane_g(vector_size))
+    allocate(lane_ipartner_lhe(FKS_configs,vector_size))
+    allocate(lane_scale1_lhe(FKS_configs,vector_size))
+    lane_ifold_S = 1
+    lane_g = 0d0
+    lane_ipartner_lhe = 0
+    lane_scale1_lhe = 0d0
     ! Momenta
     allocate(spb(0:3,nexternal-1,0:FKS_configs,vector_size))
     allocate(spb_rot(0:3,nexternal-1,FKS_configs,vector_size))
@@ -336,6 +353,10 @@ subroutine deallocate_storage()
     if (allocated(lane_nbody)) deallocate(lane_nbody)
     if (allocated(lane_vol1)) deallocate(lane_vol1)
     if (allocated(lane_born_vol1)) deallocate(lane_born_vol1)
+    if (allocated(lane_ifold_S)) deallocate(lane_ifold_S)
+    if (allocated(lane_g)) deallocate(lane_g)
+    if (allocated(lane_ipartner_lhe)) deallocate(lane_ipartner_lhe)
+    if (allocated(lane_scale1_lhe)) deallocate(lane_scale1_lhe)
     ! Momenta
     if (allocated(spb)) deallocate(spb)
     if (allocated(spb_rot)) deallocate(spb_rot)
