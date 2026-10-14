@@ -209,69 +209,74 @@ subroutine reset_storage()
   implicit none
    include 'nFKSconfigs.inc'
    include 'born_nhel.inc'
+   integer :: n
+   ! Only the lanes of the current batch: the event generation draws batches
+   ! smaller than vector_size, and resetting all the lanes would make each
+   ! batch cost as much as a full one.
+   n = driver_active_size
    driver_accepted(:) = .false.
    ! Per-fold storage only. Weighted Born/virtual accumulators and the BSV
    ! cache persist until the MC driver's next ifl=0 batch-start reset.
-     average_virtual_vec(:,:) = 0d0
-     polyfit_vec(:,:) = 0d0
+     average_virtual_vec(:,1:n) = 0d0
+     polyfit_vec(:,1:n) = 0d0
    ! n-body kinematics Borns
-   snb_amp2(:,:,:) = 0d0
-   snb_jamp2(:,:,:) = 0d0
-   snb_ans_cnt(:,:,:,:) = (0d0,0d0)
-   snb_amp_split(:,:,:) = 0d0
-   snb_amp_split_cnt(:,:,:,:,:) = (0d0,0d0)
-   snb_saveamp(:,:,:,:) = (0d0,0d0)
-    snb_split_soft(:,:,:) = 0d0
-   swgt_nb(:,:) = 0d0
+   snb_amp2(:,:,1:n) = 0d0
+   snb_jamp2(:,:,1:n) = 0d0
+   snb_ans_cnt(:,:,:,1:n) = (0d0,0d0)
+   snb_amp_split(:,:,1:n) = 0d0
+   snb_amp_split_cnt(:,:,:,:,1:n) = (0d0,0d0)
+   snb_saveamp(:,:,:,1:n) = (0d0,0d0)
+    snb_split_soft(:,:,1:n) = 0d0
+   swgt_nb(:,1:n) = 0d0
    ! n+1-body kinematics Borns
-   sn1_amp2(:,:,:) = 0d0
-   sn1_jamp2(:,:,:) = 0d0
-   sn1_ans_cnt(:,:,:,:) = (0d0,0d0)
-   sn1_amp_split(:,:,:) = 0d0
-   sn1_amp_split_cnt(:,:,:,:,:) = (0d0,0d0)
-   sn1_saveamp(:,:,:,:) = (0d0,0d0)
-    sn1_split_soft(:,:,:) = 0d0
-   swgt_n1(:,:) = 0d0
+   sn1_amp2(:,:,1:n) = 0d0
+   sn1_jamp2(:,:,1:n) = 0d0
+   sn1_ans_cnt(:,:,:,1:n) = (0d0,0d0)
+   sn1_amp_split(:,:,1:n) = 0d0
+   sn1_amp_split_cnt(:,:,:,:,1:n) = (0d0,0d0)
+   sn1_saveamp(:,:,:,1:n) = (0d0,0d0)
+    sn1_split_soft(:,:,1:n) = 0d0
+   swgt_n1(:,1:n) = 0d0
    ! Store storage for born-like collinears
-    scb_ans_cnt(:,:,:,:) = (0d0,0d0)
-    scb_amp_split(:,:,:) = 0d0
-    scb_amp_split_cnt(:,:,:,:,:) = (0d0,0d0)
-    scb_saveamp(:,:,:,:) = (0d0,0d0)
+    scb_ans_cnt(:,:,:,1:n) = (0d0,0d0)
+    scb_amp_split(:,:,1:n) = 0d0
+    scb_amp_split_cnt(:,:,:,:,1:n) = (0d0,0d0)
+    scb_saveamp(:,:,:,1:n) = (0d0,0d0)
    ! Store storage for born-like collinears
-    sc1_ans_cnt(:,:,:,:) = (0d0,0d0)
-    sc1_amp_split(:,:,:) = 0d0
-    sc1_amp_split_cnt(:,:,:,:,:) = (0d0,0d0)
-    sc1_saveamp(:,:,:,:) = (0d0,0d0)
+    sc1_ans_cnt(:,:,:,1:n) = (0d0,0d0)
+    sc1_amp_split(:,:,1:n) = 0d0
+    sc1_amp_split_cnt(:,:,:,:,1:n) = (0d0,0d0)
+    sc1_saveamp(:,:,:,1:n) = (0d0,0d0)
    ! Store storage for rotated Borns
-    srot_jamp2(:,:,:) = 0d0
-    srot_ans_cnt(:,:,:,:) = (0d0,0d0)
+    srot_jamp2(:,:,1:n) = 0d0
+    srot_ans_cnt(:,:,:,1:n) = (0d0,0d0)
     ! srot_amp_split(:,:,:) = 0d0
-    srot_amp_split_cnt(:,:,:,:,:) = (0d0,0d0)
+    srot_amp_split_cnt(:,:,:,:,1:n) = (0d0,0d0)
     ! srot_saveamp(:,:,:,:) = (0d0,0d0)
   ! norad and ev amplitudes
-    snorad_amp2(:,:,:) = 0d0
-    sev_amp2(:,:,:) = 0d0
+    snorad_amp2(:,:,1:n) = 0d0
+    sev_amp2(:,:,1:n) = 0d0
    ! Born contributions storage
-    sborn_amp2(:,:) = 0d0
-    sborn_jamp2(:,:) = 0d0
-    sborn_ans_cnt(:,:,:) = (0d0,0d0)
-    sborn_amp_split(:,:) = 0d0
-    sborn_amp_split_cnt(:,:,:,:) = (0d0,0d0)
-    sborn_saveamp(:,:,:) = (0d0,0d0)
-    sborn_split_soft(:,:) = 0d0
-    swgt_born(:) = 0d0
+    sborn_amp2(:,1:n) = 0d0
+    sborn_jamp2(:,1:n) = 0d0
+    sborn_ans_cnt(:,:,1:n) = (0d0,0d0)
+    sborn_amp_split(:,1:n) = 0d0
+    sborn_amp_split_cnt(:,:,:,1:n) = (0d0,0d0)
+    sborn_saveamp(:,:,1:n) = (0d0,0d0)
+    sborn_split_soft(:,1:n) = 0d0
+    swgt_born(1:n) = 0d0
 ! Real amplitudes and weights
-    sreal_amp_split(:,:,:) = 0d0
-    sfx_ev(:,:) = 0d0
-    real_active(:,:) = .false.
+    sreal_amp_split(:,:,1:n) = 0d0
+    sfx_ev(:,1:n) = 0d0
+    real_active(:,1:n) = .false.
     ! Momenta
-    spb(:,:,:,:) = 0d0
-    spb_rot(:,:,:,:) = 0d0
-    spb_coll(:,:,:,:) = 0d0
-    spb_ev(:,:,:,:) = 0d0
-    spb_norad(:,:,:,:) = 0d0
-    sp1_cnt(:,:,:,:,:) = 0d0
-    sp1(:,:,:,:) = 0d0
+    spb(:,:,:,1:n) = 0d0
+    spb_rot(:,:,:,1:n) = 0d0
+    spb_coll(:,:,:,1:n) = 0d0
+    spb_ev(:,:,:,1:n) = 0d0
+    spb_norad(:,:,:,1:n) = 0d0
+    sp1_cnt(:,:,:,:,1:n) = 0d0
+    sp1(:,:,:,1:n) = 0d0
 end subroutine reset_storage
 
 subroutine deallocate_storage()
