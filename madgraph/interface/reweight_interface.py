@@ -1033,7 +1033,7 @@ class ReweightInterface(extended_cmd.Cmd):
 
             with misc.chdir(pjoin(os.path.dirname(rw_dir), path)):
                 with misc.stdchannel_redirected(sys.stdout, os.devnull):                    
-                    if 'rw_me_' in path or tag == 3:
+                    if path.startswith(('rw_me_', 'rw_mevirt_')) or tag == 3:
                         param_card = self.new_param_card
                     else:
                         param_card = check_param_card.ParamCard(self.orig_param_card_text)
@@ -1667,7 +1667,10 @@ class ReweightInterface(extended_cmd.Cmd):
 
 
         base = os.path.basename(os.path.dirname(Pdir))
-        if base == 'rw_me':
+        # rw_me and rw_mevirt have one module per parameter set (2: original,
+        # 3: new); the second-library directories (rw_me_<N>, rw_mevirt_<N>)
+        # only have module 2, which carries the new parameters.
+        if base in ['rw_me', 'rw_mevirt']:
             moduletag = (base, 2+hypp_id)
         else:
             moduletag = (base, 2)
