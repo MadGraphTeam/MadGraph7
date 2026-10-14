@@ -178,6 +178,26 @@ def interference_mode_of(option, orders):
     return ''
 
 
+# '[amplicol]' takes the matrix elements of a process from AmpliCol, a
+# colour-ordered generator, instead of MG diagrams (mg7 output only)
+ME_BACKENDS = ('amplicol',)
+_BACKEND_BRACKET = re.compile(r"\[\s*(?P<backend>\w+)\s*\]")
+
+
+def split_backend_line(line):
+    """(line without the bracket, backend) for a process with a matrix-element
+    backend bracket like '[amplicol]', (line, '') for any other line."""
+
+    match = _BACKEND_BRACKET.search(line)
+    if not match or match.group('backend').lower() not in ME_BACKENDS:
+        return line, ''
+    rest = line[:match.start()] + ' ' + line[match.end():]
+    if '[' in rest or ']' in rest:
+        raise madgraph.InvalidCmd(
+            "[%s] cannot be combined with another '[...]'." % match.group('backend'))
+    return ' '.join(rest.split()), match.group('backend').lower()
+
+
 def split_interference_line(line):
     """Split a process definition of the form
 
@@ -2345,7 +2365,11 @@ This will take effect only in a NEW terminal
             return
 
 
-        if not self._curr_amps:
+        if self._curr_amplicol_defs and self._export_format != 'mg7':
+            raise self.InvalidCmd(
+                'The [amplicol] processes are only supported by the mg7 output.')
+
+        if not self._curr_amps and not self._curr_amplicol_defs:
             text = 'No processes generated. Please generate a process first.'
             raise self.InvalidCmd(text)
 
@@ -3866,6 +3890,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _curr_model = None  #base_objects.Model()
     _curr_amps = diagram_generation.AmplitudeList()
     _curr_proc_defs = base_objects.ProcessDefinitionList()
+    # processes whose matrix elements come from AmpliCol, see split_backend_line
+    _curr_amplicol_defs = base_objects.ProcessDefinitionList()
     _curr_matrix_elements = helas_objects.HelasMultiProcess()
     _curr_helas_model = None
     _curr_exporter = None
@@ -3954,6 +3980,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         self._done_export=False
         self._curr_amps = diagram_generation.AmplitudeList()
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
+        self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
 
         self._v4_export_formats = ['madevent', 'standalone_fortran','standalone_msP','standalone_msF',
@@ -3978,6 +4005,30 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
 
     # Add a process to the existing multiprocess definition
     # Generate a new amplitude
+    def add_backend_process(self, procdef, backend):
+        """Keep a process whose matrix elements come from another backend than
+        MG diagrams. It is exported by the mg7 output, without diagrams."""
+
+        if procdef.get('decay_chains') or procdef.get('required_s_channels') or \
+                procdef.get('forbidden_onsh_s_channels') or \
+                procdef.get('forbidden_s_channels') or \
+                procdef.get('forbidden_particles') or procdef.get('orders') or \
+                procdef.get('squared_orders') or procdef.get('is_decay_chain') or \
+                any(leg.get('polarization') for leg in procdef.get('legs')) or \
+                procdef.get_ninitial() != 2:
+            raise self.InvalidCmd(
+                "[%s] supports 2 -> n processes without decay chains, coupling "
+                "orders, s-channel or particle restrictions and polarizations."
+                % backend)
+        initial = [amp.get_ninitial() for amp in self._curr_amps]
+        if initial and initial[0] != procdef.get_ninitial():
+            raise self.InvalidCmd(
+                "Can not mix processes with different number of initial states.")
+        self._curr_amplicol_defs.append(procdef)
+        self._done_export = False
+        logger.info("Process %s is computed by %s at output time" %
+                    (procdef.nice_string(prefix=False), backend))
+
     def do_add(self, line, counter=0):
         """Generate an amplitude for a given process and add to
         existing amplitudes
@@ -4079,7 +4130,10 @@ This implies that with decay chains:
             else:
                 nb_proc = len([l for l in self.history if l.startswith(('generate','add process'))])
                 nb_proc += counter
+                line, backend = split_backend_line(line)
                 myprocdef = self.extract_process(line, proc_number=nb_proc)
+                if backend:
+                    return self.add_backend_process(myprocdef, backend)
                 # 'left [treextree] right': hidden order selecting the
                 # interference, minimal orders of the right-hand process
                 diagram_generation.prepare_interference_process(myprocdef)
@@ -6045,6 +6099,7 @@ This implies that with decay chains:
         self._curr_amps = diagram_generation.AmplitudeList()
         # Reset Process definition
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
+        self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
         # Reset Helas matrix elements
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         self._generate_info = ""
@@ -7555,6 +7610,7 @@ This implies that with decay chains:
             self._curr_amps = diagram_generation.AmplitudeList()
             # Reset proc defs
             self._curr_proc_defs = base_objects.ProcessDefinitionList()
+            self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
             self._curr_matrix_elements = helas_objects.HelasMultiProcess()
             process_checks.store_aloha = []
             self.advise_neglected_masses()
@@ -10938,6 +10994,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             logger.info('Note that you need to regenerate all processes')
         self._curr_amps = diagram_generation.AmplitudeList()
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
+        self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         if self.options[args[0]] == 'gpu':
             export_v4.ProcessExporterFortranMEGroup.grouped_mode = 'gpu'
@@ -11113,6 +11170,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         self._curr_model = None
         self._curr_amps = diagram_generation.AmplitudeList()
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
+        self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         self._curr_helas_model = None
         self._curr_exporter = None
@@ -11592,6 +11650,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # depend on this option
         self._curr_amps = diagram_generation.AmplitudeList()
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
+        self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         self._curr_exporter = None
         self._second_exporter = None
@@ -13544,6 +13603,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # Reset amplitudes
         self._curr_amps = diagram_generation.AmplitudeList()
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
+        self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
         # Reset Helas matrix elements
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         # Reset _done_export, since we have new process
