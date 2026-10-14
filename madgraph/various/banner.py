@@ -4062,6 +4062,17 @@ class RunCard(ConfigFile):
     def get_lhapdf_id(self):
         return self.get_pdf_id(self['pdlabel'])
 
+    def get_event_norm(self):
+        """Normalisation of the event weights: 'average' (their mean is the
+        cross section), 'sum', 'unity' or 'bias'; 'sum' for a card without
+        the entry. Use this rather than `'event_norm' in card`: RunCardMG7
+        provides event_norm only through its legacy-compat lookup, which
+        `in` does not see."""
+        try:
+            return self['event_norm']
+        except KeyError:
+            return 'sum'
+
     def remove_all_cut(self): 
         """remove all the cut"""
 

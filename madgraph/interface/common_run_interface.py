@@ -2053,8 +2053,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                         continue
                     key = tuple(float(x) for x in split[:-1])
                     cross= float(split[-1])
-                    if 'event_norm' in self.run_card and \
-                            self.run_card['event_norm'] in ['average', 'unity', 'bias']:
+                    if self.run_card.get_event_norm() in ['average', 'unity', 'bias']:
                         cross *= (event_per_job+1 if i <nb_job_with_plus_one else event_per_job)
                     if len(all_cross) > pos:
                         all_cross[pos] += cross
@@ -2062,8 +2061,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                         all_cross.append(cross)
                     pos+=1
                         
-            if 'event_norm' in self.run_card and \
-                                       self.run_card['event_norm'] in ['unity']:
+            if self.run_card.get_event_norm() in ['unity']:
                 all_cross= [cross/nb_event for cross in all_cross]
 
 
@@ -2385,7 +2383,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                             raise Exception("Some of the run failed: Please read %s_%s_debug.log" % (f, self.run_tag)) 
                 
                 
-                if 'event_norm' in self.run_card and self.run_card['event_norm'] in ['average','bias']:
+                if self.run_card.get_event_norm() in ['average','bias']:
                     for key, value in cross_sections.items():
                         cross_sections[key] = value / (nb_event+1)
                 lhe.remove()
