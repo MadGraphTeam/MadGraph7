@@ -1843,40 +1843,76 @@ class ReweightInterface(extended_cmd.Cmd):
         rest_leg = selected[0] - 1 if len(selected) == 1 else None
         return cls.boost_momenta_to_rest_frame(cm, pboost, rest_leg)
 
+    def get_me_frame(self, n_incoming, n_external):
+        """The legs -- counted from 1, in the matrix element's order -- whose
+        rest frame the events' own matrix element was evaluated in, from the
+        run_card of the banner. None when that is the rest frame of the
+        incoming system (the partonic centre of mass of a collision), which
+        the zboost branch of method_boost_event reaches on its own; [] when
+        the matrix element saw the momenta unboosted, mg7's default.
+
+        me_frame is read rather than frame_id. frame_id is a system parameter,
+        computed only when the include files are written, so a run_card read
+        back from an LHE banner keeps its default 6 whatever me_frame says --
+        a polarised sample was reweighted in the partonic centre of mass. An
+        mg7 banner has no frame_id at all, and there [] means no boost:
+        madspace evaluates the matrix element on the lab-frame momenta it
+        writes out, not in madevent's partonic centre of mass.
+        """
+        run_card = self.banner.run_card
+        if isinstance(run_card, banner.RunCardMG7):
+            me_frame = list(run_card['run']['me_frame'])
+            if not me_frame:
+                return []
+        elif 'me_frame' in run_card:
+            me_frame = list(run_card['me_frame'])
+            # madevent and aMC@NLO skip [1, 2] (frame_id 6) outright, decays
+            # included: their matrix element is handed momenta already in
+            # the partonic centre of mass, or the decaying particle's rest
+            # frame
+            if sorted(set(me_frame)) == [1, 2]:
+                return None
+        else:
+            return None
+        # madevent reads only the bits of the legs the matrix element has
+        # (mapid), and with none of them selected boosts by nothing, i.e.
+        # stays in the partonic centre of mass
+        me_frame = sorted(set(n for n in me_frame if 1 <= n <= n_external))
+        if not me_frame or me_frame == list(range(1, n_incoming + 1)):
+            return None
+        return me_frame
+
     def method_boost_event(self, event, all_p, orig_order, hypp_id):
         # For 2>N pass in the center of mass frame
         #   - required for helicity by helicity re-weighitng
         #   - Speed-up loop computation 
         
-        if ('frame_id' in self.banner.run_card and self.banner.run_card['frame_id'] !=6) \
-                and not (hypp_id == 1 and self.boost_event):
-            # frame_id = sum(2**n for n in me_frame): bit n selects leg n,
-            # counted from 1 in the *matrix element's* order -- the order all_p
-            # is already in. Walking the event's own lines instead, as this
-            # did, picks whatever particle the LHE wrote at that place; it
-            # never got that far, since it also died on FourMomenta (no such
-            # name) and on str.reverse. The momenta are boosted directly, like
-            # the zboost below, rather than re-read from a boosted copy of the
-            # event, so the Monte-Carlo-mass projection the caller applied to
-            # all_p survives the boost.
-            # Both matrix elements are evaluated in that frame: the weight is
-            # w_new/w_orig, and a ratio of two helicity-dependent matrix
-            # elements taken in two frames means nothing (this used to be
-            # restricted to hypp_id == 0, leaving the new one in the partonic
-            # CM). A boost set explicitly for the new one ('change boost')
+        n_incoming = len(orig_order[0])
+        me_frame = None
+        if not (hypp_id == 1 and self.boost_event):
+            me_frame = self.get_me_frame(n_incoming, len(all_p[0]))
+        if me_frame is not None:
+            # The frame the events were generated in (see get_me_frame for why
+            # it is read from me_frame and not frame_id). Both matrix elements
+            # are evaluated in it: the weight is w_new/w_orig, and a ratio of
+            # two helicity-dependent matrix elements taken in two frames means
+            # nothing. A boost set explicitly for the new one ('change boost')
             # still takes precedence.
-            frame_id = int(self.banner.run_card['frame_id'])
-            selected = [n for n in range(1, len(all_p[0]) + 1)
-                        if frame_id >> n & 1]
-            if selected:
-                # each assignment of the identical particles is its own guess
-                # of which particle is leg n: its frame is built from its own legs
-                return [self.boost_momenta_to_me_frame(p, len(orig_order[0]),
-                                                       selected)
-                        for p in all_p]
-            # no leg selected (e.g. me_frame = [0]): madevent's boost_to_frame
-            # then boosts by a null vector, i.e. stays in the partonic CM --
-            # the default frame below, not the lab
+            # me_frame counts legs in the *matrix element's* order, the order
+            # all_p is already in -- walking the event's own lines instead
+            # picks whatever particle the LHE wrote at that place. The momenta
+            # are boosted directly, like the zboost below, rather than re-read
+            # from a boosted copy of the event, so the Monte-Carlo-mass
+            # projection the caller applied to all_p survives the boost.
+            if not me_frame:
+                # mg7's default: its matrix element saw the lab-frame momenta
+                return all_p
+            # each assignment of the identical particles is its own guess of
+            # which particle is leg n: its frame is built from its own legs
+            return [self.boost_momenta_to_me_frame(p, n_incoming, me_frame)
+                    for p in all_p]
+        # None: the rest frame of the incoming system, i.e. the default
+        # partonic-CM boost below (madevent's frame_id 6, or no leg selected)
 
         if (hypp_id == 1 and self.boost_event):
             if self.boost_event is not True:

@@ -1067,6 +1067,14 @@ class MadSpinInterface(extended_cmd.Cmd):
         "no frame at all" to MadSpin. The default ``me_frame = [1,2]`` gives 6,
         i.e. exactly the value NLO samples always had. An NLO run_card has no
         beam polarisation.
+
+        An mg7 run_card (``run.me_frame``) is read the same way, but its
+        default ``[]`` gives 0, not 6: madspace evaluates the matrix element on
+        the lab-frame momenta it writes out unless me_frame names a frame, and
+        0 is exactly "no frame, stay in the lab" to MadSpin -- ``_frame_boost``
+        returns None, and the v1 driver's ``boost_to_frame`` selects no leg and
+        boosts by nothing. Giving it 6 projected the polarisation of an mg7
+        sample in the partonic c.m. instead. mg7 has no beam polarisation.
         """
         if isinstance(run_card, banner.RunCardLO):
             run_card.update_system_parameter_for_include()
@@ -1074,6 +1082,9 @@ class MadSpinInterface(extended_cmd.Cmd):
             beampol = [run_card['polbeam1'], run_card['polbeam2']]
         elif isinstance(run_card, banner.RunCardNLO):
             frame_id = sum(2**n for n in run_card['me_frame'])
+            beampol = [0., 0.]
+        elif isinstance(run_card, banner.RunCardMG7):
+            frame_id = sum(2**n for n in run_card['run']['me_frame'])
             beampol = [0., 0.]
         else:
             frame_id = 6
@@ -1144,8 +1155,12 @@ class MadSpinInterface(extended_cmd.Cmd):
         
         if 'madspin' in self.banner:
             raise self.InvalidCmd('This event file was already decayed by MS. This is not possible to add to it a second decay')
-        
-        if 'mgruncard' in self.banner:
+
+        # an mg7 file has <MG7RunCard> and no <MGRunCard>; charge_card reads it
+        # as a RunCardMG7, which maps nevents and bwcutoff. Gating on
+        # 'mgruncard' alone gave every mg7 sample the fixed fallbacks below
+        # (75 events / 4.5 sigma for the max weight, whatever its size).
+        if 'mgruncard' in self.banner or 'mg7runcard' in self.banner:
             run_card = self.banner.charge_card('run_card')
             if not self.options['Nevents_for_max_weight']:
                 nevents = run_card['nevents']
@@ -1585,10 +1600,14 @@ class MadSpinInterface(extended_cmd.Cmd):
         if not self.events_file:
             raise self.InvalidCmd("No events files defined.")
         
-        # Validity check. Need lhe version 3 if matching is on
-        if self.banner.get("run_card", "lhe_version") < 3 and \
-            self.banner.get("run_card", "ickkw") > 0:
-            raise Exception("MadSpin requires LHEF version 3 when running with matching/merging")
+        # Validity check. Need lhe version 3 if matching is on. An mg7 banner
+        # carries its run card as <MG7RunCard> (parsed as RunCardMG7, which
+        # only knows the legacy keys it maps), and do_import accepts a banner
+        # with no run card at all: neither may end in a KeyError here.
+        if 'mgruncard' in self.banner or 'mg7runcard' in self.banner:
+            if self.banner.get("run_card", "lhe_version", default=3) < 3 and \
+                self.banner.get("run_card", "ickkw", default=0) > 0:
+                raise Exception("MadSpin requires LHEF version 3 when running with matching/merging")
 
     def help_launch(self):
         """help for the launch command"""
@@ -2395,24 +2414,37 @@ class MadSpinInterface(extended_cmd.Cmd):
         self._archive_madspin_card(decayed_evt_file)
         self._finish_run()
 
+    @staticmethod
+    def _replace_run_card(target, source):
+        """Give ``target`` (the banner pickled in a reused ms_dir) the run card
+        of ``source`` (the events decayed now), so that the output records the
+        right one. Either may carry a legacy <MGRunCard> or an mg7
+        <MG7RunCard>, and charge_card reads mg7runcard first: a card that
+        ``source`` lacks is dropped from ``target`` instead of left stale, and
+        so is the parsed card cached on it."""
+        if 'mgruncard' not in source and 'mg7runcard' not in source:
+            return
+        for tag in ('mgruncard', 'mg7runcard'):
+            if tag in source:
+                target[tag] = source[tag]
+            else:
+                target.pop(tag, None)
+        target.__dict__.pop('run_card', None)
+
     def run_from_pickle(self):
         import madgraph.iolibs.save_load_object as save_load_object
         
         generate_all = save_load_object.load_from_file(pjoin(self.options['ms_dir'], 'madspin.pkl'))
         
-        #restore data passed to string to help pickle
-        generate_all.all_decay = eval(generate_all.all_decay)
-        for me in generate_all.all_ME:
-            for d in generate_all.all_ME[me]['decays']:
-                if isinstance(d['decay_struct'], str):
-                    d['decay_struct'] = eval(d['decay_struct'])
-
 
         # Re-create information which are not save in the pickle.
         generate_all.evtfile = self.events_file
         generate_all.curr_event = madspin.Event(self.events_file, self.banner ) 
         generate_all.mgcmd = self.mg5cmd
         generate_all.mscmd = self 
+        # all_decay/decay_struct strings and the model (the event reader needs
+        # it to produce the flavour-grouped tags all_ME is keyed by)
+        generate_all.restore_pickled_status(self.model, self.options['ms_dir'])
         #generate_all.pid2width = lambda pid: generate_all.banner.get('param_card', 'decay', abs(pid)).value
         #generate_all.pid2mass = lambda pid: generate_all.banner.get('param_card', 'mass', abs(pid)).value
         if generate_all.path_me != self.options['ms_dir']:
@@ -2451,9 +2483,8 @@ class MadSpinInterface(extended_cmd.Cmd):
         generate_all.banner['init'] = self.banner['init']
 
         #replace run card if present in header (to make sure correct random seed is recorded in output file)
-        if 'mgruncard' in self.banner:
-            generate_all.banner['mgruncard'] = self.banner['mgruncard']   
-        
+        self._replace_run_card(generate_all.banner, self.banner)
+
         # NOW we have all the information available for RUNNING
         
         if self.options['seed']:
@@ -2492,8 +2523,6 @@ class MadSpinInterface(extended_cmd.Cmd):
         # own card, and archived nothing at all before -- do_launch returns here
         # long before reaching its own copy of this call.
         self._archive_madspin_card(decayed_evt_file)
-    
-    
 
     def run_bridge(self, line):
         """Run the Bridge Algorithm"""

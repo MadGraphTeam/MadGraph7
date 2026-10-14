@@ -780,6 +780,234 @@ class TestFrameFromRunCard(unittest.TestCase):
             options = self.apply(card, user=('frame_id', 'beampol'))
             self.assertEqual(options['frame_id'], 16, type(card).__name__)
             self.assertEqual([float(x) for x in options['beampol']], [50., 0.])
+        card = banner.RunCardMG7()
+        card['run']['me_frame'] = [3, 4]
+        options = self.apply(card, user=('frame_id',))
+        self.assertEqual(options['frame_id'], 16)
+
+    def test_the_mg7_me_frame_reaches_madspin(self):
+        """mg7's run.me_frame, with its own default: [] is the lab frame the
+        matrix element saw (frame_id 0, no boost), not the partonic c.m. (6)
+        every other sample defaults to."""
+        for frame, wanted in (([], 0), ([3], 8), ([3, 4], 24), ([1, 2], 6)):
+            card = banner.RunCardMG7()
+            card['run']['me_frame'] = frame
+            options = self.apply(card)
+            self.assertEqual(options['frame_id'], wanted, frame)
+            self.assertEqual([float(x) for x in options['beampol']], [0., 0.])
+
+    def test_frame_id_zero_is_the_lab_frame(self):
+        """what mg7's [] maps to: _frame_boost has no frame to boost to, even
+        where the frame is observable (a polarised production)"""
+        stub = object.__new__(self.MI)
+        stub.options = interface_madspin.MadSpinOptions()
+        stub.options['frame_id'] = 0
+        stub._needs_frame_axis = lambda: True
+        self.assertIsNone(stub._frame_boost(None))
+
+
+def _write_production_lhe(tmpdir, run_card=None, name='events.lhe'):
+    """An event-less production LHE for ``p p > t t~`` in the sm, written the
+    way the generators do: ``run_card`` (a RunCardMG7 or a legacy RunCard, or
+    None for no run card) goes under <MG7RunCard> or <MGRunCard>."""
+    path = pjoin(tmpdir, name)
+    with open(path, 'w') as fsock:
+        fsock.write('<LesHouchesEvents version="3.0">\n<header>\n'
+                    '<MG5ProcCard>\nimport model sm\ngenerate p p > t t~\n'
+                    '</MG5ProcCard>\n<slha>\n')
+        fsock.write(open(pjoin(MG5DIR, 'models', 'sm',
+                               'restrict_default.dat')).read())
+        fsock.write('</slha>\n')
+        if run_card is not None:
+            tag = 'MG7RunCard' if isinstance(run_card, banner.RunCardMG7) \
+                  else 'MGRunCard'
+            card_path = pjoin(tmpdir, name + '.card')
+            run_card.write(card_path)
+            fsock.write('<%s>\n%s</%s>\n' % (tag, open(card_path).read(), tag))
+        fsock.write('</header>\n<init>\n'
+                    '  2212 2212 6.5e+03 6.5e+03 0 0 0 0 3 1\n'
+                    '  1.0e+00 1.0e-03 1.0e+00 1\n</init>\n'
+                    '</LesHouchesEvents>\n')
+    return path
+
+
+class TestCheckLaunchRunCard(unittest.TestCase):
+    """``check_launch`` (the madspin_v1 path) on the run card of the production.
+
+    An ``output mg7`` LHE carries its run card as ``<MG7RunCard>`` (TOML) and no
+    ``<MGRunCard>``, so the banner parses it as a RunCardMG7, which only answers
+    the legacy keys it maps. ``check_launch`` read ``lhe_version`` from it and
+    every madspin_v1 run on an mg7 sample died with ``KeyError: 'lhe_version'``
+    before decaying anything (the density modes never call check_launch)."""
+
+    class _Stub(object):
+        InvalidCmd = interface_madspin.MadSpinInterface.InvalidCmd
+
+        def __init__(self, mybanner):
+            self.banner = mybanner
+            self.list_branches = {'t': ['t > w+ b']}
+            self.options = {'onlyhelicity': False}
+            self.events_file = object()
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmpdir, True)
+
+    def _mg7_banner(self):
+        """The banner of an mg7 LHE, read from the file as do_import does."""
+        mybanner = banner.Banner(
+            _write_production_lhe(self.tmpdir, banner.RunCardMG7()))
+        self.assertIn('mg7runcard', mybanner)
+        self.assertNotIn('mgruncard', mybanner)
+        return mybanner
+
+    def check_launch(self, mybanner):
+        interface_madspin.MadSpinInterface.check_launch(self._Stub(mybanner), [])
+
+    def test_mg7_banner_passes_check_launch(self):
+        mybanner = self._mg7_banner()
+        self.check_launch(mybanner)
+        self.assertIsInstance(mybanner.run_card, banner.RunCardMG7)
+        # madspace writes LHEF 3.0, and that is what the card now reports
+        self.assertEqual(mybanner.get('run_card', 'lhe_version'), 3)
+
+    def test_mg7_banner_rewrites_as_lhef3(self):
+        """Banner.write takes the <LesHouchesEvents version> of the files it
+        rewrites (MadSpin's decayed output among them) from the run card. The
+        missing key used to fall back to 1.0 for an LHEF 3.0 input."""
+        mybanner = self._mg7_banner()
+        out = pjoin(self.tmpdir, 'rewritten.lhe')
+        mybanner.write(out)
+        with open(out) as fsock:
+            self.assertEqual(fsock.readline().strip(),
+                             '<LesHouchesEvents version="3.0">')
+
+    def test_banner_without_run_card_passes_check_launch(self):
+        """do_import accepts a banner without any run card."""
+        mybanner = banner.Banner()
+        mybanner['mg5proccard'] = 'generate p p > t t~'
+        self.check_launch(mybanner)
+
+    def test_matching_without_lhef3_is_still_refused(self):
+        card = banner.RunCardLO()
+        card['lhe_version'] = 1.0
+        card['ickkw'] = 1
+        mybanner = banner.Banner()
+        mybanner['mgruncard'] = str(card)
+        mybanner.run_card = card
+        with self.assertRaisesRegex(Exception, 'LHEF version 3'):
+            self.check_launch(mybanner)
+        card['lhe_version'] = 3.0
+        self.check_launch(mybanner)
+
+
+class TestImportRunCard(unittest.TestCase):
+    """What ``do_import`` takes from the run card of the production: the
+    max-weight sample size and nb_sigma (both from nevents), BW_cut (from
+    bwcutoff), frame_id and beampol.
+
+    It used to look for the run card only under <MGRunCard>, which an mg7 file
+    does not have, so every mg7 sample got the fixed fallbacks (75 events, 4.5
+    sigma) whatever its size: a 100k-event mg7 sample was decayed with fewer
+    max-weight trials and a lower margin than the same madevent sample."""
+
+    NEVENTS = 100000
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmpdir, True)
+
+    def _import(self, run_card, name):
+        ms = interface_madspin.MadSpinInterface()
+        ms.do_import(_write_production_lhe(self.tmpdir, run_card, name))
+        self.addCleanup(ms.events_file.close)
+        return ms
+
+    def _picked(self, run_card, name):
+        options = self._import(run_card, name).options
+        return {'Nevents_for_max_weight': options['Nevents_for_max_weight'],
+                'nb_sigma': options['nb_sigma'],
+                'BW_cut': float(options['BW_cut']),
+                'frame_id': options['frame_id'],
+                'beampol': [float(x) for x in options['beampol']]}
+
+    def test_mg7_sample_is_read_like_a_madevent_one(self):
+        mg7 = banner.RunCardMG7()
+        mg7['generation']['events'] = self.NEVENTS
+        mg7['phasespace']['bw_cutoff'] = 12
+        lo = banner.RunCardLO()
+        lo['nevents'] = self.NEVENTS
+        lo['bwcutoff'] = 12
+
+        picked = self._picked(mg7, 'mg7.lhe')
+        self.assertEqual(picked['Nevents_for_max_weight'],
+                         int(3 * self.NEVENTS**(1/3)))
+        self.assertGreater(picked['Nevents_for_max_weight'], 75)
+        self.assertAlmostEqual(picked['nb_sigma'], math.log(self.NEVENTS, 7.7))
+        self.assertEqual(picked['BW_cut'], 12.)
+        # mg7's default me_frame [] is the lab frame (0), not madevent's
+        # partonic c.m. (6): see test_the_mg7_me_frame_reaches_madspin
+        self.assertEqual(picked['frame_id'], 0)
+        self.assertEqual(picked['beampol'], [0., 0.])
+        mg7['run']['me_frame'] = [1, 2]
+        self.assertEqual(self._picked(mg7, 'mg7_cm.lhe'),
+                         self._picked(lo, 'lo.lhe'))
+
+    def test_mg7_card_with_a_removed_cpu_mode_still_imports(self):
+        """A card from before the backend renaming carries a cpu_mode that no
+        longer exists. RunCardMG7 refuses it for a run; read from the banner it
+        must not stop the import, which now parses <MG7RunCard> in every
+        spinmode (the density modes never used to)."""
+        import re
+        mg7 = banner.RunCardMG7()
+        mg7['generation']['events'] = self.NEVENTS
+        path = _write_production_lhe(self.tmpdir, mg7, 'old.lhe')
+        with open(path) as fsock:
+            text, count = re.subn(r'(?m)^cpu_mode\s*=.*$',
+                                  'cpu_mode = "cpu_128b"', fsock.read())
+        self.assertEqual(count, 1)
+        with open(path, 'w') as fsock:
+            fsock.write(text)
+
+        ms = interface_madspin.MadSpinInterface()
+        ms.do_import(path)
+        self.addCleanup(ms.events_file.close)
+        self.assertEqual(ms.options['Nevents_for_max_weight'],
+                         int(3 * self.NEVENTS**(1/3)))
+
+    def test_no_run_card_keeps_the_fallbacks(self):
+        picked = self._picked(None, 'none.lhe')
+        self.assertEqual(picked['Nevents_for_max_weight'], 75)
+        self.assertEqual(picked['nb_sigma'], 4.5)
+        self.assertEqual(picked['BW_cut'], 15.)
+
+    def test_reused_ms_dir_takes_the_new_run_card(self):
+        """run_from_pickle hands the pickled banner the run card of the events
+        decayed now. charge_card prefers <MG7RunCard>, so a stale one must not
+        survive next to the new card, nor the card parsed from it."""
+        replace = interface_madspin.MadSpinInterface._replace_run_card
+        mg7 = banner.Banner(_write_production_lhe(
+            self.tmpdir, banner.RunCardMG7(), 'mg7.lhe'))
+        lo = banner.Banner(_write_production_lhe(
+            self.tmpdir, banner.RunCardLO(), 'lo.lhe'))
+        bare = banner.Banner(_write_production_lhe(self.tmpdir, None, 'no.lhe'))
+
+        target = banner.Banner(lo)
+        target.charge_card('run_card')
+        replace(target, mg7)
+        self.assertNotIn('mgruncard', target)
+        self.assertEqual(target['mg7runcard'], mg7['mg7runcard'])
+        self.assertIsInstance(target.run_card, banner.RunCardMG7)
+
+        replace(target, lo)
+        self.assertNotIn('mg7runcard', target)
+        self.assertEqual(target['mgruncard'], lo['mgruncard'])
+        self.assertNotIsInstance(target.run_card, banner.RunCardMG7)
+
+        replace(target, bare)
+        self.assertEqual(target['mgruncard'], lo['mgruncard'])
 
 
 class TestOnshellProductionNorm(unittest.TestCase):
@@ -1325,6 +1553,171 @@ class TestEventGetFlavorIndex(unittest.TestCase):
         ev.particle=  {1: {'pid': 2}, 2: {'pid': 21}, 3: {'pid': 24}, 4: {'pid': -24}, 5: {'pid': 2}} 
         flavor_index = ev.get_flavor_index(flavor_groups_prod, event_map)
         self.assertEqual(flavor_index, 2)   
+
+
+
+class TestRunFromPickleModel(unittest.TestCase):
+    """Reusing an ms_dir (``madspin.pkl``) in madspin_v1 mode.
+
+    ``save_status_to_pickle`` detaches the model before pickling, and
+    ``run_from_pickle`` never put it back: the restored event had no model, so
+    ``Event.get_tag`` returned the physical ``((-2, 2), (-6, 6))`` while
+    ``all_ME`` is keyed by the flavour-grouped ``((-81, 81), (-6, 6))``. Every
+    reuse died with a KeyError in ``load_event`` on the first quark-initiated
+    event -- mg7 and madevent samples alike, the sample that had built the
+    directory included.
+
+    It stayed hidden within a single process because the PDG -> merged-PDG map
+    used to be cached on the Event *class*, so a model-less event borrowed the
+    map of any event built before it.
+    """
+
+    QQ = ((-81, 81), (-6, 6))
+    GG = ((21, 21), (-6, 6))
+
+    class _Stop(Exception):
+        """Raised by the patched ending_run once every event has been read."""
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp(prefix='madspin_pickle_')
+        self.addCleanup(shutil.rmtree, self.tmpdir, True)
+        self.ms_dir = pjoin(self.tmpdir, 'msdir')
+        os.mkdir(self.ms_dir)
+        # LO p p > t t~ in the sm: 25 events, gg and q q~ in both orders.
+        # do_import gunzips its input in place, hence the copy.
+        events = pjoin(self.tmpdir, 'events.lhe.gz')
+        shutil.copy(pjoin(MG5DIR, 'tests', 'input_files', 'ttbar.lhe.gz'),
+                    events)
+        self.cmd = interface_madspin.MadSpinInterface()
+        self.cmd.do_set('ms_dir %s' % self.ms_dir)
+        self.cmd.do_import(events)
+
+    def _write_pickle(self):
+        """madspin.pkl as a first madspin_v1 run leaves it, written by the real
+        save_status_to_pickle: the two production topologies of p p > t t~,
+        keyed the way the flavour-grouped generation keys them."""
+        model = self.cmd.model
+        self.assertEqual(model.get('merged_particles')[81], [1, 2, 3, 4])
+        handler = madspin.decay_all_events.__new__(madspin.decay_all_events)
+        handler.options = self.cmd.options
+        handler.path_me = self.ms_dir
+        handler.banner = self.cmd.banner
+        handler.model = model
+        handler.evtfile = handler.curr_event = None
+        handler.mgcmd, handler.mscmd = self.cmd.mg5cmd, self.cmd
+        handler.width_estimator = None
+        handler.inverted_decay_mapping = {}
+        handler.all_decay = {}
+        handler.all_ME = madspin.AllMatrixElement(self.cmd.banner,
+                                                  self.cmd.options, [6], model)
+        for tag, initial in ((self.QQ, [81, -81]), (self.GG, [21, 21])):
+            handler.all_ME.add({'tag2order': {tag: (initial, [6, -6])},
+                                'decays': [], 'total_br': 0,
+                                'path': pjoin(self.ms_dir, 'production_me')},
+                               [tag])
+        handler.save_status_to_pickle(pjoin(self.ms_dir, 'madspin.pkl'))
+
+    def _reuse(self):
+        """run_from_pickle up to the decay: return, per event, the production
+        tag and the PDG codes in the order of the production ME."""
+        from unittest import mock
+        seen = []
+        def ending_run(handler):
+            while True:
+                tag, event_map = handler.load_event()
+                if tag == 0 == event_map:
+                    raise self._Stop
+                particle = handler.curr_event.particle
+                seen.append((tag, [particle[event_map[i] + 1]['pid']
+                                   for i in range(4)]))
+        with mock.patch.object(madspin.decay_all_events, 'ending_run',
+                               ending_run):
+            self.assertRaises(self._Stop, self.cmd.run_from_pickle)
+        return seen
+
+    def test_reuse_reads_quark_initiated_events(self):
+        """The bug: KeyError ((-1, 1), (-6, 6)) on the first d d~ event."""
+        self._write_pickle()
+        seen = self._reuse()
+        self.assertEqual(len(seen), 25)
+        self.assertEqual(set(tag for tag, _ in seen), {self.QQ, self.GG})
+        for tag, pids in seen:
+            self.assertEqual(pids[2:], [6, -6])
+            if tag == self.GG:
+                self.assertEqual(pids[:2], [21, 21])
+            else:
+                # quark in the first slot of the 81 -81 ME, whichever beam
+                # it came from: this sample has both orders
+                self.assertIn(pids[0], [1, 2, 3, 4])
+                self.assertEqual(pids[1], -pids[0])
+
+    def test_a_directory_grouped_differently_is_refused(self):
+        """The flavour indices handed to the compiled matrix elements are
+        positions within a merged group: a model that groups differently
+        must not be used in place of the one the directory was built with."""
+        import madgraph.iolibs.save_load_object as save_load_object
+        self._write_pickle()
+        path = pjoin(self.ms_dir, 'madspin.pkl')
+        handler = save_load_object.load_from_file(path)
+        handler.merged_particles = {81: [1, 2, 3, 4, 5]}
+        save_load_object.save_to_file(path, handler)
+        self.assertRaisesRegex(madspin.MadSpinError, 'flavour grouping',
+                               self._reuse)
+
+    def test_an_event_without_a_model_borrows_no_map(self):
+        """The map is per event and follows its model."""
+        def event(model):
+            ev = madspin.Event(model=model)
+            ev.particle = {
+                1: {'pid': -2, 'mothup1': 0, 'mothup2': 0},
+                2: {'pid': 2, 'mothup1': 0, 'mothup2': 0},
+                3: {'pid': 6, 'mothup1': 1, 'mothup2': 2},
+                4: {'pid': -6, 'mothup1': 1, 'mothup2': 2}}
+            return ev
+        grouped = event(self.cmd.model)
+        self.assertEqual(grouped.get_tag()[0], self.QQ)
+        # built after the grouped one: the old class-level cache handed it
+        # the sm map
+        self.assertEqual(event(None).get_tag()[0], ((-2, 2), (-6, 6)))
+        grouped.model = None
+        self.assertEqual(grouped.get_tag()[0], ((-2, 2), (-6, 6)))
+        grouped.model = self.cmd.model
+        self.assertEqual(grouped.get_tag()[0], self.QQ)
+
+
+class TestDcBranchFromDict(unittest.TestCase):
+    """save_status_to_pickle keeps all_decay as its repr, so a decay branch
+    comes back as a plain dict; get_identical_decay, which use_old_dir reruns,
+    calls generate_momenta on it. dc_branch_from_me.from_dict rebuilds it."""
+
+    def test_round_trip_through_the_repr(self):
+        w_decay = MG.Process({'legs': MG.LegList([
+            MG.Leg({'id': 24, 'state': False}), MG.Leg({'id': -11}),
+            MG.Leg({'id': 12})])})
+        t_decay = MG.Process({'legs': MG.LegList([
+            MG.Leg({'id': 6, 'state': False}), MG.Leg({'id': 24}),
+            MG.Leg({'id': 5})]),
+            'decay_chains': MG.ProcessList([w_decay])})
+        branch = madspin.dc_branch_from_me(t_decay)
+        back = madspin.dc_branch_from_me.from_dict(eval(repr(branch)))
+
+        self.assertIsInstance(back, madspin.dc_branch_from_me)
+        self.assertEqual(dict(back), dict(branch))
+        # t > w+ b, w+ > e+ ve: two decays, three external legs
+        self.assertEqual((branch.nb_decays, branch.nexternal), (2, 3))
+        self.assertEqual((back.nb_decays, back.nexternal), (2, 3))
+
+        mass = {6: 173.0, 24: 80.4, 5: 4.7}
+        width = {6: 1.5, 24: 2.05}
+        def momenta(dc_branch):
+            random.seed(7)
+            tree, jac, nb_sol = dc_branch.generate_momenta(
+                madspin.momentum(173.0, 0, 0, 0), True,
+                lambda pid: width.get(abs(pid), 0.),
+                lambda pid: mass.get(abs(pid), 0.), 15, 13000)
+            return sorted((i, str(tree[i]['momentum'])) for i in tree), jac
+        self.assertEqual(momenta(back), momenta(branch))
 
 
 
@@ -13607,3 +14000,97 @@ class TestSlotOrderAgreement(unittest.TestCase):
 
 def _mom(part):
     return (part.E, part.px, part.py, part.pz)
+
+
+class TestSetGlobalFlag(unittest.TestCase):
+    """MadSpin compiles its standalone trees with madspin.MS_GLOBAL_FLAG; the
+    libraries ``output standalone`` already built must then be rebuilt."""
+
+    def setUp(self):
+        import tempfile
+        self.tree = tempfile.mkdtemp(prefix='madspin_flag_')
+        os.mkdir(pjoin(self.tree, 'Source'))
+        shutil.copy(pjoin(MG5DIR, 'Template', 'LO', 'Source', '.make_opts'),
+                    pjoin(self.tree, 'Source', 'make_opts'))
+        # stands in for the objects 'output standalone' left behind
+        for lib in ('DHELAS', 'MODEL'):
+            os.mkdir(pjoin(self.tree, 'Source', lib))
+            with open(pjoin(self.tree, 'Source', lib, 'makefile'), 'w') as fsock:
+                fsock.write('clean:\n\trm -f stale.o\n')
+
+    def tearDown(self):
+        shutil.rmtree(self.tree)
+
+    def _touch_objects(self):
+        for lib in ('DHELAS', 'MODEL'):
+            open(pjoin(self.tree, 'Source', lib, 'stale.o'), 'w').close()
+
+    def _objects(self):
+        return [os.path.exists(pjoin(self.tree, 'Source', lib, 'stale.o'))
+                for lib in ('DHELAS', 'MODEL')]
+
+    def _global_flag(self):
+        with open(pjoin(self.tree, 'Source', 'make_opts')) as fsock:
+            text = fsock.read()
+        head = text.split('#end_of_make_opts_variables')[0]
+        return [l.split('=', 1)[1] for l in head.splitlines()
+                if l.startswith('GLOBAL_FLAG=')]
+
+    def test_flag_is_written_and_stale_objects_removed(self):
+        self._touch_objects()
+        madspin.set_global_flag(self.tree)
+        self.assertEqual(self._global_flag(), [madspin.MS_GLOBAL_FLAG])
+        self.assertEqual(self._objects(), [False, False])
+
+    def test_nothing_is_removed_once_the_flag_is_set(self):
+        madspin.set_global_flag(self.tree)
+        self._touch_objects()
+        madspin.set_global_flag(self.tree)
+        self.assertEqual(self._global_flag(), [madspin.MS_GLOBAL_FLAG])
+        self.assertEqual(self._objects(), [True, True])
+
+    def test_a_different_flag_rebuilds_again(self):
+        madspin.set_global_flag(self.tree)
+        self._touch_objects()
+        madspin.set_global_flag(self.tree, '-O0')
+        self.assertEqual(self._global_flag(), ['-O0'])
+        self.assertEqual(self._objects(), [False, False])
+
+
+class TestGlobalFlagGate(unittest.TestCase):
+    """MS_GLOBAL_FLAG is only used when the production has at least
+    MS_GLOBAL_FLAG_MIN_DECAYS particles to decay."""
+
+    def _events(self, decay_ids):
+        obj = madspin.decay_all_events.__new__(madspin.decay_all_events)
+        obj.all_ME = madspin.AllMatrixElement(None, {}, decay_ids, None)
+        return obj
+
+    def test_count_from_madspin_v1_topologies(self):
+        obj = self._events([6, -6])
+        obj.all_ME[((21, 21), (6, -6, 6, -6))] = {'base_order': ((21, 21), (6, -6, 6, -6))}
+        obj.all_ME[((21, 21), (6, -6, 23))] = {'base_order': ((21, 21), (6, -6, 23))}
+        self.assertEqual(obj.nb_decaying_in_production(), 4)
+
+    def test_count_from_density_production_only(self):
+        # the decay processes (type 'decay') must not be counted, and the
+        # decays of decay products (the W of a top) are not production decays
+        obj = self._events([6, -6, 23])
+        obj.all_me = {((21, 21), (-6, 6, 23)): {'type': 'production'},
+                      ((6,), (5, 24)): {'type': 'decay'}}
+        self.assertEqual(obj.nb_decaying_in_production(), 3)
+
+    def test_flag_only_from_the_threshold_on(self):
+        calls = []
+        orig = madspin.set_global_flag
+        madspin.set_global_flag = lambda tree, *a, **k: calls.append(tree)
+        try:
+            for ndecay in range(1, madspin.MS_GLOBAL_FLAG_MIN_DECAYS + 2):
+                obj = self._events([24, -24])
+                obj.all_me = {((2, -1), (24,) * ndecay): {'type': 'production'}}
+                obj.use_global_flag('tree%d' % ndecay)
+        finally:
+            madspin.set_global_flag = orig
+        self.assertEqual(calls, ['tree%d' % n for n in
+                                 range(madspin.MS_GLOBAL_FLAG_MIN_DECAYS,
+                                       madspin.MS_GLOBAL_FLAG_MIN_DECAYS + 2)])
