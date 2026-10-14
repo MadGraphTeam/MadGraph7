@@ -391,6 +391,22 @@ def _merge_flavour_orbits(data):
             entry["multichannels"] = [index]
 
 
+def _export_helicities(data, runtime_helicities):
+    """Map runtime helicities to exported ones, given in the input leg order."""
+    entries = [e for c in data["channels"] for e in c["processes"]]
+    for runtime in [e["runtime"] for e in entries] + [
+        m["runtime"] for e in entries for m in e["members"]
+    ]:
+        permutation = runtime["permutation"]
+        exported = []
+        for values in runtime_helicities[runtime["process_index"]]:
+            ordered = [0] * len(values)
+            for runtime_leg, input_leg in enumerate(permutation):
+                ordered[input_leg] = values[runtime_leg]
+            exported.append(_intern(data["helicities"], ordered))
+        runtime["helicity_export"] = exported
+
+
 def build_umami_metadata(
     *,
     processes: Sequence[UmamiProcessInput],
@@ -517,6 +533,7 @@ def _build_provider(
     orbit_entries: dict[tuple, tuple[dict, list[int]]] = {}
     channel_lookup = {}
     physical_count = 0
+    runtime_helicities: list[list[list[int]]] = []
     for process_index, process in enumerate(processes):
         physics = process.physics
         external = _records(physics["external_particles"])
@@ -551,6 +568,7 @@ def _build_provider(
         )
         helicity_groups: dict[str, list[int]] = {}
         helicity_mappings = []
+        runtime_helicities.append([list(h["values"]) for h in helicities])
         for h in helicities:
             hindex = _intern(data["helicities"], list(h["values"]))
             key = str(h.get("representative_id", h["id"]))
@@ -657,6 +675,7 @@ def _build_provider(
             data["channels"][channel_index]["processes"].append(entry)
             orbit_entries[orbit] = (entry, aligned_order)
     _merge_flavour_orbits(data)
+    _export_helicities(data, runtime_helicities)
     alpha_names = {p["alpha_s_parameter"] for p in data["runtime_processes"]}
     data["provider"]["alpha_s_parameter"] = (
         next(iter(alpha_names)) if len(alpha_names) == 1 else None

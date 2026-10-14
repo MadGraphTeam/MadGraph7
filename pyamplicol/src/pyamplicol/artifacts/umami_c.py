@@ -101,6 +101,20 @@ def provider_header(data: Mapping[str, Any]) -> str:
                 + ", ".join(str(v) for v in runtime["permutation"])
                 + "};"
             )
+            exported = runtime["helicity_export"]
+            to_runtime = [-1] * len(data["helicities"])
+            for runtime_index, export_index in enumerate(exported):
+                to_runtime[export_index] = runtime_index
+            lines.append(
+                f"static const int {prefix}_helicity_runtime[] = {{"
+                + ", ".join(str(v) for v in to_runtime or [-1])
+                + "};"
+            )
+            lines.append(
+                f"static const size_t {prefix}_helicity_export[] = {{"
+                + ", ".join(str(v) for v in exported or [0])
+                + "};"
+            )
             lines.append(
                 f"static const UmamiContribution {prefix}_contributions[] = {{"
             )
@@ -113,6 +127,8 @@ def provider_header(data: Mapping[str, Any]) -> str:
                         str(runtime["color_index"]),
                         f"{prefix}_permutation",
                         _number(runtime["factor"]),
+                        f"{prefix}_helicity_runtime",
+                        f"{prefix}_helicity_export",
                     )
                 )
                 + "},"
@@ -143,6 +159,7 @@ def provider_header(data: Mapping[str, Any]) -> str:
                     str(provider["incoming_count"]),
                     str(provider["helicity_count"]),
                     str(provider["color_count"]),
+                    str(len(data["helicities"])),
                 )
             )
             + ",",

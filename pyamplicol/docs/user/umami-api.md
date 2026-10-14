@@ -139,9 +139,11 @@ be finite and indices valid. Check every returned `UmamiStatus`.
 | `UMAMI_IN_CHANNEL_INDEX` | Zero-based index into `channels`; defaults to zero. |
 | `UMAMI_IN_FLAVOR_INDEX` | Zero-based index into that channel's `processes`; defaults to zero. |
 | `UMAMI_IN_ALPHA_S` | Optional per-event strong coupling, only when the model supplies an unambiguous declaration. |
-| `UMAMI_IN_RANDOM_HELICITY` | A number in `[0,1)` for an informational helicity label; not a sampled matrix-element estimator. |
+| `UMAMI_IN_RANDOM_HELICITY` | A number in `[0,1)` selecting the returned helicity index with probability proportional to its contribution. |
+| `UMAMI_IN_HELICITY_INDEX` | Evaluates only this exported helicity, an index into the metadata `helicities`. |
 
-The matrix-element output sums the artifact's **available helicities**. A
+The matrix-element output sums the artifact's **available helicities**, unless
+`UMAMI_IN_HELICITY_INDEX` selects one of them. A
 generation restricted to one helicity is therefore not an unpolarized provider;
 consult `runtime_processes[].coverage` and `helicity_ids` in the metadata.
 The result already includes Rusticol's incoming spin/colour averaging and
@@ -157,9 +159,12 @@ them once when assembling physical contributions.
 The adapter reports supported and required inputs and supported outputs through
 `umami_supported_inputs`, `umami_required_inputs` and
 `umami_supported_outputs`. Besides matrix elements, it supplies informational
-helicity indices, and colour indices for LC only. Contracted-colour providers
-do not advertise a colour-flow count or colour-index output. Explicit helicity
-selection, random colour selection,
+helicity indices, and colour indices for LC only. Exported helicity indices
+refer to the metadata `helicities` table, with the values in the physical
+external order of the momenta, and the sampled index follows the helicity
+distribution of the contribution. Contracted-colour providers
+do not advertise a colour-flow count or colour-index output. Random colour
+selection,
 diagram-resolved outputs and GPU execution are currently unsupported. Query
 capabilities rather than assuming every UMAMI operation is implemented.
 
