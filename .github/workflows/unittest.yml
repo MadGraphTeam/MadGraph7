@@ -202,6 +202,17 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madspace_install -t0
 
+      # ---- unittest_hwu ----
+      # tests/unit_tests/various/test_mg7_hwu_output.py: the MADatLO.HwU an mg7
+      # run writes, read back and overlaid on an aMC@NLO MADatNLO.HwU by
+      # histograms.py; plus the histograms.py command line keeping aMC@NLO's
+      # own scale/PDF columns
+      - name: "unittest_hwu: run the HwU output unit tests"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_mg7_hwu_output test_cli_keeps_amcatnlo_scale_and_pdf_columns -t0
+
 
   unittest_bundle_2:
     # former jobs, run one after the other: unittest_1 unittest_4 unittest_5

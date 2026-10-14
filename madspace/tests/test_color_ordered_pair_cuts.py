@@ -15,8 +15,9 @@ flavour, so a cut can name one specific pair.
 
 import math
 
-import numpy as np
 import pytest
+import torch
+from madspace_testing import generator, rand, randint
 
 import madspace as ms
 
@@ -65,9 +66,9 @@ def matrix(pairs, value):
 
 
 def random_inputs(random_dim, discrete_dim, n, seed):
-    rng = np.random.default_rng(seed)
-    r = rng.random((n, random_dim))
-    d = rng.integers(0, 2, size=(n, discrete_dim)).astype(np.int32)
+    g = generator(seed)
+    r = rand((n, random_dim), generator=g)
+    d = randint(0, 2, (n, discrete_dim), generator=g, dtype=torch.int32)
     return r, d
 
 
@@ -83,17 +84,17 @@ def psm_momenta(order, cut_items, r, d):
     assert mapping.random_dim() == r.shape[1]
     assert mapping.discrete_dim() == d.shape[1]
     inputs = [r, d] if d.shape[1] else [r]
-    return np.asarray(mapping.map_forward(inputs)[0])
+    return mapping.map_forward(inputs)[0]
 
 
 def co_momenta(order, pt_min, m_inv_min, dr_min, r, d):
     mapping = ms.ColorOrderedMapping(order, 0.8, 0.8, pt_min, m_inv_min, dr_min)
     n = r.shape[0]
-    inputs = [r[:, i].copy() for i in range(r.shape[1])]
-    inputs += [d[:, j].copy() for j in range(d.shape[1])]
-    conditions = [np.full(n, CM_ENERGY)] + [np.zeros(n) for _ in range(N_OUT)]
+    inputs = [r[:, i].contiguous() for i in range(r.shape[1])]
+    inputs += [d[:, j].contiguous() for j in range(d.shape[1])]
+    conditions = [torch.full((n,), CM_ENERGY)] + [torch.zeros(n) for _ in range(N_OUT)]
     out = mapping.map_forward(inputs, conditions)
-    return np.stack([np.asarray(p) for p in out[:-1]], axis=1)
+    return torch.stack(out[:-1], dim=1)
 
 
 def same_points(p, q):
@@ -101,9 +102,9 @@ def same_points(p, q):
 
     The bound narrows ranges, so some points land where nothing is left to
     sample and come out as NaN (weight zero); those count as the same point."""
-    nan_p = ~np.all(np.isfinite(p), axis=(1, 2))
-    nan_q = ~np.all(np.isfinite(q), axis=(1, 2))
-    close = np.all(np.abs(np.nan_to_num(p - q)) <= ATOL, axis=(1, 2))
+    nan_p = ~torch.isfinite(p).all(dim=2).all(dim=1)
+    nan_q = ~torch.isfinite(q).all(dim=2).all(dim=1)
+    close = (torch.nan_to_num(p - q).abs() <= ATOL).all(dim=2).all(dim=1)
     return (nan_p & nan_q) | (~nan_p & ~nan_q & close)
 
 
@@ -146,13 +147,13 @@ def test_pair_cut_reaches_color_ordered_mapping(
 
     # Near degenerate configurations the extra operations in
     # PhaseSpaceMapping can be amplified past ATOL, so allow a few points.
-    assert np.mean(same_points(p_psm, p_with)) > 0.99
+    assert same_points(p_psm, p_with).double().mean() > 0.99
 
     # Without the comparison below the test would pass for a cut that does
     # not affect this topology at all, and prove nothing. A floor only moves
     # the points where it lies above the kinematic one: all of them for the
     # pair masses here, about half for the delta-R cut.
-    assert np.mean(same_points(p_with, p_without)) < 0.9
+    assert same_points(p_with, p_without).double().mean() < 0.9
 
 
 def sample(order, cuts, n, seed):
@@ -167,14 +168,14 @@ def sample(order, cuts, n, seed):
     r, d = random_inputs(mapping.random_dim(), mapping.discrete_dim(), n, seed)
     inputs = [r, d] if mapping.discrete_dim() else [r]
     p_ext, _x1, _x2, det = mapping.map_forward(inputs)
-    det = np.nan_to_num(np.asarray(det)) * 2.0 ** mapping.discrete_dim()
-    return np.asarray(p_ext), det
+    det = torch.nan_to_num(det) * 2.0 ** mapping.discrete_dim()
+    return p_ext, det
 
 
 def invariant_mass(p, a, b):
     total = p[:, a + 2] + p[:, b + 2]
-    m2 = total[:, 0] ** 2 - np.sum(total[:, 1:] ** 2, axis=1)
-    return np.sqrt(np.maximum(m2, 0.0))
+    m2 = total[:, 0] ** 2 - torch.sum(total[:, 1:] ** 2, dim=1)
+    return torch.sqrt(torch.clamp(m2, min=0.0))
 
 
 # The central 2->2 split, whose set masses are the only place these cuts
@@ -188,17 +189,17 @@ def test_pair_cut_on_odd_child_raises_efficiency_not_volume(pair):
     a, b = pair
 
     p_free, det_free = sample(SPLIT_2_2, None, n, SEED)
-    external = np.where(invariant_mass(p_free, a, b) >= PAIR_MASS_CUT, det_free, 0.0)
+    external = torch.where(invariant_mass(p_free, a, b) >= PAIR_MASS_CUT, det_free, 0.0)
 
     p_cut, piped = sample(SPLIT_2_2, ms.Cuts([pair_mass(a, b)]), n, SEED + 1)
-    assert np.all(invariant_mass(p_cut, a, b)[piped != 0.0] >= PAIR_MASS_CUT)
-    assert np.all(piped >= 0.0)
+    assert torch.all(invariant_mass(p_cut, a, b)[piped != 0.0] >= PAIR_MASS_CUT)
+    assert torch.all(piped >= 0.0)
 
     # with the bound dropped, both fractions are the same (0.84 / 0.17)
-    eff_external = np.mean(external > 0.0)
-    eff_piped = np.mean(piped > 0.0)
+    eff_external = (external > 0.0).double().mean()
+    eff_piped = (piped > 0.0).double().mean()
     assert eff_piped > eff_external + 0.03
 
-    error = math.sqrt((external.var() + piped.var()) / n)
+    error = math.sqrt((external.var(correction=0) + piped.var(correction=0)) / n)
     assert error > 0.0
-    assert abs(piped.mean() - external.mean()) < 5.0 * error
+    assert abs(piped.mean() - external.mean()).item() < 5.0 * error

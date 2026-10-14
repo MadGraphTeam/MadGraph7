@@ -1953,6 +1953,30 @@ class TestRunCardMG7(unittest.TestCase):
             self.assertEqual(mybanner.get('run_card', 'nevents'),
                              rc['generation']['events'])
 
+    def test_event_norm_of_an_mg7_sample(self):
+        """mg7 weights average to sigma. event_norm is only a legacy-compat
+        key of RunCardMG7, invisible to `in`, which made the reweighting log
+        sum the weights: its new cross section came out N_events too large.
+        get_event_norm sees it, for the card read back from a banner too."""
+        rc = bannermod.RunCardMG7()
+        self.assertNotIn('event_norm', rc)
+        self.assertEqual(rc.get_event_norm(), 'average')
+
+        out = io.StringIO()
+        rc.write(out, template=self.template)
+        mybanner = bannermod.Banner()
+        mybanner['mg7runcard'] = out.getvalue()
+        self.assertEqual(mybanner.charge_card('run_card').get_event_norm(),
+                         'average')
+
+        # legacy cards: their own value, 'sum' when they have none
+        lo = bannermod.RunCardLO()
+        self.assertEqual(lo.get_event_norm(), 'average')
+        lo['event_norm'] = 'sum'
+        self.assertEqual(lo.get_event_norm(), 'sum')
+        dict.__delitem__(lo, 'event_norm')
+        self.assertEqual(lo.get_event_norm(), 'sum')
+
     def test_defaults_and_section_access(self):
         """default values are accessible through nested-section views"""
         rc = bannermod.RunCardMG7()
@@ -2181,12 +2205,22 @@ class TestRunCardMG7Histograms(unittest.TestCase):
     def test_weight_distribution(self):
         """'weight' is the reserved key for the event weight itself
 
-        It is binned in units of the cross section, so the range does not
+        It is binned in units of the unit weight, so the range does not
         depend on the process (an unweighted sample is a spike at 1).
         """
         rc = self.build([[mg7_proc([21, 21], [6, -6])]])
         weight = rc['histograms']['weight']
         self.assertEqual(weight['min'], 0.)
+        self.assertGreater(weight['max'], 1.)
+
+    def test_weight_distribution_of_an_interference(self):
+        """a squared-order constraint can give negative weights, at -1: the
+        range is symmetric so that they are not lost in the underflow"""
+        proc = mg7_proc([21, 21], [6, -6])
+        proc['squared_orders'] = {'HIG': 1}
+        rc = self.build([[proc]])
+        weight = rc['histograms']['weight']
+        self.assertEqual(weight['min'], -weight['max'])
         self.assertGreater(weight['max'], 1.)
 
     def test_round_trip(self):

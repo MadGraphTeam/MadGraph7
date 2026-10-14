@@ -68,7 +68,7 @@ class TestPlotHelpers(unittest.TestCase):
         self.assertEqual(plots._inner([1.0, 2.0], 3), [1.0, 2.0, 0.])
 
     def test_values_are_differential(self):
-        """the y axis is dsigma/dx, as in HwU and in MadBoard's plots"""
+        """the y axis is dsigma/dx, as in MadBoard's plots (not HwU)"""
         self.assertEqual(plots._scaled([99.0, 10.0, 30.0, 88.0], 2, 50.0),
                          [0.2, 0.6])
         self.assertEqual(plots._scaled([0.0, 1.0, 0.0], 1, 0.), [0.])
@@ -84,6 +84,8 @@ class TestPlotHelpers(unittest.TestCase):
         # empty bins are ignored rather than forcing a linear axis
         self.assertEqual(plots._y_scale([1000.0, 1.0, 0.0]), 'log')
         self.assertEqual(plots._y_scale([0.0, 5.0]), 'linear')
+        # an interference: a log axis would hide the negative bins
+        self.assertEqual(plots._y_scale([1000.0, 1.0, -3.0]), 'linear')
 
     def test_bands(self):
         bands = plots._bands(make_histogram(), 4, 25.0)

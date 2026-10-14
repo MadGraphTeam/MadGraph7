@@ -13,8 +13,9 @@ analytically:
 
 import math
 
-import numpy as np
 import pytest
+import torch
+from madspace_testing import generator, rand
 from pytest import approx
 
 import madspace as ms
@@ -25,7 +26,13 @@ M_B = 4.7
 M_W = 80.379
 W_W = 2.085
 
-rng = np.random.default_rng(20260811)
+rng = generator(20260812)
+
+
+def assert_close(actual, expected, rtol=1e-6, atol=1e-12):
+    """pytest.approx for tensors; expected may be a number."""
+    expected = torch.as_tensor(expected, dtype=actual.dtype).expand_as(actual)
+    torch.testing.assert_close(actual, expected, rtol=rtol, atol=atol)
 
 
 def massless_volume(n, mass):
@@ -54,19 +61,20 @@ def decay_mapping(outgoing_masses, propagators, vertices, mass=M_TOP):
 
 
 def sample(mapping):
-    r = rng.random((BATCH_SIZE, mapping.random_dim()))
+    r = rand((BATCH_SIZE, mapping.random_dim()), generator=rng)
     p_ext, x1, x2, det = mapping.map_forward([r], [])
     return r, p_ext, x1, x2, det
 
 
 def volume(det):
     """Monte-Carlo estimate of the volume and its standard error."""
-    return np.mean(det), np.std(det) / math.sqrt(len(det))
+    return det.mean().item(), det.std(correction=0).item() / math.sqrt(len(det))
 
 
 # --------------------------------------------------------------------------
 # Topology
 # --------------------------------------------------------------------------
+
 
 def test_single_incoming_has_no_t_channel():
     diagram = ms.Diagram([M_TOP], [0.0, 0.0], [], [["i0", "o0", "o1"]])
@@ -85,13 +93,14 @@ def test_three_or_more_incoming_rejected():
 # Kinematics
 # --------------------------------------------------------------------------
 
+
 def test_decaying_particle_is_at_rest():
     mapping = decay_mapping([0.0, 0.0], [], [["i0", "o0", "o1"]])
     _, p_ext, _, _, _ = sample(mapping)
     # One incoming + two outgoing, not the 2 + n of a collision.
     assert p_ext.shape == (BATCH_SIZE, 3, 4)
-    assert p_ext[:, 0, 0] == approx(M_TOP)
-    assert p_ext[:, 0, 1:] == approx(0.0, abs=1e-10)
+    assert_close(p_ext[:, 0, 0], M_TOP)
+    assert_close(p_ext[:, 0, 1:], 0.0, rtol=0.0, atol=1e-10)
 
 
 def test_momentum_conservation_and_masses():
@@ -102,23 +111,23 @@ def test_momentum_conservation_and_masses():
     )
     _, p_ext, _, _, _ = sample(mapping)
     assert p_ext.shape == (BATCH_SIZE, 4, 4)
-    assert np.sum(p_ext[:, 1:], axis=1) == approx(p_ext[:, 0], abs=1e-8)
+    assert_close(torch.sum(p_ext[:, 1:], dim=1), p_ext[:, 0], rtol=0.0, atol=1e-8)
 
     def mass(p):
-        m2 = p[:, 0] ** 2 - np.sum(p[:, 1:] ** 2, axis=1)
-        return np.sqrt(np.abs(m2))
+        m2 = p[:, 0] ** 2 - torch.sum(p[:, 1:] ** 2, dim=1)
+        return torch.sqrt(torch.abs(m2))
 
-    assert mass(p_ext[:, 0]) == approx(M_TOP, rel=1e-10)
-    assert mass(p_ext[:, 1]) == approx(M_B, rel=1e-6)
-    assert mass(p_ext[:, 2]) == approx(0.0, abs=1e-5)
-    assert mass(p_ext[:, 3]) == approx(0.0, abs=1e-5)
+    assert_close(mass(p_ext[:, 0]), M_TOP, rtol=1e-10)
+    assert_close(mass(p_ext[:, 1]), M_B, rtol=1e-6)
+    assert_close(mass(p_ext[:, 2]), 0.0, rtol=0.0, atol=1e-5)
+    assert_close(mass(p_ext[:, 3]), 0.0, rtol=0.0, atol=1e-5)
 
 
 def test_no_beam_momentum_fractions():
     mapping = decay_mapping([0.0, 0.0], [], [["i0", "o0", "o1"]])
     _, _, x1, x2, _ = sample(mapping)
-    assert x1 == approx(1.0)
-    assert x2 == approx(1.0)
+    assert_close(x1, 1.0)
+    assert_close(x2, 1.0)
 
 
 def test_random_dim_is_3n_minus_4():
@@ -126,9 +135,11 @@ def test_random_dim_is_3n_minus_4():
         mapping = decay_mapping(
             [0.0] * n,
             [] if n == 2 else [ms.Propagator(mass=M_W, width=W_W, pdg_id=24)],
-            [["i0", "o0", "o1"]]
-            if n == 2
-            else [["i0", "o0", "p0"], ["p0", "o1", "o2"]],
+            (
+                [["i0", "o0", "o1"]]
+                if n == 2
+                else [["i0", "o0", "p0"], ["p0", "o1", "o2"]]
+            ),
         )
         assert mapping.random_dim() == 3 * n - 4
         assert mapping.particle_count() == n + 1
@@ -137,6 +148,7 @@ def test_random_dim_is_3n_minus_4():
 # --------------------------------------------------------------------------
 # Phase-space volume
 # --------------------------------------------------------------------------
+
 
 def test_two_body_massless_volume():
     mapping = decay_mapping([0.0, 0.0], [], [["i0", "o0", "o1"]])
@@ -185,6 +197,7 @@ def test_three_body_massless_volume(prop_mass, prop_width, rel_tol):
 # Invertibility
 # --------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "outgoing,propagators,vertices",
     [
@@ -202,5 +215,5 @@ def test_forward_inverse_round_trip(outgoing, propagators, vertices):
     mapping = decay_mapping(outgoing, propagators, vertices)
     r, p_ext, x1, x2, det = sample(mapping)
     r_back, det_back = mapping.map_inverse([p_ext, x1, x2], [])
-    assert r_back == approx(r, abs=1e-8)
-    assert det * det_back == approx(1.0, rel=1e-8)
+    assert_close(r_back, r, rtol=0.0, atol=1e-8)
+    assert_close(det * det_back, 1.0, rtol=1e-8)

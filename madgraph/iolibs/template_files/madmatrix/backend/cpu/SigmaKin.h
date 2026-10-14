@@ -49,7 +49,11 @@ namespace madmatrix
             fptype_amp* allDenominators,        // tmp: multichannel denominators[nevt], running_sum_over_helicities
             unsigned int* allDiagramIdsOut,    // output: multichannel channelIds[nevt] (1 to #diagrams)
             bool mulChannelWeight,             // if true, multiply channel weight to ME output
-            const int nevt );                  // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+            const int nevt,                    // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+            // input: when the |M|^2 keeps an interference (squared split orders, nampso > 1),
+            // choose the helicity on |T_i| and return sign(T_i) * sum_j |T_j| as madevent does,
+            // so that the chosen helicity is exact; false returns sum_j T_j (no effect otherwise)
+            const bool sampleSignedHelicity = false );
 
   // Setters: called once by CPPProcess (P1-generated) to populate this file's
   // otherwise-internal storage, since it can no longer be written directly

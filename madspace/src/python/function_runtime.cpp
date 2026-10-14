@@ -26,11 +26,13 @@ struct ManagerContext {
 void deleter(struct DLManagedTensor* self) noexcept {
     ManagerContext* context = static_cast<ManagerContext*>(self->manager_ctx);
     try {
-        std::uintptr_t free_stream = context->tensor.stream().value_or(0);
-        if (free_stream != context->stream) {
-            context->tensor.device()->order_streams(
-                reinterpret_cast<void*>(context->stream),
-                reinterpret_cast<void*>(free_stream)
+        auto device = context->tensor.device();
+        auto stream = context->tensor.stream();
+        void* free_stream =
+            stream ? reinterpret_cast<void*>(*stream) : device->default_free_stream();
+        if (free_stream != reinterpret_cast<void*>(context->stream)) {
+            device->order_streams(
+                reinterpret_cast<void*>(context->stream), free_stream
             );
         }
     } catch (...) {

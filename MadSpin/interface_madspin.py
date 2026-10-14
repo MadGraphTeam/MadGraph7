@@ -899,6 +899,10 @@ class MadSpinInterface(extended_cmd.Cmd):
         # before the do_import below, which fills the second one in.
         self.ms_card_path = None
         self.event_base_dir = None
+        # the event file do_import decompressed, to be compressed back after
+        # the run (self.inputfile cannot tell: as the reader of the command
+        # file it is overwritten)
+        self.gunzipped_input = None
 
         # Wall-clock accounting per run phase (see _phase / _log_phase_timings).
         # Always collected: the granularity is one entry per phase, not per
@@ -1136,9 +1140,11 @@ class MadSpinInterface(extended_cmd.Cmd):
             self.setup_for_pure_decay()
             return  
         
+        self.gunzipped_input = None
         if inputfile.endswith('.gz'):
             misc.gunzip(inputfile)
             inputfile = inputfile[:-3]
+            self.gunzipped_input = os.path.realpath(inputfile)
         # Read the banner of the inputfile
         self.events_file = open(os.path.realpath(inputfile))
         self.banner = banner.Banner(self.events_file)
@@ -2887,6 +2893,11 @@ class MadSpinInterface(extended_cmd.Cmd):
             if counter==0:
                 raise Exception
         output_lhe.write('</LesHouchesEvents>\n')        
+        orig_lhe.close()
+        # do_import decompressed a gzipped input: compress it back, as the
+        # other spin modes do, rather than leave events.lhe in its place
+        if self.gunzipped_input and os.path.exists(self.gunzipped_input):
+            misc.gzip(self.gunzipped_input)
                     
     
     def load_model(self, name, use_mg_default, complex_mass=False):

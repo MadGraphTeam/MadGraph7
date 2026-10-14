@@ -1,8 +1,9 @@
 import math
 from dataclasses import dataclass
 
-import numpy as np
 import pytest
+import torch
+from madspace_testing import generator, rand, randint
 
 import madspace as ms
 
@@ -67,11 +68,11 @@ def _color_orders(n_out):
     return orders
 
 
-def _inputs(mapping, rng, n):
-    inputs = [rng.random((n, mapping.random_dim()))]
+def _inputs(mapping, g, n):
+    inputs = [rand((n, mapping.random_dim()), generator=g)]
     dd = mapping.discrete_dim()
     if dd:
-        inputs.append(rng.integers(0, 2, size=(n, dd)).astype(np.int32))
+        inputs.append(randint(0, 2, (n, dd), generator=g, dtype=torch.int32))
     return inputs
 
 
@@ -86,26 +87,27 @@ def _cuts(pids, pt_min):
 
 
 def _feats(p):
-    pt = np.sqrt(p[..., 1] ** 2 + p[..., 2] ** 2)
-    eta = np.arcsinh(np.divide(p[..., 3], pt, out=np.zeros_like(pt), where=pt > 0))
-    phi = np.arctan2(p[..., 2], p[..., 1])
+    pt = torch.sqrt(p[..., 1] ** 2 + p[..., 2] ** 2)
+    safe_pt = torch.where(pt > 0, pt, 1.0)
+    eta = torch.arcsinh(torch.where(pt > 0, p[..., 3] / safe_pt, 0.0))
+    phi = torch.atan2(p[..., 2], p[..., 1])
     return pt, eta, phi
 
 
 def _passes(p_out, jet_idx, pt_min):
     if not jet_idx:
-        return np.ones(p_out.shape[0], dtype=bool)
+        return torch.ones(p_out.shape[0], dtype=torch.bool)
 
     pt, eta, phi = _feats(p_out)
 
-    ok = np.all(pt[:, jet_idx] >= pt_min, axis=1)
+    ok = torch.all(pt[:, jet_idx] >= pt_min, dim=1)
 
     for a in range(len(jet_idx)):
         for b in range(a + 1, len(jet_idx)):
             i, j = jet_idx[a], jet_idx[b]
-            dphi = np.abs(phi[:, i] - phi[:, j])
-            dphi = np.minimum(dphi, 2 * np.pi - dphi)
-            dR = np.sqrt((eta[:, i] - eta[:, j]) ** 2 + dphi**2)
+            dphi = torch.abs(phi[:, i] - phi[:, j])
+            dphi = torch.minimum(dphi, 2 * math.pi - dphi)
+            dR = torch.sqrt((eta[:, i] - eta[:, j]) ** 2 + dphi**2)
             ok = ok & (dR >= CUT_DELTAR_MIN)
 
     return ok
@@ -127,18 +129,18 @@ def _cut_volume(
         cuts=_cuts(pids, pt_min) if piped else None,
     )
 
-    rng = np.random.default_rng(seed)
-    p_ext, _x1, _x2, det = mapping.map_forward(_inputs(mapping, rng, n))
+    g = generator(seed)
+    p_ext, _x1, _x2, det = mapping.map_forward(_inputs(mapping, g, n))
 
-    det = np.asarray(det) * 2.0 ** mapping.discrete_dim()
-    p_out = np.asarray(p_ext)[:, 2:, :]
+    det = det * 2.0 ** mapping.discrete_dim()
+    p_out = p_ext[:, 2:, :]
 
     passes = _passes(p_out, jet_idx, pt_min)
-    finite = np.isfinite(det) & np.all(np.isfinite(p_out), axis=(1, 2))
+    finite = torch.isfinite(det) & torch.isfinite(p_out).all(dim=2).all(dim=1)
 
-    weights = np.nan_to_num(np.where(passes & finite, det, 0.0))
+    weights = torch.nan_to_num(torch.where(passes & finite, det, 0.0))
 
-    return float(weights.mean()), float(weights.std() / math.sqrt(n))
+    return weights.mean().item(), weights.std(correction=0).item() / math.sqrt(n)
 
 
 def _configs(n_out):
