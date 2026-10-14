@@ -10,8 +10,13 @@
 #include <sstream>
 #include <string>
 
-// cpu backend: always built with a plain host compiler, never nvcc/hipcc, so the
-// GPU-backend selection macro (see gpu/madmatrixConfig.h) is deliberately never
+// This build ships MadMatrixVectors.h (the SIMD vector types). The headers every backend
+// shares (CPPProcess.h, Parameters.h, HelAmps_<model>.h) include it on this macro, not on
+// whether some MadMatrixVectors.h happens to be reachable on the include path.
+#define MADMATRIX_HAS_VECTORS_H 1
+
+// simd backend: always built with a plain host compiler, never nvcc/hipcc, so the
+// GPU-backend selection macro (see gpu/MadMatrixConfig.h) is deliberately never
 // defined here - single-file, all-backend headers rely on that to pick branches.
 
 // Choose floating point precision (for everything but color algebra #537)
@@ -39,7 +44,7 @@
 //#define MADMATRIX_CPPCXTYPE_STDCOMPLEX 1 // ~8% slower on float, same on double
 #define MADMATRIX_CPPCXTYPE_CXSMPL 1 // default
 
-// No BLAS on the cpu backend (cuBLAS/hipBLAS are GPU-only)
+// No BLAS on the simd backend (cuBLAS/hipBLAS are GPU-only)
 #define MADMATRIX_HAS_NO_BLAS 1
 
 // SANITY CHECKS
@@ -179,8 +184,41 @@ using madmatrix::fptype_colour;
 #ifdef MADMATRIX_NOARMNEON
 #undef __ARM_NEON
 #endif
-#undef MADMATRIX_SIMD
 
+// C++ SIMD vectorization width (this will be used to set neppV)
+#if defined __AVX512VL__ && defined MADMATRIX_PVW512 // "512z" AVX512 512-bit: 8 (DOUBLE) or 16 (FLOAT)
+#ifdef MADMATRIX_FPTYPE_DOUBLE
+#define MADMATRIX_SIMD 8
+#else
+#define MADMATRIX_SIMD 16
+#endif
+#elif defined __AVX512VL__ // "512y" AVX512 256-bit: 4 (DOUBLE) or 8 (FLOAT) [gcc default]
+#ifdef MADMATRIX_FPTYPE_DOUBLE
+#define MADMATRIX_SIMD 4
+#else
+#define MADMATRIX_SIMD 8
+#endif
+#elif defined __AVX2__ // "avx2" 256-bit: 4 (DOUBLE) or 8 (FLOAT) [clang default]
+#ifdef MADMATRIX_FPTYPE_DOUBLE
+#define MADMATRIX_SIMD 4
+#else
+#define MADMATRIX_SIMD 8
+#endif
+#elif defined __SSE4_2__ // "sse4" SSE4.2 128-bit: 2 (DOUBLE) or 4 (FLOAT) [Power9 default]
+#ifdef MADMATRIX_FPTYPE_DOUBLE
+#define MADMATRIX_SIMD 2
+#else
+#define MADMATRIX_SIMD 4
+#endif
+#elif defined __ARM_NEON // ARM NEON 128-bit: 2 (DOUBLE) or 4 (FLOAT) [ARM default]
+#ifdef MADMATRIX_FPTYPE_DOUBLE
+#define MADMATRIX_SIMD 2
+#else
+#define MADMATRIX_SIMD 4
+#endif
+#else // "none" i.e. no SIMD
+#undef MADMATRIX_SIMD
+#endif
 
 // macro for computing denom twice to fill rest of SIMD lane for rest
 #if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_FLOAT and defined MADMATRIX_FPTYPE_MOMENTA_DOUBLE

@@ -14,12 +14,12 @@
 #ifndef MG5_%(process_file_name)s_H
 #define MG5_%(process_file_name)s_H 1
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
-#ifdef MADMATRIX_HAS_VECTORS_H // the simd backend (see its madmatrixConfig.h)
-#include "madmatrixVectors.h"
+#ifdef MADMATRIX_HAS_VECTORS_H // the simd backend (see its MadMatrixConfig.h)
+#include "MadMatrixVectors.h"
 #else
-#include "madmatrixCxtypes.h"
+#include "MadMatrixCxtypes.h"
 #endif
 
 #include "Parameters.h"

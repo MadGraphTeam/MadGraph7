@@ -7,7 +7,7 @@
 #ifndef CROSSSECTIONKERNELS_H
 #define CROSSSECTIONKERNELS_H 1
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "EventStatistics.h"
 #include "MemoryBuffers.h"

@@ -7,10 +7,10 @@
 #ifndef MemoryAccessChannelIds_H
 #define MemoryAccessChannelIds_H 1
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "MemoryAccessHelpers.h"
-#include "madmatrixCxtypes.h"
+#include "MadMatrixCxtypes.h"
 #include "MemoryBuffers.h" // for HostBufferMatrixElements::isaligned
 
 //One namespace. Split ber backend.

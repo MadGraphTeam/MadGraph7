@@ -7,7 +7,7 @@
 #ifndef constexpr_math_h
 #define constexpr_math_h 1
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
 #include <cassert>
 #include <cmath>

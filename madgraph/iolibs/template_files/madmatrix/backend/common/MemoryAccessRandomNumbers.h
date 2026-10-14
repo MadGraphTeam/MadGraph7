@@ -7,7 +7,7 @@
 #ifndef MemoryAccessRandomNumbers_H
 #define MemoryAccessRandomNumbers_H 1
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "ProcessData.h"
 #include "MemoryAccessHelpers.h"

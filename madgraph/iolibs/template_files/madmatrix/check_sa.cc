@@ -23,7 +23,7 @@
 //
 //==========================================================================
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "CPPProcess.h"
 #ifdef MADMATRIX_GPUIMPL

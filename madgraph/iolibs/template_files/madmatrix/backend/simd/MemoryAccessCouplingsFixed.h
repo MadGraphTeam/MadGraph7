@@ -7,10 +7,10 @@
 #ifndef MemoryAccessCouplingsFixed_H
 #define MemoryAccessCouplingsFixed_H 1
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "madmatrixCxtypes.h"
-#include "madmatrixVectors.h"
+#include "MadMatrixCxtypes.h"
+#include "MadMatrixVectors.h"
 
 //#include "MemoryAccessHelpers.h"
 

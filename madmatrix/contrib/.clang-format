@@ -103,7 +103,7 @@ IncludeCategories:
     Priority:        6 # AV was 2
     SortPriority:    0
     CaseSensitive:   false
-  - Regex:           'madmatrixConfig.h'
+  - Regex:           'MadMatrixConfig.h'
     Priority:        1 # AV new
     SortPriority:    0
     CaseSensitive:   false

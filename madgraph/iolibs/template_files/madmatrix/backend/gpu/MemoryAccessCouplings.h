@@ -7,9 +7,9 @@
 #ifndef MemoryAccessCouplings_H
 #define MemoryAccessCouplings_H 1
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "madmatrixCxtypes.h"
+#include "MadMatrixCxtypes.h"
 
 #include "MemoryAccessHelpers.h"
 #include "MemoryAccessMomenta.h" // for MemoryAccessMomentaBase::neppM

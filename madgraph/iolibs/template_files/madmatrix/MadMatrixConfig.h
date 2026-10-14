@@ -7,9 +7,9 @@
 #ifndef MADMATRIXCONFIG_H
 #define MADMATRIXCONFIG_H 1
 
-// This build ships madmatrixVectors.h (the SIMD vector types). The headers every backend
+// This build ships MadMatrixVectors.h (the SIMD vector types). The headers every backend
 // shares (CPPProcess.h, Parameters.h, HelAmps_<model>.h) include it on this macro, not on
-// whether some madmatrixVectors.h happens to be reachable on the include path.
+// whether some MadMatrixVectors.h happens to be reachable on the include path.
 #define MADMATRIX_HAS_VECTORS_H 1
 
 // Is this a GPU (CUDA, HIP) or CPU implementation?
@@ -17,7 +17,7 @@
 #define MADMATRIX_GPUIMPL cuda
 #elif defined __HIPCC__
 #define MADMATRIX_GPUIMPL hip
-#include "hip/hip_runtime.h" // needed for blockDim, blockIdx, threadIdx: better in madmatrixConfig.h than in GpuAbstraction.h
+#include "hip/hip_runtime.h" // needed for blockDim, blockIdx, threadIdx: better in MadMatrixConfig.h than in GpuAbstraction.h
 #else
 #undef MADMATRIX_GPUIMPL
 #endif

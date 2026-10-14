@@ -9,7 +9,7 @@
 #ifndef COLORDATA_H
 #define COLORDATA_H 1
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 #include "ProcessData.h"
 
 namespace ColorMatrixData

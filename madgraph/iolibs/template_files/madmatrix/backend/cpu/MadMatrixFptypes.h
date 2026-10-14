@@ -7,7 +7,7 @@
 #ifndef MADMATRIXFPTYPES_H
 #define MADMATRIXFPTYPES_H 1
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
 #include <algorithm>
 #include <cmath>

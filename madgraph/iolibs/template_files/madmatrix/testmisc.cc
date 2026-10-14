@@ -7,9 +7,9 @@
 // Use ./runTest.exe --gtest_filter=*misc to run only testmisc.cc tests
 // ----------------------------------------------------------------------------
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "madmatrixVectors.h"
+#include "MadMatrixVectors.h"
 
 #include "constexpr_math.h"
 #include "ProcessData.h"

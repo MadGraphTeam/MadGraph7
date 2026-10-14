@@ -11,9 +11,9 @@
 #ifndef SIGMAKIN_H
 #define SIGMAKIN_H 1
 
-#include "madmatrixConfig.h"
-#include "madmatrixCxtypes.h" // for cxtype
-#include "madmatrixVectors.h" // for fptype_amp_sv
+#include "MadMatrixConfig.h"
+#include "MadMatrixCxtypes.h" // for cxtype
+#include "MadMatrixVectors.h" // for fptype_amp_sv
 
 namespace madmatrix
 {

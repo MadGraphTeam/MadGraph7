@@ -11,9 +11,9 @@
 #ifndef MASSLESS_RAMBO_H
 #define MASSLESS_RAMBO_H 1
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "madmatrixFptypes.h"
+#include "MadMatrixFptypes.h"
 
 #include "CPPProcess.h"
 

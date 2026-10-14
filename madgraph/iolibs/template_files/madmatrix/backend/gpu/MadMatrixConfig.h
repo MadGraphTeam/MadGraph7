@@ -15,7 +15,7 @@
 #define MADMATRIX_GPUIMPL cuda
 #elif defined __HIPCC__
 #define MADMATRIX_GPUIMPL hip
-#include "hip/hip_runtime.h" // needed for blockDim, blockIdx, threadIdx: better in madmatrixConfig.h than in GpuAbstraction.h
+#include "hip/hip_runtime.h" // needed for blockDim, blockIdx, threadIdx: better in MadMatrixConfig.h than in GpuAbstraction.h
 #else
 #undef MADMATRIX_GPUIMPL
 #endif

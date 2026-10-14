@@ -7,7 +7,7 @@
 #ifndef MATRIXELEMENTKERNELS_H
 #define MATRIXELEMENTKERNELS_H 1
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "MemoryBuffers.h"
 

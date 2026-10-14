@@ -14,11 +14,11 @@
 #ifndef Parameters_H
 #define Parameters_H
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "madmatrixCxtypes.h"
-#ifdef MADMATRIX_HAS_VECTORS_H // the simd backend (see its madmatrixConfig.h)
-#include "madmatrixVectors.h"
+#include "MadMatrixCxtypes.h"
+#ifdef MADMATRIX_HAS_VECTORS_H // the simd backend (see its MadMatrixConfig.h)
+#include "MadMatrixVectors.h"
 #endif
 
 #include "constexpr_math.h"

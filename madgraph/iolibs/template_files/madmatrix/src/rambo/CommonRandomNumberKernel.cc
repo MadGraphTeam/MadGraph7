@@ -4,7 +4,7 @@
 // Further modified by: J. Teig, A. Valassi (2021-2024).
 // Integrated with the MadGraph7 project in Feb 2026.
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "CommonRandomNumbers.h"
 #ifdef MADMATRIX_GPUIMPL

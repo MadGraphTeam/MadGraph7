@@ -4,7 +4,7 @@
 // Further modified by: A. Valassi (2024).
 // Integrated with the MadGraph7 project in Feb 2026.
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "GpuRuntime.h"
 #include "MemoryBuffers.h"

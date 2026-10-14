@@ -11,7 +11,7 @@
 #include <cassert>
 
 #ifndef MADMATRIX_HAS_NO_CURAND /* clang-format off */
-// NB This must come AFTER madmatrixConfig.h which contains our definition of __global__ when MADMATRIX_GPUIMPL is not defined
+// NB This must come AFTER MadMatrixConfig.h which contains our definition of __global__ when MADMATRIX_GPUIMPL is not defined
 #include "curand.h"
 #define checkCurand( code ){ assertCurand( code, __FILE__, __LINE__ ); }
 inline void assertCurand( curandStatus_t code, const char *file, int line, bool abort = true )

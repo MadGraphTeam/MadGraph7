@@ -7,7 +7,7 @@
 #ifndef MemoryAccessMatrixElements_H
 #define MemoryAccessMatrixElements_H 1
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "MemoryAccessHelpers.h"
 #include "MemoryAccessVectors.h"

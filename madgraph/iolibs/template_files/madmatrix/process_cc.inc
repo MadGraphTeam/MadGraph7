@@ -13,7 +13,7 @@
 
 #include "CPPProcess.h"
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
 %(hel_amps_h)s
 #include "MemoryAccessAmplitudes.h"

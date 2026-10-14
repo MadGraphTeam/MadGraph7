@@ -7,7 +7,7 @@
 #ifndef MemoryAccessChannelIds_H
 #define MemoryAccessChannelIds_H 1
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "MemoryAccessHelpers.h"
 #include "MemoryAccessVectors.h"

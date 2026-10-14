@@ -7,7 +7,7 @@
 #ifndef MemoryAccessMomenta_H
 #define MemoryAccessMomenta_H 1
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "ProcessData.h"
 #include "MemoryAccessHelpers.h"

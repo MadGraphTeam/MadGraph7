@@ -29,7 +29,7 @@
 #include "MemoryAccessWavefunctions.h"
 #include "ColorData.h"       // for shouldUseBlas/madmatrix::nchannels/channel2iconfig/icolamp/nconfigSDE
 #include "color_sum.h"       // for color_sum_cpu/color_sum_cpu_blas
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
 #include <cassert>
 #include <cmath>

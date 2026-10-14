@@ -6,7 +6,7 @@
 #ifndef MemoryAccessIflavorVec_H
 #define MemoryAccessIflavorVec_H 1
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "MemoryAccessHelpers.h"
 #include "MemoryAccessVectors.h"

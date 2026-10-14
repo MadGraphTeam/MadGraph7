@@ -7,8 +7,8 @@
 #ifndef MADMATRIXVECTORS_H
 #define MADMATRIXVECTORS_H 1
 
-#include "madmatrixCxtypes.h"
-#include "madmatrixFptypes.h"
+#include "MadMatrixCxtypes.h"
+#include "MadMatrixFptypes.h"
 
 #include <cassert>
 #include <iostream>

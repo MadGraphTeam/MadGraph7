@@ -7,17 +7,22 @@
 #ifndef MADMATRIXFPTYPES_H
 #define MADMATRIXFPTYPES_H 1
 
-#include "madmatrixConfig.h"
+#include "MadMatrixConfig.h"
 
 #include <algorithm>
 #include <cmath>
 #include <type_traits>
 
 //One namespace. Split ber backend.
+#ifdef MADMATRIX_GPUIMPL // cuda
 namespace madmatrix
+#else
+namespace madmatrix
+#endif
 {
   //==========================================================================
 
+#ifdef MADMATRIX_GPUIMPL // cuda
 
   //------------------------------
   // Floating point types - Cuda
@@ -74,8 +79,49 @@ namespace madmatrix
   inline __host__ __device__ bool
   fpsignbit( FP f ) { return signbit( f ); }
 
+#endif // #ifdef MADMATRIX_GPUIMPL
+
   //==========================================================================
 
+#ifndef MADMATRIX_GPUIMPL
+
+  //------------------------------
+  // Floating point types - C++
+  //------------------------------
+
+  template<typename FP>
+  inline const FP&
+  fpmax( const FP& a, const FP& b )
+  {
+    return std::max( a, b );
+  }
+
+  template<typename FP>
+  inline const FP&
+  fpmin( const FP& a, const FP& b )
+  {
+    return std::min( a, b );
+  }
+
+  // Non-template overloads
+  inline const fptype_amp&
+  fpmax( const fptype_amp& a, const fptype_amp& b ) { return std::max( a, b ); }
+
+  inline const fptype_amp&
+  fpmin( const fptype_amp& a, const fptype_amp& b ) { return std::min( a, b ); }
+
+  template<typename FP>
+  inline FP
+  fpsqrt( FP f )
+  {
+    return std::sqrt( f );
+  }
+
+  template<typename FP>
+  inline bool
+  fpsignbit( FP f ) { return std::signbit( f ); }
+
+#endif // #ifndef MADMATRIX_GPUIMPL
 
   //==========================================================================
 
