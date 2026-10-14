@@ -163,6 +163,10 @@ Integrand::Integrand(
                 }
                 if (diff_xs_first.returns_matrix_element()) {
                     ret_types.push_back("matrix_element", batch_float);
+                    ret_types.push_back("matrix_element_flavor", batch_int);
+                    if (diff_xs.size() > 1) {
+                        ret_types.push_back("matrix_element_index", batch_int);
+                    }
                 }
                 // before "random": the outputs after it feed the discrete histograms
                 if (custom_bias) {
@@ -775,16 +779,14 @@ NamedVector<Value> Integrand::build_common_part(
     // Evaluate differential cross section
     auto& me_first = _diff_xs.at(0).matrix_element();
     int amp2_index = me_output_index(me_first, MatrixElement::diagram_amp2_out);
+    Value me_flavor_id =
+        _flavor_remap.size() > 0 ? fb.gather_int(flavor_id, _flavor_remap) : flavor_id;
     ValueVec xs_args;
     for (auto input : me_first.external_inputs()) {
         if (input == MatrixElement::momenta_in) {
             xs_args.push_back(momenta_me);
         } else if (input == MatrixElement::flavor_in) {
-            xs_args.push_back(
-                _flavor_remap.size() > 0
-                    ? fb.gather_int(flavor_id, _flavor_remap)
-                    : flavor_id
-            );
+            xs_args.push_back(me_flavor_id);
         }
     }
     xs_args.push_back(x1_acc);
@@ -800,6 +802,7 @@ NamedVector<Value> Integrand::build_common_part(
     ValueVec dxs_vec;
     Value ps_flavor_id;
     Value subproc_id;
+    Value dxs_index;
     if (_diff_xs.size() == 1) {
         dxs_vec = _diff_xs.at(0).build_function(fb, xs_args).values();
         ps_flavor_id = flavor_id;
@@ -814,7 +817,7 @@ NamedVector<Value> Integrand::build_common_part(
             }
         }
     } else {
-        Value dxs_index = fb.gather_int(flavor_id, _flavor_diff_xs_indices);
+        dxs_index = fb.gather_int(flavor_id, _flavor_diff_xs_indices);
         ps_flavor_id = fb.gather_int(flavor_id, _flavor_per_subproc_remap);
         subproc_id = fb.gather_int(flavor_id, _flavor_subproc_indices);
         ValueVec split_indices =
@@ -1080,6 +1083,14 @@ NamedVector<Value> Integrand::build_common_part(
                 "matrix_element",
                 scatter_or_drop(zeros_float, dxs_vec.at(me_first.outputs().size()))
             );
+            outputs.push_back(
+                "matrix_element_flavor", scatter_or_drop(zeros_int, me_flavor_id)
+            );
+            if (dxs_index) {
+                outputs.push_back(
+                    "matrix_element_index", scatter_or_drop(zeros_int, dxs_index)
+                );
+            }
         }
         if (bias_acc) {
             outputs.push_back(

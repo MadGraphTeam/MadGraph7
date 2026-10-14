@@ -48,7 +48,10 @@ namespace madspace {
  * - `random` – `float`, shape `(batch, mapping.random_dim())` – the underlying
  *   random numbers.
  * - `matrix_element` – `float`, shape `(batch,)` – the squared matrix element,
- *   present only if the differential cross sections return it.
+ *   present only if the differential cross sections return it, followed by
+ *   `matrix_element_flavor` – `int` – the flavor index passed to it, and with
+ *   several differential cross sections `matrix_element_index` – `int` – the
+ *   index of the one evaluated.
  * - `bias` – `float`, shape `(batch,)` – the event bias, present only with a
  *   custom bias. `weight` then includes the bias factor.
  *
