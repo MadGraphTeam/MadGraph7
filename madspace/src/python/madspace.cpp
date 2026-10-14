@@ -4051,11 +4051,14 @@ PYBIND11_MODULE(_madspace_py, m) {
                    const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
                    std::uint64_t seed,
                    const LHECompleter& lhe_completer,
-                   const GeneratorConfig& config) {
+                   const GeneratorConfig& config,
+                   const std::vector<WeightingGroup>& groups) {
                     // Destroying the stream waits for its running jobs, which can
                     // need the GIL, e.g. for matrix elements in Python
                     return std::shared_ptr<EventStream>(
-                        new EventStream(context, channels, seed, lhe_completer, config),
+                        new EventStream(
+                            context, channels, seed, lhe_completer, config, groups
+                        ),
                         [](EventStream* stream) {
                             if (PyGILState_Check()) {
                                 py::gil_scoped_release release;
@@ -4072,6 +4075,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("seed"),
             py::arg("lhe_completer"),
             py::arg("config"),
+            py::arg("groups") = std::vector<WeightingGroup>{},
             pydoc::doc("EventStream::EventStream")
         )
         .def(

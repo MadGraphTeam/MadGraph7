@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -48,11 +49,18 @@ public:
     /// Job ids of the pipeline have this bit set.
     static constexpr std::size_t job_id_flag = std::size_t(1) << 62;
 
+    /// Receives the events after the last step, in the job order of each
+    /// channel.
+    using Sink = std::function<void(StepEvents&)>;
+
+    /// Without `sink`, the events are written to the channel files with
+    /// @ref ChannelEventGenerator::write_step_events.
     WeightingPipeline(
         const std::vector<ContextPtr>& contexts,
         const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
         const std::vector<WeightingGroup>& groups,
-        const GeneratorConfig& config
+        const GeneratorConfig& config,
+        Sink sink = {}
     );
     /// Whether channel `channel_index` has steps.
     bool contains(std::size_t channel_index) const {
@@ -76,6 +84,7 @@ private:
     // the unweighted events of one job of a channel
     struct Chunk {
         std::size_t channel_index;
+        std::size_t job_id;
         std::size_t sequence;
         std::size_t epoch;
         std::size_t context_index;
@@ -145,6 +154,7 @@ private:
     std::unordered_map<std::size_t, Job> _jobs;
     std::size_t _job_counter = 0;
     std::size_t _chunk_count = 0;
+    Sink _sink;
 };
 
 } // namespace madspace

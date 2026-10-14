@@ -1246,72 +1246,90 @@ void ChannelEventGenerator::add_first_step_events(
         count * (job_max_weight > 0 ? job_max_weight / _max_weight : 1);
 }
 
-void ChannelEventGenerator::write_step_events(
-    const TensorVec& events,
-    const std::vector<double>& weights,
-    double max_weight,
-    const std::vector<std::vector<double>>& ratios,
-    const std::vector<double>& max_weights,
-    const std::vector<double>& biases,
-    std::size_t generated_count
-) {
+StepIntegral ChannelEventGenerator::step_integral(const StepEvents& step_events) const {
     std::size_t step_count = _step_settings.size();
-    std::vector<double> event_ratios(step_count);
-    // the final weights in units of the cross section, and the fraction of the
-    // events left by unweighting with the current maxima. Like in write_events(),
-    // the fraction is rescaled when a maximum rises, so it does not depend on
-    // the order of the updates.
-    double weight_unit = max_weight;
-    double count_factor = max_weight > 0 ? max_weight / _max_weight : 1.;
-    for (auto [state, settings, job_max_weight] :
-         zip(_step_states, _step_settings, max_weights)) {
+    // the final weights in units of the cross section
+    double weight_unit = step_events.max_weight;
+    for (auto [settings, job_max_weight] :
+         zip(_step_settings, step_events.max_weights)) {
         if (settings.unweight) {
             weight_unit *= job_max_weight;
-            count_factor *= job_max_weight > 0 ? job_max_weight / state.max_weight : 1.;
         }
     }
-
-    _final_integral.count += generated_count;
-    for (std::size_t i = 0; i < weights.size(); ++i) {
+    StepIntegral integral{.count = step_events.generated_count};
+    std::vector<double> ratios(step_count);
+    for (std::size_t i = 0; i < step_events.weights.size(); ++i) {
         for (std::size_t k = 0; k < step_count; ++k) {
-            event_ratios.at(k) = ratios.at(k).at(i);
+            ratios.at(k) = step_events.ratios.at(k).at(i);
         }
-        auto job_chain = evaluate_step_chain(
-            weights.at(i),
-            max_weight,
-            event_ratios.data(),
-            max_weights.data(),
-            _step_settings
-        );
-        double weight = job_chain.weight * weight_unit;
-        double xs_weight = biases.empty() ? weight : weight / biases.at(i);
-        _final_integral.sum += xs_weight;
-        _final_integral.sum2 += xs_weight * xs_weight;
-        _final_integral.abs_sum += std::abs(weight);
-        _final_integral.abs_sum2 += weight * weight;
+        double weight = weight_unit *
+            evaluate_step_chain(
+                step_events.weights.at(i),
+                step_events.max_weight,
+                ratios.data(),
+                step_events.max_weights.data(),
+                _step_settings
+            )
+                .weight;
+        double xs_weight =
+            step_events.biases.empty() ? weight : weight / step_events.biases.at(i);
+        integral.sum += xs_weight;
+        integral.sum2 += xs_weight * xs_weight;
+        integral.abs_sum += std::abs(weight);
+        integral.abs_sum2 += weight * weight;
     }
+    return integral;
+}
 
-    if (weights.size() > 0) {
-        EventBuffer event_buffer(0, _particle_count, _event_file_layout);
-        EventBuffer weight_buffer(0, step_count + 1, step_weight_file_layout);
-        fill_event_buffers(events, event_buffer, weight_buffer);
-        for (std::size_t i = 0; i < weights.size(); ++i) {
-            weight_buffer.event(i).weight() = weights.at(i);
-            auto first = weight_buffer.particle(i, 0);
-            first.step_ratio() = 1.;
-            first.step_max_weight() = max_weight;
-            for (std::size_t k = 0; k < step_count; ++k) {
-                auto record = weight_buffer.particle(i, k + 1);
-                record.step_ratio() = ratios.at(k).at(i);
-                record.step_max_weight() = max_weights.at(k);
-            }
+void ChannelEventGenerator::add_step_integral(const StepIntegral& integral) {
+    _final_integral.count += integral.count;
+    _final_integral.sum += integral.sum;
+    _final_integral.sum2 += integral.sum2;
+    _final_integral.abs_sum += integral.abs_sum;
+    _final_integral.abs_sum2 += integral.abs_sum2;
+    update_status_integrals();
+}
+
+void ChannelEventGenerator::fill_step_buffers(
+    const StepEvents& step_events, EventBuffer& event_buffer, EventBuffer& weight_buffer
+) const {
+    fill_event_buffers(step_events.events, event_buffer, weight_buffer);
+    for (std::size_t i = 0; i < step_events.weights.size(); ++i) {
+        weight_buffer.event(i).weight() = step_events.weights.at(i);
+        auto first = weight_buffer.particle(i, 0);
+        first.step_ratio() = 1.;
+        first.step_max_weight() = step_events.max_weight;
+        for (std::size_t k = 0; k < _step_settings.size(); ++k) {
+            auto record = weight_buffer.particle(i, k + 1);
+            record.step_ratio() = step_events.ratios.at(k).at(i);
+            record.step_max_weight() = step_events.max_weights.at(k);
         }
+    }
+}
+
+void ChannelEventGenerator::write_step_events(const StepEvents& step_events) {
+    add_step_integral(step_integral(step_events));
+    std::size_t count = step_events.weights.size();
+    if (count > 0) {
+        EventBuffer event_buffer(0, _particle_count, _event_file_layout);
+        EventBuffer weight_buffer(0, weight_record_count(), step_weight_file_layout);
+        fill_step_buffers(step_events, event_buffer, weight_buffer);
         event_file().write(event_buffer);
         weight_file().write(weight_buffer);
     }
-    _status.count_unweighted += weights.size() * count_factor;
+    // the fraction left by unweighting with the current maxima. Like in
+    // write_events(), it is rescaled when a maximum rises, so it does not
+    // depend on the order of the updates.
+    double count_factor =
+        step_events.max_weight > 0 ? step_events.max_weight / _max_weight : 1.;
+    for (auto [state, settings, job_max_weight] :
+         zip(_step_states, _step_settings, step_events.max_weights)) {
+        if (settings.unweight && job_max_weight > 0) {
+            count_factor *= job_max_weight / state.max_weight;
+        }
+    }
+    _status.count_unweighted += count * count_factor;
     _status.done = _status.count_unweighted >= _status.count_target;
-    update_status_integrals();
 }
 
 StepChainResult

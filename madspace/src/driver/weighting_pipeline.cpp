@@ -211,7 +211,8 @@ WeightingPipeline::WeightingPipeline(
     const std::vector<ContextPtr>& contexts,
     const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
     const std::vector<WeightingGroup>& groups,
-    const GeneratorConfig& config
+    const GeneratorConfig& config,
+    Sink sink
 ) :
     _contexts(contexts),
     _channels(channels),
@@ -219,7 +220,13 @@ WeightingPipeline::WeightingPipeline(
     _channel_groups(channels.size(), -1),
     _channel_sequences(channels.size()),
     _next_sequences(channels.size()),
-    _ready(channels.size()) {
+    _ready(channels.size()),
+    _sink(sink) {
+    if (!_sink) {
+        _sink = [this](StepEvents& step_events) {
+            _channels.at(step_events.channel_index)->write_step_events(step_events);
+        };
+    }
     const std::array<MatrixElement::MatrixElementOutput, 3> index_outputs{
         MatrixElement::color_index_out,
         MatrixElement::helicity_index_out,
@@ -366,6 +373,7 @@ void WeightingPipeline::add_events(GeneratorBatchJob& job) {
     auto& channel = _channels.at(job.channel_index);
     auto chunk = std::make_shared<Chunk>();
     chunk->channel_index = job.channel_index;
+    chunk->job_id = job.job_id;
     chunk->sequence = _channel_sequences.at(job.channel_index)++;
     chunk->epoch = channel->event_epoch();
     chunk->context_index = job.context_index;
@@ -430,18 +438,21 @@ void WeightingPipeline::commit_stage(ChunkPtr chunk, std::size_t stage) {
         advance(chunk, stage + 1);
         return;
     }
-    if (!stale) {
-        channel->write_step_events(
-            chunk->cpu_events,
-            chunk->weights,
-            chunk->max_weight,
-            chunk->ratios,
-            chunk->max_weights,
-            chunk->biases,
-            chunk->generated_count
-        );
-    }
     --_chunk_count;
+    if (!stale) {
+        StepEvents step_events{
+            .channel_index = chunk->channel_index,
+            .job_id = chunk->job_id,
+            .events = std::move(chunk->cpu_events),
+            .weights = std::move(chunk->weights),
+            .max_weight = chunk->max_weight,
+            .ratios = std::move(chunk->ratios),
+            .max_weights = std::move(chunk->max_weights),
+            .biases = std::move(chunk->biases),
+            .generated_count = chunk->generated_count,
+        };
+        _sink(step_events);
+    }
 }
 
 void WeightingPipeline::decide(Chunk& chunk, std::size_t step) {

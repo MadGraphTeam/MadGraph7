@@ -29,7 +29,9 @@ def python_matrix_element(context, function, outputs=("matrix_element",)):
     )
     output_enums = {
         "matrix_element": ms.MatrixElement.matrix_element_out,
+        "color_index": ms.MatrixElement.color_index_out,
         "helicity_index": ms.MatrixElement.helicity_index_out,
+        "diagram_index": ms.MatrixElement.diagram_index_out,
     }
     return ms.MatrixElement(
         api.index(),

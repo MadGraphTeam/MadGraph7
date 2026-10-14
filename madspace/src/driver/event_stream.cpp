@@ -23,7 +23,8 @@ EventStream::EventStream(
     const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
     std::uint64_t seed,
     const LHECompleter& lhe_completer,
-    const GeneratorConfig& config
+    const GeneratorConfig& config,
+    const std::vector<WeightingGroup>& groups
 ) :
     _context(context),
     _channels(channels),
@@ -33,13 +34,6 @@ EventStream::EventStream(
     _combined_layout([&] {
         if (channels.empty()) {
             throw std::invalid_argument("EventStream needs at least one channel");
-        }
-        for (auto& channel : channels) {
-            if (!channel->weighting_steps().empty()) {
-                throw std::invalid_argument(
-                    "EventStream does not support weighting steps yet"
-                );
-            }
         }
         return combined_event_layout(
             channels.at(0)->event_layout_extra_flags(),
@@ -54,9 +48,18 @@ EventStream::EventStream(
             ? config.cpu_batch_size
             : config.gpu_batch_size
     ) {
+    if (!groups.empty()) {
+        _pipeline = std::make_unique<WeightingPipeline>(
+            std::vector<ContextPtr>{context},
+            channels,
+            groups,
+            config,
+            [this](StepEvents& step_events) { close_step_events(step_events); }
+        );
+    }
     bool any_active = false;
     for (auto [channel, state] : zip(_channels, _channel_states)) {
-        state.active = channel->max_weight_fixed();
+        state.active = channel->max_weight_fixed() && channel->step_max_weights_fixed();
         any_active |= state.active;
     }
     if (!any_active) {
@@ -102,6 +105,11 @@ void EventStream::run_coordinator() {
                 }
                 _dispatch_requested = false;
                 dispatch_jobs();
+                if (_pipeline) {
+                    // partial batches only once no events are coming anymore
+                    _results_pending +=
+                        _pipeline->start_jobs(_result_queue, _running_jobs.empty());
+                }
                 if (_results_pending == 0) {
                     _coordinator_cv.wait(lock, [this] {
                         return _stopping || _dispatch_requested;
@@ -125,6 +133,10 @@ void EventStream::run_coordinator() {
     _result_queue.discard(_results_pending, nullptr);
     _results_pending = 0;
     _running_jobs.clear();
+    if (_pipeline) {
+        _pipeline->reset();
+    }
+    _step_jobs.clear();
 }
 
 double EventStream::expected_job_events(std::size_t channel_index) const {
@@ -206,6 +218,10 @@ void EventStream::dispatch_jobs() {
 }
 
 void EventStream::handle_result(std::size_t job_id) {
+    if (WeightingPipeline::owns_job(job_id)) {
+        _pipeline->commit_job(job_id);
+        return;
+    }
     auto& job = _running_jobs.at(job_id);
     auto& channel = _channels.at(job.channel_index);
     if (job.unweighted_events.empty()) {
@@ -213,6 +229,17 @@ void EventStream::handle_result(std::size_t job_id) {
         std::unique_lock lock(_mutex);
         channel->start_unweight_job(job, _result_queue);
         ++_results_pending;
+        return;
+    }
+    if (_pipeline && _pipeline->contains(job.channel_index)) {
+        // keep what open_job() needs until the events are through the steps
+        auto& step_job = _step_jobs[job_id];
+        step_job.channel_index = job.channel_index;
+        step_job.weights = job.weights;
+        step_job.biases = job.biases;
+        step_job.requested_event_count = job.requested_event_count;
+        _pipeline->add_events(job);
+        _running_jobs.erase(job_id);
         return;
     }
 
@@ -228,10 +255,35 @@ void EventStream::handle_result(std::size_t job_id) {
     // only the weights are needed to integrate the job later
     closed_job.job.channel_index = job.channel_index;
     closed_job.job.weights = job.weights;
+    closed_job.job.biases = job.biases;
     closed_job.job.requested_event_count = job.requested_event_count;
     std::size_t channel_index = job.channel_index;
     _running_jobs.erase(job_id);
+    close_job(job_id, channel_index, std::move(closed_job));
+}
 
+void EventStream::close_step_events(StepEvents& step_events) {
+    auto& channel = _channels.at(step_events.channel_index);
+    auto node = _step_jobs.extract(step_events.job_id);
+    ClosedJob closed_job{
+        .job = std::move(node.mapped()),
+        .events =
+            EventBuffer(0, channel->particle_count(), channel->event_file_layout()),
+        .weights =
+            EventBuffer(0, channel->weight_record_count(), channel->weight_layout()),
+        .step_integral = channel->step_integral(step_events),
+    };
+    channel->fill_step_buffers(step_events, closed_job.events, closed_job.weights);
+    for (std::size_t i = 0; i < closed_job.weights.event_count(); ++i) {
+        closed_job.abs_weight_sum +=
+            std::abs(channel->unweighted_weight(closed_job.weights, i));
+    }
+    close_job(step_events.job_id, step_events.channel_index, std::move(closed_job));
+}
+
+void EventStream::close_job(
+    std::size_t job_id, std::size_t channel_index, ClosedJob&& closed_job
+) {
     std::unique_lock lock(_mutex);
     auto& state = _channel_states.at(channel_index);
     ++state.completed_jobs;
@@ -312,12 +364,19 @@ void EventStream::open_job(std::size_t channel_index, ClosedJob& closed_job) {
     auto& channel = _channels.at(channel_index);
     auto& state = _channel_states.at(channel_index);
     channel->integrate(closed_job.job);
-    double max_weight = channel->max_weight();
-    auto w_view = closed_job.job.weights.view<double, 1>();
-    for (std::size_t i = 0; i < w_view.size(); ++i) {
-        double w = std::abs(w_view[i]);
-        state.opened_abs_sum += w;
-        state.opened_capped_sum += std::min(w, max_weight);
+    if (!channel->weighting_steps().empty()) {
+        channel->add_step_integral(closed_job.step_integral);
+        // the mean weight of the events after the steps
+        state.opened_abs_sum += closed_job.abs_weight_sum;
+        state.opened_capped_sum += closed_job.events.event_count();
+    } else {
+        double max_weight = channel->max_weight();
+        auto w_view = closed_job.job.weights.view<double, 1>();
+        for (std::size_t i = 0; i < w_view.size(); ++i) {
+            double w = std::abs(w_view[i]);
+            state.opened_abs_sum += w;
+            state.opened_capped_sum += std::min(w, max_weight);
+        }
     }
     ++state.opened_jobs;
     --state.unopened_jobs;
@@ -404,9 +463,7 @@ std::vector<LHEEvent> EventStream::next_events(std::size_t count) {
                 event_index,
                 buffer,
                 i,
-                unweighted_event_weight(
-                    job.weights.event(event_index).weight(), channel->max_weight()
-                ),
+                channel->unweighted_weight(job.weights, event_index),
                 static_cast<int>(channel->status().subprocess),
                 channel->event_layout_extra_flags()
             );

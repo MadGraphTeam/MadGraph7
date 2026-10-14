@@ -20,6 +20,35 @@
 
 namespace madspace {
 
+/// Events of one job that passed all re- and unweighting steps, see
+/// @ref WeightingPipeline.
+struct StepEvents {
+    /// Index of the channel.
+    std::size_t channel_index;
+    /// Id of the generation job of the events.
+    std::size_t job_id;
+    /// The events on the CPU, as returned by the unweighter.
+    TensorVec events;
+    /// The weights of the first step.
+    std::vector<double> weights;
+    /// The maximum weight of the first step they were unweighted with.
+    double max_weight;
+    /// Per step, the ratios of the matrix elements.
+    std::vector<std::vector<double>> ratios;
+    /// Per step, the maximum weight they were unweighted with.
+    std::vector<double> max_weights;
+    /// The biases of the events, empty without.
+    std::vector<double> biases;
+    /// Number of points generated for these events.
+    std::size_t generated_count;
+};
+
+/// Sums of the final weights over the generated points.
+struct StepIntegral {
+    std::size_t count = 0;
+    double sum = 0., sum2 = 0., abs_sum = 0., abs_sum2 = 0.;
+};
+
 /**
  * Event generation and integration for one integration channel.
  *
@@ -172,6 +201,15 @@ public:
     double step_max_weight(std::size_t step) const {
         return _step_states.at(step - 1).max_weight;
     }
+    /// Whether the maximum weights of all unweighting steps are fixed.
+    bool step_max_weights_fixed() const {
+        for (auto [state, settings] : zip(_step_states, _step_settings)) {
+            if (settings.unweight && !state.max_weight_fixed) {
+                return false;
+            }
+        }
+        return true;
+    }
     /// Fix the maximum weight of step `step`, like @ref set_fixed_max_weight.
     void set_fixed_step_max_weight(std::size_t step, double max_weight);
     /// Update the maximum weight of step `step` from the values it unweights,
@@ -189,28 +227,19 @@ public:
     /// Incremented whenever the events are cleared, so that events still in the
     /// steps can be discarded.
     std::size_t event_epoch() const { return _event_epoch; }
-    /**
-     * Write events that passed all steps and add them to the integral.
-     *
-     * @param events           The events, as returned by the unweighter.
-     * @param weights          The weights of the first step.
-     * @param max_weight       The maximum weight of the first step they were
-     *                         unweighted with.
-     * @param ratios           Per step, the ratios of the events.
-     * @param max_weights      Per step, the maximum weight they were unweighted
-     *                         with.
-     * @param biases           The biases of the events, empty without.
-     * @param generated_count  Number of points generated for these events.
-     */
-    void write_step_events(
-        const TensorVec& events,
-        const std::vector<double>& weights,
-        double max_weight,
-        const std::vector<std::vector<double>>& ratios,
-        const std::vector<double>& max_weights,
-        const std::vector<double>& biases,
-        std::size_t generated_count
-    );
+    /// Write events that passed all steps and add them to the integral.
+    void write_step_events(const StepEvents& step_events);
+    /// The contribution of `step_events` to the integral of the final weights.
+    StepIntegral step_integral(const StepEvents& step_events) const;
+    /// Add to the integral of the final weights.
+    void add_step_integral(const StepIntegral& integral);
+    /// Pack `step_events` into an event buffer and a weight buffer (layouts
+    /// @ref event_file_layout and @ref weight_layout).
+    void fill_step_buffers(
+        const StepEvents& step_events,
+        EventBuffer& event_buffer,
+        EventBuffer& weight_buffer
+    ) const;
     /// Signed weight of event `index` of a buffer read from @ref weight_file,
     /// in units of the maximum weights, 0 for a rejected event.
     double unweighted_weight(EventBuffer& weight_buffer, std::size_t index) const;
@@ -275,11 +304,6 @@ private:
         bool max_weight_fixed = false;
         std::vector<double> large_weights;
         double count_accepted = 0.;
-    };
-    // sums over the generated points of the final weights
-    struct FinalIntegral {
-        std::size_t count = 0;
-        double sum = 0., sum2 = 0., abs_sum = 0., abs_sum2 = 0.;
     };
 
     void apply_truncation_budget();
@@ -376,7 +400,7 @@ private:
     std::vector<StepState> _step_states;
     std::vector<double> _loaded_step_max_weights;
     double _first_step_count = 0.;
-    FinalIntegral _final_integral;
+    StepIntegral _final_integral;
     std::size_t _event_epoch = 0;
 
     friend void to_json(nlohmann::json& j, const ChannelEventGenerator& channel);

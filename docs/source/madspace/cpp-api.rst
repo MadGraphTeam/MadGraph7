@@ -161,6 +161,8 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    cpp/Sizes
    cpp/StatusFile
    cpp/StepChainResult
+   cpp/StepEvents
+   cpp/StepIntegral
    cpp/StepSettings
    cpp/SubprocessObservables
    cpp/SubprocessSystArgs

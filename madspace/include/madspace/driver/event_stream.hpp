@@ -18,6 +18,7 @@
 #include "madspace/driver/lhe_output.hpp"
 #include "madspace/driver/random.hpp"
 #include "madspace/driver/thread_pool.hpp"
+#include "madspace/driver/weighting_pipeline.hpp"
 
 namespace madspace {
 
@@ -26,7 +27,9 @@ namespace madspace {
  *
  * Every channel needs a fixed maximum weight (see @ref
  * ChannelEventGenerator::set_fixed_max_weight), so that an event is final as
- * soon as it is unweighted; channels without one are skipped. A coordinator
+ * soon as it is unweighted; channels without one are skipped. With re- and
+ * unweighting steps (see @ref WeightingStep), the maximum weights of the steps
+ * have to be fixed as well, and an event is final after the last step. A coordinator
  * thread keeps generation jobs running on the context's thread pool and
  * buffers each channel's unweighted events, in launch order, until they are
  * consumed. @ref next_events picks the channel of every event at random,
@@ -38,7 +41,8 @@ namespace madspace {
  * neither on thread timing nor on how the requests are split into batches.
  *
  * Event weights are in units of the maximum weight: +-1, except for
- * overweight events.
+ * overweight events. After reweighting steps, they also contain the ratios of
+ * the reweighting steps.
  */
 class EventStream {
 public:
@@ -58,13 +62,16 @@ public:
      * @param lhe_completer  Completes the events into LHE events.
      * @param config         Generator configuration; the batch sizes and cut
      *                       settings are used.
+     * @param groups         Groups of channels with re- and unweighting steps,
+     *                       see @ref EventGenerator.
      */
     EventStream(
         ContextPtr context,
         const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
         std::uint64_t seed,
         const LHECompleter& lhe_completer,
-        const GeneratorConfig& config
+        const GeneratorConfig& config,
+        const std::vector<WeightingGroup>& groups = {}
     );
     ~EventStream();
     EventStream(const EventStream&) = delete;
@@ -98,6 +105,10 @@ private:
         EventBuffer weights;
         bool opened = false;
         std::size_t next_event = 0;
+        // with steps: the integral after the steps and the sum of the
+        // absolute event weights
+        StepIntegral step_integral;
+        double abs_weight_sum = 0.;
     };
     struct ChannelState {
         bool active = false;
@@ -151,11 +162,17 @@ private:
     std::size_t _results_pending = 0;
     std::size_t _job_id = 0;
     ResultQueue _result_queue;
+    std::unique_ptr<WeightingPipeline> _pipeline;
+    // jobs whose events are in the steps
+    std::unordered_map<std::size_t, GeneratorBatchJob> _step_jobs;
     std::thread _coordinator;
 
     void run_coordinator();
     void dispatch_jobs();
     void handle_result(std::size_t job_id);
+    void
+    close_job(std::size_t job_id, std::size_t channel_index, ClosedJob&& closed_job);
+    void close_step_events(StepEvents& step_events);
     double expected_job_events(std::size_t channel_index) const;
     void update_probabilities();
     std::size_t select_channel();

@@ -17,6 +17,7 @@ from test_event_stream import (
     PERMUTATIONS,
     PIDS,
     TOPOLOGY,
+    lhe_completer,
     make_config,
     make_context,
 )
@@ -279,15 +280,30 @@ def test_invalid_groups(tmp_path):
         )
 
 
-def test_fixed_max_weights(tmp_path):
-    """fix_max_weights() freezes the maxima of all steps. Reloaded like in a
-    gridpack, with the groups from JSON, the channels keep them."""
-    config = make_config()
-    run_dir = str(tmp_path / "fix")
-    os.makedirs(run_dir)
-    context, alphas_file = make_context(run_dir, 2)
+def full_me_with_indices(momenta):
+    zeros = np.zeros(len(momenta), np.int32)
+    return true_me(momenta), zeros, zeros, zeros
+
+
+FULL_ME_OUTPUTS = ("matrix_element", "color_index", "helicity_index", "diagram_index")
+
+
+def load_matrix_elements(context):
+    """The matrix elements, always in the same order, so that their indices
+    match the ones stored in the channels and groups."""
     surrogate = python_matrix_element(context, surrogate_me)
-    full = python_matrix_element(context, true_me)
+    full = python_matrix_element(context, full_me_with_indices, FULL_ME_OUTPUTS)
+    return surrogate, full
+
+
+@pytest.fixture(scope="module")
+def fixed_gridpack(tmp_path_factory):
+    """Two grouped channels with all maxima fixed by fix_max_weights(), stored
+    like in a gridpack."""
+    config = make_config()
+    run_dir = str(tmp_path_factory.mktemp("fixed"))
+    context, alphas_file = make_context(run_dir, 2)
+    surrogate, full = load_matrix_elements(context)
     step = ms.WeightingStep(
         [full], freeze_max_weight_after=1000, max_overweight_truncation=0.05
     )
@@ -310,45 +326,91 @@ def test_fixed_max_weights(tmp_path):
     )
     generator.survey()
     generator.fix_max_weights()
-    channel_jsons = [channel.to_json(True) for channel in channels]
-    groups_json = ms.weighting_groups_to_json(groups)
     globals_file = os.path.join(run_dir, "globals.tar")
     context.save_globals(globals_file)
-    max_weights = [
-        (channel.max_weight(), channel.step_max_weight(1)) for channel in channels
-    ]
-    assert all(m0 > 0 and m1 > 0 for m0, m1 in max_weights)
-    for channel_json, (_, m1) in zip(channel_jsons, max_weights):
-        assert json.loads(channel_json)["step_max_weights"] == [m1]
+    return {
+        "channels": [channel.to_json(True) for channel in channels],
+        "groups": ms.weighting_groups_to_json(groups),
+        "globals": globals_file,
+        "max_weights": [
+            (channel.max_weight(), channel.step_max_weight(1)) for channel in channels
+        ],
+        "status": generator.status(),
+    }
 
-    reload_dir = str(tmp_path / "reload")
-    os.makedirs(reload_dir)
-    new_context = ms.Context(ms.cpu_device(), 2)
-    new_context.load_globals(globals_file)
-    # same order as before, so the stored indices match
-    python_matrix_element(new_context, surrogate_me)
-    python_matrix_element(new_context, true_me)
-    new_channels = [
+
+def load_gridpack(gridpack, thread_count, run_dir=None):
+    context = ms.Context(ms.cpu_device(), thread_count)
+    context.load_globals(gridpack["globals"])
+    load_matrix_elements(context)
+    config = make_config()
+    channels = [
         ms.ChannelEventGenerator.load_json(
             channel_json,
-            [new_context],
-            event_file=os.path.join(reload_dir, f"events.{i}.npy"),
-            weight_file=os.path.join(reload_dir, f"weights.{i}.npy"),
+            [context],
+            event_file=os.path.join(run_dir, f"events.{i}.npy") if run_dir else "",
+            weight_file=os.path.join(run_dir, f"weights.{i}.npy") if run_dir else "",
             config=config,
         )
-        for i, channel_json in enumerate(channel_jsons)
+        for i, channel_json in enumerate(gridpack["channels"])
     ]
-    new_groups = ms.weighting_groups_from_json(groups_json)
-    assert ms.weighting_groups_to_json(new_groups) == groups_json
-    new_generator = ms.EventGenerator(
-        [new_context], new_channels, seed=2, config=config, groups=new_groups
+    groups = ms.weighting_groups_from_json(gridpack["groups"])
+    return context, channels, groups, config
+
+
+def test_fixed_max_weights(fixed_gridpack, tmp_path):
+    """fix_max_weights() freezes the maxima of all steps. Reloaded like in a
+    gridpack, with the groups from JSON, the channels keep them."""
+    max_weights = fixed_gridpack["max_weights"]
+    assert all(m0 > 0 and m1 > 0 for m0, m1 in max_weights)
+    for channel_json, (_, m1) in zip(fixed_gridpack["channels"], max_weights):
+        assert json.loads(channel_json)["step_max_weights"] == [m1]
+
+    context, channels, groups, config = load_gridpack(fixed_gridpack, 2, str(tmp_path))
+    assert ms.weighting_groups_to_json(groups) == fixed_gridpack["groups"]
+    generator = ms.EventGenerator(
+        [context], channels, seed=2, config=config, groups=groups
     )
-    new_generator.generate()
+    generator.generate()
     assert [
-        (channel.max_weight(), channel.step_max_weight(1)) for channel in new_channels
+        (channel.max_weight(), channel.step_max_weight(1)) for channel in channels
     ] == max_weights
-    status, new_status = generator.status(), new_generator.status()
+    status, new_status = fixed_gridpack["status"], generator.status()
     assert new_status.count_unweighted == config.target_count
     assert abs(status.mean - new_status.mean) < 4 * np.hypot(
         status.error, new_status.error
+    )
+
+
+def make_stream(fixed_gridpack, thread_count=4, seed=5):
+    context, channels, groups, config = load_gridpack(fixed_gridpack, thread_count)
+    return ms.EventStream(
+        context, channels, seed, lhe_completer(), config, groups=groups
+    )
+
+
+def stream_batches(stream, batch_sizes):
+    batches = [stream.next_batch(size) for size in batch_sizes]
+    return {key: np.concatenate([b[key] for b in batches]) for key in batches[0]}
+
+
+def test_event_stream_reproducible(fixed_gridpack):
+    reference = stream_batches(make_stream(fixed_gridpack, 4), [3000])
+    for thread_count, batch_sizes in [(1, [1000, 2000]), (3, [1, 999, 2000])]:
+        events = stream_batches(make_stream(fixed_gridpack, thread_count), batch_sizes)
+        for key, values in reference.items():
+            np.testing.assert_array_equal(events[key], values, err_msg=key)
+
+
+def test_event_stream_cross_section(fixed_gridpack):
+    """The streamed events have unit weights apart from overweights, and the
+    integral after the step matches the generator's."""
+    stream = make_stream(fixed_gridpack)
+    batch = stream.next_batch(5000)
+    weights = batch["weight"]
+    assert np.all(weights >= 1.0)
+    assert np.mean(weights == 1.0) > 0.9
+    status, stream_status = fixed_gridpack["status"], stream.status()
+    assert abs(status.mean - stream_status.mean) < 4 * np.hypot(
+        status.error, stream_status.error
     )
