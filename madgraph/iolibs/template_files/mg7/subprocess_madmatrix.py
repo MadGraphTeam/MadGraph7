@@ -336,6 +336,10 @@ class MadgraphSubprocess:
             **self.process.scale_kwargs
         )
 
+        self.load_matrix_elements(all_api_paths, api_path_formats, member_metas)
+
+    def load_matrix_elements(self, all_api_paths, api_path_formats, member_metas):
+        """The matrix element and [surrogate] of every member subprocess."""
         if self.process.run_card["run"]["dummy_matrix_element"]:
             self.matrix_elements = [None] * len(all_api_paths)
         else:
@@ -376,6 +380,9 @@ class MadgraphSubprocess:
         if len({api.index() for api in apis}) != 1:
             raise RuntimeError("surrogate loaded at different indices")
         return apis[0]
+
+    def has_weighting_steps(self) -> bool:
+        return bool(self.surrogates)
 
     def weighting_steps(self) -> list:
         """The steps after the first unweighting: with a [surrogate], the
@@ -1004,35 +1011,10 @@ class MadgraphSubprocess:
         else:
             raise ValueError(f"Invalid activation function '{name}'")
 
-    def build_integrands(
-        self,
-        phasespace: PhaseSpace,
-        madnis_training: bool = False,
-        drop_cuts_and_rescale: bool = False
-    ) -> list[ms.Integrand]:
-        flavors = []
-        flavor_remap = []
-        flavor_factors = []
-        flavor_mirror = []
-        flavor_diff_xs_indices = []
-        flavor_subproc_indices = []
-        flavor_per_subproc_remap = []
-
-        for flav in self.meta["flavors"]:
-            if self.unmerged_meta is not None:
-                diff_xs_index = flav["subprocess"]
-                subproc_index = self.meta["subprocesses"][diff_xs_index]
-                ps_flavor = flav["flavor"]
-                flavor_diff_xs_indices.append(diff_xs_index)
-                flavor_subproc_indices.append(subproc_index)
-                flavor_per_subproc_remap.append(ps_flavor)
-                flav = self.unmerged_meta[subproc_index]["flavors"][ps_flavor]
-            flavors.append(flav["options"][0])
-            flavor_remap.append(flav["index"])
-            flavor_factors.append(len(flav["options"]))
-            flavor_mirror.append(flav["mirror"])
-
-        cross_sections = []
+    def integrand_matrix_elements(self) -> list:
+        """The matrix element of every member subprocess in the integrand. Sets
+        the step_matrix_elements of the second pass of a [surrogate]."""
+        matrix_elements = []
         self.step_matrix_elements = []
         for me_index, matrix_element in enumerate(self.matrix_elements):
             if self.surrogates:
@@ -1084,6 +1066,39 @@ class MadgraphSubprocess:
                     self.process.me_frame,
                     self.process.incoming_count,
                 )
+            matrix_elements.append(mat)
+        return matrix_elements
+
+    def build_integrands(
+        self,
+        phasespace: PhaseSpace,
+        madnis_training: bool = False,
+        drop_cuts_and_rescale: bool = False
+    ) -> list[ms.Integrand]:
+        flavors = []
+        flavor_remap = []
+        flavor_factors = []
+        flavor_mirror = []
+        flavor_diff_xs_indices = []
+        flavor_subproc_indices = []
+        flavor_per_subproc_remap = []
+
+        for flav in self.meta["flavors"]:
+            if self.unmerged_meta is not None:
+                diff_xs_index = flav["subprocess"]
+                subproc_index = self.meta["subprocesses"][diff_xs_index]
+                ps_flavor = flav["flavor"]
+                flavor_diff_xs_indices.append(diff_xs_index)
+                flavor_subproc_indices.append(subproc_index)
+                flavor_per_subproc_remap.append(ps_flavor)
+                flav = self.unmerged_meta[subproc_index]["flavors"][ps_flavor]
+            flavors.append(flav["options"][0])
+            flavor_remap.append(flav["index"])
+            flavor_factors.append(flav.get("factor", len(flav["options"])))
+            flavor_mirror.append(flav["mirror"])
+
+        cross_sections = []
+        for mat in self.integrand_matrix_elements():
             pdf_grid = None if self.process.leptonic else self.process.pdf_grid
             pdf_arg = None if self.process.leptonic else ms.CachedPdf()
             cross_sections.append(
@@ -1100,7 +1115,7 @@ class MadgraphSubprocess:
                     pdf2=pdf_arg,
                     input_momentum_fraction=True,
                     decay=self.process.is_decay,
-                    return_matrix_element=bool(self.surrogates),
+                    return_matrix_element=self.has_weighting_steps(),
                 )
             )
         partial_weights = self.process.systematics_enabled()
