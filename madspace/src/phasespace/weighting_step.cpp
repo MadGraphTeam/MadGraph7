@@ -22,6 +22,13 @@ int output_position(
 
 } // namespace
 
+bool WeightingStep::returns_ratio() const {
+    return !matrix_elements.empty() &&
+        output_position(
+            matrix_elements.at(0), MatrixElement::matrix_element_ratio_out
+        ) != -1;
+}
+
 WeightingStepFunction::WeightingStepFunction(
     const WeightingStep& step,
     std::size_t particle_count,
@@ -75,10 +82,12 @@ WeightingStepFunction::WeightingStepFunction(
                 "of the events"
             );
         }
-        if (output_position(matrix_element, MatrixElement::matrix_element_out) == -1) {
+        if (output_position(matrix_element, MatrixElement::matrix_element_out) == -1 &&
+            output_position(matrix_element, MatrixElement::matrix_element_ratio_out) ==
+                -1) {
             throw std::invalid_argument(
                 "the matrix elements of a weighting step must return the matrix "
-                "element"
+                "element or its ratio"
             );
         }
         for (auto input : matrix_element.external_inputs()) {
@@ -155,9 +164,14 @@ NamedVector<Value> WeightingStepFunction::build_function_impl(
     // matrix element plus the index outputs, missing ones are empty
     auto select_outputs =
         [&](const MatrixElement& matrix_element, const ValueVec& outputs) {
-            ValueVec ret{outputs.at(
-                output_position(matrix_element, MatrixElement::matrix_element_out)
-            )};
+            int value_position =
+                output_position(matrix_element, MatrixElement::matrix_element_out);
+            if (value_position == -1) {
+                value_position = output_position(
+                    matrix_element, MatrixElement::matrix_element_ratio_out
+                );
+            }
+            ValueVec ret{outputs.at(value_position)};
             for (auto output : index_outputs) {
                 int position = output_position(matrix_element, output);
                 ret.push_back(position == -1 ? Value() : outputs.at(position));

@@ -21,6 +21,11 @@ namespace madspace {
  * times the overweight factor carried from it, with its own maximum weight. A
  * reweighting step only multiplies the weights.
  *
+ * Instead of the matrix element, the matrix elements of a step can return the
+ * ratio directly, with the output `matrix_element_ratio_out`. Its matrix element
+ * is then the ratio times the one of the previous step, which is the reference
+ * for the ratio of the next step.
+ *
  * Typical uses are a fast surrogate of the matrix element in the integrand,
  * followed by an unweighting step with the full matrix element, or a
  * leading-color integrand reweighted to full color.
@@ -46,6 +51,10 @@ struct WeightingStep {
     /// earlier steps. Without, an index is taken from the first step whose
     /// matrix element returns it.
     std::vector<MatrixElement::MatrixElementOutput> override_outputs;
+
+    /// Whether the matrix elements return the ratio to the previous step
+    /// instead of the matrix element.
+    bool returns_ratio() const;
 };
 
 /**
@@ -66,7 +75,8 @@ struct WeightingStep {
  *   element and for the unweighting.
  *
  * **Returns**
- * - `matrix_element` – `float`, shape `(batch,)`.
+ * - `matrix_element` – `float`, shape `(batch,)` – the matrix element, or the
+ *   ratio to the previous step if the step returns ratios.
  * - `color_index`, `helicity_index`, `diagram_index` – `int`, shape `(batch,)`
  *   – the indices the step writes, otherwise the input values.
  * - `unweight_random` – `float`, shape `(batch,)` – the random number of this

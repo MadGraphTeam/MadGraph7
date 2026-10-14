@@ -71,6 +71,14 @@ DifferentialCrossSection::DifferentialCrossSection(
     _input_momentum_fraction(input_momentum_fraction),
     _decay(decay),
     _return_matrix_element(return_matrix_element) {
+    auto& outputs = matrix_element.outputs();
+    if (std::find(
+            outputs.begin(), outputs.end(), MatrixElement::matrix_element_ratio_out
+        ) != outputs.end()) {
+        throw std::invalid_argument(
+            "a matrix element returning a ratio can only be used in a weighting step"
+        );
+    }
     if (decay) {
         if (_has_pdf.at(0) || _has_pdf.at(1)) {
             throw std::invalid_argument("a decay has no beams, so no PDFs");

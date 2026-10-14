@@ -306,6 +306,7 @@ WeightingPipeline::WeightingPipeline(
                 .unweight = step.mode == WeightingStep::unweight,
                 .max_overweight_truncation = step.max_overweight_truncation,
                 .freeze_max_weight_after = step.freeze_max_weight_after,
+                .ratio = step.returns_ratio(),
             });
             std::array<bool, 3> write_indices{};
             for (std::size_t i = 0; i < index_outputs.size(); ++i) {
@@ -462,8 +463,14 @@ void WeightingPipeline::decide(Chunk& chunk, std::size_t step) {
     std::vector<double> ratios(count);
     for (std::size_t i = 0; i < count; ++i) {
         double previous = chunk.matrix_elements.at(i);
-        ratios.at(i) =
-            previous != 0. ? chunk.step_matrix_elements.at(i) / previous : 0.;
+        double& value = chunk.step_matrix_elements.at(i);
+        if (settings.ratio) {
+            // the implied matrix element is the reference of the next step
+            ratios.at(i) = value;
+            value *= previous;
+        } else {
+            ratios.at(i) = previous != 0. ? value / previous : 0.;
+        }
         chunk.ratio_products.at(i) *= ratios.at(i);
     }
     std::vector<me_int_t> keep;

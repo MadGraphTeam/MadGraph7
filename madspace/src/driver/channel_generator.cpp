@@ -1123,7 +1123,7 @@ void ChannelEventGenerator::set_weighting_steps(
                 steps.end(),
                 _step_settings.begin(),
                 [](auto& a, auto& b) {
-                    return a.unweight == b.unweight &&
+                    return a.unweight == b.unweight && a.ratio == b.ratio &&
                         a.max_overweight_truncation == b.max_overweight_truncation &&
                         a.freeze_max_weight_after == b.freeze_max_weight_after;
                 }

@@ -556,6 +556,7 @@ PYBIND11_MODULE(_madspace_py, m) {
              {"scale", UMAMI_OUT_SCALE},
              {"pdf", UMAMI_OUT_PDF},
              {"bias", UMAMI_OUT_BIAS},
+             {"matrix_element_ratio", UMAMI_OUT_MATRIX_ELEMENT_RATIO},
          }) {
         umami_output_keys[name] = key;
     }
@@ -1550,6 +1551,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"scale_out", MatrixElement::scale_out},
             {"pdf_out", MatrixElement::pdf_out},
             {"bias_out", MatrixElement::bias_out},
+            {"matrix_element_ratio_out", MatrixElement::matrix_element_ratio_out},
         }
     );
     matrix_element
@@ -3436,6 +3438,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "override_outputs",
             &WeightingStep::override_outputs,
             pydoc::doc("WeightingStep::override_outputs")
+        )
+        .def(
+            "returns_ratio",
+            &WeightingStep::returns_ratio,
+            pydoc::doc("WeightingStep::returns_ratio")
         );
 
     py::classh<WeightingGroup>(m, "WeightingGroup", pydoc::doc("WeightingGroup"))

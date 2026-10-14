@@ -67,7 +67,10 @@ public:
         cut_out,            ///< Custom cut value, 0 rejects the event.
         scale_out,          ///< Custom energy scale.
         pdf_out,            ///< Custom parton density x f(x, Q).
-        bias_out            ///< Custom event bias.
+        bias_out,           ///< Custom event bias.
+        /// Ratio of the matrix element to a reference matrix element, for a
+        /// @ref WeightingStep.
+        matrix_element_ratio_out
     };
 
     /**

@@ -143,6 +143,9 @@ MatrixElement::MatrixElement(
                 case bias_out:
                     ret_types.push_back("bias", batch_float);
                     break;
+                case matrix_element_ratio_out:
+                    ret_types.push_back("matrix_element_ratio", batch_float);
+                    break;
                 default:
                     throw std::invalid_argument("unknown output type");
                 }
@@ -183,7 +186,17 @@ MatrixElement::MatrixElement(
             mask.clear();
         }
         return mask;
-    }()) {}
+    }()) {
+    auto has_output = [&](MatrixElementOutput output) {
+        return std::find(outputs.begin(), outputs.end(), output) != outputs.end();
+    };
+    if (has_output(matrix_element_out) && has_output(matrix_element_ratio_out)) {
+        throw std::invalid_argument(
+            "a matrix element returns either matrix_element or matrix_element_ratio, "
+            "not both"
+        );
+    }
+}
 
 NamedVector<Value> MatrixElement::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
@@ -319,6 +332,9 @@ NamedVector<Value> MatrixElement::build_function_impl(
             break;
         case bias_out:
             output_key = UMAMI_OUT_BIAS;
+            break;
+        case matrix_element_ratio_out:
+            output_key = UMAMI_OUT_MATRIX_ELEMENT_RATIO;
             break;
         }
         matrix_args.push_back(static_cast<me_int_t>(output_key));

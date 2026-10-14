@@ -121,6 +121,8 @@ struct StepSettings {
     double max_overweight_truncation = 0.01;
     /// See @ref GeneratorConfig::freeze_max_weight_after.
     std::size_t freeze_max_weight_after = 10000;
+    /// Whether the step returns the ratio instead of the matrix element.
+    bool ratio = false;
 };
 
 /// Result of @ref evaluate_step_chain.

@@ -36,6 +36,7 @@ _OUTPUT_TYPES = {
     "scale": DataType.float,
     "pdf": DataType.float,
     "bias": DataType.float,
+    "matrix_element_ratio": DataType.float,
 }
 
 

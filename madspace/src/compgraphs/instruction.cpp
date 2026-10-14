@@ -997,6 +997,7 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
         case UMAMI_OUT_SCALE:
         case UMAMI_OUT_PDF:
         case UMAMI_OUT_BIAS:
+        case UMAMI_OUT_MATRIX_ELEMENT_RATIO:
             dtype = DataType::dt_float;
             shape = {};
             break;

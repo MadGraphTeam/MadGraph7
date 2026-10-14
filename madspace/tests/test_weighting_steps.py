@@ -78,11 +78,17 @@ def generate(
     integrand_outputs=("matrix_element",),
 ):
     """Survey and generate, returns the status, the combined events and the
-    channels."""
+    channels. step_me and step_outputs can be lists, one entry per step."""
     os.makedirs(run_dir, exist_ok=True)
     context, alphas_file = make_context(run_dir, threads)
     me0 = python_matrix_element(context, integrand_me, integrand_outputs)
-    me1 = python_matrix_element(context, step_me, step_outputs)
+    if not isinstance(step_me, list):
+        step_me = [step_me] * len(step_modes)
+        step_outputs = [step_outputs] * len(step_modes)
+    step_mes = [
+        python_matrix_element(context, me, outputs)
+        for me, outputs in zip(step_me, step_outputs)
+    ]
     config = make_config()
     config.target_count = target_count
     config.cpu_batch_size = 500
@@ -100,8 +106,8 @@ def generate(
         for i, pt_min in enumerate(pt_mins)
     ]
     steps = [
-        ms.WeightingStep([me1], mode=mode, override_outputs=list(override_outputs))
-        for mode in step_modes
+        ms.WeightingStep([me], mode=mode, override_outputs=list(override_outputs))
+        for me, mode in zip(step_mes, step_modes)
     ]
     groups = [ms.WeightingGroup(list(grouped), steps)] if steps else []
     generator = ms.EventGenerator(
@@ -222,6 +228,85 @@ def test_index_outputs(tmp_path):
             override_outputs=override,
         )
         assert (events["helicity_index"] == helicity).all()
+
+
+def true_over_surrogate(momenta):
+    return true_me(momenta) / surrogate_me(momenta)
+
+
+@pytest.mark.parametrize("step_modes", [["unweight"], ["reweight"]])
+def test_ratio_step(tmp_path, step_modes):
+    """A step that returns |M_true|^2 / |M_surrogate|^2 gives the same events
+    as a step that returns |M_true|^2: the pipeline computes the same ratio."""
+    results = [
+        generate(
+            str(tmp_path / name),
+            surrogate_me,
+            step_modes,
+            step_me=step_me,
+            step_outputs=outputs,
+        )
+        for name, step_me, outputs in [
+            ("me", true_me, ("matrix_element",)),
+            ("ratio", true_over_surrogate, ("matrix_element_ratio",)),
+        ]
+    ]
+    (status_me, events_me, _), (status_ratio, events_ratio, _) = results
+    assert np.array_equal(events_me, events_ratio)
+    assert status_me.mean == status_ratio.mean
+
+
+def test_ratio_then_matrix_element(tmp_path, reference):
+    """After a ratio step, the matrix element it implies is the reference of the
+    next step, so the ratios still multiply to |M_true|^2 / |M_surrogate|^2."""
+
+    def intermediate_me(momenta):
+        return true_me(momenta) * (1.0 + 0.2 * np.cos(momenta[:, 2, 2] / 40.0))
+
+    status, events, _ = generate(
+        str(tmp_path),
+        surrogate_me,
+        ["reweight", "unweight"],
+        step_me=[lambda p: intermediate_me(p) / surrogate_me(p), true_me],
+        step_outputs=[("matrix_element_ratio",), ("matrix_element",)],
+        target_count=20000,
+    )
+    check_compatible(status, events, reference)
+    weights = events["weight"]
+    assert np.mean(np.isclose(weights, np.min(weights))) > 0.98
+
+
+def test_ratio_matrix_element_rules(tmp_path):
+    context, _ = make_context(str(tmp_path), 1)
+    ratio_me = python_matrix_element(
+        context, true_over_surrogate, ("matrix_element_ratio",)
+    )
+    assert ms.WeightingStep([ratio_me]).returns_ratio()
+    assert not ms.WeightingStep(
+        [python_matrix_element(context, true_me)]
+    ).returns_ratio()
+    with pytest.raises(ValueError, match="weighting step"):
+        ms.DifferentialCrossSection(
+            matrix_element=ratio_me,
+            cm_energy=CM_ENERGY,
+            running_coupling=None,
+            energy_scale=ms.CachedScale(),
+        )
+    with pytest.raises(ValueError, match="not both"):
+        ms.MatrixElement(
+            ratio_me.matrix_element_index(),
+            len(PIDS),
+            [ms.MatrixElement.momenta_in],
+            [
+                ms.MatrixElement.matrix_element_out,
+                ms.MatrixElement.matrix_element_ratio_out,
+            ],
+        )
+    groups = [ms.WeightingGroup([0], [ms.WeightingStep([ratio_me])])]
+    text = ms.weighting_groups_to_json(groups)
+    loaded = ms.weighting_groups_from_json(text)
+    assert loaded[0].steps[0].returns_ratio()
+    assert ms.weighting_groups_to_json(loaded) == text
 
 
 def test_invalid_groups(tmp_path):
