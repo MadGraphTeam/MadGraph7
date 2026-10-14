@@ -94,7 +94,9 @@ public:
         };
 
     /**
-     * @param mapping                          The phase-space mapping.
+     * @param mapping                          The phase-space mapping. Its
+     *                                          discrete choices, if any, are
+     *                                          sampled uniformly.
      * @param diff_xs                           One differential cross section
      *                                          per active flavour.
      * @param adaptive_map                      Optional continuous adaptive

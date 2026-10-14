@@ -504,8 +504,22 @@ NamedVector<Value> Integrand::build_channel_part(
         chan_index_in_group = fb.full({static_cast<me_int_t>(0), batch_size_val});
     }
 
-    // Apply phase space mapping
-    auto mapping_result = _mapping.build_forward(fb, {latent}, mapping_conditions);
+    // Apply phase space mapping, its discrete choices are sampled uniformly
+    ValueVec mapping_inputs{latent};
+    if (std::size_t discrete_dim = _mapping.discrete_dim(); discrete_dim > 0) {
+        ValueVec choices;
+        Value discrete_random =
+            fb.random(batch_size_val, static_cast<me_int_t>(discrete_dim));
+        for (auto& random : fb.unstack(discrete_random)) {
+            auto [choice, choice_det] =
+                fb.sample_discrete(random, static_cast<me_int_t>(2));
+            choices.push_back(choice);
+            weights_before_cuts.push_back(choice_det);
+        }
+        mapping_inputs.push_back(fb.stack(choices));
+    }
+    auto mapping_result =
+        _mapping.build_forward(fb, mapping_inputs, mapping_conditions);
     weights_before_cuts.push_back(mapping_result["det"]);
     Value momenta = mapping_result["momenta"];
     Value x0 = mapping_result["x1"];
