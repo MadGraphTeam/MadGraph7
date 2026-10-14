@@ -41,13 +41,20 @@ namespace madspace {
  * - `weight` – `float`, shape `(batch,)` – the event weight.
  * - `momenta` – `float`, shape `(batch, particle_count, 4)` – the momenta.
  * - `color_index`, `helicity_index`, `diagram_index`, `flavor_index` – `int`,
- *   shape `(batch,)` – the sampled discrete quantities.
+ *   shape `(batch,)` – the sampled discrete quantities. Indices the matrix
+ *   element does not return are -1.
  * - `ren_scale`, `alpha_qcd`, `x1`, `x2`, `fact_scale1`, `fact_scale2` –
  *   `float`, shape `(batch,)` – scales and momentum fractions.
  * - `random` – `float`, shape `(batch, mapping.random_dim())` – the underlying
  *   random numbers.
+ * - `matrix_element` – `float`, shape `(batch,)` – the squared matrix element,
+ *   present only if the differential cross sections return it.
  * - `bias` – `float`, shape `(batch,)` – the event bias, present only with a
  *   custom bias. `weight` then includes the bias factor.
+ *
+ * Only `matrix_element_out` is required from the matrix element.
+ * `diagram_amp2_out` is needed for diagram-based channel weights, i.e. with
+ * several channels and no @p prop_chan_weights.
  *
  * **References**
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
@@ -73,7 +80,7 @@ public:
             MatrixElement::random_helicity_in,
             MatrixElement::random_diagram_in,
         };
-    /// The @ref MatrixElement outputs an `Integrand` requests.
+    /// The @ref MatrixElement outputs an `Integrand` can use.
     inline static const std::vector<MatrixElement::MatrixElementOutput>
         matrix_element_outputs = {
             MatrixElement::matrix_element_out,
