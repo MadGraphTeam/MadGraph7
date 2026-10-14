@@ -114,6 +114,16 @@ def _alpha_s_name(model: Mapping, physics: Mapping, parameters: Mapping) -> str 
     return candidates[0] if len(candidates) == 1 else None
 
 
+def _slha_reference(declaration: Mapping) -> dict[str, Any]:
+    """The parameter card entry of an external UFO parameter, if it has one."""
+    if declaration.get("nature") != "external" or not declaration.get("lhablock"):
+        return {}
+    return {
+        "lhablock": str(declaration["lhablock"]).upper(),
+        "lhacode": [int(code) for code in declaration.get("lhacode", ())],
+    }
+
+
 def _flow_id(word: Sequence[int]) -> str:
     return "flow:" + (",".join(str(label) for label in word) if word else "singlet")
 
@@ -550,6 +560,7 @@ def _build_provider(
                 "parameters": [
                     {
                         **p,
+                        **_slha_reference(parameters.get(p["name"], {})),
                         "is_complex": (
                             parameters.get(p["name"], {}).get("parameter_type")
                             == "complex"
