@@ -13725,7 +13725,7 @@ c         segments from -DABS(tiny*Ga) to Ga
         text = 'MODEL = flavor_couplings.o couplings.o lha_read.o printout.o rw_para.o'
         if self.opt['onia']:
             text += ' rw_onia.o'
-        text += ' coupl.o couplings.mod model_functions.o get_color.o '
+        text += ' coupl.o model_functions.o get_color.o '
         
         if self.opt['export_format'].startswith('standalone'):
             text += ' alfas_functions.o '

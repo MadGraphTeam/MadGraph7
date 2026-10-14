@@ -136,7 +136,7 @@ END
 
 
       RECURSIVE SUBROUTINE SMATRIX%(proc_prefix)s_AMP_VEC(P,
-     $     RET_AMP_SPLIT,ANS_SUMMED,IVEC,FLAV_IDX)
+     $     RET_AMP_SPLIT,ANS_SUMMED,IVEC,FLAV_IDX,NFKSPROCESS)
 C  
 %(info_lines)s
 C
@@ -160,7 +160,7 @@ C ARGUMENTS
 C 
       REAL*8 P(0:3,NEXTERNAL), ANS_SUMMED
       DOUBLE PRECISION RET_AMP_SPLIT(AMP_SPLIT_SIZE)
-      INTEGER IVEC,FLAV_IDX
+      INTEGER IVEC,FLAV_IDX,NFKSPROCESS
 C
 C VARIABLES
 C
@@ -186,7 +186,8 @@ C if (firsttime) then
 C   call firsttime%(proc_prefix)s_setup(firsttime,keep_order)
 C endif
 
-CALL SMATRIX%(proc_prefix)s_SPLITORDERS_VEC(P,ANS,IVEC,FLAV_IDX)
+CALL SMATRIX%(proc_prefix)s_SPLITORDERS_VEC(P,ANS,IVEC,FLAV_IDX,
+     $     NFKSPROCESS)
 ans_summed = 0d0
 ans_max = 0d0
 
@@ -270,8 +271,6 @@ C
        PARAMETER ( NCOMB=%(ncomb)d)
       INTEGER HEL_CONFIGS
       PARAMETER (HEL_CONFIGS=%(hel_configs)s)
-      INTEGER THEL
-      PARAMETER (THEL=NCOMB*HEL_CONFIGS)
       INTEGER NSQAMPSO
       PARAMETER (NSQAMPSO=%(nSqAmpSplitOrders)d)
 C  
@@ -283,18 +282,23 @@ C LOCAL VARIABLES
 C  
       INCLUDE 'fks_info.inc'
       INTEGER IHEL,IDEN,I,J,FLAV_IDX,HEL_INDEX
-      INTEGER T_IDENT(NCOMB,HEL_CONFIGS)
       REAL*8 T(0:NSQAMPSO)
       REAL*8 T_SAVE(NCOMB,0:NSQAMPSO,HEL_CONFIGS)
-      SAVE T_SAVE,T_IDENT
+      SAVE T_SAVE
       INTEGER NHEL(NEXTERNAL,NCOMB)
 %(helicity_lines)s
-      LOGICAL GOODHEL(NCOMB,HEL_CONFIGS)
-      DATA GOODHEL/THEL*.FALSE./
       INTEGER NTRY(HEL_CONFIGS)
       DATA NTRY/HEL_CONFIGS*0/
       INTEGER NFKSPROCESS
       COMMON/C_NFKSPROCESS/NFKSPROCESS
+C  
+C GLOBAL VARIABLES
+C  
+C The helicity filter set here is also the one of
+C SMATRIX%(proc_prefix)s_SPLITORDERS_VEC, see BLOCK DATA HELFILTER%(proc_prefix)s
+      LOGICAL GOODHEL(NCOMB,HEL_CONFIGS),HELREADY(HEL_CONFIGS)
+      INTEGER T_IDENT(NCOMB,HEL_CONFIGS)
+      COMMON /TO_HELFILTER%(proc_prefix)s/GOODHEL,T_IDENT,HELREADY
 %(den_factor_line)s
 C ----------
 C BEGIN CODE
@@ -351,6 +355,8 @@ C add to the sum of helicities
           ENDIF
         ENDIF
       ENDDO
+C GOODHEL and T_IDENT do not change after the first point
+      HELREADY(HEL_INDEX)=.TRUE.
       DO I=1,NSQAMPSO			
         ANS(I)=ANS(I)/DBLE(IDEN)
         ANS(0)=ANS(0)+ANS(I)
@@ -359,13 +365,19 @@ C add to the sum of helicities
        
 
       RECURSIVE SUBROUTINE SMATRIX%(proc_prefix)s_SPLITORDERS_VEC(P,
-     $     ANS,IVEC,FLAV_IDX)
+     $     ANS,IVEC,FLAV_IDX,NFKSPROCESS)
 C  
 %(info_lines)s
 C
 C Returns amplitude squared summed/avg over colors
 c and helicities
 c for the point in phase space P(0:3,NEXTERNAL)
+C
+C The helicity filter, i.e. the helicities which vanish or equal
+C an earlier one, is the one that SMATRIX%(proc_prefix)s_SPLITORDERS
+C set for this FKS configuration (e.g. in set_goodhel). It is only
+C read here, so that lanes can be evaluated concurrently. All the
+C helicities are summed until it is set.
 C  
 %(process_lines)s
 C  
@@ -374,232 +386,92 @@ C
 C CONSTANTS
 C  
       include 'nexternal.inc'
+      INCLUDE 'nFKSconfigs.inc'
       INTEGER     NCOMB         
       PARAMETER ( NCOMB=%(ncomb)d)
+      INTEGER HEL_CONFIGS
+      PARAMETER (HEL_CONFIGS=%(hel_configs)s)
       INTEGER NSQAMPSO
       PARAMETER (NSQAMPSO=%(nSqAmpSplitOrders)d)
 C  
 C ARGUMENTS 
 C  
       REAL*8 P(0:3,NEXTERNAL),ANS(0:NSQAMPSO)
-      INTEGER IVEC,FLAV_IDX
+      INTEGER IVEC,FLAV_IDX,NFKSPROCESS
 C  
 C LOCAL VARIABLES 
 C  
-      INTEGER IHEL,IDEN,I,J,T_IDENT%(proc_prefix)s(NCOMB)
+      INTEGER IHEL,IDEN,I,HEL_INDEX
       REAL*8 T(0:NSQAMPSO),T_SAVE(NCOMB,0:NSQAMPSO)
-C      SAVE T_SAVE,T_IDENT
-      common /to_t_ident%(proc_prefix)s/t_ident%(proc_prefix)s
       INTEGER NHEL(NEXTERNAL,NCOMB)
 %(helicity_lines)s
-      LOGICAL GOODHEL%(proc_prefix)s(NCOMB), DO_TRY
-      DATA DO_TRY/.TRUE./
-      COMMON /TO_GOODHEL%(proc_prefix)s/GOODHEL%(proc_prefix)s
+C  
+C GLOBAL VARIABLES
+C  
+      LOGICAL GOODHEL(NCOMB,HEL_CONFIGS),HELREADY(HEL_CONFIGS)
+      INTEGER T_IDENT(NCOMB,HEL_CONFIGS)
+      COMMON /TO_HELFILTER%(proc_prefix)s/GOODHEL,T_IDENT,HELREADY
 %(den_factor_line)s
 C ----------
 C BEGIN CODE
 C ----------
-      T(:) = 0d0
-      T_SAVE(:,:) = 0d0 
+      %(hel_index_setup)s
 %(flavor_den_factor_setup)s
-C      IF (DO_TRY) THEN
-C        CALL SMATRIX%(proc_prefix)s_SPLITORDERS_NTRY_VEC(P,ANS,DO_TRY,GOODHEL%(proc_prefix)s,T_IDENT%(proc_prefix)s,IVEC)
-C      ELSE
       DO I=0,NSQAMPSO
-      	ANS(I) = 0D0	  
+        ANS(I) = 0D0
       ENDDO
       DO IHEL=1,NCOMB
-        T(:) = 0d0
-        CALL MATRIX_%(proc_prefix)s_VEC(P,NHEL(1,IHEL),FLAV_IDX,T,
-     $       IVEC)
+        IF (.NOT.HELREADY(HEL_INDEX)) THEN
+          CALL MATRIX_%(proc_prefix)s_VEC(P,NHEL(1,IHEL),FLAV_IDX,T,
+     $         IVEC)
+        ELSEIF (.NOT.GOODHEL(IHEL,HEL_INDEX)) THEN
+          CYCLE
+        ELSEIF (T_IDENT(IHEL,HEL_INDEX).GT.0) THEN
+C if two helicity states are identical, dont recompute
+          DO I=0,NSQAMPSO
+            T(I)=T_SAVE(T_IDENT(IHEL,HEL_INDEX),I)
+          ENDDO
+        ELSE
+          CALL MATRIX_%(proc_prefix)s_VEC(P,NHEL(1,IHEL),FLAV_IDX,T,
+     $         IVEC)
+        ENDIF
+        DO I=0,NSQAMPSO
+          T_SAVE(IHEL,I)=T(I)
+        ENDDO
 C add to the sum of helicities
-	  DO I=1,NSQAMPSO !keep loop from 1!!
-             ANS(I)=ANS(I)+T(I)
-	  ENDDO
+        DO I=1,NSQAMPSO !keep loop from 1!!
+          ANS(I)=ANS(I)+T(I)
+        ENDDO
       ENDDO
-      DO I=1,NSQAMPSO			
+      DO I=1,NSQAMPSO
         ANS(I)=ANS(I)/DBLE(IDEN)
         ANS(0)=ANS(0)+ANS(I)
       ENDDO
-C      ENDIF
       END
 
 
-      SUBROUTINE SMATRIX%(proc_prefix)s_SPLITORDERS_NTRY(P,ANS,DO_TRY,GOODHEL,T_IDENT)
-C  
-%(info_lines)s
+      BLOCK DATA HELFILTER%(proc_prefix)s
 C
-C Returns amplitude squared summed/avg over colors
-c and helicities
-c for the point in phase space P(0:3,NEXTERNAL)
-C  
-%(process_lines)s
-C  
-      IMPLICIT NONE
-C  
-C CONSTANTS
-C  
-      include 'nexternal.inc'
-      include 'fks_info.inc'
-      INTEGER     NCOMB         
-      PARAMETER ( NCOMB=%(ncomb)d)
-      INTEGER NSQAMPSO
-      PARAMETER (NSQAMPSO=%(nSqAmpSplitOrders)d)
-C  
-C ARGUMENTS 
-C  
-      REAL*8 P(0:3,NEXTERNAL),ANS(0:NSQAMPSO)
-C  
-C LOCAL VARIABLES 
-C  
-      INTEGER IHEL,IDEN,I,J,T_IDENT(NCOMB),FLAV_IDX,NFKSPROCESS
-      COMMON/C_NFKSPROCESS/NFKSPROCESS
-      REAL*8 T(0:NSQAMPSO),T_SAVE(NCOMB,0:NSQAMPSO)
-      SAVE T_SAVE
-      INTEGER NHEL(NEXTERNAL,NCOMB)
-%(helicity_lines)s
-      LOGICAL GOODHEL(NCOMB), DO_TRY
-C      DATA GOODHEL/NCOMB*.FALSE./
-      INTEGER MAX_TRY
-      DATA MAX_TRY/20/
-      INTEGER NTRY
-      DATA NTRY/0/
-%(den_factor_line)s
-C ----------
-C BEGIN CODE
-C ----------
-      NTRY=NTRY+1
-      FLAV_IDX=REAL_FLAVOR_INDEX_D(NFKSPROCESS)
-%(flavor_den_factor_setup)s
-      T_SAVE(:,:) = 0d0
-      DO I=0,NSQAMPSO
-      	ANS(I) = 0D0	  
-      ENDDO
-      DO IHEL=1,NCOMB
-            T(:) = 0d0
-C for the first ps-point, check for helicities that give
-C identical matrix elements
-            call MATRIX_%(proc_prefix)s(P,NHEL(1,IHEL),FLAV_IDX,T)
-            DO I=0,NSQAMPSO
-                T_SAVE(IHEL,I)=T(I)
-            ENDDO
-C            T_IDENT(IHEL)=-1
-            DO I=1,IHEL-1
-               IF (T(0).EQ.0D0) EXIT
-               IF (T_SAVE(I,0).EQ.0D0) CYCLE
-                do j = 0, nsqampso
-                  IF (ABS(T(j)/T_SAVE(I,j)-1D0) .GT. 1D-12) goto 444
-                enddo
-                T_IDENT(IHEL) = I
- 444            continue
-            ENDDO
-C add to the sum of helicities
-	  DO I=1,NSQAMPSO !keep loop from 1!!
-             ANS(I)=ANS(I)+T(I)
-	  ENDDO
-          IF (T(0) .NE. 0D0) THEN
-            GOODHEL(IHEL)=.TRUE.
-          ENDIF
-      ENDDO
-      DO I=1,NSQAMPSO			
-        ANS(I)=ANS(I)/DBLE(IDEN)
-        ANS(0)=ANS(0)+ANS(I)
-      ENDDO
-
-      IF (NTRY.GE.MAX_TRY) THEN
-            DO_TRY = .FALSE.
-      ENDIF
-
-      END
-       
-
-      SUBROUTINE SMATRIX%(proc_prefix)s_SPLITORDERS_NTRY_VEC(P,ANS,
-     $     DO_TRY,GOODHEL,T_IDENT,IVEC,FLAV_IDX)
-C  
-%(info_lines)s
+C Helicity filter of SMATRIX%(proc_prefix)s_SPLITORDERS(_VEC) before
+C the first point: not set, no helicity known to be good, and none
+C known to be identical to an earlier one
 C
-C Returns amplitude squared summed/avg over colors
-c and helicities
-c for the point in phase space P(0:3,NEXTERNAL)
-C  
-%(process_lines)s
-C  
       IMPLICIT NONE
-C  
-C CONSTANTS
-C  
-      include 'nexternal.inc'
-      INTEGER     NCOMB         
+      INCLUDE 'nFKSconfigs.inc'
+      INTEGER     NCOMB
       PARAMETER ( NCOMB=%(ncomb)d)
-      INTEGER NSQAMPSO
-      PARAMETER (NSQAMPSO=%(nSqAmpSplitOrders)d)
-C  
-C ARGUMENTS 
-C  
-      REAL*8 P(0:3,NEXTERNAL),ANS(0:NSQAMPSO)
-      INTEGER IVEC,FLAV_IDX
-C  
-C LOCAL VARIABLES 
-C  
-      INTEGER IHEL,IDEN,I,J,T_IDENT(NCOMB)
-      REAL*8 T(0:NSQAMPSO),T_SAVE(NCOMB,0:NSQAMPSO)
-      SAVE T_SAVE
-      INTEGER NHEL(NEXTERNAL,NCOMB)
-%(helicity_lines)s
-      LOGICAL GOODHEL(NCOMB), DO_TRY
-C      DATA GOODHEL/NCOMB*.FALSE./
-      INTEGER MAX_TRY
-      DATA MAX_TRY/20/
-      INTEGER NTRY
-      DATA NTRY/0/
-%(den_factor_line)s
-C ----------
-C BEGIN CODE
-C ----------
-      NTRY=NTRY+1
-%(flavor_den_factor_setup)s
-      T_SAVE(:,:) = 0d0
-      DO I=0,NSQAMPSO
-      	ANS(I) = 0D0	  
-      ENDDO
-      DO IHEL=1,NCOMB
-            T(:) = 0d0
-C for the first ps-point, check for helicities that give
-C identical matrix elements
-            call MATRIX_%(proc_prefix)s_VEC(P,NHEL(1,IHEL),FLAV_IDX,T,
-     $           IVEC)
-            DO I=0,NSQAMPSO
-                T_SAVE(IHEL,I)=T(I)
-            ENDDO
-C            T_IDENT(IHEL)=-1
-            DO I=1,IHEL-1
-               IF (T(0).EQ.0D0) EXIT
-               IF (T_SAVE(I,0).EQ.0D0) CYCLE
-                do j = 0, nsqampso
-                  IF (ABS(T(j)/T_SAVE(I,j)-1D0) .GT. 1D-12) goto 444
-                enddo
-                T_IDENT(IHEL) = I
- 444            continue
-            ENDDO
-C add to the sum of helicities
-	  DO I=1,NSQAMPSO !keep loop from 1!!
-             ANS(I)=ANS(I)+T(I)
-	  ENDDO
-          IF (T(0) .NE. 0D0) THEN
-            GOODHEL(IHEL)=.TRUE.
-          ENDIF
-      ENDDO
-      DO I=1,NSQAMPSO			
-        ANS(I)=ANS(I)/DBLE(IDEN)
-        ANS(0)=ANS(0)+ANS(I)
-      ENDDO
-
-      IF (NTRY.GE.MAX_TRY) THEN
-            DO_TRY = .FALSE.
-      ENDIF
-
+      INTEGER HEL_CONFIGS
+      PARAMETER (HEL_CONFIGS=%(hel_configs)s)
+      INTEGER THEL
+      PARAMETER (THEL=NCOMB*HEL_CONFIGS)
+      LOGICAL GOODHEL(NCOMB,HEL_CONFIGS),HELREADY(HEL_CONFIGS)
+      INTEGER T_IDENT(NCOMB,HEL_CONFIGS)
+      COMMON /TO_HELFILTER%(proc_prefix)s/GOODHEL,T_IDENT,HELREADY
+      DATA GOODHEL/THEL*.FALSE./
+      DATA T_IDENT/THEL*-1/
+      DATA HELREADY/HEL_CONFIGS*.FALSE./
       END
-       
+
 
       SUBROUTINE MATRIX_%(proc_prefix)s(P,NHEL,FLAV_IDX,RES)
 C  
@@ -686,13 +558,17 @@ C ----------
       END
 
 
-      RECURSIVE SUBROUTINE MATRIX_%(proc_prefix)s_VEC(P,NHEL,FLAV_IDX,
+      SUBROUTINE MATRIX_%(proc_prefix)s_VEC(P,NHEL,FLAV_IDX,
      $     RES,IVEC)
 C  
 %(info_lines)s
 C
 C Returns amplitude squared summed/avg over colors
 c for the point with external lines W(0:6,NEXTERNAL)
+C
+C Not RECURSIVE, so that its local arrays stay static under
+C -fno-automatic (10 percent faster with gcc 13 at -O): the OpenMP
+C build compiles it with -frecursive for the concurrent lanes.
 C  
 %(process_lines)s
 C  

@@ -1948,7 +1948,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 text_vec += \
                     """if (nfksprocess.eq.%(n)d) then
                     call smatrix%(n_me)d_amp_vec(p, ret_amp_split, wgt, ivec,
-     $                   real_flav_idx)
+     $                   real_flav_idx, nfksprocess)
                     else""" % {'n': n + 1, 'n_me' : info['n_me']}
                 text1 += \
                     """if (nfksprocess.eq.%(n)d) then

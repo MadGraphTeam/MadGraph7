@@ -833,6 +833,12 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_grouped_qcd_ttx_real_components test_grouped_mixed_wj_real_components -pA -t0 -l INFO
 
+      - name: "FKS standalone: batched Fortran real amplitudes (helicity filter)"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_grouped_qcd_ttx_fortran_vector_real test_grouped_mixed_wj_fortran_vector_real -pA -t0 -l INFO
+
       - name: "FKS standalone: all p p > t t~ Born-channel limits"
         if: ${{ !cancelled() }}
         run: |
