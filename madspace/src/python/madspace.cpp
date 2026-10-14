@@ -1,4 +1,5 @@
 #include <pybind11/functional.h>
+#include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <sstream>
@@ -140,6 +141,65 @@ void named_vector_instance(py::module_& m, const char* name) {
             py::arg("item"),
             pydoc::doc("NamedVector::push_back")
         );
+}
+
+// One numpy array per LHE event field (shape (n,)) and per LHE particle field
+// (shape (n, max_particle_count), zero padded), plus the particle counts.
+py::dict lhe_events_to_numpy(
+    const std::vector<LHEEvent>& events, std::size_t max_particle_count
+) {
+    py::ssize_t n = events.size();
+    py::ssize_t m = max_particle_count;
+    auto event_field = [&](auto member) {
+        using T = std::remove_cvref_t<decltype(events[0].*member)>;
+        py::array_t<T> array(n);
+        auto view = array.template mutable_unchecked<1>();
+        for (py::ssize_t i = 0; i < n; ++i) {
+            view(i) = events[i].*member;
+        }
+        return array;
+    };
+    auto particle_field = [&](auto member) {
+        using T = std::remove_cvref_t<decltype(events[0].particles[0].*member)>;
+        py::array_t<T> array({n, m});
+        auto view = array.template mutable_unchecked<2>();
+        for (py::ssize_t i = 0; i < n; ++i) {
+            auto& particles = events[i].particles;
+            for (py::ssize_t j = 0; j < m; ++j) {
+                view(i, j) = j < static_cast<py::ssize_t>(particles.size())
+                    ? particles[j].*member
+                    : T{};
+            }
+        }
+        return array;
+    };
+    py::array_t<int> particle_count(n);
+    auto count_view = particle_count.mutable_unchecked<1>();
+    for (py::ssize_t i = 0; i < n; ++i) {
+        count_view(i) = events[i].particles.size();
+    }
+
+    py::dict ret;
+    ret["process_id"] = event_field(&LHEEvent::process_id);
+    ret["weight"] = event_field(&LHEEvent::weight);
+    ret["scale"] = event_field(&LHEEvent::scale);
+    ret["alpha_qed"] = event_field(&LHEEvent::alpha_qed);
+    ret["alpha_qcd"] = event_field(&LHEEvent::alpha_qcd);
+    ret["particle_count"] = particle_count;
+    ret["pdg_id"] = particle_field(&LHEParticle::pdg_id);
+    ret["status_code"] = particle_field(&LHEParticle::status_code);
+    ret["mother1"] = particle_field(&LHEParticle::mother1);
+    ret["mother2"] = particle_field(&LHEParticle::mother2);
+    ret["color"] = particle_field(&LHEParticle::color);
+    ret["anti_color"] = particle_field(&LHEParticle::anti_color);
+    ret["px"] = particle_field(&LHEParticle::px);
+    ret["py"] = particle_field(&LHEParticle::py);
+    ret["pz"] = particle_field(&LHEParticle::pz);
+    ret["energy"] = particle_field(&LHEParticle::energy);
+    ret["mass"] = particle_field(&LHEParticle::mass);
+    ret["lifetime"] = particle_field(&LHEParticle::lifetime);
+    ret["spin"] = particle_field(&LHEParticle::spin);
+    return ret;
 }
 
 } // namespace
@@ -2799,6 +2859,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("GeneratorStatus::iterations")
         )
         .def_readwrite(
+            "iters_without_improvement",
+            &GeneratorStatus::iters_without_improvement,
+            pydoc::doc("GeneratorStatus::iters_without_improvement")
+        )
+        .def_readwrite(
             "optimized",
             &GeneratorStatus::optimized,
             pydoc::doc("GeneratorStatus::optimized")
@@ -3241,6 +3306,17 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("config"),
             pydoc::doc("ChannelEventGenerator::load")
         )
+        .def_static(
+            "load_json",
+            &ChannelEventGenerator::load_json,
+            py::arg("channel_json"),
+            py::arg("contexts"),
+            py::kw_only(),
+            py::arg("event_file") = "",
+            py::arg("weight_file") = "",
+            py::arg("config"),
+            pydoc::doc("ChannelEventGenerator::load_json")
+        )
         .def(
             py::init<
                 const std::vector<ContextPtr>&,
@@ -3271,6 +3347,18 @@ PYBIND11_MODULE(_madspace_py, m) {
             &ChannelEventGenerator::save,
             py::arg("save"),
             pydoc::doc("ChannelEventGenerator::save")
+        )
+        .def(
+            "to_json",
+            &ChannelEventGenerator::to_json,
+            py::arg("include_estimates") = false,
+            pydoc::doc("ChannelEventGenerator::to_json")
+        )
+        .def(
+            "set_fixed_max_weight",
+            &ChannelEventGenerator::set_fixed_max_weight,
+            py::arg("max_weight"),
+            pydoc::doc("ChannelEventGenerator::set_fixed_max_weight")
         );
 
     py::classh<PdfMemberSpec>(m, "PdfMemberSpec", pydoc::doc("PdfMemberSpec"))
@@ -3781,6 +3869,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("EventGenerator::generate")
         )
         .def(
+            "optimize",
+            &EventGenerator::optimize,
+            pydoc::doc("EventGenerator::optimize")
+        )
+        .def(
+            "fix_max_weights",
+            &EventGenerator::fix_max_weights,
+            pydoc::doc("EventGenerator::fix_max_weights")
+        )
+        .def(
             "combine_to_compact_npy",
             &EventGenerator::combine_to_compact_npy,
             py::call_guard<py::gil_scoped_release>(),
@@ -3830,6 +3928,71 @@ PYBIND11_MODULE(_madspace_py, m) {
             "channels",
             &EventGenerator::channels,
             pydoc::doc("EventGenerator::channels")
+        );
+
+    py::classh<EventStream>(m, "EventStream", pydoc::doc("EventStream"))
+        .def(
+            py::init<
+                ContextPtr,
+                const std::vector<std::shared_ptr<ChannelEventGenerator>>&,
+                std::uint64_t,
+                const LHECompleter&,
+                const GeneratorConfig&>(),
+            py::arg("context"),
+            py::arg("channels"),
+            py::arg("seed"),
+            py::arg("lhe_completer"),
+            py::arg("config"),
+            pydoc::doc("EventStream::EventStream")
+        )
+        .def(
+            "next_events",
+            &EventStream::next_events,
+            py::arg("count"),
+            py::call_guard<py::gil_scoped_release>(),
+            pydoc::doc("EventStream::next_events")
+        )
+        .def(
+            "next_batch",
+            [](EventStream& stream, std::size_t count) {
+                std::vector<LHEEvent> events;
+                {
+                    py::gil_scoped_release release;
+                    events = stream.next_events(count);
+                }
+                return lhe_events_to_numpy(events, stream.max_particle_count());
+            },
+            py::arg("count"),
+            "Like next_events, as a dict of numpy arrays: the LHE event fields "
+            "with shape (count,), the LHE particle fields with shape (count, "
+            "max_particle_count), padded with zeros, and particle_count."
+        )
+        .def(
+            "close",
+            &EventStream::close,
+            py::call_guard<py::gil_scoped_release>(),
+            pydoc::doc("EventStream::close")
+        )
+        .def("status", &EventStream::status, pydoc::doc("EventStream::status"))
+        .def(
+            "channel_status",
+            &EventStream::channel_status,
+            pydoc::doc("EventStream::channel_status")
+        )
+        .def(
+            "channel_probabilities",
+            &EventStream::channel_probabilities,
+            pydoc::doc("EventStream::channel_probabilities")
+        )
+        .def(
+            "event_count",
+            &EventStream::event_count,
+            pydoc::doc("EventStream::event_count")
+        )
+        .def(
+            "max_particle_count",
+            &EventStream::max_particle_count,
+            pydoc::doc("EventStream::max_particle_count")
         );
 
     py::classh<Logger> logger(m, "Logger", pydoc::doc("Logger"));
@@ -3910,5 +4073,12 @@ PYBIND11_MODULE(_madspace_py, m) {
         }
     };
     EventGenerator::set_abort_check_function(abort_check_function);
+    // EventStream waits with the GIL released
+    EventStream::set_abort_check_function([] {
+        py::gil_scoped_acquire gil;
+        if (PyErr_CheckSignals() != 0) {
+            throw py::error_already_set();
+        }
+    });
     MadnisTraining::set_abort_check_function(abort_check_function);
 }

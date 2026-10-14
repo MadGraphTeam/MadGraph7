@@ -125,6 +125,7 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    python/EventGenerator
    python/EventHistogramSpec
    python/EventHistograms
+   python/EventStream
    python/GeneratorConfig
    python/GeneratorStatus
    python/Histogram

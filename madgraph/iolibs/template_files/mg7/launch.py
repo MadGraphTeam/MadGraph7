@@ -282,6 +282,8 @@ class HistItem:
 
 class MadgraphProcess:
     def __init__(self):
+        self.madnis_trained = False
+        self.lhe_completer = None
         self.load_cards()
         self.init_backend()
         self.init_event_dir()
@@ -462,22 +464,34 @@ class MadgraphProcess:
         ms.set_simd_vector_size(self.run_card["run"]["simd_vector_size"])
 
     def init_event_dir(self) -> None:
-        run_name = self.run_card["run"]["run_name"]
-        os.makedirs("Events", exist_ok=True)
-        run_dir_prefix = os.path.join("Events", f"{run_name}_")
-        existing_run_dirs = glob.glob(f"{run_dir_prefix}*")
-        run_index = 1
-        for run_dir in existing_run_dirs:
-            run_index_str = run_dir[len(run_dir_prefix):]
-            if run_index_str.isnumeric():
-                run_index = max(run_index, int(run_index_str) + 1)
-        while True:
-            try:
-                self.run_path = f"{run_dir_prefix}{run_index:02d}"
-                os.mkdir(self.run_path)
-                break
-            except FileExistsError:
-                run_index += 1
+        output_dir = self.run_card["gridpack"]["output_dir"]
+        temp_dir = self.run_card["gridpack"]["temp_output_dir"]
+        if output_dir:
+            self.run_path = os.path.abspath(os.path.expanduser(output_dir))
+            os.makedirs(self.run_path, exist_ok=True)
+        else:
+            run_name = self.run_card["run"]["run_name"]
+            os.makedirs("Events", exist_ok=True)
+            run_dir_prefix = os.path.join("Events", f"{run_name}_")
+            existing_run_dirs = glob.glob(f"{run_dir_prefix}*")
+            run_index = 1
+            for run_dir in existing_run_dirs:
+                run_index_str = run_dir[len(run_dir_prefix):]
+                if run_index_str.isnumeric():
+                    run_index = max(run_index, int(run_index_str) + 1)
+            while True:
+                try:
+                    self.run_path = f"{run_dir_prefix}{run_index:02d}"
+                    os.mkdir(self.run_path)
+                    break
+                except FileExistsError:
+                    run_index += 1
+        # temporary npy files of the channel generators
+        if temp_dir:
+            self.temp_path = os.path.abspath(os.path.expanduser(temp_dir))
+            os.makedirs(self.temp_path, exist_ok=True)
+        else:
+            self.temp_path = self.run_path
         # Absolute on purpose. StatusFile is a C++ object that finishes its
         # write from its destructor (rename info.json.tmp -> info.json), and
         # that destructor runs whenever Python gets round to collecting the
@@ -1364,8 +1378,8 @@ class MadgraphProcess:
                     channel.event_generator = ms.ChannelEventGenerator(
                         contexts=self.contexts,
                         integrand=integrand,
-                        event_file=os.path.join(self.run_path, f"events.{i}.{channel.name}.npy"),
-                        weight_file=os.path.join(self.run_path, f"weights.{i}.{channel.name}.npy"),
+                        event_file=os.path.join(self.temp_path, f"events.{i}.{channel.name}.npy"),
+                        weight_file=os.path.join(self.temp_path, f"weights.{i}.{channel.name}.npy"),
                         config=self.event_generator_config,
                         subprocess_index=i,
                         name=f"{i}.{channel.name}",
@@ -1575,6 +1589,7 @@ class MadgraphProcess:
         for context in self.contexts[1:]:
             context.copy_globals_from(self.contexts[0])
         self.event_generator = self.build_event_generator(madnis_phasespaces)
+        self.madnis_trained = True
 
     def update_madnis_status_single(
         self, batch: int, batch_target: int, loss: float, lr: float, channel_count: int
@@ -1658,7 +1673,30 @@ class MadgraphProcess:
         self.madnis_upper_box.print_update()
         self.madnis_lower_box.print_update()
 
+    @property
+    def gridpack_run_mode(self) -> str:
+        """How this run ends: a gridpack run may skip the events (see the
+        [gridpack] run_mode run card option); any other run is a regular one."""
+        if not self.run_card["gridpack"]["save_gridpack"]:
+            return "regular"
+        return self.run_card["gridpack"]["run_mode"]
+
+    def finish_without_events(self) -> None:
+        """The end of a gridpack run that writes no events: only what the
+        gridpack needs is prepared, then it is stored."""
+        if self.gridpack_run_mode == "minimal":
+            # a trained MadNIS needs nothing more, a VEGAS grid has to converge
+            if not self.madnis_trained:
+                self.event_generator.optimize()
+        else:
+            self.event_generator.fix_max_weights()
+        self.build_systematics()
+        self.save_gridpack()
+
     def generate_events(self) -> None:
+        if self.gridpack_run_mode != "regular":
+            self.finish_without_events()
+            return
         start_time = get_start_time()
         self.event_generator.generate()
         output_format = self.run_card["run"]["output_format"]
@@ -1966,22 +2004,23 @@ class MadgraphProcess:
         os.mkdir(gridpack_path)
         os.mkdir(data_path)
         os.mkdir(events_path)
-        self.contexts[0].save_globals(os.path.join(data_path, "globals"))
+        self.contexts[0].save_globals(os.path.join(data_path, "globals.tar"))
 
-        channel_path = os.path.join(data_path, "channels")
-        os.mkdir(channel_path)
-        channel_files = {}
-        for channel in self.event_generator.channels():
-            name = channel.status().name
-            file = f"channel{name}.json"
-            channel_files[name] = file
-            channel.save(os.path.join(channel_path, file))
+        # one json object per channel, joined by hand so that the channel
+        # json is not parsed and dumped again
+        channel_entries = [
+            f"{json.dumps(channel.status().name)}:{channel.to_json(self.gridpack_run_mode == "fix_max_weight")}"
+            for channel in self.event_generator.channels()
+        ]
+        with open(os.path.join(data_path, "channels.json"), "w") as f:
+            f.write("{" + ",".join(channel_entries) + "}")
 
         lib_path = os.path.join(gridpack_path, "lib")
         if self.run_card["gridpack"]["include_source"]:
             os.mkdir(lib_path)
             shutil.copytree("src", os.path.join(gridpack_path, "src"))
             shutil.copytree("SubProcesses", os.path.join(gridpack_path, "SubProcesses"))
+            shutil.copytree("backend", os.path.join(gridpack_path, "backend"))
         else:
             shutil.copytree("lib", lib_path)
         for _, path in self.custom_function_paths:
@@ -2001,6 +2040,7 @@ class MadgraphProcess:
             shutil.copytree(
                 _INSTALL_DIR / "madspace",
                 os.path.join(gridpack_path, "madspace", "install", "madspace"),
+                ignore=shutil.ignore_patterns("include"),
             )
 
         matrix_elements = []
@@ -2044,27 +2084,33 @@ class MadgraphProcess:
         # (bin/generate_events --output_format still selects an npy output).
         previous_output_format = self.run_card["run"]["output_format"]
         self.run_card["run"]["output_format"] = "lhe"
+        # the directories of this run mean nothing on the machine running the gridpack
+        previous_dirs = (self.run_card["gridpack"]["temp_output_dir"],
+                         self.run_card["gridpack"]["output_dir"])
+        self.run_card["gridpack"]["temp_output_dir"] = ""
+        self.run_card["gridpack"]["output_dir"] = ""
         try:
             self.run_card.write_gridpack_card(
                 os.path.join(cards_path, "grid_run_card.toml"))
         finally:
             self.run_card["run"]["cpu_mode"] = previous_cpu_mode
             self.run_card["run"]["output_format"] = previous_output_format
+            (self.run_card["gridpack"]["temp_output_dir"],
+             self.run_card["gridpack"]["output_dir"]) = previous_dirs
 
         bin_path = os.path.join(gridpack_path, "bin")
         os.mkdir(bin_path)
         gen_events_file = os.path.join(bin_path, "generate_events")
-        shutil.copy(
-            os.path.join(os.path.dirname(__file__), "gridpack.py"), gen_events_file
-        )
-        shutil.copy(
-            os.path.join(os.path.dirname(__file__), "custom_function_loader.py"),
-            os.path.join(bin_path, "custom_function_loader.py"),
-        )
+        template_dir = os.path.dirname(__file__)
+        shutil.copy(os.path.join(template_dir, "gridpack.py"), gen_events_file)
+        shutil.copy(os.path.join(template_dir, "custom_function_loader.py"), bin_path)
         os.chmod(gen_events_file, 0o755)
+        shutil.copy(os.path.join(template_dir, "gridpack_setup.py"), bin_path)
+        # streaming needs the fixed maximum weights of this mode
+        if self.gridpack_run_mode == "fix_max_weight":
+            shutil.copy(os.path.join(template_dir, "event_stream.py"), bin_path)
 
         data = {
-            "channels": channel_files,
             "matrix_elements": matrix_elements,
             # loaded before the matrix elements, as in the run
             "custom_functions": self.custom_function_paths,
@@ -2090,6 +2136,9 @@ class MadgraphProcess:
                 systematics_data["nominal_info_file"] = os.path.join("data", name)
             with open(os.path.join(data_path, "systematics.json"), "w") as f:
                 json.dump(systematics_data, f)
+        if self.run_card["gridpack"]["compress"]:
+            shutil.make_archive(gridpack_path, "gztar", self.run_path, "gridpack")
+            shutil.rmtree(gridpack_path)
 
     def save_gridpack_lhe_meta(self, path) -> None:
         """The run-independent part of the LHE header (cards, beams, PDF), for
@@ -4330,6 +4379,8 @@ def run_single(switch=None) -> "MadgraphProcess":
     process.survey()
     process.train_madnis()
     process.generate_events()
+    if process.gridpack_run_mode != "regular":
+        return process
     # run_card-driven LHE post-processing (displaced vertex + systematics)
     run_lhe_postprocessing(process)
     # run the post-processing tools (Pythia8/Delphes/MadSpin/reweight/analysis)
