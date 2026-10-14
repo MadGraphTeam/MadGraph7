@@ -21,11 +21,11 @@ from test_event_stream import (
 import madspace as ms
 
 
-def python_matrix_element(context, function, outputs=("matrix_element",)):
+def python_matrix_element(context, function, outputs=("matrix_element",), channel=-1):
+    """With a channel, the function also gets the fixed channel index."""
+    inputs = ["momenta"] if channel < 0 else ["momenta", "channel_index"]
     api = context.add_matrix_element(
-        ms.PythonFunction(
-            function, ["momenta"], list(outputs), particle_count=len(PIDS)
-        )
+        ms.PythonFunction(function, inputs, list(outputs), particle_count=len(PIDS))
     )
     output_enums = {
         "matrix_element": ms.MatrixElement.matrix_element_out,
@@ -37,8 +37,10 @@ def python_matrix_element(context, function, outputs=("matrix_element",)):
     return ms.MatrixElement(
         api.index(),
         len(PIDS),
-        [ms.MatrixElement.momenta_in],
+        [ms.MatrixElement.momenta_in]
+        + ([] if channel < 0 else [ms.MatrixElement.channel_in]),
         [output_enums[output] for output in outputs],
+        channel=channel,
     )
 
 
