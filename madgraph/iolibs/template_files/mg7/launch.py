@@ -38,7 +38,10 @@ from madgraph.iolibs.template_files.mg7 import hwu_output
 from madgraph.iolibs.template_files.mg7 import plots
 from madgraph.iolibs.template_files.mg7 import systematics_summary
 from madgraph.iolibs.template_files.mg7 import npy_to_lhe
-from madgraph.iolibs.template_files.mg7.custom_function_loader import load_custom_function
+from madgraph.iolibs.template_files.mg7.custom_function_loader import (
+    load_custom_function,
+    load_surrogate,
+)
 from madgraph.various.banner import RunCardMG7
 from madgraph.various import misc
 from madgraph.interface.extended_cmd import Cmd
@@ -289,6 +292,7 @@ class MadgraphProcess:
         self.init_event_dir()
         self.init_context()
         self.init_custom_functions()
+        self.init_surrogate()
         self.init_cuts()
         self.init_histograms()
         self.init_generator_config()
@@ -556,6 +560,55 @@ class MadgraphProcess:
             self.custom_functions[kind] = apis[0]
             self.custom_function_paths.append([kind, path])
             logger.info("Using the custom %s function %s", kind, path)
+
+    def init_surrogate(self) -> None:
+        """Check the [surrogate] settings. The surrogates are loaded per
+        subprocess, by MadgraphSubprocess."""
+        settings = self.run_card["surrogate"]
+        self.surrogate = None
+        if not settings["function"]:
+            return
+        path = settings["function"]
+        if path.endswith(".py") and not os.path.isfile(path):
+            raise RuntimeError(f"[surrogate] function = {path!r}: file not found")
+        if self.run_card["phasespace"]["sde_strategy"] != "denominators":
+            raise RuntimeError(
+                "[surrogate] needs [phasespace] sde_strategy = \"denominators\", "
+                "as the surrogate does not return channel weights"
+            )
+        if self.run_card["run"]["dummy_matrix_element"]:
+            raise RuntimeError("[surrogate] cannot be used with dummy_matrix_element")
+        if self.run_card["gridpack"]["save_gridpack"]:
+            raise RuntimeError("[surrogate] does not support gridpacks yet")
+        self.surrogate = dict(settings)
+        if not self.surrogate["param_card"]:
+            self.surrogate["param_card"] = self.param_card_path
+        logger.info(
+            "Using the surrogate %s, %s with the full matrix element",
+            path,
+            "unweighting" if settings["mode"] == "unweight" else "reweighting",
+        )
+
+    def weighting_groups(self, subprocess_channels: list[list[int]]) -> list:
+        """One ms.WeightingGroup per subprocess with a [surrogate]: the second
+        pass with the full matrix element over its channels, given by their
+        indices in the event generator."""
+        if self.surrogate is None:
+            return []
+        gen_args = self.run_card["generation"]
+        return [
+            ms.WeightingGroup(
+                channel_indices,
+                [ms.WeightingStep(
+                    subproc.step_matrix_elements,
+                    mode=self.surrogate["mode"],
+                    max_overweight_truncation=gen_args["max_overweight_truncation"],
+                    freeze_max_weight_after=gen_args["freeze_max_weight_after"],
+                )],
+            )
+            for subproc, channel_indices in zip(self.subprocesses, subprocess_channels)
+            if channel_indices
+        ]
 
     @staticmethod
     def build_custom_function(build_dir: str) -> None:
@@ -1240,6 +1293,14 @@ class MadgraphProcess:
         cfg.vegas_damping = vegas_args["damping"]
         cfg.max_overweight_truncation = gen_args["max_overweight_truncation"]
         cfg.freeze_max_weight_after = gen_args["freeze_max_weight_after"]
+        if self.surrogate is not None and self.surrogate["mode"] == "unweight":
+            # [generation] applies to the second pass, which gives the events
+            cfg.max_overweight_truncation = (
+                self.surrogate["first_pass_max_overweight_truncation"]
+            )
+            cfg.freeze_max_weight_after = (
+                self.surrogate["first_pass_freeze_max_weight_after"]
+            )
         cfg.start_batch_size = vegas_args["start_batch_size"]
         cfg.max_batch_size = vegas_args["max_batch_size"]
         cfg.survey_min_iters = gen_args["survey_min_iters"]
@@ -1370,6 +1431,7 @@ class MadgraphProcess:
 
     def build_event_generator(self, phasespaces: list[PhaseSpace]) -> ms.EventGenerator:
         channel_generators = []
+        subprocess_channels = [[] for _ in self.subprocesses]
         for i, (subproc, phasespace) in enumerate(zip(self.subprocesses, phasespaces)):
             for integrand, channel in zip(
                 subproc.build_integrands(phasespace), phasespace.channels
@@ -1385,6 +1447,7 @@ class MadgraphProcess:
                         name=f"{i}.{channel.name}",
                         histograms=subproc.histograms
                     )
+                subprocess_channels[i].append(len(channel_generators))
                 channel_generators.append(channel.event_generator)
 
         event_generator = ms.EventGenerator(
@@ -1393,6 +1456,7 @@ class MadgraphProcess:
             status_file=self.status_file,
             config=self.event_generator_config,
             seed=self.run_seed,
+            groups=self.weighting_groups(subprocess_channels),
         )
         unused_globals = (
             set(self.contexts[0].global_names()) - event_generator.used_globals()
@@ -2499,11 +2563,14 @@ class MadgraphSubprocess:
         self.unmerged_meta = None
         if unmerged_meta is None:
             api_path_formats = [self.meta["me_path"]]
+            member_metas = [self.meta]
         else:
             api_path_formats = []
+            member_metas = []
             for subproc in self.meta["subprocesses"]:
                 submeta = unmerged_meta[subproc]
                 api_path_formats.append(submeta["me_path"])
+                member_metas.append(submeta)
             if len(api_path_formats) == 1:
                 self.meta = submeta
             else:
@@ -2606,6 +2673,35 @@ class MadgraphSubprocess:
                         me_parameters(self.process.run_card)
                     )
                 self.matrix_elements.append(mat)
+        self.surrogates = []
+        if self.process.surrogate is not None:
+            for path_format, member_meta in zip(api_path_formats, member_metas):
+                self.surrogates.append(self.load_surrogate(path_format, member_meta))
+
+    def load_surrogate(self, me_path_format: str, member_meta: dict):
+        """The [surrogate] of one matrix element of the subprocess."""
+        name = re.sub(
+            r"^libmadmatrix_(.*)_\{device\}\.so$", r"\1", os.path.basename(me_path_format)
+        )
+        # PDG ids for each flavor index of the matrix element
+        flavors = member_meta["flavors"]
+        pdg_ids = [flavors[0]["options"][0]] * (max(f["index"] for f in flavors) + 1)
+        for flavor in flavors:
+            pdg_ids[flavor["index"]] = flavor["options"][0]
+        settings = self.process.surrogate
+        apis = load_surrogate(
+            ms,
+            self.process.contexts,
+            self.process.backends,
+            self.process.device_types,
+            settings["function"],
+            name,
+            pdg_ids,
+            settings["param_card"],
+        )
+        if len({api.index() for api in apis}) != 1:
+            raise RuntimeError("surrogate loaded at different indices")
+        return apis[0]
 
     def flavor_pids(self) -> list[list[int]]:
         """PDG ids of the external particles for every flavor of the
@@ -3250,8 +3346,37 @@ class MadgraphSubprocess:
             flavor_mirror.append(flav["mirror"])
 
         cross_sections = []
-        for matrix_element in self.matrix_elements:
-            if matrix_element:
+        self.step_matrix_elements = []
+        for me_index, matrix_element in enumerate(self.matrix_elements):
+            if self.surrogates:
+                # the surrogate in the integrand, the full matrix element in
+                # the second pass, with the random numbers passed in
+                mat = ms.MatrixElement(
+                    self.surrogates[me_index].index(),
+                    self.particle_count,
+                    [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
+                     ms.MatrixElement.flavor_in],
+                    [ms.MatrixElement.matrix_element_out],
+                    1,
+                    False,
+                    self.process.me_frame,
+                    self.process.incoming_count,
+                )
+                self.step_matrix_elements.append(ms.MatrixElement(
+                    matrix_element,
+                    [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
+                     ms.MatrixElement.flavor_in, ms.MatrixElement.random_color_in,
+                     ms.MatrixElement.random_helicity_in,
+                     ms.MatrixElement.random_diagram_in],
+                    [ms.MatrixElement.matrix_element_out,
+                     ms.MatrixElement.color_index_out,
+                     ms.MatrixElement.helicity_index_out,
+                     ms.MatrixElement.diagram_index_out],
+                    False,
+                    self.process.me_frame,
+                    self.process.incoming_count,
+                ))
+            elif matrix_element:
                 mat = ms.MatrixElement(
                     matrix_element,
                     ms.Integrand.matrix_element_inputs,
@@ -3288,6 +3413,7 @@ class MadgraphSubprocess:
                     pdf2=pdf_arg,
                     input_momentum_fraction=True,
                     decay=self.process.is_decay,
+                    return_matrix_element=bool(self.surrogates),
                 )
             )
         partial_weights = self.process.systematics_enabled()

@@ -6904,6 +6904,20 @@ class RunCardMG7(RunCard):
         self.add_toml_param('custom_functions', 'bias', "",
             comment="custom event bias")
 
+        # ---------------------------- [surrogate] ---------------------
+        # a fast surrogate of the matrix element for the integrand, followed by
+        # a second pass with the full matrix element; "" disables it
+        self.add_toml_param('surrogate', 'function', "",
+            comment="surrogate matrix element, a .so library or a .py file")
+        self.add_toml_param('surrogate', 'mode', "unweight", allowed=["unweight", "reweight"],
+            comment="unweight or reweight the events with the full matrix element")
+        self.add_toml_param('surrogate', 'first_pass_max_overweight_truncation', 0.01,
+            comment="max_overweight_truncation of the unweighting with the surrogate")
+        self.add_toml_param('surrogate', 'first_pass_freeze_max_weight_after', 10000,
+            comment="freeze_max_weight_after of the unweighting with the surrogate")
+        self.add_toml_param('surrogate', 'param_card', "",
+            comment="param card for a .so surrogate; \"\" uses Cards/param_card.dat")
+
         # ----------------------------- [madnis] -----------------------
         self.add_toml_param('madnis', 'enable', False, allowed=["auto", True, False], auto=True,
             comment="train MadNIS networks to improve the sampling; auto decides by process")

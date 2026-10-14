@@ -130,6 +130,18 @@ scale = %(custom_functions.scale)s # replaces dynamical_scale_choice
 pdf = %(custom_functions.pdf)s # replaces the PDF set, alpha_s still comes from [beam] pdf
 bias = %(custom_functions.bias)s # events are generated with |w| b and written with w / b
 
+[surrogate]
+# a fast surrogate of the matrix element in the integrand: a .so library, which can
+# contain {subprocess} and {device}, or a Python file defining
+# custom_surrogate(momenta, pdg_ids, alpha_s); "" disables it
+function = %(surrogate.function)s
+# unweight or reweight the events with the full matrix element in a second pass
+mode = %(surrogate.mode)s
+# unweighting with the surrogate (unweight mode); [generation] sets the second pass
+first_pass_max_overweight_truncation = %(surrogate.first_pass_max_overweight_truncation)s
+first_pass_freeze_max_weight_after = %(surrogate.first_pass_freeze_max_weight_after)s
+param_card = %(surrogate.param_card)s # for a .so surrogate, "" uses Cards/param_card.dat
+
 [multiparticles]
 $multiparticles
 
