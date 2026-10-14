@@ -26,6 +26,8 @@ coupl.o: coupl.f90
 
 # Model consumers use model_object from flavor_couplings.f, also with make -j.
 $(filter-out flavor_couplings.o,$(MODEL)): | flavor_couplings.o
+# couplings_vec*.f use the couplings module of coupl.f90, also with make -j.
+$(filter couplings_vec%.o,$(MODEL)): | coupl.o
 
 helas_couplings: helas_couplings.o $(LIBRARY)
 	$(FC) $(FFLAGS) -o $@ $^

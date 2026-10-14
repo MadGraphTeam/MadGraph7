@@ -54,6 +54,11 @@ clean:
 # consumer before the .mod exists, without making them depend on its content.
 $(filter-out flavor_couplings.o,$(MODEL)): | flavor_couplings.o
 
+# couplings_vec*.f 'use couplings', the module defined by coupl.f90: same
+# order-only rule. couplings.mod itself is not in $(MODEL): it would be
+# archived in libmodel.a, and Apple's ar drops every member after it.
+$(filter couplings_vec%.o,$(MODEL)): | coupl.o
+
 couplings.o: ../maxparticles.inc ../run.inc ../vector.inc
 couplings2.o: ../vector.inc
 rw_onia.o: ldme.inc onia_read.inc
