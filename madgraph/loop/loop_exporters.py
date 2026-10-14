@@ -1924,6 +1924,8 @@ C               ENDIF""")%replace_dict
             n_flavors = 1
             flav_table_flat = [1] * nexternal
         replace_dict['nvirtual_flavors'] = n_flavors
+        replace_dict['filter_flav_idx'] = self.get_virtual_filter_flavor(
+            matrix_element, n_flavors)
         replace_dict['virtual_flavor_array_function'] = \
             self._make_flavor_array_fortran_function(
                 replace_dict['proc_prefix'] + 'GET_VIRTUAL_FLAVOR',
@@ -1964,6 +1966,39 @@ C               ENDIF""")%replace_dict
         replace_dict['virtual_flavor_mask_decl'] = mask_decl
         replace_dict['virtual_flavor_mask_setup'] = mask_setup
         replace_dict['virtual_flavor_mask_common'] = mask_common
+
+    @staticmethod
+    def get_virtual_filter_flavor(matrix_element, n_flavors):
+        """Return the virtual flavour row described by the MadLoop filters.
+
+        MadLoop sets its helicity and loop filters up from the first points
+        it evaluates and stores them in one HelFilter.dat and LoopFilter.dat,
+        which describe a single physical flavour.  The filters are therefore
+        only kept when one row is ever evaluated.  A caller restricted to
+        some rows lists their signed physical PDGs in the
+        ``evaluated_flavor_pdgs`` attribute (an FKS P directory sets its
+        physical Born rows).  Zero means that several rows can be evaluated
+        and switches the filters off.
+        """
+
+        if n_flavors == 1:
+            return 1
+        evaluated_pdgs = getattr(matrix_element, 'evaluated_flavor_pdgs', None)
+        if not evaluated_pdgs:
+            return 0
+        # Same resolution as the FKS flavour map, but without the lazy
+        # diagram trimming: MadLoop's amplitude numbering is already fixed.
+        allow_trimming = getattr(matrix_element, '_flavor_allow_trimming',
+                                 False)
+        matrix_element._flavor_allow_trimming = False
+        try:
+            rows = set(matrix_element.get_external_flavor_index(
+                pdgs, from_pdgs=True) for pdgs in evaluated_pdgs)
+        finally:
+            matrix_element._flavor_allow_trimming = allow_trimming
+        if len(rows) == 1 and 0 not in rows:
+            return rows.pop()
+        return 0
 
     @staticmethod
     def set_virtual_flavor_writer_state(fortran_model, replace_dict,
