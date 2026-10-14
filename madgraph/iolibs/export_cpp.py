@@ -3511,6 +3511,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
         self.amplicol_defs = getattr(cmd, '_curr_amplicol_defs', None) or []
         self.amplicol_model = cmd._curr_model
         self.amplicol_nb_core = cmd.options.get('nb_core')
+        self.amplicol_multiparticles = dict(getattr(cmd, '_multiparticles', {}))
 
     def amplicol_processes(self):
         """MG processes standing for the [amplicol] processes."""
@@ -3527,7 +3528,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
         import madgraph.iolibs.export_amplicol as export_amplicol
         for entry in export_amplicol.export_amplicol_processes(
                 self.dir_path, self.amplicol_defs, self.amplicol_model,
-                self.amplicol_nb_core):
+                self.amplicol_nb_core, self.amplicol_multiparticles):
             # never merged with another subprocess
             self.merged_subprocesses[('amplicol', len(self.process_info))].append(
                 (len(self.process_info), []))

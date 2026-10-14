@@ -83,3 +83,45 @@ class AmplicolProcessTest(unittest.TestCase):
                      'p p > j j / b [amplicol]',
                      'z > e+ e- [amplicol]']:
             self.assertRaises(InvalidCmd, self.cmd.do_generate, line)
+
+
+class AmplicolExportTest(unittest.TestCase):
+    """The process definitions as pyamplicol sees them, without pyamplicol."""
+
+    def setUp(self):
+        self.cmd = MGCmd.MasterCmd()
+        self.cmd.exec_cmd('import model sm', printcmd=False, precmd=True)
+        self.cmd.exec_cmd('define q = u d', printcmd=False, precmd=True)
+        self.cmd.exec_cmd('define qx = u~ d~', printcmd=False, precmd=True)
+
+    def export(self, line):
+        import madgraph.iolibs.export_amplicol as export_amplicol
+        self.cmd.exec_cmd('generate %s [amplicol]' % line, printcmd=False,
+                          precmd=True)
+        procdef = self.cmd._curr_amplicol_defs[0]
+        model = self.cmd._curr_model
+        return (export_amplicol.process_name(procdef, model,
+                                             self.cmd._multiparticles),
+                export_amplicol.process_expression(procdef, model),
+                export_amplicol.representative_processes([procdef], model))
+
+    def test_flavour_groups_are_expanded(self):
+        """MG replaces the light quarks by a flavour group, which pyamplicol
+        does not know: the original flavours are passed on."""
+        name, expression, processes = self.export('u u~ > e+ e- g')
+        self.assertEqual(name, 'uux_epemg')
+        self.assertEqual(expression, ('u u~ > e+ e- g', {}))
+        self.assertEqual(len(processes), 1)
+        name, expression, processes = self.export('q qx > e+ e- g')
+        self.assertEqual(name, 'qqx_epemg')
+        self.assertEqual(expression, ('mp0 mp1 > e+ e- g',
+                                      {'mp0': ['u', 'd'], 'mp1': ['u~', 'd~']}))
+        self.assertEqual(len(processes), 4)
+
+    def test_multiparticles(self):
+        name, (expression, multiparticles), processes = self.export('p p > j j')
+        self.assertEqual(name, 'pp_jj')
+        self.assertEqual(expression, 'mp0 mp0 > mp0 mp0')
+        self.assertEqual(sorted(multiparticles['mp0']),
+                         sorted(['g', 'u', 'd', 's', 'c', 'u~', 'd~', 's~', 'c~']))
+        self.assertEqual(len(processes), 81)

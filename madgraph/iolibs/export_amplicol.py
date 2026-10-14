@@ -60,11 +60,35 @@ def import_pyamplicol():
     return pyamplicol, umami_reweight
 
 
-def process_name(procdef):
-    """A directory name for a process definition, e.g. 'pp_jjj'."""
-    string = procdef.nice_string(prefix=False).split('@')[0]
-    initial, final = [side.split() for side in string.split('>')[:2]]
-    name = ''.join(initial) + '_' + ''.join(final)
+def leg_pdgs(leg, model):
+    """The pdg ids of a leg: the flavours MG merged into a group id, or the ids
+    with the group ids expanded."""
+    if leg.get('flavor'):
+        return list(leg.get('flavor'))
+    merged = model.get('merged_particles')
+    pdgs = []
+    for pid in leg.get('ids'):
+        members = merged.get(abs(pid), [abs(pid)])
+        pdgs.extend(member if pid > 0 else -member for member in members)
+    return pdgs
+
+
+def process_name(procdef, model, multiparticles):
+    """A directory name for a process definition, e.g. 'pp_jjj', with the
+    multiparticle labels of the interface."""
+    particles = model.get('particle_dict')
+    labels = []
+    for leg in procdef.get('legs'):
+        pdgs = leg_pdgs(leg, model)
+        matches = [label for label, ids in multiparticles.items()
+                   if sorted(ids) == sorted(pdgs)]
+        preferred = 'j' if leg.get('state') else 'p'
+        label = preferred if preferred in matches else next(iter(matches), None)
+        if label is None:
+            label = ''.join(particles[pid].get_name() for pid in pdgs)
+        labels.append((leg.get('state'), label))
+    name = ''.join(l for state, l in labels if not state) + '_' + \
+        ''.join(l for state, l in labels if state)
     return re.sub(r'[^A-Za-z0-9_]', '',
                   name.replace('~', 'x').replace('+', 'p').replace('-', 'm'))
 
@@ -75,7 +99,7 @@ def process_expression(procdef, model):
     multiparticles = {}
     labels = []
     for leg in procdef.get('legs'):
-        names = [particles[pid].get_name() for pid in leg.get('ids')]
+        names = [particles[pid].get_name() for pid in leg_pdgs(leg, model)]
         if len(names) == 1:
             labels.append(names[0])
             continue
@@ -141,8 +165,8 @@ def representative_processes(proc_defs, model):
     processes = []
     for procdef in proc_defs:
         legs = procdef.get('legs')
-        initial = [leg.get('ids') for leg in legs if not leg.get('state')]
-        final = [leg.get('ids')[0] for leg in legs if leg.get('state')]
+        initial = [leg_pdgs(leg, model) for leg in legs if not leg.get('state')]
+        final = [leg_pdgs(leg, model)[0] for leg in legs if leg.get('state')]
         for ids in itertools.product(*initial):
             pdgs = list(ids) + final
             processes.append(base_objects.Process({
@@ -228,7 +252,8 @@ def parameter_references(metadata):
     return references
 
 
-def export_amplicol_processes(dir_path, proc_defs, model, nb_core=None):
+def export_amplicol_processes(dir_path, proc_defs, model, nb_core=None,
+                              multiparticles=None):
     """Write SubProcesses/A<n>_<name> for every '[amplicol]' process definition
     and return the subprocesses.json entries."""
     pyamplicol, umami_reweight = import_pyamplicol()
@@ -238,7 +263,7 @@ def export_amplicol_processes(dir_path, proc_defs, model, nb_core=None):
     rusticol_config = shutil.which('rusticol-config') or 'rusticol-config'
     entries = []
     for number, procdef in enumerate(proc_defs, start=1):
-        name = 'A%d_%s' % (number, process_name(procdef))
+        name = 'A%d_%s' % (number, process_name(procdef, model, multiparticles or {}))
         path = pjoin(subproc_dir, name)
         rel_dir = pjoin('SubProcesses', name)
         expression, multiparticles = process_expression(procdef, model)
