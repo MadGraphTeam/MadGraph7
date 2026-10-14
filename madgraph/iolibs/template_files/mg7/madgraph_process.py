@@ -21,6 +21,7 @@ from madgraph.iolibs.template_files.mg7.bootstrap import MADSPACE_DIR as _MADSPA
 from madgraph.iolibs.template_files.mg7.custom_function_loader import load_custom_function
 from madgraph.iolibs.template_files.mg7.observables import CutItem, HistItem, build_observable, clean_pids, observable_pids
 from madgraph.iolibs.template_files.mg7.options import lhapdf_paths
+from madgraph.iolibs.template_files.mg7.subprocess_amplicol import AmplicolSubprocess, amplicol_subproc_args, is_amplicol
 from madgraph.iolibs.template_files.mg7.subprocess_madmatrix import MadgraphSubprocess, PhaseSpace, build_multi_channel_data
 
 class MadgraphProcess:
@@ -1021,13 +1022,23 @@ class MadgraphProcess:
         cfg.vegas_damping = vegas_args["damping"]
         cfg.max_overweight_truncation = gen_args["max_overweight_truncation"]
         cfg.freeze_max_weight_after = gen_args["freeze_max_weight_after"]
+        first_pass = None
         if self.surrogate is not None and self.surrogate["mode"] == "unweight":
+            first_pass = self.surrogate
+        amplicol = self.run_card["amplicol"]
+        if (
+            first_pass is None and amplicol["mode"] == "unweight"
+            and amplicol["color_accuracy"] != "lc"
+            and any(is_amplicol(meta) for meta in self.subprocess_data)
+        ):
+            first_pass = amplicol
+        if first_pass is not None:
             # [generation] applies to the second pass, which gives the events
             cfg.max_overweight_truncation = (
-                self.surrogate["first_pass_max_overweight_truncation"]
+                first_pass["first_pass_max_overweight_truncation"]
             )
             cfg.freeze_max_weight_after = (
-                self.surrogate["first_pass_freeze_max_weight_after"]
+                first_pass["first_pass_freeze_max_weight_after"]
             )
         cfg.start_batch_size = vegas_args["start_batch_size"]
         cfg.max_batch_size = vegas_args["max_batch_size"]
@@ -1065,11 +1076,19 @@ class MadgraphProcess:
         self.subprocesses = []
         if self.merged_subprocess_data is None:
             for subproc_id, meta in enumerate(self.subprocess_data):
-                self.subprocesses.append(MadgraphSubprocess(self, meta, subproc_id))
+                subproc_class = (
+                    AmplicolSubprocess if is_amplicol(meta) else MadgraphSubprocess
+                )
+                self.subprocesses.append(subproc_class(self, meta, subproc_id))
         else:
             for subproc_id, meta in enumerate(self.merged_subprocess_data):
+                # an AmpliCol subprocess is never merged with another one
+                first = self.subprocess_data[meta["subprocesses"][0]]
+                subproc_class = (
+                    AmplicolSubprocess if is_amplicol(first) else MadgraphSubprocess
+                )
                 self.subprocesses.append(
-                    MadgraphSubprocess(self, meta, subproc_id, self.subprocess_data)
+                    subproc_class(self, meta, subproc_id, self.subprocess_data)
                 )
 
     def compile_matrix_elements(self) -> list[str]:
@@ -1091,10 +1110,14 @@ class MadgraphProcess:
             device_names = [device_names]
         cpu_mode = self.run_card["run"]["cpu_mode"]
         backends = [backend_of(name, cpu_mode) for name in device_names]
-        if not self.subprocess_data:
+        self.compile_amplicol()
+        madmatrix_data = [
+            meta for meta in self.subprocess_data if not is_amplicol(meta)
+        ]
+        if not madmatrix_data:
             return backends
 
-        first_proc_path = self.subprocess_data[0]["path"]
+        first_proc_path = madmatrix_data[0]["path"]
         subproc_path = os.path.dirname(first_proc_path)
 
         fptype = fptype_of(self.run_card["run"]["precision"])
@@ -1117,7 +1140,7 @@ class MadgraphProcess:
         log_path = os.path.join(self.run_path, "compile_subprocesses.log")
         for backend in resolved:
             missing = [
-                meta for meta in self.subprocess_data
+                meta for meta in madmatrix_data
                 if not os.path.isfile(meta["me_path"].format(device=backend))
             ]
             if not missing:
@@ -1137,6 +1160,19 @@ class MadgraphProcess:
                 f"Compilation of SubProcesses done in {time.time() - start_time:.1f} s"
             )
         return resolved
+
+    def compile_amplicol(self) -> None:
+        """Build the libraries of the [amplicol] processes that are missing."""
+        paths = sorted({
+            meta["path"] for meta in self.subprocess_data
+            if is_amplicol(meta) and not (
+                os.path.isfile(meta["me_path"]) and os.path.isfile(meta["ratio_path"])
+            )
+        })
+        log_path = os.path.join(self.run_path, "compile_amplicol.log")
+        for path in paths:
+            logger.info(f"Compiling the AmpliCol matrix elements in {path}, see {log_path}")
+            self.make_subprocesses(path, [], 1, log_path)
 
     @staticmethod
     def make_subprocesses(
@@ -1759,13 +1795,15 @@ class MadgraphProcess:
         del writer  # closes the file (writes the closing tag)
 
     def build_lhe_completer(self):
-        all_mcdata = (
-            [subproc.build_multi_channel_data() for subproc in self.subprocesses]
-            if self.merged_subprocess_data is None else
-            [build_multi_channel_data(meta, self) for meta in self.subprocess_data]
-        )
+        all_mcdata = [
+            None if is_amplicol(meta)
+            else self.subprocesses[index].build_multi_channel_data()
+            if self.merged_subprocess_data is None
+            else build_multi_channel_data(meta, self)
+            for index, meta in enumerate(self.subprocess_data)
+        ]
         subproc_args = [
-            ms.SubprocArgs(
+            amplicol_subproc_args(meta, self) if mcdata is None else ms.SubprocArgs(
                 topologies = [topo[0] for topo in mcdata.topologies],
                 permutations = mcdata.permutations,
                 diagram_indices = mcdata.diagram_indices,
