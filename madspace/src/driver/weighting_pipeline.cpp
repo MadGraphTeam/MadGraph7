@@ -1,10 +1,13 @@
 #include "madspace/driver/weighting_pipeline.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <format>
 #include <stdexcept>
 
 #include "madspace/util.hpp"
+
+#include <nlohmann/json.hpp>
 
 using namespace madspace;
 
@@ -58,7 +61,125 @@ Function concat_function(const NamedVector<Type>& types) {
     return fb.function();
 }
 
+using json = nlohmann::json;
+
+json matrix_element_to_json(const MatrixElement& matrix_element) {
+    std::vector<me_int_t> me_frame;
+    for (std::size_t i = 0; auto flag : matrix_element.frame_mask()) {
+        if (flag) {
+            me_frame.push_back(static_cast<me_int_t>(i + 1));
+        }
+        ++i;
+    }
+    // see the MatrixElement constructor: an empty reference mask with a frame
+    // means that the frame is the one of the incoming particles
+    auto& reference_mask = matrix_element.reference_mask();
+    auto& incoming_mask =
+        reference_mask.empty() ? matrix_element.frame_mask() : reference_mask;
+    std::size_t incoming_count = incoming_mask.empty()
+        ? 2
+        : std::count(incoming_mask.begin(), incoming_mask.end(), 1);
+    json inputs = json::array(), outputs = json::array();
+    for (auto input : matrix_element.inputs()) {
+        inputs.push_back(static_cast<int>(input));
+    }
+    for (auto output : matrix_element.outputs()) {
+        outputs.push_back(static_cast<int>(output));
+    }
+    return {
+        {"index", matrix_element.matrix_element_index()},
+        {"particle_count", matrix_element.particle_count()},
+        {"inputs", inputs},
+        {"outputs", outputs},
+        {"diagram_count", matrix_element.diagram_count()},
+        {"sample_random_inputs", matrix_element.sample_random_inputs()},
+        {"me_frame", me_frame},
+        {"incoming_count", incoming_count},
+    };
+}
+
+MatrixElement matrix_element_from_json(const json& j) {
+    std::vector<MatrixElement::MatrixElementInput> inputs;
+    std::vector<MatrixElement::MatrixElementOutput> outputs;
+    for (int input : j.at("inputs")) {
+        inputs.push_back(static_cast<MatrixElement::MatrixElementInput>(input));
+    }
+    for (int output : j.at("outputs")) {
+        outputs.push_back(static_cast<MatrixElement::MatrixElementOutput>(output));
+    }
+    return MatrixElement(
+        j.at("index").get<std::size_t>(),
+        j.at("particle_count").get<std::size_t>(),
+        inputs,
+        outputs,
+        j.at("diagram_count").get<std::size_t>(),
+        j.at("sample_random_inputs").get<bool>(),
+        j.at("me_frame").get<std::vector<me_int_t>>(),
+        j.at("incoming_count").get<std::size_t>()
+    );
+}
+
 } // namespace
+
+std::string
+madspace::weighting_groups_to_json(const std::vector<WeightingGroup>& groups) {
+    json j = json::array();
+    for (auto& group : groups) {
+        json steps = json::array();
+        for (auto& step : group.steps) {
+            json matrix_elements = json::array(), override_outputs = json::array();
+            for (auto& matrix_element : step.matrix_elements) {
+                matrix_elements.push_back(matrix_element_to_json(matrix_element));
+            }
+            for (auto output : step.override_outputs) {
+                override_outputs.push_back(static_cast<int>(output));
+            }
+            steps.push_back({
+                {"matrix_elements", matrix_elements},
+                {"mode",
+                 step.mode == WeightingStep::unweight ? "unweight" : "reweight"},
+                {"max_overweight_truncation", step.max_overweight_truncation},
+                {"freeze_max_weight_after", step.freeze_max_weight_after},
+                {"override_outputs", override_outputs},
+            });
+        }
+        j.push_back({{"channel_indices", group.channel_indices}, {"steps", steps}});
+    }
+    return j.dump();
+}
+
+std::vector<WeightingGroup>
+madspace::weighting_groups_from_json(const std::string& text) {
+    std::vector<WeightingGroup> groups;
+    for (auto& group_json : json::parse(text)) {
+        WeightingGroup group{
+            .channel_indices =
+                group_json.at("channel_indices").get<std::vector<std::size_t>>()
+        };
+        for (auto& step_json : group_json.at("steps")) {
+            WeightingStep step{
+                .mode = step_json.at("mode").get<std::string>() == "unweight"
+                    ? WeightingStep::unweight
+                    : WeightingStep::reweight,
+                .max_overweight_truncation =
+                    step_json.at("max_overweight_truncation").get<double>(),
+                .freeze_max_weight_after =
+                    step_json.at("freeze_max_weight_after").get<std::size_t>(),
+            };
+            for (auto& me_json : step_json.at("matrix_elements")) {
+                step.matrix_elements.push_back(matrix_element_from_json(me_json));
+            }
+            for (int output : step_json.at("override_outputs")) {
+                step.override_outputs.push_back(
+                    static_cast<MatrixElement::MatrixElementOutput>(output)
+                );
+            }
+            group.steps.push_back(std::move(step));
+        }
+        groups.push_back(std::move(group));
+    }
+    return groups;
+}
 
 void WeightingPipeline::Chunk::clear() {
     source.reset();

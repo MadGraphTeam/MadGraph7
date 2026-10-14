@@ -23,6 +23,13 @@ struct WeightingGroup {
     std::vector<WeightingStep> steps;
 };
 
+/// JSON text of `groups`, for example to store them in a gridpack. The matrix
+/// elements are stored by their index in the context.
+std::string weighting_groups_to_json(const std::vector<WeightingGroup>& groups);
+/// The groups stored with @ref weighting_groups_to_json. The matrix elements
+/// must be loaded into the contexts in the same order as before.
+std::vector<WeightingGroup> weighting_groups_from_json(const std::string& text);
+
 /**
  * Runs the re- and unweighting steps of the channel groups of an
  * @ref EventGenerator.

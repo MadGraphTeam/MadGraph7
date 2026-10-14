@@ -172,6 +172,8 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    python/select_combine_channel_index
    python/set_lib_path
    python/set_simd_vector_size
+   python/weighting_groups_from_json
+   python/weighting_groups_to_json
 
 Utilities
 ---------

@@ -7,6 +7,7 @@ on the number of threads. Uses the e+ e- -> d d~ g setup of test_event_stream
 with PythonFunction matrix elements.
 """
 
+import json
 import os
 
 import numpy as np
@@ -276,3 +277,78 @@ def test_invalid_groups(tmp_path):
             seed=1,
             groups=[ms.WeightingGroup([0], [ms.WeightingStep([sampled])])],
         )
+
+
+def test_fixed_max_weights(tmp_path):
+    """fix_max_weights() freezes the maxima of all steps. Reloaded like in a
+    gridpack, with the groups from JSON, the channels keep them."""
+    config = make_config()
+    run_dir = str(tmp_path / "fix")
+    os.makedirs(run_dir)
+    context, alphas_file = make_context(run_dir, 2)
+    surrogate = python_matrix_element(context, surrogate_me)
+    full = python_matrix_element(context, true_me)
+    step = ms.WeightingStep(
+        [full], freeze_max_weight_after=1000, max_overweight_truncation=0.05
+    )
+    groups = [ms.WeightingGroup([0, 1], [step])]
+    channels = [
+        ms.ChannelEventGenerator(
+            contexts=[context],
+            integrand=make_integrand(alphas_file, surrogate, pt_min),
+            event_file=os.path.join(run_dir, f"events.{i}.npy"),
+            weight_file=os.path.join(run_dir, f"weights.{i}.npy"),
+            config=config,
+            subprocess_index=0,
+            name=str(i),
+            histograms=None,
+        )
+        for i, pt_min in enumerate((20.0, 60.0))
+    ]
+    generator = ms.EventGenerator(
+        [context], channels, seed=1, config=config, groups=groups
+    )
+    generator.survey()
+    generator.fix_max_weights()
+    channel_jsons = [channel.to_json(True) for channel in channels]
+    groups_json = ms.weighting_groups_to_json(groups)
+    globals_file = os.path.join(run_dir, "globals.tar")
+    context.save_globals(globals_file)
+    max_weights = [
+        (channel.max_weight(), channel.step_max_weight(1)) for channel in channels
+    ]
+    assert all(m0 > 0 and m1 > 0 for m0, m1 in max_weights)
+    for channel_json, (_, m1) in zip(channel_jsons, max_weights):
+        assert json.loads(channel_json)["step_max_weights"] == [m1]
+
+    reload_dir = str(tmp_path / "reload")
+    os.makedirs(reload_dir)
+    new_context = ms.Context(ms.cpu_device(), 2)
+    new_context.load_globals(globals_file)
+    # same order as before, so the stored indices match
+    python_matrix_element(new_context, surrogate_me)
+    python_matrix_element(new_context, true_me)
+    new_channels = [
+        ms.ChannelEventGenerator.load_json(
+            channel_json,
+            [new_context],
+            event_file=os.path.join(reload_dir, f"events.{i}.npy"),
+            weight_file=os.path.join(reload_dir, f"weights.{i}.npy"),
+            config=config,
+        )
+        for i, channel_json in enumerate(channel_jsons)
+    ]
+    new_groups = ms.weighting_groups_from_json(groups_json)
+    assert ms.weighting_groups_to_json(new_groups) == groups_json
+    new_generator = ms.EventGenerator(
+        [new_context], new_channels, seed=2, config=config, groups=new_groups
+    )
+    new_generator.generate()
+    assert [
+        (channel.max_weight(), channel.step_max_weight(1)) for channel in new_channels
+    ] == max_weights
+    status, new_status = generator.status(), new_generator.status()
+    assert new_status.count_unweighted == config.target_count
+    assert abs(status.mean - new_status.mean) < 4 * np.hypot(
+        status.error, new_status.error
+    )

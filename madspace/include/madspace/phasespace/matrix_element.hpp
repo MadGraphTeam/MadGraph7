@@ -142,6 +142,8 @@ public:
     const std::vector<MatrixElementInput>& inputs() const { return _inputs; }
     /// The configured output quantities.
     const std::vector<MatrixElementOutput>& outputs() const { return _outputs; }
+    /// Whether the `random_*` inputs are drawn internally.
+    bool sample_random_inputs() const { return _sample_random_inputs; }
     /// The inputs that must be supplied by the caller (excludes the ones drawn
     /// internally when @p sample_random_inputs is set).
     std::vector<MatrixElementInput> external_inputs() const;

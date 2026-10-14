@@ -3458,6 +3458,18 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite(
             "steps", &WeightingGroup::steps, pydoc::doc("WeightingGroup::steps")
         );
+    m.def(
+        "weighting_groups_to_json",
+        &weighting_groups_to_json,
+        py::arg("groups"),
+        pydoc::doc("weighting_groups_to_json")
+    );
+    m.def(
+        "weighting_groups_from_json",
+        &weighting_groups_from_json,
+        py::arg("text"),
+        pydoc::doc("weighting_groups_from_json")
+    );
 
     py::classh<PdfMemberSpec>(m, "PdfMemberSpec", pydoc::doc("PdfMemberSpec"))
         .def(
