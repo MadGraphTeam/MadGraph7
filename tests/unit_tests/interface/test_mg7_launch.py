@@ -988,6 +988,59 @@ class TestPostProcessingIsSkippedWhenThereIsNothingToDo(unittest.TestCase):
         launch.run_selected_tools(switch, _Process())
 
 
+class TestPostProcessingResultsStayInMemory(unittest.TestCase):
+    """The tool drivers book their runs in a madevent results database, which
+    madevent writes to HTML/results.pkl and renders as crossx.html. The mg7
+    output has no HTML/ directory: store_result, at the end of every
+    post-processing run, logged "ERROR: I/O error (2): No such file or
+    directory", and a stale crossx.html was left at the process root.
+    """
+
+    def setUp(self):
+        import io
+
+        self.path = tempfile.mkdtemp(prefix='mg7_results_')
+        os.mkdir(os.path.join(self.path, 'Events'))
+        self.captured = io.StringIO()
+        self.handler = logging.StreamHandler(self.captured)
+        self.logger = logging.getLogger('madgraph.files')
+        self.logger.addHandler(self.handler)
+
+    def tearDown(self):
+        self.logger.removeHandler(self.handler)
+        shutil.rmtree(self.path)
+
+    def test_store_result_bookkeeping_writes_nothing(self):
+        import madgraph.various.banner as banner_mod
+        from madgraph.iolibs.template_files.mg7.run_interface import MG7RunCmd
+
+        # load_results_db only needs me_dir, process and the model name
+        # (__del__ reads the other two); building a real MG7RunCmd needs a
+        # whole mg7 output
+        cmd = object.__new__(MG7RunCmd)
+        cmd.stop_for_runweb = False
+        cmd.force_run = True
+        cmd.me_dir = self.path
+        cmd.process = ['p p > t t~']
+        cmd.find_model_name = lambda: 'sm'
+        cmd.load_results_db()
+
+        run_card = banner_mod.RunCardMG7()
+        run_card['run_tag'] = 'tag_1'
+        # what set_run_name, do_decay_events and store_result do with it
+        cmd.results.add_run('run_01', run_card)
+        cmd.results.add_run('run_01_decayed_1', run_card)
+        cmd.results.add_detail('nb_event', 200)
+        cmd.results.update('MadSpin Done', 'parton', makehtml=True)
+        cmd.results.update('Done', 'pythia', makehtml=False, error=True)
+        cmd.results.save()
+
+        self.assertEqual(self.captured.getvalue(), '')
+        self.assertEqual(os.listdir(self.path), ['Events'])
+        self.assertEqual(cmd.results.current['run_name'], 'run_01_decayed_1')
+        self.assertEqual(cmd.results.current['nb_event'], 200)
+
+
 @unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
                      'madspace is not installed')
 class MG7MeFrameTest(unittest.TestCase):

@@ -9,7 +9,7 @@
 #   pp_jj           cluster runner  p p > j j with mg7 on the GPU (cuts on several jets)
 #   crossing_folding cluster runner p p > w+ j, j j, w+ j j folded (--use_crossing=True) vs
 #                                   expanded, on the GPU and on cpu; cpu-made gridpacks (w+ j)
-#   madspace_ops    cluster runner  madspace GPU operations against the CPU runtime, .github/gpu_ci/madspace_checks.py
+#   madspace_tests  cluster runner  the madspace unit tests on the GPU, .github/gpu_ci/madspace_tests_gpu.sh
 #   interference    cluster runner  squared split orders (interference), .github/gpu_ci/interference_gpu.sh
 #   ...             cluster runner  more CI jobs: same needs, if and runs-on, and add them to
 #                                   stop_runner's needs
@@ -304,7 +304,8 @@ jobs:
           if-no-files-found: warn
 
   crossing_folding:
-    needs: build_madspace
+    needs: [start_runner, build_madspace]
+    if: needs.start_runner.outputs.attempt == github.run_attempt
     runs-on: [self-hosted, "${{ inputs.runner_label }}"]
     timeout-minutes: 90
     defaults:
@@ -352,7 +353,7 @@ jobs:
           path: results/
           if-no-files-found: warn
 
-  madspace_ops:
+  madspace_tests:
     # madspace GPU runtime operations against the CPU runtime (histogram, rank-4 kernels)
     needs: [start_runner, build_madspace]
     if: needs.start_runner.outputs.attempt == github.run_attempt
@@ -364,42 +365,48 @@ jobs:
     env:
       BACKEND: ${{ inputs.backend }}
       MODULES: ${{ inputs.modules }}
-      # no VENV: the python3 of the modules (see madspace_ops_gpu.sh)
+      # no VENV: the python3 of the modules (see madspace_tests_gpu.sh)
       MADSPACE_PREFIX: ${{ needs.build_madspace.outputs.madspace_prefix }}
     steps:
       - uses: actions/checkout@v5
       - name: run directory
-        run: echo "WORKDIR=${GLOBALSCRATCH:-$HOME}/mg7-gpu-ci/runs/$RUN_TAG/madspace_ops" >> "$GITHUB_ENV"
-      - name: madspace operations on the GPU
-        run: .github/gpu_ci/madspace_ops_gpu.sh
+        run: echo "WORKDIR=${GLOBALSCRATCH:-$HOME}/mg7-gpu-ci/runs/$RUN_TAG/madspace_tests" >> "$GITHUB_ENV"
+      - name: madspace tests on the GPU
+        run: .github/gpu_ci/madspace_tests_gpu.sh
       - name: collect logs
         if: always()
         run: |
           mkdir -p results
-          (cd "$WORKDIR" && tar -cf - --ignore-failed-read summary.txt checks.log 2> /dev/null) | tar -xf - -C results || true
+          (cd "$WORKDIR" && tar -cf - --ignore-failed-read summary.txt tests.log junit.xml 2> /dev/null) | tar -xf - -C results || true
       - name: job summary
         if: always()
         run: |
           {
-            echo "### madspace operations on ${{ inputs.cluster }} ($BACKEND)"
+            echo "### madspace tests on ${{ inputs.cluster }} ($BACKEND)"
             if [ -f results/summary.txt ]; then
               echo "| | |"
               echo "|---|---|"
               sed 's/^\([^=]*\)=\(.*\)$/| \1 | \2 |/' results/summary.txt
             else
-              echo "No summary.txt: the job stopped early, see the log of the 'madspace operations on the GPU' step."
+              echo "No summary.txt: the job stopped early, see the log of the 'madspace tests on the GPU' step."
+            fi
+            if [ -f results/tests.log ]; then
+              echo
+              echo '```'
+              grep -E '^(FAILED|ERROR|XFAIL|SKIPPED) ' results/tests.log | head -100 || true
+              echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: gpu-madspace_ops-${{ inputs.cluster }}-${{ inputs.backend }}
+          name: gpu-madspace_tests-${{ inputs.cluster }}-${{ inputs.backend }}
           path: results/
           if-no-files-found: warn
 
   stop_runner:
     # must list every job that runs on the self-hosted runner
-    needs: [start_runner, build_madspace, pp_ttx, pp_jj, crossing_folding, madspace_ops, interference]
+    needs: [start_runner, build_madspace, pp_ttx, pp_jj, crossing_folding, madspace_tests, interference]
     if: always() && needs.start_runner.result == 'success'
     # In an attempt that did not start the runner (a re-run of failed jobs, or of one job), a job
     # for the runner label would wait 24 hours, holding the concurrency group of the cluster.

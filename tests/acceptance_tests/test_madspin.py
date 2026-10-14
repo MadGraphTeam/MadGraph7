@@ -154,6 +154,9 @@ class TestMadSpin(unittest.TestCase):
                         stdout=stdout,stderr=stderr)
 
         self.assertTrue(os.path.exists(pjoin(self.path, 'test_spinmode_none_decayed.lhe.gz')))
+        # the input is decompressed to be read: it has to be compressed back
+        self.assertTrue(os.path.exists(pjoin(self.path, 'test_spinmode_none.lhe.gz')))
+        self.assertFalse(os.path.exists(pjoin(self.path, 'test_spinmode_none.lhe')))
         lhe = lhe_parser.EventFile(pjoin(self.path, 'test_spinmode_none_decayed.lhe.gz'))
         self.assertEqual(100, len(lhe))
         
@@ -397,6 +400,13 @@ decay z > l+ l-
         self.assertIsNotNone(
             re.search(r'MadSpin\s+unweight\s+efficiency', log),
             msg='mg7 + MadSpin: density-mode summary line not found in log')
+        # store_result used to save the madevent results database to
+        # HTML/results.pkl, which the mg7 output does not have
+        self.assertEqual(
+            [line for line in log.splitlines() if 'I/O error' in line], [])
+        self.assertFalse(os.path.exists(pjoin(self.run_dir, 'crossx.html')))
+        # the madmatrix exporter used to print its keyword arguments
+        self.assertNotIn('kwargs[', log)
 
     def test_madspin_wplus_all_all_flavor_balance(self):
         """`w+ > all all` should populate e/mu decay modes with similar rates."""

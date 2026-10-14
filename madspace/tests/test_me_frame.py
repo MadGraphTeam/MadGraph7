@@ -5,8 +5,11 @@ the momenta of the particles listed in me_frame are summed up and every external
 momentum is boosted into the rest frame of that sum.
 """
 
-import numpy as np
+import math
+
 import pytest
+import torch
+from madspace_testing import generator, rand
 
 import madspace as ms
 
@@ -19,26 +22,27 @@ def momenta():
     """Physical momenta: two massless incoming along z with different energies
     (so the lab frame is boosted with respect to the partonic CM), and three
     massive outgoing balancing them."""
-    rng = np.random.default_rng(1234)
-    e1 = rng.uniform(100.0, 1000.0, COUNT)
-    e2 = rng.uniform(100.0, 1000.0, COUNT)
-    p = np.zeros((COUNT, N_PARTICLES, 4))
-    p[:, 0] = np.stack([e1, np.zeros(COUNT), np.zeros(COUNT), e1], axis=1)
-    p[:, 1] = np.stack([e2, np.zeros(COUNT), np.zeros(COUNT), -e2], axis=1)
+    g = generator(1234)
+    e1 = 100.0 + 900.0 * rand(COUNT, generator=g)
+    e2 = 100.0 + 900.0 * rand(COUNT, generator=g)
+    zeros = torch.zeros(COUNT)
+    p = torch.zeros((COUNT, N_PARTICLES, 4))
+    p[:, 0] = torch.stack([e1, zeros, zeros, e1], dim=1)
+    p[:, 1] = torch.stack([e2, zeros, zeros, -e2], dim=1)
     for i in range(2, N_PARTICLES - 1):
-        px, py, pz = rng.uniform(-40.0, 40.0, (3, COUNT))
+        px, py, pz = -40.0 + 80.0 * rand((3, COUNT), generator=g)
         mass = 20.0 + 10.0 * i
-        p[:, i] = np.stack(
-            [np.sqrt(mass**2 + px**2 + py**2 + pz**2), px, py, pz], axis=1
+        p[:, i] = torch.stack(
+            [torch.sqrt(mass**2 + px**2 + py**2 + pz**2), px, py, pz], dim=1
         )
     # last particle balances the rest, its mass is whatever comes out
-    p[:, N_PARTICLES - 1] = p[:, 0] + p[:, 1] - p[:, 2:-1].sum(axis=1)
+    p[:, N_PARTICLES - 1] = p[:, 0] + p[:, 1] - p[:, 2:-1].sum(dim=1)
     # the masses above leave only ~9 GeV of headroom at the low end of
     # e1 + e2, so say so rather than let a changed seed or mass look like a
     # kernel bug
     assert (p[:, N_PARTICLES - 1, 0] > 0).all(), "balancing leg has no energy"
-    total = p[:, :2].sum(axis=1)
-    assert (total[:, 0] ** 2 - (total[:, 1:] ** 2).sum(axis=1) > 0).all()
+    total = p[:, :2].sum(dim=1)
+    assert (total[:, 0] ** 2 - (total[:, 1:] ** 2).sum(dim=1) > 0).all()
     return p
 
 
@@ -47,23 +51,24 @@ def boost_momenta(momenta, frame):
     sum of the particles in ``frame`` (one-based indices). Textbook Lorentz
     boost with velocity beta = p_boost/E_boost, written out independently of the
     kernel under test."""
-    p_boost = momenta[:, [i - 1 for i in frame]].sum(axis=1)
-    mass = np.sqrt(
-        p_boost[:, 0] ** 2 - (p_boost[:, 1:] ** 2).sum(axis=1)
-    )
+    p_boost = momenta[:, [i - 1 for i in frame]].sum(dim=1)
+    mass = torch.sqrt(p_boost[:, 0] ** 2 - (p_boost[:, 1:] ** 2).sum(dim=1))
     gamma = (p_boost[:, 0] / mass)[:, None]
     beta = (p_boost[:, 1:] / p_boost[:, [0]])[:, None, :]  # (count, 1, 3)
-    beta2 = (beta**2).sum(axis=2)                          # (count, 1)
-    energy = momenta[:, :, 0]                              # (count, n)
-    beta_dot_p = (momenta[:, :, 1:] * beta).sum(axis=2)    # (count, n)
+    beta2 = (beta**2).sum(dim=2)  # (count, 1)
+    energy = momenta[:, :, 0]  # (count, n)
+    beta_dot_p = (momenta[:, :, 1:] * beta).sum(dim=2)  # (count, n)
 
-    out = np.empty_like(momenta)
+    out = torch.empty_like(momenta)
     out[:, :, 0] = gamma * (energy - beta_dot_p)
-    coeff = np.where(
-        beta2 > 0,
-        (gamma - 1) * beta_dot_p / np.where(beta2 > 0, beta2, 1.0),
-        0.0,
-    ) - gamma * energy
+    coeff = (
+        torch.where(
+            beta2 > 0,
+            (gamma - 1) * beta_dot_p / torch.where(beta2 > 0, beta2, 1.0),
+            0.0,
+        )
+        - gamma * energy
+    )
     out[:, :, 1:] = momenta[:, :, 1:] + coeff[:, :, None] * beta
     return out
 
@@ -75,16 +80,14 @@ def run_boost(momenta, frame_mask):
     )
     fb.output(0, fb.boost_to_frame(fb.input(0), ms.Value(frame_mask)))
     runtime = ms.FunctionRuntime(fb.function())
-    return ms.Tensor.numpy(runtime.call([momenta])[0])
+    return torch.from_dlpack(runtime.call([momenta])[0])
 
 
-@pytest.mark.parametrize(
-    "frame", [[1, 2], [3], [4], [3, 4], [3, 4, 5]], ids=str
-)
+@pytest.mark.parametrize("frame", [[1, 2], [3], [4], [3, 4], [3, 4, 5]], ids=str)
 def test_boost_matches_reference(momenta, frame):
     mask = [1 if i + 1 in frame else 0 for i in range(N_PARTICLES)]
     result = run_boost(momenta, mask)
-    np.testing.assert_allclose(
+    torch.testing.assert_close(
         result, boost_momenta(momenta, frame), rtol=1e-10, atol=1e-8
     )
 
@@ -95,11 +98,11 @@ def test_boost_preserves_invariants(momenta, frame):
     result = run_boost(momenta, mask)
 
     def m2(p):
-        return p[..., 0] ** 2 - (p[..., 1:] ** 2).sum(axis=-1)
+        return p[..., 0] ** 2 - (p[..., 1:] ** 2).sum(dim=-1)
 
-    np.testing.assert_allclose(m2(result), m2(momenta), rtol=1e-8, atol=1e-6)
-    np.testing.assert_allclose(
-        m2(result.sum(axis=1)), m2(momenta.sum(axis=1)), rtol=1e-10
+    torch.testing.assert_close(m2(result), m2(momenta), rtol=1e-8, atol=1e-6)
+    torch.testing.assert_close(
+        m2(result.sum(dim=1)), m2(momenta.sum(dim=1)), rtol=1e-10, atol=0.0
     )
 
 
@@ -108,9 +111,14 @@ def test_selected_sum_is_at_rest(momenta):
     for frame in ([1, 2], [3], [3, 4], [3, 4, 5]):
         mask = [1 if i + 1 in frame else 0 for i in range(N_PARTICLES)]
         result = run_boost(momenta, mask)
-        p_sum = result[:, [i - 1 for i in frame]].sum(axis=1)
-        scale = np.abs(result[:, :, 0]).max(axis=1)
-        np.testing.assert_allclose(p_sum[:, 1:] / scale[:, None], 0.0, atol=1e-12)
+        p_sum = result[:, [i - 1 for i in frame]].sum(dim=1)
+        scale = result[:, :, 0].abs().amax(dim=1)
+        torch.testing.assert_close(
+            p_sum[:, 1:] / scale[:, None],
+            torch.zeros_like(p_sum[:, 1:]),
+            rtol=1e-7,
+            atol=1e-12,
+        )
 
 
 def test_single_particle_frame_is_exactly_at_rest(momenta):
@@ -119,21 +127,23 @@ def test_single_particle_frame_is_exactly_at_rest(momenta):
     polarisation vectors of a massive vector out of the rounding noise."""
     mask = [0, 0, 1, 0, 0]
     result = run_boost(momenta, mask)
-    assert np.all(result[:, 2, 1:] == 0.0)
+    assert torch.all(result[:, 2, 1:] == 0.0)
 
 
 def test_incoming_frame_undoes_the_beam_boost(momenta):
     """me_frame = [1, 2] is the partonic centre of mass: the two incoming
     momenta come out back to back with equal energies."""
     result = run_boost(momenta, [1, 1, 0, 0, 0])
-    np.testing.assert_allclose(result[:, 0, 0], result[:, 1, 0], rtol=1e-12)
-    np.testing.assert_allclose(result[:, 0, 3], -result[:, 1, 3], rtol=1e-12)
-    np.testing.assert_allclose(result[:, 0, 1:3], 0.0, atol=1e-9)
+    torch.testing.assert_close(result[:, 0, 0], result[:, 1, 0], rtol=1e-12, atol=0.0)
+    torch.testing.assert_close(result[:, 0, 3], -result[:, 1, 3], rtol=1e-12, atol=0.0)
+    torch.testing.assert_close(
+        result[:, 0, 1:3], torch.zeros_like(result[:, 0, 1:3]), rtol=1e-7, atol=1e-9
+    )
 
 
 def boost_z(momenta, rapidity):
-    ch, sh = np.cosh(rapidity), np.sinh(rapidity)
-    out = momenta.copy()
+    ch, sh = math.cosh(rapidity), math.sinh(rapidity)
+    out = momenta.clone()
     out[..., 0] = momenta[..., 0] * ch + momenta[..., 3] * sh
     out[..., 3] = momenta[..., 3] * ch + momenta[..., 0] * sh
     return out
@@ -150,11 +160,9 @@ def test_frame_does_not_depend_on_the_frame_the_momenta_arrive_in(momenta):
     for frame in ([0, 0, 1, 0, 0], [0, 0, 1, 1, 0]):
         reference = run_boost(run_boost(momenta, incoming), frame)
         for rapidity in (-1.3, 0.7):
-            shifted = run_boost(
-                run_boost(boost_z(momenta, rapidity), incoming), frame
-            )
-            scale = np.abs(reference[:, :, 0]).max(axis=1)[:, None, None]
-            np.testing.assert_allclose(
+            shifted = run_boost(run_boost(boost_z(momenta, rapidity), incoming), frame)
+            scale = reference[:, :, 0].abs().amax(dim=1)[:, None, None]
+            torch.testing.assert_close(
                 shifted / scale, reference / scale, rtol=0, atol=1e-10
             )
 
@@ -163,10 +171,18 @@ def test_boost_with_an_empty_frame_is_the_identity():
     """Nothing selected means nothing defines a frame. Not reachable through
     the run card, but boost_to_frame is a public instruction: it must pass the
     momenta through rather than boost by a null vector."""
-    p = np.array([[[100.0, 0.0, 0.0, 100.0], [50.0, 1.0, 2.0, -49.0],
-                   [90.0, -1.0, -2.0, 89.0], [60.0, 0.0, 0.0, 60.0],
-                   [70.0, 3.0, 0.0, 0.0]]])
-    np.testing.assert_array_equal(run_boost(p, [0] * N_PARTICLES), p)
+    p = torch.tensor(
+        [
+            [
+                [100.0, 0.0, 0.0, 100.0],
+                [50.0, 1.0, 2.0, -49.0],
+                [90.0, -1.0, -2.0, 89.0],
+                [60.0, 0.0, 0.0, 60.0],
+                [70.0, 3.0, 0.0, 0.0],
+            ]
+        ]
+    )
+    torch.testing.assert_close(run_boost(p, [0] * N_PARTICLES), p, rtol=0, atol=0)
 
 
 def test_matrix_element_rejects_out_of_range_frame():

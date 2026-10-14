@@ -691,10 +691,9 @@ class ReweightInterface(extended_cmd.Cmd):
                     output[(tag_name,name)].write(str(new_evt))
 
         # check normalisation of the events:
-        if self.run_card and 'event_norm' in self.run_card:
-            if self.run_card['event_norm'] in ['average','bias']:
-                for key, value in cross.items():
-                    cross[key] = value / (event_nb+1)
+        if self.run_card and self.run_card.get_event_norm() in ['average','bias']:
+            for key, value in cross.items():
+                cross[key] = value / (event_nb+1)
                 
         running_time = misc.format_timer(time.time()-start)
         logger.info('All event done  (nb_event: %s) %s' % (event_nb+1, running_time))     
@@ -1038,7 +1037,7 @@ class ReweightInterface(extended_cmd.Cmd):
 
             with misc.chdir(pjoin(os.path.dirname(rw_dir), path)):
                 with misc.stdchannel_redirected(sys.stdout, os.devnull):                    
-                    if 'rw_me_' in path or tag == 3:
+                    if path.startswith(('rw_me_', 'rw_mevirt_')) or tag == 3:
                         param_card = self.new_param_card
                     else:
                         param_card = check_param_card.ParamCard(self.orig_param_card_text)
@@ -1114,6 +1113,27 @@ class ReweightInterface(extended_cmd.Cmd):
             return self.exec_cmd("launch")
         else:
             return super(ReweightInterface,self).default(line, log=log)
+
+    def check_answer_in_input_file(self, question_instance, default, path=False, line=None):
+        """The reweight card is the whole input of this interface. The
+        param_card question opened by a launch block is answered by the lines
+        that follow it, and ends with the card or with the next launch/change
+        line: the question then takes its default (done) quietly. The base
+        version reads stdin instead whenever stdin is not a tty (haspiping),
+        so a script run with stdin left open waited there forever."""
+
+        if line is None and self.inputfile:
+            line = self.get_stored_line()
+            if not line:
+                line = next(self.inputfile, None)
+                if line is None:
+                    return str(default)
+            if line.split() and line.split()[0] in ['launch', 'change']:
+                self.store_line(line)
+                return str(default)
+        with misc.TMP_variable(self, 'haspiping', False):
+            return super(ReweightInterface, self).check_answer_in_input_file(
+                                        question_instance, default, path, line)
 
     def write_reweighted_event(self, event, tag_name, **opt):
         """a function for running in multicore"""
@@ -1697,7 +1717,10 @@ class ReweightInterface(extended_cmd.Cmd):
 
 
         base = os.path.basename(os.path.dirname(Pdir))
-        if base == 'rw_me':
+        # rw_me and rw_mevirt have one module per parameter set (2: original,
+        # 3: new); the second-library directories (rw_me_<N>, rw_mevirt_<N>)
+        # only have module 2, which carries the new parameters.
+        if base in ['rw_me', 'rw_mevirt']:
             moduletag = (base, 2+hypp_id)
         else:
             moduletag = (base, 2)
