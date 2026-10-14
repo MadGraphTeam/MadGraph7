@@ -3509,6 +3509,8 @@ class ProcessExporterMG7(ProcessExporterCPP):
         [amplicol] processes."""
         self.proc_defs = getattr(cmd, '_curr_proc_defs', None)
         self.amplicol_defs = getattr(cmd, '_curr_amplicol_defs', None) or []
+        # without MG diagrams there is no madmatrix code to write or build
+        self.has_madmatrix = bool(cmd._curr_amps) or not self.amplicol_defs
         self.amplicol_model = cmd._curr_model
         self.amplicol_multiparticles = dict(getattr(cmd, '_multiparticles', {}))
 
