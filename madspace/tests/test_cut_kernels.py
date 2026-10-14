@@ -15,8 +15,9 @@ import glob
 import os
 import re
 
-import numpy as np
 import pytest
+import torch
+from madspace_testing import default_context
 
 import madspace as ms
 
@@ -25,7 +26,7 @@ LOW, HIGH = 1.0, 2.0
 
 # rows: all inside, one outside below, one outside above, all outside, on the
 # edges (inside: the window is closed)
-OBS = np.array(
+OBS = torch.tensor(
     [
         [1.2, 1.5, 1.9, 1.1],
         [0.5, 1.5, 1.9, 1.1],
@@ -44,17 +45,18 @@ def run_cuts():
     obs = fb.input(0)
     fb.output(0, fb.cut_all(obs, LOW, HIGH))
     fb.output(1, fb.cut_any(obs, LOW, HIGH))
-    runtime = ms.FunctionRuntime(fb.function(), ms.default_context())
-    return [ms.Tensor.numpy(t) for t in runtime.call([OBS])]
+    runtime = ms.FunctionRuntime(fb.function(), default_context())
+    return [torch.from_dlpack(t) for t in runtime.call([OBS])]
 
 
 def test_cut_all_and_any_apply_one_window_to_every_observable():
     cut_all, cut_any = run_cuts()
     inside = (OBS >= LOW) & (OBS <= HIGH)
-    np.testing.assert_array_equal(cut_all, inside.all(axis=1).astype(float))
-    np.testing.assert_array_equal(cut_any, inside.any(axis=1).astype(float))
+    torch.testing.assert_close(cut_all, inside.all(dim=1).double(), rtol=0, atol=0)
+    torch.testing.assert_close(cut_any, inside.any(dim=1).double(), rtol=0, atol=0)
 
 
+@pytest.mark.cpu_only
 def test_kernel_inputs_have_the_declared_dimensions():
     yaml = pytest.importorskip("yaml")
     root = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir)

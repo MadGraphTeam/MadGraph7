@@ -8,6 +8,9 @@ from pytest import approx
 
 import madspace as ms
 
+# LHE events are built and completed on the host
+pytestmark = pytest.mark.cpu_only
+
 HERE = os.path.dirname(os.path.realpath(__file__))
 # Copy of PROC_tt_decay/SubProcesses/subprocesses.json (a hadronically decaying
 # ttbar process), checked in here since the PROC_tt_decay output directory

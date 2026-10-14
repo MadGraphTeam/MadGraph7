@@ -3,15 +3,20 @@ import math
 import os
 from glob import glob
 
-import numpy as np
 import pytest
-from pytest import approx
+import torch
+from madspace_testing import generator, rand, randint
 
 import madspace as ms
 
 BATCH_SIZE = 1000
 CM_ENERGY = 13000.0
-rng = np.random.default_rng(1234)
+rng = generator(1234)
+
+
+def assert_approx(actual, expected, rel=1e-6, abs=1e-12):
+    """pytest.approx-like elementwise comparison of tensors."""
+    torch.testing.assert_close(actual, expected, rtol=rel, atol=abs)
 
 
 def load_processes():
@@ -60,64 +65,83 @@ def permutation_count(process):
 
 
 def test_process_masses(mapping, masses, permutation_count):
-    r = rng.random((BATCH_SIZE, mapping.random_dim()))
+    r = rand((BATCH_SIZE, mapping.random_dim()), generator=rng)
     condition = (
         []
         if permutation_count <= 1
-        else [rng.integers(0, permutation_count, BATCH_SIZE, dtype=np.int32)]
+        else [
+            randint(
+                0, permutation_count, (BATCH_SIZE,), generator=rng, dtype=torch.int32
+            )
+        ]
     )
     p_ext, x1, x2, det = mapping.map_forward([r], condition)
-    m_ext_true = np.full((BATCH_SIZE, len(masses)), masses)
-    m_ext = np.sqrt(
-        np.maximum(0, p_ext[:, :, 0] ** 2 - np.sum(p_ext[:, :, 1:] ** 2, axis=2))
+    m_ext_true = torch.tensor(masses, dtype=torch.float64).expand(BATCH_SIZE, -1)
+    m_ext = torch.sqrt(
+        torch.clamp(p_ext[:, :, 0] ** 2 - torch.sum(p_ext[:, :, 1:] ** 2, dim=2), min=0)
     )
-    assert m_ext == approx(m_ext_true, abs=1e-3, rel=1e-3)
+    assert_approx(m_ext, m_ext_true, abs=1e-3, rel=1e-3)
 
 
 def test_process_incoming(mapping, masses, permutation_count):
-    r = rng.random((BATCH_SIZE, mapping.random_dim()))
+    r = rand((BATCH_SIZE, mapping.random_dim()), generator=rng)
     condition = (
         []
         if permutation_count <= 1
-        else [rng.integers(0, permutation_count, BATCH_SIZE, dtype=np.int32)]
+        else [
+            randint(
+                0, permutation_count, (BATCH_SIZE,), generator=rng, dtype=torch.int32
+            )
+        ]
     )
     p_ext, x1, x2, det = mapping.map_forward([r], condition)
-    zeros = np.zeros(BATCH_SIZE)
+    zeros = torch.zeros(BATCH_SIZE)
     p_a = p_ext[:, 0]
     p_b = p_ext[:, 1]
     e_beam = 0.5 * CM_ENERGY
 
-    assert p_a[:, 0] == approx(p_a[:, 3]) and p_b[:, 0] == approx(-p_b[:, 3])
-    assert p_a[:, 1] == approx(zeros) and p_a[:, 2] == approx(zeros)
-    assert p_b[:, 1] == approx(zeros) and p_b[:, 2] == approx(zeros)
-    assert np.all(x1 >= 0) and np.all(x1 <= 1)
-    assert np.all(x2 >= 0) and np.all(x2 <= 1)
-    assert p_a[:, 0] == approx(e_beam * x1)
-    assert p_b[:, 0] == approx(e_beam * x2)
+    assert_approx(p_a[:, 0], p_a[:, 3])
+    assert_approx(p_b[:, 0], -p_b[:, 3])
+    assert_approx(p_a[:, 1], zeros)
+    assert_approx(p_a[:, 2], zeros)
+    assert_approx(p_b[:, 1], zeros)
+    assert_approx(p_b[:, 2], zeros)
+    assert torch.all(x1 >= 0) and torch.all(x1 <= 1)
+    assert torch.all(x2 >= 0) and torch.all(x2 <= 1)
+    assert_approx(p_a[:, 0], e_beam * x1)
+    assert_approx(p_b[:, 0], e_beam * x2)
 
 
 def test_process_momentum_conservation(mapping, masses, permutation_count):
-    r = rng.random((BATCH_SIZE, mapping.random_dim()))
+    r = rand((BATCH_SIZE, mapping.random_dim()), generator=rng)
     condition = (
         []
         if permutation_count <= 1
-        else [rng.integers(0, permutation_count, BATCH_SIZE, dtype=np.int32)]
+        else [
+            randint(
+                0, permutation_count, (BATCH_SIZE,), generator=rng, dtype=torch.int32
+            )
+        ]
     )
     p_ext, x1, x2, det = mapping.map_forward([r], condition)
-    p_in = np.sum(p_ext[:, :2], axis=1)
-    p_out = np.sum(p_ext[:, 2:], axis=1)
+    p_in = torch.sum(p_ext[:, :2], dim=1)
+    p_out = torch.sum(p_ext[:, 2:], dim=1)
 
-    assert p_out == approx(p_in, rel=1e-6, abs=1e-10)
+    assert_approx(p_out, p_in, rel=1e-6, abs=1e-10)
 
 
 def test_process_inverse(mapping, masses, permutation_count):
-    r = rng.random((BATCH_SIZE, mapping.random_dim()))
+    r = rand((BATCH_SIZE, mapping.random_dim()), generator=rng)
     condition = (
         []
         if permutation_count <= 1
-        else [rng.integers(0, permutation_count, BATCH_SIZE, dtype=np.int32)]
+        else [
+            randint(
+                0, permutation_count, (BATCH_SIZE,), generator=rng, dtype=torch.int32
+            )
+        ]
     )
     *map_out, det = mapping.map_forward([r], condition)
     r_inv, det_inv = mapping.map_inverse(map_out, condition)
-    assert r_inv == approx(r, abs=1e-3, rel=1e-3)
-    assert det_inv == approx(1 / det, rel=1e-3)
+    assert_approx(r_inv, r, abs=1e-3, rel=1e-3)
+    assert_approx(det_inv, 1 / det, rel=1e-3)
