@@ -3458,6 +3458,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
         return merged_subproc_info
 
     def finalize(self, matrix_elements=None, history='', *args, **kwargs):
+        self.export_amplicol()
         file_name = os.path.normpath(os.path.join(
             self.dir_path, "SubProcesses", "subprocesses.json"
         ))
@@ -3504,8 +3505,25 @@ class ProcessExporterMG7(ProcessExporterCPP):
 
     def pass_information_from_cmd(self, cmd):
         """Capture the process definitions from the command interface; needed to
-        generate the MadAnalysis5 default cards at output time."""
+        generate the MadAnalysis5 default cards at output time, and the
+        [amplicol] processes."""
         self.proc_defs = getattr(cmd, '_curr_proc_defs', None)
+        self.amplicol_defs = getattr(cmd, '_curr_amplicol_defs', None) or []
+        self.amplicol_model = cmd._curr_model
+        self.amplicol_nb_core = cmd.options.get('nb_core')
+
+    def export_amplicol(self):
+        """The [amplicol] processes, as subprocesses after the madmatrix ones."""
+        if not getattr(self, 'amplicol_defs', None):
+            return
+        import madgraph.iolibs.export_amplicol as export_amplicol
+        for entry in export_amplicol.export_amplicol_processes(
+                self.dir_path, self.amplicol_defs, self.amplicol_model,
+                self.amplicol_nb_core):
+            # never merged with another subprocess
+            self.merged_subprocesses[('amplicol', len(self.process_info))].append(
+                (len(self.process_info), []))
+            self.process_info.append(entry)
 
     def create_ma5_default_cards(self, matrix_elements, history):
         """Call MadAnalysis5 to write process-tailored default analysis cards
