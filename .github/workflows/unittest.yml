@@ -65,6 +65,12 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py -t0 TestNLORealOffloadContract
 
+      - name: "NLO MC@NLO event queue"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -t0 TestMCEventQueue
+
       # ---- unittest_0 ----
       - name: "unittest_0"
         if: ${{ !cancelled() }}
