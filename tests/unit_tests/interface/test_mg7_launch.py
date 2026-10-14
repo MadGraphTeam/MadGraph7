@@ -846,14 +846,15 @@ class MG7CmdTest(unittest.TestCase):
         lg = logging.getLogger('madgraph')
         handler = logging.NullHandler()
         lg.addHandler(handler)
-        saved = self.launch._TOOL_LOGGING_READY
-        self.launch._TOOL_LOGGING_READY = False
+        from madgraph.iolibs.template_files.mg7 import postprocess
+        saved = postprocess._TOOL_LOGGING_READY
+        postprocess._TOOL_LOGGING_READY = False
         try:
             before = list(lg.handlers)
             self.launch._setup_logging()
             self.assertEqual(list(lg.handlers), before)
         finally:
-            self.launch._TOOL_LOGGING_READY = saved
+            postprocess._TOOL_LOGGING_READY = saved
             lg.removeHandler(handler)
 
 
