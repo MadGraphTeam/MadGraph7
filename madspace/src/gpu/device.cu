@@ -13,6 +13,50 @@ void wait_for_tensor(const Tensor& tensor) {
         check_error(gpuStreamSynchronize(reinterpret_cast<gpuStream_t>(*stream)));
     }
 }
+
+// calls func with the kernel policy of a float dtype
+template <typename Func>
+void dispatch_float(DataType dtype, const char* op, Func&& func) {
+    switch (dtype) {
+    case DataType::dt_float64:
+        func.template operator()<GpuTypes>();
+        break;
+    case DataType::dt_float32:
+        func.template operator()<GpuTypes32>();
+        break;
+    default:
+        throw std::runtime_error(std::string("invalid dtype in ") + op);
+    }
+}
+
+// sums a contiguous (batch_size, n) source over the batch dimension
+template <typename F>
+__global__ void
+kernel_batch_sum(std::size_t batch_size, std::size_t n, const F* source, F* output) {
+    std::size_t i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= n) {
+        return;
+    }
+    F sum = 0;
+    for (std::size_t j = 0; j < batch_size; ++j) {
+        sum += source[j * n + i];
+    }
+    output[i] = sum;
+}
+
+template <typename F>
+void launch_batch_sum(const Tensor& source, Tensor& sum, gpuStream_t stream) {
+    std::size_t n = sum.shape().product();
+    launch_kernel(
+        kernel_batch_sum<F>,
+        n,
+        stream,
+        source.size(0),
+        n,
+        static_cast<const F*>(source.data()),
+        static_cast<F*>(sum.data())
+    );
+}
 } // namespace
 
 std::pair<void*, Tensor> GpuDevice::allocate(std::size_t size, AllocHint hint) const {
@@ -107,33 +151,21 @@ void GpuDevice::adam_step(
     wait_for_tensor(exp_avg);
     wait_for_tensor(exp_avg_sq);
     AsyncGpuDevice device(*this, gpuStreamPerThread, 0);
-    if (parameter.dtype() == DataType::dt_float32) {
-        tensor_foreach_dynamic<kernel_adam_step<GpuTypes32>, 1, 3>(
+    dispatch_float(parameter.dtype(), "adam_step", [&]<typename T>() {
+        using F = typename T::FVal;
+        tensor_foreach_dynamic<kernel_adam_step<T>, 1, 3>(
             {&gradient},
             {&parameter, &exp_avg, &exp_avg_sq},
             gradient.size(0),
             device,
-            static_cast<float>(step_size),
-            static_cast<float>(beta1),
-            static_cast<float>(beta2),
-            static_cast<float>(eps),
-            static_cast<float>(bias_corr2_sqrt),
-            static_cast<float>(weight_decay)
+            static_cast<F>(step_size),
+            static_cast<F>(beta1),
+            static_cast<F>(beta2),
+            static_cast<F>(eps),
+            static_cast<F>(bias_corr2_sqrt),
+            static_cast<F>(weight_decay)
         );
-    } else {
-        tensor_foreach_dynamic<kernel_adam_step<GpuTypes>, 1, 3>(
-            {&gradient},
-            {&parameter, &exp_avg, &exp_avg_sq},
-            gradient.size(0),
-            device,
-            step_size,
-            beta1,
-            beta2,
-            eps,
-            bias_corr2_sqrt,
-            weight_decay
-        );
-    }
+    });
     check_error(gpuStreamSynchronize(gpuStreamPerThread));
 }
 
@@ -326,25 +358,17 @@ void AsyncGpuDevice::tensor_copy(const Tensor& source, Tensor& target) const {
     if (source.dtype() != target.dtype()) {
         throw std::runtime_error("invalid dtype in copy");
     }
-    switch (source.dtype()) {
-    case DataType::dt_float64:
-        tensor_foreach_dynamic<kernel_copy<GpuTypes>, 1, 1>(
-            {&source}, {&target}, target.size(0), *this
-        );
-        break;
-    case DataType::dt_float32:
-        tensor_foreach_dynamic<kernel_copy<GpuTypes32>, 1, 1>(
-            {&source}, {&target}, target.size(0), *this
-        );
-        break;
-    case DataType::dt_int32:
+    if (source.dtype() == DataType::dt_int32) {
         tensor_foreach_dynamic<kernel_copy_int<GpuTypes>, 1, 1>(
             {&source}, {&target}, target.size(0), *this
         );
-        break;
-    default:
-        throw std::runtime_error("invalid dtype in copy");
+        return;
     }
+    dispatch_float(source.dtype(), "copy", [&]<typename T>() {
+        tensor_foreach_dynamic<kernel_copy<T>, 1, 1>(
+            {&source}, {&target}, target.size(0), *this
+        );
+    });
 }
 
 void AsyncGpuDevice::tensor_zero(Tensor& tensor) const {
@@ -355,39 +379,41 @@ void AsyncGpuDevice::tensor_zero(Tensor& tensor) const {
         check_error(gpuMemsetAsync(tensor.data(), 0, tensor.byte_size(), _stream));
         return;
     }
-    switch (tensor.dtype()) {
-    case DataType::dt_float64:
-        tensor_foreach_dynamic<kernel_zero<GpuTypes>, 1, 1>(
-            {&tensor}, {&tensor}, tensor.size(0), *this
-        );
-        break;
-    case DataType::dt_float32:
-        tensor_foreach_dynamic<kernel_zero<GpuTypes32>, 1, 1>(
-            {&tensor}, {&tensor}, tensor.size(0), *this
-        );
-        break;
-    default:
+    if (tensor.dtype() == DataType::dt_int32) {
         tensor_foreach_dynamic<kernel_zero_int<GpuTypes>, 1, 1>(
             {&tensor}, {&tensor}, tensor.size(0), *this
         );
-        break;
+        return;
     }
+    dispatch_float(tensor.dtype(), "zero", [&]<typename T>() {
+        tensor_foreach_dynamic<kernel_zero<T>, 1, 1>(
+            {&tensor}, {&tensor}, tensor.size(0), *this
+        );
+    });
 }
 
 void AsyncGpuDevice::tensor_add(const Tensor& source, Tensor& target) const {
-    if (source.dtype() == DataType::dt_float32 &&
-        target.dtype() == DataType::dt_float32) {
-        tensor_foreach_dynamic<kernel_add_inplace<GpuTypes32>, 1, 1>(
-            {&source}, {&target}, target.size(0), *this
-        );
-    } else if (source.dtype() == DataType::dt_float64 &&
-               target.dtype() == DataType::dt_float64) {
-        tensor_foreach_dynamic<kernel_add_inplace<GpuTypes>, 1, 1>(
-            {&source}, {&target}, target.size(0), *this
-        );
-    } else {
+    if (source.dtype() != target.dtype()) {
         throw std::runtime_error("invalid dtype in add");
     }
+    if (target.size(0) == 1 && source.size(0) > 1) {
+        // a broadcast target (e.g. the gradient of a global) accumulates the
+        // whole source batch, as on the CPU
+        auto source_contig = source.contiguous(*this, AllocHint::temporary);
+        Tensor sum(target.dtype(), target.shape(), *this, AllocHint::temporary);
+        dispatch_float(source.dtype(), "add", [&]<typename T>() {
+            launch_batch_sum<typename T::FVal>(source_contig, sum, _stream);
+        });
+        tensor_add(sum, target);
+        sum.reset(*this);
+        source_contig.reset(*this);
+        return;
+    }
+    dispatch_float(source.dtype(), "add", [&]<typename T>() {
+        tensor_foreach_dynamic<kernel_add_inplace<T>, 1, 1>(
+            {&source}, {&target}, target.size(0), *this
+        );
+    });
 }
 
 void AsyncGpuDevice::tensor_cpu(const Tensor& source, Tensor& target) const {

@@ -103,6 +103,11 @@ void backward_batch_foreach(
     foreach_func(args, input_grads, batch_size, device);
 }
 
+// gradients have the dtype of float inputs, integer inputs get float64 gradients
+inline DataType grad_dtype(const Tensor& input) {
+    return is_float(input.dtype()) ? input.dtype() : DataType::dt_float64;
+}
+
 template <typename I, typename D>
 void op_stack(const I& instruction, TensorVec& locals, const D& device) {
     auto& first_shape = locals[instruction.input_indices[0]].shape();
@@ -128,13 +133,12 @@ template <typename I, typename D>
 void backward_op_stack(
     const I& instruction, TensorVec& locals, TensorVec& local_grads, const D& device
 ) {
-    // TODO: differentiate integer and float here (also other backwards)
     auto& output_grad = local_grads[instruction.output_indices[0]];
     for (std::size_t i = 0; std::size_t input_index : instruction.input_indices) {
         auto& input_grad = local_grads[input_index];
         if (!input_grad) {
             input_grad = Tensor(
-                DataType::dt_float64,
+                grad_dtype(locals[input_index]),
                 locals[input_index].shape(),
                 device,
                 instruction.input_grad_alloc_hints[i]
@@ -185,7 +189,7 @@ void backward_op_unstack(
     auto& input_grad = local_grads[input_index];
     if (!input_grad) {
         input_grad = Tensor(
-            DataType::dt_float64,
+            grad_dtype(locals[input_index]),
             locals[input_index].shape(),
             device,
             instruction.input_grad_alloc_hints[0]
@@ -212,10 +216,10 @@ void backward_op_pop(
     const I& instruction, TensorVec& locals, TensorVec& local_grads, const D& device
 ) {
     auto input_index = instruction.input_indices[0];
-    auto input_grad = local_grads[input_index];
+    auto& input_grad = local_grads[input_index];
     if (!input_grad) {
         input_grad = Tensor(
-            DataType::dt_float64,
+            grad_dtype(locals[input_index]),
             locals[input_index].shape(),
             device,
             instruction.input_grad_alloc_hints[0]
@@ -268,7 +272,7 @@ void backward_op_batch_cat(
         auto& input_grad = local_grads[input_index];
         if (!input_grad) {
             input_grad = Tensor(
-                DataType::dt_float64,
+                grad_dtype(locals[input_index]),
                 locals[input_index].shape(),
                 device,
                 instruction.input_grad_alloc_hints[i]
@@ -304,7 +308,7 @@ void backward_op_batch_split(
     auto& input_grad = local_grads[input_index];
     if (!input_grad) {
         input_grad = Tensor(
-            DataType::dt_float64,
+            grad_dtype(locals[input_index]),
             locals[input_index].shape(),
             device,
             instruction.input_grad_alloc_hints[0]
@@ -356,7 +360,7 @@ void backward_op_cat(
         auto& input_grad = local_grads[input_index];
         if (!input_grad) {
             input_grad = Tensor(
-                DataType::dt_float64,
+                grad_dtype(locals[input_index]),
                 locals[input_index].shape(),
                 device,
                 instruction.input_grad_alloc_hints[i]
@@ -470,7 +474,7 @@ void backward_op_rqs_reshape(
     auto& input_grad = local_grads[input_index];
     if (!input_grad) {
         input_grad = Tensor(
-            DataType::dt_float64,
+            grad_dtype(locals[input_index]),
             locals[input_index].shape(),
             device,
             instruction.input_grad_alloc_hints[0]

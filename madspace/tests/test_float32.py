@@ -132,7 +132,8 @@ def test_literal_converted_for_float32():
 def test_flow_float32_subnets(tmp_path):
     """A flow with float32 subnetworks matches the float64 one with the same
     (rounded) weights; the Jacobian and the output stay in float64."""
-    ctx = ms.default_context()
+    # a private context, so that no globals are left in the default one
+    ctx = ms.Context()
     flows = {
         dtype: ms.Flow(
             4, prefix=f"fp32_test_{name}", subnet_precision=dtype, invert_spline=False
@@ -151,23 +152,21 @@ def test_flow_float32_subnets(tmp_path):
         )
         ctx.get_global(name.replace("f64", "f32")).torch()[:] = weights.float()
 
+    # outputs and gradients with respect to the input and the float32 weights
     r = torch.rand((N, 4), dtype=torch.float64, generator=GEN)
-    out32, det32 = flows[ms.DataType.float32].map_forward([r])
-    out64, det64 = flows[ms.DataType.float64].map_forward([r])
-    assert out32.dtype == det32.dtype == torch.float64
-    torch.testing.assert_close(out32, out64, rtol=1e-4, atol=1e-5)
-    torch.testing.assert_close(det32, det64, rtol=1e-4, atol=1e-5)
-
-    # gradients with respect to the input and the float32 weights
-    grads = {}
+    outputs, grads = {}, {}
     for dtype, flow in flows.items():
         module = FunctionModule(flow.forward_function(), ctx)
         r_grad = r.clone().requires_grad_()
         out, det = module(r_grad)
+        assert out.dtype == det.dtype == torch.float64
         (out.sum() + det.log().sum()).backward()
         weight = next(p for n, p in module.global_params.items() if "weight" in n)
         assert weight.grad.dtype == weight.dtype
+        outputs[dtype] = (out.detach(), det.detach())
         grads[dtype] = (r_grad.grad, weight.grad.double())
+    for o32, o64 in zip(outputs[ms.DataType.float32], outputs[ms.DataType.float64]):
+        torch.testing.assert_close(o32, o64, rtol=1e-4, atol=1e-5)
     for g32, g64 in zip(grads[ms.DataType.float32], grads[ms.DataType.float64]):
         torch.testing.assert_close(g32, g64, rtol=1e-3, atol=1e-4)
 
@@ -180,3 +179,30 @@ def test_flow_float32_subnets(tmp_path):
         global32 = loaded.get_global(name32).torch()
         assert global32.dtype == torch.float32
         torch.testing.assert_close(global32, ctx.get_global(name32).torch())
+
+
+def test_structural_ops_backward():
+    """stack, unstack, cat, batch_cat and batch_split propagate float32 gradients."""
+    in_type = batch_type(ms.DataType.float32, [3])
+    fb = ms.FunctionBuilder(
+        ms.NamedTypes([("in", in_type)]),
+        ms.NamedTypes([("out", batch_type(ms.DataType.float32, [12]))]),
+    )
+    x = fb.input(0)
+    a, b = fb.unstack(fb.stack([x, fb.relu(x)]))
+    c = fb.cat([a, b])
+    combined, counts = fb.batch_cat([c, c])
+    fb.output(0, fb.cat(fb.batch_split(combined, counts)))
+    module = FunctionModule(fb.function())
+
+    x = torch.randn((N, 3), dtype=torch.float32, generator=GEN, requires_grad=True)
+    out = module(x)
+    out_grad = torch.randn(out.shape, dtype=out.dtype, generator=GEN)
+    (out * out_grad).sum().backward()
+
+    x_ref = x.detach().clone().requires_grad_()
+    c_ref = torch.cat([x_ref, torch.relu(x_ref)], dim=1)
+    out_ref = torch.cat([c_ref, c_ref], dim=1)
+    (out_ref * out_grad).sum().backward()
+    torch.testing.assert_close(out, out_ref)
+    torch.testing.assert_close(x.grad, x_ref.grad)
