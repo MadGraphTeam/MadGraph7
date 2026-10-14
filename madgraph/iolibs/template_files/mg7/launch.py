@@ -38,6 +38,10 @@ from madgraph.iolibs.template_files.mg7 import hwu_output
 from madgraph.iolibs.template_files.mg7 import plots
 from madgraph.iolibs.template_files.mg7 import systematics_summary
 from madgraph.iolibs.template_files.mg7 import npy_to_lhe
+from madgraph.iolibs.template_files.mg7.custom_function_loader import (
+    load_custom_function,
+    load_surrogate,
+)
 from madgraph.various.banner import RunCardMG7
 from madgraph.various import misc
 from madgraph.interface.extended_cmd import Cmd
@@ -281,10 +285,14 @@ class HistItem:
 
 class MadgraphProcess:
     def __init__(self):
+        self.madnis_trained = False
+        self.lhe_completer = None
         self.load_cards()
         self.init_backend()
         self.init_event_dir()
         self.init_context()
+        self.init_custom_functions()
+        self.init_surrogate()
         self.init_cuts()
         self.init_histograms()
         self.init_generator_config()
@@ -460,22 +468,34 @@ class MadgraphProcess:
         ms.set_simd_vector_size(self.run_card["run"]["simd_vector_size"])
 
     def init_event_dir(self) -> None:
-        run_name = self.run_card["run"]["run_name"]
-        os.makedirs("Events", exist_ok=True)
-        run_dir_prefix = os.path.join("Events", f"{run_name}_")
-        existing_run_dirs = glob.glob(f"{run_dir_prefix}*")
-        run_index = 1
-        for run_dir in existing_run_dirs:
-            run_index_str = run_dir[len(run_dir_prefix):]
-            if run_index_str.isnumeric():
-                run_index = max(run_index, int(run_index_str) + 1)
-        while True:
-            try:
-                self.run_path = f"{run_dir_prefix}{run_index:02d}"
-                os.mkdir(self.run_path)
-                break
-            except FileExistsError:
-                run_index += 1
+        output_dir = self.run_card["gridpack"]["output_dir"]
+        temp_dir = self.run_card["gridpack"]["temp_output_dir"]
+        if output_dir:
+            self.run_path = os.path.abspath(os.path.expanduser(output_dir))
+            os.makedirs(self.run_path, exist_ok=True)
+        else:
+            run_name = self.run_card["run"]["run_name"]
+            os.makedirs("Events", exist_ok=True)
+            run_dir_prefix = os.path.join("Events", f"{run_name}_")
+            existing_run_dirs = glob.glob(f"{run_dir_prefix}*")
+            run_index = 1
+            for run_dir in existing_run_dirs:
+                run_index_str = run_dir[len(run_dir_prefix):]
+                if run_index_str.isnumeric():
+                    run_index = max(run_index, int(run_index_str) + 1)
+            while True:
+                try:
+                    self.run_path = f"{run_dir_prefix}{run_index:02d}"
+                    os.mkdir(self.run_path)
+                    break
+                except FileExistsError:
+                    run_index += 1
+        # temporary npy files of the channel generators
+        if temp_dir:
+            self.temp_path = os.path.abspath(os.path.expanduser(temp_dir))
+            os.makedirs(self.temp_path, exist_ok=True)
+        else:
+            self.temp_path = self.run_path
         # Absolute on purpose. StatusFile is a C++ object that finishes its
         # write from its destructor (rename info.json.tmp -> info.json), and
         # that destructor runs whenever Python gets round to collecting the
@@ -513,6 +533,104 @@ class MadgraphProcess:
             self.devices.append(device)
             self.pool_sizes.append(pool_size)
             self.contexts.append(ms.Context(device=device, thread_count=pool_size))
+
+    CUSTOM_FUNCTION_KINDS = ("cut", "scale", "pdf", "bias")
+
+    def init_custom_functions(self) -> None:
+        """Load the functions of [custom_functions], building the libraries
+        first. They are loaded before the matrix elements, so that they have the
+        same index in every context and in a gridpack made from this run."""
+        self.custom_functions = {}
+        self.custom_function_paths = []
+        for kind in self.CUSTOM_FUNCTION_KINDS:
+            path = self.run_card["custom_functions"][kind]
+            if not path:
+                continue
+            build_dir = f"custom_{kind}"
+            if path.endswith(".so") and os.path.isfile(os.path.join(build_dir, "Makefile")):
+                self.build_custom_function(build_dir)
+            if not os.path.isfile(path):
+                raise RuntimeError(
+                    f"[custom_functions] {kind} = {path!r}: file not found. "
+                    "Create a .so library or a .py file with bin/init_custom_func."
+                )
+            apis = load_custom_function(ms, self.contexts, self.device_types, kind, path)
+            if len({api.index() for api in apis}) != 1:
+                raise RuntimeError(f"custom {kind} function loaded at different indices")
+            self.custom_functions[kind] = apis[0]
+            self.custom_function_paths.append([kind, path])
+            logger.info("Using the custom %s function %s", kind, path)
+
+    def init_surrogate(self) -> None:
+        """Check the [surrogate] settings. The surrogates are loaded per
+        subprocess, by MadgraphSubprocess."""
+        settings = self.run_card["surrogate"]
+        self.surrogate = None
+        if not settings["function"]:
+            return
+        path = settings["function"]
+        if path.endswith(".py") and not os.path.isfile(path):
+            raise RuntimeError(f"[surrogate] function = {path!r}: file not found")
+        if self.run_card["phasespace"]["sde_strategy"] != "denominators":
+            raise RuntimeError(
+                "[surrogate] needs [phasespace] sde_strategy = \"denominators\", "
+                "as the surrogate does not return channel weights"
+            )
+        if self.run_card["run"]["dummy_matrix_element"]:
+            raise RuntimeError("[surrogate] cannot be used with dummy_matrix_element")
+        if self.run_card["gridpack"]["save_gridpack"]:
+            raise RuntimeError("[surrogate] does not support gridpacks yet")
+        self.surrogate = dict(settings)
+        if not self.surrogate["param_card"]:
+            self.surrogate["param_card"] = self.param_card_path
+        logger.info(
+            "Using the surrogate %s, %s with the full matrix element",
+            path,
+            "unweighting" if settings["mode"] == "unweight" else "reweighting",
+        )
+
+    def weighting_groups(self, subprocess_channels: list[list[int]]) -> list:
+        """One ms.WeightingGroup per subprocess with a [surrogate]: the second
+        pass with the full matrix element over its channels, given by their
+        indices in the event generator."""
+        if self.surrogate is None:
+            return []
+        gen_args = self.run_card["generation"]
+        return [
+            ms.WeightingGroup(
+                channel_indices,
+                [ms.WeightingStep(
+                    subproc.step_matrix_elements,
+                    mode=self.surrogate["mode"],
+                    max_overweight_truncation=gen_args["max_overweight_truncation"],
+                    freeze_max_weight_after=gen_args["freeze_max_weight_after"],
+                )],
+            )
+            for subproc, channel_indices in zip(self.subprocesses, subprocess_channels)
+            if channel_indices
+        ]
+
+    @staticmethod
+    def build_custom_function(build_dir: str) -> None:
+        """Run make in a custom_<kind> directory, logging to compile.log."""
+        log_path = os.path.join(build_dir, "compile.log")
+        with open(log_path, "w") as log:
+            returncode = subprocess.call(
+                ["make"], cwd=build_dir, stdout=log, stderr=subprocess.STDOUT
+            )
+        if returncode != 0:
+            raise RuntimeError(
+                f"Compilation of {build_dir} failed with exit status {returncode}; "
+                f"see {log_path} for details"
+            )
+
+    def custom_function(self, kind: str, particle_count: int, pid_options: list):
+        """The ms.CustomFunction of [custom_functions] <kind>, or None."""
+        api = self.custom_functions.get(kind)
+        if api is None:
+            return None
+        function_type = getattr(ms.CustomFunction, kind)
+        return ms.CustomFunction(api, function_type, particle_count, pid_options)
 
     def parse_observable(self, name: str, order_observable: str) -> dict:
         parts = name.split("-")
@@ -692,6 +810,10 @@ class MadgraphProcess:
             fact_scale2=beam_args["fact_scale2"],
             scale_factor=float(beam_args.get("scale_factor", 1.)),
         )
+        if self.is_decay and self.custom_functions.pop("scale", None) is not None:
+            logger.warning("custom scale ignored: a decay uses the decaying mass")
+        if self.is_decay and self.custom_functions.pop("pdf", None) is not None:
+            logger.warning("custom pdf ignored: a decay has no parton densities")
         if self.is_decay:
             # One scale is available for a decay -- the decaying mass -- so use
             # it, fixed, whatever the card asks for.
@@ -720,10 +842,17 @@ class MadgraphProcess:
         self.pdf_dir = self.lhapdf.find_set(pdf_set)
         if self.pdf_dir is None:
             raise RuntimeError(self._no_pdf_message(pdf_set))
-        self.pdf_grid = ms.PdfGrid(os.path.join(self.pdf_dir, pdf_set, f"{pdf_set}_0000.dat"))
         self.alphas_grid = ms.AlphaSGrid(os.path.join(self.pdf_dir, pdf_set, f"{pdf_set}.info"))
+        if "pdf" in self.custom_functions:
+            # alpha_s still comes from the PDF set of the run card
+            self.pdf_grid = ms.CustomPdf(self.custom_functions["pdf"])
+        else:
+            self.pdf_grid = ms.PdfGrid(
+                os.path.join(self.pdf_dir, pdf_set, f"{pdf_set}_0000.dat")
+            )
         for context in self.contexts:
-            self.pdf_grid.initialize_globals(context)
+            if not isinstance(self.pdf_grid, ms.CustomPdf):
+                self.pdf_grid.initialize_globals(context)
             self.alphas_grid.initialize_globals(context)
         self.running_coupling = ms.RunningCoupling(self.alphas_grid)
 
@@ -734,14 +863,21 @@ class MadgraphProcess:
         """The native scale/PDF weights are requested ([systematics] enable, or
         the legacy [generation] systematics alias)."""
         try:
-            if self.run_card["systematics"]["enable"]:
-                return True
+            enabled = bool(self.run_card["systematics"]["enable"])
         except Exception:
-            pass
-        try:
-            return bool(self.run_card["generation"]["systematics"])
-        except Exception:
+            enabled = False
+        if not enabled:
+            try:
+                enabled = bool(self.run_card["generation"]["systematics"])
+            except Exception:
+                enabled = False
+        if enabled and "pdf" in getattr(self, "custom_functions", {}):
+            # the variations re-evaluate the PDF set, which a custom PDF replaces
+            if not getattr(self, "_warned_custom_pdf_systematics", False):
+                logger.warning("systematics are disabled with a custom pdf")
+                self._warned_custom_pdf_systematics = True
             return False
+        return enabled
 
     @staticmethod
     def pdf_set_info(info_path: str) -> dict:
@@ -1157,6 +1293,14 @@ class MadgraphProcess:
         cfg.vegas_damping = vegas_args["damping"]
         cfg.max_overweight_truncation = gen_args["max_overweight_truncation"]
         cfg.freeze_max_weight_after = gen_args["freeze_max_weight_after"]
+        if self.surrogate is not None and self.surrogate["mode"] == "unweight":
+            # [generation] applies to the second pass, which gives the events
+            cfg.max_overweight_truncation = (
+                self.surrogate["first_pass_max_overweight_truncation"]
+            )
+            cfg.freeze_max_weight_after = (
+                self.surrogate["first_pass_freeze_max_weight_after"]
+            )
         cfg.start_batch_size = vegas_args["start_batch_size"]
         cfg.max_batch_size = vegas_args["max_batch_size"]
         cfg.survey_min_iters = gen_args["survey_min_iters"]
@@ -1287,6 +1431,7 @@ class MadgraphProcess:
 
     def build_event_generator(self, phasespaces: list[PhaseSpace]) -> ms.EventGenerator:
         channel_generators = []
+        subprocess_channels = [[] for _ in self.subprocesses]
         for i, (subproc, phasespace) in enumerate(zip(self.subprocesses, phasespaces)):
             for integrand, channel in zip(
                 subproc.build_integrands(phasespace), phasespace.channels
@@ -1295,13 +1440,14 @@ class MadgraphProcess:
                     channel.event_generator = ms.ChannelEventGenerator(
                         contexts=self.contexts,
                         integrand=integrand,
-                        event_file=os.path.join(self.run_path, f"events.{i}.{channel.name}.npy"),
-                        weight_file=os.path.join(self.run_path, f"weights.{i}.{channel.name}.npy"),
+                        event_file=os.path.join(self.temp_path, f"events.{i}.{channel.name}.npy"),
+                        weight_file=os.path.join(self.temp_path, f"weights.{i}.{channel.name}.npy"),
                         config=self.event_generator_config,
                         subprocess_index=i,
                         name=f"{i}.{channel.name}",
                         histograms=subproc.histograms
                     )
+                subprocess_channels[i].append(len(channel_generators))
                 channel_generators.append(channel.event_generator)
 
         event_generator = ms.EventGenerator(
@@ -1310,6 +1456,7 @@ class MadgraphProcess:
             status_file=self.status_file,
             config=self.event_generator_config,
             seed=self.run_seed,
+            groups=self.weighting_groups(subprocess_channels),
         )
         unused_globals = (
             set(self.contexts[0].global_names()) - event_generator.used_globals()
@@ -1506,6 +1653,7 @@ class MadgraphProcess:
         for context in self.contexts[1:]:
             context.copy_globals_from(self.contexts[0])
         self.event_generator = self.build_event_generator(madnis_phasespaces)
+        self.madnis_trained = True
 
     def update_madnis_status_single(
         self, batch: int, batch_target: int, loss: float, lr: float, channel_count: int
@@ -1589,7 +1737,30 @@ class MadgraphProcess:
         self.madnis_upper_box.print_update()
         self.madnis_lower_box.print_update()
 
+    @property
+    def gridpack_run_mode(self) -> str:
+        """How this run ends: a gridpack run may skip the events (see the
+        [gridpack] run_mode run card option); any other run is a regular one."""
+        if not self.run_card["gridpack"]["save_gridpack"]:
+            return "regular"
+        return self.run_card["gridpack"]["run_mode"]
+
+    def finish_without_events(self) -> None:
+        """The end of a gridpack run that writes no events: only what the
+        gridpack needs is prepared, then it is stored."""
+        if self.gridpack_run_mode == "minimal":
+            # a trained MadNIS needs nothing more, a VEGAS grid has to converge
+            if not self.madnis_trained:
+                self.event_generator.optimize()
+        else:
+            self.event_generator.fix_max_weights()
+        self.build_systematics()
+        self.save_gridpack()
+
     def generate_events(self) -> None:
+        if self.gridpack_run_mode != "regular":
+            self.finish_without_events()
+            return
         start_time = get_start_time()
         self.event_generator.generate()
         output_format = self.run_card["run"]["output_format"]
@@ -1897,24 +2068,30 @@ class MadgraphProcess:
         os.mkdir(gridpack_path)
         os.mkdir(data_path)
         os.mkdir(events_path)
-        self.contexts[0].save_globals(os.path.join(data_path, "globals"))
+        self.contexts[0].save_globals(os.path.join(data_path, "globals.tar"))
 
-        channel_path = os.path.join(data_path, "channels")
-        os.mkdir(channel_path)
-        channel_files = {}
-        for channel in self.event_generator.channels():
-            name = channel.status().name
-            file = f"channel{name}.json"
-            channel_files[name] = file
-            channel.save(os.path.join(channel_path, file))
+        # one json object per channel, joined by hand so that the channel
+        # json is not parsed and dumped again
+        channel_entries = [
+            f"{json.dumps(channel.status().name)}:{channel.to_json(self.gridpack_run_mode == "fix_max_weight")}"
+            for channel in self.event_generator.channels()
+        ]
+        with open(os.path.join(data_path, "channels.json"), "w") as f:
+            f.write("{" + ",".join(channel_entries) + "}")
 
         lib_path = os.path.join(gridpack_path, "lib")
         if self.run_card["gridpack"]["include_source"]:
             os.mkdir(lib_path)
             shutil.copytree("src", os.path.join(gridpack_path, "src"))
             shutil.copytree("SubProcesses", os.path.join(gridpack_path, "SubProcesses"))
+            shutil.copytree("backend", os.path.join(gridpack_path, "backend"))
         else:
             shutil.copytree("lib", lib_path)
+        for _, path in self.custom_function_paths:
+            target = path if os.path.isabs(path) else os.path.join(gridpack_path, path)
+            if not os.path.exists(target):
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                shutil.copy(path, target)
 
         if self.run_card["gridpack"]["include_madspace_source"]:
             shutil.copytree(
@@ -1927,6 +2104,7 @@ class MadgraphProcess:
             shutil.copytree(
                 _INSTALL_DIR / "madspace",
                 os.path.join(gridpack_path, "madspace", "install", "madspace"),
+                ignore=shutil.ignore_patterns("include"),
             )
 
         matrix_elements = []
@@ -1970,24 +2148,36 @@ class MadgraphProcess:
         # (bin/generate_events --output_format still selects an npy output).
         previous_output_format = self.run_card["run"]["output_format"]
         self.run_card["run"]["output_format"] = "lhe"
+        # the directories of this run mean nothing on the machine running the gridpack
+        previous_dirs = (self.run_card["gridpack"]["temp_output_dir"],
+                         self.run_card["gridpack"]["output_dir"])
+        self.run_card["gridpack"]["temp_output_dir"] = ""
+        self.run_card["gridpack"]["output_dir"] = ""
         try:
             self.run_card.write_gridpack_card(
                 os.path.join(cards_path, "grid_run_card.toml"))
         finally:
             self.run_card["run"]["cpu_mode"] = previous_cpu_mode
             self.run_card["run"]["output_format"] = previous_output_format
+            (self.run_card["gridpack"]["temp_output_dir"],
+             self.run_card["gridpack"]["output_dir"]) = previous_dirs
 
         bin_path = os.path.join(gridpack_path, "bin")
         os.mkdir(bin_path)
         gen_events_file = os.path.join(bin_path, "generate_events")
-        shutil.copy(
-            os.path.join(os.path.dirname(__file__), "gridpack.py"), gen_events_file
-        )
+        template_dir = os.path.dirname(__file__)
+        shutil.copy(os.path.join(template_dir, "gridpack.py"), gen_events_file)
+        shutil.copy(os.path.join(template_dir, "custom_function_loader.py"), bin_path)
         os.chmod(gen_events_file, 0o755)
+        shutil.copy(os.path.join(template_dir, "gridpack_setup.py"), bin_path)
+        # streaming needs the fixed maximum weights of this mode
+        if self.gridpack_run_mode == "fix_max_weight":
+            shutil.copy(os.path.join(template_dir, "event_stream.py"), bin_path)
 
         data = {
-            "channels": channel_files,
             "matrix_elements": matrix_elements,
+            # loaded before the matrix elements, as in the run
+            "custom_functions": self.custom_function_paths,
             "me_parameters": me_parameters(self.run_card),
             "source_hash": ms.SOURCE_HASH,
         }
@@ -2010,6 +2200,9 @@ class MadgraphProcess:
                 systematics_data["nominal_info_file"] = os.path.join("data", name)
             with open(os.path.join(data_path, "systematics.json"), "w") as f:
                 json.dump(systematics_data, f)
+        if self.run_card["gridpack"]["compress"]:
+            shutil.make_archive(gridpack_path, "gztar", self.run_path, "gridpack")
+            shutil.rmtree(gridpack_path)
 
     def save_gridpack_lhe_meta(self, path) -> None:
         """The run-independent part of the LHE header (cards, beams, PDF), for
@@ -2370,11 +2563,14 @@ class MadgraphSubprocess:
         self.unmerged_meta = None
         if unmerged_meta is None:
             api_path_formats = [self.meta["me_path"]]
+            member_metas = [self.meta]
         else:
             api_path_formats = []
+            member_metas = []
             for subproc in self.meta["subprocesses"]:
                 submeta = unmerged_meta[subproc]
                 api_path_formats.append(submeta["me_path"])
+                member_metas.append(submeta)
             if len(api_path_formats) == 1:
                 self.meta = submeta
             else:
@@ -2407,8 +2603,14 @@ class MadgraphSubprocess:
             # pdg id 0 is in no group, so the particle is never selected
             return [0 if i - n_in in uncut else pid for i, pid in enumerate(pids)]
 
-        self.cuts = (
-            ms.Cuts([
+        # custom cuts and scales see the PDG ids of the first flavor, like the
+        # built-in cuts, which select by flavor-independent groups
+        representative_pids = [self.flavor_pids()[0]]
+        custom_cut = self.process.custom_function(
+            "cut", self.particle_count, representative_pids
+        )
+        if len(self.process.cut_data) > 0:
+            self.cuts = ms.Cuts([
                 ms.CutItem(
                     observable=build_observable(
                         cut_pids(cut_item.observable_kwargs),
@@ -2419,10 +2621,11 @@ class MadgraphSubprocess:
                     mode=cut_item.mode,
                 )
                 for cut_item in self.process.cut_data
-            ])
-            if len(self.process.cut_data) > 0
-            else None
-        )
+            ], custom_cut)
+        elif custom_cut is not None:
+            self.cuts = ms.Cuts(self.particle_count, custom_cut)
+        else:
+            self.cuts = None
         # the integration histograms are functions of the momenta; the weight
         # distribution is a property of the final event sample, so it is only
         # filled by MadgraphProcess.build_event_histograms at combine time
@@ -2452,7 +2655,11 @@ class MadgraphSubprocess:
         )
 
         self.scale = ms.EnergyScale(
-            particle_count=self.particle_count, **self.process.scale_kwargs
+            particle_count=self.particle_count,
+            custom_scale=self.process.custom_function(
+                "scale", self.particle_count, representative_pids
+            ),
+            **self.process.scale_kwargs
         )
 
         if self.process.run_card["run"]["dummy_matrix_element"]:
@@ -2466,6 +2673,46 @@ class MadgraphSubprocess:
                         me_parameters(self.process.run_card)
                     )
                 self.matrix_elements.append(mat)
+        self.surrogates = []
+        if self.process.surrogate is not None:
+            for path_format, member_meta in zip(api_path_formats, member_metas):
+                self.surrogates.append(self.load_surrogate(path_format, member_meta))
+
+    def load_surrogate(self, me_path_format: str, member_meta: dict):
+        """The [surrogate] of one matrix element of the subprocess."""
+        name = re.sub(
+            r"^libmadmatrix_(.*)_\{device\}\.so$", r"\1", os.path.basename(me_path_format)
+        )
+        # PDG ids for each flavor index of the matrix element
+        flavors = member_meta["flavors"]
+        pdg_ids = [flavors[0]["options"][0]] * (max(f["index"] for f in flavors) + 1)
+        for flavor in flavors:
+            pdg_ids[flavor["index"]] = flavor["options"][0]
+        settings = self.process.surrogate
+        apis = load_surrogate(
+            ms,
+            self.process.contexts,
+            self.process.backends,
+            self.process.device_types,
+            settings["function"],
+            name,
+            pdg_ids,
+            settings["param_card"],
+        )
+        if len({api.index() for api in apis}) != 1:
+            raise RuntimeError("surrogate loaded at different indices")
+        return apis[0]
+
+    def flavor_pids(self) -> list[list[int]]:
+        """PDG ids of the external particles for every flavor of the
+        integrand, in the order of its flavor index."""
+        pids = []
+        for flav in self.meta["flavors"]:
+            if self.unmerged_meta is not None:
+                subproc_index = self.meta["subprocesses"][flav["subprocess"]]
+                flav = self.unmerged_meta[subproc_index]["flavors"][flav["flavor"]]
+            pids.append(flav["options"][0])
+        return pids
 
     def build_multi_channel_data(self) -> MultiChannelData:
         if self.multi_channel_data is not None:
@@ -3099,8 +3346,37 @@ class MadgraphSubprocess:
             flavor_mirror.append(flav["mirror"])
 
         cross_sections = []
-        for matrix_element in self.matrix_elements:
-            if matrix_element:
+        self.step_matrix_elements = []
+        for me_index, matrix_element in enumerate(self.matrix_elements):
+            if self.surrogates:
+                # the surrogate in the integrand, the full matrix element in
+                # the second pass, with the random numbers passed in
+                mat = ms.MatrixElement(
+                    self.surrogates[me_index].index(),
+                    self.particle_count,
+                    [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
+                     ms.MatrixElement.flavor_in],
+                    [ms.MatrixElement.matrix_element_out],
+                    1,
+                    False,
+                    self.process.me_frame,
+                    self.process.incoming_count,
+                )
+                self.step_matrix_elements.append(ms.MatrixElement(
+                    matrix_element,
+                    [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
+                     ms.MatrixElement.flavor_in, ms.MatrixElement.random_color_in,
+                     ms.MatrixElement.random_helicity_in,
+                     ms.MatrixElement.random_diagram_in],
+                    [ms.MatrixElement.matrix_element_out,
+                     ms.MatrixElement.color_index_out,
+                     ms.MatrixElement.helicity_index_out,
+                     ms.MatrixElement.diagram_index_out],
+                    False,
+                    self.process.me_frame,
+                    self.process.incoming_count,
+                ))
+            elif matrix_element:
                 mat = ms.MatrixElement(
                     matrix_element,
                     ms.Integrand.matrix_element_inputs,
@@ -3137,10 +3413,12 @@ class MadgraphSubprocess:
                     pdf2=pdf_arg,
                     input_momentum_fraction=True,
                     decay=self.process.is_decay,
+                    return_matrix_element=bool(self.surrogates),
                 )
             )
         partial_weights = self.process.systematics_enabled()
         madnis_args = self.process.run_card["madnis"]
+        custom_bias = self.process.custom_function("bias", self.particle_count, flavors)
         integrands = []
         for channel in phasespace.channels:
             integrands.append(ms.Integrand(
@@ -3171,7 +3449,8 @@ class MadgraphSubprocess:
                 flavor_diff_xs_indices,
                 flavor_subproc_indices,
                 flavor_per_subproc_remap,
-                madnis_args["compressed_channel_weight_count"]
+                madnis_args["compressed_channel_weight_count"],
+                custom_bias,
             ))
         #print(integrands[1].function())
         #for i in integrands: print(i.function())
@@ -4231,6 +4510,8 @@ def run_single(switch=None) -> "MadgraphProcess":
     process.survey()
     process.train_madnis()
     process.generate_events()
+    if process.gridpack_run_mode != "regular":
+        return process
     # run_card-driven LHE post-processing (displaced vertex + systematics)
     run_lhe_postprocessing(process)
     # run the post-processing tools (Pythia8/Delphes/MadSpin/reweight/analysis)

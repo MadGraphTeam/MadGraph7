@@ -114,6 +114,31 @@ See :doc:`gridpacks` for details.
 ``include_madspace_source`` (``false``)
     Include the ``madspace`` source code.
 
+``compress`` (``false``)
+    Pack the gridpack into ``gridpack.tar.gz`` instead of leaving it as a directory.
+
+``run_mode`` (``"minimal"``)
+    How the run that creates the gridpack ends. Only used if ``save_gridpack`` is set.
+
+    - ``regular``: generate the events of the run, then store the gridpack.
+    - ``minimal``: no events. The gridpack is stored right after the MadNIS training or,
+      with VEGAS, once the grid of every channel has converged.
+    - ``fix_max_weight``: no events. Each channel runs until ``freeze_max_weight_after``
+      unweighted events are reached. Its maximum weight is then fixed in the gridpack,
+      and its integral is used to share the events between the channels. This can be
+      slow for channels with a low unweighting efficiency. The gridpack also gets
+      ``bin/event_stream.py`` to stream events in memory from Python.
+
+    See :ref:`gridpack-run-mode`.
+
+``temp_output_dir`` (``""``)
+    Directory for the temporary npy files of the channels. ``""`` uses the output
+    directory.
+
+``output_dir`` (``""``)
+    Directory for the output files. ``""`` creates a new run folder
+    ``Events/<run_name>_NN``. If set, no run folder is created.
+
 
 [beam]
 ------
@@ -307,6 +332,71 @@ VEGAS grids adapt the phase-space sampling during the survey.
 ``adaptive_symmetry_sampling`` (``true``)
     Learn the probabilities of the permutations of identical particles instead of using
     equal ones.
+
+[custom_functions]
+------------------
+
+User-written functions, created with ``bin/init_custom_func``. Each one is a shared
+library (``.so``) or a Python file (``.py``). Paths are relative to the process directory.
+An empty string disables the function. See :doc:`custom_functions` for details.
+
+``cut`` (``""``)
+    Custom cut, for example ``"lib/custom_cut.so"`` or ``"custom_cut/custom_cut.py"``. It
+    is applied on top of the ``[cuts]``.
+
+``scale`` (``""``)
+    Custom scale. It replaces ``dynamical_scale_choice``.
+
+``pdf`` (``""``)
+    Custom parton density. It replaces the PDF set, but :math:`\alpha_s` still comes from
+    ``[beam] pdf``. The systematics are disabled.
+
+``bias`` (``""``)
+    Custom event bias. Events are generated with the weight times the bias and written with
+    the weight divided by the bias.
+
+.. _run-card-surrogate:
+
+[surrogate]
+-----------
+
+A fast surrogate of the matrix element, for example a neural network. The integrand and
+its optimization use the surrogate. The events are then reweighted or unweighted a second
+time with the full matrix element, which is only evaluated for the events that pass the
+first unweighting. The cross section and the events are those of the full matrix element.
+The surrogate does not return channel weights, so it needs ``sde_strategy =
+"denominators"``.
+
+``function`` (``""``)
+    The surrogate. An empty string disables it.
+
+    - A ``.so`` library implementing the UMAMI interface with the inputs of the madmatrix
+      libraries (momenta, :math:`\alpha_s`, flavor index and the random numbers). It is
+      loaded once per subprocess: ``{subprocess}`` and ``{device}`` in the path are replaced
+      by the subprocess name (e.g. ``P1_gg_ttx``) and the device, like in
+      ``lib/libmadmatrix_{subprocess}_{device}.so``.
+    - A Python file defining ``custom_surrogate(momenta, pdg_ids, alpha_s)``, which returns
+      :math:`|M|^2` for a batch of events. ``momenta`` has the shape ``(batch, n, 4)``,
+      ``pdg_ids`` the shape ``(batch, n)`` and identifies subprocess and flavor, and
+      ``alpha_s`` the shape ``(batch,)``. ``FRAMEWORK = "torch"`` passes torch tensors,
+      which also run on GPUs, otherwise numpy arrays are passed. See
+      :doc:`custom_functions`.
+
+``mode`` (``"unweight"``)
+    ``"unweight"`` unweights the events a second time with respect to the ratio of the full
+    matrix element to the surrogate. The events then have unit weights apart from
+    overweights. ``"reweight"`` keeps the ratio in the event weights.
+
+``first_pass_max_overweight_truncation`` (``0.01``), ``first_pass_freeze_max_weight_after`` (``10000``)
+    ``max_overweight_truncation`` and ``freeze_max_weight_after`` of the unweighting with
+    the surrogate, in unweight mode. The ones of ``[generation]`` are used for the second
+    pass, which gives the final events. In reweight mode, ``[generation]`` sets the
+    unweighting with the surrogate.
+
+``param_card`` (``""``)
+    The param card a ``.so`` surrogate is initialized with. An empty string uses
+    ``Cards/param_card.dat``. A madmatrix library with a different param card, for example,
+    is a surrogate for testing.
 
 .. _run-card-multiparticles:
 

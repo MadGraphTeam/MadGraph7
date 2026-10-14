@@ -13,6 +13,28 @@ using namespace madspace;
 
 namespace madspace_py {
 
+/// Holds the GIL while alive, for code that can run on madspace worker threads.
+/// Does nothing once the interpreter is finalized.
+class PythonGuard {
+public:
+    PythonGuard() : _active(Py_IsInitialized()) {
+        if (_active) {
+            _state = PyGILState_Ensure();
+        }
+    }
+    ~PythonGuard() {
+        if (_active) {
+            PyGILState_Release(_state);
+        }
+    }
+    PythonGuard(const PythonGuard&) = delete;
+    PythonGuard& operator=(const PythonGuard&) = delete;
+
+private:
+    bool _active;
+    PyGILState_STATE _state;
+};
+
 std::tuple<int, int> dlpack_device(Tensor tensor);
 py::object tensor_to_dlpack(
     Tensor tensor,

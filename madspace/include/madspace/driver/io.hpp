@@ -6,12 +6,19 @@
 #include <string>
 
 #include "madspace/driver/lhe_output.hpp"
+#include "madspace/driver/tar.hpp"
 #include "madspace/driver/tensor.hpp"
 
 namespace madspace {
 
+/// Read a tensor from the npy file `file`.
 Tensor load_tensor(const std::string& file);
+/// Write `tensor` to the npy file `file`.
 void save_tensor(const std::string& file, Tensor tensor);
+/// Read a tensor from the npy file `name` inside the tar archive `tar`.
+Tensor load_tensor(TarReader& tar, const std::string& name);
+/// Append `tensor` as an npy file called `name` to the tar archive `tar`.
+void save_tensor(TarWriter& tar, const std::string& name, Tensor tensor);
 
 struct FieldLayout {
     static constexpr const char* i32 = "<i4";
@@ -117,6 +124,10 @@ public:
     // clustering data
     UnalignedRef<double> cluster_scale() { return &_data[_offsets[0] + 0]; }
 
+    // weight files with re- and unweighting steps store one record per step
+    UnalignedRef<double> step_ratio() { return &_data[0]; }
+    UnalignedRef<double> step_max_weight() { return &_data[8]; }
+
     void from_lhe_particle(const LHEParticle& particle) {
         lhe_pdg_id() = particle.pdg_id;
         lhe_status_code() = particle.status_code;
@@ -149,13 +160,12 @@ public:
     static constexpr int f_beam2 = 32;
     static constexpr int f_partial_weights = 64;
     static constexpr int f_syst_weights = 128;
+    static constexpr int f_bias = 256;
 
     // `syst_weight_count` columns of systematic variation weights are appended
     // when f_syst_weights is set; `syst_weight_ids` names them (rwgt_<id>).
-    static std::vector<FieldLayout> layout(
-        int fields,
-        const std::vector<int>& syst_weight_ids = {}
-    ) {
+    static std::vector<FieldLayout>
+    layout(int fields, const std::vector<int>& syst_weight_ids = {}) {
         std::vector<FieldLayout> ret;
         if (fields & f_weight) {
             ret.push_back({"weight", FieldLayout::f64, 0});
@@ -214,6 +224,9 @@ public:
                 ret.push_back({std::format("rwgt_{}", id), FieldLayout::f64, 7});
             }
         }
+        if (fields & f_bias) {
+            ret.push_back({"bias", FieldLayout::f64, 8});
+        }
         return ret;
     }
 
@@ -256,6 +269,9 @@ public:
     UnalignedRef<double> syst_weight(std::size_t index) {
         return &_data[_offsets[6] + 8 * index];
     }
+
+    // event bias, divided out of the weight when the channels are combined
+    UnalignedRef<double> bias() { return &_data[_offsets[7] + 0]; }
 
     void from_lhe_event(const LHEEvent& event) {
         lhe_process_id() = event.process_id;
@@ -325,6 +341,13 @@ private:
 inline const DataLayout weight_file_layout = DataLayout(
     EventRecord::layout(EventRecord::f_weight),
     ParticleRecord::layout(ParticleRecord::f_none)
+);
+
+/// Weight file of a channel with re- and unweighting steps: the weight of the
+/// first step and, as "particles", the ratio and the maximum weight of each step.
+inline const DataLayout step_weight_file_layout = DataLayout(
+    EventRecord::layout(EventRecord::f_weight),
+    {{"ratio", FieldLayout::f64, 0}, {"max_weight", FieldLayout::f64, 0}}
 );
 
 class EventBuffer {

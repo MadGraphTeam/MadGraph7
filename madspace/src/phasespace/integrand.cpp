@@ -3,6 +3,7 @@
 #include "madspace/util.hpp"
 
 #include <set>
+#include <utility>
 
 using namespace madspace;
 
@@ -30,6 +31,16 @@ std::size_t final_channel_count(
     }
 }
 
+/// Position of `output` in the return values of a differential cross section
+/// built on `matrix_element`, or -1 if it is not returned.
+int me_output_index(
+    const MatrixElement& matrix_element, MatrixElement::MatrixElementOutput output
+) {
+    auto& outputs = matrix_element.outputs();
+    auto search = std::find(outputs.begin(), outputs.end(), output);
+    return search == outputs.end() ? -1 : static_cast<int>(search - outputs.begin());
+}
+
 } // namespace
 
 static const BatchSize acc_batch_size("acc_batch_size");
@@ -41,7 +52,7 @@ Integrand::Integrand(
     const AdaptiveDiscrete& discrete_sym,
     const AdaptiveDiscrete& discrete_flavor,
     const nested_vector2<me_int_t>& pid_options,
-    const std::optional<PdfGrid>& pdf_grid,
+    const PdfSource& pdf_grid,
     const std::optional<RunningCoupling>& running_coupling,
     const std::optional<EnergyScale>& energy_scale,
     const std::optional<PropagatorChannelWeights>& prop_chan_weights,
@@ -62,7 +73,8 @@ Integrand::Integrand(
     const std::vector<std::size_t>& flavor_diff_xs_indices,
     const std::vector<std::size_t>& flavor_subproc_indices,
     const std::vector<std::size_t>& flavor_per_subproc_remap,
-    std::size_t compressed_channel_weight_count
+    std::size_t compressed_channel_weight_count,
+    const std::optional<CustomFunction>& custom_bias
 ) :
     FunctionGenerator(
         "Integrand",
@@ -117,7 +129,8 @@ Integrand::Integrand(
                 if (flav_count > 1 &&
                     !std::holds_alternative<std::monostate>(discrete_flavor)) {
                     ret_types.push_back("discrete_flavor_index", batch_int);
-                    if (pdf_grid && energy_scale) {
+                    if (!std::holds_alternative<std::monostate>(pdf_grid) &&
+                        energy_scale) {
                         ret_types.push_back("pdf_prior", batch_float_array(flav_count));
                     }
                 }
@@ -147,6 +160,17 @@ Integrand::Integrand(
                     if (diff_xs_first.has_pdf(0) || diff_xs_first.has_pdf(1)) {
                         ret_types.push_back("partial_weight_product", batch_float);
                     }
+                }
+                if (diff_xs_first.returns_matrix_element()) {
+                    ret_types.push_back("matrix_element", batch_float);
+                    ret_types.push_back("matrix_element_flavor", batch_int);
+                    if (diff_xs.size() > 1) {
+                        ret_types.push_back("matrix_element_index", batch_int);
+                    }
+                }
+                // before "random": the outputs after it feed the discrete histograms
+                if (custom_bias) {
+                    ret_types.push_back("bias", batch_float);
                 }
                 ret_types.push_back("random", batch_float_array(mapping.random_dim()));
                 if (mapping.channel_count() > 1 &&
@@ -198,8 +222,9 @@ Integrand::Integrand(
     ),
     _flavor_per_subproc_remap(
         flavor_per_subproc_remap.begin(), flavor_per_subproc_remap.end()
-    ) {
-    if (pdf_grid) {
+    ),
+    _custom_bias(custom_bias) {
+    if (!std::holds_alternative<std::monostate>(pdf_grid)) {
         for (std::size_t i = 0; i < 2; ++i) {
             std::set<int> pids;
             for (auto& option : pid_options) {
@@ -210,7 +235,24 @@ Integrand::Integrand(
                     std::distance(pids.begin(), pids.find(option.at(i)))
                 );
             }
-            _pdfs.at(i) = PartonDensity(pdf_grid.value(), {pids.begin(), pids.end()});
+            std::vector<int> pid_vec(pids.begin(), pids.end());
+            if (auto grid = std::get_if<PdfGrid>(&pdf_grid)) {
+                _pdfs.at(i) = PartonDensity(*grid, pid_vec);
+            } else {
+                _pdfs.at(i) = PartonDensity(
+                    std::get<CustomPdf>(pdf_grid), pid_vec, static_cast<int>(i)
+                );
+            }
+        }
+    }
+    if (custom_bias) {
+        if (custom_bias->type() != CustomFunction::bias) {
+            throw std::invalid_argument("custom bias must be of type bias");
+        }
+        if (custom_bias->dynamic_pdg_ids() != (pid_options.size() > 1)) {
+            throw std::invalid_argument(
+                "the PDG-id options of the custom bias must match pid_options"
+            );
         }
     }
 
@@ -240,6 +282,41 @@ Integrand::Integrand(
     for (bool mirror : flavor_mirror) {
         _flavor_mirror.push_back(mirror ? 2 : 1);
         _has_mirror |= mirror;
+    }
+    auto& me_first = diff_xs.at(0).matrix_element();
+    for (auto& dxs : diff_xs) {
+        if (dxs.matrix_element().outputs() != me_first.outputs() ||
+            dxs.matrix_element().external_inputs() != me_first.external_inputs() ||
+            dxs.returns_matrix_element() != diff_xs.at(0).returns_matrix_element()) {
+            throw std::invalid_argument(
+                "all matrix elements of an integrand need the same inputs and outputs"
+            );
+        }
+    }
+    for (auto input : me_first.external_inputs()) {
+        if (input != MatrixElement::momenta_in && input != MatrixElement::flavor_in &&
+            input != MatrixElement::alpha_s_in) {
+            throw std::invalid_argument(
+                "the integrand only supplies momenta, flavor and alpha_s to the "
+                "matrix element, the random inputs have to be sampled internally"
+            );
+        }
+    }
+    std::size_t channel_count = final_channel_count(
+        diff_xs,
+        first_chan_weight_remap,
+        first_remapped_chan_count,
+        second_chan_weight_remap,
+        second_remapped_chan_count,
+        prop_chan_weights,
+        subchan_weights
+    );
+    if (channel_count > 1 && !prop_chan_weights &&
+        me_output_index(me_first, MatrixElement::diagram_amp2_out) == -1) {
+        throw std::invalid_argument(
+            "diagram-based channel weights need the diagram_amp2 output of the "
+            "matrix element"
+        );
     }
     _channel_part_ret_types = compute_channel_part_ret_types();
 }
@@ -700,10 +777,18 @@ NamedVector<Value> Integrand::build_common_part(
         _running_coupling.value().build_function(fb, {args.at("ren_scale")}).at(0);
 
     // Evaluate differential cross section
-    ValueVec xs_args{
-        momenta_me,
-        _flavor_remap.size() > 0 ? fb.gather_int(flavor_id, _flavor_remap) : flavor_id,
-    };
+    auto& me_first = _diff_xs.at(0).matrix_element();
+    int amp2_index = me_output_index(me_first, MatrixElement::diagram_amp2_out);
+    Value me_flavor_id =
+        _flavor_remap.size() > 0 ? fb.gather_int(flavor_id, _flavor_remap) : flavor_id;
+    ValueVec xs_args;
+    for (auto input : me_first.external_inputs()) {
+        if (input == MatrixElement::momenta_in) {
+            xs_args.push_back(momenta_me);
+        } else if (input == MatrixElement::flavor_in) {
+            xs_args.push_back(me_flavor_id);
+        }
+    }
     xs_args.push_back(x1_acc);
     xs_args.push_back(x2_acc);
     xs_args.push_back(flavor_id);
@@ -717,11 +802,12 @@ NamedVector<Value> Integrand::build_common_part(
     ValueVec dxs_vec;
     Value ps_flavor_id;
     Value subproc_id;
+    Value dxs_index;
     if (_diff_xs.size() == 1) {
         dxs_vec = _diff_xs.at(0).build_function(fb, xs_args).values();
         ps_flavor_id = flavor_id;
         if (channel_count > 1 && !_prop_chan_weights) {
-            chan_weights_acc = dxs_vec.at(1);
+            chan_weights_acc = dxs_vec.at(amp2_index);
             if (_first_chan_weight_remap.size() > 0) {
                 chan_weights_acc = fb.collect_channel_weights(
                     chan_weights_acc,
@@ -731,7 +817,7 @@ NamedVector<Value> Integrand::build_common_part(
             }
         }
     } else {
-        Value dxs_index = fb.gather_int(flavor_id, _flavor_diff_xs_indices);
+        dxs_index = fb.gather_int(flavor_id, _flavor_diff_xs_indices);
         ps_flavor_id = fb.gather_int(flavor_id, _flavor_per_subproc_remap);
         subproc_id = fb.gather_int(flavor_id, _flavor_subproc_indices);
         ValueVec split_indices =
@@ -750,7 +836,7 @@ NamedVector<Value> Integrand::build_common_part(
                 split_out.push_back(indices);
             }
             if (channel_count > 1 && !_prop_chan_weights) {
-                Value split_cw = outputs.at(1);
+                Value split_cw = outputs.at(amp2_index);
                 if (_first_chan_weight_remap.size() > 0) {
                     split_cw = fb.collect_channel_weights(
                         split_cw,
@@ -764,7 +850,7 @@ NamedVector<Value> Integrand::build_common_part(
             ++i;
         }
         for (std::size_t i = 0; auto& split_out : split_outputs) {
-            if (i == 1) {
+            if (std::cmp_equal(i, amp2_index)) {
                 dxs_vec.push_back(Value());
             } else {
                 dxs_vec.push_back(fb.batch_merge_by_index(split_out));
@@ -780,6 +866,17 @@ NamedVector<Value> Integrand::build_common_part(
         diff_xs_acc = fb.mul(diff_xs_acc, fb.gather(flavor_id, _flavor_factors));
     }
     ValueVec weights_after_cuts{args.at("weight_after_cuts"), diff_xs_acc};
+    // the bias enters the weight seen by the adaptation and the unweighting,
+    // the event generator divides it out again
+    Value bias_acc;
+    if (_custom_bias) {
+        ValueVec bias_args{momenta_me};
+        if (_custom_bias->dynamic_pdg_ids()) {
+            bias_args.push_back(flavor_id);
+        }
+        bias_acc = _custom_bias->build_function(fb, bias_args).at(0);
+        weights_after_cuts.push_back(bias_acc);
+    }
     ValueVec extra_weights_after_cuts;
     if (args.index_map().contains("extra_weight_after_cuts")) {
         extra_weights_after_cuts.push_back(args.at("extra_weight_after_cuts"));
@@ -929,9 +1026,20 @@ NamedVector<Value> Integrand::build_common_part(
         }
         auto zeros_int = fb.full({static_cast<me_int_t>(0), batch_size_val});
         auto zeros_float = fb.full({0., batch_size_val});
-        outputs.push_back("color_index", scatter_or_drop(zeros_int, dxs_vec.at(2)));
-        outputs.push_back("helicity_index", scatter_or_drop(zeros_int, dxs_vec.at(3)));
-        outputs.push_back("diagram_index", scatter_or_drop(zeros_int, dxs_vec.at(4)));
+        // indices the matrix element does not provide are -1, a later
+        // reweighting step can fill them in
+        for (auto [name, me_output] :
+             {std::pair{"color_index", MatrixElement::color_index_out},
+              std::pair{"helicity_index", MatrixElement::helicity_index_out},
+              std::pair{"diagram_index", MatrixElement::diagram_index_out}}) {
+            int index = me_output_index(me_first, me_output);
+            outputs.push_back(
+                name,
+                index == -1
+                    ? optional_cut(fb.full({static_cast<me_int_t>(-1), batch_size_val}))
+                    : scatter_or_drop(zeros_int, dxs_vec.at(index))
+            );
+        }
         outputs.push_back("flavor_index", scatter_or_drop(zeros_int, ps_flavor_id));
         if (subproc_id) {
             outputs.push_back(
@@ -969,6 +1077,25 @@ NamedVector<Value> Integrand::build_common_part(
                     scatter_or_drop(zeros_float, fb.product(pdf_vals))
                 );
             }
+        }
+        if (_diff_xs.at(0).returns_matrix_element()) {
+            outputs.push_back(
+                "matrix_element",
+                scatter_or_drop(zeros_float, dxs_vec.at(me_first.outputs().size()))
+            );
+            outputs.push_back(
+                "matrix_element_flavor", scatter_or_drop(zeros_int, me_flavor_id)
+            );
+            if (dxs_index) {
+                outputs.push_back(
+                    "matrix_element_index", scatter_or_drop(zeros_int, dxs_index)
+                );
+            }
+        }
+        if (bias_acc) {
+            outputs.push_back(
+                "bias", scatter_or_drop(fb.full({1., batch_size_val}), bias_acc)
+            );
         }
         outputs.push_back("random", optional_cut(args.at("r")));
         if (has_permutations &&

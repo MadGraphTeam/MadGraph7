@@ -27,7 +27,9 @@ If you need a stable release, use the
    installation
    first_steps
    run_card
+   custom_functions
    gridpacks
+   event_stream
    madevent_to_mg7
 
 .. toctree::

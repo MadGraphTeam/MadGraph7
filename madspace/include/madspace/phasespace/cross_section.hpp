@@ -35,6 +35,8 @@ namespace madspace {
  * **Returns**
  * - the return values of @p matrix_element, scaled to the differential cross
  *   section.
+ * - `raw_matrix_element` – `float`, shape `(batch,)` – the squared matrix
+ *   element without PDFs and flux (with @p return_matrix_element).
  *
  * **References**
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
@@ -62,6 +64,8 @@ public:
      *                                 rather than reconstructed.
      * @param decay                    If true, describe the decay of a single
      *                                 incoming particle instead of a collision.
+     * @param return_matrix_element    If true, also return the squared matrix
+     *                                 element itself as `raw_matrix_element`.
      */
     DifferentialCrossSection(
         const MatrixElement& matrix_element,
@@ -73,7 +77,8 @@ public:
         const std::variant<std::monostate, PdfGrid, CachedPdf>& pdf1 = std::monostate{},
         const std::variant<std::monostate, PdfGrid, CachedPdf>& pdf2 = std::monostate{},
         bool input_momentum_fraction = true,
-        bool decay = false
+        bool decay = false,
+        bool return_matrix_element = false
     );
 
     /// The allowed initial-parton flavour combinations.
@@ -86,6 +91,8 @@ public:
     const std::optional<RunningCoupling>& running_coupling() const {
         return _running_coupling;
     }
+    /// Whether the squared matrix element is returned as `raw_matrix_element`.
+    bool returns_matrix_element() const { return _return_matrix_element; }
 
 private:
     NamedVector<Value> build_function_impl(
@@ -101,6 +108,7 @@ private:
     std::variant<std::monostate, EnergyScale, CachedScale> _energy_scale;
     bool _input_momentum_fraction;
     bool _decay;
+    bool _return_matrix_element;
 };
 
 } // namespace madspace

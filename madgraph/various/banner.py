@@ -6766,6 +6766,16 @@ class RunCardMG7(RunCard):
             comment="include the installed madspace package")
         self.add_toml_param('gridpack', 'include_madspace_source', False,
             comment="include the madspace source code")
+        self.add_toml_param('gridpack', 'compress', False,
+            comment="compress the gridpack into a tarball")
+        self.add_toml_param('gridpack', 'run_mode', "minimal",
+            allowed=['regular', 'minimal', 'fix_max_weight'],
+            comment="how the run creating the gridpack ends: regular (with events), "
+                    "minimal or fix_max_weight (no events)")
+        self.add_toml_param('gridpack', 'temp_output_dir', "", gridpack=True,
+            comment="directory for the temporary npy files; \"\" uses the output directory")
+        self.add_toml_param('gridpack', 'output_dir', "", gridpack=True,
+            comment="directory for the output files; \"\" creates a new run folder in Events")
 
         # ----------------------------- [beam] -------------------------
         self.add_toml_param('beam', 'e_cm', 13000.0,
@@ -6893,6 +6903,31 @@ class RunCardMG7(RunCard):
             comment="apply the [cuts] to the decay products of on-shell particles")
         self.add_toml_param('phasespace', 'adaptive_symmetry_sampling', True,
             comment="sample symmetric channels adaptively")
+
+        # ------------------------- [custom_functions] -----------------
+        # user functions built with bin/init_custom_func; "" disables them
+        self.add_toml_param('custom_functions', 'cut', "",
+            comment="custom cut, a .so library or a .py file, e.g. lib/custom_cut.so")
+        self.add_toml_param('custom_functions', 'scale', "",
+            comment="custom scale, replaces dynamical_scale_choice")
+        self.add_toml_param('custom_functions', 'pdf', "",
+            comment="custom PDF, replaces the PDF set (not alpha_s)")
+        self.add_toml_param('custom_functions', 'bias', "",
+            comment="custom event bias")
+
+        # ---------------------------- [surrogate] ---------------------
+        # a fast surrogate of the matrix element for the integrand, followed by
+        # a second pass with the full matrix element; "" disables it
+        self.add_toml_param('surrogate', 'function', "",
+            comment="surrogate matrix element, a .so library or a .py file")
+        self.add_toml_param('surrogate', 'mode', "unweight", allowed=["unweight", "reweight"],
+            comment="unweight or reweight the events with the full matrix element")
+        self.add_toml_param('surrogate', 'first_pass_max_overweight_truncation', 0.01,
+            comment="max_overweight_truncation of the unweighting with the surrogate")
+        self.add_toml_param('surrogate', 'first_pass_freeze_max_weight_after', 10000,
+            comment="freeze_max_weight_after of the unweighting with the surrogate")
+        self.add_toml_param('surrogate', 'param_card', "",
+            comment="param card for a .so surrogate; \"\" uses Cards/param_card.dat")
 
         # ----------------------------- [madnis] -----------------------
         self.add_toml_param('madnis', 'enable', False, allowed=["auto", True, False], auto=True,

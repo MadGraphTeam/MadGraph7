@@ -739,7 +739,10 @@ class MG7CmdTest(unittest.TestCase):
         try:
             process = self.launch.MadgraphProcess.__new__(
                 self.launch.MadgraphProcess)
-            process.run_card = {"run": {"run_name": "run"}}
+            process.run_card = {
+                "run": {"run_name": "run"},
+                "gridpack": {"output_dir": "", "temp_output_dir": ""},
+            }
             process.init_event_dir()
         finally:
             os.chdir(cwd)

@@ -43,6 +43,7 @@ Builders that assemble compute-graph functions for channel weights, energy scale
    cpp/BatchSampler
    cpp/BufferUnweighter
    cpp/ChannelWeightNetwork
+   cpp/CustomFunction
    cpp/Cuts
    cpp/DifferentialCrossSection
    cpp/DiscreteHistogram
@@ -69,6 +70,7 @@ Builders that assemble compute-graph functions for channel weights, energy scale
    cpp/SubchannelWeights
    cpp/Unweighter
    cpp/VegasHistogram
+   cpp/WeightingStepFunction
 
 Phase-space building blocks
 ---------------------------
@@ -79,10 +81,12 @@ Supporting types shared by the mappings: topologies, cuts, observables and densi
    :maxdepth: 1
 
    cpp/AlphaSGrid
+   cpp/CustomPdf
    cpp/Diagram
    cpp/PdfGrid
    cpp/Propagator
    cpp/Topology
+   cpp/WeightingStep
    cpp/initialize_vegas_grid
 
 Compute graph
@@ -125,6 +129,7 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    cpp/EventHistogramSpec
    cpp/EventHistograms
    cpp/EventRecord
+   cpp/EventStream
    cpp/FieldLayout
    cpp/GeneratorBatchJob
    cpp/GeneratorConfig
@@ -155,17 +160,26 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    cpp/Runtime
    cpp/Sizes
    cpp/StatusFile
+   cpp/StepChainResult
+   cpp/StepEvents
+   cpp/StepIntegral
+   cpp/StepSettings
    cpp/SubprocessObservables
    cpp/SubprocessSystArgs
    cpp/SystematicsCalculator
    cpp/SystematicsConfig
+   cpp/TarReader
+   cpp/TarWriter
    cpp/Tensor
    cpp/TensorView
    cpp/ThreadPool
    cpp/ThreadResource
+   cpp/UmamiFunctions
    cpp/UnalignedRef
    cpp/Variation
    cpp/VegasGridOptimizer
+   cpp/WeightingGroup
+   cpp/WeightingPipeline
    cpp/available_backends
    cpp/compute_generation_batch_event_count
    cpp/cpu_device
@@ -180,6 +194,8 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    cpp/select_combine_channel_index
    cpp/set_lib_path
    cpp/set_simd_vector_size
+   cpp/weighting_groups_from_json
+   cpp/weighting_groups_to_json
 
 Utilities
 ---------

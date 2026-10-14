@@ -20,6 +20,7 @@
 #include "madspace/driver/status_file.hpp"
 #include "madspace/driver/systematics.hpp"
 #include "madspace/driver/vegas_optimizer.hpp"
+#include "madspace/driver/weighting_pipeline.hpp"
 #include "madspace/phasespace.hpp"
 
 namespace madspace {
@@ -54,13 +55,18 @@ public:
      * @param status_file Optional status file progress is periodically
      *                    written to.
      * @param config      Generator configuration.
+     * @param groups      Groups of channels with re- and unweighting steps
+     *                    after their first unweighting, see @ref WeightingStep.
+     *                    The integrals and event counts are then those after
+     *                    the last step.
      */
     EventGenerator(
         const std::vector<ContextPtr>& contexts,
         const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
         std::uint64_t seed,
         std::shared_ptr<StatusFile> status_file = nullptr,
-        const GeneratorConfig& config = default_config
+        const GeneratorConfig& config = default_config,
+        const std::vector<WeightingGroup>& groups = {}
     );
     EventGenerator(EventGenerator&&) = default;
     EventGenerator& operator=(EventGenerator&&) = default;
@@ -73,6 +79,15 @@ public:
     /// Generate unweighted events until every channel reaches its target
     /// count.
     void generate();
+    /// Run only the VEGAS and channel-weight optimization of every channel
+    /// that still needs it, until all are optimized. No events are kept.
+    void optimize();
+    /// Like @ref generate, but every channel with a nonzero cross section runs
+    /// until it has `freeze_max_weight_after` unweighted events, regardless of
+    /// its share of the cross section, so that its maximum weight is final
+    /// (see @ref ChannelEventGenerator::max_weight). The events are not meant
+    /// to be combined.
+    void fix_max_weights();
     /**
      * Combine every channel's generated events into a single unweighted
      * `.npy` file.
@@ -175,6 +190,7 @@ private:
     // dispatch, drained with priority by start_jobs().
     std::vector<std::vector<std::size_t>> _context_unweight_queue;
     ResultQueue _result_queue;
+    std::unique_ptr<WeightingPipeline> _pipeline;
 
     // Base seed for reproducible event generation.
     std::uint64_t _seed;
@@ -183,6 +199,13 @@ private:
     // grow after it looked done, un-finishing it and triggering another round).
     // Salted by this counter so repeated calls don't replay the same stream.
     std::size_t _unweight_call_index = 0;
+
+    // What a run of the generate loop does; see run_generate().
+    enum class GenerateMode { events, optimize_only, fix_max_weights };
+    void run_generate(GenerateMode mode);
+    // Channels with an optimizer, and how many of them are optimized.
+    std::pair<std::size_t, std::size_t> optimized_channel_count() const;
+    GenerateMode _generate_mode = GenerateMode::events;
 
     // Scheduling context for the running survey()/generate() call, read by
     // start_jobs() to derive job seeds.
@@ -213,25 +236,27 @@ private:
     void reset_jobs();
     void update_integral();
     void update_integral_status();
-    void update_integral_fractions();
+    // With `final_step`, the integrals after the weighting steps are used. They
+    // only change in a fixed order once the steps are drained.
+    void update_integral_fractions(bool final_step = true);
     void update_counts();
     void reset_start_time();
     void add_timing_data(const std::string& key);
     void unweight_all();
-    std::tuple<std::vector<CombineChannelData>, std::size_t, double> init_combine();
+    std::tuple<std::vector<CombineChannelData>, std::size_t, std::vector<double>>
+    init_combine();
     void read_and_combine(
         std::vector<CombineChannelData>& channel_data,
         EventBuffer& buffer,
-        double norm_factor,
+        const std::vector<double>& norm_factors,
         MixMaxRandom& rand_gen
     );
-    void fill_lhe_event(
-        LHECompleter& lhe_completer,
-        LHEEvent& lhe_event,
-        EventBuffer& buffer,
-        std::size_t event_index,
-        MixMaxRandom& rand_gen
-    );
+    // run the re- and unweighting steps of all collected events
+    void drain_pipeline();
+    // unweighting efficiency of each pass, the first one before and after cuts
+    std::tuple<double, double, std::vector<double>> pass_efficiencies() const;
+    // start the jobs of the steps whose batches are full
+    std::size_t start_pipeline_jobs();
     // Layout of the combined events as read from the channel files
     DataLayout combined_layout() const;
     // Layout of the written events: the reweighting inputs are dropped unless

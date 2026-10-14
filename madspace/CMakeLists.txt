@@ -209,10 +209,13 @@ add_library(
     src/driver/context.cpp
     src/driver/event_generator.cpp
     src/driver/channel_generator.cpp
+    src/driver/event_utils.cpp
+    src/driver/event_stream.cpp
     src/driver/generator_data.cpp
     src/driver/status_file.cpp
     src/driver/thread_pool.cpp
     src/driver/io.cpp
+    src/driver/tar.cpp
     src/driver/vegas_optimizer.cpp
     src/driver/discrete_optimizer.cpp
     src/driver/backend.cpp
@@ -221,6 +224,7 @@ add_library(
     src/driver/event_histograms.cpp
     src/driver/madnis_training.cpp
     src/driver/random.cpp
+    src/driver/weighting_pipeline.cpp
     src/compgraphs/type.cpp
     src/compgraphs/function.cpp
     src/compgraphs/instruction.cpp
@@ -240,6 +244,7 @@ add_library(
     src/phasespace/madnis.cpp
     src/phasespace/rambo.cpp
     src/phasespace/cuts.cpp
+    src/phasespace/custom_function.cpp
     src/phasespace/observable.cpp
     src/phasespace/histograms.cpp
     src/phasespace/chili.cpp
@@ -256,6 +261,7 @@ add_library(
     src/phasespace/matrix_element.cpp
     src/phasespace/cross_section.cpp
     src/phasespace/scale.cpp
+    src/phasespace/weighting_step.cpp
     include/madspace/util.hpp
     include/madspace/driver.hpp
     include/madspace/driver/adam_optimizer.hpp
@@ -267,6 +273,7 @@ add_library(
     include/madspace/driver/channel_generator.hpp
     include/madspace/driver/generator_data.hpp
     include/madspace/driver/io.hpp
+    include/madspace/driver/tar.hpp
     include/madspace/driver/vegas_optimizer.hpp
     include/madspace/driver/discrete_optimizer.hpp
     include/madspace/driver/backend.hpp
@@ -274,6 +281,7 @@ add_library(
     include/madspace/driver/logger.hpp
     include/madspace/driver/madnis_training.hpp
     include/madspace/driver/random.hpp
+    include/madspace/driver/weighting_pipeline.hpp
     include/madspace/compgraphs.hpp
     include/madspace/compgraphs/type.hpp
     include/madspace/compgraphs/function.hpp
@@ -312,6 +320,7 @@ add_library(
     include/madspace/phasespace/matrix_element.hpp
     include/madspace/phasespace/cross_section.hpp
     include/madspace/phasespace/scale.hpp
+    include/madspace/phasespace/weighting_step.hpp
     include/madspace/mixmax/mixmax.hpp
     include/madspace/mixmax/mixmax_skip_N17.c
 )
@@ -533,6 +542,8 @@ python_add_library(
     ${MADSPACE_GENERATED_DIR}/python/docstrings.hpp
     src/python/function_runtime.cpp
     src/python/function_runtime.hpp
+    src/python/python_function.cpp
+    src/python/python_function.hpp
     WITH_SOABI
 )
 target_include_directories(_madspace_py PRIVATE ${MADSPACE_GENERATED_DIR}/python)
