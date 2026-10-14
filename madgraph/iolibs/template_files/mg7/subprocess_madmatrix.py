@@ -377,6 +377,19 @@ class MadgraphSubprocess:
             raise RuntimeError("surrogate loaded at different indices")
         return apis[0]
 
+    def weighting_steps(self) -> list:
+        """The steps after the first unweighting: with a [surrogate], the
+        second pass with the full matrix element."""
+        if not self.surrogates:
+            return []
+        gen_args = self.process.run_card["generation"]
+        return [ms.WeightingStep(
+            self.step_matrix_elements,
+            mode=self.process.surrogate["mode"],
+            max_overweight_truncation=gen_args["max_overweight_truncation"],
+            freeze_max_weight_after=gen_args["freeze_max_weight_after"],
+        )]
+
     def flavor_pids(self) -> list[list[int]]:
         """PDG ids of the external particles for every flavor of the
         integrand, in the order of its flavor index."""

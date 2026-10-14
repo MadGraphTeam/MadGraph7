@@ -330,25 +330,14 @@ class MadgraphProcess:
         )
 
     def weighting_groups(self, subprocess_channels: list[list[int]]) -> list:
-        """One ms.WeightingGroup per subprocess with a [surrogate]: the second
-        pass with the full matrix element over its channels, given by their
-        indices in the event generator."""
-        if self.surrogate is None:
-            return []
-        gen_args = self.run_card["generation"]
-        return [
-            ms.WeightingGroup(
-                channel_indices,
-                [ms.WeightingStep(
-                    subproc.step_matrix_elements,
-                    mode=self.surrogate["mode"],
-                    max_overweight_truncation=gen_args["max_overweight_truncation"],
-                    freeze_max_weight_after=gen_args["freeze_max_weight_after"],
-                )],
-            )
-            for subproc, channel_indices in zip(self.subprocesses, subprocess_channels)
-            if channel_indices
-        ]
+        """One ms.WeightingGroup per subprocess with weighting steps, over its
+        channels, given by their indices in the event generator."""
+        groups = []
+        for subproc, channel_indices in zip(self.subprocesses, subprocess_channels):
+            steps = subproc.weighting_steps()
+            if channel_indices and steps:
+                groups.append(ms.WeightingGroup(channel_indices, steps))
+        return groups
 
     @staticmethod
     def build_custom_function(build_dir: str) -> None:
