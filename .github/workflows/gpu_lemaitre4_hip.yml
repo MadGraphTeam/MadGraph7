@@ -53,6 +53,11 @@ concurrency:
 
 jobs:
   lemaitre4:
+    # a called workflow gets at most the permissions of its caller: actions: write for its
+    # watchdog, which cancels the run when the Slurm allocation ends before stop_runner ran
+    permissions:
+      contents: read
+      actions: write
     uses: ./.github/workflows/gpu_runner_ci.yml
     with:
       cluster: lemaitre4
@@ -69,6 +74,3 @@ jobs:
       keep_workdir: ${{ inputs.keep_workdir || false }}
       # on push (no inputs) always; on "Run workflow" as ticked (default ticked)
       interference: ${{ github.event_name == 'push' || inputs.interference }}
-    # needed for the called workflow to see the CECI_KEY secret of its `ceci-gpu`
-    # environment (the repository itself has no other secrets)
-    secrets: inherit

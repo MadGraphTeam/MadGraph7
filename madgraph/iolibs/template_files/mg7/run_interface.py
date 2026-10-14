@@ -56,6 +56,28 @@ def _quiet_setup():
             logging.getLogger(name).setLevel(level)
 
 
+class MG7Results(gen_crossxhtml.AllResults):
+    """The madevent results database, kept in memory only.
+
+    The tool drivers book their runs here (``add_run``, ``add_detail``,
+    ``current``), so :class:`MG7RunCmd` needs one. But madevent also writes it
+    to disk: ``save`` pickles it to ``HTML/results.pkl`` and ``output`` renders
+    ``crossx.html``, the status page of a madevent directory. The mg7 output
+    has no ``HTML/`` directory, so ``save`` -- called by ``store_result`` at
+    the end of every post-processing run -- failed with "I/O error (2): No such
+    file or directory", and ``crossx.html`` was left behind at the process root
+    still reading "Currently Running" and linking to pages that do not exist.
+    Nothing reads either back (:meth:`MG7RunCmd.load_results_db` starts a fresh
+    database every time), so neither is written.
+    """
+
+    def save(self):
+        return
+
+    def output(self):
+        return
+
+
 class MG7RunCmd(madevent_interface.MadEventCmd):
     """A :class:`MadEventCmd` pointed at an mg7 output directory.
 
@@ -67,6 +89,8 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
       (:class:`RunCardMG7`) and takes the banner straight from the mg7 LHE,
       instead of reading ``run_card.dat`` / juggling banner files.
     * ``do_treatcards`` -- writes Fortran ``.inc`` files; not applicable.
+    * ``load_results_db`` -- an in-memory :class:`MG7Results`: there is no
+      ``HTML/`` directory to keep it in.
     """
 
     def __init__(self, me_dir, options, run_name, lhe_path):
@@ -122,8 +146,8 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
         recreate() expects. The run we post-process is registered explicitly in
         :meth:`set_run_name`."""
         model = self.find_model_name()
-        self.results = gen_crossxhtml.AllResults(model, self.process,
-                                                 self.me_dir, recreateold=False)
+        self.results = MG7Results(model, self.process, self.me_dir,
+                                  recreateold=False)
         self.last_mode = ''
         return self.results
 
