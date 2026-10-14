@@ -485,7 +485,9 @@ void WeightingPipeline::decide(Chunk& chunk, std::size_t step) {
             chunk.overweights.at(i) = std::max(1., value / max_weight);
             chunk.ratio_products.at(i) = std::copysign(1., chunk.ratio_products.at(i));
         }
-        channel->add_step_accepted(step, static_cast<double>(keep.size()));
+        channel->add_step_accepted(
+            step, static_cast<double>(keep.size()), chunk.max_weight, chunk.max_weights
+        );
         chunk.max_weights.push_back(max_weight);
     } else {
         for (std::size_t i = 0; i < count; ++i) {
@@ -493,6 +495,9 @@ void WeightingPipeline::decide(Chunk& chunk, std::size_t step) {
                 keep.push_back(static_cast<me_int_t>(i));
             }
         }
+        channel->add_step_accepted(
+            step, static_cast<double>(keep.size()), chunk.max_weight, chunk.max_weights
+        );
         chunk.max_weights.push_back(0.);
     }
     chunk.ratios.push_back(std::move(ratios));

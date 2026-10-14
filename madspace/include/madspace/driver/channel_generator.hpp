@@ -217,9 +217,26 @@ public:
     void update_step_max_weight(
         std::size_t step, const std::vector<double>& values, std::size_t count_target
     );
-    /// Count `count` events accepted by step `step`.
-    void add_step_accepted(std::size_t step, double count) {
-        _step_states.at(step - 1).count_accepted += count;
+    /// Count `count` events accepted by step `step`, which passed the earlier
+    /// unweightings with the maxima `max_weight` (first step) and
+    /// `max_weights` (the steps before).
+    void add_step_accepted(
+        std::size_t step,
+        double count,
+        double max_weight,
+        const std::vector<double>& max_weights
+    );
+    /// Estimated number of events accepted by the first unweighting and each
+    /// step so far; without steps, just @ref GeneratorStatus::count_unweighted.
+    std::vector<double> step_accepted_counts() const {
+        if (_step_settings.empty()) {
+            return {_status.count_unweighted};
+        }
+        std::vector<double> counts{_first_step_count};
+        for (auto& state : _step_states) {
+            counts.push_back(state.count_accepted);
+        }
+        return counts;
     }
     /// Count `count` events accepted by the first unweighting with
     /// `job_max_weight`, with steps.

@@ -816,6 +816,9 @@ void ChannelEventGenerator::apply_truncation_budget() {
             if (_max_weight < w) {
                 _status.count_unweighted *= _max_weight / w;
                 _first_step_count *= _max_weight / w;
+                for (auto& state : _step_states) {
+                    state.count_accepted *= _max_weight / w;
+                }
                 _max_weight = w;
                 _unweighted_count = 0;
                 _unweighted_accept_count = 0;
@@ -1227,8 +1230,12 @@ void ChannelEventGenerator::update_step_max_weight(
         ++count;
         if (sum / value > max_truncation) {
             if (state.max_weight < value) {
-                _status.count_unweighted *= state.max_weight / value;
-                state.count_accepted *= state.max_weight / value;
+                // the events of this and the later steps
+                double factor = state.max_weight / value;
+                _status.count_unweighted *= factor;
+                for (std::size_t i = step - 1; i < _step_states.size(); ++i) {
+                    _step_states.at(i).count_accepted *= factor;
+                }
                 state.max_weight = value;
                 _unweighted_count = 0;
                 _unweighted_accept_count = 0;
@@ -1237,6 +1244,22 @@ void ChannelEventGenerator::update_step_max_weight(
         }
     }
     large_weights.erase(large_weights.begin() + count, large_weights.end());
+}
+
+void ChannelEventGenerator::add_step_accepted(
+    std::size_t step,
+    double count,
+    double max_weight,
+    const std::vector<double>& max_weights
+) {
+    // the fraction left with the current maxima, like in write_step_events()
+    double factor = max_weight > 0 ? max_weight / _max_weight : 1.;
+    for (std::size_t i = 0; i + 1 < step; ++i) {
+        if (_step_settings.at(i).unweight && max_weights.at(i) > 0) {
+            factor *= max_weights.at(i) / _step_states.at(i).max_weight;
+        }
+    }
+    _step_states.at(step - 1).count_accepted += count * factor;
 }
 
 void ChannelEventGenerator::add_first_step_events(

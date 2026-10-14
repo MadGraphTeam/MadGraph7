@@ -1425,11 +1425,59 @@ void EventGenerator::print_gen_init() {
              "Unweighted events:",
              "Run time:"}
         );
+        if (_pipeline) {
+            _pretty_box_upper = PrettyBox(
+                _generate_mode == GenerateMode::fix_max_weights
+                    ? "Integration and max. weight estimation"
+                    : "Integration and unweighting",
+                8,
+                {19, 0},
+                offset
+            );
+            _pretty_box_upper.set_column(
+                0,
+                {"Result:",
+                 "Rel. error:",
+                 "Rel. stddev:",
+                 "Number of events:",
+                 "Unweighting eff.:",
+                 "  per pass:",
+                 "Unweighted events:",
+                 "Run time:"}
+            );
+        }
     }
     _pretty_box_upper.print_first();
     if (_channels.size() > 1) {
         _pretty_box_lower.print_first();
     }
+}
+
+std::tuple<double, double, std::vector<double>>
+EventGenerator::pass_efficiencies() const {
+    // events accepted per pass, a channel with fewer steps passes the others
+    std::vector<double> accepted;
+    for (auto& channel : _channels) {
+        auto counts = channel->step_accepted_counts();
+        if (counts.size() > accepted.size()) {
+            accepted.resize(counts.size(), 0.);
+        }
+        for (std::size_t i = 0; i < accepted.size(); ++i) {
+            accepted.at(i) += counts.at(std::min(i, counts.size() - 1));
+        }
+    }
+    // the last pass ends with the counts of the final events, so that the
+    // product is the overall efficiency
+    accepted.back() = _status.count_unweighted;
+    std::vector<double> later_passes;
+    for (std::size_t i = 1; i < accepted.size(); ++i) {
+        later_passes.push_back(accepted.at(i) / accepted.at(i - 1));
+    }
+    return {
+        accepted.at(0) / _status.count_opt,
+        accepted.at(0) / _status.count_after_cuts_opt,
+        later_passes
+    };
 }
 
 void EventGenerator::print_gen_update(bool done) {
@@ -1453,7 +1501,7 @@ void EventGenerator::print_gen_update_pretty(bool done) {
     _last_print_time = now;
     bool optimize_only = _generate_mode == GenerateMode::optimize_only;
 
-    std::string int_str, rel_str, rsd_str, uweff_str, count_str;
+    std::string int_str, rel_str, rsd_str, uweff_str, pass_str, count_str;
     count_str = std::format(
         "{} before cuts, {} after",
         format_si_prefix(_status.count),
@@ -1472,6 +1520,15 @@ void EventGenerator::print_gen_update_pretty(bool done) {
             _status.count_unweighted / _status.count_opt,
             _status.count_unweighted / _status.count_after_cuts_opt
         );
+        if (_pipeline) {
+            auto [first, first_after_cuts, later] = pass_efficiencies();
+            pass_str =
+                std::format("1: {:.5f} ({:.5f} after cuts)", first, first_after_cuts);
+            for (std::size_t i = 0; double eff : later) {
+                pass_str += std::format(", {}: {:.5f}", i + 2, eff);
+                ++i;
+            }
+        }
     }
     // the progress of the run: unweighted events, or optimized channels
     std::string progress_str;
@@ -1504,6 +1561,18 @@ void EventGenerator::print_gen_update_pretty(bool done) {
     if (optimize_only) {
         _pretty_box_upper.set_column(
             1, {int_str, rel_str, rsd_str, count_str, progress_str, time_str}
+        );
+    } else if (_pipeline) {
+        _pretty_box_upper.set_column(
+            1,
+            {int_str,
+             rel_str,
+             rsd_str,
+             count_str,
+             uweff_str,
+             pass_str,
+             progress_str,
+             time_str}
         );
     } else {
         _pretty_box_upper.set_column(
@@ -1612,11 +1681,23 @@ void EventGenerator::print_gen_update_log(bool done) {
             )
         );
     } else {
+        std::string pass_efficiency_str;
+        if (_pipeline) {
+            auto [first, first_after_cuts, later] = pass_efficiencies();
+            pass_efficiency_str = std::format(
+                ", unw. eff. per pass: {:.5f} ({:.5f} after cuts)",
+                first,
+                first_after_cuts
+            );
+            for (double eff : later) {
+                pass_efficiency_str += std::format(", {:.5f}", eff);
+            }
+        }
         Logger::info(
             std::format(
                 "generating, events: {} / {}, integral: {}, rel. error: {}, "
                 "RSD: {:.3f}, samps: {}, samps. after cuts: {}, "
-                "unw. eff.: {:.5f}, unw. eff. after cuts: {:.5f}, time: {:%H:%M:%S}",
+                "unw. eff.: {:.5f}, unw. eff. after cuts: {:.5f}{}, time: {:%H:%M:%S}",
                 format_si_prefix(_status.count_unweighted),
                 format_si_prefix(_status.count_target),
                 format_with_error(_status.mean, _status.error),
@@ -1626,6 +1707,7 @@ void EventGenerator::print_gen_update_log(bool done) {
                 format_si_prefix(_status.count_after_cuts),
                 _status.count_unweighted / _status.count_opt,
                 _status.count_unweighted / _status.count_after_cuts_opt,
+                pass_efficiency_str,
                 std::chrono::round<std::chrono::seconds>(now - _start_time)
             )
         );
