@@ -2002,6 +2002,8 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
     def create_jobs_to_run(self,options,p_dirs,req_acc,run_mode,\
                            integration_step,mode,fixed_order=True):
         """Creates a list of dictionaries with all the jobs to be run"""
+        if not fixed_order and int(self.run_card['nlo_gen_vector_size']) < 0:
+            raise aMCatNLOError('nlo_gen_vector_size must be non-negative')
         jobs_to_run=[]
         if not options['only_generation']:
             # Fresh, new run. Check all the P*/channels.txt files
@@ -2148,6 +2150,21 @@ RESTART = %(mint_mode)s
                 job['fold_string']='1 1 1'
             else:
                 job['fold_string']=' '.join(map(str, self.run_card['folding']))
+            # A full integration batch amortizes matrix-element work, whereas
+            # generation asks for one accepted event at a time. Keep the
+            # integration width in the job state (also used for restarts),
+            # and pass a smaller width only to the generation executable.
+            input_job = job
+            if job['mint_mode'] == 2:
+                requested = int(self.run_card['nlo_gen_vector_size'])
+                if requested < 0:
+                    raise aMCatNLOError('nlo_gen_vector_size must be non-negative')
+                if requested == 0:
+                    if self.run_card['nlo_real_backend'] in ('cuda', 'hip'):
+                        requested = job['vecsize']
+                    else:
+                        requested = 8
+                input_job = dict(job, vecsize=min(job['vecsize'], requested))
             content = \
 """-1 12      ! points, iterations
 %(accuracy)s       ! desired fractional accuracy
@@ -2160,7 +2177,7 @@ RESTART = %(mint_mode)s
 %(fold_string)s      ! if imode is 1: Folding parameters for xi_i, y_ij and phi_i
 %(run_mode)s        ! all, born, real, virt
 %(vecsize)s        ! vector size
-""" % job
+""" % input_job
             # For the event generation step, add extra info to determine event weights and <init> block
             if job['mint_mode'] == 2:
                 content=content+\

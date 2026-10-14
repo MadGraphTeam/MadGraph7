@@ -296,6 +296,70 @@ class TestNLORealOffloadContract(unittest.TestCase):
         finally:
             shutil.rmtree(root)
 
+    def test_nlo_generation_width_keeps_integration_batch_and_gpu_default(self):
+        """Only MC generation uses the capped CPU width in native input."""
+
+        root = tempfile.mkdtemp(prefix='nlo-generation-width-')
+        try:
+            command = amcatnlo_run_interface.aMCatNLOCmd.__new__(
+                amcatnlo_run_interface.aMCatNLOCmd)
+            command.run_card = banner.RunCardNLO()
+            command.stop_for_runweb = True
+            command.force_run = False
+            command.cross_sect_dict = {
+                'nevents': 1, 'xseca': 1., 'erra': .1,
+                'xsect': 1., 'errt': .1, 'p_labels': ['P0'],
+                'P0': {'p_label': 'P0', 'xseca': 1., 'erra': .1,
+                       'xsect': 1., 'errt': .1},
+            }
+            job = {'dirname': root, 'mint_mode': 1, 'accuracy': .1,
+                   'channel': '1.0', 'run_mode': 'all', 'vecsize': 256,
+                   'p_label': 'P0', 'nevents': 1}
+
+            def native_width():
+                with open(os.path.join(root, 'input_app.txt')) as stream:
+                    return int(next(line for line in stream
+                                    if '! vector size' in line).split()[0])
+
+            command.write_input_file(job, fixed_order=False)
+            self.assertEqual(native_width(), 256)
+            job['mint_mode'] = 0
+            command.write_input_file(job, fixed_order=False)
+            self.assertEqual(native_width(), 256)
+            job['mint_mode'] = 2
+            command.write_input_file(job, fixed_order=False)
+            self.assertEqual(native_width(), 8)
+            self.assertEqual(job['vecsize'], 256)
+
+            command.run_card['nlo_real_backend'] = 'cuda'
+            command.write_input_file(job, fixed_order=False)
+            self.assertEqual(native_width(), 256)
+            command.run_card['nlo_real_backend'] = 'hip'
+            command.write_input_file(job, fixed_order=False)
+            self.assertEqual(native_width(), 256)
+
+            command.run_card.set('nlo_gen_vector_size', 4, user=True)
+            command.write_input_file(job, fixed_order=False)
+            self.assertEqual(native_width(), 4)
+            card_path = os.path.join(root, 'run_card.dat')
+            command.run_card.write(card_path)
+            self.assertEqual(
+                banner.RunCardNLO(card_path)['nlo_gen_vector_size'], 4)
+
+            command.run_card.set('nlo_gen_vector_size', -1, user=True)
+            with self.assertRaisesRegex(
+                    amcatnlo_run_interface.aMCatNLOError,
+                    'nlo_gen_vector_size'):
+                command.write_input_file(job, fixed_order=False)
+            with self.assertRaisesRegex(
+                    amcatnlo_run_interface.aMCatNLOError,
+                    'nlo_gen_vector_size'):
+                command.create_jobs_to_run(
+                    {'only_generation': False}, [], -1, 'all', 1,
+                    'aMC@NLO', fixed_order=False)
+        finally:
+            shutil.rmtree(root)
+
 
 if __name__ == '__main__':
     unittest.main()

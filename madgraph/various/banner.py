@@ -5890,6 +5890,10 @@ class RunCardNLO(RunCard):
             'vector_size', 1, include=False, hidden=True,
             comment='lockstep size for NLO real-amplitude batches')
         self.add_param(
+            'nlo_gen_vector_size', 0, include=False, hidden=True,
+            comment='NLO event-generation width; 0 chooses up to 8 CPU lanes '
+                    'or the integration width on GPU')
+        self.add_param(
             'nlo_real_backend', 'fortran', include=False, hidden=True,
             allowed=['fortran', 'scalar', 'simd_128', 'simd_256',
                      'avx512y', 'simd_512', 'cuda', 'hip'],
