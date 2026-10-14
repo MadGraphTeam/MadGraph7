@@ -16,11 +16,7 @@ ntry[%(fidx)s]++;
 
 double matrix_element = 0.;
 
-// C-parity helicity de-duplication (mirror of the fortran SMATRIX): flip[ihel]
-// is the helicity row with every helicity negated, an involution built once
-// from the helicity table. dedup_ok gates the reuse to the UNCROSSED process:
-// a crossing permutes/sign-flips the helicities, so a base-row flip is no
-// longer the crossed C-parity partner and the crossed flavors keep the full sum.
+%(csym_doc)s
 if (!flip_ready){
     for(int i = 0; i < ncomb; i++){
         flip[i] = i;
@@ -46,10 +42,10 @@ const bool dedup_ok = (%(csym_dedup_ok)s);
 // From then on dedup computes only the lower-index row of each C-parity pair
 // and counts it twice -- unless the scan refused the pairing (csym_bad).
 const int nscan_csym = 20;
-if (dedup_ok && ntry_csym[%(fidx)s] < nscan_csym){
-    ntry_csym[%(fidx)s]++;
+if (dedup_ok && %(csym_ntry)s < nscan_csym){
+    %(csym_ntry)s++;
 }
-const bool csym_scan = dedup_ok && ntry_csym[%(fidx)s] < nscan_csym;
+const bool csym_scan = dedup_ok && %(csym_ntry)s < nscan_csym;
 const bool dedup = dedup_ok && !csym_scan && !csym_bad[%(fidx)s];
 
 // Full sum over the good helicities: always in the default sum_hel == 0 mode,
@@ -57,7 +53,7 @@ const bool dedup = dedup_ok && !csym_scan && !csym_bad[%(fidx)s];
 // filter trains (ntry < 10) or the C-parity verdict is validated. A crossed
 // call (!dedup_ok) always takes the full sum: igood/igoodrep hold rows of the
 // UNCROSSED process, which are not the rows a crossing evaluates.
-if (sum_hel[%(fidx)s] == 0 || ntry[%(fidx)s] < 10 || !dedup_ok || csym_scan){
+if (sum_hel[%(fidx)s] == 0 || ntry[%(fidx)s] < 10 || !dedup_ok%(cross_full_sum)s || csym_scan){
     double tstore[ncomb] = {};
     for(int ihel = 0; ihel < ncomb; ihel ++){
         // Settled C-parity pairing: the higher-index row of every pair is
@@ -158,7 +154,7 @@ if (sum_hel[%(fidx)s] == 0 || ntry[%(fidx)s] < 10 || !dedup_ok || csym_scan){
     // shared by every crossing of the flavor, and a crossed call (which never
     // samples) rewinding jhel would make the next uncrossed sampling call
     // redraw the same first sum_hel representatives every time.
-    if (dedup_ok){
+    if (%(sampling_owner)s){
         jhel[%(fidx)s] = 0;
         sum_hel[%(fidx)s] = min(sum_hel[%(fidx)s], nrep[%(fidx)s]);
     }

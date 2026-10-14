@@ -1,27 +1,32 @@
 C     ==================================================================
-C     f2py entry points taking the flavor index (FLAV_IDX) directly.
+C     f2py entry points taking the flavor index (FLAV_IDX)
+C     directly.
 C
-C     These exist because the FLAVOR(NEXTERNAL) array cannot express a
-C     crossing: it holds unsigned group positions and is resolved through
-C     GET_FLAVOR_INDEX, which only ever returns 1..NFLAV. An *extended*
-C     FLAV_IDX = K*NFLAV + flav carries both, so every entry point a
-C     crossing-aware caller needs must take the index, not the array.
+C     These exist because the FLAVOR(NEXTERNAL) array cannot
+C     express a crossing: it holds unsigned group positions and
+C     is resolved through GET_FLAVOR_INDEX, which only ever
+C     returns 1..NFLAV. An *extended*
+C     FLAV_IDX = K*NFLAV + flav carries both, so every entry
+C     point a crossing-aware caller needs must take the index,
+C     not the array.
 C
-C     Only emitted for matrix_standalone_v4.inc, the one template that has
-C     GET_DENSITY_IDX / GET_ALL_INTER_IDX / GET_PDG_FOR_FLAVOR at all: the
-C     other standalone templates (matchbox, msP/msF, splitOrders) would
-C     fail to link against routines they never generate.
+C     Only emitted for matrix_standalone_v4.inc, the one
+C     template that has GET_DENSITY_IDX / GET_ALL_INTER_IDX /
+C     GET_PDG_FOR_FLAVOR at all: the other standalone templates
+C     (matchbox, msP/msF, splitOrders) would fail to link
+C     against routines they never generate.
 C     ==================================================================
 
       SUBROUTINE PY_%(proc_prefix)sGET_PDG_FOR_FLAVOR(FLAV_IDX, PDGS)
-C     Per-leg signed PDG codes of the process FLAV_IDX selects, crossing
-C     included (legs permuted, and conjugated where they swapped between
-C     the initial and the final state).
+C     Per-leg signed PDG codes of the process FLAV_IDX selects,
+C     crossing included (legs permuted, and conjugated where
+C     they swapped between the initial and the final state).
 C
-C     This is what lets a python caller work in PDG codes at all: it can
-C     enumerate the candidate FLAV_IDX values, ask each one what process
-C     it evaluates, and keep the one matching the request. All-zero means
-C     the index names no valid flavor/crossing.
+C     This is what lets a python caller work in PDG codes at
+C     all: it can enumerate the candidate FLAV_IDX values, ask
+C     each one what process it evaluates, and keep the one
+C     matching the request. All-zero means the index names no
+C     valid flavor/crossing.
       IMPLICIT NONE
       INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
@@ -35,11 +40,12 @@ CF2PY INTENT(OUT) :: PDGS(NEXTERNAL)
 
       SUBROUTINE PY_%(proc_prefix)sGET_FLAVOR_LAYOUT(NFLAV_OUT,
      &     NEXTERNAL_OUT, NCROSS_OUT)
-C     The three constants a caller needs to build an extended FLAV_IDX at
-C     all: FLAV_IDX = K*NFLAV + flav with K in [0,NCROSS-1] a row of the
-C     crossing table of this matrix element (K=0: no crossing; see
-C     PY_GET_CROSSING for what a row does). Without NFLAV the encoding is
-C     simply not expressible, and parsing it out of matrix.f is not
+C     The three constants a caller needs to build an extended
+C     FLAV_IDX at all: FLAV_IDX = K*NFLAV + flav with K in
+C     [0,NCROSS-1] a row of the crossing table of this matrix
+C     element (K=0: no crossing; see PY_GET_CROSSING for what a
+C     row does). Without NFLAV the encoding is simply not
+C     expressible, and parsing it out of matrix.f is not
 C     something a caller should have to do.
       IMPLICIT NONE
       INTEGER    NEXTERNAL
@@ -60,14 +66,16 @@ CF2PY INTENT(OUT) :: NCROSS_OUT
      &     NHEL_STAR)
 C     Crossing-aware twin of PY_GET_NHEL.
 C
-C     GET_NHEL reports the static IDEN, which is the averaging denominator
-C     of the *uncrossed* representative flavor only. SMATRIX itself does
-C     not use it that way -- it divides by IDEN/BROKEN_SYM(FLAVOR) when
-C     uncrossed and by GET_SPINCOL_CROSS*GET_IDENT_CROSS when crossed --
-C     so a caller reading GET_NHEL and reconstructing ANS*IDEN would get a
-C     wrong answer for any crossed (or merely non-representative) flavor.
-C     This entry reports the denominator SMATRIX actually applied for this
-C     FLAV_IDX. GET_NHEL keeps its signature and its meaning for existing
+C     GET_NHEL reports the static IDEN, which is the averaging
+C     denominator of the *uncrossed* representative flavor only.
+C     SMATRIX itself does not use it that way -- it divides by
+C     IDEN/BROKEN_SYM(FLAVOR) when uncrossed and by
+C     GET_SPINCOL_CROSS*GET_IDENT_CROSS when crossed -- so a
+C     caller reading GET_NHEL and reconstructing ANS*IDEN would
+C     get a wrong answer for any crossed (or merely
+C     non-representative) flavor. This entry reports the
+C     denominator SMATRIX actually applied for this FLAV_IDX.
+C     GET_NHEL keeps its signature and its meaning for existing
 C     uncrossed callers.
       IMPLICIT NONE
       INTEGER    NEXTERNAL
@@ -86,11 +94,12 @@ CF2PY INTENT(OUT) :: NHEL_STAR(NEXTERNAL,NCOMB)
 
       SUBROUTINE PY_%(proc_prefix)sGET_DENSITY_IDX(P, POS, N_CHANGING,
      &     ALLOW_HEL, N_COMB, FLAV_IDX, ALPHAS, SCALE2, INTER)
-C     Density matrix for an extended FLAV_IDX. PY_GET_DENSITY takes the
-C     FLAVOR array and so can only ever ask for an uncrossed density
-C     matrix; this is the only way to request a crossed one through f2py.
-C     Same CF2PY-before-declarations layout and same explicit INTER sizing
-C     as PY_GET_DENSITY -- see the comments there, both matter.
+C     Density matrix for an extended FLAV_IDX. PY_GET_DENSITY
+C     takes the FLAVOR array and so can only ever ask for an
+C     uncrossed density matrix; this is the only way to request
+C     a crossed one through f2py. Same CF2PY-before-declarations
+C     layout and same explicit INTER sizing as PY_GET_DENSITY --
+C     see the comments there, both matter.
       IMPLICIT NONE
 CF2PY double precision, intent(in), dimension(0:3,%(nexternal)d) :: P
 CF2PY integer, intent(in), dimension(*) :: POS
@@ -117,9 +126,10 @@ CF2PY double complex, intent(out), dimension(N_COMB*(N_COMB+1)/2) :: INTER
 
       SUBROUTINE PY_%(proc_prefix)sGET_ALL_INTER_IDX(P, NHEL, POS,
      &     N_CHANGING, ALLOW_HEL, N_COMB, FLAV_IDX, INTER)
-C     The un-normalised interference terms behind GET_DENSITY_IDX, for a
-C     caller supplying its own helicity configuration. Exposed for the
-C     same reason: its FLAVOR-array twin cannot carry a crossing.
+C     The un-normalised interference terms behind
+C     GET_DENSITY_IDX, for a caller supplying its own helicity
+C     configuration. Exposed for the same reason: its
+C     FLAVOR-array twin cannot carry a crossing.
       IMPLICIT NONE
 CF2PY double precision, intent(in), dimension(0:3,%(nexternal)d) :: P
 CF2PY integer, intent(in), dimension(%(nexternal)d) :: NHEL

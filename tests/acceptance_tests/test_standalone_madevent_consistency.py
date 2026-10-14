@@ -283,10 +283,9 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
 
         With the crossing machinery compiled in (ProcessTables::use_crossing),
         backend/<variant>/SigmaKin.cc runs its own copy of the helicity loop:
-        cNGoodMaxCross iterations in which every lane evaluates the ighel-th
-        good helicity of ITS OWN crossing (picked per lane inside
-        calculate_jamps), with a per-lane C-parity weight (csym_lane_on, per
-        crossing). The BLAS batch carries a second copy of all of it, and is
+        every lane evaluates the ighel-th row of the one good-helicity list,
+        a crossed lane with the legs that changed side negated (per-lane NSF
+        blend of the external calls), with a C-parity weight (csym_lane_on). The BLAS batch carries a second copy of all of it, and is
         where a lost weight once gave exactly half of |M|^2. The machinery is
         only written for a base that folds a crossed subprocess in, so `process`
         has to be a multiprocess whose `base_dir` subprocess really does; a bare
@@ -1142,9 +1141,10 @@ class TestMadMatrixCppBlasColourSum(
     # g g > u u~ folds, among others, g u~ > g u~ and u u~ > g g (the process
     # above, here a crossed lane). The trace basis is forced because the
     # all-gluon sibling of this multiprocess cannot be written in the DDM
-    # default.
+    # default. pq holds the u quark alone, so the base directory is named after
+    # that flavor (gg_uux), not after the merged class.
     test_cpp_blas_crossed_gg_qqx = cpp_blas_crossed_colour_sum_test_factory(
-        'pq pq > pq pq', 'gg_QQx', defines=('define pq = g u u~',),
+        'pq pq > pq pq', 'gg_uux', defines=('define pq = g u u~',),
         model='sm', tolerance=1e-6, color_basis='trace')
 
     # A multi-flavor base (nmaxflavor = 2: two equal and two different quark

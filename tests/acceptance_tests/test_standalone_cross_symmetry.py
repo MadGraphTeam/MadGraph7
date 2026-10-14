@@ -131,7 +131,8 @@ PROC_UNCONSTRAINED = 'u u~ > e+ e-'
 
 # Every routine/table that only exists to decode an extended FLAV_IDX.
 CROSSING_MACHINERY_NAMES = [
-    'APPLY_CROSSING', 'APPLY_CROSSING_TABLE', 'GET_CROSS_PERM',
+    'APPLY_CROSSING', 'APPLY_CROSSING_TABLE', 'APPLY_CROSSING_ROWS',
+    'GET_CROSS_PERM',
     'GET_CROSS_PINV', 'GET_SPINCOL_CROSS', 'GET_IDENT_CROSS', 'CROSS_GHIDX',
     'XPERM', 'XPINV', 'XSPINCOL', 'GHFILT']
 
@@ -268,25 +269,26 @@ for h in range(ncomb):
         if int(nhel[b, h]) not in leg_states[b]:
             leg_states[b].append(int(nhel[b, h]))
 
-def base_row_of_code(code, D):
+def base_row_of_code(code, D, SB):
     """SMATRIXHEL takes the crossed process's OWN helicity code at an
     extended index (CROSS_HELCODE): crossed leg k carries base leg D[k] with
-    its states, so decode over those and put each value in its base slot --
-    the base row the crossing evaluates."""
+    its states, so decode over those; the leg is fed the base row's helicity
+    negated when it changed side (APPLY_CROSSING_ROWS), so the base row the
+    crossing evaluates holds SB[D[k]] times that value in slot D[k]."""
     r, cfg = code - 1, [0] * nexternal
     for k in reversed(range(nexternal)):
         n = len(leg_states[D[k]])
-        cfg[D[k]] = leg_states[D[k]][r %% n]
+        cfg[D[k]] = SB[D[k]] * leg_states[D[k]][r %% n]
         r //= n
     return row_of[tuple(cfg)]
 
-def good_set(flav_idx, D=None):
-    """The good BASE rows of an extended index (D: its crossing row)."""
+def good_set(flav_idx, D=None, SB=None):
+    """The good BASE rows of an extended index (D, SB: its crossing row)."""
     good = set()
     for P in ps:
         for h in range(1, ncomb + 1):
             if abs(m.py_smatrixhel_idx(P, h, flav_idx)) > 1e-30:
-                good.add(h if D is None else base_row_of_code(h, D))
+                good.add(h if D is None else base_row_of_code(h, D, SB))
     return good
 
 g_id = good_set(1)
@@ -301,24 +303,15 @@ for K in range(1, ncross):
     tot = sum(abs(m.py_smatrixhel_idx(ps[0], h, flav_idx))
               for h in range(1, ncomb + 1))
     assert tot > 0, 'row %%d (D=%%s) evaluates to zero' %% (K, D)
-    # TAU, not a helicity-row permutation: the matrix element evaluates base
-    # slot b at NHEL(b)*SB(b) with the base slot order (APPLY_CROSSING_TABLE
-    # permutes only the momenta), so the map relating a crossed row to its
-    # identity row is SB[b]*nhel[b,h] -- no D[] indexing. This is the same map
-    # the recycled optim and the madmatrix lanes realise, which is the point:
-    # one good-helicity relation describes every backend. tau is a clean
-    # bijection (each leg's states are closed under negation), so this stays an
-    # EQUALITY rather than a containment.
-    tau = {}
-    for h in range(ncomb):
-        cfg = tuple(SB[b] * nhel[b, h] for b in range(nexternal))
-        hp = row_of.get(cfg)
-        assert hp is not None, 'row %%d: tau is not a row bijection' %% K
-        tau[h + 1] = hp
-    expected = {tau[h] for h in g_id}
-    g_cr = good_set(flav_idx, D)
+    # The crossing evaluates the base rows themselves, the legs that changed
+    # side negated (APPLY_CROSSING_ROWS): the same all-outgoing configuration,
+    # so the same zeros for a massless process. ONE good-helicity filter then
+    # serves every crossing, which is what every backend relies on: the
+    # crossed good rows must EQUAL the identity's.
+    expected = g_id
+    g_cr = good_set(flav_idx, D, SB)
     assert g_cr == expected, (
-        'row %%d (D=%%s): crossed good-hel %%s != tau(identity) %%s'
+        'row %%d (D=%%s): crossed good-hel %%s != identity %%s'
         %% (K, D, sorted(g_cr), sorted(expected)))
     checked += 1
     if -1 in SB:
@@ -1629,12 +1622,14 @@ for pdgs in ([21, 2, 24, 1], [2, -1, 24, 21], [21, -1, 24, -2]):
                                  (values['on'], values['off']))
 
     def _assert_goodhel_relation(self, process, name, ninitial, npts=16):
-        """Compiled-module check of the GHREMAP good-helicity relation.
+        """Compiled-module check that one good-helicity filter serves every
+        crossing.
 
         Builds the f2py module for `process` and, for every row of its
-        crossing table, asserts the crossed good-helicity set equals the
-        identity's mapped through TAU, the sign-only map every backend can
-        realise (the invariant the shared good-helicity filter encodes).
+        crossing table, asserts that the base rows the crossing evaluates
+        (its own helicity codes decoded through CROSS_HELCODE's convention)
+        that are non-zero are exactly the identity's: the invariant every
+        backend's single filter relies on (massless legs).
         Skips if the f2py toolchain is unavailable, exactly like the other
         compiled-module tests.
         """
@@ -1655,9 +1650,9 @@ for pdgs in ([21, 2, 24, 1], [2, -1, 24, 21], [21, -1, 24, -2]):
                       % (process, output))
 
     def test_goodhel_relation_qq_gg(self):
-        """The crossed good-helicity set of u u~ > g g must be the identity's
-        mapped through tau, for every row (>=12 points, so the accidental-zero
-        undercount seen on the former cross=23 cannot mask a bug)."""
+        """The good base rows of every crossing of u u~ > g g must be the
+        identity's (>=12 points, so the accidental-zero undercount seen on the
+        former cross=23 cannot mask a bug)."""
         self._assert_goodhel_relation(PROC_QQ_GG, 'Proc_qq_gg_goodhel',
                                       ninitial=2)
 
@@ -1951,7 +1946,11 @@ for pdgs in ([21, 2, 24, 1], [2, -1, 24, 21], [21, -1, 24, -2]):
         for path in (fold, exp):
             with open(pjoin(path, 'check_sa.f'), 'w') as fsock:
                 fsock.write(self._HELCODE_DRIVER)
+            # check_sa.o too: rewritten within the same second, the new
+            # check_sa.f does not look newer to make (1 s timestamps), which
+            # then relinks the training driver.
             os.remove(pjoin(path, 'check'))
+            os.remove(pjoin(path, 'check_sa.o'))
             self._build(path)
 
         def per_code(path, flav_idx):
@@ -2045,7 +2044,7 @@ class TestGoodHelCParityDedup(unittest.TestCase):
             shutil.rmtree(self.tmpdir)
 
     # ------------------------------------------------------------------
-    def _generate(self, process, name):
+    def _generate(self, process, name, out_options=''):
         """Standalone-output `process`, build the C-parity driver, return its
         P* dir."""
         outdir = pjoin(self.tmpdir, name)
@@ -2054,7 +2053,8 @@ class TestGoodHelCParityDedup(unittest.TestCase):
         self.cmd.exec_cmd('set apply_flavor_grouping True')
         self.cmd.exec_cmd('import model sm')
         self.cmd.exec_cmd('generate %s --use_crossing=True' % process)
-        self.cmd.exec_cmd('output standalone_fortran %s -f' % outdir)
+        self.cmd.exec_cmd(('output standalone_fortran %s -f %s'
+                           % (outdir, out_options)).strip())
 
         subproc_root = pjoin(outdir, 'SubProcesses')
         pdirs = [pjoin(subproc_root, entry)
@@ -2106,7 +2106,7 @@ class TestGoodHelCParityDedup(unittest.TestCase):
       INTEGER NCOMB
       PARAMETER (NCOMB=%(ncomb)d)
       REAL*8 P(0:3,NEXTERNAL), ANS, ANSFLIP
-      INTEGER I, J, MODE, NREP, IHEL, CODE, FCODE, IDEN_STAR
+      INTEGER I, J, MODE, NREP, IHEL, CODE, FCODE, IDEN_STAR, FIDX
       INTEGER NHEL_STAR(NEXTERNAL,NCOMB)
       INTEGER THIS(NEXTERNAL), FLIPPED(NEXTERNAL)
       call setpara('param_card.dat')
@@ -2133,11 +2133,12 @@ C        rows of a pair, so the two values are directly comparable.
      &        'PAIR=', IHEL, CODE, FCODE, ANS, ANSFLIP
          ENDDO
       ELSE
-C        The plain unpolarized sum, repeatedly: NTRY_CSYM crosses its
-C        threshold part way through and the fast phase takes over.
-         READ(42,*) NREP
+C        The plain unpolarized sum at (extended) index FIDX, repeatedly:
+C        its C-parity scan counter crosses its threshold part way through and
+C        the fast phase takes over.
+         READ(42,*) NREP, FIDX
          DO I=1,NREP
-            CALL SMATRIX(P,1,ANS)
+            CALL SMATRIX(P,FIDX,ANS)
             WRITE(*,'(A,1X,I6,1X,ES25.17)') 'ANS=', I, ANS
          ENDDO
       ENDIF
@@ -2169,10 +2170,11 @@ C        threshold part way through and the fast phase takes over.
                         % (pdir, output))
         return pairs
 
-    def _repeated_sums(self, pdir):
-        """The unpolarized SMATRIX value of each of `nrepeat` successive calls."""
+    def _repeated_sums(self, pdir, flav_idx=1):
+        """The unpolarized SMATRIX value of each of `nrepeat` successive calls
+        at (extended) index `flav_idx`."""
         output = self._probe(pdir, ['2'] + self._momentum_lines()
-                             + ['%d' % self.nrepeat])
+                             + ['%d %d' % (self.nrepeat, flav_idx)])
         values = [float(value)
                   for _call, value in re.findall(r'ANS=\s+(\d+)\s+(\S+)', output)]
         self.assertEqual(len(values), self.nrepeat,
@@ -2180,7 +2182,7 @@ C        threshold part way through and the fast phase takes over.
                          % (self.nrepeat, pdir, len(values), output))
         return values
 
-    def _assert_sum_is_stable(self, pdir, label):
+    def _assert_sum_is_stable(self, pdir, label, flav_idx=1):
         """Every repeated call must give the first call's value.
 
         Call 1 is in the scan phase (full helicity sum, both members of every
@@ -2188,7 +2190,7 @@ C        threshold part way through and the fast phase takes over.
         wrong -- a missing factor of two, or a de-duplication applied to a
         flavor whose pairs do not match -- the value steps part way through.
         """
-        values = self._repeated_sums(pdir)
+        values = self._repeated_sums(pdir, flav_idx)
         reference = values[0]
         self.assertNotEqual(reference, 0.0,
                             '%s gives a null matrix element' % label)
@@ -2247,6 +2249,19 @@ C        threshold part way through and the fast phase takes over.
         """The reuse engages here, and must not move the answer."""
         pdir = self._generate(PROC_CPARITY_PAIRED, 'Proc_cparity_qcd_sum')
         self._assert_sum_is_stable(pdir, PROC_CPARITY_PAIRED)
+
+    def test_dedup_leaves_a_crossed_sum_unchanged(self):
+        """A crossed index de-duplicates too: it evaluates the base rows (the
+        legs that changed side negated), so the base mirror is its C-parity
+        partner, and it scans the shared verdict over its own first calls
+        before reusing it. Its sum must not move across that threshold
+        either. u u~ > g g with every applicable crossing written out
+        (--crossing_table=all); FLAV_IDX 2 is crossing row 1, massless like
+        the base, so the same points serve it."""
+        pdir = self._generate(PROC_CPARITY_PAIRED, 'Proc_cparity_qcd_crossed',
+                              out_options='--crossing_table=all')
+        self._assert_sum_is_stable(pdir, '%s crossed' % PROC_CPARITY_PAIRED,
+                                   flav_idx=2)
 
     def test_refused_dedup_leaves_the_broken_sum_unchanged(self):
         """The regression: the reuse must refuse itself here.
@@ -3002,40 +3017,37 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
                                   fsock.read()).group(1))
         return ncross, nflav
 
-    # Test-only knobs spliced into the output's copy of the backend SigmaKin.cc,
-    # right after the good-helicity scan has built the per-crossing lists:
-    #   MG_PADCROSS=c  drop the last good row of crossing c but keep the loop
-    #                  bound, so the lanes of c reach a padding row (_hr = -1);
-    #   MG_ONLYLAST=c  keep only that row, with the loop bound set to 1 (no
-    #                  padding at all): its own contribution, on a uniform page.
-    _PADDING_KNOBS = '''\
-      if( const char* pc = getenv( "MG_PADCROSS" ) ) cNGoodPerCross[atoi( pc )] -= 1;
-      if( const char* oc = getenv( "MG_ONLYLAST" ) )
-      {
-        const int c = atoi( oc );
-        cGoodHelOfCross[c][0] = cGoodHelOfCross[c][cNGoodPerCross[c] - 1];
-        cNGoodPerCross[c] = 1;
-        cNGoodMaxCross = 1;
-      }
+    # Test-only knob spliced into the output's copy of the backend SigmaKin.cc,
+    # at the end of sigmaKin_setGoodHel: MG_PRINT_NGOODHEL prints the length
+    # of the good-helicity list every lane runs.
+    _NGOODHEL_KNOB = '''\
+    if( getenv( "MG_PRINT_NGOODHEL" ) ) printf( " NGOODHEL %d\\n", nGoodHel );
 '''
 
-    def _add_padding_knobs(self, pdir):
-        """Splice _PADDING_KNOBS into the cpu and simd SigmaKin.cc that the
+    def _add_ngoodhel_knob(self, pdir):
+        """Splice _NGOODHEL_KNOB into the cpu and simd SigmaKin.cc that the
         output of `pdir` compiles (whichever of the two the build picks)."""
-        anchor = ('      for( int c = 0; c < cNcross; c++ ) if( cNGoodPerCross[c] '
-                  '> cNGoodMaxCross ) cNGoodMaxCross = cNGoodPerCross[c];\n')
+        anchor = '    return nGoodHel;\n  }\n'
         backend = pjoin(os.path.dirname(os.path.dirname(pdir)), 'backend')
         for variant in ('cpu', 'simd'):
             path = pjoin(backend, variant, 'SigmaKin.cc')
             with open(path) as fsock:
                 src = fsock.read()
             self.assertEqual(src.count(anchor), 1,
-                             'the loop-bound line the knobs hook onto is gone '
-                             'from %s' % path)
-            src = '#include <cstdlib>\n' + src.replace(
-                anchor, anchor + self._PADDING_KNOBS)
+                             'the end of sigmaKin_setGoodHel is gone from %s'
+                             % path)
+            src = '#include <cstdio>\n#include <cstdlib>\n' + src.replace(
+                anchor, self._NGOODHEL_KNOB + anchor)
             with open(path, 'w') as fsock:
                 fsock.write(src)
+
+    def _ngoodhel(self, pdir, flavor_id):
+        out = subprocess.check_output(
+            ['./check_sa.exe', 'perf', '-f', str(flavor_id), '1', '8', '1'],
+            cwd=pdir, env=dict(os.environ, MG_PRINT_NGOODHEL='1')).decode()
+        found = re.findall(r' NGOODHEL (\d+)', out)
+        self.assertTrue(found, 'no NGOODHEL in:\n%s' % out)
+        return int(found[-1])
 
     def _output_pq_gg_qqx(self, name, options='', out_options=''):
         """Write the multiprocess `pq pq > pq pq` (pq = g u u~) and return its
@@ -3184,52 +3196,28 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
                 msg='event %d (cross %s) got %r, expected %r'
                 % (i, 'id' if i % 2 == 0 else 'g u~ > g u~', me, expected))
 
-    def test_padding_helicity_row_contributes_zero(self):
-        """A lane whose crossing has FEWER good helicities than the per-lane
-        loop bound (cNGoodMaxCross) runs into padding rows (_hr = -1, every
-        helicity mask 0), and must add exactly nothing there.
+    def test_one_good_helicity_list_for_every_crossing(self):
+        """Every lane runs the same good-helicity list, whatever its crossing.
 
-        The external block used to mask the momentum along with the
-        wavefunction, so a padding lane had p = 0, its massless propagators
-        evaluated 0/0 and its |M|^2 came out NaN. Nothing keeps the
-        per-crossing counts equal (a row at ~1e-30 in one crossing can be an
-        exact zero in another), so the padding row is forced: the list of
-        the u u~ > g g row loses its last row after the scan while the loop
-        bound stays.
-        Those lanes must return the full value minus that row's contribution,
-        measured on its own without any padding (MG_ONLYLAST), and the
-        identity lanes sharing the page must not move."""
-        pdir = self._output_folded_gg_qqx('ggqqx_padding')
-        self._add_padding_knobs(pdir)
-        self._patch_and_build(pdir)
-        cross = self._crossed_id(pdir, self.PDG_QQ_GG)
-        # the knobs take the crossing-table row: id / nmaxflavor
-        row = cross // self._table_size(pdir)[1]
-        identity_val = self._me(pdir, self.IDENTITY)
-        full_val = self._me(pdir, cross)
-        dropped_val = self._event_mes(pdir, cross,
-                                      env={'MG_ONLYLAST': str(row)})[0]
-        # Non-vacuous: the dropped row carries a visible share of |M|^2, so a
-        # padding lane that silently kept it would fail too.
-        self.assertGreater(dropped_val, 1e-3 * full_val,
-                           'the dropped row (%r of %r) is too small to tell '
-                           'the padded value apart' % (dropped_val, full_val))
-        expected = full_val - dropped_val
-        mixed = self._event_mes(
-            pdir, self.IDENTITY,
-            env={'MG_PADCROSS': str(row), 'MG_SAMEMOM': '1',
-                 'MG_FLVMIX': '%d,%d' % (self.IDENTITY, cross)})
-        self.assertGreaterEqual(len(mixed), 4,
-                                'need several events to mix crossings in a page')
-        for i, me in enumerate(mixed):
-            want = identity_val if i % 2 == 0 else expected
-            self.assertFalse(math.isnan(me),
-                             'event %d (cross %s) is NaN: the padding row was '
-                             'not a clean zero' % (i, 'id' if i % 2 == 0 else cross))
-            self.assertAlmostEqual(
-                me, want, delta=self.tolerance * abs(want) + 1e-12,
-                msg='event %d (cross %s) got %r, expected %r'
-                % (i, 'id' if i % 2 == 0 else cross, me, want))
+        A crossed lane evaluates the base helicity row with the legs that
+        changed side negated (the same all-outgoing configuration), so its
+        zero rows are the base's: the list scanned over the base AND its
+        crossings (g u~ > g u~ and u u~ > g g here, all massless) must be
+        exactly the base's own. It used to be one list per crossing, the
+        lanes of a page each running their own, padded to the longest. The
+        values of mixed-crossing pages are checked by
+        test_per_event_different_cross."""
+        folded = self._output_folded_gg_qqx('ggqqx_unique')
+        alone = self._output_pq_gg_qqx('ggqqx_alone',
+                                       options='--use_crossing=False')
+        for pdir in (folded, alone):
+            self._add_ngoodhel_knob(pdir)
+            self._patch_and_build(pdir)
+        cross = self._crossed_id(folded, self.PDG_QQ_GG)
+        n_alone = self._ngoodhel(alone, self.IDENTITY)
+        self.assertGreater(n_alone, 0)
+        self.assertEqual(self._ngoodhel(folded, cross), n_alone,
+                         'the crossings added rows to the good-helicity list')
 
     def test_id_past_the_table_returns_zero(self):
         """An extended id past the last row of the crossing table names no
@@ -3272,8 +3260,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         off_src = self._cpp_source(off_dir)
         self.assertIn('use_crossing = true', on_src)
         self.assertIn('use_crossing = false', off_src)
-        for token in ('cross_gather( xcr', 'base_pdg',
-                      'cGoodHelOfCross', 'xmom', 'icsign'):
+        for token in ('cross_gather( xcr', 'base_pdg', 'xmom', 'icsign'):
             self.assertIn(token, on_src,
                           '%s should be emitted with crossing on' % token)
             self.assertNotIn(token, off_src,
@@ -3291,8 +3278,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
 
         The flag used to be read by the generate command only, so passing it to
         `output` was silently a no-op: the whole crossing machinery (preamble,
-        per-crossing good-helicity tables, NSF-blended external calls, the
-        cNGoodMaxCross loop bound) was emitted anyway. Writing the same source
+        NSF-blended external calls) was emitted anyway. Writing the same source
         as the generate-time flag is the sharpest statement of the fix, since
         that build is the one covered by the tests above.
 
@@ -3313,8 +3299,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         on_src = self._cpp_source(self._output_folded_gg_qqx('ggqqx_defaulton'))
         self.assertIn('use_crossing = true', on_src)
         self.assertIn('use_crossing = false', out_src)
-        for token in ('cross_gather( xcr', 'base_pdg',
-                      'cGoodHelOfCross', 'xmom'):
+        for token in ('cross_gather( xcr', 'base_pdg', 'xmom', 'icsign'):
             self.assertIn(token, on_src,
                           '%s should be emitted with crossing on' % token)
             self.assertNotIn(token, out_src,
@@ -3332,9 +3317,9 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         source; the GPU CI (crossing_folding) checks the behaviour. Each GPU
         external call must read its momentum from the input slot of the
         thread's crossing row (xperm) with the base NSF sign of the cpu block
-        above it times xic; calculate_jamps evaluates the thread's own
-        crossing's good helicity, and the denominator and the reported
-        helicity are the crossed ones."""
+        above it times xic, and its helicity the base row's times the same
+        xic (one good-helicity list for every crossing); the denominator and
+        the reported helicity are the crossed ones."""
         # a base that really folds crossings: one folding nothing is written
         # on the plain path (use_crossing = false)
         pdir = self._output_folded_gg_qqx('ggqqx_gpu')
@@ -3365,13 +3350,16 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
                             ('%s * xic[%s]' % (sign, slot)) in gpu_args,
                             'GPU %s of slot %s is not crossed: %s'
                             % (routine, slot, gpu_args))
-        self.assertTrue('ihel = crossed_hel_row( ihel, iflavor_ext );' in sigmakin,
-                        'calculate_jamps does not evaluate the crossing\'s own helicity')
+            if routine != 'sxxxxx':
+                self.assertTrue('cHel[ihel][%s] * xic[%s]' % (slot, slot)
+                                in gpu_args, 'GPU %s of slot %s does not negate '
+                                'the helicity of a crossed leg: %s'
+                                % (routine, slot, gpu_args))
         self.assertTrue('iflavor_ext % (unsigned int)nmaxflavor' in sigmakin,
                         'the flavor tables are not indexed by the base flavor')
         self.assertTrue('/ ( (fptype)spincol_cross( dcr ) * (fptype)ident_cross( dcr, dfl ) )'
                         in sigmakin, 'normalise_output keeps the base denominator')
-        self.assertTrue('allselhel[ievt] = selected_hel_code( row, iflavorVec[ievt] );'
+        self.assertTrue('allselhel[ievt] = selected_hel_code( dcGoodHel[ighel], iflavorVec[ievt] );'
                         in sigmakin, 'the reported helicity is not the crossed code')
         self.assertTrue('const bool validFlavor = use_crossing || fid < (unsigned int)nmaxflavor;'
                         in sigmakin, 'a crossing build gives a crossed id a NaN')
@@ -3390,7 +3378,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
                             % label)
         with open(pjoin(pdir, 'EvaluateDiagrams.inc')) as fsock:
             diagrams = fsock.read()
-        for token in ('xmom', 'cGoodHelOfCross'):
+        for token in ('xmom', 'icsign'):
             self.assertFalse(token in diagrams,
                              '%s: %s emitted into EvaluateDiagrams.inc'
                              % (label, token))
@@ -3408,8 +3396,8 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
 
         A bare `u u~ > g g` records no crossed subprocess, so its crossing
         table would hold the identity alone: the per-lane
-        crossing path (per-state external blend, per-event momentum gather,
-        cNGoodMaxCross loop) could only ever recompute what the plain path
+        crossing path (NSF-blended external calls, per-event momentum gather)
+        could only ever recompute what the plain path
         computes. It used to be written all the same, being gated on the flag
         alone. Gated on the recorded crossings too, the output is exactly the
         --use_crossing=False one.
@@ -3534,8 +3522,9 @@ int main( int argc, char** argv )
         until the madevent convention was adopted it was a base-relative code
         that only a per-crossing table could decode. At one phase-space point
         and the same random numbers, the folded crossing now reports every
-        code exactly as often as u u~ > z g written on its own, and the codes
-        decode with the crossed process's own helicity table.
+        code as often as u u~ > z g written on its own (up to the bin edges,
+        see below), and the codes decode with the crossed process's own
+        helicity table.
         """
         outdirs = {}
         for name, options in (('fold', ''), ('exp', ' --use_crossing=False')):
@@ -3578,11 +3567,18 @@ int main( int argc, char** argv )
         nevt = 20000
         folded = self._selected_helicities(fold, ids[0], momenta, nevt)
         alone = self._selected_helicities(exp, 0, momenta, nevt)
+        # The two outputs walk their good helicities in different orders (the
+        # base rows vs the crossed process's own), so with the same random
+        # numbers an event on the edge of a bin can land on the neighbouring
+        # code: hence +-2 per code, and per code for the longitudinal sum. A
+        # mis-reported z helicity moves tens of events (all of them, once).
+        long_codes = [c for c in set(folded) | set(alone) if rows[c][2] == 0]
         longitudinal = sum(1 for code in alone if rows[code][2] == 0)
         self.assertTrue(longitudinal > 0, 'no longitudinal z at this point')
-        self.assertEqual(sum(1 for code in folded if rows[code][2] == 0),
-                         longitudinal, 'the folded crossing mis-reports the '
-                         'helicity of the z it moved into the u slot')
+        self.assertLessEqual(
+            abs(sum(1 for code in folded if rows[code][2] == 0) - longitudinal),
+            2 * len(long_codes), 'the folded crossing mis-reports the '
+            'helicity of the z it moved into the u slot')
         for code in set(folded) | set(alone):
             self.assertLessEqual(
                 abs(folded.count(code) - alone.count(code)), 2,

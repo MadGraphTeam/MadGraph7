@@ -4,13 +4,16 @@ C
 C
 C MadGraph7 for Madevent Version
 C
-C Crossing-symmetry router: this subprocess shares its matrix element with a
-C base subprocess of the same group. Each of its flavors is a crossing of a
-C base flavor, so instead of its own (heavy) MATRIX it dispatches to the base
-C SMATRIX with the extended FLAV_IDX that reproduces the crossed process. The
-C base SMATRIX crosses the momenta P (supplied in this subprocess's own leg
-C order) and rebuilds the crossed denominator, so ANS is this subprocess's
-C matrix element. Only the flavor table (GET_FLAVOR) is kept here for the PDF.
+C Crossing-symmetry router: this subprocess shares its
+C matrix element with a base subprocess of the same group.
+C Each of its flavors is a crossing of a base flavor, so
+C instead of its own (heavy) MATRIX it dispatches to the
+C base SMATRIX with the extended FLAV_IDX that reproduces
+C the crossed process. The base SMATRIX crosses the momenta
+C P (supplied in this subprocess's own leg order) and
+C rebuilds the crossed denominator, so ANS is this
+C subprocess's matrix element. Only the flavor table
+C (GET_FLAVOR) is kept here for the PDF.
 C
 %(process_lines)s
 C
@@ -19,13 +22,16 @@ C
       REAL*8 P(0:3,NEXTERNAL), ANS
       DOUBLE PRECISION RHEL, RCOL
       INTEGER channel, IVEC, IFLAV, IHEL, ICOL
-C     Colour is reselected here, not taken from the base: the base's SELECT_COLOR
-C     masked its JAMP2 with the BASE's ICOLAMP row, which at the same ICONFIG can
-C     allow a different set of flows than this subprocess's own, so its pick may
-C     be a topology this subprocess never emits. XG_SELCOL below permutes the
-C     base's published per-flow JAMP2 into this subprocess's flow order and runs
-C     SELECT_COLOR with THIS subprocess's IPROC. (The helicity index needs no
-C     such treatment: it is a relabel of a choice made in a shared space.)
+C     Colour is reselected here, not taken from the base: the
+C     base's SELECT_COLOR masked its JAMP2 with the BASE's
+C     ICOLAMP row, which at the same ICONFIG can allow a
+C     different set of flows than this subprocess's own, so its
+C     pick may be a topology this subprocess never emits.
+C     XG_SELCOL below permutes the base's published per-flow
+C     JAMP2 into this subprocess's flow order and runs
+C     SELECT_COLOR with THIS subprocess's IPROC. (The helicity
+C     index needs no such treatment: it is a relabel of a choice
+C     made in a shared space.)
 %(smatrix_router_decl)s
       ANS = 0D0
       IHEL = 1

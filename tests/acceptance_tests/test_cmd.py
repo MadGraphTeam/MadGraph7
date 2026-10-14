@@ -1931,7 +1931,9 @@ class TestCmdShell2(unittest.TestCase,
         it). Both with and without the crossing machinery:
           * g g > t t~: 16 rows per call while scanning, 8 once settled, the
             same |M|^2 throughout, igood[0..ngood-1] the 16 good rows; a
-            crossed flavor_id (t t~ > g g) keeps the full sum;
+            crossed flavor_id (t t~ > g g) too: it evaluates the base rows
+            with the legs that changed side negated, so the base mirror is
+            its C-parity partner, and it scans the verdict on its own calls;
           * u u~ > e+ e- (parity violating through the Z): the pairing is
             refused, every call keeps the full sum.
         The helicity-sampling mode (sum_hel > 0, set by the driver) must
@@ -2101,8 +2103,8 @@ int main(int argc, char** argv){
             res = run(dirs['_gg_ttx'], fids + modes)
             check(res, 0, 16, deduped=True)
             if use_crossing:
-                # a crossed call never runs the C-parity scan
-                check(res, fids[1], 16, deduped=False, scanned=False)
+                # a crossed call scans and reuses the C-parity pairing too
+                check(res, fids[1], 16, deduped=True)
             for mode in modes:
                 for fid in fids:
                     check_sampling(res, mode, fid)

@@ -262,3 +262,60 @@ class TestStandaloneHelRecyclingConsistency(StandaloneHelRecyclingConsistency):
         self.assertFalse(re.findall(r'TS\((\d+)\)\s*=\s*TS\((\d+)\)', recycled),
                          'C-parity reuse must not be applied to a process with '
                          'a self-paired helicity row')
+
+    def test_crossed_smatrixhel(self):
+        """SMATRIXHEL at a crossed FLAV_IDX under --hel_recycling.
+
+        Every crossing evaluates the baked base rows (each helicity times IC,
+        as APPLY_CROSSING_ROWS feeds the standard SMATRIX), so the crossed
+        process's own helicity code selects the base row CROSS_HELCODE names:
+        the recycled output used to refuse a crossed index. `u b1 > c1 d1`
+        (b1 = g u~, c1 = u z, d1 = z g) folds u u~ > z g onto u g > u z, a
+        crossing that moves the massive z (whose helicity zeros depend on the
+        frame, so its rows come from the warm-up's scan of the crossing):
+        code by code, the recycled crossed |M|^2 must equal the standard
+        standalone's."""
+        import math
+        from tests.acceptance_tests.test_standalone_cross_symmetry import \
+            TestStandaloneCrossSymmetry
+        self.do('set automatic_html_opening False')
+        self.do('set group_subprocesses False')
+        self.do('import model sm')
+        for line in ('define b1 = g u~', 'define c1 = u z', 'define d1 = z g'):
+            self.do(line)
+        self.do('generate u b1 > c1 d1 QED=1 QCD=1')
+        self.do('output standalone_fortran %s -f' % self.std_dir)
+        self.do('output standalone_fortran %s --hel_recycling=True -f'
+                % self.hr_dir)
+
+        # u u~ > z g at sqrt(s) = 1 TeV, theta = 0.7: the z is leg 3
+        mz, energy, theta = 91.188, 500.0, 0.7
+        pz = (4 * energy ** 2 - mz ** 2) / (4 * energy)
+        ez = math.sqrt(pz ** 2 + mz ** 2)
+        sin, cos = math.sin(theta), math.cos(theta)
+        momenta = [(energy, 0, 0, energy), (energy, 0, 0, -energy),
+                   (ez, pz * sin, 0, pz * cos), (pz, -pz * sin, 0, -pz * cos)]
+        stdin = '\n'.join(['2 24'] + [' '.join('%.17e' % x for x in mom)
+                                       for mom in momenta]) + '\n'
+        per_code = {}
+        for name, root in (('standard', self.std_dir), ('recycled', self.hr_dir)):
+            found = [d for d in self._subprocess_dirs(root)
+                     if d.endswith('_ug_uz')]
+            self.assertEqual(len(found), 1, 'u g > u z in %s: %s' % (root, found))
+            pdir = found[0]
+            with open(pjoin(pdir, 'check_sa.f'), 'w') as fsock:
+                fsock.write(TestStandaloneCrossSymmetry._HELCODE_DRIVER)
+            self.assertEqual(self._call(['make', 'check'], pdir), 0,
+                             'failed to build the %s driver' % name)
+            out = subprocess.run(['./check'], cwd=pdir, input=stdin,
+                                 capture_output=True, text=True).stdout
+            per_code[name] = [float(v) for v in
+                              re.findall(r'HEL=\s*\d+\s+(\S+)', out)]
+            self.assertEqual(len(per_code[name]), 24,
+                             '%s: no per-code output:\n%s' % (name, out))
+        self.assertEqual(sum(1 for v in per_code['standard'] if v), 12)
+        for code, (a, b) in enumerate(zip(per_code['recycled'],
+                                          per_code['standard']), 1):
+            self.assertAlmostEqual(a, b, delta=1e-9 * max(abs(b), 1e-300),
+                                   msg='code %d: recycled %r, standard %r'
+                                   % (code, a, b))

@@ -1,16 +1,19 @@
-C     Standalone helicity-recycling ORIG matrix element.
-C     This file is NOT the final code: it is the input parsed by
-C     madgraph/madevent/hel_recycle.py, which rewrites the MATRIX function
-C     body (external/internal wavefunctions, amplitudes and the JAMP sum) into
-C     the recycled form and injects it into the standalone _hel driver template
-C     via the ${helas_calls} placeholder.  The structure below therefore
-C     mirrors the madevent single-MATRIX layout the rewriter expects:
-C       AMP(:) = 0  ->  helas calls  ->  JAMP(:) = 0  ->  jamp lines  ->
-C       'if(init_mode)' terminator  ->  color sum,
+C     Standalone helicity-recycling ORIG matrix element. This
+C     file is NOT the final code: it is the input parsed by
+C     madgraph/madevent/hel_recycle.py, which rewrites the
+C     MATRIX function body (external/internal wavefunctions,
+C     amplitudes and the JAMP sum) into the recycled form and
+C     injects it into the standalone _hel driver template via
+C     the ${helas_calls} placeholder.  The structure below
+C     therefore mirrors the madevent single-MATRIX layout the
+C     rewriter expects:
+C       AMP(:) = 0  ->  helas calls  ->  JAMP(:) = 0  ->  jamp
+C       lines  -> 'if(init_mode)' terminator  ->  color sum,
 C     plus the helicity (NHEL) table the rewriter reads.
 C
-C     The helicity table MUST come first: hel_recycle reads it to set the
-C     per-leg helicity ranges before it parses the wavefunction calls.
+C     The helicity table MUST come first: hel_recycle reads it
+C     to set the per-leg helicity ranges before it parses the
+C     wavefunction calls.
       BLOCK DATA %(proc_prefix)sNHEL_DATA
       INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
@@ -47,10 +50,11 @@ C
 C ARGUMENTS
 C
       REAL*8 P(0:3,NEXTERNAL)
-C     P, NHEL and IC must ALREADY be crossed (the warm-up applies the crossing
-C     once per point, as SMATRIX does), and FLAV_IDX must ALREADY be reduced to
-C     1..NFLAV. FLAVOR(NEXTERNAL) is rebuilt from it by the flavor block below,
-C     exactly as in the standard GET_AMP.
+C     P, NHEL and IC must ALREADY be crossed (the warm-up
+C     applies the crossing once per point, as SMATRIX does), and
+C     FLAV_IDX must ALREADY be reduced to 1..NFLAV.
+C     FLAVOR(NEXTERNAL) is rebuilt from it by the flavor block
+C     below, exactly as in the standard GET_AMP.
       INTEGER NHEL(NEXTERNAL), IC(NEXTERNAL)
       INTEGER FLAV_IDX
       INTEGER FLAVOR(NEXTERNAL)
@@ -61,13 +65,15 @@ C
       COMPLEX*16 ZTEMP
       INTEGER %(proc_prefix)sCF(%(ncolortriang)d)
       INTEGER %(proc_prefix)sDENOM, CF_INDEX
-C     AMP is dimensioned exactly as in the standard GET_JAMP: when the color
-C     flow definitions are emitted as operand tables rather than written out,
-C     their temporaries live past NGRAPHS in this same array (NGRAPHS+154530
-C     against NGRAPHS 126630 for g g > 6g) and jamp_decl declares the tables
-C     that index them. Hard-coding AMP(NGRAPHS) and a TMP_JAMP here instead
-C     both overran the array and left ITMP/ILEV undeclared, which is what made
-C     the warm-up fail to compile.
+C     AMP is dimensioned exactly as in the standard GET_JAMP:
+C     when the color flow definitions are emitted as operand
+C     tables rather than written out, their temporaries live
+C     past NGRAPHS in this same array (NGRAPHS+154530 against
+C     NGRAPHS 126630 for g g > 6g) and jamp_decl declares the
+C     tables that index them. Hard-coding AMP(NGRAPHS) and a
+C     TMP_JAMP here instead both overran the array and left
+C     ITMP/ILEV undeclared, which is what made the warm-up fail
+C     to compile.
       COMPLEX*16 AMP(%(namp_dim)s), JAMP(NCOLOR)
 %(jamp_tmp_decl)s
 %(jamp_decl)s
@@ -75,9 +81,10 @@ C     the warm-up fail to compile.
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
       double precision bwcutoff
-C     Warm-up instrumentation (only active when init_mode is .true., set by the
-C     hel_warmup driver). ZEROAMP(ihel,i) stays .true. while amplitude i has been
-C     zero for helicity ihel over every sampled phase-space point; CUR_IHEL is the
+C     Warm-up instrumentation (only active when init_mode is
+C     .true., set by the hel_warmup driver). ZEROAMP(ihel,i)
+C     stays .true. while amplitude i has been zero for helicity
+C     ihel over every sampled phase-space point; CUR_IHEL is the
 C     helicity index the driver is currently evaluating.
       logical init_mode
       common/%(proc_prefix)sto_determine_zero_hel/init_mode
@@ -95,20 +102,23 @@ C
 C COLOR DATA
 C
 %(color_data_lines)s
-C     Per-flavor amplitude/wavefunction mask plus the FLAV_IDX -> FLAVOR
-C     rebuild, identical to the standard GET_AMP: the recycled calls carry the
-C     same IAND(CURRENT_*_MASK,...) guards.
+C     Per-flavor amplitude/wavefunction mask plus the FLAV_IDX
+C     -> FLAVOR rebuild, identical to the standard GET_AMP: the
+C     recycled calls carry the same IAND(CURRENT_*_MASK,...)
+C     guards.
 %(flavor_mask_decl)s
 C ----------
 C BEGIN CODE
 C ----------
       bwcutoff=15
-C     See the same call in matrix_standalone_hel_v4.inc: past a size the color
-C     matrix is rebuilt at run time instead of written out as DATA, and this
-C     routine sums over CF itself rather than calling GET_MATRIX. Without the
-C     call CF is all zeros, every |M|^2 is 0, and the warm-up then measures no
-C     good helicities at all -- which it reports by writing nothing, so the
-C     output silently falls back to the compute-all matrix.f.
+C     See the same call in matrix_standalone_hel_v4.inc: past a
+C     size the color matrix is rebuilt at run time instead of
+C     written out as DATA, and this routine sums over CF itself
+C     rather than calling GET_MATRIX. Without the call CF is all
+C     zeros, every |M|^2 is 0, and the warm-up then measures no
+C     good helicities at all -- which it reports by writing
+C     nothing, so the output silently falls back to the
+C     compute-all matrix.f.
       CALL %(proc_prefix)sINIT_CF()
       AMP(:) = (0D0,0D0)
 %(flavor_mask_setup)s
@@ -140,17 +150,19 @@ C     output silently falls back to the compute-all matrix.f.
       END
 
 
-C     The color matrix rebuild, for the same reason: the warm-up probe links
-C     matrix_orig.f alone, so it cannot borrow the copy that the recycled
-C     matrix.f gets from the appended standard routines. Both are empty when
-C     the entries were written out as DATA instead.
+C     The color matrix rebuild, for the same reason: the warm-up
+C     probe links matrix_orig.f alone, so it cannot borrow the
+C     copy that the recycled matrix.f gets from the appended
+C     standard routines. Both are empty when the entries were
+C     written out as DATA instead.
 %(color_init_routine)s
 
 %(jamp_init_routine)s
 
-C     Crossing machinery, also emitted here so the warm-up probe (which links
-C     matrix_orig.f alone) can enumerate the crossings and measure the good
-C     helicities of each. Empty when the process was generated without crossing
-C     symmetry. matrix_orig.f and the recycled matrix.f are never linked
+C     Crossing machinery, also emitted here so the warm-up probe
+C     (which links matrix_orig.f alone) can enumerate the
+C     crossings and measure the good helicities of each. Empty
+C     when the process was generated without crossing symmetry.
+C     matrix_orig.f and the recycled matrix.f are never linked
 C     together, so the duplicate definitions never clash.
 %(crossing_routines)s

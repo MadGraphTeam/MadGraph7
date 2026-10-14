@@ -1460,6 +1460,17 @@ class OneProcessExporterCPP(object):
             # No crossing: every call is the uncrossed process, so the C-parity
             # de-duplication is always allowed.
             'csym_dedup_ok': 'true',
+            'csym_doc':
+                '// C-parity helicity de-duplication (mirror of the fortran'
+                ' SMATRIX): flip[ihel]\n// is the helicity row with every'
+                ' helicity negated, an involution built once\n// from the'
+                ' helicity table. dedup_ok gates the reuse to the UNCROSSED'
+                ' process:\n// a crossing permutes/sign-flips the helicities,'
+                ' so a base-row flip is no\n// longer the crossed C-parity'
+                ' partner and the crossed flavors keep the full sum.',
+            'csym_ntry': 'ntry_csym[flavor_id]',
+            'cross_full_sum': '',
+            'sampling_owner': 'dedup_ok',
             # Historical good-helicity filter, except that igood is filled
             # 0-based (the historical fill-after-increment left igood[0] unset
             # and wrote igood[ncomb], one past the row, when every helicity is
@@ -1514,11 +1525,15 @@ class OneProcessExporterCPP(object):
             "// No such row: an identically-zero matrix element.\n"
             "if (cross < 0 || cross >= ncross || spincol_cross(cross) == 0)\n"
             "    return 0.;\n"
-            "// The good-helicity filter of a crossed index: every crossing is\n"
-            "// scanned at its own kinematics, as madspace does (goodhel stays the\n"
-            "// base's own flavors'). xid is the crossed index, -1 uncrossed.\n"
-            "static bool goodhelx[ncross * nflavors][ncomb] = {};\n"
-            "static int ntryx[ncross * nflavors] = {};\n"
+            "// One good-helicity filter, goodhel[flav_use], serves every\n"
+            "// crossing: each evaluates the same helicity rows (the legs that\n"
+            "// changed side negated, hel*ic). A crossed index keeps its own try\n"
+            "// counter (ntryx, a member) and adds the rows it finds while\n"
+            "// training (the helicity of a massive leg depends on the frame,\n"
+            "// and each crossing is evaluated in its own). The C-parity verdict\n"
+            "// csym_bad[flav_use] is shared the same way, each extended id\n"
+            "// scanning it over its own first calls (ntry_csymx). xid is the\n"
+            "// crossed index, -1 uncrossed.\n"
             "const int xid = cross > 0 ? flavor_id : -1;\n"
             "if (xid >= 0) ntryx[xid]++;"
         ) % {'ncross': ncross}
@@ -1641,26 +1656,42 @@ class OneProcessExporterCPP(object):
             'cross_return': cross_return,
             'cross_cw_sig_extra': ', const int ic[]',
             'cross_member_decl':
+                '  // per extended flavor id (cross * nflavors + flavor), per\n'
+                '  // instance like the goodhel and csym_bad they train: the try\n'
+                '  // counter of the shared good-helicity filter and the C-parity\n'
+                '  // scan counter (see sigmaKin)\n'
+                '  int ntryx[%(ncross)d * nflavors] = {};\n'
+                '  int ntry_csymx[%(ncross)d * nflavors] = {};\n'
+                % {'ncross': ncross} +
                 '  bool cross_gather(int cross, int* perm, int* ic);\n'
                 '  bool cross_pinv(int cross, int* pinv, int* sgn);\n'
                 '  int spincol_cross(int cross);\n'
                 '  int ident_cross(int cross, const int* flavor);',
             'ident_cross_function': ident_cross_function,
-            # C-parity de-duplication only for the uncrossed process (cross 0):
-            # a crossing permutes/sign-flips the helicities so a base-row flip
-            # is not the crossed C-parity partner (crossed flavors: full sum).
-            'csym_dedup_ok': 'cross == 0',
-            # Each crossed index has its own filter (goodhelx, scanned at its
-            # own kinematics); the base's own flavors keep goodhel, whose igood
-            # list the C-parity verdict and the sampling mode read.
+            # C-parity de-duplication for every call: each extended id scans
+            # the shared verdict (ntry_csymx). A crossed call keeps the full sum
+            # instead of the helicity-sampling mode, and leaves its state alone:
+            # it trains its own good rows (ntryx) in the full sum.
+            'csym_dedup_ok': 'true',
+            'csym_doc':
+                '// C-parity helicity de-duplication (mirror of the fortran'
+                ' SMATRIX): flip[ihel]\n// is the helicity row with every'
+                ' helicity negated, an involution built once\n// from the'
+                ' helicity table. A crossed call evaluates the base rows (its'
+                ' legs that\n// changed side negated), so flip is its C-parity'
+                ' partner too: every call may\n// reuse, each extended id'
+                ' scanning the shared verdict over its own first calls.',
+            'csym_ntry': 'ntry_csymx[flavor_id]',
+            'cross_full_sum': ' || xid >= 0',
+            'sampling_owner': 'xid < 0',
+            # One filter for the base and every crossing of it; the try
+            # counter is the crossed index's own.
             'cross_ghidx_setup': '',
             'cross_goodhel_gate':
-                '(xid >= 0 ? (goodhelx[xid][ihel] || ntryx[xid] < 2)'
-                ' : (goodhel[flav_use][ihel] || ntry[flav_use] < 2))',
+                'goodhel[flav_use][ihel] ||'
+                ' (xid >= 0 ? ntryx[xid] : ntry[flav_use]) < 2',
             'cross_goodhel_train':
-                'if (t != 0. && xid >= 0){\n'
-                '                goodhelx[xid][ihel] = true;\n'
-                '            } else if (t != 0. && !goodhel[flav_use][ihel]){\n'
+                'if (t != 0. && !goodhel[flav_use][ihel]){\n'
                 '                goodhel[flav_use][ihel]=true;\n'
                 '                igood[flav_use][ngood[flav_use]] = ihel;\n'
                 '                ngood[flav_use] ++;\n'

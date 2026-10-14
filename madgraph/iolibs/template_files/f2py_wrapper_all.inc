@@ -26,11 +26,12 @@ CF2PY double precision, intent(in) :: SCALE2
       SUBROUTINE %(f2py_prefix)sSMATRIXHEL_IDX(PROCINDEX, FLAV_IDX, NPDG, P,
      $  ALPHAS, SCALE2, NHEL, ANS)
       IMPLICIT NONE
-C     Crossing-aware twin of SMATRIXHEL. PROCINDEX is the 1-based
-C     get_pdg_order slot of the matrix element and FLAV_IDX the extended
-C     flavor index (cross*NFLAV+flav) of the process to evaluate. A folded
-C     crossed subprocess is reachable only this way: it has no PDG entry of
-C     its own, and the FLAVOR array cannot carry a crossing.
+C     Crossing-aware twin of SMATRIXHEL. PROCINDEX is the
+C     1-based get_pdg_order slot of the matrix element and
+C     FLAV_IDX the extended flavor index (cross*NFLAV+flav) of
+C     the process to evaluate. A folded crossed subprocess is
+C     reachable only this way: it has no PDG entry of its own,
+C     and the FLAVOR array cannot carry a crossing.
 
 CF2PY double precision, intent(in), dimension(0:3,npdg) :: p
 CF2PY integer, intent(in) :: procindex
