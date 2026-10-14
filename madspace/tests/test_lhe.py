@@ -461,3 +461,47 @@ def test_particle_momentum_kwargs_match_attributes():
     for name in ("p_x", "p_y", "p_z"):
         with pytest.raises(TypeError):
             ms.LHEParticle(**{name: 1.0})
+
+
+def chain_topology(masses):
+    """t-channel chain topology without propagator information."""
+    n_out = len(masses) - 2
+    vertices = [["i0", "p0", "o0"]]
+    vertices += [[f"p{i - 1}", f"p{i}", f"o{i}"] for i in range(1, n_out - 1)]
+    vertices.append(["i1", f"p{n_out - 2}", f"o{n_out - 1}"])
+    diagram = ms.Diagram(
+        masses[:2], masses[2:], [ms.Propagator() for _ in range(n_out - 1)], vertices
+    )
+    return ms.Topology(diagram)
+
+
+def test_subprocess_without_diagrams():
+    """Without diagrams, events carry the diagram index -1 and get no
+    intermediate particles."""
+    pdg_ids = [21, 21, 21, 21, 21]
+    color_flows = [
+        [[502, 501], [503, 502], [503, 504], [505, 501], [505, 504]],
+        [[501, 502], [502, 503], [504, 503], [501, 505], [504, 505]],
+    ]
+    subproc_args = ms.SubprocArgs(
+        process_id=3,
+        topologies=[chain_topology([0.0] * 5)],
+        permutations=[[]],
+        diagram_indices=[[]],
+        diagram_color_indices=[[]],
+        color_flows=color_flows,
+        pdg_color_types={21: 8},
+        helicities=[[1, 1, -1, -1, 1], [-1, -1, 1, 1, -1]],
+        pdg_ids=[[pdg_ids]],
+    )
+    lhe_completer = ms.LHECompleter([subproc_args], bw_cutoff=BW_CUTOFF)
+    event = build_event(np.ones((5, 4)) * [100.0, 0.0, 0.0, 0.0])
+    lhe_completer.complete_event_data(event, 0, -1, 1, 0, 1, ms.MixMaxRandom(1))
+    assert event.process_id == 3
+    assert [p.pdg_id for p in event.particles] == pdg_ids
+    assert [(p.color, p.anti_color) for p in event.particles] == [
+        tuple(flow) for flow in color_flows[1]
+    ]
+    assert [p.spin for p in event.particles] == [-1, -1, 1, 1, -1]
+    with pytest.raises(RuntimeError, match="Diagram index out of range"):
+        lhe_completer.complete_event_data(event, 0, 0, 0, 0, 0, ms.MixMaxRandom(1))

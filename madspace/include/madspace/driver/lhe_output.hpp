@@ -162,7 +162,8 @@ public:
     struct SubprocArgs {
         /// Process id shared by every event of this subprocess.
         int process_id;
-        /// Decay topology of each diagram channel.
+        /// Decay topology of each diagram channel. A subprocess without diagrams
+        /// has one topology and no permutations and diagram indices.
         std::vector<Topology> topologies;
         /// Final-state particle permutation of each channel.
         nested_vector3<std::size_t> permutations;
@@ -197,7 +198,8 @@ public:
      * @param event              The event to complete, modified in place.
      * @param subprocess_index   Index into the `subproc_args` passed to the
      *                           constructor.
-     * @param diagram_index      Sampled diagram.
+     * @param diagram_index      Sampled diagram, -1 for a subprocess without
+     *                           diagrams.
      * @param color_index        Sampled color configuration.
      * @param flavor_index       Sampled flavor assignment.
      * @param helicity_index     Sampled helicity configuration.
