@@ -25,7 +25,7 @@
 #include <iomanip>
 #include <iostream>
 #include <vector>
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
 #define TESTID( s ) s##_GPU_XXX
 #else
 #define TESTID( s ) s##_CPU_XXX
@@ -39,7 +39,7 @@ namespace madmatrix
   int fpeHandlerIevt = -1;
   inline void fpeHandlerTestxxx( int /*sig*/ )
   {
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     std::cerr << "Floating Point Exception (GPU): '" << fpeHandlerMessage << "' ievt=" << fpeHandlerIevt << std::endl;
 #else
     std::cerr << "Floating Point Exception (CPU neppV=" << neppV << "): '" << fpeHandlerMessage << "' ievt=" << fpeHandlerIevt << std::endl;
@@ -64,7 +64,7 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
   assert( nevt %% neppM == 0 ); // nevt must be a multiple of neppM
   assert( nevt %% neppV == 0 ); // nevt must be a multiple of neppV
   // Fill in the input momenta
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
   madmatrix::PinnedHostBufferMomenta hstMomenta( nevt ); // AOSOA[npagM][npar=4][np4=4][neppM]
 #else
   madmatrix::HostBufferMomenta hstMomenta( nevt ); // AOSOA[npagM][npar=4][np4=4][neppM]
@@ -159,9 +159,9 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
     out << "                                   // ---------" << std::endl;
     for( int iw6 = 0; iw6 < nw6; iw6++ )
     {
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
       const int ieppV = ievt %% neppV; // #event in the current event vector in this iteration
-#ifdef MGONGPU_HAS_CPPCXTYPEV_BRK
+#ifdef MADMATRIX_HAS_CPPCXTYPEV_BRK
       out << std::setw( 26 ) << cxreal( wf[iw6][ieppV] ) << ", ";
       out << std::setw( 22 ) << cximag( wf[iw6][ieppV] );
 #else
@@ -199,9 +199,9 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
         const fptype expImag = expwf[iw6 * 2 + 1];
         if( true )
         {
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
           const int ieppV = ievt %% neppV; // #event in the current event vector in this iteration
-#ifdef MGONGPU_HAS_CPPCXTYPEV_BRK
+#ifdef MADMATRIX_HAS_CPPCXTYPEV_BRK
           EXPECT_NEAR( cxreal( wf[iw6][ieppV] ), expReal, std::abs( expReal * toleranceXXXs ) )
             << " itest=" << itest << ": " << xxx << "#" << ievt;
           EXPECT_NEAR( cximag( wf[iw6][ieppV] ), expImag, std::abs( expImag * toleranceXXXs ) )
@@ -238,9 +238,9 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
       {
         if( true )
         {
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
           const int ieppV = ievt %% neppV; // #event in the current event vector in this iteration
-#ifdef MGONGPU_HAS_CPPCXTYPEV_BRK
+#ifdef MADMATRIX_HAS_CPPCXTYPEV_BRK
           const fptype expReal = cxreal( expwf[iw6][ieppV] );
           const fptype expImag = cximag( expwf[iw6][ieppV] );
           EXPECT_NEAR( cxreal( wf[iw6][ieppV] ), expReal, std::abs( expReal * toleranceXXXs ) )
@@ -426,14 +426,14 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
 void
 myexit()
 {
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
   //checkGpu( gpuDeviceReset() ); // FIXME??? this still crashes! should systematically avoid CUDA calls in all destructors?
 #endif
 }
 
 // Main function (see https://google.github.io/googletest/primer.html#writing-the-main-function)
 // (NB: the test executables are now separate for C++ and CUDA, therefore main must be included all the time)
-// (NB: previously, '#ifndef MGONGPUCPP_GPUIMPL' was ensuring that main was only included once while linking both C++ and CUDA tests)
+// (NB: previously, '#ifndef MADMATRIX_GPUIMPL' was ensuring that main was only included once while linking both C++ and CUDA tests)
 int
 main( int argc, char** argv )
 {

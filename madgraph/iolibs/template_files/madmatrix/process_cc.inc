@@ -30,7 +30,7 @@
 #include "MemoryAccessDenominators.h"
 #include "MemoryAccessNumerators.h"
 #include "ColorData.h"
-#include "fpe.h"           // for fpeEnable (constructor, MGONGPUCPP_DEBUG builds)
+#include "fpe.h"           // for fpeEnable (constructor, MADMATRIX_DEBUG builds)
 
 #include <algorithm>
 #include <array>
@@ -38,10 +38,6 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
-
-// Test ncu metrics for CUDA thread divergence
-#undef MGONGPU_TEST_DIVERGENCE
-//#define MGONGPU_TEST_DIVERGENCE 1
 
 //--------------------------------------------------------------------------
 

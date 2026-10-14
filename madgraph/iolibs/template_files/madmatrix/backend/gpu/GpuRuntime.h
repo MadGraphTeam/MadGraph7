@@ -29,7 +29,7 @@ inline void assertGpu( gpuError_t code, const char* file, int line, bool abort =
 
 //--------------------------------------------------------------------------
 
-#ifndef MGONGPU_HAS_NO_BLAS
+#ifndef MADMATRIX_HAS_NO_BLAS
 #define checkGpuBlas( code ){ assertGpuBlas( code, __FILE__, __LINE__ ); }
 inline void assertGpuBlas( gpuBlasStatus_t code, const char *file, int line, bool abort = true )
 {

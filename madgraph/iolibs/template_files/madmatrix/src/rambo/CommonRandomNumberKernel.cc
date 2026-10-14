@@ -7,7 +7,7 @@
 #include "madmatrixConfig.h"
 
 #include "CommonRandomNumbers.h"
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
 #include "GpuAbstraction.h"
 #endif
 #include "MemoryBuffers.h"

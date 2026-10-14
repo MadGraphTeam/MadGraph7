@@ -14,7 +14,7 @@
 #include <type_traits>
 
 //One namespace. Split ber backend.
-#ifdef MGONGPUCPP_GPUIMPL // cuda
+#ifdef MADMATRIX_GPUIMPL // cuda
 namespace madmatrix
 #else
 namespace madmatrix
@@ -22,7 +22,7 @@ namespace madmatrix
 {
   //==========================================================================
 
-#ifdef MGONGPUCPP_GPUIMPL // cuda
+#ifdef MADMATRIX_GPUIMPL // cuda
 
   //------------------------------
   // Floating point types - Cuda
@@ -79,11 +79,11 @@ namespace madmatrix
   inline __host__ __device__ bool
   fpsignbit( FP f ) { return signbit( f ); }
 
-#endif // #ifdef MGONGPUCPP_GPUIMPL
+#endif // #ifdef MADMATRIX_GPUIMPL
 
   //==========================================================================
 
-#ifndef MGONGPUCPP_GPUIMPL
+#ifndef MADMATRIX_GPUIMPL
 
   //------------------------------
   // Floating point types - C++
@@ -121,7 +121,7 @@ namespace madmatrix
   inline bool
   fpsignbit( FP f ) { return std::signbit( f ); }
 
-#endif // #ifndef MGONGPUCPP_GPUIMPL
+#endif // #ifndef MADMATRIX_GPUIMPL
 
   //==========================================================================
 

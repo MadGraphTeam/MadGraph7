@@ -10,8 +10,8 @@
 
 #include <cassert>
 
-#ifndef MGONGPU_HAS_NO_CURAND /* clang-format off */
-// NB This must come AFTER madmatrixConfig.h which contains our definition of __global__ when MGONGPUCPP_GPUIMPL is not defined
+#ifndef MADMATRIX_HAS_NO_CURAND /* clang-format off */
+// NB This must come AFTER madmatrixConfig.h which contains our definition of __global__ when MADMATRIX_GPUIMPL is not defined
 #include "curand.h"
 #define checkCurand( code ){ assertCurand( code, __FILE__, __LINE__ ); }
 inline void assertCurand( curandStatus_t code, const char *file, int line, bool abort = true )
@@ -27,14 +27,14 @@ inline void assertCurand( curandStatus_t code, const char *file, int line, bool 
 namespace madmatrix
 {
   //--------------------------------------------------------------------------
-#ifndef MGONGPU_HAS_NO_CURAND
+#ifndef MADMATRIX_HAS_NO_CURAND
   CurandRandomNumberKernel::CurandRandomNumberKernel( BufferRndNumMomenta& rnarray, const bool onDevice )
     : RandomNumberKernelBase( rnarray )
     , m_isOnDevice( onDevice )
   {
     if( m_isOnDevice )
     {
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
       if( !m_rnarray.isOnDevice() )
         throw std::runtime_error( "CurandRandomNumberKernel on device with a host random number array" );
 #else
@@ -104,15 +104,15 @@ namespace madmatrix
 
   void CurandRandomNumberKernel::generateRnarray()
   {
-#if defined MGONGPU_FPTYPE_DOUBLE
+#if defined MADMATRIX_FPTYPE_DOUBLE
     checkCurand( curandGenerateUniformDouble( m_rnGen, m_rnarray.data(), m_rnarray.size() ) );
-#elif defined MGONGPU_FPTYPE_FLOAT
+#elif defined MADMATRIX_FPTYPE_FLOAT
     checkCurand( curandGenerateUniform( m_rnGen, m_rnarray.data(), m_rnarray.size() ) );
 #endif
     /*
     printf( "\nCurandRandomNumberKernel::generateRnarray size = %d\n", (int)m_rnarray.size() );
     fptype* data = m_rnarray.data();
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     if( m_rnarray.isOnDevice() )
     {
       data = new fptype[m_rnarray.size()]();
@@ -121,7 +121,7 @@ namespace madmatrix
 #endif
     for( int i = 0; i < ( (int)m_rnarray.size() / 4 ); i++ )
       printf( "[%4d] %f %f %f %f\n", i * 4, data[i * 4], data[i * 4 + 2], data[i * 4 + 2], data[i * 4 + 3] );
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     if( m_rnarray.isOnDevice() ) delete[] data;
 #endif
     */

@@ -9,7 +9,7 @@
 
 #include "madmatrixConfig.h"
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
 #include "GpuAbstraction.h"
 #include "GpuRuntime.h" // for checkGpu(), used by gpuMemcpyFromSymbol()
 #endif
@@ -31,7 +31,7 @@
 using namespace madmatrix;
 
 // Host-accessible copy of madmatrix::channel2iconfig, needed only by setChannelIds()
-#ifndef MGONGPUCPP_GPUIMPL
+#ifndef MADMATRIX_GPUIMPL
 inline const int*
 getHostChannel2iconfig()
 {
@@ -101,7 +101,7 @@ struct CUDA_CPU_TestBase : public TestDriverBase
   }
 };
 
-#ifndef MGONGPUCPP_GPUIMPL
+#ifndef MADMATRIX_GPUIMPL
 struct CPUTest : public CUDA_CPU_TestBase
 {
   // Struct data members (process, and memory structures for random numbers, momenta, matrix elements and weights on host and device)
@@ -241,7 +241,7 @@ struct CPUTestMultiChannel : public CPUTest
 };
 #endif
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
 struct CUDATest : public CUDA_CPU_TestBase
 {
   // Struct data members (process, and memory structures for random numbers, momenta, matrix elements and weights on host and device)
@@ -418,7 +418,7 @@ struct CUDATestMultiChannel : public CUDATest
 // AV July 2024 much simpler class structure without the presently-unnecessary googletest templates
 // This is meant as a workaround to prevent not-understood segfault #907 when adding a second test
 // Note: instantiate test2 first and test1 second to ensure that the channelid printout from the dtors comes from test1 first and test2 second
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
 // CUDA test drivers
 CUDATestMultiChannel driver2( MG_EPOCH_REFERENCE_FILE_NAME );
 #define TESTID2( s ) s##_GPU_MULTICHANNEL
@@ -438,7 +438,7 @@ MadgraphTest mgTest1( driver1 );
 #define XTESTID1( s ) TESTID1( s )
 TEST( XTESTID1( MG_EPOCH_PROCESS_ID ), compareMomAndME )
 {
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
   driver1.pmek->setTagForNevtProcessedByChannel( "(no multichannel)" );
 #endif
   mgTest1.CompareMomentaAndME( *this );
@@ -447,7 +447,7 @@ TEST( XTESTID1( MG_EPOCH_PROCESS_ID ), compareMomAndME )
 #define XTESTID2( s ) TESTID2( s )
 TEST( XTESTID2( MG_EPOCH_PROCESS_ID ), compareMomAndME )
 {
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
   driver2.pmek->setTagForNevtProcessedByChannel( "(channelid array)" );
 #endif
   mgTest2.CompareMomentaAndME( *this );

@@ -33,11 +33,11 @@ namespace madmatrix
     // --- However, neppM is now decoupled from neppV (issue #176) and can be separately hardcoded
     // --- In practice, neppR, neppM and neppV could now (in principle) all be different
     // -----------------------------------------------------------------------------------------------
-    static constexpr int neppM = MGONGPU_CPPSIMD; // (DEFAULT) neppM=neppV for optimal performance
+    static constexpr int neppM = MADMATRIX_SIMD; // (DEFAULT) neppM=neppV for optimal performance
     //static constexpr int neppM = 64/sizeof(fptype_momenta); // maximum CPU vector width (512 bits): 8 (DOUBLE) or 16 (FLOAT)
     //static constexpr int neppM = 32/sizeof(fptype_momenta); // lower CPU vector width (256 bits): 4 (DOUBLE) or 8 (FLOAT)
     //static constexpr int neppM = 1; // *** NB: this is equivalent to AOS *** (slower: 4.66E6 instead of 5.09E9 in eemumu)
-    //static constexpr int neppM = MGONGPU_CPPSIMD*2; // FOR TESTS
+    //static constexpr int neppM = MADMATRIX_SIMD*2; // FOR TESTS
 
     // SANITY CHECK: check that neppM is a power of two
     static_assert( ispoweroftwo( neppM ), "neppM is not a power of 2" );
@@ -189,7 +189,7 @@ namespace madmatrix
                               const int ipar )
     {
       const fptype_momenta& out = kernelAccessIp4IparConst_s( buffer, ip4, ipar );
-#ifdef MGONGPU_SIMD_DENOM64
+#ifdef MADMATRIX_SIMD_DENOM64
       // assume load from one page return high and low
       static_assert( MemoryAccessMomentaBase::neppM == neppV, "SIMD denom64 (FPTYPE=v) assumes neppM == neppV" );
       return madmatrix::momvFromContiguousArray( out );

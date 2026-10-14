@@ -27,7 +27,7 @@
 #include <string>
 #include <vector>
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
 using madmatrix::CPPProcess;
 #else
 using madmatrix::CPPProcess;

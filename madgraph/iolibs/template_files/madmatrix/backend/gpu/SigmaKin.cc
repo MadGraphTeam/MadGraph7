@@ -464,9 +464,9 @@ namespace madmatrix
         // subprocess whose matrix element is identically zero); 0/0 would turn a zero
         // matrix element into a nan. Floored rather than tested, so that -ffast-math
         // cannot drop the guard - see backend/cpu/SigmaKin.cc for the reasoning.
-#if defined MGONGPU_FPTYPE_DOUBLE
+#if defined MADMATRIX_FPTYPE_DOUBLE
         constexpr fptype fptypeMin = DBL_MIN; // smallest normal double
-#elif defined MGONGPU_FPTYPE_FLOAT
+#elif defined MADMATRIX_FPTYPE_FLOAT
         constexpr fptype fptypeMin = FLT_MIN; // smallest normal float
 #endif
         allMEs[ievt] *= numerators[channelId - 1] / ( denominator + fptypeMin );

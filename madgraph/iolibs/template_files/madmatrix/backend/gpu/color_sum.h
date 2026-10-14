@@ -15,7 +15,7 @@
 #include "GpuAbstraction.h"
 
 #include <cstddef>
-#ifdef MGONGPU_CPP_HAS_BLAS
+#ifdef MADMATRIX_CPP_HAS_BLAS
 #include <vector> // the batched C++ color sum keeps the jamps of every good helicity
 #endif
 
@@ -23,7 +23,7 @@ namespace madmatrix
 {
   //--------------------------------------------------------------------------
 
-#ifndef MGONGPU_HAS_NO_BLAS
+#ifndef MADMATRIX_HAS_NO_BLAS
   // The size of the ghelAllBlasTmp scratch buffer color_sum_blas needs, in fptype2 elements:
   // one fptype2[ncolor*nx2*nhel*nevt] buffer for the BLAS intermediate results and, in mixed
   // precision mode only, one more for the jamps converted from double to float plus one
@@ -34,7 +34,7 @@ namespace madmatrix
   blasColorSumTmpSize( const int nhel, const int nevt )
   {
     std::size_t nfptype2PerEvent = ProcessData::ncolor * madmatrix::nx2;
-#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
     nfptype2PerEvent *= 2;  // the jamps converted to float need a buffer of their own
     nfptype2PerEvent += 1;  // the fptype2 matrix elements
 #endif

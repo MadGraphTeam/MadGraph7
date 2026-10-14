@@ -211,7 +211,7 @@ namespace madmatrix
                           const int ix2 )
     {
       const fptype& out = kernelAccessIx2Const_s( buffer, ix2 );
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       return out;
 #else
       // NB: derived from MemoryAccessMomenta, restricting the implementation to contiguous aligned arrays

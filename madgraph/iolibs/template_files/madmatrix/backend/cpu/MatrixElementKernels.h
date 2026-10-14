@@ -51,7 +51,7 @@ namespace madmatrix
     // Dump signalling FPEs (#831 and #837)
     static void dumpSignallingFPEs();
 
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
     // Add a MEK identifier for the channelId debug printout
     void setTagForNevtProcessedByChannel( const std::string& tag ) { m_tag = tag; }
 
@@ -92,7 +92,7 @@ namespace madmatrix
     // The buffer for the output color selection
     BufferSelectedColor& m_selcol;
 
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
     // The events-per-channel counter for debugging
     std::map<size_t, size_t> m_nevtProcessedByChannel;
 

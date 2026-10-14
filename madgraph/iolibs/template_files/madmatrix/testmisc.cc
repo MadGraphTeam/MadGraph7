@@ -23,7 +23,7 @@
 #include <sstream>
 #include <typeinfo>
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
 #define TESTID( s ) s##_GPU_MISC
 #else
 #define TESTID( s ) s##_CPU_MISC
@@ -34,7 +34,7 @@
 //One namespace. Split ber backend.
 namespace madmatrix
 {
-#ifdef MGONGPU_CPPSIMD /* clang-format off */
+#ifdef MADMATRIX_SIMD /* clang-format off */
 #define EXPECT_TRUE_sv( cond ) { bool_v mask( cond ); EXPECT_TRUE( maskand( mask ) ); }
 #else
 #define EXPECT_TRUE_sv( cond ) { EXPECT_TRUE( cond ); }
@@ -46,7 +46,7 @@ namespace madmatrix
     return ( b ? "T" : "F" );
   }
 
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
   inline const std::string
   boolTF( const bool_v& v )
   {
@@ -84,7 +84,7 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testmisc )
     fptype_sv f{ 1 };
     //std::cout << f << std::endl << boolTF( f == 1 ) << std::endl;
     //EXPECT_TRUE_sv( f == 1 ); // this fails for vectors! TFFF
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
     EXPECT_TRUE_sv( f == 1 ); // this succeds: T
 #else
     EXPECT_TRUE( ( f == 1 )[0] ); // this succeds: TFFF[0]
@@ -97,7 +97,7 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testmisc )
 #endif
   }
 
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
   // Vector initialization for cxtype_sv - demonstrate fix for bug #339
   {
     fptype_sv f1 = fptype_v{ 0 } + 1;
@@ -246,7 +246,7 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testmisc )
     test_int_sv channelids1_sv{}; // mimic CHANNEL_ACCESS::kernelAccess( pchannelIds )
     fptype_sv absamp0_sv{};       // mimic cxabs2( amp_sv[0] )
     fptype_sv absamp1_sv{};       // mimic cxabs2( amp_sv[0] )
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
     for( int i = 0; i < neppV; i++ )
     {
       channelids0_sv[i] = i;   // 0123
@@ -266,7 +266,7 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testmisc )
     //fptype_sv numerators0_sv = mask0_sv * absamp0_sv; // invalid operands to binary * ('__vector(4) long int' and '__vector(4) double')
     fptype_sv numerators0_sv = fpternary( mask0_sv, absamp0_sv, fpZERO_sv ); // equivalent to "mask0_sv * absamp0_sv"
     fptype_sv numerators1_sv = fpternary( mask1_sv, absamp1_sv, fpZERO_sv ); // equivalent to "mask1_sv * absamp1_sv"
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
     //std::cout << "numerators0_sv: " << numerators0_sv << std::endl;
     //std::cout << "numerators1_sv: " << numerators1_sv << std::endl;
     for( int i = 0; i < neppV; i++ )

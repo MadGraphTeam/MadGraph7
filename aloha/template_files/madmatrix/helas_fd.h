@@ -11,7 +11,7 @@
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPU_INLINE_HELAMPS
+#ifdef MADMATRIX_INLINE_HELAMPS
 #define INLINE inline
 #define ALWAYS_INLINE __attribute__( ( always_inline ) )
 #else
@@ -226,7 +226,7 @@
     const int nh = nhel * nsf;
     if( fmass != 0. )
     {
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( pvec1 * pvec1 + pvec2 * pvec2 + pvec3 * pvec3 ) );
 #else
       volatile fptype_amp_sv p2 = pvec1 * pvec1 + pvec2 * pvec2 + pvec3 * pvec3; // volatile fixes #736
@@ -237,7 +237,7 @@
       // NB: this is only possible in ixxxx, but in oxxxxx two different numbering schemes must be used
       const int ip = ( 1 + nh ) / 2; // NB: same as in Fortran pp==0, differs from Fortran pp>0, which is (3+nh)/2 because omega(2) has indexes 1,2
       const int im = ( 1 - nh ) / 2; // NB: same as in Fortran pp==0, differs from Fortran pp>0, which is (3-nh)/2 because omega(2) has indexes 1,2
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       if( pp == 0. )
       {
         // NB: Do not use "abs" for floats! It returns an integer with no build warning! Use std::abs!
@@ -301,7 +301,7 @@
     }
     else
     {
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
       // pvec0+pvec3 is a cancelling difference of two ~|p| numbers for a
       // backward-moving massless fermion, and everything below divides by it.
       // Take it from the light-cone identity p+ p- = pT^2 instead.
@@ -540,7 +540,7 @@
     {
       const int nsvahl = nsv * std::abs( hel );
       const fptype_amp hel0 = 1. - std::abs( hel );
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       const fptype_amp_sv pt2 = ( pvec1 * pvec1 ) + ( pvec2 * pvec2 );
       const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( pt2 + ( pvec3 * pvec3 ) ) );
       const fptype_amp_sv pt = fpmin( pp, fpsqrt( pt2 ) );
@@ -669,7 +669,7 @@
     else
     {
       const fptype_amp_sv& pp = pvec0; // NB: rewrite the following as in Fortran, using pp instead of pvec0
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       const fptype_amp_sv pt = fpsqrt( ( pvec1 * pvec1 ) + ( pvec2 * pvec2 ) );
 #else
       volatile fptype_amp_sv pt2 = pvec1 * pvec1 + pvec2 * pvec2; // volatile fixes #736
@@ -677,7 +677,7 @@
 #endif
       w[0] = cxzero_sv();
       w[3] = cxmake( hel * pt / pp * sqh, 0. );
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       if( pt != 0. )
       {
         const fptype_amp pzpt = pvec3 / ( pp * pt ) * sqh * hel;
@@ -787,7 +787,7 @@
     const int nh = nhel * nsf;
     if( fmass != 0. )
     {
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( ( pvec1 * pvec1 ) + ( pvec2 * pvec2 ) + ( pvec3 * pvec3 ) ) );
       if( pp == 0. )
       {
@@ -863,7 +863,7 @@
     }
     else
     {
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
       // pvec0+pvec3 is a cancelling difference of two ~|p| numbers for a
       // backward-moving massless fermion, and everything below divides by it.
       // Take it from the light-cone identity p+ p- = pT^2 instead.
@@ -1074,7 +1074,7 @@
    const fptype_amp_sv one = 1. + fptype_amp_sv{0};
    const fptype_amp_sv zero = 0. + fptype_amp_sv{0};
 
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
 
     if (qabs2 > 0.f)
     {

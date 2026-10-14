@@ -22,10 +22,10 @@
 #include <complex>
 
 // Complex type in c++: std::complex or cxsmpl
-#if defined MGONGPU_CPPCXTYPE_STDCOMPLEX
+#if defined MADMATRIX_CPPCXTYPE_STDCOMPLEX
 #include <cmath>
-#elif not defined MGONGPU_CPPCXTYPE_CXSMPL
-#error You must CHOOSE (ONE AND) ONLY ONE of MGONGPU_CPPCXTYPE_STDCOMPLEX or MGONGPU_CPPCXTYPE_CXSMPL
+#elif not defined MADMATRIX_CPPCXTYPE_CXSMPL
+#error You must CHOOSE (ONE AND) ONLY ONE of MADMATRIX_CPPCXTYPE_STDCOMPLEX or MADMATRIX_CPPCXTYPE_CXSMPL
 #endif
 
 //==========================================================================
@@ -55,7 +55,7 @@ namespace madmatrix /* clang-format off */
     __host__ __device__ constexpr const FP& real() const { return m_real; }
     __host__ __device__ constexpr const FP& imag() const { return m_imag; }
     template<typename FP2> __host__ __device__ constexpr operator cxsmpl<FP2>() const { return cxsmpl<FP2>( m_real, m_imag ); }
-#ifdef MGONGPU_CPPCXTYPE_STDCOMPLEX
+#ifdef MADMATRIX_CPPCXTYPE_STDCOMPLEX
     template<typename FP2> __host__ __device__ constexpr operator std::complex<FP2>() const { return std::complex<FP2>( m_real, m_imag ); }
 #endif
   private:
@@ -207,7 +207,7 @@ namespace madmatrix
 namespace madmatrix
 {
   // --- Type definitions (complex type: cxtype)
-#if defined MGONGPU_CPPCXTYPE_STDCOMPLEX
+#if defined MADMATRIX_CPPCXTYPE_STDCOMPLEX
   typedef std::complex<fptype> cxtype;
 #else
   typedef cxsmpl<fptype> cxtype;
@@ -217,7 +217,7 @@ namespace madmatrix
   static_assert( sizeof( cxtype ) == madmatrix::nx2 * sizeof( fptype ), "sizeof(cxtype) is not 2*sizeof(fptype)" );
 
   // --- Multi-precision complex types (same platform logic as cxtype)
-#if defined MGONGPU_CPPCXTYPE_STDCOMPLEX
+#if defined MADMATRIX_CPPCXTYPE_STDCOMPLEX
   typedef std::complex<fptype_momenta> cxtype_momenta;
   typedef cxtype_momenta cxtype_denom;
   typedef std::complex<fptype_amp> cxtype_amp;
@@ -245,7 +245,7 @@ namespace madmatrix
 
 namespace madmatrix
 {
-#if defined MGONGPU_CPPCXTYPE_CXSMPL
+#if defined MADMATRIX_CPPCXTYPE_CXSMPL
 
   //------------------------------
   // C++ - using cxsmpl
@@ -309,11 +309,11 @@ namespace madmatrix
   inline __host__ __device__ cxsmpl<FP>
   cxconj( const cxsmpl<FP>& c ) { return conj( c ); }
 
-#endif // #if defined MGONGPU_CPPCXTYPE_CXSMPL
+#endif // #if defined MADMATRIX_CPPCXTYPE_CXSMPL
 
   //==========================================================================
 
-#if defined MGONGPU_CPPCXTYPE_STDCOMPLEX
+#if defined MADMATRIX_CPPCXTYPE_STDCOMPLEX
 
   //------------------------------
   // C++ - using std::complex
@@ -349,7 +349,7 @@ namespace madmatrix
     return c;
   }
 
-#if defined MGONGPU_FPTYPE_FLOAT
+#if defined MADMATRIX_FPTYPE_FLOAT
   inline cxtype
   cxmake( const std::complex<double>& c ) // std::complex to std::complex (cast double-to-float)
   {
@@ -373,7 +373,7 @@ namespace madmatrix
   inline std::complex<FP>
   cxconj( const std::complex<FP>& c ) { return conj( c ); }
 
-#endif // #if defined MGONGPU_CPPCXTYPE_STDCOMPLEX
+#endif // #if defined MADMATRIX_CPPCXTYPE_STDCOMPLEX
 
 } // end namespace madmatrix
 
@@ -385,7 +385,7 @@ namespace madmatrix
 namespace madmatrix
 {
   // The cxtype_ref class (a const reference to two non-const fp variables) was originally designed for cxtype_v::operator[]
-  // It used to be included in the code only when MGONGPU_HAS_CPPCXTYPEV_BRK (originally MGONGPU_HAS_CPPCXTYPE_REF) is defined
+  // It used to be included in the code only when MADMATRIX_HAS_CPPCXTYPEV_BRK (originally MADMATRIX_HAS_CPPCXTYPE_REF) is defined
   // It is now always included in the code because it is needed also to access an fptype wavefunction buffer as a cxtype
   class cxtype_ref
   {
@@ -451,7 +451,7 @@ namespace madmatrix
   // all needed from madmatrixVectors.h for cpu
   const int neppV = 1;
 
-#ifndef MGONGPU_CPPCXTYPE_CXSMPL // operator<< for cxsmpl has already been defined!
+#ifndef MADMATRIX_CPPCXTYPE_CXSMPL // operator<< for cxsmpl has already been defined!
   inline std::ostream&
   operator<<( std::ostream& out, const cxtype& c )
   {
@@ -498,7 +498,7 @@ namespace madmatrix
   typedef cxtype_colour cxtype_colour_sv;     typedef cxtype_colour cxtype_colour_v;
 
   // narrowing/casting operators for unification
-#ifdef MGONGPU_SIMD_DENOM64
+#ifdef MADMATRIX_SIMD_DENOM64
   inline fptype_amp_sv fpamp_of_mom( const fptype_momenta_sv& p ) { return fpdenom_narrow( p ); }
 #else
   inline __host__ __device__ fptype_amp_sv fpamp_of_mom( const fptype_momenta_sv& p ) { return static_cast<fptype_amp_sv>( p ); }

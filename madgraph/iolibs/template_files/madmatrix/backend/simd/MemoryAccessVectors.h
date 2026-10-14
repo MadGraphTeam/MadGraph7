@@ -48,7 +48,7 @@ namespace madmatrix // this is only needed for CPU SIMD vectorization
                      *( &ref + 1 ) };
   }
 
-#ifdef MGONGPU_SIMD_DENOM64
+#ifdef MADMATRIX_SIMD_DENOM64
   // assume load from one page return high and low
   inline fptype_denom_sv momvFromContiguousArray( const fptype_momenta& ref )
   {

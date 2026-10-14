@@ -1728,7 +1728,7 @@ class TestCmdShell2(unittest.TestCase,
         into a vacuous one.
 
         madmatrix is checked once per backend: the FD wavefunctions are written
-        twice in helas_fd.h, once under #ifndef MGONGPU_CPPSIMD and once for the
+        twice in helas_fd.h, once under #ifndef MADMATRIX_SIMD and once for the
         vector types, and the two have drifted apart before. Which one a plain
         'make' builds depends on the host (cpu), so neither is exercised
         unless it is asked for by name.
@@ -1795,7 +1795,7 @@ class TestCmdShell2(unittest.TestCase,
         compute the same thing, over many events.
 
         The FD wavefunctions are written twice in helas_fd.h -- once under
-        #ifndef MGONGPU_CPPSIMD, once for the vector types -- and only the first
+        #ifndef MADMATRIX_SIMD, once for the vector types -- and only the first
         event of the first lane is ever printed by check_sa.exe 'matrix' mode.
         A vector branch that is right in the first lane and wrong in the others
         is therefore invisible to a single point: the FD block of vxxxxx built

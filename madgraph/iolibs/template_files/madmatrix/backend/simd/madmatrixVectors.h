@@ -24,21 +24,21 @@
 // If set: return a pair of (fptype&, fptype&) by non-const reference in cxtype_v::operator[]
 // This is forbidden in clang ("non-const reference cannot bind to vector element")
 // See also https://stackoverflow.com/questions/26554829
-//#define MGONGPU_HAS_CPPCXTYPEV_BRK 1 // clang test (compilation fails also on clang 12.0, issue #182)
-#undef MGONGPU_HAS_CPPCXTYPEV_BRK // clang default
+//#define MADMATRIX_HAS_CPPCXTYPEV_BRK 1 // clang test (compilation fails also on clang 12.0, issue #182)
+#undef MADMATRIX_HAS_CPPCXTYPEV_BRK // clang default
 #elif defined __INTEL_COMPILER
-//#define MGONGPU_HAS_CPPCXTYPEV_BRK 1 // icc default?
-#undef MGONGPU_HAS_CPPCXTYPEV_BRK // icc test
+//#define MADMATRIX_HAS_CPPCXTYPEV_BRK 1 // icc default?
+#undef MADMATRIX_HAS_CPPCXTYPEV_BRK // icc test
 #else
-#define MGONGPU_HAS_CPPCXTYPEV_BRK 1 // gcc default
-//#undef MGONGPU_HAS_CPPCXTYPEV_BRK // gcc test (very slightly slower? issue #172)
+#define MADMATRIX_HAS_CPPCXTYPEV_BRK 1 // gcc default
+//#undef MADMATRIX_HAS_CPPCXTYPEV_BRK // gcc test (very slightly slower? issue #172)
 #endif
 
 //One namespace. Split ber backend.
 namespace madmatrix
 {
 
-  const int neppV = MGONGPU_CPPSIMD;
+  const int neppV = MADMATRIX_SIMD;
 
   // SANITY CHECK: cppAlign must be a multiple of neppV * sizeof(fptype)
   static_assert( madmatrix::cppAlign % ( neppV * sizeof( fptype ) ) == 0 );
@@ -56,8 +56,8 @@ namespace madmatrix
 #endif
 
   // Mixed fptypes #537: float for color algebra and double elsewhere
-#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
-  const int neppV2 = MGONGPU_CPPSIMD * 2;
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+  const int neppV2 = MADMATRIX_SIMD * 2;
   static_assert( madmatrix::cppAlign % ( neppV2 * sizeof( fptype2 ) ) == 0 );
   static_assert( ispoweroftwo( neppV2 ), "neppV2 is not a power of 2" );
 #ifdef __clang__
@@ -70,7 +70,7 @@ namespace madmatrix
 #endif
 
   // type to hold 2x the SIMD lane, operators work on both halfs (autovector) + narrow/widen operators defs
-#ifdef MGONGPU_SIMD_DENOM64
+#ifdef MADMATRIX_SIMD_DENOM64
   constexpr int neppVD = neppV / 2;
   static_assert( neppV % 2 == 0, "neppV must be even for SIMD denom64" );
 #ifdef __clang__
@@ -149,8 +149,8 @@ namespace madmatrix
       m_imag -= c.imag();
       return *this;
     }
-#ifdef MGONGPU_HAS_CPPCXTYPEV_BRK
-    // NB: THIS IS THE FUNDAMENTAL DIFFERENCE BETWEEN MGONGPU_HAS_CPPCXTYPEV_BRK DEFINED AND NOT DEFINED
+#ifdef MADMATRIX_HAS_CPPCXTYPEV_BRK
+    // NB: THIS IS THE FUNDAMENTAL DIFFERENCE BETWEEN MADMATRIX_HAS_CPPCXTYPEV_BRK DEFINED AND NOT DEFINED
     // NB: the alternative "clang" implementation is simpler: it simply does not have any bracket operator[]
     //cxtype_ref operator[]( size_t i ) const { return cxtype_ref( m_real[i], m_imag[i] ); } // gcc14.2 build fails #1004
     cxtype_ref operator[]( size_t i ) { return cxtype_ref( m_real[i], m_imag[i] ); }
@@ -165,7 +165,7 @@ namespace madmatrix
     fptype_v m_real, m_imag; // RRRRIIII
   };
 
-#ifdef MGONGPU_SIMD_DENOM64
+#ifdef MADMATRIX_SIMD_DENOM64
   // complex type to hold 2x the SIMD lane, operators work on both halfs (autovector) narrow to cxtype
   class cxtype_denom_sv
   {
@@ -212,16 +212,16 @@ namespace madmatrix
   // --- Type definition (using vector compiler extensions: need -march=...)
 #ifdef __clang__ // https://clang.llvm.org/docs/LanguageExtensions.html#vectors-and-extended-vectors
   typedef unsigned int uint_v __attribute__( ( ext_vector_type( neppV ) ) );
-#if defined MGONGPU_FPTYPE_DOUBLE
+#if defined MADMATRIX_FPTYPE_DOUBLE
   typedef long int bool_v __attribute__( ( ext_vector_type( neppV ) ) ); // bbbb
-#elif defined MGONGPU_FPTYPE_FLOAT
+#elif defined MADMATRIX_FPTYPE_FLOAT
   typedef int bool_v __attribute__( ( ext_vector_type( neppV ) ) );                         // bbbb
 #endif
 #else // gcc
   typedef unsigned int uint_v __attribute__( ( vector_size( neppV * sizeof( unsigned int ) ), aligned( neppV * sizeof( unsigned int ) ) ) );
-#if defined MGONGPU_FPTYPE_DOUBLE
+#if defined MADMATRIX_FPTYPE_DOUBLE
   typedef long int bool_v __attribute__( ( vector_size( neppV * sizeof( long int ) ), aligned( neppV * sizeof( long int ) ) ) ); // bbbb
-#elif defined MGONGPU_FPTYPE_FLOAT
+#elif defined MADMATRIX_FPTYPE_FLOAT
   typedef int bool_v __attribute__( ( vector_size( neppV * sizeof( int ) ), aligned( neppV * sizeof( int ) ) ) ); // bbbb
 #endif
 #endif
@@ -238,7 +238,7 @@ namespace madmatrix
 
   // Printout to stream for user defined types
 
-#ifndef MGONGPU_CPPCXTYPE_CXSMPL // operator<< for cxsmpl has already been defined!
+#ifndef MADMATRIX_CPPCXTYPE_CXSMPL // operator<< for cxsmpl has already been defined!
   inline std::ostream&
   operator<<( std::ostream& out, const cxtype& c )
   {
@@ -257,7 +257,7 @@ namespace madmatrix
     return out;
   }
 
-#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
   inline std::ostream&
   operator<<( std::ostream& out, const fptype2_v& v )
   {
@@ -271,7 +271,7 @@ namespace madmatrix
   inline std::ostream&
   operator<<( std::ostream& out, const cxtype_v& v )
   {
-#ifdef MGONGPU_HAS_CPPCXTYPEV_BRK
+#ifdef MADMATRIX_HAS_CPPCXTYPEV_BRK
     out << "{ " << v[0];
     for( int i = 1; i < neppV; i++ ) out << ", " << v[i];
 #else
@@ -606,7 +606,7 @@ namespace madmatrix
   inline cxtype_v
   cxternary( const bool_v& mask, const cxtype_v& a, const cxtype_v& b )
   {
-#ifdef MGONGPU_HAS_CPPCXTYPEV_BRK
+#ifdef MADMATRIX_HAS_CPPCXTYPEV_BRK
     cxtype_v out;
     //for( int i = 0; i < neppV; i++ ) out[i] = ( mask[i] ? a[i] : b[i] ); // OLD error-prone depends on "cxtype_ref& operator=( cxtype_ref&& c )"
     for( int i = 0; i < neppV; i++ ) out[i] = cxtype( mask[i] ? a[i] : b[i] );
@@ -626,7 +626,7 @@ namespace madmatrix
   inline cxtype_v
   cxternary( const bool_v& mask, const cxtype_v& a, const cxtype& b )
   {
-#ifdef MGONGPU_HAS_CPPCXTYPEV_BRK
+#ifdef MADMATRIX_HAS_CPPCXTYPEV_BRK
     cxtype_v out;
     for( int i = 0; i < neppV; i++ ) out[i] = ( mask[i] ? a[i] : b );
     return out;
@@ -645,7 +645,7 @@ namespace madmatrix
   inline cxtype_v
   cxternary( const bool_v& mask, const cxtype& a, const cxtype_v& b )
   {
-#ifdef MGONGPU_HAS_CPPCXTYPEV_BRK
+#ifdef MADMATRIX_HAS_CPPCXTYPEV_BRK
     cxtype_v out;
     for( int i = 0; i < neppV; i++ ) out[i] = ( mask[i] ? a : b[i] );
     return out;
@@ -664,7 +664,7 @@ namespace madmatrix
   inline cxtype_v
   cxternary( const bool_v& mask, const cxtype& a, const cxtype& b )
   {
-#ifdef MGONGPU_HAS_CPPCXTYPEV_BRK
+#ifdef MADMATRIX_HAS_CPPCXTYPEV_BRK
     cxtype_v out;
     for( int i = 0; i < neppV; i++ ) out[i] = ( mask[i] ? a : b );
     return out;
@@ -774,7 +774,7 @@ namespace madmatrix
 
   // Functions and operators for fptype2_v
 
-#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
 
   inline fptype2_v
   fpvmerge( const fptype_v& v1, const fptype_v& v2 )
@@ -795,13 +795,13 @@ namespace madmatrix
     }
     return out;
     */
-#if MGONGPU_CPPSIMD == 2
+#if MADMATRIX_SIMD == 2
     fptype2_v out =
       { (fptype2)v1[0], (fptype2)v1[1], (fptype2)v2[0], (fptype2)v2[1] };
-#elif MGONGPU_CPPSIMD == 4
+#elif MADMATRIX_SIMD == 4
     fptype2_v out =
       { (fptype2)v1[0], (fptype2)v1[1], (fptype2)v1[2], (fptype2)v1[3], (fptype2)v2[0], (fptype2)v2[1], (fptype2)v2[2], (fptype2)v2[3] };
-#elif MGONGPU_CPPSIMD == 8
+#elif MADMATRIX_SIMD == 8
     fptype2_v out =
       { (fptype2)v1[0], (fptype2)v1[1], (fptype2)v1[2], (fptype2)v1[3], (fptype2)v1[4], (fptype2)v1[5], (fptype2)v1[6], (fptype2)v1[7], (fptype2)v2[0], (fptype2)v2[1], (fptype2)v2[2], (fptype2)v2[3], (fptype2)v2[4], (fptype2)v2[5], (fptype2)v2[6], (fptype2)v2[7] };
 #endif
@@ -818,13 +818,13 @@ namespace madmatrix
       out[ieppV] = v[ieppV];
     }
     */
-#if MGONGPU_CPPSIMD == 2
+#if MADMATRIX_SIMD == 2
     fptype_v out =
       { (fptype)v[0], (fptype)v[1] };
-#elif MGONGPU_CPPSIMD == 4
+#elif MADMATRIX_SIMD == 4
     fptype_v out =
       { (fptype)v[0], (fptype)v[1], (fptype)v[2], (fptype)v[3] };
-#elif MGONGPU_CPPSIMD == 8
+#elif MADMATRIX_SIMD == 8
     fptype_v out =
       { (fptype)v[0], (fptype)v[1], (fptype)v[2], (fptype)v[3], (fptype)v[4], (fptype)v[5], (fptype)v[6], (fptype)v[7] };
 #endif
@@ -841,13 +841,13 @@ namespace madmatrix
       out[ieppV] = v[ieppV+neppV];
     }
     */
-#if MGONGPU_CPPSIMD == 2
+#if MADMATRIX_SIMD == 2
     fptype_v out =
       { (fptype)v[2], (fptype)v[3] };
-#elif MGONGPU_CPPSIMD == 4
+#elif MADMATRIX_SIMD == 4
     fptype_v out =
       { (fptype)v[4], (fptype)v[5], (fptype)v[6], (fptype)v[7] };
-#elif MGONGPU_CPPSIMD == 8
+#elif MADMATRIX_SIMD == 8
     fptype_v out =
       { (fptype)v[8], (fptype)v[9], (fptype)v[10], (fptype)v[11], (fptype)v[12], (fptype)v[13], (fptype)v[14], (fptype)v[15] };
 #endif
@@ -855,7 +855,7 @@ namespace madmatrix
   }
 
 
-#endif // #if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#endif // #if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
 
 
   //==========================================================================
@@ -874,7 +874,7 @@ namespace madmatrix
   typedef cxtype_v cxtype_amp_v;              typedef cxtype_v cxtype_amp_sv;
   typedef fptype2_v fptype_colour_v;          typedef fptype2_v fptype_colour_sv;
   typedef cxtype_v cxtype_colour_v;           typedef cxtype_v cxtype_colour_sv;
-#ifdef MGONGPU_SIMD_DENOM64
+#ifdef MADMATRIX_SIMD_DENOM64
   // FPTYPE=v: momenta computed 2x to fill for rest
   typedef fptype_denom_sv fptype_momenta_v;     typedef fptype_denom_sv fptype_momenta_sv;
   typedef fptype_denom_sv fptype_denom_v;       // fptype_denom_sv is the struct defined above
@@ -889,7 +889,7 @@ namespace madmatrix
 #endif
 
   // narrowing/casting operators for unification
-#ifdef MGONGPU_SIMD_DENOM64
+#ifdef MADMATRIX_SIMD_DENOM64
   inline fptype_amp_sv fpamp_of_mom( const fptype_momenta_sv& p ) { return fpdenom_narrow( p ); } 
 #else
   inline __host__ __device__ fptype_amp_sv fpamp_of_mom( const fptype_momenta_sv& p ) { return static_cast<fptype_amp_sv>( p ); } 

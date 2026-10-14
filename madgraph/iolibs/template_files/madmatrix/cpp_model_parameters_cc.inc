@@ -18,7 +18,7 @@
 
 using namespace madmatrix;
 
-#ifndef MGONGPU_HARDCODE_PARAM
+#ifndef MADMATRIX_HARDCODE_PARAM
 
 // Initialize static instance
 Parameters* Parameters::instance = 0;
