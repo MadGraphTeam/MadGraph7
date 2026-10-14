@@ -57,8 +57,8 @@ def amplicol_subproc_args(meta: dict, process: MadgraphProcess) -> ms.SubprocArg
     """LHE completion of an AmpliCol subprocess: its events have no diagram."""
     return ms.SubprocArgs(
         topologies=[chain_topology(
-            [process.get_mass(pid) for pid in meta["incoming"]],
-            [process.get_mass(pid) for pid in meta["outgoing"]],
+            [process.get_mass(pid) for pid in clean_pids(meta["incoming"])],
+            [process.get_mass(pid) for pid in clean_pids(meta["outgoing"])],
         )],
         permutations=[[]],
         diagram_indices=[[]],
@@ -102,10 +102,12 @@ class AmplicolSubprocess(MadgraphSubprocess):
             raise RuntimeError("[amplicol] processes need their matrix elements")
         if self.process.run_card["gridpack"]["save_gridpack"]:
             raise RuntimeError("[amplicol] processes do not support gridpacks yet")
-        if not self.meta.get("supports_alpha_s", True):
+        self.supports_alpha_s = self.meta.get("supports_alpha_s", True)
+        if not self.supports_alpha_s and not self.process.run_card["beam"]["fixed_ren_scale"]:
             raise RuntimeError(
                 "the AmpliCol matrix elements of this model cannot take the running "
-                "alpha_s, as the model has no SMINPUTS 3 parameter"
+                "alpha_s, as the model has no SMINPUTS 3 parameter: use a fixed "
+                "renormalization scale"
             )
         parameters = amplicol_parameters(self.meta, self.process)
         self.channel_index = self.meta["umami_channel"]
@@ -160,9 +162,10 @@ class AmplicolSubprocess(MadgraphSubprocess):
         return multi_phasespace
 
     def integrand_matrix_elements(self) -> list:
+        # without an alpha_s input, the model value of the fixed scale is used
         inputs = [
             ms.MatrixElement.momenta_in,
-            ms.MatrixElement.alpha_s_in,
+            *([ms.MatrixElement.alpha_s_in] if self.supports_alpha_s else []),
             ms.MatrixElement.flavor_in,
             ms.MatrixElement.channel_in,
             ms.MatrixElement.random_helicity_in,
