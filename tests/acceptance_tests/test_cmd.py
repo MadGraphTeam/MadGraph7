@@ -3274,6 +3274,119 @@ class TestCmdShell2(unittest.TestCase,
             self.assertAlmostEqual(density_matrix.trace()/fortran_me, 1,4)
             misc.sprint(density_matrix.values[1], fortran_dens[1])
 
+    def test_madmatrix_density_matches_fortran(self):
+        """The madmatrix density matrices and |M|^2 (madmatrix.density, what
+        MadSpin uses by default) against the Fortran f2py ones MadSpin used
+        before, on the processes MadSpin generates for p p > t t~ with both tops
+        decayed: off-shell ('*') tops, merged quark and lepton flavors, both
+        quark orderings, on- and off-shell momenta."""
+        import importlib.util
+        import math
+        import random
+        import numpy as np
+        import madmatrix.density as madmatrix_density
+
+        os.makedirs(self.out_dir)
+        self.do('set apply_flavor_grouping True')
+        self.do('set group_subprocesses False')
+        dirs = {}
+        for name, process in (('prod', 'generate p p > t* t~*'),
+                              ('dec', 'generate t* > b w+, w+ > l+ vl')):
+            self.do(process)
+            dirs[name] = (pjoin(self.out_dir, 'mm_' + name), pjoin(self.out_dir, 'f_' + name))
+            self.do('output standalone %s -f --noeps=True' % dirs[name][0])
+            self.do('output standalone_fortran %s --prefix=int --density=1 -f' % dirs[name][1])
+
+        libtag = '_acc%d' % os.getpid()
+        fortran, mm = {}, {}
+        for menum, name in ((2, 'prod'), (1, 'dec')):
+            mm_dir, f_dir = dirs[name]
+            misc.compile(madmatrix_density.make_variables(libtag=libtag + name),
+                         cwd=pjoin(mm_dir, 'SubProcesses'), mode='cpp', nb_core=4)
+            mm[name] = madmatrix_density.MadDensityLibrary(mm_dir)
+            mm[name].initialise(pjoin(mm_dir, 'Cards', 'param_card.dat'))
+            misc.compile(cwd=pjoin(f_dir, 'Source'), nb_core=4)
+            misc.compile(['MENUM=%d' % menum, 'all_matrix%dpy.so' % menum],
+                         cwd=pjoin(f_dir, 'SubProcesses'))
+            so = max(misc.glob('all_matrix%dpy*.so' % menum, pjoin(f_dir, 'SubProcesses')),
+                     key=os.path.getsize)
+            spec = importlib.util.spec_from_file_location('all_matrix%dpy' % menum, so)
+            fortran[name] = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(fortran[name])
+            fortran[name].initialise(pjoin(f_dir, 'Cards', 'param_card.dat'))
+        self.assertEqual(mm['prod'].get_idens(), list(fortran['prod'].get_idens()))
+
+        rng = random.Random(3)
+
+        def boost(p, b):
+            m = math.sqrt(b[0]**2 - b[1]**2 - b[2]**2 - b[3]**2)
+            g, n = b[0] / m, [x / m for x in b[1:]]
+            pb = sum(x * y for x, y in zip(p[1:], n))
+            f = pb / (g + 1) + p[0]
+            return (g * p[0] + pb,) + tuple(x + f * y for x, y in zip(p[1:], n))
+
+        def two_body(M, m1, m2):
+            k = math.sqrt((M**2 - (m1 + m2)**2) * (M**2 - (m1 - m2)**2)) / (2 * M)
+            c, phi = rng.uniform(-1, 1), rng.uniform(0, 2 * math.pi)
+            s = math.sqrt(1 - c * c)
+            v = (k * s * math.cos(phi), k * s * math.sin(phi), k * c)
+            return ((math.sqrt(m1**2 + k * k),) + v,
+                    (math.sqrt(m2**2 + k * k),) + tuple(-x for x in v))
+
+        def production(mt1, mt2):
+            shat = rng.uniform(mt1 + mt2 + 10, 1200.)
+            p3, p4 = two_body(shat, mt1, mt2)
+            beta = rng.uniform(-0.5, 0.5)
+            gamma = 1. / math.sqrt(1 - beta**2)
+            b = (gamma, 0., 0., gamma * beta)
+            return [boost(p, b) for p in ((shat / 2, 0, 0, shat / 2),
+                                          (shat / 2, 0, 0, -shat / 2), p3, p4)]
+
+        def decay(mt, mw):
+            w, b = two_body(mt, mw, 4.7)
+            l, v = (boost(q, w) for q in two_body(mw, 0, 0))
+            top = (math.sqrt(mt**2 + 250.**2), 100., -60., math.sqrt(250.**2 - 100.**2 - 60.**2))
+            return [boost(q, top) for q in ((mt, 0, 0, 0), b, l, v)]
+
+        def check(name, pdgs, p, pos, allow):
+            P = np.array(p).T.copy()
+            ref = np.asarray(fortran[name].py_get_density(pdgs=pdgs, procid=-1, p=P, pos=pos,
+                                                          allow_hel=allow, alphas=0.118, scale2=0.))
+            got = mm[name].density(pdgs, p, pos, allow, 0.118)
+            self.assertLess(abs(ref - got).max(), 1e-10 * abs(ref).max(), (name, pdgs, p))
+            ref = fortran[name].smatrixhel(pdgs, 0, P, 0.118, 0., -1)
+            self.assertLess(abs(mm[name].matrix_element(pdgs, p, 0.118) - ref), 1e-10 * ref)
+
+        two = [1, -1]
+        both = [h for a in two for b in two for h in (a, b)]
+        for mt1, mt2 in ((173., 173.), (168.5, 180.)):
+            p = production(mt1, mt2)
+            for pdgs in ([21, 21, 6, -6], [2, -2, 6, -6], [-1, 1, 6, -6], [3, -3, 6, -6]):
+                check('prod', pdgs, p, [3, 4], both)
+                check('prod', pdgs, p, [4], two)
+        for mt, mw in ((173., 80.419), (176., 78.), (165., 84.)):
+            for pdgs in ([6, 5, -11, 12], [6, 5, -13, 14]):
+                check('dec', pdgs, decay(mt, mw), [1], two)
+        # a decay at rest boosted by the library (MadSpin's decays) is the decay
+        # boosted beforehand
+        self.assertTrue(mm['dec'].supports_boost)
+        w, b = two_body(171., 79., 4.7)
+        l, v = (boost(q, w) for q in two_body(79., 0, 0))
+        at_rest = [(171., 0., 0., 0.), b, l, v]
+        top = (math.sqrt(171.**2 + 300.**2), 120., -80., math.sqrt(300.**2 - 120.**2 - 80.**2))
+        lab = [boost(q, top) for q in at_rest]
+        for pdgs in ([6, 5, -11, 12], [6, 5, -13, 14]):
+            ref = mm['dec'].density(pdgs, lab, [1], two, 0.118)
+            got = mm['dec'].density(pdgs, at_rest, [1], two, 0.118, boost=top)
+            self.assertLess(abs(ref - got).max(), 1e-12 * abs(ref).max())
+        # a batch is the same as the points one by one
+        points = [decay(rng.uniform(165., 180.), rng.uniform(75., 85.)) for _ in range(9)]
+        pdgs = [[6, 5, -11, 12] if k % 2 else [6, 5, -13, 14] for k in range(9)]
+        batch = mm['dec'].density_batch(pdgs, points, [1], two, [0.118] * 9)
+        for k in range(9):
+            np.testing.assert_array_equal(batch[k],
+                                          mm['dec'].density(pdgs[k], points[k], [1], two, 0.118))
+
 
     def test_density_mode_user_interface(self):
         ############################################################################

@@ -354,6 +354,53 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
         # the model, e.g. for the widths set to 'auto' in the param_card
         self.write_model_reference(model)
 
+    # What a caller evaluating the libraries one phase-space point at a time
+    # (madmatrix.density, used by MadSpin) needs to find the library and the
+    # flavor index of a given process
+    processes_file = 'madmatrix_processes.json'
+
+    def generate_subprocess_directory(self, matrix_element, cpp_helas_call_writer, proc_number=None):
+        out = super().generate_subprocess_directory(matrix_element, cpp_helas_call_writer, proc_number)
+        if not hasattr(self, 'processes_of_subprocess'):
+            self.processes_of_subprocess = []
+        self.processes_of_subprocess.append((
+            [[leg.get('id') for leg in process.get_legs_with_decays()]
+             for process in matrix_element.get('processes')],
+            # the legs marked off-shell ('*'), evaluated at the invariant mass of
+            # their momentum by the scalar backend only (offshell_mass, SigmaKin.cc)
+            sorted(wf.get('number_external')
+                   for wf in matrix_element.get_external_wavefunctions()
+                   if wf.get('offshell'))))
+        return out
+
     def finalize(self, *args, **kwargs):
-        # We disable this since we don't need subprocesses.json either
-        pass
+        # no subprocesses.json (nor anything else the mg7 launcher needs), only
+        # the process table of the standalone libraries
+        self.write_processes_file()
+
+    def write_processes_file(self):
+        """SubProcesses/madmatrix_processes.json: per subprocess, its library
+        (with the make variables LIBTAG and BACKEND left as '{libtag}' and
+        '{backend}'), its legs, the processes it evaluates, its off-shell legs
+        and, per flavor index, every pdg combination (in the leg order of the
+        process) that this index stands for."""
+        import json
+        subprocesses = []
+        for info, (processes, offshell) in zip(self.process_info,
+                                               getattr(self, 'processes_of_subprocess', [])):
+            path = os.path.basename(info['path'])
+            flavors = []
+            for flavor in info['flavors']:
+                while len(flavors) <= flavor['index']:
+                    flavors.append([])
+                flavors[flavor['index']].extend(list(pdgs) for pdgs in flavor['options'])
+            subprocesses.append({
+                'path': path,
+                'library': 'libmadmatrix{libtag}_%s_{backend}.so' % path,
+                'ninitial': len(info['incoming']),
+                'legs': list(info['incoming']) + list(info['outgoing']),
+                'processes': processes,
+                'offshell': offshell,
+                'flavors': flavors})
+        with open(pjoin(self.dir_path, 'SubProcesses', self.processes_file), 'w') as fsock:
+            json.dump({'subprocesses': subprocesses}, fsock, indent=1)
