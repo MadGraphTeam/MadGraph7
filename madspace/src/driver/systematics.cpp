@@ -173,7 +173,8 @@ SystematicsCalculator::SystematicsCalculator(
     const std::optional<AlphaSGrid>& nominal_alpha_s,
     ContextPtr context,
     const std::vector<std::optional<MatrixElement>>& matrix_elements,
-    const nested_vector2<me_int_t>& me_flavor_remap
+    const nested_vector2<me_int_t>& me_flavor_remap,
+    const std::optional<PdfGrid>& nominal_pdf2
 ) :
     _config(config),
     _subproc_args(subproc_args),
@@ -222,6 +223,10 @@ SystematicsCalculator::SystematicsCalculator(
     std::sort(pids.begin(), pids.end());
     if (_config.has_pdf) {
         _nominal_pdf = make_pdf_evaluator(nominal_pdf.value(), pids, "nominal", 0);
+        if (nominal_pdf2) {
+            _nominal_pdf2 =
+                make_pdf_evaluator(nominal_pdf2.value(), pids, "nominal2", 0);
+        }
     }
 
     // matrix elements for the subprocesses with mixed alpha_s powers
@@ -271,6 +276,16 @@ SystematicsCalculator::SystematicsCalculator(
         if (!_config.has_pdf) {
             _warnings.push_back(std::format(
                 "PDF variation {} member {} ignored: the beams have no PDF",
+                spec.set_name,
+                spec.member
+            ));
+            continue;
+        }
+        if (_nominal_pdf2) {
+            // a member of one set cannot stand in for two different sets
+            _warnings.push_back(std::format(
+                "PDF variation {} member {} ignored: the two beams use different "
+                "PDF sets",
                 spec.set_name,
                 spec.member
             ));
@@ -628,6 +643,12 @@ SystematicsCalculator::reweight_info(EventBuffer& buffer, std::size_t event_inde
         .fact_scale1 = has_beam1 ? event.fact_scale1().value() : 0.,
         .fact_scale2 = has_beam2 ? event.fact_scale2().value() : 0.,
     };
+    // beam 1 moves along +z: leg 1 of a mirrored event belongs to beam 2
+    if (has_beam1 && has_beam2 && buffer.particle(event_index, 0).pz() < 0.) {
+        std::swap(info.pdg1, info.pdg2);
+        std::swap(info.x1, info.x2);
+        std::swap(info.fact_scale1, info.fact_scale2);
+    }
     return info;
 }
 
@@ -654,6 +675,9 @@ void SystematicsCalculator::compute(
         int subproc, qcd_power;
         me_int_t slot1, slot2;
         bool use_me;
+        // leg 1 comes from beam 2 (mirrored event); only tracked when the
+        // beams have different PDFs
+        bool swapped;
         std::array<double, 5> dyn_scale;
     };
     std::vector<EventInput> inputs(count);
@@ -677,6 +701,7 @@ void SystematicsCalculator::compute(
         in.muf2 = has_beam2 ? event.fact_scale2().value() : 0.;
         in.slot1 = in.slot2 = 0;
         in.nominal_product = 1.;
+        in.swapped = _nominal_pdf2 && buffer.particle(i, 0).pz() < 0.;
         if (use_pdf) {
             auto& pdgs = args.beam_pdgs.at(event.flavor_index());
             in.slot1 = pid_slot(pdgs.at(0));
@@ -697,20 +722,57 @@ void SystematicsCalculator::compute(
     auto scale_of = [&](const EventInput& in, int dyn, double generated) {
         return dyn == -1 ? generated : in.dyn_scale[dyn];
     };
+    // x f(x, q) at the given points, point n evaluated with `second` if
+    // on_second[n] and with `first` otherwise. One batched call when both are
+    // the same grid.
+    auto evaluate_beams = [&](const PdfEvaluator& first,
+                              const PdfEvaluator& second,
+                              const std::vector<double>& x,
+                              const std::vector<double>& q,
+                              const std::vector<me_int_t>& slots,
+                              const std::vector<char>& on_second) {
+        if (&first == &second) {
+            return evaluate_pdf(first, x, q, slots);
+        }
+        std::array<std::vector<double>, 2> grid_x, grid_q;
+        std::array<std::vector<me_int_t>, 2> grid_slots;
+        for (std::size_t n = 0; n < x.size(); ++n) {
+            grid_x[on_second[n]].push_back(x[n]);
+            grid_q[on_second[n]].push_back(q[n]);
+            grid_slots[on_second[n]].push_back(slots[n]);
+        }
+        std::array<std::vector<double>, 2> grid_values{
+            evaluate_pdf(first, grid_x[0], grid_q[0], grid_slots[0]),
+            evaluate_pdf(second, grid_x[1], grid_q[1], grid_slots[1]),
+        };
+        std::vector<double> values(x.size());
+        std::array<std::size_t, 2> next{0, 0};
+        for (std::size_t n = 0; n < x.size(); ++n) {
+            values[n] = grid_values[on_second[n]][next[on_second[n]]++];
+        }
+        return values;
+    };
+    const PdfEvaluator* nominal_pdf2 =
+        _nominal_pdf2 ? &_nominal_pdf2.value() : (_nominal_pdf ? &_nominal_pdf.value() : nullptr);
 
     // Nominal PDF product when the events do not carry it: one batched call
     if (use_pdf && !has_partial) {
         std::vector<double> x, q;
         std::vector<me_int_t> slots;
+        std::vector<char> on_second;
         for (auto& in : inputs) {
             if (has_beam1) {
                 x.push_back(in.x1), q.push_back(in.muf1), slots.push_back(in.slot1);
+                on_second.push_back(in.swapped);
             }
             if (has_beam2) {
                 x.push_back(in.x2), q.push_back(in.muf2), slots.push_back(in.slot2);
+                on_second.push_back(!in.swapped);
             }
         }
-        auto values = evaluate_pdf(_nominal_pdf.value(), x, q, slots);
+        auto values = evaluate_beams(
+            _nominal_pdf.value(), *nominal_pdf2, x, q, slots, on_second
+        );
         for (std::size_t i = 0, n = 0; i < count; ++i) {
             double product = 1.;
             if (has_beam1) {
@@ -728,9 +790,11 @@ void SystematicsCalculator::compute(
     std::vector<std::vector<double>> r_pdf(count, std::vector<double>(var_count, 1.));
     if (use_pdf) {
         auto evaluate_variations = [&](const PdfEvaluator& evaluator,
+                                       const PdfEvaluator& evaluator2,
                                        const std::vector<std::size_t>& var_indices) {
             std::vector<double> x, q;
             std::vector<me_int_t> slots;
+            std::vector<char> on_second;
             for (auto& in : inputs) {
                 for (std::size_t k : var_indices) {
                     auto& var = _variations.at(k);
@@ -738,15 +802,18 @@ void SystematicsCalculator::compute(
                         x.push_back(in.x1);
                         q.push_back(var.muf * scale_of(in, var.dyn, in.muf1));
                         slots.push_back(in.slot1);
+                        on_second.push_back(in.swapped);
                     }
                     if (has_beam2) {
                         x.push_back(in.x2);
                         q.push_back(var.muf * scale_of(in, var.dyn, in.muf2));
                         slots.push_back(in.slot2);
+                        on_second.push_back(!in.swapped);
                     }
                 }
             }
-            auto values = evaluate_pdf(evaluator, x, q, slots);
+            auto values =
+                evaluate_beams(evaluator, evaluator2, x, q, slots, on_second);
             for (std::size_t i = 0, n = 0; i < count; ++i) {
                 for (std::size_t k : var_indices) {
                     double product = 1.;
@@ -778,11 +845,11 @@ void SystematicsCalculator::compute(
             }
         }
         if (!nominal_grid_vars.empty()) {
-            evaluate_variations(_nominal_pdf.value(), nominal_grid_vars);
+            evaluate_variations(_nominal_pdf.value(), *nominal_pdf2, nominal_grid_vars);
         }
         for (std::size_t m = 0; m < _member_pdfs.size(); ++m) {
             if (!member_vars[m].empty()) {
-                evaluate_variations(_member_pdfs[m], member_vars[m]);
+                evaluate_variations(_member_pdfs[m], _member_pdfs[m], member_vars[m]);
             }
         }
     }
