@@ -142,6 +142,15 @@ first_pass_max_overweight_truncation = %(surrogate.first_pass_max_overweight_tru
 first_pass_freeze_max_weight_after = %(surrogate.first_pass_freeze_max_weight_after)s
 param_card = %(surrogate.param_card)s # for a .so surrogate, "" uses Cards/param_card.dat
 
+[amplicol]
+# the [amplicol] processes are integrated at leading colour; their events are
+# re- or unweighted to color_accuracy in a second pass (lc: no second pass)
+color_accuracy = %(amplicol.color_accuracy)s
+mode = %(amplicol.mode)s
+# unweighting at leading colour (unweight mode); [generation] sets the second pass
+first_pass_max_overweight_truncation = %(amplicol.first_pass_max_overweight_truncation)s
+first_pass_freeze_max_weight_after = %(amplicol.first_pass_freeze_max_weight_after)s
+
 [multiparticles]
 $multiparticles
 
