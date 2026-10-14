@@ -25,9 +25,9 @@ inverts, and nothing is restricted when the cuts do not imply it.
 
 import math
 
-import numpy as np
 import pytest
-from pytest import approx
+import torch
+from madspace_testing import generator, rand, randint
 
 import madspace as ms
 
@@ -93,46 +93,64 @@ def jet_cuts(pids, pt=PT_JET, eta=ETA_JET):
     return items
 
 
+def finite(p_ext):
+    return torch.isfinite(p_ext).all(dim=2).all(dim=1)
+
+
 def sample(mapping, seed=SEED, n=BATCH_SIZE):
-    rng = np.random.default_rng(seed)
-    r = rng.random((n, mapping.random_dim()))
+    r = rand((n, mapping.random_dim()), generator=generator(seed))
     p_ext, x1, x2, det = mapping.map_forward([r])
-    p_ext, x1, x2, det = (np.asarray(a) for a in (p_ext, x1, x2, det))
-    ok = np.isfinite(det) & np.all(np.isfinite(p_ext), axis=(1, 2))
-    return r, p_ext, x1, x2, np.where(ok, det, 0.0)
+    ok = torch.isfinite(det) & finite(p_ext)
+    return r, p_ext, x1, x2, torch.where(ok, det, 0.0)
 
 
 def passes(cuts, p_ext):
-    return np.asarray(cuts(p_ext)).reshape(-1) > 0.5
+    return cuts(p_ext).reshape(-1) > 0.5
+
+
+def fraction(mask):
+    """The fraction of True entries of a boolean tensor."""
+    return mask.double().mean().item()
+
+
+def mean_and_error(w):
+    """Mean of a batch and its standard error (numpy's std, without Bessel)."""
+    return w.mean().item(), w.std(correction=0).item() / math.sqrt(len(w))
 
 
 def pt(p):
-    return np.hypot(p[..., 1], p[..., 2])
+    return torch.hypot(p[..., 1], p[..., 2])
 
 
 def rapidity(p):
-    return 0.5 * np.log((p[..., 0] + p[..., 3]) / (p[..., 0] - p[..., 3]))
+    return 0.5 * torch.log((p[..., 0] + p[..., 3]) / (p[..., 0] - p[..., 3]))
 
 
 def eta(p):
-    p_mag = np.sqrt(np.sum(p[..., 1:] ** 2, axis=-1))
-    return 0.5 * np.log((p_mag + p[..., 3]) / (p_mag - p[..., 3]))
+    p_mag = torch.sqrt(torch.sum(p[..., 1:] ** 2, dim=-1))
+    return 0.5 * torch.log((p_mag + p[..., 3]) / (p_mag - p[..., 3]))
 
 
 def beam_rapidity(x1, x2):
-    return 0.5 * np.log(x1 / x2)
+    return 0.5 * torch.log(x1 / x2)
 
 
 def sqrt_s_hat(x1, x2):
-    return CM_ENERGY * np.sqrt(x1 * x2)
+    return CM_ENERGY * torch.sqrt(x1 * x2)
+
+
+def assert_close(actual, expected, rel=0.0, abs=0.0):
+    """Like pytest.approx for tensors: |actual - expected| <= abs + rel * |expected|."""
+    expected = torch.as_tensor(expected, dtype=actual.dtype).expand_as(actual)
+    torch.testing.assert_close(actual, expected, rtol=rel, atol=abs)
 
 
 def weighted_cut_integral(mapping, cuts, seed, n=400_000):
     """det / s_hat over the cut region: a propagator-shaped test integrand,
     so the low-mass region carries weight."""
     _, p_ext, x1, x2, det = sample(mapping, seed=seed, n=n)
-    weight = np.where(passes(cuts, p_ext), det / (CM_ENERGY**2 * x1 * x2), 0.0)
-    return weight.mean(), weight.std() / math.sqrt(n)
+    weight = torch.where(passes(cuts, p_ext), det / (CM_ENERGY**2 * x1 * x2), 0.0)
+    return mean_and_error(weight)
 
 
 def assert_same_integral(topology, cuts, n=400_000):
@@ -160,13 +178,15 @@ def test_dy_every_generated_point_passes():
     windows, so with the cuts handed to the mapping every point it generates
     with a weight passes them, while without them most fail."""
     c = dy_cuts()
-    _, p_free, _, _, det_free = sample(ms.PhaseSpaceMapping(s_channel_two_body(), CM_ENERGY))
-    assert np.mean(passes(c, p_free)[det_free > 0]) < 0.9
+    _, p_free, _, _, det_free = sample(
+        ms.PhaseSpaceMapping(s_channel_two_body(), CM_ENERGY)
+    )
+    assert fraction(passes(c, p_free)[det_free > 0]) < 0.9
     _, p_ext, _, _, det = sample(
         ms.PhaseSpaceMapping(s_channel_two_body(), CM_ENERGY, cuts=c)
     )
-    assert np.mean(det > 0) > 0.999
-    assert np.mean(passes(c, p_ext)[det > 0]) > 0.999
+    assert fraction(det > 0) > 0.999
+    assert fraction(passes(c, p_ext)[det > 0]) > 0.999
 
 
 def test_dy_windows_are_reached():
@@ -178,10 +198,10 @@ def test_dy_windows_are_reached():
     )
     leptons = p_ext[:, 2:4]
     y = beam_rapidity(x1, x2)
-    assert np.abs(y).max() <= ETA_LEPTON + 1e-9
-    assert np.abs(y).max() > 0.99 * ETA_LEPTON
-    assert np.abs(eta(leptons)).max() <= ETA_LEPTON + 1e-6
-    assert np.abs(eta(leptons)).max() > 0.999 * ETA_LEPTON
+    assert torch.abs(y).max() <= ETA_LEPTON + 1e-9
+    assert torch.abs(y).max() > 0.99 * ETA_LEPTON
+    assert torch.abs(eta(leptons)).max() <= ETA_LEPTON + 1e-6
+    assert torch.abs(eta(leptons)).max() > 0.999 * ETA_LEPTON
     assert pt(leptons).min() >= PT_LEPTON * (1 - 1e-9)
     assert pt(leptons).min() < 1.01 * PT_LEPTON
 
@@ -195,10 +215,9 @@ def test_dy_round_trip():
     r, p_ext, x1, x2, det = sample(mapping, n=10_000)
     keep = det > 0
     r_back, det_back = mapping.map_inverse([p_ext, x1, x2], [])
-    r_back, det_back = np.asarray(r_back), np.asarray(det_back)
     # the cut mask is part of det but not of det_back
-    assert r_back[keep] == approx(r[keep], abs=1e-7)
-    assert (det * det_back)[keep] == approx(1.0, rel=1e-7)
+    assert_close(r_back[keep], r[keep], abs=1e-7)
+    assert_close((det * det_back)[keep], 1.0, rel=1e-7)
 
 
 # --------------------------------------------------------------------------
@@ -215,12 +234,12 @@ def test_massive_partner_without_cuts(pt_jet):
     c = ms.Cuts(jet_cuts(ZG_PIDS, pt=pt_jet))
     topology = s_channel_two_body((M_Z, 0.0))
     _, p_free, _, _, _ = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY))
-    assert np.mean(passes(c, p_free)) < 0.9
+    assert fraction(passes(c, p_free)) < 0.9
     _, p_ext, x1, x2, det = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY, cuts=c))
-    assert np.mean(passes(c, p_ext)) > 0.99
-    assert np.mean(passes(c, p_ext)[det > 0]) > 0.999
+    assert fraction(passes(c, p_ext)) > 0.99
+    assert fraction(passes(c, p_ext)[det > 0]) > 0.999
     # Y is not restricted
-    assert np.abs(beam_rapidity(x1, x2)[det > 0]).max() > ETA_JET + 0.5
+    assert torch.abs(beam_rapidity(x1, x2)[det > 0]).max() > ETA_JET + 0.5
     assert_same_integral(topology, c)
 
 
@@ -272,12 +291,12 @@ def test_composite_rapidity_windows():
     topology = s_channel_four_body()
     _, p_ext, x1, x2, det = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY, cuts=c))
     # every sampled point: the weight already contains the cut mask
-    keep = np.all(np.isfinite(p_ext), axis=(1, 2))
+    keep = finite(p_ext)
     eta_max = max(ETA_LEPTON, ETA_JET)
-    assert np.abs(beam_rapidity(x1, x2)[keep]).max() <= eta_max + 1e-9
+    assert torch.abs(beam_rapidity(x1, x2)[keep]).max() <= eta_max + 1e-9
     for pair in ((2, 3), (4, 5)):
         system = p_ext[keep, pair[0]] + p_ext[keep, pair[1]]
-        assert np.abs(rapidity(system)).max() <= eta_max + 1e-6
+        assert torch.abs(rapidity(system)).max() <= eta_max + 1e-6
     assert_same_integral(topology, c)
 
 
@@ -286,13 +305,14 @@ def test_composite_round_trip():
     r, p_ext, x1, x2, det = sample(mapping, n=10_000)
     keep = det > 0
     r_back, det_back = mapping.map_inverse([p_ext, x1, x2], [])
-    r_back, det_back = np.asarray(r_back), np.asarray(det_back)
-    # a handful of points lose ~1e-5 in the inner decays with or without the
-    # windows (momentum reconstruction), hence quantiles
-    r_diff = np.abs(r_back[keep] - r[keep])
-    det_diff = np.abs((det * det_back)[keep] - 1.0)
-    assert np.quantile(r_diff, 0.999) < 1e-7 and r_diff.max() < 1e-4
-    assert np.quantile(det_diff, 0.99) < 1e-7 and np.quantile(det_diff, 0.999) < 1e-5
+    # a handful of points lose ~1e-5 to 1e-4 (platform dependent) in the inner decays
+    # with or without the windows (momentum reconstruction), hence quantiles
+    r_diff = torch.abs(r_back[keep] - r[keep])
+    det_diff = torch.abs((det * det_back)[keep] - 1.0)
+    assert torch.quantile(r_diff, 0.999) < 1e-7 and r_diff.max() < 1e-3
+    assert (
+        torch.quantile(det_diff, 0.99) < 1e-7 and torch.quantile(det_diff, 0.999) < 1e-5
+    )
 
 
 # --------------------------------------------------------------------------
@@ -308,9 +328,9 @@ def test_no_rapidity_window_with_an_uncut_particle():
         ms.PhaseSpaceMapping(s_channel_four_body(), CM_ENERGY, cuts=c)
     )
     keep = det > 0
-    assert np.abs(beam_rapidity(x1, x2)[keep]).max() > ETA_LEPTON + 1.0
+    assert torch.abs(beam_rapidity(x1, x2)[keep]).max() > ETA_LEPTON + 1.0
     gluons = p_ext[keep, 4] + p_ext[keep, 5]
-    assert np.abs(rapidity(gluons)).max() > ETA_LEPTON + 1.0
+    assert torch.abs(rapidity(gluons)).max() > ETA_LEPTON + 1.0
 
 
 def test_no_cuts_no_change():
@@ -319,7 +339,7 @@ def test_no_cuts_no_change():
     a = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY))
     b = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY, cuts=ms.Cuts(4)))
     for u, v in zip(a, b):
-        assert np.array_equal(u, v)
+        assert torch.equal(u, v)
 
 
 def test_two_body_decay_window_alone():
@@ -329,21 +349,20 @@ def test_two_body_decay_window_alone():
     pt_min = 30.0
     decay = ms.TwoBodyDecay(True, pt_min=pt_min)
     n = 10_000
-    rng = np.random.default_rng(SEED)
-    r_phi, r_cos = rng.random(n), rng.random(n)
-    m0 = np.full(n, 100.0)
-    zeros = np.zeros(n)
-    ones = np.ones(n)
+    g = generator(SEED)
+    r_phi, r_cos = rand(n, generator=g), rand(n, generator=g)
+    m0 = torch.full((n,), 100.0)
+    zeros = torch.zeros(n)
+    ones = torch.ones(n)
     p1, p2, det = decay.map_forward([r_phi, r_cos, m0, zeros, zeros], [ones, ones])
-    p1, det = np.asarray(p1), np.asarray(det)
     plain = ms.TwoBodyDecay(True)
     _, _, det_plain = plain.map_forward([r_phi, r_cos, m0, zeros, zeros], [])
     kept = math.sqrt(1 - (pt_min / 50.0) ** 2)
-    assert det == approx(np.asarray(det_plain) * kept, rel=1e-12)
+    assert_close(det, det_plain * kept, rel=1e-12)
     assert pt(p1).min() >= pt_min * (1 - 1e-9)
     *inputs, det_back = decay.map_inverse([p1, p2], [ones, ones])
-    assert np.asarray(inputs[1]) == approx(r_cos, abs=1e-8)
-    assert det * np.asarray(det_back) == approx(1.0, rel=1e-8)
+    assert_close(inputs[1], r_cos, abs=1e-8)
+    assert_close(det * det_back, 1.0, rel=1e-8)
 
 
 # --------------------------------------------------------------------------
@@ -371,10 +390,8 @@ def test_every_passing_event_is_inside_the_windows(topology, cuts):
     keep = passes(cuts, p_ext) & (det > 0)
     assert keep.sum() > 1000
     r_back, _ = windowed.map_inverse([p_ext[keep], x1[keep], x2[keep]], [])
-    r_back = np.asarray(r_back)
-    assert np.all(np.isfinite(r_back))
+    assert torch.all(torch.isfinite(r_back))
     assert r_back.min() > -1e-6 and r_back.max() < 1 + 1e-6
-
 
 
 # --------------------------------------------------------------------------
@@ -430,12 +447,12 @@ def test_t_channel_every_generated_point_passes():
     c = ms.Cuts(photon_cuts(AA_PIDS))
     topology = t_channel_two_body()
     _, p_free, _, _, _ = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY))
-    assert np.mean(passes(c, p_free)) < 0.9
+    assert fraction(passes(c, p_free)) < 0.9
     _, p_ext, _, _, det = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY, cuts=c))
-    assert np.mean(passes(c, p_ext)) > 0.999
+    assert fraction(passes(c, p_ext)) > 0.999
     photons = p_ext[:, 2:4]
-    assert np.abs(eta(photons)).max() <= ETA_PHOTON + 1e-6
-    assert np.abs(eta(photons)).max() > 0.999 * ETA_PHOTON
+    assert torch.abs(eta(photons)).max() <= ETA_PHOTON + 1e-6
+    assert torch.abs(eta(photons)).max() > 0.999 * ETA_PHOTON
 
 
 def test_t_channel_round_trip():
@@ -444,9 +461,8 @@ def test_t_channel_round_trip():
     r, p_ext, x1, x2, det = sample(mapping, n=10_000)
     keep = det > 0
     r_back, det_back = mapping.map_inverse([p_ext, x1, x2], [])
-    r_back, det_back = np.asarray(r_back), np.asarray(det_back)
-    assert r_back[keep] == approx(r[keep], abs=1e-7)
-    assert (det * det_back)[keep] == approx(1.0, rel=1e-7)
+    assert_close(r_back[keep], r[keep], abs=1e-7)
+    assert_close((det * det_back)[keep], 1.0, rel=1e-7)
 
 
 @pytest.mark.parametrize(
@@ -474,8 +490,7 @@ def test_t_channel_window_is_exact(topology, cuts):
     keep = passes(cuts, p_ext) & (det > 0)
     assert keep.sum() > 1000
     r_back, _ = windowed.map_inverse([p_ext[keep], x1[keep], x2[keep]], [])
-    r_back = np.asarray(r_back)
-    assert np.all(np.isfinite(r_back))
+    assert torch.all(torch.isfinite(r_back))
     assert r_back.min() > -1e-6 and r_back.max() < 1 + 1e-6
     assert_same_integral(topology, cuts)
 
@@ -494,9 +509,9 @@ def test_t_channel_first_step_only_bounds_what_it_peels():
     other = 2 - peeled
     cuts = ms.Cuts(photon_cuts(AAG_PIDS) + jet_cuts(AAG_PIDS, eta=None))
     _, p_ext, _, _, _ = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY, cuts=cuts))
-    outside = np.abs(eta(p_ext[:, 2:5])) > ETA_PHOTON + 1e-6
-    assert outside[:, peeled].mean() < 0.03
-    assert outside[:, other].mean() > 0.2
+    outside = torch.abs(eta(p_ext[:, 2:5])) > ETA_PHOTON + 1e-6
+    assert fraction(outside[:, peeled]) < 0.03
+    assert fraction(outside[:, other]) > 0.2
 
 
 # --------------------------------------------------------------------------
@@ -515,7 +530,11 @@ CO_ORDERS = {
     "1+3": [0, 2, 1, 3, 4, 5],  # double-t: {0} against {1, 2, 3}
 }
 # outgoing particles whose summed momentum has to stay within the bound
-CO_BOUNDED = {"chain": [[0], [1, 2, 3]], "2+2": [[0, 1], [2, 3]], "1+3": [[0], [1, 2, 3]]}
+CO_BOUNDED = {
+    "chain": [[0], [1, 2, 3]],
+    "2+2": [[0, 1], [2, 3]],
+    "1+3": [[0], [1, 2, 3]],
+}
 
 
 def gggg_cuts():
@@ -526,13 +545,12 @@ def gggg_cuts():
 
 
 def co_sample(mapping, n, seed):
-    rng = np.random.default_rng(seed)
-    r = rng.random((n, mapping.random_dim()))
-    d = rng.integers(0, 2, size=(n, mapping.discrete_dim())).astype(np.int32)
-    out = mapping.map_forward([r, d] if mapping.discrete_dim() else [r])
-    p_ext, x1, x2, det = (np.asarray(a) for a in out)
-    ok = np.isfinite(det) & np.all(np.isfinite(p_ext), axis=(1, 2))
-    return p_ext, x1, x2, np.where(ok, det, 0.0)
+    g = generator(seed)
+    r = rand((n, mapping.random_dim()), generator=g)
+    d = randint(0, 2, (n, mapping.discrete_dim()), generator=g, dtype=torch.int32)
+    p_ext, x1, x2, det = mapping.map_forward([r, d] if mapping.discrete_dim() else [r])
+    ok = torch.isfinite(det) & finite(p_ext)
+    return p_ext, x1, x2, torch.where(ok, det, 0.0)
 
 
 @pytest.mark.parametrize("name", list(CO_ORDERS))
@@ -546,7 +564,11 @@ def test_color_ordered_window_is_exact(name):
 
     def mapping(c):
         return ms.PhaseSpaceMapping(
-            masses, CM_ENERGY, mode=ms.PhaseSpaceMapping.color_ordered, cuts=c, color_order=order
+            masses,
+            CM_ENERGY,
+            mode=ms.PhaseSpaceMapping.color_ordered,
+            cuts=c,
+            color_order=order,
         )
 
     n = 200_000
@@ -554,13 +576,13 @@ def test_color_ordered_window_is_exact(name):
     keep = passes(cuts, p_free) & (det_free > 0)
     assert keep.sum() > 1000
     out = mapping(cuts).map_inverse([p_free[keep], y1[keep], y2[keep]], [])
-    r_back = np.asarray(out[0])
-    assert np.all(np.isfinite(r_back))
+    r_back = out[0]
+    assert torch.all(torch.isfinite(r_back))
     assert r_back.min() > -1e-6 and r_back.max() < 1 + 1e-6
 
     def integral(p_ext, x1, x2, det):
-        w = np.where(passes(cuts, p_ext), det / (CM_ENERGY**2 * x1 * x2), 0.0)
-        return w.mean(), w.std() / math.sqrt(len(w))
+        w = torch.where(passes(cuts, p_ext), det / (CM_ENERGY**2 * x1 * x2), 0.0)
+        return mean_and_error(w)
 
     a, ea = integral(p_free, y1, y2, det_free)
     b, eb = integral(*co_sample(mapping(cuts), n, SEED + 1))
@@ -578,26 +600,27 @@ def test_color_ordered_blocks_respect_the_bounds(name):
     tau = (sqrt_s / CM_ENERGY) ** 2
     x1, x2 = math.sqrt(tau) * math.exp(y_boost), math.sqrt(tau) * math.exp(-y_boost)
     n = 100_000
-    rng = np.random.default_rng(SEED)
+    g = generator(SEED)
 
     def outside(y_max):
         mapping = ms.ColorOrderedMapping(
             order, 0.8, 0.8, [PT_JET] * 4, [], [], True, y_max
         )
-        r = rng.random((n, mapping.random_dim()))
-        d = rng.integers(0, 2, size=(n, mapping.discrete_dim())).astype(np.int32)
-        inputs = [r[:, i].copy() for i in range(r.shape[1])]
-        inputs += [d[:, j].copy() for j in range(d.shape[1])]
-        conditions = [np.full(n, sqrt_s)] + [np.zeros(n)] * 4
+        r = rand((n, mapping.random_dim()), generator=g)
+        d = randint(0, 2, (n, mapping.discrete_dim()), generator=g, dtype=torch.int32)
+        inputs = [r[:, i].clone() for i in range(r.shape[1])]
+        inputs += [d[:, j].clone() for j in range(d.shape[1])]
+        conditions = [torch.full((n,), sqrt_s)] + [torch.zeros(n)] * 4
         if y_max:
-            conditions += [np.full(n, x1), np.full(n, x2)]
+            conditions += [torch.full((n,), x1), torch.full((n,), x2)]
         out = mapping.map_forward(inputs, conditions)
-        p = np.stack([np.asarray(q) for q in out[:-1]], axis=1)
-        finite = np.all(np.isfinite(p), axis=(1, 2))
+        p = torch.stack(list(out[:-1]), dim=1)
         fractions = []
         for group in CO_BOUNDED[name]:
-            system = p[finite][:, [2 + i for i in group]].sum(axis=1)
-            fractions.append(np.mean(np.abs(rapidity(system) + y_boost) > ETA_JET + 1e-9))
+            system = p[finite(p)][:, [2 + i for i in group]].sum(dim=1)
+            fractions.append(
+                fraction(torch.abs(rapidity(system) + y_boost) > ETA_JET + 1e-9)
+            )
         return fractions
 
     for with_bound, without in zip(outside([ETA_JET] * 4), outside([])):
@@ -615,29 +638,44 @@ def test_double_t_window_alone():
     sqrt_s, y_boost = 500.0, 0.8
     tau = (sqrt_s / CM_ENERGY) ** 2
     x1, x2 = math.sqrt(tau) * math.exp(y_boost), math.sqrt(tau) * math.exp(-y_boost)
-    pa = np.tile([sqrt_s / 2, 0.0, 0.0, sqrt_s / 2], (n, 1))
-    pb = np.tile([sqrt_s / 2, 0.0, 0.0, -sqrt_s / 2], (n, 1))
-    rng = np.random.default_rng(SEED)
-    r = [rng.random(n) for _ in range(3)]
-    base = [pa, pb, np.zeros(n), np.zeros(n), np.full(n, 20.0), np.full(n, 40.0)]
+    pa = torch.tensor([sqrt_s / 2, 0.0, 0.0, sqrt_s / 2]).repeat(n, 1)
+    pb = torch.tensor([sqrt_s / 2, 0.0, 0.0, -sqrt_s / 2]).repeat(n, 1)
+    g = generator(SEED)
+    r = [rand(n, generator=g) for _ in range(3)]
+    base = [
+        pa,
+        pb,
+        torch.zeros(n),
+        torch.zeros(n),
+        torch.full((n,), 20.0),
+        torch.full((n,), 40.0),
+    ]
 
     def outside(mapping, conditions):
-        p1, p2, det = (np.asarray(a) for a in mapping.map_forward(r, conditions))
-        ok = np.isfinite(det) & (det > 0)
+        p1, p2, det = mapping.map_forward(r, conditions)
+        ok = torch.isfinite(det) & (det > 0)
         return [
-            np.mean(np.abs(rapidity(p[ok]) + y_boost) > ETA_JET + 1e-9) for p in (p1, p2)
+            fraction(torch.abs(rapidity(p[ok]) + y_boost) > ETA_JET + 1e-9)
+            for p in (p1, p2)
         ]
 
     bounded = ms.DoubleT(0.8, 0.0, 0.0, 0.8, 0.0, 0.0, True, ETA_JET, ETA_JET, 1.0)
     free = ms.DoubleT(0.8, 0.0, 0.0, 0.8, 0.0, 0.0, True)
-    assert outside(bounded, base + [np.full(n, x1), np.full(n, x2)]) == [0.0, 0.0]
+    assert outside(bounded, base + [torch.full((n,), x1), torch.full((n,), x2)]) == [
+        0.0,
+        0.0,
+    ]
     assert outside(free, base)[0] > 0.1
     *inputs, det_back = bounded.map_inverse(
-        list(bounded.map_forward(r, base + [np.full(n, x1), np.full(n, x2)])[:2]),
-        base + [np.full(n, x1), np.full(n, x2)],
+        list(
+            bounded.map_forward(r, base + [torch.full((n,), x1), torch.full((n,), x2)])[
+                :2
+            ]
+        ),
+        base + [torch.full((n,), x1), torch.full((n,), x2)],
     )
     for a, b in zip(inputs, r):
-        assert np.asarray(a) == approx(b, abs=1e-7)
+        assert_close(a, b, abs=1e-7)
 
 
 # --------------------------------------------------------------------------
@@ -665,12 +703,11 @@ def lepton_photon_cuts(pids=LA_PIDS):
 
 
 def permuted_sample(mapping, index, n, seed):
-    rng = np.random.default_rng(seed)
-    r = rng.random((n, mapping.random_dim()))
-    perm = np.full(n, index, dtype=np.int32)
-    p_ext, x1, x2, det = (np.asarray(a) for a in mapping.map_forward([r], [perm]))
-    ok = np.isfinite(det) & np.all(np.isfinite(p_ext), axis=(1, 2))
-    return r, perm, p_ext, x1, x2, np.where(ok, det, 0.0)
+    r = rand((n, mapping.random_dim()), generator=generator(seed))
+    perm = torch.full((n,), index, dtype=torch.int32)
+    p_ext, x1, x2, det = mapping.map_forward([r], [perm])
+    ok = torch.isfinite(det) & finite(p_ext)
+    return r, perm, p_ext, x1, x2, torch.where(ok, det, 0.0)
 
 
 @pytest.mark.parametrize("index", [0, 1])
@@ -688,20 +725,17 @@ def test_windows_hold_for_every_permutation(index):
     _, perm, p_free, y1, y2, det_free = permuted_sample(free, index, n, SEED)
     _, _, p_win, z1, z2, det_win = permuted_sample(windowed, index, n, SEED + 1)
 
-    assert np.abs(beam_rapidity(z1, z2)).max() <= ETA_LEPTON + 1e-9
-    assert np.mean(passes(cuts, p_win)) > np.mean(passes(cuts, p_free)) + 0.1
+    assert torch.abs(beam_rapidity(z1, z2)).max() <= ETA_LEPTON + 1e-9
+    assert fraction(passes(cuts, p_win)) > fraction(passes(cuts, p_free)) + 0.1
 
     keep = passes(cuts, p_free) & (det_free > 0)
     assert keep.sum() > 1000
-    r_back, _ = windowed.map_inverse(
-        [p_free[keep], y1[keep], y2[keep]], [perm[keep]]
-    )
-    r_back = np.asarray(r_back)
+    r_back, _ = windowed.map_inverse([p_free[keep], y1[keep], y2[keep]], [perm[keep]])
     assert r_back.min() > -1e-6 and r_back.max() < 1 + 1e-6
 
     def integral(p_ext, x1, x2, det):
-        w = np.where(passes(cuts, p_ext), det / (CM_ENERGY**2 * x1 * x2), 0.0)
-        return w.mean(), w.std() / math.sqrt(len(w))
+        w = torch.where(passes(cuts, p_ext), det / (CM_ENERGY**2 * x1 * x2), 0.0)
+        return mean_and_error(w)
 
     a, ea = integral(p_free, y1, y2, det_free)
     b, eb = integral(p_win, z1, z2, det_win)
@@ -728,9 +762,8 @@ def test_strongest_bounds_would_lose_permuted_events():
         ),
     )
     r_back, _ = too_tight.map_inverse([p_free[keep], y1[keep], y2[keep]], [])
-    r_back = np.asarray(r_back)
-    outside = ~np.all((r_back > -1e-6) & (r_back < 1 + 1e-6), axis=1)
-    assert outside.mean() > 0.01
+    outside = ~torch.all((r_back > -1e-6) & (r_back < 1 + 1e-6), dim=1)
+    assert fraction(outside) > 0.01
 
 
 # --------------------------------------------------------------------------
@@ -753,21 +786,19 @@ def test_leptonic_windows(topology):
     n = 50_000
     windowed = ms.PhaseSpaceMapping(topology, LEPTONIC_ENERGY, leptonic=True, cuts=cuts)
     free = ms.PhaseSpaceMapping(topology, LEPTONIC_ENERGY, leptonic=True)
-    rng = np.random.default_rng(SEED)
-    r = rng.random((n, windowed.random_dim()))
-    p_ext, _, _, det = (np.asarray(a) for a in windowed.map_forward([r]))
-    assert np.mean(passes(cuts, p_ext)) > 0.999
-    ones = np.ones(n)
+    r = rand((n, windowed.random_dim()), generator=generator(SEED))
+    p_ext, _, _, det = windowed.map_forward([r])
+    assert fraction(passes(cuts, p_ext)) > 0.999
+    ones = torch.ones(n)
     r_back, det_back = windowed.map_inverse([p_ext, ones, ones], [])
-    assert np.asarray(r_back) == approx(r, abs=1e-9)
-    assert det * np.asarray(det_back) == approx(1.0, rel=1e-9)
+    assert_close(r_back, r, abs=1e-9)
+    assert_close(det * det_back, 1.0, rel=1e-9)
 
-    p_free, _, _, det_free = (np.asarray(a) for a in free.map_forward([r]))
+    p_free, _, _, det_free = free.map_forward([r])
     keep = passes(cuts, p_free) & (det_free > 0)
     assert 1000 < keep.sum() < 0.9 * n
     m = int(keep.sum())
-    r_back, _ = windowed.map_inverse([p_free[keep], np.ones(m), np.ones(m)], [])
-    r_back = np.asarray(r_back)
+    r_back, _ = windowed.map_inverse([p_free[keep], torch.ones(m), torch.ones(m)], [])
     assert r_back.min() > -1e-6 and r_back.max() < 1 + 1e-6
 
 
@@ -778,10 +809,10 @@ def test_leptonic_windows(topology):
 
 def beam_conditions(n, sqrt_s=500.0, y_boost=0.8):
     tau = (sqrt_s / CM_ENERGY) ** 2
-    x1 = np.full(n, math.sqrt(tau) * math.exp(y_boost))
-    x2 = np.full(n, math.sqrt(tau) * math.exp(-y_boost))
-    pa = np.tile([sqrt_s / 2, 0.0, 0.0, sqrt_s / 2], (n, 1))
-    pb = np.tile([sqrt_s / 2, 0.0, 0.0, -sqrt_s / 2], (n, 1))
+    x1 = torch.full((n,), math.sqrt(tau) * math.exp(y_boost))
+    x2 = torch.full((n,), math.sqrt(tau) * math.exp(-y_boost))
+    pa = torch.tensor([sqrt_s / 2, 0.0, 0.0, sqrt_s / 2]).repeat(n, 1)
+    pb = torch.tensor([sqrt_s / 2, 0.0, 0.0, -sqrt_s / 2]).repeat(n, 1)
     return pa, pb, x1, x2
 
 
@@ -791,16 +822,23 @@ def test_double_t_huge_bound_is_no_bound(y_max):
     0 * inf = NaN, and the momenta are exactly those without a bound."""
     n = 20_000
     pa, pb, x1, x2 = beam_conditions(n)
-    rng = np.random.default_rng(SEED)
-    r = [rng.random(n) for _ in range(3)]
-    base = [pa, pb, np.zeros(n), np.zeros(n), np.full(n, 20.0), np.full(n, 40.0)]
+    g = generator(SEED)
+    r = [rand(n, generator=g) for _ in range(3)]
+    base = [
+        pa,
+        pb,
+        torch.zeros(n),
+        torch.zeros(n),
+        torch.full((n,), 20.0),
+        torch.full((n,), 40.0),
+    ]
     bounded = ms.DoubleT(0.8, 0.0, 0.0, 0.8, 0.0, 0.0, True, y_max, y_max, 1.0)
     free = ms.DoubleT(0.8, 0.0, 0.0, 0.8, 0.0, 0.0, True)
-    out_bounded = [np.asarray(a) for a in bounded.map_forward(r, base + [x1, x2])]
-    out_free = [np.asarray(a) for a in free.map_forward(r, base)]
+    out_bounded = bounded.map_forward(r, base + [x1, x2])
+    out_free = free.map_forward(r, base)
     for a, b in zip(out_bounded, out_free):
-        assert np.all(np.isfinite(a))
-        assert np.array_equal(a, b)
+        assert torch.all(torch.isfinite(a))
+        assert torch.equal(a, b)
 
 
 def test_loose_t_bound_leaves_the_range_untouched():
@@ -809,12 +847,12 @@ def test_loose_t_bound_leaves_the_range_untouched():
     rebuilding it through pb.k and moving its ends by rounding."""
     n = 20_000
     pa, pb, x1, x2 = beam_conditions(n)
-    rng = np.random.default_rng(SEED)
-    r = [rng.random(n) for _ in range(2)]
-    masses = [np.full(n, M_Z), np.zeros(n)]
+    g = generator(SEED)
+    r = [rand(n, generator=g) for _ in range(2)]
+    masses = [torch.full((n,), M_Z), torch.zeros(n)]
     loose = ms.TwoToTwoParticleScattering(True, 0.8, 0.0, 0.0, False, 50.0, 50.0, 1.0)
     free = ms.TwoToTwoParticleScattering(True, 0.8, 0.0, 0.0, False)
     out_loose = loose.map_forward(r + masses, [pa, pb, x1, x2])
     out_free = free.map_forward(r + masses, [pa, pb])
     for a, b in zip(out_loose, out_free):
-        assert np.array_equal(np.asarray(a), np.asarray(b))
+        assert torch.equal(a, b)

@@ -2,13 +2,16 @@ import pytest
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from madspace_testing import default_context, generator, new_context, randn
 from pytest import approx
 
 import madspace as ms
 from madspace.torch import FunctionModule
 
-torch.set_default_dtype(torch.float64)
-torch.manual_seed(3210)
+
+def assert_approx(actual, expected):
+    """pytest.approx's default tolerances for tensors."""
+    torch.testing.assert_close(actual, expected, rtol=1e-6, atol=1e-12)
 
 
 @pytest.fixture
@@ -18,7 +21,7 @@ def mlp():
 
 @pytest.fixture
 def module_context():
-    return ms.Context()
+    return new_context()
 
 
 @pytest.fixture
@@ -53,8 +56,8 @@ def test_activation(activation):
         ms.NamedTypes([("out", ms.batch_float_array(10))]),
     )
     fb.output(0, getattr(fb, activation)(fb.input(0)))
-    func = FunctionModule(fb.function())
-    x = 10 * torch.randn((1000, 10))
+    func = FunctionModule(fb.function(), default_context())
+    x = 10 * randn((1000, 10), generator=generator(3210))
     x.requires_grad = True
 
     y_ms = func(x)
@@ -66,8 +69,8 @@ def test_activation(activation):
     y_torch.sum().backward()
     grad_torch = x.grad
 
-    assert y_ms.detach() == approx(y_torch.detach())
-    assert grad_me == approx(grad_torch)
+    assert_approx(y_ms.detach(), y_torch.detach())
+    assert_approx(grad_me, grad_torch)
 
 
 def test_training(mlp, mlp_module, module_context):
@@ -86,7 +89,7 @@ def test_training(mlp, mlp_module, module_context):
             ]
             mlp_torch[2 * i].bias[:] = mlp_module.global_params[f"layer{i+1}:bias"][0]
 
-    ctx = ms.Context()
+    ctx = new_context()
     fb = ms.FunctionBuilder(
         ms.NamedTypes([("in", ms.batch_float_array(10))]),
         ms.NamedTypes([("out", ms.single_float), ("mlp_out", ms.batch_float)]),
@@ -105,8 +108,9 @@ def test_training(mlp, mlp_module, module_context):
     opt_ms = torch.optim.Adam(mlp_module.parameters(), lr=1e-2)
     opt_torch = torch.optim.Adam(mlp_torch.parameters(), lr=1e-2)
 
+    g = generator(3210)
     for i in range(10):
-        x = torch.randn((128, 10))
+        x = randn((128, 10), generator=g)
         y = x.square().sum(dim=1, keepdim=True)
 
         loss_ms = (y - mlp_module(x)).square().mean()
@@ -126,21 +130,19 @@ def test_training(mlp, mlp_module, module_context):
 
         with torch.no_grad():
             for i in range(3):
-                w_torch = mlp_torch[2 * i].weight.numpy()
-                b_torch = mlp_torch[2 * i].bias.numpy()
-                assert mlp_module.global_params[f"layer{i+1}:weight"][
-                    0
-                ].numpy() == approx(w_torch)
-                assert mlp_module.global_params[f"layer{i+1}:bias"][
-                    0
-                ].numpy() == approx(b_torch)
-                assert mlp_module.global_params[f"layer{i+1}:weight"].grad[
-                    0
-                ].numpy() == approx(mlp_torch[2 * i].weight.grad.numpy())
-                assert mlp_module.global_params[f"layer{i+1}:bias"].grad[
-                    0
-                ].numpy() == approx(mlp_torch[2 * i].bias.grad.numpy())
-                assert ctx.get_global(f"layer{i+1}.weight").numpy()[0] == approx(
-                    w_torch
+                w_torch = mlp_torch[2 * i].weight
+                b_torch = mlp_torch[2 * i].bias
+                assert_approx(
+                    mlp_module.global_params[f"layer{i+1}:weight"][0], w_torch
                 )
-                assert ctx.get_global(f"layer{i+1}.bias").numpy()[0] == approx(b_torch)
+                assert_approx(mlp_module.global_params[f"layer{i+1}:bias"][0], b_torch)
+                assert_approx(
+                    mlp_module.global_params[f"layer{i+1}:weight"].grad[0],
+                    mlp_torch[2 * i].weight.grad,
+                )
+                assert_approx(
+                    mlp_module.global_params[f"layer{i+1}:bias"].grad[0],
+                    mlp_torch[2 * i].bias.grad,
+                )
+                assert_approx(ctx.get_global(f"layer{i+1}.weight").torch()[0], w_torch)
+                assert_approx(ctx.get_global(f"layer{i+1}.bias").torch()[0], b_torch)

@@ -15,26 +15,27 @@ that
 
 import math
 
-import numpy as np
 import pytest
+import torch
+from madspace_testing import generator, rand, randint
 
 import madspace as ms
 
 E_BEAM = 500.0
-PA = np.array([E_BEAM, 0.0, 0.0, E_BEAM])
-PB = np.array([E_BEAM, 0.0, 0.0, -E_BEAM])
+PA = torch.tensor([E_BEAM, 0.0, 0.0, E_BEAM])
+PB = torch.tensor([E_BEAM, 0.0, 0.0, -E_BEAM])
 # r_s23 from the middle out to the edges
-EDGE = 10.0 ** -np.arange(1, 6)
-R_S23 = np.concatenate([EDGE, [0.5], 1.0 - EDGE])
+EDGE = 10.0 ** -torch.arange(1.0, 6.0)
+R_S23 = torch.cat([EDGE, torch.tensor([0.5]), 1.0 - EDGE])
 
 
 def massless(energy, theta, phi):
-    return energy * np.array(
+    return energy * torch.tensor(
         [
             1.0,
-            np.sin(theta) * np.cos(phi),
-            np.sin(theta) * np.sin(phi),
-            np.cos(theta),
+            math.sin(theta) * math.cos(phi),
+            math.sin(theta) * math.sin(phi),
+            math.cos(theta),
         ]
     )
 
@@ -45,27 +46,28 @@ def block_weights(r_s23, arcsine, s_power=0.0, m1=40.0, m2=0.0):
     )
     n = len(r_s23)
     inputs = [
-        np.zeros(n, dtype=np.int32),
-        np.asarray(r_s23, dtype=np.float64),
-        np.full(n, 0.61),
-        np.full(n, m1),
-        np.full(n, m2),
+        torch.zeros(n, dtype=torch.int32),
+        r_s23,
+        torch.full((n,), 0.61),
+        torch.full((n,), m1),
+        torch.full((n,), m2),
     ]
     conditions = [
-        np.tile(PA, (n, 1)),
-        np.tile(PB, (n, 1)),
-        np.tile(massless(350.0, 0.7, 0.3), (n, 1)),
+        PA.repeat(n, 1),
+        PB.repeat(n, 1),
+        massless(350.0, 0.7, 0.3).repeat(n, 1),
     ]
     p1, p2, det = mapping.map_forward(inputs, conditions)
-    return mapping, inputs, conditions, np.asarray(det)
+    return mapping, inputs, conditions, det
 
 
 def test_flat_weight_is_constant():
     """Flat s23 plus the arcsine map is flat in phi, which is exactly the
     measure: at fixed t1 the weight must not depend on r_s23 at all."""
     *_, det = block_weights(R_S23, arcsine=True)
-    assert np.all(np.isfinite(det)) and np.all(det > 0)
-    assert det / det[len(EDGE)] == pytest.approx(1.0, rel=1e-5)
+    assert torch.all(torch.isfinite(det)) and torch.all(det > 0)
+    ratio = det / det[len(EDGE)]
+    torch.testing.assert_close(ratio, torch.ones_like(ratio), rtol=1e-5, atol=1e-12)
 
 
 @pytest.mark.parametrize("s_power", [0.8, 1.0])
@@ -73,37 +75,40 @@ def test_weight_bounded_with_importance_sampling(s_power):
     """With 1/s23^nu importance sampling the weight is no longer constant,
     but it must stay finite and bounded out to the edges of the range."""
     *_, det = block_weights(R_S23, arcsine=True, s_power=s_power)
-    assert np.all(np.isfinite(det)) and np.all(det > 0)
-    edges = np.concatenate([det[: len(EDGE)], det[len(EDGE) + 1 :]])
+    assert torch.all(torch.isfinite(det)) and torch.all(det > 0)
+    edges = torch.cat([det[: len(EDGE)], det[len(EDGE) + 1 :]])
     # converged to a finite limit: the last two decades agree
-    assert det[len(EDGE) - 1] == pytest.approx(det[len(EDGE) - 2], rel=1e-3)
-    assert det[-1] == pytest.approx(det[-2], rel=1e-3)
-    assert np.max(edges) / np.min(edges) < 1e3
+    assert det[len(EDGE) - 1].item() == pytest.approx(
+        det[len(EDGE) - 2].item(), rel=1e-3
+    )
+    assert det[-1].item() == pytest.approx(det[-2].item(), rel=1e-3)
+    assert torch.max(edges) / torch.min(edges) < 1e3
 
 
 def test_edge_peak_without_arcsine():
     """Without the map the weight keeps its 1/|sin(phi)| = 1/(2 sqrt(u (1 - u)))
     peak, with u = r_s23 for flat sampling."""
     *_, det = block_weights(R_S23, arcsine=False)
-    ratio = det * np.sqrt(R_S23 * (1.0 - R_S23))
-    assert ratio == pytest.approx(ratio[len(EDGE)], rel=1e-5)
+    ratio = det * torch.sqrt(R_S23 * (1.0 - R_S23))
+    torch.testing.assert_close(
+        ratio, ratio[len(EDGE)].expand_as(ratio), rtol=1e-5, atol=1e-12
+    )
     assert det[len(EDGE) - 1] / det[len(EDGE)] > 100.0
 
 
 @pytest.mark.parametrize("arcsine", [True, False], ids=["arcsine", "flat"])
 @pytest.mark.parametrize("s_power", [0.0, 0.8, 1.0])
 def test_round_trip(arcsine, s_power):
-    rng = np.random.default_rng(7)
-    r_s23 = np.concatenate([rng.random(10_000), R_S23])
+    r_s23 = torch.cat([rand(10_000, generator=generator(7)), R_S23])
     mapping, inputs, conditions, det = block_weights(
         r_s23, arcsine=arcsine, s_power=s_power
     )
     p1, p2, _ = mapping.map_forward(inputs, conditions)
     *inv_inputs, det_inv = mapping.map_inverse([p1, p2], conditions)
-    assert np.asarray(inv_inputs[1]) == pytest.approx(r_s23, abs=1e-12)
-    assert np.asarray(inv_inputs[2]) == pytest.approx(inputs[2], abs=1e-8)
-    rt = np.abs(det * np.asarray(det_inv) - 1.0)
-    assert np.max(rt) < 1e-8
+    torch.testing.assert_close(inv_inputs[1], r_s23, rtol=1e-6, atol=1e-12)
+    torch.testing.assert_close(inv_inputs[2], inputs[2], rtol=1e-6, atol=1e-8)
+    rt = torch.abs(det * det_inv - 1.0)
+    assert torch.max(rt) < 1e-8
 
 
 @pytest.mark.parametrize("s_power", [0.0, 0.8, 1.0])
@@ -112,15 +117,15 @@ def test_round_trip_at_the_edges(s_power):
     1 - u in both directions, never through s23 itself, so r_s23 is recovered
     to the precision of the momenta also within 1e-12 of the edges, where
     going through s23 left an absolute error of ~1e-8."""
-    edge = 10.0 ** -np.arange(6, 13)
-    r_s23 = np.concatenate([edge, 1.0 - edge])
+    edge = 10.0 ** -torch.arange(6.0, 13.0)
+    r_s23 = torch.cat([edge, 1.0 - edge])
     mapping, inputs, conditions, det = block_weights(
         r_s23, arcsine=True, s_power=s_power
     )
     p1, p2, _ = mapping.map_forward(inputs, conditions)
     *inv_inputs, det_inv = mapping.map_inverse([p1, p2], conditions)
-    assert np.asarray(inv_inputs[1]) == pytest.approx(r_s23, rel=1e-6, abs=1e-15)
-    assert np.max(np.abs(det * np.asarray(det_inv) - 1.0)) < 1e-9
+    torch.testing.assert_close(inv_inputs[1], r_s23, rtol=1e-6, atol=1e-15)
+    assert torch.max(torch.abs(det * det_inv - 1.0)) < 1e-9
 
 
 CUTS = dict(
@@ -137,31 +142,32 @@ def sample(color_order, arcsine, seed, n, cuts=None):
     cm_energy = 1000.0
     n_out = len(color_order) - 2
     mapping = ms.ColorOrderedMapping(color_order, arcsine_s23=arcsine, **cuts)
-    rng = np.random.default_rng(seed)
-    r = rng.random((n, mapping.random_dim()))
-    d = rng.integers(0, 2, size=(n, mapping.discrete_dim())).astype(np.int32)
-    inputs = [r[:, i].copy() for i in range(r.shape[1])]
-    inputs += [d[:, j].copy() for j in range(d.shape[1])]
-    conditions = [np.full(n, cm_energy)] + [np.zeros(n)] * n_out
+    g = generator(seed)
+    r = rand((n, mapping.random_dim()), generator=g)
+    d = randint(0, 2, (n, mapping.discrete_dim()), generator=g, dtype=torch.int32)
+    inputs = [r[:, i].contiguous() for i in range(r.shape[1])]
+    inputs += [d[:, j].contiguous() for j in range(d.shape[1])]
+    conditions = [torch.full((n,), cm_energy)] + [torch.zeros(n)] * n_out
     *momenta, det = mapping.map_forward(inputs, conditions)
     # momenta of the two beams, then of the outgoing particles
-    p = np.stack([np.asarray(k) for k in momenta], axis=1)[:, 2:]
-    det = np.asarray(det) * 2.0 ** mapping.discrete_dim()
-    ok = np.all(np.isfinite(p), axis=(1, 2)) & np.isfinite(det)
+    p = torch.stack(momenta, dim=1)[:, 2:]
+    det = det * 2.0 ** mapping.discrete_dim()
+    ok = torch.isfinite(p).all(dim=2).all(dim=1) & torch.isfinite(det)
     if cuts:
-        pt = np.hypot(p[..., 1], p[..., 2])
-        ok &= np.all(pt > cuts["pt_min"][0], axis=1)
-        eta = np.arcsinh(p[..., 3] / np.maximum(pt, 1e-300))
-        phi = np.arctan2(p[..., 2], p[..., 1])
+        pt = torch.hypot(p[..., 1], p[..., 2])
+        ok &= torch.all(pt > cuts["pt_min"][0], dim=1)
+        eta = torch.asinh(p[..., 3] / torch.clamp(pt, min=1e-300))
+        phi = torch.atan2(p[..., 2], p[..., 1])
         for i in range(n_out):
             for j in range(i + 1, n_out):
                 q = p[:, i] + p[:, j]
-                m2 = q[:, 0] ** 2 - np.sum(q[:, 1:] ** 2, axis=1)
-                dphi = np.angle(np.exp(1j * (phi[:, i] - phi[:, j])))
-                dr = np.hypot(eta[:, i] - eta[:, j], dphi)
+                m2 = q[:, 0] ** 2 - torch.sum(q[:, 1:] ** 2, dim=1)
+                dphi = phi[:, i] - phi[:, j]
+                dphi = torch.atan2(torch.sin(dphi), torch.cos(dphi))
+                dr = torch.hypot(eta[:, i] - eta[:, j], dphi)
                 ok &= m2 > cuts["m_inv_min"][i][j] ** 2
                 ok &= dr > cuts["dr_min"][i][j]
-    return np.where(ok, det, 0.0)
+    return torch.where(ok, det, 0.0)
 
 
 @pytest.mark.parametrize(
@@ -173,9 +179,10 @@ def test_color_ordered_massless_volume(color_order):
     """The analytic massless 4-body volume, (pi/2)^3 s^2 / 12, with the map."""
     volume = (math.pi / 2) ** 3 * 1000.0**4 / 12
     means = [
-        sample(color_order, True, seed, 1_000_000).mean() for seed in range(200, 204)
+        sample(color_order, True, seed, 1_000_000).mean().item()
+        for seed in range(200, 204)
     ]
-    assert np.mean(means) / volume == pytest.approx(1.0, abs=0.02)
+    assert sum(means) / len(means) / volume == pytest.approx(1.0, abs=0.02)
 
 
 def test_color_ordered_cut_volume_unchanged():
@@ -183,7 +190,10 @@ def test_color_ordered_cut_volume_unchanged():
     map only covers that part. The fiducial volume must not change."""
     order = [0, 2, 3, 4, 5, 1]
     n = 1_000_000
-    on = np.concatenate([sample(order, True, s, n, CUTS) for s in range(300, 304)])
-    off = np.concatenate([sample(order, False, s, n, CUTS) for s in range(310, 314)])
-    err = math.hypot(on.std() / math.sqrt(len(on)), off.std() / math.sqrt(len(off)))
-    assert abs(on.mean() - off.mean()) < 4.0 * err
+    on = torch.cat([sample(order, True, s, n, CUTS) for s in range(300, 304)])
+    off = torch.cat([sample(order, False, s, n, CUTS) for s in range(310, 314)])
+    err = math.hypot(
+        on.std(correction=0).item() / math.sqrt(len(on)),
+        off.std(correction=0).item() / math.sqrt(len(off)),
+    )
+    assert abs(on.mean() - off.mean()).item() < 4.0 * err

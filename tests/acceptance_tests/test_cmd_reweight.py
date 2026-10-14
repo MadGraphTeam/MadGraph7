@@ -239,6 +239,75 @@ class TestMECmdRWGT(unittest.TestCase):
             self.assertEqual(event.wgt, rwgt_data['MYNLO_nlo'])
             self.assertIn('MYNLO_lo', rwgt_data)
             
+    def test_nlo_reweighting_new_parameter(self):
+        """ NLO-mode reweighting of p p > e+ e- [QCD] to a larger Z width.
+        The virtual (rw_mevirt) must be importable and evaluated with the new
+        width. Its finite part is proportional to the Born here, so the NLO
+        weights must follow the LO ones.
+        """
+
+        me_cmd = self.get_aMCcmd(pjoin(_pickle_path, 'dy_nlo.lhe.gz'))
+
+        cmd_lines = """
+        change mode LO+NLO
+        launch --rwgt_name=wz26
+        set decay 23 2.6
+        """
+
+        ff = open(pjoin(self.run_dir, 'Cards', 'reweight_card.dat'),'w')
+        ff.write(cmd_lines)
+        ff.close()
+
+        with misc.stdchannel_redirected(sys.stdout, os.devnull):
+            me_cmd.exec_cmd('reweight run_01 --from_cards', precmd=True)
+
+        lhe = lhe_parser.EventFile(pjoin(self.run_dir,'Events','run_01', 'events.lhe.gz'))
+        orig, lo, nlo = 0., 0., 0.
+        for event in lhe:
+            rwgt_data = event.parse_reweight()
+            orig += event.wgt
+            lo += rwgt_data['wz26_lo']
+            nlo += rwgt_data['wz26_nlo']
+        # sigma ~ 1/Gamma_Z: the weights do move
+        self.assertLess(lo/orig, 0.97)
+        # with the virtual left at the original width, nlo/lo = 1.015
+        self.assertAlmostEqual(nlo/lo, 1., delta=1e-3)
+
+    def test_reweighting_failure_out_of_process(self):
+        """ aMC@NLO runs the reweighting in child processes, split over the
+        cores. A failing child must make the reweighting fail: it used to exit
+        0, the parent carried on and, on several cores, the children waiting
+        for the first one to compile waited forever.
+        """
+
+        me_cmd = self.get_aMCcmd(pjoin(_pickle_path, 'dy_nlo.lhe.gz'))
+
+        # raises while the card is read
+        ff = open(pjoin(self.run_dir, 'Cards', 'reweight_card.dat'),'w')
+        ff.write('change identical_particle_in_prod_and_decay not_an_option\nlaunch\n')
+        ff.close()
+
+        # the child alone: the single command mode of bin/internal
+        child = misc.Popen([sys.executable,
+                            pjoin(self.run_dir, 'bin', 'internal', 'amcatnlo_run_interface.py'),
+                            '--web', 'reweight', 'run_01', '-from_cards'],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           cwd=self.run_dir)
+        child.wait()
+        self.assertNotEqual(child.returncode, 0)
+
+        # the same through the parent, on one core and on several
+        me_cmd.force_run = False
+        me_cmd.options['run_mode'] = 2
+        me_cmd.options['nb_core'] = 1
+        with misc.stdchannel_redirected(sys.stdout, os.devnull):
+            self.assertRaisesRegex(MadGraph5Error, 'Reweighting failed',
+                    me_cmd.exec_cmd, 'reweight run_01 -from_cards', precmd=True)
+        me_cmd.options['nb_core'] = 2
+        with misc.stdchannel_redirected(sys.stdout, os.devnull):
+            self.assertRaisesRegex(Exception, 'non zero status',
+                    me_cmd.exec_cmd, 'reweight run_01 -from_cards', precmd=True)
+
     @test_manager.bypass_for_py3
     def test_nlo_output2(self):
         """ check identical re-weighting in ttbar 
@@ -332,6 +401,83 @@ class TestMECmdRWGT(unittest.TestCase):
             self.assertTrue(misc.equal(rwgt_data['MYNLO_tree'], event2.wgt, 3), '(event %s) %s != %s ' % (i, rwgt_data['MYNLO_tree'], event2.wgt))
         #misc.sprint(solutions)
             
+    def test_mg7_reweighting_at_generation(self):
+        """reweight=ON on an mg7 output. Its weights average to sigma: the log
+        printed sum(weights), N_events times sigma, for the original and the
+        new cross sections. The launch runs as an agent drives it, with stdin
+        a pipe left open, where the param_card question of each launch block
+        used to read stdin -- and wait forever -- once the card stopped
+        answering it. The end of the run must not report an I/O error (an mg7
+        output has no HTML/ for results.pkl)."""
+
+        def run(name, script, stdin):
+            cmd_path = pjoin(self.path, '%s.mg5' % name)
+            log_path = pjoin(self.path, '%s.log' % name)
+            with open(cmd_path, 'w') as fsock:
+                fsock.write("set crash_on_error True --no_save\n"
+                            "set automatic_html_opening False --no_save\n"
+                            "set notification_center False --no_save\n"
+                            + script % {'dir': self.run_dir})
+            with open(log_path, 'w') as log_file:
+                proc = subprocess.Popen(
+                    [sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'), cmd_path],
+                    cwd=self.path, stdin=stdin,
+                    stdout=log_file, stderr=subprocess.STDOUT)
+                try:
+                    return_code = proc.wait(timeout=600)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                    self.fail('%s waited for input (or ran too long)' % name)
+                finally:
+                    if proc.stdin:
+                        proc.stdin.close()
+            with open(log_path) as log_file:
+                log = log_file.read()
+            self.assertEqual(return_code, 0, log[-3000:])
+            return log
+
+        run('output', "import model sm\ngenerate e+ e- > mu+ mu-\noutput %(dir)s\n",
+            subprocess.DEVNULL)
+        with open(pjoin(self.run_dir, 'Cards', 'reweight_card.dat'), 'w') as fsock:
+            fsock.write("launch --rwgt_name=wz26\nset decay 23 2.6\n"
+                        "launch --rwgt_name=wz23\nset decay 23 2.3\n")
+        # on the Z pole, where the cross section goes as 1/width^2
+        log = run('launch', "launch %(dir)s\nreweight=ON\nset nevents 1000\n"
+                            "set iseed 7\nset beam.e_cm 91.188\n"
+                            "set output_format lhe\ndone\n",
+                  subprocess.PIPE)
+        for line in ('Do you want to edit a card', 'I/O error'):
+            self.assertFalse(line in log, '"%s" in the log' % line)
+
+        lhe = lhe_parser.EventFile(pjoin(self.run_dir, 'Events', 'run_01',
+                                         'unweighted_events.lhe.gz'))
+        nb_event, mean = 0, {'orig': 0.}
+        for event in lhe:
+            nb_event += 1
+            mean['orig'] += event.wgt
+            for name, wgt in event.parse_reweight().items():
+                if name in ('wz26', 'wz23'):
+                    mean[name] = mean.get(name, 0.) + wgt
+        self.assertEqual(nb_event, 1000)
+        mean = dict((name, value / nb_event) for name, value in mean.items())
+
+        # INFO: Original cross-section: X +- E pb (cross-section from sum of weights: Y)
+        # INFO: wz26 : X +- E pb
+        orig = re.search(r'cross-section from sum of weights: ([0-9.eE+-]+)\)', log)
+        self.assertIsNotNone(orig)
+        logged = {'orig': float(orig.group(1))}
+        for name in ('wz26', 'wz23'):
+            new = re.search(r'%s : ([0-9.eE+-]+) \+-' % name, log)
+            self.assertIsNotNone(new, name)
+            logged[name] = float(new.group(1))
+        self.assertEqual(sorted(logged), sorted(mean))
+        for name in mean:
+            self.assertAlmostEqual(logged[name] / mean[name], 1., places=6, msg=name)
+        # a wider Z lowers the peak
+        self.assertLess(mean['wz26'], mean['orig'])
+        self.assertLess(mean['orig'], mean['wz23'])
+
     def test_scan_reweighting(self):
         """ testing that we can use the scan syntax and that we can assign name to weight
         """
