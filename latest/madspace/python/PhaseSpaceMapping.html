@@ -627,6 +627,7 @@
 <p><strong>Conditions</strong></p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">permutation_index</span></code> – <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – which permutation channel to use. Present only when more than one permutation is given.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mirror_index</span></code> – <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – 1 to take leg 1 from beam 2 and leg 2 from beam 1. Present only when <code class="docutils literal notranslate"><span class="pre">mirror_beams</span></code> is set; it follows <code class="docutils literal notranslate"><span class="pre">permutation_index</span></code>.</p></li>
 </ul>
 <p><strong>Outputs</strong></p>
 <ul class="simple">
@@ -641,7 +642,7 @@
 </ul>
 <p>Overloaded function.</p>
 <ol class="arabic simple">
-<li><p>__init__(self: madspace._madspace_py.PhaseSpaceMapping, topology: madspace._madspace_py.Topology, cm_energy: typing.SupportsFloat, leptonic: bool = False, invariant_power: typing.SupportsFloat = 0.8, t_channel_mode: madspace._madspace_py.PhaseSpaceMapping.TChannelMode = &lt;TChannelMode.propagator: 0&gt;, cuts: madspace._madspace_py.Cuts | None = None, permutations: collections.abc.Sequence[collections.abc.Sequence[typing.SupportsInt]] = [], color_order: collections.abc.Sequence[typing.SupportsInt] | None = None) -&gt; None</p></li>
+<li><p>__init__(self: madspace._madspace_py.PhaseSpaceMapping, topology: madspace._madspace_py.Topology, cm_energy: typing.SupportsFloat, leptonic: bool = False, invariant_power: typing.SupportsFloat = 0.8, t_channel_mode: madspace._madspace_py.PhaseSpaceMapping.TChannelMode = &lt;TChannelMode.propagator: 0&gt;, cuts: madspace._madspace_py.Cuts | None = None, permutations: collections.abc.Sequence[collections.abc.Sequence[typing.SupportsInt]] = [], color_order: collections.abc.Sequence[typing.SupportsInt] | None = None, beam_rapidity: typing.SupportsFloat = 0.0, mirror_beams: bool = False) -&gt; None</p></li>
 </ol>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -654,11 +655,13 @@
 <li><p><strong>cuts</strong> – Fiducial cuts to fold into the sampling. See Cuts.</p></li>
 <li><p><strong>permutations</strong> – One outgoing-particle permutation per channel. More than one enables the <code class="docutils literal notranslate"><span class="pre">permutation_index</span></code> condition.</p></li>
 <li><p><strong>color_order</strong> – Color ordering for TChannelMode::color_ordered.</p></li>
+<li><p><strong>beam_rapidity</strong> – Rapidity of the beams’ centre-of-mass frame in the lab frame the momenta are returned in: 0.5 ln(E1 / E2) for beam energies E1 (along +z) and E2, with <code class="docutils literal notranslate"><span class="pre">cm_energy</span></code> = 2 sqrt(E1 E2). The phase space is generated in the beams’ frame and boosted into the lab before the cuts, so rapidity cuts act in the lab.</p></li>
+<li><p><strong>mirror_beams</strong> – Add the <code class="docutils literal notranslate"><span class="pre">mirror_index</span></code> condition: for index 1 the event is rotated by pi about the x axis in the beams’ frame (leg 1 from beam 2, leg 2 from beam 1) before the lab boost and the cuts. With identical beams that is a rotation of the lab event too.</p></li>
 </ul>
 </dd>
 </dl>
 <ol class="arabic simple" start="2">
-<li><p>__init__(self: madspace._madspace_py.PhaseSpaceMapping, external_masses: collections.abc.Sequence[typing.SupportsFloat], cm_energy: typing.SupportsFloat, leptonic: bool = False, invariant_power: typing.SupportsFloat = 0.8, mode: madspace._madspace_py.PhaseSpaceMapping.TChannelMode = &lt;TChannelMode.rambo: 1&gt;, cuts: madspace._madspace_py.Cuts | None = None, color_order: collections.abc.Sequence[typing.SupportsInt] | None = None) -&gt; None</p></li>
+<li><p>__init__(self: madspace._madspace_py.PhaseSpaceMapping, external_masses: collections.abc.Sequence[typing.SupportsFloat], cm_energy: typing.SupportsFloat, leptonic: bool = False, invariant_power: typing.SupportsFloat = 0.8, mode: madspace._madspace_py.PhaseSpaceMapping.TChannelMode = &lt;TChannelMode.rambo: 1&gt;, cuts: madspace._madspace_py.Cuts | None = None, color_order: collections.abc.Sequence[typing.SupportsInt] | None = None, beam_rapidity: typing.SupportsFloat = 0.0, mirror_beams: bool = False) -&gt; None</p></li>
 </ol>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -670,6 +673,8 @@
 <li><p><strong>mode</strong> – The TChannelMode strategy (default TChannelMode::rambo).</p></li>
 <li><p><strong>cuts</strong> – Fiducial cuts. See Cuts.</p></li>
 <li><p><strong>color_order</strong> – Color ordering for TChannelMode::color_ordered.</p></li>
+<li><p><strong>beam_rapidity</strong> – Rapidity of the beams’ centre-of-mass frame in the lab frame the momenta are returned in: 0.5 ln(E1 / E2) for beam energies E1 (along +z) and E2, with <code class="docutils literal notranslate"><span class="pre">cm_energy</span></code> = 2 sqrt(E1 E2). The phase space is generated in the beams’ frame and boosted into the lab before the cuts, so rapidity cuts act in the lab.</p></li>
+<li><p><strong>mirror_beams</strong> – Add the <code class="docutils literal notranslate"><span class="pre">mirror_index</span></code> condition: for index 1 the event is rotated by pi about the x axis in the beams’ frame (leg 1 from beam 2, leg 2 from beam 1) before the lab boost and the cuts. With identical beams that is a rotation of the lab event too.</p></li>
 </ul>
 </dd>
 </dl>
@@ -722,6 +727,12 @@
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="madspace.PhaseSpaceMapping.beam_rapidity">
+<span class="sig-name descname"><span class="pre">beam_rapidity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.PhaseSpaceMapping" title="madspace._madspace_py.PhaseSpaceMapping"><span class="pre">madspace._madspace_py.PhaseSpaceMapping</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="DataType.html#madspace.DataType.float" title="madspace.DataType.float"><span class="pre">float</span></a></span></span><a class="headerlink" href="#madspace.PhaseSpaceMapping.beam_rapidity" title="Link to this definition">¶</a></dt>
+<dd><p>Rapidity of the beams’ centre-of-mass frame in the lab frame.</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="madspace.PhaseSpaceMapping.channel_count">
 <span class="sig-name descname"><span class="pre">channel_count</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.PhaseSpaceMapping" title="madspace._madspace_py.PhaseSpaceMapping"><span class="pre">madspace._madspace_py.PhaseSpaceMapping</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="DataType.html#madspace.DataType.int" title="madspace.DataType.int"><span class="pre">int</span></a></span></span><a class="headerlink" href="#madspace.PhaseSpaceMapping.channel_count" title="Link to this definition">¶</a></dt>
 <dd><p>Number of permutation channels.</p>
@@ -738,6 +749,12 @@
 <dd></dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="madspace.PhaseSpaceMapping.cuts">
+<span class="sig-name descname"><span class="pre">cuts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.PhaseSpaceMapping" title="madspace._madspace_py.PhaseSpaceMapping"><span class="pre">madspace._madspace_py.PhaseSpaceMapping</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="Cuts.html#madspace.Cuts" title="madspace._madspace_py.Cuts"><span class="pre">madspace._madspace_py.Cuts</span></a></span></span><a class="headerlink" href="#madspace.PhaseSpaceMapping.cuts" title="Link to this definition">¶</a></dt>
+<dd><p>The cuts, applied to the lab-frame momenta.</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="madspace.PhaseSpaceMapping.discrete_dim">
 <span class="sig-name descname"><span class="pre">discrete_dim</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.PhaseSpaceMapping" title="madspace._madspace_py.PhaseSpaceMapping"><span class="pre">madspace._madspace_py.PhaseSpaceMapping</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="DataType.html#madspace.DataType.int" title="madspace.DataType.int"><span class="pre">int</span></a></span></span><a class="headerlink" href="#madspace.PhaseSpaceMapping.discrete_dim" title="Link to this definition">¶</a></dt>
 <dd><p>Number of discrete channel choices.</p>
@@ -748,6 +765,12 @@
 <span class="sig-name descname"><span class="pre">empty</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.PhaseSpaceMapping" title="madspace._madspace_py.PhaseSpaceMapping"><span class="pre">madspace._madspace_py.PhaseSpaceMapping</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#madspace.PhaseSpaceMapping.empty" title="Link to this definition">¶</a></dt>
 <dd><p>True when the cuts exclude the whole region this mapping samples: a pair mass cut puts a propagator’s floor at or above the upper end of its on-shell window.</p>
 <p>Every point then fails the cuts, so the channel contributes nothing and should be dropped rather than sampled.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.PhaseSpaceMapping.mirror_beams">
+<span class="sig-name descname"><span class="pre">mirror_beams</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.PhaseSpaceMapping" title="madspace._madspace_py.PhaseSpaceMapping"><span class="pre">madspace._madspace_py.PhaseSpaceMapping</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#madspace.PhaseSpaceMapping.mirror_beams" title="Link to this definition">¶</a></dt>
+<dd><p>Whether the mapping takes the <code class="docutils literal notranslate"><span class="pre">mirror_index</span></code> condition.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -841,11 +864,14 @@
 <li><a class="reference internal" href="#madspace.PhaseSpaceMapping.TChannelMode.value"><code class="docutils literal notranslate"><span class="pre">PhaseSpaceMapping.TChannelMode.value</span></code></a></li>
 </ul>
 </li>
+<li><a class="reference internal" href="#madspace.PhaseSpaceMapping.beam_rapidity"><code class="docutils literal notranslate"><span class="pre">PhaseSpaceMapping.beam_rapidity()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.PhaseSpaceMapping.channel_count"><code class="docutils literal notranslate"><span class="pre">PhaseSpaceMapping.channel_count()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.PhaseSpaceMapping.chili"><code class="docutils literal notranslate"><span class="pre">PhaseSpaceMapping.chili</span></code></a></li>
 <li><a class="reference internal" href="#madspace.PhaseSpaceMapping.color_ordered"><code class="docutils literal notranslate"><span class="pre">PhaseSpaceMapping.color_ordered</span></code></a></li>
+<li><a class="reference internal" href="#madspace.PhaseSpaceMapping.cuts"><code class="docutils literal notranslate"><span class="pre">PhaseSpaceMapping.cuts()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.PhaseSpaceMapping.discrete_dim"><code class="docutils literal notranslate"><span class="pre">PhaseSpaceMapping.discrete_dim()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.PhaseSpaceMapping.empty"><code class="docutils literal notranslate"><span class="pre">PhaseSpaceMapping.empty()</span></code></a></li>
+<li><a class="reference internal" href="#madspace.PhaseSpaceMapping.mirror_beams"><code class="docutils literal notranslate"><span class="pre">PhaseSpaceMapping.mirror_beams()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.PhaseSpaceMapping.particle_count"><code class="docutils literal notranslate"><span class="pre">PhaseSpaceMapping.particle_count()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.PhaseSpaceMapping.propagator"><code class="docutils literal notranslate"><span class="pre">PhaseSpaceMapping.propagator</span></code></a></li>
 <li><a class="reference internal" href="#madspace.PhaseSpaceMapping.rambo"><code class="docutils literal notranslate"><span class="pre">PhaseSpaceMapping.rambo</span></code></a></li>

@@ -613,7 +613,9 @@ existing scripts keep working. These are <code class="docutils literal notransla
 <code class="docutils literal notranslate"><span class="pre">scale</span></code>, <code class="docutils literal notranslate"><span class="pre">dsqrt_q2fact1</span></code>, <code class="docutils literal notranslate"><span class="pre">dsqrt_q2fact2</span></code>, <code class="docutils literal notranslate"><span class="pre">scalefact</span></code>, <code class="docutils literal notranslate"><span class="pre">bwcutoff</span></code>, <code class="docutils literal notranslate"><span class="pre">cut_decays</span></code>
 and <code class="docutils literal notranslate"><span class="pre">use_syst</span></code>. The shortcuts <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">lhc</span></code>, <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">lep</span></code>, <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">fixed_scale</span></code>,
 <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">no_parton_cut</span></code> and <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">dynamical_scale_choice</span> <span class="pre">HT/n</span></code> work as before, and so does
-<code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">iseed</span></code>. MadEvent draws a random seed for <code class="docutils literal notranslate"><span class="pre">iseed</span> <span class="pre">=</span> <span class="pre">0</span></code>. MG7 does the same for
+<code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">iseed</span></code>. The beam settings <code class="docutils literal notranslate"><span class="pre">ebeam</span></code>, <code class="docutils literal notranslate"><span class="pre">ebeam1</span></code>, <code class="docutils literal notranslate"><span class="pre">ebeam2</span></code>, <code class="docutils literal notranslate"><span class="pre">lpp</span></code>, <code class="docutils literal notranslate"><span class="pre">lpp1</span></code>,
+<code class="docutils literal notranslate"><span class="pre">lpp2</span></code>, <code class="docutils literal notranslate"><span class="pre">pdlabel</span></code>, <code class="docutils literal notranslate"><span class="pre">pdlabel1</span></code>, <code class="docutils literal notranslate"><span class="pre">pdlabel2</span></code> and <code class="docutils literal notranslate"><span class="pre">lhaid</span></code> are translated as in the
+table below. MadEvent draws a random seed for <code class="docutils literal notranslate"><span class="pre">iseed</span> <span class="pre">=</span> <span class="pre">0</span></code>. MG7 does the same for
 <code class="docutils literal notranslate"><span class="pre">seed</span> <span class="pre">=</span> <span class="pre">-1</span></code> and treats <code class="docutils literal notranslate"><span class="pre">0</span></code> as an ordinary fixed seed, so <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">iseed</span> <span class="pre">0</span></code> is translated.
 All other settings must use their new names.</p>
 </section>
@@ -634,8 +636,9 @@ All other settings must use their new names.</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ebeam1</span></code>, <code class="docutils literal notranslate"><span class="pre">ebeam2</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">beam.e_cm</span></code></p></td>
-<td><p>The sum of the two energies. Only symmetric beams are supported.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">beam.ebeam1</span></code>, <code class="docutils literal notranslate"><span class="pre">beam.ebeam2</span></code></p></td>
+<td><p>One energy per beam. With different energies the events are written, and the
+<span class="math notranslate nohighlight">\(\eta\)</span> cuts applied, in the lab frame.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">lpp1</span></code>, <code class="docutils literal notranslate"><span class="pre">lpp2</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">beam.leptonic</span></code></p></td>
@@ -643,13 +646,14 @@ All other settings must use their new names.</p>
 types, such as elastic photons or antiprotons, are not supported.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pdlabel</span></code>, <code class="docutils literal notranslate"><span class="pre">lhaid</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">beam.pdf</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">beam.pdf1</span></code>, <code class="docutils literal notranslate"><span class="pre">beam.pdf2</span></code></p></td>
 <td><p>The name of the LHAPDF set instead of its id. For example, <code class="docutils literal notranslate"><span class="pre">lhaid</span> <span class="pre">=</span> <span class="pre">331900</span></code> becomes
-<code class="docutils literal notranslate"><span class="pre">&quot;NNPDF40_lo_as_01180&quot;</span></code>.</p></td>
+<code class="docutils literal notranslate"><span class="pre">&quot;NNPDF40_lo_as_01180&quot;</span></code>. <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">beam.pdf</span></code> sets both beams.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">pdlabel1</span></code>, <code class="docutils literal notranslate"><span class="pre">pdlabel2</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">beam.pdf</span></code></p></td>
-<td><p>MG7 uses one PDF set for both beams.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">beam.pdf1</span></code>, <code class="docutils literal notranslate"><span class="pre">beam.pdf2</span></code></p></td>
+<td><p>One set per beam. A beam without PDF exists only for a lepton collider, as
+<code class="docutils literal notranslate"><span class="pre">beam.leptonic</span></code>.</p></td>
 </tr>
 </tbody>
 </table>
@@ -878,8 +882,8 @@ combined.</p>
 <li><p>Beam polarization and heavy-ion or equivalent-photon beams: <code class="docutils literal notranslate"><span class="pre">polbeam1</span></code>, <code class="docutils literal notranslate"><span class="pre">polbeam2</span></code>,
 <code class="docutils literal notranslate"><span class="pre">nb_proton1</span></code>, <code class="docutils literal notranslate"><span class="pre">nb_proton2</span></code>, <code class="docutils literal notranslate"><span class="pre">nb_neutron1</span></code>, <code class="docutils literal notranslate"><span class="pre">nb_neutron2</span></code>, <code class="docutils literal notranslate"><span class="pre">mass_ion1</span></code>,
 <code class="docutils literal notranslate"><span class="pre">mass_ion2</span></code>, <code class="docutils literal notranslate"><span class="pre">ievo_eva</span></code>, <code class="docutils literal notranslate"><span class="pre">evaorder</span></code>, <code class="docutils literal notranslate"><span class="pre">eva_xcut</span></code>.</p></li>
-<li><p>Different PDFs or fixed factorization scales for the two beams, and the scale
-parameters <code class="docutils literal notranslate"><span class="pre">mue_over_ref</span></code>, <code class="docutils literal notranslate"><span class="pre">mue_ref_fixed</span></code> and <code class="docutils literal notranslate"><span class="pre">fixed_extra_scale</span></code>.</p></li>
+<li><p>Fixed factorization scales for the two beams, and the scale parameters
+<code class="docutils literal notranslate"><span class="pre">mue_over_ref</span></code>, <code class="docutils literal notranslate"><span class="pre">mue_ref_fixed</span></code> and <code class="docutils literal notranslate"><span class="pre">fixed_extra_scale</span></code>.</p></li>
 <li><p>Cuts that are not a bound on a single observable: <code class="docutils literal notranslate"><span class="pre">cutuse</span> <span class="pre">=</span> <span class="pre">1</span></code>, which accepts an event if
 any of the ordered jet cuts passes, and the vector-boson-fusion cuts <code class="docutils literal notranslate"><span class="pre">xetamin</span></code> and
 <code class="docutils literal notranslate"><span class="pre">deltaeta</span></code>, which require the two hardest jets to lie in opposite hemispheres.</p></li>
@@ -969,5 +973,6 @@ any of the ordered jet cuts passes, and the vector-boson-fusion cuts <code class
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/scripts/furo.js?v=46bd48cc"></script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
     </body>
 </html>

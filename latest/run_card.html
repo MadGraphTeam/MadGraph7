@@ -697,14 +697,19 @@ installation.</p>
 <section id="beam">
 <h2>[beam]<a class="headerlink" href="#beam" title="Link to this heading">¶</a></h2>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">e_cm</span></code> (<code class="docutils literal notranslate"><span class="pre">13000.0</span></code>)</dt><dd><p>Center-of-mass energy in GeV. Units are accepted, for example <code class="docutils literal notranslate"><span class="pre">&quot;13</span> <span class="pre">TeV&quot;</span></code>.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">ebeam1</span></code> (<code class="docutils literal notranslate"><span class="pre">6500.0</span></code>), <code class="docutils literal notranslate"><span class="pre">ebeam2</span></code> (<code class="docutils literal notranslate"><span class="pre">6500.0</span></code>)</dt><dd><p>Energy of each beam in GeV, beam 1 moving along <span class="math notranslate nohighlight">\(+z\)</span>. Units are accepted, for
+example <code class="docutils literal notranslate"><span class="pre">&quot;7</span> <span class="pre">TeV&quot;</span></code>. The collision energy is <span class="math notranslate nohighlight">\(2\sqrt{E_1 E_2}\)</span>. With different
+energies the events are written, and the <span class="math notranslate nohighlight">\(\eta\)</span> cuts applied, in this lab frame.
+<code class="docutils literal notranslate"><span class="pre">e_cm</span></code> can still be read and set: <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">e_cm</span> <span class="pre">13</span> <span class="pre">TeV</span></code> sets both beams to 6.5 TeV.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">leptonic</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Treat the beams as leptons: no PDFs are used and the partonic energy equals <code class="docutils literal notranslate"><span class="pre">e_cm</span></code>.
-This is set automatically for lepton-collider processes, together with <code class="docutils literal notranslate"><span class="pre">e_cm</span> <span class="pre">=</span> <span class="pre">1000</span></code>
-and no jet cuts.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">leptonic</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Treat the beams as leptons: no PDFs are used and the partonic energy equals the
+collision energy. This is set automatically for lepton-collider processes, together
+with 500 GeV beams and no jet cuts.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">pdf</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;NNPDF40_lo_as_01180&quot;</span></code>)</dt><dd><p>Name of the LHAPDF set. MG7 tries to download it if it is not installed. The default is
-the 5-flavor NNPDF 4.0 LO set, which has 100 error members for the PDF variations.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">pdf1</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;NNPDF40_lo_as_01180&quot;</span></code>), <code class="docutils literal notranslate"><span class="pre">pdf2</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;NNPDF40_lo_as_01180&quot;</span></code>)</dt><dd><p>Name of the LHAPDF set of each beam. <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">beam.pdf</span> <span class="pre">X</span></code> sets both. MG7 tries to
+download a set that is not installed. The default is the 5-flavor NNPDF 4.0 LO set,
+which has 100 error members for the PDF variations. With different sets on the two
+beams the PDF member variations of <code class="docutils literal notranslate"><span class="pre">[systematics]</span></code> are dropped.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">fixed_ren_scale</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>), <code class="docutils literal notranslate"><span class="pre">fixed_fact_scale</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Use the fixed values below instead of the dynamical scale choice. The two switches act
 on the renormalization and the factorization scale separately.</p>
