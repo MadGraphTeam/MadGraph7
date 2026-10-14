@@ -125,3 +125,14 @@ class AmplicolExportTest(unittest.TestCase):
         self.assertEqual(sorted(multiparticles['mp0']),
                          sorted(['g', 'u', 'd', 's', 'c', 'u~', 'd~', 's~', 'c~']))
         self.assertEqual(len(processes), 81)
+
+    def test_coupling_orders(self):
+        """The orders MG selects by default, as the largest non-QCD orders."""
+        import madgraph.iolibs.export_amplicol as export_amplicol
+        for line, orders in [('p p > j j j', {'QED': 0}),
+                             ('p p > e+ e- j', {'QED': 2}),
+                             ('p p > w+ j j', {'QED': 1})]:
+            self.cmd.exec_cmd('generate %s [amplicol]' % line, printcmd=False,
+                              precmd=True)
+            self.assertEqual(export_amplicol.coupling_orders(
+                self.cmd._curr_amplicol_defs[0], self.cmd._curr_model), orders)

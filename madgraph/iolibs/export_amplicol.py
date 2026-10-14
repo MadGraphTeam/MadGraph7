@@ -116,6 +116,20 @@ def process_expression(procdef, model):
     return '%s > %s' % (' '.join(initial), ' '.join(final)), multiparticles
 
 
+def coupling_orders(procdef, model):
+    """The largest orders of the couplings above the lowest hierarchy, as MG
+    selects them by default: the minimal WEIGHTED order of the definition,
+    with n - 2 vertices at tree level."""
+    import madgraph.core.diagram_generation as diagram_generation
+    weighted = diagram_generation.MultiProcess.find_optimal_process_orders(
+        procdef)['WEIGHTED']
+    hierarchy = model.get('order_hierarchy')
+    lowest = min(hierarchy.values())
+    vertices = len(procdef.get('legs')) - 2
+    return {order: max((weighted - vertices * lowest) // (weight - lowest), 0)
+            for order, weight in hierarchy.items() if weight > lowest}
+
+
 def model_source(pyamplicol, model, cache_path):
     """The UFO model of the output with its restriction, compiled for
     pyamplicol once per output."""
@@ -139,17 +153,20 @@ def model_source(pyamplicol, model, cache_path):
 
 
 def generate_artifact(pyamplicol, artifact, accuracy, expression, multiparticles,
-                      model, workers):
+                      orders, model):
     from pyamplicol.config import resolve_config
+    # one worker: Symbolica's restricted mode allows a single thread
     config = resolve_config({
         'schema_version': 1,
         'action': 'generate',
         'color': {'accuracy': accuracy},
-        'process': {'multiparticles': multiparticles},
-        'generation': {'workers': workers, 'emit_api_bundle': True,
+        'process': {'multiparticles': multiparticles,
+                    'coupling_order_policy': 'explicit',
+                    'max_coupling_orders': orders},
+        'generation': {'workers': 1, 'emit_api_bundle': True,
                        'relation_discovery': {'mode': 'off'}},
         'evaluator': {'backend': 'jit', 'execution_mode': 'recurrence',
-                      'optimization': {'cores': workers},
+                      'optimization': {'cores': 1},
                       'jit': {'optimization_level': 2}},
     })
     pyamplicol.Generator(config).generate(expression, artifact, model=model,
@@ -189,7 +206,7 @@ def color_types(model, pdgs):
     return types
 
 
-def subprocess_entries(metadata, model, rel_dir, me_path, ratio_path):
+def subprocess_entries(metadata, model, rel_dir, me_path, ratio_path, qcd_power):
     """One subprocesses.json entry per channel of a UMAMI provider."""
     pdg_ids = metadata['pdg_ids']
     provider = metadata['provider']
@@ -210,8 +227,6 @@ def subprocess_entries(metadata, model, rel_dir, me_path, ratio_path):
                     'mirror': False,
                 })
         first = flavors[0]['options'][0]
-        colored = sum(1 for pdg in first
-                      if abs(model.get_particle(pdg).get_color()) > 1)
         entries.append({
             'backend': 'amplicol',
             'incoming': first[:incoming],
@@ -227,9 +242,7 @@ def subprocess_entries(metadata, model, rel_dir, me_path, ratio_path):
             'masses': provider['masses'],
             'supports_alpha_s': provider['supports_alpha_s'],
             'flavors': flavors,
-            # tree level with the minimal coupling orders: every coloured
-            # parton beyond the first two comes with one power of alpha_s
-            'qcd_power': max(colored - 2, 0),
+            'qcd_power': qcd_power,
             'color_flows': metadata['color_flows'],
             'pdg_color_types': color_types(
                 model, {abs(pdg) for pdgs in pdg_ids for pdg in pdgs}),
@@ -252,12 +265,10 @@ def parameter_references(metadata):
     return references
 
 
-def export_amplicol_processes(dir_path, proc_defs, model, nb_core=None,
-                              multiparticles=None):
+def export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None):
     """Write SubProcesses/A<n>_<name> for every '[amplicol]' process definition
     and return the subprocesses.json entries."""
     pyamplicol, umami_reweight = import_pyamplicol()
-    workers = nb_core or 1
     subproc_dir = pjoin(dir_path, 'SubProcesses')
     source = model_source(pyamplicol, model, pjoin(subproc_dir, MODEL_FILE))
     rusticol_config = shutil.which('rusticol-config') or 'rusticol-config'
@@ -267,12 +278,16 @@ def export_amplicol_processes(dir_path, proc_defs, model, nb_core=None,
         path = pjoin(subproc_dir, name)
         rel_dir = pjoin('SubProcesses', name)
         expression, multiparticles = process_expression(procdef, model)
+        orders = coupling_orders(procdef, model)
+        # every vertex carries one coupling: the rest are powers of g_s
+        qcd_power = (len(procdef.get('legs')) - 2 - sum(orders.values())
+                     if len(orders) == 1 else -1)
         logger.info('Generating the AmpliCol matrix elements of %s in %s' %
                     (procdef.nice_string(prefix=False), path))
         os.makedirs(path, exist_ok=True)
         for accuracy in ('lc', 'full'):
             generate_artifact(pyamplicol, pjoin(path, accuracy), accuracy,
-                              expression, multiparticles, source, workers)
+                              expression, multiparticles, orders, source)
         provider_ids = umami_reweight.write_reweight_provider(
             pjoin(path, 'lc'), pjoin(path, 'full'), pjoin(path, 'reweight'))
         documents = umami_reweight.load_umami_metadata(pjoin(path, 'lc'))
@@ -286,12 +301,13 @@ def export_amplicol_processes(dir_path, proc_defs, model, nb_core=None,
             copies.append('\tcp $(BUILD)/reweight/libreweight_%s.so ../../%s' %
                           (provider_id, ratio_path))
             entries.extend(subprocess_entries(metadata, model, rel_dir, me_path,
-                                              ratio_path))
+                                              ratio_path, qcd_power))
         with open(pjoin(path, 'makefile'), 'w') as stream:
             stream.write(MAKEFILE % {'rusticol_config': rusticol_config,
                                      'copies': '\n'.join(copies)})
         with open(pjoin(path, 'process.json'), 'w') as stream:
             json.dump({'process': procdef.nice_string(prefix=False),
                        'expression': expression,
-                       'multiparticles': multiparticles}, stream, indent=2)
+                       'multiparticles': multiparticles,
+                       'max_coupling_orders': orders}, stream, indent=2)
     return entries
