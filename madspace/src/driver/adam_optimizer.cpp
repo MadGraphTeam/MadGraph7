@@ -15,14 +15,13 @@ GradientClipper::GradientClipper(DataType dtype) :
 NamedVector<Value> GradientClipper::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
-    bool single = args.at(0).type.dtype == DataType::dt_float32;
-    Value grads_in = single ? fb.convert_float64(args.at(0)) : args.at(0);
-    Value grad_norm = fb.sqrt(fb.batch_reduce_sum(fb.square(grads_in)));
+    // only the norm is computed in double precision
+    Value grads_in = args.at(0);
+    bool single = grads_in.type.dtype == DataType::dt_float32;
+    Value grads_sq = fb.square(single ? fb.convert_float64(grads_in) : grads_in);
+    Value grad_norm = fb.sqrt(fb.batch_reduce_sum(grads_sq));
     Value factor = fb.min(fb.div(args.at(1), grad_norm), 1.0);
-    Value grads_out = fb.mul(grads_in, factor);
-    if (single) {
-        grads_out = fb.convert_float32(grads_out);
-    }
+    Value grads_out = fb.mul(grads_in, single ? fb.convert_float32(factor) : factor);
     return {
         {"gradients_out", grads_out},
         {"gradient_norm", grad_norm},

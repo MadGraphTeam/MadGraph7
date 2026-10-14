@@ -231,6 +231,7 @@ sub:
   dims: 0
 
 mul:
+  precision: [float32, float64]
   inputs:
     - name: in1
       type: [float, ...]

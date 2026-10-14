@@ -90,7 +90,7 @@ def test_stack_of_literals_is_folded():
     func = build(
         [("x", ms.batch_float_array(3))], [("y", ms.batch_float_array(3))], body
     )
-    assert instruction_names(func) == ["mul"]
+    assert instruction_names(func) == ["mul_float64"]
 
 
 def test_single_flavor_integrand_has_no_constant_gathers(tmp_path):
@@ -140,7 +140,7 @@ def test_single_flavor_integrand_has_no_constant_gathers(tmp_path):
             for output in instr.outputs:
                 sources[output.local_index] = instr.instruction.name
         for instr in func.instructions:
-            if instr.instruction.name == "mul":
+            if instr.instruction.name == "mul_float64":
                 assert all(
                     sources.get(arg.local_index) != "full" for arg in instr.inputs
                 )

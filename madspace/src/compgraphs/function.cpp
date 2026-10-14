@@ -354,7 +354,7 @@ FunctionBuilder::instruction(InstructionPtr instruction, const ValueVec& args) {
             return {arg(0) + arg(1)};
         case opcodes::sub:
             return {arg(0) - arg(1)};
-        case opcodes::mul:
+        case opcodes::mul_float64:
             return {arg(0) * arg(1)};
         case opcodes::sqrt:
             return {std::sqrt(arg(0))};
@@ -402,7 +402,7 @@ FunctionBuilder::instruction(InstructionPtr instruction, const ValueVec& args) {
                     return {var_arg};
                 }
                 break;
-            case opcodes::mul:
+            case opcodes::mul_float64:
                 if (const_val == 1.) {
                     return {var_arg};
                 }

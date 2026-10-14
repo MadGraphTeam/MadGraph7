@@ -88,7 +88,8 @@ def test_activation(activation):
     assert grad_me == approx(grad_torch)
 
 
-def test_training(mlp, mlp_module, module_context, precision):
+@pytest.mark.parametrize("grad_clip", [0.0, 0.01])
+def test_training(mlp, mlp_module, module_context, precision, grad_clip):
     _, dtype, tol = precision
     mlp_torch = nn.Sequential(
         nn.Linear(10, 32),
@@ -118,7 +119,10 @@ def test_training(mlp, mlp_module, module_context, precision):
     fb.output(1, mlp_out)
     ctx.copy_globals_from(module_context)
     builtin_opt = ms.AdamOptimizer(
-        function=fb.function(), context=ctx, learning_rate=1e-2
+        function=fb.function(),
+        context=ctx,
+        learning_rate=1e-2,
+        grad_clip_threshold=grad_clip,
     )
 
     opt_ms = torch.optim.Adam(mlp_module.parameters(), lr=1e-2)
@@ -126,6 +130,10 @@ def test_training(mlp, mlp_module, module_context, precision):
 
     def close(a, b):
         return a == approx(b, rel=tol, abs=tol)
+
+    # the builtin optimizer clips the RMS gradient, not the norm
+    n_params = sum(p.numel() for p in mlp_torch.parameters())
+    max_norm = grad_clip * n_params**0.5
 
     for i in range(10):
         # the input and the loss are in float64, only the network uses dtype
@@ -135,11 +143,16 @@ def test_training(mlp, mlp_module, module_context, precision):
         loss_ms = (y - mlp_module(x)).square().mean()
         opt_ms.zero_grad()
         loss_ms.backward()
+        if grad_clip > 0:
+            clipped = nn.utils.clip_grad_norm_(mlp_module.parameters(), max_norm)
+            assert clipped > max_norm
         opt_ms.step()
 
         loss_torch = (y - mlp_torch(x.to(dtype)).double()).square().mean()
         opt_torch.zero_grad()
         loss_torch.backward()
+        if grad_clip > 0:
+            nn.utils.clip_grad_norm_(mlp_torch.parameters(), max_norm)
         opt_torch.step()
 
         loss_builtin, mlp_out = builtin_opt.step([x])
