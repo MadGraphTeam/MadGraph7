@@ -314,8 +314,7 @@ Tensor Tensor::simd_padded_literal(
     // element j of lane l is stored at l + lanes * j
     auto [dtype, buffer] = std::visit(
         [&]<typename T>(const std::vector<T>& vec) {
-            auto dtype =
-                std::is_same_v<T, me_int_t> ? DataType::dt_int32 : DataType::dt_float64;
+            auto dtype = dtype_of<T>();
             std::vector<T> padded(count * lanes);
             for (std::size_t j = 0; j < count; ++j) {
                 std::fill_n(padded.begin() + j * lanes, lanes, vec[j]);

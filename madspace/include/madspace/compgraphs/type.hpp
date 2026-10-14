@@ -258,7 +258,7 @@ struct Value {
     template <LiteralType T>
     Value(const std::vector<T>& values, const std::vector<int>& shape = {}) :
         type{
-            std::is_same_v<T, me_int_t> ? DataType::dt_int32 : DataType::dt_float64,
+            dtype_of<T>(),
             BatchSize::one,
             shape.size() == 0 ? std::vector<int>{static_cast<int>(values.size())}
                               : shape

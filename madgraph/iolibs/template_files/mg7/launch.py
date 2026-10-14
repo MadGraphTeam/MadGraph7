@@ -3062,12 +3062,8 @@ class MadgraphSubprocess:
 
     def nn_precision(self) -> ms.DataType:
         # one precision for all networks: the optimizer trains all of them together
-        name = self.process.run_card["madnis"]["nn_float_precision"]
-        precisions = {"float32": ms.DataType.float32, "float64": ms.DataType.float64}
-        if name in precisions:
-            return precisions[name]
-        else:
-            raise ValueError(f"Invalid network precision '{name}'")
+        # the run card only allows float32 and float64
+        return getattr(ms.DataType, self.process.run_card["madnis"]["nn_float_precision"])
 
     def activation(self, name: str) -> ms.MLP.Activation:
         activations = {
