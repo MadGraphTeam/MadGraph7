@@ -815,6 +815,14 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_fks_standalone_born_values test_fks_standalone_vs_amcatnlo test_fks_standalone_multi_point test_fks_standalone_grouped_physical_flavors test_fks_standalone_grouped_real_vs_pre_grouping test_fks_standalone_grouped_mixed_wj_tree_values test_fks_standalone_invalid_options test_nonconverging_limit_sequence_fails_safely test_fks_standalone_limits -pA -t0 -l INFO
 
+      # a real emission with 120 colour flows: it was exactly zero while the
+      # FKS output wrote the compressed colour matrix without INIT_CF
+      - name: "FKS real: colour matrix and value of g g > g g g g"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_fks_real_color_matrix_gg_gggg -pA -t0 -l INFO
+
       - name: "FKS standalone: grouped virtual physical rows"
         if: ${{ !cancelled() }}
         run: |
