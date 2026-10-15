@@ -3468,6 +3468,42 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         self.assertFalse('not supported by the GPU backend' in check_sa,
                          'check_sa skips the crossing demo on a GPU build')
 
+    def test_gpu_backend_host_emulation(self):
+        """The GPU backend, built and run on the host, against the scalar one.
+
+        No CUDA/HIP toolchain runs in this suite: .github/gpu_ci/host_hip is a
+        hipcc that compiles the GPU templates (backend/gpu) as host C++ and
+        runs every kernel serially. With it, the crossing checks of the GPU CI
+        (madmatrix_checks.py) run here: the |M|^2, helicities and colours of
+        the GPU code equal the scalar ones event by event over every extended
+        flavor id -- a crossing that moves the Z into a massless slot (its own
+        good-helicity scan points, xonshell_tab 0), an axial-gauge gluon whose
+        reference leg is crossed, and |M|^2 = 0 at alpha_s = 0 with no helicity
+        or colour. This checks the logic of the GPU code, not an nvcc/hipcc
+        build: the GPU CI still has to run it on a device."""
+        if not shutil.which('make'):
+            self.skipTest('no make available')
+        repo = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))))
+        gpu_ci = pjoin(repo, '.github', 'gpu_ci')
+        env = dict(os.environ)
+        env['PATH'] = pjoin(gpu_ci, 'host_hip', 'bin') + os.pathsep + env.get('PATH', '')
+        env['CXX'] = self.compiler
+        checks = ('zero_me_good_hel', 'crossed_massive_gpu_vs_cpu',
+                  'axial_crossed_gpu_vs_cpu')
+        cmd = [sys.executable, pjoin(gpu_ci, 'madmatrix_checks.py'),
+               '--repo', repo, '--backend', 'hip']
+        for check in checks:
+            cmd += ['--only', check]
+        run = subprocess.run(cmd, cwd=self.tmpdir, env=env,
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        out = run.stdout.decode(errors='replace')
+        for check in checks:
+            self.assertTrue(re.search(r'^PASS %s:' % check, out, re.M),
+                            '%s did not pass on the host-emulated GPU '
+                            'backend:\n%s' % (check, out[-4000:]))
+        self.assertEqual(run.returncode, 0, out[-4000:])
+
     def _assert_plain_path(self, pdir, label):
         """`pdir` was written without the crossing machinery."""
         # assertTrue, not assertIn: the latter would print the whole file.

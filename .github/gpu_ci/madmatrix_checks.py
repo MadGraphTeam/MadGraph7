@@ -38,6 +38,10 @@ of check_sa.exe, so only the check it belongs to.
    masses (choose_good_helicities, getGoodHel). The events of every row are on shell for
    that row, in a randomly boosted frame: the GPU |M|^2, helicities and colours equal
    the CPU ones event by event, so the GPU kept the same good-helicity list.
+   axial_crossed_gpu_vs_cpu: SM ``p p > z j --axial_gauge=True``, the subprocess that
+   folds crossings (P1_gQ_zQ): the gluon wavefunction is vxxxxxr in the axial gauge of
+   another external leg, whose momentum a crossed event reads from its own input slot
+   (xperm of the reference leg): the same comparison as above.
 4. nonblocking_stream: ``g g > t t~ g``, 4 calls of 16384 events, with umami handed a
    non-blocking stream (--nonblocking-stream, as a torch side stream, which does not
    synchronise with the default stream) gives the same |M|^2 and helicities as on the
@@ -45,7 +49,10 @@ of check_sa.exe, so only the check it belongs to.
    stream umami is given, the helicity filtering of the first call included.
 
 Any CPU backend but scalar (simd_128, ...) works too, to try the script without a GPU;
-check 4 is then skipped. Writes summary.txt (key=value lines) in the current directory;
+check 4 is then skipped. Without a GPU, --backend hip with host_hip/bin first on the
+PATH builds and runs the GPU code itself on the host (serial emulation of HIP, see
+host_hip/include/hip/hip_runtime.h): the logic of the GPU templates against the CPU
+backend, not a real GPU build. Writes summary.txt (key=value lines) in the current directory;
 exit status 1 if a check fails.
 """
 
@@ -64,7 +71,7 @@ import time
 GPU_BACKENDS = ('cuda', 'hip')
 CPU_BACKEND = 'scalar'
 CHECKS = ('mssm_gpu_vs_cpu', 'zero_me', 'zero_me_good_hel', 'mssm_crossed_gpu_vs_cpu',
-          'crossed_massive_gpu_vs_cpu', 'nonblocking_stream')
+          'crossed_massive_gpu_vs_cpu', 'axial_crossed_gpu_vs_cpu', 'nonblocking_stream')
 
 results = {}
 
@@ -139,15 +146,15 @@ def boosted_two_to_two(rng, masses, energy):
     return boosted
 
 
-def output(repo, name, model, process, backends, select=None, defines=()):
+def output(repo, name, model, process, backends, select=None, defines=(), options=''):
     """output standalone + make for these backends in every subprocess (those for which
     select(proc_dir) is true, if given), keeping the check_sa.exe of each as
     check_sa_<backend>.exe: the subprocess directories. defines: multiparticle
-    definitions ('b1 = g u~') made before the generation."""
+    definitions ('b1 = g u~') made before the generation; options: of the output line."""
     with open(name + '.mg5', 'w') as f:
         f.write('import model %s\n' % model)
         f.write(''.join('define %s\n' % define for define in defines))
-        f.write('generate %s\noutput standalone %s -f\n' % (process, name))
+        f.write('generate %s\noutput standalone %s %s -f\n' % (process, name, options))
     if run([sys.executable, os.path.join(repo, 'bin', 'madgraph'), name + '.mg5'],
            log=name + '.log') != 0:
         raise RuntimeError('madgraph failed, see %s.log' % name)
@@ -448,6 +455,17 @@ def check_crossed_massive_gpu_vs_cpu(backend, repo, nevt=1024):
                        defines=('b1 = g u~', 'c1 = u z', 'd1 = z g'))
     crossed_gpu_vs_cpu('crossed_massive_gpu_vs_cpu', backend, name, proc_dirs, 1000, 29, nevt,
                        own_points=True)
+
+
+def check_axial_crossed_gpu_vs_cpu(backend, repo, nevt=1024):
+    section('p p > z j --axial_gauge=True, crossed axial-gauge gluon: %s against %s'
+            % (backend, CPU_BACKEND))
+    name = 'axial_zj'
+    # g q > z q also serves q q~ > z g: the gluon polarisation is vxxxxxr in the axial
+    # gauge of another leg, whose momentum a crossed event reads from its own slot
+    proc_dirs = output(repo, name, 'sm', 'p p > z j', (CPU_BACKEND, backend),
+                       select=lambda proc_dir: ncross(proc_dir) > 1, options='--axial_gauge=True')
+    crossed_gpu_vs_cpu('axial_crossed_gpu_vs_cpu', backend, name, proc_dirs, 1000, 31, nevt)
 
 
 # ---------------------------------------------------------------------------
