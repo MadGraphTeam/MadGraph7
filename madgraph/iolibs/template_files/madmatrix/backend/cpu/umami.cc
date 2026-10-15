@@ -11,7 +11,9 @@
 #include "SigmaKin.h" // sigmaKin_getGoodHel/setGoodHel
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
+#include "rambo.h" // RAMBO points to choose the good helicities on (umami_initialize)
 
+#include <algorithm>
 #include <cfloat>
 #include <cmath>
 #include <string>
@@ -116,6 +118,61 @@ namespace
 
   std::vector<double> g_externalMasses;
 
+  // The helicity filter (sigmaKin_getGoodHel) runs once per library and keeps a
+  // helicity if its |M|^2 is not 0 for one of the first events. Run at the first
+  // umami_matrix_element call, it depended on what that call held: a first batch of
+  // special points, where some helicities happen to vanish (the forward direction of
+  // u u~ > e+ e-, say), dropped them for the rest of the run, and every later |M|^2
+  // was wrong. It runs instead here, at initialization, on RAMBO points: the matrix
+  // element is evaluated there once (the filter itself scans every flavor). Where
+  // RAMBO has no phase space (2 > 1, a decay below threshold), this does nothing and
+  // the first call still chooses.
+  void choose_good_helicities( UmamiHandle handle )
+  {
+    constexpr int npar = ProcessData::npar;
+    constexpr int npari = ProcessData::npari;
+    constexpr std::size_t nevt = 16; // the events sigmaKin_getGoodHel looks at
+    std::vector<double> masses( g_externalMasses.begin(), g_externalMasses.end() );
+    double mfinal = 0, mtotal = 0;
+    for( int ipar = 0; ipar < npar; ++ipar )
+    {
+      mtotal += masses[ipar];
+      if( ipar >= npari ) mfinal += masses[ipar];
+    }
+    // rambo exits on a closed phase space: check it first
+    if( npar - npari < 2 || ( npari == 1 && !( masses[0] > mfinal ) ) ) return;
+    const double energy = std::max( 1500., 2 * mtotal ); // a decay is at rest instead
+    // A private generator: the shared one (rambo::rn) makes the points of the check
+    // drivers, which must not move.
+    rambo::Random random;
+    random.rmarin( 1802, 9373 );
+    auto draw = [&random]( int )
+    {
+      double r = random.ranmar();
+      while( r <= 1e-16 ) r = random.ranmar();
+      return r;
+    };
+    std::vector<double> momenta( nevt * npar * 4 ); // momenta[nevt * ( npar * mu + ipar ) + ievt]
+    for( std::size_t ievt = 0; ievt < nevt; ++ievt )
+    {
+      double weight = 0;
+      const std::vector<std::vector<double>> p = rambo::get_momenta( npari, energy, masses, weight, draw );
+      for( int ipar = 0; ipar < npar; ++ipar )
+      {
+        // on shell, or rambo did not converge: leave the choice to the first call
+        const double m2 = p[ipar][0] * p[ipar][0] - p[ipar][1] * p[ipar][1] - p[ipar][2] * p[ipar][2] - p[ipar][3] * p[ipar][3];
+        if( std::abs( m2 - masses[ipar] * masses[ipar] ) > 1e-6 * energy * energy ) return;
+        for( int mu = 0; mu < 4; ++mu ) momenta[nevt * ( npar * mu + ipar ) + ievt] = p[ipar][mu];
+      }
+    }
+    std::vector<double> matrix_elements( nevt );
+    const UmamiInputKey input_keys[] = { UMAMI_IN_MOMENTA };
+    const void* inputs[] = { momenta.data() };
+    const UmamiOutputKey output_keys[] = { UMAMI_OUT_MATRIX_ELEMENT };
+    void* outputs[] = { matrix_elements.data() };
+    umami_matrix_element( handle, nevt, nevt, 0, 1, input_keys, inputs, 1, output_keys, outputs );
+  }
+
 }
 
 extern "C"
@@ -192,6 +249,9 @@ extern "C"
 
     auto instance = new InterfaceInstance();
     *handle = instance;
+    // once per library, like the filter (a thread-safe static initialization)
+    static const bool good_helicities = ( choose_good_helicities( instance ), true );
+    (void)good_helicities;
     return UMAMI_SUCCESS;
   }
 
@@ -315,8 +375,16 @@ extern "C"
     }
 
     constexpr std::size_t vector_size = MemoryAccessMomentaBase::neppM;
-    // need to round to round to double page size for some reason
+    // The kernels run on one SIMD page of events at a time (neppM == neppV events,
+    // a single event for the scalar backend), and on two pages at a time in mixed
+    // precision (double amplitudes, float colour algebra): the batch is rounded up
+    // to that, and no further. Every extra event is computed for nothing: a call
+    // with one event used to evaluate two of them on the scalar backend.
+#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
     constexpr std::size_t page_size2 = 2 * vector_size;
+#else
+    constexpr std::size_t page_size2 = vector_size;
+#endif
     std::vector<std::size_t> permutation;
     std::size_t rounded_count;
 
@@ -349,17 +417,11 @@ extern "C"
         if ( vcount == 0 )
         {
           vindex = voffset * page_size2;
-          // Pre-fill the whole page with a valid padding id (crossing 0 of this
-          // reduced flavor) so that unused tail lanes never index the crossing
-          // tables out of range; real events overwrite their own slot below.
-          for ( std::size_t i = 0; i < page_size2; ++i) {
-            flavor_indices[voffset * page_size2 + i] = rflav;
-          }
+          // no pre-fill: a padding lane copies the first event of its page,
+          // extended id included (see the lane loop below)
           voffset += 1;
         }
-        const std::size_t slot = vindex + vcount;
-        permutation[i_event] = slot;
-        flavor_indices[slot] = flav; // per-event full extended id (flavor + crossing)
+        permutation[i_event] = vindex + vcount;
         vcount = (vcount + 1) % page_size2;
       }
       rounded_count = voffset * page_size2;
@@ -379,29 +441,32 @@ extern "C"
     HostBufferBase<fptype_amp, false> denominators( rounded_count );
     HostBufferBase<int, false> helicity_index( rounded_count );
     HostBufferBase<int, false> color_index( rounded_count );
-    if ( sort_flavors ) {
-      for( std::size_t i_event = 0; i_event < count; ++i_event )
-      {
-        std::size_t i_sorted = permutation[i_event];
-        transpose_momenta( &momenta_in[offset], momenta.data(), i_event, i_sorted, stride );
-        helicity_random[i_sorted] = random_helicity_in ? random_helicity_in[i_event + offset] : 0.5;
-        color_random[i_sorted] = random_color_in ? random_color_in[i_event + offset] : 0.5;
-        diagram_random[i_sorted] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
-        g_s[i_sorted] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
-      }
-    } else {
-      for( std::size_t i_event = 0; i_event < count; ++i_event )
-      {
-        transpose_momenta( &momenta_in[offset], momenta.data(), i_event, i_event, stride );
-        helicity_random[i_event] = random_helicity_in ? random_helicity_in[i_event + offset] : 0.5;
-        color_random[i_event] = random_color_in ? random_color_in[i_event + offset] : 0.5;
-        diagram_random[i_event] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
-        g_s[i_event] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
-        flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_event + offset] : 0;
-      }
-      for ( std::size_t i_event = count; i_event < rounded_count; ++i_event ) {
-        flavor_indices[i_event] = 0;
-      }
+    // The input event of each lane. The padding lanes, which complete the last page
+    // of a flavor, are copies of the first event of their page, as on GPUs. Left at
+    // zero (momenta and g_s), they evaluated to nan, and the good-helicity filter of
+    // the first call (a helicity is kept if its |M|^2 is not 0 for one of its first
+    // events) took that for a non-zero value whenever a padding lane was among
+    // them, as in a first call with a single event: every helicity was then kept
+    // for the rest of the run, the vanishing ones of a q q~ initial state included.
+    std::vector<std::size_t> source( rounded_count, count );
+    for( std::size_t i_event = 0; i_event < count; ++i_event )
+    {
+      source[sort_flavors ? permutation[i_event] : i_event] = i_event;
+    }
+    for( std::size_t lane = 0; lane < rounded_count; ++lane )
+    {
+      // a page is opened by an event, so its first lane is never padding
+      if( source[lane] == count ) source[lane] = source[lane - lane % page_size2];
+    }
+    for( std::size_t lane = 0; lane < rounded_count; ++lane )
+    {
+      const std::size_t i_event = source[lane];
+      transpose_momenta( &momenta_in[offset], momenta.data(), i_event, lane, stride );
+      helicity_random[lane] = random_helicity_in ? random_helicity_in[i_event + offset] : 0.5;
+      color_random[lane] = random_color_in ? random_color_in[i_event + offset] : 0.5;
+      diagram_random[lane] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
+      g_s[lane] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
+      flavor_indices[lane] = flavor_indices_in ? flavor_indices_in[i_event + offset] : 0;
     }
     computeDependentCouplings( g_s.data(), couplings.data(), rounded_count );
 
@@ -516,5 +581,14 @@ extern "C"
     InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
     delete instance;
     return UMAMI_SUCCESS;
+  }
+
+  // A madmatrix extension, not part of UMAMI: the number of helicity combinations
+  // kept by the good-helicity filter, which runs at the first umami_initialize (at
+  // the first umami_matrix_element call where RAMBO has no phase space; 0 before
+  // it). Like the filter, it is shared by every instance.
+  int madmatrix_good_helicity_count()
+  {
+    return sigmaKin_getNGoodHel();
   }
 }
