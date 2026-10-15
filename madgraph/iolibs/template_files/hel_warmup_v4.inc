@@ -14,18 +14,19 @@ C     'Amplitude/ZEROAMP:', 'HEL/ZEROAMP:'). The generation step
 C     re-runs hel_recycle with this information to drop the dead
 C     work from the final matrix.f.
 C
-C     The recycled matrix.f is then called in WHATEVER frame the
-C     user works in, so a zero may only be dropped if it holds in
-C     every frame. Zeros of the partonic CM frame do not: a
-C     massive leg's helicity states mix under a boost, and a
-C     single diagram is not Lorentz invariant (HELAS builds a
-C     massless vector's polarization in the current frame, a
-C     boost adds a gauge term), so e.g. the s-channel diagram of
-C     g u > z u, zero by angular momentum along the beam axis in
-C     the CM frame for half of the rows, is not zero once boosted.
-C     Every other point is therefore evaluated in a boosted frame
-C     (generic boosts, see BOOSTV), and the good rows are closed
-C     over the helicities of massive legs (HMV).
+C     The recycled matrix.f is then called in WHATEVER frame
+C     the user works in, so a zero may only be dropped if it
+C     holds in every frame. Zeros of the partonic CM frame do
+C     not: a massive leg's helicity states mix under a boost,
+C     and a single diagram is not Lorentz invariant (HELAS
+C     builds a massless vector's polarization in the current
+C     frame, a boost adds a gauge term), so e.g. the s-channel
+C     diagram of g u > z u, zero by angular momentum along the
+C     beam axis in the CM frame for half of the rows, is not
+C     zero once boosted. Every other point is therefore
+C     evaluated in a boosted frame (generic boosts, see
+C     BOOSTV), and the good rows are closed over the
+C     helicities of massive legs (HMV).
 C**************************************************************************
       use model_object
       IMPLICIT NONE
@@ -62,12 +63,12 @@ C     the beam axis or to each other.
      &             -0.53D0, 0.18D0,-0.36D0,
      &              0.12D0, 0.61D0,-0.22D0,
      &             -0.24D0,-0.29D0, 0.58D0 /
-C     HMV(I): leg I has helicity states that mix under a boost (a
-C     massive leg with spin, or a massless spin-2 one, see
-C     frame_dependent_helicity_legs in export_v4.py). Summed over
-C     those, at fixed helicities of the other legs, the rows are
-C     frame invariant: a row is kept as soon as a row differing
-C     from it only in such legs is.
+C     HMV(I): leg I has helicity states that mix under a boost
+C     (a massive leg with spin, or a massless spin-2 one, see
+C     frame_dependent_helicity_legs in export_v4.py). Summed
+C     over those, at fixed helicities of the other legs, the
+C     rows are frame invariant: a row is kept as soon as a row
+C     differing from it only in such legs is.
       LOGICAL HMV(NEXTERNAL), HMSAME
 %(hr_warmup_hmv_data)s
 C     LOCAL
@@ -82,8 +83,9 @@ C     slot by slot (its own leg order): its points are generated
 C     in its own frame
       REAL*8 PMASSX(NEXTERNAL)
       REAL*8 SQRTS, T, ANS, TSARR(NCOMB)
-C     GOODHEL: the rows found above threshold at a sampled point;
-C     GOODOUT: GOODHEL closed over HMV, the rows that are baked.
+C     GOODHEL: the rows found above threshold at a sampled
+C     point; GOODOUT: GOODHEL closed over HMV, the rows that
+C     are baked.
       LOGICAL GOODHEL(NCOMB), GOODOUT(NCOMB)
 C     C-parity de-duplication. FLIP(I) is the row whose helicity
 C     configuration is the full negation of row I (an
@@ -157,11 +159,11 @@ C     union over all of them.
               IF (SQRTS.LE.2D0*TOTALMASS) SQRTS = 2.1D0*TOTALMASS + 100D0*ITRY
             ENDIF
             CALL GET_MOMENTA(SQRTS, PMASSX, P)
-C           Odd points stay in their partonic CM (rest) frame, even ones
-C           are boosted: a zero found at a boosted point too is one of
-C           every frame. A crossing is boosted in its own frame, before
-C           APPLY_CROSSING (a boost commutes with the crossing, which
-C           only moves the momenta between slots).
+C           Odd points stay in their partonic CM (rest) frame, even
+C           ones are boosted: a zero found at a boosted point too is
+C           one of every frame. A crossing is boosted in its own
+C           frame, before APPLY_CROSSING (a boost commutes with the
+C           crossing, which only moves the momenta between slots).
             IF (MOD(ITRY,2).EQ.0) THEN
               CALL HR_BOOST(P, BOOSTV(1,MOD(ITRY/2-1,NBOOST)+1))
             ENDIF
@@ -211,11 +213,11 @@ C           row of g g > t t~ (such a pair is never reused below).
         ENDDO
       ENDDO
 
-C     Close the good rows over the helicities of massive legs: in
-C     g u > z u, rows 9, 11, 14 and 16 vanish in the CM frame
-C     only, and boosted they carry up to 3 per cent of the total. The
-C     boosted points find such rows already; the closure does not
-C     depend on how large they happened to be there.
+C     Close the good rows over the helicities of massive legs:
+C     in g u > z u, rows 9, 11, 14 and 16 vanish in the CM
+C     frame only, and boosted they carry up to 3 per cent of
+C     the total. The boosted points find such rows already;
+C     the closure does not depend on how large they were there.
       DO IHEL=1, NCOMB
         GOODOUT(IHEL) = GOODHEL(IHEL)
       ENDDO
