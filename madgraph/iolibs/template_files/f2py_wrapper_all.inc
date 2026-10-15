@@ -119,14 +119,16 @@ CF2PY integer, intent(hide), depend(PDGS) :: NPDG = len(PDGS)
       end
 
       SUBROUTINE %(f2py_prefix)sPY_GET_ALL_INTER(PDGS, PROCID, P, NHEL, POS, ALLOW_HEL, INTER, N_CHANGING, N_COMB, NPDG)
-C     PY_GET_DENSITY for ONE helicity of the legs not in POS: the
-C     interference terms between the N_COMB helicity combinations
-C     ALLOW_HEL of the legs POS, with every other leg at its NHEL
-C     helicity (the entries of NHEL at POS are ignored). Summed over
-C     those other helicities it gives PY_GET_DENSITY (unpolarised
-C     beams).
-C     No ALPHAS here: the couplings are the ones last set (INITIALISE,
-C     SMATRIXHEL or PY_GET_DENSITY).
+C     PY_GET_DENSITY for ONE helicity of the legs not in POS:
+C     the interference terms between the N_COMB helicity
+C     combinations ALLOW_HEL of the legs POS, every other leg
+C     at its NHEL helicity (NHEL at POS is ignored). Summed
+C     over the rows of the helicity table (<prefix>NHEL) it
+C     gives PY_GET_DENSITY for unpolarised beams.
+C     No ALPHAS here: the couplings are the ones last set
+C     (INITIALISE, SMATRIXHEL or PY_GET_DENSITY).
+C     A folded crossing has no PDG entry: reach it through
+C     PY_<prefix>GET_ALL_INTER_IDX or --use_crossing=False.
       IMPLICIT NONE
 CF2PY double precision, intent(in), dimension(0:3,npdg) :: p
 CF2PY integer, intent(in), dimension(npdg) :: pdgs

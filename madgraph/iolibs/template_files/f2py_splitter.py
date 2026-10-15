@@ -117,7 +117,8 @@ C     Update is done insider the direct density call functions
   subroutine %(f2py_prefix)sf77_get_all_inter(pdgs, procid, npdg, P, NHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, INTER)
   IMPLICIT NONE
 C     P momenta
-C     NHEL(NPDG) helicity of the legs not in POS (POS entries ignored)
+C     NHEL(NPDG) helicity of the legs not in POS (entries
+C      at POS ignored)
 C     POS(N_CHNGING): position of the changing helicity
 C     n_changing: number of changing helicity
 C     ALLOW_HEL(NCOMB, N_CHANGING): combination of helicity to
@@ -142,8 +143,8 @@ C     Update is done insider the direct density call functions
 
 %(flavormapping)s
 
-C     The per-process GET_ALL_INTER writes the POS entries of its NHEL:
-C     hand it a copy, f2py passes a numpy array straight through.
+C     GET_ALL_INTER may overwrite NHEL at POS (the split-order
+C     one does): hand it a copy, f2py passes the numpy array.
   lnhel(:) = 0
   do i = 1, min(npdg, %(maxpart)i)
      lnhel(i) = nhel(i)
