@@ -481,6 +481,10 @@ extern "C"
       // events): ghel_jamps, whose size does not depend on ncolor_flow and nampso
       initialize(
         momenta, couplings, flavor_indices, matrix_elements, ghel_jamps, numerators, denominators, rounded_count );
+      // the good helicities reach dcGoodHel/dcNGoodHel through copies from pageable host
+      // memory, which may return before the device holds them: wait for them before the
+      // kernels of sigmaKin, on a stream that does not synchronise with the default one
+      checkGpu( gpuDeviceSynchronize() );
       instance->initialized = true;
     }
 
