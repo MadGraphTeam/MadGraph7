@@ -13066,7 +13066,8 @@ class MadSpinInterface(extended_cmd.Cmd):
             # When the ME legs use merged-particle IDs (apply_flavor_grouping
             # is on for MadSpin), smatrixhel still needs the concrete raw PDGs
             # from the event for the current permutation; otherwise it cannot
-            # pick the right flavor branch and returns 0.  See the analogous
+            # pick the right flavor branch and answers NaN (an ERROR line, no
+            # matrix element for those PDG codes).  See the analogous
             # logic in ReweightInterface.calculate_matrix_element.
             pdg_template = list(orig_order[0]) + list(orig_order[1])
             merged_particles = self.model.get('merged_particles') or {}

@@ -7725,25 +7725,26 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                     text.append(' call %s%%(fct_name)s' % prefix)
                 smtext.append(' call %ssmatrixhel(%s, nhel, %sget_flavor_index(flavor), ans)'
                               % (prefix, momenta, prefix))
-            # No PDG branch matched: try the folded crossings, as smatrixhel
-            # does, and otherwise report the miss (FOUND, see the template).
+            # No PDG branch matched: try the folded crossings, and otherwise
+            # report the miss (FOUND, see the template): every entry point
+            # answers NaN with an ERROR line for a process it does not serve.
             text.append(' else')
+            smtext.append(' else')
             if n_ext in crossed_next:
                 text.append(' call %(fct_cross)s')
+                smtext.append(' call %(f2py_prefix)sf77_crossed_smatrixhel('
+                              'pdgs, lpdgs, procid, npdg, p, nhel, ans, found)')
             else:
                 text.append(' found = .false.')
+                smtext.append(' found = .false.')
             text.append(' endif')
-            if n_ext in crossed_next:
-                smtext.append(' else')
-                smtext.append(' call %(f2py_prefix)sf77_crossed_smatrixhel('
-                              'pdgs, lpdgs, procid, npdg, p, nhel, ans)')
             smtext.append(' endif')
         #close the function
         if min_nexternal != max_nexternal:
-            text.append(' else')
-            text.append(' found = .false.')
-            text.append('endif')
-            smtext.append('endif')
+            for lines in (text, smtext):
+                lines.append(' else')
+                lines.append(' found = .false.')
+                lines.append('endif')
 
         # INTEGER declarations for the per-process GET_FLAVOR_INDEX functions
         # used inline by the smatrixhel dispatch (their name does not start with
@@ -7972,18 +7973,20 @@ C       stays correct for split-order processes.
         inside the initial or the final state are moved to GET_PDG_FOR_FLAVOR's
         order (F77_CROSSED_ORDER) when NHEL sums the helicities, as the base
         entries do with FLAVOR_ORDER_REPAIR: a single helicity row names its
-        legs by position, so such a call, or one no crossing serves, keeps
-        ANS = 0."""
+        legs by position, so such a call, or one no crossing serves, leaves
+        FOUND false (the dispatch then answers NaN, F77_NO_PROCESS_ANS)."""
         return self._crossed_dispatch_routine(
             ['      subroutine %sf77_crossed_smatrixhel(pdgs, lpdgs, procid,'
-             ' npdg, p, nhel, ans)' % f2py_prefix,
+             ' npdg, p, nhel, ans, found)' % f2py_prefix,
              '      implicit none',
              '      integer npdg, procid, nhel',
              '      integer pdgs(npdg), lpdgs(npdg)',
-             '      double precision p(0:3,npdg), ans'],
-            '      ans = 0d0',
+             '      double precision p(0:3,npdg), ans',
+             '      logical found'],
+            '      ans = 0d0\n      found = .false.',
             lambda prefix: ['              call %ssmatrixhel(pfix, nhel, idx,'
-                            ' ans)' % prefix],
+                            ' ans)' % prefix,
+                            '              found = .true.'],
             maxpart, f2py_prefix, ('nhel.lt.1', '0, nofrozen'))
 
     def crossed_density_routine(self, f2py_prefix, maxpart):

@@ -18,6 +18,7 @@ CF2PY double precision, intent(in) :: SCALE2
   double precision p(*)
   double precision ANS, ALPHAS, PI,SCALE2
   integer flavor(%(maxpart)i),lpdgs(%(maxpart)i),I
+  logical found
 %(flavor_index_decl)s
   include 'coupl.inc'
   
@@ -32,7 +33,11 @@ CF2PY double precision, intent(in) :: SCALE2
 
 %(flavormapping)s
 
+C     FOUND: as in f77_density (f77_crossed_smatrixhel for a
+C     folded crossing); a miss is NaN, not a vanishing |M|^2.
+  found = .true.
 %(smatrixhel)s
+  if (.not.found) call %(f2py_prefix)sf77_no_process_ans('smatrixhel', pdgs, npdg, procid, ans)
 
       return
       end
@@ -176,18 +181,30 @@ C     answer NaN, never a silent zero a caller could not tell
 C     from a vanishing density matrix. Legs must come in an
 C     order a matrix element tabulates (get_pdg_order, or for
 C     a folded crossing its GET_PDG_FOR_FLAVOR order).
-      USE, INTRINSIC :: IEEE_ARITHMETIC
       IMPLICIT NONE
       CHARACTER*(*) FCT
       INTEGER NPDG, PROCID, NINTER, I
       INTEGER PDGS(NPDG)
       DOUBLE COMPLEX INTER(NINTER)
       DOUBLE PRECISION XNAN
-      WRITE(*,*) 'ERROR: ', FCT, ': no matrix element for PDGS', (PDGS(I), I=1,NPDG), ' PROCID', PROCID, ': answer set to NaN'
-      XNAN = IEEE_VALUE(XNAN, IEEE_QUIET_NAN)
+      CALL %(f2py_prefix)sF77_NO_PROCESS_ANS(FCT, PDGS, NPDG, PROCID, XNAN)
       DO I = 1, NINTER
         INTER(I) = DCMPLX(XNAN, XNAN)
       ENDDO
+      RETURN
+      END
+
+      SUBROUTINE %(f2py_prefix)sF77_NO_PROCESS_ANS(FCT, PDGS, NPDG, PROCID, ANS)
+C     F77_NO_PROCESS for a single answer (smatrixhel): the
+C     ERROR line, and ANS = NaN.
+      USE, INTRINSIC :: IEEE_ARITHMETIC
+      IMPLICIT NONE
+      CHARACTER*(*) FCT
+      INTEGER NPDG, PROCID, I
+      INTEGER PDGS(NPDG)
+      DOUBLE PRECISION ANS
+      WRITE(*,*) 'ERROR: ', FCT, ': no matrix element for PDGS', (PDGS(I), I=1,NPDG), ' PROCID', PROCID, ': answer set to NaN'
+      ANS = IEEE_VALUE(ANS, IEEE_QUIET_NAN)
       RETURN
       END
 

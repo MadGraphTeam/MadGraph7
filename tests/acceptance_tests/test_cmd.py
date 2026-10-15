@@ -4274,6 +4274,7 @@ if mode == 'pdg':
                           allow_hel=allow, alphas=0.118, scale2=0.)) + \\
         cplx(m.py_get_all_inter(pdgs=arr, procid=-1, p=p, nhel=nhels[0],
                                 pos=pos, allow_hel=allow))
+    res['nomatch_sm'] = repr(m.smatrixhel(arr, -1, p, 0.118, 0., -1))
 json.dump(res, open(outfile, 'w'))
 '''
 
@@ -4324,7 +4325,7 @@ json.dump(res, open(outfile, 'w'))
         They used to return zeros for it: the PDG dispatch only knew the
         uncrossed processes. PDG codes that no process matches now give NaN
         (and an ERROR line) rather than zeros a caller cannot tell from a
-        vanishing density matrix.
+        vanishing density matrix, in smatrixhel as well.
         """
         import math
         folded_dir, expanded_dir = self._crossed_eej_outputs()
@@ -4349,7 +4350,9 @@ json.dump(res, open(outfile, 'w'))
             # 4 helicity combinations: 10 entries, density then all_inter
             self.assertEqual(len(res['nomatch']), 20)
             self.assertTrue(all(math.isnan(x) for z in res['nomatch'] for x in z))
+            self.assertEqual(res['nomatch_sm'], 'nan')
         self.assertIn('ERROR: py_get_density: no matrix element', out)
+        self.assertIn('ERROR: smatrixhel: no matrix element', out)
 
     # every ordering of u~ d~ > u~ d~ and d~ u~ > u~ d~ that only exchanges
     # legs inside the initial or the final state, at one phase-space point

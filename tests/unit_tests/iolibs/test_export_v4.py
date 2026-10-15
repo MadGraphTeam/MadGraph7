@@ -11192,7 +11192,7 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
         GET_DENSITY_IDX / GET_ALL_INTER_IDX (GET_ALL_INTER_SUMSO_IDX for a
         split-order matrix element) at the extended index, handing over the
         caller's NHEL copy; a miss everywhere goes to F77_NO_PROCESS (NaN)
-        rather than leaving zeros.
+        rather than leaving zeros, and smatrixhel's to F77_NO_PROCESS_ANS.
 
         A crossing row tabulates one leg order: smatrixhel summed over
         helicities and the density (its POS legs frozen) also accept the
@@ -11218,7 +11218,7 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
             self.assertIn('ELSECALLF77_CROSSED_GET_ALL_INTER(PDGS,LPDGS,'
                           'PROCID,NPDG,P,LNHEL,POS,', text)
             self.assertIn('ELSECALLF77_CROSSED_SMATRIXHEL(PDGS,LPDGS,PROCID,'
-                          'NPDG,P,NHEL,ANS)', text)
+                          'NPDG,P,NHEL,ANS,FOUND)', text)
             # second pass: smatrixhel only when summing the helicities, the
             # density with POS frozen, get_all_inter never
             for cond in ('NHEL.LT.1', '.TRUE.', '.FALSE.'):
@@ -11228,13 +11228,18 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
             self.assertEqual(text.count(
                 'LPDGS,0,NOFROZEN,IPASS.EQ.2,P,PFIX,SAME)'), 2)
             self.assertEqual(text.count('IF(.NOT.FOUND)CALLF77_NO_PROCESS('), 2)
-            self.assertIn('IEEE_VALUE(XNAN,IEEE_QUIET_NAN)', text)
+            self.assertEqual(text.count(
+                "IF(.NOT.FOUND)CALLF77_NO_PROCESS_ANS('smatrixhel',"), 1)
+            self.assertIn('ANS=IEEE_VALUE(ANS,IEEE_QUIET_NAN)', text)
+            # every crossed routine reports whether a crossing matched
+            self.assertEqual(text.count('FOUND=.TRUE.RETURN'), 3)
         # without a folded crossing there is nothing to fall back to: the
         # miss is reported straight away
         text = re.sub(r'\s+', '', self.write({81: [1, 2, 3, 4]}))
         self.assertNotIn('F77_CROSSED_DENSITY', text)
-        self.assertEqual(text.count('ELSEFOUND=.FALSE.'), 2)
+        self.assertEqual(text.count('ELSEFOUND=.FALSE.'), 3)
         self.assertEqual(text.count('IF(.NOT.FOUND)CALLF77_NO_PROCESS('), 2)
+        self.assertEqual(text.count('IF(.NOT.FOUND)CALLF77_NO_PROCESS_ANS('), 1)
 
     def test_split_order_get_all_inter_sums_the_split_orders(self):
         """A split-order GET_ALL_INTER fills INTER(NSQAMPSO,*), larger than

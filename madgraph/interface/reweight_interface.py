@@ -1798,7 +1798,10 @@ class ReweightInterface(extended_cmd.Cmd):
                         new_value = module.smatrixhel_idx(procindex, flav_idx, p,
                                                     event.aqcd, scale2, nhel)
                     #misc.sprint(new_value)
-                    if new_value == 0:
+                    # NaN: no matrix element of the module serves these PDG
+                    # codes (its ERROR line goes to the silenced stdout)
+                    if new_value == 0 or (isinstance(new_value, float)
+                                          and math.isnan(new_value)):
                         raise Exception("Invalid matrix element")
             # for loop we have also the stability status code
             if isinstance(new_value, tuple):
