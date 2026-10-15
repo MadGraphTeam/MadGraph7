@@ -96,10 +96,13 @@ CF2PY INTENT(OUT) :: NHEL_STAR(NEXTERNAL,NCOMB)
      &     ALLOW_HEL, N_COMB, FLAV_IDX, ALPHAS, SCALE2, INTER)
 C     Density matrix for an extended FLAV_IDX. PY_GET_DENSITY
 C     takes the FLAVOR array and so can only ever ask for an
-C     uncrossed density matrix; this is the only way to request
-C     a crossed one through f2py. Same CF2PY-before-declarations
-C     layout and same explicit INTER sizing as PY_GET_DENSITY --
-C     see the comments there, both matter.
+C     uncrossed density matrix; this is the per-process way to
+C     request a crossed one by its index (the combined module's
+C     PDG-keyed py_get_density reaches a folded crossing
+C     through f77_crossed_density). Same
+C     CF2PY-before-declarations layout and same explicit INTER
+C     sizing as PY_GET_DENSITY -- see the comments there, both
+C     matter.
       IMPLICIT NONE
 CF2PY double precision, intent(in), dimension(0:3,%(nexternal)d) :: P
 CF2PY integer, intent(in), dimension(*) :: POS

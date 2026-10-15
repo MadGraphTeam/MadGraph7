@@ -11040,13 +11040,18 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    def write(self, merged_particles, split_orders=False):
+    def write(self, merged_particles, split_orders=False, crossed_rows=()):
         """Run write_f2py_splitter for a single `q q > z q q` matrix element
         (5 legs, 2 incoming, 12 tabulated flavors) and return all_matrix.f with
-        the fortran continuations folded back into single lines."""
+        the fortran continuations folded back into single lines. crossed_rows
+        are the crossing-table rows of folded crossed subprocesses."""
         exporter = export_v4.ProcessExporterFortranSA(self.tmpdir)
         if split_orders:
             exporter.split_order_prefixes.add('M0_')
+        if crossed_rows:
+            exporter.crossing_records['M0_'] = (
+                list(crossed_rows), True,
+                dict((K, list(range(5))) for K in crossed_rows))
         exporter.model = self.FakeModel({'merged_particles': merged_particles,
                                          'parameters': {('external',): []},
                                          'running_elements': []})
@@ -11096,6 +11101,39 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
         for callee in ('M0_SMATRIXHEL(', 'M0_GET_DENSITY(', 'M0_GET_ALL_INTER('):
             self.assertIn('CALL %sP' % callee, text)
         self.assertIn('CALL M0_GET_ALL_INTER(P, LNHEL, POS,', text)
+
+    def test_folded_crossing_reaches_density_and_get_all_inter(self):
+        """py_get_density / py_get_all_inter fall back to the folded
+        crossings when no PDG branch matches, as smatrixhel does, through
+        GET_DENSITY_IDX / GET_ALL_INTER_IDX (GET_ALL_INTER_SUMSO_IDX for a
+        split-order matrix element) at the extended index, handing over the
+        caller's NHEL copy; a miss everywhere goes to F77_NO_PROCESS (NaN)
+        rather than leaving zeros."""
+        for split_orders, inter in ((False, 'M0_GET_ALL_INTER_IDX('),
+                                    (True, 'M0_GET_ALL_INTER_SUMSO_IDX(')):
+            text = re.sub(r'\s+', '', self.write(
+                {81: [1, 2, 3, 4]}, split_orders=split_orders,
+                crossed_rows=(1, 3)))
+            for name in ('SMATRIXHEL', 'DENSITY', 'GET_ALL_INTER'):
+                self.assertEqual(text.count(
+                    'SUBROUTINEF77_CROSSED_%s(' % name), 1)
+            self.assertIn('DATAM0_XROWS/1,3/', text)
+            self.assertIn('CALLM0_GET_DENSITY_IDX(P,POS,N_CHANGING,ALLOW_HEL,'
+                          'N_COMB,IDX,ALPHAS,SCALE2,INTER)', text)
+            self.assertIn('CALL%sP,NHEL,POS,N_CHANGING,ALLOW_HEL,N_COMB,IDX,'
+                          'INTER)' % inter, text)
+            self.assertIn('ELSECALLF77_CROSSED_DENSITY(PDGS,PROCID,NPDG,P,POS,',
+                          text)
+            self.assertIn('ELSECALLF77_CROSSED_GET_ALL_INTER(PDGS,PROCID,NPDG,'
+                          'P,LNHEL,POS,', text)
+            self.assertEqual(text.count('IF(.NOT.FOUND)CALLF77_NO_PROCESS('), 2)
+            self.assertIn('IEEE_VALUE(XNAN,IEEE_QUIET_NAN)', text)
+        # without a folded crossing there is nothing to fall back to: the
+        # miss is reported straight away
+        text = re.sub(r'\s+', '', self.write({81: [1, 2, 3, 4]}))
+        self.assertNotIn('F77_CROSSED_DENSITY', text)
+        self.assertEqual(text.count('ELSEFOUND=.FALSE.'), 2)
+        self.assertEqual(text.count('IF(.NOT.FOUND)CALLF77_NO_PROCESS('), 2)
 
     def test_split_order_get_all_inter_sums_the_split_orders(self):
         """A split-order GET_ALL_INTER fills INTER(NSQAMPSO,*), larger than
