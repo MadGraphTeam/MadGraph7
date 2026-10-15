@@ -16,10 +16,18 @@
 #include UMAMI_PROVIDER_HEADER
 
 typedef struct {
+    char *name;
+    double real, imaginary;
+} Override;
+
+typedef struct {
     char *artifact;
     RusticolRuntimeHandle **runtimes;
     double *momenta;
     double *helicity_values;
+    /* Parameters set so far, applied to the processes loaded later. */
+    Override *overrides;
+    size_t override_count;
 } Instance;
 
 static bool const supported_inputs[UMAMI_INPUT_KEY_COUNT] = {
@@ -103,7 +111,37 @@ static UmamiStatus load_process(Instance *instance, size_t process) {
                 umami_provider.id, entry->key);
         return UMAMI_ERROR;
     }
+    for (size_t i = 0; i < instance->override_count; ++i) {
+        Override const *override = &instance->overrides[i];
+        UmamiParameter const *known = parameter(process, override->name);
+        if (known == NULL) continue;
+        status = rusticol_runtime_set_model_parameter(runtime, override->name,
+            override->real, known->is_complex ? override->imaginary : 0.0);
+        if (status != RUSTICOL_STATUS_OK) {
+            (void)rusticol_runtime_free(runtime);
+            return native_error(status);
+        }
+    }
     instance->runtimes[process] = runtime;
+    return UMAMI_SUCCESS;
+}
+
+static UmamiStatus record_override(Instance *instance, char const *name,
+                                   double real, double imaginary) {
+    for (size_t i = 0; i < instance->override_count; ++i)
+        if (strcmp(instance->overrides[i].name, name) == 0) {
+            instance->overrides[i].real = real;
+            instance->overrides[i].imaginary = imaginary;
+            return UMAMI_SUCCESS;
+        }
+    Override *overrides = realloc(instance->overrides,
+                                  (instance->override_count + 1) * sizeof(*overrides));
+    if (overrides == NULL) return UMAMI_ERROR;
+    instance->overrides = overrides;
+    char *copy = malloc(strlen(name) + 1);
+    if (copy == NULL) return UMAMI_ERROR;
+    strcpy(copy, name);
+    overrides[instance->override_count++] = (Override){copy, real, imaginary};
     return UMAMI_SUCCESS;
 }
 
@@ -202,8 +240,7 @@ UmamiStatus umami_set_parameter(UmamiHandle handle, char const *name,
         if (entry == NULL) continue;
         found = true;
         if (!entry->mutable || (entry->is_complex && !isfinite(imaginary))) goto rollback;
-        status = load_process(instance, i);
-        if (status != UMAMI_SUCCESS) goto rollback;
+        if (instance->runtimes[i] == NULL) continue;
         status = native_error(rusticol_runtime_get_model_parameter(
             instance->runtimes[i], name, &previous[2*i], &previous[2*i+1]));
         if (status != UMAMI_SUCCESS) goto rollback;
@@ -212,6 +249,8 @@ UmamiStatus umami_set_parameter(UmamiHandle handle, char const *name,
         if (status != UMAMI_SUCCESS) goto rollback;
         changed[i] = true;
     }
+    if (found && record_override(instance, name, real, imaginary) != UMAMI_SUCCESS)
+        goto rollback;
     free(previous); free(changed);
     return found ? UMAMI_SUCCESS : UMAMI_ERROR;
 rollback:
@@ -388,6 +427,8 @@ UmamiStatus umami_free(UmamiHandle handle) {
     if (instance->runtimes != NULL)
         for (size_t i = 0; i < umami_provider.process_count; ++i)
             if (instance->runtimes[i] != NULL) (void)rusticol_runtime_free(instance->runtimes[i]);
+    for (size_t i = 0; i < instance->override_count; ++i) free(instance->overrides[i].name);
+    free(instance->overrides);
     free(instance->runtimes); free(instance->momenta); free(instance->helicity_values);
     free(instance->artifact); free(instance);
     return UMAMI_SUCCESS;
