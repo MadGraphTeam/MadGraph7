@@ -614,7 +614,11 @@ class TestHelRecyclingWarmup(unittest.TestCase):
                             'HEL/ZEROAMP: 1 1 2',
                             'Matrix element = 1.0 GeV^-2'])
         self.assertEqual(ProcessExporterMadMatrixStandalone._parse_hel_warmup(output),
-                         ([1, 3], [(1, 2), (3, 7)]))
+                         ([1, 3], [(1, 2), (3, 7)], []))
+        # a crossing the probe could only scan off shell is reported
+        self.assertEqual(ProcessExporterMadMatrixStandalone._parse_hel_warmup(
+                             output + '\nHEL/OFFSHELL: 4\nHEL/OFFSHELL: 2')[2],
+                         [2, 4])
 
 
 class TestCrossingHelicityFactor(unittest.TestCase):

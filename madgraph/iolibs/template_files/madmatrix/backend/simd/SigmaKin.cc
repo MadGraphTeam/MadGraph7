@@ -411,6 +411,7 @@ namespace madmatrix
   static std::vector<double> hrProbeAbs2;           // |amp|^2 at the current point, by amplitude number
   static std::vector<std::vector<char>> hrProbeSeen;  // [ihel][namp]: evaluated at this helicity
   static std::vector<std::vector<char>> hrProbeAlive; // [ihel][namp]: not a cancellation zero
+  static std::vector<int> hrProbeOffShell;             // crossings scanned on points off shell for them
   inline void
   hr_probe_record( const int namp, const cxtype_amp_sv& amp )
   {
@@ -699,12 +700,13 @@ namespace madmatrix
   // one-minus helicities of a purely gluonic process, 12 of the 32 of g g > g g g --
   // so that every evaluation then computed them for nothing.
   //
-  // Not for a crossing that moves a massive leg into a slot of another mass
-  // (xonshell_tab 0). Every crossing is scanned on the points of the base
-  // process (choose_good_helicities), which are off shell for that one, and a
-  // row it needs can come out at rounding level there: a longitudinal Z fed a
-  // lightlike momentum is proportional to it. A relative test would drop that
-  // row for every event, so there a helicity is good when it is not exactly 0.
+  // Every crossing is scanned on points of its own masses (scan_points in
+  // umami.cc, scan_block below). Without them -- a batch that only has points
+  // of the base process -- a crossing that moves a massive leg into a slot of
+  // another mass (xonshell_tab 0) is off shell, and a row it needs can come out
+  // at rounding level there: a longitudinal Z fed a lightlike momentum is
+  // proportional to it. A relative test would drop that row for every event, so
+  // there a helicity is good when it is not exactly 0.
 #ifndef MG_HR_PROBE
   constexpr double limhel = 1e-8;
 #else
@@ -717,6 +719,22 @@ namespace madmatrix
 #endif
 
   //--------------------------------------------------------------------------
+
+  // The first event of the points crossing `cross` is scanned on: its own block
+  // of the batch when it has one -- events cross*goodHelScanEvents on, every one
+  // of them of this crossing, as scan_points (umami.cc) makes them at the
+  // crossing's own masses -- or -1, the first events then, which are the base
+  // process's (an API caller's first batch, a crossing without phase space).
+  inline int
+  scan_block( const int cross, const unsigned int* iflavorVec, const int nevt )
+  {
+    if( cross == 0 ) return 0;
+    const int ievt0 = cross * goodHelScanEvents;
+    if( iflavorVec == nullptr || nevt < ievt0 + goodHelScanEvents ) return -1;
+    for( int ievt = ievt0; ievt < ievt0 + goodHelScanEvents; ievt++ )
+      if( iflavorVec[ievt] / (unsigned int)nmaxflavor != (unsigned int)cross ) return -1;
+    return ievt0;
+  }
 
   void
   sigmaKin_getGoodHel( const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
@@ -750,7 +768,8 @@ namespace madmatrix
     // flavors (extra helicities simply contribute 0 for a given flavor at run
     // time, exactly as in the scalar standalone_cpp per-flavor good-hel filter).
     for( int ihel = 0; ihel < ncomb; ihel++ ) isGoodHel[ihel] = false;
-    (void)iflavorVec; // flavor is forced below to scan every flavor combination
+    // the flavor is forced below to scan every flavor combination; iflavorVec
+    // only says where each crossing's own points are (scan_block)
     unsigned int hgFlavorVec[maxtry0] = {}; // forced single-flavor index buffer
     // |M|^2 of every helicity at every sampled event (of the current extended
     // flavor id), compared at the end to the sum over helicities at the same event
@@ -773,11 +792,12 @@ namespace madmatrix
     // Crossing: sample every extended flavor id, i.e. every row of the
     // crossing table -- the crossings this ME records (every applicable one
     // only with --crossing_table=all) -- times every flavor, and OR them into
-    // the one list: each crossing is evaluated in its own frame, where a
-    // massive leg can need a row the base does not. Each row costs a full ncomb-helicity
-    // calculate_jamps scan, which is why the table carries no merely
-    // applicable crossing by default (scanning those was a 46x one-off
-    // startup cost on g g > t t~ g g g: 48 applicable, 0 recorded).
+    // the one list: each crossing is evaluated in its own frame, at its own
+    // masses, where a massive leg can need a row the base does not. Each row
+    // costs a full ncomb-helicity calculate_jamps scan, which is why the
+    // table carries no merely applicable crossing by default (scanning those
+    // was a 46x one-off startup cost on g g > t t~ g g g: 48 applicable, 0
+    // recorded).
     constexpr int nscan = use_crossing ? ProcessTables::ncross * nmaxflavor : nmaxflavor;
     for( int iflav = 0; iflav < nscan; ++iflav )
     {
@@ -787,6 +807,17 @@ namespace madmatrix
       if( spincol_cross( xcross ) == 0 ) continue;
     }
     for( int i = 0; i < maxtry0; ++i ) hgFlavorVec[i] = (unsigned int)iflav;
+    // the points of this crossing: whole pages of the batch, so its momenta and
+    // couplings start at a page boundary
+    static_assert( goodHelScanEvents % MemoryAccessMomentaBase::neppM == 0 );
+    const int iscan = scan_block( xcross, iflavorVec, nevt );
+    const size_t iscan0 = iscan > 0 ? (size_t)iscan : 0;
+    const fptype_momenta* scanMomenta = allmomenta + iscan0 * npar * np4;
+    const fptype* scanCouplings = allcouplings + iscan0 * ndcoup * 2;
+#ifdef MG_HR_PROBE
+    // the recycled build would drop the amplitudes measured off shell
+    if( iscan < 0 && !xonshell_tab[xcross] ) hrProbeOffShell.push_back( xcross );
+#endif
     for( int ipagV2 = 0; ipagV2 < npagV2; ++ipagV2 )
     {
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT /* clang-format off */
@@ -812,7 +843,7 @@ namespace madmatrix
 #else
         cxtype_amp_sv jamp_sv[njampso] = {}; // all zeros
 #endif
-        calculate_jamps( cHel[ihel], allmomenta, allcouplings, hgFlavorVec, jamp_sv, false, allNumerators, allDenominators, jamp2_sv, ievt00 );
+        calculate_jamps( cHel[ihel], scanMomenta, scanCouplings, hgFlavorVec, jamp_sv, false, allNumerators, allDenominators, jamp2_sv, ievt00 );
 #ifdef MG_HR_PROBE
         // file this evaluation's amplitudes under its helicity row: here, as
         // calculate_jamps only sees the row it was handed, not its number
@@ -871,7 +902,7 @@ namespace madmatrix
     // of the sum over helicities at one of the events -- not exactly 0 where the
     // points are off shell for the crossing (see limhel) -- OR-ed over the ids:
     // one list for every crossing
-    const double relhel = xonshell_tab[xcross] ? limhel : 0.;
+    const double relhel = ( iscan >= 0 || xonshell_tab[xcross] ) ? limhel : 0.;
     for( int ievt = 0; ievt < maxtry; ++ievt )
     {
       fptype sumhel = 0;
@@ -933,6 +964,8 @@ namespace madmatrix
     // run time asks for and the table lacks is computed without recycling.
     if( getenv( "MG_DUMP_GOODHEL" ) != nullptr )
     {
+      for( int cross : hrProbeOffShell )
+        printf( "HEL/OFFSHELL: %d\n", cross );
       for( int ighel = 0; ighel < cNGoodHel; ighel++ )
         printf( "Matrix Element/Good Helicity: %d %d\n", 1, cGoodHel[ighel] + 1 );
       for( int ighel = 0; ighel < cNGoodHel; ighel++ )

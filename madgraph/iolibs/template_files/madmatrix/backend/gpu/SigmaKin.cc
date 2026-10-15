@@ -433,6 +433,22 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  // The first event of the points crossing `cross` is scanned on: its own block
+  // of the batch, or -1 for the first events (the host copy of backend/cpu
+  // scan_block, which reads the flavor ids of the block from the device).
+  inline int
+  scan_block( const int cross, const unsigned int* devFlavorVec, const int nevt )
+  {
+    if( cross == 0 ) return 0;
+    const int ievt0 = cross * goodHelScanEvents;
+    if( devFlavorVec == nullptr || nevt < ievt0 + goodHelScanEvents ) return -1;
+    unsigned int ids[goodHelScanEvents];
+    gpuMemcpy( ids, devFlavorVec + ievt0, goodHelScanEvents * sizeof( unsigned int ), gpuMemcpyDeviceToHost );
+    for( int ievt = 0; ievt < goodHelScanEvents; ievt++ )
+      if( ids[ievt] / (unsigned int)nmaxflavor != (unsigned int)cross ) return -1;
+    return ievt0;
+  }
+
   void /* clang-format off */
   sigmaKin_getGoodHel( const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
                        const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]
@@ -451,15 +467,17 @@ namespace madmatrix
     // flavor combination on the same momenta and OR the result, so cGoodHel is
     // the union over all flavors (see the C++ branch below for the rationale).
     for( int ihel = 0; ihel < ncomb; ihel++ ) isGoodHel[ihel] = false;
-    (void)iflavorVec; // flavor is forced below to scan every flavor combination
+    // the flavor is forced below to scan every flavor combination; iflavorVec
+    // only says where each crossing's own points are (scan_block)
     unsigned int hstFlavorVec[maxtry0] = {};
     // |M|^2 of every helicity at every sampled event (of the current flavor): a
     // helicity is good if, at one event, it is above limhel/ncomb of the sum over
     // helicities there -- madevent's filter (matrix_madevent_group_v4.inc, limhel
     // its hidden run_card parameter, 1e-8 by default). Comparing to an exact 0 kept
-    // the helicities whose amplitudes only cancel to rounding. Not for a crossing
-    // the base points are off shell for (xonshell_tab 0, see backend/cpu): a row
-    // it needs can come out at rounding level there, so not exactly 0 is good.
+    // the helicities whose amplitudes only cancel to rounding. Each crossing is
+    // scanned on points of its own masses; without them, a crossing the base
+    // points are off shell for (xonshell_tab 0, see backend/cpu) can need a row
+    // that comes out at rounding level there, so not exactly 0 is good.
     constexpr double limhel = 1e-8;
     std::vector<fptype> helMEs( (size_t)ncomb * maxtry0, 0. );
     unsigned int* devFlavorVec = nullptr;
@@ -471,6 +489,13 @@ namespace madmatrix
     {
     for( int i = 0; i < maxtry; ++i ) hstFlavorVec[i] = (unsigned int)iflav;
     gpuMemcpy( devFlavorVec, hstFlavorVec, maxtry * sizeof( unsigned int ), gpuMemcpyHostToDevice );
+    // the points of this crossing: whole pages of the batch, so its momenta and
+    // couplings start at a page boundary
+    static_assert( goodHelScanEvents % MemoryAccessMomentaBase::neppM == 0 );
+    const int iscan = scan_block( iflav / nmaxflavor, iflavorVec, nevt );
+    const size_t iscan0 = iscan > 0 ? (size_t)iscan : 0;
+    const fptype_momenta* scanMomenta = allmomenta + iscan0 * npar * np4;
+    const fptype* scanCouplings = allcouplings + iscan0 * ndcoup * 2;
     for( int ihel = 0; ihel < ncomb; ihel++ )
     {
       const int gpublocks = 1;
@@ -481,13 +506,13 @@ namespace madmatrix
       gpuMemset( allMEs, 0, maxtry * sizeof( fptype ) );
       // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
       constexpr fptype_amp_sv* allJamp2s = nullptr; // no need for color selection during helicity filtering
-      gpuLaunchKernel( calculate_jamps, gpublocks, gputhreads, ihel, allmomenta, allcouplings, devFlavorVec, allJamps, false, allNumerators, allDenominators, allJamp2s, gpublocks * gputhreads, false );
+      gpuLaunchKernel( calculate_jamps, gpublocks, gputhreads, ihel, scanMomenta, scanCouplings, devFlavorVec, allJamps, false, allNumerators, allDenominators, allJamp2s, gpublocks * gputhreads, false );
       gpuLaunchKernel( color_sum_kernel, gpublocks, gputhreads, allMEs, allJamps, nOneHel, 0 );
       gpuMemcpy( hstMEs, allMEs, maxtry * sizeof( fptype ), gpuMemcpyDeviceToHost );
       for( int ievt = 0; ievt < maxtry; ++ievt )
         helMEs[(size_t)ihel * maxtry0 + ievt] = hstMEs[ievt];
     }
-    const double relhel = xonshell_tab[iflav / nmaxflavor] ? limhel : 0.;
+    const double relhel = ( iscan >= 0 || xonshell_tab[iflav / nmaxflavor] ) ? limhel : 0.;
     for( int ievt = 0; ievt < maxtry; ++ievt )
     {
       fptype sumhel = 0;

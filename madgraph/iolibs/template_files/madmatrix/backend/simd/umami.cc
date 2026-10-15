@@ -7,6 +7,7 @@
 #include "umami.h"
 
 #include "ProcessData.h"
+#include "ProcessTables.h" // the crossing rows (choose_good_helicities)
 #include "CPPProcess.h" // needed to construct/initProc the process object (umami_initialize)
 #include "SigmaKin.h" // sigmaKin_getGoodHel/setGoodHel
 #include "MemoryAccessMomenta.h"
@@ -119,6 +120,48 @@ namespace
 
   std::vector<double> g_externalMasses;
 
+  // The good-helicity scan points: goodHelScanEvents RAMBO points per row of the
+  // crossing table, block K (events K*goodHelScanEvents on) at the masses of
+  // crossing K -- its input slot k carries the mass of the base slot it is fed
+  // to -- and with its extended id K*nmaxflavor, which is how sigmaKin_getGoodHel
+  // finds it. The base points serve a crossing that moves no mass. A crossing
+  // that does needs its own: a massive leg in a massless slot is off shell on the
+  // base points, where a row it needs can vanish to rounding. A crossing with no
+  // phase space at its masses gets the base points under the base id instead,
+  // which getGoodHel scans the conservative way. Returns the number of events, 0
+  // when the base process itself has no phase space.
+  std::size_t scan_points( std::vector<double>& momenta, std::vector<unsigned int>& flavor_indices )
+  {
+    constexpr std::size_t nevt = goodHelScanEvents;
+    constexpr int npar = ProcessData::npar;
+    constexpr int nblock = ProcessTables::use_crossing ? ProcessTables::ncross : 1;
+    const std::vector<double> base = rambo::helicity_scan_points( ProcessData::npari, g_externalMasses, nevt );
+    if( base.empty() ) return 0;
+    const std::size_t count = nblock * nevt;
+    momenta.assign( count * npar * 4, 0. );
+    flavor_indices.assign( count, 0 );
+    for( int cross = 0; cross < nblock; ++cross )
+    {
+      std::vector<double> own;
+      if( cross > 0 && !ProcessTables::xonshell_tab[cross] )
+      {
+        std::vector<double> masses( npar );
+        for( int k = 0; k < npar; ++k ) masses[k] = g_externalMasses[ProcessTables::xmass_slot_tab[cross * npar + k]];
+        own = rambo::helicity_scan_points( ProcessData::npari, masses, nevt );
+      }
+      const bool use_base = own.empty();
+      const std::vector<double>& points = use_base ? base : own;
+      const bool own_id = cross == 0 || ProcessTables::xonshell_tab[cross] || !use_base;
+      for( std::size_t ievt = 0; ievt < nevt; ++ievt )
+      {
+        const std::size_t jevt = cross * nevt + ievt;
+        flavor_indices[jevt] = own_id ? cross * ProcessData::nmaxflavor : 0;
+        for( int i = 0; i < npar * 4; ++i ) momenta[count * i + jevt] = points[nevt * i + ievt];
+      }
+    }
+    return count;
+  }
+
   // The helicity filter (sigmaKin_getGoodHel) runs once per library and keeps a
   // helicity if its |M|^2 is not 0 for one of the first events. Run at the first
   // umami_matrix_element call, it depended on what that call held: a first batch of
@@ -126,22 +169,22 @@ namespace
   // u u~ > e+ e-, say), dropped them for the rest of the run, and every later |M|^2
   // was wrong. It runs instead here, at initialization, on RAMBO points, half of
   // them boosted (rambo::helicity_scan_points). The filter evaluates every flavor
-  // and every crossing of the table on these base-process points, into the one
-  // good-helicity list all of them share (a crossing that moves a massive leg is
-  // off shell there: at most a few extra helicities, none missing). Where RAMBO has
-  // no phase space (2 > 1, a decay below threshold), this does nothing and the
+  // and every crossing of the table, into the one good-helicity list all of them
+  // share, each crossing on points of its own masses (scan_points). Where RAMBO
+  // has no phase space (2 > 1, a decay below threshold), this does nothing and the
   // first call still chooses.
   void choose_good_helicities( UmamiHandle handle )
   {
-    constexpr std::size_t nevt = goodHelScanEvents; // the events sigmaKin_getGoodHel looks at
-    const std::vector<double> momenta = rambo::helicity_scan_points( ProcessData::npari, g_externalMasses, nevt );
-    if( momenta.empty() ) return;
-    std::vector<double> matrix_elements( nevt );
-    const UmamiInputKey input_keys[] = { UMAMI_IN_MOMENTA };
-    const void* inputs[] = { momenta.data() };
+    std::vector<double> momenta;
+    std::vector<unsigned int> flavor_indices;
+    const std::size_t count = scan_points( momenta, flavor_indices );
+    if( count == 0 ) return;
+    std::vector<double> matrix_elements( count );
+    const UmamiInputKey input_keys[] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX };
+    const void* inputs[] = { momenta.data(), flavor_indices.data() };
     const UmamiOutputKey output_keys[] = { UMAMI_OUT_MATRIX_ELEMENT };
     void* outputs[] = { matrix_elements.data() };
-    umami_matrix_element( handle, nevt, nevt, 0, 1, input_keys, inputs, 1, output_keys, outputs );
+    umami_matrix_element( handle, count, count, 0, 2, input_keys, inputs, 1, output_keys, outputs );
   }
 
 }

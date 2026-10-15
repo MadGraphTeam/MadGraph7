@@ -471,8 +471,9 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                     continue
                 # what the probe records is the good-helicity scan that
                 # umami_initialize runs (goodHelScanEvents: 64 RAMBO points
-                # under MG_HR_PROBE, half of them boosted) over every extended
-                # flavor id; any perf run triggers it
+                # under MG_HR_PROBE, half of them boosted, per crossing at its
+                # own masses) over every extended flavor id; any perf run
+                # triggers it
                 env = dict(os.environ, MG_DUMP_GOODHEL='1')
                 run = subprocess.run([pjoin(dirpath, 'check_sa.exe'), 'perf',
                                       '1', '64', '1'],
@@ -483,7 +484,15 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                     logger.warning('hel_recycling warm-up run failed in %s; it is '
                                    'written without recycling.', name)
                     continue
-                good_hels, zero_perhel = self._parse_hel_warmup(output)
+                good_hels, zero_perhel, offshell = self._parse_hel_warmup(output)
+                if offshell:
+                    # its vanishing amplitudes were measured off shell, and the
+                    # recycled build has no fallback for one it dropped
+                    logger.warning('hel_recycling warm-up has no points at the '
+                        'masses of crossing %s in %s (no phase space); it is '
+                        'written without recycling.',
+                        ', '.join(str(k) for k in offshell), name)
+                    continue
                 if not good_hels:
                     logger.warning('hel_recycling warm-up found no helicity in %s; '
                                    'it is written without recycling.', name)
@@ -502,17 +511,20 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
 
     @staticmethod
     def _parse_hel_warmup(output):
-        """The good helicities (1-based rows of cHel) and the (row, amplitude)
+        """The good helicities (1-based rows of cHel), the (row, amplitude)
         pairs that vanish, as printed by sigmaKin_setGoodHel under MG_HR_PROBE --
-        the protocol madevent's helicity filter prints."""
-        good, zeros = [], []
+        the protocol madevent's helicity filter prints -- and the crossing rows
+        that were scanned on points off shell for them (HEL/OFFSHELL)."""
+        good, zeros, offshell = [], [], []
         for line in output.splitlines():
             if line.startswith('Matrix Element/Good Helicity:'):
                 good.append(int(line.split()[-1]))
             elif line.startswith('HEL/ZEROAMP:'):
                 _me, hel, amp = line.split()[1:4]
                 zeros.append((int(hel), int(amp)))
-        return sorted(set(good)), sorted(set(zeros))
+            elif line.startswith('HEL/OFFSHELL:'):
+                offshell.append(int(line.split()[1]))
+        return sorted(set(good)), sorted(set(zeros)), sorted(set(offshell))
 
     @staticmethod
     def _clean_warmup_build(dirpath):

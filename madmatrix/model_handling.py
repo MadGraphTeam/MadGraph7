@@ -2286,15 +2286,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         so = export_v4.split_order_tables(self.matrix_elements[0])
         if so and so['nampso'] > 1:
             return 'split amplitude orders'
-        # The warm-up measures the vanishing amplitudes of every crossing on the
-        # points of the base process, and the recycled build has no fallback
-        # for an amplitude it dropped. A crossing that puts a massive leg into
-        # a slot of another mass is off shell there.
-        if getattr(self, 'use_crossing', False) and \
-                not all(self.crossing_rows_on_shell(self.matrix_elements[0])):
-            return ('a crossing that moves a massive leg into a slot of another '
-                    'mass (its vanishing amplitudes cannot be measured at its own '
-                    'masses; --use_crossing=False recycles each process)')
+        # A crossing that moves a massive leg into a slot of another mass is
+        # scanned by the warm-up on points of its own masses. When it has none
+        # (a crossed decay with no phase space) the warm-up says so and the
+        # directory is written without recycling (_run_hel_recycling_warmups).
         return None
 
     def hr_orig_calls(self, color_amplitudes):
@@ -3132,6 +3127,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 "    __device__ constexpr int xsgni_tab[ProcessData::npar] = %(ones)s;\n"
                 "    __device__ constexpr int xspincol_tab[ncross] = {};\n"
                 "    constexpr int xonshell_tab[ncross] = { 1 };\n"
+                "    constexpr int xmass_slot_tab[ProcessData::npar] = %(identity)s;\n"
                 "    __device__ constexpr int ids_base[ProcessData::npar] = {};\n"
                 "    __device__ constexpr int antipid_base[ProcessData::npar] = {};\n"
                 "    __device__ constexpr int countable_tab[ProcessData::npar] = {};\n"
@@ -3201,6 +3197,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             "    // massive leg moves into a slot of another mass (host only, read by the\n"
             "    // good-helicity scan, see limhel in backend/<variant>/SigmaKin.cc)\n"
             "    constexpr int xonshell_tab[ncross] = %(xonshell)s;\n"
+            "    // host copy of xpinv_tab: input slot k of row K carries the mass of\n"
+            "    // base slot xmass_slot_tab[K*npar+k], the masses the good-helicity\n"
+            "    // scan makes the row's own points at (choose_good_helicities, umami.cc)\n"
+            "    constexpr int xmass_slot_tab[ncross * ProcessData::npar] = %(xpinv)s;\n"
             "    // per-leg flavor-group representative PDG, and its charge conjugate\n"
             "    __device__ constexpr int ids_base[ProcessData::npar] = %(ids_base)s;\n"
             "    __device__ constexpr int antipid_base[ProcessData::npar] = %(antipid_base)s;\n"

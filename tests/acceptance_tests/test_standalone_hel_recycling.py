@@ -674,13 +674,12 @@ class TestCppHelRecyclingCrossing(unittest.TestCase):
             return struct.unpack('<%d%s' % (len(data) // struct.calcsize(fmt), fmt), data)
         return read(out['me'], 'd'), read(out['hel'], 'i'), read(out['col'], 'i')
 
-    def test_pp_jj_recycled_crossings(self):
-        """p p > j j: every crossing row of each folded directory, mixed in
-        one page, recycled == not recycled"""
-        self._generate('p p > j j', [('plain', ''),
-                                     ('recycled', '--hel_recycling=True')])
+    def _compare_recycled(self, plain_name, recycled_name):
+        """Every crossing row of each directory, mixed in one page: recycled ==
+        not recycled event by event. Returns the number of directories that
+        fold a crossing."""
         ncrossed = 0
-        for plain, recycled in zip(self._pdirs('plain'), self._pdirs('recycled')):
+        for plain, recycled in zip(self._pdirs(plain_name), self._pdirs(recycled_name)):
             self.assertEqual(os.path.basename(plain), os.path.basename(recycled))
             calls = pjoin(recycled, 'HelRecyclingCalls.inc')
             self.assertTrue(os.path.exists(calls),
@@ -704,17 +703,28 @@ class TestCppHelRecyclingCrossing(unittest.TestCase):
                 self.assertEqual((hel1[i], col1[i]), (hel0[i], col0[i]),
                                  '%s event %d (id %d): helicity/colour'
                                  % (os.path.basename(plain), i, ids[i]))
-        self.assertGreater(ncrossed, 0, 'no directory folds a crossing')
+        return ncrossed
 
-    def test_off_shell_crossing_scan_is_refused(self):
+    def test_pp_jj_recycled_crossings(self):
+        """p p > j j: every crossing row of each folded directory, mixed in
+        one page, recycled == not recycled"""
+        self._generate('p p > j j', [('plain', ''),
+                                     ('recycled', '--hel_recycling=True')])
+        self.assertGreater(self._compare_recycled('plain', 'recycled'), 0,
+                           'no directory folds a crossing')
+
+    def test_off_shell_crossing_recycled(self):
         """--crossing_table=all puts the z of p p > z j into the initial
-        state: the warm-up would measure its zero amplitudes off shell, so the
-        directory is written without recycling (and says so)"""
-        self._generate('p p > z j', [('all', '--hel_recycling=True '
-                                             '--crossing_table=all')])
-        for pdir in self._pdirs('all'):
+        state, a slot of another mass: the warm-up scans that crossing on
+        points of its own masses, so the directory is recycled, and agrees
+        with the plain build for every crossing"""
+        self._generate('p p > z j', [('plain', '--crossing_table=all'),
+                                     ('recycled', '--hel_recycling=True '
+                                                  '--crossing_table=all')])
+        for pdir in self._pdirs('recycled'):
             tables = open(pjoin(pdir, 'ProcessTables.h')).read()
             onshell = re.search(r'xonshell_tab\[ncross\] = \{([^}]*)\}', tables)
             self.assertTrue(onshell, tables)
             self.assertIn('0', [x.strip() for x in onshell.group(1).split(',')])
-            self.assertFalse(os.path.exists(pjoin(pdir, 'HelRecycling.inc')))
+        self.assertGreater(self._compare_recycled('plain', 'recycled'), 0,
+                           'no directory folds a crossing')
