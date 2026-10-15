@@ -487,6 +487,12 @@ namespace madmatrix
     constexpr int nscan = use_crossing ? ProcessTables::ncross * nmaxflavor : nmaxflavor;
     for( int iflav = 0; iflav < nscan; ++iflav )
     {
+    if constexpr( use_crossing )
+    {
+      // a placeholder row serves no process (xspincol_tab 0, read on the
+      // host through its copy): skipped, as backend/cpu does
+      if( xspincol_host_tab[iflav / nmaxflavor] == 0 ) continue;
+    }
     for( int i = 0; i < maxtry; ++i ) hstFlavorVec[i] = (unsigned int)iflav;
     gpuMemcpy( devFlavorVec, hstFlavorVec, maxtry * sizeof( unsigned int ), gpuMemcpyHostToDevice );
     // the points of this crossing: whole pages of the batch, so its momenta and
