@@ -672,14 +672,21 @@ namespace madmatrix
   // every helicity whose amplitudes only cancel to rounding -- the all-plus and
   // one-minus helicities of a purely gluonic process, 12 of the 32 of g g > g g g --
   // so that every evaluation then computed them for nothing.
+  //
+  // Not for a crossing that moves a massive leg into a slot of another mass
+  // (xonshell_tab 0). Every crossing is scanned on the points of the base
+  // process (choose_good_helicities), which are off shell for that one, and a
+  // row it needs can come out at rounding level there: a longitudinal Z fed a
+  // lightlike momentum is proportional to it. A relative test would drop that
+  // row for every event, so there a helicity is good when it is not exactly 0.
 #ifndef MG_HR_PROBE
   constexpr double limhel = 1e-8;
 #else
-  // The --hel_recycling warm-up bakes the rows it finds into the recycled table,
-  // and the run time cannot add one (hr_unbaked_row): a row baked for nothing
-  // only costs time, a missing one loses physics. So the probe keeps every row
-  // above a much lower threshold -- still far above a rounding residual
-  // (~1e-30 of the sum) -- and samples more events than the run-time scan does.
+  // The --hel_recycling warm-up bakes the rows it finds into the recycled table.
+  // A row the run time asks for and the table lacks is still computed, without
+  // recycling (load_jamps), but at a cost on every event. So the probe keeps
+  // every row above a much lower threshold -- still far above a rounding
+  // residual (~1e-30 of the sum) -- on more events (goodHelScanEvents).
   constexpr double limhel = 1e-14;
 #endif
 
@@ -834,14 +841,17 @@ namespace madmatrix
       }
       cCsymScanned = true; // a full ncomb-row comparison has been made
     }
-    // a helicity is good for this flavor if it is above limhel/ncomb of the sum
-    // over helicities at one of the events (see limhel)
+    // a helicity is good for this extended flavor id if it is above limhel/ncomb
+    // of the sum over helicities at one of the events -- not exactly 0 where the
+    // points are off shell for the crossing (see limhel) -- OR-ed over the ids:
+    // one list for every crossing
+    const double relhel = xonshell_tab[xcross] ? limhel : 0.;
     for( int ievt = 0; ievt < maxtry; ++ievt )
     {
       fptype sumhel = 0;
       for( int ihel = 0; ihel < ncomb; ihel++ ) sumhel += std::abs( helMEs[(size_t)ihel * maxtry0 + ievt] );
       for( int ihel = 0; ihel < ncomb; ihel++ )
-        if( std::abs( helMEs[(size_t)ihel * maxtry0 + ievt] ) > sumhel * limhel / ncomb ) isGoodHel[ihel] = true;
+        if( std::abs( helMEs[(size_t)ihel * maxtry0 + ievt] ) > sumhel * relhel / ncomb ) isGoodHel[ihel] = true;
     }
     } // end loop over flavor combinations (per-flavor good-helicity union)
   }

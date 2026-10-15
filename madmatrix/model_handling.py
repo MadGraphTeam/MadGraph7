@@ -3054,6 +3054,17 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     # subprocess (see ProcessExporterMG7.generate_subprocess_directory): only
     # the identity could be asked for, and the plain path computes it.
     # ------------------------------------------------------------------
+    def crossing_rows_on_shell(self, matrix_element):
+        """Per crossing-table row, 1 when the points of the base process (its
+        masses, slot by slot: RAMBO in umami_initialize, check_sa) are on shell
+        for that crossing, i.e. input slot k and the base leg it is fed to
+        (D[k]) carry the same mass; 0 when a massive leg moves into a slot of
+        another mass (--crossing_table=all, or a process like u g > u z
+        folded onto u u~ > z g with z in another slot)."""
+        masses = [wf.get('mass') for wf in matrix_element.get_external_wavefunctions()]
+        return [int(all(masses[k] == masses[row.D[k]] for k in range(len(masses))))
+                for row in self.get_crossing_table(matrix_element)]
+
     def get_madmatrix_crossing_tables(self, matrix_element):
         """ProcessTables.h 'crossing_tables' and CPPProcess.cc 'flavorpdg_body'."""
 
@@ -3082,6 +3093,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 "    __device__ constexpr int xpinv_tab[ProcessData::npar] = %(identity)s;\n"
                 "    __device__ constexpr int xsgni_tab[ProcessData::npar] = %(ones)s;\n"
                 "    __device__ constexpr int xspincol_tab[ncross] = {};\n"
+                "    constexpr int xonshell_tab[ncross] = { 1 };\n"
                 "    __device__ constexpr int ids_base[ProcessData::npar] = {};\n"
                 "    __device__ constexpr int antipid_base[ProcessData::npar] = {};\n"
                 "    __device__ constexpr int countable_tab[ProcessData::npar] = {};\n"
@@ -3147,6 +3159,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             "    __device__ constexpr int xsgni_tab[ncross * ProcessData::npar] = %(xsgni)s;\n"
             "    // initial-state spin*colour average of the crossed process\n"
             "    __device__ constexpr int xspincol_tab[ncross] = %(xspincol)s;\n"
+            "    // 1 when the points of the base process are on shell for the row: no\n"
+            "    // massive leg moves into a slot of another mass (host only, read by the\n"
+            "    // good-helicity scan, see limhel in backend/<variant>/SigmaKin.cc)\n"
+            "    constexpr int xonshell_tab[ncross] = %(xonshell)s;\n"
             "    // per-leg flavor-group representative PDG, and its charge conjugate\n"
             "    __device__ constexpr int ids_base[ProcessData::npar] = %(ids_base)s;\n"
             "    __device__ constexpr int antipid_base[ProcessData::npar] = %(antipid_base)s;\n"
@@ -3165,6 +3181,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
              'xperm': arr(table.flat('B')), 'xsgn': arr(table.flat('SB')),
              'xpinv': arr(table.flat('D')), 'xsgni': arr(table.flat('SD')),
              'xspincol': arr(table.spincol(tables['spincol_part'])),
+             'xonshell': arr(self.crossing_rows_on_shell(me)),
              'ids_base': arr(tables['ids_base']),
              'antipid_base': arr(tables['antipid_base']),
              'countable': arr(tables['countable']),

@@ -457,7 +457,9 @@ namespace madmatrix
     // helicity is good if, at one event, it is above limhel/ncomb of the sum over
     // helicities there -- madevent's filter (matrix_madevent_group_v4.inc, limhel
     // its hidden run_card parameter, 1e-8 by default). Comparing to an exact 0 kept
-    // the helicities whose amplitudes only cancel to rounding.
+    // the helicities whose amplitudes only cancel to rounding. Not for a crossing
+    // the base points are off shell for (xonshell_tab 0, see backend/cpu): a row
+    // it needs can come out at rounding level there, so not exactly 0 is good.
     constexpr double limhel = 1e-8;
     std::vector<fptype> helMEs( (size_t)ncomb * maxtry0, 0. );
     unsigned int* devFlavorVec = nullptr;
@@ -485,12 +487,13 @@ namespace madmatrix
       for( int ievt = 0; ievt < maxtry; ++ievt )
         helMEs[(size_t)ihel * maxtry0 + ievt] = hstMEs[ievt];
     }
+    const double relhel = xonshell_tab[iflav / nmaxflavor] ? limhel : 0.;
     for( int ievt = 0; ievt < maxtry; ++ievt )
     {
       fptype sumhel = 0;
       for( int ihel = 0; ihel < ncomb; ihel++ ) sumhel += std::abs( helMEs[(size_t)ihel * maxtry0 + ievt] );
       for( int ihel = 0; ihel < ncomb; ihel++ )
-        if( std::abs( helMEs[(size_t)ihel * maxtry0 + ievt] ) > sumhel * limhel / ncomb ) isGoodHel[ihel] = true;
+        if( std::abs( helMEs[(size_t)ihel * maxtry0 + ievt] ) > sumhel * relhel / ncomb ) isGoodHel[ihel] = true;
     }
     } // end loop over flavor combinations (per-flavor good-helicity union)
     gpuFree( devFlavorVec );
