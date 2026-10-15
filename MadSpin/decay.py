@@ -100,8 +100,9 @@ def without_crossing(commandline):
     matrix_prod.f) has no crossing dimension, so a crossing folded onto a base
     could not be reached at all. Its production lines are copied from the
     banner's proc card, so a --use_crossing=True there would come back here
-    and fold those subprocesses away. Also for polarised beams (crossed_ok),
-    which the Fortran refuses at a crossed flavor index. The other modes
+    and fold those subprocesses away. Also for the Fortran production matrix
+    elements with polarised beams (crossed_ok), which the Fortran refuses at
+    a crossed flavor index. The other modes
     fold the crossings (decay_all_events_onshell, crossed_processes_with_decays).
     Any flag already on the line is dropped first; [...] (perturbative) lines
     are left alone, crossing is never applied to them.
@@ -5629,16 +5630,17 @@ class decay_all_events_onshell(decay_all_events):
         mgcmd = self.mgcmd
         self.all_me = {}
         # the crossings are folded (fill_all_me), unless the beams are polarised
-        crossing = self.crossed_ok()
-
-        def generate_line(commandline):
+        # and the Fortran evaluates the matrix elements (crossed_ok)
+        def generate_line(commandline, backend):
             commandline = commandline.replace('add process', 'generate', 1)
-            return commandline if crossing else without_crossing(commandline)
+            if self.crossed_ok(backend):
+                return commandline
+            return without_crossing(commandline)
 
         # legacy options 'onshell_v1' and 'madspin_v1' store both the production and the decay in a single folder
         if self.options['spinmode'] in ['onshell_v1', 'madspin_v1']:
             commandline += self.get_decay_command()
-            commandline = generate_line(commandline)
+            commandline = generate_line(commandline, 'fortran')
             mgcmd.exec_cmd(commandline, precmd=True)
 
             commandline = 'output standalone_fortran %s --prefix=int' % pjoin(path_me, ms_me_subdir)
@@ -5646,22 +5648,24 @@ class decay_all_events_onshell(decay_all_events):
             mgcmd.exec_cmd(commandline, precmd=True)
             fill_all_me(self, "production")
         else:
-            commandline_production = generate_line(commandline)
-            backend = self.density_backend(commandline_production)
+            backend = self.density_backend(commandline)
+            commandline_production = generate_line(commandline, backend)
             logger.info(commandline_production)
             mgcmd.exec_cmd(commandline_production, precmd=True)
-            self.output_density_me(pjoin(path_me, ms_me_subdir), backend, 'p')
+            self.output_density_me(pjoin(path_me, ms_me_subdir), backend, 'p',
+                                   generation=commandline_production)
 
             # store information about the production matrix elements
             fill_all_me(self, "production")
 
             commandline_decay = self.get_decay_command()
-            commandline_decay = generate_line(commandline_decay)
+            backend = self.density_backend(commandline_decay)
+            # a 1 -> N decay has no beam: the polarisation never reaches it
+            commandline_decay = generate_line(commandline_decay, 'decay')
 
             logger.info(commandline_decay)
             mgcmd.exec_cmd(commandline_decay, precmd=True)
-            self.output_density_me(pjoin(path_me, ms_me_decay_subdir),
-                                   self.density_backend(commandline_decay), 'd')
+            self.output_density_me(pjoin(path_me, ms_me_decay_subdir), backend, 'd')
 
             # store information about the decay matrix elements
             fill_all_me(self, "decay")
@@ -5670,21 +5674,29 @@ class decay_all_events_onshell(decay_all_events):
 
         return self.all_me
 
-    def crossed_ok(self):
-        """Whether the matrix elements of this class fold their crossings. Not
-        with polarised beams: the Fortran SMATRIX and GET_DENSITY_IDX refuse
-        them at a crossed flavor index (the helicity of a beam a crossing
-        moved is not the one of its base slot), and a madmatrix output may
-        fall back to the Fortran (output_density_me)."""
+    def polarised_beams(self):
+        """Whether the beams are polarised (beampol, madevent convention)."""
         try:
             pol = self.options.beampol_me()
         except Exception:
-            return True
-        if any(abs(p) > 1. for p in pol):
-            logger.info('MadSpin: polarised beams, the matrix elements do not '
-                        'fold their crossings (--use_crossing=False)')
             return False
-        return True
+        return any(abs(p) > 1. for p in pol)
+
+    def crossed_ok(self, backend):
+        """Whether the matrix elements generated for `backend` ('madmatrix',
+        'fortran', or 'decay' for the 1 -> N decays) fold their crossings.
+        Not for production matrix elements evaluated by the Fortran with
+        polarised beams: SMATRIX and GET_DENSITY_IDX refuse a crossed flavor
+        index then (the helicity of a beam a crossing moved is not the one of
+        its base slot). The madmatrix density (Density.cc) weighs the
+        physical helicity of the crossed process's beams, and a decay has no
+        beam. A madmatrix output that falls back to the Fortran is generated
+        again without crossing (output_density_me)."""
+        if backend in ('madmatrix', 'decay') or not self.polarised_beams():
+            return True
+        logger.info('MadSpin: polarised beams with the Fortran matrix elements, '
+                    'which do not fold their crossings (--use_crossing=False)')
+        return False
 
     def density_backend(self, commandline):
         """'madmatrix' or 'fortran': what evaluates the density matrices and
@@ -5717,13 +5729,16 @@ class decay_all_events_onshell(decay_all_events):
         by their name only."""
         return '_ms%d%s' % (getattr(self.mscmd, '_ms_run_id', 1), side)
 
-    def output_density_me(self, path, backend, side):
+    def output_density_me(self, path, backend, side, generation=None):
         """Write the matrix elements just generated to path, for the density
         modes (side 'p' production, 'd' decay). A madmatrix output is built
         right away, while these processes are still the current ones: one that
         cannot be written or does not compile is replaced by the Fortran one.
-        Returns the backend written; MadSpinInterface.create_f2py_module tells
-        the two apart from what it finds in path."""
+        That one is generated again from `generation` (the generate command
+        just run) without crossing when the Fortran cannot evaluate the crossings
+        it folds (crossed_ok: polarised beams). Returns the backend written;
+        MadSpinInterface.create_f2py_module tells the two apart from what it
+        finds in path."""
         if backend == 'madmatrix':
             commandline = 'output standalone %s -f --noeps=True' % path
             logger.info(commandline)
@@ -5742,6 +5757,10 @@ class decay_all_events_onshell(decay_all_events):
                 logger.debug('madmatrix failure: %s', error)
                 if os.path.exists(path):
                     shutil.rmtree(path)
+                if generation and not self.crossed_ok('fortran'):
+                    generation = without_crossing(generation)
+                    logger.info(generation)
+                    self.mgcmd.exec_cmd(generation, precmd=True)
         commandline = 'output standalone_fortran %s --prefix=int --density=1 -f' % path
         logger.info(commandline)
         self.mgcmd.exec_cmd(commandline, precmd=True)
