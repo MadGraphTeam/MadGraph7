@@ -173,6 +173,11 @@ C
       PARAMETER (NEXTERNAL=%(nexternal)d)
       INTEGER NVIRTUAL_FLAVORS
       PARAMETER (NVIRTUAL_FLAVORS=%(nvirtual_flavors)d)
+C     HelFilter.dat and LoopFilter.dat describe one virtual flavour:
+C     FILTER_FLAV_IDX, the only one evaluated with this output. It is 0
+C     when several flavours are evaluated: the filters are then off.
+      INTEGER FILTER_FLAV_IDX
+      PARAMETER (FILTER_FLAV_IDX=%(filter_flav_idx)d)
       INTEGER NINITIAL
       PARAMETER (NINITIAL=%(nincoming)d)
       INTEGER    NWAVEFUNCS
@@ -407,6 +412,10 @@ IF (FLAV_IDX.LT.1.OR.FLAV_IDX.GT.NVIRTUAL_FLAVORS) THEN
   ANSRETURNED=0.0d0
   RETURN
 ENDIF
+IF (FILTER_FLAV_IDX.NE.0.AND.FLAV_IDX.NE.FILTER_FLAV_IDX) THEN
+  WRITE(*,*) '##E03 ERROR The MadLoop filters describe the virtual flavour ',FILTER_FLAV_IDX,' only, not flavour ',FLAV_IDX
+  STOP 1
+ENDIF
 CALL %(proc_prefix)sGET_VIRTUAL_FLAVOR(FLAV_IDX,FLAVOR)
 %(virtual_flavor_mask_setup)s
 
@@ -420,9 +429,9 @@ IF(ML_INIT) THEN
   CALL SETMADLOOPPATH(TMP)
   CALL JOINPATH(MLPATH,PARAMFNAME,PARAMFN)
   CALL MADLOOPPARAMREADER(PARAMFN,.TRUE.)
-  IF (NVIRTUAL_FLAVORS.GT.1) THEN
+  IF (FILTER_FLAV_IDX.EQ.0) THEN
 C   A single MadLoop filter file cannot represent several physical flavours.
-C   Keep every loop/helicity active for grouped virtual matrix elements.
+C   Keep every loop/helicity active when several are evaluated.
     UseLoopFilter=.FALSE.
     HelicityFilterLevel=0
     DoubleCheckHelicityFilter=.FALSE.
