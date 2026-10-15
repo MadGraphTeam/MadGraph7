@@ -144,12 +144,16 @@ class MG7AmplicolTest(unittest.TestCase):
                                color_accuracy='lc')
         self.assert_compatible(madmatrix, leading[:2], 8. / 9.)
 
-    @unittest.skip('pyamplicol expands p p > j j j into processes without '
-                   'amplitudes, and its quark processes from the sm UFO model '
-                   'differ from madmatrix (the built-in pyamplicol model agrees)')
     def test_pp_jjj(self):
+        """Quark lines and the expansion of the multiparticle labels."""
         madmatrix = self.run_mg7('mm', ['p p > j j j'])[:2]
         amplicol = self.run_mg7('amp', ['p p > j j j [amplicol]'])[:2]
+        self.assert_compatible(amplicol, madmatrix)
+
+    def test_gg_ttxg(self):
+        """Massive quarks in the colour-ordered phase space."""
+        madmatrix = self.run_mg7('mm', ['g g > t t~ g'])[:2]
+        amplicol = self.run_mg7('amp', ['g g > t t~ g [amplicol]'])[:2]
         self.assert_compatible(amplicol, madmatrix)
 
     def test_mixed(self):
