@@ -3709,6 +3709,89 @@ int main(int argc, char** argv){
             self.assertAlmostEqual(density_matrix.trace()/fortran_me, 1,4)
             misc.sprint(density_matrix.values[1], fortran_dens[1])
 
+    # Run in a fresh interpreter: every output names its module all_matrix2py,
+    # so it must not share a process with one an earlier test imported.
+    _pdgs_not_modified_script = '''
+import json, math, os, sys
+import numpy as np
+import all_matrix2py as m
+mdir, outfile = sys.argv[1:]
+m.initialise(os.path.join(mdir, 'Cards', 'param_card.dat'))
+E, th, ph = 500., 0.7, 0.3
+k = [E*math.sin(th)*math.cos(ph), E*math.sin(th)*math.sin(ph), E*math.cos(th)]
+p = np.array([[E, 0, 0, E], [E, 0, 0, -E], [E] + k,
+              [E] + [-x for x in k]]).T.copy()
+uu, dd = [2, -2, -11, 11], [1, -1, -11, 11]
+cplx = lambda a: [[z.real, z.imag] for z in a]
+res = {}
+res['fresh_u'] = m.smatrixhel(uu, -1, p, 0.118, 0., -1)
+res['fresh_d'] = m.smatrixhel(dd, -1, p, 0.118, 0., -1)
+arr = np.array(uu, dtype=np.int32)
+res['reused'] = [m.smatrixhel(arr, -1, p, 0.118, 0., -1) for _ in range(2)]
+res['after'] = arr.tolist()
+kw = dict(procid=-1, p=p, pos=[3], allow_hel=[-1, 1], alphas=0.118, scale2=0.)
+res['dens_fresh_u'] = cplx(m.py_get_density(pdgs=uu, **kw))
+res['dens_fresh_d'] = cplx(m.py_get_density(pdgs=dd, **kw))
+arr = np.array(uu, dtype=np.int32)
+res['dens_reused'] = [cplx(m.py_get_density(pdgs=arr, **kw)) for _ in range(2)]
+res['dens_after'] = arr.tolist()
+batch = np.asfortranarray(np.array([uu, uu], dtype=np.int32).T)
+pb = np.asfortranarray(np.stack([p, p], axis=-1))
+res['batch_reused'] = []
+for _ in range(2):
+    inter = m.py_get_density_batch(pdgs=batch, procid=-1, p=pb, pos=[3],
+                                   allow_hel=[-1, 1], alphas=[0.118]*2,
+                                   scale2=[0.]*2, nbatch=2, next=4)
+    res['batch_reused'] += [cplx(inter[:, 0]), cplx(inter[:, 1])]
+res['batch_after'] = batch.T.tolist()
+json.dump(res, open(outfile, 'w'))
+'''
+
+    def test_standalone_f2py_pdgs_not_modified(self):
+        """all_matrix2py must not write to the pdgs array it is handed.
+
+        all_matrix.f rewrites every pdg to its merged-particle code (u -> 81)
+        before dispatching. f2py passes an int32 numpy array straight through
+        for intent(in), so while that rewrite was done on PDGS itself a reused
+        [2,-2,-11,11] came back as [81,-81,-82,82] and the next call silently
+        answered for d d~. A python list is copied by f2py and never showed it.
+        """
+        import json
+        self.do('import model sm')
+        self.do('generate p p > e+ e-')
+        self.do('output standalone_fortran %s --prefix=int -f' % self.out_dir)
+        subdir = os.path.join(self.out_dir, 'SubProcesses')
+        build = subprocess.run(['make', 'f2py'], cwd=subdir,
+                               capture_output=True, text=True)
+        self.assertEqual(build.returncode, 0,
+                         'make f2py failed:\n' + build.stdout[-2000:]
+                         + build.stderr[-2000:])
+
+        outfile = os.path.join(self.out_dir, 'pdgs_check.json')
+        run = subprocess.run([sys.executable, '-c',
+                              self._pdgs_not_modified_script,
+                              self.out_dir, outfile],
+                             cwd=subdir, capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stdout[-2000:] + run.stderr[-2000:])
+        res = json.load(open(outfile))
+
+        uu = [2, -2, -11, 11]
+        # u u~ and d d~ differ, so a rewritten array would be caught
+        self.assertNotAlmostEqual(res['fresh_d'] / res['fresh_u'], 1, places=3)
+        self.assertEqual(res['after'], uu)
+        for value in res['reused']:
+            self.assertAlmostEqual(value / res['fresh_u'], 1, places=12)
+
+        ref_u = res['dens_fresh_u']
+        self.assertNotAlmostEqual(res['dens_fresh_d'][0][0] / ref_u[0][0], 1, places=3)
+        self.assertEqual(res['dens_after'], uu)
+        self.assertEqual(res['batch_after'], [uu, uu])
+        for dens in res['dens_reused'] + res['batch_reused']:
+            self.assertEqual(len(dens), len(ref_u))
+            for (re_, im_), (ref_re, ref_im) in zip(dens, ref_u):
+                self.assertAlmostEqual(re_, ref_re, delta=1e-12 * abs(ref_u[0][0]))
+                self.assertAlmostEqual(im_, ref_im, delta=1e-12 * abs(ref_u[0][0]))
+
 
     def test_density_mode_user_interface(self):
         ############################################################################
