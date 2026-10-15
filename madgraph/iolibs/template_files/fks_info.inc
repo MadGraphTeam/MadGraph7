@@ -9,6 +9,10 @@
       PARAMETER (MAX_VIRTUAL_FLAVOR_INDEX=%(max_virtual_flavor_index)d)
       INTEGER N_VIRTUAL_FLAVOR_CONFIGS
       PARAMETER (N_VIRTUAL_FLAVOR_CONFIGS=%(n_virtual_flavor_configs)d)
+C     True when MadLoop keeps a helicity filter for each of the
+C     N_VIRTUAL_FLAVOR_CONFIGS virtual rows, in HelFilter_<row>.dat
+      LOGICAL HELFILTER_PER_VIRTUAL_FLAVOR
+      PARAMETER (HELFILTER_PER_VIRTUAL_FLAVOR=%(helfilter_per_virtual_flavor)s)
       LOGICAL HAS_PHYSICAL_FKS_CLASSES
       PARAMETER (HAS_PHYSICAL_FKS_CLASSES=%(has_physical_fks_classes)s)
       INTEGER FKS_FLAVOR_CLASS_D(%(nconfs)d)

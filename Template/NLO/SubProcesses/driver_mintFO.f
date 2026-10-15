@@ -1377,7 +1377,10 @@ c-----
                write (*,*) 'Sum over helicities in the virtuals'/
      $              /' for decay process'
                mc_hel=0
-            elseif (i.eq.0.or.N_VIRTUAL_FLAVOR_CONFIGS.gt.1) then
+c Several virtual rows without a helicity filter for each of them in
+c MadLoop (see HELFILTER_PER_VIRTUAL_FLAVOR): sum the helicities.
+            elseif (i.eq.0.or.(N_VIRTUAL_FLAVOR_CONFIGS.gt.1.and.
+     $          .not.HELFILTER_PER_VIRTUAL_FLAVOR)) then
                mc_hel=0
                write (*,*) 'Explicitly summing over helicities'/
      $              /' for the virtuals'

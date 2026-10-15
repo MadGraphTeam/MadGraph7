@@ -254,7 +254,9 @@ c integration does at fks_singular.f (bornsoftvirtual).
           call binothlha_amp_frame(p_born,born,virt_wgt,
      &         ret_amp_split,ret_saveamp,amp_split_finite_ML,
      &         ret_amp_split_cnt)
-          if (npointsChecked.eq.0) then
+c With a helicity filter for each virtual row, each row has its own
+c initialization points, at the end of which MadLoop writes its filter.
+          if (npointsChecked.eq.0 .or. HELFILTER_PER_VIRTUAL_FLAVOR) then
              if (mod(ret_code_ml,100)/10.eq.3 .or.
      &            mod(ret_code_ml,100)/10.eq.4) then
               ! this is to skip initialisation points
@@ -289,7 +291,11 @@ C         Otherwise, perform the check
           endif
           write(*,*)
 
-      if (npointsChecked.lt.npoints) goto 200 
+      if (npointsChecked.lt.npoints) goto 200
+c Check every Born flavour, so that the helicity filters of all virtual
+c rows are written here and not by the integration jobs.
+      if (HELFILTER_PER_VIRTUAL_FLAVOR .and.
+     $     npointsChecked.lt.NBORN_FLAVOR_CONFIGS) goto 200
 
           write(*,*) 'NUMBER OF POINTS PASSING THE CHECK', 
      1     npoints - nfail

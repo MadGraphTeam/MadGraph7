@@ -3986,6 +3986,15 @@ Parameters              %(params)s\n\
                 [1] + virtual_flavor_indices)
             replace_dict['n_virtual_flavor_configs'] = len(set(
                 index for index in virtual_flavor_indices if index > 0))
+            # The virtual directory is already written: with several rows,
+            # MadLoop keeps one helicity filter per row (FILTER_FLAV_IDX=-1,
+            # see LoopProcessExporterFortranSA.get_virtual_filter_flavor),
+            # unless it could not resolve them. The drivers then sum the
+            # helicities explicitly, since BinothLHA has no filter to read.
+            replace_dict['helfilter_per_virtual_flavor'] = bool_dict[
+                replace_dict['n_virtual_flavor_configs'] > 1 and
+                getattr(fksborn.virt_matrix_element, 'virtual_filter_flavor',
+                        None) == -1]
             has_physical_fks_classes = all(
                 info.get('flavor_class') for info in fks_info_list)
             replace_dict['has_physical_fks_classes'] = (
@@ -4174,6 +4183,7 @@ Parameters              %(params)s\n\
             replace_dict['virtual_flavor_index_values'] = '0'
             replace_dict['max_virtual_flavor_index'] = 1
             replace_dict['n_virtual_flavor_configs'] = 0
+            replace_dict['helfilter_per_virtual_flavor'] = '.false.'
             replace_dict['has_physical_fks_classes'] = '.false.'
             replace_dict['fks_flavor_class_values'] = '0'
             replace_dict['fks_topology_values'] = '1'
