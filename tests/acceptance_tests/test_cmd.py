@@ -1786,6 +1786,79 @@ class TestCmdShell2(unittest.TestCase,
                                       ('simd_128', 'd', 1e-12),
                                       ('simd_128', 'm', 1e-6)])
 
+    def test_standalone_umami_two_to_one(self):
+        """a 2 > 1 keeps the helicities of every frame, whatever the first call.
+
+        RAMBO has no phase space for a 2 > 1, so its good helicities were still
+        chosen at the first umami_matrix_element call. For u d~ > w+ with the
+        beams along z, the W at rest has one J_z: two of its three rows vanish.
+        After a first call there, |M|^2 with the beams along x was 4 times too
+        small. The scan at initialization now draws the beam axis at random.
+        For the scalar backend, after a first call with the beams along z:
+        3 helicities are kept, and |M|^2 is the same with the beams along z, x,
+        y and in a boosted frame.
+        """
+        import glob
+        import json
+        import textwrap
+
+        self.do('import model sm')
+        self.do('generate u d~ > w+')
+        self.do('output standalone %s -f' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        proc_dir = [pjoin(proc_root, d) for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))][0]
+        make = subprocess.run(['make', 'BACKEND=scalar', 'FPTYPE=d'],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              cwd=proc_dir)
+        self.assertEqual(0, make.returncode, make.stdout.decode(errors='replace')[-3000:])
+        lib = glob.glob(pjoin(self.out_dir, 'lib', 'libmadmatrix_P*_scalar.so'))[0]
+        card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        helper = pjoin(self.out_dir, 'umami_two_to_one.py')
+        with open(helper, 'w') as fsock:
+            fsock.write(textwrap.dedent('''\
+                import ctypes, json, math, sys
+                lib = ctypes.CDLL(sys.argv[1])
+                handle = ctypes.c_void_p()
+                assert lib.umami_initialize(ctypes.byref(handle), sys.argv[2].encode()) == 0
+                npar = 3
+                masses = (ctypes.c_double * npar)()
+                assert lib.umami_get_meta(5, masses) == 0  # umami.h: UMAMI_META_MASSES = 5
+                mw = masses[2]
+
+                def point(axis, beta=0.):  # beams along axis at sqrt(s) = mw, boosted along x
+                    e = mw / 2
+                    p = [[e] + [e * x for x in axis], [e] + [-e * x for x in axis], [mw, 0, 0, 0]]
+                    g = 1 / math.sqrt(1 - beta * beta)
+                    return [[g * (q[0] + beta * q[1]), g * (q[1] + beta * q[0]), q[2], q[3]] for q in p]
+
+                def evaluate(p):
+                    mom = (ctypes.c_double * (4 * npar))()
+                    for ipart in range(npar):  # momenta[npar * mu + ipart]
+                        for mu in range(4):
+                            mom[npar * mu + ipart] = p[ipart][mu]
+                    me = (ctypes.c_double * 1)()
+                    # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_OUT_MATRIX_ELEMENT = 0
+                    assert lib.umami_matrix_element(
+                        handle, ctypes.c_size_t(1), ctypes.c_size_t(1), ctypes.c_size_t(0),
+                        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+                        (ctypes.c_void_p * 1)(ctypes.addressof(mom)),
+                        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+                        (ctypes.c_void_p * 1)(ctypes.addressof(me))) == 0
+                    return me[0]
+
+                first = evaluate(point((0, 0, 1)))
+                print(json.dumps({
+                    'good': lib.madmatrix_good_helicity_count(),
+                    'me': [first] + [evaluate(point(a, b)) for a, b in
+                                     (((1, 0, 0), 0.), ((0, 1, 0), 0.), ((0, 0, 1), 0.6))]}))
+                '''))
+        out = subprocess.check_output([sys.executable, helper, lib, card])
+        run = json.loads(out.decode().strip().splitlines()[-1])
+        self.assertEqual(run['good'], 3)
+        for me in run['me'][1:]:
+            self.assertAlmostEqual(me, run['me'][0], delta=1e-10 * run['me'][0])
+
     def test_standalone_umami_first_call_gpu(self):
         """test_standalone_umami_first_call on GPUs (BACKEND=cuda, hip).
 

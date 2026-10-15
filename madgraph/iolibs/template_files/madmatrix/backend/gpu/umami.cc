@@ -245,9 +245,9 @@ namespace
   // was wrong. It runs instead here, at initialization, on RAMBO points, half of
   // them boosted (rambo::helicity_scan_points). The filter evaluates every flavor
   // and every crossing of the table, into the one good-helicity list all of them
-  // share, each crossing on points of its own masses (scan_points). Where RAMBO
-  // has no phase space (2 > 1, a decay below threshold), this does nothing and the
-  // first call still chooses. As in the cpu and simd backends, but the inputs and
+  // share, each crossing on points of its own masses (scan_points). A 2 > 1 is
+  // scanned with its beams along random axes. Where there is no phase space (a
+  // decay below threshold), this does nothing and the first call still chooses. As in the cpu and simd backends, but the inputs and
   // outputs of umami_matrix_element are device buffers here: the points are made on
   // the host and copied over, and everything runs on the default stream.
   void choose_good_helicities( UmamiHandle handle )

@@ -348,16 +348,38 @@ namespace rambo
     return get_momenta( ninitial, energy, masses, wgt, rn );
   }
 
+  // A 2 > 1 point: the beams back to back along a random axis, at sqrt(s) = the
+  // final mass, which is at rest.
+  template<class Draw>
+  inline std::vector<std::vector<double>> fusion_point( const std::vector<double>& masses, Draw&& draw )
+  {
+    const double m1 = masses[0], m2 = masses[1], energy = masses[2];
+    const double e2 = energy * energy;
+    const double mom = std::sqrt( std::max( 0., ( e2 - pow( m1 + m2, 2 ) ) * ( e2 - pow( m1 - m2, 2 ) ) ) ) / ( 2 * energy );
+    const double cth = 2 * draw( 1 ) - 1, sth = std::sqrt( 1 - cth * cth );
+    const double phi = 2 * M_PI * draw( 2 );
+    const double n[3] = { sth * std::cos( phi ), sth * std::sin( phi ), cth };
+    std::vector<std::vector<double>> p;
+    p.push_back( { std::sqrt( mom * mom + m1 * m1 ), mom * n[0], mom * n[1], mom * n[2] } );
+    p.push_back( { std::sqrt( mom * mom + m2 * m2 ), -mom * n[0], -mom * n[1], -mom * n[2] } );
+    p.push_back( { energy, 0., 0., 0. } );
+    return p;
+  }
+
   // The points umami_initialize chooses the good helicities on, in the layout of
   // the UMAMI momenta input: momenta[nevt * ( npar * mu + ipar ) + ievt]. RAMBO
   // points in the partonic CM (a decay at rest). The helicity zeros of a massive
   // leg depend on the frame (a u g > u z row that is ~1e-33 in the CM is 0.6% of
   // |M|^2 in a boosted one), and the matrix element is called in the lab frame or
   // in the me_frame of the run card: the second half of the points is boosted to
-  // a random frame, so that the good helicities are those of any frame. Empty
-  // where RAMBO has no phase space (2 > 1, a decay below threshold) or does not
-  // converge. A private generator: the shared one (rn) makes the points of the
-  // check drivers, which must not move.
+  // a random frame, so that the good helicities are those of any frame. A 2 > 1
+  // has a single point up to the frame, the beams back to back at sqrt(s) = the
+  // final mass. Its helicity zeros are those of the beam axis (beams along z
+  // make a W at rest in one J_z state: two of its three rows vanish), so the
+  // axis of every point is drawn at random. Empty where there is no phase space
+  // (a decay below threshold) or RAMBO does not converge. A private generator:
+  // the shared one (rn) makes the points of the check drivers, which must not
+  // move.
   inline std::vector<double> helicity_scan_points( int ninitial, const std::vector<double>& masses, std::size_t nevt )
   {
     const int npar = masses.size();
@@ -367,9 +389,12 @@ namespace rambo
       mtotal += masses[ipar];
       if( ipar >= ninitial ) mfinal += masses[ipar];
     }
+    const bool fusion = ninitial == 2 && npar == 3; // 2 > 1
     // rambo exits on a closed phase space: check it first
-    if( npar - ninitial < 2 || ( ninitial == 1 && !( masses[0] > mfinal ) ) ) return {};
-    const double energy = std::max( 1500., 2 * mtotal ); // a decay is at rest instead
+    if( fusion ? !( masses[2] > masses[0] + masses[1] )
+               : npar - ninitial < 2 || ( ninitial == 1 && !( masses[0] > mfinal ) ) ) return {};
+    // a decay is at rest instead, a 2 > 1 at sqrt(s) = the final mass
+    const double energy = fusion ? masses[2] : std::max( 1500., 2 * mtotal );
     Random random;
     random.rmarin( 1802, 9373 );
     auto draw = [&random]( int )
@@ -382,7 +407,7 @@ namespace rambo
     for( std::size_t ievt = 0; ievt < nevt; ++ievt )
     {
       double weight = 0;
-      const std::vector<std::vector<double>> p = get_momenta( ninitial, energy, masses, weight, draw );
+      const std::vector<std::vector<double>> p = fusion ? fusion_point( masses, draw ) : get_momenta( ninitial, energy, masses, weight, draw );
       for( int ipar = 0; ipar < npar; ++ipar )
       {
         // on shell, or rambo did not converge: no points
