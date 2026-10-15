@@ -32,6 +32,7 @@ import madgraph
 
 logger = logging.getLogger('test_cmd')
 
+import tests
 import tests.unit_tests.iolibs.test_file_writers as test_file_writers
 
 import madgraph.interface.master_interface as MGCmd
@@ -78,29 +79,13 @@ def _mg7_datadir_or_skip(test):
     """Return a usable LHAPDF data dir for mg7 runs, or skipTest (on *test*) if
     the mg7 runtime stack (madspace + LHAPDF + the run_card.toml default PDF) is
     not available."""
-    import glob
-    try:
-        import madspace
-        has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
-    except ImportError:
-        has_mg7 = False
-    datadir = os.environ.get('LHAPDF_DATA_PATH')
+    madspace = tests.import_madspace()
+    if not hasattr(madspace, 'ChannelEventGenerator'):
+        test.skipTest('mg7 runtime stack (madspace) unavailable')
+    datadir = tests.lhapdf_data_path('NNPDF40_lo_as_01180')
     if not datadir:
-        mg = MGCmd.MasterCmd()
-        lhapdf = mg.options['lhapdf']
-        if not lhapdf:
-            lhapdf = 'lhapdf-config'
-        try:
-            datadir = subprocess.check_output(
-            [lhapdf, '--datadir']).decode().strip()
-        except Exception:
-            datadir = None 
-        
-    misc.sprint(datadir)
-    if not has_mg7 or not datadir or not os.path.isdir(datadir):
-        test.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
-    if not glob.glob(pjoin(datadir, 'NNPDF40_lo_as_01180*')):
-        test.skipTest('NNPDF40_lo_as_01180 PDF set not available')
+        test.skipTest('NNPDF40_lo_as_01180 LHAPDF data not found (set the '
+                      'lhapdf option or $LHAPDF_DATA_PATH)')
     return datadir
 
 
@@ -854,23 +839,7 @@ class TestMECmdShell(unittest.TestCase):
         import glob, json
         # The mg7 cross-section run needs the madspace runtime and a resolvable
         # LHAPDF data path; skip cleanly where that stack is unavailable.
-        try:
-            import madspace
-            has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
-        except ImportError:
-            has_mg7 = False
-        datadir = os.environ.get('LHAPDF_DATA_PATH')
-        if not datadir:
-            try:
-                datadir = subprocess.check_output(
-                    ['lhapdf-config', '--datadir']).decode().strip()
-            except Exception:
-                datadir = None
-        if not has_mg7 or not datadir or not os.path.isdir(datadir):
-            self.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
-        # the mg7 run_card.toml default PDF must be present in the data dir
-        if not glob.glob(pjoin(datadir, 'NNPDF40_lo_as_01180*')):
-            self.skipTest('NNPDF40_lo_as_01180 PDF set not available')
+        datadir = _mg7_datadir_or_skip(self)
 
         def run_mg7(group):
             run_dir = pjoin(self.path, 'MG7_%s' % ('grp' if group else 'ungrp'))
@@ -1197,24 +1166,16 @@ class TestMECmdShell(unittest.TestCase):
         if a color flow doesn't close. Exercises the real C++ code directly
         against every (channel, diagram, active color) in subprocesses.json."""
         import json
-        # Prefer the locally-built module (madspace/install) over whatever
-        # madspace happens to be on the system path, since this test exercises
-        # local C++ source changes (diagram_propagator_pdgs).
-        local_install = pjoin(MG5DIR, 'madspace', 'install')
-        if os.path.isdir(local_install):
-            if local_install not in sys.path:
-                sys.path.insert(0, local_install)
-            for mod_name in [m for m in sys.modules if m.startswith('madspace')]:
-                mod_file = getattr(sys.modules[mod_name], '__file__', '') or ''
-                if not mod_file.startswith(local_install):
-                    del sys.modules[mod_name]
-        try:
-            import madspace as ms
-            has_mg7 = hasattr(ms.SubprocArgs(), 'diagram_propagator_pdgs')
-        except ImportError:
-            has_mg7 = False
-        if not has_mg7:
+        # This exercises local C++ source changes (diagram_propagator_pdgs),
+        # so it needs the locally-built module (madspace/install). It cannot
+        # be swapped in once another madspace is loaded: the second
+        # extension fails to load and breaks madspace for every later test.
+        ms = tests.import_madspace()
+        if ms is None:
             self.skipTest('mg7 runtime stack (madspace) unavailable')
+        if not hasattr(ms.SubprocArgs(), 'diagram_propagator_pdgs'):
+            self.skipTest('madspace loaded from %s lacks '
+                          'diagram_propagator_pdgs' % ms.__file__)
 
         mg = MGCmd.MasterCmd()
         mg.no_notification()
@@ -1566,22 +1527,7 @@ class TestMECmdShell(unittest.TestCase):
         Self-skips where the mg7 runtime stack is unavailable.
         """
         import glob, json
-        try:
-            import madspace
-            has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
-        except ImportError:
-            has_mg7 = False
-        datadir = os.environ.get('LHAPDF_DATA_PATH')
-        if not datadir:
-            try:
-                datadir = subprocess.check_output(
-                    ['lhapdf-config', '--datadir']).decode().strip()
-            except Exception:
-                datadir = None
-        if not has_mg7 or not datadir or not os.path.isdir(datadir):
-            self.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
-        if not glob.glob(pjoin(datadir, 'NNPDF40_lo_as_01180*')):
-            self.skipTest('NNPDF40_lo_as_01180 PDF set not available')
+        datadir = _mg7_datadir_or_skip(self)
 
         run_dir = pjoin(self.path, 'MG7_uq')
         if os.path.isdir(run_dir):
@@ -1637,12 +1583,7 @@ class TestMECmdShell(unittest.TestCase):
         events.
         """
         import glob, re as _re
-        try:
-            import madspace
-            has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
-        except ImportError:
-            has_mg7 = False
-        if not has_mg7:
+        if not hasattr(tests.import_madspace(), 'ChannelEventGenerator'):
             self.skipTest('mg7 runtime stack (madspace) unavailable')
         # e+ e- > mu+ mu- is leptonic, so no parton density is ever evaluated
         # and the [systematics] PDF variations are empty -- but alpha_s still
