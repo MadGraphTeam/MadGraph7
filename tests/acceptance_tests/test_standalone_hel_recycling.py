@@ -342,3 +342,125 @@ class TestStandaloneHelRecyclingConsistency(StandaloneHelRecyclingConsistency):
             self.assertAlmostEqual(a, b, delta=1e-9 * max(abs(b), 1e-300),
                                    msg='code %d: recycled %r, standard %r'
                                    % (code, a, b))
+
+
+class TestCppHelRecyclingCrossing(unittest.TestCase):
+    """`output standalone --hel_recycling=True` (madmatrix) with crossing.
+
+    A directory serves its folded crossings through the extended flavor id,
+    and every lane evaluates the BASE helicity row: a leg that changed side
+    is fed the opposite helicity with the opposite NSF flag. The recycled
+    block (calculate_all_jamps) therefore needs no per-crossing table, but
+    its crossed externals must carry that (-nsf, -h) call and the per-lane
+    momentum gather. Checked here event by event against the same output
+    without recycling, on pages that mix crossings: |M|^2, and the selected
+    helicity and colour for fixed random numbers."""
+
+    debugging = getattr(unittest, 'debug', False)
+    tolerance = 1e-12
+    nevt = 64
+
+    def setUp(self):
+        if not shutil.which(os.environ.get('CXX', 'g++')):
+            self.skipTest('no C++ compiler available')
+        self.cmd = cmd_interface.MasterCmd()
+        self.cmd.no_notification()
+        self.tmpdir = tempfile.mkdtemp(prefix='cpp_helrecycling_')
+
+    def tearDown(self):
+        if not self.debugging and os.path.isdir(self.tmpdir):
+            shutil.rmtree(self.tmpdir)
+
+    def _generate(self, process, outputs):
+        self.cmd.exec_cmd('set automatic_html_opening False')
+        self.cmd.exec_cmd('import model sm')
+        self.cmd.exec_cmd('generate %s' % process)
+        for name, options in outputs:
+            self.cmd.exec_cmd('output standalone %s -f %s'
+                              % (pjoin(self.tmpdir, name), options))
+
+    def _pdirs(self, name):
+        root = pjoin(self.tmpdir, name, 'SubProcesses')
+        return [pjoin(root, d) for d in sorted(os.listdir(root))
+                if d.startswith('P') and os.path.isdir(pjoin(root, d))]
+
+    def _run(self, pdir, ids, tag, first):
+        """Build check_sa.exe (FPTYPE=d) and run it on the given extended ids,
+        returning (|M|^2, helicity, colour) per event."""
+        import struct
+        env = dict(os.environ, FPTYPE='d')
+        with open(os.devnull, 'w') as devnull:
+            rc = subprocess.call(['make', '-j4', 'check_sa.exe'], cwd=pdir,
+                                 stdout=devnull, stderr=subprocess.STDOUT,
+                                 env=env)
+        self.assertEqual(rc, 0, 'make failed in %s' % pdir)
+        files = dict((key, pjoin(self.tmpdir, '%s_%s' % (os.path.basename(pdir), key)))
+                     for key in ('flv', 'rh', 'rc', 'mom'))
+        if first:
+            import random
+            rng = random.Random(11)
+            with open(files['flv'], 'wb') as fsock:
+                fsock.write(struct.pack('<%dI' % self.nevt, *ids))
+            for key in ('rh', 'rc'):
+                with open(files[key], 'wb') as fsock:
+                    fsock.write(struct.pack('<%dd' % self.nevt,
+                                            *[rng.random() for _ in range(self.nevt)]))
+        out = dict((key, pjoin(self.tmpdir, '%s_%s' % (tag, key)))
+                   for key in ('me', 'hel', 'col'))
+        command = ['./check_sa.exe', 'perf', '--flavors', files['flv'],
+                   '--rnd-hel', files['rh'], '--rnd-col', files['rc'],
+                   '--dump-me', out['me'], '--dump-hel', out['hel'],
+                   '--dump-col', out['col'],
+                   '--dump-momenta' if first else '--momenta', files['mom'],
+                   '1', str(self.nevt), '1']
+        subprocess.check_output(command, cwd=pdir, stderr=subprocess.STDOUT)
+
+        def read(path, fmt):
+            data = open(path, 'rb').read()
+            return struct.unpack('<%d%s' % (len(data) // struct.calcsize(fmt), fmt), data)
+        return read(out['me'], 'd'), read(out['hel'], 'i'), read(out['col'], 'i')
+
+    def test_pp_jj_recycled_crossings(self):
+        """p p > j j: every crossing row of each folded directory, mixed in
+        one page, recycled == not recycled"""
+        self._generate('p p > j j', [('plain', ''),
+                                     ('recycled', '--hel_recycling=True')])
+        ncrossed = 0
+        for plain, recycled in zip(self._pdirs('plain'), self._pdirs('recycled')):
+            self.assertEqual(os.path.basename(plain), os.path.basename(recycled))
+            calls = pjoin(recycled, 'HelRecyclingCalls.inc')
+            self.assertTrue(os.path.exists(calls),
+                            'no recycled build in %s' % recycled)
+            tables = open(pjoin(recycled, 'ProcessTables.h')).read()
+            ncross = int(re.search(r'constexpr int ncross = (\d+);', tables).group(1))
+            nflav = int(re.search(r'constexpr int nmaxflavor = (\d+);', open(
+                pjoin(recycled, 'ProcessData.h')).read()).group(1))
+            if ncross > 1:
+                ncrossed += 1
+                self.assertIn('icsign', open(calls).read())
+            ids = [i % (ncross * nflav) for i in range(self.nevt)]
+            me0, hel0, col0 = self._run(plain, ids, 'plain', True)
+            me1, hel1, col1 = self._run(recycled, ids, 'recycled', False)
+            for i in range(self.nevt):
+                self.assertGreater(me0[i], 0)
+                self.assertLessEqual(abs(me1[i] - me0[i]), self.tolerance * me0[i],
+                                     '%s event %d (id %d): %r vs %r'
+                                     % (os.path.basename(plain), i, ids[i],
+                                        me1[i], me0[i]))
+                self.assertEqual((hel1[i], col1[i]), (hel0[i], col0[i]),
+                                 '%s event %d (id %d): helicity/colour'
+                                 % (os.path.basename(plain), i, ids[i]))
+        self.assertGreater(ncrossed, 0, 'no directory folds a crossing')
+
+    def test_off_shell_crossing_scan_is_refused(self):
+        """--crossing_table=all puts the z of p p > z j into the initial
+        state: the warm-up would measure its zero amplitudes off shell, so the
+        directory is written without recycling (and says so)"""
+        self._generate('p p > z j', [('all', '--hel_recycling=True '
+                                             '--crossing_table=all')])
+        for pdir in self._pdirs('all'):
+            tables = open(pjoin(pdir, 'ProcessTables.h')).read()
+            onshell = re.search(r'xonshell_tab\[ncross\] = \{([^}]*)\}', tables)
+            self.assertTrue(onshell, tables)
+            self.assertIn('0', [x.strip() for x in onshell.group(1).split(',')])
+            self.assertFalse(os.path.exists(pjoin(pdir, 'HelRecycling.inc')))

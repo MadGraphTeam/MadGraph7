@@ -556,8 +556,8 @@ namespace madmatrix
     static bool warned = false;
     if( warned ) return;
     warned = true;
-    printf( "INFO: helicity row %d is not in the --hel_recycling table (measured at\n"
-            "INFO: other parameters): it is computed without recycling.\n",
+    printf( "INFO: helicity row %d is not in the --hel_recycling table: it is\n"
+            "INFO: computed without recycling.\n",
             ihel );
   }
 

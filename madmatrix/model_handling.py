@@ -4036,14 +4036,23 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         get_amp downstream stays fully SIMD. Scalars carry no helicity, so
         their two calls only differ by the NSF flag. GPU: one event per
         thread, a direct call on the input slot xperm[s] with the helicity and
-        the NSF flag both times xic[s] (see _crossing_preamble)."""
+        the NSF flag both times xic[s] (see _crossing_preamble).
+
+        --axial_gauge: a vector with a reference leg is vxxxxxr, its gauge
+        vector the momentum at the reference's base slot (xmom slot ref on
+        the CPU, input slot xperm[ref] on the GPU), as the fortran writer
+        passes P(0,ref) of the crossed call."""
         routine = helas_call_writers.HelasCallWriter.mother_dict[
             argument.get_spin_state_number()].lower()
         routine = routine + 'x' * (6 - len(routine))
+        spin = argument.get('spin')
+        axial = spin == 3 and self.has_axial_gauge_ref(wf)
+        ref = self.get_axial_gauge_ref(wf) - 1 if axial else None
+        if axial:
+            routine = routine + 'r'
         routine = routine + '<M_ACCESS, W_ACCESS>'
         s = wf.get('number_external') - 1
         me = wf.get('me_id') - 1
-        spin = argument.get('spin')
         if spin == 1:
             nsf = (-1) ** (wf.get('state') == 'initial')
         elif argument.is_boson():
@@ -4057,8 +4066,9 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 call = '%s( xmom, %+d, cFlavors[iflavor][%d], %s, %d );' % \
                        (routine, sign, s, obj, s)
             else:
-                call = '%s( xmom, m_pars->%s, %s, %+d, cFlavors[iflavor][%d], %s, %d );' % \
-                       (routine, mass, hel, sign, s, obj, s)
+                call = '%s( xmom, m_pars->%s, %s, %+d, cFlavors[iflavor][%d], %s, %d%s );' % \
+                       (routine, mass, hel, sign, s, obj, s,
+                        ', %d' % ref if axial else '')
             return self.format_coupling(call)
 
         if self.hr_orig:
@@ -4082,8 +4092,9 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             gpu = '%s( momenta, %+d * xic[%d], cFlavors[iflavor][%d], aloha_obj[%d], xperm[%d] );' % \
                   (routine, nsf, s, s, me, s)
         else:
-            gpu = '%s( momenta, m_pars->%s, cHel[ihel][%d] * xic[%d], %+d * xic[%d], cFlavors[iflavor][%d], aloha_obj[%d], xperm[%d] );' % \
-                  (routine, mass, s, s, nsf, s, s, me, s)
+            gpu = '%s( momenta, m_pars->%s, cHel[ihel][%d] * xic[%d], %+d * xic[%d], cFlavors[iflavor][%d], aloha_obj[%d], xperm[%d]%s );' % \
+                  (routine, mass, s, s, nsf, s, s, me, s,
+                   ', xperm[%d]' % ref if axial else '')
         lines.append('      ' + self.format_coupling(gpu))
         lines.append('#endif\n')
         return '\n'.join(lines)
