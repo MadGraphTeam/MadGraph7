@@ -4368,7 +4368,9 @@ k = E*np.array([math.sin(th)*math.cos(ph), math.sin(th)*math.sin(ph), math.cos(t
 mom = np.array([[E, 0, 0, E], [E, 0, 0, -E], [E] + list(k), [E] + list(-k)])
 g = 1/math.sqrt(1 - b*b)
 mom = np.array([[g*(q[0] + b*q[3]), q[1], q[2], g*(q[3] + b*q[0])] for q in mom])
-res = {'sm': [], 'dens': []}
+cplx = lambda a: [[z.real, z.imag] for z in a]
+res = {'sm': [], 'dens': [], 'dens12': [], 'inter12': []}
+allow12 = [-1, -1, -1, 1, 1, -1, 1, 1]
 for pdgs in ([-2, -1, -2, -1], [-1, -2, -2, -1], [2, 1, 2, 1]):
     for order in ([0, 1, 2, 3], [0, 1, 3, 2], [1, 0, 2, 3], [1, 0, 3, 2]):
         arr = np.array([pdgs[o] for o in order], dtype=np.int32)
@@ -4377,7 +4379,17 @@ for pdgs in ([-2, -1, -2, -1], [-1, -2, -2, -1], [2, 1, 2, 1]):
         # the density of the leg in slot 1, which stays where it is
         dens = m.py_get_density(pdgs=arr, procid=-1, p=p, pos=[1],
                                 allow_hel=[-1, 1], alphas=0.118, scale2=0.)
-        res['dens'].append([[z.real, z.imag] for z in dens])
+        res['dens'].append(cplx(dens))
+        # the initial legs open, the final ones (which may be moved) at
+        # fixed helicities
+        res['dens12'].append(cplx(m.py_get_density(
+            pdgs=arr, procid=-1, p=p, pos=[1, 2], allow_hel=allow12,
+            alphas=0.118, scale2=0.)))
+        res['inter12'].append([cplx(m.py_get_all_inter(
+            pdgs=arr, procid=-1, p=p, nhel=np.array([0, 0, h3, h4],
+                                                    dtype=np.int32),
+            pos=[1, 2], allow_hel=allow12))
+            for h3, h4 in itertools.product([-1, 1], repeat=2)])
 json.dump(res, open(outfile, 'w'))
 '''
 
@@ -4430,6 +4442,37 @@ json.dump(res, open(outfile, 'w'))
             self.assertFalse(any(math.isnan(x) for z in dens for x in z), i)
             self.assertAlmostEqual((dens[0][0] + dens[2][0]) /
                                    folded['sm'][i], 1, places=12, msg=i)
+        # py_get_all_inter summed over the final helicities is the density
+        # in every leg order the density answers, d u > u d (final legs
+        # repaired) included: its NHEL moves with the legs. It used to give
+        # zeros for every order the table does not hold.
+        for out in (folded, expanded):
+            nonzero = 0
+            for i, dens in enumerate(out['dens12']):
+                scale = max(abs(complex(*z)) for z in dens)
+                if scale == 0:
+                    continue
+                nonzero += 1
+                for k, (re_, im_) in enumerate(dens):
+                    self.assertAlmostEqual(
+                        sum(inter[k][0] for inter in out['inter12'][i]),
+                        re_, delta=1e-12 * scale, msg=i)
+                    self.assertAlmostEqual(
+                        sum(inter[k][1] for inter in out['inter12'][i]),
+                        im_, delta=1e-12 * scale, msg=i)
+            # both final orders of every initial order the table holds
+            self.assertGreaterEqual(nonzero, 6)
+        for k in (10, 11):
+            # d u > u d and d u > d u: one of them needs the repair
+            self.assertGreater(max(abs(complex(*z))
+                                   for z in expanded['dens12'][k]), 0)
+        # wherever both answer, row by row the same numbers
+        for i in range(12):
+            scale = max(abs(complex(*z)) for z in expanded['dens12'][i])
+            if not scale:
+                continue
+            for got, ref in zip(folded['inter12'][i], expanded['inter12'][i]):
+                self._assert_same_inter(got, ref, scale)
 
     def test_standalone_f2py_crossed_idx_caller_order_nhel(self):
         """PY_<prefix>GET_ALL_INTER_IDX at a crossed index takes NHEL in the

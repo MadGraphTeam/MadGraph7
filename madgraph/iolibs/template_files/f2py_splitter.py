@@ -140,7 +140,7 @@ C      symmetric one)
 
   integer pdgs(*)
   integer npdg, procid, n_changing
-  integer nhel(*), lnhel(%(maxpart)i)
+  integer nhel(*), lnhel(%(maxpart)i), hfix(%(maxpart)i)
   integer n_comb
   double precision p(*)
   double precision ANS,  PI,SCALE2
@@ -158,6 +158,7 @@ C     Update is done insider the direct density call functions
 
 C     GET_ALL_INTER may overwrite NHEL at POS (the split-order
 C     one does): hand it a copy, f2py passes the numpy array.
+C     A repaired leg order takes the helicities along (HFIX).
   lnhel(:) = 0
   do i = 1, min(npdg, %(maxpart)i)
      lnhel(i) = nhel(i)

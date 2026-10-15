@@ -1,5 +1,5 @@
       SUBROUTINE FLAVOR_ORDER_REPAIR(GETIDX, GETFLV, NEXT, NINI, NFLAV,
-     &   NFROZEN, FROZEN, DOREPAIR, FLAVOR, PDGS, P, PFIX)
+     &   NFROZEN, FROZEN, DOREPAIR, FLAVOR, PDGS, P, PFIX, LEGOF)
 C     Re-order the external legs so that GETIDX resolves their flavor.
 C
 C     The generated FLAV_TABLE tabulates ONE leg ordering per flavor
@@ -33,7 +33,9 @@ C       DOREPAIR: .FALSE. leaves the ordering untouched.  SMATRIXHEL passes
 C                 NHEL .LT. 1 here: a caller asking for one specific helicity
 C                 row names it by leg position, and re-ordering the legs would
 C                 answer for a different helicity assignment.  Rather than
-C                 guess, such a call keeps the 0 it returned before.
+C                 guess, such a call keeps the 0 it returned before.  (A
+C                 per-leg helicity array, GET_ALL_INTER's NHEL, has no such
+C                 problem: the caller moves it with the legs through LEGOF.)
 C       FLAVOR  : per-leg group positions, repaired in place
 C       PDGS    : per-leg merged pdg codes (read only; two legs may only be
 C                 exchanged when they carry the same merged code)
@@ -41,6 +43,10 @@ C       P       : input momenta
 C       PFIX    : momenta to hand to the matrix element.  Always written --
 C                 a copy of P when nothing had to move -- so that the caller
 C                 has a single array to pass on and P is never modified.
+C       LEGOF   : the input leg now in slot J is LEGOF(J)
+C                 (the identity when nothing moved), for
+C                 a caller moving more per-leg data along
+C                 (GET_ALL_INTER's NHEL).
       IMPLICIT NONE
       INTEGER MAXLEG
       PARAMETER (MAXLEG=%(maxpart)i)
@@ -49,7 +55,7 @@ C                 has a single array to pass on and P is never modified.
       EXTERNAL GETFLV
       INTEGER NEXT, NINI, NFLAV, NFROZEN
       LOGICAL DOREPAIR
-      INTEGER FROZEN(*), FLAVOR(*), PDGS(*)
+      INTEGER FROZEN(*), FLAVOR(*), PDGS(*), LEGOF(*)
       DOUBLE PRECISION P(0:3,*), PFIX(0:3,*)
 
       INTEGER FR_I, FR_J, FR_K, FR_LO, FR_HI, FR_IFLAV
@@ -57,6 +63,7 @@ C                 has a single array to pass on and P is never modified.
       LOGICAL FR_OK, FR_KEEP(MAXLEG)
 
       DO FR_J = 1, NEXT
+        LEGOF(FR_J) = FR_J
         DO FR_K = 0, 3
           PFIX(FR_K, FR_J) = P(FR_K, FR_J)
         ENDDO
@@ -125,6 +132,7 @@ C         a frozen leg that is not already a fixed point cannot be helped
         IF (.NOT. FR_OK) CYCLE
 C       slot FR_J takes the leg that currently sits in PERM(FR_J)
         DO FR_J = 1, NEXT
+          LEGOF(FR_J) = PERM(FR_J)
           FTMP(FR_J) = FLAVOR(PERM(FR_J))
           DO FR_K = 0, 3
             PFIX(FR_K, FR_J) = P(FR_K, PERM(FR_J))

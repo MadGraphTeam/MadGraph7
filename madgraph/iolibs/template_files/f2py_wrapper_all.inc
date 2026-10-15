@@ -127,11 +127,13 @@ C     over the rows of the helicity table (<prefix>NHEL) it
 C     gives PY_GET_DENSITY for unpolarised beams.
 C     No ALPHAS here: the couplings are the ones last set
 C     (INITIALISE, SMATRIXHEL or PY_GET_DENSITY).
-C     A folded crossed subprocess is found by its PDG codes
-C     too (F77_CROSSED_GET_ALL_INTER), legs in its
-C     GET_PDG_FOR_FLAVOR order: P, POS and NHEL all in the
-C     caller's leg order. PDGS that no process
-C     matches give NaN (with an ERROR line), not zeros.
+C     P, POS and NHEL are all in the caller's leg order. As
+C     for PY_GET_DENSITY, same-code legs not in POS may come
+C     in any order inside the initial or the final state
+C     (each keeps its NHEL), a folded crossed subprocess is
+C     found by its PDG codes too (F77_CROSSED_GET_ALL_INTER),
+C     and PDGS that no process matches give NaN (with an
+C     ERROR line), not zeros.
       IMPLICIT NONE
 CF2PY double precision, intent(in), dimension(0:3,npdg) :: p
 CF2PY integer, intent(in), dimension(npdg) :: pdgs
