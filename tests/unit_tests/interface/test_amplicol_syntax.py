@@ -136,3 +136,18 @@ class AmplicolExportTest(unittest.TestCase):
                               precmd=True)
             self.assertEqual(export_amplicol.coupling_orders(
                 self.cmd._curr_amplicol_defs[0], self.cmd._curr_model), orders)
+
+    def test_mirrored_beams(self):
+        """pyamplicol keeps one process per unordered initial state; the other
+        beam order is integrated as the mirror where the definition allows it."""
+        import madgraph.iolibs.export_amplicol as export_amplicol
+        mirrored = export_amplicol.mirrored
+        partons = {21, 1, 2, -1, -2}
+        exported = {((21, 2), (2, 21, 21)), ((2, 2), (2, 2, 21)),
+                    ((2, -2), (-2, 2, 21)), ((-2, 2), (-2, 2, 21))}
+        self.assertTrue(mirrored([21, 2, 21, 21, 2], 2, [partons, partons], exported))
+        self.assertFalse(mirrored([2, 2, 2, 2, 21], 2, [partons, partons], exported))
+        # both beam orders are exported
+        self.assertFalse(mirrored([2, -2, 2, -2, 21], 2, [partons, partons], exported))
+        # g u > u g g only
+        self.assertFalse(mirrored([21, 2, 21, 21, 2], 2, [{21}, {2}], exported))

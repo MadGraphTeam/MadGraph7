@@ -206,11 +206,25 @@ def color_types(model, pdgs):
     return types
 
 
-def subprocess_entries(metadata, model, rel_dir, me_path, ratio_path, qcd_power):
-    """One subprocesses.json entry per channel of a UMAMI provider."""
+def mirrored(pdgs, incoming, initial_legs, exported):
+    """Whether the process with swapped beams is requested but not exported:
+    pyamplicol keeps one process per unordered initial state."""
+    if incoming != 2 or pdgs[0] == pdgs[1]:
+        return False
+    swapped = ((pdgs[1], pdgs[0]), tuple(sorted(pdgs[2:])))
+    return (pdgs[1] in initial_legs[0] and pdgs[0] in initial_legs[1]
+            and swapped not in exported)
+
+
+def subprocess_entries(metadata, model, rel_dir, me_path, ratio_path, qcd_power,
+                       initial_legs):
+    """One subprocesses.json entry per channel of a UMAMI provider; initial_legs
+    are the pdg ids allowed for each initial leg."""
     pdg_ids = metadata['pdg_ids']
     provider = metadata['provider']
     incoming = provider['incoming_count']
+    exported = {(tuple(pdgs[:incoming]), tuple(sorted(pdgs[incoming:])))
+                for pdgs in pdg_ids}
     entries = []
     for channel_index, channel in enumerate(metadata['channels']):
         flavors = []
@@ -220,11 +234,12 @@ def subprocess_entries(metadata, model, rel_dir, me_path, ratio_path, qcd_power)
                     'AmpliCol contributions shared by several channels are not '
                     'supported yet')
             for term in process['matrix_elements']:
+                pdgs = pdg_ids[term['pdg_ids']]
                 flavors.append({
                     'index': flavor_index,
-                    'options': [pdg_ids[term['pdg_ids']]],
+                    'options': [pdgs],
                     'factor': term['factor'],
-                    'mirror': False,
+                    'mirror': mirrored(pdgs, incoming, initial_legs, exported),
                 })
         first = flavors[0]['options'][0]
         entries.append({
@@ -300,8 +315,10 @@ def export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None):
             copies.append('\tcp $(BUILD)/lc/%s ../../%s' % (library, me_path))
             copies.append('\tcp $(BUILD)/reweight/libreweight_%s.so ../../%s' %
                           (provider_id, ratio_path))
+            initial_legs = [set(leg_pdgs(leg, model))
+                            for leg in procdef.get('legs') if not leg.get('state')]
             entries.extend(subprocess_entries(metadata, model, rel_dir, me_path,
-                                              ratio_path, qcd_power))
+                                              ratio_path, qcd_power, initial_legs))
         with open(pjoin(path, 'makefile'), 'w') as stream:
             stream.write(MAKEFILE % {'rusticol_config': rusticol_config,
                                      'copies': '\n'.join(copies)})
