@@ -1580,7 +1580,11 @@ print("F2PY_PDG_OK")
         Per helicity too: the table py_<prefix>get_nhel_idx gives for a crossed
         index must be the crossed process's own (column h = the code h that
         SMATRIXHEL takes), so it and the per-code values must both match the
-        expanded output. It used to hand back the base table."""
+        expanded output. It used to hand back the base table.
+
+        The beam swap of a folded crossing (d~ u > w+ g) is reached as well,
+        where the expanded output has no branch: it must be the expanded
+        u d~ > w+ g with the two beams exchanged."""
         outs = {}
         for name, options in (('on', ''), ('off', ' --use_crossing=False')):
             out = pjoin(self.tmpdir, 'all_matrix_' + name)
@@ -1613,6 +1617,13 @@ P = np.array([[E, 0, 0, E], [E, 0, 0, -E], [e3, q * s, 0, q * c],
               [2 * E - e3, -q * s, 0, -q * c]]).T
 for pdgs in ([21, 2, 24, 1], [2, -1, 24, 21], [21, -1, 24, -2]):
     print('ME %r' % m.smatrixhel(pdgs, -1, P, 0.118, 0, -1))
+# beam swaps of the crossed processes: the folded dispatch also answers
+# them (MIRROR), as SWAP = the process asked with the two beams exchanged
+Ps = np.ascontiguousarray(P[:, [1, 0, 2, 3]])
+for pdgs in ([2, -1, 24, 21], [21, -1, 24, -2]):
+    print('MIRROR %r' % m.smatrixhel([pdgs[1], pdgs[0]] + pdgs[2:], -1, P,
+                                     0.118, 0, -1))
+    print('SWAP %r' % m.smatrixhel(pdgs, -1, Ps, 0.118, 0, -1))
 def nhel_table(pdgs):
     k = 0
     while hasattr(m, 'py_m%d_get_flavor_layout' % k):
@@ -1627,7 +1638,7 @@ for pdgs in ([2, -1, 24, 21], [21, -1, 24, -2]):
     print('PER %s' % json.dumps([m.smatrixhel(pdgs, -1, P, 0.118, 0, h)
                                  for h in range(1, nhel.shape[1] + 1)]))
 '''
-        values, tables, per_code = {}, {}, {}
+        values, tables, per_code, mirror, swap = {}, {}, {}, {}, {}
         for name, out in outs.items():
             path = pjoin(self.tmpdir, 'probe_%s.py' % name)
             with open(path, 'w') as fsock:
@@ -1638,6 +1649,12 @@ for pdgs in ([2, -1, 24, 21], [21, -1, 24, -2]):
             values[name] = [float(v) for v in re.findall(r'^ME (\S+)$',
                                                           output, re.M)]
             self.assertEqual(len(values[name]), 3, output)
+            mirror[name] = [float(v) for v in re.findall(r'^MIRROR (\S+)$',
+                                                          output, re.M)]
+            swap[name] = [float(v) for v in re.findall(r'^SWAP (\S+)$',
+                                                        output, re.M)]
+            self.assertEqual(len(mirror[name]), 2, output)
+            self.assertEqual(len(swap[name]), 2, output)
             tables[name] = re.findall(r'^NHEL (.*)$', output, re.M)
             per_code[name] = [json.loads(v) for v in re.findall(r'^PER (.*)$',
                                                           output, re.M)]
@@ -1647,6 +1664,13 @@ for pdgs in ([2, -1, 24, 21], [21, -1, 24, -2]):
             self.assertGreater(off, 0.0)
             self.assertLessEqual(abs(on - off), 1e-10 * off,
                                  (values['on'], values['off']))
+        # the folded output also reaches the beam swap of a crossing (a
+        # PDG order the expanded output has no branch for), with the exact
+        # |M|^2 of the crossed process with its beams exchanged
+        for on, off in zip(mirror['on'], swap['off']):
+            self.assertGreater(off, 0.0)
+            self.assertLessEqual(abs(on - off), 1e-10 * off,
+                                 (mirror['on'], swap['off']))
         # the crossed index labels its codes with its own table
         self.assertEqual(tables['on'], tables['off'])
         for total, on, off in zip(values['off'][1:], per_code['on'],

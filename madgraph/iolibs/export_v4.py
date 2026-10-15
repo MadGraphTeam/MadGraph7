@@ -7985,7 +7985,9 @@ C       stays correct for split-order processes.
         order (F77_CROSSED_ORDER) when NHEL sums the helicities, as the base
         entries do with FLAVOR_ORDER_REPAIR: a single helicity row names its
         legs by position, so such a call, or one no crossing serves, leaves
-        FOUND false (the dispatch then answers NaN, F77_NO_PROCESS_ANS)."""
+        FOUND false (the dispatch then answers NaN, F77_NO_PROCESS_ANS).
+        The beam swap of a folded crossing is found as well (see
+        _crossed_dispatch_routine), a PDG order the expanded output lacks."""
         return self._crossed_dispatch_routine(
             ['      subroutine %sf77_crossed_smatrixhel(pdgs, lpdgs, procid,'
              ' npdg, p, nhel, ans, found)' % f2py_prefix,
@@ -8080,7 +8082,18 @@ C       stays correct for split-order processes.
         that, as FLAVOR_ORDER_REPAIR does for the uncrossed entries: when no
         row matches exactly and the condition holds, a second pass accepts a
         row whose legs only differ by such an exchange, the frozen legs kept
-        in place (F77_CROSSED_ORDER). None keeps the exact match only."""
+        in place (F77_CROSSED_ORDER). None keeps the exact match only.
+
+        The recorded rows also hold the beam-swapped partner of a folded
+        crossing (its mirror), so this dispatch answers e.g. `u~ u > e+ e- g`
+        of p p > e+ e- j too, which the --use_crossing=False output -- one
+        PDG branch per generated leg order, mirrors merged -- leaves at NaN.
+        That value is exact: the crossed |M|^2 with the two beams (codes,
+        momenta and helicities) exchanged. Only beam swaps recorded as a
+        crossing row are reached: with grouped subprocesses the base's own
+        (a mirror of the base, not a row) stays NaN in both outputs. The rows
+        are needed by madevent and the python consumers
+        (recorded_crossing_codes), so this superset is kept, not filtered."""
         lines = head + ['      integer xpdgs(%i), legof(%i), ik, f, idx,'
                         ' ipass, npass' % (maxpart, maxpart),
                         '      integer nofrozen(1)',
