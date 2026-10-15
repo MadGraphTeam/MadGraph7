@@ -1252,7 +1252,9 @@ c The batched real matrix elements (the part offloaded to MadMatrix)
 
          
       do ivec=1,vector_size
-         if(allocated(itype_vec)) call retrieve_weight_lines(nexternal,ivec)
+c With one active lane the scalar weight lines already belong to this point.
+         if(vector_size.gt.1.and.allocated(itype_vec))
+     $      call retrieve_weight_lines(nexternal,ivec)
          nFKS_picked_nbody=lane_nbody(ivec)
          vol1=lane_vol1(ivec)
          born_vol1=lane_born_vol1(ivec)
@@ -1515,7 +1517,9 @@ c subtraction terms.
          !    stop 1
          ! endif
          ! ZW: THERE'S A PROBLEM WITH WEIGHT_LINES_VEC!!! IN THE FIRST ITERATION, NEED TO PROPERLY DELINIEATE BETWEEN DIFFERENT IVEC!!!!
-         if(allocated(itype)) call append_weight_lines(nexternal,ivec)
+c The closing ifl=2 append still supplies vector lines to event picking.
+         if(vector_size.gt.1.and.allocated(itype))
+     $      call append_weight_lines(nexternal,ivec)
          virt_wgt_vec(:,ivec)=virt_wgt_mint
          born_wgt_vec(:,ivec)=born_wgt_mint
          virtual_over_born_vec(ivec)=virtual_over_born
@@ -1540,7 +1544,8 @@ c correctly.
             ! write(*,*) "--------------------------------------------"
             ! write(*,*) " Special check for ifl=2, ivec=",ivec
             ! write(*,*) "--------------------------------------------"
-            if(allocated(itype_vec)) call retrieve_weight_lines(nexternal,ivec)
+            if(vector_size.gt.1.and.allocated(itype_vec))
+     $         call retrieve_weight_lines(nexternal,ivec)
             f(:) = f_vec(:,ivec)
             virt_wgt_mint(:)=virt_wgt_vec(:,ivec)
             born_wgt_mint(:)=born_wgt_vec(:,ivec)

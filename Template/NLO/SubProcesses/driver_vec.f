@@ -235,6 +235,11 @@ c Each lane uses its own sampled FKS group (see sigintF_vec)
             ! if (ickkw.eq.3) call set_FxFx_scale(-3,p,nFKSprocess)
             passcuts_n1body=passcuts(p,rwgt)
             passcuts_n1body_vec(iFKS,ivec)=passcuts_n1body
+c Preserve the Born-validity marker checked before the cached cut flags.
+            spb(:,:,iFKS,ivec) = p_born(:,:)
+c FxFx can change cut state before scalar replay; retain its setup.
+            if (ickkw.ne.3.and.
+     $          .not.(passcuts_nbody.or.passcuts_n1body)) cycle
             call set_alphaS(p_born_ev)
             call set_alphaS_vec_from_scalar(icoup)
             spb_ev(:,:,iFKS,ivec) = p_born_ev(:,:)
