@@ -122,10 +122,14 @@ class AmplicolSubprocess(MadgraphSubprocess):
             )
 
     def load(self, path: str, artifact: str, parameters: dict):
-        # the libraries find their pyamplicol artifacts from an absolute path
-        for context in self.process.contexts:
-            api = context.load_matrix_element(path, os.path.abspath(artifact), parameters)
-        return api
+        # loaded once for all channels; each load reads the whole pyamplicol artifact
+        apis = self.process.amplicol_apis
+        if path not in apis:
+            for context in self.process.contexts:
+                apis[path] = context.load_matrix_element(
+                    path, os.path.abspath(artifact), parameters
+                )
+        return apis[path]
 
     def build_multi_channel_data(self):
         return None

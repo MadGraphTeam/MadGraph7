@@ -251,6 +251,8 @@ class MadgraphProcess:
     def init_context(self) -> None:
         device_names = self.run_card["run"]["device"]
         self.contexts = []
+        # AmpliCol libraries, shared by all channels of their process
+        self.amplicol_apis = {}
         self.device_types = []
         self.devices = []
         self.pool_sizes = []
