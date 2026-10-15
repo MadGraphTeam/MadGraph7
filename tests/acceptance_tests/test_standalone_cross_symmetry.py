@@ -327,9 +327,11 @@ print('GHREMAP_RELATION_OK checked=%%d genuine=%%d cycles=%%d points=%%d' %%
 
 
 # Subprocess probe for the CROSSED spin-density matrix through the f2py wrapper
-# PY_GET_DENSITY_IDX -- the only path by which a python caller can request a
-# crossed density matrix (the FLAVOR-array PY_GET_DENSITY resolves through
-# GET_FLAVOR_INDEX, which only returns 1..NFLAV and so cannot carry a crossing).
+# PY_GET_DENSITY_IDX -- the per-process path by which a python caller can
+# request a crossed density matrix (the FLAVOR-array PY_GET_DENSITY resolves
+# through GET_FLAVOR_INDEX, which only returns 1..NFLAV and so cannot carry a
+# crossing; the combined module's PDG-keyed py_get_density reaches a FOLDED
+# crossing through f77_crossed_density instead).
 # Prints, per external leg, the three interference terms (++),(+-),(--) of that
 # leg's density matrix, so the parent can compare a crossed evaluation against a
 # natively generated reference term by term. Run in a subprocess because an
@@ -1230,8 +1232,9 @@ for K in range(ncross):
 
     def test_crossed_density_matrix_chiral_f2py(self):
         """Same chiral crossed-density-matrix check, but through the f2py
-        PY_GET_DENSITY_IDX wrapper -- the only way a python caller can ask for a
-        crossed density matrix. Skips if the f2py build backend is unavailable.
+        PY_GET_DENSITY_IDX wrapper -- the per-process way a python caller can
+        ask for a crossed density matrix by its index. Skips if the f2py build
+        backend is unavailable.
         """
         udx_wpg = self._output_standalone(PROC_UDX_WPG, 'Proc_udx_wpg_f2py')
         ug_wpd = self._output_standalone(PROC_UG_WPD, 'Proc_ug_wpd_f2py')

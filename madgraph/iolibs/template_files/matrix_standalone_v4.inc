@@ -958,13 +958,12 @@ c     computed) INTER((NCOMB*NCOMB+1)/2: all interference term
 c     (not the symmetric one) FLAV_IDX may carry a crossing: it
 c     is decoded and applied ONCE here, and
 c     GET_ALL_INTER_CROSSED below then only sees crossed arrays.
-c     POS is given in the UNCROSSED (source process) slot
-c     numbering and is mapped through the crossing permutation
-c     here.
-c     NHEL is NOT mapped: entry XK is the physical helicity of
-c     the leg base slot XK becomes, i.e. of the caller's leg
-c     PERM(XK) (GET_CROSS_PERM), as in APPLY_CROSSING_TABLE.
-c     Only for an uncrossed FLAV_IDX is that the caller's order.
+c     P, POS and NHEL all follow the caller's legs (the slot
+c     order of the process FLAV_IDX names, GET_PDG_FOR_FLAVOR)
+c     and are mapped onto the base slots here: base slot XK
+c     takes P(:,PERM(XK)) and NHEL(PERM(XK)) (GET_CROSS_PERM),
+c     with no sign, NHEL(K) being the physical helicity of
+c     caller leg K.
       implicit none
 CF2PY INTENT(IN) :: P(0:3,%(nexternal)d)
 CF2PY INTENT(IN) :: NHEL(%(nexternal)d)

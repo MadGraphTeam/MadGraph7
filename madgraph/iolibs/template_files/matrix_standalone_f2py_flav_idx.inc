@@ -96,10 +96,13 @@ CF2PY INTENT(OUT) :: NHEL_STAR(NEXTERNAL,NCOMB)
      &     ALLOW_HEL, N_COMB, FLAV_IDX, ALPHAS, SCALE2, INTER)
 C     Density matrix for an extended FLAV_IDX. PY_GET_DENSITY
 C     takes the FLAVOR array and so can only ever ask for an
-C     uncrossed density matrix; this is the only way to request
-C     a crossed one through f2py. Same CF2PY-before-declarations
-C     layout and same explicit INTER sizing as PY_GET_DENSITY --
-C     see the comments there, both matter.
+C     uncrossed density matrix; this is the per-process way to
+C     request a crossed one by its index (the combined module's
+C     PDG-keyed py_get_density reaches a folded crossing
+C     through f77_crossed_density). Same
+C     CF2PY-before-declarations layout and same explicit INTER
+C     sizing as PY_GET_DENSITY -- see the comments there, both
+C     matter.
       IMPLICIT NONE
 CF2PY double precision, intent(in), dimension(0:3,%(nexternal)d) :: P
 CF2PY integer, intent(in), dimension(*) :: POS
@@ -130,9 +133,8 @@ C     The un-normalised interference terms behind
 C     GET_DENSITY_IDX, for a caller supplying its own helicity
 C     configuration. Exposed for the same reason: its
 C     FLAVOR-array twin cannot carry a crossing.
-C     P and POS follow the caller's legs, NHEL the base slots
-C     (see GET_ALL_INTER_IDX): for a crossed FLAV_IDX pass
-C     NHEL(XK) = helicity of caller leg PERM(XK).
+C     P, POS and NHEL all follow the caller's legs, crossed
+C     FLAV_IDX included (see GET_ALL_INTER_IDX).
       IMPLICIT NONE
 CF2PY double precision, intent(in), dimension(0:3,%(nexternal)d) :: P
 CF2PY integer, intent(in), dimension(%(nexternal)d) :: NHEL

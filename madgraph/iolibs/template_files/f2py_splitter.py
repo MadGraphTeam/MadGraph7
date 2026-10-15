@@ -47,10 +47,10 @@ C Same as f77_smatrixhel, but selecting the matrix element
 C by its slot in get_pdg_order/get_prefix (PROCINDEX,
 C 1-based) and taking the extended flavor index (FLAV_IDX =
 C K*NFLAV + flav) as given rather than resolving it from the
-C PDG codes. This is the only way in to a FOLDED crossed
-C subprocess: it has no PDG entry of its own, so the
-C dispatch above cannot name it, and the FLAVOR array cannot
-C express a crossing (see
+C PDG codes, for a caller that resolved a FOLDED crossed
+C subprocess itself (f77_smatrixhel finds it from the PDG
+C codes through f77_crossed_smatrixhel; the FLAVOR array
+C cannot express a crossing, see
 C matrix_standalone_f2py_flav_idx.inc). The alphas/scale2
 C setup is deliberately the same as in f77_smatrixhel.
 CF2PY double precision, intent(in), dimension(0:3,npdg) :: p
@@ -104,15 +104,22 @@ C
   INTEGER ALLOW_HEL(n_changing*n_comb)
   DOUBLE COMPLEX INTER(n_comb*(n_comb+1)/2)
   integer flavor(%(maxpart)i),lpdgs(%(maxpart)i),I
+  logical found
 %(flavor_index_decl)s
 C     Update is done insider the direct density call functions
 
 %(flavormapping)s
 
+C     FOUND: some matrix element (uncrossed, or a folded
+C     crossing through f77_crossed_density) evaluates PDGS.
+  found = .true.
 %(density_splitter)s
+  if (.not.found) call %(f2py_prefix)sf77_no_process('py_get_density', pdgs, npdg, procid, inter, n_comb*(n_comb+1)/2)
 
             return
             end
+
+%(crossed_density)s
 
   subroutine %(f2py_prefix)sf77_get_all_inter(pdgs, procid, npdg, P, NHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, INTER)
   IMPLICIT NONE
@@ -136,6 +143,7 @@ C      symmetric one)
   INTEGER ALLOW_HEL(*)
   DOUBLE COMPLEX INTER(*)
   integer flavor(%(maxpart)i),lpdgs(%(maxpart)i),I
+  logical found
 %(flavor_index_decl)s
 C     Update is done insider the direct density call functions
 
@@ -150,10 +158,38 @@ C     one does): hand it a copy, f2py passes the numpy array.
      lnhel(i) = nhel(i)
   enddo
 
+C     FOUND: as in f77_density (f77_crossed_get_all_inter
+C     for a folded crossing, NHEL in the caller's legs).
+  found = .true.
 %(inter_splitter)s
+  if (.not.found) call %(f2py_prefix)sf77_no_process('py_get_all_inter', pdgs, npdg, procid, inter, n_comb*(n_comb+1)/2)
 
             return
             end
+
+%(crossed_get_all_inter)s
+
+      SUBROUTINE %(f2py_prefix)sf77_no_process(FCT, PDGS, NPDG, PROCID, INTER, NINTER)
+C     No matrix element of this module, uncrossed or folded
+C     crossing, evaluates PDGS (for PROCID): say so and
+C     answer NaN, never a silent zero a caller could not tell
+C     from a vanishing density matrix. Legs must come in an
+C     order a matrix element tabulates (get_pdg_order, or for
+C     a folded crossing its GET_PDG_FOR_FLAVOR order).
+      USE, INTRINSIC :: IEEE_ARITHMETIC
+      IMPLICIT NONE
+      CHARACTER*(*) FCT
+      INTEGER NPDG, PROCID, NINTER, I
+      INTEGER PDGS(NPDG)
+      DOUBLE COMPLEX INTER(NINTER)
+      DOUBLE PRECISION XNAN
+      WRITE(*,*) 'ERROR: ', FCT, ': no matrix element for PDGS', (PDGS(I), I=1,NPDG), ' PROCID', PROCID, ': answer set to NaN'
+      XNAN = IEEE_VALUE(XNAN, IEEE_QUIET_NAN)
+      DO I = 1, NINTER
+        INTER(I) = DCMPLX(XNAN, XNAN)
+      ENDDO
+      RETURN
+      END
 
       SUBROUTINE %(f2py_prefix)sf77_INITIALISE(PATH)
 C     ROUTINE FOR F2PY to read the benchmark point.

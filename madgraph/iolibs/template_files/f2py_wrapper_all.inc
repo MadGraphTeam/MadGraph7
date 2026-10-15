@@ -29,9 +29,9 @@ CF2PY double precision, intent(in) :: SCALE2
 C     Crossing-aware twin of SMATRIXHEL. PROCINDEX is the
 C     1-based get_pdg_order slot of the matrix element and
 C     FLAV_IDX the extended flavor index (cross*NFLAV+flav) of
-C     the process to evaluate. A folded crossed subprocess is
-C     reachable only this way: it has no PDG entry of its own,
-C     and the FLAVOR array cannot carry a crossing.
+C     the process to evaluate, for a caller that resolved the
+C     crossing itself. SMATRIXHEL reaches a folded crossed
+C     subprocess by its PDG codes too (F77_CROSSED_SMATRIXHEL).
 
 CF2PY double precision, intent(in), dimension(0:3,npdg) :: p
 CF2PY integer, intent(in) :: procindex
@@ -127,8 +127,11 @@ C     over the rows of the helicity table (<prefix>NHEL) it
 C     gives PY_GET_DENSITY for unpolarised beams.
 C     No ALPHAS here: the couplings are the ones last set
 C     (INITIALISE, SMATRIXHEL or PY_GET_DENSITY).
-C     A folded crossing has no PDG entry: reach it through
-C     PY_<prefix>GET_ALL_INTER_IDX or --use_crossing=False.
+C     A folded crossed subprocess is found by its PDG codes
+C     too (F77_CROSSED_GET_ALL_INTER, PY_GET_DENSITY alike),
+C     legs in its GET_PDG_FOR_FLAVOR order: P, POS and NHEL
+C     all in the caller's leg order. PDGS that no process
+C     matches give NaN (with an ERROR line), not zeros.
       IMPLICIT NONE
 CF2PY double precision, intent(in), dimension(0:3,npdg) :: p
 CF2PY integer, intent(in), dimension(npdg) :: pdgs

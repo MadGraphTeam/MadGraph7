@@ -1792,8 +1792,9 @@ class ReweightInterface(extended_cmd.Cmd):
                         new_value = module.smatrixhel(pdg, pid, p, event.aqcd, scale2, nhel)
                     else:
                         # folded crossing: name the matrix element by its slot
-                        # and the process by the extended flavor index, the PDG
-                        # dispatch cannot reach it. NPDG is f2py-derived from p.
+                        # and the process by the extended flavor index the
+                        # event was resolved to (build_cross_resolve), rather
+                        # than by its PDG codes. NPDG is f2py-derived from p.
                         new_value = module.smatrixhel_idx(procindex, flav_idx, p,
                                                     event.aqcd, scale2, nhel)
                     #misc.sprint(new_value)
@@ -2118,10 +2119,12 @@ class ReweightInterface(extended_cmd.Cmd):
            element's own leg order, which makes the id_to_path key
            order-sensitive; a folded crossing has no directory and hence no
            such order to promise, so a crossed event would miss the lookup.
-         - the density mode evaluates GET_DENSITY, not SMATRIX, and only its
-           FLAVOR-array entry point is wired up here; the FLAVOR array cannot
-           express a crossing (GET_DENSITY_IDX would be needed, as MadSpin's
-           density path does it).
+         - the density mode evaluates py_get_density, not SMATRIX, and finds
+           the matrix element and its leg order through get_pdg_order, which
+           lists no folded crossing. py_get_density itself falls back to a
+           folded crossing (f77_crossed_density), but only for legs in that
+           crossing's own order (GET_PDG_FOR_FLAVOR), which this mode does not
+           build.
          - 'use_eventid' hands the event's process id to SMATRIXHEL, while the
            folded entry point SMATRIXHEL_IDX takes none: a crossed event would
            silently be given the first matching matrix element instead.
@@ -4077,6 +4080,13 @@ class DensityInterface(ReweightInterface):
             # the argument event.scale**2 is a dummy argument for LO processes, else it is taken as the value given in the LHE file
             production_matrix = get_density(-1, pinv, pos_corrected, #self.number_changing_helicities,
                                             self.allowed_helicities, event.aqcd, event.scale**2)
+            # NaN (z != z): no matrix element of the module evaluates these
+            # legs in this order (f77_no_process in all_matrix.f).
+            if any(z != z for z in production_matrix):
+                raise Exception("Invalid density matrix: NaN returned for "
+                    "event %s (pdg %s): no matrix element evaluates these "
+                    "legs in this order." % (getattr(event, 'ievent', -1),
+                                             list(pdg)))
 
             if self.symmetrise_initial_state:
                 pinv_bis = self.invert_momenta(all_p_bis[i])

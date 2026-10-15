@@ -3836,6 +3836,18 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # template's names so that a split-orders file written WITHOUT crossing
         # gets neither -- GET_PDG_FOR_FLAVOR only exists to decode a crossing.
         replace_dict['so_crossing_routines'] = replace_dict['crossing_routines']
+        # The density stack of this template takes the FLAVOR array, which
+        # cannot carry a crossing: the f2py PDG dispatch reaches a folded
+        # crossed subprocess through these crossing-aware twins
+        # (GET_DENSITY_IDX, GET_ALL_INTER_SUMSO_IDX) instead. Only this
+        # template can take them (they need its split-order sizes).
+        get_template = getattr(self, 'get_matrix_template', None)
+        if get_template and get_template(matrix_element) == \
+                'matrix_standalone_splitOrders_v4.inc':
+            so_density = open(pjoin(_file_path, 'iolibs', 'template_files',
+                    'matrix_standalone_splitOrders_crossing_v4.inc')).read()
+            replace_dict['so_crossing_routines'] += \
+                '\n\n' + so_density % replace_dict
         replace_dict['so_pdg_function'] = replace_dict['flavor_pdg_function']
         # One filter shared by every crossing, a try counter per extended
         # index (see CROSSING_SNIPPETS smatrix_cross_decl).
@@ -4372,6 +4384,13 @@ C     across.
       CALL %(proc_prefix)sAPPLY_CROSSING(FLAV_IDX, P, NHEL, IC, PUSE,
      & NHELUSE, ICUSE, DUMFLAV)
       CALL %(proc_prefix)sGET_CROSS_PERM(FLAV_IDX, PERM, SGN, DUMFLAV)
+C     NHEL follows the caller's legs, like P and POS. Base slot
+C     I is caller leg PERM(I), so it takes NHEL(PERM(I)), with
+C     no sign: NHEL is the physical helicity of the crossed
+C     process's own leg, the view APPLY_CROSSING_TABLE takes.
+      DO I = 1, NEXTERNAL
+        NHELUSE(I) = NHEL(PERM(I))
+      ENDDO
       DO IPART = 1, N_CHANGING
         DO I = 1, NEXTERNAL
           IF (PERM(I).EQ.POS(IPART)) CPOS(IPART) = I
@@ -7636,6 +7655,13 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                     text.append(' call %s%%(fct_name)s' % prefix)
                 smtext.append(' call %ssmatrixhel(%s, nhel, %sget_flavor_index(flavor), ans)'
                               % (prefix, momenta, prefix))
+            # No PDG branch matched: try the folded crossings, as smatrixhel
+            # does, and otherwise report the miss (FOUND, see the template).
+            text.append(' else')
+            if n_ext in crossed_next:
+                text.append(' call %(fct_cross)s')
+            else:
+                text.append(' found = .false.')
             text.append(' endif')
             if n_ext in crossed_next:
                 smtext.append(' else')
@@ -7644,6 +7670,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             smtext.append(' endif')
         #close the function
         if min_nexternal != max_nexternal:
+            text.append(' else')
+            text.append(' found = .false.')
             text.append('endif')
             smtext.append('endif')
 
@@ -7671,10 +7699,11 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         # smatrixhel_idx: the same dispatch keyed on the 1-based matrix-element
         # slot (the get_pdg_order / get_prefix index) instead of on the PDG
         # codes, taking the extended FLAV_IDX as given. A FOLDED crossed
-        # subprocess has no PDG entry of its own -- that is the whole point of
-        # folding -- so the PDG dispatch cannot reach it; a caller that resolved
-        # the crossing itself (through GET_PDG_FOR_FLAVOR) holds a slot and an
-        # extended index instead. It shares f77_smatrixhel's alphas/scale2
+        # subprocess has no PDG branch of its own -- that is the whole point of
+        # folding -- so the PDG dispatch finds it only by scanning the crossings
+        # (f77_crossed_smatrixhel); a caller that resolved the crossing itself
+        # (through GET_PDG_FOR_FLAVOR) holds a slot and an extended index
+        # instead and comes in here. It shares f77_smatrixhel's alphas/scale2
         # handling so that a crossed and an uncrossed evaluation of the same
         # event use the exact same running couplings.
         idxtext = []
@@ -7761,15 +7790,23 @@ C       stays correct for split-order processes.
 
 
         # the crossed fallback reads the caller's PDGS: it is never rewritten
-        # (the merged codes live in LPDGS), so no copy is needed.
+        # (the merged codes live in LPDGS), so no copy is needed. The density
+        # and get_all_inter dispatches fall back the same way (their `else`
+        # branch above), get_all_inter with the caller's LNHEL copy.
         if crossed_next:
             crossed_routine = self.crossed_smatrixhel_routine(f2py_prefix,
                                                               max_nexternal)
+            crossed_density = self.crossed_density_routine(f2py_prefix,
+                                                           max_nexternal)
+            crossed_inter = self.crossed_get_all_inter_routine(f2py_prefix,
+                                                               max_nexternal)
         else:
-            crossed_routine = ''
+            crossed_routine = crossed_density = crossed_inter = ''
         formatting = {'python_information':'\n'.join(info), 
                           'smatrixhel': '\n'.join(smtext) % {'f2py_prefix': f2py_prefix},
                           'crossed_smatrixhel': crossed_routine,
+                          'crossed_density': crossed_density,
+                          'crossed_get_all_inter': crossed_inter,
                           'smatrixhel_idx': '\n'.join(idxtext),
                           'flavor_index_decl': flavor_index_decl,
                           'maxpart': max_nexternal,
@@ -7780,6 +7817,7 @@ C       stays correct for split-order processes.
                           'pids': ','.join(str(pid) for (pdg,pid) in allids),
                           'inter_splitter': '\n'.join(text) % {'fct_name': 'GET_ALL_INTER(%s, LNHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)' % momenta,
                                                                'fct_name_so': 'GET_ALL_INTER_SUMSO(%s, LNHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)' % momenta,
+                                                               'fct_cross': '%sf77_crossed_get_all_inter(pdgs, procid, npdg, p, lnhel, pos, n_changing, allow_hel, n_comb, inter, found)' % f2py_prefix,
                                                                'dorepair': '.false.'},
                           'flavor_repair_function': flavor_repair_function,
                           'parameter_setup': '\n'.join(parameter_setup),
@@ -7792,6 +7830,7 @@ C       stays correct for split-order processes.
                           'idens_value': all_iden,
                           'density_splitter': '\n'.join(text) % {'fct_name': 'GET_DENSITY(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)' % momenta,
                                                                  'fct_name_so': 'GET_DENSITY(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)' % momenta,
+                                                                 'fct_cross': '%sf77_crossed_density(pdgs, procid, npdg, p, pos, n_changing, allow_hel, n_comb, alphas, scale2, inter, found)' % f2py_prefix,
                                                                  'dorepair': '.true.'},
                           
                           }
@@ -7812,9 +7851,10 @@ C       stays correct for split-order processes.
         # (PY_<prefix>GET_PDG_FOR_FLAVOR / GET_FLAVOR_LAYOUT / GET_NHEL_IDX /
         # GET_DENSITY_IDX, etc.) in the COMBINED all_matrix module.  They live in
         # each subprocess' self-contained f2py_matrix_wrapper.f and call the
-        # M<n>_* routines already linked into liball...me; the combined wrapper is
-        # otherwise base-only, so a crossing-aware python caller (MadSpin's
-        # density path) could not reach a folded crossed subprocess through it.
+        # M<n>_* routines already linked into liball...me; the combined
+        # wrapper's PDG entries reach a folded crossed subprocess only by its
+        # PDG codes (f77_crossed_*), so a python caller holding an extended
+        # index needs these.
         # Concatenate rather than add the files to the f2py command line: f2py's
         # multi-file build leaves the extra wrappers' symbols undefined at
         # dlopen on some platforms, whereas a single scanned source links them.
@@ -7859,14 +7899,81 @@ C       stays correct for split-order processes.
         for is found by comparing the signed PDG codes. Legs must come in an
         order the crossing table serves (GET_PDG_FOR_FLAVOR's), as for the
         base entries without the flavor-order repair; otherwise ANS = 0."""
-        lines = ['      subroutine %sf77_crossed_smatrixhel(pdgs, procid, npdg,'
-                 ' p, nhel, ans)' % f2py_prefix,
-                 '      implicit none',
-                 '      integer npdg, procid, nhel',
-                 '      integer pdgs(npdg)',
-                 '      double precision p(0:3,npdg), ans',
-                 '      integer xpdgs(%i), ik, f, j, idx' % maxpart,
-                 '      logical same']
+        return self._crossed_dispatch_routine(
+            ['      subroutine %sf77_crossed_smatrixhel(pdgs, procid, npdg,'
+             ' p, nhel, ans)' % f2py_prefix,
+             '      implicit none',
+             '      integer npdg, procid, nhel',
+             '      integer pdgs(npdg)',
+             '      double precision p(0:3,npdg), ans'],
+            '      ans = 0d0',
+            lambda prefix: ['              call %ssmatrixhel(p, nhel, idx, ans)'
+                            % prefix],
+            maxpart)
+
+    def crossed_density_routine(self, f2py_prefix, maxpart):
+        """F77_CROSSED_DENSITY: f77_density's twin of F77_CROSSED_SMATRIXHEL.
+
+        The folded crossed subprocess named by the caller's PDGS is found the
+        same way, and its density matrix is GET_DENSITY_IDX of the base at that
+        extended index, P and POS in the caller's leg order. FOUND tells the
+        dispatch whether any process matched."""
+        return self._crossed_dispatch_routine(
+            ['      subroutine %sf77_crossed_density(pdgs, procid, npdg, p,'
+             ' pos, n_changing, allow_hel, n_comb, alphas, scale2, inter,'
+             ' found)' % f2py_prefix,
+             '      implicit none',
+             '      integer npdg, procid, n_changing, n_comb',
+             '      integer pdgs(npdg), pos(n_changing)',
+             '      integer allow_hel(n_changing*n_comb)',
+             '      double precision p(0:3,npdg), alphas, scale2',
+             '      double complex inter(n_comb*(n_comb+1)/2)',
+             '      logical found'],
+            '      found = .false.',
+            lambda prefix: [
+                '              call %sget_density_idx(p, pos, n_changing,'
+                ' allow_hel, n_comb, idx, alphas, scale2, inter)' % prefix,
+                '              found = .true.'],
+            maxpart)
+
+    def crossed_get_all_inter_routine(self, f2py_prefix, maxpart):
+        """F77_CROSSED_GET_ALL_INTER: f77_get_all_inter's twin of
+        F77_CROSSED_SMATRIXHEL, calling GET_ALL_INTER_IDX of the base (its
+        split-order sum GET_ALL_INTER_SUMSO_IDX for a split-order matrix
+        element) at the extended index. P, POS and NHEL all follow the
+        caller's legs; NHEL is the caller's copy (LNHEL) and is not written
+        to. FOUND tells the dispatch whether any process matched."""
+        so = getattr(self, 'split_order_prefixes', ())
+        return self._crossed_dispatch_routine(
+            ['      subroutine %sf77_crossed_get_all_inter(pdgs, procid, npdg,'
+             ' p, nhel, pos, n_changing, allow_hel, n_comb, inter, found)'
+             % f2py_prefix,
+             '      implicit none',
+             '      integer npdg, procid, n_changing, n_comb',
+             '      integer pdgs(npdg), nhel(npdg), pos(n_changing)',
+             '      integer allow_hel(n_changing*n_comb)',
+             '      double precision p(0:3,npdg)',
+             '      double complex inter(n_comb*(n_comb+1)/2)',
+             '      logical found'],
+            '      found = .false.',
+            lambda prefix: [
+                '              call %s%s(p, nhel, pos, n_changing, allow_hel,'
+                ' n_comb, idx, inter)' % (prefix, 'get_all_inter_sumso_idx'
+                                          if prefix in so else
+                                          'get_all_inter_idx'),
+                '              found = .true.'],
+            maxpart)
+
+    def _crossed_dispatch_routine(self, head, init, call, maxpart):
+        """The scan shared by the F77_CROSSED_* routines: for each matrix
+        element a crossed subprocess was folded into (crossed_smatrixhel_prefixes)
+        and each recorded crossing row K and flavor, compare GET_PDG_FOR_FLAVOR
+        of the extended index with the caller's PDGS and run call(prefix) (the
+        lines evaluating it at IDX) on the first match. `head` is the
+        subroutine line and its declarations, `init` the statement run first
+        (the no-match answer)."""
+        lines = head + ['      integer xpdgs(%i), ik, f, j, idx' % maxpart,
+                        '      logical same']
         data, body = [], []
         for prefix, (nexternal, nflav, rows, pids) in \
                 sorted(self.crossed_smatrixhel_prefixes().items()):
@@ -7885,14 +7992,13 @@ C       stays correct for split-order processes.
                 '            do j = 1, npdg',
                 '              if (xpdgs(j).ne.pdgs(j)) same = .false.',
                 '            enddo',
-                '            if (same) then',
-                '              call %ssmatrixhel(p, nhel, idx, ans)' % prefix,
+                '            if (same) then'] + call(prefix) + [
                 '              return',
                 '            endif',
                 '          enddo',
                 '        enddo',
                 '      endif']
-        return '\n'.join(lines + data + ['      ans = 0d0'] + body +
+        return '\n'.join(lines + data + [init] + body +
                          ['      return', '      end'])
 
     def write_crossing_records(self):
@@ -8777,8 +8883,9 @@ C       stays correct for split-order processes.
         self.fill_crossing_replace_dict_so(matrix_element, replace_dict,
                                            use_crossing)
 
-        # f2py entry points taking an extended FLAV_IDX (the only way a python
-        # caller can request a crossing, and reach GET_DENSITY_IDX /
+        # f2py entry points taking an extended FLAV_IDX (the way a python
+        # caller holding the index requests a crossing, and reaches
+        # GET_DENSITY_IDX /
         # GET_ALL_INTER_IDX / GET_NHEL_IDX / GET_PDG_FOR_FLAVOR). Those routines
         # only exist in matrix_standalone_v4.inc, so the wrappers are emitted
         # only there; the other standalone templates get an empty hole (the
