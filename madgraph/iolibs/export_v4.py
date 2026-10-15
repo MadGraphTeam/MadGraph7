@@ -3834,6 +3834,18 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # template's names so that a split-orders file written WITHOUT crossing
         # gets neither -- GET_PDG_FOR_FLAVOR only exists to decode a crossing.
         replace_dict['so_crossing_routines'] = replace_dict['crossing_routines']
+        # The density stack of this template takes the FLAVOR array, which
+        # cannot carry a crossing: the f2py PDG dispatch reaches a folded
+        # crossed subprocess through these crossing-aware twins
+        # (GET_DENSITY_IDX, GET_ALL_INTER_SUMSO_IDX) instead. Only this
+        # template can take them (they need its split-order sizes).
+        get_template = getattr(self, 'get_matrix_template', None)
+        if get_template and get_template(matrix_element) == \
+                'matrix_standalone_splitOrders_v4.inc':
+            so_density = open(pjoin(_file_path, 'iolibs', 'template_files',
+                    'matrix_standalone_splitOrders_crossing_v4.inc')).read()
+            replace_dict['so_crossing_routines'] += \
+                '\n\n' + so_density % replace_dict
         replace_dict['so_pdg_function'] = replace_dict['flavor_pdg_function']
         # One filter shared by every crossing, a try counter per extended
         # index (see CROSSING_SNIPPETS smatrix_cross_decl).

@@ -257,6 +257,25 @@ class IOExportV4IOTest(IOTests.IOTestManager,
             'CALL %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P_USER,USERHEL,IC,BORNBUFF(0))',
             read('loop_optimized', 'loop_matrix_standalone.inc'))
 
+    def test_crossed_get_all_inter_takes_nhel_in_caller_order(self):
+        """GET_ALL_INTER_IDX (and its split-order twin
+        GET_ALL_INTER_SUMSO_IDX) take P, POS and NHEL in the caller's leg
+        order at a crossed FLAV_IDX: base slot I gets NHEL(PERM(I)), with no
+        sign, after APPLY_CROSSING (which leaves the helicity slots alone).
+        Uncrossed, PERM is the identity."""
+        snippet = export_v4.ProcessExporterFortranSA.CROSSING_SNIPPETS[
+            'allinter_cross_apply']
+        so = open(pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files',
+                        'matrix_standalone_splitOrders_crossing_v4.inc')).read()
+        so = so.split('GET_ALL_INTER_SUMSO_IDX(')[1].split('\n      END\n')[0]
+        for text in (snippet, so):
+            self.assertIn('NHELUSE(I) = NHEL(PERM(I))', text)
+            self.assertNotIn('SGN(I)*NHEL', text)
+            self.assertLess(text.index('APPLY_CROSSING('),
+                            text.index('NHELUSE(I) = NHEL(PERM(I))'))
+            self.assertLess(text.index('GET_CROSS_PERM('),
+                            text.index('NHELUSE(I) = NHEL(PERM(I))'))
+
     def test_matchbox_drivers_use_the_matrix_element_prefix(self):
         """check_sa.f calls the matrix element by name, and matchbox renames
         every routine after the process id -- ignoring the --prefix a caller
@@ -334,9 +353,13 @@ class IOExportV4IOTest(IOTests.IOTestManager,
             self.assertTrue(
                 sa.matrix_template_has_pdg_decoder(self.mymatrixelement))
 
-            # Left out on purpose. The _IDX / _CROSSED / RESCALE density stack
-            # takes a crossing-carrying index the FLAVOR-array entry points
-            # cannot express -- the density here stays uncrossed. HELCODE
+            # Left out of the template on purpose. Its FLAVOR-array density
+            # stack stays uncrossed; the crossing-aware one (GET_DENSITY_IDX,
+            # GET_ALL_INTER_SUMSO_IDX, GET_INTER_RESCALE, through which the
+            # f2py PDG dispatch reaches a folded crossed subprocess) is only
+            # appended to so_crossing_routines, from
+            # matrix_standalone_splitOrders_crossing_v4.inc, when crossing is
+            # on -- an uncrossed FKS/MadLoop born never gets it. HELCODE
             # because the external helicity label is the row number, which is
             # what MadLoop passes. ENCODE_HEL because nothing anywhere calls
             # it. The default template's own crossing holes because this one
