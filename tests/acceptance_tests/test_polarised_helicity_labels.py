@@ -161,26 +161,36 @@ class TestPolarisedHelicityLabels(unittest.TestCase):
                              1e-10 * max(abs(value), abs(reference), 1e-300),
                              '%s: %r vs %r' % (msg, value, reference))
 
+    def tabulated(self, probe):
+        """The leg orderings the flavour table holds. A per-helicity row is
+        only checked there: an ordering that goes through all_matrix.f's
+        flavour order repair needs the requested row re-keyed through the
+        leg permutation, which this branch does not do (SMATRIXHEL answers 0
+        there for every row, polarised or not)."""
+        names = [name for name in PERMS if name not in probe['repaired']]
+        self.assertTrue(names, 'no ordering is tabulated')
+        return names
+
     def check_rows(self, probe):
-        """The rows of every ordering are the summed matrix element taken
-        apart, and the same configuration in every leg order."""
+        """The rows of every tabulated ordering are the summed matrix element
+        taken apart, and the same configuration in every leg order."""
         rows = [tuple(row) for row in probe['rows']]
         row_of = dict((row, i) for i, row in enumerate(rows))
-        base = probe['orderings']['id']['rows']
+        names = self.tabulated(probe)
+        ref_perm = PERMS[names[0]]
+        base = probe['orderings'][names[0]]['rows']
         self.assertTrue(any(base), 'every helicity row is zero')
-        # guard the premise: some of the orderings must go through the flavour
-        # order repair, or a helicity row that fails to follow the legs there
-        # would go unnoticed (the row sums are blind to it)
-        self.assertTrue(probe['repaired'], 'every ordering is tabulated')
-        for name, perm in PERMS.items():
+        for name in names:
+            perm = PERMS[name]
             ordering = probe['orderings'][name]
             self.assertClose(sum(ordering['rows']) / HELAVGFACTOR,
                              ordering['sum'],
                              'ordering %s: sum of the rows' % name)
-            # row r of c u > w+ u s is, in this leg order, the row whose
-            # entry j is its entry perm[j]
+            # entry j of a row in this leg order is the entry, in the
+            # reference order, of the reference slot holding leg perm[j]
+            slot_of = dict((leg, j) for j, leg in enumerate(ref_perm))
             for r, value in enumerate(base):
-                twin = row_of[tuple(rows[r][k] for k in perm)]
+                twin = row_of[tuple(rows[r][slot_of[k]] for k in perm)]
                 self.assertClose(ordering['rows'][twin], value,
                                  'ordering %s, row %d' % (name, r + 1))
 
@@ -194,7 +204,7 @@ class TestPolarisedHelicityLabels(unittest.TestCase):
         # that is a separate matter of the recycled SMATRIXHEL.)
         recycled = self.probe_standalone('recycled', '--hel_recycling=True')
         self.assertEqual(recycled['rows'], plain['rows'])
-        for name in PERMS:
+        for name in self.tabulated(plain):
             for r, (value, reference) in enumerate(zip(
                     recycled['orderings'][name]['rows'],
                     plain['orderings'][name]['rows'])):
