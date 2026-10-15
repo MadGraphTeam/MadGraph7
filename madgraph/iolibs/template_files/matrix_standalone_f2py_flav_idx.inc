@@ -130,6 +130,9 @@ C     The un-normalised interference terms behind
 C     GET_DENSITY_IDX, for a caller supplying its own helicity
 C     configuration. Exposed for the same reason: its
 C     FLAVOR-array twin cannot carry a crossing.
+C     P and POS follow the caller's legs, NHEL the base slots
+C     (see GET_ALL_INTER_IDX): for a crossed FLAV_IDX pass
+C     NHEL(XK) = helicity of caller leg PERM(XK).
       IMPLICIT NONE
 CF2PY double precision, intent(in), dimension(0:3,%(nexternal)d) :: P
 CF2PY integer, intent(in), dimension(%(nexternal)d) :: NHEL
