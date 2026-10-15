@@ -944,6 +944,45 @@ C     diagonal stops matching SMATRIX.
      END
 
 
+      SUBROUTINE %(proc_prefix)sGET_ALL_INTER_SUMSO(P, NHEL, POS,
+     & N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)
+C     GET_ALL_INTER summed over the chosen squared split
+C     orders, as GET_DENSITY sums them: one INTER per pair of
+C     helicity combinations, the shape the f2py dispatch
+C     (py_get_all_inter) allocates.
+      implicit none
+      INTEGER NSQAMPSO
+      PARAMETER (NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      REAL*8 P(0:3,NEXTERNAL)
+      INTEGER NHEL(NEXTERNAL)
+      INTEGER N_CHANGING, N_COMB
+      INTEGER POS(*)
+      INTEGER ALLOW_HEL(*)
+      INTEGER FLAVOR(NEXTERNAL)
+      DOUBLE COMPLEX INTER(*)
+      INTEGER I, J, NINTER
+      DOUBLE COMPLEX, ALLOCATABLE :: TMP_INTER(:,:)
+      LOGICAL CHOSEN_SO_CONFIGS(NSQAMPSO)
+      COMMON/%(proc_prefix)sCHOSEN_BORN_SQSO/CHOSEN_SO_CONFIGS
+
+      NINTER = N_COMB*(N_COMB+1)/2
+      ALLOCATE(TMP_INTER(NSQAMPSO, NINTER))
+      TMP_INTER(:,:) = (0d0, 0d0)
+      CALL %(proc_prefix)sGET_ALL_INTER(P, NHEL, POS, N_CHANGING,
+     & ALLOW_HEL, N_COMB, FLAVOR, TMP_INTER)
+      DO I = 1, NINTER
+        INTER(I) = (0d0, 0d0)
+        DO J = 1, NSQAMPSO
+          IF (CHOSEN_SO_CONFIGS(J)) INTER(I) = INTER(I) + TMP_INTER(J,I)
+        ENDDO
+      ENDDO
+      DEALLOCATE(TMP_INTER)
+      RETURN
+      END
+
+
 
 
       SUBROUTINE %(proc_prefix)sGET_value(P, ALPHAS, NHEL, FLAVOR ,ANS)

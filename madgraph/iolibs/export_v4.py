@@ -7158,6 +7158,10 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         # filled per subprocess directory and written out by
         # write_crossing_records; see recorded_crossing_codes.
         self.crossing_records = {}
+        # proc_prefix of the matrix elements written from the split-orders
+        # template: their GET_ALL_INTER returns one INTER per squared split
+        # order, so the f2py dispatch calls GET_ALL_INTER_SUMSO instead.
+        self.split_order_prefixes = set()
         ProcessExporterFortran.__init__(self, *args, **opts)
 
     def get_proc_prefix(self, matrix_element, default=''):
@@ -7614,7 +7618,13 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                     # position, so re-ordering the legs would answer for a
                     # different helicity assignment: leave those calls alone.
                     smtext.append(repair % '0, ms_nofrozen, nhel.lt.1')
-                text.append(' call %s%%(fct_name)s' % prefix)
+                # a split-order GET_ALL_INTER fills INTER(NSQAMPSO,*): the
+                # f2py buffer holds one split-order sum, see
+                # GET_ALL_INTER_SUMSO (GET_DENSITY sums them itself)
+                if prefix in getattr(self, 'split_order_prefixes', ()):
+                    text.append(' call %s%%(fct_name_so)s' % prefix)
+                else:
+                    text.append(' call %s%%(fct_name)s' % prefix)
                 smtext.append(' call %ssmatrixhel(%s, nhel, %sget_flavor_index(flavor), ans)'
                               % (prefix, momenta, prefix))
             text.append(' endif')
@@ -7760,6 +7770,7 @@ C       stays correct for split-order processes.
                           'prefix':'\',\''.join(allprefix),
                           'pids': ','.join(str(pid) for (pdg,pid) in allids),
                           'inter_splitter': '\n'.join(text) % {'fct_name': 'GET_ALL_INTER(%s, LNHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)' % momenta,
+                                                               'fct_name_so': 'GET_ALL_INTER_SUMSO(%s, LNHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)' % momenta,
                                                                'dorepair': '.false.'},
                           'flavor_repair_function': flavor_repair_function,
                           'parameter_setup': '\n'.join(parameter_setup),
@@ -7771,6 +7782,7 @@ C       stays correct for split-order processes.
                           'f2py_prefix': f2py_prefix,
                           'idens_value': all_iden,
                           'density_splitter': '\n'.join(text) % {'fct_name': 'GET_DENSITY(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)' % momenta,
+                                                                 'fct_name_so': 'GET_DENSITY(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)' % momenta,
                                                                  'dorepair': '.true.'},
                           
                           }
@@ -8086,6 +8098,9 @@ C       stays correct for split-order processes.
             # merely-applicable ones; write_f2py_splitter exports them.
             self.crossing_records[proc_prefix] = \
                 self.recorded_crossing_codes(matrix_element)
+            if self.get_matrix_template(matrix_element) == \
+                                    'matrix_standalone_splitOrders_v4.inc':
+                self.split_order_prefixes.add(proc_prefix)
 
         template = open(pjoin(self.mgme_dir, 'madgraph', 'iolibs', 'template_files', 'makefile_sa_f_sp'),'r')
         text = template.read()

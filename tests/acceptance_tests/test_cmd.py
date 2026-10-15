@@ -3572,14 +3572,14 @@ int main(int argc, char** argv){
 import itertools, json, math, os, sys
 import numpy as np
 import all_matrix2py as m
-mdir, prefix, outfile = sys.argv[1:]
+mdir, prefix, outfile, pdgs = sys.argv[1:]
 fct = lambda name: getattr(m, prefix + name)
 fct('initialise')(os.path.join(mdir, 'Cards', 'param_card.dat'))
 E, th, ph = 500., 0.7, 0.3
 k = [E*math.sin(th)*math.cos(ph), E*math.sin(th)*math.sin(ph), E*math.cos(th)]
 p = np.array([[E, 0, 0, E], [E, 0, 0, -E], [E] + k,
               [E] + [-x for x in k]]).T.copy()
-kw = dict(pdgs=[2, -2, -11, 11], procid=-1, p=p, pos=[3, 4],
+kw = dict(pdgs=json.loads(pdgs), procid=-1, p=p, pos=[3, 4],
           allow_hel=[-1, -1, -1, 1, 1, -1, 1, 1])
 cplx = lambda a: [[z.real, z.imag] for z in a]
 res = {'density': cplx(fct('py_get_density')(alphas=0., scale2=0., **kw)),
@@ -3611,40 +3611,55 @@ json.dump(res, open(outfile, 'w'))
                                         (prefixed_dir, ' --prefixf2py=1', 'f1_')]:
             self.do('output standalone_fortran %s --prefix=int -f%s'
                     % (out_dir, option))
-            subdir = os.path.join(out_dir, 'SubProcesses')
-            build = subprocess.run(['make', 'f2py'], cwd=subdir,
-                                   capture_output=True, text=True)
-            self.assertEqual(build.returncode, 0,
-                             'make f2py failed:\n' + build.stdout[-2000:]
-                             + build.stderr[-2000:])
+            self._check_get_all_inter(out_dir, prefix, [2, -2, -11, 11])
 
-            outfile = os.path.join(out_dir, 'get_all_inter.json')
-            run = subprocess.run([sys.executable, '-c',
-                                  self._get_all_inter_script,
-                                  out_dir, prefix, outfile],
-                                 cwd=subdir, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0,
-                             run.stdout[-2000:] + run.stderr[-2000:])
-            res = json.load(open(outfile))
+        # Split orders: the per-process GET_ALL_INTER fills one INTER per
+        # squared split order (NSQAMPSO=3 here), more than the f2py buffer
+        # holds; the dispatch has to hand back their sum, as the density does.
+        so_dir = self.out_dir + '_splitorders'
+        self.addCleanup(shutil.rmtree, so_dir, ignore_errors=True)
+        self.do('generate u u~ > u u~ QED^2<=4 QCD^2<=4')
+        self.do('output standalone_fortran %s --prefix=int -f' % so_dir)
+        self._check_get_all_inter(so_dir, '', [2, -2, 2, -2])
 
-            # f2py hands the int32 array straight through, and GET_ALL_INTER
-            # writes the pos entries of the NHEL it is given
-            for after, before in res['nhel']:
-                self.assertEqual(after, before)
+    def _check_get_all_inter(self, out_dir, prefix, pdgs):
+        """Build out_dir's f2py module and check that py_get_all_inter summed
+        over the helicities of legs 1 and 2 gives py_get_density."""
+        import json
+        subdir = os.path.join(out_dir, 'SubProcesses')
+        build = subprocess.run(['make', 'f2py'], cwd=subdir,
+                               capture_output=True, text=True)
+        self.assertEqual(build.returncode, 0,
+                         'make f2py failed:\n' + build.stdout[-2000:]
+                         + build.stderr[-2000:])
 
-            dens = res['density']
-            scale = max(abs(complex(*z)) for z in dens)
-            self.assertGreater(scale, 0)
-            # more than one helicity of the other legs contributes, so the
-            # sum below does not reduce to a single call
-            self.assertGreaterEqual(
-                sum(any(re_ or im_ for re_, im_ in inter)
-                    for inter in res['inter']), 2)
-            for i, (re_, im_) in enumerate(dens):
-                self.assertAlmostEqual(sum(inter[i][0] for inter in res['inter']),
-                                       re_, delta=1e-12 * scale)
-                self.assertAlmostEqual(sum(inter[i][1] for inter in res['inter']),
-                                       im_, delta=1e-12 * scale)
+        outfile = os.path.join(out_dir, 'get_all_inter.json')
+        run = subprocess.run([sys.executable, '-c',
+                              self._get_all_inter_script,
+                              out_dir, prefix, outfile, json.dumps(pdgs)],
+                             cwd=subdir, capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0,
+                         run.stdout[-2000:] + run.stderr[-2000:])
+        res = json.load(open(outfile))
+
+        # f2py hands the int32 array straight through, and GET_ALL_INTER
+        # writes the pos entries of the NHEL it is given
+        for after, before in res['nhel']:
+            self.assertEqual(after, before)
+
+        dens = res['density']
+        scale = max(abs(complex(*z)) for z in dens)
+        self.assertGreater(scale, 0)
+        # more than one helicity of the other legs contributes, so the
+        # sum below does not reduce to a single call
+        self.assertGreaterEqual(
+            sum(any(re_ or im_ for re_, im_ in inter)
+                for inter in res['inter']), 2)
+        for i, (re_, im_) in enumerate(dens):
+            self.assertAlmostEqual(sum(inter[i][0] for inter in res['inter']),
+                                   re_, delta=1e-12 * scale)
+            self.assertAlmostEqual(sum(inter[i][1] for inter in res['inter']),
+                                   im_, delta=1e-12 * scale)
 
     def test_standalone_density_f2py(self):       
 

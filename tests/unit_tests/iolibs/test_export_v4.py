@@ -319,7 +319,8 @@ class IOExportV4IOTest(IOTests.IOTestManager,
             # fill_crossing_replace_dict_so -- the crossing machinery.
             for marker in ('DECODE_HEL', 'FILL_NHEL', '%(hel_allow_data)s',
                            '%(flip_data)s', 'GET_NHEL_IDX', 'GET_DENSITY',
-                           'GET_ALL_INTER', '%(so_crossing_routines)s',
+                           'GET_ALL_INTER', 'GET_ALL_INTER_SUMSO',
+                           '%(so_crossing_routines)s',
                            '%(so_pdg_function)s', '%(so_cross_decode)s'):
                 self.assertTrue(
                     sa.matrix_template_provides(self.mymatrixelement, marker),
@@ -11016,11 +11017,13 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    def write(self, merged_particles):
+    def write(self, merged_particles, split_orders=False):
         """Run write_f2py_splitter for a single `q q > z q q` matrix element
         (5 legs, 2 incoming, 12 tabulated flavors) and return all_matrix.f with
         the fortran continuations folded back into single lines."""
         exporter = export_v4.ProcessExporterFortranSA(self.tmpdir)
+        if split_orders:
+            exporter.split_order_prefixes.add('M0_')
         exporter.model = self.FakeModel({'merged_particles': merged_particles,
                                          'parameters': {('external',): []},
                                          'running_elements': []})
@@ -11070,3 +11073,13 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
         for callee in ('M0_SMATRIXHEL(', 'M0_GET_DENSITY(', 'M0_GET_ALL_INTER('):
             self.assertIn('CALL %sP' % callee, text)
         self.assertIn('CALL M0_GET_ALL_INTER(P, LNHEL, POS,', text)
+
+    def test_split_order_get_all_inter_sums_the_split_orders(self):
+        """A split-order GET_ALL_INTER fills INTER(NSQAMPSO,*), larger than
+        the buffer py_get_all_inter allocates: the dispatch must go through
+        GET_ALL_INTER_SUMSO, while the density (which sums the split orders
+        itself) keeps calling GET_DENSITY."""
+        text = self.write({}, split_orders=True)
+        self.assertIn('CALL M0_GET_ALL_INTER_SUMSO(P, LNHEL, POS,', text)
+        self.assertNotIn('CALL M0_GET_ALL_INTER(', text)
+        self.assertIn('CALL M0_GET_DENSITY(P, POS,', text)
