@@ -13710,9 +13710,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     'hel_recycling', False)).lower() in ('true', '1', 'yes')
             exporter_opts = (getattr(self._curr_exporter, 'opt', None) or {}).get(
                                                        'output_options') or {}
-            cpp_recycling = hasattr(getattr(self._curr_exporter,
+            cpp_recycling = getattr(getattr(self._curr_exporter,
                                             'oneprocessclass', None),
-                                    'write_recycled') and \
+                                    'runs_hel_recycling_warmup', False) and \
                 str(exporter_opts.get('hel_recycling', False)).lower() in \
                                                        ('true', '1', 'yes')
             if (self._export_format == 'madevent' or sa_hel_recycling or

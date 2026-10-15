@@ -206,6 +206,15 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         # say here, once per output, if the FD gauge drops it
         helas_call_writers.axial_gauge_requested(
                             self.opt.get('output_options'), warn=True)
+        # --hel_recycling: the warm-ups of this output only (a failed earlier
+        # one must not leave its directories to this finalize), and only the
+        # standalone exporter runs them
+        del model_handling.OneProcessExporterMadMatrix._hr_warmups[:]
+        hel_recycling = (self.opt.get('output_options') or {}).get('hel_recycling', False)
+        if str(hel_recycling).lower() in ('true', '1', 'yes') and \
+                not self.oneprocessclass.runs_hel_recycling_warmup:
+            logger.warning('--hel_recycling=True is only implemented for '
+                           '`output standalone`: ignored here.')
 
     def _parse_flavor_mask_option(self):
         """Read --mask=True|False from the output command line (default True)."""
