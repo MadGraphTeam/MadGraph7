@@ -3092,8 +3092,14 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         masses, slot by slot: RAMBO in umami_initialize, check_sa) are on shell
         for that crossing, i.e. input slot k and the base leg it is fed to
         (D[k]) carry the same mass; 0 when a massive leg moves into a slot of
-        another mass (--crossing_table=all, or a process like u g > u z
-        folded onto u u~ > z g with z in another slot)."""
+        another mass. That happens with the recorded crossings of the default
+        mode too, whenever one process definition puts the massive particle on
+        both sides: `define q = g t t~; generate q q > q q` records g t > g t
+        on g g > t t~, and `define q = u u~; define x = g z; generate
+        q x > q x QED=1 QCD=1` records u z > u g on u g > u z.
+        --crossing_table=all adds more (p p > z j with the z moved into the
+        initial state). Such a row gets scan points of its own masses
+        (xmass_slot_tab, scan_points in umami.cc)."""
         masses = [wf.get('mass') for wf in matrix_element.get_external_wavefunctions()]
         return [int(all(masses[k] == masses[row.D[k]] for k in range(len(masses))))
                 for row in self.get_crossing_table(matrix_element)]

@@ -640,9 +640,11 @@ class TestCppHelRecyclingCrossing(unittest.TestCase):
         if not self.debugging and os.path.isdir(self.tmpdir):
             shutil.rmtree(self.tmpdir)
 
-    def _generate(self, process, outputs):
+    def _generate(self, process, outputs, defines=()):
         self.cmd.exec_cmd('set automatic_html_opening False')
         self.cmd.exec_cmd('import model sm')
+        for define in defines:
+            self.cmd.exec_cmd('define %s' % define)
         self.cmd.exec_cmd('generate %s' % process)
         for name, options in outputs:
             self.cmd.exec_cmd('output standalone %s -f %s'
@@ -743,3 +745,165 @@ class TestCppHelRecyclingCrossing(unittest.TestCase):
             self.assertIn('0', [x.strip() for x in onshell.group(1).split(',')])
         self.assertGreater(self._compare_recycled('plain', 'recycled'), 0,
                            'no directory folds a crossing')
+
+    @staticmethod
+    def _tables(pdir):
+        """npar, nflav, ncross, the flavor PDGs and the crossing tables a
+        madmatrix directory was written with."""
+        tables = open(pjoin(pdir, 'ProcessTables.h')).read()
+        data = open(pjoin(pdir, 'ProcessData.h')).read()
+
+        def ints(text, name):
+            found = re.search(r'\b%s\[[^=]*=\s*\{(.*?)\};' % name, text, re.S)
+            return [int(x) for x in re.findall(r'-?\d+', found.group(1))] if found else []
+        npar = len(ints(data, 'flavorPDGs')) // int(re.search(
+            r'constexpr int nmaxflavor = (\d+);', data).group(1))
+        pdgs = ints(data, 'flavorPDGs')
+        return {'npar': npar,
+                'pdgs': [pdgs[i:i + npar] for i in range(0, len(pdgs), npar)],
+                'ncross': int(re.search(r'constexpr int ncross = (\d+);',
+                                        tables).group(1)),
+                'xpinv': ints(tables, 'xpinv_tab'),
+                'xsgni': ints(tables, 'xsgni_tab'),
+                'xonshell': ints(tables, 'xonshell_tab')}
+
+    @staticmethod
+    def _crossed_pdgs(tables, xid):
+        """The PDGs, in input-slot order, of extended flavor id xid."""
+        nflav, npar = len(tables['pdgs']), tables['npar']
+        cross, base = xid // nflav, tables['pdgs'][xid % nflav]
+        if cross == 0:
+            return list(base)
+        out = []
+        for k in range(npar):
+            pdg = base[tables['xpinv'][cross * npar + k]]
+            if pdg not in (21, 22, 23, 25):
+                pdg *= tables['xsgni'][cross * npar + k]
+            out.append(pdg)
+        return out
+
+    @staticmethod
+    def _two_to_two(masses, rng):
+        """An on-shell 2 > 2 point at the given masses, boosted along z."""
+        m1, m2, m3, m4 = masses
+        rs = 1.3 * max(m1 + m2, m3 + m4, 200.) + 1500. * rng.random()
+        s = rs * rs
+        lam = lambda a, b: math.sqrt((s - (a + b) ** 2) * (s - (a - b) ** 2)) / (2 * rs)
+        pin, pout = lam(m1, m2), lam(m3, m4)
+        cth, phi = 2 * rng.random() - 1, 2 * math.pi * rng.random()
+        sth = math.sqrt(1 - cth * cth)
+        v = [pout * sth * math.cos(phi), pout * sth * math.sin(phi), pout * cth]
+        point = [[math.hypot(pin, m1), 0., 0., pin],
+                 [math.hypot(pin, m2), 0., 0., -pin],
+                 [math.hypot(pout, m3)] + v,
+                 [math.hypot(pout, m4)] + [-x for x in v]]
+        bz = 1.2 * (rng.random() - 0.5)
+        gam = 1 / math.sqrt(1 - bz * bz)
+        return [[gam * (p[0] + bz * p[3]), p[1], p[2], gam * (p[3] + bz * p[0])]
+                for p in point]
+
+    def _run_at(self, pdir, tag, ids, points):
+        """Build check_sa.exe (FPTYPE=d) and run it at the given momenta and
+        extended ids (at most nevt events, padded to a full page with the
+        last), returning (|M|^2, helicity, colour) per given event."""
+        import struct
+        import random
+        nreal = len(ids)
+        ids = list(ids) + [ids[-1]] * (self.nevt - nreal)
+        points = list(points) + [points[-1]] * (self.nevt - nreal)
+        env = dict(os.environ, FPTYPE='d')
+        with open(os.devnull, 'w') as devnull:
+            rc = subprocess.call(['make', '-j4', 'check_sa.exe'], cwd=pdir,
+                                 stdout=devnull, stderr=subprocess.STDOUT,
+                                 env=env)
+        self.assertEqual(rc, 0, 'make failed in %s' % pdir)
+        files = dict((key, pjoin(self.tmpdir, '%s_%s' % (tag, key)))
+                     for key in ('flv', 'rh', 'rc', 'mom', 'me', 'hel', 'col'))
+        rng = random.Random(11)
+        with open(files['flv'], 'wb') as fsock:
+            fsock.write(struct.pack('<%dI' % len(ids), *ids))
+        for key in ('rh', 'rc'):
+            with open(files[key], 'wb') as fsock:
+                fsock.write(struct.pack('<%dd' % len(ids),
+                                        *[rng.random() for _ in ids]))
+        with open(files['mom'], 'wb') as fsock:
+            fsock.write(struct.pack('<%dd' % (len(points) * len(points[0]) * 4),
+                                    *[x for point in points for p in point for x in p]))
+        subprocess.check_output(
+            ['./check_sa.exe', 'perf', '--flavors', files['flv'],
+             '--rnd-hel', files['rh'], '--rnd-col', files['rc'],
+             '--dump-me', files['me'], '--dump-hel', files['hel'],
+             '--dump-col', files['col'], '--momenta', files['mom'],
+             '1', str(len(ids)), '1'], cwd=pdir, stderr=subprocess.STDOUT)
+
+        def read(path, fmt):
+            data = open(path, 'rb').read()
+            return struct.unpack('<%d%s' % (len(data) // struct.calcsize(fmt), fmt), data)[:nreal]
+        return read(files['me'], 'd'), read(files['hel'], 'i'), read(files['col'], 'i')
+
+    def test_massive_leg_crossing_of_the_default_mode(self):
+        """define q = g t t~; generate q q > q q: the default mode records
+        g t > g t (and its kin) on g g > t t~, moving a top into a gluon slot,
+        so the good helicities of those crossings are scanned at their own
+        masses. Every crossing, at on-shell points of its own masses: recycled
+        == not recycled event by event, and both == the expanded output"""
+        import random
+        self._generate('q q > q q', [('plain', ''),
+                                     ('recycled', '--hel_recycling=True'),
+                                     ('expanded', '--use_crossing=False')],
+                       defines=('q = g t t~',))
+        card = open(pjoin(self.tmpdir, 'plain', 'Cards', 'param_card.dat')).read()
+        mtop = float(re.search(r'^\s*6\s+(\S+)\s*#\s*MT\b', card, re.M).group(1))
+        mass = lambda pdg: mtop if abs(pdg) == 6 else 0.
+        refs = {}
+        for pdir in self._pdirs('expanded'):
+            for flav, pdgs in enumerate(self._tables(pdir)['pdgs']):
+                refs[tuple(pdgs)] = (pdir, flav, False)
+                refs.setdefault(tuple([pdgs[1], pdgs[0]] + pdgs[2:]),
+                                (pdir, flav, True))
+        noffshell = 0
+        for plain, recycled in zip(self._pdirs('plain'), self._pdirs('recycled')):
+            tables = self._tables(plain)
+            nids = tables['ncross'] * len(tables['pdgs'])
+            if nids == 1:
+                continue
+            self.assertTrue(os.path.exists(pjoin(recycled, 'HelRecyclingCalls.inc')),
+                            'no recycled build in %s' % recycled)
+            noffshell += tables['xonshell'].count(0)
+            rng = random.Random(5)
+            ids = [i % nids for i in range(self.nevt)]
+            points = [self._two_to_two([mass(p) for p in
+                                        self._crossed_pdgs(tables, xid)], rng)
+                      for xid in ids]
+            name = os.path.basename(plain)
+            me0, hel0, col0 = self._run_at(plain, name + '_plain', ids, points)
+            me1, hel1, col1 = self._run_at(recycled, name + '_recycled', ids, points)
+            expected = [None] * self.nevt
+            byref = {}
+            for i, xid in enumerate(ids):
+                pdgs = tuple(self._crossed_pdgs(tables, xid))
+                self.assertIn(pdgs, refs, 'the expanded output has no %s' % (pdgs,))
+                pdir, flav, swap = refs[pdgs]
+                point = points[i]
+                if swap:
+                    point = [point[1], point[0]] + point[2:]
+                byref.setdefault(pdir, []).append((i, flav, point))
+            for pdir, events in byref.items():
+                me, _, _ = self._run_at(pdir, name + '_ref', [e[1] for e in events],
+                                        [e[2] for e in events])
+                for (i, _, _), value in zip(events, me):
+                    expected[i] = value
+            for i in range(self.nevt):
+                label = '%s event %d (id %d %s)' % (name, i, ids[i],
+                                                    self._crossed_pdgs(tables, ids[i]))
+                self.assertGreater(expected[i], 0, label)
+                self.assertLessEqual(abs(me0[i] - expected[i]), 1e-10 * expected[i],
+                                     '%s: folded %r vs expanded %r'
+                                     % (label, me0[i], expected[i]))
+                self.assertLessEqual(abs(me1[i] - me0[i]), self.tolerance * me0[i],
+                                     '%s: recycled %r vs plain %r'
+                                     % (label, me1[i], me0[i]))
+                self.assertEqual((hel1[i], col1[i]), (hel0[i], col0[i]),
+                                 '%s: helicity/colour' % label)
+        self.assertGreater(noffshell, 0, 'no recorded crossing moves the top '
+                           'into a slot of another mass')
