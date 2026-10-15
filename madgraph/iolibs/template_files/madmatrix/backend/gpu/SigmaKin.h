@@ -21,6 +21,10 @@ namespace madmatrix
   computeDependentCouplings( const fptype* allgs,    // input: Gs[nevt]
                              fptype* allcouplings ); // output: couplings[nevt*ndcoup*2]
 
+  // The events sigmaKin_getGoodHel looks at, which umami_initialize makes for it
+  // (choose_good_helicities): one constant, so that the two never disagree
+  constexpr int goodHelScanEvents = 16;
+
   void
   sigmaKin_getGoodHel( const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
                        const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]

@@ -13,6 +13,7 @@
 #ifndef RAMBO_H
 #define RAMBO_H 1
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -345,6 +346,72 @@ namespace rambo
                                                        std::vector<double> masses, double& wgt )
   {
     return get_momenta( ninitial, energy, masses, wgt, rn );
+  }
+
+  // The points umami_initialize chooses the good helicities on, in the layout of
+  // the UMAMI momenta input: momenta[nevt * ( npar * mu + ipar ) + ievt]. RAMBO
+  // points in the partonic CM (a decay at rest). The helicity zeros of a massive
+  // leg depend on the frame (a u g > u z row that is ~1e-33 in the CM is 0.6% of
+  // |M|^2 in a boosted one), and the matrix element is called in the lab frame or
+  // in the me_frame of the run card: the second half of the points is boosted to
+  // a random frame, so that the good helicities are those of any frame. Empty
+  // where RAMBO has no phase space (2 > 1, a decay below threshold) or does not
+  // converge. A private generator: the shared one (rn) makes the points of the
+  // check drivers, which must not move.
+  inline std::vector<double> helicity_scan_points( int ninitial, const std::vector<double>& masses, std::size_t nevt )
+  {
+    const int npar = masses.size();
+    double mfinal = 0, mtotal = 0;
+    for( int ipar = 0; ipar < npar; ++ipar )
+    {
+      mtotal += masses[ipar];
+      if( ipar >= ninitial ) mfinal += masses[ipar];
+    }
+    // rambo exits on a closed phase space: check it first
+    if( npar - ninitial < 2 || ( ninitial == 1 && !( masses[0] > mfinal ) ) ) return {};
+    const double energy = std::max( 1500., 2 * mtotal ); // a decay is at rest instead
+    Random random;
+    random.rmarin( 1802, 9373 );
+    auto draw = [&random]( int )
+    {
+      double r = random.ranmar();
+      while( r <= 1e-16 ) r = random.ranmar();
+      return r;
+    };
+    std::vector<double> momenta( nevt * npar * 4 );
+    for( std::size_t ievt = 0; ievt < nevt; ++ievt )
+    {
+      double weight = 0;
+      const std::vector<std::vector<double>> p = get_momenta( ninitial, energy, masses, weight, draw );
+      for( int ipar = 0; ipar < npar; ++ipar )
+      {
+        // on shell, or rambo did not converge: no points
+        const double m2 = p[ipar][0] * p[ipar][0] - p[ipar][1] * p[ipar][1] - p[ipar][2] * p[ipar][2] - p[ipar][3] * p[ipar][3];
+        if( std::abs( m2 - masses[ipar] * masses[ipar] ) > 1e-6 * energy * energy ) return {};
+        for( int mu = 0; mu < 4; ++mu ) momenta[nevt * ( npar * mu + ipar ) + ievt] = p[ipar][mu];
+      }
+    }
+    // the boosts are drawn after the points: the first half are the CM points
+    for( std::size_t ievt = nevt / 2; ievt < nevt; ++ievt )
+    {
+      const double beta = 0.3 + 0.6 * draw( 1 );
+      const double cth = 2 * draw( 2 ) - 1, sth = std::sqrt( 1 - cth * cth );
+      const double phi = 2 * M_PI * draw( 3 );
+      const double b[3] = { beta * sth * std::cos( phi ), beta * sth * std::sin( phi ), beta * cth };
+      const double gamma = 1 / std::sqrt( 1 - beta * beta );
+      for( int ipar = 0; ipar < npar; ++ipar )
+      {
+        double* e = &momenta[nevt * ( npar * 0 + ipar ) + ievt];
+        double* q[3] = { &momenta[nevt * ( npar * 1 + ipar ) + ievt],
+                         &momenta[nevt * ( npar * 2 + ipar ) + ievt],
+                         &momenta[nevt * ( npar * 3 + ipar ) + ievt] };
+        const double bq = b[0] * *q[0] + b[1] * *q[1] + b[2] * *q[2];
+        const double f = ( gamma - 1 ) * bq / ( beta * beta ) + gamma * *e;
+        for( int i = 0; i < 3; ++i ) *q[i] += f * b[i];
+        *e = gamma * ( *e + bq );
+      }
+    }
+    return momenta;
   }
 
 } // namespace rambo

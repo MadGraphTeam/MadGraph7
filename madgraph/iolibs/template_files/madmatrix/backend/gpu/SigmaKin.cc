@@ -437,7 +437,7 @@ namespace madmatrix
                        bool* isGoodHel,                  // output: isGoodHel[ncomb] - host array
                        const int nevt )                  // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
   { /* clang-format on */
-    const int maxtry0 = 16;
+    constexpr int maxtry0 = goodHelScanEvents; // 16
     fptype hstMEs[maxtry0];
     const int maxtry = std::min( maxtry0, nevt ); // 16, but at most nevt (avoid invalid memory access if nevt<maxtry0)
     // Per-flavor good-helicity union (merged flavors, e.g. PDG=81): sample every

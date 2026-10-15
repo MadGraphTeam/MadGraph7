@@ -124,48 +124,18 @@ namespace
   // umami_matrix_element call, it depended on what that call held: a first batch of
   // special points, where some helicities happen to vanish (the forward direction of
   // u u~ > e+ e-, say), dropped them for the rest of the run, and every later |M|^2
-  // was wrong. It runs instead here, at initialization, on RAMBO points: the matrix
-  // element is evaluated there once (the filter itself scans every flavor). Where
-  // RAMBO has no phase space (2 > 1, a decay below threshold), this does nothing and
-  // the first call still chooses.
+  // was wrong. It runs instead here, at initialization, on RAMBO points, half of
+  // them boosted (rambo::helicity_scan_points). The filter evaluates every flavor
+  // and every crossing of the table on these base-process points, into the one
+  // good-helicity list all of them share (a crossing that moves a massive leg is
+  // off shell there: at most a few extra helicities, none missing). Where RAMBO has
+  // no phase space (2 > 1, a decay below threshold), this does nothing and the
+  // first call still chooses.
   void choose_good_helicities( UmamiHandle handle )
   {
-    constexpr int npar = ProcessData::npar;
-    constexpr int npari = ProcessData::npari;
-    constexpr std::size_t nevt = 16; // the events sigmaKin_getGoodHel looks at
-    std::vector<double> masses( g_externalMasses.begin(), g_externalMasses.end() );
-    double mfinal = 0, mtotal = 0;
-    for( int ipar = 0; ipar < npar; ++ipar )
-    {
-      mtotal += masses[ipar];
-      if( ipar >= npari ) mfinal += masses[ipar];
-    }
-    // rambo exits on a closed phase space: check it first
-    if( npar - npari < 2 || ( npari == 1 && !( masses[0] > mfinal ) ) ) return;
-    const double energy = std::max( 1500., 2 * mtotal ); // a decay is at rest instead
-    // A private generator: the shared one (rambo::rn) makes the points of the check
-    // drivers, which must not move.
-    rambo::Random random;
-    random.rmarin( 1802, 9373 );
-    auto draw = [&random]( int )
-    {
-      double r = random.ranmar();
-      while( r <= 1e-16 ) r = random.ranmar();
-      return r;
-    };
-    std::vector<double> momenta( nevt * npar * 4 ); // momenta[nevt * ( npar * mu + ipar ) + ievt]
-    for( std::size_t ievt = 0; ievt < nevt; ++ievt )
-    {
-      double weight = 0;
-      const std::vector<std::vector<double>> p = rambo::get_momenta( npari, energy, masses, weight, draw );
-      for( int ipar = 0; ipar < npar; ++ipar )
-      {
-        // on shell, or rambo did not converge: leave the choice to the first call
-        const double m2 = p[ipar][0] * p[ipar][0] - p[ipar][1] * p[ipar][1] - p[ipar][2] * p[ipar][2] - p[ipar][3] * p[ipar][3];
-        if( std::abs( m2 - masses[ipar] * masses[ipar] ) > 1e-6 * energy * energy ) return;
-        for( int mu = 0; mu < 4; ++mu ) momenta[nevt * ( npar * mu + ipar ) + ievt] = p[ipar][mu];
-      }
-    }
+    constexpr std::size_t nevt = goodHelScanEvents; // the events sigmaKin_getGoodHel looks at
+    const std::vector<double> momenta = rambo::helicity_scan_points( ProcessData::npari, g_externalMasses, nevt );
+    if( momenta.empty() ) return;
     std::vector<double> matrix_elements( nevt );
     const UmamiInputKey input_keys[] = { UMAMI_IN_MOMENTA };
     const void* inputs[] = { momenta.data() };
@@ -584,10 +554,11 @@ extern "C"
     return UMAMI_SUCCESS;
   }
 
-  // A madmatrix extension, not part of UMAMI: the number of helicity combinations
-  // kept by the good-helicity filter, which runs at the first umami_initialize (at
-  // the first umami_matrix_element call where RAMBO has no phase space; 0 before
-  // it). Like the filter, it is shared by every instance.
+  // A madmatrix extension, not part of UMAMI: the length of the one good-helicity
+  // list that every flavor and crossing runs (the C-parity representatives only,
+  // when that de-duplication is on). The filter runs at the first umami_initialize
+  // (at the first umami_matrix_element call where RAMBO has no phase space; 0
+  // before it), shared by every instance.
   int madmatrix_good_helicity_count()
   {
     return sigmaKin_getNGoodHel();

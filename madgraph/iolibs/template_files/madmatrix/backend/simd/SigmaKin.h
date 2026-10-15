@@ -22,6 +22,11 @@ namespace madmatrix
                              fptype* allcouplings, // output: couplings[nevt*ndcoup*2]
                              const int nevt );     // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
 
+  // The events sigmaKin_getGoodHel looks at, which umami_initialize makes for it
+  // (choose_good_helicities): one constant, so that the two never disagree.
+  // 16, but at least neppV (otherwise the npagV loop does not even start)
+  constexpr int goodHelScanEvents = ( neppV > 16 ? neppV : 16 );
+
   void
   sigmaKin_getGoodHel( const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
                        const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]

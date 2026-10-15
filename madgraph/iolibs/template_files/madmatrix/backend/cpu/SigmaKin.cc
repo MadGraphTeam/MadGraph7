@@ -534,7 +534,7 @@ namespace madmatrix
                        const int nevt )                  // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
   {
     // Allocate arrays at build time to contain at least 16 events (or at least neppV events if neppV>16, e.g. in future VPUs)
-    constexpr int maxtry0 = std::max( 16, neppV ); // 16, but at least neppV (otherwise the npagV loop does not even start)
+    constexpr int maxtry0 = goodHelScanEvents; // 16, but at least neppV
     // Loop over only nevt events if nevt is < 16 (note that nevt is always >= neppV)
     assert( nevt >= neppV );
     const int maxtry = std::min( maxtry0, nevt ); // 16, but at most nevt (avoid invalid memory access if nevt<maxtry0)
