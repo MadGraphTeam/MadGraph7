@@ -264,7 +264,35 @@ def test_noninvariant_restricted_helicity_is_not_grouped():
     (data,) = export(p)
     assert len(entries(data)) == 2
     assert entries(data)[1]["runtime"]["color_id"] == "flow:1,2,4,3"
-    assert entries(data)[1]["runtime"]["permutation"] == [0, 1, 2, 3]
+    # Both orders share one channel, the second with its final legs relabelled.
+    assert len(data["channels"]) == 1
+    assert entries(data)[1]["runtime"]["permutation"] == [0, 1, 3, 2]
+    assert entries(data)[1]["members"][0]["runtime"]["permutation"] == [0, 1, 2, 3]
+
+
+def test_orders_differing_by_equal_mass_final_labels_share_a_channel():
+    """One phase-space map per cyclic pattern of incoming legs and final masses."""
+    extended = model()
+    extended["ir"]["particles"] += [
+        {"pdg_code": 993, "color": 8, "mass": "mass_s"},
+        {"pdg_code": 994, "color": 8, "mass": "ZERO"},
+    ]
+    words = ((1, 2, 3, 4), (1, 2, 4, 3))
+    (data,) = export(process(pdgs=(990, 990, 994, 990), words=words),
+                     compiled_model=extended)
+    assert len(data["channels"]) == 1
+    first, second = entries(data)
+    pdgs = [data["pdg_ids"][e["matrix_elements"][0]["pdg_ids"]] for e in (first, second)]
+    assert pdgs == [[990, 990, 994, 990], [990, 990, 990, 994]]
+    assert second["runtime"]["permutation"] == [0, 1, 3, 2]
+    assert data["color_orders"][second["color_order"]] == [0, 1, 2, 3]
+    # The member keeps the physical labels of its process.
+    assert second["members"][0]["pdgs"] == [990, 990, 994, 990]
+    assert second["members"][0]["runtime"]["permutation"] == [0, 1, 2, 3]
+    # Final legs of different masses are never exchanged.
+    (data,) = export(process(pdgs=(990, 990, 993, 990), words=words),
+                     compiled_model=extended)
+    assert len(data["channels"]) == 2
 
 
 def test_permutation_invariant_restricted_helicity_set_is_grouped():

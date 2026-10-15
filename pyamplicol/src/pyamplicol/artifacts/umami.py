@@ -291,6 +291,33 @@ def _safe_replay(process: UmamiProcessInput) -> dict[str, tuple[str, tuple[int, 
     return result
 
 
+def _channel_pattern(order, incoming, masses):
+    """The cyclic colour order from the first incoming leg, with the final-state
+    legs known only by their mass: orders with equal patterns share one
+    phase-space map up to relabelling final-state legs of equal mass."""
+    start = order.index(0)
+    rotated = order[start:] + order[:start]
+    pattern = tuple(
+        ("initial", slot) if slot < incoming else ("final", masses[slot])
+        for slot in rotated
+    )
+    return pattern, rotated
+
+
+def _relabelled(values, relabel):
+    result = [None] * len(values)
+    for slot, value in enumerate(values):
+        result[relabel[slot]] = value
+    return result
+
+
+def _relabelled_runtime(runtime, relabel):
+    return {
+        **runtime,
+        "permutation": [relabel[slot] for slot in runtime["permutation"]],
+    }
+
+
 def _intern(table: list, value: Any) -> int:
     try:
         return table.index(value)
@@ -542,6 +569,7 @@ def _build_provider(
     structural_representatives: dict[str, dict] = {}
     orbit_entries: dict[tuple, tuple[dict, list[int]]] = {}
     channel_lookup = {}
+    channel_patterns: dict[tuple, list[int]] = {}
     physical_count = 0
     runtime_helicities: list[list[list[int]]] = []
     for process_index, process in enumerate(processes):
@@ -577,16 +605,17 @@ def _build_provider(
         data["aliases"].extend(
             {"process_id": process.process_id, **dict(a)} for a in process.aliases
         )
-        helicity_groups: dict[str, list[int]] = {}
+        # Helicity values in the input leg order, interned per contribution
+        # once its final-state legs are relabelled to the channel.
+        helicity_groups: dict[str, list[list[int]]] = {}
         helicity_mappings = []
         runtime_helicities.append([list(h["values"]) for h in helicities])
         for h in helicities:
-            hindex = _intern(data["helicities"], list(h["values"]))
             key = str(h.get("representative_id", h["id"]))
-            helicity_groups.setdefault(key, []).append(hindex)
+            helicity_groups.setdefault(key, []).append(list(h["values"]))
             helicity_mappings.append(
                 {
-                    "helicity": hindex,
+                    "helicity": list(h["values"]),
                     "representative_id": h.get("representative_id", h["id"]),
                     "coefficient": h.get("coefficient", 1.0),
                     "structural_zero": h.get("structural_zero", False),
@@ -606,18 +635,14 @@ def _build_provider(
             order = [labels[label] for label in word]
             order += [i for i in identity if i not in order]
             order = list(_permutation(order, count))
-            color_index = (
+            flow = (
                 None
                 if contracted
-                else _intern(
-                    data["color_flows"],
-                    [list(pair) for pair in process.color_flows[color_id]]
-                    if process.color_flows is not None
-                    else _color_flow(
-                        word, external, particles, sectors_by_word.get(word)
-                    ),
-                )
+                else [list(pair) for pair in process.color_flows[color_id]]
+                if process.color_flows is not None
+                else _color_flow(word, external, particles, sectors_by_word.get(word))
             )
+            color_index = None if flow is None else _intern(data["color_flows"], flow)
             rep_color, perm = replay.get(color_id, (color_id, tuple(identity)))
             runtime = {
                 "process_index": process_index,
@@ -645,46 +670,83 @@ def _build_provider(
             }
             orbit_key, aligned_order = _identical_orbit(
                 order,
-                None if contracted else data["color_flows"][color_index],
+                flow,
                 process.external_pdgs,
                 incoming,
                 helicities,
                 len(word),
             )
             orbit = (process_index, orbit_key)
-            pdg_index = _intern(data["pdg_ids"], list(process.external_pdgs))
             if orbit in orbit_entries:
-                entry, representative_order = orbit_entries[orbit]
+                entry, representative_order, representative_runtime, relabel = (
+                    orbit_entries[orbit]
+                )
                 # Evaluate each physical member through the exported entry,
                 # independently of any additional internal runtime reuse.
                 slots = dict(zip(representative_order, aligned_order, strict=True))
                 member["runtime"] = {
-                    **entry["runtime"],
-                    "permutation": [slots[i] for i in entry["runtime"]["permutation"]],
+                    **representative_runtime,
+                    "permutation": [
+                        slots[i] for i in representative_runtime["permutation"]
+                    ],
                 }
+                pdg_index = _intern(
+                    data["pdg_ids"], _relabelled(list(process.external_pdgs), relabel)
+                )
                 _add_terms(entry, [{"pdg_ids": pdg_index, "factor": 1.0}])
                 entry["members"].append(member)
                 continue
+            # The exported contribution relabels its final-state legs onto the
+            # first colour order of its channel; members keep physical labels.
+            pattern, rotated = _channel_pattern(
+                order, incoming, data["provider"]["masses"]
+            )
+            relabel = list(identity)
+            representative = channel_patterns.setdefault(pattern, rotated)
+            for slot, target in zip(rotated, representative, strict=True):
+                relabel[slot] = target
+            channel_order = [relabel[slot] for slot in order]
+            entry_color_index = (
+                None if flow is None else _intern(data["color_flows"], _relabelled(flow, relabel))
+            )
+            entry_runtime = _relabelled_runtime(runtime, relabel)
+            if entry_color_index is not None:
+                entry_runtime["color_index"] = entry_color_index
+            pdg_index = _intern(
+                data["pdg_ids"], _relabelled(list(process.external_pdgs), relabel)
+            )
             entry = {
                 "matrix_elements": [{"pdg_ids": pdg_index, "factor": 1.0}],
-                "color_order": _intern(data["color_orders"], order),
-                "color_flows": color_index,
-                "helicities": list(helicity_groups.values()),
-                "helicity_mappings": helicity_mappings,
-                "runtime": runtime,
+                "color_order": _intern(data["color_orders"], channel_order),
+                "color_flows": entry_color_index,
+                "helicities": [
+                    [_intern(data["helicities"], _relabelled(v, relabel)) for v in group]
+                    for group in helicity_groups.values()
+                ],
+                "helicity_mappings": [
+                    {
+                        **mapping,
+                        "helicity": _intern(
+                            data["helicities"], _relabelled(mapping["helicity"], relabel)
+                        ),
+                    }
+                    for mapping in helicity_mappings
+                ],
+                "runtime": entry_runtime,
                 "members": [member],
                 "multichannels": [],
             }
-            # A single complete map per contribution. Maps are shared only if
+            # A single complete map per channel pattern. Maps are shared only if
             # their fixed external masses agree (already a provider invariant).
-            channel_key = tuple(order)
-            if channel_key not in channel_lookup:
-                channel_lookup[channel_key] = len(data["channels"])
-                data["channels"].append({"phasespace_order": order, "processes": []})
-            channel_index = channel_lookup[channel_key]
+            if pattern not in channel_lookup:
+                channel_lookup[pattern] = len(data["channels"])
+                data["channels"].append(
+                    {"phasespace_order": channel_order, "processes": []}
+                )
+            channel_index = channel_lookup[pattern]
             entry["multichannels"] = [channel_index]
             data["channels"][channel_index]["processes"].append(entry)
-            orbit_entries[orbit] = (entry, aligned_order)
+            orbit_entries[orbit] = (entry, aligned_order, runtime, relabel)
     _merge_flavour_orbits(data)
     _export_helicities(data, runtime_helicities)
     alpha_names = {p["alpha_s_parameter"] for p in data["runtime_processes"]}
