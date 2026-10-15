@@ -42,6 +42,7 @@ import madgraph.core.helas_objects as helas_objects
 import madgraph.iolibs.export_fks as export_fks
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.file_writers as file_writers
+import madgraph.loop.loop_exporters as loop_exporters
 from madgraph import MadGraph5Error
 
 _file_path = os.path.dirname(os.path.realpath(__file__))
@@ -220,22 +221,194 @@ class TestGroupedFKSMetadata(unittest.TestCase):
             self.assertIn('CALL SLOOPMATRIX_THRES_FLAVOR(', content)
             self.assertIn('CALL SLOOPMATRIXHEL_THRES_FLAVOR(', content)
 
-    def test_grouped_virtual_disables_shared_helicity_sampling(self):
-        """Grouped virtual rows cannot consume one shared HelFilter.dat."""
+    def test_grouped_virtual_rows_sample_their_own_helicities(self):
+        """Every virtual row of a P directory does its own MC over helicities.
+
+        MadLoop keeps one helicity filter per evaluated row when there are
+        several (fks_info.inc: HELFILTER_PER_VIRTUAL_FLAVOR). BinothLHA then
+        reads the filter of the row it evaluates, and keeps the helicities
+        and the MC-or-sum choice of each row apart. Its explicit sums pass
+        HEL=-1, which resets the helicity that the MC over helicities of
+        another row leaves in MadLoop. The drivers only fall back to the
+        explicit sum for several rows without per-row filters.
+        """
 
         template_dir = os.path.join(
             root_path, os.path.pardir, os.path.pardir,
             'Template', 'NLO', 'SubProcesses')
         for filename in ('driver_mintFO.f', 'driver_mintMC.f'):
             with open(os.path.join(template_dir, filename)) as stream:
-                content = ' '.join(stream.read().upper().split())
-            self.assertIn(
-                'I.EQ.0.OR.N_VIRTUAL_FLAVOR_CONFIGS.GT.1', content)
+                content = ''.join(stream.read().upper().replace(
+                    '\n     $', '').split())
+            self.assertIn('I.EQ.0.OR.(N_VIRTUAL_FLAVOR_CONFIGS.GT.1.AND..NOT.'
+                          'HELFILTER_PER_VIRTUAL_FLAVOR)', content)
 
         with open(os.path.join(template_dir, 'BinothLHA.f')) as stream:
-            content = ' '.join(stream.read().upper().split())
-        self.assertIn(
-            'IF (N_VIRTUAL_FLAVOR_CONFIGS.GT.1) MC_HEL=0', content)
+            content = stream.read().upper()
+        # BinothLHA_vec is not called: check the live subroutine only.
+        code = '\n'.join(
+            line for line in
+            content[:content.index('SUBROUTINE BINOTHLHA_VEC(')].split('\n')
+            if not line.startswith('C'))
+        live = ''.join(code.replace('\n     $', '').replace('\n     &', '')
+                       .split())
+        self.assertIn("IF(HELFILTER_PER_VIRTUAL_FLAVOR)THENWRITE(HELFILTER_FILE,"
+                      "'(A,I0,A)')'../MADLOOP5_RESOURCES/HELFILTER_',"
+                      "VIRTUAL_FLAVOR,'.DAT'", live)
+        self.assertIn('INTEGERGOODHEL(MAX_BHEL,MAX_VIRTUAL_FLAVOR_INDEX)',
+                      live)
+        self.assertIn('CALLPICKHELICITYMC(P,GOODHEL(:,VIRTUAL_FLAVOR),'
+                      'HEL(:,VIRTUAL_FLAVOR),', live)
+        self.assertFalse('MC_HEL=0' in live)
+        self.assertFalse('CALLSLOOPMATRIX_THRES_FLAVOR(' in live)
+        self.assertEqual(live.count(
+            'CALLSLOOPMATRIXHEL_THRES_FLAVOR(P,-1,VIRTUAL_FLAVOR,'), 2)
+
+        # check_poles initialises every row, so that each filter is written
+        # before the integration jobs need it.
+        with open(os.path.join(template_dir, 'check_poles.f')) as stream:
+            content = ''.join(stream.read().upper().replace(
+                '\n     $', '').split())
+        self.assertIn('IF(NPOINTSCHECKED.EQ.0.OR.HELFILTER_PER_VIRTUAL_FLAVOR)'
+                      'THEN', content)
+        self.assertIn('IF(HELFILTER_PER_VIRTUAL_FLAVOR.AND.NPOINTSCHECKED.LT.'
+                      'NBORN_FLAVOR_CONFIGS)GOTO200', content)
+
+    def test_grouped_virtual_rows_keep_their_own_madloop_filters(self):
+        """MadLoop keeps filters for the virtual rows that a P directory uses.
+
+        The virtuals of e+ e- > t t~ and mu+ mu- > t t~ group e and mu, but
+        each P directory evaluates a single row: its filters describe that
+        row, as in an ungrouped output. The P directories of p p > e+ ve
+        evaluate two rows each: every row then gets its own filter slot
+        (FILTER_FLAV_IDX=-1), and only those rows. Without the rows of its
+        caller (standalone output) a grouped virtual keeps its filters off.
+        """
+
+        template_dir = os.path.join(
+            root_path, os.path.pardir, os.path.pardir,
+            'madgraph', 'iolibs', 'template_files')
+        for loop_dir in ('loop', 'loop_optimized'):
+            with open(os.path.join(template_dir, loop_dir,
+                                   'loop_matrix_standalone.inc')) as stream:
+                content = ' '.join(stream.read().upper().split())
+            self.assertIn('IF (FILTER_FLAV_IDX.EQ.0) THEN C A SINGLE MADLOOP '
+                          'FILTER FILE', content)
+            self.assertIn('IF (FILTER_FLAV_IDX.GT.0.AND.FLAV_IDX.NE.'
+                          'FILTER_FLAV_IDX) THEN', content)
+            self.assertNotIn('NVIRTUAL_FLAVORS.GT.1', content)
+
+        get_rows = export_fks.ProcessExporterFortranFKS.\
+            get_virtual_evaluated_flavor_pdgs
+        exporter_class = loop_exporters.LoopProcessExporterFortranSA
+        expected = {'e+ e- > t t~ [QCD]': {'P0_epem_ttx': 1},
+                    'mu+ mu- > t t~ [QCD]': {'P0_mupmum_ttx': 2},
+                    'p p > e+ ve [QCD]': {'P0_QQx_veep': -1,
+                                          'P0_QxQ_veep': -1}}
+        for process, filters in expected.items():
+            interface = MGCmd.MasterCmd()
+            interface.no_notification()
+            interface.exec_cmd('import model loop_sm')
+            interface.exec_cmd('generate %s' % process)
+            helas = fks_helas_objects.FKSHelasMultiProcess(
+                interface._fks_multi_proc)
+            found = {}
+            for matrix_element in helas.get_matrix_elements():
+                virtual = matrix_element.virt_matrix_element
+                if not virtual._flavor_is_populated():
+                    virtual.populate_flavor_validity()
+                n_flavors = len(virtual.get('allowed_flavors'))
+                self.assertGreater(n_flavors, 1)
+                # Without the rows of its caller the filters stay off.
+                self.assertIsNone(exporter_class.get_virtual_filter_rows(
+                    virtual))
+                self.assertEqual(exporter_class.get_virtual_filter_flavor(
+                    virtual, n_flavors), 0)
+                # The rows are set before the virtual is exported, as in
+                # generate_directories_fks.
+                virtual.evaluated_flavor_pdgs = get_rows(matrix_element)
+                exporter = exporter_class.__new__(exporter_class)
+                replace_dict = {'proc_prefix': ''}
+                exporter.set_virtual_flavor_replace_dict_entries(
+                    replace_dict, virtual)
+                filter_flavor = replace_dict['filter_flav_idx']
+                self.assertEqual(virtual.virtual_filter_flavor,
+                                 filter_flavor)
+                found['P%s' % matrix_element.born_me.get(
+                    'processes')[0].shell_string()] = filter_flavor
+                # The rows the P directory evaluates at run time.
+                virtual_rows = sorted(set(
+                    info['flavor_class']['virtual_flavor_index']
+                    for info in matrix_element.get_fks_info_list()))
+                slots = [int(slot) for slot in
+                         replace_dict['filter_slots'].split(',')]
+                self.assertEqual(len(slots), n_flavors)
+                if filter_flavor > 0:
+                    self.assertEqual(virtual_rows, [filter_flavor])
+                    self.assertEqual(replace_dict['nfilter_slots'], 1)
+                    self.assertEqual(set(slots), set([0]))
+                else:
+                    self.assertGreater(len(virtual_rows), 1)
+                    self.assertEqual(exporter_class.get_virtual_filter_rows(
+                        virtual), virtual_rows)
+                    self.assertEqual(replace_dict['nfilter_slots'],
+                                     len(virtual_rows))
+                    self.assertEqual(
+                        [row for row, slot in enumerate(slots, 1) if slot],
+                        virtual_rows)
+                    self.assertEqual([slot for slot in slots if slot],
+                                     list(range(1, len(virtual_rows) + 1)))
+                # The per-row filter code is only written for -1.
+                exporter.cmd_options = {}
+                exporter.compute_color_flows = False
+                exporter.has_loop_induced = False
+                self.assertEqual(
+                    exporter_class.get_context(exporter, virtual)[
+                        'FilterPerFlavor'], filter_flavor == -1)
+            self.assertEqual(found, filters, process)
+
+    def test_per_row_filter_code_is_only_written_for_several_rows(self):
+        """MadLoop only gets the per-row filter code for FILTER_FLAV_IDX=-1.
+
+        The loop_matrix.f of standalone outputs and of P directories with
+        one virtual row is then unchanged.
+        """
+
+        template_dir = os.path.join(
+            root_path, os.path.pardir, os.path.pardir,
+            'madgraph', 'iolibs', 'template_files')
+        context = {'LoopInduced': False, 'ComputeColorFlows': False,
+                   'AmplitudeReduction': False, 'TIRCaching': False,
+                   'MadEventOutput': False, 'UseDensity': False,
+                   'collier_available': True, 'iregi_available': False,
+                   'ninja_available': True,
+                   'ninja_supports_quad_prec': False}
+        per_row_names = ('NFILTER_SLOTS', 'FILTER_SLOT', 'LOADED_FILTER_FLAV',
+                         "'HelFilter_'", "'LoopFilter_'")
+        for loop_dir in ('loop', 'loop_optimized'):
+            with open(os.path.join(template_dir, loop_dir,
+                                   'loop_matrix_standalone.inc')) as stream:
+                template = stream.read()
+            writer = file_writers.FortranWriter(os.devnull)
+            for per_row in (False, True):
+                lines = writer.preprocess_template(
+                    template, dict(context, FilterPerFlavor=per_row))
+                code = '\n'.join(lines)
+                for name in per_row_names:
+                    self.assertEqual(name in code, per_row, (loop_dir, name))
+                if per_row:
+                    # The state of a row is swapped in before the filters
+                    # are read, and the filter files are named after it.
+                    self.assertLess(code.index('LOADED_FILTER_FLAV=FLAV_IDX'),
+                                    code.index('IF(NTRY.EQ.0) THEN'))
+                    for state in ('NTRY', 'NATTEMPTS', 'FOUNDHELFILTER',
+                                  'FOUNDLOOPFILTER', 'CHECKPHASE',
+                                  'HELDOUBLECHECKED', 'DONEHELDOUBLECHECK'):
+                        self.assertIn('SLOT_%s(ISLOT)=%s' % (state, state),
+                                      code)
+                        self.assertIn('%s=SLOT_%s(ISLOT)' % (state, state),
+                                      code)
+            writer.close()
 
     def test_fixed_order_stratifies_physical_flavors_by_topology(self):
         """Grouped FO sampling sums flavours inside one sampled topology."""
@@ -369,20 +542,34 @@ class TestGroupedFKSMetadata(unittest.TestCase):
                             interface._curr_model.get('merged_particles')
                             for info in info_list for pdg in info['pdgs']))
 
-        handle, path = tempfile.mkstemp(prefix='fks_info_', suffix='.inc')
-        os.close(handle)
-        try:
-            exporter = export_fks.ProcessExporterFortranFKS.__new__(
-                export_fks.ProcessExporterFortranFKS)
-            writer = file_writers.FortranWriter(path)
-            exporter.write_fks_info_file(
-                writer, matrix_element, None)
-            writer.close()
-            with open(path) as stream:
-                content = stream.read()
-        finally:
-            if os.path.exists(path):
-                os.remove(path)
+        exporter = export_fks.ProcessExporterFortranFKS.__new__(
+            export_fks.ProcessExporterFortranFKS)
+
+        def write_fks_info():
+            handle, path = tempfile.mkstemp(prefix='fks_info_',
+                                            suffix='.inc')
+            os.close(handle)
+            try:
+                writer = file_writers.FortranWriter(path)
+                exporter.write_fks_info_file(
+                    writer, matrix_element, None)
+                writer.close()
+                with open(path) as stream:
+                    return stream.read()
+            finally:
+                if os.path.exists(path):
+                    os.remove(path)
+
+        # BinothLHA reads one helicity filter per virtual row only once
+        # MadLoop was exported with one filter slot per row.
+        virtual = matrix_element.virt_matrix_element
+        for filter_flavor, flag in ((None, '.FALSE.'), (0, '.FALSE.'),
+                                    (-1, '.TRUE.')):
+            if filter_flavor is not None:
+                virtual.virtual_filter_flavor = filter_flavor
+            content = write_fks_info()
+            self.assertIn('PARAMETER (HELFILTER_PER_VIRTUAL_FLAVOR=%s)' % flag,
+                          content)
 
         self.assertIn('INTEGER REAL_FLAVOR_INDEX_D(16)', content)
         self.assertIn('INTEGER BORN_FLAVOR_INDEX_D(16)', content)

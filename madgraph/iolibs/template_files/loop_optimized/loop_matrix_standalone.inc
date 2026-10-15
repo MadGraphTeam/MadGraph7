@@ -93,6 +93,19 @@ C
       PARAMETER (NEXTERNAL=%(nexternal)d)
       INTEGER NVIRTUAL_FLAVORS
       PARAMETER (NVIRTUAL_FLAVORS=%(nvirtual_flavors)d)
+C     HelFilter.dat and LoopFilter.dat describe one virtual flavour:
+C     FILTER_FLAV_IDX, the only one evaluated with this output. It is 0
+C     when the evaluated flavours are unknown: the filters are off.
+      INTEGER FILTER_FLAV_IDX
+      PARAMETER (FILTER_FLAV_IDX=%(filter_flav_idx)d)
+## if(FilterPerFlavor) {
+C     It is -1 when several flavours are evaluated. Each of them then
+C     has its own check phase and filters, written to the files
+C     HelFilter_<flavour>.dat and LoopFilter_<flavour>.dat, and kept
+C     in its own filter slot while other flavours are evaluated.
+      INTEGER NFILTER_SLOTS
+      PARAMETER (NFILTER_SLOTS=%(nfilter_slots)d)
+## }
       INTEGER NINITIAL
       PARAMETER (NINITIAL=%(nincoming)d)
       INTEGER    NWAVEFUNCS,NLOOPWAVEFUNCS
@@ -337,6 +350,32 @@ C     Typically, the hel_offset is 10000
 	  INTEGER GOODHEL(NCOMB)
 	  LOGICAL GOODAMP(NSQUAREDSO,NLOOPGROUPS)
 	  common/%(proc_prefix)sFilters/GOODAMP,GOODHEL,HELOFFSET
+## if(FilterPerFlavor) {
+C     FILTER_SLOT maps a virtual flavour to its filter slot (0 if it
+C     is never evaluated), which keeps the filter state of the flavour
+C     while another one is evaluated. LOADED_FILTER_FLAV is the
+C     flavour in use.
+	  INTEGER FILTER_SLOT(NVIRTUAL_FLAVORS)
+	  DATA FILTER_SLOT/%(filter_slots)s/
+	  INTEGER LOADED_FILTER_FLAV,ISLOT
+	  DATA LOADED_FILTER_FLAV/0/
+	  CHARACTER*64 FILTER_NAME
+	  LOGICAL SLOT_USED(NFILTER_SLOTS)
+	  DATA SLOT_USED/NFILTER_SLOTS*.FALSE./
+	  INTEGER SLOT_NTRY(NFILTER_SLOTS),SLOT_NATTEMPTS(NFILTER_SLOTS)
+	  LOGICAL SLOT_FOUNDHELFILTER(NFILTER_SLOTS)
+	  LOGICAL SLOT_FOUNDLOOPFILTER(NFILTER_SLOTS)
+	  LOGICAL SLOT_CHECKPHASE(NFILTER_SLOTS)
+	  LOGICAL SLOT_HELDOUBLECHECKED(NFILTER_SLOTS)
+	  LOGICAL SLOT_DONEHELDOUBLECHECK(NFILTER_SLOTS)
+	  INTEGER SLOT_GOODHEL(NCOMB,NFILTER_SLOTS)
+	  LOGICAL SLOT_GOODAMP(NSQUAREDSO,NLOOPGROUPS,NFILTER_SLOTS)
+	  LOGICAL SLOT_LOOPFILTERBUFF(NSQUAREDSO,NLOOPGROUPS,NFILTER_SLOTS)
+	  SAVE SLOT_NTRY,SLOT_NATTEMPTS,SLOT_FOUNDHELFILTER
+	  SAVE SLOT_FOUNDLOOPFILTER,SLOT_CHECKPHASE,SLOT_HELDOUBLECHECKED
+	  SAVE SLOT_DONEHELDOUBLECHECK,SLOT_GOODHEL,SLOT_GOODAMP
+	  SAVE SLOT_LOOPFILTERBUFF
+## }
 
 	  INTEGER HELPICKED
 	  DATA HELPICKED/-1/
@@ -494,6 +533,10 @@ IF (FLAV_IDX.LT.1.OR.FLAV_IDX.GT.NVIRTUAL_FLAVORS) THEN
   ANS=0.0d0
   RETURN
 ENDIF
+IF (FILTER_FLAV_IDX.GT.0.AND.FLAV_IDX.NE.FILTER_FLAV_IDX) THEN
+  WRITE(*,*) '##E03 ERROR The MadLoop filters describe the virtual flavour ',FILTER_FLAV_IDX,' only, not flavour ',FLAV_IDX
+  STOP 1
+ENDIF
 CALL %(proc_prefix)sGET_VIRTUAL_FLAVOR(FLAV_IDX,FLAVOR)
 %(virtual_flavor_mask_setup)s
 
@@ -508,9 +551,9 @@ IF(ML_INIT) THEN
   CALL setMadLoopPath(TMP)
   CALL JOINPATH(MLPATH,PARAMFNAME,PARAMFN)
   CALL MADLOOPPARAMREADER(PARAMFN,.TRUE.)
-  IF (NVIRTUAL_FLAVORS.GT.1) THEN
+  IF (FILTER_FLAV_IDX.EQ.0) THEN
 C   A single MadLoop filter file cannot represent several physical flavours.
-C   Keep every loop/helicity active for grouped virtual matrix elements.
+C   Keep every loop/helicity active when the flavours are unknown.
     UseLoopFilter=.FALSE.
     HelicityFilterLevel=0
     DoubleCheckHelicityFilter=.FALSE.
@@ -687,6 +730,61 @@ if(MAX_SPIN_EXTERNAL_PARTICLE.gt.3.AND.USERHEL.NE.-1) THEN
    CALL %(proc_prefix)sSET_N_EVALS(N_DP_EVAL,N_QP_EVAL)
 ENDIF
 
+## if(FilterPerFlavor) {
+C Switch to the filters of the virtual flavour FLAV_IDX, after saving
+C those of the flavour evaluated before. A flavour evaluated for the
+C first time reads its own filter files, or else starts its own check
+C phase.
+IF (FLAV_IDX.NE.LOADED_FILTER_FLAV) THEN
+  IF (LOADED_FILTER_FLAV.NE.0) THEN
+    ISLOT=FILTER_SLOT(LOADED_FILTER_FLAV)
+    SLOT_NTRY(ISLOT)=NTRY
+    SLOT_NATTEMPTS(ISLOT)=NATTEMPTS
+    SLOT_FOUNDHELFILTER(ISLOT)=FOUNDHELFILTER
+    SLOT_FOUNDLOOPFILTER(ISLOT)=FOUNDLOOPFILTER
+    SLOT_CHECKPHASE(ISLOT)=CHECKPHASE
+    SLOT_HELDOUBLECHECKED(ISLOT)=HELDOUBLECHECKED
+    SLOT_DONEHELDOUBLECHECK(ISLOT)=DONEHELDOUBLECHECK
+    SLOT_GOODHEL(:,ISLOT)=GOODHEL(:)
+    SLOT_GOODAMP(:,:,ISLOT)=GOODAMP(:,:)
+    SLOT_LOOPFILTERBUFF(:,:,ISLOT)=LOOPFILTERBUFF(:,:)
+  ENDIF
+  ISLOT=FILTER_SLOT(FLAV_IDX)
+  IF (ISLOT.EQ.0) THEN
+    WRITE(*,*) '##E03 ERROR The MadLoop filters are not set up for the virtual flavour ',FLAV_IDX
+    STOP 1
+  ENDIF
+  IF (SLOT_USED(ISLOT)) THEN
+    NTRY=SLOT_NTRY(ISLOT)
+    NATTEMPTS=SLOT_NATTEMPTS(ISLOT)
+    FOUNDHELFILTER=SLOT_FOUNDHELFILTER(ISLOT)
+    FOUNDLOOPFILTER=SLOT_FOUNDLOOPFILTER(ISLOT)
+    CHECKPHASE=SLOT_CHECKPHASE(ISLOT)
+    HELDOUBLECHECKED=SLOT_HELDOUBLECHECKED(ISLOT)
+    DONEHELDOUBLECHECK=SLOT_DONEHELDOUBLECHECK(ISLOT)
+    GOODHEL(:)=SLOT_GOODHEL(:,ISLOT)
+    GOODAMP(:,:)=SLOT_GOODAMP(:,:,ISLOT)
+    LOOPFILTERBUFF(:,:)=SLOT_LOOPFILTERBUFF(:,:,ISLOT)
+  ELSE
+    SLOT_USED(ISLOT)=.TRUE.
+    NTRY=0
+    NATTEMPTS=0
+    FOUNDHELFILTER=.TRUE.
+    FOUNDLOOPFILTER=.TRUE.
+    CHECKPHASE=.TRUE.
+    HELDOUBLECHECKED=.FALSE.
+    DONEHELDOUBLECHECK=.FALSE.
+    LOOPFILTERBUFF(:,:)=.FALSE.
+  ENDIF
+  CALL JOINPATH(MLPATH,PROC_PREFIX,TMP)
+  WRITE(FILTER_NAME,'(A,I0,A)') 'HelFilter_',FLAV_IDX,'.dat'
+  CALL JOINPATH(TMP,FILTER_NAME,HELFILTERFN)
+  WRITE(FILTER_NAME,'(A,I0,A)') 'LoopFilter_',FLAV_IDX,'.dat'
+  CALL JOINPATH(TMP,FILTER_NAME,LOOPFILTERFN)
+  LOADED_FILTER_FLAV=FLAV_IDX
+ENDIF
+
+## }
 IF(NTRY.EQ.0) THEN
   HELDOUBLECHECKED=(.NOT.DoubleCheckHelicityFilter).OR.(HelicityFilterLevel.eq.0)
 OPEN(1, FILE=LoopFilterFN, err=100, status='OLD',           action='READ')

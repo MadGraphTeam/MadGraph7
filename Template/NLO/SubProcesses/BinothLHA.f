@@ -57,8 +57,17 @@ c statistics for MadLoop
       parameter (nbadmax = 5)
       double precision pmass(nexternal)
       character*1 include_hel(max_bhel)
-      integer goodhel(max_bhel),hel(0:max_bhel)
-      save hel,goodhel
+c The helicities sampled in the MC over helicities of each virtual
+c row, from its helicity filter, and whether the row samples them (1)
+c or sums them explicitly (0). MadLoop keeps one helicity filter per
+c row when this P directory evaluates several of them
+c (HELFILTER_PER_VIRTUAL_FLAVOR).
+      integer goodhel(max_bhel,MAX_VIRTUAL_FLAVOR_INDEX)
+      integer hel(0:max_bhel,MAX_VIRTUAL_FLAVOR_INDEX)
+      integer mc_hel_flavor(MAX_VIRTUAL_FLAVOR_INDEX)
+      save hel,goodhel,mc_hel_flavor
+      data mc_hel_flavor/MAX_VIRTUAL_FLAVOR_INDEX*0/
+      character*64 helfilter_file
       logical fillh
       integer mc_hel,ihel
       double precision volh
@@ -165,7 +174,9 @@ c splips unnoticed.
          write(*,*) "alpha_s value used for the virtuals"/
      &        /" is (for the first PS point): ", alpha_S
          tolerance=IRPoleCheckThreshold/10d0 ! for the pole check below
-         call sloopmatrix_thres_flavor(p,virtual_flavor,virt_wgts,
+c HEL=-1 sums over all helicities. It also resets the helicity left in
+c MadLoop by the MC over helicities of another virtual row.
+         call sloopmatrixhel_thres_flavor(p,-1,virtual_flavor,virt_wgts,
      $        tolerance,accuracies,ret_code)
 C        look for orders which match the nlo order constraint 
          do i = 1, nsqso
@@ -206,10 +217,10 @@ C          different coupling combinations
          tolerance=PrecisionVirtualAtRunTime
 c Just set the accuracy found to a positive value as it is not specified
 c once the initial pole check is performed.
-         if (mc_hel.eq.0) then
+         if (mc_hel_flavor(virtual_flavor).eq.0) then
 
-            call sloopmatrix_thres_flavor(p,virtual_flavor,virt_wgts,
-     $           tolerance,accuracies,ret_code)
+            call sloopmatrixhel_thres_flavor(p,-1,virtual_flavor,
+     $           virt_wgts,tolerance,accuracies,ret_code)
             do i = 1, nsqso
               if (keep_order(i)) then
                 virt_wgt= virt_wgt + virt_wgts(1,i)
@@ -230,15 +241,17 @@ C          different coupling combinations
      $               =accuracies(i)
               endif
             enddo
-         elseif (mc_hel.eq.1) then
+         elseif (mc_hel_flavor(virtual_flavor).eq.1) then
 c Use the Born helicity amplitudes to sample the helicities of the
 c virtual as flat as possible
-            call PickHelicityMC(p,goodhel,hel,ihel,volh,loc_saveamp)
+            call PickHelicityMC(p,goodhel(:,virtual_flavor),
+     $           hel(:,virtual_flavor),ihel,volh,loc_saveamp)
             !
             fillh=.false.
-            call sloopmatrixhel_thres_flavor(p,hel(ihel),virtual_flavor,
-     $           virt_wgts_hel,tolerance,accuracies,ret_code)
-            hel_fact = dble(goodhel(ihel))/volh/4d0
+            call sloopmatrixhel_thres_flavor(p,hel(ihel,virtual_flavor),
+     $           virtual_flavor,virt_wgts_hel,tolerance,accuracies,
+     $           ret_code)
+            hel_fact = dble(goodhel(ihel,virtual_flavor))/volh/4d0
             do i = 1, nsqso
               if (keep_order(i)) then
                 born_hel_from_virt=born_hel_from_virt+virt_wgts_hel(0,i)
@@ -276,7 +289,8 @@ c Average over initial state helicities
             endif
          else
             write (*,*) 'Can only do sum over helicities,'/
-     $           /' or pure MC over helicities',mc_hel
+     $           /' or pure MC over helicities',
+     $           mc_hel_flavor(virtual_flavor)
             stop
          endif
       endif
@@ -328,7 +342,8 @@ c for all phase-space points when not doing MC over helicities. Skip
 c MadLoop initialization PS points.
       cpol=.false.
       ret_code_common=ret_code
-      if ((firsttime .or. mc_hel.eq.0) .and. mod(ret_code,100)/10.ne.3
+      if ((firsttime .or. mc_hel_flavor(virtual_flavor).eq.0) .and.
+     $     mod(ret_code,100)/10.ne.3
      $     .and. mod(ret_code,100)/10.ne.4) then
          call getpoles(p,QES2,madfks_double,madfks_single,fksprefact,born_amp_split_cnt)
          polecheck_passed = .true.
@@ -394,40 +409,50 @@ c MadLoop initialization PS points.
                endif
                if (mc_hel.ne.0) then
  198              continue
-c Set-up the MC over helicities. This assumes that the 'HelFilter.dat'
-c exists, which should be the case when firsttime is false.
+c Set-up the MC over helicities of this virtual row. This assumes that
+c its helicity filter exists, which should be the case when firsttime
+c is false.
+                  mc_hel_flavor(virtual_flavor)=mc_hel
                   if (NHelForMCoverHels.lt.0) then
-                     mc_hel=0
+                     mc_hel_flavor(virtual_flavor)=0
                      goto 203
                   endif
-                  open (unit=67,
-     $                 file='../MadLoop5_resources/HelFilter.dat',
+                  if (HELFILTER_PER_VIRTUAL_FLAVOR) then
+                     write (helfilter_file,'(a,i0,a)')
+     $                    '../MadLoop5_resources/HelFilter_',
+     $                    virtual_flavor,'.dat'
+                  else
+                     helfilter_file='../MadLoop5_resources/HelFilter.dat'
+                  endif
+                  open (unit=67,file=helfilter_file,
      $                 status='old',action='read',iostat=IOErr, err=201)
-                  hel(0)=0
+                  hel(0,virtual_flavor)=0
                   j=0
 c optimized loop output
                   do i=1,max_bhel
-                     read(67,*,err=202) goodhel(i)
-                     if (goodhel(i).gt.-10000 .and. goodhel(i).ne.0)
-     $                    then
+                     read(67,*,err=202) goodhel(i,virtual_flavor)
+                     if (goodhel(i,virtual_flavor).gt.-10000 .and.
+     $                    goodhel(i,virtual_flavor).ne.0) then
                         j=j+1
-                        goodhel(j)=goodhel(i)
-                        hel(0)=hel(0)+1
-                        hel(j)=i
+                        goodhel(j,virtual_flavor)=
+     $                       goodhel(i,virtual_flavor)
+                        hel(0,virtual_flavor)=hel(0,virtual_flavor)+1
+                        hel(j,virtual_flavor)=i
                      endif
                   enddo
                   goto 203
  201              continue
                   if (IOErr.eq.2.and.IOErrCounter.lt.10) then
                      IOErrCounter = IOErrCounter+1
-                     write(*,*) "File HelFilter.dat busy, retrying for"
-     $                    //" the ",IOErrCounter," time."
+                     write(*,*) "File "//trim(helfilter_file)//
+     $                    " busy, retrying for the ",IOErrCounter,
+     $                    " time."
                      call date_and_time(values=dt)
                      call sleep(1+(dt(8)/200))
                      goto 198
                   endif
-                  write (*,*) 'Cannot do MC over hel:'/
-     &                 /' "HelFilter.dat" does not exist'/
+                  write (*,*) 'Cannot do MC over hel: "'/
+     &                 /trim(helfilter_file)//'" does not exist'/
      &                 /' or does not have the correct format.'/
      $                 /' Change NHelForMCoverHels in FKS_params.dat '/
      &                 /'to explicitly summ over them instead.'
@@ -441,9 +466,9 @@ c non optimized loop output
                   do i=1,max_bhel
                      if (include_hel(i).eq.'T') then
                         j=j+1
-                        goodhel(j)=1
-                        hel(0)=hel(0)+1
-                        hel(j)=i
+                        goodhel(j,virtual_flavor)=1
+                        hel(0,virtual_flavor)=hel(0,virtual_flavor)+1
+                        hel(j,virtual_flavor)=i
                      endif
                   enddo
  203              continue
@@ -452,12 +477,13 @@ c or more non-zero (independent) helicities
                   if (NHelForMCoverHels.eq.-1) then
                      write (*,*) 'Not doing MC over helicities: '/
      $                    /'HelForMCoverHels=-1'
-                     mc_hel=0
-                  elseif (hel(0).lt.NHelForMCoverHels) then
-                     write (*,'(a,i3,a)') 'Only ',hel(0)
+                     mc_hel_flavor(virtual_flavor)=0
+                  elseif (hel(0,virtual_flavor).lt.NHelForMCoverHels)
+     $                    then
+                     write (*,'(a,i3,a)') 'Only ',hel(0,virtual_flavor)
      $                    ,' independent helicities:'/
      $                    /' switching to explicitly summing over them'
-                     mc_hel=0
+                     mc_hel_flavor(virtual_flavor)=0
                   endif
                   close(67)
                endif
@@ -539,8 +565,10 @@ c check (only available when not doing MC over hels)
                write(78,*) 'alpha_S =',alpha_S
                write(78,*) 'MadLoop return code, pole check and'/
      $              /' accuracy reported',ret_code,cpol,prec_found
-               if (mc_hel.ne.0) then
-                  write (78,*)'helicity (MadLoop only)',hel(i),mc_hel
+               if (mc_hel_flavor(virtual_flavor).ne.0) then
+                  write (78,*)'helicity (MadLoop only)',
+     $                 hel(ihel,virtual_flavor),
+     $                 mc_hel_flavor(virtual_flavor)
                endif
                write(78,*) '1/eps**2 expected from MadFKS='
      $              ,amp_split_poles_FKS(iamp,2)
