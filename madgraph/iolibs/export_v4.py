@@ -7618,7 +7618,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             if n_ext in crossed_next:
                 smtext.append(' else')
                 smtext.append(' call %(f2py_prefix)sf77_crossed_smatrixhel('
-                              'opdgs, procid, npdg, p, nhel, ans)')
+                              'pdgs, procid, npdg, p, nhel, ans)')
             smtext.append(' endif')
         #close the function
         if min_nexternal != max_nexternal:
@@ -7738,17 +7738,15 @@ C       stays correct for split-order processes.
         #misc.sprint(all_iden)
 
 
+        # the crossed fallback reads the caller's PDGS: it is never rewritten
+        # (the merged codes live in LPDGS), so no copy is needed.
         if crossed_next:
-            crossed_decl = '  integer opdgs(%i)' % max_nexternal
-            crossed_copy = '  do i = 1, npdg\n   opdgs(i) = pdgs(i)\n  enddo'
             crossed_routine = self.crossed_smatrixhel_routine(f2py_prefix,
                                                               max_nexternal)
         else:
-            crossed_decl = crossed_copy = crossed_routine = ''
+            crossed_routine = ''
         formatting = {'python_information':'\n'.join(info), 
                           'smatrixhel': '\n'.join(smtext) % {'f2py_prefix': f2py_prefix},
-                          'crossed_pdgs_decl': crossed_decl,
-                          'crossed_pdgs_copy': crossed_copy,
                           'crossed_smatrixhel': crossed_routine,
                           'smatrixhel_idx': '\n'.join(idxtext),
                           'flavor_index_decl': flavor_index_decl,
