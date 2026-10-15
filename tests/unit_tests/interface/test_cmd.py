@@ -1020,6 +1020,38 @@ class CrossingDisplayTest(unittest.TestCase):
         self.assertEqual(total, ['Total: 3 processes with 6 diagrams'])
         self.assertNotIn('Crossed', self._display())
 
+    def test_offshell_legs_cross(self):
+        # an off-shell ('*') leg is evaluated at the invariant mass of its
+        # momentum by the crossed external call as well (that of the leg fed
+        # to its base slot): it folds as the on-shell process does
+        total = self._summary('generate p p > w+* j')
+        self.assertEqual(total, ['Total: 1 processes with 2 diagrams (and 2 crossed '
+                                 'processes evaluated through them, see '
+                                 '"display processes")'])
+        self.assertIn('_quark _anti_quark > w+* g', self._display())
+
+    def test_offshell_leg_pairs_with_an_offshell_leg(self):
+        import madgraph.core.base_objects as base_objects
+        import madgraph.core.diagram_generation as diagram_generation
+        model = self.cmd._curr_model
+
+        def legs(spec):
+            return base_objects.LegList([
+                base_objects.Leg({'id': pid, 'state': final, 'offshell': star})
+                for pid, final, star in spec])
+
+        pairing = diagram_generation.MultiProcess.crossing_flavor_pairing
+        # u u~ > t* t~ crossed into u~ u > t* t~: the starred tops pair up
+        base = legs([(2, False, False), (-2, False, False), (6, True, True),
+                     (-6, True, False)])
+        crossed = legs([(-2, False, False), (2, False, False), (6, True, True),
+                        (-6, True, False)])
+        self.assertIsNotNone(pairing(base, crossed, model))
+        # the star on the other top: no slot of the base evaluates it
+        crossed = legs([(-2, False, False), (2, False, False), (6, True, False),
+                        (-6, True, True)])
+        self.assertIsNone(pairing(base, crossed, model))
+
 
 class RequiredSChannelErrorTest(unittest.TestCase):
     """A bad required s-channel has to be reported for what it is.

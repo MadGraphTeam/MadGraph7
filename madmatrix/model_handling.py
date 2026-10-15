@@ -4059,14 +4059,27 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             nsf = (-1) ** (wf.get('state') == 'initial')
         else:
             nsf = - (-1) ** wf.get_with_flow('is_part')
-        mass = wf.get('mass')
+        # A leg marked off-shell ('*') takes the invariant mass of the
+        # momentum that lands in its base slot, as the uncrossed call
+        # (get_external_line) takes that of its own: crossing keeps the
+        # particle of a slot up to its antiparticle, and the mass of a
+        # momentum does not see the side flip. The flag is the slot's own
+        # (wf); a crossing records only partners whose '*' legs pair up
+        # (crossing_flavor_pairing). CPU: the gathered xmom slot s; GPU: the
+        # input slot xperm[s] (offshell_mass keeps the pole mass there).
+        offshell = spin != 1 and wf.get('offshell')
+        if offshell:
+            mass = 'offshell_mass<M_ACCESS>( m_pars->%s, xmom, %d )' % (wf.get('mass'), s)
+            gpu_mass = 'offshell_mass<M_ACCESS>( m_pars->%s, momenta, xperm[%d] )' % (wf.get('mass'), s)
+        else:
+            mass = gpu_mass = 'm_pars->%s' % wf.get('mass')
 
         def one_call(sign, obj, hel=None):
             if spin == 1:
                 call = '%s( xmom, %+d, cFlavors[iflavor][%d], %s, %d );' % \
                        (routine, sign, s, obj, s)
             else:
-                call = '%s( xmom, m_pars->%s, %s, %+d, cFlavors[iflavor][%d], %s, %d%s );' % \
+                call = '%s( xmom, %s, %s, %+d, cFlavors[iflavor][%d], %s, %d%s );' % \
                        (routine, mass, hel, sign, s, obj, s,
                         ', %d' % ref if axial else '')
             return self.format_coupling(call)
@@ -4092,8 +4105,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             gpu = '%s( momenta, %+d * xic[%d], cFlavors[iflavor][%d], aloha_obj[%d], xperm[%d] );' % \
                   (routine, nsf, s, s, me, s)
         else:
-            gpu = '%s( momenta, m_pars->%s, cHel[ihel][%d] * xic[%d], %+d * xic[%d], cFlavors[iflavor][%d], aloha_obj[%d], xperm[%d]%s );' % \
-                  (routine, mass, s, s, nsf, s, s, me, s,
+            gpu = '%s( momenta, %s, cHel[ihel][%d] * xic[%d], %+d * xic[%d], cFlavors[iflavor][%d], aloha_obj[%d], xperm[%d]%s );' % \
+                  (routine, gpu_mass, s, s, nsf, s, s, me, s,
                    ', xperm[%d]' % ref if axial else '')
         lines.append('      ' + self.format_coupling(gpu))
         lines.append('#endif\n')
