@@ -469,8 +469,10 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                         'written without recycling.\n%s', name,
                         built.stdout.decode(errors='replace')[-1500:])
                     continue
-                # perf mode: 64 distinct RAMBO events, which the probe's
-                # good-helicity scan samples (matrix mode repeats ONE point)
+                # what the probe records is the good-helicity scan that
+                # umami_initialize runs (goodHelScanEvents: 64 RAMBO points
+                # under MG_HR_PROBE, half of them boosted) over every extended
+                # flavor id; any perf run triggers it
                 env = dict(os.environ, MG_DUMP_GOODHEL='1')
                 run = subprocess.run([pjoin(dirpath, 'check_sa.exe'), 'perf',
                                       '1', '64', '1'],
