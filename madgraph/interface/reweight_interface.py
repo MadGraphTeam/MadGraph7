@@ -2123,8 +2123,9 @@ class ReweightInterface(extended_cmd.Cmd):
            the matrix element and its leg order through get_pdg_order, which
            lists no folded crossing. py_get_density itself falls back to a
            folded crossing (f77_crossed_density), but only for legs in that
-           crossing's own order (GET_PDG_FOR_FLAVOR), which this mode does not
-           build.
+           crossing's own order (GET_PDG_FOR_FLAVOR) up to exchanges of
+           same-code legs not in POS inside the initial or the final state,
+           which this mode does not build.
          - 'use_eventid' hands the event's process id to SMATRIXHEL, while the
            folded entry point SMATRIXHEL_IDX takes none: a crossed event would
            silently be given the first matching matrix element instead.

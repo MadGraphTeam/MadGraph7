@@ -11192,24 +11192,41 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
         GET_DENSITY_IDX / GET_ALL_INTER_IDX (GET_ALL_INTER_SUMSO_IDX for a
         split-order matrix element) at the extended index, handing over the
         caller's NHEL copy; a miss everywhere goes to F77_NO_PROCESS (NaN)
-        rather than leaving zeros."""
+        rather than leaving zeros.
+
+        A crossing row tabulates one leg order: smatrixhel summed over
+        helicities and the density (its POS legs frozen) also accept the
+        caller's same-code legs exchanged inside the initial or the final
+        state (F77_CROSSED_ORDER, a second pass after the exact one);
+        get_all_inter, whose NHEL names legs by position, does not."""
         for split_orders, inter in ((False, 'M0_GET_ALL_INTER_IDX('),
                                     (True, 'M0_GET_ALL_INTER_SUMSO_IDX(')):
             text = re.sub(r'\s+', '', self.write(
                 {81: [1, 2, 3, 4]}, split_orders=split_orders,
                 crossed_rows=(1, 3)))
-            for name in ('SMATRIXHEL', 'DENSITY', 'GET_ALL_INTER'):
+            for name in ('SMATRIXHEL', 'DENSITY', 'GET_ALL_INTER', 'ORDER'):
                 self.assertEqual(text.count(
                     'SUBROUTINEF77_CROSSED_%s(' % name), 1)
             self.assertIn('DATAM0_XROWS/1,3/', text)
-            self.assertIn('CALLM0_GET_DENSITY_IDX(P,POS,N_CHANGING,ALLOW_HEL,'
-                          'N_COMB,IDX,ALPHAS,SCALE2,INTER)', text)
-            self.assertIn('CALL%sP,NHEL,POS,N_CHANGING,ALLOW_HEL,N_COMB,IDX,'
-                          'INTER)' % inter, text)
-            self.assertIn('ELSECALLF77_CROSSED_DENSITY(PDGS,PROCID,NPDG,P,POS,',
-                          text)
-            self.assertIn('ELSECALLF77_CROSSED_GET_ALL_INTER(PDGS,PROCID,NPDG,'
-                          'P,LNHEL,POS,', text)
+            self.assertIn('CALLM0_GET_DENSITY_IDX(PFIX,POS,N_CHANGING,'
+                          'ALLOW_HEL,N_COMB,IDX,ALPHAS,SCALE2,INTER)', text)
+            self.assertIn('CALL%sPFIX,NHEL,POS,N_CHANGING,ALLOW_HEL,N_COMB,'
+                          'IDX,INTER)' % inter, text)
+            self.assertIn('CALLM0_SMATRIXHEL(PFIX,NHEL,IDX,ANS)', text)
+            self.assertIn('ELSECALLF77_CROSSED_DENSITY(PDGS,LPDGS,PROCID,NPDG,'
+                          'P,POS,', text)
+            self.assertIn('ELSECALLF77_CROSSED_GET_ALL_INTER(PDGS,LPDGS,'
+                          'PROCID,NPDG,P,LNHEL,POS,', text)
+            self.assertIn('ELSECALLF77_CROSSED_SMATRIXHEL(PDGS,LPDGS,PROCID,'
+                          'NPDG,P,NHEL,ANS)', text)
+            # second pass: smatrixhel only when summing the helicities, the
+            # density with POS frozen, get_all_inter never
+            for cond in ('NHEL.LT.1', '.TRUE.', '.FALSE.'):
+                self.assertEqual(text.count('IF(%s)NPASS=2' % cond), 1)
+            self.assertEqual(text.count(
+                'LPDGS,N_CHANGING,POS,IPASS.EQ.2,P,PFIX,SAME)'), 1)
+            self.assertEqual(text.count(
+                'LPDGS,0,NOFROZEN,IPASS.EQ.2,P,PFIX,SAME)'), 2)
             self.assertEqual(text.count('IF(.NOT.FOUND)CALLF77_NO_PROCESS('), 2)
             self.assertIn('IEEE_VALUE(XNAN,IEEE_QUIET_NAN)', text)
         # without a folded crossing there is nothing to fall back to: the

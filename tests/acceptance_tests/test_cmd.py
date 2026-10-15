@@ -4351,6 +4351,83 @@ json.dump(res, open(outfile, 'w'))
             self.assertTrue(all(math.isnan(x) for z in res['nomatch'] for x in z))
         self.assertIn('ERROR: py_get_density: no matrix element', out)
 
+    # every ordering of u~ d~ > u~ d~ and d~ u~ > u~ d~ that only exchanges
+    # legs inside the initial or the final state, at one phase-space point
+    # (momenta moved with their leg); u d > u d (uncrossed) as a control
+    _crossed_leg_order_script = '''
+import itertools, json, math, os, sys
+import numpy as np
+import all_matrix2py as m
+mdir, outfile = sys.argv[1:]
+m.initialise(os.path.join(mdir, 'Cards', 'param_card.dat'))
+E, th, ph, b = 500., 1.1, 0.4, 0.27
+k = E*np.array([math.sin(th)*math.cos(ph), math.sin(th)*math.sin(ph), math.cos(th)])
+mom = np.array([[E, 0, 0, E], [E, 0, 0, -E], [E] + list(k), [E] + list(-k)])
+g = 1/math.sqrt(1 - b*b)
+mom = np.array([[g*(q[0] + b*q[3]), q[1], q[2], g*(q[3] + b*q[0])] for q in mom])
+res = {'sm': [], 'dens': []}
+for pdgs in ([-2, -1, -2, -1], [-1, -2, -2, -1], [2, 1, 2, 1]):
+    for order in ([0, 1, 2, 3], [0, 1, 3, 2], [1, 0, 2, 3], [1, 0, 3, 2]):
+        arr = np.array([pdgs[o] for o in order], dtype=np.int32)
+        p = np.asfortranarray(mom[order].T)
+        res['sm'].append(m.smatrixhel(arr, -1, p, 0.118, 0., -1))
+        # the density of the leg in slot 1, which stays where it is
+        dens = m.py_get_density(pdgs=arr, procid=-1, p=p, pos=[1],
+                                allow_hel=[-1, 1], alphas=0.118, scale2=0.)
+        res['dens'].append([[z.real, z.imag] for z in dens])
+json.dump(res, open(outfile, 'w'))
+'''
+
+    def test_standalone_f2py_crossed_pdg_leg_order(self):
+        """smatrixhel and py_get_density reach a FOLDED crossed subprocess
+        whatever the order of its same-code legs inside the initial or the
+        final state, as the uncrossed entries do with FLAVOR_ORDER_REPAIR.
+
+        In p p > j j the all-antiquark subprocesses are crossings of
+        P1_QQ_QQ, and F77_CROSSED_SMATRIXHEL took them only in the leg order
+        of GET_PDG_FOR_FLAVOR: u~ d~ > u~ d~ came back as a silent 0 while
+        the expanded output (P1_QxQx_QxQx) answers it in every order."""
+        import json
+        import math
+        self.do('import model sm')
+        res = []
+        for tag, flag in (('_folded', ''), ('_expanded', ' --use_crossing=False')):
+            out_dir = self.out_dir + tag
+            self.addCleanup(shutil.rmtree, out_dir, ignore_errors=True)
+            self.do('generate p p > j j%s' % flag)
+            self.do('output standalone_fortran %s --prefix=int -f' % out_dir)
+            subdir = os.path.join(out_dir, 'SubProcesses')
+            build = subprocess.run(['make', 'f2py'], cwd=subdir,
+                                   capture_output=True, text=True)
+            self.assertEqual(build.returncode, 0, 'make f2py failed:\n' +
+                             build.stdout[-2000:] + build.stderr[-2000:])
+            outfile = os.path.join(out_dir, 'leg_order.json')
+            run = subprocess.run([sys.executable, '-c',
+                                  self._crossed_leg_order_script, out_dir,
+                                  outfile], cwd=subdir,
+                                 capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0,
+                             run.stdout[-2000:] + run.stderr[-2000:])
+            res.append(json.load(open(outfile)))
+        folded, expanded = res
+        # no P1_QxQx_QxQx: the antiquark processes really are folded
+        self.assertFalse(misc.glob('P*_QxQx_QxQx',
+                                   os.path.join(self.out_dir + '_folded',
+                                                'SubProcesses')))
+        for i, (got, ref) in enumerate(zip(folded['sm'], expanded['sm'])):
+            self.assertGreater(ref, 0)
+            self.assertAlmostEqual(got / ref, 1, places=12, msg=i)
+            # a relabelling: the same |M|^2 in every order of a process
+            self.assertAlmostEqual(got / folded['sm'][4 * (i // 4)], 1,
+                                   places=12, msg=i)
+        # the folded density matrix of the antiquark processes against
+        # smatrixhel through its trace (the expanded output cannot move the
+        # slot-1 leg of a density either, and returns 0 for half of them)
+        for i, dens in enumerate(folded['dens'][:8]):
+            self.assertFalse(any(math.isnan(x) for z in dens for x in z), i)
+            self.assertAlmostEqual((dens[0][0] + dens[2][0]) /
+                                   folded['sm'][i], 1, places=12, msg=i)
+
     def test_standalone_f2py_crossed_idx_caller_order_nhel(self):
         """PY_<prefix>GET_ALL_INTER_IDX at a crossed index takes NHEL in the
         caller's leg order, like P and POS: it must answer what the expanded
