@@ -983,12 +983,14 @@ namespace
         return 2;
       }
     }
+    // An extended id K*nmaxflavor + flavor (crossing-table row K) is valid, as for -f
+    const unsigned int nflavorIds = CPPProcess::nmaxflavor * CPPProcess::ncross;
     for( unsigned int iflav : flavorsIn )
     {
-      if( iflav >= CPPProcess::nmaxflavor )
+      if( iflav >= nflavorIds )
       {
         std::cerr << "ERROR! flavor index " << iflav << " in the flavor file is out of range [0, "
-                  << CPPProcess::nmaxflavor << ")" << std::endl;
+                  << nflavorIds << ")" << std::endl;
         return 2;
       }
     }
@@ -1344,7 +1346,7 @@ namespace
               << "NumThreadsPerBlock          = " << gputhreads << std::endl
               << "NumIterations               = " << niter << std::endl
               << "FlavorIndex                 = " << ( flavorsIn.empty() ? std::to_string( flavorID ) : "per event" )
-              << " / " << CPPProcess::nmaxflavor << std::endl
+              << " / " << CPPProcess::nmaxflavor * CPPProcess::ncross << std::endl
               << std::string( SEP79, '-' ) << std::endl
               << "NaN/abnormal MEs            = " << nevtABN << std::endl
               << "Zero MEs                    = " << nevtZERO << std::endl
@@ -1541,8 +1543,7 @@ int main( int argc, char** argv )
 #endif
 
   // An extended id (a crossing-table row K > 0, K*nmaxflavor + flavor) is a
-  // valid request on a build that folds crossings (cpu/simd; the GPU backend
-  // refuses it at umami_matrix_element).
+  // valid request on a build that folds crossings, on every backend.
   if( flavorID >= (unsigned int)( CPPProcess::nmaxflavor * CPPProcess::ncross ) )
   {
     std::cerr << "ERROR: flavor index " << flavorID
