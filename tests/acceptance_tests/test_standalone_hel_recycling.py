@@ -548,6 +548,21 @@ class TestStandaloneHelRecyclingConsistency(StandaloneHelRecyclingConsistency):
         self.assertEqual([self._live_rows(c) for c in std['codes'][ncm:]],
                          [12] * (len(std['codes']) - ncm))
 
+    def test_frame_independence_polarised_vector(self):
+        """g u > w+{0} d: a polarised leg never crosses, so the directory is
+        scanned by its own (uncrossed) warm-up only. The longitudinal
+        polarization vector is defined in the frame of the call, and the
+        CM-only warm-up kept a single row of the eight: boosted, the recycled
+        |M|^2 was off by up to a factor 2000. Every row of the polarised
+        table must match the standard output's in every frame."""
+        std, _ = self.check_frame_independence('g u > w+{0} d',
+                                               [21, 2, 24, 1])
+        # the polarised table has the W in its longitudinal state only, so
+        # there is no other W state to close over: the boosted scan alone
+        # must keep the rows
+        self.assertEqual(set(r[2] for r in std['rows']), {0})
+        self.assertEqual(self._warmup_hmv(), [False] * 4)
+
     def test_frame_independence_massless(self):
         """g u > a u: no massive leg, so no row depends on the frame -- but the
         s-channel diagram still vanishes exactly in the CM frame for half of
