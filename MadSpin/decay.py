@@ -49,7 +49,7 @@ from subprocess import Popen, PIPE, STDOUT
 os.sys.path.append("../.")
 import string
 import itertools
-#import madgraph.core.base_objects as base_objects
+import madgraph.core.base_objects as base_objects
 #import madgraph.core.helas_objects as helas_objects
 #import madgraph.core.diagram_generation as diagram_generation
 
@@ -95,13 +95,16 @@ def without_crossing(commandline):
     """Pin --use_crossing=False on every generate / add process of
     `commandline` (';'-separated commands, as MadSpin hands them to exec_cmd).
 
-    MadSpin reaches each matrix element per event flavor, through the entry
-    points taking a FLAVOR array (GET_DENSITY, SMATRIX), and finds it by the
-    processes the matrix element lists: neither can see a crossing folded onto
-    a base. Its production lines are copied from the banner's proc card, so a
-    --use_crossing=True there came back here and folded those subprocesses
-    away. Any flag already on the line is dropped first; [...] (perturbative)
-    lines are left alone, crossing is never applied to them.
+    For the matrix elements of the madspin_v1 mode (output standalone_msP /
+    standalone_msF): their Fortran (GET_FLAVOR_MS_PROD, the FLAV_TABLE of
+    matrix_prod.f) has no crossing dimension, so a crossing folded onto a base
+    could not be reached at all. Its production lines are copied from the
+    banner's proc card, so a --use_crossing=True there would come back here
+    and fold those subprocesses away. Also for polarised beams (crossed_ok),
+    which the Fortran refuses at a crossed flavor index. The other modes
+    fold the crossings (decay_all_events_onshell, crossed_processes_with_decays).
+    Any flag already on the line is dropped first; [...] (perturbative) lines
+    are left alone, crossing is never applied to them.
     """
     out = []
     for cmd in commandline.split(';'):
@@ -111,6 +114,27 @@ def without_crossing(commandline):
                 ' --use_crossing=False'
         out.append(cmd)
     return ';'.join(out)
+
+def crossed_processes_with_decays(matrix_element):
+    """The crossed processes folded onto matrix_element (--use_crossing, the
+    standalone outputs evaluate them through the extended flavor index of
+    the base), with the decays of the base attached: a decay-chain base
+    records its crossings at the production level, and the decays never
+    cross. Their legs (get_legs_with_decays) are in the order the base's
+    crossing table serves them, which is the order the pdg-keyed entry
+    points (smatrixhel, py_get_density) take them in."""
+    if 'crossed_processes' not in matrix_element:
+        return []
+    decays = matrix_element.get('processes')[0].get('decay_chains')
+    out = []
+    for process, _, _ in matrix_element.get('crossed_processes') or []:
+        if decays:
+            process = copy.copy(process)
+            process.set('decay_chains', decays)
+            process.set('legs_with_decays', base_objects.LegList())
+        out.append(process)
+    return out
+
 
 class MadSpinError(MadGraph5Error):
     pass
@@ -5562,6 +5586,16 @@ class decay_all_events_onshell(decay_all_events):
 #            return
 
         # 6. generate decay only part ------------------------------------------
+        def leg_order(process):
+            """((initial ids), (final ids)) in the leg order of process, and
+            the same sorted: the tag an event is looked up by."""
+            initial = []
+            final = [l.get('id') for l in process.get_legs_with_decays()\
+                        if l.get('state') or initial.append(l.get('id'))]
+            order = (tuple(initial), tuple(final))
+            initial.sort(), final.sort()
+            return order, (tuple(initial), tuple(final))
+
         def fill_all_me(self, prod_or_decay):
             # store information about matrix element
             if prod_or_decay not in ["production", "decay"]:
@@ -5570,22 +5604,41 @@ class decay_all_events_onshell(decay_all_events):
                 me_string = matrix_element.get('processes')[0].shell_string()
                 for me in matrix_element.get('processes'):
                     # get the orignal order:
-                    initial = []
-                    final = [l.get('id') for l in me.get_legs_with_decays()\
-                                if l.get('state') or initial.append(l.get('id'))]
-                    order = (tuple(initial), tuple(final))
-                    initial.sort(), final.sort()
-                    tag = (tuple(initial), tuple(final))
+                    order, tag = leg_order(me)
                     self.all_me[tag] = {'pdir': "P%s" % me_string, 'order': order, 'type': prod_or_decay}
+            # The crossed processes folded onto a matrix element: evaluated by
+            # the library of the base, which the pdg-keyed entry points
+            # (smatrixhel, py_get_density, of the f2py module and of
+            # madmatrix.density alike) reach from their pdg codes, the momenta
+            # and the open legs in the crossed process's own leg order. The
+            # module lists the processes of its libraries only: base_order
+            # names the base the crossed tag finds there (get_pdir). A tag a
+            # process of its own already has (a beam swap) stays the
+            # process's: MadSpin puts the event legs in its order.
+            for matrix_element in mgcmd._curr_matrix_elements.get_matrix_elements():
+                base = matrix_element.get('processes')[0]
+                base_order, _ = leg_order(base)
+                for process in crossed_processes_with_decays(matrix_element):
+                    order, tag = leg_order(process)
+                    if tag not in self.all_me:
+                        self.all_me[tag] = {'pdir': "P%s" % base.shell_string(),
+                                            'order': order, 'type': prod_or_decay,
+                                            'base_order': base_order}
 
 
         mgcmd = self.mgcmd
         self.all_me = {}
+        # the crossings are folded (fill_all_me), unless the beams are polarised
+        crossing = self.crossed_ok()
+
+        def generate_line(commandline):
+            commandline = commandline.replace('add process', 'generate', 1)
+            return commandline if crossing else without_crossing(commandline)
 
         # legacy options 'onshell_v1' and 'madspin_v1' store both the production and the decay in a single folder
         if self.options['spinmode'] in ['onshell_v1', 'madspin_v1']:
             commandline += self.get_decay_command()
-            commandline = without_crossing(commandline.replace('add process', 'generate',1))
+            commandline = generate_line(commandline)
             mgcmd.exec_cmd(commandline, precmd=True)
 
             commandline = 'output standalone_fortran %s --prefix=int' % pjoin(path_me, ms_me_subdir)
@@ -5593,7 +5646,7 @@ class decay_all_events_onshell(decay_all_events):
             mgcmd.exec_cmd(commandline, precmd=True)
             fill_all_me(self, "production")
         else:
-            commandline_production = without_crossing(commandline.replace('add process', 'generate',1))
+            commandline_production = generate_line(commandline)
             backend = self.density_backend(commandline_production)
             logger.info(commandline_production)
             mgcmd.exec_cmd(commandline_production, precmd=True)
@@ -5603,7 +5656,7 @@ class decay_all_events_onshell(decay_all_events):
             fill_all_me(self, "production")
 
             commandline_decay = self.get_decay_command()
-            commandline_decay = without_crossing(commandline_decay.replace('add process', 'generate',1))
+            commandline_decay = generate_line(commandline_decay)
 
             logger.info(commandline_decay)
             mgcmd.exec_cmd(commandline_decay, precmd=True)
@@ -5616,6 +5669,22 @@ class decay_all_events_onshell(decay_all_events):
         logger.info('Done %.4g' % (time.time()-start))
 
         return self.all_me
+
+    def crossed_ok(self):
+        """Whether the matrix elements of this class fold their crossings. Not
+        with polarised beams: the Fortran SMATRIX and GET_DENSITY_IDX refuse
+        them at a crossed flavor index (the helicity of a beam a crossing
+        moved is not the one of its base slot), and a madmatrix output may
+        fall back to the Fortran (output_density_me)."""
+        try:
+            pol = self.options.beampol_me()
+        except Exception:
+            return True
+        if any(abs(p) > 1. for p in pol):
+            logger.info('MadSpin: polarised beams, the matrix elements do not '
+                        'fold their crossings (--use_crossing=False)')
+            return False
+        return True
 
     def density_backend(self, commandline):
         """'madmatrix' or 'fortran': what evaluates the density matrices and

@@ -14185,8 +14185,10 @@ class TestDecayChainIdenticalFactor(unittest.TestCase):
 
 class TestWithoutCrossing(unittest.TestCase):
     """MadSpin replays the proc card's generate lines, so a --use_crossing=True
-    there would fold the crossed subprocesses onto their base, where MadSpin's
-    per-flavor lookup cannot reach them. without_crossing pins it off."""
+    there would fold the crossed subprocesses onto their base, where the
+    madspin_v1 matrix elements (standalone_msP/msF, no crossing dimension)
+    cannot reach them, nor the Fortran with polarised beams. without_crossing
+    pins it off for those."""
 
     def test_replayed_flag_is_overridden(self):
         line = ('generate p p  > w+* j --use_crossing=True ;'
@@ -14211,6 +14213,40 @@ class TestWithoutCrossing(unittest.TestCase):
     def test_perturbative_line_is_left_alone(self):
         line = 'add process p p > t t~ [QCD] ;'
         self.assertEqual(madspin.without_crossing(line), line)
+
+
+class TestCrossedProcessesWithDecays(unittest.TestCase):
+    """The density and onshell modes fold the crossings: fill_all_me files each
+    crossed process under its own tag and leg order, which for a decay-chain
+    base is the production crossing with the base's decays attached -- the
+    leaf order the base's crossing table serves (and the pdg-keyed entry
+    points take)."""
+
+    def test_decay_chain_crossings_carry_the_decays(self):
+        import madgraph.interface.master_interface as master_interface
+        import madgraph.core.helas_objects as helas_objects
+        cmd = master_interface.MasterCmd()
+        cmd.do_import('model sm')
+        cmd.exec_cmd('set group_subprocesses False')
+        cmd.exec_cmd('generate p p > t* t~ j, t~ > b~ w-')
+        mes = helas_objects.HelasMultiProcess(cmd._curr_amps).get_matrix_elements()
+        crossed = {}
+        for me in mes:
+            for process in madspin.crossed_processes_with_decays(me):
+                legs = process.get_legs_with_decays()
+                crossed[tuple(l.get('id') for l in legs)] = \
+                    [l.get('number') for l in legs if l.get('offshell')]
+        # g Q > t* t~ Q carries the other four quark/gluon assignments; the
+        # top stays off shell, in slot 3, the t~ decays
+        self.assertEqual(sorted(crossed), sorted([
+            (21, -81, 6, -5, -24, -81), (81, 21, 6, -5, -24, 81),
+            (81, -81, 6, -5, -24, 21), (-81, 21, 6, -5, -24, -81),
+            (-81, 81, 6, -5, -24, 21)]))
+        self.assertEqual(set(map(tuple, crossed.values())), {(3,)})
+        # nothing without crossing
+        cmd.exec_cmd('generate p p > t* t~ j, t~ > b~ w- --use_crossing=False')
+        mes = helas_objects.HelasMultiProcess(cmd._curr_amps).get_matrix_elements()
+        self.assertFalse(any(madspin.crossed_processes_with_decays(me) for me in mes))
 
 
 class _DensityBasisModelStub(object):
