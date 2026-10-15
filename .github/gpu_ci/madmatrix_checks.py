@@ -21,14 +21,20 @@ of check_sa.exe, so only the check it belongs to.
    colour either none (-1) or the only colour flow (0, what a -ffast-math build makes of
    0/0), never stale memory; the GPU used to abort on the invalid launch configuration
    (gridDim.y = 0) of the helicity loop.
-3. nonblocking_stream: ``g g > t t~ g``, 4 calls of 16384 events, with umami handed a
+3. mssm_crossed_gpu_vs_cpu: MSSM ``p p > go go j``, the subprocess that folds crossings
+   (P1_gQ_gogoQ: g q > go go q also serves q q~ > go go g, ...), with running flavour
+   couplings: events drawn over every extended flavour id K*nmaxflavor + flavour
+   (crossing-table row K), a random alpha_s and random numbers per event: the GPU |M|^2,
+   helicities and colours equal the CPU ones event by event (the crossed helicity code
+   of a moved leg included).
+4. nonblocking_stream: ``g g > t t~ g``, 4 calls of 16384 events, with umami handed a
    non-blocking stream (--nonblocking-stream, as a torch side stream, which does not
    synchronise with the default stream) gives the same |M|^2 and helicities as on the
    default stream: every memset, kernel and copy of the matrix element must go to the
    stream umami is given, the helicity filtering of the first call included.
 
 Any CPU backend but scalar (simd_128, ...) works too, to try the script without a GPU;
-check 3 is then skipped. Writes summary.txt (key=value lines) in the current directory;
+check 4 is then skipped. Writes summary.txt (key=value lines) in the current directory;
 exit status 1 if a check fails.
 """
 
@@ -46,7 +52,7 @@ import time
 
 GPU_BACKENDS = ('cuda', 'hip')
 CPU_BACKEND = 'scalar'
-CHECKS = ('mssm_gpu_vs_cpu', 'zero_me', 'nonblocking_stream')
+CHECKS = ('mssm_gpu_vs_cpu', 'zero_me', 'mssm_crossed_gpu_vs_cpu', 'nonblocking_stream')
 
 results = {}
 
@@ -80,9 +86,16 @@ def read(path, typecode):
     return values
 
 
-def output(repo, name, model, process, backends):
-    """output standalone + make for these backends in every subprocess, keeping the
-    check_sa.exe of each as check_sa_<backend>.exe: the subprocess directories."""
+def ncross(proc_dir):
+    """The number of rows of the crossing table of a subprocess (1: no crossing)."""
+    tables = open(os.path.join(proc_dir, 'ProcessTables.h')).read()
+    return int(re.search(r'constexpr int ncross = (\d+);', tables).group(1))
+
+
+def output(repo, name, model, process, backends, select=None):
+    """output standalone + make for these backends in every subprocess (those for which
+    select(proc_dir) is true, if given), keeping the check_sa.exe of each as
+    check_sa_<backend>.exe: the subprocess directories."""
     with open(name + '.mg5', 'w') as f:
         f.write('import model %s\ngenerate %s\noutput standalone %s -f\n' % (model, process, name))
     if run([sys.executable, os.path.join(repo, 'bin', 'madgraph'), name + '.mg5'],
@@ -91,6 +104,10 @@ def output(repo, name, model, process, backends):
     proc_dirs = sorted(glob.glob(os.path.join(name, 'SubProcesses', 'P*')))
     if not proc_dirs:
         raise RuntimeError('no subprocess directory for %s' % process)
+    if select:
+        proc_dirs = [proc_dir for proc_dir in proc_dirs if select(proc_dir)]
+        if not proc_dirs:
+            raise RuntimeError('no selected subprocess directory for %s' % process)
     jobs = os.environ.get('SLURM_CPUS_PER_TASK', '4')
     for proc_dir in proc_dirs:
         for backend in backends:
@@ -227,7 +244,77 @@ def check_zero_me(backend, repo, nevt=64):
 
 
 # ---------------------------------------------------------------------------
-# 3. a non-blocking stream
+# 3. crossed subprocesses with running flavour couplings (MSSM p p > go go j)
+# ---------------------------------------------------------------------------
+
+def check_mssm_crossed_gpu_vs_cpu(backend, repo, nevt=1024):
+    section('MSSM p p > go go j, crossed subprocesses: %s against %s' % (backend, CPU_BACKEND))
+    name = 'mssm_gogoj'
+    # only the subprocesses that fold crossings (the others are check 1 with one more jet)
+    proc_dirs = output(repo, name, 'MSSM_SLHA2', 'p p > go go j', (CPU_BACKEND, backend),
+                       select=lambda proc_dir: ncross(proc_dir) > 1)
+    rng = random.Random(17)
+    problems, details = [], []
+    for proc_dir in proc_dirs:
+        sub = os.path.basename(proc_dir)
+        data = open(os.path.join(proc_dir, 'ProcessData.h')).read()
+        ndpf = int(re.search(r'constexpr int nDPF = (\d+);', data).group(1))
+        nflavor = int(re.search(r'constexpr int nmaxflavor = (\d+);', data).group(1))
+        nids = nflavor * ncross(proc_dir)
+        prefix = '%s_%s' % (name, sub)
+        batch = [1, nevt, 1]
+        momenta = dump(prefix, 'momenta')
+        check_sa(proc_dir, CPU_BACKEND, ['--energy', 3000, '--dump-momenta', momenta] + batch,
+                 prefix + '_rambo.log')
+        # every extended id at least once, then random ones
+        ids = list(range(nids)) + [rng.randrange(nids) for _ in range(nevt - nids)]
+        rng.shuffle(ids)
+        inputs = ['--momenta', momenta,
+                  '--alphas', write(prefix + '_alphas.bin', 'd', [rng.uniform(0.09, 0.14) for _ in range(nevt)]),
+                  '--flavors', write(prefix + '_flavors.bin', 'I', ids),
+                  '--rnd-hel', write(prefix + '_rndhel.bin', 'd', [rng.random() for _ in range(nevt)]),
+                  '--rnd-col', write(prefix + '_rndcol.bin', 'd', [rng.random() for _ in range(nevt)])]
+        out = {}
+        for tag, run_backend in (('cpu', CPU_BACKEND), ('gpu', backend)):
+            files = {what: dump(prefix, '%s_%s' % (what, tag)) for what in ('me', 'hel', 'col')}
+            check_sa(proc_dir, run_backend, inputs + ['--dump-me', files['me'], '--dump-hel', files['hel'],
+                                                      '--dump-col', files['col']] + batch,
+                     '%s_%s.log' % (prefix, tag))
+            out[tag] = (read(files['me'], 'd'), read(files['hel'], 'i'), read(files['col'], 'i'))
+        (me_cpu, hel_cpu, col_cpu), (me_gpu, hel_gpu, col_gpu) = out['cpu'], out['gpu']
+        if not len(me_cpu) == len(me_gpu) == len(hel_gpu) == len(col_gpu) == nevt:
+            problems.append('%s: output sizes %d/%d/%d/%d for %d events'
+                            % (sub, len(me_cpu), len(me_gpu), len(hel_gpu), len(col_gpu), nevt))
+            continue
+        rels = [abs(a - b) / abs(a) if a != 0 else (0. if b == 0 else float('inf'))
+                for a, b in zip(me_cpu, me_gpu)]
+        bad = [ievt for ievt, rel in enumerate(rels) if not rel < 1e-9]
+        if bad:
+            first = bad[0]
+            problems.append('%s: %d of %d events differ, first event %d (id %d) %s %.10e vs %s %.10e'
+                            % (sub, len(bad), nevt, first, ids[first], backend, me_gpu[first],
+                               CPU_BACKEND, me_cpu[first]))
+        bad_hel = [ievt for ievt in range(nevt) if hel_cpu[ievt] != hel_gpu[ievt]]
+        bad_col = [ievt for ievt in range(nevt) if col_cpu[ievt] != col_gpu[ievt]]
+        if bad_hel or bad_col:
+            first = (bad_hel or bad_col)[0]
+            problems.append('%s: %d helicities and %d colours differ, first event %d (id %d): '
+                            'helicity %d vs %d, colour %d vs %d'
+                            % (sub, len(bad_hel), len(bad_col), first, ids[first], hel_gpu[first],
+                               hel_cpu[first], col_gpu[first], col_cpu[first]))
+        # every crossing row evaluated: some event of each row has |M|^2 > 0
+        rows = {ids[ievt] // nflavor for ievt in range(nevt) if me_cpu[ievt] > 0}
+        if len(rows) != nids // nflavor:
+            problems.append('%s: |M|^2 > 0 only for crossing rows %s of %d'
+                            % (sub, sorted(rows), nids // nflavor))
+        worst = max((rel for rel in rels if not math.isnan(rel)), default=0.)
+        details.append('%s nDPF %d, %d extended ids, max rel diff %.1e' % (sub, ndpf, nids, worst))
+        print('  ' + details[-1])
+    check('mssm_crossed_gpu_vs_cpu', not problems, '; '.join(problems[:3]) or '; '.join(details))
+
+
+# ---------------------------------------------------------------------------
+# 4. a non-blocking stream
 # ---------------------------------------------------------------------------
 
 def check_nonblocking_stream(backend, repo, ncalls=4):
