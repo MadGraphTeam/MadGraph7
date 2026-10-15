@@ -23,8 +23,14 @@ namespace madmatrix
 
   // The events sigmaKin_getGoodHel looks at, which umami_initialize makes for it
   // (choose_good_helicities): one constant, so that the two never disagree.
-  // 16, but at least neppV (otherwise the npagV loop does not even start)
+  // 16, but at least neppV (otherwise the npagV loop does not even start).
+  // The --hel_recycling warm-up probe (scalar, MG_HR_PROBE) bakes what it finds
+  // with no run-time fallback for a dropped amplitude, so it samples 64.
+#ifndef MG_HR_PROBE
   constexpr int goodHelScanEvents = ( neppV > 16 ? neppV : 16 );
+#else
+  constexpr int goodHelScanEvents = 64;
+#endif
 
   void
   sigmaKin_getGoodHel( const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]

@@ -371,8 +371,10 @@ namespace madmatrix
   // at a helicity once it is above zeroamp_tol of the largest amplitude of that
   // helicity at the same point: a cancellation zero is a rounding residual, never
   // an exact 0 (the same rule as the fortran hel_zeroamp detection). The answer is
-  // the union over the points and flavors getGoodHel samples; sigmaKin_setGoodHel
-  // prints it under MG_DUMP_GOODHEL. Scalar double builds only.
+  // the union over the points and extended flavor ids (every crossing) that
+  // getGoodHel samples, so an amplitude is dropped at a base row only if it
+  // vanishes for every crossing served; sigmaKin_setGoodHel prints it under
+  // MG_DUMP_GOODHEL. Scalar double builds only.
 #ifdef MG_HR_PROBE
 #if defined MGONGPU_CPPSIMD or !defined MGONGPU_FPTYPE_DOUBLE
 #error "MG_HR_PROBE needs BACKEND=scalar FPTYPE=d"
@@ -504,9 +506,6 @@ namespace madmatrix
       // accumulated here: they are derived as the sum of numerators later.
       fptype_amp_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
 #include "EvaluateDiagrams.inc"
-#ifdef MG_HR_PROBE
-      hr_probe_close( ihel );
-#endif
 #include "ColorFlows.inc" // defines jampflow_sv[ncolor_flow], which is not jamp_sv on the DDM basis
 
       // *** COLOR CHOICE BELOW ***
@@ -768,6 +767,11 @@ namespace madmatrix
         cxtype_amp_sv jamp_sv[njampso] = {}; // all zeros
 #endif
         calculate_jamps( cHel[ihel], allmomenta, allcouplings, hgFlavorVec, jamp_sv, false, allNumerators, allDenominators, jamp2_sv, ievt00 );
+#ifdef MG_HR_PROBE
+        // file this evaluation's amplitudes under its helicity row: here, as
+        // calculate_jamps only sees the row it was handed, not its number
+        hr_probe_close( ihel );
+#endif
         color_sum_cpu( allMEs, jamp_sv, ievt00 );
         for( int ie = 0; ie < neppV; ++ie ) me_scan[ihel][ie] = allMEs[ievt00 + ie];
         for( int ieppV = 0; ieppV < neppV; ++ieppV )
