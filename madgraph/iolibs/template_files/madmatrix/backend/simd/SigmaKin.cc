@@ -1379,8 +1379,11 @@ namespace madmatrix
             normalization += allNumerators[ievt / neppV * neppV * ndiagrams +
                                            ichan * neppV + ieppV % neppV];
           }
+          // No diagram weight (a zero or NaN sum): keep the last channel, which has an
+          // iconfig (#919), as the GPU does; -ffast-math could pass rnd < 0/0 instead
           channelIdVec[ieppV] = mgOnGpu::nchannels;
-          for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
+          const bool okcdf = selectable_total( normalization );
+          for( unsigned int ichan = 0; okcdf && ichan < mgOnGpu::nchannels; ichan++ )
           {
             if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
             numerator_sum += allNumerators[ievt / neppV * neppV * ndiagrams +

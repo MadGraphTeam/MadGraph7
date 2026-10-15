@@ -17,10 +17,15 @@ of check_sa.exe, so only the check it belongs to.
    bounds past the first event page), and scale as alpha_s^2 (--alphas 0.10 and 0.12).
 2. zero_me: ``b b~ > ta+ ta- / z a`` (s-channel Higgs only): |M|^2 > 0 with the default
    param card, then the tau Yukawa coupling set to 0, so that no helicity survives the
-   helicity filtering: both backends return |M|^2 = 0 and no helicity (-1), and for the
-   colour either none (-1) or the only colour flow (0, what a -ffast-math build makes of
-   0/0), never stale memory; the GPU used to abort on the invalid launch configuration
+   helicity filtering: both backends return |M|^2 = 0, no helicity and no colour (-1),
+   never stale memory; the GPU used to abort on the invalid launch configuration
    (gridDim.y = 0) of the helicity loop.
+   zero_me_good_hel: ``p p > w+ j``, the subprocess that folds the crossings
+   (P1_gQ_wpQ), with a good-helicity list: a first call at alpha_s = 0.118 (|M|^2 > 0,
+   a helicity and a colour for every extended flavour id), then a call at alpha_s = 0,
+   where |M|^2 = 0 exactly and no helicity or colour (-1) may be reported on either
+   backend: a -ffast-math build let the 0/0 of the selection pass and reported the first
+   good helicity (relabelled for the crossed ids) and the first colour flow.
 3. mssm_crossed_gpu_vs_cpu: MSSM ``p p > go go j``, the subprocess that folds crossings
    (P1_gQ_gogoQ: g q > go go q also serves q q~ > go go g, ...), with running flavour
    couplings: events drawn over every extended flavour id K*nmaxflavor + flavour
@@ -52,7 +57,8 @@ import time
 
 GPU_BACKENDS = ('cuda', 'hip')
 CPU_BACKEND = 'scalar'
-CHECKS = ('mssm_gpu_vs_cpu', 'zero_me', 'mssm_crossed_gpu_vs_cpu', 'nonblocking_stream')
+CHECKS = ('mssm_gpu_vs_cpu', 'zero_me', 'zero_me_good_hel', 'mssm_crossed_gpu_vs_cpu',
+          'nonblocking_stream')
 
 results = {}
 
@@ -232,15 +238,66 @@ def check_zero_me(backend, repo, nevt=64):
                         read(dump(prefix, 'col'), 'i'))
         if len(me) != nevt or any(v != 0 for v in me):
             problems.append('%s: |M|^2 not 0: %s' % (run_backend, list(me[:4])))
-        if set(hel) != {-1} or not set(col) <= {-1, 0}:
-            problems.append('%s: helicities %s, colours %s (expected -1, and -1 or 0)'
+        if set(hel) != {-1} or set(col) != {-1}:
+            problems.append('%s: helicities %s, colours %s (expected -1)'
                             % (run_backend, sorted(set(hel))[:4], sorted(set(col))[:4]))
-        seen.append('%s colour %s' % (run_backend, sorted(set(col))))
     if len(me_default) != nevt or not all(v > 0 for v in me_default):
         problems.append('|M|^2 with the default card not > 0: %s' % list(me_default[:4]))
     check('zero_me', not problems, '; '.join(problems) or
-          '%d events: |M|^2 = 0, helicity -1, %s (default card: %.3e)'
-          % (nevt, ', '.join(seen), me_default[0]))
+          '%d events: |M|^2 = 0, helicity and colour -1 on %s and %s (default card: %.3e)'
+          % (nevt, backend, CPU_BACKEND, me_default[0]))
+
+
+def check_zero_me_good_hel(backend, repo, nevt=64):
+    section('|M|^2 = 0 with good helicities: p p > w+ j at alpha_s = 0 (%s, %s)'
+            % (backend, CPU_BACKEND))
+    name = 'zero_me_wj'
+    (proc_dir,) = output(repo, name, 'sm', 'p p > w+ j', (CPU_BACKEND, backend),
+                         select=lambda proc_dir: ncross(proc_dir) > 1)
+    sub = os.path.basename(proc_dir)
+    data = open(os.path.join(proc_dir, 'ProcessData.h')).read()
+    nflavor = int(re.search(r'constexpr int nmaxflavor = (\d+);', data).group(1))
+    nids = nflavor * ncross(proc_dir)
+    rng = random.Random(23)
+    # two calls (iterations) of nevt events in one run: the helicity filtering of the
+    # first call, at alpha_s = 0.118, keeps its good helicities for the second, at 0
+    batch = [1, nevt, 2]
+    momenta = dump(name, 'momenta')
+    check_sa(proc_dir, CPU_BACKEND, ['--energy', 1000, '--dump-momenta', momenta] + batch,
+             name + '_rambo.log')
+    ids = [ievt % nids for ievt in range(nevt)] * 2
+    inputs = ['--momenta', momenta,
+              '--alphas', write(name + '_alphas.bin', 'd', [0.118] * nevt + [0.] * nevt),
+              '--flavors', write(name + '_flavors.bin', 'I', ids),
+              '--rnd-hel', write(name + '_rndhel.bin', 'd', [rng.random() for _ in range(2 * nevt)]),
+              '--rnd-col', write(name + '_rndcol.bin', 'd', [rng.random() for _ in range(2 * nevt)])]
+    problems = []
+    for run_backend in (backend, CPU_BACKEND):
+        prefix = '%s_%s' % (name, run_backend)
+        files = {what: dump(prefix, what) for what in ('me', 'hel', 'col')}
+        check_sa(proc_dir, run_backend, inputs + ['--dump-me', files['me'], '--dump-hel', files['hel'],
+                                                  '--dump-col', files['col']] + batch,
+                 prefix + '.log')
+        me, hel, col = read(files['me'], 'd'), read(files['hel'], 'i'), read(files['col'], 'i')
+        if not len(me) == len(hel) == len(col) == 2 * nevt:
+            problems.append('%s: output sizes %d/%d/%d for %d events'
+                            % (run_backend, len(me), len(hel), len(col), 2 * nevt))
+            continue
+        first = [ievt for ievt in range(nevt) if not (me[ievt] > 0 and hel[ievt] >= 0 and col[ievt] >= 0)]
+        if first:
+            ievt = first[0]
+            problems.append('%s: %d events of the alpha_s = 0.118 call without |M|^2 > 0, a helicity '
+                            'and a colour, first event %d (id %d): %.3e, helicity %d, colour %d'
+                            % (run_backend, len(first), ievt, ids[ievt], me[ievt], hel[ievt], col[ievt]))
+        zero = [ievt for ievt in range(nevt, 2 * nevt) if not (me[ievt] == 0 and hel[ievt] == -1 and col[ievt] == -1)]
+        if zero:
+            ievt = zero[0]
+            problems.append('%s: %d events of the alpha_s = 0 call not |M|^2 = 0, helicity -1 and '
+                            'colour -1, first event %d (id %d): %.3e, helicity %d, colour %d'
+                            % (run_backend, len(zero), ievt - nevt, ids[ievt], me[ievt], hel[ievt], col[ievt]))
+    check('zero_me_good_hel', not problems, '; '.join(problems[:3]) or
+          '%s, %d extended ids: |M|^2 > 0 at alpha_s = 0.118, then |M|^2 = 0, helicity and colour -1 '
+          'at alpha_s = 0 on %s and %s' % (sub, nids, backend, CPU_BACKEND))
 
 
 # ---------------------------------------------------------------------------
