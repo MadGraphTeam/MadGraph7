@@ -120,6 +120,39 @@ class TestAmpGather(unittest.TestCase):
             obj.add_indices('AMP2(1)=AMP2(1)+AMP(1)*DCONJG(AMP(1))'),
             'AMP2(1)=AMP2(1)+AMPK(1,HRL)*DCONJG(AMPK(1,HRL))')
 
+    def test_amp2_of_a_shared_matrix_element(self):
+        """A matrix element shared by a crossing fills AMP2 after the helicity
+        loop, from the rows above the good-helicity cut of the point only: a
+        row dead for the caller is a rounding zero of diagrams that cancel,
+        and those diagrams must not weight the channels (p p > w+ j). The
+        pass reads AMP in place, the loop's gathered lane being gone by
+        then; any other matrix element keeps AMP2 inside the loop."""
+
+        amp2 = '      AMP2(1)=AMP2(1)+AMP(1)*DCONJG(AMP(1))\n'
+        for ngraphs, ncomb in [(45, 20), (4096, 128)]:
+            obj = self.recycler(ngraphs, ncomb)
+            obj.set_gather_lines()
+            obj.get_amp2_lines(amp2)
+            blocks = obj.amp2_blocks()
+            self.assertIn(obj.template_dict['amp2_lines'],
+                          blocks['amp2_row_lines'])
+            self.assertEqual(blocks['amp2_cut_lines'].strip(), '')
+            self.assertEqual(blocks['dead_row_decl'].strip(), '')
+            self.assertNotIn('dead_row_if', blocks)
+
+            obj.shared_rows = True
+            blocks = obj.amp2_blocks()
+            self.assertEqual(blocks['amp2_row_lines'].strip(), '')
+            cut = blocks['amp2_cut_lines']
+            self.assertIn('AMP2(1)=AMP2(1)+AMP( K,1)*DCONJG(AMP( K,1))', cut)
+            self.assertNotIn('AMPK', cut)
+            self.assertIn('IF (DABS(TS(K)).GT.TSSUM*LIMHEL/NCOMB) THEN', cut)
+            # comments must start in column 1 of their own line
+            self.assertTrue(cut.startswith('\nC '))
+            self.assertIn('COMMON/TO_LIMHEL/LIMHEL', blocks['dead_row_decl'])
+            # the colour weights keep the exact-zero gate
+            self.assertEqual(blocks['dead_row_if'], 'IF (TS(K).NE.0D0) THEN')
+
     def test_only_amp_is_rewritten(self):
         """TMP_JAMP, JAMP and the AMPBUF of the table-emitted color flows all
         contain the three letters, and none of them is the amplitude array."""

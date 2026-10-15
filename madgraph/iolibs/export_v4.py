@@ -3914,6 +3914,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 'me_goodhel_set':
                     '                 GOODHEL(I,IFLAV,%s)=.TRUE.' % pid,
                 'me_matrix_args': 'P ,NHEL(1,I),IFLAV,I,AMP2, JAMP2, IVEC',
+                'me_amp2_cut': '',
                 'smatrix_me_iden_line':
                     '    ANS=ANS/DBLE(IDEN)*BROKEN_SYM%s(FLAVOR_FOR_SYM)' % pid,
                 'crossing_routines_me': '',
@@ -4056,6 +4057,41 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         else:
             xg_decl, xg_decode = '', ''
             confsub_j = 'CONFSUB(%s, I)' % pid
+        # ---- multi-channel weights of a matrix element that serves crossings.
+        # GOODHEL is the union of the good rows of every caller, so for the
+        # caller at hand some rows are rounding zeros of diagrams that cancel
+        # (p p > w+ j: two rows of g u > w+ d vanish that g d~ > w+ u~ needs).
+        # Their diagrams are not small, and summed into AMP2 they would skew the
+        # single-diagram channel weights away from those of the uncrossed
+        # output, which never evaluates such rows. Each row's AMP2 is therefore
+        # kept apart (AMP2H) and only the rows above the good-helicity cut of
+        # this point join AMP2, the test GOODHEL itself is trained on. With MC
+        # over helicities no row sum exists (TS stays 0): the picked row counts.
+        if len(table) > 1:
+            cut_decl = '\n      DOUBLE PRECISION AMP2H(MAXAMPS,NCOMB), TSSUM'
+            cut_init = ('\n      IF (MULTI_CHANNEL.AND.SDE_STRAT.EQ.1)'
+                        ' AMP2H(1:NDIAGS,:) = 0D0')
+            cut_amp2 = 'AMP2H(1,I)'
+            cut_pass = '\n'.join([
+                'C     A row dead for this caller cancels between non-small',
+                'C     diagrams: keep it out of the channel weights.',
+                '      IF (MULTI_CHANNEL.AND.SDE_STRAT.EQ.1) THEN',
+                '        TSSUM = 0D0',
+                '        DO I=1,NCOMB',
+                '          TSSUM = TSSUM + DABS(TS(I))',
+                '        ENDDO',
+                '        DO I=1,NCOMB',
+                '          IF (TSSUM.EQ.0D0.OR.'
+                'DABS(TS(I)).GT.TSSUM*LIMHEL/NCOMB) THEN',
+                '            DO J=1,NDIAGS',
+                '              AMP2(J) = AMP2(J) + AMP2H(J,I)',
+                '            ENDDO',
+                '          ENDIF',
+                '        ENDDO',
+                '      ENDIF',
+                ''])
+        else:
+            cut_decl, cut_init, cut_amp2, cut_pass = '', '', 'AMP2', ''
         replace_dict.update({
             'me_confsub_j': confsub_j,
             'smatrix_me_cross_decl': (
@@ -4081,9 +4117,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 # crossed index runs its own first 20 scans of it (NCSCANX).
                 '      INTEGER NCSCANX(NXFLAV)\n'
                 '      DATA NCSCANX/NXFLAV*0/'
-                '%(xg_decl)s'
+                '%(xg_decl)s%(cut_decl)s'
                 ) % {'nflav': nflav, 'cp': cp, 'xg_decl': xg_decl,
-                     'nx': max(1, nflav * (len(table) - 1))},
+                     'nx': max(1, nflav * (len(table) - 1)),
+                     'cut_decl': cut_decl},
             # Decode the crossing and build the crossed P/NHEL/IC once, before the
             # helicity loop. An unusable crossing (spin*color = 0) has a zero ME.
             'smatrix_me_cross_decode': (
@@ -4105,8 +4142,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 '        XGX = IFLAV - NFLAV\n'
                 '        NTRYX(XGX) = NTRYX(XGX) + 1\n'
                 '      ENDIF'
-                '%(xg_decode)s'
-                ) % {'cp': cp, 'xg_decode': xg_decode},
+                '%(xg_decode)s%(cut_init)s'
+                ) % {'cp': cp, 'xg_decode': xg_decode, 'cut_init': cut_init},
             'me_flav_key': 'FLAV_USE',
             # One filter for the base and every crossing of it; the try
             # counter is the crossed index's own (MERGE picks this call's).
@@ -4116,7 +4153,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             'me_goodhel_set':
                 '                 GOODHEL(I,FLAV_USE,%s)=.TRUE.' % pid,
             'me_matrix_args':
-                'PUSE ,NHELUSE(1,I),IC,FLAV_USE,I,AMP2, JAMP2, IVEC',
+                'PUSE ,NHELUSE(1,I),IC,FLAV_USE,I,%s, JAMP2, IVEC' % cut_amp2,
+            'me_amp2_cut': cut_pass,
             # Uncrossed keeps IDEN/BROKEN_SYM; crossed rebuilds the denominator
             # as initial spin*color (per crossing) times the identical-final
             # factor of the actual flavors (per flavor).

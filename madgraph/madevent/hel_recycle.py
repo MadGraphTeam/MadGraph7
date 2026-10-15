@@ -1170,17 +1170,21 @@ class HelicityRecycler():
         # skips it instead of summing colors over a row of zeros. Empty (every
         # row live) unless the same pairs are supplied.
         self.template_dict['csym_dead'] = '\n'
-        # Optional IF/ENDIF around the AMP2 (multi-channel) and JAMP2
-        # (colour-flow) accumulation of the helicity loop, so a config can
-        # contribute to the |M|^2 sum without contributing to either weight.
-        # Empty -- every kept config feeds both, as it always did -- unless
-        # gen_ximprove is recycling a matrix element SHARED by a crossing, whose
-        # config set has to cover every member of the class: a config that is
-        # dead for the caller at hand still has non-zero individual diagrams and
-        # JAMPs, and those are not the gauge-invariant |M|^2. See
-        # gen_ximprove.gensym.get_helicity.
+        # Optional IF/ENDIF around the JAMP2 (colour-flow) accumulation of the
+        # helicity loop, so a config can contribute to the |M|^2 sum without
+        # contributing to the colour weights. Empty -- every kept config feeds
+        # them, as it always did -- unless shared_rows (see amp2_blocks).
         self.template_dict['dead_row_if'] = '\n'
         self.template_dict['dead_row_endif'] = '\n'
+        # Set by gen_ximprove when it recycles a matrix element SHARED by a
+        # crossing: its config set is the union over every member of the
+        # class, so it holds configs that are dead for the caller at hand,
+        # and those still have non-zero individual diagrams and JAMPs. See
+        # amp2_blocks and gen_ximprove.gensym.get_helicity.
+        self.shared_rows = False
+        # The AMP2 (multi-channel) lines again, but always reading AMP(K,i)
+        # in place: the cut pass of amp2_blocks runs after the gathered loop.
+        self.amp2_lines_inplace = '\n'
 
         self.dag = DAG()
 
@@ -1275,9 +1279,15 @@ class HelicityRecycler():
             return '%s(%s,%s)' % (self.AMP_GATHER, args, self.GATHER_LANE)
         return 'AMP( %s,%s)' % (self.loop_var, args)
 
-    def add_indices(self, line):
-        '''Point the amplitude reads at the gathered row and update the name of
-           the output variable.'''
+    def add_indices(self, line, inplace=False):
+        '''Point the amplitude reads at the gathered row (or, with inplace, at
+           row K of AMP itself) and update the name of the output variable.'''
+        if inplace:
+            gather, self.amp_gather = self.amp_gather, False
+            try:
+                return self.add_indices(line)
+            finally:
+                self.amp_gather = gather
         # The character in front is looked at rather than eaten, so that an
         # AMP( opening the statement is indexed too -- which is what a line
         # like "AMP(31) = AMP(31) + AMP(1)" needs. One level of brackets is
@@ -1338,6 +1348,8 @@ class HelicityRecycler():
             self.in_amp2 = False
         elif not line.isspace() and 'DENOM' not in line:
             self.template_dict['amp2_lines'] += f'{line[0:6]}  {self.add_indices(line[6:])}'
+            self.amp2_lines_inplace += \
+                f'{line[0:6]}      {self.add_indices(line[6:], inplace=True)}'
 
     def prepare_bools(self):
         self.amp_calc_started = False
@@ -1522,12 +1534,61 @@ class HelicityRecycler():
              for obj in self.template_dict['helas_calls']
              if obj.nb_used > 0 and obj.line])
 
+    def amp2_blocks(self):
+        """The madevent driver's AMP2 (multi-channel weight) accumulation.
+
+        By default every kept config feeds AMP2 inside the helicity loop, as it
+        always did. A matrix element shared by a crossing (shared_rows) holds
+        the union of the good configs of every caller, so for the caller at
+        hand some configs are rounding zeros of a cancellation between
+        diagrams that are themselves not small: summed into AMP2 they would
+        skew the single-diagram channel weights away from those of the
+        uncrossed output, which never keeps such configs. There AMP2 is
+        filled in a second pass, from the configs above the good-helicity cut
+        of this very point (|TS| > LIMHEL x sum|TS| / NCOMB, the cut the
+        filter is trained with). The JAMP2 colour weights keep the exact-zero
+        gate of dead_row_if: they are built from the JAMPs, which are left at
+        the same rounding as the |M|^2 they cancel to, not from the diagrams.
+        """
+
+        amp2 = self.template_dict['amp2_lines']
+        if not self.shared_rows:
+            return {'amp2_row_lines': 'if(sde_strat.eq.1) then%s\n'
+                                      '        endif' % amp2,
+                    'amp2_cut_lines': '\n',
+                    'dead_row_decl': '\n'}
+        k = self.loop_var
+        cut = '\n'.join([
+            '',
+            'C     A config dead for this caller cancels between non-small',
+            'C     diagrams: keep it out of the channel weights.',
+            '      IF (SDE_STRAT.EQ.1) THEN',
+            '        TSSUM = 0D0',
+            '        DO %s = 1, NCOMB' % k,
+            '          TSSUM = TSSUM + DABS(TS(%s))' % k,
+            '        ENDDO',
+            '        DO %s = 1, NCOMB' % k,
+            '          IF (DABS(TS(%s)).GT.TSSUM*LIMHEL/NCOMB) THEN' % k,
+            self.amp2_lines_inplace.rstrip('\n'),
+            '          ENDIF',
+            '        ENDDO',
+            '      ENDIF'])
+        return {'dead_row_if': 'IF (TS(%s).NE.0D0) THEN' % k,
+                'dead_row_endif': 'ENDIF',
+                'amp2_row_lines': '\n',
+                'amp2_cut_lines': cut,
+                'dead_row_decl': '\n'.join([
+                    'DOUBLE PRECISION TSSUM, LIMHEL',
+                    '      COMMON/TO_LIMHEL/LIMHEL'])}
+
     def read_template(self):
+        template_dict = dict(self.template_dict)
+        template_dict.update(self.amp2_blocks())
         out_file = open(self.output_file, 'w+')
         with open(self.template_file, 'r') as file:
             for line in file:
                 s = Template(line)
-                line = s.safe_substitute(self.template_dict)
+                line = s.safe_substitute(template_dict)
                 line = '\n'.join([self.dialect.wrap(sub_lines)
                                   for sub_lines in line.split('\n')])
                 out_file.write(line)
