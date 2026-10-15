@@ -206,6 +206,8 @@ namespace
       << "  --energy <GeV>    (perf only) Ecms for RAMBO (default 1500 GeV).\n"
       << "\n"
       << "Both modes read the parameters, alpha_s included, from ../../Cards/param_card.dat.\n"
+      << "perf times as MatrixElems (3) only the umami_matrix_element call (UMAMI input/output\n"
+      << "handling included); device-to-host copies are listed separately in the timer map.\n"
       << "\n"
       << "perf-mode defaults if positional args are omitted:\n"
       << "  #blocksPerGrid = 64, #threadsPerBlock = 256, #iterations = 1.\n";
@@ -349,6 +351,10 @@ namespace
 #endif
     UmamiStatus st = umami_matrix_element(
       handle, nevt, nevt, 0, UmamiInKeyNum, in_keys, inputs, 1, out_keys, outputs );
+#ifdef MGONGPUCPP_GPUIMPL
+    // UMAMI only enqueues the kernels; wait for them so the ME time is the computation, not the launch.
+    checkGpu( gpuDeviceSynchronize() );
+#endif
     wavetime += timermap.stop();
     if( st != UMAMI_SUCCESS )
     {
@@ -357,9 +363,10 @@ namespace
     }
 
 #ifdef MGONGPUCPP_GPUIMPL
+    // Device-to-host copies are reported by the timer map, not as ME time.
     timermap.start( "3b CpDTHmes" );
     gpuMemcpy( hstMEs.data(), devUmamiMEs.data(), nevt * sizeof( double ), gpuMemcpyDeviceToHost );
-    wavetime += timermap.stop();
+    timermap.stop();
 #endif
     return true;
   }
@@ -1028,7 +1035,7 @@ namespace
       {
         timermap.start( "3c CpDTHmom" );
         copyHostFromDevice( hstMomenta, devMomenta );
-        wavetime += timermap.stop();
+        timermap.stop();
       }
       const double* mes = hstUmamiMEs.data();
 #else
