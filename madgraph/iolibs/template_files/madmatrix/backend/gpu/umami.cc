@@ -57,6 +57,17 @@ namespace
   }
 
 
+  // Set by choose_good_helicities where RAMBO has no phase space (a decay below
+  // threshold): the momenta of such a process are off shell, and a first call
+  // cannot choose its good helicities. In its rest frame a scalar to two
+  // off-shell vectors only has the rows of equal helicities, the others are
+  // rounding residuals, but they are not 0 once the decay is boosted: h > w+ w-
+  // at mh < 2 mW kept 3 of its 9 rows after a first call at rest, and |M|^2 in a
+  // boosted frame was then 8.5 times too small. Every row is kept instead, so
+  // that the result does not depend on the first call, at the cost of the
+  // vanishing rows of a low multiplicity.
+  bool g_keep_every_helicity = false;
+
   void* initialize_impl(
     const fptype_momenta* momenta,
     const fptype* couplings,
@@ -68,6 +79,12 @@ namespace
     std::size_t count )
   {
     bool is_good_hel[ProcessData::ncomb];
+    if( g_keep_every_helicity )
+    {
+      for( int ihel = 0; ihel < ProcessData::ncomb; ++ihel ) is_good_hel[ihel] = true;
+      sigmaKin_setGoodHel( is_good_hel );
+      return nullptr;
+    }
     sigmaKin_getGoodHel(
       momenta, couplings, flavor_indices, matrix_elements, numerators, denominators,
       color_jamps,
@@ -247,7 +264,7 @@ namespace
   // and every crossing of the table, into the one good-helicity list all of them
   // share, each crossing on points of its own masses (scan_points). A 2 > 1 is
   // scanned with its beams along random axes. Where there is no phase space (a
-  // decay below threshold), this does nothing and the first call still chooses. As in the cpu and simd backends, but the inputs and
+  // decay below threshold), every helicity is kept (g_keep_every_helicity). As in the cpu and simd backends, but the inputs and
   // outputs of umami_matrix_element are device buffers here: the points are made on
   // the host and copied over, and everything runs on the default stream.
   void choose_good_helicities( UmamiHandle handle )
@@ -255,7 +272,11 @@ namespace
     std::vector<double> momenta;
     std::vector<unsigned int> flavor_indices;
     const std::size_t count = scan_points( momenta, flavor_indices );
-    if( count == 0 ) return;
+    if( count == 0 )
+    {
+      g_keep_every_helicity = true;
+      return;
+    }
     double* device_momenta = nullptr;
     unsigned int* device_flavor_indices = nullptr;
     double* device_matrix_elements = nullptr;
@@ -563,7 +584,7 @@ extern "C"
     if( !instance->initialized )
     {
       // where umami_initialize could not choose the good helicities (no RAMBO phase
-      // space), the helicity filtering runs here, on the default stream (otherwise
+      // space), every helicity is set good here, on the default stream (otherwise
       // initialize does nothing): wait for the inputs copied on gpu_stream, which need
       // not synchronise with it (a non-blocking stream); its synchronous copies back
       // to the host finish it before the work below
