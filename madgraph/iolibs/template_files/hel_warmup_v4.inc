@@ -13,6 +13,19 @@ C     gen_ximprove.py parse ('Matrix Element/Good Helicity:',
 C     'Amplitude/ZEROAMP:', 'HEL/ZEROAMP:'). The generation step
 C     re-runs hel_recycle with this information to drop the dead
 C     work from the final matrix.f.
+C
+C     The recycled matrix.f is then called in WHATEVER frame the
+C     user works in, so a zero may only be dropped if it holds in
+C     every frame. Zeros of the partonic CM frame do not: a
+C     massive leg's helicity states mix under a boost, and a
+C     single diagram is not Lorentz invariant (HELAS builds a
+C     massless vector's polarization in the current frame, a
+C     boost adds a gauge term), so e.g. the s-channel diagram of
+C     g u > z u, zero by angular momentum along the beam axis in
+C     the CM frame for half of the rows, is not zero once boosted.
+C     Every other point is therefore evaluated in a boosted frame
+C     (generic boosts, see BOOSTV), and the good rows are closed
+C     over the helicities of massive legs (HMV).
 C**************************************************************************
       use model_object
       IMPLICIT NONE
@@ -39,8 +52,26 @@ C     was generated without crossing symmetry.
       PARAMETER (LIMHEL=1D-12)
       REAL*8     ZERO
       PARAMETER (ZERO=0D0)
+C     The boosts applied to the even-numbered points: velocities
+C     of 0.59-0.69 along directions with no special relation to
+C     the beam axis or to each other.
+      INTEGER    NBOOST
+      PARAMETER (NBOOST=4)
+      REAL*8 BOOSTV(3,NBOOST)
+      DATA BOOSTV / 0.31D0,-0.42D0, 0.27D0,
+     &             -0.53D0, 0.18D0,-0.36D0,
+     &              0.12D0, 0.61D0,-0.22D0,
+     &             -0.24D0,-0.29D0, 0.58D0 /
+C     HMV(I): leg I has helicity states that mix under a boost (a
+C     massive leg with spin, or a massless spin-2 one, see
+C     frame_dependent_helicity_legs in export_v4.py). Summed over
+C     those, at fixed helicities of the other legs, the rows are
+C     frame invariant: a row is kept as soon as a row differing
+C     from it only in such legs is.
+      LOGICAL HMV(NEXTERNAL), HMSAME
+%(hr_warmup_hmv_data)s
 C     LOCAL
-      INTEGER I, IHEL, ITRY, IFLV, CROSS, NPSUSE, FLAV_EXT
+      INTEGER I, J, IHEL, ITRY, IFLV, CROSS, NPSUSE, FLAV_EXT
       REAL*8 P(0:3,NEXTERNAL), PMASS(NEXTERNAL), TOTALMASS
       REAL*8 PUSE(0:3,NEXTERNAL)
       INTEGER JC(NEXTERNAL), ICUSE(NEXTERNAL)
@@ -51,7 +82,9 @@ C     slot by slot (its own leg order): its points are generated
 C     in its own frame
       REAL*8 PMASSX(NEXTERNAL)
       REAL*8 SQRTS, T, ANS, TSARR(NCOMB)
-      LOGICAL GOODHEL(NCOMB)
+C     GOODHEL: the rows found above threshold at a sampled point;
+C     GOODOUT: GOODHEL closed over HMV, the rows that are baked.
+      LOGICAL GOODHEL(NCOMB), GOODOUT(NCOMB)
 C     C-parity de-duplication. FLIP(I) is the row whose helicity
 C     configuration is the full negation of row I (an
 C     involution); CSYM stays true only while EVERY pair gave
@@ -124,6 +157,14 @@ C     union over all of them.
               IF (SQRTS.LE.2D0*TOTALMASS) SQRTS = 2.1D0*TOTALMASS + 100D0*ITRY
             ENDIF
             CALL GET_MOMENTA(SQRTS, PMASSX, P)
+C           Odd points stay in their partonic CM (rest) frame, even ones
+C           are boosted: a zero found at a boosted point too is one of
+C           every frame. A crossing is boosted in its own frame, before
+C           APPLY_CROSSING (a boost commutes with the crossing, which
+C           only moves the momenta between slots).
+            IF (MOD(ITRY,2).EQ.0) THEN
+              CALL HR_BOOST(P, BOOSTV(1,MOD(ITRY/2-1,NBOOST)+1))
+            ENDIF
             DO I=1, NEXTERNAL
               JC(I) = +1
             ENDDO
@@ -148,11 +189,12 @@ C             recycled calls.
               IF (DABS(TSARR(IHEL)) .GT. ANS*LIMHEL/NCOMB) GOODHEL(IHEL)=.TRUE.
             ENDDO
 C           One mismatch anywhere permanently invalidates the C-parity
-C           reuse. A pair whose BOTH members sit below the
-C           good-helicity threshold is pure round-off (those rows are
-C           dropped from the recycled table anyway), so comparing them
-C           relatively would reject the reuse on noise -- e.g. 1.5D-30
-C           against 3.1D-31 for a dead row of g g > t t~.
+C           reuse; the boosted points are compared too, so a pairing
+C           that only holds in the CM frame is refused. A pair whose
+C           BOTH members sit below the good-helicity threshold is pure
+C           round-off, so comparing them relatively would reject the
+C           reuse on noise -- e.g. 1.5D-30 against 3.1D-31 for a dead
+C           row of g g > t t~ (such a pair is never reused below).
             IF (CSYM) THEN
               DO IHEL=1, NCOMB
                 IF (FLIP(IHEL).GT.IHEL) THEN
@@ -169,15 +211,39 @@ C           against 3.1D-31 for a dead row of g g > t t~.
         ENDDO
       ENDDO
 
+C     Close the good rows over the helicities of massive legs: in
+C     g u > z u, rows 9, 11, 14 and 16 vanish in the CM frame
+C     only, and boosted they carry up to 3 per cent of the total. The
+C     boosted points find such rows already; the closure does not
+C     depend on how large they happened to be there.
       DO IHEL=1, NCOMB
-        IF (GOODHEL(IHEL)) THEN
+        GOODOUT(IHEL) = GOODHEL(IHEL)
+      ENDDO
+      IF (ANY(HMV)) THEN
+        DO IHEL=1, NCOMB
+          IF (.NOT.GOODHEL(IHEL)) CYCLE
+          DO J=1, NCOMB
+            HMSAME = .TRUE.
+            DO I=1, NEXTERNAL
+              IF (.NOT.HMV(I) .AND. NHEL(I,J).NE.NHEL(I,IHEL))
+     &          HMSAME = .FALSE.
+            ENDDO
+            IF (HMSAME) GOODOUT(J) = .TRUE.
+          ENDDO
+        ENDDO
+      ENDIF
+
+      DO IHEL=1, NCOMB
+        IF (GOODOUT(IHEL)) THEN
           WRITE(*,*) 'Matrix Element/Good Helicity: 1 ', IHEL
         ENDIF
       ENDDO
 C     Surviving C-parity pairs (representative first). The
 C     exporter drops the partner's amplitudes from the recycled
 C     matrix.f and copies the representative's |M|^2 into it
-C     instead.
+C     instead. Only pairs found good at a sampled point, so that
+C     each pair was compared at least once: a row the closure
+C     added was below threshold everywhere and stays computed.
       IF (CSYM) THEN
         DO IHEL=1, NCOMB
           IF (FLIP(IHEL).GT.IHEL .AND. GOODHEL(IHEL)
@@ -226,6 +292,26 @@ C     instead.
             ENDIF
           ENDDO
         ENDIF
+      ENDDO
+      END
+
+
+      SUBROUTINE HR_BOOST(P, B)
+C     Boost every momentum of P by the velocity B (|B| < 1).
+      IMPLICIT NONE
+      INCLUDE "nexternal.inc"
+      REAL*8 P(0:3,NEXTERNAL), B(3)
+      REAL*8 B2, GAM, GG, BP
+      INTEGER I, K
+      B2 = B(1)**2 + B(2)**2 + B(3)**2
+      GAM = 1D0/DSQRT(1D0-B2)
+      GG = (GAM-1D0)/B2
+      DO I=1, NEXTERNAL
+        BP = B(1)*P(1,I) + B(2)*P(2,I) + B(3)*P(3,I)
+        DO K=1, 3
+          P(K,I) = P(K,I) + (GG*BP + GAM*P(0,I))*B(K)
+        ENDDO
+        P(0,I) = GAM*(P(0,I) + BP)
       ENDDO
       END
 

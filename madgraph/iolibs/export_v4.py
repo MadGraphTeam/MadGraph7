@@ -9384,6 +9384,8 @@ C       stays correct for split-order processes.
         # Written raw (not via FortranWriter) -- it is hand-authored fixed-form
         # with numbered/shared DO labels and IMPLICIT typing that the MG line
         # formatter would mangle; it is compiled with -ffixed-line-length-132.
+        rd['hr_warmup_hmv_data'] = self._hel_recycling_hmv_data(
+            self.frame_dependent_helicity_legs(matrix_element))
         open(warmup_path, 'w').write(open(warmup_tmpl).read() % rd)
 
         gauge = 'U'
@@ -9416,6 +9418,48 @@ C       stays correct for split-order processes.
                                 'driver_path': driver_path, 'out_path': out_path,
                                 'ncomb': ncomb, 'gauge': gauge, 'chunk': chunk,
                                 'ngraphs': matrix_element.get_number_of_amplitudes()})
+
+    @staticmethod
+    def frame_dependent_helicity_legs(matrix_element):
+        """Per column of the helicity table (get_helicity_matrix order): True
+        for a leg whose helicity states mix under a Lorentz boost, so that a
+        row zero in one frame need not be zero in another -- a massive leg with
+        spin, and a massless spin-2 one (its +-1 states are not helicities of
+        the massless particle). Only the sum over such a leg's helicities, the
+        other legs' helicities fixed, is frame invariant. A massless spin
+        1/2, 1 or 3/2 leg keeps its helicity in every frame."""
+        model = matrix_element.get('processes')[0].get('model')
+        legs = []
+        for wf in matrix_element.get_external_wavefunctions():
+            part = model.get('particle_dict')[wf.get('pdg_code')]
+            nstates = len(wf.get('polarization')) if wf.get('polarization') \
+                else len(part.get_helicity_states())
+            legs.append(nstates > 1 and (
+                str(part.get('mass')).lower() != 'zero'
+                or part.get('spin') not in (2, 3, 4)))
+        # An onium takes the helicity column of its first constituent (a
+        # massive bound state of spin J) and drops the second one, as in
+        # get_helicity_matrix.
+        if matrix_element.get_nonia() > 0:
+            wfs = matrix_element.get_external_wavefunctions()
+            constituent = []
+            for first, second in matrix_element.get_onia_pairs():
+                legs[first - 1] = wfs[first - 1].get('onium').get('J') > 0
+                constituent.append(second)
+            for i in sorted(constituent, reverse=True):
+                del legs[i - 1]
+        return legs
+
+    @staticmethod
+    def _hel_recycling_hmv_data(legs, per_line=8):
+        """The warm-up's 'DATA HMV /.../' statement (fixed form, wrapped)."""
+        vals = ['.TRUE.' if leg else '.FALSE.' for leg in legs]
+        lines = ['      DATA HMV /']
+        for i in range(0, len(vals), per_line):
+            last = i + per_line >= len(vals)
+            lines.append('     & %s%s' % (','.join(vals[i:i + per_line]),
+                                          '/' if last else ','))
+        return '\n'.join(lines)
 
     @staticmethod
     def _parse_hel_warmup(stdout):

@@ -1878,8 +1878,12 @@ for pdgs in ([21, 2, 24, 1], [2, -1, 24, 21], [21, -1, 24, -2]):
         images are rows the crossing needs (two carry the z's helicity 0). The
         filter is shared by every crossing of a flavor, so 40 base calls used
         to freeze it without them: the crossed matrix element then came out
-        low (-2.2e-4 at this point), while asked first it was exact. Training
-        now closes the filter over the helicity of massive legs (HMV).
+        low (-2.2e-4 at this point), while asked first it was exact. Every
+        extended index now trains the shared filter over its own first calls
+        (NTRYX), in its own frame, and adds the rows that frame needs. (The
+        HMV closure over massive-leg helicities that did this first was
+        removed in 0c88ff9c11; the recycled warm-up has its own, see
+        hel_warmup_v4.inc.)
         """
         outdirs = {}
         for name, options in (('fold', '--use_crossing=True'),

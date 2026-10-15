@@ -32,15 +32,22 @@ below is therefore generated twice, both outputs are compiled (`make check`) and
 run (`./check`), and the printed values are compared entry by entry. For a
 process whose crossings are folded into a single directory, ./check also prints
 the crossed matrix elements, so those are covered by the same comparison.
+
+./check works in the partonic CM frame, which is also where the warm-up used to
+measure its zeros; the recycled output is called in any frame, so the frame
+checks below go through the f2py module with CM AND boosted points.
 """
 
 from __future__ import absolute_import
 
+import json
 import logging
+import math
 import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -49,6 +56,65 @@ import madgraph.various.misc as misc
 
 logger = logging.getLogger('madgraph.acceptance')
 pjoin = os.path.join
+
+# Evaluates one combined f2py module (--prefix=int) in its own interpreter --
+# every output builds a module called all_matrix2py, and two of them in one
+# process would share their common blocks. For the flavor index of spec['pdgs']
+# it reports the helicity table, then at each point the summed SMATRIX (a
+# recycled build runs its baked rows there; SMATRIXHEL(-1) is not summed by the
+# recycled driver) and SMATRIXHEL for every helicity code.
+_FRAME_PROBE = r'''
+import json, os, sys
+import numpy as np
+os.chdir(%(subproc)r)
+sys.path.insert(0, %(subproc)r)
+import all_matrix2py as m
+
+spec = json.load(open(%(spec)r))
+m.initialise(os.path.abspath('../Cards/param_card.dat'))
+prefix = m.get_prefix()[0].decode().strip().lower()
+
+def entry(name):
+    return getattr(m, 'py_' + prefix + name)
+
+nflav, _, ncross = entry('get_flavor_layout')()
+idx = [f for f in range(1, nflav * ncross + 1)
+       if [int(x) for x in entry('get_pdg_for_flavor')(f)] == spec['pdgs']][0]
+nhel = np.array(entry('get_nhel_idx')(idx)[1])
+out = {'rows': [[int(h) for h in nhel[:, c]] for c in range(nhel.shape[1])],
+       'summed': [], 'codes': []}
+for p in spec['points']:
+    mom = np.array(p).T
+    out['summed'].append(float(entry('smatrix_idx')(mom, idx)))
+    out['codes'].append([float(entry('smatrixhel_idx')(mom, c, idx))
+                         for c in range(1, nhel.shape[1] + 1)])
+print('PROBE ' + json.dumps(out))
+'''
+
+
+def _cm_point(sqrts, m3, m4, cos_theta, phi):
+    """A 2 -> 2 point in the partonic CM frame, massless initial legs."""
+    s = sqrts ** 2
+    pf = math.sqrt((s - (m3 + m4) ** 2) * (s - (m3 - m4) ** 2)) / (2 * sqrts)
+    sin_theta = math.sqrt(1 - cos_theta ** 2)
+    v = [pf * sin_theta * math.cos(phi), pf * sin_theta * math.sin(phi),
+         pf * cos_theta]
+    return [[sqrts / 2, 0., 0., sqrts / 2], [sqrts / 2, 0., 0., -sqrts / 2],
+            [math.sqrt(pf ** 2 + m3 ** 2)] + v,
+            [math.sqrt(pf ** 2 + m4 ** 2)] + [-x for x in v]]
+
+
+def _boost(point, beta):
+    """`point` boosted by the velocity `beta`."""
+    b2 = sum(b * b for b in beta)
+    gamma = 1 / math.sqrt(1 - b2)
+    boosted = []
+    for e, px, py, pz in point:
+        bp = beta[0] * px + beta[1] * py + beta[2] * pz
+        k = (gamma - 1) / b2 * bp + gamma * e
+        boosted.append([gamma * (e + bp), px + k * beta[0], py + k * beta[1],
+                        pz + k * beta[2]])
+    return boosted
 
 
 def _sanitize(process):
@@ -342,6 +408,194 @@ class TestStandaloneHelRecyclingConsistency(StandaloneHelRecyclingConsistency):
             self.assertAlmostEqual(a, b, delta=1e-9 * max(abs(b), 1e-300),
                                    msg='code %d: recycled %r, standard %r'
                                    % (code, a, b))
+
+    # ------------------------------------------------------------------
+    # frame independence: the warm-up must not bake a zero of the CM frame
+    # ------------------------------------------------------------------
+    # CM points, and the velocities they are boosted by. None of the velocities
+    # is one the warm-up itself boosts by (hel_warmup_v4.inc BOOSTV).
+    FRAME_ANGLES = ((0.3, 0.7), (-0.55, 2.1), (0.8, 4.0))
+    FRAME_BOOSTS = ((0.15, -0.1, 0.6), (-0.4, -0.15, -0.45))
+
+    def _f2py_module(self, outdir):
+        """Build the combined f2py module of `outdir`; skip without f2py."""
+        subproc = pjoin(outdir, 'SubProcesses')
+        if self._call(['make', 'all_matrix2py.so'], subproc) != 0 or not any(
+                f.startswith('all_matrix2py') and f.endswith('.so')
+                for f in os.listdir(subproc)):
+            raise unittest.SkipTest('could not build the f2py module in %s'
+                                    % subproc)
+        return subproc
+
+    def _frame_probe(self, subproc, pdgs, points):
+        spec = pjoin(self.tmpdir, 'frame_probe_%d.json'
+                     % len(os.listdir(self.tmpdir)))
+        with open(spec, 'w') as fsock:
+            json.dump({'pdgs': pdgs, 'points': points}, fsock)
+        script = spec[:-len('.json')] + '.py'
+        with open(script, 'w') as fsock:
+            fsock.write(_FRAME_PROBE % {'subproc': subproc, 'spec': spec})
+        output = subprocess.run([sys.executable, script], cwd=subproc,
+                                capture_output=True, text=True)
+        lines = [l for l in output.stdout.splitlines() if l.startswith('PROBE ')]
+        self.assertTrue(lines, 'no result from the f2py probe:\n%s%s'
+                        % (output.stdout, output.stderr))
+        return json.loads(lines[-1][len('PROBE '):])
+
+    @staticmethod
+    def _masses(outdir):
+        """PDG -> mass, from the output's param_card."""
+        masses, block = {}, None
+        with open(pjoin(outdir, 'Cards', 'param_card.dat')) as fsock:
+            for line in fsock:
+                words = line.split('#')[0].split()
+                if not words:
+                    continue
+                if words[0].lower() == 'block':
+                    block = words[1].lower()
+                elif block == 'mass' and len(words) == 2:
+                    masses[int(words[0])] = float(words[1])
+        return masses
+
+    def check_frame_independence(self, process, pdgs, settings=()):
+        """The summed |M|^2 of the recycled output, and every helicity code of
+        it, must equal the standard output's at CM points AND at the same points
+        boosted. The reference is the standard output's per-code SMATRIXHEL,
+        which opens every helicity row (no training, no C-parity reuse).
+
+        Returns (standard, recycled) probe results: 'points' lists the CM points
+        first, then the boosted ones."""
+        self.do('set automatic_html_opening False')
+        for line in settings:
+            self.do(line)
+        self.do('import model sm')
+        self.do('generate %s --use_crossing=False' % process)
+        self.do('output standalone_fortran %s --prefix=int -f' % self.std_dir)
+        self.do('output standalone_fortran %s --prefix=int --hel_recycling=True'
+                ' -f' % self.hr_dir)
+        std_sub = self._f2py_module(self.std_dir)
+        hr_sub = self._f2py_module(self.hr_dir)
+
+        masses = self._masses(self.std_dir)
+        cm = [_cm_point(500., masses.get(abs(pdgs[2]), 0.),
+                        masses.get(abs(pdgs[3]), 0.), c, phi)
+              for c, phi in self.FRAME_ANGLES]
+        points = cm + [_boost(p, beta) for beta in self.FRAME_BOOSTS
+                       for p in cm]
+        std = self._frame_probe(std_sub, pdgs, points)
+        hr = self._frame_probe(hr_sub, pdgs, points)
+        self.assertEqual(std['rows'], hr['rows'])
+        # SMATRIXHEL multiplies by the number of initial helicity states
+        helavg = len(set(r[0] for r in std['rows'])) * \
+            len(set(r[1] for r in std['rows']))
+        for i, (std_codes, hr_codes, hr_sum) in enumerate(
+                zip(std['codes'], hr['codes'], hr['summed'])):
+            frame = 'CM' if i < len(cm) else 'boosted'
+            exact = sum(std_codes) / helavg
+            self.assertGreater(exact, 0.)
+            self.assertLessEqual(
+                abs(hr_sum - exact), 1e-9 * exact,
+                '%s, %s point %d: recycled summed %r, standard %r (ratio %r)'
+                % (process, frame, i, hr_sum, exact, hr_sum / exact))
+            scale = max(abs(v) for v in std_codes)
+            for code, (a, b) in enumerate(zip(hr_codes, std_codes), 1):
+                self.assertLessEqual(
+                    abs(a - b), 1e-9 * scale,
+                    '%s, %s point %d, code %d: recycled %r, standard %r'
+                    % (process, frame, i, code, a, b))
+        std['points'] = hr['points'] = points
+        return std, hr
+
+    def _live_rows(self, codes):
+        """How many helicity codes carry |M|^2 above round-off at a point."""
+        scale = max(abs(v) for v in codes)
+        return sum(1 for v in codes if abs(v) > 1e-12 * scale)
+
+    def _recycled_file(self, name):
+        found = self._subprocess_dirs(self.hr_dir)
+        self.assertEqual(len(found), 1, found)
+        with open(pjoin(found[0], name)) as fsock:
+            return fsock.read()
+
+    def _recycled_reuse(self):
+        """The C-parity reuse lines of the recycled matrix.f."""
+        return re.findall(r'TS\((\d+)\)\s*=\s*TS\((\d+)\)',
+                          self._recycled_file('matrix.f'))
+
+    def _warmup_hmv(self):
+        """The legs the warm-up closes the good rows over (DATA HMV)."""
+        data = re.search(r'DATA HMV\s*/(.*?)/',
+                         self._recycled_file('hel_warmup.f').replace('\n     &', ''),
+                         re.S).group(1)
+        return [v.strip().upper() == '.TRUE.' for v in data.split(',')]
+
+    def test_frame_independence_massive_vector(self):
+        """g u > z u (unfolded): rows 9, 11, 14 and 16 vanish in the partonic
+        CM frame only -- the z's helicity states mix under a boost -- and
+        boosted they carry up to 3% of the total. The warm-up used to scan CM
+        points only, so the recycled output dropped those rows, and it also
+        dropped the s-channel diagram from half of the rows it kept: that
+        diagram vanishes in the CM frame by angular momentum along the beam
+        axis, but a single diagram is not Lorentz invariant. Boosted by
+        (0.15, -0.1, 0.6) the summed |M|^2 was off by up to 7%, either way."""
+        std, _ = self.check_frame_independence('g u > z u', [21, 2, 23, 2])
+        # the baked rows are closed over the z's helicity
+        self.assertEqual(self._warmup_hmv(), [False, False, True, False])
+        # the premise: 8 rows in the CM frame, 12 once boosted
+        ncm = len(self.FRAME_ANGLES)
+        self.assertEqual([self._live_rows(c) for c in std['codes'][:ncm]],
+                         [8] * ncm)
+        self.assertEqual([self._live_rows(c) for c in std['codes'][ncm:]],
+                         [12] * (len(std['codes']) - ncm))
+
+    def test_frame_independence_massless(self):
+        """g u > a u: no massive leg, so no row depends on the frame -- but the
+        s-channel diagram still vanishes exactly in the CM frame for half of
+        the rows (both incoming legs on the z axis), and a single diagram is
+        not Lorentz invariant: a boost adds a gauge term to the polarization
+        vectors HELAS builds for the gluon and the photon. The warm-up dropped
+        it as a per-helicity zero, and the boosted |M|^2 came out up to 3%
+        off. The closure has nothing to act on here: only the boosted scan
+        keeps that diagram."""
+        self.check_frame_independence('g u > a u', [21, 2, 22, 2])
+        self.assertEqual(self._warmup_hmv(), [False] * 4)
+
+    def test_frame_independence_massive_fermions(self):
+        """g g > t t~ (unfolded): four rows vanish in the CM frame only (the
+        tops are massive), and the s-channel diagram vanishes there for
+        opposite gluon helicities. Its C-parity pairing, on the other hand,
+        holds in every frame (QCD couplings are vector-like: a helicity flip is
+        a complex conjugation), so the boosted validation keeps the reuse --
+        and this checks it at boosted points too."""
+        std, _ = self.check_frame_independence('g g > t t~', [21, 21, 6, -6])
+        self.assertEqual(self._warmup_hmv(), [False, False, True, True])
+        ncm = len(self.FRAME_ANGLES)
+        self.assertEqual([self._live_rows(c) for c in std['codes'][:ncm]],
+                         [12] * ncm)
+        self.assertTrue(self._recycled_reuse(),
+                        'the C-parity reuse of g g > t t~ holds in every frame '
+                        'and must be kept')
+
+    def test_frame_independence_cparity_with_width(self):
+        """g g > t t~ keeping the top width in its t-channel propagators: the
+        C-parity pairing |M(h)|^2 = |M(-h)|^2 then holds at 2 -> 2 CM points
+        only (coplanar momenta: a reflection through the scattering plane), not
+        once boosted (2.7e-3 apart at the first point). The warm-up compares
+        the pairs at boosted points too and must refuse the reuse."""
+        std, _ = self.check_frame_independence(
+            'g g > t t~', [21, 21, 6, -6],
+            settings=('set zerowidth_tchannel False --no_save',
+                      'set zerowidth_external False --no_save'))
+        # the premise: the pairing holds at the CM points, not at boosted ones
+        flip = [std['rows'].index([-h for h in row]) for row in std['rows']]
+        ncm = len(self.FRAME_ANGLES)
+        mismatch = [max(abs(codes[c] - codes[flip[c]]) for c in range(len(flip)))
+                    / max(codes) for codes in std['codes']]
+        self.assertLess(max(mismatch[:ncm]), 1e-12, mismatch)
+        self.assertGreater(max(mismatch[ncm:]), 1e-6, mismatch)
+        self.assertFalse(self._recycled_reuse(),
+                         'C-parity reuse kept although the pairing fails at '
+                         'boosted points')
 
 
 class TestCppHelRecyclingCrossing(unittest.TestCase):
