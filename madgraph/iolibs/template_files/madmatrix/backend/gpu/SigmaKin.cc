@@ -688,7 +688,7 @@ namespace madmatrix
   {
     const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread)
     // no helicity (0) unless one is chosen below: a vanishing or NaN |M|^2 chooses none, and
-    // allselhel is not cleared beforehand (the CPU buffers are zero-initialised)
+    // callers may reuse allselhel across calls (cleared per event here, as on cpu/simd)
     allselhel[ievt] = 0;
     if constexpr( nampso > 1 )
     {
