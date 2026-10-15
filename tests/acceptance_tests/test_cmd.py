@@ -3903,8 +3903,9 @@ json.dump(res, open(outfile, 'w'))
         self.do('set apply_flavor_grouping True')
         self.do('set group_subprocesses False')
         dirs = {}
-        for name, process in (('prod', 'generate p p > t* t~*'),
-                              ('dec', 'generate t* > b w+, w+ > l+ vl')):
+        # --use_crossing=False: what MadSpin generates (decay.without_crossing)
+        for name, process in (('prod', 'generate p p > t* t~* --use_crossing=False'),
+                              ('dec', 'generate t* > b w+, w+ > l+ vl --use_crossing=False')):
             self.do(process)
             dirs[name] = (pjoin(self.out_dir, 'mm_' + name), pjoin(self.out_dir, 'f_' + name))
             self.do('output standalone %s -f --noeps=True' % dirs[name][0])
