@@ -2190,6 +2190,19 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         '    using CDPF_ACCESS [[maybe_unused]] = HostAccessCouplings;\n'
         '    using F_ACCESS [[maybe_unused]] = HostAccessIflavorVec;\n')
 
+    # With crossing, the recycled calls also read the per-lane permuted momenta
+    # and NSF signs of the crossing preamble (see crossing_preamble_recycled)
+    HR_CHUNK_STATE_CROSSING = [
+        ('const fptype* xmom', 'xmom'),
+        ('const fptype_sv* icsign', 'icsign'),
+    ]
+
+    def hr_chunk_state(self):
+        """The (declaration, name) pairs a recycled chunk function takes."""
+        if getattr(self, 'use_crossing', False):
+            return self.HR_CHUNK_STATE + self.HR_CHUNK_STATE_CROSSING
+        return self.HR_CHUNK_STATE
+
     def hel_recycling_chunk_size(self, nstmt):
         """Statements per chunk for a block of `nstmt` statements (0: inline),
         from --hel_recycling_chunk if given."""
@@ -2234,9 +2247,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         per_chunk = self.hel_recycling_chunk_size(nstmt)
         if per_chunk <= 0 or nstmt <= per_chunk:
             return '', calls
+        state = self.hr_chunk_state()
         params = ',\n              '.join('[[maybe_unused]] ' + decl
-                                          for decl, _ in self.HR_CHUNK_STATE)
-        args = ', '.join(name for _, name in self.HR_CHUNK_STATE)
+                                          for decl, _ in state)
+        args = ', '.join(name for _, name in state)
         defs, body = [], []
         for i, chunk in enumerate(self.hr_split_statements(lines, per_chunk)):
             # noinline: folding the chunks back into one body is what they avoid
@@ -2338,6 +2352,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                     pass
         header, calls = text.split(self.HR_CALLS_MARK, 1)
         chunks, calls = self.hr_chunk_calls(calls.lstrip('\n'))
+        if getattr(self, 'use_crossing', False):
+            # after the cut, so that it stays in calculate_all_jamps and the
+            # chunks get its arrays as arguments
+            calls = self.helas_call_writer.crossing_preamble_recycled() + calls
         with open(pjoin(self.path, 'HelRecycling.inc'), 'w') as fsock:
             fsock.write(header + '\n' + chunks)
         with open(pjoin(self.path, 'HelRecyclingCalls.inc'), 'w') as fsock:
@@ -2363,17 +2381,20 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                                os.path.basename(self.path))
             else:
                 recycle = True
-                self._hr_calls = self.hr_orig_calls(color_amplitudes[0])
-                if self not in OneProcessExporterMadMatrix._hr_warmups:
-                    OneProcessExporterMadMatrix._hr_warmups.append(self)
         if self.single_helicities:
             # Crossing symmetry: tell the helas writer to emit the per-event
             # momentum-permutation preamble + NSF-blended external calls. Read at
             # emission time and reset afterwards (the writer is reused across
-            # outputs, per the fortran/standalone_cpp lesson).
+            # outputs, per the fortran/standalone_cpp lesson). The calls the
+            # recycler reads need it as much as the ordinary ones: without it
+            # every crossed lane of the recycled build would be the base process.
             self.helas_call_writer.use_crossing_ic = getattr(self, 'use_crossing', False)
-            self.helas_call_writer.hr_probe = recycle
             try:
+                if recycle:
+                    self._hr_calls = self.hr_orig_calls(color_amplitudes[0])
+                    if self not in OneProcessExporterMadMatrix._hr_warmups:
+                        OneProcessExporterMadMatrix._hr_warmups.append(self)
+                self.helas_call_writer.hr_probe = recycle
                 helas_calls = self.helas_call_writer.get_matrix_element_calls(\
                                                     self.matrix_elements[0],
                                                     color_amplitudes[0],
@@ -3650,7 +3671,9 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         # Crossing symmetry: the per-event momentum permutation opens
         # EvaluateDiagrams.inc, i.e. it runs inside calculate_jamps right after
         # backend/<variant>/SigmaKin.cc has set up momenta/iflavor for the page
-        if getattr(self, 'use_crossing_ic', False):
+        # (not in the calls the recycler reads: it keeps calls only, and
+        # write_recycled opens the recycled block with its own copy)
+        if getattr(self, 'use_crossing_ic', False) and not self.hr_orig:
             res.append(self._crossing_preamble(matrix_element))
         diagrams = matrix_element.get('diagrams')
         diag_to_config = {}
@@ -3939,19 +3962,25 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
       int xperm[npar], xic[npar];
       cross_gather( (int)( iflavor_ext / (unsigned int)nmaxflavor ), xperm, xic );
 #else
-      // === CROSSING SYMMETRY: per-event momentum permutation (NOT vectorized) ===
-      // Each event's crossing-table row (cross_gather, the base-slot view):
-      // base slot s takes the momentum of input slot xperm[s], NSF sign xic[s].
-      // A row out of range gathers the identity; its denominator is 0.
-      alignas( mgOnGpu::cppAlign ) fptype xmom[npar * np4 * neppV];
-      fptype_sv icsign[npar];
-      // 2 scratch external wavefunctions for the per-event NSF-sign blend
+""" + self.CROSSING_GATHER_HEAD + """      // 2 scratch external wavefunctions for the per-event NSF-sign blend
       fptype_sv pvec_x[2][np4];
       cxtype_sv w_x[2][nw6];
       ALOHAOBJ aloha_x[2];
       aloha_x[0] = ALOHAOBJ{ pvec_x[0], w_x[0] };
       aloha_x[1] = ALOHAOBJ{ pvec_x[1], w_x[1] };
-      for( int ieppV = 0; ieppV < neppV; ++ieppV )
+""" + self.CROSSING_GATHER_LOOP + """#endif
+"""
+
+    # The per-lane gather of the crossing preamble (CPU/SIMD), in two pieces
+    # so that the recycled block (crossing_preamble_recycled) shares them
+    CROSSING_GATHER_HEAD = """      // === CROSSING SYMMETRY: per-event momentum permutation (NOT vectorized) ===
+      // Each event's crossing-table row (cross_gather, the base-slot view):
+      // base slot s takes the momentum of input slot xperm[s], NSF sign xic[s].
+      // A row out of range gathers the identity; its denominator is 0.
+      alignas( mgOnGpu::cppAlign ) fptype xmom[npar * np4 * neppV];
+      fptype_sv icsign[npar];
+"""
+    CROSSING_GATHER_LOOP = """      for( int ieppV = 0; ieppV < neppV; ++ieppV )
       {
         const int xcr = (int)( iflavorVec[ievt0 + ieppV] / nmaxflavor );
         int xperm[npar], xic[npar];
@@ -3965,8 +3994,14 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
           reinterpret_cast<fptype*>( &icsign[s] )[ieppV] = (fptype)xic[s];
         }
       }
-#endif
 """
+
+    def crossing_preamble_recycled(self):
+        """The crossing preamble of the recycled block (calculate_all_jamps,
+        CPU only): the same per-lane gather, without the blend scratch, which
+        each crossed external of the recycled calls declares for itself (see
+        _crossing_external_block, hr_orig)."""
+        return self.CROSSING_GATHER_HEAD + self.CROSSING_GATHER_LOOP
 
     def _crossing_external_block(self, wf, argument):
         """External HELAS call under crossing symmetry (C++/SIMD).
@@ -4007,6 +4042,9 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                        (routine, mass, hel, sign, s, obj, s)
             return self.format_coupling(call)
 
+        if self.hr_orig:
+            return self._crossing_external_orig(one_call, spin, s, me, nsf)
+
         hel = None if spin == 1 else '(int)cHel[ihel][%d]' % s
         lines = ['#ifndef MGONGPUCPP_GPUIMPL']
         lines.append('      ' + one_call(nsf, 'aloha_x[0]', hel))
@@ -4030,6 +4068,36 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         lines.append('      ' + self.format_coupling(gpu))
         lines.append('#endif\n')
         return '\n'.join(lines)
+
+    def _crossing_external_orig(self, one_call, spin, s, me, nsf):
+        """The crossed external of _crossing_external_block in the form the
+        helicity recycler reads (hr_orig, CPU only): a head call it unfolds
+        like any external -- (+nsf, h) into the leg's own slot -- then a
+        //HREXT tail that CppDialect.render_external stamps after every copy,
+        ${hel} being the copy's helicity and ${out} its slot. The tail makes
+        the (-nsf, -h) call and keeps it on the lanes whose leg changed side
+        (icsign -1): the base row's all-outgoing configuration, so the one
+        good-helicity table serves every lane. It reaches the slot only through
+        aloha_obj (the chunk functions of a big block see nothing else) and
+        declares its own scratch."""
+        hel = None if spin == 1 else 'cHel[ihel][%d]' % s
+        tail_hel = None if spin == 1 else '-( ${hel} )'
+        out = 'aloha_obj[${out}]'
+        return '\n'.join([
+            one_call(nsf, 'aloha_obj[%d]' % me, hel),
+            '//HREXT %d' % s,
+            '      {',
+            '        fptype_momenta_sv _px[np4];',
+            '        cxtype_amp_sv _wx[nw6];',
+            '        ALOHAOBJ _ax{ _px, _wx };',
+            '        ' + one_call(-nsf, '_ax', tail_hel),
+            '        const fptype_sv _sp = ( icsign[%d] + (fptype)1. ) * (fptype)0.5;' % s,
+            '        const fptype_sv _sm = ( (fptype)1. - icsign[%d] ) * (fptype)0.5;' % s,
+            '        cxtype_amp_sv* _w = reinterpret_cast<cxtype_amp_sv*>( %s.w );' % out,
+            '        for( int _k = 0; _k < np4; _k++ ) %s.pvec[_k] = _sp * %s.pvec[_k] + _sm * _px[_k];' % (out, out),
+            '        for( int _k = 0; _k < nw6; _k++ ) _w[_k] = _sp * _w[_k] + _sm * _wx[_k];',
+            '      }',
+            '//HRENDEXT'])
 
     # AV - replace helas_call_writers.GPUFOHelasCallWriter method (improve formatting)
     # [GPUFOHelasCallWriter.format_coupling is called by GPUFOHelasCallWriter.get_external_line/generate_helas_call]

@@ -344,6 +344,66 @@ class TestCppDialect(unittest.TestCase):
         self.assertEqual(len(skipped), 3)
 
 
+class TestCppCrossedExternal(unittest.TestCase):
+    """A crossed external of a madmatrix output with crossing, in the form the
+    recycler reads (MadMatrixUFOHelasCallWriter._crossing_external_orig).
+
+    Every lane evaluates the BASE helicity row; a lane whose leg changed side
+    takes the opposite helicity with the opposite NSF flag (the all-outgoing
+    configuration). So each unfolded copy of helicity h is the head call
+    (+nsf, h) followed by the tail call (-nsf, -h) and the icsign blend into
+    the copy's own slot."""
+
+    def setUp(self):
+        from madmatrix.model_handling import MadMatrixUFOHelasCallWriter
+        self.dialect = hel_recycle.CppDialect()
+        self.tmpdir = tempfile.mkdtemp(prefix='hr_cpp_x')
+
+        def one_call(sign, obj, hel=None):
+            return ('ixxxxx<M_ACCESS, W_ACCESS>( xmom, m_pars->MT, %s, %+d,'
+                    ' cFlavors[iflavor][2], %s, 2 );' % (hel, sign, obj))
+        self.text = MadMatrixUFOHelasCallWriter._crossing_external_orig(
+            None, one_call, 2, 2, 5, -1)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_the_head_is_an_ordinary_external(self):
+        head = self.text.split('\n')[0]
+        args = self.dialect.arguments(head)
+        self.assertEqual(self.dialect.called_function(head), 'ixxxxx')
+        self.assertEqual(self.dialect.external_leg(args), 3)
+        self.assertEqual(self.dialect.external_helicity_leg(args), 3)
+        self.assertEqual(self.dialect.output_name(args), 'aloha_obj[5]')
+
+    def test_each_copy_gets_the_opposite_helicity_and_its_own_slot(self):
+        path = os.path.join(self.tmpdir, 'orig.cc')
+        with open(path, 'w') as fsock:
+            fsock.write(self.text + '\n')
+        self.dialect.read_folds(path)
+        self.assertEqual(sorted(self.dialect.externals), [2])
+        streamed = [line for line in open(path)
+                    if not self.dialect.skip_line(line)]
+        self.assertEqual(len(streamed), 1)  # the head only
+
+        class FakeExternal(object):
+            def __init__(self, hel, slot):
+                self.mg, self.hel, self.numbers = 3, hel, (slot,)
+                self.args = None
+        head = streamed[0].rstrip('\n')
+        for hel, slot in ((-1, 7), (1, 8)):
+            wav = FakeExternal(hel, slot)
+            wav.args = self.dialect.set_external_helicity(
+                self.dialect.arguments(head), hel)
+            wav.args[self.dialect.output_position(wav.args)] = 'aloha_obj[%d]' % (slot - 1)
+            text = self.dialect.render_external(head, wav)
+            self.assertIn('m_pars->MT, %d, -1,' % hel, text)
+            self.assertIn('m_pars->MT, -( %d ), +1,' % hel, text)
+            self.assertIn('aloha_obj[%d].pvec[_k]' % (slot - 1), text)
+            self.assertIn('icsign[2]', text)
+            self.assertNotIn('$', text)
+
+
 class TestCppAmplitudeSplit(unittest.TestCase):
     """The P1N amplitude split, rendered for C++.
 
