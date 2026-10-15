@@ -289,6 +289,27 @@ class TestCmdLoop(unittest.TestCase):
                                 ('optimized' if optimized else 'default',
                                  p_name, row, key, actual[key],
                                  reference[key]))
+                    if 'PARAMETER (FILTER_FLAV_IDX=-1)' in loop_matrix:
+                        # Several rows: each has its own check phase of
+                        # CheckCycle points, and writes its own filter at
+                        # the next one.
+                        resources = pjoin(os.path.dirname(virtual_dir),
+                                          'MadLoop5_resources')
+                        with open(pjoin(resources,
+                                        'MadLoopParams.dat')) as stream:
+                            params = stream.read().split()
+                        check_cycle = int(
+                            params[params.index('#CheckCycle') + 1])
+                        for row in set(row_sequence):
+                            calls = row_sequence.count(row) * (1 + warmup)
+                            self.assertEqual(
+                                os.path.isfile(pjoin(
+                                    resources, 'HelFilter_%d.dat' % row)),
+                                calls > check_cycle,
+                                '%s row %d, %d evaluations' %
+                                (p_name, row, calls))
+                        self.assertFalse(os.path.exists(
+                            pjoin(resources, 'HelFilter.dat')))
             succeeded = True
         finally:
             if succeeded:
@@ -338,7 +359,9 @@ class TestCmdLoop(unittest.TestCase):
         with open(pjoin(MG5DIR, 'tests', 'input_files',
                         'nlo_pre_grouping_wpwm_oracle.json')) as stream:
             old_virtuals = json.load(stream)['virtual']['oracles']
-        row_sequence = (1, 6, 11, 16, 16, 11, 6, 1)
+        # Interleaved as in a fixed-order run: every row has its own MadLoop
+        # check phase and filters while the other rows are evaluated.
+        row_sequence = (1, 6, 11, 16) * 5 + (16, 11, 6, 1)
         families = {1: 'dx', 6: 'ux', 11: 'dx', 16: 'ux'}
 
         def extra_checks(output, virtual_dir, loop_matrix, optimized):
