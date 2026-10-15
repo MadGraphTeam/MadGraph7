@@ -4660,6 +4660,30 @@ class TestMadeventInclusiveCrossingXsec(unittest.TestCase):
                 routed.append(name)
         return routed
 
+    @staticmethod
+    def _dead_routed_channels(crossed_dir, independent_dir, routed):
+        """Channels (P dir/G dir) of the routed directories whose survey is
+        exactly zero in the crossed build but not in the independent one."""
+        dead = []
+        for pdir in routed:
+            ind = pjoin(independent_dir, 'SubProcesses', pdir)
+            if not os.path.isdir(ind):
+                continue
+            for gdir in sorted(os.listdir(ind)):
+                res_i = pjoin(ind, gdir, 'results.dat')
+                res_c = pjoin(crossed_dir, 'SubProcesses', pdir, gdir,
+                              'results.dat')
+                if not (gdir.startswith('G') and os.path.isfile(res_i)
+                        and os.path.isfile(res_c)):
+                    continue
+                with open(res_i) as fsock:
+                    xs_i = float(fsock.readline().split()[0])
+                with open(res_c) as fsock:
+                    xs_c = float(fsock.readline().split()[0])
+                if xs_i > 0.0 and xs_c == 0.0:
+                    dead.append('%s/%s' % (pdir, gdir))
+        return dead
+
     def test_inclusive_crossing_xsec_matches(self):
         crossed_dir, crossed, err_c = self._generate_and_integrate('', 'on')
         independent_dir, independent, err_i = self._generate_and_integrate(
@@ -4678,6 +4702,14 @@ class TestMadeventInclusiveCrossingXsec(unittest.TestCase):
 
         self.assertGreater(independent, 0.0,
                            'the independent build gives a null cross section')
+        # A channel of a routed directory that integrates to exactly zero while
+        # the independent build's does not is a broken evaluation, however
+        # small its share of the total.
+        dead = self._dead_routed_channels(crossed_dir, independent_dir, routed)
+        self.assertEqual(
+            dead, [], '%s: routed channels integrate to zero although the '
+            'independent build finds them non-zero: %s'
+            % (self.PROCESS, ', '.join(dead)))
         # Same seed and the same channels, so the two runs must agree well
         # inside their combined statistical error; the 1% floor absorbs the grid
         # noise the different routing can introduce.
@@ -4744,6 +4776,92 @@ class TestMadeventMassiveLegCrossingXsec(TestMadeventInclusiveCrossingXsec):
         # the retired prediction tables are gone
         for name in ('crossgroup_helunion.dat', 'crossgroup_helclass.dat'):
             self.assertFalse(os.path.exists(pjoin(subproc, bases[0], name)))
+
+
+class TestMadeventClusteringScaleCrossingXsec(TestMadeventInclusiveCrossingXsec):
+    """The default (CKKW-clustering) scale of a cross-group routed directory.
+
+    `p p > w+ j j`: q q~' > w+ g g is evaluated by the g g > w+ q q~' group.
+    The routed directory links the base's matrix object, so its GET_FLAVOR1 is
+    the base's and returned the base leg order /1,1,1,1,2/ instead of
+    /2,1,1,1,1/. setclscales then clustered the two final-state gluons as
+    different flavours, flavor_filter dropped every gluon propagator, and the
+    two channels whose first clustering is g g -> g failed with
+    'cluster.f: Error. Invalid combination.': P1_qq_wpgg 34% low, the total
+    7646 +- 41 pb against 7837 +- 37 pb (3000 events). A fixed scale hid it.
+    """
+
+    PRELUDE = ''
+    PROCESS = 'p p > w+ j j'
+    NEVENTS = 1000
+    SEED = 21
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='cross_mev_wjj_')
+
+    def test_inclusive_crossing_xsec_matches(self):
+        super().test_inclusive_crossing_xsec_matches()
+
+    @staticmethod
+    def _flavor_tables(text, name):
+        """Flavour columns of the Fortran table *name* in *text*: either the
+        flat column-major DATA of a cross-group table or the per-column DATA
+        of a GET_FLAVOR<n> in a matrix element."""
+        flat = re.search(r'DATA\s+%s\s*/([^/]*)/' % name, text, re.I)
+        if flat:
+            return [int(x) for x in flat.group(1).split(',')]
+        cols = re.findall(r'DATA\s*\(\s*%s\(I,\s*\d+\)[^/]*/([^/]*)/' % name,
+                          text, re.I)
+        return [int(x) for col in cols for x in col.split(',')]
+
+    def test_routed_get_flavor_is_its_own(self):
+        """Run-free: the GET_FLAVOR the routed directory's driver uses for the
+        scale and the clustering returns the routed subprocess's own flavour
+        rows (those of its --use_crossing=False build), not the base's."""
+        from madgraph import MG5DIR
+        dirs = {}
+        for name, options in (('on', ''), ('off', '--use_crossing=False')):
+            dirs[name] = pjoin(self.tmpdir, name)
+            card = pjoin(self.tmpdir, 'cmd_%s.txt' % name)
+            with open(card, 'w') as fsock:
+                fsock.write('generate %s %s\noutput madevent %s -f\n'
+                            % (self.PROCESS, _pin_crossing(options), dirs[name]))
+            subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'),
+                             card])
+        routed = [d for d in self._routed_groups(dirs['on'])
+                  if os.path.exists(pjoin(dirs['on'], 'SubProcesses', d,
+                                          'crossgroup.mk'))]
+        self.assertTrue(routed, 'no cross-group routed directory')
+        for pdir in routed:
+            with open(pjoin(dirs['on'], 'SubProcesses', pdir,
+                            'auto_dsig.f')) as fsock:
+                dispatch = fsock.read()
+            dispatch = dispatch[dispatch.upper().index(
+                'SUBROUTINE GET_FLAVOR(IFLAV'):]
+            dispatch = dispatch[:re.search(r'\n\s*END\s*\n', dispatch).end()]
+            # the subprocesses routed out of this directory: their
+            # auto_dsig<n>.f carries the inlined DSIG_XGFLAV table
+            routed_ids = []
+            for entry in os.listdir(pjoin(dirs['on'], 'SubProcesses', pdir)):
+                match = re.match(r'auto_dsig(\d+)\.f$', entry)
+                if match:
+                    with open(pjoin(dirs['on'], 'SubProcesses', pdir,
+                                    entry)) as fsock:
+                        if 'DSIG_XGFLAV' in fsock.read():
+                            routed_ids.append(match.group(1))
+            self.assertTrue(routed_ids, pdir)
+            for n in sorted(routed_ids):
+                self.assertNotRegex(
+                    dispatch.upper(), r'CALL\s+GET_FLAVOR%s\(' % n,
+                    '%s: GET_FLAVOR%s is the base\'s, in base leg order'
+                    % (pdir, n))
+                with open(pjoin(dirs['off'], 'SubProcesses', pdir,
+                                'matrix%s_orig.f' % n)) as fsock:
+                    own = self._flavor_tables(fsock.read(), 'FLAVOR')
+                self.assertTrue(own, pdir)
+                self.assertEqual(
+                    self._flavor_tables(dispatch, 'XGFLAV%s' % n), own,
+                    '%s: flavour rows of subprocess %s' % (pdir, n))
 
 
 class TestMadeventAmplitudeChunkCompiles(unittest.TestCase):

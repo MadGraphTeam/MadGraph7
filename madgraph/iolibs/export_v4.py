@@ -12269,6 +12269,27 @@ c of an explicit polarisation in the process
             self._get_broken_symmetry_data(process, ninitial))
         return '\n'.join(lines) + '\n' + broken_sym
 
+    def _crossgroup_flavor_data(self, matrix_element, name):
+        """Declaration + DATA lines of the FLAVOR table (group-position coded,
+        exactly as this subprocess's own GET_FLAVOR would return it) of a
+        cross-group dependent, under the Fortran array name *name*.
+
+        The dependent links the base's matrix object, whose GET_FLAVOR<b>
+        returns the BASE leg order; every caller in the dependent's directory
+        (PDF in auto_dsig<n>.f, the GET_FLAVOR dispatch of auto_dsig.f feeding
+        setclscales/cluster) must read this table instead.
+        """
+        all_flv = matrix_element.get_external_flavors_with_iden()
+        model = self.model or matrix_element.get('processes')[0].get('model')
+        pdg_to_group_pos, max_group_size = self._build_flavor_group_lookup(model)
+        # Column-major flat DATA (leg fastest, then flavor) -- avoids an implied-
+        # do index variable, which need not be declared in every program unit.
+        positions = [str(self._map_flavor_to_group_pos(
+                         f, pdg_to_group_pos, max_group_size))
+                     for flav in all_flv for f in flav[0]]
+        return ['      INTEGER %s(NEXTERNAL,%d)' % (name, len(all_flv)),
+                '      DATA %s /%s/' % (name, ','.join(positions))]
+
     def _dsig_crossgroup_fills(self, matrix_element, proc_id, crossgroup):
         """Fill the cross-group (Track B) holes of auto_dsig_v4.inc for a
         dependent subprocess that has no matrix element of its own and routes to
@@ -12296,18 +12317,10 @@ c of an explicit polarisation in the process
         base_me = crossgroup['base_me']
         nflav_base = len(base_me.get_external_flavors_with_iden())
         all_flv = matrix_element.get_external_flavors_with_iden()
-        model = self.model or matrix_element.get('processes')[0].get('model')
-        pdg_to_group_pos, max_group_size = self._build_flavor_group_lookup(model)
-
-        # Column-major flat DATA (leg fastest, then flavor) -- avoids an implied-
-        # do index variable, which need not be declared in every program unit.
-        positions = [str(self._map_flavor_to_group_pos(
-                         f, pdg_to_group_pos, max_group_size))
-                     for flav in all_flv for f in flav[0]]
-        decl = ['      INTEGER DSIG_XGFLAV(NEXTERNAL,%d)' % len(all_flv),
-                '      DATA DSIG_XGFLAV /%s/' % ','.join(positions),
-                '      INTEGER DSIG_XGROUTE(%d)' % len(all_flv),
-                '      DATA DSIG_XGROUTE /%s/' % ','.join(str(x) for x in flav_idx)]
+        decl = self._crossgroup_flavor_data(matrix_element, 'DSIG_XGFLAV')
+        decl += ['      INTEGER DSIG_XGROUTE(%d)' % len(all_flv),
+                 '      DATA DSIG_XGROUTE /%s/'
+                 % ','.join(str(x) for x in flav_idx)]
 
         # Per-flavor colour map (base flow -> dependent flow).
         colmap = [self._router_colmap(matrix_element, base_me,
@@ -15013,15 +15026,32 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         # Generate get_flavor dispatch for the grouped case
         # Each subprocess has its own GET_FLAVOR<N> subroutine (from matrix element template)
         # The wrapper get_flavor(iflav, iproc, flavor) dispatches based on iproc
+        # A cross-group dependent (Track B) links the base's matrix object, so
+        # its GET_FLAVOR<n> is the base's (base leg order): the clustering scale
+        # (setclscales/cluster) then pairs the wrong legs and every config with
+        # a gluon joining two final-state gluons fails. Read the dependent's own
+        # table instead (the DSIG_XGFLAV its auto_dsig<n>.f uses for the PDF).
         get_flavor_decl = []
         get_flavor_call = []
+        crossgroup = getattr(self, '_crossgroup', None) or {}
         for iproc in range(len(matrix_elements)):
-            get_flavor_decl.append("   external get_flavor%i" % (iproc + 1))
+            routed = group_number is not None and \
+                     (group_number, iproc) in crossgroup
+            if routed:
+                get_flavor_decl.extend(self._crossgroup_flavor_data(
+                    matrix_elements[iproc], 'XGFLAV%i' % (iproc + 1)))
+            else:
+                get_flavor_decl.append("   external get_flavor%i" % (iproc + 1))
             if iproc == 0:
                 get_flavor_call.append(' if(iproc.eq.1)then')
             else:
                 get_flavor_call.append(' elseif(iproc.eq.%d)then' % (iproc + 1))
-            get_flavor_call.append("   call get_flavor%i(iflav, flavor)" % (iproc + 1))
+            if routed:
+                get_flavor_call.append("   flavor(:) = xgflav%i(:, iflav)"
+                                       % (iproc + 1))
+            else:
+                get_flavor_call.append("   call get_flavor%i(iflav, flavor)"
+                                       % (iproc + 1))
         get_flavor_call.append(' endif')
 
         replace_dict['call_to_local_get_flavor'] = "\n".join(get_flavor_call)
