@@ -12795,6 +12795,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                                                   allow_hel=allow_hel,
                                                   alphas=event.aqcd,
                                                   scale2=event.scale**2)
+            self._check_f2py_density(density_array, pdgs)
 
 
         #print(f"density_array = {density_array}") 
@@ -12815,6 +12816,18 @@ class MadSpinInterface(extended_cmd.Cmd):
                 density_matrix.set_hel_restriction_trace(hel_restriction_trace)
         return density_matrix
 
+
+    @staticmethod
+    def _check_f2py_density(density_array, pdgs):
+        """Refuse the NaN that the f2py density answers for PDG codes no
+        matrix element of the module evaluates in this order
+        (f77_no_process in all_matrix.f), as the madmatrix backend raises
+        MadDensityError in that case. A NaN density would otherwise spread
+        into the MadSpin weights of every event contracted against it."""
+        if any(z != z for z in density_array):
+            raise madmatrix_density.MadDensityError(
+                'no matrix element of the f2py module evaluates the process '
+                '%s (NaN density)' % (list(pdgs),))
 
     def get_density_batch(self, events, position, allow_hel, ncomb, dimension):
         """get_density for a list of events sharing one helicity structure.
@@ -12921,6 +12934,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                                                nbatch=nbatch,
                                                next=next_)
             for c, k in enumerate(idx):
+                self._check_f2py_density(inter[:, c], pdgs[k])
                 out[k] = madspin.DensityMatrix(inter[:, c],
                                                n_changing,
                                                allow_hel,

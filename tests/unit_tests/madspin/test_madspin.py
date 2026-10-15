@@ -14754,3 +14754,27 @@ class TestGlobalFlagGate(unittest.TestCase):
         self.assertEqual(calls, ['tree%d' % n for n in
                                  range(madspin.MS_GLOBAL_FLAG_MIN_DECAYS,
                                        madspin.MS_GLOBAL_FLAG_MIN_DECAYS + 2)])
+
+
+class TestF2pyDensityMiss(unittest.TestCase):
+    """The f2py density answers NaN (f77_no_process) for PDG codes that no
+    matrix element evaluates: MadSpin refuses it as the madmatrix backend
+    does, instead of contracting a NaN density into its weights."""
+
+    def test_nan_density_raises(self):
+        import numpy as np
+        check = interface_madspin.MadSpinInterface._check_f2py_density
+        nan = float('nan')
+        self.assertRaises(madmatrix_density.MadDensityError, check,
+                          np.array([nan, nan, nan], dtype=complex),
+                          [2, 21, -11, 11, 2])
+        self.assertRaises(madmatrix_density.MadDensityError, check,
+                          np.array([1.0, nan, 0.0]), [1, 1, 1, 1, 1])
+
+    def test_served_density_passes(self):
+        import numpy as np
+        check = interface_madspin.MadSpinInterface._check_f2py_density
+        # a vanishing density is a physical answer, not a miss
+        check(np.zeros(3, dtype=complex), [2, -2, -11, 11, 21])
+        check(np.array([4.6e-9, 0.0, 1.5e-8], dtype=complex),
+              [2, -2, -11, 11, 21])
