@@ -119,8 +119,15 @@ class MyTextTestRunner(unittest.TextTestRunner):
                     self.stream.write("FAILED ( ")
                 self.stream.writeln(" errors=%d)" % errored)
             self.stream.writeln(' '.join([str(t[0]).split()[0] for t in result.errors]))
+        elif result.skipped:
+            self.stream.writeln("OK (skipped=%d)" % len(result.skipped))
         else:
             self.stream.writeln("OK")
+        # a skipped test did not run: name it so a skip never reads as a pass
+        if result.skipped:
+            self.stream.writeln("Skipped %d:" % len(result.skipped))
+            for t, reason in result.skipped:
+                self.stream.writeln("%s: %s" % (str(t).split()[0], reason))
         if self.bypassed:
             self.stream.writeln("Bypassed %s:" % len(self.bypassed))
             self.stream.writeln(" ".join(self.bypassed))
