@@ -676,8 +676,10 @@ namespace madmatrix
         fptype absTotal = 0;
         for( int ighel = 0; ighel < dcNGoodHel; ighel++ )
           absTotal += fabs( ghelAllMEs[ighel * nevt + ievt] );
-        allMEs[ievt] = 0;
-        if( absTotal == 0 ) return; // no helicity, as in the positive case
+        // no helicity, as in the positive case, for a vanishing, NaN or infinite
+        // total (the last two kept for the abnormal-ME check)
+        allMEs[ievt] = absTotal;
+        if( !( absTotal > 0 ) || isinf( absTotal ) ) return;
         fptype absSum = 0;
         int ighelLast = -1; // last non-vanishing helicity, in case rndhel is not below 1
         for( int ighel = 0; ighel < dcNGoodHel; ighel++ )

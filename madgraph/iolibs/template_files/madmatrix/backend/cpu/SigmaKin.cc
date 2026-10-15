@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdint>
 #include <cstdlib> // for std::abort (crossing guard in EvaluateDiagrams.inc)
 #include <cmath>
 #include <cstdio>
@@ -194,6 +195,34 @@ namespace madmatrix
       code = code * xhel_nhstate[slot] + d;
     }
     return code + 1;
+  }
+
+  // Whether the total of a running |M|^2 (or jamp2) sum can drive an event-by-event
+  // choice: a zero, infinite or NaN total chooses no helicity/colour (0, reported
+  // as -1). The test reads the exponent bits of a volatile copy because the build
+  // uses -ffast-math: finite-math-only folds std::isfinite and NaN comparisons
+  // away, after which a NaN cumulative ratio passes `rnd < ratio` and the event
+  // reports an arbitrary helicity.
+  template<typename T>
+  inline bool
+  selectable_total( const T total )
+  {
+    static_assert( sizeof( T ) == sizeof( uint64_t ) || sizeof( T ) == sizeof( uint32_t ) );
+    volatile T vtotal = total;
+    const T t = vtotal;
+    if constexpr( sizeof( T ) == sizeof( uint64_t ) )
+    {
+      uint64_t bits;
+      memcpy( &bits, &t, sizeof( bits ) );
+      if( ( bits & 0x7ff0000000000000ULL ) == 0x7ff0000000000000ULL ) return false;
+    }
+    else
+    {
+      uint32_t bits;
+      memcpy( &bits, &t, sizeof( bits ) );
+      if( ( bits & 0x7f800000U ) == 0x7f800000U ) return false;
+    }
+    return t != 0;
   }
 
   // Pick the helicity row to report for the ighel-th good helicity of a lane.
@@ -990,7 +1019,8 @@ namespace madmatrix
   // ighelSum[ighel] is the running sum of T_j over the good helicities j <= ighel, as the
   // helicity loop leaves it. Returns the |M|^2 of the event (before the helicity/color
   // average and the channel weight) and sets selhel; a vanishing |M|^2 returns 0 and
-  // leaves selhel alone, as the positive case does.
+  // leaves selhel alone, as the positive case does, and so does a NaN or infinite
+  // one, returned as is for the abnormal-ME check.
   static inline fptype
   select_helicity_signed( const fptype* ighelSum,       // input: running sums over the good helicities
                           const int ngood,              // input: number of good helicities in ighelSum
@@ -1001,7 +1031,7 @@ namespace madmatrix
     fptype absTotal = 0;
     for( int ighel = 0; ighel < ngood; ighel++ )
       absTotal += std::abs( ighelSum[ighel] - ( ighel > 0 ? ighelSum[ighel - 1] : 0 ) );
-    if( absTotal == 0 ) return 0;
+    if( !selectable_total( absTotal ) ) return absTotal;
     fptype absSum = 0, absLo = 0, absHi = 0;
     int ighelLast = -1; // last non-vanishing helicity, in case rndhel is not below 1
     for( int ighel = 0; ighel < ngood; ighel++ )
@@ -1212,10 +1242,16 @@ namespace madmatrix
         }
       }
 
-      // Event-by-event random choice of helicity #403
+      // Event-by-event random choice of helicity #403. No helicity (0) unless one is
+      // chosen below: a vanishing or NaN |M|^2 chooses none, and the buffer may hold
+      // the previous call's choice.
       for( int ieppV = 0; ieppV < neppV; ++ieppV )
       {
         const int ievt = ievt00 + ieppV;
+        allselhel[ievt] = 0;
+#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+        allselhel[ievt00 + ieppV + neppV] = 0;
+#endif
         if constexpr( nampso > 1 )
         {
           if( sampleSignedHelicity )
@@ -1237,7 +1273,12 @@ namespace madmatrix
             continue;
           }
         }
-        for( int ighel = 0; ighel < nGoodLoop; ighel++ )
+#if defined MGONGPU_CPPSIMD
+        const bool okcdf = nGoodLoop > 0 && selectable_total( MEs_ighel[nGoodLoop - 1][ieppV] );
+#else
+        const bool okcdf = nGoodLoop > 0 && selectable_total( MEs_ighel[nGoodLoop - 1] );
+#endif
+        for( int ighel = 0; okcdf && ighel < nGoodLoop; ighel++ )
         {
 #if defined MGONGPU_CPPSIMD
           const bool okhel = allrndhel[ievt] < ( MEs_ighel[ighel][ieppV] / MEs_ighel[nGoodLoop - 1][ieppV] );
@@ -1265,7 +1306,8 @@ namespace madmatrix
         }
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
         const int ievt2 = ievt00 + ieppV + neppV;
-        for( int ighel = 0; ighel < nGoodLoop; ighel++ )
+        const bool okcdf2 = nGoodLoop > 0 && selectable_total( MEs_ighel2[nGoodLoop - 1][ieppV] );
+        for( int ighel = 0; okcdf2 && ighel < nGoodLoop; ighel++ )
         {
           if( allrndhel[ievt2] < ( MEs_ighel2[ighel][ieppV] / MEs_ighel2[nGoodLoop - 1][ieppV] ) )
           {
@@ -1364,7 +1406,9 @@ namespace madmatrix
 #endif
           }
           const int ievt = ievt00 + ieppV;
-          for( int icolC = 0; icolC < ncolor_flow; icolC++ )
+          allselcol[ievt] = 0; // no color unless one is chosen below (vanishing or NaN jamp2 sum)
+          const bool okcdf = selectable_total( targetamp[ncolor_flow - 1] );
+          for( int icolC = 0; okcdf && icolC < ncolor_flow; icolC++ )
           {
             if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )
             {
