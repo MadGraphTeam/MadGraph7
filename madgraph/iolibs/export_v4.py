@@ -504,6 +504,8 @@ class ProcessExporterFortran(VirtualExporter,
         if isinstance(self.cmd_options, dict) and 'axial_gauge' in self.cmd_options:
             self.opt['axial_gauge'] = banner_mod.ConfigFile.format_variable(
                   self.cmd_options['axial_gauge'], bool, 'axial_gauge')
+            # once per output: says so if the FD gauge drops the option
+            helas_call_writers.axial_gauge_requested(self.opt, warn=True)
         self._configure_flavor_mask_from_cmd_options()
         self._check_crossing_support()
         
@@ -10772,7 +10774,9 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                                        'axial_gauge' in opt['output_options']:
             self.opt['axial_gauge'] = banner_mod.ConfigFile.format_variable(
                   opt['output_options']['axial_gauge'], bool, 'axial_gauge')
-            if self.opt['axial_gauge']:
+            # False if the FD gauge drops it (ProcessExporterFortran.__init__
+            # already said so)
+            if helas_call_writers.axial_gauge_requested(self.opt):
                 # AMP2 -- the single diagram enhancement weight of
                 # sde_strategy 1 -- is gauge dependent: the axial gauge moves
                 # amplitude between diagrams, so |AMP_i|^2 stops following the
