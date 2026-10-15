@@ -39,7 +39,7 @@ namespace madmatrix
   int                                          // output: nGoodHel (the number of good helicity combinations out of ncomb)
   sigmaKin_setGoodHel( const bool* isGoodHel ); // input: isGoodHel[ncomb] - host array
 
-  int                    // output: nGoodHel as last set by sigmaKin_setGoodHel (0 before)
+  int                    // output: the good helicity rows set by sigmaKin_setGoodHel (0 before)
   sigmaKin_getNGoodHel();
 
   void

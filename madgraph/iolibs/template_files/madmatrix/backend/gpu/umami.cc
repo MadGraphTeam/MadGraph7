@@ -658,8 +658,9 @@ extern "C"
     return UMAMI_SUCCESS;
   }
 
-  // A madmatrix extension, not part of UMAMI: the length of the one good-helicity
-  // list that every flavor and crossing runs (no C-parity de-duplication on GPUs).
+  // A madmatrix extension, not part of UMAMI: the number of rows in the one
+  // good-helicity list shared by every flavor and crossing (the same number as on
+  // CPUs, where it counts both rows of a C-parity pair).
   // The filter runs at the first umami_initialize (at the first umami_matrix_element
   // call where RAMBO has no phase space; 0 before it), shared by every instance.
   int madmatrix_good_helicity_count()

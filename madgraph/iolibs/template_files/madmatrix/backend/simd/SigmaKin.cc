@@ -65,7 +65,8 @@ namespace madmatrix
   // by CPPProcess's constructor/initProc via the setters below.
   static short cHel[ncomb][npar];
   static short cFlavors[nmaxflavor][npar];
-  static int cNGoodHel;
+  static int cNGoodHel;     // the rows the helicity loop runs
+  static int cNGoodHelRows; // the good rows, before the C-parity reduction
   static int cGoodHel[ncomb];
   static fptype cIPD[nIPD > 0 ? nIPD : 1];
   static fptype cIPC[nIPC > 0 ? nIPC * 2 : 1];
@@ -965,6 +966,7 @@ namespace madmatrix
       }
     }
     cNGoodHel = nGoodHel;
+    cNGoodHelRows = nGoodHel;
     for( int ihel = 0; ihel < ncomb; ihel++ ) cGoodHel[ihel] = goodHel[ihel];
     {
       // All-or-nothing C-parity verdict. cCsymScanned is the load-bearing term:
@@ -1022,7 +1024,7 @@ namespace madmatrix
   int
   sigmaKin_getNGoodHel()
   {
-    return cNGoodHel;
+    return cNGoodHelRows; // as on GPUs, which have no C-parity reduction
   }
 
   //--------------------------------------------------------------------------
