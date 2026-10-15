@@ -279,11 +279,11 @@ decay z > l+ l-
             log = log_file.read()
             misc.sprint(log)
 
-        # MadSpin's default spinmode is "PA" (pole approximation), which
-        # routes through the density code path. The density path emits a
-        # single summary line of the form:
-        #   CRITICAL: MadSpin unweight efficiency: 0.3697
-        #            (10000 written / 27048 trials, 2.70 trials/event)
+        # MadSpin's default spinmode is "madspin" (offshell), which routes
+        # through the density code path. The density path emits a single
+        # summary line of the form:
+        #   CRITICAL: MadSpin unweight efficiency: 0.1000
+        #            (10000 written / 99958 trials, 10.00 trials/event)
         # rather than the legacy multi-line onshell summary
         # ("Total number of events written", "Average number of trial
         # points per production event", "Branching ratio to allowed
@@ -306,13 +306,17 @@ decay z > l+ l-
         self.assertEqual(n_written, 10000,
             msg='Expected 10000 written events, got %d' % n_written)
 
-        # trials/event is sampling dependent (~2.70 in density mode, ~4.98 on
-        # the legacy onshell path): only sanity-check it is present and in a
-        # physically reasonable range rather than pinning the exact value.
-        # It depends strongly on the production sample through MadSpin's
-        # maximum-weight estimate: with madevent decays, iseed 1-4 gave 4.4-15
-        # (and 34 on CI) and, before the refine normalisation changed, 4.6-152
-        # (9.3 on CI), so the bound only catches a broken unweighting.
+        # trials/event is sampling dependent: 9.6-12.6 over eight production
+        # samples of this card (spinmode madspin; PA takes ~2.8, the legacy
+        # onshell path ~4.98). It used to depend strongly on the production
+        # sample -- with madevent decays iseed 1-4 gave 4.4-15 (34 on CI), and
+        # 4.6-152 before the refine normalisation changed: the offshell
+        # max-weight scan reused one draw's production density for all the
+        # draws of an event, and the weight itself was unbounded -- a Z drawn
+        # up to sqrt(shat) pushes the gluon soft, w ~ 1/chi -- until
+        # offshell_min_recoil. Only sanity-check it is present and in a
+        # physically reasonable range rather than pinning the exact value: the
+        # bound only catches a broken unweighting.
         trials = re.search(r'([0-9]+(?:\.[0-9]+)?)\s*trials\s*/\s*event', log)
         if trials is not None:
             trials_per_event = float(trials.group(1))
