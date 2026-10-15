@@ -7220,9 +7220,10 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
     jamp_optim = True
     jamp_orbit = True
     # The only exporter implementing the extended FLAV_IDX decoding. The
-    # per-matrix-element cases it still cannot cross (msP/msF, matchbox,
-    # split orders) are handled by the use_crossing_ic gate in
-    # write_matrix_element_v4, which falls back to the uncrossed code.
+    # per-matrix-element cases it still cannot cross (msP/msF, matchbox)
+    # are handled by the use_crossing_ic gate in write_matrix_element_v4,
+    # which falls back to the uncrossed code. Split orders do cross, through
+    # the split-orders template's own holes (fill_crossing_replace_dict_so).
     supports_crossing = True
     default_vector_size = 0
     # standalone only squares the amplitude, so it can use the DDM basis. It
@@ -7281,19 +7282,25 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         carries the full standalone API, and the msP/msF, split-orders and
         matchbox variants each carry a subset (see matrix_template_provides).
 
-        For the split-orders variant the dividing line is the crossing, and it
-        is meant to be readable as such: it carries the parts of the default
-        template that mean something without one (the canonical helicity
-        encoder/decoder feeding PROCESS_NHEL, the C-parity de-duplication, the
-        flavor-aware denominator accessor GET_NHEL_IDX) and none of the parts
-        that exist only to decode an extended FLAV_IDX (the _IDX/_CROSSED
-        density stack, GET_PDG_FOR_FLAVOR, the crossing routines themselves --
-        note fill_crossing_replace_dict fills holes this template does not
-        have, and use_crossing_ic excludes split orders outright). The one
+        For the split-orders variant the dividing line is the crossing. It
+        always carries the parts of the default template that mean something
+        without one (the canonical helicity encoder/decoder feeding
+        PROCESS_NHEL, the C-parity de-duplication, the flavor-aware
+        denominator accessor GET_NHEL_IDX). Everything that exists only to
+        decode an extended FLAV_IDX comes through holes of its own, which
+        fill_crossing_replace_dict_so leaves empty without crossing -- so an
+        uncrossed FKS/MadLoop born gets none of it -- and fills with crossing:
+        so_cross_decode/so_cross_apply decode and apply the crossing in
+        SMATRIX, so_pdg_function opts into GET_PDG_FOR_FLAVOR, and
+        so_crossing_routines opts into the default template's crossing
+        routines plus the split-order density twins of
+        matrix_standalone_splitOrders_crossing_v4.inc (GET_DENSITY_IDX,
+        GET_ALL_INTER_SUMSO_IDX, GET_ALL_INTER_SO_CROSSED, GET_INTER_RESCALE).
+        Its own FLAVOR-array density stack stays uncrossed. use_crossing_ic
+        threads IC through this template like the default one. The one
         further difference is the external helicity label: the row number
         here, the canonical code there, because MadLoop passes a row.
-        test_splitorders_template_carries_the_non_crossing_standalone_api pins
-        all of it.
+        test_splitorders_template_carries_the_standalone_api pins all of it.
 
         --hel_recycling is deliberately not special-cased: it rewrites
         SMATRIX/MATRIX but appends every other routine verbatim from
