@@ -276,6 +276,34 @@ C     is GET_IDENT_CROSS.
       END
 
 
+      INTEGER FUNCTION %(proc_prefix)sGET_HELAVG_CROSS(CROSS, BEAM)
+C     Helicity states of initial leg BEAM (1 or 2) of the
+C     process row CROSS crosses into, or of both for BEAM=0:
+C     the HELAVGFACTOR / BEAMS_HELAVGFACTOR of that process. A
+C     crossing that brings a massive vector or a scalar into
+C     the initial state changes it, so a single helicity code
+C     (SMATRIXHEL) or a polarised beam undoes this average,
+C     not the base process's.
+      IMPLICIT NONE
+      INTEGER NCROSS
+      PARAMETER (NCROSS=%(ncross)d)
+      INTEGER CROSS, BEAM, I
+      INTEGER XBEAMHEL(0:2*NCROSS-1)
+%(xbeamhel_data)s
+
+      %(proc_prefix)sGET_HELAVG_CROSS = 0
+      IF (CROSS .LT. 0 .OR. CROSS .GT. NCROSS-1) RETURN
+      IF (BEAM .EQ. 0) THEN
+        %(proc_prefix)sGET_HELAVG_CROSS = XBEAMHEL(2*CROSS)
+     &   * XBEAMHEL(2*CROSS+1)
+      ELSE IF (BEAM .EQ. 1 .OR. BEAM .EQ. 2) THEN
+        %(proc_prefix)sGET_HELAVG_CROSS = XBEAMHEL(2*CROSS+BEAM-1)
+      ENDIF
+
+      RETURN
+      END
+
+
       INTEGER FUNCTION %(proc_prefix)sGET_IDENT_CROSS(CROSS, FLAVOR)
 C     Identical final state factor (product of n!) of the
 C     crossed process.

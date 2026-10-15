@@ -173,7 +173,7 @@ C        IS_BORN_HEL_SELECTED, evaluated on the recycled table).
 %(hr_iden_line)s
       DO L = 1, NINITIAL
          IF (POLARIZATIONS(L,0).NE.-1) THEN
-            ANS = ANS * BEAMS_HELAVGFACTOR(L)
+            ANS = ANS * %(hr_helavg_beam)s
             ANS = ANS / POLARIZATIONS(L,0)
          ENDIF
       ENDDO

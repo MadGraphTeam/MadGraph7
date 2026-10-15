@@ -325,11 +325,11 @@ C           be halved uniformly -- refuse the reuse for this flavor.
       ENDIF
 %(smatrix_iden_line)s
       IF(USERHEL.NE.-1) THEN
-          ANS=ANS*HELAVGFACTOR
+          ANS=ANS*%(helavg_user)s
       ELSE
         DO J=1,NINITIAL
           IF (POLARIZATIONS(J,0).ne.-1) THEN
-            ANS=ANS*BEAMS_HELAVGFACTOR(J)
+            ANS=ANS*%(helavg_beam)s
             ANS=ANS/POLARIZATIONS(J,0)
           ENDIF
         ENDDO

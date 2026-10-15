@@ -3531,6 +3531,11 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             replace_dict.update({
                 'smatrixhel_userhel': '      USERHEL=HEL',
                 'helreset_cross': '',
+                # the initial helicity average a single helicity code or a
+                # polarised beam undoes (the split-orders template shares
+                # these two holes)
+                'helavg_user': 'HELAVGFACTOR',
+                'helavg_beam': 'BEAMS_HELAVGFACTOR(J)',
                 # C-parity scan of the plain flavors only
                 'csym_doc_ntry':
                     'C     NTRY_CSYM counts only the uncrossed (cross 0) calls: CSYM\n'
@@ -3606,6 +3611,11 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             (key, value % {'proc_prefix': prefix, 'ncross': ncross,
                            'den_factor_line': replace_dict['den_factor_line']})
             for key, value in self.CROSSING_SNIPPETS.items()))
+        # A crossed process has its own initial helicity average (a Z
+        # moved into the initial state has three states, a gluon two): the
+        # (shared with split orders) holes read it per crossing.
+        replace_dict['helavg_user'] = '%sGET_HELAVG_CROSS(CROSSUSE,0)' % prefix
+        replace_dict['helavg_beam'] = '%sGET_HELAVG_CROSS(CROSSUSE,J)' % prefix
         # the per-index try and C-parity scan counters are reset with the
         # shared filter and verdict
         replace_dict['helreset_cross'] = \
@@ -3739,6 +3749,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 '      INTEGER IDENUSE, CROSSUSE\n'
                 '      INTEGER %(p)sGET_SPINCOL_CROSS\n'
                 '      INTEGER %(p)sGET_IDENT_CROSS\n'
+                '      INTEGER %(p)sGET_HELAVG_CROSS\n'
                 '      REAL*8 PUSE(0:3,NEXTERNAL)\n'
                 '      INTEGER NHELUSE(NEXTERNAL,NCOMB)\n'
                 '      INTEGER ICUSE(NEXTERNAL)\n'
@@ -4257,6 +4268,7 @@ C     crosses into.
       INTEGER IDENUSE, CROSSUSE
       INTEGER %(proc_prefix)sGET_SPINCOL_CROSS
       INTEGER %(proc_prefix)sGET_IDENT_CROSS
+      INTEGER %(proc_prefix)sGET_HELAVG_CROSS
 C     Crossed copies of the arguments, built ONCE per SMATRIX
 C     call (see the BEGIN CODE section). They are only touched
 C     when a crossing is actually requested, so the uncrossed
@@ -4472,6 +4484,8 @@ C     process's own leg, the view APPLY_CROSSING_TABLE takes.
                            invariant). A crossing-table row's initial-state
                            average is the product over the legs it puts in the
                            initial slots (crossing_table.CrossingTable.spincol);
+          'hel_part'     : per base leg, its number of helicity states alone
+                           (crossing_table.CrossingTable.beam_helicities);
           'ids_base'     : per base leg, its PDG (merged labels as they are);
           'antipid_base' : the charge conjugate of that PDG;
           'countable'    : 1 for a single external leg, 0 for a decay-block
@@ -4521,10 +4535,12 @@ C     process's own leg, the view APPLY_CROSSING_TABLE takes.
         ninitial = len([leg for leg in legs if not leg.get('state')])
 
         spincol_part = []
+        hel_part = []
         for slot in range(nexternal):
             pol = polarizations[slot]
             nspin = len(pol) if pol else \
                 len(particle(leg_ids[slot]).get_helicity_states())
+            hel_part.append(nspin)
             spincol_part.append(nspin * abs(particle(leg_ids[slot]).get('color')))
         ids_base = list(leg_ids)
         antipid_base = [particle(pid).get_anti_pdg_code() for pid in leg_ids]
@@ -4578,7 +4594,7 @@ C     process's own leg, the view APPLY_CROSSING_TABLE takes.
                 '%s*%s vs %s' % (spincol0, identical,
                                  matrix_element.get_denominator_factor())
 
-        return {'spincol_part': spincol_part,
+        return {'spincol_part': spincol_part, 'hel_part': hel_part,
                 'ids_base': ids_base, 'antipid_base': antipid_base,
                 'countable': countable, 'ident_resonance': ident_resonance,
                 'nexternal': nexternal, 'ninitial': ninitial}
@@ -4689,10 +4705,16 @@ C     process's own leg, the view APPLY_CROSSING_TABLE takes.
                                     spincol=None):
         """The matrix_standalone_crossing_v4.inc holes carrying `table`."""
         fmt = ProcessExporterFortran.format_integer_data_lines
+        tables = ProcessExporterFortran.compute_crossing_tables(
+            self, matrix_element)
         if spincol is None:
-            spincol_part = ProcessExporterFortran.compute_crossing_tables(
-                self, matrix_element)['spincol_part']
-            spincol = table.spincol(spincol_part)
+            spincol = table.spincol(tables['spincol_part'])
+        beamhel = table.beam_helicities(tables['hel_part'])
+        # Row 0 is the identity: it must give back the uncrossed
+        # HELAVGFACTOR, which the crossed accessor replaces.
+        assert beamhel[0] * beamhel[1] == matrix_element.get_hel_avg_factor(), \
+            'Crossing helicity average disagrees with get_hel_avg_factor: ' \
+            '%s vs %s' % (beamhel[:2], matrix_element.get_hel_avg_factor())
         return {
             'ncross': len(table),
             'xperm_data': fmt('XPERM', table.flat('B', 1)),
@@ -4702,6 +4724,7 @@ C     process's own leg, the view APPLY_CROSSING_TABLE takes.
             'xvalid_data': fmt('XVALID', [1 if table.valid(K) else 0
                                           for K in range(len(table))]),
             'xspincol_data': fmt('XSPINCOL', spincol),
+            'xbeamhel_data': fmt('XBEAMHEL', beamhel),
         }
 
     def _diagram_topology_signature(self, me):
@@ -8974,6 +8997,7 @@ C       stays correct for split-order processes.
                     '      ANS=ANS/DBLE(IDEN)*%sBROKEN_SYM(FLAVOR)' % prefix,
                 'hr_helcheck':
                     '      IF (FLAV_IDX.LT.1 .OR. FLAV_IDX.GT.NFLAV) RETURN',
+                'hr_helavg_beam': 'BEAMS_HELAVGFACTOR(L)',
                 'hr_helsel_decl': '',
                 'hr_warmup_ncross': '1',
                 'hr_warmup_cross_decl': '',
@@ -8992,6 +9016,7 @@ C       stays correct for split-order processes.
                 '      INTEGER IDENUSE, CROSSUSE\n'
                 '      INTEGER %(p)sGET_SPINCOL_CROSS\n'
                 '      INTEGER %(p)sGET_IDENT_CROSS\n'
+                '      INTEGER %(p)sGET_HELAVG_CROSS\n'
                 '      REAL*8 PUSE(0:3,NEXTERNAL)\n'
                 '      INTEGER ICUSE(NEXTERNAL)\n'
                 'C     APPLY_CROSSING permutes a helicity row together with the\n'
@@ -9032,9 +9057,11 @@ C       stays correct for split-order processes.
                 '        ANS=ANS/DBLE(IDENUSE*%(p)sGET_IDENT_CROSS(CROSSUSE,\n'
                 '     &   FLAVOR))\n'
                 '      ENDIF' % {'p': prefix},
+            'hr_helavg_beam': '%sGET_HELAVG_CROSS(CROSSUSE,L)' % prefix,
             'hr_helsel_decl':
                 '\n      INTEGER CROSSUSE, FLAV_USE, IDENUSE, BHEL, DUMFLAV\n'
                 '      INTEGER %(p)sGET_SPINCOL_CROSS, %(p)sGET_IDENT_CROSS\n'
+                '      INTEGER %(p)sGET_HELAVG_CROSS\n'
                 '      REAL*8 PUSE(0:3,NEXTERNAL)\n'
                 '      INTEGER ICUSE(NEXTERNAL), NHELDUM(NEXTERNAL)\n'
                 '      INTEGER NHELOUT(NEXTERNAL)' % {'p': prefix},
@@ -9063,7 +9090,8 @@ C       stays correct for split-order processes.
                 '        ENDDO\n'
                 '        ANS = ANS / DBLE(IDENUSE*%(p)sGET_IDENT_CROSS(CROSSUSE,\n'
                 '     &   FLAVOR))\n'
-                '        ANS = ANS * HELAVGFACTOR\n'
+                'C       The crossed process has its own initial helicity average.\n'
+                '        ANS = ANS * %(p)sGET_HELAVG_CROSS(CROSSUSE, 0)\n'
                 '        RETURN\n'
                 '      ENDIF' % {'p': prefix},
             'hr_warmup_ncross': str(replace_dict.get(

@@ -408,7 +408,7 @@ class TestStandaloneCrossSymmetry(unittest.TestCase):
         self._build(pdir)
         return pdir
 
-    def _output_standalone(self, process, name, options=''):
+    def _output_standalone(self, process, name, options='', out_options=''):
         """Write the standalone output for `process` and return its P* dir.
 
         Split out of _generate for the tests that only inspect the emitted
@@ -416,7 +416,8 @@ class TestStandaloneCrossSymmetry(unittest.TestCase):
 
         A single process records no crossing, so its crossing table would hold
         the identity alone: the output asks for every applicable crossing
-        (--crossing_table=all), the rows these tests probe.
+        (--crossing_table=all), the rows these tests probe. `out_options` is
+        appended to the output command (e.g. --hel_recycling=True).
         """
         outdir = pjoin(self.tmpdir, name)
         self.cmd.exec_cmd('set automatic_html_opening False')
@@ -425,8 +426,8 @@ class TestStandaloneCrossSymmetry(unittest.TestCase):
         self.cmd.exec_cmd('import model sm')
         self.cmd.exec_cmd(
             ('generate %s %s' % (process, _pin_crossing(options))).strip())
-        self.cmd.exec_cmd('output standalone_fortran %s -f --crossing_table=all'
-                          % outdir)
+        self.cmd.exec_cmd(('output standalone_fortran %s -f --crossing_table=all'
+                           ' %s' % (outdir, out_options)).strip())
 
         subproc_root = pjoin(outdir, 'SubProcesses')
         pdirs = [pjoin(subproc_root, name) for name in sorted(os.listdir(subproc_root))
@@ -1974,6 +1975,65 @@ for pdgs in ([21, 2, 24, 1], [2, -1, 24, 21], [21, -1, 24, -2]):
             self.assertAlmostEqual(a, b, delta=1e-10 * max(abs(b), 1e-300),
                                    msg='SMATRIXHEL code %d: folded %r, '
                                        'expanded %r' % (code, a, b))
+
+    def test_crossed_helicity_average_of_massive_initial_leg(self):
+        """SMATRIXHEL at a crossed index undoes the crossed process's own
+        initial helicity average.
+
+        The crossing of u g > u z into u z > u g changes the initial helicity
+        count from 2 x 2 to 2 x 3. A single helicity code is |M|^2 times that
+        count; multiplying by the base's HELAVGFACTOR made every code of the
+        crossed process 2/3 of its expanded output while the summed SMATRIX
+        stayed right. Checked code by code against the expanded output, plain
+        and --hel_recycling.
+        """
+        base = 'u g > u z QED=1 QCD=1'
+        fold = self._output_standalone(base, 'zq_fold')
+        self._write_driver(fold)
+        self._build(fold)
+        # u z > u g in its own slots: u <- base u, z <- base z (slot 4),
+        # u <- base final u, g <- base g (slot 2)
+        iflav = self._cross_iflav(fold, (0, 3, 2, 1))
+        fold_hr = self._output_standalone(base, 'zq_fold_hr',
+                                          out_options='--hel_recycling=True')
+        alone_dir = self._output_standalone('u z > u g QED=1 QCD=1', 'zq_exp',
+                                            '--use_crossing=False')
+
+        # one 2 > 2 point of u z > u g in its own slot order
+        mz, energy, cos, phi = 91.188, 500.0, 0.3, 0.7
+        pin = (energy ** 2 - mz ** 2) / (2 * energy)
+        pout = energy / 2
+        sin = math.sqrt(1 - cos ** 2)
+        out = (pout * sin * math.cos(phi), pout * sin * math.sin(phi),
+               pout * cos)
+        point = [(pin, 0, 0, pin), (math.hypot(pin, mz), 0, 0, -pin),
+                 (pout,) + out, (pout,) + tuple(-x for x in out)]
+
+        def per_code(path, flav_idx):
+            with open(pjoin(path, 'check_sa.f'), 'w') as fsock:
+                fsock.write(self._HELCODE_DRIVER)
+            for stale in ('check', 'check_sa.o'):
+                if os.path.exists(pjoin(path, stale)):
+                    os.remove(pjoin(path, stale))
+            self._build(path)
+            lines = ['%d 24' % flav_idx] + [
+                ' '.join('%.17e' % x for x in mom) for mom in point]
+            out = subprocess.run(['./check'], cwd=path, capture_output=True,
+                                 input='\n'.join(lines) + '\n',
+                                 text=True).stdout
+            return [float(v) for v in re.findall(r'HEL=\s*\d+\s+(\S+)', out)]
+        alone = per_code(alone_dir, 1)
+        self.assertEqual(len(alone), 24)
+        scale = max(abs(v) for v in alone)
+        self.assertGreater(scale, 0.0)
+        for label, path in (('plain', fold), ('hel_recycling', fold_hr)):
+            folded = per_code(path, iflav)
+            self.assertEqual(len(folded), 24, label)
+            for code, (a, b) in enumerate(zip(folded, alone), 1):
+                self.assertAlmostEqual(
+                    a, b, delta=1e-10 * max(abs(b), 1e-12 * scale),
+                    msg='%s SMATRIXHEL code %d: folded %r, expanded %r'
+                        % (label, code, a, b))
 
     # SMATRIXHEL for every helicity code 1..NCODE at the momenta read from
     # stdin; stdin: FLAV_IDX NCODE, then the momenta (E px py pz).

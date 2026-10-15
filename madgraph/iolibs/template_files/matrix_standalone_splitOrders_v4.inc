@@ -377,13 +377,13 @@ C           be halved uniformly -- refuse the reuse for this flavor.
       ENDDO
       IF(USERHEL.NE.-1) THEN
         DO I=0,NSQAMPSO
-          ANS(I)=ANS(I)*HELAVGFACTOR
+          ANS(I)=ANS(I)*%(helavg_user)s
         ENDDO
       ELSE
         DO J=1,NINITIAL
           IF (POLARIZATIONS(J,0).ne.-1) THEN
             DO I=0,NSQAMPSO
-              ANS(I)=ANS(I)*BEAMS_HELAVGFACTOR(J)
+              ANS(I)=ANS(I)*%(helavg_beam)s
               ANS(I)=ANS(I)/POLARIZATIONS(J,0)
             ENDDO
           ENDIF
