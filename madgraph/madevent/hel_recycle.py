@@ -1698,9 +1698,13 @@ class HelicityRecycler():
             return
 
         atexit.register(self.clean_up)
+        # The gather and the two chunkers below act on a fortran matrix
+        # element only; a dialect without its blocks (C++) cuts its own.
+        fortran = self.dialect.fortran_blocks
         # before read_orig: it rewrites the color flow lines as it reads them,
         # and how they spell an amplitude is what this decides
-        self.set_gather_lines()
+        if fortran:
+            self.set_gather_lines()
         self.read_orig()
         # Two chunkers live here, one per backend, and exactly one of them
         # fires for any given matrix element. write_amp_chunks is madevent's:
@@ -1711,9 +1715,11 @@ class HelicityRecycler():
         # out of it, and only when the exporter set chunk_spec/chunk_stmts/
         # chunk_file. Neither backend configures the other's, so they never
         # both cut the same file -- do not "unify" them without checking that.
-        self.write_amp_chunks()
+        if fortran:
+            self.write_amp_chunks()
         self.read_template()
-        self.split_helas_block()
+        if fortran:
+            self.split_helas_block()
         atexit.unregister(self.clean_up)
 
     #===========================================================================

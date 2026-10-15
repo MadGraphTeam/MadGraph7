@@ -557,6 +557,62 @@ class TestHelRecyclingWarmup(unittest.TestCase):
                          ([1, 3], [(1, 2), (3, 7)]))
 
 
+class TestCrossingHelicityFactor(unittest.TestCase):
+    """The helicity baked into an external of a crossing-aware fortran matrix
+    element keeps the IC(i) factor of its NSF flag.
+
+    A crossed call evaluates the base row with every leg that changed side
+    negated together with its NSF flag (APPLY_CROSSING_ROWS), so one optim
+    serves every crossing only if the baked value is h*IC(i). The C++ dialect
+    has no IC: its crossed external carries the sign through its //HREXT tail."""
+
+    FERMION = '      CALL IXXXXX(P(0,2),ZERO,NHEL(2),+1*IC(2), FLAVOR(2),W(2))'
+    VECTOR = '      CALL VXXXXX(P(0,1),ZERO,NHEL(1),-1,W(1))'
+    SCALAR = '      CALL SXXXXX(P(0,3),+1*IC(3),W(3))'
+
+    def setUp(self):
+        hel_recycle.HelicityRecycler(['1'])  # resets the shared class state
+
+    def fortran_args(self, line, hel):
+        dialect = hel_recycle.Dialect()
+        return dialect.set_external_helicity(dialect.arguments(line), hel)
+
+    def test_the_ic_factor_follows_the_helicity(self):
+        """NHEL(2) with +1*IC(2) as its NSF becomes -1*IC(2)"""
+
+        self.assertEqual(self.fortran_args(self.FERMION, -1)[2], '-1*IC(2)')
+        self.assertEqual(self.fortran_args(self.FERMION, 1)[2], '+1*IC(2)')
+
+    def test_no_ic_no_factor(self):
+        """A leg whose NSF carries no IC gets the bare value"""
+
+        self.assertEqual(self.fortran_args(self.VECTOR, -1)[2], '-1')
+
+    def test_a_scalar_takes_no_factor(self):
+        """A scalar has no helicity: the slot is its output, renamed later"""
+
+        self.assertEqual(self.fortran_args(self.SCALAR, 0)[2], ' 0')
+
+    def test_the_unfolded_copies_carry_it(self):
+        """generate_wavfuncs writes one copy per helicity, each h*IC(i)"""
+
+        hel_recycle.External.hel_ranges = [set(), {-1, 1}]
+        dag = hel_recycle.DAG()
+        copies = hel_recycle.External.generate_wavfuncs(self.FERMION + '\n', dag)
+        self.assertEqual(sorted(copy.args[2] for copy in copies),
+                         ['+1*IC(2)', '-1*IC(2)'])
+        self.assertEqual(sorted(copy.hel for copy in copies), [-1, 1])
+
+    def test_cpp_takes_no_factor(self):
+        """The C++ dialect writes the bare value"""
+
+        dialect = hel_recycle.CppDialect()
+        line = ('      ixxxxx<M_ACCESS, W_ACCESS>( xmom, m_pars->MT, cHel[ihel][2],'
+                ' -1, cFlavors[iflavor][2], aloha_obj[5], 2 );')
+        args = dialect.set_external_helicity(dialect.arguments(line), -1)
+        self.assertEqual(args[2], '-1')
+
+
 class TestGoodHelIds(unittest.TestCase):
     """NHEL(0,k) of the recycled matrix element is the 1-based id of that
     helicity in the original NHEL table.
