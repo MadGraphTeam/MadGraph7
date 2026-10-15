@@ -3147,20 +3147,18 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         table = self.get_crossing_table(me)
 
         # Per-leg helicity states used to re-encode a crossed helicity config
-        # into its canonical code. allow_reverse=True is NOT optional: it is the
-        # order the cHel/tHel table itself is built in (get_helicity_matrix,
-        # allow_reverse=True) AND the order the fortran ENCODE_HEL STATES table
-        # uses (get_helicity_encoder_dict), which together define the canonical
-        # code. get_helicity_states reverses the list for an ANTIparticle leg,
-        # so with allow_reverse=False every such leg's digit lookup is off by one
+        # into its canonical code: the lists the cHel/tHel table itself is
+        # built from (get_helicity_matrix, allow_reverse=True), which are also
+        # the ones the fortran ENCODE_HEL STATES table uses
+        # (ProcessExporterFortran._helstate_data), so that the code IS the row
+        # of that table. allow_reverse=True is NOT optional:
+        # get_helicity_states reverses the list for an ANTIparticle leg, so
+        # with allow_reverse=False every such leg's digit lookup is off by one
         # state and the code comes out wrong: for u u~ > t t~ legs 1 and 4 give
-        # (+1,-1) not (-1,+1), and all 16 rows mis-encode. Like the fortran
-        # encoder this deliberately ignores wf['polarization'] -- the code space
-        # is the FULL mixed-radix space, a polarized leg simply never reaches
-        # its filtered-out digits.
-        pdict = me.get('processes')[0].get('model').get('particle_dict')
-        hstates = [pdict[wf.get('pdg_code')].get_helicity_states(True)
-                   for wf in me.get_external_wavefunctions()]
+        # (+1,-1) not (-1,+1), and all 16 rows mis-encode. A polarized leg
+        # never gets here (it breaks crossing symmetry), but its list would be
+        # the restricted one, exactly as in the table.
+        hstates = [list(s) for s in me.get_helicity_per_particle()]
         hnstate = [len(s) for s in hstates]
         maxhel = max(hnstate) if hnstate else 1
         # Per crossing row K and crossed slot k, the states its code digit runs

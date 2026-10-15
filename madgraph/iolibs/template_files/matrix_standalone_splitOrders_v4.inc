@@ -178,8 +178,9 @@ C     this template used to rely on).
 
 C     USERHEL selects one helicity configuration: here it is its
 C     row in the NHEL table, which is what the NLO callers pass.
-C     Without polarized legs this row number is also the
-C     helicity code of the other standalone outputs.
+C     The helicity code of the other standalone outputs runs
+C     over the same per-leg lists (polarization included), so
+C     this row number is also that code.
       INTEGER USERHEL
       DATA USERHEL/-1/
       COMMON/%(proc_prefix)sHELUSERCHOICE/USERHEL

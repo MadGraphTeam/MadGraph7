@@ -16,14 +16,14 @@ C     filter and SMATRIXHEL select on.
       SUBROUTINE %(proc_prefix)sSMATRIXHEL(P, HEL, FLAV_IDX, ANS)
 C     Matrix element restricted to a single helicity
 C     configuration, rescaled by HELAVGFACTOR exactly like the
-C     standard standalone. HEL is the CANONICAL mixed-radix
+C     standard standalone. HEL is the canonical mixed-radix
 C     helicity code (what the standard SMATRIX compares against
-C     HELALLOW), not a row index: NHEL(0,K) gives the row K had
-C     in the full pre-recycling enumeration, and HELALLOW turns
-C     that row into its code. The two coincide for an
-C     unpolarized process (HELALLOW is then 1..NCOMBFULL) but
-C     not when a polarization restriction selects a subset of
-C     the codes.
+C     HELALLOW): NHEL(0,K) gives the row K had in the full
+C     pre-recycling enumeration, and HELALLOW turns that row
+C     into its code. The radix runs over the same per-leg lists
+C     as that enumeration, a polarization restriction included,
+C     so HELALLOW is 1..NCOMBFULL and the code IS the row the
+C     caller (e.g. the reweighting) passes.
       IMPLICIT NONE
       INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)

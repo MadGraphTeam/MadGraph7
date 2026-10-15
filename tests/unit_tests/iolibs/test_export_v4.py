@@ -11014,6 +11014,90 @@ class OptimiseJampTest(unittest.TestCase):
         return list(zip(left_of, right_of, ratio_of))
 
 
+class HelstateDataPolarizationTest(unittest.TestCase):
+    """The canonical helicity code of _helstate_data must be the row number.
+
+    The code is a mixed-radix integer over per-leg helicity lists; the row is
+    the position in get_helicity_matrix(). Madevent stores the row it sampled
+    and decodes the event's helicities (and the EVA beam helicity) from these
+    tables, and every standalone caller asks for a row. With a radix over the
+    FULL particle states the two differed as soon as one leg was polarized,
+    so p p > w+{0} j wrote W+ helicity -1 in most of its events.
+    """
+
+    def setUp(self):
+        import models.import_ufo
+        self.exporter = export_v4.ProcessExporterFortranSA()
+        # keyed on the lepton id: with flavour grouping the electron is a
+        # member of the merged lepton group 82, and only that id has vertices
+        self.models = {
+            11: models.import_ufo.import_model(
+                    'sm', options={'apply_flavor_grouping': False}),
+            82: models.import_ufo.import_model('sm')}
+
+    def matrix_element(self, w_plus_polarization, lepton):
+        """l+ l- > w+ w-, the W+ restricted to `w_plus_polarization`."""
+        legs = base_objects.LegList()
+        for i, (pid, pol) in enumerate([(-lepton, []), (lepton, []),
+                                        (24, w_plus_polarization), (-24, [])], 1):
+            legs.append(base_objects.Leg({'id': pid, 'state': i > 2,
+                                          'number': i, 'polarization': pol}))
+        process = base_objects.Process({'legs': legs,
+                                        'model': self.models[lepton]})
+        return helas_objects.HelasMatrixElement(
+                                         diagram_generation.Amplitude(process))
+
+    @staticmethod
+    def data_values(text):
+        """The values of each DATA statement in `text`, one list per statement
+        (continuation lines included)."""
+        statements = re.split(r'\n(?=\s*DATA )', text.strip())
+        return [[int(v) for v in re.findall(r'-?\d+', stmt.split('/', 1)[1])]
+                for stmt in statements]
+
+    def tables(self, matrix_element):
+        data = self.exporter._helstate_data(matrix_element)
+        nhstate = self.data_values(data['nhstate_data'])[0]
+        states = self.data_values(data['states_data'])
+        helallow = self.data_values(data['hel_allow_data'])[0]
+        return nhstate, states, helallow
+
+    @staticmethod
+    def decode(code, nhstate, states):
+        """What DECODE_HEL / madevent's GET_NHEL do: last leg fastest."""
+        rest, config = code - 1, [0] * len(nhstate)
+        for k in reversed(range(len(nhstate))):
+            config[k] = states[k][rest % nhstate[k]]
+            rest //= nhstate[k]
+        return config
+
+    def check_code_is_row(self, matrix_element):
+        nhstate, states, helallow = self.tables(matrix_element)
+        rows = [list(row) for row in matrix_element.get_helicity_matrix()]
+        self.assertEqual(helallow, list(range(1, len(rows) + 1)))
+        for i, row in enumerate(rows, 1):
+            self.assertEqual(self.decode(i, nhstate, states), row,
+                             'row %d does not decode to itself' % i)
+        return nhstate
+
+    def test_polarized_leg_radix_is_its_restriction(self):
+        for lepton in (11, 82):
+            # {0}: the W+ digit has a single state, so 2*2*1*3 = 12 rows
+            self.assertEqual(
+                self.check_code_is_row(self.matrix_element([0], lepton)),
+                [2, 2, 1, 3])
+            # {T}: two of the three massive-vector states
+            self.assertEqual(
+                self.check_code_is_row(self.matrix_element([-1, 1], lepton)),
+                [2, 2, 2, 3])
+
+    def test_unpolarized_tables_unchanged(self):
+        for lepton in (11, 82):
+            self.assertEqual(
+                self.check_code_is_row(self.matrix_element([], lepton)),
+                [2, 2, 3, 3])
+
+
 class F2PYSplitterFlavorOrderTest(unittest.TestCase):
     """all_matrix.f has to repair a leg ordering FLAV_TABLE does not tabulate.
 

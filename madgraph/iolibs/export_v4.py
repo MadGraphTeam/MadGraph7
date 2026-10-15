@@ -2916,12 +2916,19 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         A helicity configuration is encoded as a single mixed-radix integer
         (the 'canonical code') over the per-leg helicity states, with the last
         external leg as the least-significant digit -- matching the
-        itertools.product ordering used by get_helicity_matrix(). For a
-        non-polarized process this makes the code of the i-th row exactly i, so
-        HELALLOW is simply [1..NCOMB] and nothing is relabelled; a polarization
-        restriction ({0}/{L}/...) keeps the *full* per-leg multiplicity as the
-        radix (so helicity 0 / longitudinal stays a first-class state) and
-        leaves HELALLOW as the selected, non-contiguous subset of codes.
+        itertools.product ordering used by get_helicity_matrix(). The per-leg
+        states are the very lists get_helicity_matrix() runs over, a
+        polarization restriction ({0}/{T}/{L}...) included, so the code of the
+        i-th row is exactly i for EVERY process and HELALLOW is [1..NCOMB].
+
+        That identity is load-bearing. Every producer and consumer of a single
+        helicity label speaks rows: madevent stores the row it sampled and its
+        GET_NHEL decodes the event's helicities (and, for the EVA PDF, the beam
+        helicity and multiplicity) from these tables; the reweighting asks
+        SMATRIXHEL for a row; madmatrix reports a row. A radix over the FULL
+        per-leg states made the code differ from the row as soon as one leg was
+        polarized, and the row was then decoded as a code: p p > w+{0} j wrote
+        W+ helicity -1 in most of its events.
 
         Returns a dict with keys:
           maxhel          - max per-leg helicity multiplicity (STATES 1st dim)
@@ -2930,13 +2937,11 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
           hel_allow_data  - DATA for HELALLOW(NCOMB)      (allowed codes)
           flip_data       - DATA for FLIP(NCOMB)          (C-parity partner row)
         """
-        model = matrix_element.get('processes')[0].get('model')
-        pdict = model.get('particle_dict')
         ext = matrix_element.get_external_wavefunctions()
-        # Full per-leg helicity states, allow_reverse=True so the value order
-        # matches get_helicity_matrix() for non-polarized legs (code==row).
-        states = [pdict[wf.get('pdg_code')].get_helicity_states(True)
-                  for wf in ext]
+        # The per-leg lists get_helicity_matrix() enumerates: the polarization
+        # when the leg has one, else the particle's states in allow_reverse=True
+        # order -- so that code == row (see the docstring).
+        states = [list(s) for s in matrix_element.get_helicity_per_particle()]
         if matrix_element.get_nonia() > 0:
             # A bound state is one helicity digit, its 2J+1 states, in place of
             # its two constituents -- the rows get_helicity_matrix enumerates.
@@ -2969,8 +2974,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # reads as "this row is not part of a C-symmetric pair, keep the
         # de-duplication off". Two ways to land there, both deliberate: a row
         # that negates to itself (all helicities 0), and a row whose negation is
-        # not in the allowed set -- the polarized case, where a leg keeps its
-        # full radix but only some states are selected.
+        # not a configuration of this process -- a polarized leg whose list
+        # does not hold the negated state ({L} has no +1).
         code_to_row = {code: i + 1 for i, code in enumerate(allowed)}
         flip = []
         for i, row in enumerate(matrix_element.get_helicity_matrix()):
