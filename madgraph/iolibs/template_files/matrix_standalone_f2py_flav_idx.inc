@@ -74,7 +74,10 @@ C     GET_SPINCOL_CROSS*GET_IDENT_CROSS when crossed -- so a
 C     caller reading GET_NHEL and reconstructing ANS*IDEN would
 C     get a wrong answer for any crossed (or merely
 C     non-representative) flavor. This entry reports the
-C     denominator SMATRIX actually applied for this FLAV_IDX.
+C     denominator SMATRIX actually applied for this FLAV_IDX,
+C     and the helicity table of the process FLAV_IDX names, in
+C     its own leg order: column C is the code C that
+C     SMATRIXHEL_IDX takes for it.
 C     GET_NHEL keeps its signature and its meaning for existing
 C     uncrossed callers.
       IMPLICIT NONE

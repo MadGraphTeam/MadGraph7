@@ -441,3 +441,34 @@ C     (no helicity requested), comes back unchanged.
 
       RETURN
       END
+
+      SUBROUTINE %(proc_prefix)sCROSS_NHEL_TABLE(FLAV_IDX_IN, NCOMB_IN,
+     & NHEL_OUT)
+C     The helicity table of the process FLAV_IDX_IN names, in
+C     its own leg order: column C holds the helicities of its
+C     OWN code C, the code SMATRIXHEL takes (the inverse of
+C     CROSS_HELCODE). Slot K carries base leg PINV(K), with the
+C     states of that leg in the same order, so an uncrossed
+C     index gives back the base table.
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INTEGER    MAXHEL
+      PARAMETER (MAXHEL=%(maxhel)d)
+      INTEGER FLAV_IDX_IN, NCOMB_IN
+      INTEGER NHEL_OUT(NEXTERNAL,NCOMB_IN)
+      INTEGER PINV(NEXTERNAL), SGNI(NEXTERNAL), XF, I, K, R, B, C
+      INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
+%(nhstate_data)s
+%(states_data)s
+      CALL %(proc_prefix)sGET_CROSS_PINV(FLAV_IDX_IN, PINV, SGNI, XF)
+      DO C = 1, NCOMB_IN
+        R = C - 1
+        DO K = NEXTERNAL, 1, -1
+          B = PINV(K)
+          NHEL_OUT(K,C) = STATES(MOD(R, NHSTATE(B))+1, B)
+          R = R / NHSTATE(B)
+        ENDDO
+      ENDDO
+
+      RETURN
+      END

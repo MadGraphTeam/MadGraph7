@@ -450,6 +450,10 @@ C     what makes two crossings comparable -- is therefore wrong
 C     for every crossed flavor and for every non-representative
 C     one.
 C
+C     NHEL_STAR is the helicity table of the process FLAV_IDX_IN
+C     names, in its own leg order: column C is the code C that
+C     SMATRIXHEL takes for it (the base table when uncrossed).
+C
 C     GET_NHEL is deliberately left alone: its signature and its
 C     value are what existing uncrossed callers expect.
 %(nhel_idx_decl)s

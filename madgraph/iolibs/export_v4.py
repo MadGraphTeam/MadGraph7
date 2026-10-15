@@ -3675,6 +3675,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             '      ELSE\n'
             '        IDEN_STAR = %(prefix)sGET_SPINCOL_CROSS(NHI_CROSS)\n'
             '     &   * %(prefix)sGET_IDENT_CROSS(NHI_CROSS, FLAVOR)\n'
+            'C       SMATRIXHEL takes the crossed process\'s own code\n'
+            'C       (CROSS_HELCODE): report that process\'s own table.\n'
+            '        CALL %(prefix)sCROSS_NHEL_TABLE(FLAV_IDX_IN, NCOMB,\n'
+            '     &   NHEL_STAR)\n'
             '      ENDIF' % {'prefix': prefix})
         crossing_template = pjoin(_file_path, 'iolibs', 'template_files',
                                   'matrix_standalone_crossing_v4.inc')

@@ -1575,7 +1575,12 @@ print("F2PY_PDG_OK")
         PDG codes (smatrixhel). A crossed subprocess folded onto its base has
         no PDG branch of its own, and used to come back as 0 with no error --
         u d~ > w+ g of p p > w+ j, now that crossing is on by default. It must
-        give what the --use_crossing=False output gives."""
+        give what the --use_crossing=False output gives.
+
+        Per helicity too: the table py_<prefix>get_nhel_idx gives for a crossed
+        index must be the crossed process's own (column h = the code h that
+        SMATRIXHEL takes), so it and the per-code values must both match the
+        expanded output. It used to hand back the base table."""
         outs = {}
         for name, options in (('on', ''), ('off', ' --use_crossing=False')):
             out = pjoin(self.tmpdir, 'all_matrix_' + name)
@@ -1596,7 +1601,7 @@ print("F2PY_PDG_OK")
                               'SubProcesses')) if d.startswith('P')]), 1,
                          'p p > w+ j folded nothing')
         script = '''
-import sys, os, math, numpy as np
+import sys, os, math, json, numpy as np
 sub = os.path.join(sys.argv[1], 'SubProcesses')
 sys.path.insert(0, sub)
 import all_matrix2py as m
@@ -1608,8 +1613,21 @@ P = np.array([[E, 0, 0, E], [E, 0, 0, -E], [e3, q * s, 0, q * c],
               [2 * E - e3, -q * s, 0, -q * c]]).T
 for pdgs in ([21, 2, 24, 1], [2, -1, 24, 21], [21, -1, 24, -2]):
     print('ME %r' % m.smatrixhel(pdgs, -1, P, 0.118, 0, -1))
+def nhel_table(pdgs):
+    k = 0
+    while hasattr(m, 'py_m%d_get_flavor_layout' % k):
+        nflav, _nexternal, ncross = getattr(m, 'py_m%d_get_flavor_layout' % k)()
+        for idx in range(1, nflav * ncross + 1):
+            if list(getattr(m, 'py_m%d_get_pdg_for_flavor' % k)(idx)) == pdgs:
+                return getattr(m, 'py_m%d_get_nhel_idx' % k)(idx)[1]
+        k += 1
+for pdgs in ([2, -1, 24, 21], [21, -1, 24, -2]):
+    nhel = np.array(nhel_table(pdgs))
+    print('NHEL %r' % [tuple(int(x) for x in col) for col in nhel.T])
+    print('PER %s' % json.dumps([m.smatrixhel(pdgs, -1, P, 0.118, 0, h)
+                                 for h in range(1, nhel.shape[1] + 1)]))
 '''
-        values = {}
+        values, tables, per_code = {}, {}, {}
         for name, out in outs.items():
             path = pjoin(self.tmpdir, 'probe_%s.py' % name)
             with open(path, 'w') as fsock:
@@ -1620,10 +1638,24 @@ for pdgs in ([21, 2, 24, 1], [2, -1, 24, 21], [21, -1, 24, -2]):
             values[name] = [float(v) for v in re.findall(r'^ME (\S+)$',
                                                           output, re.M)]
             self.assertEqual(len(values[name]), 3, output)
+            tables[name] = re.findall(r'^NHEL (.*)$', output, re.M)
+            per_code[name] = [json.loads(v) for v in re.findall(r'^PER (.*)$',
+                                                          output, re.M)]
+            self.assertEqual(len(tables[name]), 2, output)
+            self.assertEqual(len(per_code[name]), 2, output)
         for on, off in zip(values['on'], values['off']):
             self.assertGreater(off, 0.0)
             self.assertLessEqual(abs(on - off), 1e-10 * off,
                                  (values['on'], values['off']))
+        # the crossed index labels its codes with its own table
+        self.assertEqual(tables['on'], tables['off'])
+        for total, on, off in zip(values['off'][1:], per_code['on'],
+                                  per_code['off']):
+            self.assertEqual(len(on), len(off))
+            self.assertGreater(max(off), 0.0)
+            for h, (v_on, v_off) in enumerate(zip(on, off)):
+                self.assertLessEqual(abs(v_on - v_off), 1e-10 * total,
+                                     'code %d: %r vs %r' % (h + 1, on, off))
 
     def _assert_goodhel_relation(self, process, name, ninitial, npts=16):
         """Compiled-module check that one good-helicity filter serves every

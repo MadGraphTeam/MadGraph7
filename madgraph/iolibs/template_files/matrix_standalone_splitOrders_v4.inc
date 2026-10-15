@@ -512,6 +512,10 @@ C     helicity/color sum -- the natural thing to do -- is
 C     therefore wrong for every non-representative flavor of a
 C     merged matrix element.
 C
+C     NHEL_STAR is the helicity table of the process FLAV_IDX_IN
+C     names, in its own leg order: column C is the code C that
+C     SMATRIXHEL takes for it (the base table when uncrossed).
+C
 C     GET_NHEL is deliberately left alone: its signature and its
 C     value are what existing callers expect.
 C
