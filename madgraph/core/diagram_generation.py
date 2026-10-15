@@ -2281,7 +2281,7 @@ class DecayChainAmplitude(Amplitude):
     @staticmethod
     def _decays_break_crossing(process_definition):
         """True if any decay (recursively) pins a specific s-channel propagator,
-        or carries a polarized leg or a bound state.
+        or carries a polarized leg, a bound state or an off-shell ('*') leg.
 
         Crossing acts at the production level and lets the force-onshell decays
         ride along, so a plain decay chain keeps crossing (see
@@ -2295,7 +2295,7 @@ class DecayChainAmplitude(Amplitude):
         for decay in process_definition.get('decay_chains'):
             if decay.get('required_s_channels') or \
                decay.get('forbidden_s_channels') or \
-               any(l.get('polarization') or l.get('onium')
+               any(l.get('polarization') or l.get('onium') or l.get('offshell')
                    for l in decay.get('legs')) or \
                DecayChainAmplitude._decays_break_crossing(decay):
                 return True
@@ -2894,14 +2894,15 @@ class MultiProcess(base_objects.PhysicsObject):
                    not process.get_interference_mode():
                     # Recording a crossing hands the process to the crossing
                     # machinery of its base, and the exporter does not write
-                    # that machinery for a polarized leg or a bound state (see
+                    # that machinery for a polarized leg, a bound state or an
+                    # off-shell ('*') leg (see
                     # export_v4.breaks_crossing_symmetry): recorded there, the
                     # crossed process would be lost. Reuse the diagrams instead
                     # and keep it as a matrix element of its own.
                     this_merge = merge_crossing
                     if this_merge == 'record' and \
-                       any(l.get('polarization') or l.get('onium')
-                           for l in process.get('legs')):
+                       any(l.get('polarization') or l.get('onium') or
+                           l.get('offshell') for l in process.get('legs')):
                         this_merge = False
                     try:
                         crossed_index = success_procs.index(sorted_legs)
