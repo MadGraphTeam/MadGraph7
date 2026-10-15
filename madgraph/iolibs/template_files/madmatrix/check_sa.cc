@@ -934,8 +934,8 @@ namespace
     unsigned int nevtZERO = 0;
     double sumME = 0.;
     double sumMEsq = 0.;
-    double minME = std::numeric_limits<double>::infinity();
-    double maxME = -std::numeric_limits<double>::infinity();
+    double minME = std::numeric_limits<double>::max();
+    double maxME = std::numeric_limits<double>::lowest();
     unsigned int nevtALL = 0;
 
     for( unsigned int iiter = 0; iiter < niter; ++iiter )
