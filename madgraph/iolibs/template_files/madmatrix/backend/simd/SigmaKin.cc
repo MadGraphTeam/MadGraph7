@@ -226,6 +226,42 @@ namespace madmatrix
     return t != 0;
   }
 
+  // A quiet NaN made from its bits through a volatile: under -ffast-math
+  // (finite-math-only) a NaN constant counts as poison, and the compiler may
+  // drop a store of std::numeric_limits<T>::quiet_NaN() altogether.
+  template<typename T>
+  inline T
+  quiet_nan_bits()
+  {
+    static_assert( sizeof( T ) == sizeof( uint64_t ) || sizeof( T ) == sizeof( uint32_t ) );
+    T t;
+    if constexpr( sizeof( T ) == sizeof( uint64_t ) )
+    {
+      volatile uint64_t vbits = 0x7ff8000000000000ULL;
+      const uint64_t bits = vbits;
+      memcpy( &t, &bits, sizeof( t ) );
+    }
+    else
+    {
+      volatile uint32_t vbits = 0x7fc00000U;
+      const uint32_t bits = vbits;
+      memcpy( &t, &bits, sizeof( t ) );
+    }
+    return t;
+  }
+
+  // Whether an event's flavor id names a flavor of this process. With crossing
+  // every extended id does (a row out of the crossing table gives a zero ME);
+  // without, only an index of cFlavors. Any other id is evaluated with the
+  // reduced flavor of its page (see JampsPreamble.h), so that nothing is read
+  // out of bounds, and then gets a NaN |M|^2 and no helicity, colour or
+  // diagram choice, as on GPU (normalise_output).
+  inline bool
+  valid_flavor_id( const unsigned int flavor_id )
+  {
+    return use_crossing || flavor_id < (unsigned int)nmaxflavor;
+  }
+
   // Pick the helicity row to report for the ighel-th good helicity of a lane.
   // The row stands for a C-parity PAIR counted twice when the de-duplication
   // is on, so either member must come out at equal rate or the event-level
@@ -1292,20 +1328,22 @@ namespace madmatrix
 #else
               ighelSum[ighel] = MEs_ighel[ighel];
 #endif
-            *E_ACCESS::ieventAccessRecord( allMEs, ievt ) = select_helicity_signed( ighelSum, nGoodLoop, iflavorVec[ievt], allrndhel[ievt], allselhel[ievt] );
+            if( valid_flavor_id( iflavorVec[ievt] ) )
+              *E_ACCESS::ieventAccessRecord( allMEs, ievt ) = select_helicity_signed( ighelSum, nGoodLoop, iflavorVec[ievt], allrndhel[ievt], allselhel[ievt] );
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
             const int ievt2 = ievt00 + ieppV + neppV;
             for( int ighel = 0; ighel < nGoodLoop; ighel++ )
               ighelSum[ighel] = MEs_ighel2[ighel][ieppV];
-            *E_ACCESS::ieventAccessRecord( allMEs, ievt2 ) = select_helicity_signed( ighelSum, nGoodLoop, iflavorVec[ievt2], allrndhel[ievt2], allselhel[ievt2] );
+            if( valid_flavor_id( iflavorVec[ievt2] ) )
+              *E_ACCESS::ieventAccessRecord( allMEs, ievt2 ) = select_helicity_signed( ighelSum, nGoodLoop, iflavorVec[ievt2], allrndhel[ievt2], allselhel[ievt2] );
 #endif
             continue;
           }
         }
 #if defined MGONGPU_CPPSIMD
-        const bool okcdf = nGoodLoop > 0 && selectable_total( MEs_ighel[nGoodLoop - 1][ieppV] );
+        const bool okcdf = nGoodLoop > 0 && valid_flavor_id( iflavorVec[ievt] ) && selectable_total( MEs_ighel[nGoodLoop - 1][ieppV] );
 #else
-        const bool okcdf = nGoodLoop > 0 && selectable_total( MEs_ighel[nGoodLoop - 1] );
+        const bool okcdf = nGoodLoop > 0 && valid_flavor_id( iflavorVec[ievt] ) && selectable_total( MEs_ighel[nGoodLoop - 1] );
 #endif
         for( int ighel = 0; okcdf && ighel < nGoodLoop; ighel++ )
         {
@@ -1335,7 +1373,7 @@ namespace madmatrix
         }
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
         const int ievt2 = ievt00 + ieppV + neppV;
-        const bool okcdf2 = nGoodLoop > 0 && selectable_total( MEs_ighel2[nGoodLoop - 1][ieppV] );
+        const bool okcdf2 = nGoodLoop > 0 && valid_flavor_id( iflavorVec[ievt2] ) && selectable_total( MEs_ighel2[nGoodLoop - 1][ieppV] );
         for( int ighel = 0; okcdf2 && ighel < nGoodLoop; ighel++ )
         {
           if( allrndhel[ievt2] < ( MEs_ighel2[ighel][ieppV] / MEs_ighel2[nGoodLoop - 1][ieppV] ) )
@@ -1382,7 +1420,7 @@ namespace madmatrix
           // No diagram weight (a zero or NaN sum): keep the last channel, which has an
           // iconfig (#919), as the GPU does; -ffast-math could pass rnd < 0/0 instead
           channelIdVec[ieppV] = mgOnGpu::nchannels;
-          const bool okcdf = selectable_total( normalization );
+          const bool okcdf = valid_flavor_id( iflavorVec[ievt] ) && selectable_total( normalization );
           for( unsigned int ichan = 0; okcdf && ichan < mgOnGpu::nchannels; ichan++ )
           {
             if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
@@ -1439,7 +1477,7 @@ namespace madmatrix
           }
           const int ievt = ievt00 + ieppV;
           allselcol[ievt] = 0; // no color unless one is chosen below (vanishing or NaN jamp2 sum)
-          const bool okcdf = selectable_total( targetamp[ncolor_flow - 1] );
+          const bool okcdf = valid_flavor_id( iflavorVec[ievt] ) && selectable_total( targetamp[ncolor_flow - 1] );
           for( int icolC = 0; okcdf && icolC < ncolor_flow; icolC++ )
           {
             if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )
@@ -1473,8 +1511,8 @@ namespace madmatrix
       const int ievt0 = ipagV * neppV;
       fptype* MEs = E_ACCESS::ieventAccessRecord( allMEs, ievt0 );
       fptype_sv& MEs_sv = E_ACCESS::kernelAccess( MEs );
-      if constexpr( !use_crossing )
-        MEs_sv = MEs_sv * static_cast<fptype>( broken_symmetry_factor( iflavorVec[ievt0] ) ) / static_cast<fptype>( helcolDenominators[0] );
+      if constexpr( !use_crossing ) // the flavor the page was evaluated with (JampsPreamble.h)
+        MEs_sv = MEs_sv * static_cast<fptype>( broken_symmetry_factor( iflavorVec[ievt0] % nmaxflavor ) ) / static_cast<fptype>( helcolDenominators[0] );
       else
       {
         // Per-event crossing-aware denominator: the crossing may differ per
@@ -1518,6 +1556,18 @@ namespace madmatrix
           // turning a matrix element that is simply zero into a nan (see color_sum.cc fix #435 note).
           const fptype_sv safe_den = denominators_sv + std::numeric_limits<fptype>::min();
           MEs_sv *= numerators_sv[channelId - 1] / safe_den;
+        }
+      }
+      // An id that names no flavor (only possible without crossing): NaN, as on
+      // GPU, in the |M|^2 and the denominator, so its channel weights (amp2) too
+      if constexpr( !use_crossing )
+      {
+        for( int ieppV = 0; ieppV < neppV; ++ieppV )
+        {
+          if( valid_flavor_id( iflavorVec[ievt0 + ieppV] ) ) continue;
+          reinterpret_cast<fptype*>( &MEs_sv )[ieppV] = quiet_nan_bits<fptype>();
+          if( storeChannelWeights )
+            allDenominators[ievt0 + ieppV] = quiet_nan_bits<fptype_amp>(); // ARRAY[nevt]
         }
       }
     }

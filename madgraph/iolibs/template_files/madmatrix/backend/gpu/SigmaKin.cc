@@ -690,6 +690,9 @@ namespace madmatrix
     // no helicity (0) unless one is chosen below: a vanishing or NaN |M|^2 chooses none, and
     // callers may reuse allselhel across calls (cleared per event here, as on cpu/simd)
     allselhel[ievt] = 0;
+    // Nor does an id that names no flavor: normalise_output then sets its |M|^2 to NaN
+    if constexpr( !use_crossing )
+      if( iflavorVec[ievt] >= (unsigned int)nmaxflavor ) return;
     if constexpr( nampso > 1 )
     {
       if( sampleSignedHelicity )
@@ -762,9 +765,13 @@ namespace madmatrix
                        const fptype_amp_sv* allJamp2s,    // input: jamp2[ncolor_flow][nevt] for color choice (nullptr if disabled)
                        const fptype_amp* allNumerators,   // input: all numerators
                        const fptype_amp* allDenominators, // input: all denominators
+                       const unsigned int* iflavorVec,    // input: flavor ids (one naming no flavor chooses nothing)
                        const int nevt )                   // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
   {
     const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread)
+    // An id that names no flavor (NaN |M|^2, see normalise_output) keeps the
+    // fallback channel and chooses no color, as a NaN event does on cpu/simd
+    const bool validFlavor = use_crossing || iflavorVec[ievt] < (unsigned int)nmaxflavor;
     // SCALAR channelId for the current event (CUDA)
     unsigned int channelId = gpu_channelId( allChannelIds );
 
@@ -778,7 +785,7 @@ namespace madmatrix
         normalization += allNumerators[ievt * ndiagrams + ichan];
       }
       channelId = mgOnGpu::nchannels;
-      for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
+      for( unsigned int ichan = 0; validFlavor && ichan < mgOnGpu::nchannels; ichan++ )
       {
         if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
         numerator_sum += allNumerators[ievt * ndiagrams + ichan];
@@ -829,7 +836,7 @@ namespace madmatrix
         if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] += jamp2_sv[icolC];
       }
       allselcol[ievt] = 0; // no color unless one is chosen below (vanishing or NaN jamp2 sum)
-      for( int icolC = 0; icolC < ncolor_flow; icolC++ )
+      for( int icolC = 0; validFlavor && icolC < ncolor_flow; icolC++ )
       {
         if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )
         {
@@ -937,7 +944,7 @@ namespace madmatrix
     gpuLaunchKernelStream( normalise_output, gpublocks, gputhreads, stream, allMEs, iflavorVec, ghelAllNumerators, ghelAllDenominators, allChannelIds, storeChannelWeights, mulChannelWeight, helcolDenominators[0] );
 
     // Event-by-event random choice of color and diagram #402
-    gpuLaunchKernelStream( select_col_and_diag, gpublocks, gputhreads, stream, allselcol, allDiagramIdsOut, allrndcol, allrnddiagram, allChannelIds, colAllJamp2s, ghelAllNumerators, ghelAllDenominators, gpublocks * gputhreads );
+    gpuLaunchKernelStream( select_col_and_diag, gpublocks, gputhreads, stream, allselcol, allDiagramIdsOut, allrndcol, allrnddiagram, allChannelIds, colAllJamp2s, ghelAllNumerators, ghelAllDenominators, iflavorVec, gpublocks * gputhreads );
 
     mgDebugFinalise();
   }

@@ -52,7 +52,10 @@ FLV_COUPLING_ARRAY<nDPF, nMF, CDPF_ACCESS::flv_stride> flvCOUPs_dep{ cDPF_partne
 // With crossing the per-event id is cross*nmaxflavor + flavor: only the
 // flavor is constant across the page, and it is what indexes cFlavors and
 // the flavor masks; the crossing is applied per lane by EvaluateDiagrams.inc.
+// Without crossing an id past cFlavors names no flavor (a NaN |M|^2 in
+// sigmaKin): reduced as well, it is the flavor umami grouped its page by, so
+// the valid lanes sharing the page keep theirs and nothing reads out of bounds.
 const unsigned int* iflavor_rec = F_ACCESS::ieventAccessRecordConst( iflavorVec, ievt0 );
 const uint_sv iflavor_sv = F_ACCESS::kernelAccessConst( iflavor_rec );
 const unsigned int iflavor_ext = reinterpret_cast<const unsigned int*>( &iflavor_sv )[0];
-const unsigned int iflavor = use_crossing ? iflavor_ext % (unsigned int)nmaxflavor : iflavor_ext;
+const unsigned int iflavor = iflavor_ext % (unsigned int)nmaxflavor;

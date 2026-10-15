@@ -3684,6 +3684,139 @@ int main( int argc, char** argv )
                 'code %d %s: reported %d times folded, %d times on its own'
                 % (code, rows[code], folded.count(code), alone.count(code)))
 
+    # Prints |M|^2, helicity and colour (as umami reports them) of events at ONE
+    # phase-space point, their flavor ids cycling through a comma-separated
+    # list: argv = ids, nevt, then npar*(E px py pz).
+    _IDS_DRIVER = r"""
+#include "umami.h"
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <vector>
+int main( int argc, char** argv )
+{
+  std::vector<unsigned int> ids;
+  for( char* t = strtok( argv[1], "," ); t; t = strtok( nullptr, "," ) ) ids.push_back( atoi( t ) );
+  const int nevt = atoi( argv[2] );
+  UmamiHandle h = nullptr;
+  if( umami_initialize( &h, "../../Cards/param_card.dat" ) != UMAMI_SUCCESS ) return 2;
+  int npar = 0;
+  umami_get_meta( UMAMI_META_PARTICLE_COUNT, &npar );
+  std::vector<double> mom( (size_t)4 * npar * nevt ), rh( nevt ), rc( nevt ), rd( nevt ), me( nevt ), as( nevt, 0.118 );
+  std::vector<unsigned int> flv( nevt ), dia( nevt );
+  std::vector<int> hel( nevt ), col( nevt );
+  for( int ie = 0; ie < nevt; ie++ ) flv[ie] = ids[ie % ids.size()];
+  for( int ip = 0; ip < npar; ip++ )
+    for( int i4 = 0; i4 < 4; i4++ )
+      for( int ie = 0; ie < nevt; ie++ )
+        mom[(size_t)i4 * npar * nevt + (size_t)ip * nevt + ie] = atof( argv[3 + 4 * ip + i4] );
+  for( int ie = 0; ie < nevt; ie++ )
+  {
+    const double x = ( ie + 0.5 ) * 0.6180339887498949;
+    rh[ie] = ( ie + 0.5 ) / nevt;
+    rc[ie] = x - std::floor( x );
+    rd[ie] = 1 - rc[ie];
+  }
+  UmamiInputKey ik[6] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_ALPHA_S, UMAMI_IN_RANDOM_HELICITY,
+                          UMAMI_IN_RANDOM_COLOR, UMAMI_IN_RANDOM_DIAGRAM };
+  const void* in[6] = { mom.data(), flv.data(), as.data(), rh.data(), rc.data(), rd.data() };
+  UmamiOutputKey ok[4] = { UMAMI_OUT_MATRIX_ELEMENT, UMAMI_OUT_HELICITY_INDEX, UMAMI_OUT_COLOR_INDEX, UMAMI_OUT_DIAGRAM_INDEX };
+  void* out[4] = { me.data(), hel.data(), col.data(), dia.data() };
+  if( umami_matrix_element( h, nevt, nevt, 0, 6, ik, in, 4, ok, out ) != UMAMI_SUCCESS ) return 3;
+  for( int ie = 0; ie < nevt; ie++ ) printf( "%.17g %d %d\n", me[ie], hel[ie], col[ie] );
+  umami_free( h );
+  return 0;
+}
+"""
+
+    def test_flavor_id_past_table_without_crossing(self):
+        """Without crossing, a flavor id past the flavor table names no
+        flavor: on cpu and simd it gets a NaN |M|^2 and no helicity or colour
+        (-1), as on the GPU, and the valid events sharing its SIMD page keep
+        their own |M|^2.
+
+        The cpu/simd kernels used to read the flavor table (cFlavors) out of
+        bounds with such an id: g g > g g returned twice the |M|^2 of id 0 with
+        a helicity and a colour, and a SIMD page led by an id past the table
+        gave the valid events of the page that same wrong |M|^2. umami groups
+        the events of a page by id % nmaxflavor, so q q~ > q q~ (several
+        flavors) checks ids that land in a page of valid ones.
+        """
+        outdir = pjoin(self.tmpdir, 'jj_exp')
+        cmd = cmd_interface.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('set automatic_html_opening False')
+        cmd.exec_cmd('import model sm')
+        cmd.exec_cmd('generate p p > j j')
+        cmd.exec_cmd('output standalone %s -f --use_crossing=False' % outdir)
+        root = pjoin(outdir, 'SubProcesses')
+
+        def nflavor(pdir):
+            with open(pjoin(pdir, 'ProcessData.h')) as fsock:
+                return int(re.search(r'constexpr int nmaxflavor = (\d+);',
+                                     fsock.read()).group(1))
+        pdirs = [pjoin(root, d) for d in sorted(os.listdir(root))
+                 if d.startswith('P') and os.path.isdir(pjoin(root, d))]
+        gg = [p for p in pdirs if p.endswith('_gg_gg')]
+        many = sorted(pdirs, key=nflavor)[-1:]
+        self.assertEqual(len(gg), 1, pdirs)
+        self.assertGreater(nflavor(many[0]), 1, 'no subprocess with flavors')
+
+        # a 2 -> 2 point at sqrt(s) = 1 TeV, theta = 0.3
+        e, sin, cos = 500., math.sin(0.3), math.cos(0.3)
+        momenta = [(e, 0, 0, e), (e, 0, 0, -e), (e, e * sin, 0, e * cos),
+                   (e, -e * sin, 0, -e * cos)]
+        nevt = 16
+        for pdir in gg + many:
+            nfl = nflavor(pdir)
+            with open(pjoin(pdir, 'ProcessTables.h')) as fsock:
+                self.assertTrue('use_crossing = false' in fsock.read())
+            check = pjoin(pdir, 'check_sa.cc')
+            os.remove(check)   # a link to the shared SubProcesses/check_sa.cc
+            with open(check, 'w') as fsock:
+                fsock.write(self._IDS_DRIVER)
+            # valid ids only, then each one after an id past the table of the
+            # same id % nmaxflavor, which leads its page
+            valid = [i % nfl for i in range(nevt // 2)]
+            mixed = []
+            for i, fid in enumerate(valid):
+                mixed += [fid + nfl * (1 + i % 3), fid]
+            for backend in ('scalar', 'simd_128'):
+                with open(os.devnull, 'w') as devnull:
+                    subprocess.call(['make', 'clean'], cwd=pdir, stdout=devnull,
+                                    stderr=subprocess.STDOUT)
+                    rc = subprocess.call(['make', '-j4', 'BACKEND=' + backend,
+                                          'check_sa.exe'], cwd=pdir,
+                                         stdout=devnull, stderr=subprocess.STDOUT,
+                                         env=dict(os.environ, FPTYPE='d'))
+                if rc != 0:
+                    self.skipTest('madmatrix build toolchain unavailable '
+                                  '(make BACKEND=%s failed)' % backend)
+                point = ['%.17g' % x for p in momenta for x in p]
+
+                def run(ids):
+                    out = subprocess.check_output(
+                        ['./check_sa.exe', ','.join(str(i) for i in ids),
+                         str(len(ids))] + point, cwd=pdir).decode()
+                    return [(float(me), int(hel), int(col)) for me, hel, col in
+                            (line.split() for line in out.splitlines())]
+                ref = run([fid for fid in valid for _ in range(2)])
+                got = run(mixed)
+                tag = '%s %s' % (os.path.basename(pdir), backend)
+                for ievt, fid in enumerate(mixed):
+                    me, hel, col = got[ievt]
+                    if fid >= nfl:
+                        self.assertTrue(math.isnan(me) and hel == -1 and col == -1,
+                                        '%s: id %d past the table of %d gives %r'
+                                        % (tag, fid, nfl, got[ievt]))
+                    else:
+                        me_ref = ref[ievt][0]
+                        self.assertTrue(me_ref > 0 and hel >= 0 and col >= 0, ref[ievt])
+                        self.assertLess(abs(me - me_ref), 1e-12 * me_ref,
+                                        '%s: id %d next to an id past the table: '
+                                        '%r, alone %r' % (tag, fid, me, me_ref))
+
 
 class TestMg7FoldedCrossing(unittest.TestCase):
     """`output mg7` folds the crossings recorded at generation.
