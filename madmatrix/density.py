@@ -191,6 +191,13 @@ class MadDensityLibrary(object):
         with open(table) as fsock:
             entries = json.load(fsock)['subprocesses']
         for entry in entries:
+            if entry.get('crossed'):
+                # Density.cc takes the flavor index of the base only
+                raise MadDensityError(
+                    '%s folds the crossed processes %s onto its base, which the '
+                    'density entry points cannot evaluate: generate with '
+                    '--use_crossing=False (as MadSpin does)'
+                    % (entry['path'], entry['crossed']))
             if entry.get('offshell') and backend != 'scalar':
                 raise MadDensityError(
                     '%s has legs marked off-shell (%s), which only the scalar backend '

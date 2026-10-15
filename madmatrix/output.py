@@ -385,7 +385,12 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
             # their momentum by the scalar backend only (offshell_mass, SigmaKin.cc)
             sorted(wf.get('number_external')
                    for wf in matrix_element.get_external_wavefunctions()
-                   if wf.get('offshell'))))
+                   if wf.get('offshell')),
+            # the crossed processes folded onto this one (--use_crossing):
+            # listed nowhere else, and evaluated only through the extended
+            # flavor index, which the density entry points do not take
+            [[leg.get('id') for leg in process.get_legs_with_decays()]
+             for process in self.folded_crossed_processes(matrix_element)]))
         return out
 
     def finalize(self, *args, **kwargs):
@@ -396,12 +401,13 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
     def write_processes_file(self):
         """SubProcesses/madmatrix_processes.json: per subprocess, its library
         (with the make variables LIBTAG and BACKEND left as '{libtag}' and
-        '{backend}'), its legs, the processes it evaluates, its off-shell legs
-        and, per flavor index, every pdg combination (in the leg order of the
-        process) that this index stands for."""
+        '{backend}'), its legs, the processes it evaluates, its off-shell legs,
+        the crossed processes folded onto it and, per flavor index, every pdg
+        combination (in the leg order of the process) that this index stands
+        for."""
         import json
         subprocesses = []
-        for info, (processes, offshell) in zip(self.process_info,
+        for info, (processes, offshell, crossed) in zip(self.process_info,
                                                getattr(self, 'processes_of_subprocess', [])):
             path = os.path.basename(info['path'])
             flavors = []
@@ -416,6 +422,7 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                 'legs': list(info['incoming']) + list(info['outgoing']),
                 'processes': processes,
                 'offshell': offshell,
+                'crossed': crossed,
                 'flavors': flavors})
         with open(pjoin(self.dir_path, 'SubProcesses', self.processes_file), 'w') as fsock:
             json.dump({'subprocesses': subprocesses}, fsock, indent=1)
