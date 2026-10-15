@@ -949,6 +949,28 @@ namespace madmatrix
     return cxternary( cond.real() >= zero, cxmake( valtrue, 0 ), cxmake( valfalse, 0 ) );
   }
 
+  // Denominator p^2 - M^2 + i M W of a massive propagator, with the width
+  // kept only where p^2 > 0 (timelike): a spacelike (t-channel) propagator
+  // has no pole to regulate. Used by the ALOHA routines when the width of a
+  // t-channel propagator is dropped (aloha.t_channel_width False, the
+  // default), lane by lane, as the Fortran routines do event by event.
+#ifdef MGONGPU_SIMD_DENOM64
+  inline cxtype_denom_sv
+  propagator_denom( const fptype_denom_sv& p2, const fptype_denom M, const fptype_denom W )
+  {
+    fptype_denom_sv mw; // zero in both halves
+    for( int h = 0; h < 2; h++ )
+      for( int l = 0; l < neppVD; l++ ) mw.v[h][l] = ( p2.v[h][l] > 0 ) ? M * W : fptype_denom( 0 );
+    return cxtype_denom_sv( p2 - M * M, mw );
+  }
+#else
+  inline cxtype_v
+  propagator_denom( const fptype_v& p2, const fptype_denom M, const fptype_denom W )
+  {
+    return cxmake( p2 - fptype( M * M ), fpternary( p2 > 0, fptype( M * W ), fptype( 0 ) ) );
+  }
+#endif
+
   //==========================================================================
 
 } // end namespace madmatrix
