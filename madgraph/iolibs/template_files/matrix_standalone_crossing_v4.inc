@@ -166,10 +166,12 @@ C     the MOMENTA -- it is also the NSF direction flag -- so
 C     slot XK gets P_IN(PERM(XK)) and NHEL_IN(XK), and a crossed
 C     leg is evaluated with the physical helicity NHEL_IN(XK) of
 C     the particle it has become. This is the view of a caller
-C     holding helicities of the crossed process
-C     (GET_DENSITY_IDX, GET_ALL_INTER_IDX, an f2py caller before
-C     GET_AMP). SMATRIX evaluates its own base table instead,
-C     through APPLY_CROSSING_ROWS.
+C     holding helicities of the crossed process per base slot
+C     (GET_DENSITY_IDX's table, an f2py caller before GET_AMP;
+C     GET_ALL_INTER_IDX takes them in the caller's leg order
+C     and gives base slot XK NHEL(PERM(XK)) itself). SMATRIX
+C     evaluates its own base table instead, through
+C     APPLY_CROSSING_ROWS.
       DO XR = 1, NROW
         DO XK = 1, NEXTERNAL
           NHEL(XK,XR) = NHEL_IN(XK,XR)

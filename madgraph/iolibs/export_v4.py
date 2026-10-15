@@ -4370,6 +4370,13 @@ C     across.
       CALL %(proc_prefix)sAPPLY_CROSSING(FLAV_IDX, P, NHEL, IC, PUSE,
      & NHELUSE, ICUSE, DUMFLAV)
       CALL %(proc_prefix)sGET_CROSS_PERM(FLAV_IDX, PERM, SGN, DUMFLAV)
+C     NHEL follows the caller's legs, like P and POS. Base slot
+C     I is caller leg PERM(I), so it takes NHEL(PERM(I)), with
+C     no sign: NHEL is the physical helicity of the crossed
+C     process's own leg, the view APPLY_CROSSING_TABLE takes.
+      DO I = 1, NEXTERNAL
+        NHELUSE(I) = NHEL(PERM(I))
+      ENDDO
       DO IPART = 1, N_CHANGING
         DO I = 1, NEXTERNAL
           IF (PERM(I).EQ.POS(IPART)) CPOS(IPART) = I
