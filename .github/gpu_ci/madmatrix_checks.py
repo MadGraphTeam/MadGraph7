@@ -32,6 +32,12 @@ of check_sa.exe, so only the check it belongs to.
    (crossing-table row K), a random alpha_s and random numbers per event: the GPU |M|^2,
    helicities and colours equal the CPU ones event by event (the crossed helicity code
    of a moved leg included).
+   crossed_massive_gpu_vs_cpu: SM ``u g > u z`` and ``u u~ > z g`` in one generation,
+   folded into P1_ug_uz, whose crossing moves the Z into a massless slot (xonshell_tab 0):
+   umami_initialize chooses the good helicities of that crossing on points of its own
+   masses (choose_good_helicities, getGoodHel). The events of every row are on shell for
+   that row, in a randomly boosted frame: the GPU |M|^2, helicities and colours equal
+   the CPU ones event by event, so the GPU kept the same good-helicity list.
 4. nonblocking_stream: ``g g > t t~ g``, 4 calls of 16384 events, with umami handed a
    non-blocking stream (--nonblocking-stream, as a torch side stream, which does not
    synchronise with the default stream) gives the same |M|^2 and helicities as on the
@@ -58,7 +64,7 @@ import time
 GPU_BACKENDS = ('cuda', 'hip')
 CPU_BACKEND = 'scalar'
 CHECKS = ('mssm_gpu_vs_cpu', 'zero_me', 'zero_me_good_hel', 'mssm_crossed_gpu_vs_cpu',
-          'nonblocking_stream')
+          'crossed_massive_gpu_vs_cpu', 'nonblocking_stream')
 
 results = {}
 
@@ -98,12 +104,50 @@ def ncross(proc_dir):
     return int(re.search(r'constexpr int ncross = (\d+);', tables).group(1))
 
 
-def output(repo, name, model, process, backends, select=None):
+def table(proc_dir, name):
+    """A host table of ProcessTables.h (xonshell_tab, xmass_slot_tab), as a list."""
+    tables = open(os.path.join(proc_dir, 'ProcessTables.h')).read()
+    match = re.search(r'constexpr int %s\[[^]]*\] = \{([^}]*)\};' % name, tables)
+    if not match:
+        raise RuntimeError('no %s in %s/ProcessTables.h' % (name, proc_dir))
+    return [int(v) for v in match.group(1).split(',')]
+
+
+def boosted_two_to_two(rng, masses, energy):
+    """An on-shell 2 > 2 point, legs (E, px, py, pz): the beams along z in the partonic
+    rest frame at sqrt(s) = energy, then boosted along a random axis (|beta| < 0.9)."""
+    def pcm(m_a, m_b):
+        s = energy ** 2
+        return math.sqrt(max((s - (m_a + m_b) ** 2) * (s - (m_a - m_b) ** 2), 0.)) / (2 * energy)
+    def leg(m, p):
+        return [math.sqrt(m * m + sum(c * c for c in p))] + p
+    p_in, p_out = pcm(masses[0], masses[1]), pcm(masses[2], masses[3])
+    cos, phi = rng.uniform(-1, 1), rng.uniform(0, 2 * math.pi)
+    sin = math.sqrt(1 - cos * cos)
+    out = [p_out * sin * math.cos(phi), p_out * sin * math.sin(phi), p_out * cos]
+    legs = [leg(masses[0], [0., 0., p_in]), leg(masses[1], [0., 0., -p_in]),
+            leg(masses[2], out), leg(masses[3], [-c for c in out])]
+    cos, phi, beta = rng.uniform(-1, 1), rng.uniform(0, 2 * math.pi), rng.uniform(0, 0.9)
+    sin = math.sqrt(1 - cos * cos)
+    b = [beta * sin * math.cos(phi), beta * sin * math.sin(phi), beta * cos]
+    gamma = 1 / math.sqrt(1 - beta * beta)
+    boosted = []
+    for e, *p in legs:
+        bp = sum(bi * pi for bi, pi in zip(b, p))
+        boosted.append([gamma * (e + bp)] +
+                       [pi + bi * (gamma * gamma / (gamma + 1) * bp + gamma * e) for bi, pi in zip(b, p)])
+    return boosted
+
+
+def output(repo, name, model, process, backends, select=None, defines=()):
     """output standalone + make for these backends in every subprocess (those for which
     select(proc_dir) is true, if given), keeping the check_sa.exe of each as
-    check_sa_<backend>.exe: the subprocess directories."""
+    check_sa_<backend>.exe: the subprocess directories. defines: multiparticle
+    definitions ('b1 = g u~') made before the generation."""
     with open(name + '.mg5', 'w') as f:
-        f.write('import model %s\ngenerate %s\noutput standalone %s -f\n' % (model, process, name))
+        f.write('import model %s\n' % model)
+        f.write(''.join('define %s\n' % define for define in defines))
+        f.write('generate %s\noutput standalone %s -f\n' % (process, name))
     if run([sys.executable, os.path.join(repo, 'bin', 'madgraph'), name + '.mg5'],
            log=name + '.log') != 0:
         raise RuntimeError('madgraph failed, see %s.log' % name)
@@ -304,13 +348,12 @@ def check_zero_me_good_hel(backend, repo, nevt=64):
 # 3. crossed subprocesses with running flavour couplings (MSSM p p > go go j)
 # ---------------------------------------------------------------------------
 
-def check_mssm_crossed_gpu_vs_cpu(backend, repo, nevt=1024):
-    section('MSSM p p > go go j, crossed subprocesses: %s against %s' % (backend, CPU_BACKEND))
-    name = 'mssm_gogoj'
-    # only the subprocesses that fold crossings (the others are check 1 with one more jet)
-    proc_dirs = output(repo, name, 'MSSM_SLHA2', 'p p > go go j', (CPU_BACKEND, backend),
-                       select=lambda proc_dir: ncross(proc_dir) > 1)
-    rng = random.Random(17)
+def crossed_gpu_vs_cpu(check_name, backend, name, proc_dirs, energy, seed, nevt, own_points=False):
+    """Events over every extended flavour id K*nmaxflavor + flavour of each subprocess
+    (crossing-table row K), a random alpha_s and random numbers per event: the GPU |M|^2,
+    helicities and colours equal the CPU ones event by event. own_points: the momenta of
+    each event on shell for its own row (2 > 2 only), else the RAMBO points of the base."""
+    rng = random.Random(seed)
     problems, details = [], []
     for proc_dir in proc_dirs:
         sub = os.path.basename(proc_dir)
@@ -321,11 +364,27 @@ def check_mssm_crossed_gpu_vs_cpu(backend, repo, nevt=1024):
         prefix = '%s_%s' % (name, sub)
         batch = [1, nevt, 1]
         momenta = dump(prefix, 'momenta')
-        check_sa(proc_dir, CPU_BACKEND, ['--energy', 3000, '--dump-momenta', momenta] + batch,
+        check_sa(proc_dir, CPU_BACKEND, ['--energy', energy, '--dump-momenta', momenta] + batch,
                  prefix + '_rambo.log')
         # every extended id at least once, then random ones
         ids = list(range(nids)) + [rng.randrange(nids) for _ in range(nevt - nids)]
         rng.shuffle(ids)
+        if own_points:
+            # the base masses from the RAMBO points, then the masses of every row
+            base = read(momenta, 'd')
+            npar = len(base) // nevt // 4
+            if npar != 4:
+                raise RuntimeError('%s: own_points needs a 2 > 2, not %d legs' % (sub, npar))
+            masses = [math.sqrt(max(base[4 * k] ** 2 - sum(c * c for c in base[4 * k + 1:4 * k + 4]), 0.))
+                      for k in range(npar)]
+            masses = [m if m > 1e-6 * energy else 0. for m in masses]
+            slots = table(proc_dir, 'xmass_slot_tab')
+            points = []
+            for xid in ids:
+                row = xid // nflavor
+                for p in boosted_two_to_two(rng, [masses[slots[row * npar + k]] for k in range(npar)], energy):
+                    points.extend(p)
+            momenta = write(prefix + '_own_momenta.bin', 'd', points)
         inputs = ['--momenta', momenta,
                   '--alphas', write(prefix + '_alphas.bin', 'd', [rng.uniform(0.09, 0.14) for _ in range(nevt)]),
                   '--flavors', write(prefix + '_flavors.bin', 'I', ids),
@@ -367,7 +426,28 @@ def check_mssm_crossed_gpu_vs_cpu(backend, repo, nevt=1024):
         worst = max((rel for rel in rels if not math.isnan(rel)), default=0.)
         details.append('%s nDPF %d, %d extended ids, max rel diff %.1e' % (sub, ndpf, nids, worst))
         print('  ' + details[-1])
-    check('mssm_crossed_gpu_vs_cpu', not problems, '; '.join(problems[:3]) or '; '.join(details))
+    check(check_name, not problems, '; '.join(problems[:3]) or '; '.join(details))
+
+
+def check_mssm_crossed_gpu_vs_cpu(backend, repo, nevt=1024):
+    section('MSSM p p > go go j, crossed subprocesses: %s against %s' % (backend, CPU_BACKEND))
+    name = 'mssm_gogoj'
+    # only the subprocesses that fold crossings (the others are check 1 with one more jet)
+    proc_dirs = output(repo, name, 'MSSM_SLHA2', 'p p > go go j', (CPU_BACKEND, backend),
+                       select=lambda proc_dir: ncross(proc_dir) > 1)
+    crossed_gpu_vs_cpu('mssm_crossed_gpu_vs_cpu', backend, name, proc_dirs, 3000, 17, nevt)
+
+
+def check_crossed_massive_gpu_vs_cpu(backend, repo, nevt=1024):
+    section('u g > u z with u u~ > z g, a massive leg crossed into a massless slot: %s against %s'
+            % (backend, CPU_BACKEND))
+    name = 'crossed_massive'
+    # u u~ > z g is folded onto u g > u z: its Z sits in the slot of the outgoing u
+    proc_dirs = output(repo, name, 'sm', 'u b1 > c1 d1 QED=1 QCD=1', (CPU_BACKEND, backend),
+                       select=lambda proc_dir: 0 in table(proc_dir, 'xonshell_tab'),
+                       defines=('b1 = g u~', 'c1 = u z', 'd1 = z g'))
+    crossed_gpu_vs_cpu('crossed_massive_gpu_vs_cpu', backend, name, proc_dirs, 1000, 29, nevt,
+                       own_points=True)
 
 
 # ---------------------------------------------------------------------------
