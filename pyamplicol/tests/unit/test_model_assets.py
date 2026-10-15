@@ -186,7 +186,7 @@ def test_provenance_covers_every_source_asset_and_license() -> None:
     transformations = {entry["id"] for entry in provenance["transformations"]}
     records = provenance["files"]
     assert len(records) == 66
-    assert sum(entry["upstream_exact_blob_match"] for entry in records) == 28
+    assert sum(entry["upstream_exact_blob_match"] for entry in records) == 27
 
     record_paths = set()
     for entry in records:

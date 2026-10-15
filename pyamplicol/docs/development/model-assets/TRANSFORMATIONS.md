@@ -29,10 +29,21 @@ copied byte-for-byte and have equal source and package hashes in
 | `json/sm/restrict_no_tau_mass.json` | `loader-restriction-card-v1` | `7560d6890d7cd26532f28865fb8f4092ffcbf49c54fa7a16e921e6b08c3f43e3` | `a26603f4f3572309dc7ce2f23295d5a8aec61d2f3c42a017341245e459648478` |
 | `json/sm/restrict_no_widths.json` | `loader-restriction-card-v1` | `9002d18be203c34418a3966f7cedc5d20844c317c55906efca32f51a38f1f183` | `fdc03507f82a3d98571b97ba0ab34f712dc0eb02b101f8308b96c6ab8490c08c` |
 | `json/sm/restrict_zeromass_ckm.json` | `loader-restriction-card-v1` | `2173adc123ef202816d56e20772747f8a513ce9294635e099fdbe4832329944d` | `b8b4376c82f9486266283a383a0347ec42498296180d92249e2e7a772e1a7e1a` |
-| `json/sm/sm.json` | `loader-ufo-full-v1` | `684f75c88c7faf6832e9e8122970ec5fe98b9cd30bc989b7f8e1818c327fe165` | `6bec8e6fcd935aa1f56ae99f7ee7a58a947dc5dd3cf5a14b653632f4a3bd6d63` |
-| `json/sm/sm_wrapped_indices.json` | `loader-ufo-full-wrapped-v1` | `b4221a0985ad5c6987c325a75012a3231995c604e44ad543d0b1ead22eb19404` | `35daa40245321a750e5648a10ab38b3f2f6c54c63e3fe73b62f183cd78316688` |
+| `json/sm/sm.json` | `sm-standard-ufo-spinor-order-v1` | `684f75c88c7faf6832e9e8122970ec5fe98b9cd30bc989b7f8e1818c327fe165` | `c1222e3b70b71804e5212e994a3b76e2f098f7fc3ba1693c9f9c65578d7e3e00` |
+| `json/sm/sm_wrapped_indices.json` | `sm-standard-ufo-spinor-order-v1` | `b4221a0985ad5c6987c325a75012a3231995c604e44ad543d0b1ead22eb19404` | `e1ee0059f3fc534c462e98c358249acbce0a711171fcbfe41720a9a1f24b2933` |
+| `ufo/sm/lorentz.py` | `sm-standard-ufo-spinor-order-v1` | `cd578c286b038dd3daae396ebd1515cf36d8089b63a1d20247d2b797054b162b` | `1f13e8b63e2ecf428e2875e14bc6901ce49952e1cf2b18ea9934c8d4264e3559` |
 | `ufo/scalar_gravity/parameters.py` | `scalar-gravity-static-defaults-v1` | `68de6a8ab6ecb1f358a13954be99597bb30665d1e195b7395f8faf405bd8657e` | `01b0477e0b0e352f968a6d1bfd1e9724c505adc6dd5c1d39dd08e9da97cd9f00` |
 | `ufo/scalars/parameters.py` | `scalar-static-defaults-v1` | `7620698c89ec9a87eb11177f682627e9a334222d42b378c18e111b866f7c3ad0` | `7b11a9b1d84126d31f58d5c4752ea0fe0921074bfcb338ecd6ef4d2ad7da89a7` |
+
+## Standard UFO Spinor Order
+
+The upstream SM Lorentz structures index each fermion pair in the reverse of
+the standard UFO order, e.g. `FFV1 = Gamma(3,1,2)` instead of MadGraph's
+`Gamma(3,2,1)`, and the importer compensated for it, which made standard UFO
+models wrong for off-shell fermion lines. `sm-standard-ufo-spinor-order-v1`
+swaps the two fermion legs in the spinor slots of `ufo/sm/lorentz.py` and of
+the serialized JSON structures, so that they match the MadGraph SM; the
+importer reads the standard order.
 
 ## Serialized Model Shape
 

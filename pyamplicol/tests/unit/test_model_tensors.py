@@ -65,31 +65,31 @@ def test_model_tensors_keep_supported_singlet_projection() -> None:
             "UFO::Gamma(UFO::idx(1,1),UFO::idx(1,2),UFO::idx(1,3))",
             (3, 2, 2),
             "dirac_gamma",
-            ("ufo_s_1_3", "ufo_s_1_2", "ufo_l_1_1"),
+            ("ufo_s_1_2", "ufo_s_1_3", "ufo_l_1_1"),
         ),
         (
             "UFO::Gamma5(UFO::idx(1,1),UFO::idx(1,2))",
             (2, 2),
             "gamma5",
-            ("ufo_s_1_2", "ufo_s_1_1"),
+            ("ufo_s_1_1", "ufo_s_1_2"),
         ),
         (
             "UFO::ProjM(UFO::idx(1,1),UFO::idx(1,2))",
             (2, 2),
             "projp",
-            ("ufo_s_1_2", "ufo_s_1_1"),
+            ("ufo_s_1_1", "ufo_s_1_2"),
         ),
         (
             "UFO::ProjP(UFO::idx(1,1),UFO::idx(1,2))",
             (2, 2),
             "projm",
-            ("ufo_s_1_2", "ufo_s_1_1"),
+            ("ufo_s_1_1", "ufo_s_1_2"),
         ),
         (
             "UFO::Identity(UFO::idx(1,1),UFO::idx(1,2))",
             (2, 2),
             "identity",
-            ("ufo_s_1_1", "ufo_s_1_2"),
+            ("ufo_s_1_2", "ufo_s_1_1"),
         ),
     ),
 )
@@ -113,6 +113,24 @@ def test_lorentz_tensor_factories_preserve_ufo_index_conventions(
     normalized = normalize_lorentz_expression(source, spins)
 
     assert E(normalized.expression) == expected
+
+
+def test_vertex_spinor_slots_follow_the_standard_ufo_fermion_order() -> None:
+    """Vertices index a fermion pair as MadGraph's SM, Gamma(3,2,1) for FFV1;
+    propagators keep their own order."""
+    from symbolica import E
+
+    def gamma(first: int, second: int, *, vertex: bool = True) -> object:
+        return E(
+            normalize_lorentz_expression(
+                f"UFO::Gamma(UFO::idx(1,3),UFO::idx(1,{first}),UFO::idx(1,{second}))",
+                (2, 2, 3),
+                vertex=vertex,
+            ).expression
+        )
+
+    assert gamma(2, 1) == gamma(1, 2, vertex=False)
+    assert gamma(2, 1) != gamma(2, 1, vertex=False)
 
 
 def test_lorentz_clifford_contraction_preserves_4d_normalization() -> None:

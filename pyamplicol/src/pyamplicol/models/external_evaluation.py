@@ -529,6 +529,7 @@ class ExternalModelEvaluationMixin:
             f"({record.numerator})/({record.denominator})",
             (spin, spin),
             model_symbols=self._model_symbols,
+            vertex=False,
         )
         expression = self._model_symbols.expression(normalized.expression)
         for parameter in self._parameter_records.values():
