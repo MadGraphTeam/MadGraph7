@@ -3887,6 +3887,166 @@ json.dump(res, open(outfile, 'w'))
                 self.assertAlmostEqual(re_, ref_re, delta=1e-12 * abs(ref_u[0][0]))
                 self.assertAlmostEqual(im_, ref_im, delta=1e-12 * abs(ref_u[0][0]))
 
+    # p p > e+ e- j folds g u~ > e+ e- u~ (legs 2 and 5 exchanged across)
+    # and u u~ > e+ e- g (a 3-cycle of legs 1, 2 and 5) onto g u > e+ e- u.
+    # Run in a fresh interpreter: every output names its module all_matrix2py.
+    # mode 'pdg': the PDG-keyed entry points; 'idx': the per-process _IDX ones
+    # at the extended index GET_PDG_FOR_FLAVOR names for those PDG codes.
+    _crossed_f2py_script = '''
+import itertools, json, math, os, sys
+import numpy as np
+import all_matrix2py as m
+mdir, outfile, mode = sys.argv[1:]
+m.initialise(os.path.join(mdir, 'Cards', 'param_card.dat'))
+# on shell and momentum conserving: E3=300, E4=400, E5=300 in the partonic
+# rest frame (cos(p3,p4) = -2/3), then boosted along z
+a, f, psi = 0.7, 0.3, 1.1
+n3 = np.array([math.sin(a)*math.cos(f), math.sin(a)*math.sin(f), math.cos(a)])
+u = np.cross(n3, [0., 0., 1.])
+u /= np.linalg.norm(u)
+v = np.cross(n3, u)
+c = -2./3.
+n4 = c*n3 + math.sqrt(1 - c*c)*(math.cos(psi)*u + math.sin(psi)*v)
+k3, k4 = 300*n3, 400*n4
+mom = [[500, 0, 0, 500], [500, 0, 0, -500], [300] + list(k3),
+       [400] + list(k4), [300] + list(-k3 - k4)]
+b = 0.3
+g = 1/math.sqrt(1 - b*b)
+p = np.asfortranarray(np.array(
+    [[g*(q[0] + b*q[3]), q[1], q[2], g*(q[3] + b*q[0])] for q in mom]).T)
+pos, allow = [1, 5], [-1, -1, -1, 1, 1, -1, 1, 1]
+nhels = [[0, h2, h3, h4, 0] for h2, h3, h4 in itertools.product([-1, 1], repeat=3)]
+cases = [[21, 2, -11, 11, 2], [21, -2, -11, 11, -2], [2, -2, -11, 11, 21]]
+cplx = lambda a: [[z.real, z.imag] for z in a]
+res = {'sm': [], 'dens': [], 'inter': [], 'kept': True, 'idx': []}
+for pdgs in cases:
+    arr = np.array(pdgs, dtype=np.int32)
+    res['sm'].append(m.smatrixhel(arr, -1, p, 0.118, 0., -1))
+    if mode == 'pdg':
+        dens = m.py_get_density(pdgs=arr, procid=-1, p=p, pos=pos,
+                                allow_hel=allow, alphas=0.118, scale2=0.)
+        inter = lambda nh: m.py_get_all_inter(pdgs=arr, procid=-1, p=p,
+                                              nhel=nh, pos=pos, allow_hel=allow)
+    else:
+        nflav, next_, ncross = m.py_m0_get_flavor_layout()
+        idx = [i for i in range(1, nflav*ncross + 1)
+               if list(m.py_m0_get_pdg_for_flavor(i)) == pdgs][0]
+        res['idx'].append([idx, int(nflav)])
+        dens = m.py_m0_get_density_idx(p, pos, 2, allow, 4, idx, 0.118, 0.)
+        inter = lambda nh: m.py_m0_get_all_inter_idx(p, nh, pos, 2, allow, 4, idx)
+    res['dens'].append(cplx(dens))
+    res['inter'].append([])
+    for nhel in nhels:
+        nh = np.array(nhel, dtype=np.int32)
+        res['inter'][-1].append(cplx(inter(nh)))
+        res['kept'] &= nh.tolist() == nhel
+    res['kept'] &= arr.tolist() == pdgs
+if mode == 'pdg':
+    # e- e+ swapped: a leg order no matrix element serves
+    arr = np.array([21, 2, 11, -11, 2], dtype=np.int32)
+    res['nomatch'] = cplx(m.py_get_density(pdgs=arr, procid=-1, p=p, pos=pos,
+                          allow_hel=allow, alphas=0.118, scale2=0.)) + \\
+        cplx(m.py_get_all_inter(pdgs=arr, procid=-1, p=p, nhel=nhels[0],
+                                pos=pos, allow_hel=allow))
+json.dump(res, open(outfile, 'w'))
+'''
+
+    def _crossed_eej_outputs(self):
+        """p p > e+ e- j with crossing (folded) and without (expanded), both
+        built with make f2py; returns the two output directories."""
+        self.do('import model sm')
+        dirs = []
+        for tag, flag in (('_folded', ''), ('_expanded', ' --use_crossing=False')):
+            out_dir = self.out_dir + tag
+            self.addCleanup(shutil.rmtree, out_dir, ignore_errors=True)
+            self.do('generate p p > e+ e- j%s' % flag)
+            self.do('output standalone_fortran %s --prefix=int -f' % out_dir)
+            build = subprocess.run(['make', 'f2py'],
+                                   cwd=os.path.join(out_dir, 'SubProcesses'),
+                                   capture_output=True, text=True)
+            self.assertEqual(build.returncode, 0, 'make f2py failed:\n' +
+                             build.stdout[-2000:] + build.stderr[-2000:])
+            dirs.append(out_dir)
+        # the folded output really folds: one matrix element, the crossings
+        # of g u > e+ e- u serve the two other subprocesses
+        self.assertEqual(len(misc.glob('P*', os.path.join(dirs[0], 'SubProcesses'))), 1)
+        self.assertEqual(len(misc.glob('P*', os.path.join(dirs[1], 'SubProcesses'))), 3)
+        return dirs
+
+    def _run_crossed_script(self, out_dir, mode):
+        import json
+        outfile = os.path.join(out_dir, 'crossed_%s.json' % mode)
+        run = subprocess.run([sys.executable, '-c', self._crossed_f2py_script,
+                              out_dir, outfile, mode],
+                             cwd=os.path.join(out_dir, 'SubProcesses'),
+                             capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stdout[-2000:] + run.stderr[-2000:])
+        return json.load(open(outfile)), run.stdout
+
+    def _assert_same_inter(self, got, ref, scale):
+        self.assertEqual(len(got), len(ref))
+        for (re_, im_), (ref_re, ref_im) in zip(got, ref):
+            self.assertAlmostEqual(re_, ref_re, delta=1e-12 * scale)
+            self.assertAlmostEqual(im_, ref_im, delta=1e-12 * scale)
+
+    def test_standalone_f2py_crossed_pdg_fallback(self):
+        """py_get_density / py_get_all_inter find a FOLDED crossed subprocess
+        by its PDG codes, as smatrixhel does (f77_crossed_density /
+        f77_crossed_get_all_inter), with P, POS and NHEL in the caller's leg
+        order: the folded output must answer what the expanded one does.
+
+        They used to return zeros for it: the PDG dispatch only knew the
+        uncrossed processes. PDG codes that no process matches now give NaN
+        (and an ERROR line) rather than zeros a caller cannot tell from a
+        vanishing density matrix.
+        """
+        import math
+        folded_dir, expanded_dir = self._crossed_eej_outputs()
+        folded, out = self._run_crossed_script(folded_dir, 'pdg')
+        expanded, _ = self._run_crossed_script(expanded_dir, 'pdg')
+        self.assertTrue(folded['kept'])
+        self.assertTrue(expanded['kept'])
+        for i in range(3):
+            self.assertAlmostEqual(folded['sm'][i] / expanded['sm'][i], 1,
+                                   places=12)
+            scale = max(abs(complex(*z)) for z in expanded['dens'][i])
+            self.assertGreater(scale, 0)
+            self._assert_same_inter(folded['dens'][i], expanded['dens'][i], scale)
+            for got, ref in zip(folded['inter'][i], expanded['inter'][i]):
+                self._assert_same_inter(got, ref, scale)
+            # summed over the helicities of the legs not in POS, the
+            # interference terms give the density matrix
+            total = [[sum(inter[k][j] for inter in folded['inter'][i])
+                      for j in range(2)] for k in range(len(folded['dens'][i]))]
+            self._assert_same_inter(total, folded['dens'][i], scale)
+        for res in (folded, expanded):
+            # 4 helicity combinations: 10 entries, density then all_inter
+            self.assertEqual(len(res['nomatch']), 20)
+            self.assertTrue(all(math.isnan(x) for z in res['nomatch'] for x in z))
+        self.assertIn('ERROR: py_get_density: no matrix element', out)
+
+    def test_standalone_f2py_crossed_idx_caller_order_nhel(self):
+        """PY_<prefix>GET_ALL_INTER_IDX at a crossed index takes NHEL in the
+        caller's leg order, like P and POS: it must answer what the expanded
+        output's py_get_all_inter does for the same arrays. It used to read
+        NHEL in the base slot order (NHEL(XK) the helicity of caller leg
+        PERM(XK)); an uncrossed index is unaffected."""
+        folded_dir, expanded_dir = self._crossed_eej_outputs()
+        folded, _ = self._run_crossed_script(folded_dir, 'idx')
+        expanded, _ = self._run_crossed_script(expanded_dir, 'pdg')
+        self.assertTrue(folded['kept'])
+        # the first case is uncrossed, the two others carry a crossing
+        (idx0, nflav), (idx1, _), (idx2, _) = folded['idx']
+        self.assertLessEqual(idx0, nflav)
+        self.assertGreater(idx1, nflav)
+        self.assertGreater(idx2, nflav)
+        for i in range(3):
+            scale = max(abs(complex(*z)) for z in expanded['dens'][i])
+            self.assertGreater(scale, 0)
+            self._assert_same_inter(folded['dens'][i], expanded['dens'][i], scale)
+            for got, ref in zip(folded['inter'][i], expanded['inter'][i]):
+                self._assert_same_inter(got, ref, scale)
+
     def test_madmatrix_density_matches_fortran(self):
         """The madmatrix density matrices and |M|^2 (madmatrix.density, what
         MadSpin uses by default) against the Fortran f2py ones MadSpin used
