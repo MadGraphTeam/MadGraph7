@@ -546,18 +546,18 @@ namespace madmatrix
 #include "HelRecycling.inc" // nHrRows, cHrRow[ncomb], hrNwf (and the recycled chunks, if any)
 
   // The rows that were built are the rows that contributed AT THE PARAMETERS THE
-  // WARM-UP RAN AT. getGoodHel still runs at run time, so when it finds a row that
-  // is not in the table -- a different param_card, typically -- say so rather than
-  // silently contributing zero.
+  // WARM-UP RAN AT. getGoodHel still runs at run time, and may ask for a row that
+  // is not in the table: a different param_card, a C-parity verdict that differs
+  // from the warm-up's (only representatives are built), MGONGPU_NOCSYM. That row
+  // is computed the ordinary way (load_jamps), exact but not recycled; say so once.
   inline void
   hr_unbaked_row( int ihel )
   {
     static bool warned = false;
     if( warned ) return;
     warned = true;
-    printf( "*** WARNING: helicity row %d contributes at these parameters but was\n"
-            "*** never built: the --hel_recycling table was measured at others.\n"
-            "*** This matrix element is INCOMPLETE -- regenerate the process.\n",
+    printf( "INFO: helicity row %d is not in the --hel_recycling table (measured at\n"
+            "INFO: other parameters): it is computed without recycling.\n",
             ihel );
   }
 
@@ -610,28 +610,38 @@ namespace madmatrix
 
   // Hand the helicity loop the row it asked for, out of the tables above, with the
   // bookkeeping calculate_jamps does for its own row: the multichannel numerators
-  // and the color flows for the choice of color.
+  // and the color flows for the choice of color. A row the table lacks is
+  // computed by calculate_jamps instead (see hr_unbaked_row).
   void
   load_jamps( int ihel,
-              const cxtype_amp_sv* jampAll_sv, // input: jamps of every row
-              const fptype_amp_sv* numAll_sv,  // input: |amp|^2 by diagram of every row
-              cxtype_amp_sv* allJamp_sv,       // output: jamp_sv[nParity*njampso] for this helicity
+              const cxtype_amp_sv* jampAll_sv,     // input: jamps of every row
+              const fptype_amp_sv* numAll_sv,      // input: |amp|^2 by diagram of every row
+              const fptype_momenta* allmomenta,    // input: momenta[nevt*npar*4] (for a row not in the table)
+              const fptype* allcouplings,          // input: couplings[nevt*ndcoup*2] (idem)
+              const unsigned int* iflavorVec,      // input: indices of the flavor combinations (idem)
+              cxtype_amp_sv* allJamp_sv,           // output: jamp_sv[nParity*njampso] for this helicity
               bool storeChannelWeights,
-              fptype_amp* allNumerators,       // input/output: multichannel numerators[nevt], add helicity ihel
-              fptype_amp_sv* jamp2_sv,         // output: jamp2[nParity][ncolor_flow][neppV] for color choice (nullptr if disabled)
-              const int ievt00 )               // input: first event number in current C++ event page
+              fptype_amp* allNumerators,           // input/output: multichannel numerators[nevt], add helicity ihel
+              fptype_amp* allDenominators,         // input/output: multichannel denominators[nevt] (idem)
+              fptype_amp_sv* jamp2_sv,             // output: jamp2[nParity][ncolor_flow][neppV] for color choice (nullptr if disabled)
+              const int ievt00 )                   // input: first event number in current C++ event page
   {
     using NUM_ACCESS = HostAccessNumerators;
     const int row = cHrRow[ihel];
-    if( row < 0 ) hr_unbaked_row( ihel );
+    if( row < 0 )
+    {
+      hr_unbaked_row( ihel );
+      calculate_jamps( cHel[ihel], allmomenta, allcouplings, iflavorVec, allJamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
+      return;
+    }
     for( int iParity = 0; iParity < nParity; ++iParity )
     {
       const int ievt0 = ievt00 + iParity * neppV;
-      const size_t slot = (size_t)( row < 0 ? 0 : row ) * nParity + iParity;
+      const size_t slot = (size_t)row * nParity + iParity;
       cxtype_amp_sv jamp_sv[njampso];
       for( int icol = 0; icol < njampso; icol++ )
-        jamp_sv[icol] = row < 0 ? cxzero_sv<cxtype_amp_sv>() : jampAll_sv[slot * njampso + icol];
-      if( storeChannelWeights and row >= 0 )
+        jamp_sv[icol] = jampAll_sv[slot * njampso + icol];
+      if( storeChannelWeights )
       {
         fptype_amp* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * ndiagrams );
         fptype_amp_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
@@ -1129,7 +1139,7 @@ namespace madmatrix
           // **NB! in "mixed" precision, using SIMD, calculate_jamps computes MEs for TWO neppV pages with a single channelId! #924
           bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
 #ifdef MGONGPU_HEL_RECYCLING
-          load_jamps( ihel, hrJamp_sv.data(), hrNum_sv.data(), jamp_sv, storeChannelWeights, allNumerators, jamp2_sv, ievt00 );
+          load_jamps( ihel, hrJamp_sv.data(), hrNum_sv.data(), allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
 #else
           calculate_jamps( cHel[ihel], allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
 #endif
@@ -1163,7 +1173,7 @@ namespace madmatrix
           // **NB! in "mixed" precision, using SIMD, calculate_jamps computes MEs for TWO neppV pages with a single channelId! #924
           bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
 #ifdef MGONGPU_HEL_RECYCLING
-          load_jamps( ihel, hrJamp_sv.data(), hrNum_sv.data(), jamp_sv, storeChannelWeights, allNumerators, jamp2_sv, ievt00 );
+          load_jamps( ihel, hrJamp_sv.data(), hrNum_sv.data(), allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
 #else
           calculate_jamps( cHel[ihel], allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
 #endif
