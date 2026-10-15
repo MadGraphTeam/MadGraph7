@@ -11124,12 +11124,14 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    def write(self, merged_particles, split_orders=False, crossed_rows=()):
+    def write(self, merged_particles, split_orders=False, crossed_rows=(),
+              output_options=None):
         """Run write_f2py_splitter for a single `q q > z q q` matrix element
         (5 legs, 2 incoming, 12 tabulated flavors) and return all_matrix.f with
         the fortran continuations folded back into single lines. crossed_rows
         are the crossing-table rows of folded crossed subprocesses."""
-        exporter = export_v4.ProcessExporterFortranSA(self.tmpdir)
+        exporter = export_v4.ProcessExporterFortranSA(
+            self.tmpdir, opt={'output_options': dict(output_options or {})})
         if split_orders:
             exporter.split_order_prefixes.add('M0_')
         if crossed_rows:
@@ -11178,6 +11180,28 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
         self.assertIn('DO I = 1, NPDG HFIX(I) = LNHEL(LEGOF(I)) ENDDO'
                       ' CALL M0_GET_ALL_INTER(PFIX, HFIX, POS,',
                       re.sub(r'\s+', ' ', text))
+
+    def test_per_process_f2py_entries_are_optional(self):
+        """The combined f2py_wrapper.f carries every subprocess' own
+        PY_<prefix>* entry points unless --f2py_per_process=False, which
+        MadSpin uses: f2py's build time grows faster than linearly with the
+        routines of one module, and the dispatching entries are all it needs."""
+        pdir = os.path.join(self.tmpdir, 'SubProcesses', 'P1_qq_zqq')
+        os.mkdir(pdir)
+        with open(os.path.join(pdir, 'f2py_matrix_wrapper.f'), 'w') as fsock:
+            fsock.write('      SUBROUTINE PY_M0_GET_FLAVOR_LAYOUT()\n'
+                        '      END\n')
+        wrapper = os.path.join(self.tmpdir, 'SubProcesses', 'f2py_wrapper.f')
+        for options, kept in (({}, True),
+                              ({'f2py_per_process': 'True'}, True),
+                              ({'f2py_per_process': 'False'}, False)):
+            self.write({81: [1, 2, 3, 4]}, output_options=options)
+            text = open(wrapper).read()
+            self.assertEqual('PY_M0_GET_FLAVOR_LAYOUT' in text, kept)
+            # the dispatching entry points are always there
+            for name in ('SMATRIXHEL(', 'SMATRIXHEL_IDX(', 'PY_GET_DENSITY(',
+                         'PY_GET_ALL_INTER('):
+                self.assertIn('SUBROUTINE ' + name, text)
 
     def test_nothing_changes_without_merged_particles(self):
         """No merged particle means one all-ones flavor per ME and no ordering

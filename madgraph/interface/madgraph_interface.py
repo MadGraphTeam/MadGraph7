@@ -783,6 +783,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --axial_gauge=True: [madevent|standalone_fortran|standalone|mg7] build the polarisation of massless vectors in the axial gauge of another external (lightlike) leg, so that whole diagrams vanish (default:False).")
         logger.info("      --mask=False: [madevent|standalone_fortran] disable flavor-mask optimization for grouped/merged flavors (default:True).")
         logger.info("      --prefix=int|proc: [standalone_fortran] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
+        logger.info("      --f2py_per_process=False: [standalone_fortran with --prefix] build the combined all_matrix2py module with only its dispatching entry points (smatrixhel, smatrixhel_idx, py_get_density, ...), without the per-process py_<prefix>* ones: much faster to build for many subprocesses (used by MadSpin).")
         logger.info("      --use_crossing=False: [standalone_fortran|standalone|mg7|madevent] write this output WITHOUT the crossing machinery (on by default, as on the generate line): the crossed subprocesses folded onto their base at generation are written back as their own directories. With it, mg7 evaluates each crossed subprocess with the library of its base (cpu, simd and GPU).")
         logger.info("      --crossing_table=all: [standalone_fortran|standalone] with the crossing machinery, let the extended flavor index also reach every applicable crossing (each choice of the legs that start in the initial state), not only the crossed subprocesses the generation folded -- e.g. for a single generated process, which folds none.")
         logger.info("   Examples:",'$MG:color:GREEN')
@@ -3370,7 +3371,7 @@ class CompleteForCmd(cmd.CompleteCmd):
                 except Exception as error:
                     print(error)
             if 'standalone_fortran' in args:
-                possible_options_full = list(possible_options_full) + ['--prefix=int', '--prefix=proc', '--density=']
+                possible_options_full = list(possible_options_full) + ['--prefix=int', '--prefix=proc', '--density=', '--f2py_per_process=False']
 
             # Directory continuation
             if args[-1].endswith(os.path.sep):

@@ -7933,9 +7933,17 @@ C       stays correct for split-order processes.
         # Concatenate rather than add the files to the f2py command line: f2py's
         # multi-file build leaves the extra wrappers' symbols undefined at
         # dlopen on some platforms, whereas a single scanned source links them.
+        # --f2py_per_process=False leaves them out: f2py's code generation
+        # grows faster than linearly with the routines of one module (about 14
+        # per matrix element), so a 300-subprocess MadSpin output spent over an
+        # hour in f2py for entry points MadSpin never calls -- it only uses the
+        # dispatching ones above, which reach a folded crossing by its PDG
+        # codes (f77_crossed_*).
         wrappers = sorted(glob.glob(pjoin(self.dir_path, 'SubProcesses',
                                           '*', 'f2py_matrix_wrapper.f')))
-        if wrappers:
+        per_process = (self.opt['output_options'] or {}).get(
+            'f2py_per_process', True)
+        if wrappers and str(per_process).lower() not in ('false', '0', 'no'):
             with open(f2py_wrapper_path, 'a') as fsock:
                 for wpath in wrappers:
                     fsock.write('\nC     crossing-aware f2py wrappers from %s\n'

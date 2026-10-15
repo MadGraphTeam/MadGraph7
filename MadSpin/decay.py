@@ -5588,7 +5588,10 @@ class decay_all_events_onshell(decay_all_events):
             commandline = without_crossing(commandline.replace('add process', 'generate',1))
             mgcmd.exec_cmd(commandline, precmd=True)
 
-            commandline = 'output standalone_fortran %s --prefix=int' % pjoin(path_me, ms_me_subdir)
+            # MadSpin calls only the dispatching f2py entry points: the
+            # per-process ones would cost f2py an hour for ~300 subprocesses
+            commandline = ('output standalone_fortran %s --prefix=int '
+                           '--f2py_per_process=False' % pjoin(path_me, ms_me_subdir))
             logger.info(commandline)
             mgcmd.exec_cmd(commandline, precmd=True)
             fill_all_me(self, "production")
@@ -5673,7 +5676,8 @@ class decay_all_events_onshell(decay_all_events):
                 logger.debug('madmatrix failure: %s', error)
                 if os.path.exists(path):
                     shutil.rmtree(path)
-        commandline = 'output standalone_fortran %s --prefix=int --density=1 -f' % path
+        commandline = ('output standalone_fortran %s --prefix=int --density=1 '
+                       '--f2py_per_process=False -f' % path)
         logger.info(commandline)
         self.mgcmd.exec_cmd(commandline, precmd=True)
         return 'fortran'
