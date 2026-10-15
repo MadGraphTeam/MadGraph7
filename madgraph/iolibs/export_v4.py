@@ -12189,13 +12189,11 @@ c of an explicit polarisation in the process
 
     def _helicity_state_table(self, matrix_element, name):
         """(maxhel, lines): DATA for NAME(MAXHEL, NEXTERNAL), the helicity
-        values of each leg in the canonical-code digit order (the
-        allow_reverse=True order GET_NHEL decodes with, see _helstate_data),
-        and N<NAME>(NEXTERNAL) their counts."""
-        pdict = matrix_element.get('processes')[0].get('model').get(
-            'particle_dict')
-        states = [pdict[wf.get('pdg_code')].get_helicity_states(True)
-                  for wf in matrix_element.get_external_wavefunctions()]
+        values of each leg in the canonical-code digit order (the lists
+        GET_NHEL decodes with, see _helstate_data: allow_reverse=True, a
+        polarization restriction included -- though a polarized process never
+        crosses), and N<NAME>(NEXTERNAL) their counts."""
+        states = [list(s) for s in matrix_element.get_helicity_per_particle()]
         maxhel = max(len(s) for s in states) if states else 1
         flat = [s[i] if i < len(s) else 0 for s in states
                 for i in range(maxhel)]
