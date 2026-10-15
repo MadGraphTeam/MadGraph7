@@ -107,6 +107,7 @@ from .dag_algorithms import (
     _infer_minimal_coupling_order_limits_from_color_plan,
     contributing_color_sector_ids,
     filter_dag_to_color_sectors,
+    has_model_supported_amplitudes,
     infer_minimal_coupling_order_limits,
     prune_dag_to_amplitude_roots,
     prune_global_helicity_flip_equivalent_roots,
@@ -2652,25 +2653,31 @@ class _UnsupportedProcess:
     reason: str
 
 
+_SupportedT = TypeVar("_SupportedT", "_DagProcess", _ExpandedProcess)
+
+
 def _source_request(expanded: _ExpandedProcess) -> ProcessRequest:
     return expanded.source_request or expanded.request
 
 
 def _partition_model_supported_processes(
-    results: Sequence[_DagProcess | _UnsupportedProcess],
-) -> tuple[tuple[_DagProcess, ...], tuple[_UnsupportedProcess, ...]]:
+    results: Sequence[_SupportedT | _UnsupportedProcess],
+) -> tuple[tuple[_SupportedT, ...], tuple[_UnsupportedProcess, ...]]:
     """Retain supported children without silently dropping a whole request."""
 
     unsupported = tuple(
         result for result in results if isinstance(result, _UnsupportedProcess)
     )
     supported = tuple(
-        cast(_DagProcess, result)
+        cast(_SupportedT, result)
         for result in results
         if not isinstance(result, _UnsupportedProcess)
     )
     supported_request_names = {
-        _source_request(result.expanded).name for result in supported
+        _source_request(
+            result if isinstance(result, _ExpandedProcess) else result.expanded
+        ).name
+        for result in supported
     }
     unsupported_by_request: dict[str, list[_UnsupportedProcess]] = {}
     for result in unsupported:
@@ -2695,6 +2702,22 @@ def _partition_model_supported_processes(
             + "; ".join(details)
         )
     return supported, unsupported
+
+
+def _warn_unsupported_processes(unsupported: Sequence[_UnsupportedProcess]) -> None:
+    if not unsupported:
+        return
+    rendered = ", ".join(
+        f"{item.expanded.request.name} ({item.expanded.process_ir.process})"
+        for item in unsupported
+    )
+    _LOGGER.warning(
+        "Skipped %d concrete subprocess%s with no model-supported tree-level "
+        "amplitudes: %s",
+        len(unsupported),
+        "" if len(unsupported) == 1 else "es",
+        rendered,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -3474,19 +3497,7 @@ class GenerationBackend:
                         compiled, unsupported = _partition_model_supported_processes(
                             dag_results
                         )
-                        if unsupported:
-                            rendered = ", ".join(
-                                f"{item.expanded.request.name} "
-                                f"({item.expanded.process_ir.process})"
-                                for item in unsupported
-                            )
-                            _LOGGER.warning(
-                                "Skipped %d concrete subprocess%s with no "
-                                "model-supported tree-level amplitudes: %s",
-                                len(unsupported),
-                                "" if len(unsupported) == 1 else "es",
-                                rendered,
-                            )
+                        _warn_unsupported_processes(unsupported)
                         del dag_results
                         del unsupported
 
@@ -4165,6 +4176,7 @@ class GenerationBackend:
     ) -> GenerationResult:
         """Build and publish compact recurrence schedules before GenericDAG."""
 
+        expanded = self._drop_processes_without_amplitudes(expanded, generation_model)
         model_inputs_started = time.perf_counter()
         model_inputs = self._recurrence_model_inputs(resolved_model)
         reporter.timings["recurrence-model-input-preparation"] = (
@@ -5125,6 +5137,48 @@ class GenerationBackend:
             recurrence_process_remap=shared.remap,
             recurrence_process_executor_pack=process_executor_pack,
         )
+
+    def _drop_processes_without_amplitudes(
+        self,
+        expanded: tuple[_ExpandedProcess, ...],
+        model: Model,
+    ) -> tuple[_ExpandedProcess, ...]:
+        """Skip children of a multiparticle request that the model cannot connect.
+
+        The recurrence builders, unlike the DAG compiler, need an amplitude.
+        """
+
+        results: list[_ExpandedProcess | _UnsupportedProcess] = []
+        for entry in expanded:
+            process = entry.process_ir
+            supported = entry.source_expansion_size <= 1 or (
+                has_model_supported_amplitudes(
+                    process,
+                    model=model,
+                    color_plan=build_color_plan(
+                        process,
+                        color_accuracy=self._color_accuracy,
+                        fold_trace_reflections=(
+                            model.lc_trace_reflection_equivalence_is_proven(process)
+                        ),
+                    ),
+                    max_coupling_orders=self._coupling_order_limits or None,
+                )
+            )
+            results.append(
+                entry
+                if supported
+                else _UnsupportedProcess(
+                    expanded=entry,
+                    reason=(
+                        f"process {process.process!r} has no model-supported "
+                        "tree-level amplitudes"
+                    ),
+                )
+            )
+        kept, unsupported = _partition_model_supported_processes(results)
+        _warn_unsupported_processes(unsupported)
+        return kept
 
     def _construct_recurrence_artifact(
         self,

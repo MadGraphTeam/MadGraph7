@@ -964,37 +964,15 @@ def _infer_minimal_coupling_order_limits_from_color_plan(
             trace_reflections_folded=color_plan.trace_reflections_folded,
             basis=color_plan.basis,
         )
-    color_engine = ColorEngine(color_plan, model)
-    full_mask = _labels_mask(leg.label for leg in process_ir.legs)
-    closure_candidate_splits = _closure_candidate_splits(
+    totals = _closure_totals_from_color_plan(
         process_ir,
-        model,
-        color_engine,
-    )
-    closure_reachable_masks = (
-        _closure_side_reachable_masks(full_mask, closure_candidate_splits)
-        if closure_side_mask_pruning
-        else None
-    )
-    color_order_reachable_masks = (
-        _lc_color_order_reachable_masks(process_ir, color_plan, model)
-        if color_order_mask_pruning
-        else None
-    )
-    totals = _closure_total_coupling_orders(
-        process_ir,
-        model,
-        color_engine,
-        closure_candidate_splits,
-        closure_reachable_masks,
-        color_order_reachable_masks,
-        max_coupling_orders=_normalize_coupling_order_limits(max_coupling_orders),
-        ignored_particle_ids=frozenset(
-            int(particle_id) for particle_id in (ignored_particle_ids or ())
-        ),
-        ignored_vertex_kinds=frozenset(
-            int(kind) for kind in (ignored_vertex_kinds or ())
-        ),
+        model=model,
+        color_plan=color_plan,
+        max_coupling_orders=max_coupling_orders,
+        closure_side_mask_pruning=closure_side_mask_pruning,
+        color_order_mask_pruning=color_order_mask_pruning,
+        ignored_particle_ids=ignored_particle_ids,
+        ignored_vertex_kinds=ignored_vertex_kinds,
     )
     if not totals:
         return {}
@@ -1015,6 +993,78 @@ def _infer_minimal_coupling_order_limits_from_color_plan(
     for total in totals:
         order_names.update(name for name, _value in total)
     return {name: envelope.get(name, 0) for name in sorted(order_names)}
+
+
+def _closure_totals_from_color_plan(
+    process_ir: CanonicalProcessIR,
+    *,
+    model: Model,
+    color_plan: GenericColorPlan,
+    max_coupling_orders: Mapping[str, int] | None = None,
+    closure_side_mask_pruning: bool = True,
+    color_order_mask_pruning: bool = True,
+    ignored_particle_ids: Iterable[int] | None = None,
+    ignored_vertex_kinds: Iterable[int] | None = None,
+) -> tuple[CouplingOrders, ...]:
+    """Coupling-order totals of the closures reachable within the limits."""
+
+    color_engine = ColorEngine(color_plan, model)
+    full_mask = _labels_mask(leg.label for leg in process_ir.legs)
+    closure_candidate_splits = _closure_candidate_splits(
+        process_ir,
+        model,
+        color_engine,
+    )
+    closure_reachable_masks = (
+        _closure_side_reachable_masks(full_mask, closure_candidate_splits)
+        if closure_side_mask_pruning
+        else None
+    )
+    color_order_reachable_masks = (
+        _lc_color_order_reachable_masks(process_ir, color_plan, model)
+        if color_order_mask_pruning
+        else None
+    )
+    return tuple(
+        _closure_total_coupling_orders(
+            process_ir,
+            model,
+            color_engine,
+            closure_candidate_splits,
+            closure_reachable_masks,
+            color_order_reachable_masks,
+            max_coupling_orders=_normalize_coupling_order_limits(max_coupling_orders),
+            ignored_particle_ids=frozenset(
+                int(particle_id) for particle_id in (ignored_particle_ids or ())
+            ),
+            ignored_vertex_kinds=frozenset(
+                int(kind) for kind in (ignored_vertex_kinds or ())
+            ),
+        )
+    )
+
+
+def has_model_supported_amplitudes(
+    process: CanonicalProcessIR,
+    *,
+    model: Model,
+    color_plan: GenericColorPlan,
+    max_coupling_orders: Mapping[str, int] | None = None,
+) -> bool:
+    """Whether any tree-level closure of the process exists in the model.
+
+    Species, colour and coupling-order reachability only; it may overestimate,
+    like the DAG pruning it shares, but never rejects a process with amplitudes.
+    """
+
+    return bool(
+        _closure_totals_from_color_plan(
+            process,
+            model=model,
+            color_plan=color_plan,
+            max_coupling_orders=max_coupling_orders,
+        )
+    )
 
 
 def prune_dag_to_amplitude_roots(dag: GenericDAG) -> GenericDAG:
