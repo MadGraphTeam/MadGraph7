@@ -7606,7 +7606,10 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                               ' %sget_flavor, %i, %i, %i, %%s, flavor, lpdgs,'
                               ' p, pfix)' % (prefix, prefix, n_ext,
                                              info_me[4], info_me[5]))
-                    text.append(repair % 'n_changing, pos, .true.')
+                    # GET_ALL_INTER fixes the helicity of every other leg from
+                    # NHEL, by leg position: it gets the same no-repair rule
+                    # as a specific smatrixhel row (below), hence the switch.
+                    text.append(repair % 'n_changing, pos, %(dorepair)s')
                     # a request for one specific helicity row names it by leg
                     # position, so re-ordering the legs would answer for a
                     # different helicity assignment: leave those calls alone.
@@ -7756,7 +7759,8 @@ C       stays correct for split-order processes.
                                            for i in range(max_nexternal) for (pdg,pid) in allids),
                           'prefix':'\',\''.join(allprefix),
                           'pids': ','.join(str(pid) for (pdg,pid) in allids),
-                          'inter_splitter': '\n'.join(text) % {'fct_name': 'GET_ALL_INTER(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)' % momenta},
+                          'inter_splitter': '\n'.join(text) % {'fct_name': 'GET_ALL_INTER(%s, LNHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)' % momenta,
+                                                               'dorepair': '.false.'},
                           'flavor_repair_function': flavor_repair_function,
                           'parameter_setup': '\n'.join(parameter_setup),
                           'helreset_def' : '\n'.join(helreset_def),
@@ -7766,7 +7770,8 @@ C       stays correct for split-order processes.
                           'nhel': all_nhel,
                           'f2py_prefix': f2py_prefix,
                           'idens_value': all_iden,
-                          'density_splitter': '\n'.join(text) % {'fct_name': 'GET_DENSITY(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)' % momenta},
+                          'density_splitter': '\n'.join(text) % {'fct_name': 'GET_DENSITY(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)' % momenta,
+                                                                 'dorepair': '.true.'},
                           
                           }
 

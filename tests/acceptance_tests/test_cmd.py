@@ -3566,6 +3566,86 @@ int main(int argc, char** argv){
             self.assertAlmostEqual(madspin_report_dict[key].real/(ref_val.real * iden_dec**2), 1, places=4)
                                                                              
                                                                              
+    # Run in a fresh interpreter: every output names its module all_matrix2py,
+    # so it must not share a process with one an earlier test imported.
+    _get_all_inter_script = '''
+import itertools, json, math, os, sys
+import numpy as np
+import all_matrix2py as m
+mdir, prefix, outfile = sys.argv[1:]
+fct = lambda name: getattr(m, prefix + name)
+fct('initialise')(os.path.join(mdir, 'Cards', 'param_card.dat'))
+E, th, ph = 500., 0.7, 0.3
+k = [E*math.sin(th)*math.cos(ph), E*math.sin(th)*math.sin(ph), E*math.cos(th)]
+p = np.array([[E, 0, 0, E], [E, 0, 0, -E], [E] + k,
+              [E] + [-x for x in k]]).T.copy()
+kw = dict(pdgs=[2, -2, -11, 11], procid=-1, p=p, pos=[3, 4],
+          allow_hel=[-1, -1, -1, 1, 1, -1, 1, 1])
+cplx = lambda a: [[z.real, z.imag] for z in a]
+res = {'density': cplx(fct('py_get_density')(alphas=0., scale2=0., **kw)),
+       'inter': [], 'nhel': []}
+for h1, h2 in itertools.product([-1, 1], repeat=2):
+    # the entries at pos are ignored: 0 shows whether they were written to
+    nhel = np.array([h1, h2, 0, 0], dtype=np.int32)
+    res['inter'].append(cplx(fct('py_get_all_inter')(nhel=nhel, **kw)))
+    res['nhel'].append([nhel.tolist(), [h1, h2, 0, 0]])
+json.dump(res, open(outfile, 'w'))
+'''
+
+    def test_standalone_f2py_get_all_inter(self):
+        """py_get_all_inter, summed over the helicities of the legs not in
+        pos, must give py_get_density.
+
+        It could not be called at all: f2py gave INTER the dimension (*), so
+        every call raised a ValueError; the dispatch in all_matrix.f did not
+        pass the NHEL the per-process GET_ALL_INTER takes; and with
+        --prefixf2py the wrapper called the unprefixed f77_get_all_inter, so
+        the whole module failed to import.
+        """
+        import json
+        self.do('import model sm')
+        self.do('generate p p > e+ e-')
+        prefixed_dir = self.out_dir + '_prefixf2py'
+        self.addCleanup(shutil.rmtree, prefixed_dir, ignore_errors=True)
+        for out_dir, option, prefix in [(self.out_dir, '', ''),
+                                        (prefixed_dir, ' --prefixf2py=1', 'f1_')]:
+            self.do('output standalone_fortran %s --prefix=int -f%s'
+                    % (out_dir, option))
+            subdir = os.path.join(out_dir, 'SubProcesses')
+            build = subprocess.run(['make', 'f2py'], cwd=subdir,
+                                   capture_output=True, text=True)
+            self.assertEqual(build.returncode, 0,
+                             'make f2py failed:\n' + build.stdout[-2000:]
+                             + build.stderr[-2000:])
+
+            outfile = os.path.join(out_dir, 'get_all_inter.json')
+            run = subprocess.run([sys.executable, '-c',
+                                  self._get_all_inter_script,
+                                  out_dir, prefix, outfile],
+                                 cwd=subdir, capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0,
+                             run.stdout[-2000:] + run.stderr[-2000:])
+            res = json.load(open(outfile))
+
+            # f2py hands the int32 array straight through, and GET_ALL_INTER
+            # writes the pos entries of the NHEL it is given
+            for after, before in res['nhel']:
+                self.assertEqual(after, before)
+
+            dens = res['density']
+            scale = max(abs(complex(*z)) for z in dens)
+            self.assertGreater(scale, 0)
+            # more than one helicity of the other legs contributes, so the
+            # sum below does not reduce to a single call
+            self.assertGreaterEqual(
+                sum(any(re_ or im_ for re_, im_ in inter)
+                    for inter in res['inter']), 2)
+            for i, (re_, im_) in enumerate(dens):
+                self.assertAlmostEqual(sum(inter[i][0] for inter in res['inter']),
+                                       re_, delta=1e-12 * scale)
+                self.assertAlmostEqual(sum(inter[i][1] for inter in res['inter']),
+                                       im_, delta=1e-12 * scale)
+
     def test_standalone_density_f2py(self):       
 
         ############################################################################
