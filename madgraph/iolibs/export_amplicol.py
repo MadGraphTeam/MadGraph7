@@ -22,11 +22,16 @@ channel) of every provider becomes one entry of subprocesses.json, integrated
 on its own with a colour-ordered phase-space mapping.
 """
 
+import importlib.util
 import json
 import logging
 import os
 import re
 import shutil
+import subprocess
+import sys
+import tempfile
+import time
 
 import madgraph
 
@@ -49,15 +54,61 @@ clean:
 """
 
 
-def import_pyamplicol():
-    try:
-        import pyamplicol
-        from pyamplicol.artifacts import umami_reweight
-    except ImportError as error:
+WORKER = pjoin(os.path.dirname(os.path.abspath(__file__)), 'amplicol_worker.py')
+# printed by Symbolica when another process holds its per-user thread
+SYMBOLICA_BUSY = 'Cannot start another restricted Symbolica thread'
+
+
+def check_pyamplicol():
+    """pyamplicol is only imported by the worker, see amplicol_worker."""
+    if importlib.util.find_spec('pyamplicol') is None:
         raise madgraph.InvalidCmd(
-            'The [amplicol] processes need pyamplicol (%s). Install it in the '
-            'Python environment of MadGraph.' % error)
-    return pyamplicol, umami_reweight
+            'The [amplicol] processes need pyamplicol. Install it in the Python '
+            'environment of MadGraph.')
+
+
+def run_worker(job):
+    """Run amplicol_worker on a job, waiting while Symbolica is busy elsewhere."""
+    env = dict(os.environ, SYMBOLICA_HIDE_BANNER='1',
+               PYTHONPATH=os.pathsep.join(p for p in sys.path if p))
+    waiting = False
+    while True:
+        worker = subprocess.Popen([sys.executable, WORKER, job], env=env,
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                  text=True)
+        busy = False
+        for line in worker.stdout:
+            if SYMBOLICA_BUSY in line:
+                busy = True
+            elif not line.startswith(('\u250c', '\u2502', '\u2514', '\u251c')):
+                sys.stdout.write(line)
+        if worker.wait() == 0:
+            return
+        if not busy:
+            raise madgraph.InvalidCmd('pyamplicol failed to generate the [amplicol] '
+                                      'matrix elements, see the messages above')
+        if 'symbolica' in sys.modules:
+            raise madgraph.InvalidCmd(
+                'Symbolica is imported in this MadGraph process, so the pyamplicol '
+                'worker cannot start: do not import pyamplicol or symbolica here')
+        if not waiting:
+            logger.info('Symbolica is used by another process: waiting for it')
+            waiting = True
+        time.sleep(10)
+
+
+def load_metadata(artifact):
+    """The UMAMI metadata documents of an artifact, one per provider."""
+    root = pjoin(artifact, 'API', 'umami')
+    with open(pjoin(root, 'metadata.json')) as stream:
+        data = json.load(stream)
+    if data.get('kind') != 'pyamplicol-umami-provider-index':
+        return [data]
+    documents = []
+    for provider in data['providers']:
+        with open(pjoin(root, provider['metadata'])) as stream:
+            documents.append(json.load(stream))
+    return documents
 
 
 def leg_pdgs(leg, model):
@@ -130,11 +181,9 @@ def coupling_orders(procdef, model):
             for order, weight in hierarchy.items() if weight > lowest}
 
 
-def model_source(pyamplicol, model, cache_path):
+def model_job(model, cache_path):
     """The UFO model of the output with its restriction, compiled for
     pyamplicol once per output."""
-    if os.path.exists(cache_path):
-        return pyamplicol.ModelSource.from_path(cache_path)
     path = model.get('modelpath')
     reference = os.path.basename(model.get('modelpath+restriction'))
     restriction = 'default'
@@ -144,33 +193,9 @@ def model_source(pyamplicol, model, cache_path):
             restriction = 'none'
         else:
             restriction = pjoin(path, 'restrict_%s.dat' % suffix)
-    from pyamplicol.config import EvaluatorConfig, JITConfig
-    source = pyamplicol.ModelSource.from_path(path, restriction=restriction)
-    logger.info('Compiling the model %s for AmpliCol' % reference)
-    source.compile(prepared_output=cache_path,
-                   evaluator=EvaluatorConfig(jit=JITConfig(optimization_level=2)))
-    return pyamplicol.ModelSource.from_path(cache_path)
-
-
-def generate_artifact(pyamplicol, artifact, accuracy, expression, multiparticles,
-                      orders, model):
-    from pyamplicol.config import resolve_config
-    # one worker: Symbolica's restricted mode allows a single thread
-    config = resolve_config({
-        'schema_version': 1,
-        'action': 'generate',
-        'color': {'accuracy': accuracy},
-        'process': {'multiparticles': multiparticles,
-                    'coupling_order_policy': 'explicit',
-                    'max_coupling_orders': orders},
-        'generation': {'workers': 1, 'emit_api_bundle': True,
-                       'relation_discovery': {'mode': 'off'}},
-        'evaluator': {'backend': 'jit', 'execution_mode': 'recurrence',
-                      'optimization': {'cores': 1},
-                      'jit': {'optimization_level': 2}},
-    })
-    pyamplicol.Generator(config).generate(expression, artifact, model=model,
-                                          mode='replace')
+    if not os.path.exists(cache_path):
+        logger.info('Compiling the model %s for AmpliCol' % reference)
+    return {'path': path, 'restriction': restriction, 'cache': cache_path}
 
 
 def representative_processes(proc_defs, model):
@@ -283,31 +308,40 @@ def parameter_references(metadata):
 def export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None):
     """Write SubProcesses/A<n>_<name> for every '[amplicol]' process definition
     and return the subprocesses.json entries."""
-    pyamplicol, umami_reweight = import_pyamplicol()
+    check_pyamplicol()
     subproc_dir = pjoin(dir_path, 'SubProcesses')
-    source = model_source(pyamplicol, model, pjoin(subproc_dir, MODEL_FILE))
     rusticol_config = shutil.which('rusticol-config') or 'rusticol-config'
-    entries = []
+    processes = []
     for number, procdef in enumerate(proc_defs, start=1):
         name = 'A%d_%s' % (number, process_name(procdef, model, multiparticles or {}))
         path = pjoin(subproc_dir, name)
+        expression, process_multiparticles = process_expression(procdef, model)
+        os.makedirs(path, exist_ok=True)
+        logger.info('Generating the AmpliCol matrix elements of %s in %s' %
+                    (procdef.nice_string(prefix=False), path))
+        processes.append({'name': name, 'path': path, 'expression': expression,
+                          'multiparticles': process_multiparticles,
+                          'orders': coupling_orders(procdef, model)})
+    with tempfile.TemporaryDirectory(prefix='amplicol_job_') as scratch:
+        job = pjoin(scratch, 'job.json')
+        with open(job, 'w') as stream:
+            json.dump({'model': model_job(model, pjoin(subproc_dir, MODEL_FILE)),
+                       'processes': processes,
+                       'result': pjoin(scratch, 'providers.json')}, stream)
+        run_worker(job)
+        with open(pjoin(scratch, 'providers.json')) as stream:
+            providers = json.load(stream)
+    entries = []
+    for procdef, process, provider_ids in zip(proc_defs, processes, providers):
+        name, path, orders = process['name'], process['path'], process['orders']
         rel_dir = pjoin('SubProcesses', name)
-        expression, multiparticles = process_expression(procdef, model)
-        orders = coupling_orders(procdef, model)
         # every vertex carries one coupling: the rest are powers of g_s
         qcd_power = (len(procdef.get('legs')) - 2 - sum(orders.values())
                      if len(orders) == 1 else -1)
-        logger.info('Generating the AmpliCol matrix elements of %s in %s' %
-                    (procdef.nice_string(prefix=False), path))
-        os.makedirs(path, exist_ok=True)
-        for accuracy in ('lc', 'full'):
-            generate_artifact(pyamplicol, pjoin(path, accuracy), accuracy,
-                              expression, multiparticles, orders, source)
-        provider_ids = umami_reweight.write_reweight_provider(
-            pjoin(path, 'lc'), pjoin(path, 'full'), pjoin(path, 'reweight'))
-        documents = umami_reweight.load_umami_metadata(pjoin(path, 'lc'))
+        initial_legs = [set(leg_pdgs(leg, model))
+                        for leg in procdef.get('legs') if not leg.get('state')]
         copies = []
-        for provider_id, metadata in zip(provider_ids, documents):
+        for provider_id, metadata in zip(provider_ids, load_metadata(pjoin(path, 'lc'))):
             library = metadata['provider']['library']
             me_path = pjoin('lib', 'libamplicol_%s_%s.so' % (name, provider_id))
             ratio_path = pjoin('lib', 'libamplicol_%s_%s_ratio.so' %
@@ -315,8 +349,6 @@ def export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None):
             copies.append('\tcp $(BUILD)/lc/%s ../../%s' % (library, me_path))
             copies.append('\tcp $(BUILD)/reweight/libreweight_%s.so ../../%s' %
                           (provider_id, ratio_path))
-            initial_legs = [set(leg_pdgs(leg, model))
-                            for leg in procdef.get('legs') if not leg.get('state')]
             entries.extend(subprocess_entries(metadata, model, rel_dir, me_path,
                                               ratio_path, qcd_power, initial_legs))
         with open(pjoin(path, 'makefile'), 'w') as stream:
@@ -324,7 +356,7 @@ def export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None):
                                      'copies': '\n'.join(copies)})
         with open(pjoin(path, 'process.json'), 'w') as stream:
             json.dump({'process': procdef.nice_string(prefix=False),
-                       'expression': expression,
-                       'multiparticles': multiparticles,
+                       'expression': process['expression'],
+                       'multiparticles': process['multiparticles'],
                        'max_coupling_orders': orders}, stream, indent=2)
     return entries

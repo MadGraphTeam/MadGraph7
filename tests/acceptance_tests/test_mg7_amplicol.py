@@ -26,6 +26,7 @@ otherwise. Knobs: MG7_AMPLICOL_EVENTS (default 10000) and MG7_AMPLICOL_NSIGMA
 
 import glob
 import gzip
+import importlib.util
 import json
 import os
 import re
@@ -87,11 +88,11 @@ def _color_balanced(lhe_path):
 class MG7AmplicolTest(unittest.TestCase):
 
     def setUp(self):
-        try:
-            import madspace  # noqa: F401
-            import pyamplicol  # noqa: F401
-        except ImportError as error:
-            self.skipTest('madspace or pyamplicol unavailable: %s' % error)
+        # not imported: Symbolica would hold its lock against the pyamplicol worker
+        missing = [name for name in ('madspace', 'pyamplicol')
+                   if importlib.util.find_spec(name) is None]
+        if missing:
+            self.skipTest('%s unavailable' % ' and '.join(missing))
         if not misc.resolve_lhapdf().find_set(_PDF):
             self.skipTest('%s LHAPDF data not found' % _PDF)
         self.path = tempfile.mkdtemp(prefix='mg7_amplicol_')
