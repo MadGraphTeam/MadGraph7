@@ -4231,7 +4231,9 @@ json.dump(res, open(outfile, 'w'))
         MadSpin uses by default) against the Fortran f2py ones MadSpin used
         before, on the processes MadSpin generates for p p > t t~ with both tops
         decayed: off-shell ('*') tops, merged quark and lepton flavors, both
-        quark orderings, on- and off-shell momenta."""
+        quark orderings, on- and off-shell momenta. The production folds its
+        crossings as MadSpin's does (u~ u > t* t~* is the beam swap of
+        u u~ > t* t~*, evaluated by its library at an extended flavor index)."""
         import importlib.util
         import math
         import random
@@ -4242,9 +4244,8 @@ json.dump(res, open(outfile, 'w'))
         self.do('set apply_flavor_grouping True')
         self.do('set group_subprocesses False')
         dirs = {}
-        # --use_crossing=False: what MadSpin generates (decay.without_crossing)
-        for name, process in (('prod', 'generate p p > t* t~* --use_crossing=False'),
-                              ('dec', 'generate t* > b w+, w+ > l+ vl --use_crossing=False')):
+        for name, process in (('prod', 'generate p p > t* t~*'),
+                              ('dec', 'generate t* > b w+, w+ > l+ vl')):
             self.do(process)
             dirs[name] = (pjoin(self.out_dir, 'mm_' + name), pjoin(self.out_dir, 'f_' + name))
             self.do('output standalone %s -f --noeps=True' % dirs[name][0])
@@ -4268,6 +4269,9 @@ json.dump(res, open(outfile, 'w'))
             spec.loader.exec_module(fortran[name])
             fortran[name].initialise(pjoin(f_dir, 'Cards', 'param_card.dat'))
         self.assertEqual(mm['prod'].get_idens(), list(fortran['prod'].get_idens()))
+        # u~ u > t* t~* is folded: the u u~ library at an extended flavor index
+        sub, flavor_id, _ = mm['prod'].dispatch([-2, 2, 6, -6])
+        self.assertGreaterEqual(flavor_id, sub.nmaxflavor)
 
         rng = random.Random(3)
 
@@ -4314,9 +4318,12 @@ json.dump(res, open(outfile, 'w'))
         both = [h for a in two for b in two for h in (a, b)]
         for mt1, mt2 in ((173., 173.), (168.5, 180.)):
             p = production(mt1, mt2)
-            for pdgs in ([21, 21, 6, -6], [2, -2, 6, -6], [-1, 1, 6, -6], [3, -3, 6, -6]):
+            for pdgs in ([21, 21, 6, -6], [2, -2, 6, -6], [-1, 1, 6, -6], [3, -3, 6, -6],
+                         [-2, 2, 6, -6]):
                 check('prod', pdgs, p, [3, 4], both)
                 check('prod', pdgs, p, [4], two)
+                # an open initial leg: a crossed one takes its own helicity
+                check('prod', pdgs, p, [1], two)
         for mt, mw in ((173., 80.419), (176., 78.), (165., 84.)):
             for pdgs in ([6, 5, -11, 12], [6, 5, -13, 14]):
                 check('dec', pdgs, decay(mt, mw), [1], two)
