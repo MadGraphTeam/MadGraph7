@@ -53,6 +53,7 @@
 
 #define gpuStream_t cudaStream_t
 #define gpuStreamCreate( pStream ) checkGpu( cudaStreamCreate( pStream ) )
+#define gpuStreamCreateNonBlocking( pStream ) checkGpu( cudaStreamCreateWithFlags( pStream, cudaStreamNonBlocking ) )
 #define gpuStreamDestroy( stream ) checkGpu( cudaStreamDestroy( stream ) )
 #define gpuMallocAsync( ptr, size, stream ) checkGpu( cudaMallocAsync( ptr, size, stream ) )
 #define gpuFreeAsync( ptr, stream ) checkGpu( cudaFreeAsync( ptr, stream ) )
@@ -124,6 +125,7 @@
 
 #define gpuStream_t hipStream_t
 #define gpuStreamCreate( pStream ) checkGpu( hipStreamCreate( pStream ) )
+#define gpuStreamCreateNonBlocking( pStream ) checkGpu( hipStreamCreateWithFlags( pStream, hipStreamNonBlocking ) )
 #define gpuStreamDestroy( stream ) checkGpu( hipStreamDestroy( stream ) )
 #define gpuMallocAsync( ptr, size, stream ) checkGpu( hipMallocAsync( ptr, size, stream ) )
 #define gpuFreeAsync( ptr, stream ) checkGpu( hipFreeAsync( ptr, stream ) )

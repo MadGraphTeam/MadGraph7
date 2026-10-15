@@ -12,12 +12,13 @@ Any CPU backend (scalar, simd_128, ...) works too, to try the script without a G
      pair loop of the colour sum (all ORDERED pairs of amplitude orders, not a triangle);
    and QED^2==2 again with FPTYPE=m (colour algebra in single precision).
 2. the helicity drawn for an interference |M|^2 through umami (event generation), on
-   ``u u~ > t t~ g QED^2==2``, whose helicities have both signs at most points: every
-   draw has |M|^2 = sum|T|, a helicity always comes with the same sign, the average over
-   a uniform grid of random numbers is the helicity sum (what umami returns without the
-   random number) and the points with mixed signs give both signs; with the umami
-   parameter interference_helicity_summed (run card interference_helicity = "summed")
-   every draw returns the helicity sum.
+   ``u u~ > t t~ g QED^2==2``, whose helicities have both signs at most points, with
+   check_sa.exe perf on a grid of random numbers for each RAMBO point (--momenta,
+   --rnd-hel, --dump-me, --dump-hel): every draw has |M|^2 = sum|T|, a helicity always
+   comes with the same sign, the average over the uniform grid is the helicity sum (what
+   umami returns without the random number) and the points with mixed signs give both
+   signs; with the umami parameter interference_helicity_summed (run card
+   interference_helicity = "summed", --param) every draw returns the helicity sum.
 3. mg7 ``p p > u u~ QCD^2==2`` on the backend: the negative cross section of the CPU
    reference, the LHE <init> declaring the negative weights (IDWTUP = -4, XMAXUP the
    unit weight sigma_abs) and events of both signs. It runs with the PDF set of the
@@ -29,14 +30,12 @@ check fails.
 """
 
 import argparse
-import ctypes
-import ctypes.util
+import array
 import glob
 import gzip
 import json
 import math
 import os
-import random
 import re
 import subprocess
 import sys
@@ -136,149 +135,56 @@ def check_standalone(repo, backend):
 # 2. helicity choice through umami
 # ---------------------------------------------------------------------------
 
-class Memory:
-    """Buffers for umami: host memory for a CPU library, device memory for a GPU one
-    (through the CUDA/HIP runtime the library itself is linked with)."""
-
-    def __init__(self, backend, library):
-        self.gpu = backend in GPU_BACKENDS
-        if not self.gpu:
-            return
-        name, prefix = ('cudart', 'cuda') if backend == 'cuda' else ('amdhip64', 'hip')
-        path = None
-        ldd = subprocess.run(['ldd', library], capture_output=True, text=True).stdout
-        for line in ldd.splitlines():
-            if 'lib%s' % name in line and '=>' in line:
-                path = line.split('=>')[1].split()[0]
-        self.rt = ctypes.CDLL(path or ctypes.util.find_library(name) or 'lib%s.so' % name)
-        self.malloc = getattr(self.rt, prefix + 'Malloc')
-        self.malloc.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_size_t]
-        self.memcpy = getattr(self.rt, prefix + 'Memcpy')
-        self.memcpy.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
-        self.free = getattr(self.rt, prefix + 'Free')
-        self.free.argtypes = [ctypes.c_void_p]
-        self.sync = getattr(self.rt, prefix + 'DeviceSynchronize')
-        self.pointers = []
-
-    def buffer(self, host):
-        """A buffer for umami holding (a copy of) the ctypes array host."""
-        if not self.gpu:
-            return ctypes.addressof(host)
-        pointer = ctypes.c_void_p()
-        assert self.malloc(ctypes.byref(pointer), ctypes.sizeof(host)) == 0, 'device malloc'
-        # cudaMemcpyHostToDevice == hipMemcpyHostToDevice == 1
-        assert self.memcpy(pointer, ctypes.addressof(host), ctypes.sizeof(host), 1) == 0
-        self.pointers.append(pointer)
-        return pointer.value
-
-    def fetch(self, pointer, host):
-        """Copy a umami output back into the ctypes array host."""
-        if not self.gpu:
-            return
-        assert self.sync() == 0, 'device synchronize'
-        # cudaMemcpyDeviceToHost == hipMemcpyDeviceToHost == 2
-        assert self.memcpy(ctypes.addressof(host), pointer, ctypes.sizeof(host), 2) == 0
-
-    def release(self):
-        if self.gpu:
-            for pointer in self.pointers:
-                self.free(pointer)
-            self.pointers = []
-
-
-def rambo(masses_out, roots, rng):
-    """One phase-space point: two massless beams along z, then RAMBO with masses."""
-    n = len(masses_out)
-    q = []
-    for _ in range(n):
-        c, f = 2 * rng.random() - 1, 2 * math.pi * rng.random()
-        e = -math.log(rng.random() * rng.random())
-        s = math.sqrt(1 - c * c)
-        q.append([e, e * s * math.cos(f), e * s * math.sin(f), e * c])
-    big_q = [sum(qi[k] for qi in q) for k in range(4)]
-    mass = math.sqrt(big_q[0] ** 2 - sum(big_q[k] ** 2 for k in (1, 2, 3)))
-    b = [-big_q[k] / mass for k in (1, 2, 3)]
-    g, x = big_q[0] / mass, roots / mass
-    a = 1 / (1 + g)
-    p = []
-    for qi in q:
-        bq = sum(b[k] * qi[k + 1] for k in range(3))
-        p.append([x * (g * qi[0] + bq)] +
-                 [x * (qi[k + 1] + b[k] * qi[0] + a * bq * b[k]) for k in range(3)])
-    # rescale the three-momenta so that the energies add up to roots with the masses
-    xi = 1.
-    for _ in range(100):
-        energies = [math.sqrt((xi * pi[0]) ** 2 + m * m) for pi, m in zip(p, masses_out)]
-        f = sum(energies) - roots
-        df = sum(xi * pi[0] ** 2 / e for pi, e in zip(p, energies))
-        xi -= f / df
-        if abs(f) < 1e-12 * roots:
-            break
-    out = []
-    for pi, m in zip(p, masses_out):
-        vec = [xi * v for v in pi[1:]]
-        out.append([math.sqrt(sum(v * v for v in vec) + m * m)] + vec)
-    half = roots / 2
-    return [[half, 0., 0., half], [half, 0., 0., -half]] + out
-
-
 def check_helicity_choice(repo, backend, npoints=16, ngrid=4000):
     section('helicity choice of an interference |M|^2 through umami (%s)' % backend)
     proc_dir = standalone(repo, backend, 'uuxttxg_qed2_d', 'u u~ > t t~ g QED^2==2', 'd')
-    out_dir = os.path.dirname(os.path.dirname(proc_dir))
-    # the process library finds its common library through its own rpath
-    library = glob.glob(os.path.join(out_dir, 'lib', 'libmadmatrix_P*.so'))[0]
-    lib = ctypes.CDLL(library)
-    memory = Memory(backend, library)
-    handle = ctypes.c_void_p()
-    card = os.path.join(out_dir, 'Cards', 'param_card.dat').encode()
-    assert lib.umami_initialize(ctypes.byref(handle), card) == 0, 'umami_initialize'
-    npar = ctypes.c_int()
-    lib.umami_get_meta(1, ctypes.byref(npar))  # UMAMI_META_PARTICLE_COUNT
-    npar = npar.value
-    masses = (ctypes.c_double * npar)()
-    assert lib.umami_get_meta(5, masses) == 0, 'UMAMI_META_MASSES'  # after initialize
-    # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_IN_RANDOM_HELICITY = 4,
-    #          UMAMI_OUT_MATRIX_ELEMENT = 0, UMAMI_OUT_HELICITY_INDEX = 3
-    lib.umami_matrix_element.argtypes = [
-        ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t,
-        ctypes.c_size_t, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_void_p),
-        ctypes.c_size_t, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_void_p)]
+    work = os.path.abspath('uuxttxg_qed2_d')
 
-    def evaluate(point, draw):
-        count = ngrid if draw else 1
-        mom = (ctypes.c_double * (4 * npar * count))()
-        for ipart in range(npar):  # momenta[count * (npar * mu + ipart) + ievt]
-            for mu in range(4):
-                start = count * (npar * mu + ipart)
-                mom[start:start + count] = [point[ipart][mu]] * count
-        rnd = (ctypes.c_double * count)(*[(k + 0.5) / count for k in range(count)])
-        me = (ctypes.c_double * count)()
-        hel = (ctypes.c_int * count)()
-        inputs = [memory.buffer(mom)] + ([memory.buffer(rnd)] if draw else [])
-        in_keys = [0] + ([4] if draw else [])
-        outputs = [memory.buffer(me)] + ([memory.buffer(hel)] if draw else [])
-        out_keys = [0] + ([3] if draw else [])
-        status = lib.umami_matrix_element(
-            handle, count, count, 0,
-            len(in_keys), (ctypes.c_int * len(in_keys))(*in_keys),
-            (ctypes.c_void_p * len(inputs))(*inputs),
-            len(out_keys), (ctypes.c_int * len(out_keys))(*out_keys),
-            (ctypes.c_void_p * len(outputs))(*outputs))
-        assert status == 0, 'umami_matrix_element status %d' % status
-        memory.fetch(outputs[0], me)
-        if draw:
-            memory.fetch(outputs[1], hel)
-        memory.release()
-        return list(me), list(hel)
+    def check_sa(args, log):
+        status = run(['./check_sa.exe', 'perf'] + [str(a) for a in args], cwd=proc_dir,
+                     log=log)
+        if status != 0:
+            raise RuntimeError('check_sa.exe perf %s failed, see %s'
+                               % (' '.join(str(a) for a in args), log))
 
-    rng = random.Random(7)
+    def doubles(path):
+        values = array.array('d')
+        with open(path, 'rb') as f:
+            values.frombytes(f.read())
+        return values
+
+    # npoints RAMBO points at 1000 GeV, each repeated ngrid times, with a uniform grid of
+    # helicity random numbers (k + 0.5) / ngrid for each point: one batch of 64000 events
+    points = os.path.join(work, 'points.bin')
+    check_sa(['--energy', 1000, '--dump-momenta', points, 1, npoints, 1], 'uuxttxg_points.log')
+    with open(points, 'rb') as f:
+        raw = f.read()
+    size = len(raw) // npoints
+    grid = os.path.join(work, 'grid.bin')
+    with open(grid, 'wb') as f:
+        for ipoint in range(npoints):
+            f.write(raw[ipoint * size:(ipoint + 1) * size] * ngrid)
+    rnd = os.path.join(work, 'rnd.bin')
+    with open(rnd, 'wb') as f:
+        array.array('d', [(k + 0.5) / ngrid for k in range(ngrid)] * npoints).tofile(f)
+    batch = [npoints * ngrid // 256, 256, 1]
+    outputs = {}
+    for tag, extra in (('sum', []), ('draw', ['--rnd-hel', rnd]),
+                       ('summed', ['--rnd-hel', rnd, '--param', 'interference_helicity_summed=1'])):
+        me, hel = os.path.join(work, 'me_%s.bin' % tag), os.path.join(work, 'hel_%s.bin' % tag)
+        check_sa(['--momenta', grid, '--dump-me', me, '--dump-hel', hel] + extra + batch,
+                 'uuxttxg_%s.log' % tag)
+        helicities = array.array('i')
+        with open(hel, 'rb') as f:
+            helicities.frombytes(f.read())
+        outputs[tag] = (doubles(me), helicities)
+
     mixed = 0
     problems = []
     for ipoint in range(npoints):
-        point = rambo(list(masses)[2:], 1000., rng)
-        (helicity_sum,), _ = evaluate(point, False)
-        me, hel = evaluate(point, True)
+        events = slice(ipoint * ngrid, (ipoint + 1) * ngrid)
+        helicity_sum = outputs['sum'][0][ipoint * ngrid]
+        me, hel = outputs['draw'][0][events], outputs['draw'][1][events]
         abs_sum = abs(me[0])
         signs = {}
         for value, ihel in zip(me, hel):
@@ -306,19 +212,9 @@ def check_helicity_choice(repo, backend, npoints=16, ngrid=4000):
 
     # run card [generation] interference_helicity = "summed": the instance keeps the
     # helicity sum as the |M|^2 of every draw (mg7 then writes the helicities as 9)
-    lib.umami_set_parameter.argtypes = [ctypes.c_void_p, ctypes.c_char_p,
-                                        ctypes.c_double, ctypes.c_double]
-    status = lib.umami_set_parameter(handle, b'interference_helicity_summed', 1., 0.)
-    worst = 0.
-    for ipoint in range(4):
-        point = rambo(list(masses)[2:], 1000., rng)
-        (helicity_sum,), _ = evaluate(point, False)
-        me, _hel = evaluate(point, True)
-        worst = max([worst] + [abs(v - helicity_sum) / abs(helicity_sum) for v in me])
-    check('helicity_summed', status == 0 and worst < 1e-12,
-          'umami_set_parameter status %d, max |M|^2 / helicity sum - 1 = %.1e'
-          % (status, worst))
-    lib.umami_free(handle)
+    worst = max(abs(v - s) / abs(s) for v, s in zip(outputs['summed'][0], outputs['sum'][0]))
+    check('helicity_summed', worst < 1e-12,
+          'max |M|^2 / helicity sum - 1 = %.1e over %d draws' % (worst, npoints * ngrid))
 
 
 # ---------------------------------------------------------------------------
