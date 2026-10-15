@@ -59,6 +59,11 @@ C ----------
 C BEGIN CODE
 C ----------
       ANS = 0D0
+C     HEL=-1: no helicity chosen, sum them (as USERHEL=-1)
+      IF (HEL.EQ.-1) THEN
+        CALL %(proc_prefix)sSMATRIX(P, FLAV_IDX, ANS)
+        RETURN
+      ENDIF
 %(hr_helcheck)s
       CALL %(proc_prefix)sGET_FLAVOR(FLAV_IDX, FLAVOR)
       DO K = 1, NEXTERNAL

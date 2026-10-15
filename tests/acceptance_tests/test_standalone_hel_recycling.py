@@ -274,7 +274,8 @@ class TestStandaloneHelRecyclingConsistency(StandaloneHelRecyclingConsistency):
         crossing that moves the massive z (whose helicity zeros depend on the
         frame, so its rows come from the warm-up's scan of the crossing):
         code by code, the recycled crossed |M|^2 must equal the standard
-        standalone's."""
+        standalone's. HEL=-1 names no helicity and asks for the sum, as in
+        the standard SMATRIXHEL: the recycled one used to answer 0 for it."""
         import math
         from tests.acceptance_tests.test_standalone_cross_symmetry import \
             TestStandaloneCrossSymmetry
@@ -303,8 +304,17 @@ class TestStandaloneHelRecyclingConsistency(StandaloneHelRecyclingConsistency):
                      if d.endswith('_ug_uz')]
             self.assertEqual(len(found), 1, 'u g > u z in %s: %s' % (root, found))
             pdir = found[0]
+            driver = TestStandaloneCrossSymmetry._HELCODE_DRIVER
+            tail = '      ENDDO\n      END\n'
+            self.assertTrue(driver.endswith(tail))
+            driver = driver[:-len('      END\n')] + (
+                "      CALL SMATRIXHEL(P, -1, FLAV_IDX, ANS)\n"
+                "      WRITE(*,'(A,ES24.16)') ' HELSUM=', ANS\n"
+                "      CALL SMATRIX(P, FLAV_IDX, ANS)\n"
+                "      WRITE(*,'(A,ES24.16)') ' SMATRIX=', ANS\n"
+                "      END\n")
             with open(pjoin(pdir, 'check_sa.f'), 'w') as fsock:
-                fsock.write(TestStandaloneCrossSymmetry._HELCODE_DRIVER)
+                fsock.write(driver)
             self.assertEqual(self._call(['make', 'check'], pdir), 0,
                              'failed to build the %s driver' % name)
             out = subprocess.run(['./check'], cwd=pdir, input=stdin,
@@ -313,7 +323,20 @@ class TestStandaloneHelRecyclingConsistency(StandaloneHelRecyclingConsistency):
                               re.findall(r'HEL=\s*\d+\s+(\S+)', out)]
             self.assertEqual(len(per_code[name]), 24,
                              '%s: no per-code output:\n%s' % (name, out))
+            helsum = [float(v) for v in re.findall(r'HELSUM=\s*(\S+)', out)]
+            smatrix = [float(v) for v in re.findall(r'SMATRIX=\s*(\S+)', out)]
+            self.assertEqual(len(helsum), 1, out)
+            self.assertEqual(len(smatrix), 1, out)
+            self.assertGreater(smatrix[0], 0)
+            self.assertAlmostEqual(helsum[0], smatrix[0],
+                                   delta=1e-9 * smatrix[0],
+                                   msg='%s: SMATRIXHEL(-1) %r, SMATRIX %r'
+                                   % (name, helsum[0], smatrix[0]))
+            per_code[name + '_sum'] = smatrix[0]
         self.assertEqual(sum(1 for v in per_code['standard'] if v), 12)
+        self.assertAlmostEqual(per_code['recycled_sum'],
+                               per_code['standard_sum'],
+                               delta=1e-9 * per_code['standard_sum'])
         for code, (a, b) in enumerate(zip(per_code['recycled'],
                                           per_code['standard']), 1):
             self.assertAlmostEqual(a, b, delta=1e-9 * max(abs(b), 1e-300),
