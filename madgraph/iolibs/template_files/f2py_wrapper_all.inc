@@ -78,13 +78,13 @@ CF2PY integer, intent(hide), depend(PDGS) :: NPDG = len(PDGS)
       SUBROUTINE %(f2py_prefix)sPY_GET_DENSITY_BATCH(PDGS, PROCID, P, POS, ALLOW_HEL, ALPHAS, SCALE2, NBATCH, NEXT, INTER, N_CHANGING, N_COMB, NPDG)
 C     PY_GET_DENSITY for NBATCH phase-space points in one call.
 C
-C     The density itself is cheap; crossing into fortran is not. MadSpin's
-C     max-weight scan evaluates hundreds of decay configurations against the
-C     same production event, so paying the f2py entry once per point dominated
-C     the cost. Everything is per point except POS/ALLOW_HEL, which describe
-C     the helicity structure and are shared: PDGS is per point because a decay
-C     pool mixes flavours, and ALPHAS/SCALE2 because nothing guarantees the
-C     points share a scale.
+C     The density is cheap; the f2py entry is not. The MadSpin
+C     max-weight scan tests hundreds of decay configurations
+C     against one production event, so one entry per point
+C     dominated the cost. All inputs are per point except
+C     POS/ALLOW_HEL (shared helicity structure): PDGS since a
+C     decay pool mixes flavours, ALPHAS/SCALE2 since points
+C     need not share a scale.
       IMPLICIT NONE
 CF2PY double precision, intent(in), dimension(0:3,next,nbatch) :: p
 CF2PY integer, intent(in), dimension(npdg,nbatch) :: pdgs
