@@ -1,0 +1,166 @@
+################################################################################
+#
+# Copyright (c) 2026 The MadGraph5_aMC@NLO Development team and Contributors
+#
+# This file is a part of the MadGraph5_aMC@NLO project, an application which
+# automatically generates Feynman diagrams and matrix elements for arbitrary
+# high-energy processes in the Standard Model and beyond.
+#
+# It is subject to the MadGraph5_aMC@NLO license which should accompany this
+# distribution.
+#
+# For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
+#
+################################################################################
+"""mg7 runs of '[amplicol]' processes against the same processes with madmatrix.
+
+The AmpliCol subprocesses are integrated at leading colour and re- or
+unweighted to full colour, so their cross sections must agree with the
+madmatrix ones within the Monte Carlo errors, alone and mixed with madmatrix
+processes in one output. Needs madspace, pyamplicol and LHAPDF; the tests skip
+otherwise. Knobs: MG7_AMPLICOL_EVENTS (default 10000) and MG7_AMPLICOL_NSIGMA
+(default 4).
+
+    ./tests/test_manager.py test_mg7_amplicol -pA -t0
+"""
+
+import glob
+import gzip
+import importlib.util
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+
+import madgraph.interface.master_interface as MGCmd
+import madgraph.various.misc as misc
+
+pjoin = os.path.join
+
+_EVENTS = int(os.environ.get('MG7_AMPLICOL_EVENTS', 10000))
+_NSIGMA = float(os.environ.get('MG7_AMPLICOL_NSIGMA', 4))
+_PDF = 'NNPDF23_lo_as_0130_qed'
+
+
+def _edit_run_card(path, **amplicol):
+    card = open(path).read()
+    card = card.replace('fixed_ren_scale = false', 'fixed_ren_scale = true')
+    card = card.replace('fixed_fact_scale = false', 'fixed_fact_scale = true')
+    card = re.sub(r'(?m)^pdf = ".*"$', 'pdf = "%s"' % _PDF, card)
+    card = re.sub(r'(?m)^events = \d+', 'events = %d' % _EVENTS, card)
+    card = re.sub(r'(?m)^seed = -1', 'seed = 7', card)
+    card = re.sub(r'(?m)^make_plots = true', 'make_plots = false', card)
+    card = re.sub(r'(\[systematics\]\nenable = )true', r'\1false', card)
+    card = re.sub(r'(\[madnis\]\n(?:#.*\n)*enable = )"auto"', r'\1false', card)
+    head, section = card.split('\n[amplicol]\n')
+    for key, value in amplicol.items():
+        section, count = re.subn(r'(?m)^%s = .*$' % key,
+                                 '%s = "%s"' % (key, value), section, count=1)
+        assert count == 1, key
+    card = head + '\n[amplicol]\n' + section
+    open(path, 'w').write(card)
+
+
+def _color_balanced(lhe_path):
+    """Whether every colour line of every event starts and ends once."""
+    with gzip.open(lhe_path, 'rt') as stream:
+        text = stream.read()
+    for event in re.findall(r'<event>\n(.*?)</event>', text, re.S):
+        lines = [line.split() for line in event.strip().splitlines()[1:]
+                 if line.strip() and not line.startswith('<')]
+        tags = {}
+        for particle in lines:
+            status, color, anticolor = int(particle[1]), int(particle[4]), int(particle[5])
+            if status == -1:
+                color, anticolor = anticolor, color
+            for tag, sign in ((color, 1), (anticolor, -1)):
+                if tag:
+                    tags[tag] = tags.get(tag, 0) + sign
+        if any(tags.values()):
+            return False
+    return True
+
+
+class MG7AmplicolTest(unittest.TestCase):
+
+    def setUp(self):
+        # not imported: Symbolica would hold its lock against the pyamplicol worker
+        missing = [name for name in ('madspace', 'pyamplicol')
+                   if importlib.util.find_spec(name) is None]
+        if missing:
+            self.skipTest('%s unavailable' % ' and '.join(missing))
+        if not misc.resolve_lhapdf().find_set(_PDF):
+            self.skipTest('%s LHAPDF data not found' % _PDF)
+        self.path = tempfile.mkdtemp(prefix='mg7_amplicol_')
+
+    def tearDown(self):
+        shutil.rmtree(self.path, ignore_errors=True)
+
+    def run_mg7(self, name, processes, **amplicol):
+        """Output and run the processes, returns the cross section, its error
+        and the run directory."""
+        run_dir = pjoin(self.path, name)
+        mg = MGCmd.MasterCmd()
+        mg.no_notification()
+        mg.exec_cmd('set automatic_html_opening False --no_save')
+        for index, process in enumerate(processes):
+            mg.exec_cmd('%s %s' % ('generate' if index == 0 else 'add process',
+                                   process))
+        mg.exec_cmd('output mg7 %s' % run_dir)
+        _edit_run_card(pjoin(run_dir, 'Cards', 'run_card.toml'), **amplicol)
+        log = pjoin(run_dir, 'generate_events.log')
+        with open(log, 'w') as stream:
+            status = subprocess.call(
+                [sys.executable, pjoin(run_dir, 'bin', 'generate_events'), '-f'],
+                cwd=run_dir, stdout=stream, stderr=subprocess.STDOUT)
+        self.assertEqual(status, 0, open(log).read()[-3000:])
+        info = sorted(glob.glob(pjoin(run_dir, 'Events', '*', 'info.json')))[-1]
+        with open(info) as stream:
+            result = json.load(stream)['process']
+        return float(result['mean']), float(result['error']), run_dir
+
+    def assert_compatible(self, first, second, factor=1.):
+        (mean1, error1), (mean2, error2) = first, second
+        error = (error1**2 + (factor * error2)**2)**0.5
+        self.assertLess(abs(mean1 - factor * mean2), _NSIGMA * error,
+                        '%g +- %g vs %g +- %g' % (mean1, error1, factor * mean2,
+                                                  factor * error2))
+
+    def test_gg_ggg(self):
+        """Full colour in both modes, and leading colour, which differs by
+        (N^2 - 1) / N^2 for five gluons."""
+        madmatrix = self.run_mg7('mm', ['g g > g g g'])[:2]
+        reweight = self.run_mg7('rw', ['g g > g g g [amplicol]'])
+        self.assert_compatible(reweight[:2], madmatrix)
+        events = glob.glob(pjoin(reweight[2], 'Events', '*', 'events.lhe.gz'))
+        if events:
+            self.assertTrue(_color_balanced(events[-1]))
+        unweight = self.run_mg7('uw', ['g g > g g g [amplicol]'], mode='unweight')
+        self.assert_compatible(unweight[:2], madmatrix)
+        leading = self.run_mg7('lc', ['g g > g g g [amplicol]'],
+                               color_accuracy='lc')
+        self.assert_compatible(madmatrix, leading[:2], 8. / 9.)
+
+    def test_pp_jjj(self):
+        """Quark lines and the expansion of the multiparticle labels."""
+        madmatrix = self.run_mg7('mm', ['p p > j j j'])[:2]
+        amplicol = self.run_mg7('amp', ['p p > j j j [amplicol]'])[:2]
+        self.assert_compatible(amplicol, madmatrix)
+
+    def test_gg_ttxg(self):
+        """Massive quarks in the colour-ordered phase space."""
+        madmatrix = self.run_mg7('mm', ['g g > t t~ g'])[:2]
+        amplicol = self.run_mg7('amp', ['g g > t t~ g [amplicol]'])[:2]
+        self.assert_compatible(amplicol, madmatrix)
+
+    def test_mixed(self):
+        """[amplicol] and madmatrix processes in one output."""
+        jj = self.run_mg7('jj', ['p p > j j'])[:2]
+        ggg = self.run_mg7('ggg', ['g g > g g g'])[:2]
+        mixed = self.run_mg7('mixed', ['p p > j j', 'g g > g g g [amplicol]'])[:2]
+        self.assert_compatible(
+            mixed, (jj[0] + ggg[0], (jj[1]**2 + ggg[1]**2)**0.5))

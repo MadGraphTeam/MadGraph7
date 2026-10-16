@@ -529,7 +529,10 @@ void LHECompleter::complete_event_data(
     if (event.particles.size() != subproc_data.particle_count) {
         throw std::runtime_error("Invalid particle number for subprocess");
     }
-    if (diagram_index < 0 || diagram_index >= subproc_data.diagram_count) {
+    // a subprocess without diagrams has no propagators to insert
+    bool has_diagrams = subproc_data.diagram_count > 0;
+    if (has_diagrams ? diagram_index < 0 || diagram_index >= subproc_data.diagram_count
+                     : diagram_index != -1) {
         throw std::runtime_error("Diagram index out of range");
     }
     if (color_index < 0 || color_index >= subproc_data.color_count) {
@@ -583,6 +586,9 @@ void LHECompleter::complete_event_data(
         ++particle_index;
     }
 
+    if (!has_diagrams) {
+        return;
+    }
     auto find_propagators = _propagator_index_and_count.find(
         cantor_pairing(subprocess_index, diagram_index, color_index)
     );
@@ -619,8 +625,7 @@ void LHECompleter::complete_event_data(
         // negative m_min would instead turn it into a large positive floor and
         // reject nearly everything, so a wider window would write *fewer*
         // resonances than a narrow one.
-        double m_min =
-            std::max(0., propagator.mass - _bw_cutoff * propagator.width);
+        double m_min = std::max(0., propagator.mass - _bw_cutoff * propagator.width);
         double m_max = propagator.mass + _bw_cutoff * propagator.width;
         if (m2 > m_min * m_min && m2 < m_max * m_max) {
             auto [color, anti_color] = prop_color;

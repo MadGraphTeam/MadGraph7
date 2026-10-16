@@ -6917,6 +6917,17 @@ class RunCardMG7(RunCard):
             comment="freeze_max_weight_after of the unweighting with the surrogate")
         self.add_toml_param('surrogate', 'param_card', "",
             comment="param card for a .so surrogate; \"\" uses Cards/param_card.dat")
+        # ---------------------------- [amplicol] ----------------------
+        # the leading-colour [amplicol] subprocesses are re- or unweighted to
+        # the colour accuracy in a second pass
+        self.add_toml_param('amplicol', 'color_accuracy', "full", allowed=["full", "lc"],
+            comment="colour accuracy of the [amplicol] events, lc skips the second pass")
+        self.add_toml_param('amplicol', 'mode', "reweight", allowed=["unweight", "reweight"],
+            comment="unweight or reweight the events to the colour accuracy")
+        self.add_toml_param('amplicol', 'first_pass_max_overweight_truncation', 0.01,
+            comment="max_overweight_truncation of the leading-colour unweighting")
+        self.add_toml_param('amplicol', 'first_pass_freeze_max_weight_after', 10000,
+            comment="freeze_max_weight_after of the leading-colour unweighting")
 
         # ----------------------------- [madnis] -----------------------
         self.add_toml_param('madnis', 'enable', False, allowed=["auto", True, False], auto=True,

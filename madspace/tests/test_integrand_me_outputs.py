@@ -21,11 +21,11 @@ from test_event_stream import (
 import madspace as ms
 
 
-def python_matrix_element(context, function, outputs=("matrix_element",)):
+def python_matrix_element(context, function, outputs=("matrix_element",), channel=-1):
+    """With a channel, the function also gets the fixed channel index."""
+    inputs = ["momenta"] if channel < 0 else ["momenta", "channel_index"]
     api = context.add_matrix_element(
-        ms.PythonFunction(
-            function, ["momenta"], list(outputs), particle_count=len(PIDS)
-        )
+        ms.PythonFunction(function, inputs, list(outputs), particle_count=len(PIDS))
     )
     output_enums = {
         "matrix_element": ms.MatrixElement.matrix_element_out,
@@ -37,8 +37,10 @@ def python_matrix_element(context, function, outputs=("matrix_element",)):
     return ms.MatrixElement(
         api.index(),
         len(PIDS),
-        [ms.MatrixElement.momenta_in],
+        [ms.MatrixElement.momenta_in]
+        + ([] if channel < 0 else [ms.MatrixElement.channel_in]),
         [output_enums[output] for output in outputs],
+        channel=channel,
     )
 
 
@@ -176,3 +178,51 @@ def test_diagram_channel_weights_need_amp2(tmp_path):
             first_chan_weight_remap=[[0, 1]],
             first_remapped_chan_count=2,
         )
+
+
+@pytest.mark.parametrize("color_order", [[0, 2, 3, 4, 1], [0, 1, 2, 3, 4]])
+def test_color_ordered_discrete_choices(tmp_path, color_order):
+    """The integrand samples the discrete two-solution choices of a color-ordered
+    mapping, so it reproduces the phase-space volume of RAMBO."""
+    context, alphas_file = make_context(str(tmp_path), 2)
+    matrix_element = python_matrix_element(
+        context, lambda momenta: np.ones(len(momenta))
+    )
+    cuts = ms.Cuts(
+        [
+            ms.CutItem(ms.Observable(PIDS, ms.Observable.obs_pt, [[i]]), min=20.0)
+            for i in (2, 3, 4)
+        ]
+    )
+    results = []
+    for mode, order in [
+        (ms.PhaseSpaceMapping.color_ordered, color_order),
+        (ms.PhaseSpaceMapping.rambo, None),
+    ]:
+        mapping = ms.PhaseSpaceMapping(
+            [0.0] * len(PIDS),
+            CM_ENERGY,
+            leptonic=True,
+            mode=mode,
+            cuts=cuts,
+            color_order=order,
+        )
+        if order is not None:
+            assert mapping.discrete_dim() > 0
+        diff_xs = ms.DifferentialCrossSection(
+            matrix_element=matrix_element,
+            cm_energy=CM_ENERGY,
+            running_coupling=None,
+            energy_scale=ms.CachedScale(),
+        )
+        integrand = ms.Integrand(
+            mapping,
+            [diff_xs],
+            running_coupling=ms.RunningCoupling(ms.AlphaSGrid(alphas_file)),
+            energy_scale=ms.EnergyScale(len(PIDS), 91.188),
+            channel_indices=[0],
+        )
+        results.append(generate(str(tmp_path), context, integrand, str(mode))[0])
+    status, rambo_status = results
+    error = np.hypot(status.error, rambo_status.error)
+    assert abs(status.mean - rambo_status.mean) < 5 * error

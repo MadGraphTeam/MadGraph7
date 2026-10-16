@@ -1,0 +1,470 @@
+"""The MG7> command line interface and its card editing."""
+
+import argparse
+import os
+import re
+import resource
+
+from madgraph.iolibs.template_files.mg7.common import logger
+from madgraph.interface.extended_cmd import Cmd
+from madgraph.various.banner import RunCardMG7
+from madgraph.iolibs.template_files.mg7 import npy_to_lhe
+from madgraph.iolibs.template_files.mg7.driver import force_lhe_output_if_needed, run_generation
+from madgraph.iolibs.template_files.mg7.model_widths import compute_auto_widths, load_process_model
+from madgraph.iolibs.template_files.mg7.options import load_mg5_options
+from madgraph.iolibs.template_files.mg7.postprocess import _off, _setup_logging
+
+class MG7Cmd(Cmd):
+    """The mg7 run interface: the command object that drives a launch.
+
+    It plays two roles, and they are the same object on purpose.
+
+    1. It is the *mother* of the merged switch/card question (the thing
+       ``AskRunEditCard`` calls back into for ``keep_cards``/``do_open``/
+       ``compute_widths``).
+    2. It is the child command interface MG5 registers via
+       ``define_child_cmd_interface`` when you type ``launch`` on an mg7 output.
+
+    Role 2 is what makes role 1 behave. ``Cmd.ask`` resolves a scripted answer
+    through ``self.check_answer_in_input_file``, where ``self`` is the mother --
+    so once MG5 hands us its ``inputfile`` and registers itself as our
+    ``mother``, the question reads the very lines that follow ``launch`` in the
+    user's command file, and any line it does not recognise goes back up to MG5
+    through ``store_line`` instead of being silently consumed. This is exactly
+    how a madevent output already behaves; before this class existed the mg7
+    branch shelled out to ``bin/generate_events`` and had to guess which
+    following lines belonged to the run, which quietly swallowed every ``set``.
+    """
+
+    prompt = 'MG7> '
+
+    def __init__(self, me_dir='.', options=None, *args, **opts):
+        super().__init__(*args, **opts)
+        self.me_dir = os.path.abspath(me_dir) if me_dir != '.' else '.'
+        # The rest of the launcher is written against the process directory as
+        # the working directory, so do_generate_events chdirs there; but at
+        # construction time MG5 has not moved, hence the explicit me_dir.
+        self.options = load_mg5_options(
+            self.me_dir if self.me_dir != '.' else None)
+        if options:
+            # MG5's own resolved tool paths win: they are the ones the user
+            # configured in the session that is doing the launching.
+            self.options.update({k: v for k, v in options.items()
+                                 if k in self.options and v is not None})
+        self.plugin_path = []
+        self.proc_characteristics = {'grouped_matrix': False, 'limitations': []}
+        self._model = None  # lazily imported by get_model()
+
+    # ------------------------------------------------------------------
+    # the contract the card question expects from its mother
+    # ------------------------------------------------------------------
+    def keep_cards(self, need_card=[], ignore=[]):
+        from madgraph.interface.common_run_interface import CommonRunCmd
+        return CommonRunCmd.keep_cards(self, need_card, ignore)
+
+    def do_open(self, line):
+        from madgraph.interface.common_run_interface import CommonRunCmd
+        CommonRunCmd.do_open(self, line)
+
+    def check_open(self, args):
+        from madgraph.interface.common_run_interface import CommonRunCmd
+        CommonRunCmd.check_open(self, args)
+
+    def get_model(self):
+        """The model this process was generated with (an ``import_ufo`` model).
+
+        This is the hook the card question goes through for everything that
+        needs the model rather than the card: 'update dependent' (which resets
+        the masses/widths the model computes from the free parameters) and the
+        generic auto-width handler both call ``mother_interface.get_model()``.
+        Without it the launch question could only warn that it had failed to
+        update the dependent parameters, and MadSpin/the shower then read
+        whatever inconsistent values the param_card still held.
+
+        None when the process recorded no model (an output made before
+        SubProcesses/model.txt existed) -- the caller warns in that case.
+        """
+        if self._model is None:
+            me_dir = self.me_dir if self.me_dir != '.' else None
+            # False (not None) so a model that cannot be imported is not
+            # retried at every question.
+            self._model = load_process_model(me_dir) or False
+        return self._model or None
+
+    def do_compute_widths(self, line):
+        # The interactive card editor delegates 'auto' width computation to
+        # the mother interface. Reuse the runtime helper (madgraph subprocess
+        # + the model stored at output time). ``line`` looks like
+        # "<pdgs> --path=<param_card> [--nlo]"; we only need the card path.
+        m = re.search(r'--path=(\S+)', line or "")
+        path = m.group(1) if m else os.path.join("Cards", "param_card.dat")
+        compute_auto_widths(path)
+        # return an empty mapping: the caller iterates out.items() for the
+        # small-width treatment, which mg7 does not apply.
+        return {}
+
+    # ------------------------------------------------------------------
+    # running
+    # ------------------------------------------------------------------
+    def do_generate_events(self, line):
+        """generate_events [-f] [-n NAME] [--laststep=parton]
+
+        Run the mg7 generation and the selected post-processing tools."""
+
+        opts = self._parse_run_options(line)
+        cwd = os.getcwd()
+        target = self.me_dir if self.me_dir != '.' else cwd
+        try:
+            os.chdir(target)
+            _setup_logging()
+            if opts['name']:
+                self._set_run_name(opts['name'])
+            switch = {}
+            if not opts['force']:
+                switch = ask_edit_cards(mother=self)
+            switch = self._apply_laststep(switch, opts)
+            force_lhe_output_if_needed(switch)
+            _raise_open_file_limit()
+            run_generation(switch)
+        finally:
+            os.chdir(cwd)
+
+    # ``launch`` is the name MG5 users type; keep it working here too.
+    do_launch = do_generate_events
+
+    def do_npy_to_lhe(self, line):
+        """npy_to_lhe [RUN_NAME] [-o OUTPUT] [--seed N] [--no-gzip]
+
+        Write the LHE file (events.lhe.gz) of a run that produced npy events,
+        e.g. to shower it. Without a run name, the most recent such run."""
+        import shlex
+        me_dir = self.me_dir if self.me_dir != '.' else os.getcwd()
+        try:
+            npy_to_lhe.main(shlex.split(line), me_dir=me_dir)
+        except SystemExit as error:
+            if error.code not in (None, 0):
+                logger.error(str(error.code))
+
+    def do_quit(self, line):
+        """Leave the mg7 run interface."""
+        return super().do_quit(line)
+
+    do_exit = do_quit
+
+    # ------------------------------------------------------------------
+    # helpers
+    # ------------------------------------------------------------------
+    def _parse_run_options(self, line):
+        """Understand the subset of MG5's `launch` options that mean something
+        for an mg7 run, and say so out loud for the ones that do not."""
+        out = {'force': False, 'name': '', 'laststep': ''}
+        args = self.split_arg(line)
+        index = 0
+        while index < len(args):
+            arg = args[index]
+            index += 1
+            if arg in ('-f', '--force'):
+                out['force'] = True
+            elif arg in ('-n', '--name') and index < len(args):
+                out['name'] = args[index]
+                index += 1
+            elif arg.startswith(('-n=', '--name=')):
+                out['name'] = arg.split('=', 1)[1]
+            elif arg in ('-s', '--laststep') and index < len(args):
+                out['laststep'] = args[index]
+                index += 1
+            elif arg.startswith(('-s=', '--laststep=')):
+                out['laststep'] = arg.split('=', 1)[1]
+            elif arg.startswith('-'):
+                logger.warning(
+                    "'%s' is not supported by the mg7 output and is ignored; "
+                    "the equivalent settings live in Cards/run_card.toml", arg)
+            elif arg and not out['name']:
+                out['name'] = arg
+        return out
+
+    def _set_run_name(self, name):
+        """Honour `launch -n NAME`: the mg7 run directory is
+        Events/<run.run_name>_NN, so the name is a run_card setting."""
+        path = os.path.join("Cards", "run_card.toml")
+        run_card = RunCardMG7(path, consistency=False)
+        if run_card["run"]["run_name"] != name:
+            run_card["run"]["run_name"] = name
+            run_card.write(path)
+            logger.info("run name set to '%s'", name)
+
+    def _apply_laststep(self, switch, opts):
+        """`--laststep=parton` means: generate the events, run nothing on them.
+
+        The mg7 tool selection is the switch dict the question returns, so
+        stopping at parton level is switching those entries off.
+        """
+        if opts['laststep'] not in ('parton', 'auto', ''):
+            logger.warning(
+                "--laststep=%s is not supported by the mg7 output; "
+                "select the programs to run in the launch question instead",
+                opts['laststep'])
+            return switch
+        if opts['laststep'] != 'parton' or not switch:
+            return switch
+        switch = dict(switch)
+        for key in ('shower', 'detector', 'analysis', 'madspin', 'reweight'):
+            if not _off(switch.get(key, 'OFF')):
+                logger.info("--laststep=parton: not running %s", key)
+                switch[key] = 'OFF'
+        return switch
+
+
+def build_selector_cmd(mother=None):
+    """Build the (monkey-patched) mother command + merged switch/card selector
+    used by the mg7 output.  Returns the selector *class* and a mother instance
+    understood by AskRun/AskforEditCard.
+
+    ``mother`` lets an in-process caller supply its own :class:`MG7Cmd` -- the
+    one MG5 registered as its child -- so that the question resolves scripted
+    answers against MG5's own command file (see :class:`MG7Cmd`). When it is
+    omitted a standalone instance is built, which is what ``bin/generate_events``
+    gets.
+    """
+
+    from madgraph.interface.madevent_interface import AskRunEditCard
+
+    from madgraph.various import banner as _banner_mod
+    from madgraph.various import misc as _misc
+
+    class MG7Selector(AskRunEditCard):
+        """Merged switch/card question for the mg7 output.
+
+        The mg7 run_card is a TOML file, so define_paths/init_run/do_set are
+        overridden *on this class* (not globally on AskforEditCard) to treat it
+        as such. Scoping them here is important: MadSpin/reweight spawn their own
+        legacy madevent runs in the same process, and a global patch would break
+        their (run_card.dat based) card editing."""
+
+        # param_card + the TOML run_card are always offered
+        always_cards = ['param_card.dat', 'run_card.toml']
+        optional_cards = []
+
+        def define_paths(self, **opt):
+            super().define_paths(**opt)
+            self.paths["run"] = os.path.join(self.me_dir, "Cards", "run_card.toml")
+            self.paths["run_card.toml"] = os.path.join(self.me_dir, "Cards", "run_card.toml")
+            # the TOML run_card uses its own default file (concrete defaults
+            # written at output time); this powers "set <param> default".
+            self.paths["run_default"] = os.path.join(self.me_dir, "Cards", "run_card_default.toml")
+
+        def init_run(self, cards):
+            # Make sure the run_card is loaded as a RunCardMG7 (the generic
+            # editor does not recognise run_card.toml), else "set <param>" fails.
+            out = super().init_run(cards)
+            if not isinstance(getattr(self, "run_card", None), RunCardMG7):
+                toml_path = self.paths.get("run") or os.path.join(
+                    self.me_dir, "Cards", "run_card.toml")
+                if os.path.exists(toml_path):
+                    try:
+                        # allow_scan so a run_card holding scan:[...] values loads
+                        with _misc.TMP_variable(_banner_mod.RunCard, "allow_scan", True):
+                            self.run_card = RunCardMG7(toml_path, consistency="warning")
+                        self.run_set = list(self.run_card.keys())
+                    except Exception as err:
+                        logger.warning("could not load %s: %s", toml_path, err)
+            if isinstance(getattr(self, "run_card", None), RunCardMG7):
+                self.run_card.allow_scan = True
+            return getattr(self, "run_set", out)
+
+        def do_set(self, line, *args, **kwargs):
+            # madevent-style shortcuts (lhc/lep/fixed_scale/no_parton_cut), cut
+            # editing, energy units and arithmetic/mass expressions on the TOML
+            # run_card, intercepted before delegating to the generic editor.
+            targs = self.split_arg(line)
+            run_card = getattr(self, "run_card", None)
+            if isinstance(run_card, RunCardMG7) and targs:
+                start = 1 if targs[0] == "run_card" else 0
+                if len(targs) > start:
+                    name = targs[start]
+                    nlow = name.lower()
+                    rest = " ".join(targs[start + 1:]).split("#")[0].strip()
+                    masses = run_card.get_mass_shortcuts(getattr(self, "param_card", None))
+
+                    if nlow in ("no_parton_cut", "nocut", "no_cut"):
+                        run_card.remove_all_cut()
+                        logger.info("removing all cuts from the run_card.toml")
+                        self.modified_card.add("run")
+                        return
+                    # [histograms] is a list of observables, not a parameter,
+                    # so "set histograms ..." can only mean the whole section.
+                    if nlow in ("histograms", "histogram", "plots"):
+                        value = rest.lower()
+                        if value in ("off", "none", "no", "false", "0"):
+                            run_card.remove_all_histograms()
+                            logger.info(
+                                "removing all histograms from the run_card.toml")
+                            self.modified_card.add("run")
+                            return
+                        if value in ("default", "on"):
+                            if run_card.restore_default_histograms(
+                                    self.paths.get("run_default")):
+                                logger.info(
+                                    "restored the %d histograms written at "
+                                    "output time",
+                                    len(run_card["histograms"]))
+                                self.modified_card.add("run")
+                            else:
+                                logger.warning(
+                                    "no run_card_default.toml to restore the "
+                                    "histograms from")
+                            return
+                        logger.warning(
+                            "'set histograms %s': only OFF (remove them all) "
+                            "and default (put the generated ones back) are "
+                            "understood; edit the [histograms] section of "
+                            "Cards/run_card.toml for anything else",
+                            rest or "(no value)")
+                        return
+                    if nlow in ("lhc", "lep", "ilc", "lcc") and rest:
+                        ecm = run_card.set_collider(nlow, rest, masses)
+                        logger.info("set %s collider: e_cm = %s GeV", nlow, ecm)
+                        self.modified_card.add("run")
+                        return
+                    if nlow == "fixed_scale" and rest:
+                        val = run_card.set_fixed_scale(rest, masses)
+                        logger.info("set fixed scales to %s GeV", val)
+                        self.modified_card.add("run")
+                        return
+
+                    if rest and run_card.is_cut_name(name):
+                        cut, bound, val = run_card.set_cut(name, run_card.evaluate(rest, masses))
+                        logger.info("modify cut %s.%s of the run_card.toml to %s", cut, bound, val)
+                        self.modified_card.add("run")
+                        return
+
+                    # 'iseed' is the madevent spelling of the mg7 run.seed,
+                    # but the two disagree on how to ask for a random seed:
+                    # madevent uses 0, mg7 uses -1 (0 being a perfectly good
+                    # fixed seed there). Translate here rather than in
+                    # _LO_SCALAR_MAP, which also drives the LO -> MG7 run_card
+                    # conversion and would silently pin those runs to seed 0.
+                    if rest and nlow == 'iseed':
+                        value = run_card.evaluate(rest, masses)
+                        try:
+                            value = int(value)
+                        except (TypeError, ValueError):
+                            value = None
+                        if value is None:
+                            logger.warning("ignoring 'set iseed %s': not an integer", rest)
+                            return
+                        seed = -1 if value == 0 else value
+                        run_card.set('run.seed', seed, user=True)
+                        logger.info("set iseed (mg7 run.seed) of the run_card.toml to %s%s",
+                                    seed, " (random)" if seed == -1 else "")
+                        self.modified_card.add("run")
+                        return
+
+                    # legacy madevent run_card names -> mg7 "section.key", so a
+                    # madevent-style launch script ("set nevents 500", "set
+                    # use_syst F", "set bwcutoff 10", ...) edits the mg7
+                    # run_card.toml verbatim. RunCardMG7._LO_SCALAR_MAP is the
+                    # same rename table used by the LO->MG7 run_card conversion.
+                    if rest and nlow in run_card._LO_SCALAR_MAP \
+                            and nlow not in [k.lower() for k in run_card.keys()]:
+                        target = run_card._LO_SCALAR_MAP[nlow]
+                        run_card.set(target, rest, user=True)
+                        logger.info("set %s (mg7 %s) of the run_card.toml to %s",
+                                    nlow, target, run_card[target])
+                        self.modified_card.add("run")
+                        return
+
+                    if rest and nlow in [k.lower() for k in run_card.keys()]:
+                        current = run_card[nlow]
+                        if isinstance(current, (int, float)) and not isinstance(current, bool):
+                            resolved = run_card.evaluate(rest, masses)
+                            if not isinstance(resolved, str):
+                                prefix = "run_card " if start == 1 else ""
+                                line = "%s%s %s" % (prefix, name, resolved)
+            return super().do_set(line, *args, **kwargs)
+
+    return MG7Selector, (mother if mother is not None else MG7Cmd())
+
+
+def ask_edit_cards(mother=None) -> dict:
+    """Single (MadDM-style) question letting the user both pick which programs
+    to run after generation and edit the associated cards.  Returns the switch
+    dict describing the selected tools.
+
+    ``mother`` is the :class:`MG7Cmd` asking the question. Passing the instance
+    MG5 registered as its child is what lets a scripted ``launch`` answer this
+    question from MG5's own command file.
+    """
+
+    selector_class, mother = build_selector_cmd(mother)
+    # path_msg is what makes Cmd.check_answer_in_input_file accept a bare path as
+    # an answer (its "elif path:" branch), so that a scripted launch can hand the
+    # question a card/banner path -- as the question itself advertises -- and have
+    # it replace the corresponding card. Without it the path is rejected ("This
+    # answer is not valid for current question") and the default is used instead.
+    try:
+        switch, question = mother.ask('', '0', [], path_msg='enter path',
+                                      ask_class=selector_class,
+                                      mode='auto', line_args=[], force=False,
+                                      return_instance=True)
+    except BaseException:
+        # interrupted (e.g. ctrl-C) before the prune below could run: prune
+        # here too, using the instance ask() stashed pre-interrupt, or the
+        # eagerly-materialised tool cards get misread as "left ON" next time.
+        instance = getattr(mother, '_last_ask_instance', None)
+        if instance is not None and hasattr(instance, 'active_cards'):
+            try:
+                mother.keep_cards(instance.active_cards())
+            except Exception as error:
+                logger.debug('could not prune tool cards after aborted launch question: %s', error)
+        raise
+    switch = dict(switch)
+    prune_unselected_tool_cards(mother, question, switch)
+    return switch
+
+
+def prune_unselected_tool_cards(mother, question, switch) -> None:
+    """Hide the cards of the tools that were NOT selected in the question.
+
+    The question materialises every candidate tool card (copying the
+    *_default.dat) so that it can offer them all for edition; madevent's
+    ask_run_configuration prunes them again afterwards (keep_cards on the
+    selected cards), but the mg7 launcher had no such cleanup. The materialised
+    cards therefore persisted, and a later re-launch of the same output saw them
+    all present and defaulted every switch to ON (set_default_<tool> keys off
+    card presence). Prune here too, using the question's own switch->card map, so
+    a re-launch reflects the previous selection instead of turning everything on.
+    """
+    try:
+        keep = list(question.always_cards)
+        for spec in question.switch_cards:
+            if spec['on'](switch):
+                keep.append(spec['card'])
+        mother.keep_cards(keep)
+    except Exception as error:
+        logger.debug('could not prune unselected tool cards: %s', error)
+
+
+def _raise_open_file_limit() -> None:
+    """Remove the soft limit on the number of open files: it can be quite low
+    on some systems and the event-combination step opens one file per channel."""
+    soft_lim, hard_lim = resource.getrlimit(resource.RLIMIT_NOFILE)
+    try:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (hard_lim, hard_lim))
+    except (ValueError, OSError) as error:
+        logger.debug("could not raise the open-file limit: %s", error)
+
+
+def main() -> None:
+    """``bin/generate_events`` entry point.
+
+    It runs the same :class:`MG7Cmd` command MG5's in-process ``launch`` uses,
+    so the two entry points cannot drift apart; the only difference is that
+    nothing here supplies a ``mother``/``inputfile``, so the question falls back
+    to reading this process's own stdin.
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-f", action="store_false", dest="ask_edit_cards")
+    args = parser.parse_args()
+
+    MG7Cmd().run_cmd("generate_events" if args.ask_edit_cards else "generate_events -f")

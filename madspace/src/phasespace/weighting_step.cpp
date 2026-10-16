@@ -107,7 +107,16 @@ WeightingStepFunction::WeightingStepFunction(
                 );
             }
         }
-        if (matrix_element.external_inputs().size() != matrix_element.inputs().size()) {
+        bool has_random_inputs = std::any_of(
+            matrix_element.inputs().begin(),
+            matrix_element.inputs().end(),
+            [](auto input) {
+                return input == MatrixElement::random_color_in ||
+                    input == MatrixElement::random_helicity_in ||
+                    input == MatrixElement::random_diagram_in;
+            }
+        );
+        if (has_random_inputs && matrix_element.sample_random_inputs()) {
             throw std::invalid_argument(
                 "the random inputs of a weighting step matrix element are passed in "
                 "and must not be sampled internally"

@@ -76,6 +76,7 @@ def generate(
     step_outputs=("matrix_element",),
     override_outputs=(),
     integrand_outputs=("matrix_element",),
+    step_channel=-1,
 ):
     """Survey and generate, returns the status, the combined events and the
     channels. step_me and step_outputs can be lists, one entry per step."""
@@ -86,7 +87,7 @@ def generate(
         step_me = [step_me] * len(step_modes)
         step_outputs = [step_outputs] * len(step_modes)
     step_mes = [
-        python_matrix_element(context, me, outputs)
+        python_matrix_element(context, me, outputs, step_channel)
         for me, outputs in zip(step_me, step_outputs)
     ]
     config = make_config()
@@ -254,6 +255,32 @@ def test_ratio_step(tmp_path, step_modes):
     (status_me, events_me, _), (status_ratio, events_ratio, _) = results
     assert np.array_equal(events_me, events_ratio)
     assert status_me.mean == status_ratio.mean
+
+
+def test_ratio_with_fixed_channel(tmp_path):
+    """A step matrix element evaluated at a fixed channel gets it as an input,
+    which is not an input of the step."""
+
+    def ratio(momenta, channel):
+        return true_over_surrogate(momenta) * (channel == 3)
+
+    results = [
+        generate(
+            str(tmp_path / name),
+            surrogate_me,
+            ["reweight"],
+            step_me=step_me,
+            step_outputs=("matrix_element_ratio",),
+            step_channel=channel,
+        )
+        for name, step_me, channel in [
+            ("plain", true_over_surrogate, -1),
+            ("channel", ratio, 3),
+        ]
+    ]
+    (status_plain, events_plain, _), (status_channel, events_channel, _) = results
+    assert np.array_equal(events_plain, events_channel)
+    assert status_plain.mean == status_channel.mean
 
 
 def test_ratio_then_matrix_element(tmp_path, reference):

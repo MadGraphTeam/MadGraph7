@@ -1564,7 +1564,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::size_t,
                 bool,
                 const std::vector<me_int_t>&,
-                std::size_t>(),
+                std::size_t,
+                me_int_t>(),
             py::arg("matrix_element_index"),
             py::arg("particle_count"),
             // C++ defaults to {momenta_in} / {matrix_element_out}; kept required
@@ -1576,6 +1577,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("sample_random_inputs") = false,
             py::arg("me_frame") = std::vector<me_int_t>{},
             py::arg("incoming_count") = 2,
+            py::arg("channel") = -1,
             pydoc::doc("MatrixElement::MatrixElement")
         )
         .def(
@@ -1585,13 +1587,15 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<MatrixElement::MatrixElementOutput>&,
                 bool,
                 const std::vector<me_int_t>&,
-                std::size_t>(),
+                std::size_t,
+                me_int_t>(),
             py::arg("matrix_element_api"),
             py::arg("inputs"),
             py::arg("outputs"),
             py::arg("sample_random_inputs") = false,
             py::arg("me_frame") = std::vector<me_int_t>{},
             py::arg("incoming_count") = 2,
+            py::arg("channel") = -1,
             pydoc::doc("MatrixElement::MatrixElement#2")
         )
         .def(
@@ -1611,6 +1615,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def("inputs", &MatrixElement::inputs, pydoc::doc("MatrixElement::inputs"))
         .def("outputs", &MatrixElement::outputs, pydoc::doc("MatrixElement::outputs"))
+        .def("channel", &MatrixElement::channel, pydoc::doc("MatrixElement::channel"))
         .def(
             "external_inputs",
             &MatrixElement::external_inputs,

@@ -3458,6 +3458,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
         return merged_subproc_info
 
     def finalize(self, matrix_elements=None, history='', *args, **kwargs):
+        self.export_amplicol()
         file_name = os.path.normpath(os.path.join(
             self.dir_path, "SubProcesses", "subprocesses.json"
         ))
@@ -3504,8 +3505,35 @@ class ProcessExporterMG7(ProcessExporterCPP):
 
     def pass_information_from_cmd(self, cmd):
         """Capture the process definitions from the command interface; needed to
-        generate the MadAnalysis5 default cards at output time."""
+        generate the MadAnalysis5 default cards at output time, and the
+        [amplicol] processes."""
         self.proc_defs = getattr(cmd, '_curr_proc_defs', None)
+        self.amplicol_defs = getattr(cmd, '_curr_amplicol_defs', None) or []
+        # without MG diagrams there is no madmatrix code to write or build
+        self.has_madmatrix = bool(cmd._curr_amps) or not self.amplicol_defs
+        self.amplicol_model = cmd._curr_model
+        self.amplicol_multiparticles = dict(getattr(cmd, '_multiparticles', {}))
+
+    def amplicol_processes(self):
+        """MG processes standing for the [amplicol] processes."""
+        if not getattr(self, 'amplicol_defs', None):
+            return []
+        import madgraph.iolibs.export_amplicol as export_amplicol
+        return export_amplicol.representative_processes(
+            self.amplicol_defs, self.amplicol_model)
+
+    def export_amplicol(self):
+        """The [amplicol] processes, as subprocesses after the madmatrix ones."""
+        if not getattr(self, 'amplicol_defs', None):
+            return
+        import madgraph.iolibs.export_amplicol as export_amplicol
+        for entry in export_amplicol.export_amplicol_processes(
+                self.dir_path, self.amplicol_defs, self.amplicol_model,
+                self.amplicol_multiparticles):
+            # never merged with another subprocess
+            self.merged_subprocesses[('amplicol', len(self.process_info))].append(
+                (len(self.process_info), []))
+            self.process_info.append(entry)
 
     def create_ma5_default_cards(self, matrix_elements, history):
         """Call MadAnalysis5 to write process-tailored default analysis cards
@@ -3595,6 +3623,8 @@ class ProcessExporterMG7(ProcessExporterCPP):
                              for me in matrix_elements['matrix_elements']]
         except (KeyError, TypeError):
             processes = None
+        if self.amplicol_processes():
+            processes = (processes or []) + [self.amplicol_processes()]
 
         if processes:
             run_card.create_default_for_process(self.proc_characteristic,
@@ -3631,8 +3661,12 @@ class ProcessExporterMG7(ProcessExporterCPP):
         else:
             me_list = []
 
-        procs = []
-        qcd_orders = set()
+        procs = list(self.amplicol_processes())
+        qcd_orders = set(entry['qcd_power'] for entry in self.process_info
+                         if entry.get('backend') == 'amplicol')
+        if procs:
+            pc['nexternal'] = max(pc['nexternal'], len(procs[0].get('legs')))
+            pc['ninitial'] = 2
         for me in me_list:
             if not me.get('processes'):
                 continue
