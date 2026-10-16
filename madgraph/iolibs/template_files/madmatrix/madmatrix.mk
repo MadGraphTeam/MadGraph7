@@ -547,6 +547,14 @@ endif
 $(info OMPFLAGS=$(OMPFLAGS))
 CXXFLAGS += $(OMPFLAGS)
 
+# --hel_recycling warm-up probe (make BACKEND=scalar FPTYPE=d HRPROBE=1): the
+# ordinary code with every amplitude recorded, so that the good-helicity scan
+# can report which ones vanish at which helicity (see SigmaKin.cc, MG_HR_PROBE).
+# Built and thrown away by the exporter at generation time.
+ifeq ($(HRPROBE),1)
+  CXXFLAGS += -DMG_HR_PROBE
+endif
+
 # Set the build flags appropriate to each BACKEND choice (example: "make BACKEND=scalar")
 # [NB MGONGPU_PVW512 is needed because "-mprefer-vector-width=256" is not exposed in a macro]
 # [See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=96476]
