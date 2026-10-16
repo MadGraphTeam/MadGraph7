@@ -1,5 +1,5 @@
       SUBROUTINE FLAVOR_ORDER_REPAIR(GETIDX, GETFLV, NEXT, NINI, NFLAV,
-     &   NFROZEN, FROZEN, DOREPAIR, FLAVOR, PDGS, P, PFIX, LEGOF)
+     &   DOREPAIR, FLAVOR, PDGS, P, PFIX, LEGOF)
 C     Re-order the external legs so that GETIDX resolves their flavor.
 C
 C     The generated FLAV_TABLE tabulates ONE leg ordering per flavor
@@ -25,14 +25,17 @@ C       GETFLV  : the ME's GET_FLAVOR (index -> the tabulated FLAVOR column)
 C       NEXT    : number of external legs of this ME
 C       NINI    : number of initial legs (legs never move across that split)
 C       NFLAV   : number of columns of the ME's flavor table
-C       NFROZEN, FROZEN : legs that must NOT move.  For the density these are
-C                 POS, the legs whose helicity is an open index of rho:
-C                 permuting one of those would permute the rows/columns of
-C                 rho, which is a genuine ambiguity and not ours to settle.
 C       DOREPAIR: .FALSE. leaves the ordering untouched.  Per-leg
 C                 helicities must move with their legs: GET_ALL_INTER's
 C                 NHEL array through LEGOF, a SMATRIXHEL helicity code
-C                 through FLAVOR_ORDER_HEL (below).
+C                 through FLAVOR_ORDER_HEL (below), and the open legs
+C                 POS of a density too (POS(K) -> the slot J with
+C                 LEGOF(J) = POS(K), in the same order K): the open
+C                 index K of rho then still names the caller's leg
+C                 POS(K), so rho comes out unpermuted.  Freezing
+C                 those legs instead left a resolvable ordering
+C                 (u~ d~ > u~ d~ with POS = 1 2 on a table holding
+C                 d~ u~ > d~ u~) at a silent 0.
 C       FLAVOR  : per-leg group positions, repaired in place
 C       PDGS    : per-leg merged pdg codes (read only; two legs may only be
 C                 exchanged when they carry the same merged code)
@@ -50,14 +53,14 @@ C                 (GET_ALL_INTER's NHEL).
       INTEGER GETIDX
       EXTERNAL GETIDX
       EXTERNAL GETFLV
-      INTEGER NEXT, NINI, NFLAV, NFROZEN
+      INTEGER NEXT, NINI, NFLAV
       LOGICAL DOREPAIR
-      INTEGER FROZEN(*), FLAVOR(*), PDGS(*), LEGOF(*)
+      INTEGER FLAVOR(*), PDGS(*), LEGOF(*)
       DOUBLE PRECISION P(0:3,*), PFIX(0:3,*)
 
       INTEGER FR_I, FR_J, FR_K, FR_LO, FR_HI, FR_IFLAV
       INTEGER CAND(MAXLEG), PERM(MAXLEG), TAKEN(MAXLEG), FTMP(MAXLEG)
-      LOGICAL FR_OK, FR_KEEP(MAXLEG)
+      LOGICAL FR_OK
 
       DO FR_J = 1, NEXT
         LEGOF(FR_J) = FR_J
@@ -70,15 +73,6 @@ C                 (GET_ALL_INTER's NHEL).
       IF (NEXT .GT. MAXLEG) RETURN
 C     the ordering we were given is tabulated: nothing to repair
       IF (GETIDX(FLAVOR) .NE. 0) RETURN
-
-      DO FR_J = 1, NEXT
-        FR_KEEP(FR_J) = .FALSE.
-      ENDDO
-      DO FR_I = 1, NFROZEN
-        IF (FROZEN(FR_I) .GE. 1 .AND. FROZEN(FR_I) .LE. NEXT) THEN
-          FR_KEEP(FROZEN(FR_I)) = .TRUE.
-        ENDIF
-      ENDDO
 
       DO FR_IFLAV = 1, NFLAV
         CALL GETFLV(FR_IFLAV, CAND)
@@ -100,11 +94,6 @@ C       finds one.
         FR_OK = .TRUE.
         DO FR_J = 1, NEXT
           IF (PERM(FR_J) .NE. 0) CYCLE
-C         a frozen leg that is not already a fixed point cannot be helped
-          IF (FR_KEEP(FR_J)) THEN
-            FR_OK = .FALSE.
-            EXIT
-          ENDIF
           IF (FR_J .LE. NINI) THEN
             FR_LO = 1
             FR_HI = NINI
@@ -113,7 +102,7 @@ C         a frozen leg that is not already a fixed point cannot be helped
             FR_HI = NEXT
           ENDIF
           DO FR_I = FR_LO, FR_HI
-            IF (TAKEN(FR_I) .EQ. 0 .AND. .NOT. FR_KEEP(FR_I)
+            IF (TAKEN(FR_I) .EQ. 0
      &         .AND. FLAVOR(FR_I) .EQ. CAND(FR_J)
      &         .AND. PDGS(FR_I) .EQ. PDGS(FR_J)) THEN
               PERM(FR_J) = FR_I
@@ -140,8 +129,9 @@ C       slot FR_J takes the leg that currently sits in PERM(FR_J)
         ENDDO
         RETURN
       ENDDO
-C     no tabulated ordering matches: leave everything as it was, the matrix
-C     element returns 0 exactly as it did before.
+C     No tabulated ordering matches: FLAVOR stays unresolved
+C     (GETIDX = 0), which the density and get_all_inter
+C     dispatch treat as a miss (crossed fallback, then NaN).
       RETURN
       END
 

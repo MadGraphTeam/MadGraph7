@@ -4376,12 +4376,11 @@ for pdgs in ([-2, -1, -2, -1], [-1, -2, -2, -1], [2, 1, 2, 1]):
         arr = np.array([pdgs[o] for o in order], dtype=np.int32)
         p = np.asfortranarray(mom[order].T)
         res['sm'].append(m.smatrixhel(arr, -1, p, 0.118, 0., -1))
-        # the density of the leg in slot 1, which stays where it is
+        # the density of the leg in slot 1, which the repair may move
         dens = m.py_get_density(pdgs=arr, procid=-1, p=p, pos=[1],
                                 allow_hel=[-1, 1], alphas=0.118, scale2=0.)
         res['dens'].append(cplx(dens))
-        # the initial legs open, the final ones (which may be moved) at
-        # fixed helicities
+        # the initial legs open, the final ones at fixed helicities
         res['dens12'].append(cplx(m.py_get_density(
             pdgs=arr, procid=-1, p=p, pos=[1, 2], allow_hel=allow12,
             alphas=0.118, scale2=0.)))
@@ -4435,23 +4434,24 @@ json.dump(res, open(outfile, 'w'))
             # a relabelling: the same |M|^2 in every order of a process
             self.assertAlmostEqual(got / folded['sm'][4 * (i // 4)], 1,
                                    places=12, msg=i)
-        # the folded density matrix of the antiquark processes against
-        # smatrixhel through its trace (the expanded output cannot move the
-        # slot-1 leg of a density either, and returns 0 for half of them)
-        for i, dens in enumerate(folded['dens'][:8]):
-            self.assertFalse(any(math.isnan(x) for z in dens for x in z), i)
-            self.assertAlmostEqual((dens[0][0] + dens[2][0]) /
-                                   folded['sm'][i], 1, places=12, msg=i)
+        # the density matrix against smatrixhel through its trace, in every
+        # order: the open leg (POS) moves with its leg when the repair has
+        # to move it, so the expanded output answers too (it used to freeze
+        # it and return a silent 0 for half of these orders)
+        for out in (folded, expanded):
+            for i, dens in enumerate(out['dens']):
+                self.assertFalse(any(math.isnan(x) for z in dens for x in z), i)
+                self.assertAlmostEqual((dens[0][0] + dens[2][0]) /
+                                       out['sm'][i], 1, places=12, msg=i)
         # py_get_all_inter summed over the final helicities is the density
-        # in every leg order the density answers, d u > u d (final legs
-        # repaired) included: its NHEL moves with the legs. It used to give
-        # zeros for every order the table does not hold.
+        # in every leg order, d u > u d (final legs repaired) included: its
+        # NHEL moves with the legs. It used to give zeros for every order
+        # the table does not hold.
         for out in (folded, expanded):
             nonzero = 0
             for i, dens in enumerate(out['dens12']):
                 scale = max(abs(complex(*z)) for z in dens)
-                if scale == 0:
-                    continue
+                self.assertGreater(scale, 0, i)
                 nonzero += 1
                 for k, (re_, im_) in enumerate(dens):
                     self.assertAlmostEqual(
@@ -4460,17 +4460,15 @@ json.dump(res, open(outfile, 'w'))
                     self.assertAlmostEqual(
                         sum(inter[k][1] for inter in out['inter12'][i]),
                         im_, delta=1e-12 * scale, msg=i)
-            # both final orders of every initial order the table holds
-            self.assertGreaterEqual(nonzero, 6)
-        for k in (10, 11):
-            # d u > u d and d u > d u: one of them needs the repair
-            self.assertGreater(max(abs(complex(*z))
-                                   for z in expanded['dens12'][k]), 0)
-        # wherever both answer, row by row the same numbers
+            self.assertEqual(nonzero, 12)
+        # folded and expanded: the same numbers, row by row
         for i in range(12):
             scale = max(abs(complex(*z)) for z in expanded['dens12'][i])
-            if not scale:
-                continue
+            self._assert_same_inter(folded['dens12'][i],
+                                    expanded['dens12'][i], scale)
+            self._assert_same_inter(folded['dens'][i], expanded['dens'][i],
+                                    max(abs(complex(*z))
+                                        for z in expanded['dens'][i]))
             for got, ref in zip(folded['inter12'][i], expanded['inter12'][i]):
                 self._assert_same_inter(got, ref, scale)
 

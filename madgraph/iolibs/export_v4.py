@@ -7681,6 +7681,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                                     for v in self.prefix_info.values())
         momenta = 'pfix' if use_repair else 'p'
         helicities = 'hfix' if use_repair else 'lnhel'
+        positions = 'POSFIX' if use_repair else 'POS'
         text = []
         smtext = []
         smatrixhel_prefixes = set()
@@ -7719,23 +7720,34 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                 prefix = info_me[0]
                 smatrixhel_prefixes.add(prefix)
                 if use_repair:
-                    # POS names the legs whose helicity is an open index of the
-                    # density: those must stay where they are, so they are
-                    # passed as the frozen legs. smatrixhel has no such leg.
                     repair = (' call flavor_order_repair(%sget_flavor_index,'
-                              ' %sget_flavor, %i, %i, %i, %%s, flavor, lpdgs,'
-                              ' p, pfix, legof)' % (prefix, prefix, n_ext,
-                                                    info_me[4], info_me[5]))
-                    text.append(repair % 'n_changing, pos, .true.')
+                              ' %sget_flavor, %i, %i, %i, .true., flavor,'
+                              ' lpdgs, p, pfix, legof)' % (
+                                  prefix, prefix, n_ext, info_me[4],
+                                  info_me[5]))
+                    text.append(repair)
                     # GET_ALL_INTER fixes the helicity of every other leg from
                     # NHEL, by leg position: the helicities move with their
                     # legs (HFIX), so the repair stays a pure relabelling.
                     text.append('%(helperm)s')
+                    # POS names the legs whose helicity is an open index of
+                    # the density: each follows its leg too (POSFIX), in the
+                    # same order, so rho keeps the caller's rows and columns.
+                    # Frozen in place, they left an ordering that needs one
+                    # of them moved (u~ d~ > u~ d~, POS = 1 2, on a table
+                    # holding d~ u~ > d~ u~) at a silent 0.
+                    text.append(self._f2py_pos_follow_legs)
+                    # an ordering the table still does not hold is a miss:
+                    # the crossed fallback, then NaN (FOUND, below)
+                    text.append(' if (%sget_flavor_index(flavor).eq.0) then'
+                                % prefix)
+                    text.append(' found = .false.')
+                    text.append(' else')
                     # a request for one helicity code names the helicity of
                     # each leg in the caller's order: re-key it through the
                     # same permutation (FLAVOR_ORDER_HEL), so that each leg
                     # keeps its helicity (left unrepaired, it answered 0).
-                    smtext.append(repair % '0, ms_nofrozen, .true.')
+                    smtext.append(repair)
                     smtext.append(' nhelfix = nhel')
                     smtext.append(' if (nhel.ge.1) then')
                     smtext.append(' call %sget_nhel_idx(%sget_flavor_index('
@@ -7750,6 +7762,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                     text.append(' call %s%%(fct_name_so)s' % prefix)
                 else:
                     text.append(' call %s%%(fct_name)s' % prefix)
+                if use_repair:
+                    text.append(' endif')
                 smtext.append(' call %ssmatrixhel(%s, %s, %sget_flavor_index('
                               'flavor), ans)' % (prefix, momenta, 'nhelfix'
                                                  if use_repair else 'nhel',
@@ -7757,17 +7771,21 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             # No PDG branch matched: try the folded crossings, and otherwise
             # report the miss (FOUND, see the template): every entry point
             # answers NaN with an ERROR line for a process it does not serve.
+            # The density and get_all_inter also try them after a branch
+            # whose ordering did not resolve: a folded crossing may serve a
+            # flavor combination the matched matrix element does not hold.
             text.append(' else')
             smtext.append(' else')
+            text.append(' found = .false.')
             if n_ext in crossed_next:
-                text.append(' call %(fct_cross)s')
                 smtext.append(' call %(f2py_prefix)sf77_crossed_smatrixhel('
                               'pdgs, lpdgs, procid, npdg, p, nhel, ans, found)')
             else:
-                text.append(' found = .false.')
                 smtext.append(' found = .false.')
             text.append(' endif')
             smtext.append(' endif')
+            if n_ext in crossed_next:
+                text.append(' if (.not.found) call %(fct_cross)s')
         #close the function: any other NPDG is not served
         for lines in (text, smtext):
             lines.append(' else')
@@ -7779,8 +7797,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         # i-n, so they default to REAL without an explicit declaration).
         # With the ordering repair on, the same two per-process routines are
         # also *passed* to FLAVOR_ORDER_REPAIR, hence the EXTERNAL statements,
-        # and every wrapper needs the repaired-momenta scratch array (PFIX) and
-        # the empty frozen-leg list smatrixhel hands over.
+        # and every wrapper needs the repaired-momenta scratch array (PFIX)
+        # and the leg map (LEGOF).
         flavor_index_decl = '\n'.join('  integer %sget_flavor_index' % prefix
                                       for prefix in sorted(smatrixhel_prefixes))
         if use_repair:
@@ -7788,8 +7806,11 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                 '  external %sget_flavor_index\n  external %sget_flavor'
                 % (prefix, prefix) for prefix in sorted(smatrixhel_prefixes))
             flavor_index_decl += ('\n  double precision pfix(0:3,%i)'
-                                  '\n  integer ms_nofrozen(1), legof(%i)'
+                                  '\n  integer legof(%i)'
                                   % (max_nexternal, max_nexternal))
+            # the density's and get_all_inter's open legs, moved with
+            # their legs (_f2py_pos_follow_legs)
+            density_decl = '  integer posfix(n_changing), j'
             # f77_smatrixhel's helicity table (GET_NHEL_IDX, up to MAXPART x
             # the largest NCOMB) and code for FLAVOR_ORDER_HEL
             smatrixhel_decl = ('  integer frtab(%i), frden, nhelfix'
@@ -7800,6 +7821,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         else:
             flavor_repair_function = ''
             smatrixhel_decl = ''
+            density_decl = ''
 
         # smatrixhel_idx: the same dispatch keyed on the 1-based matrix-element
         # slot (the get_pdg_order / get_prefix index) instead of on the PDG
@@ -7917,14 +7939,15 @@ C       stays correct for split-order processes.
                           'smatrixhel_idx': '\n'.join(idxtext),
                           'flavor_index_decl': flavor_index_decl,
                           'smatrixhel_decl': smatrixhel_decl,
+                          'density_decl': density_decl,
                           'maxpart': max_nexternal,
                           'nb_me': len(allids),
                           'pdgs': ','.join(str(pdg[i]) if i<len(pdg) else '0' 
                                            for i in range(max_nexternal) for (pdg,pid) in allids),
                           'prefix':'\',\''.join(allprefix),
                           'pids': ','.join(str(pid) for (pdg,pid) in allids),
-                          'inter_splitter': '\n'.join(text) % {'fct_name': 'GET_ALL_INTER(%s, %s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)' % (momenta, helicities),
-                                                               'fct_name_so': 'GET_ALL_INTER_SUMSO(%s, %s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)' % (momenta, helicities),
+                          'inter_splitter': '\n'.join(text) % {'fct_name': 'GET_ALL_INTER(%s, %s, %s, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)' % (momenta, helicities, positions),
+                                                               'fct_name_so': 'GET_ALL_INTER_SUMSO(%s, %s, %s, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)' % (momenta, helicities, positions),
                                                                'fct_cross': '%sf77_crossed_get_all_inter(pdgs, lpdgs, procid, npdg, p, lnhel, pos, n_changing, allow_hel, n_comb, inter, found)' % f2py_prefix,
                                                                'helperm': ' do i = 1, npdg\n hfix(i) = lnhel(legof(i))\n enddo'},
                           'flavor_repair_function': flavor_repair_function,
@@ -7936,8 +7959,8 @@ C       stays correct for split-order processes.
                           'nhel': all_nhel,
                           'f2py_prefix': f2py_prefix,
                           'idens_value': all_iden,
-                          'density_splitter': '\n'.join(text) % {'fct_name': 'GET_DENSITY(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)' % momenta,
-                                                                 'fct_name_so': 'GET_DENSITY(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)' % momenta,
+                          'density_splitter': '\n'.join(text) % {'fct_name': 'GET_DENSITY(%s, %s, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)' % (momenta, positions),
+                                                                 'fct_name_so': 'GET_DENSITY(%s, %s, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)' % (momenta, positions),
                                                                  'fct_cross': '%sf77_crossed_density(pdgs, lpdgs, procid, npdg, p, pos, n_changing, allow_hel, n_comb, alphas, scale2, inter, found)' % f2py_prefix,
                                                                  'helperm': ''},
                           
@@ -8049,23 +8072,34 @@ C       stays correct for split-order processes.
                 % prefix] if max_ncomb else [
                 '              call %ssmatrixhel(pfix, nhel, idx, ans)'
                 % prefix]) + ['              found = .true.'],
-            maxpart, f2py_prefix,
-            ('.true.' if max_ncomb else 'nhel.lt.1', '0, nofrozen'))
+            maxpart, f2py_prefix, '.true.' if max_ncomb else 'nhel.lt.1')
 
     def _prefix_ncomb(self, prefix):
         """NCOMB of the matrix element written with proc_prefix `prefix`."""
         return max(info[2] for info in self.prefix_info.values()
                    if info[0] == prefix)
 
+    # The open legs POS of a density follow their legs through a repaired
+    # order (LEGOF(J), the caller's leg in slot J): POSFIX(K) is the slot of
+    # the caller's leg POS(K), in the same order K, so the open index K of rho
+    # still names that leg and the result is a pure relabelling.
+    _f2py_pos_follow_legs = '\n'.join([
+        ' do i = 1, n_changing',
+        ' posfix(i) = pos(i)',
+        ' do j = 1, npdg',
+        ' if (legof(j).eq.pos(i)) posfix(i) = j',
+        ' enddo',
+        ' enddo'])
+
     def crossed_density_routine(self, f2py_prefix, maxpart):
         """F77_CROSSED_DENSITY: f77_density's twin of F77_CROSSED_SMATRIXHEL.
 
         The folded crossed subprocess named by the caller's PDGS is found the
         same way, and its density matrix is GET_DENSITY_IDX of the base at that
-        extended index, P and POS in the caller's leg order. The legs of POS
-        (open helicity indices) stay where they are; the others may be put in
-        GET_PDG_FOR_FLAVOR's order, as FLAVOR_ORDER_REPAIR does for the base
-        entries. FOUND tells the dispatch whether any process matched."""
+        extended index, P and POS in the caller's leg order. The legs may be put
+        in GET_PDG_FOR_FLAVOR's order, as FLAVOR_ORDER_REPAIR does for the base
+        entries, the open legs POS following theirs (_f2py_pos_follow_legs).
+        FOUND tells the dispatch whether any process matched."""
         return self._crossed_dispatch_routine(
             ['      subroutine %sf77_crossed_density(pdgs, lpdgs, procid, npdg,'
              ' p, pos, n_changing, allow_hel, n_comb, alphas, scale2, inter,'
@@ -8076,13 +8110,14 @@ C       stays correct for split-order processes.
              '      integer allow_hel(n_changing*n_comb)',
              '      double precision p(0:3,npdg), alphas, scale2',
              '      double complex inter(n_comb*(n_comb+1)/2)',
+             '      integer posfix(n_changing), i, j',
              '      logical found'],
             '      found = .false.',
-            lambda prefix: [
-                '              call %sget_density_idx(pfix, pos, n_changing,'
+            lambda prefix: [self._f2py_pos_follow_legs,
+                '              call %sget_density_idx(pfix, posfix, n_changing,'
                 ' allow_hel, n_comb, idx, alphas, scale2, inter)' % prefix,
                 '              found = .true.'],
-            maxpart, f2py_prefix, ('.true.', 'n_changing, pos'))
+            maxpart, f2py_prefix, '.true.')
 
     def crossed_get_all_inter_routine(self, f2py_prefix, maxpart):
         """F77_CROSSED_GET_ALL_INTER: f77_get_all_inter's twin of
@@ -8090,10 +8125,10 @@ C       stays correct for split-order processes.
         split-order sum GET_ALL_INTER_SUMSO_IDX for a split-order matrix
         element) at the extended index. P, POS and NHEL all follow the
         caller's legs; NHEL is the caller's copy (LNHEL) and is not written
-        to. The legs not in POS may be put in GET_PDG_FOR_FLAVOR's order, as
-        for the density; NHEL fixes their helicities by position, so it is
-        moved with them (HFIX) and the result is a pure relabelling. FOUND
-        tells the dispatch whether any process matched."""
+        to. The legs may be put in GET_PDG_FOR_FLAVOR's order, as for the
+        density; NHEL fixes their helicities by position, so it is moved with
+        them (HFIX), as POS is (POSFIX), and the result is a pure
+        relabelling. FOUND tells the dispatch whether any process matched."""
         so = getattr(self, 'split_order_prefixes', ())
         return self._crossed_dispatch_routine(
             ['      subroutine %sf77_crossed_get_all_inter(pdgs, lpdgs, procid,'
@@ -8105,19 +8140,19 @@ C       stays correct for split-order processes.
              '      integer allow_hel(n_changing*n_comb)',
              '      double precision p(0:3,npdg)',
              '      double complex inter(n_comb*(n_comb+1)/2)',
-             '      integer hfix(%i), i' % maxpart,
+             '      integer hfix(%i), posfix(n_changing), i, j' % maxpart,
              '      logical found'],
             '      found = .false.',
             lambda prefix: [
                 '              do i = 1, npdg',
                 '                hfix(i) = nhel(legof(i))',
-                '              enddo',
-                '              call %s%s(pfix, hfix, pos, n_changing,'
+                '              enddo', self._f2py_pos_follow_legs,
+                '              call %s%s(pfix, hfix, posfix, n_changing,'
                 ' allow_hel, n_comb, idx, inter)' % (
                     prefix, 'get_all_inter_sumso_idx' if prefix in so else
                     'get_all_inter_idx'),
                 '              found = .true.'],
-            maxpart, f2py_prefix, ('.true.', 'n_changing, pos'))
+            maxpart, f2py_prefix, '.true.')
 
     def _crossed_dispatch_routine(self, head, init, call, maxpart,
                                   f2py_prefix, repair):
@@ -8133,11 +8168,12 @@ C       stays correct for split-order processes.
         caller may hand the same process with legs exchanged inside the
         initial or the final state (`u~ d~ > u~ d~` for a row serving
         `u~ d~ > d~ u~`). LPDGS, the caller's merged codes, keeps that to
-        legs of one merged code, as for the uncrossed entries. `repair` = (condition, 'nfrozen, frozen') allows
-        that, as FLAVOR_ORDER_REPAIR does for the uncrossed entries: when no
-        row matches exactly and the condition holds, a second pass accepts a
-        row whose legs only differ by such an exchange, the frozen legs kept
-        in place (F77_CROSSED_ORDER). None keeps the exact match only.
+        legs of one merged code, as for the uncrossed entries. `repair` (a
+        Fortran condition) allows that, as FLAVOR_ORDER_REPAIR does for the
+        uncrossed entries: when no row matches exactly and the condition
+        holds, a second pass accepts a row whose legs only differ by such an
+        exchange (F77_CROSSED_ORDER); `call` moves the per-leg data along
+        (LEGOF). None keeps the exact match only.
 
         The recorded rows also hold the beam-swapped partner of a folded
         crossing (its mirror), so this dispatch answers e.g. `u~ u > e+ e- g`
@@ -8151,13 +8187,9 @@ C       stays correct for split-order processes.
         (recorded_crossing_codes), so this superset is kept, not filtered."""
         lines = head + ['      integer xpdgs(%i), legof(%i), ik, f, idx,'
                         ' ipass, npass' % (maxpart, maxpart),
-                        '      integer nofrozen(1)',
                         '      double precision pfix(0:3,%i)' % maxpart,
                         '      logical same']
-        if repair:
-            cond, frozen = repair
-        else:
-            cond, frozen = '.false.', '0, nofrozen'
+        cond = repair or '.false.'
         data, body = [], []
         for prefix, (nexternal, nflav, rows, pids, ninitial) in \
                 sorted(self.crossed_smatrixhel_prefixes().items()):
@@ -8173,8 +8205,8 @@ C       stays correct for split-order processes.
                 '            idx = %sxrows(ik)*%i + f' % (prefix, nflav),
                 '            call %sget_pdg_for_flavor(idx, xpdgs)' % prefix,
                 '            call %sf77_crossed_order(npdg, %i, xpdgs, pdgs,'
-                ' lpdgs, %s, ipass.eq.2, p, pfix, legof, same)' % (
-                    f2py_prefix, ninitial, frozen),
+                ' lpdgs, ipass.eq.2, p, pfix, legof, same)' % (
+                    f2py_prefix, ninitial),
                 '            if (same) then'] + call(prefix) + [
                 '              return',
                 '            endif',
@@ -8191,29 +8223,24 @@ C       stays correct for split-order processes.
         """F77_CROSSED_ORDER: does the caller's leg order PDGS read XPDGS,
         the order a crossing row serves? With MOVE, legs of the same merged
         code (LPDGS) may be exchanged inside the initial or inside the final
-        state (the FROZEN legs excepted); PFIX gets the momenta in XPDGS's
-        order, and LEGOF(J) is the caller's leg now in slot J."""
-        return '''      subroutine %(fp)sf77_crossed_order(next, nini, xpdgs, pdgs, lpdgs, nfrozen, frozen, move, p, pfix, legof, ok)
+        state; PFIX gets the momenta in XPDGS's order, and LEGOF(J) is the
+        caller's leg now in slot J (a density's open legs follow it)."""
+        return '''      subroutine %(fp)sf77_crossed_order(next, nini, xpdgs, pdgs, lpdgs, move, p, pfix, legof, ok)
 C     Exchanging two legs of one merged code inside the
 C     initial or the final state only renames external
-C     lines, so |M|^2 and the density matrix are unchanged.
-C     The FROZEN legs (open helicity indices of a density)
-C     stay put.
+C     lines, so |M|^2 and the density matrix are unchanged
+C     (the open legs of a density move with their legs).
       implicit none
-      integer next, nini, nfrozen
-      integer xpdgs(next), pdgs(next), lpdgs(next), frozen(*)
+      integer next, nini
+      integer xpdgs(next), pdgs(next), lpdgs(next)
       integer legof(next)
       logical move, ok
       double precision p(0:3,next), pfix(0:3,next)
       integer perm(%(maxpart)i), i, j, k, lo, hi
-      logical taken(%(maxpart)i), keep(%(maxpart)i)
+      logical taken(%(maxpart)i)
       do j = 1, next
-        keep(j) = .false.
         perm(j) = 0
         taken(j) = .false.
-      enddo
-      do i = 1, nfrozen
-        if (frozen(i).ge.1.and.frozen(i).le.next) keep(frozen(i)) = .true.
       enddo
 C     fixed points first, so only the legs that must move do
       do j = 1, next
@@ -8225,7 +8252,7 @@ C     fixed points first, so only the legs that must move do
       ok = .false.
       do j = 1, next
         if (perm(j).ne.0) cycle
-        if (.not.move.or.keep(j)) return
+        if (.not.move) return
         if (j.le.nini) then
           lo = 1
           hi = nini
@@ -8234,7 +8261,7 @@ C     fixed points first, so only the legs that must move do
           hi = next
         endif
         do i = lo, hi
-          if (taken(i).or.keep(i)) cycle
+          if (taken(i)) cycle
           if (pdgs(i).ne.xpdgs(j).or.lpdgs(i).ne.lpdgs(j)) cycle
           perm(j) = i
           taken(i) = .true.

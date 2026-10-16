@@ -112,6 +112,7 @@ C
   integer flavor(%(maxpart)i),lpdgs(%(maxpart)i),I
   logical found
 %(flavor_index_decl)s
+%(density_decl)s
 C     Update is done insider the direct density call functions
 
 %(flavormapping)s
@@ -151,6 +152,7 @@ C      symmetric one)
   integer flavor(%(maxpart)i),lpdgs(%(maxpart)i),I
   logical found
 %(flavor_index_decl)s
+%(density_decl)s
 C     Update is done insider the direct density call functions
 
 C     Update is done insider the direct density call functions

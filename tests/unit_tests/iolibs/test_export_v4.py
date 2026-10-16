@@ -11161,16 +11161,25 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
         self.assertEqual(len(calls), 3)
         for call in calls:
             self.assertIn('M0_GET_FLAVOR_INDEX,M0_GET_FLAVOR,5,2,12', call)
-        # the density and get_all_inter wrappers freeze the legs whose
-        # helicity is an open index of rho (POS); smatrixhel has no such leg.
-        self.assertEqual(len([c for c in calls
-                              if 'N_CHANGING,POS,.TRUE.' in c]), 2)
+        # no leg is frozen: every per-leg datum moves with its leg instead
+        for call in calls:
+            self.assertIn('M0_GET_FLAVOR,5,2,12,.TRUE.,FLAVOR,LPDGS,', call)
+        self.assertNotIn('NOFROZEN', text)
+        # the density's and get_all_inter's open legs (POS) follow their
+        # legs, in the caller's order, so rho is not permuted; an ordering
+        # still unresolved is a miss (crossed fallback, then NaN), never a
+        # silent 0
+        flat = re.sub(r'\s+', ' ', text)
+        posfix = ('DO I = 1, N_CHANGING POSFIX(I) = POS(I) DO J = 1, NPDG'
+                  ' IF (LEGOF(J).EQ.POS(I)) POSFIX(I) = J ENDDO ENDDO'
+                  ' IF (M0_GET_FLAVOR_INDEX(FLAVOR).EQ.0) THEN'
+                  ' FOUND = .FALSE. ELSE CALL M0_GET_')
+        self.assertEqual(flat.count(posfix), 2)
+        self.assertIn('INTEGER POSFIX(N_CHANGING), J', text)
         # smatrixhel repairs a request for one helicity code too: the code
         # is re-keyed through the same permutation (FLAVOR_ORDER_HEL), read
         # in this ME's helicity table (32 codes), so each helicity stays on
         # its leg.
-        self.assertEqual(len([c for c in calls
-                              if '0,MS_NOFROZEN,.TRUE.' in c]), 1)
         self.assertNotIn('NHEL.LT.1', text)
         self.assertEqual(text.count('SUBROUTINE FLAVOR_ORDER_HEL('), 1)
         self.assertIn('NHELFIX = NHEL IF (NHEL.GE.1) THEN CALL'
@@ -11185,11 +11194,12 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
         # and every matrix element is handed the repaired momenta, not P
         for callee in ('M0_SMATRIXHEL(', 'M0_GET_DENSITY(', 'M0_GET_ALL_INTER('):
             self.assertIn('CALL %sPFIX' % callee, text)
+        self.assertIn('CALL M0_GET_DENSITY(PFIX, POSFIX,', text)
         # GET_ALL_INTER takes NHEL second, by leg position: the helicities
         # follow their legs (and its POS entries may be overwritten)
         self.assertIn('DO I = 1, NPDG HFIX(I) = LNHEL(LEGOF(I)) ENDDO'
-                      ' CALL M0_GET_ALL_INTER(PFIX, HFIX, POS,',
-                      re.sub(r'\s+', ' ', text))
+                      ' DO I = 1, N_CHANGING POSFIX(I) = POS(I)', flat)
+        self.assertIn('CALL M0_GET_ALL_INTER(PFIX, HFIX, POSFIX,', flat)
 
     def test_per_process_f2py_entries_are_optional(self):
         """The combined f2py_wrapper.f carries every subprocess' own
@@ -11229,8 +11239,10 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
                 # the guard wraps the PDG branches; any other NPDG is a miss
                 guard = body.index('IF (NPDG.EQ.5)THEN')
                 self.assertLess(guard, body.index('81.EQ.LPDGS(1)'), entry)
-                self.assertIn('ENDIF ELSE FOUND = .FALSE. ENDIF',
-                              re.sub(r'\s+', ' ', body[guard:]), entry)
+                self.assertRegex(re.sub(r'\s+', ' ', body[guard:]),
+                                 r'ELSE FOUND = \.FALSE\. ENDIF'
+                                 r' IF \(\.NOT\.FOUND\) CALL F77_NO_PROCESS',
+                                 entry)
 
     def test_nothing_changes_without_merged_particles(self):
         """No merged particle means one all-ones flavor per ME and no ordering
@@ -11250,12 +11262,12 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
         caller's NHEL copy; a miss everywhere goes to F77_NO_PROCESS (NaN)
         rather than leaving zeros, and smatrixhel's to F77_NO_PROCESS_ANS.
 
-        A crossing row tabulates one leg order: smatrixhel summed over
-        helicities, the density and get_all_inter (their POS legs frozen)
-        also accept the caller's same-code legs exchanged inside the initial
-        or the final state (F77_CROSSED_ORDER, a second pass after the exact
-        one); get_all_inter moves its NHEL, which names legs by position,
-        with the legs."""
+        A crossing row tabulates one leg order: smatrixhel, the density and
+        get_all_inter also accept the caller's same-code legs exchanged
+        inside the initial or the final state (F77_CROSSED_ORDER, a second
+        pass after the exact one); get_all_inter moves its NHEL, which names
+        legs by position, with the legs, and both move the open legs POS
+        (POSFIX), so that rho keeps the caller's rows and columns."""
         for split_orders, inter in ((False, 'M0_GET_ALL_INTER_IDX('),
                                     (True, 'M0_GET_ALL_INTER_SUMSO_IDX(')):
             text = re.sub(r'\s+', '', self.write(
@@ -11265,29 +11277,35 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
                 self.assertEqual(text.count(
                     'SUBROUTINEF77_CROSSED_%s(' % name), 1)
             self.assertIn('DATAM0_XROWS/1,3/', text)
-            self.assertIn('CALLM0_GET_DENSITY_IDX(PFIX,POS,N_CHANGING,'
-                          'ALLOW_HEL,N_COMB,IDX,ALPHAS,SCALE2,INTER)', text)
-            self.assertIn('DOI=1,NPDGHFIX(I)=NHEL(LEGOF(I))ENDDOCALL%sPFIX,'
-                          'HFIX,POS,N_CHANGING,ALLOW_HEL,N_COMB,IDX,INTER)'
-                          % inter, text)
+            posfix = ('DOI=1,N_CHANGINGPOSFIX(I)=POS(I)DOJ=1,NPDG'
+                      'IF(LEGOF(J).EQ.POS(I))POSFIX(I)=JENDDOENDDO')
+            self.assertIn(posfix + 'CALLM0_GET_DENSITY_IDX(PFIX,POSFIX,'
+                          'N_CHANGING,ALLOW_HEL,N_COMB,IDX,ALPHAS,SCALE2,'
+                          'INTER)', text)
+            self.assertIn('DOI=1,NPDGHFIX(I)=NHEL(LEGOF(I))ENDDO' + posfix +
+                          'CALL%sPFIX,HFIX,POSFIX,N_CHANGING,ALLOW_HEL,'
+                          'N_COMB,IDX,INTER)' % inter, text)
             self.assertIn('NHELFIX=NHELIF(NHEL.GE.1)THENCALLM0_GET_NHEL_IDX('
                           'IDX,XDEN,XTAB)CALLFLAVOR_ORDER_HEL(NHEL,NPDG,32,'
                           'XTAB,LEGOF,NHELFIX)ENDIFCALLM0_SMATRIXHEL(PFIX,'
                           'NHELFIX,IDX,ANS)', text)
-            self.assertIn('ELSECALLF77_CROSSED_DENSITY(PDGS,LPDGS,PROCID,NPDG,'
+            # reached on a PDG miss and on a matched branch whose ordering
+            # did not resolve
+            self.assertIn('ELSEFOUND=.FALSE.ENDIFIF(.NOT.FOUND)CALL'
+                          'F77_CROSSED_DENSITY(PDGS,LPDGS,PROCID,NPDG,'
                           'P,POS,', text)
-            self.assertIn('ELSECALLF77_CROSSED_GET_ALL_INTER(PDGS,LPDGS,'
+            self.assertIn('ELSEFOUND=.FALSE.ENDIFIF(.NOT.FOUND)CALL'
+                          'F77_CROSSED_GET_ALL_INTER(PDGS,LPDGS,'
                           'PROCID,NPDG,P,LNHEL,POS,', text)
             self.assertIn('ELSECALLF77_CROSSED_SMATRIXHEL(PDGS,LPDGS,PROCID,'
                           'NPDG,P,NHEL,ANS,FOUND)', text)
             # second pass: smatrixhel for a helicity code too (re-keyed
-            # with the legs), the density and get_all_inter with POS frozen
+            # with the legs), the density and get_all_inter with POS moved
             self.assertNotIn('IF(NHEL.LT.1)NPASS=2', text)
             self.assertEqual(text.count('IF(.TRUE.)NPASS=2'), 3)
             self.assertEqual(text.count(
-                'LPDGS,N_CHANGING,POS,IPASS.EQ.2,P,PFIX,LEGOF,SAME)'), 2)
-            self.assertEqual(text.count(
-                'LPDGS,0,NOFROZEN,IPASS.EQ.2,P,PFIX,LEGOF,SAME)'), 1)
+                'LPDGS,IPASS.EQ.2,P,PFIX,LEGOF,SAME)'), 3)
+            self.assertNotIn('FROZEN', text)
             self.assertIn('LEGOF(J)=PERM(J)', text)
             self.assertEqual(text.count('IF(.NOT.FOUND)CALLF77_NO_PROCESS('), 2)
             self.assertEqual(text.count(
