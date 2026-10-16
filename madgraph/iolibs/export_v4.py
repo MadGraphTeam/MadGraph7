@@ -12389,7 +12389,11 @@ c of an explicit polarisation in the process
         and the NSF flip keeps the fed value physical -- looked up in this
         subprocess's own state order. Copying the digit instead flips every
         leg whose state order is reversed by the crossing (a fermion or W
-        changing between particle and antiparticle). Needs XBST<b>/NXBST<b> (base states), XDST/NXDST
+        changing between particle and antiparticle). The base drew `hel_var`
+        from its own CDF in base-row order (C-parity representative = lower
+        base row), so a folded run has the helicity distribution of
+        --use_crossing=False but, for the same seed, not necessarily the same
+        helicity on each event. Needs XBST<b>/NXBST<b> (base states), XDST/NXDST
         (this subprocess's) and the XPINV/XSGNI/XDUMF/XBDIG/XHR/XHK/XHV/XHD/XHJ
         temporaries declared."""
         return '\n'.join([

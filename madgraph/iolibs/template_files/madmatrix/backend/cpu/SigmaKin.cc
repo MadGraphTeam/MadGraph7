@@ -288,7 +288,11 @@ namespace madmatrix
     return ( ( rnd - lo ) < (fptype)0.5 * w ) ? ihel : cFlip[ihel];
   }
 
-  // The reported (Fortran-indexed, [1,ncomb]) helicity of one lane
+  // The reported (Fortran-indexed, [1,ncomb]) helicity of one lane.
+  // The CDF runs over the one good-helicity list in base-row order for every
+  // crossing, so a crossed lane gets the same helicity distribution as the
+  // --use_crossing=False output but, for a given rndhel, not necessarily the
+  // same helicity (that output orders the rows by its own legs).
   inline int
   selected_helicity( int ighel, unsigned int flavor_id, fptype rnd, fptype lo, fptype hi )
   {

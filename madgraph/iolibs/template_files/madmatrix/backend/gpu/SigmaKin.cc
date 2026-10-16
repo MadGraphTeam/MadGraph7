@@ -757,6 +757,8 @@ namespace madmatrix
     // Event-by-event random choice of helicity #403. With crossing, the reported
     // code is the crossed one (selected_hel_code). An event with a zero or NaN
     // |M|^2 (including a crossing row out of the table) keeps the 0 set above.
+    // The CDF runs in base-row order for every crossing: the same helicity
+    // distribution as --use_crossing=False, not the same helicity per rndhel.
     for( int ighel = 0; ighel < dcNGoodHel; ighel++ )
     {
       if( allrndhel[ievt] < ( ghelAllMEs[ighel * nevt + ievt] / allMEs[ievt] ) )
