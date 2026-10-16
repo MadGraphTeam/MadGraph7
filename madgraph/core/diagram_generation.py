@@ -2281,7 +2281,7 @@ class DecayChainAmplitude(Amplitude):
     @staticmethod
     def _decays_break_crossing(process_definition):
         """True if any decay (recursively) pins a specific s-channel propagator,
-        or carries a polarized leg, a bound state or an off-shell ('*') leg.
+        or carries a polarized leg or a bound state.
 
         Crossing acts at the production level and lets the force-onshell decays
         ride along, so a plain decay chain keeps crossing (see
@@ -2295,7 +2295,7 @@ class DecayChainAmplitude(Amplitude):
         for decay in process_definition.get('decay_chains'):
             if decay.get('required_s_channels') or \
                decay.get('forbidden_s_channels') or \
-               any(l.get('polarization') or l.get('onium') or l.get('offshell')
+               any(l.get('polarization') or l.get('onium')
                    for l in decay.get('legs')) or \
                DecayChainAmplitude._decays_break_crossing(decay):
                 return True
@@ -2902,15 +2902,14 @@ class MultiProcess(base_objects.PhysicsObject):
                    not process.get_interference_mode():
                     # Recording a crossing hands the process to the crossing
                     # machinery of its base, and the exporter does not write
-                    # that machinery for a polarized leg, a bound state or an
-                    # off-shell ('*') leg (see
+                    # that machinery for a polarized leg or a bound state (see
                     # export_v4.breaks_crossing_symmetry): recorded there, the
                     # crossed process would be lost. Reuse the diagrams instead
                     # and keep it as a matrix element of its own.
                     this_merge = merge_crossing
                     if this_merge == 'record' and \
-                       any(l.get('polarization') or l.get('onium') or
-                           l.get('offshell') for l in process.get('legs')):
+                       any(l.get('polarization') or l.get('onium')
+                           for l in process.get('legs')):
                         this_merge = False
                     try:
                         crossed_index = success_procs.index(sorted_legs)
@@ -3250,7 +3249,11 @@ class MultiProcess(base_objects.PhysicsObject):
         None sends it back to a matrix element of its own.
 
         When no leg is restricted the pairing is the id order (the
-        `permutation` of both processes), exactly as before."""
+        `permutation` of both processes), exactly as before.
+
+        An off-shell leg ('*') is evaluated at the invariant mass of its
+        momentum (the external call of its slot), so it pairs only with an
+        off-shell leg, and an on-shell leg only with an on-shell one."""
         merged = model.get('merged_particles') or {}
 
         def flavors(leg):
@@ -3262,19 +3265,23 @@ class MultiProcess(base_objects.PhysicsObject):
             return None if flavor >= frozenset(group) else flavor
 
         def contains(base, crossed):
+            if base[1] != crossed[1]:
+                return False
+            base, crossed = base[0], crossed[0]
             return base is None or (crossed is not None and crossed <= base)
 
         def slots(legs):
             ids = base_objects.LegList(legs).get_outgoing_id_list(model)
-            return [(pid, i + 1, flavors(leg))
+            return [(pid, i + 1, (flavors(leg), bool(leg.get('offshell'))))
                     for i, (pid, leg) in enumerate(zip(ids, legs))]
 
         base, crossed = slots(base_legs), slots(crossed_legs)
         if sorted(p for p, _, _ in base) != sorted(p for p, _, _ in crossed):
             return None
-        if all(f is None for _, _, f in base + crossed):
-            return ([i for _, i in sorted((p, i) for p, i, _ in base)],
+        id_order = ([i for _, i in sorted((p, i) for p, i, _ in base)],
                     [i for _, i in sorted((p, i) for p, i, _ in crossed)])
+        if all(f == (None, False) for _, _, f in base + crossed):
+            return id_order
         base_perm, crossed_perm = [], []
         for pid in sorted(set(p for p, _, _ in base)):
             base_group = [(i, f) for p, i, f in base if p == pid]

@@ -103,6 +103,10 @@ namespace madmatrix
                    const int ievt00 );               // input: first event number in the event page
   const short* getHelicities();
   int broken_symmetry_factor( const int iflavor );
+  // With crossing (ProcessTables::use_crossing): the identical-final-state
+  // factor of the process crossing-table row cross crosses into, for the
+  // flavor iflavor (the crossed denominator, see sigmaKin)
+  int ident_cross( int cross, int iflavor );
 }
 
 #endif // SIGMAKIN_H

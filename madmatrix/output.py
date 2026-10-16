@@ -392,6 +392,8 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
         out = super().generate_subprocess_directory(matrix_element, cpp_helas_call_writer, proc_number)
         if not hasattr(self, 'processes_of_subprocess'):
             self.processes_of_subprocess = []
+        crossed, crossed_flavors = self.crossed_flavor_ids(
+            matrix_element, os.path.basename(self.process_info[-1]['path']))
         self.processes_of_subprocess.append((
             [[leg.get('id') for leg in process.get_legs_with_decays()]
              for process in matrix_element.get('processes')],
@@ -401,11 +403,40 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                    for wf in matrix_element.get_external_wavefunctions()
                    if wf.get('offshell')),
             # the crossed processes folded onto this one (--use_crossing):
-            # listed nowhere else, and evaluated only through the extended
-            # flavor index, which the density entry points do not take
-            [[leg.get('id') for leg in process.get_legs_with_decays()]
-             for process in self.folded_crossed_processes(matrix_element)]))
+            # listed nowhere else, and evaluated through the extended flavor
+            # index only
+            crossed, crossed_flavors))
         return out
+
+    def crossed_flavor_ids(self, matrix_element, proc_dir_name):
+        """The crossed processes folded onto matrix_element, as their leg ids
+        (decays expanded to their leaves, merged labels as they are), and
+        [extended flavor id, pdgs] for every pdg combination of theirs, the pdgs
+        in the leg order of the crossed process: the rows of the crossing table
+        (the one ProcessTables.h was written from, in the coupling-class
+        convention of the C++ flavor index, export_cpp get_crossing_table) that
+        serve them. No flavor id when the directory has no crossing machinery."""
+        folded = self.folded_crossed_processes(matrix_element)
+        legs = [[leg.get('id') for leg in process.get_legs_with_decays()]
+                for process in folded]
+        if not folded:
+            return legs, []
+        tables = pjoin(self.dir_path, 'SubProcesses', proc_dir_name, 'ProcessTables.h')
+        try:
+            with open(tables) as fsock:
+                if 'constexpr bool use_crossing = true;' not in fsock.read():
+                    return legs, []
+        except IOError:
+            return legs, []
+        crossing_all = str((self.opt.get('output_options') or {}).get(
+            'crossing_table', '')).lower() == 'all'
+        table = export_v4.ProcessExporterFortran.get_crossing_table(
+            self, matrix_element, 'classes', all_applicable=crossing_all)
+        nflav = len(matrix_element.get_external_flavors_with_iden())
+        # a decay-chain base records its crossings at the production level:
+        # the table's records carry their leaf ids
+        legs = [list(record.labels) for record in table.records]
+        return legs, [[a.index(nflav), list(a.pdgs)] for a in table.assignments()]
 
     def finalize(self, *args, **kwargs):
         # no subprocesses.json (nor anything else the mg7 launcher needs), only
@@ -420,9 +451,10 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
         """SubProcesses/madmatrix_processes.json: per subprocess, its library
         (with the make variables LIBTAG and BACKEND left as '{libtag}' and
         '{backend}'), its legs, the processes it evaluates, its off-shell legs,
-        the crossed processes folded onto it and, per flavor index, every pdg
+        the crossed processes folded onto it, per flavor index, every pdg
         combination (in the leg order of the process) that this index stands
-        for.
+        for and, for the crossed processes, [extended flavor id, pdgs] for each
+        of their pdg combinations (crossed_flavor_ids).
 
         A crossed process is evaluated with an extended flavor index (crossing
         row K of ProcessTables.h, K*nmaxflavor + flavor). Its selected
@@ -432,8 +464,8 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
         umami.cc), as `output mg7` does."""
         import json
         subprocesses = []
-        for info, (processes, offshell, crossed) in zip(self.process_info,
-                                               getattr(self, 'processes_of_subprocess', [])):
+        for info, (processes, offshell, crossed, crossed_flavors) in zip(
+                self.process_info, getattr(self, 'processes_of_subprocess', [])):
             path = os.path.basename(info['path'])
             flavors = []
             for flavor in info['flavors']:
@@ -448,7 +480,8 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                 'processes': processes,
                 'offshell': offshell,
                 'crossed': crossed,
-                'flavors': flavors})
+                'flavors': flavors,
+                'crossed_flavors': crossed_flavors})
         with open(pjoin(self.dir_path, 'SubProcesses', self.processes_file), 'w') as fsock:
             json.dump({'subprocesses': subprocesses}, fsock, indent=1)
 

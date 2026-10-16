@@ -3485,13 +3485,6 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # crossing machinery. Same decision, same place.
         if any(leg.get('onium') for leg in process.get('legs')):
             return True
-        # An off-shell leg ('*', as MadSpin generates t* > b w+) is evaluated
-        # at the invariant mass of its own momentum (offshell_mass in the C++
-        # output); the crossed external call of the base carries the pole mass
-        # of the base slot, so the folded crossing would not equal the expanded
-        # one. Same decision, same place.
-        if any(leg.get('offshell') for leg in process.get('legs')):
-            return True
         return any(ProcessExporterFortran.breaks_crossing_symmetry(decay)
                    for decay in process.get('decay_chains'))
 

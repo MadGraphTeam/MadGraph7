@@ -13025,11 +13025,20 @@ class MadSpinInterface(extended_cmd.Cmd):
         pdir = self.all_me[tag]['pdir']
 
         if self.all_me[tag]['type'] == 'production':
-            prefix, pos = self.pdg2prefix[0][tuple(list(orig_order[0]) + list(orig_order[1]))]
+            pdg2prefix = self.pdg2prefix[0]
         elif self.all_me[tag]['type'] == 'decay':
-            prefix, pos = self.pdg2prefix[1][tuple(list(orig_order[0]) + list(orig_order[1]))]
+            pdg2prefix = self.pdg2prefix[1]
         else:
             raise ValueError("The key 'type' of self.all_me can only take as values 'production' or 'decay'.")
+        # a crossed process folded onto a base (decay.crossed_processes_with_decays)
+        # is not in the module's process list: its library and slot are the base's
+        # (the iden of that slot cancels in the density normalisation, see
+        # _density_basis); its density and |M|^2 come from its own pdg codes
+        key = tuple(list(orig_order[0]) + list(orig_order[1]))
+        if key not in pdg2prefix and 'base_order' in self.all_me[tag]:
+            base_order = self.all_me[tag]['base_order']
+            key = tuple(list(base_order[0]) + list(base_order[1]))
+        prefix, pos = pdg2prefix[key]
         #misc.sprint(f"get_pdir: pdir = {pdir} , orig_order = {orig_order} , prefix = {prefix}")
         # Cache under the tag we were asked about, not the anti-particle tag the
         # fallback above may have rewritten it to.

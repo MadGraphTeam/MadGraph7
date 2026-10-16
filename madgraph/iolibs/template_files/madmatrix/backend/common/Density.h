@@ -12,6 +12,13 @@
 // flavor are per event, flavor being the index of the flavor combination
 // (ProcessData::flavorPDGs) of that event.
 //
+// With crossing (an output folding crossed processes, --use_crossing) flavor is
+// the extended id cross * nmaxflavor + flavor, cross a row of the crossing table
+// (ProcessTables.h; 0 the process itself), and an event of a crossed process
+// gives its momenta, pos and allow_hel in the leg order of that process and its
+// helicities as physical ones: the Fortran GET_DENSITY_IDX convention, the
+// crossed process's own helicities.
+//
 // The conventions are those of the Fortran standalone GET_DENSITY, so that
 // MadSpin reads the two the same way:
 //   - pos[n_changing] are the (1-based) legs whose helicity is left open, and
@@ -21,8 +28,10 @@
 //   - inter[count][n_comb*(n_comb+1)/2] (complex, as re/im pairs) holds
 //     rho(I,J) = sum_spectators JAMP_J^dagger C JAMP_I / iden for I <= J, I
 //     outer, iden being the spin/color average and identical-particle factor
-//     of the process (helcolDenominators), and the beam polarisation set by
-//     madmatrix_set_beampol folded into the spectator sum.
+//     of the process (helcolDenominators, corrected for the actual flavors as
+//     SMATRIX does with BROKEN_SYM; for a crossing the crossed process's own,
+//     madmatrix_iden), and the beam polarisation set by madmatrix_set_beampol
+//     folded into the spectator sum.
 // A helicity row whose amplitudes all vanish over the first evaluations of a
 // given (flavor, open legs) is then skipped, exactly as the Fortran SMATRIX
 // filters its helicities.
@@ -77,8 +86,14 @@ extern "C"
   // its sign gives the favoured helicity. Ignored for a 1 -> N process.
   void madmatrix_set_beampol( double pol1, double pol2 );
 
-  // Process constants: npar, npari, ncomb, nmaxflavor, ncolor, iden (in this order).
+  // Process constants: npar, npari, ncomb, nmaxflavor, ncolor, iden, ncross (in
+  // this order; ncross the rows of the crossing table, 1 without crossing).
   void madmatrix_process_info( int* info );
+
+  // The spin/color average and identical-particle factor of the process the
+  // (extended) flavor id names: iden for the process itself, the crossed
+  // denominator for a crossing, 0 for a row out of the table.
+  double madmatrix_iden( unsigned int flavor_id );
 
 #ifdef __cplusplus
 }
