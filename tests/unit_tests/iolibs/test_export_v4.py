@@ -11213,6 +11213,25 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
                          'PY_GET_ALL_INTER('):
                 self.assertIn('SUBROUTINE ' + name, text)
 
+    def test_pdg_dispatch_checks_npdg_for_one_multiplicity(self):
+        """A PDGS array longer or shorter than the process is a miss (NaN
+        and an ERROR line) on every path. With a single multiplicity the
+        PDG branches used to be written without the NPDG test, so an
+        oversized array matched on its leading codes (only those are copied
+        into LPDGS), while the folded-crossing fallback refused it."""
+        for merged in ({81: [1, 2, 3, 4]}, {}):
+            text = self.write(merged, crossed_rows=(2,))
+            for entry in ('F77_SMATRIXHEL(', 'F77_DENSITY(',
+                          'F77_GET_ALL_INTER('):
+                body = text[text.index('SUBROUTINE ' + entry):]
+                body = body[:body.index('\n END\n')]
+                self.assertEqual(body.count('IF (NPDG.EQ.5)THEN'), 1, entry)
+                # the guard wraps the PDG branches; any other NPDG is a miss
+                guard = body.index('IF (NPDG.EQ.5)THEN')
+                self.assertLess(guard, body.index('81.EQ.LPDGS(1)'), entry)
+                self.assertIn('ENDIF ELSE FOUND = .FALSE. ENDIF',
+                              re.sub(r'\s+', ' ', body[guard:]), entry)
+
     def test_nothing_changes_without_merged_particles(self):
         """No merged particle means one all-ones flavor per ME and no ordering
         to repair: the wrapper must stay exactly what it was."""
@@ -11287,7 +11306,8 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
         self.assertIn('CALLM0_SMATRIXHEL(PFIX,NHEL,IDX,ANS)', text)
         self.assertEqual(text.count('IF(NHEL.LT.1)NPASS=2'), 1)
         text = re.sub(r'\s+', '', self.write({81: [1, 2, 3, 4]}))
-        self.assertEqual(text.count('ELSEFOUND=.FALSE.'), 3)
+        # per entry point: a PDG miss, and a PDGS of the wrong length
+        self.assertEqual(text.count('ELSEFOUND=.FALSE.'), 6)
         self.assertEqual(text.count('IF(.NOT.FOUND)CALLF77_NO_PROCESS('), 2)
         self.assertEqual(text.count('IF(.NOT.FOUND)CALLF77_NO_PROCESS_ANS('), 1)
 

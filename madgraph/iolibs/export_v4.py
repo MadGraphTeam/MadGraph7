@@ -7689,13 +7689,17 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             current_pid = [ids[1] for ids in allids if len(ids[0])==n_ext]
             if not current_id:
                 continue
-            if min_nexternal != max_nexternal:
-                if n_ext == min_nexternal:
-                    line = '       if (npdg.eq.%i)then' % n_ext
-                else:
-                    line = '       else if (npdg.eq.%i)then' % n_ext
-                text.append(line)
-                smtext.append(line)
+            # The multiplicity guard is written even for a single
+            # multiplicity: LPDGS only copies the first MIN(NPDG, maxpart)
+            # codes, so without it a PDGS array of the wrong length matched
+            # on its leading codes, while the crossed fallback
+            # (F77_CROSSED_SMATRIXHEL/DENSITY) refuses it with NPDG.EQ.N.
+            if n_ext == min_nexternal:
+                line = '       if (npdg.eq.%i)then' % n_ext
+            else:
+                line = '       else if (npdg.eq.%i)then' % n_ext
+            text.append(line)
+            smtext.append(line)
 
             for ii,pdgs in enumerate(current_id):
                 pid = current_pid[ii]
@@ -7759,12 +7763,11 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                 smtext.append(' found = .false.')
             text.append(' endif')
             smtext.append(' endif')
-        #close the function
-        if min_nexternal != max_nexternal:
-            for lines in (text, smtext):
-                lines.append(' else')
-                lines.append(' found = .false.')
-                lines.append('endif')
+        #close the function: any other NPDG is not served
+        for lines in (text, smtext):
+            lines.append(' else')
+            lines.append(' found = .false.')
+            lines.append('endif')
 
         # INTEGER declarations for the per-process GET_FLAVOR_INDEX functions
         # used inline by the smatrixhel dispatch (their name does not start with
