@@ -1585,7 +1585,10 @@ print("F2PY_PDG_OK")
 
         The beam swap of a folded crossing (d~ u > w+ g) is reached as well,
         where the expanded output has no branch: it must be the expanded
-        u d~ > w+ g with the two beams exchanged."""
+        u d~ > w+ g with the two beams exchanged.
+
+        A code above NCOMB names no helicity: it gives 0, as in the
+        expanded output. The folded one used to wrap it onto code-NCOMB."""
         outs = {}
         for name, options in (('on', ''), ('off', ' --use_crossing=False')):
             out = pjoin(self.tmpdir, 'all_matrix_' + name)
@@ -1638,6 +1641,10 @@ for pdgs in ([2, -1, 24, 21], [21, -1, 24, -2]):
     print('NHEL %r' % [tuple(int(x) for x in col) for col in nhel.T])
     print('PER %s' % json.dumps([m.smatrixhel(pdgs, -1, P, 0.118, 0, h)
                                  for h in range(1, nhel.shape[1] + 1)]))
+for pdgs in ([21, 2, 24, 1], [2, -1, 24, 21], [21, -1, 24, -2]):
+    n = np.array(nhel_table(pdgs)).shape[1]
+    print('ABOVE %s' % json.dumps([m.smatrixhel(pdgs, -1, P, 0.118, 0, h)
+                                   for h in range(n + 1, 2 * n + 1)]))
 '''
         values, tables, per_code, mirror, swap = {}, {}, {}, {}, {}
         for name, out in outs.items():
@@ -1661,6 +1668,11 @@ for pdgs in ([2, -1, 24, 21], [21, -1, 24, -2]):
                                                           output, re.M)]
             self.assertEqual(len(tables[name]), 2, output)
             self.assertEqual(len(per_code[name]), 2, output)
+            above = [json.loads(v) for v in re.findall(r'^ABOVE (.*)$',
+                                                       output, re.M)]
+            self.assertEqual(len(above), 3, output)
+            for codes in above:
+                self.assertEqual(codes, [0.0] * len(codes), (name, above))
         for on, off in zip(values['on'], values['off']):
             self.assertGreater(off, 0.0)
             self.assertLessEqual(abs(on - off), 1e-10 * off,

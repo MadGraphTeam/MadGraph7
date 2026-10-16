@@ -409,19 +409,28 @@ C     in the same order, and SMATRIX evaluates a base row with
 C     the side-changing legs' helicities negated
 C     (APPLY_CROSSING_ROWS): the crossed leg's helicity H is
 C     base value SGNI(K)*H. An uncrossed index, or a CODE < 1
-C     (no helicity requested), comes back unchanged.
+C     (no helicity requested), comes back unchanged; so does a
+C     CODE above NCOMB, which names no row and answers 0, as
+C     in the expanded output.
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INTEGER    MAXHEL
       PARAMETER (MAXHEL=%(maxhel)d)
       INTEGER FLAV_IDX_IN, CODE, BCODE
       INTEGER PINV(NEXTERNAL), SGNI(NEXTERNAL), XF, I, K, R, B, V
+      INTEGER NC
       INTEGER DIG(NEXTERNAL)
       INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
 %(nhstate_data)s
 %(states_data)s
       BCODE = CODE
       IF (CODE .LT. 1) RETURN
+C     the digit decoding below would wrap a code above NCOMB
+      NC = 1
+      DO K = 1, NEXTERNAL
+        NC = NC*NHSTATE(K)
+      ENDDO
+      IF (CODE .GT. NC) RETURN
       CALL %(proc_prefix)sGET_CROSS_PINV(FLAV_IDX_IN, PINV, SGNI, XF)
       R = CODE - 1
       DO K = NEXTERNAL, 1, -1
