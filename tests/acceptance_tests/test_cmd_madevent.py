@@ -2696,6 +2696,43 @@ C
                              'CMS mg7 subprocess %s did not compile:\n%s'
                              % (d, proc.stdout[-3000:]))
 
+    def test_complex_mass_scheme_qcd_mg7_compile(self):
+        """`output mg7` of a complex-mass-scheme QCD process compiles.
+
+        Under the complex-mass scheme the alphaS-dependent parameters are
+        complex (mdl_sqrt__aS = sqrt(aS), G, mdl_G__exp__2), and they were
+        left as constexpr cxsmpl lines reading the undeclared aS inside
+        computeDependentCouplings_fromG; the HelAmps propagator denominators
+        also cast the complex mass to a real. g g > t t~ g has both: the
+        four-gluon coupling GC_12 (from mdl_G__exp__2) and top propagators.
+        """
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('set complex_mass_scheme', precmd=True)
+        mg_cmd.exec_cmd('generate g g > t t~ g', precmd=True)
+        mg_cmd.exec_cmd('output mg7 %s' % self.run_dir, precmd=True)
+
+        with open(pjoin(self.run_dir, 'src', 'Parameters.h')) as fsock:
+            text = fsock.read()
+        self.assertIn('const cxtype_sv mdl_G__exp__2 =', text)
+        # no live (uncommented) constexpr assignment from aS is left
+        self.assertFalse(re.search(r'^\s*constexpr cxsmpl<double> '
+                                   r'(G|mdl_sqrt__aS|mdl_G__exp__2) =',
+                                   text, re.M))
+        sub_root = pjoin(self.run_dir, 'SubProcesses')
+        proc_dirs = sorted(d for d in os.listdir(sub_root)
+                           if d.startswith('P') and
+                           os.path.isdir(pjoin(sub_root, d)))
+        self.assertTrue(proc_dirs, 'no subprocess generated for g g > t t~ g')
+        for d in proc_dirs:
+            proc = subprocess.run(['make', 'bldnone'], cwd=pjoin(sub_root, d),
+                                  stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, text=True)
+            self.assertEqual(proc.returncode, 0,
+                             'CMS mg7 subprocess %s did not compile:\n%s'
+                             % (d, proc.stdout[-3000:]))
+
     def test_width_scan(self):
         """check that the width settings works on a scan based.
            and check that MW is updated."""
