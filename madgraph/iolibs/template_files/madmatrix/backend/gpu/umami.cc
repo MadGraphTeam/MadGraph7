@@ -420,6 +420,19 @@ extern "C"
     return UMAMI_ERROR_NOT_IMPLEMENTED;
   }
 
+  // Numbering of the outputs of a crossed call (crossing on, flavor index
+  // K*nmaxflavor + flavor: row K of the crossing table in ProcessTables.h).
+  // - UMAMI_OUT_HELICITY_INDEX is the crossed process's own helicity code,
+  //   the one its --use_crossing=False output reports (selected_hel_code).
+  // - UMAMI_OUT_COLOR_INDEX, UMAMI_OUT_DIAGRAM_INDEX and UMAMI_OUT_DIAGRAM_AMP2
+  //   number the colour flows and diagrams of the BASE subprocess (this P
+  //   directory's). To read a flow on the crossed legs, input slot k is base
+  //   leg xpinv_tab[K*npar+k], with colour and anticolour exchanged when
+  //   xsgni_tab is -1 (the leg changed side). This is not the numbering of the
+  //   --use_crossing=False output: two rows can serve the same flavours with
+  //   different leg assignments, so one base flow is a different flow of the
+  //   crossed process under each. `output mg7` decodes through the base this
+  //   way (export_mg7.py, get_crossed_subprocess_info).
   UmamiStatus umami_matrix_element(
     UmamiHandle handle,
     size_t count,

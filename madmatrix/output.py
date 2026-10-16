@@ -422,7 +422,14 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
         '{backend}'), its legs, the processes it evaluates, its off-shell legs,
         the crossed processes folded onto it and, per flavor index, every pdg
         combination (in the leg order of the process) that this index stands
-        for."""
+        for.
+
+        A crossed process is evaluated with an extended flavor index (crossing
+        row K of ProcessTables.h, K*nmaxflavor + flavor). Its selected
+        helicity is the crossed process's own code, but its colour-flow and
+        diagram indices number the BASE subprocess's flows and diagrams: decode
+        them through row K (see the note above umami_matrix_element in
+        umami.cc), as `output mg7` does."""
         import json
         subprocesses = []
         for info, (processes, offshell, crossed) in zip(self.process_info,
