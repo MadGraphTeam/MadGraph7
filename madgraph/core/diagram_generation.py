@@ -2525,6 +2525,14 @@ class MultiProcess(base_objects.PhysicsObject):
                      list of amplitudes (after generation)
     """
 
+    # Position of each subprocess in the order a merge_crossing=False
+    # generation lists them, stamped on its Process as `generation_rank` when
+    # it is generated or recorded as a crossing. Expanding recorded crossings
+    # (MadGraphCmd._expand_recorded_crossings) puts them back at that position,
+    # so the expanded output -- its P directories, and the iproc.dat that
+    # offsets each one's random seed -- matches a --use_crossing=False one.
+    _generation_rank = itertools.count()
+
     def default_setup(self):
         """Default values for all properties"""
 
@@ -2956,6 +2964,8 @@ class MultiProcess(base_objects.PhysicsObject):
                                 process,
                                 permutations[crossed_index],
                                 permutation)
+                            amplitude.get('process').generation_rank = \
+                                next(MultiProcess._generation_rank)
                             amplitudes.append(amplitude)
                             success_procs.append(sorted_legs)
                             permutations.append(permutation)
@@ -2969,6 +2979,8 @@ class MultiProcess(base_objects.PhysicsObject):
                             # base's crossing-aware SMATRIX (its partonic
                             # contribution is not lost, unlike merge_crossing=True).
                             index, (base_perm, crossed_perm) = record
+                            process.generation_rank = \
+                                next(MultiProcess._generation_rank)
                             amplitudes[index].get('crossed_processes')\
                                 .append((process, base_perm, crossed_perm))
                             logger.info("Crossed process %s recorded on %s "
@@ -2992,6 +3004,8 @@ class MultiProcess(base_objects.PhysicsObject):
                 else:
                     # Succeeded in generating diagrams
                     if amplitude.get('diagrams'):
+                        amplitude.get('process').generation_rank = \
+                            next(MultiProcess._generation_rank)
                         amplitudes.append(amplitude)
                         success_procs.append(sorted_legs)
                         permutations.append(permutation)

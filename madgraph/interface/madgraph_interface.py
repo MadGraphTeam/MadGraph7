@@ -12999,28 +12999,47 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             originals.append((amp, [record for record in crossed
                                     if not any(record is k for k in kept)],
                               kept))
+        # Each subprocess goes back where the merge_crossing=False generation
+        # lists it (generation_rank, see MultiProcess), crossings between
+        # the bases instead of after all of them. Sorted by number of
+        # diagrams afterwards, as the caller does, the madevent P directories
+        # then come in the --use_crossing=False order, and so get the same
+        # iproc.dat, hence random seeds. Without every rank, the bases keep
+        # their order and the crossings follow.
+        entries = [(amp.get('process'), amp, None, kept)
+                   for amp, _crossed, kept in originals] + \
+                  [(record[0], amp, record, None)
+                   for amp, crossed, _kept in originals for record in crossed]
+        ranks = [getattr(entry[0], 'generation_rank', None)
+                 for entry in entries]
+        if None not in ranks:
+            entries = [entry for _rank, _i, entry in
+                       sorted(zip(ranks, range(len(entries)), entries))]
+
         expanded = diagram_generation.AmplitudeList()
         seen = {}   # fast_proc -> amplitude, for mirror fold
-        for amp, _crossed, kept in originals:
-            amp = copy.copy(amp)
-            if 'crossed_processes' in amp:
-                amp.set('crossed_processes', kept)
-            expanded.append(amp)
-            seen[_fastproc(amp)] = amp
-        for amp, crossed, _kept in originals:
-            for (proc, base_perm, cross_perm) in crossed:
-                xamp = diagram_generation.MultiProcess.\
-                    cross_amplitude(amp, proc, base_perm, cross_perm)
-                xamp.set('crossed_processes', [])
-                fp = _fastproc(xamp)
-                mirror = (fp[1], fp[0]) + fp[2:]
-                if collect_mirror and mirror in seen and \
-                        proc.get_ninitial() == 2:
-                    seen[mirror].set('has_mirror_process', True)
-                    continue
-                xamp.set('has_mirror_process', False)
-                expanded.append(xamp)
-                seen[fp] = xamp
+        for proc, amp, record, kept in entries:
+            if record is None:
+                # a base, with the crossings it still folds
+                amp = copy.copy(amp)
+                if 'crossed_processes' in amp:
+                    amp.set('crossed_processes', kept)
+                expanded.append(amp)
+                seen[_fastproc(amp)] = amp
+                continue
+            _proc, base_perm, cross_perm = record
+            xamp = diagram_generation.MultiProcess.\
+                cross_amplitude(amp, proc, base_perm, cross_perm)
+            xamp.set('crossed_processes', [])
+            fp = _fastproc(xamp)
+            mirror = (fp[1], fp[0]) + fp[2:]
+            if collect_mirror and mirror in seen and \
+                    proc.get_ninitial() == 2:
+                seen[mirror].set('has_mirror_process', True)
+                continue
+            xamp.set('has_mirror_process', False)
+            expanded.append(xamp)
+            seen[fp] = xamp
         return expanded
 
     @staticmethod
@@ -13335,6 +13354,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     if self._crossing_needs_expansion(non_dc_amps):
                         non_dc_amps = \
                             self._expand_recorded_crossings(non_dc_amps)
+                        # sorted as self._curr_amps above, which decides the
+                        # P directory order (and iproc.dat)
+                        non_dc_amps.sort(
+                            key=lambda x: x.get_number_of_diagrams(),
+                            reverse=True)
 
                     if not self._output_folds_crossings(decay_chains=True):
                         # Decay chains: the crossing dedup (folding the crossed

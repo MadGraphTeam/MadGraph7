@@ -2926,6 +2926,32 @@ class TestCrossingOutputOrder(unittest.TestCase):
              ('madevent', self.REBUILD, 'madevent')],
             generation=self.MIXED)
 
+    def test_madevent_order_matches_uncrossed_generation(self):
+        """The expanded crossings take the place a --use_crossing=False
+        generation gives them, not one after every base: the madevent P
+        directories then come in the same order, with the same iproc.dat,
+        which offsets each one's random seed (ranmar.f). With p p > j j the
+        crossings q q~ > g g (of g g > q q~) used to come after the base
+        q q > q q, so the same iseed gave other events. The added process
+        checks that the crossings stay within their own process
+        definition."""
+        def layout(flag):
+            out = self._session(['madevent'], generation=(
+                'generate p p > j j --use_crossing=%s' % flag,
+                'add process p p > z j --use_crossing=%s' % flag))[0]
+            path = pjoin(out, 'SubProcesses')
+            with open(pjoin(path, 'subproc.mg')) as stream:
+                pdirs = stream.read().split()
+            iproc = []
+            for pdir in pdirs:
+                with open(pjoin(path, pdir, 'iproc.dat')) as stream:
+                    iproc.append(int(stream.read()))
+            return pdirs, iproc
+        folded, expanded = layout(True), layout(False)
+        self.assertTrue(any(pdir.endswith('_qq_gg') for pdir in folded[0]),
+                        folded[0])
+        self.assertEqual(folded, expanded)
+
 
 # The C++ standalone driver: take a fixed RAMBO phase space point once
 # (all-massless, so the momenta are identical between the two P directories) and
