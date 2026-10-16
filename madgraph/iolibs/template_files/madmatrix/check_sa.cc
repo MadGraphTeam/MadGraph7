@@ -983,7 +983,7 @@ namespace
       out_keys.push_back( UMAMI_OUT_COLOR_INDEX );
       outputs.push_back( colPtr );
     }
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     if( stream != nullptr )
     {
       out_keys.push_back( UMAMI_OUT_GPU_STREAM );
@@ -1285,7 +1285,7 @@ namespace
     std::cout << std::string( SEP79, '*' ) << std::endl;
 
     umami_free( umami_handle );
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     if( stream != nullptr ) gpuStreamDestroy( stream );
 #endif
     for( std::ofstream* file : { &dumpMomenta, &dumpMEs, &dumpHel, &dumpCol } )
@@ -1444,7 +1444,7 @@ int main( int argc, char** argv )
     return usage( argv[0] );
   }
   if( perfEnergy > 0 ) kEnergy = perfEnergy;
-#ifndef MGONGPUCPP_GPUIMPL
+#ifndef MADMATRIX_GPUIMPL
   if( io.nonblockingStream )
   {
     std::cerr << "ERROR: --nonblocking-stream needs a CUDA or HIP build." << std::endl;
