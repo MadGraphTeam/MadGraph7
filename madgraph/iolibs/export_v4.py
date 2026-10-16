@@ -7518,8 +7518,15 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             prefix, tag = value[0], value[1]
             info.append('#PY %s : %s # %s %s' % (tag, key, prefix, pid))
 
+        # The merged-code rewrite and the dispatch below work on LPDGS, a local
+        # copy of the caller's PDGS: f2py hands an int32 numpy array straight
+        # through for intent(in), so rewriting PDGS itself turned a reused
+        # [2,-2,-11,11] into [81,-81,-82,82] and the next call silently
+        # answered for d d~. Legs beyond npdg stay 0, which matches no process.
         flavor_text= "  flavor(:) = 1\n"
-        flavor_text += " do i =1, npdg\n"
+        flavor_text += "  lpdgs(:) = 0\n"
+        flavor_text += " do i =1, min(npdg, %i)\n" % max_nexternal
+        flavor_text += " lpdgs(i) = pdgs(i)\n"
         nb = 0
         for pdg, pids in self.model['merged_particles'].items():
             for group_pos, pid in enumerate(pids, 1):
@@ -7529,9 +7536,9 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                     flavor_text += ' '
                 nb += 1
                 # flavor(i) is the 1-based position of the actual PDG within
-                # the merged-particle group; pdgs(i) is rewritten to carry
+                # the merged-particle group; lpdgs(i) is rewritten to carry
                 # the merged-particle ID (with the original sign).
-                flavor_text += 'if (abs(pdgs(i)).eq.%i)then\n flavor(i) = %i\n pdgs(i) = Sign(%i, pdgs(i))\n' % (pid, group_pos, pdg)
+                flavor_text += 'if (abs(lpdgs(i)).eq.%i)then\n flavor(i) = %i\n lpdgs(i) = Sign(%i, lpdgs(i))\n' % (pid, group_pos, pdg)
         if nb>0:
             flavor_text += 'endif\n'
         flavor_text += " enddo\n"
@@ -7581,7 +7588,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
 
             for ii,pdgs in enumerate(current_id):
                 pid = current_pid[ii]
-                condition = '.and.'.join(['%i.eq.pdgs(%i)' %(pdg, i+1) for i, pdg in enumerate(pdgs)])
+                condition = '.and.'.join(['%i.eq.lpdgs(%i)' %(pdg, i+1) for i, pdg in enumerate(pdgs)])
                 if ii==0:
                     line = ' if(%s.and.(procid.le.0.or.procid.eq.%d)) then ! %i' % (condition, pid, ii)
                 else:
@@ -7596,10 +7603,13 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                     # density: those must stay where they are, so they are
                     # passed as the frozen legs. smatrixhel has no such leg.
                     repair = (' call flavor_order_repair(%sget_flavor_index,'
-                              ' %sget_flavor, %i, %i, %i, %%s, flavor, pdgs,'
+                              ' %sget_flavor, %i, %i, %i, %%s, flavor, lpdgs,'
                               ' p, pfix)' % (prefix, prefix, n_ext,
                                              info_me[4], info_me[5]))
-                    text.append(repair % 'n_changing, pos, .true.')
+                    # GET_ALL_INTER fixes the helicity of every other leg from
+                    # NHEL, by leg position: it gets the same no-repair rule
+                    # as a specific smatrixhel row (below), hence the switch.
+                    text.append(repair % 'n_changing, pos, %(dorepair)s')
                     # a request for one specific helicity row names it by leg
                     # position, so re-ordering the legs would answer for a
                     # different helicity assignment: leave those calls alone.
@@ -7751,7 +7761,8 @@ C       stays correct for split-order processes.
                                            for i in range(max_nexternal) for (pdg,pid) in allids),
                           'prefix':'\',\''.join(allprefix),
                           'pids': ','.join(str(pid) for (pdg,pid) in allids),
-                          'inter_splitter': '\n'.join(text) % {'fct_name': 'GET_ALL_INTER(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)' % momenta},
+                          'inter_splitter': '\n'.join(text) % {'fct_name': 'GET_ALL_INTER(%s, LNHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)' % momenta,
+                                                               'dorepair': '.false.'},
                           'flavor_repair_function': flavor_repair_function,
                           'parameter_setup': '\n'.join(parameter_setup),
                           'helreset_def' : '\n'.join(helreset_def),
@@ -7761,7 +7772,8 @@ C       stays correct for split-order processes.
                           'nhel': all_nhel,
                           'f2py_prefix': f2py_prefix,
                           'idens_value': all_iden,
-                          'density_splitter': '\n'.join(text) % {'fct_name': 'GET_DENSITY(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)' % momenta},
+                          'density_splitter': '\n'.join(text) % {'fct_name': 'GET_DENSITY(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)' % momenta,
+                                                                 'dorepair': '.true.'},
                           
                           }
 
