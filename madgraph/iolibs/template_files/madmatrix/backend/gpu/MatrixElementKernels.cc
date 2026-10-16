@@ -216,8 +216,8 @@ namespace madmatrix
     if( first )
     {
       first = false;
-      // Analyse environment variable CUDACPP_RUNTIME_BLASCOLORSUM
-      const char* blasEnv = getenv( "CUDACPP_RUNTIME_BLASCOLORSUM" );
+      // Analyse environment variable MADMATRIX_RUNTIME_BLASCOLORSUM
+      const char* blasEnv = getenv( "MADMATRIX_RUNTIME_BLASCOLORSUM" );
       if( blasEnv && std::string( blasEnv ) != "" )
       {
 #ifndef MADMATRIX_HAS_NO_BLAS
@@ -225,48 +225,48 @@ namespace madmatrix
         {
           // the BLAS color sum contracts one ncolor jamp vector per helicity: it cannot pair
           // the jamps of several amplitude split orders, which color_sum_kernel does
-          std::cout << "WARNING! Env variable CUDACPP_RUNTIME_BLASCOLORSUM is set and non-empty, but the BLAS color sum does not pair split amplitude orders: disable BLAS" << std::endl;
+          std::cout << "WARNING! Env variable MADMATRIX_RUNTIME_BLASCOLORSUM is set and non-empty, but the BLAS color sum does not pair split amplitude orders: disable BLAS" << std::endl;
         }
         else
         {
           m_blasColorSum = true; // fixme? eventually set default=true and decode "Y" and "N" choices?
-          std::cout << "INFO: Env variable CUDACPP_RUNTIME_BLASCOLORSUM is set and non-empty: enable BLAS" << std::endl;
+          std::cout << "INFO: Env variable MADMATRIX_RUNTIME_BLASCOLORSUM is set and non-empty: enable BLAS" << std::endl;
         }
 #else
-        throw std::runtime_error( "Env variable CUDACPP_RUNTIME_BLASCOLORSUM is set and non-empty, but BLAS was disabled at build time" );
+        throw std::runtime_error( "Env variable MADMATRIX_RUNTIME_BLASCOLORSUM is set and non-empty, but BLAS was disabled at build time" );
 #endif
       }
       else
       {
 #ifndef MADMATRIX_HAS_NO_BLAS
-        std::cout << "INFO: Env variable CUDACPP_RUNTIME_BLASCOLORSUM is empty or not set: disable BLAS" << std::endl;
+        std::cout << "INFO: Env variable MADMATRIX_RUNTIME_BLASCOLORSUM is empty or not set: disable BLAS" << std::endl;
 #else
         std::cout << "INFO: BLAS was disabled at build time" << std::endl;
 #endif
       }
 #ifndef MADMATRIX_HAS_NO_BLAS
 #ifdef __CUDACC__ // this must be __CUDACC__
-      // Analyse environment variable CUDACPP_RUNTIME_CUBLASTF32TENSOR
-      const char* blasEnv2 = getenv( "CUDACPP_RUNTIME_CUBLASTF32TENSOR" );
+      // Analyse environment variable MADMATRIX_RUNTIME_CUBLASTF32TENSOR
+      const char* blasEnv2 = getenv( "MADMATRIX_RUNTIME_CUBLASTF32TENSOR" );
       if( blasEnv2 && std::string( blasEnv2 ) != "" )
       {
         if( m_blasColorSum )
         {
 #ifdef MADMATRIX_FPTYPE2_FLOAT
           m_blasTf32Tensor = true;
-          std::cout << "INFO: Env variable CUDACPP_RUNTIME_CUBLASTF32TENSOR is set and non-empty: enable CUBLAS_TF32_TENSOR_OP_MATH" << std::endl;
+          std::cout << "INFO: Env variable MADMATRIX_RUNTIME_CUBLASTF32TENSOR is set and non-empty: enable CUBLAS_TF32_TENSOR_OP_MATH" << std::endl;
 #else
-          std::cout << "WARNING! Env variable CUDACPP_RUNTIME_CUBLASTF32TENSOR is set and non-empty, but color sums use FP64" << std::endl;
+          std::cout << "WARNING! Env variable MADMATRIX_RUNTIME_CUBLASTF32TENSOR is set and non-empty, but color sums use FP64" << std::endl;
 #endif
         }
         else
-          std::cout << "WARNING! Env variable CUDACPP_RUNTIME_CUBLASTF32TENSOR is set and non-empty, but BLAS was disabled at runtime" << std::endl;
+          std::cout << "WARNING! Env variable MADMATRIX_RUNTIME_CUBLASTF32TENSOR is set and non-empty, but BLAS was disabled at runtime" << std::endl;
       }
 #ifdef MADMATRIX_FPTYPE2_FLOAT
       else
       {
         if( m_blasColorSum )
-          std::cout << "INFO: Env variable CUDACPP_RUNTIME_CUBLASTF32TENSOR is empty or not set: keep cuBLAS math defaults" << std::endl;
+          std::cout << "INFO: Env variable MADMATRIX_RUNTIME_CUBLASTF32TENSOR is empty or not set: keep cuBLAS math defaults" << std::endl;
       }
 #endif
 #endif

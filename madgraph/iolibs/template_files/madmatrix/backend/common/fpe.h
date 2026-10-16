@@ -24,7 +24,7 @@ namespace madmatrix
     if( !first ) return;
     first = false;
 #ifndef __APPLE__ // on MacOS feenableexcept is not defined #730
-    constexpr bool enableFPE = true; // this is hardcoded and no longer controlled by getenv( "CUDACPP_RUNTIME_ENABLEFPE" )
+    constexpr bool enableFPE = true; // this is hardcoded and no longer controlled by env var
     if( enableFPE )
     {
       std::cout << "INFO: The following Floating Point Exceptions will cause SIGFPE program aborts: FE_DIVBYZERO, FE_INVALID, FE_OVERFLOW" << std::endl;

@@ -338,7 +338,7 @@ namespace madmatrix
     // CASE 1: KERNEL
     if( !pBlasHandle )
     {
-      assert( ghelAllBlasTmp == nullptr );  // sanity check for HASBLAS=hasNoBlas or CUDACPP_RUNTIME_BLASCOLORSUM not set
+      assert( ghelAllBlasTmp == nullptr );  // sanity check for HASBLAS=hasNoBlas or MADMATRIX_RUNTIME_BLASCOLORSUM not set
       if (processAllHelicities) {
         gpuLaunchKernel2D( color_sum_kernel, gpublocks, nGoodHel, gputhreads, ghelStreams[0], ghelAllMEs, ghelAllJamps, nGoodHel, nevt );
       } else {
