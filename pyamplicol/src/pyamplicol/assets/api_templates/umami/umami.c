@@ -238,6 +238,8 @@ UmamiStatus umami_set_parameter(UmamiHandle handle, char const *name,
     for (size_t i = 0; i < count; ++i) {
         UmamiParameter const *entry = parameter(i, name);
         if (entry == NULL) continue;
+        /* Load the first process using it, so that the value is validated now. */
+        if (!found && load_process(instance, i) != UMAMI_SUCCESS) goto rollback;
         found = true;
         if (!entry->mutable || (entry->is_complex && !isfinite(imaginary))) goto rollback;
         if (instance->runtimes[i] == NULL) continue;

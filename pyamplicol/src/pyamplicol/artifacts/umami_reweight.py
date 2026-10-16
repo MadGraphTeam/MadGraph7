@@ -12,6 +12,7 @@ from __future__ import annotations
 import importlib.resources
 import json
 import os
+import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -29,22 +30,42 @@ _TEMPLATES = {
 }
 
 
+_IDENTIFIER = re.compile(r"[A-Za-z0-9_]+")
+
+
+def _identifier(value: object) -> str:
+    # Provider ids end up in file names and in the makefile.
+    if not isinstance(value, str) or not _IDENTIFIER.fullmatch(value):
+        raise ValueError(f"invalid UMAMI provider id {value!r}")
+    return value
+
+
+def _integer(value: object) -> int:
+    # Metadata values are written into generated C sources.
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"expected an integer in the UMAMI metadata, got {value!r}")
+    return value
+
+
 def load_umami_metadata(artifact: Path) -> list[dict[str, Any]]:
     """The metadata documents of all UMAMI providers of an artifact."""
-    root = Path(artifact) / "API" / "umami"
+    root = (Path(artifact) / "API" / "umami").resolve()
     index = json.loads((root / "metadata.json").read_text(encoding="utf-8"))
     if index.get("kind") != "pyamplicol-umami-provider-index":
         return [index]
-    return [
-        json.loads((root / entry["metadata"]).read_text(encoding="utf-8"))
-        for entry in index["providers"]
-    ]
+    documents = []
+    for entry in index["providers"]:
+        path = (root / entry["metadata"]).resolve()
+        if not path.is_relative_to(root):
+            raise ValueError(f"UMAMI metadata path {entry['metadata']!r} leaves {root}")
+        documents.append(json.loads(path.read_text(encoding="utf-8")))
+    return documents
 
 
 def _process_row(process: Mapping[str, Any], prefix: str, lines: list[str]) -> str:
     lines.append(
         f"static const int {prefix}_pdgs[] = {{"
-        + ", ".join(str(v) for v in process["pdgs"])
+        + ", ".join(str(_integer(v)) for v in process["pdgs"])
         + "};"
     )
     return (
@@ -64,7 +85,7 @@ def _process_row(process: Mapping[str, Any], prefix: str, lines: list[str]) -> s
 def _int_array(name: str, ctype: str, values: Sequence[int]) -> str:
     return (
         f"static const {ctype} {name}[] = {{"
-        + ", ".join(str(v) for v in values or [-1])
+        + ", ".join(str(_integer(v)) for v in values or [-1])
         + "};"
     )
 
@@ -104,7 +125,8 @@ def reweight_header(
             runtime = entry["runtime"]
             if "helicity_export" not in runtime:
                 raise ValueError("the reference UMAMI metadata has no helicity export")
-            process = reference_processes[runtime["process_index"]]
+            process_index = _integer(runtime["process_index"])
+            process = reference_processes[process_index]
             match = target_lookup.get(tuple(process["pdgs"]))
             if match is None:
                 raise ValueError(
@@ -129,7 +151,7 @@ def reweight_header(
             lines.append(_int_array(f"{prefix}_reference", "int", reference_helicity))
             lines.append(_int_array(f"{prefix}_target", "int", target_helicity))
             flavour_rows.append(
-                f"    {{{runtime['process_index']}, {target_index}, "
+                f"    {{{process_index}, {target_index}, "
                 f"{prefix}_permutation, {prefix}_reference, {prefix}_target}},"
             )
         lines.extend(
@@ -159,7 +181,7 @@ def reweight_header(
             f"#define UMAMI_HAS_ALPHA_S {int(supports_alpha_s)}",
             "static const ReweightProvider reweight_provider = {",
             f"    {_string(reference['provider']['id'])}, "
-            f"{reference['provider']['particle_count']}, {exported_count},",
+            f"{_integer(reference['provider']['particle_count'])}, {exported_count},",
             f"    {_string(reference_path)}, {_string(target_path)},",
             f"    {_string(reference['provider'].get('artifact_id'))}, "
             f"{_string(target_ids[0] if target_ids else None)},",
@@ -198,7 +220,7 @@ def write_reweight_provider(
         (output / destination).write_bytes((templates / source).read_bytes())
     ids = []
     for reference in references:
-        identifier = reference["provider"]["id"]
+        identifier = _identifier(reference["provider"]["id"])
         (output / f"reweight_{identifier}.h").write_text(
             reweight_header(reference, targets, reference_path, target_path),
             encoding="utf-8",
