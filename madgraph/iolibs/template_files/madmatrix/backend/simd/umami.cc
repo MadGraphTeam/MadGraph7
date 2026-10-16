@@ -180,16 +180,18 @@ namespace
   }
 
   // The helicity filter (sigmaKin_getGoodHel) runs once per library and keeps a
-  // helicity if its |M|^2 is not 0 for one of the first events. Run at the first
-  // umami_matrix_element call, it depended on what that call held: a first batch of
-  // special points, where some helicities happen to vanish (the forward direction of
-  // u u~ > e+ e-, say), dropped them for the rest of the run, and every later |M|^2
-  // was wrong. It runs instead here, at initialization, on RAMBO points, half of
-  // them boosted (rambo::helicity_scan_points). The filter evaluates every flavor
-  // and every crossing of the table, into the one good-helicity list all of them
-  // share, each crossing on points of its own masses (scan_points). A 2 > 1 is
-  // scanned with its beams along random axes. Where there is no phase space (a
-  // decay below threshold), every helicity is kept (g_keep_every_helicity).
+  // helicity if, at one of the scan points, its |M|^2 is above limhel/ncomb of the
+  // sum over helicities (the relative test of madevent, see limhel in SigmaKin.cc).
+  // Run at the first umami_matrix_element call, it depended on what that call held:
+  // a first batch of special points, where some helicities happen to vanish (the
+  // forward direction of u u~ > e+ e-, say), dropped them for the rest of the run,
+  // and every later |M|^2 was wrong. It runs instead here, at initialization, on
+  // RAMBO points, half of them boosted (rambo::helicity_scan_points). The filter
+  // evaluates every flavor and every crossing of the table, into the one
+  // good-helicity list all of them share, each crossing on points of its own masses
+  // (scan_points). A 2 > 1 is scanned with its beams along random axes. Where there
+  // is no phase space (a decay below threshold), every helicity is kept
+  // (g_keep_every_helicity).
   void choose_good_helicities( UmamiHandle handle )
   {
     std::vector<double> momenta;
