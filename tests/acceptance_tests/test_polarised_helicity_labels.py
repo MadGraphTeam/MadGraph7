@@ -162,14 +162,15 @@ class TestPolarisedHelicityLabels(unittest.TestCase):
                              '%s: %r vs %r' % (msg, value, reference))
 
     def tabulated(self, probe):
-        """The leg orderings the flavour table holds. A per-helicity row is
-        only checked there: an ordering that goes through all_matrix.f's
-        flavour order repair needs the requested row re-keyed through the
-        leg permutation, which this branch does not do (SMATRIXHEL answers 0
-        there for every row, polarised or not)."""
+        """Every leg ordering, the ones the flavour table holds first. The
+        others go through all_matrix.f's flavour order repair, which re-keys
+        the requested row with the legs (FLAVOR_ORDER_HEL): their rows must
+        name the same configurations, polarised W+ included. (They used to
+        answer 0 for every row.)"""
         names = [name for name in PERMS if name not in probe['repaired']]
         self.assertTrue(names, 'no ordering is tabulated')
-        return names
+        self.assertTrue(probe['repaired'], 'no ordering needs the repair')
+        return names + sorted(probe['repaired'])
 
     def check_rows(self, probe):
         """The rows of every tabulated ordering are the summed matrix element

@@ -11165,10 +11165,20 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
         # helicity is an open index of rho (POS); smatrixhel has no such leg.
         self.assertEqual(len([c for c in calls
                               if 'N_CHANGING,POS,.TRUE.' in c]), 2)
-        # smatrixhel disarms the repair when a single helicity row was
-        # asked for: that row names the legs by position.
+        # smatrixhel repairs a request for one helicity code too: the code
+        # is re-keyed through the same permutation (FLAVOR_ORDER_HEL), read
+        # in this ME's helicity table (32 codes), so each helicity stays on
+        # its leg.
         self.assertEqual(len([c for c in calls
-                              if '0,MS_NOFROZEN,NHEL.LT.1' in c]), 1)
+                              if '0,MS_NOFROZEN,.TRUE.' in c]), 1)
+        self.assertNotIn('NHEL.LT.1', text)
+        self.assertEqual(text.count('SUBROUTINE FLAVOR_ORDER_HEL('), 1)
+        self.assertIn('NHELFIX = NHEL IF (NHEL.GE.1) THEN CALL'
+                      ' M0_GET_NHEL_IDX(M0_GET_FLAVOR_INDEX(FLAVOR), FRDEN,'
+                      ' FRTAB) CALL FLAVOR_ORDER_HEL(NHEL, 5, 32, FRTAB, LEGOF,'
+                      ' NHELFIX) ENDIF CALL M0_SMATRIXHEL(PFIX, NHELFIX,',
+                      re.sub(r'\s+', ' ', text))
+        self.assertIn('INTEGER FRTAB(160), FRDEN, NHELFIX', text)
         # every call reports where each leg went
         for call in calls:
             self.assertTrue(call.endswith('P,PFIX,LEGOF)'), call)
@@ -11241,17 +11251,20 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
             self.assertIn('DOI=1,NPDGHFIX(I)=NHEL(LEGOF(I))ENDDOCALL%sPFIX,'
                           'HFIX,POS,N_CHANGING,ALLOW_HEL,N_COMB,IDX,INTER)'
                           % inter, text)
-            self.assertIn('CALLM0_SMATRIXHEL(PFIX,NHEL,IDX,ANS)', text)
+            self.assertIn('NHELFIX=NHELIF(NHEL.GE.1)THENCALLM0_GET_NHEL_IDX('
+                          'IDX,XDEN,XTAB)CALLFLAVOR_ORDER_HEL(NHEL,NPDG,32,'
+                          'XTAB,LEGOF,NHELFIX)ENDIFCALLM0_SMATRIXHEL(PFIX,'
+                          'NHELFIX,IDX,ANS)', text)
             self.assertIn('ELSECALLF77_CROSSED_DENSITY(PDGS,LPDGS,PROCID,NPDG,'
                           'P,POS,', text)
             self.assertIn('ELSECALLF77_CROSSED_GET_ALL_INTER(PDGS,LPDGS,'
                           'PROCID,NPDG,P,LNHEL,POS,', text)
             self.assertIn('ELSECALLF77_CROSSED_SMATRIXHEL(PDGS,LPDGS,PROCID,'
                           'NPDG,P,NHEL,ANS,FOUND)', text)
-            # second pass: smatrixhel only when summing the helicities, the
-            # density and get_all_inter with POS frozen
-            self.assertEqual(text.count('IF(NHEL.LT.1)NPASS=2'), 1)
-            self.assertEqual(text.count('IF(.TRUE.)NPASS=2'), 2)
+            # second pass: smatrixhel for a helicity code too (re-keyed
+            # with the legs), the density and get_all_inter with POS frozen
+            self.assertNotIn('IF(NHEL.LT.1)NPASS=2', text)
+            self.assertEqual(text.count('IF(.TRUE.)NPASS=2'), 3)
             self.assertEqual(text.count(
                 'LPDGS,N_CHANGING,POS,IPASS.EQ.2,P,PFIX,LEGOF,SAME)'), 2)
             self.assertEqual(text.count(
@@ -11267,6 +11280,13 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
         # miss is reported straight away
         text = re.sub(r'\s+', '', self.write({81: [1, 2, 3, 4]}))
         self.assertNotIn('F77_CROSSED_DENSITY', text)
+        # without merged particles no leg of a crossing can move, and the
+        # re-keying routine is not emitted: a helicity code goes as is
+        text = re.sub(r'\s+', '', self.write({}, crossed_rows=(1, 3)))
+        self.assertNotIn('FLAVOR_ORDER_HEL', text)
+        self.assertIn('CALLM0_SMATRIXHEL(PFIX,NHEL,IDX,ANS)', text)
+        self.assertEqual(text.count('IF(NHEL.LT.1)NPASS=2'), 1)
+        text = re.sub(r'\s+', '', self.write({81: [1, 2, 3, 4]}))
         self.assertEqual(text.count('ELSEFOUND=.FALSE.'), 3)
         self.assertEqual(text.count('IF(.NOT.FOUND)CALLF77_NO_PROCESS('), 2)
         self.assertEqual(text.count('IF(.NOT.FOUND)CALLF77_NO_PROCESS_ANS('), 1)

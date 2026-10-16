@@ -29,13 +29,10 @@ C       NFROZEN, FROZEN : legs that must NOT move.  For the density these are
 C                 POS, the legs whose helicity is an open index of rho:
 C                 permuting one of those would permute the rows/columns of
 C                 rho, which is a genuine ambiguity and not ours to settle.
-C       DOREPAIR: .FALSE. leaves the ordering untouched.  SMATRIXHEL passes
-C                 NHEL .LT. 1 here: a caller asking for one specific helicity
-C                 row names it by leg position, and re-ordering the legs would
-C                 answer for a different helicity assignment.  Rather than
-C                 guess, such a call keeps the 0 it returned before.  (A
-C                 per-leg helicity array, GET_ALL_INTER's NHEL, has no such
-C                 problem: the caller moves it with the legs through LEGOF.)
+C       DOREPAIR: .FALSE. leaves the ordering untouched.  Per-leg
+C                 helicities must move with their legs: GET_ALL_INTER's
+C                 NHEL array through LEGOF, a SMATRIXHEL helicity code
+C                 through FLAVOR_ORDER_HEL (below).
 C       FLAVOR  : per-leg group positions, repaired in place
 C       PDGS    : per-leg merged pdg codes (read only; two legs may only be
 C                 exchanged when they carry the same merged code)
@@ -145,5 +142,56 @@ C       slot FR_J takes the leg that currently sits in PERM(FR_J)
       ENDDO
 C     no tabulated ordering matches: leave everything as it was, the matrix
 C     element returns 0 exactly as it did before.
+      RETURN
+      END
+
+
+      SUBROUTINE FLAVOR_ORDER_HEL(NHEL, NEXT, NCOMB, TAB, LEGOF,
+     &   NHELFIX)
+C     Re-key a SMATRIXHEL helicity code through the leg
+C     permutation of FLAVOR_ORDER_REPAIR (or of the folded
+C     crossing dispatch), so that every helicity stays with
+C     its leg.
+C
+C     The caller names code NHEL in ITS leg order: leg I has
+C     helicity TAB(I,NHEL), TAB being the table of the
+C     process asked for (GET_NHEL_IDX), whose column C is the
+C     code C.  Slot J now holds the caller's leg LEGOF(J), so
+C     the code to hand on is the column C' with
+C     TAB(J,C') = TAB(LEGOF(J),NHEL) for every J.  Only legs
+C     of one merged code are exchanged, so both carry the
+C     same helicity states and that column exists.
+C
+C     NHELFIX is NHEL for the helicity sum (NHEL .LT. 1) or
+C     when nothing moved, and 0 (no helicity, |M|^2 = 0) when
+C     NHEL names no column or no column matches.
+      IMPLICIT NONE
+      INTEGER NHEL, NEXT, NCOMB, NHELFIX
+      INTEGER TAB(NEXT,*), LEGOF(*)
+      INTEGER FH_J, FH_C
+      LOGICAL FH_SAME
+
+      NHELFIX = NHEL
+      IF (NHEL .LT. 1) RETURN
+      FH_SAME = .TRUE.
+      DO FH_J = 1, NEXT
+        IF (LEGOF(FH_J) .NE. FH_J) FH_SAME = .FALSE.
+      ENDDO
+      IF (FH_SAME) RETURN
+      NHELFIX = 0
+      IF (NHEL .GT. NCOMB) RETURN
+      DO FH_C = 1, NCOMB
+        FH_SAME = .TRUE.
+        DO FH_J = 1, NEXT
+          IF (TAB(FH_J,FH_C) .NE. TAB(LEGOF(FH_J),NHEL)) THEN
+            FH_SAME = .FALSE.
+            EXIT
+          ENDIF
+        ENDDO
+        IF (FH_SAME) THEN
+          NHELFIX = FH_C
+          RETURN
+        ENDIF
+      ENDDO
       RETURN
       END

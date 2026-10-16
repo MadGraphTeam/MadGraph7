@@ -20,9 +20,10 @@ CF2PY double precision, intent(in) :: SCALE2
   integer flavor(%(maxpart)i),lpdgs(%(maxpart)i),I
   logical found
 %(flavor_index_decl)s
+%(smatrixhel_decl)s
   include 'coupl.inc'
-  
-  
+
+
   if (scale2.eq.0)then
        PI = 3.141592653589793D0
        G = 2* DSQRT(ALPHAS*PI)

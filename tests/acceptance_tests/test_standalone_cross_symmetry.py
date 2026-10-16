@@ -1681,6 +1681,95 @@ for pdgs in ([2, -1, 24, 21], [21, -1, 24, -2]):
                 self.assertLessEqual(abs(v_on - v_off), 1e-10 * total,
                                      'code %d: %r vs %r' % (h + 1, on, off))
 
+    def test_all_matrix_per_helicity_untabulated_leg_order(self):
+        """smatrixhel with one helicity code for a leg order the flavour
+        table does not tabulate (same-code legs exchanged inside the initial
+        or the final state): the code is re-keyed with the legs, so every
+        helicity stays on its leg, in the uncrossed branches and in the
+        folded crossings alike. It used to give 0 expanded and NaN folded
+        (u~ d~ > u~ d~ of p p > j j), and 0 in both for u d > u d.
+
+        Each code must equal the tabulated order's code carrying the same
+        helicity on the same leg, the codes must sum to the total, and the
+        folded and expanded outputs must agree code by code."""
+        outs = {}
+        for name, options in (('on', ''), ('off', ' --use_crossing=False')):
+            out = pjoin(self.tmpdir, 'perhel_' + name)
+            self.cmd.exec_cmd('set automatic_html_opening False')
+            self.cmd.exec_cmd('import model sm')
+            self.cmd.exec_cmd('generate p p > j j')
+            self.cmd.exec_cmd('output standalone_fortran %s -f --prefix=int%s'
+                              % (out, options))
+            sub = pjoin(out, 'SubProcesses')
+            with open(os.devnull, 'w') as devnull:
+                retcode = subprocess.call(['make', 'f2py'], cwd=sub,
+                                          stdout=devnull, stderr=devnull)
+            if retcode != 0 or not [n for n in os.listdir(sub)
+                                    if n.startswith('all_matrix2py')]:
+                raise unittest.SkipTest('could not build all_matrix2py')
+            outs[name] = out
+        script = '''
+import sys, os, math, json, numpy as np
+sys.path.insert(0, os.path.join(sys.argv[1], 'SubProcesses'))
+import all_matrix2py as m
+m.initialise(os.path.join(sys.argv[1], 'Cards', 'param_card.dat'))
+E, c = 500.0, 0.3
+s = math.sqrt(1 - c * c)
+P = np.array([[E, 0, 0, E], [E, 0, 0, -E], [E, 0.6 * E * s, 0.8 * E * s, E * c],
+              [E, -0.6 * E * s, -0.8 * E * s, -E * c]]).T
+def table(pdgs):
+    k = 0
+    while hasattr(m, 'py_m%d_get_flavor_layout' % k):
+        nflav, _nexternal, ncross = getattr(m, 'py_m%d_get_flavor_layout' % k)()
+        for idx in range(1, nflav * ncross + 1):
+            if list(getattr(m, 'py_m%d_get_pdg_for_flavor' % k)(idx)) == pdgs:
+                return getattr(m, 'py_m%d_get_nhel_idx' % k)(idx)[1].tolist()
+        k += 1
+# (tabulated order, the same process with legs exchanged inside a side)
+for ref, perm in (([-1, -2, -1, -2], [1, 0, 3, 2]),
+                  ([-1, -2, -1, -2], [1, 0, 2, 3]),
+                  ([1, 2, 1, 2], [1, 0, 3, 2]),
+                  ([1, 2, 1, 2], [0, 1, 3, 2])):
+    pdgs = [ref[i] for i in perm]
+    Pp = np.ascontiguousarray(P[:, perm])
+    print('CASE %s' % json.dumps({
+        'table': table(ref),
+        'perm': perm,
+        'total': m.smatrixhel(pdgs, -1, Pp, 0.118, 0, -1),
+        'ref': [m.smatrixhel(ref, -1, P, 0.118, 0, h) for h in range(1, 17)],
+        'per': [m.smatrixhel(pdgs, -1, Pp, 0.118, 0, h)
+                for h in range(1, 17)]}))
+'''
+        cases = {}
+        for name, out in outs.items():
+            path = pjoin(self.tmpdir, 'perhel_%s.py' % name)
+            with open(path, 'w') as fsock:
+                fsock.write(script)
+            output = subprocess.Popen(
+                [sys.executable, path, out], stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT).communicate()[0].decode()
+            cases[name] = [json.loads(v) for v in
+                           re.findall(r'^CASE (.*)$', output, re.M)]
+            self.assertEqual(len(cases[name]), 4, output)
+        for name in outs:
+            for case in cases[name]:
+                table = list(zip(*case['table']))  # one tuple per code
+                perm, per, total = case['perm'], case['per'], case['total']
+                self.assertGreater(total, 0.0)
+                self.assertFalse(any(math.isnan(v) for v in per), case)
+                self.assertLessEqual(abs(sum(per) / 4 - total), 1e-10 * total)
+                for h, value in enumerate(per):
+                    # the caller's leg i is the reference order's leg perm[i]
+                    hel = [None] * 4
+                    for i, j in enumerate(perm):
+                        hel[j] = table[h][i]
+                    ref = case['ref'][table.index(tuple(hel))]
+                    self.assertLessEqual(abs(value - ref), 1e-10 * total,
+                                         '%s code %d' % (name, h + 1))
+        for on, off in zip(cases['on'], cases['off']):
+            for v_on, v_off in zip(on['per'], off['per']):
+                self.assertLessEqual(abs(v_on - v_off), 1e-10 * off['total'])
+
     def _assert_goodhel_relation(self, process, name, ninitial, npts=16):
         """Compiled-module check that one good-helicity filter serves every
         crossing.

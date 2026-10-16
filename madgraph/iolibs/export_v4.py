@@ -7621,6 +7621,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         alliden = [self.prefix_info[key][3] for key in allids] 
         min_nexternal = min([len(ids[0]) for ids in allids])
         max_nexternal = max([len(ids[0]) for ids in allids])
+        max_ncomb = max(allncomb)
 
         info = []
         for (key, pid), value in self.prefix_info.items():
@@ -7721,10 +7722,18 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                     # NHEL, by leg position: the helicities move with their
                     # legs (HFIX), so the repair stays a pure relabelling.
                     text.append('%(helperm)s')
-                    # a request for one specific helicity row names it by leg
-                    # position, so re-ordering the legs would answer for a
-                    # different helicity assignment: leave those calls alone.
-                    smtext.append(repair % '0, ms_nofrozen, nhel.lt.1')
+                    # a request for one helicity code names the helicity of
+                    # each leg in the caller's order: re-key it through the
+                    # same permutation (FLAVOR_ORDER_HEL), so that each leg
+                    # keeps its helicity (left unrepaired, it answered 0).
+                    smtext.append(repair % '0, ms_nofrozen, .true.')
+                    smtext.append(' nhelfix = nhel')
+                    smtext.append(' if (nhel.ge.1) then')
+                    smtext.append(' call %sget_nhel_idx(%sget_flavor_index('
+                                  'flavor), frden, frtab)' % (prefix, prefix))
+                    smtext.append(' call flavor_order_hel(nhel, %i, %i, frtab,'
+                                  ' legof, nhelfix)' % (n_ext, info_me[2]))
+                    smtext.append(' endif')
                 # a split-order GET_ALL_INTER fills INTER(NSQAMPSO,*): the
                 # f2py buffer holds one split-order sum, see
                 # GET_ALL_INTER_SUMSO (GET_DENSITY sums them itself)
@@ -7732,8 +7741,10 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                     text.append(' call %s%%(fct_name_so)s' % prefix)
                 else:
                     text.append(' call %s%%(fct_name)s' % prefix)
-                smtext.append(' call %ssmatrixhel(%s, nhel, %sget_flavor_index(flavor), ans)'
-                              % (prefix, momenta, prefix))
+                smtext.append(' call %ssmatrixhel(%s, %s, %sget_flavor_index('
+                              'flavor), ans)' % (prefix, momenta, 'nhelfix'
+                                                 if use_repair else 'nhel',
+                                                 prefix))
             # No PDG branch matched: try the folded crossings, and otherwise
             # report the miss (FOUND, see the template): every entry point
             # answers NaN with an ERROR line for a process it does not serve.
@@ -7771,11 +7782,16 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             flavor_index_decl += ('\n  double precision pfix(0:3,%i)'
                                   '\n  integer ms_nofrozen(1), legof(%i)'
                                   % (max_nexternal, max_nexternal))
+            # f77_smatrixhel's helicity table (GET_NHEL_IDX, up to MAXPART x
+            # the largest NCOMB) and code for FLAVOR_ORDER_HEL
+            smatrixhel_decl = ('  integer frtab(%i), frden, nhelfix'
+                               % (max_nexternal * max_ncomb))
             flavor_repair_function = open(pjoin(MG5DIR, 'madgraph', 'iolibs',
                     'template_files', 'f2py_flavor_order_repair.inc')).read()
             flavor_repair_function %= {'maxpart': max_nexternal}
         else:
             flavor_repair_function = ''
+            smatrixhel_decl = ''
 
         # smatrixhel_idx: the same dispatch keyed on the 1-based matrix-element
         # slot (the get_pdg_order / get_prefix index) instead of on the PDG
@@ -7875,8 +7891,9 @@ C       stays correct for split-order processes.
         # and get_all_inter dispatches fall back the same way (their `else`
         # branch above), get_all_inter with the caller's LNHEL copy.
         if crossed_next:
-            crossed_routine = self.crossed_smatrixhel_routine(f2py_prefix,
-                                                              max_nexternal) \
+            crossed_routine = self.crossed_smatrixhel_routine(
+                f2py_prefix, max_nexternal,
+                max_ncomb if use_repair else None) \
                 + '\n' + self.crossed_order_routine(f2py_prefix, max_nexternal)
             crossed_density = self.crossed_density_routine(f2py_prefix,
                                                            max_nexternal)
@@ -7891,6 +7908,7 @@ C       stays correct for split-order processes.
                           'crossed_get_all_inter': crossed_inter,
                           'smatrixhel_idx': '\n'.join(idxtext),
                           'flavor_index_decl': flavor_index_decl,
+                          'smatrixhel_decl': smatrixhel_decl,
                           'maxpart': max_nexternal,
                           'nb_me': len(allids),
                           'pdgs': ','.join(str(pdg[i]) if i<len(pdg) else '0' 
@@ -7977,7 +7995,8 @@ C       stays correct for split-order processes.
     def crossed_smatrixhel_nexternal(self):
         return set(v[0] for v in self.crossed_smatrixhel_prefixes().values())
 
-    def crossed_smatrixhel_routine(self, f2py_prefix, maxpart):
+    def crossed_smatrixhel_routine(self, f2py_prefix, maxpart,
+                                   max_ncomb=None):
         """F77_CROSSED_SMATRIXHEL: the PDG entry of a FOLDED crossed subprocess.
 
         A crossed subprocess folded onto its base (merge_crossing='record') has
@@ -7989,10 +8008,15 @@ C       stays correct for split-order processes.
         process of each such index in its own slot order, so the one asked
         for is found by comparing the signed PDG codes. Legs in another order
         inside the initial or the final state are moved to GET_PDG_FOR_FLAVOR's
-        order (F77_CROSSED_ORDER) when NHEL sums the helicities, as the base
-        entries do with FLAVOR_ORDER_REPAIR: a single helicity row names its
-        legs by position, so such a call, or one no crossing serves, leaves
-        FOUND false (the dispatch then answers NaN, F77_NO_PROCESS_ANS).
+        order (F77_CROSSED_ORDER), as the base entries do with
+        FLAVOR_ORDER_REPAIR, and a helicity code NHEL .GE. 1 is re-keyed with
+        them (FLAVOR_ORDER_HEL, through the crossed process's own table
+        GET_NHEL_IDX), so that the folded and the expanded output give the
+        same per-helicity value. That needs the repair routines, emitted with
+        merged particles only (MAX_NCOMB, the largest NCOMB, is None without
+        them: then no two legs of one merged code can differ and nothing
+        moves anyway). A call no crossing serves leaves FOUND false (the
+        dispatch then answers NaN, F77_NO_PROCESS_ANS).
         The beam swap of a folded crossing is found as well (see
         _crossed_dispatch_routine), a PDG order the expanded output lacks."""
         return self._crossed_dispatch_routine(
@@ -8002,12 +8026,28 @@ C       stays correct for split-order processes.
              '      integer npdg, procid, nhel',
              '      integer pdgs(npdg), lpdgs(npdg)',
              '      double precision p(0:3,npdg), ans',
-             '      logical found'],
+             '      logical found'] + (
+             ['      integer xtab(%i), xden, nhelfix' % (maxpart * max_ncomb)]
+             if max_ncomb else []),
             '      ans = 0d0\n      found = .false.',
-            lambda prefix: ['              call %ssmatrixhel(pfix, nhel, idx,'
-                            ' ans)' % prefix,
-                            '              found = .true.'],
-            maxpart, f2py_prefix, ('nhel.lt.1', '0, nofrozen'))
+            lambda prefix: ([
+                '              nhelfix = nhel',
+                '              if (nhel.ge.1) then',
+                '                call %sget_nhel_idx(idx, xden, xtab)' % prefix,
+                '                call flavor_order_hel(nhel, npdg, %i, xtab,'
+                ' legof, nhelfix)' % self._prefix_ncomb(prefix),
+                '              endif',
+                '              call %ssmatrixhel(pfix, nhelfix, idx, ans)'
+                % prefix] if max_ncomb else [
+                '              call %ssmatrixhel(pfix, nhel, idx, ans)'
+                % prefix]) + ['              found = .true.'],
+            maxpart, f2py_prefix,
+            ('.true.' if max_ncomb else 'nhel.lt.1', '0, nofrozen'))
+
+    def _prefix_ncomb(self, prefix):
+        """NCOMB of the matrix element written with proc_prefix `prefix`."""
+        return max(info[2] for info in self.prefix_info.values()
+                   if info[0] == prefix)
 
     def crossed_density_routine(self, f2py_prefix, maxpart):
         """F77_CROSSED_DENSITY: f77_density's twin of F77_CROSSED_SMATRIXHEL.
