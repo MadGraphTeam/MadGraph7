@@ -537,6 +537,8 @@
 <li class="toctree-l2"><a class="reference internal" href="SubprocessSystArgs.html">SubprocessSystArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SystematicsCalculator.html">SystematicsCalculator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SystematicsConfig.html">SystematicsConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TarReader.html">TarReader</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TarWriter.html">TarWriter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Tensor.html">Tensor</a></li>
 <li class="toctree-l2"><a class="reference internal" href="TensorView.html">TensorView</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ThreadPool.html">ThreadPool</a></li>
@@ -656,6 +658,20 @@
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace14EventGenerator8generateEv">
 <span id="_CPPv3N8madspace14EventGenerator8generateEv"></span><span id="_CPPv2N8madspace14EventGenerator8generateEv"></span><span id="madspace::EventGenerator::generate"></span><span class="target" id="classmadspace_1_1EventGenerator_1afd1b0ccb9821bf66246e058ebdefdc98"></span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">generate</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace14EventGenerator8generateEv" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Generate unweighted events until every channel reaches its target count. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace14EventGenerator8optimizeEv">
+<span id="_CPPv3N8madspace14EventGenerator8optimizeEv"></span><span id="_CPPv2N8madspace14EventGenerator8optimizeEv"></span><span id="madspace::EventGenerator::optimize"></span><span class="target" id="classmadspace_1_1EventGenerator_1a79df399990f2042ab7377bbd445a9f08"></span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">optimize</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace14EventGenerator8optimizeEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Run only the VEGAS and channel-weight optimization of every channel that still needs it, until all are optimized. </p>
+<p>No events are kept. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace14EventGenerator15fix_max_weightsEv">
+<span id="_CPPv3N8madspace14EventGenerator15fix_max_weightsEv"></span><span id="_CPPv2N8madspace14EventGenerator15fix_max_weightsEv"></span><span id="madspace::EventGenerator::fix_max_weights"></span><span class="target" id="classmadspace_1_1EventGenerator_1a30653c476d9be4675256fb604fa9e75b"></span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">fix_max_weights</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace14EventGenerator15fix_max_weightsEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Like <a class="reference internal" href="#classmadspace_1_1EventGenerator_1afd1b0ccb9821bf66246e058ebdefdc98"><span class="std std-ref">generate</span></a>, but every channel with a nonzero cross section runs until it has <code class="docutils literal notranslate"><span class="pre">freeze_max_weight_after</span></code> unweighted events, regardless of its share of the cross section, so that its maximum weight is final (see <a class="reference internal" href="ChannelEventGenerator.html#classmadspace_1_1ChannelEventGenerator_1ab11de55e51de8ebda5252cb5b8d1abee"><span class="std std-ref">ChannelEventGenerator::max_weight</span></a>). </p>
+<p>The events are not meant to be combined. </p>
 </dd></dl>
 
 <dl class="cpp function">
@@ -802,6 +818,8 @@
 <li><a class="reference internal" href="#_CPPv4N8madspace14EventGeneratoraSERK14EventGenerator"><code class="docutils literal notranslate"><span class="pre">operator=()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace14EventGenerator6surveyENSt6size_tE"><code class="docutils literal notranslate"><span class="pre">survey()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace14EventGenerator8generateEv"><code class="docutils literal notranslate"><span class="pre">generate()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace14EventGenerator8optimizeEv"><code class="docutils literal notranslate"><span class="pre">optimize()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace14EventGenerator15fix_max_weightsEv"><code class="docutils literal notranslate"><span class="pre">fix_max_weights()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace14EventGenerator22combine_to_compact_npyERKNSt6stringEP21SystematicsCalculatorP15EventHistograms"><code class="docutils literal notranslate"><span class="pre">combine_to_compact_npy()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace14EventGenerator18combine_to_lhe_npyERKNSt6stringER12LHECompleterP21SystematicsCalculatorP15EventHistograms"><code class="docutils literal notranslate"><span class="pre">combine_to_lhe_npy()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace14EventGenerator14combine_to_lheERKNSt6stringER12LHECompleterRK7LHEMetaP21SystematicsCalculatorP15EventHistograms"><code class="docutils literal notranslate"><span class="pre">combine_to_lhe()</span></code></a></li>

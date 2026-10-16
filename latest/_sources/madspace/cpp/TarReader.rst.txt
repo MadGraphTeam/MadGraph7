@@ -1,0 +1,6 @@
+TarReader
+=========
+
+.. doxygenclass:: madspace::TarReader
+   :members:
+   :undoc-members:

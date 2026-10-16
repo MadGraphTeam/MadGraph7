@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="TensorView" href="TensorView.html"><link rel="prev" title="SystematicsConfig" href="SystematicsConfig.html">
+<link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="TensorView" href="TensorView.html"><link rel="prev" title="TarWriter" href="TarWriter.html">
         <link rel="canonical" href="https://docs.madgraph.org/latest/madspace/cpp/Tensor.html">
         <link rel="prefetch" href="../../_static/logo-light.png" as="image">
         <link rel="prefetch" href="../../_static/logo-dark.png" as="image">
@@ -537,6 +537,8 @@
 <li class="toctree-l2"><a class="reference internal" href="SubprocessSystArgs.html">SubprocessSystArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SystematicsCalculator.html">SystematicsCalculator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SystematicsConfig.html">SystematicsConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TarReader.html">TarReader</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TarWriter.html">TarWriter</a></li>
 <li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Tensor</a></li>
 <li class="toctree-l2"><a class="reference internal" href="TensorView.html">TensorView</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ThreadPool.html">ThreadPool</a></li>
@@ -941,7 +943,8 @@
 <dl class="cpp function">
 <dt class="sig sig-object cpp" id="_CPPv4NK8madspace6Tensor13is_contiguousEv">
 <span id="_CPPv3NK8madspace6Tensor13is_contiguousEv"></span><span id="_CPPv2NK8madspace6Tensor13is_contiguousEv"></span><span id="madspace::Tensor::is_contiguousC"></span><span class="target" id="classmadspace_1_1Tensor_1a09a5b79441a63881e6715466f505ae19"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">is_contiguous</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace6Tensor13is_contiguousEv" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Whether the elements are stored without gaps in row-major order. </p>
+<dd><p>Whether the elements are stored without gaps in column-major (Fortran) order, i.e. </p>
+<p>the first index varies fastest. </p>
 </dd></dl>
 
 <dl class="cpp function">
@@ -1008,14 +1011,14 @@
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="SystematicsConfig.html">
+          <a class="prev-page" href="TarWriter.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">SystematicsConfig</div>
+                <div class="title">TarWriter</div>
                 
               </div>
             </a>

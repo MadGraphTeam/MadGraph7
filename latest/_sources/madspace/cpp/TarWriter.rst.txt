@@ -1,0 +1,6 @@
+TarWriter
+=========
+
+.. doxygenclass:: madspace::TarWriter
+   :members:
+   :undoc-members:

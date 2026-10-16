@@ -535,6 +535,8 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SystematicsCalculator.html">SystematicsCalculator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SystematicsConfig.html">SystematicsConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/TarReader.html">TarReader</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/TarWriter.html">TarWriter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Tensor.html">Tensor</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/TensorView.html">TensorView</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ThreadPool.html">ThreadPool</a></li>
@@ -1175,6 +1177,8 @@
 </li>
         <li><a href="madspace/python/SystematicsConfig.html#madspace.SystematicsConfig.first_id">first_id (madspace.SystematicsConfig property)</a>
 </li>
+        <li><a href="madspace/python/EventGenerator.html#madspace.EventGenerator.fix_max_weights">fix_max_weights() (madspace.EventGenerator method)</a>
+</li>
         <li><a href="madspace/python/MadnisConfig.html#madspace.MadnisConfig.fixed_cwnet_fraction">fixed_cwnet_fraction (madspace.MadnisConfig property)</a>
 </li>
         <li><a href="madspace/python/Propagator.html#madspace.Propagator.flat_window">flat_window (madspace.Propagator property)</a>
@@ -1467,6 +1471,8 @@
 </li>
         <li><a href="madspace/python/GeneratorStatus.html#madspace.GeneratorStatus.iterations">iterations (madspace.GeneratorStatus property)</a>
 </li>
+        <li><a href="madspace/python/GeneratorStatus.html#madspace.GeneratorStatus.iters_without_improvement">iters_without_improvement (madspace.GeneratorStatus property)</a>
+</li>
     </ul></td>
   </tr></table>
 </section>
@@ -1582,6 +1588,8 @@
 </li>
         </ul></li>
         <li><a href="madspace/python/Context.html#madspace.Context.load_globals">load_globals() (madspace.Context method)</a>
+</li>
+        <li><a href="madspace/python/ChannelEventGenerator.html#madspace.ChannelEventGenerator.load_json">load_json() (madspace.ChannelEventGenerator static method)</a>
 </li>
         <li><a href="madspace/python/Context.html#madspace.Context.load_matrix_element">load_matrix_element() (madspace.Context method)</a>
 </li>
@@ -1757,6 +1765,10 @@
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator17abs_cross_sectionEv">madspace::ChannelEventGenerator::abs_cross_section (C++ function)</a>
 </li>
+        <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator21abs_integral_estimateEv">madspace::ChannelEventGenerator::abs_integral_estimate (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator18abs_integral_priorEv">madspace::ChannelEventGenerator::abs_integral_prior (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator10batch_sizeEv">madspace::ChannelEventGenerator::batch_size (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator18channel_weight_sumENSt6size_tE">madspace::ChannelEventGenerator::channel_weight_sum (C++ function)</a>
@@ -1775,11 +1787,17 @@
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator24event_layout_extra_flagsEv">madspace::ChannelEventGenerator::event_layout_extra_flags (C++ function)</a>
 </li>
+        <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator22has_abs_integral_priorEv">madspace::ChannelEventGenerator::has_abs_integral_prior (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator10histogramsEv">madspace::ChannelEventGenerator::histograms (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator14integral_priorEv">madspace::ChannelEventGenerator::integral_prior (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator9integrateERK17GeneratorBatchJob">madspace::ChannelEventGenerator::integrate (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator4loadERKNSt6stringERKNSt6vectorI10ContextPtrEERKNSt6stringERKNSt6stringERK15GeneratorConfig">madspace::ChannelEventGenerator::load (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator9load_jsonERKNSt6stringERKNSt6vectorI10ContextPtrEERKNSt6stringERKNSt6stringERK15GeneratorConfig">madspace::ChannelEventGenerator::load_json (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator10max_weightEv">madspace::ChannelEventGenerator::max_weight (C++ function)</a>
 </li>
@@ -1797,6 +1815,12 @@
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator4saveERKNSt6stringE">madspace::ChannelEventGenerator::save (C++ function)</a>
 </li>
+        <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator22set_abs_integral_priorEdd">madspace::ChannelEventGenerator::set_abs_integral_prior (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator20set_fixed_max_weightEd">madspace::ChannelEventGenerator::set_fixed_max_weight (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator18set_integral_priorEdd">madspace::ChannelEventGenerator::set_integral_prior (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator16set_target_countENSt6size_tE">madspace::ChannelEventGenerator::set_target_count (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator9start_jobER17GeneratorBatchJobR11ResultQueueNSt8optionalINSt8uint64_tEEEbNSt6size_tE">madspace::ChannelEventGenerator::start_job (C++ function)</a>
@@ -1807,11 +1831,15 @@
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator19submit_unweight_jobER17GeneratorBatchJobR11ResultQueue">madspace::ChannelEventGenerator::submit_unweight_job (C++ function)</a>
 </li>
+        <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator7to_jsonEb">madspace::ChannelEventGenerator::to_json (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator13unweight_fileER12MixMaxRandom">madspace::ChannelEventGenerator::unweight_file (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator17update_max_weightE6Tensor">madspace::ChannelEventGenerator::update_max_weight (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator12used_globalsEv">madspace::ChannelEventGenerator::used_globals (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator19uses_integral_priorEv">madspace::ChannelEventGenerator::uses_integral_prior (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator11weight_fileEv">madspace::ChannelEventGenerator::weight_file (C++ function)</a>
 </li>
@@ -2209,11 +2237,15 @@
 </li>
         <li><a href="madspace/cpp/EventGenerator.html#_CPPv4N8madspace14EventGenerator14EventGeneratorERK14EventGenerator">madspace::EventGenerator::EventGenerator (C++ function)</a>, <a href="madspace/cpp/EventGenerator.html#_CPPv4N8madspace14EventGenerator14EventGeneratorERKNSt6vectorI10ContextPtrEERKNSt6vectorINSt10shared_ptrI21ChannelEventGeneratorEEEENSt8uint64_tENSt10shared_ptrI10StatusFileEERK15GeneratorConfig">[1]</a>, <a href="madspace/cpp/EventGenerator.html#_CPPv4N8madspace14EventGenerator14EventGeneratorERR14EventGenerator">[2]</a>
 </li>
+        <li><a href="madspace/cpp/EventGenerator.html#_CPPv4N8madspace14EventGenerator15fix_max_weightsEv">madspace::EventGenerator::fix_max_weights (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/EventGenerator.html#_CPPv4N8madspace14EventGenerator8generateEv">madspace::EventGenerator::generate (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/EventGenerator.html#_CPPv4NK8madspace14EventGenerator10histogramsEv">madspace::EventGenerator::histograms (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/EventGenerator.html#_CPPv4N8madspace14EventGeneratoraSERK14EventGenerator">madspace::EventGenerator::operator= (C++ function)</a>, <a href="madspace/cpp/EventGenerator.html#_CPPv4N8madspace14EventGeneratoraSERR14EventGenerator">[1]</a>
+</li>
+        <li><a href="madspace/cpp/EventGenerator.html#_CPPv4N8madspace14EventGenerator8optimizeEv">madspace::EventGenerator::optimize (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/EventGenerator.html#_CPPv4N8madspace14EventGenerator24set_abort_check_functionENSt8functionIFvvEEE">madspace::EventGenerator::set_abort_check_function (C++ function)</a>
 </li>
@@ -2512,6 +2544,8 @@
         <li><a href="madspace/cpp/GeneratorStatus.html#_CPPv4N8madspace15GeneratorStatus9error_absE">madspace::GeneratorStatus::error_abs (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/GeneratorStatus.html#_CPPv4N8madspace15GeneratorStatus10iterationsE">madspace::GeneratorStatus::iterations (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/GeneratorStatus.html#_CPPv4N8madspace15GeneratorStatus25iters_without_improvementE">madspace::GeneratorStatus::iters_without_improvement (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/GeneratorStatus.html#_CPPv4N8madspace15GeneratorStatus4meanE">madspace::GeneratorStatus::mean (C++ member)</a>
 </li>
@@ -2861,10 +2895,10 @@
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config10adam_beta2E">madspace::MadnisTraining::Config::adam_beta2 (C++ member)</a>
 </li>
-        <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config8adam_epsE">madspace::MadnisTraining::Config::adam_eps (C++ member)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config8adam_epsE">madspace::MadnisTraining::Config::adam_eps (C++ member)</a>
+</li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config17adam_weight_decayE">madspace::MadnisTraining::Config::adam_weight_decay (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config17batch_size_offsetE">madspace::MadnisTraining::Config::batch_size_offset (C++ member)</a>
@@ -3645,6 +3679,30 @@
 </li>
         <li><a href="madspace/cpp/SystematicsConfig.html#_CPPv4N8madspace17SystematicsConfig12write_inputsE">madspace::SystematicsConfig::write_inputs (C++ member)</a>
 </li>
+        <li><a href="madspace/cpp/TarReader.html#_CPPv4N8madspace9TarReaderE">madspace::TarReader (C++ class)</a>
+</li>
+        <li><a href="madspace/cpp/TarReader.html#_CPPv4NK8madspace9TarReader8containsERKNSt6stringE">madspace::TarReader::contains (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/TarReader.html#_CPPv4NK8madspace9TarReader5namesEv">madspace::TarReader::names (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/TarReader.html#_CPPv4N8madspace9TarReader4readERKNSt6stringE">madspace::TarReader::read (C++ function)</a>, <a href="madspace/cpp/TarReader.html#_CPPv4N8madspace9TarReader4readERKNSt6stringEPc">[1]</a>
+</li>
+        <li><a href="madspace/cpp/TarReader.html#_CPPv4NK8madspace9TarReader4sizeERKNSt6stringE">madspace::TarReader::size (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/TarReader.html#_CPPv4N8madspace9TarReader9TarReaderERKNSt6stringE">madspace::TarReader::TarReader (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/TarWriter.html#_CPPv4N8madspace9TarWriterE">madspace::TarWriter (C++ class)</a>
+</li>
+        <li><a href="madspace/cpp/TarWriter.html#_CPPv4N8madspace9TarWriter3addERKNSt6stringEPKcNSt6size_tE">madspace::TarWriter::add (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/TarWriter.html#_CPPv4N8madspace9TarWriter5closeEv">madspace::TarWriter::close (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/TarWriter.html#_CPPv4N8madspace9TarWriteraSERK9TarWriter">madspace::TarWriter::operator= (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/TarWriter.html#_CPPv4N8madspace9TarWriter9TarWriterERK9TarWriter">madspace::TarWriter::TarWriter (C++ function)</a>, <a href="madspace/cpp/TarWriter.html#_CPPv4N8madspace9TarWriter9TarWriterERKNSt6stringE">[1]</a>
+</li>
+        <li><a href="madspace/cpp/TarWriter.html#_CPPv4N8madspace9TarWriterD0Ev">madspace::TarWriter::~TarWriter (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6TensorE">madspace::Tensor (C++ class)</a>
 </li>
         <li><a href="madspace/cpp/Tensor.html#_CPPv4I0EN8madspace6Tensor3addEvRK6TensorRK1D">madspace::Tensor::add (C++ function)</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor3addERK6Tensor">[1]</a>
@@ -4360,6 +4418,8 @@
         <li><a href="madspace/python/DiscreteOptimizer.html#madspace.DiscreteOptimizer.optimize">optimize() (madspace.DiscreteOptimizer method)</a>
 
         <ul>
+          <li><a href="madspace/python/EventGenerator.html#madspace.EventGenerator.optimize">(madspace.EventGenerator method)</a>
+</li>
           <li><a href="madspace/python/VegasGridOptimizer.html#madspace.VegasGridOptimizer.optimize">(madspace.VegasGridOptimizer method)</a>
 </li>
         </ul></li>
@@ -4755,6 +4815,8 @@
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.set_current_stream">set_current_stream() (madspace.FunctionBuilder method)</a>
 </li>
+        <li><a href="madspace/python/ChannelEventGenerator.html#madspace.ChannelEventGenerator.set_fixed_max_weight">set_fixed_max_weight() (madspace.ChannelEventGenerator method)</a>
+</li>
         <li><a href="madspace/python/PdfGroupInfo.html#madspace.PdfGroupInfo.set_lhaid">set_lhaid (madspace.PdfGroupInfo property)</a>
 
         <ul>
@@ -4931,9 +4993,11 @@
 </li>
         <li><a href="madspace/python/ThreeBodyDecay.html#madspace.ThreeBodyDecay">ThreeBodyDecay (class in madspace)</a>
 </li>
-        <li><a href="madspace/python/EventHistograms.html#madspace.EventHistograms.to_json">to_json() (madspace.EventHistograms method)</a>
+        <li><a href="madspace/python/ChannelEventGenerator.html#madspace.ChannelEventGenerator.to_json">to_json() (madspace.ChannelEventGenerator method)</a>
 
         <ul>
+          <li><a href="madspace/python/EventHistograms.html#madspace.EventHistograms.to_json">(madspace.EventHistograms method)</a>
+</li>
           <li><a href="madspace/python/SubprocessSystArgs.html#madspace.SubprocessSystArgs.to_json">(madspace.SubprocessSystArgs method)</a>
 </li>
           <li><a href="madspace/python/SystematicsConfig.html#madspace.SystematicsConfig.to_json">(madspace.SystematicsConfig method)</a>
@@ -4941,10 +5005,10 @@
         </ul></li>
         <li><a href="madspace/python/SystematicsConfig.html#madspace.SystematicsConfig.together">together (madspace.SystematicsConfig property)</a>
 </li>
-        <li><a href="madspace/python/SubprocArgs.html#madspace.SubprocArgs.topologies">topologies (madspace.SubprocArgs property)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="madspace/python/SubprocArgs.html#madspace.SubprocArgs.topologies">topologies (madspace.SubprocArgs property)</a>
+</li>
         <li><a href="madspace/python/Topology.html#madspace.Topology.topologies">topologies() (madspace.Topology static method)</a>
 </li>
         <li><a href="madspace/python/Topology.html#madspace.Topology">Topology (class in madspace)</a>

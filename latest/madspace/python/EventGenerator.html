@@ -537,6 +537,8 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SystematicsCalculator.html">SystematicsCalculator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SystematicsConfig.html">SystematicsConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/TarReader.html">TarReader</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/TarWriter.html">TarWriter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Tensor.html">Tensor</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/TensorView.html">TensorView</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ThreadPool.html">ThreadPool</a></li>
@@ -664,6 +666,13 @@
 <dd></dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="madspace.EventGenerator.fix_max_weights">
+<span class="sig-name descname"><span class="pre">fix_max_weights</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.EventGenerator" title="madspace._madspace_py.EventGenerator"><span class="pre">madspace._madspace_py.EventGenerator</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#madspace.EventGenerator.fix_max_weights" title="Link to this definition">¶</a></dt>
+<dd><p>Like generate, but every channel with a nonzero cross section runs until it has <code class="docutils literal notranslate"><span class="pre">freeze_max_weight_after</span></code> unweighted events, regardless of its share of the cross section, so that its maximum weight is final (see ChannelEventGenerator::max_weight).</p>
+<p>The events are not meant to be combined.</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="madspace.EventGenerator.generate">
 <span class="sig-name descname"><span class="pre">generate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.EventGenerator" title="madspace._madspace_py.EventGenerator"><span class="pre">madspace._madspace_py.EventGenerator</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#madspace.EventGenerator.generate" title="Link to this definition">¶</a></dt>
 <dd><p>Generate unweighted events until every channel reaches its target count.</p>
@@ -673,6 +682,13 @@
 <dt class="sig sig-object py" id="madspace.EventGenerator.histograms">
 <span class="sig-name descname"><span class="pre">histograms</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.EventGenerator" title="madspace._madspace_py.EventGenerator"><span class="pre">madspace._madspace_py.EventGenerator</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="Histogram.html#madspace.Histogram" title="madspace._madspace_py.Histogram"><span class="pre">madspace._madspace_py.Histogram</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#madspace.EventGenerator.histograms" title="Link to this definition">¶</a></dt>
 <dd><p>Combined observable histograms over every channel.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.EventGenerator.optimize">
+<span class="sig-name descname"><span class="pre">optimize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.EventGenerator" title="madspace._madspace_py.EventGenerator"><span class="pre">madspace._madspace_py.EventGenerator</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#madspace.EventGenerator.optimize" title="Link to this definition">¶</a></dt>
+<dd><p>Run only the VEGAS and channel-weight optimization of every channel that still needs it, until all are optimized.</p>
+<p>No events are kept.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -761,8 +777,10 @@
 <li><a class="reference internal" href="#madspace.EventGenerator.combine_to_lhe"><code class="docutils literal notranslate"><span class="pre">EventGenerator.combine_to_lhe()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.EventGenerator.combine_to_lhe_npy"><code class="docutils literal notranslate"><span class="pre">EventGenerator.combine_to_lhe_npy()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.EventGenerator.default_config"><code class="docutils literal notranslate"><span class="pre">EventGenerator.default_config</span></code></a></li>
+<li><a class="reference internal" href="#madspace.EventGenerator.fix_max_weights"><code class="docutils literal notranslate"><span class="pre">EventGenerator.fix_max_weights()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.EventGenerator.generate"><code class="docutils literal notranslate"><span class="pre">EventGenerator.generate()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.EventGenerator.histograms"><code class="docutils literal notranslate"><span class="pre">EventGenerator.histograms()</span></code></a></li>
+<li><a class="reference internal" href="#madspace.EventGenerator.optimize"><code class="docutils literal notranslate"><span class="pre">EventGenerator.optimize()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.EventGenerator.status"><code class="docutils literal notranslate"><span class="pre">EventGenerator.status()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.EventGenerator.survey"><code class="docutils literal notranslate"><span class="pre">EventGenerator.survey()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.EventGenerator.used_globals"><code class="docutils literal notranslate"><span class="pre">EventGenerator.used_globals()</span></code></a></li>

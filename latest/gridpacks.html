@@ -537,6 +537,8 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SystematicsCalculator.html">SystematicsCalculator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SystematicsConfig.html">SystematicsConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/TarReader.html">TarReader</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/TarWriter.html">TarWriter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Tensor.html">Tensor</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/TensorView.html">TensorView</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ThreadPool.html">ThreadPool</a></li>
@@ -613,8 +615,12 @@ start a run:</p>
 launch
 </pre></div>
 </div>
-<p>The gridpack is written to <code class="docutils literal notranslate"><span class="pre">Events/&lt;run_name&gt;_NN/gridpack</span></code> after the run. It is a plain
-directory. Pack it with <code class="docutils literal notranslate"><span class="pre">tar</span></code> to move it to another machine.</p>
+<p>The gridpack is written to <code class="docutils literal notranslate"><span class="pre">Events/&lt;run_name&gt;_NN/gridpack</span></code>, or to <code class="docutils literal notranslate"><span class="pre">gridpack</span></code> in the
+<code class="docutils literal notranslate"><span class="pre">output_dir</span></code> of the <code class="docutils literal notranslate"><span class="pre">[gridpack]</span></code> section if it is set. It is a plain directory. With
+<code class="docutils literal notranslate"><span class="pre">compress</span> <span class="pre">=</span> <span class="pre">true</span></code>, it is packed into <code class="docutils literal notranslate"><span class="pre">gridpack.tar.gz</span></code> instead, ready to be moved to
+another machine.</p>
+<p>By default, the run stops once the gridpack is ready and does not generate events. See
+<a class="reference internal" href="#gridpack-run-mode"><span class="std std-ref">Ending the run</span></a> for the other options.</p>
 <p>A gridpack contains:</p>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">bin/generate_events</span></code></dt><dd><p>The script that generates events.</p>
@@ -626,13 +632,36 @@ the copy has no effect.</p>
 <dt><code class="docutils literal notranslate"><span class="pre">data/</span></code></dt><dd><p>The trained phase-space channels and the information needed to write LHE files and
 the scale and PDF weights.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">lib/</span></code> or <code class="docutils literal notranslate"><span class="pre">src/</span></code> and <code class="docutils literal notranslate"><span class="pre">SubProcesses/</span></code></dt><dd><p>The matrix elements, see <a class="reference internal" href="#gridpack-matrix-elements"><span class="std std-ref">Matrix elements</span></a>.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">lib/</span></code> or <code class="docutils literal notranslate"><span class="pre">src/</span></code>, <code class="docutils literal notranslate"><span class="pre">SubProcesses/</span></code> and <code class="docutils literal notranslate"><span class="pre">backend/</span></code></dt><dd><p>The matrix elements, see <a class="reference internal" href="#gridpack-matrix-elements"><span class="std std-ref">Matrix elements</span></a>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">madspace/</span></code></dt><dd><p>The <code class="docutils literal notranslate"><span class="pre">madspace</span></code> package, see <a class="reference internal" href="#gridpack-madspace"><span class="std std-ref">madspace</span></a>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">Events/</span></code></dt><dd><p>Empty. The output of each gridpack run goes here.</p>
 </dd>
 </dl>
+<section id="ending-the-run">
+<span id="gridpack-run-mode"></span><h3>Ending the run<a class="headerlink" href="#ending-the-run" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">run_mode</span></code> in the <code class="docutils literal notranslate"><span class="pre">[gridpack]</span></code> section sets how the run that creates the gridpack
+ends:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">minimal</span></code> (default)</dt><dd><p>No events are generated. The gridpack is stored right after the MadNIS training or,
+with VEGAS, once the grid of every channel has converged. This is the fastest way
+to create a gridpack. Each gridpack run then estimates the maximum weights and the
+channel integrals on its own.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">fix_max_weight</span></code></dt><dd><p>No events are generated. Each channel runs until <code class="docutils literal notranslate"><span class="pre">freeze_max_weight_after</span></code>
+unweighted events are reached. Its maximum weight is stored in the gridpack and kept
+fixed in every gridpack run, so all runs unweight against the same maximum. The
+channel integrals are stored as well and combined with the ones of the gridpack run
+to share the events between the channels from the start. Creating the gridpack takes
+longer, especially for channels with a low unweighting efficiency, but the gridpack
+runs do not have to estimate the maximum weights first. This helps if each run only
+generates a few events.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">regular</span></code></dt><dd><p>The events of the run are generated as usual, then the gridpack is stored.</p>
+</dd>
+</dl>
+</section>
 </section>
 <section id="generating-events">
 <h2>Generating events<a class="headerlink" href="#generating-events" title="Link to this heading">¶</a></h2>
@@ -640,7 +669,11 @@ the scale and PDF weights.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>./bin/generate_events<span class="w"> </span>--events<span class="w"> </span><span class="m">10000</span><span class="w"> </span>--seed<span class="w"> </span><span class="m">42</span>
 </pre></div>
 </div>
-<p>Each call creates a new directory <code class="docutils literal notranslate"><span class="pre">Events/&lt;run_name&gt;_NN</span></code>. A gridpack generates LHE files
+<p>Each call creates a new directory <code class="docutils literal notranslate"><span class="pre">Events/&lt;run_name&gt;_NN</span></code>. Use <code class="docutils literal notranslate"><span class="pre">--output_dir</span></code> to write
+the output to a given directory instead, and <code class="docutils literal notranslate"><span class="pre">--temp_output_dir</span></code> to put the large
+temporary npy files of the channels somewhere else, for example on a fast local disk of a
+cluster node. With <code class="docutils literal notranslate"><span class="pre">--temp_output_dir</span> <span class="pre">auto</span></code>, a new temporary directory is created for
+each run (in <code class="docutils literal notranslate"><span class="pre">$TMPDIR</span></code> if set), so that runs sharing a gridpack do not collide. Relative paths on the command line refer to the current directory. A gridpack generates LHE files
 by default, since it usually feeds a shower or detector simulation. The file is
 compressed to <code class="docutils literal notranslate"><span class="pre">events.lhe.gz</span></code>. Use <code class="docutils literal notranslate"><span class="pre">--output_format</span></code> to get one of the npy formats
 instead.</p>
@@ -712,7 +745,11 @@ gridpack is created.</p>
 <td><p><code class="docutils literal notranslate"><span class="pre">cut_efficiency_threshold</span></code>, <code class="docutils literal notranslate"><span class="pre">max_cut_repetitions</span></code></p></td>
 <td><p>Card only.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[systematics]</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[gridpack]</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">output_dir</span></code>, <code class="docutils literal notranslate"><span class="pre">temp_output_dir</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">--output_dir</span></code>, <code class="docutils literal notranslate"><span class="pre">--temp_output_dir</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">[systematics]</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">enable</span></code>, <code class="docutils literal notranslate"><span class="pre">mur</span></code>, <code class="docutils literal notranslate"><span class="pre">muf</span></code>, <code class="docutils literal notranslate"><span class="pre">together</span></code>, <code class="docutils literal notranslate"><span class="pre">dynamical_scale</span></code>, <code class="docutils literal notranslate"><span class="pre">pdf</span></code>,
 <code class="docutils literal notranslate"><span class="pre">write_inputs</span></code></p></td>
 <td><p>Card only.</p></td>
@@ -721,7 +758,9 @@ gridpack is created.</p>
 </table>
 </div>
 <p>An option on the command line overrides the card. The settings have the same meaning as in
-the main run card, see <a class="reference internal" href="run_card.html"><span class="doc">Run card</span></a>. <code class="docutils literal notranslate"><span class="pre">./bin/generate_events</span> <span class="pre">--help</span></code> lists all options.</p>
+the main run card, see <a class="reference internal" href="run_card.html"><span class="doc">Run card</span></a>. <code class="docutils literal notranslate"><span class="pre">./bin/generate_events</span> <span class="pre">--help</span></code> lists all options.
+Relative <code class="docutils literal notranslate"><span class="pre">output_dir</span></code> and <code class="docutils literal notranslate"><span class="pre">temp_output_dir</span></code> paths in the card refer to the gridpack
+directory. Both are reset to <code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> when the gridpack is created.</p>
 <p>The card names the <code class="docutils literal notranslate"><span class="pre">cpu_mode</span></code> that the gridpack was built with, which can differ from the
 <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> of the original run card. The matrix element libraries carry this name. If you
 change <code class="docutils literal notranslate"><span class="pre">cpu_mode</span></code> or <code class="docutils literal notranslate"><span class="pre">precision</span></code>, you have to rebuild them.</p>
@@ -742,7 +781,8 @@ in the <code class="docutils literal notranslate"><span class="pre">[gridpack]</
 were built for the run, which means the backends of the devices and the <code class="docutils literal notranslate"><span class="pre">cpu_mode</span></code>
 that you used. A gridpack can only run on devices for which a library exists.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">include_source</span> <span class="pre">=</span> <span class="pre">true</span></code></dt><dd><p>The source code is copied to <code class="docutils literal notranslate"><span class="pre">src/</span></code> and <code class="docutils literal notranslate"><span class="pre">SubProcesses/</span></code> and <code class="docutils literal notranslate"><span class="pre">lib/</span></code> stays empty.
+<dt><code class="docutils literal notranslate"><span class="pre">include_source</span> <span class="pre">=</span> <span class="pre">true</span></code></dt><dd><p>The source code is copied to <code class="docutils literal notranslate"><span class="pre">src/</span></code>, <code class="docutils literal notranslate"><span class="pre">SubProcesses/</span></code> and <code class="docutils literal notranslate"><span class="pre">backend/</span></code> and <code class="docutils literal notranslate"><span class="pre">lib/</span></code>
+stays empty.
 This is useful if the gridpack has to run on a different platform. The gridpack does
 not compile anything by itself, so build the libraries once before the first run:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>SubProcesses
@@ -774,8 +814,9 @@ the compiled copy is used.</p></li>
 <p>If both options are on, the compiled copy is used and the source is only a fallback for
 rebuilding it. The compiled copy has to match the platform. The source code makes the
 gridpack portable.</p>
-<p>The script warns if the <code class="docutils literal notranslate"><span class="pre">madspace</span></code> it uses differs from the one that created the gridpack.
-In this case, the results can be wrong.</p>
+<p>The script stops with an error if the <code class="docutils literal notranslate"><span class="pre">madspace</span></code> it uses differs from the one that
+created the gridpack, since the results can be wrong in this case. Use
+<code class="docutils literal notranslate"><span class="pre">--ignore_source_hash</span></code> to run anyway, which only prints a warning.</p>
 <p>The options can be combined. The smallest gridpack sets <code class="docutils literal notranslate"><span class="pre">include_madspace</span> <span class="pre">=</span> <span class="pre">false</span></code> and
 relies on an installed <code class="docutils literal notranslate"><span class="pre">madspace</span></code>. A fully portable gridpack sets <code class="docutils literal notranslate"><span class="pre">include_source</span> <span class="pre">=</span> <span class="pre">true</span></code>
 and <code class="docutils literal notranslate"><span class="pre">include_madspace_source</span> <span class="pre">=</span> <span class="pre">true</span></code>. The default is the best choice if all machines
@@ -840,7 +881,10 @@ are the same.</p>
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">Gridpacks</a><ul>
-<li><a class="reference internal" href="#creating-a-gridpack">Creating a gridpack</a></li>
+<li><a class="reference internal" href="#creating-a-gridpack">Creating a gridpack</a><ul>
+<li><a class="reference internal" href="#ending-the-run">Ending the run</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#generating-events">Generating events</a></li>
 <li><a class="reference internal" href="#run-card-settings">Run card settings</a></li>
 <li><a class="reference internal" href="#including-the-matrix-elements-and-madspace">Including the matrix elements and madspace</a><ul>

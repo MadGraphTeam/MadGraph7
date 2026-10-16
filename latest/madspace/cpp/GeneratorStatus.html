@@ -537,6 +537,8 @@
 <li class="toctree-l2"><a class="reference internal" href="SubprocessSystArgs.html">SubprocessSystArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SystematicsCalculator.html">SystematicsCalculator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SystematicsConfig.html">SystematicsConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TarReader.html">TarReader</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TarWriter.html">TarWriter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Tensor.html">Tensor</a></li>
 <li class="toctree-l2"><a class="reference internal" href="TensorView.html">TensorView</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ThreadPool.html">ThreadPool</a></li>
@@ -693,6 +695,12 @@
 </dd></dl>
 
 <dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace15GeneratorStatus25iters_without_improvementE">
+<span id="_CPPv3N8madspace15GeneratorStatus25iters_without_improvementE"></span><span id="_CPPv2N8madspace15GeneratorStatus25iters_without_improvementE"></span><span id="madspace::GeneratorStatus::iters_without_improvement__std::s"></span><span class="target" id="structmadspace_1_1GeneratorStatus_1ae02ab4be375e8c18747c87bdf16322ea"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">iters_without_improvement</span></span></span><a class="headerlink" href="#_CPPv4N8madspace15GeneratorStatus25iters_without_improvementE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Number of optimization iterations in a row without enough improvement; the channel counts as optimized when this reaches <a class="reference internal" href="GeneratorConfig.html#structmadspace_1_1GeneratorConfig_1afc27609e0b49c7bdd1c83b855f3a68df"><span class="std std-ref">GeneratorConfig::optimization_patience</span></a>. </p>
+</dd></dl>
+
+<dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace15GeneratorStatus9optimizedE">
 <span id="_CPPv3N8madspace15GeneratorStatus9optimizedE"></span><span id="_CPPv2N8madspace15GeneratorStatus9optimizedE"></span><span id="madspace::GeneratorStatus::optimized__b"></span><span class="target" id="structmadspace_1_1GeneratorStatus_1aef833f4b216c55a6bad74749d91adc07"></span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">optimized</span></span></span><a class="headerlink" href="#_CPPv4N8madspace15GeneratorStatus9optimizedE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Whether the survey/optimization phase has finished. </p>
@@ -780,6 +788,7 @@
 <li><a class="reference internal" href="#_CPPv4N8madspace15GeneratorStatus16count_unweightedE"><code class="docutils literal notranslate"><span class="pre">count_unweighted</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace15GeneratorStatus12count_targetE"><code class="docutils literal notranslate"><span class="pre">count_target</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace15GeneratorStatus10iterationsE"><code class="docutils literal notranslate"><span class="pre">iterations</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace15GeneratorStatus25iters_without_improvementE"><code class="docutils literal notranslate"><span class="pre">iters_without_improvement</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace15GeneratorStatus9optimizedE"><code class="docutils literal notranslate"><span class="pre">optimized</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace15GeneratorStatus4doneE"><code class="docutils literal notranslate"><span class="pre">done</span></code></a></li>
 </ul>

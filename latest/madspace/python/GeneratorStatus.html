@@ -537,6 +537,8 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SystematicsCalculator.html">SystematicsCalculator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SystematicsConfig.html">SystematicsConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/TarReader.html">TarReader</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/TarWriter.html">TarWriter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Tensor.html">Tensor</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/TensorView.html">TensorView</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ThreadPool.html">ThreadPool</a></li>
@@ -668,6 +670,12 @@
 </dd></dl>
 
 <dl class="py property">
+<dt class="sig sig-object py" id="madspace.GeneratorStatus.iters_without_improvement">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">iters_without_improvement</span></span><a class="headerlink" href="#madspace.GeneratorStatus.iters_without_improvement" title="Link to this definition">¶</a></dt>
+<dd><p>Number of optimization iterations in a row without enough improvement; the channel counts as optimized when this reaches GeneratorConfig::optimization_patience.</p>
+</dd></dl>
+
+<dl class="py property">
 <dt class="sig sig-object py" id="madspace.GeneratorStatus.mean">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">mean</span></span><a class="headerlink" href="#madspace.GeneratorStatus.mean" title="Link to this definition">¶</a></dt>
 <dd><p>Running mean weight, i.e. the cross-section estimate.</p>
@@ -774,6 +782,7 @@
 <li><a class="reference internal" href="#madspace.GeneratorStatus.error"><code class="docutils literal notranslate"><span class="pre">GeneratorStatus.error</span></code></a></li>
 <li><a class="reference internal" href="#madspace.GeneratorStatus.error_abs"><code class="docutils literal notranslate"><span class="pre">GeneratorStatus.error_abs</span></code></a></li>
 <li><a class="reference internal" href="#madspace.GeneratorStatus.iterations"><code class="docutils literal notranslate"><span class="pre">GeneratorStatus.iterations</span></code></a></li>
+<li><a class="reference internal" href="#madspace.GeneratorStatus.iters_without_improvement"><code class="docutils literal notranslate"><span class="pre">GeneratorStatus.iters_without_improvement</span></code></a></li>
 <li><a class="reference internal" href="#madspace.GeneratorStatus.mean"><code class="docutils literal notranslate"><span class="pre">GeneratorStatus.mean</span></code></a></li>
 <li><a class="reference internal" href="#madspace.GeneratorStatus.mean_abs"><code class="docutils literal notranslate"><span class="pre">GeneratorStatus.mean_abs</span></code></a></li>
 <li><a class="reference internal" href="#madspace.GeneratorStatus.name"><code class="docutils literal notranslate"><span class="pre">GeneratorStatus.name</span></code></a></li>

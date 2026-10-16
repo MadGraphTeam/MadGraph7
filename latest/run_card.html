@@ -537,6 +537,8 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SystematicsCalculator.html">SystematicsCalculator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SystematicsConfig.html">SystematicsConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/TarReader.html">TarReader</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/TarWriter.html">TarWriter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Tensor.html">Tensor</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/TensorView.html">TensorView</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ThreadPool.html">ThreadPool</a></li>
@@ -682,7 +684,7 @@ a terminal and <code class="docutils literal notranslate"><span class="pre">log<
 <h2>[gridpack]<a class="headerlink" href="#gridpack" title="Link to this heading">¶</a></h2>
 <p>Gridpacks are self-contained event generators created after the survey and training.
 See <a class="reference internal" href="gridpacks.html"><span class="doc">Gridpacks</span></a> for details.</p>
-<dl class="simple">
+<dl>
 <dt><code class="docutils literal notranslate"><span class="pre">save_gridpack</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Create a gridpack at the end of the run.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">include_source</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Ship the process source code instead of the compiled libraries.</p>
@@ -691,6 +693,28 @@ See <a class="reference internal" href="gridpacks.html"><span class="doc">Gridpa
 installation.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">include_madspace_source</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Include the <code class="docutils literal notranslate"><span class="pre">madspace</span></code> source code.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">compress</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Pack the gridpack into <code class="docutils literal notranslate"><span class="pre">gridpack.tar.gz</span></code> instead of leaving it as a directory.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">run_mode</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;minimal&quot;</span></code>)</dt><dd><p>How the run that creates the gridpack ends. Only used if <code class="docutils literal notranslate"><span class="pre">save_gridpack</span></code> is set.</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">regular</span></code>: generate the events of the run, then store the gridpack.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">minimal</span></code>: no events. The gridpack is stored right after the MadNIS training or,
+with VEGAS, once the grid of every channel has converged.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">fix_max_weight</span></code>: no events. Each channel runs until <code class="docutils literal notranslate"><span class="pre">freeze_max_weight_after</span></code>
+unweighted events are reached. Its maximum weight is then fixed in the gridpack,
+and its integral is used to share the events between the channels. This can be
+slow for channels with a low unweighting efficiency.</p></li>
+</ul>
+<p>See <a class="reference internal" href="gridpacks.html#gridpack-run-mode"><span class="std std-ref">Ending the run</span></a>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">temp_output_dir</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code>)</dt><dd><p>Directory for the temporary npy files of the channels. <code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> uses the output
+directory. <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> creates a new temporary directory for each run, see
+<code class="xref py py-func docutils literal notranslate"><span class="pre">tempfile.mkdtemp()</span></code>. Its location can be set with the <code class="docutils literal notranslate"><span class="pre">TMPDIR</span></code>
+environment variable.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">output_dir</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code>)</dt><dd><p>Directory for the output files. <code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> creates a new run folder
+<code class="docutils literal notranslate"><span class="pre">Events/&lt;run_name&gt;_NN</span></code>. If set, no run folder is created.</p>
 </dd>
 </dl>
 </section>
