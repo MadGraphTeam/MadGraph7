@@ -233,6 +233,14 @@ class gensym(object):
                     all_csym_bad.add(line.split()[2])
                 if 'Amplitude/ZEROAMP:' in line:
                     all_zamp.add(tuple(line.split()[1:3]))
+                # A per-helicity zero amplitude is frame specific: one
+                # diagram can vanish because the beams lie on the z axis
+                # in the survey frame while |M|^2 is Lorentz invariant.
+                # madevent_forhel runs the production auto_dsig, so the
+                # survey frame (partonic CM, or the me_frame boost) is the
+                # one the optim sees later; the optim is not valid for
+                # momenta in any other frame (standalone's hel_warmup
+                # boosts part of its points for that reason).
                 if 'HEL/ZEROAMP:' in line:
                     nb_mat, nb_hel, nb_amp = line.split()[1:4]
                     if (nb_mat, nb_hel) not in all_hel:
