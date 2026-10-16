@@ -2653,10 +2653,39 @@ C
         self.assertTrue(misc.equal(target, val1, 4*err1),
             'MadSpin-decayed cross-section %s +- %s far from reference %s'
             % (val1, err1, target))
-             
-        
-        
-        
+
+    def test_complex_mass_scheme_mg7_compile(self):
+        """`output mg7` of a complex-mass-scheme process compiles.
+
+        Under the complex-mass scheme Parameters.cc takes the sqrt of complex
+        parameters (CMASS_mdl_MT = sqrt(MT^2 - i*MT*WT), mdl_cw = sqrt(1 -
+        mdl_sw2), ...), which did not compile for want of a sqrt(cxsmpl). That
+        broke MadSpin's mg7 decay generator in test_complex_mass_scheme, but
+        only where madspace is built -- elsewhere MadSpin falls back to
+        madevent -- so this checks the compile directly, without madspace.
+        """
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('set complex_mass_scheme', precmd=True)
+        mg_cmd.exec_cmd('generate t > w+ b', precmd=True)
+        mg_cmd.exec_cmd('output mg7 %s' % self.run_dir, precmd=True)
+
+        sub_root = pjoin(self.run_dir, 'SubProcesses')
+        proc_dirs = sorted(d for d in os.listdir(sub_root)
+                           if d.startswith('P') and
+                           os.path.isdir(pjoin(sub_root, d)))
+        self.assertTrue(proc_dirs, 'no subprocess generated for t > w+ b')
+        with open(pjoin(self.run_dir, 'src', 'Parameters.cc')) as fsock:
+            self.assertIn('CMASS_mdl_MT = sqrt(', fsock.read())
+        for d in proc_dirs:
+            proc = subprocess.run(['make', 'bldnone'], cwd=pjoin(sub_root, d),
+                                  stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, text=True)
+            self.assertEqual(proc.returncode, 0,
+                             'CMS mg7 subprocess %s did not compile:\n%s'
+                             % (d, proc.stdout[-3000:]))
+
     def test_width_scan(self):
         """check that the width settings works on a scan based.
            and check that MW is updated."""
