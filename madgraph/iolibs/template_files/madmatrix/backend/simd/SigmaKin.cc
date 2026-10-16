@@ -752,13 +752,17 @@ namespace madmatrix
   // one-minus helicities of a purely gluonic process, 12 of the 32 of g g > g g g --
   // so that every evaluation then computed them for nothing.
   //
-  // Every crossing is scanned on points of its own masses (scan_points in
-  // umami.cc, scan_block below). Without them -- a batch that only has points
-  // of the base process -- a crossing that moves a massive leg into a slot of
-  // another mass (xonshell_tab 0) is off shell, and a row it needs can come out
-  // at rounding level there: a longitudinal Z fed a lightlike momentum is
-  // proportional to it. A relative test would drop that row for every event, so
-  // there a helicity is good when it is not exactly 0.
+  // The relative test is only made for a process of massless external legs.
+  // The scan points sit at one sqrt(s) (rambo::helicity_scan_points), where a
+  // row suppressed by powers of m/E looks negligible: in heft g g > b b~ two
+  // rows are 2e-11 of the sum at 1500 GeV but 4% each near threshold, and the
+  // relative test lost 11% of the cross section. With a massive external leg
+  // (ProcessTables::hel_massive) a helicity is good when it is not exactly 0.
+  // That also covers a crossing scanned on points off shell for it (xonshell_tab
+  // 0, only with a massive leg), where a row it needs can come out at rounding
+  // level: a longitudinal Z fed a lightlike momentum is proportional to it. The
+  // list is then closed over the legs whose helicity states mix under a boost
+  // (close_good_hel), so that it holds in every frame the events come in.
 #ifndef MG_HR_PROBE
   constexpr double limhel = 1e-8;
 #else
@@ -769,6 +773,33 @@ namespace madmatrix
   // residual (~1e-30 of the sum) -- on more events (goodHelScanEvents).
   constexpr double limhel = 1e-14;
 #endif
+
+  //--------------------------------------------------------------------------
+
+  // Close the good rows over the legs whose helicity states mix under a boost
+  // (ProcessTables::hel_frame_leg: massive legs with spin, massless spin-2
+  // ones). Only the sum over such a leg's states, the other helicities fixed,
+  // is frame invariant: a row of a massive b that vanishes at the CM scan
+  // points is non-zero once boosted. Every row differing from a good one only
+  // at those legs is good too, as the fortran warm-up's HMV closure does.
+  inline void
+  close_good_hel( bool* isGoodHel, const short ( *hel )[npar] )
+  {
+    bool closed[ncomb];
+    for( int ihel = 0; ihel < ncomb; ihel++ ) closed[ihel] = isGoodHel[ihel];
+    for( int ihel = 0; ihel < ncomb; ihel++ )
+    {
+      if( !isGoodHel[ihel] ) continue;
+      for( int jhel = 0; jhel < ncomb; jhel++ )
+      {
+        bool same = true;
+        for( int k = 0; k < npar; k++ )
+          if( !hel_frame_leg[k] && hel[jhel][k] != hel[ihel][k] ) same = false;
+        if( same ) closed[jhel] = true;
+      }
+    }
+    for( int ihel = 0; ihel < ncomb; ihel++ ) isGoodHel[ihel] = closed[ihel];
+  }
 
   //--------------------------------------------------------------------------
 
@@ -951,10 +982,9 @@ namespace madmatrix
       cCsymScanned = true; // a full ncomb-row comparison has been made
     }
     // a helicity is good for this extended flavor id if it is above limhel/ncomb
-    // of the sum over helicities at one of the events -- not exactly 0 where the
-    // points are off shell for the crossing (see limhel) -- OR-ed over the ids:
-    // one list for every crossing
-    const double relhel = ( iscan >= 0 || xonshell_tab[xcross] ) ? limhel : 0.;
+    // of the sum over helicities at one of the events -- not exactly 0 with a
+    // massive leg (see limhel) -- OR-ed over the ids: one list for every crossing
+    const double relhel = hel_massive ? 0. : limhel;
     for( int ievt = 0; ievt < maxtry; ++ievt )
     {
       fptype sumhel = 0;
@@ -963,6 +993,7 @@ namespace madmatrix
         if( std::abs( helMEs[(size_t)ihel * maxtry0 + ievt] ) > sumhel * relhel / ncomb ) isGoodHel[ihel] = true;
     }
     } // end loop over flavor combinations (per-flavor good-helicity union)
+    close_good_hel( isGoodHel, cHel );
   }
 
   //--------------------------------------------------------------------------

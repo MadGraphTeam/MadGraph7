@@ -3444,8 +3444,10 @@ class TestMEfromfile(unittest.TestCase):
         # alpha_s^2 (-22% at the ~20 GeV dynamical scale).
         # Spread over 6 runs: 2.0872e+08-2.0901e+08, mean 2.089e+08.
         # previously PDF was NNPDF40MC_lo_as_01180 with this reference value 1.820e+08
+        # The tolerance is well above that spread but below the 11% the good-
+        # helicity scan once lost by dropping the b-mass-suppressed rows.
         target = 2.089e+08
-        self.assertLess(abs(cross - target) / target, 0.10,
+        self.assertLess(abs(cross - target) / target, 0.03,
             'mg7 HEFT cross-section %s far from physical reference %s'
             % (cross, target))
 

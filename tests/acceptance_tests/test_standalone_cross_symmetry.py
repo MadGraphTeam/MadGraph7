@@ -3115,7 +3115,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
 
     # ------------------------------------------------------------------
     def _output_madmatrix(self, process, name, options='',
-                               out_options='', color_basis=None):
+                               out_options='', color_basis=None, model='sm'):
         """Write the standalone (madmatrix) output for `process`, return its P* dir.
 
         `options` goes on the generate line, `out_options` on the output line.
@@ -3132,7 +3132,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         cmd.exec_cmd('set apply_flavor_grouping True')
         if color_basis:
             cmd.exec_cmd('set color_basis %s' % color_basis)
-        cmd.exec_cmd('import model sm')
+        cmd.exec_cmd('import model %s' % model)
         cmd.exec_cmd(('generate %s %s' % (process, _pin_crossing(options))).strip())
         cmd.exec_cmd(('output standalone %s -f %s'
                       % (outdir, out_options)).strip())
@@ -3257,9 +3257,11 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
 
     # Test-only knob spliced into the output's copy of the backend SigmaKin.cc,
     # at the end of sigmaKin_setGoodHel: MG_PRINT_NGOODHEL prints the length
-    # of the good-helicity list every lane runs.
+    # of the good-helicity list every lane runs (NGOODHEL) and the number of
+    # good rows before the C-parity reduction (NGOODROWS).
     _NGOODHEL_KNOB = '''\
     if( getenv( "MG_PRINT_NGOODHEL" ) ) printf( " NGOODHEL %d\\n", nGoodHel );
+    if( getenv( "MG_PRINT_NGOODHEL" ) ) printf( " NGOODROWS %d\\n", cNGoodHelRows );
 '''
 
     def _add_ngoodhel_knob(self, pdir):
@@ -3279,12 +3281,12 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
             with open(path, 'w') as fsock:
                 fsock.write(src)
 
-    def _ngoodhel(self, pdir, flavor_id):
+    def _ngoodhel(self, pdir, flavor_id, key='NGOODHEL'):
         out = subprocess.check_output(
             ['./check_sa.exe', 'perf', '-f', str(flavor_id), '1', '8', '1'],
             cwd=pdir, env=dict(os.environ, MG_PRINT_NGOODHEL='1')).decode()
-        found = re.findall(r' NGOODHEL (\d+)', out)
-        self.assertTrue(found, 'no NGOODHEL in:\n%s' % out)
+        found = re.findall(r' %s (\d+)' % key, out)
+        self.assertTrue(found, 'no %s in:\n%s' % (key, out))
         return int(found[-1])
 
     def _output_pq_gg_qqx(self, name, options='', out_options=''):
@@ -3456,6 +3458,29 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         self.assertGreater(n_alone, 0)
         self.assertEqual(self._ngoodhel(folded, cross), n_alone,
                          'the crossings added rows to the good-helicity list')
+
+    def test_massive_leg_keeps_mass_suppressed_rows(self):
+        """A row only suppressed by the mass of a leg stays good.
+
+        heft g g > b b~ (massive b): the rows with equal gluon helicities and
+        a b helicity flip are 1e-31 of the sum at CM points and 2e-11 at the
+        1500 GeV boosted scan points, below the relative limhel cut, but 4%
+        each of |M|^2 near threshold. Dropping them lost 11% of the mg7
+        cross section (test_generation_heft_mg7). With a massive leg only an
+        exact 0 is dropped, and the list is closed over the b helicities
+        (ProcessTables hel_massive / hel_frame_leg), so all 16 rows are kept
+        even on the CM points of check_sa, where those rows vanish."""
+        pdir = self._output_madmatrix('g g > b b~ HIW<=1', 'heft_ggbbx',
+                                      model='heft')
+        with open(pjoin(pdir, 'ProcessTables.h')) as fsock:
+            tables = fsock.read()
+        self.assertIn('constexpr bool hel_massive = true;', tables)
+        self.assertIn('hel_frame_leg[ProcessData::npar] = { 0, 0, 1, 1 };',
+                      tables)
+        self._add_ngoodhel_knob(pdir)
+        self._patch_and_build(pdir)
+        self.assertEqual(self._ngoodhel(pdir, self.IDENTITY, 'NGOODROWS'),
+                         16, 'a mass-suppressed helicity row was dropped')
 
     def test_id_past_the_table_returns_zero(self):
         """An extended id past the last row of the crossing table names no

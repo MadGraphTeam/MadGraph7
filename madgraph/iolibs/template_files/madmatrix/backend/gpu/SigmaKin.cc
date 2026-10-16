@@ -54,6 +54,7 @@ namespace madmatrix
   // Helicity/flavor tables and SM parameter/coupling storage, populated once
   // by CPPProcess's constructor/initProc via the setters below.
   __device__ __constant__ short cHel[ncomb][npar];
+  static short hstHel[ncomb][npar]; // host copy, for the good-helicity closure
   __device__ __constant__ int dcNGoodHel;
   __device__ __constant__ int dcGoodHel[ncomb];
   __device__ __constant__ short cFlavors[nmaxflavor][npar];
@@ -83,6 +84,8 @@ namespace madmatrix
   void setHelicitiesAndFlavors( const short* tHel, const short* tFlavors )
   {
     gpuMemcpyToSymbol( cHel, tHel, ncomb * npar * sizeof( short ) );
+    for( int ihel = 0; ihel < ncomb; ihel++ )
+      for( int ipar = 0; ipar < npar; ipar++ ) hstHel[ihel][ipar] = tHel[ihel * npar + ipar];
     gpuMemcpyToSymbol( cFlavors, tFlavors, nmaxflavor * npar * sizeof( short ) );
   }
 
@@ -447,6 +450,30 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  // Close the good rows over the legs whose helicity states mix under a boost
+  // (ProcessTables::hel_frame_leg), as backend/cpu does: every row differing
+  // from a good one only at those legs is good too (host helicity table).
+  inline void
+  close_good_hel( bool* isGoodHel, const short ( *hel )[npar] )
+  {
+    bool closed[ncomb];
+    for( int ihel = 0; ihel < ncomb; ihel++ ) closed[ihel] = isGoodHel[ihel];
+    for( int ihel = 0; ihel < ncomb; ihel++ )
+    {
+      if( !isGoodHel[ihel] ) continue;
+      for( int jhel = 0; jhel < ncomb; jhel++ )
+      {
+        bool same = true;
+        for( int k = 0; k < npar; k++ )
+          if( !hel_frame_leg[k] && hel[jhel][k] != hel[ihel][k] ) same = false;
+        if( same ) closed[jhel] = true;
+      }
+    }
+    for( int ihel = 0; ihel < ncomb; ihel++ ) isGoodHel[ihel] = closed[ihel];
+  }
+
+  //--------------------------------------------------------------------------
+
   // The first event of the points crossing `cross` is scanned on: its own block
   // of the batch, or -1 for the first events (the host copy of backend/cpu
   // scan_block, which reads the flavor ids of the block from the device).
@@ -488,10 +515,11 @@ namespace madmatrix
     // helicity is good if, at one event, it is above limhel/ncomb of the sum over
     // helicities there -- madevent's filter (matrix_madevent_group_v4.inc, limhel
     // its hidden run_card parameter, 1e-8 by default). Comparing to an exact 0 kept
-    // the helicities whose amplitudes only cancel to rounding. Each crossing is
-    // scanned on points of its own masses; without them, a crossing the base
-    // points are off shell for (xonshell_tab 0, see backend/cpu) can need a row
-    // that comes out at rounding level there, so not exactly 0 is good.
+    // the helicities whose amplitudes only cancel to rounding. With a massive
+    // external leg (hel_massive) only an exact 0 is dropped: at the one sqrt(s) of
+    // the scan points a row suppressed by powers of m/E looks negligible, though
+    // it is several % of |M|^2 near threshold (heft g g > b b~, see backend/cpu).
+    // The list is then closed over the frame-dependent legs (close_good_hel).
     constexpr double limhel = 1e-8;
     std::vector<fptype> helMEs( (size_t)ncomb * maxtry0, 0. );
     unsigned int* devFlavorVec = nullptr;
@@ -532,7 +560,7 @@ namespace madmatrix
       for( int ievt = 0; ievt < maxtry; ++ievt )
         helMEs[(size_t)ihel * maxtry0 + ievt] = hstMEs[ievt];
     }
-    const double relhel = ( iscan >= 0 || xonshell_tab[iflav / nmaxflavor] ) ? limhel : 0.;
+    const double relhel = hel_massive ? 0. : limhel;
     for( int ievt = 0; ievt < maxtry; ++ievt )
     {
       fptype sumhel = 0;
@@ -542,6 +570,7 @@ namespace madmatrix
     }
     } // end loop over flavor combinations (per-flavor good-helicity union)
     gpuFree( devFlavorVec );
+    close_good_hel( isGoodHel, hstHel );
   }
 
   //--------------------------------------------------------------------------

@@ -256,7 +256,9 @@ namespace
 
   // The helicity filter (sigmaKin_getGoodHel) runs once per library and keeps a
   // helicity if, at one of the scan points, its |M|^2 is above limhel/ncomb of the
-  // sum over helicities (the relative test of madevent, see limhel in SigmaKin.cc).
+  // sum over helicities (the relative test of madevent, see limhel in SigmaKin.cc),
+  // or not exactly 0 with a massive external leg, closed over the helicities of
+  // the legs whose states mix under a boost.
   // Run at the first umami_matrix_element call, it depended on what that call held:
   // a first batch of special points, where some helicities happen to vanish (the
   // forward direction of u u~ > e+ e-, say), dropped them for the rest of the run,

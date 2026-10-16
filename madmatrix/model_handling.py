@@ -2578,10 +2578,34 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # (zero placeholders and use_crossing=false when crossing is off).
         replace_dict['crossing_tables'] = \
             self.get_madmatrix_crossing_tables(self.matrix_elements[0])['crossing_tables']
+        replace_dict.update(self.get_good_helicity_tables(self.matrix_elements[0]))
 
         ff = open(pjoin(self.path, 'ProcessTables.h'), 'w')
         ff.write(template % replace_dict)
         ff.close()
+
+    @staticmethod
+    def get_good_helicity_tables(matrix_element):
+        """ProcessTables.h 'hel_massive' and 'hel_frame_leg', read by the
+        good-helicity scan (sigmaKin_getGoodHel). The scan points sit at a
+        fixed sqrt(s) (rambo::helicity_scan_points), where a row suppressed by
+        powers of m/E -- a helicity flip on a b quark at 1500 GeV -- looks
+        negligible, while near threshold it carries several % of |M|^2. So a
+        process with a massive external leg only drops exact zeros
+        (hel_massive), and the list is closed over the legs whose helicity
+        states mix under a boost (the C++ twin of the fortran warm-up's HMV,
+        export_v4 frame_dependent_helicity_legs). A crossing keeps the mass of
+        every base slot, so the base legs decide for every crossing."""
+        legs = export_v4.ProcessExporterFortranSA.frame_dependent_helicity_legs(
+            matrix_element)
+        ncol = len(next(iter(matrix_element.get_helicity_matrix())))
+        if len(legs) != ncol:
+            # a helicity table of another shape: close over every leg
+            legs = [True] * ncol
+        massive = any(str(wf.get('mass')).lower() != 'zero'
+                      for wf in matrix_element.get_external_wavefunctions())
+        return {'hel_massive': 'true' if massive else 'false',
+                'hel_frame_leg': ', '.join('1' if leg else '0' for leg in legs)}
 
     def _folded_crossing_flavorids(self, matrix_element):
         """Extended flavor ids (0-based, K*nmaxflavor + flav0) of the crossed
