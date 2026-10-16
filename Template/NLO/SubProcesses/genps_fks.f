@@ -766,7 +766,7 @@ c Generate the momenta for the initial state of the Born system
         call mom2cx(sqrtshat_born,m(1),m(2),1d0,0d0,pb(0,1),pb(0,2))
       else
          pb(0,1)=sqrtshat_born
-         do i=1,2
+         do i=1,3
             pb(i,1)=0d0
          enddo
       endif
