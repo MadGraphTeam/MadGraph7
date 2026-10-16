@@ -251,16 +251,22 @@ namespace madmatrix
     return t;
   }
 
-  // Whether an event's flavor id names a flavor of this process. With crossing
-  // every extended id does (a row out of the crossing table gives a zero ME);
-  // without, only an index of cFlavors. Any other id is evaluated with the
+  // Whether an event's flavor id names a flavor of this process: an index of
+  // cFlavors or, with crossing, an extended id whose crossing-table row exists.
+  // An id past the table is a process that does not exist: |M|^2 = 0, as in the
+  // Fortran and standalone_cpp crossing code, and, as for any zero |M|^2, no
+  // helicity, colour or diagram choice (its numerators and jamp2 are those of
+  // another crossing). Without crossing, any other id is evaluated with the
   // reduced flavor of its page (see JampsPreamble.h), so that nothing is read
-  // out of bounds, and then gets a NaN |M|^2 and no helicity, colour or
-  // diagram choice, as on GPU (normalise_output).
+  // out of bounds, and then gets a NaN |M|^2 and no choice either, as on GPU
+  // (normalise_output).
   inline bool
   valid_flavor_id( const unsigned int flavor_id )
   {
-    return use_crossing || flavor_id < (unsigned int)nmaxflavor;
+    if constexpr( use_crossing )
+      return spincol_cross( (int)( flavor_id / (unsigned int)nmaxflavor ) ) != 0;
+    else
+      return flavor_id < (unsigned int)nmaxflavor;
   }
 
   // Pick the helicity row to report for the ighel-th good helicity of a lane.
@@ -1565,8 +1571,9 @@ namespace madmatrix
           MEs_sv *= numerators_sv[channelId - 1] / safe_den;
         }
       }
-      // An id that names no flavor (only possible without crossing): NaN, as on
-      // GPU, in the |M|^2 and the denominator, so its channel weights (amp2) too
+      // Without crossing, an id that names no flavor: NaN, as on GPU, in the
+      // |M|^2 and the denominator, so its channel weights (amp2) too (with
+      // crossing, an id past the table got the zero |M|^2 above)
       if constexpr( !use_crossing )
       {
         for( int ieppV = 0; ieppV < neppV; ++ieppV )

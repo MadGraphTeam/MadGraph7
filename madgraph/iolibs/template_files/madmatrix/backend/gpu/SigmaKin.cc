@@ -148,6 +148,20 @@ namespace madmatrix
     return ( cross >= 0 && cross < ncross ) ? xspincol_tab[cross] : 0;
   }
 
+  // Whether an event's flavor id names a flavor of this process, as on cpu
+  // (backend/cpu valid_flavor_id): an index of cFlavors or, with crossing, an
+  // extended id whose crossing-table row exists. Any other id gets no helicity,
+  // colour or diagram choice, and normalise_output gives it a NaN |M|^2 without
+  // crossing, 0 with (a row past the table, as in the Fortran crossing code).
+  __device__ inline bool
+  valid_flavor_id( const unsigned int flavor_id )
+  {
+    if constexpr( use_crossing )
+      return spincol_cross( (int)( flavor_id / (unsigned int)nmaxflavor ) ) != 0;
+    else
+      return flavor_id < (unsigned int)nmaxflavor;
+  }
+
   // Identical-final-state factor of the crossed process: the device copy of
   // backend/cpu ident_cross (see there).
   __device__ int
@@ -628,12 +642,12 @@ namespace madmatrix
     // evaluated as flavor 0 by calculate_jamps. Flavor 0 stands in for it here too,
     // so that broken_symmetry_factor never reads out of bounds, and its outputs are
     // then overwritten with NaN, which cannot pass for a valid matrix element.
-    // With crossing every id is valid: the crossed denominator is rebuilt per
-    // event, as on cpu -- row 0 keeps the IDEN/BROKEN_SYM path, a crossed row
-    // takes the crossed initial-state spin*color times the identical-final-state
-    // factor of the actual flavors, and a row out of the table gives 0.
+    // With crossing the crossed denominator is rebuilt per event, as on cpu --
+    // row 0 keeps the IDEN/BROKEN_SYM path, a crossed row takes the crossed
+    // initial-state spin*color times the identical-final-state factor of the
+    // actual flavors, and a row out of the table gives 0 (not NaN).
     const unsigned int fid = iflavorVec[ievt];
-    const bool validFlavor = use_crossing || fid < (unsigned int)nmaxflavor;
+    const bool validFlavor = valid_flavor_id( fid );
     if constexpr( use_crossing )
     {
       const int dcr = (int)( fid / (unsigned int)nmaxflavor );
@@ -672,7 +686,7 @@ namespace madmatrix
         allMEs[ievt] *= numerators[channelId - 1] / ( denominator + fptypeMin );
       }
     }
-    if( !validFlavor )
+    if( !use_crossing && !validFlavor )
     {
       // Plain stores, nothing computed with the NaN afterwards: the denominator
       // turns every channel weight (amp2) of the event into a NaN as well.
@@ -696,9 +710,9 @@ namespace madmatrix
     // no helicity (0) unless one is chosen below: a vanishing or NaN |M|^2 chooses none, and
     // callers may reuse allselhel across calls (cleared per event here, as on cpu/simd)
     allselhel[ievt] = 0;
-    // Nor does an id that names no flavor: normalise_output then sets its |M|^2 to NaN
-    if constexpr( !use_crossing )
-      if( iflavorVec[ievt] >= (unsigned int)nmaxflavor ) return;
+    // Nor does an id that names no flavor: normalise_output then sets its |M|^2
+    // to NaN, or to 0 for a crossing row past the table
+    if( !valid_flavor_id( iflavorVec[ievt] ) ) return;
     if constexpr( nampso > 1 )
     {
       if( sampleSignedHelicity )
@@ -775,9 +789,10 @@ namespace madmatrix
                        const int nevt )                   // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
   {
     const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread)
-    // An id that names no flavor (NaN |M|^2, see normalise_output) keeps the
-    // fallback channel and chooses no color, as a NaN event does on cpu/simd
-    const bool validFlavor = use_crossing || iflavorVec[ievt] < (unsigned int)nmaxflavor;
+    // An id that names no flavor (a NaN |M|^2, or 0 for a crossing row past the
+    // table, see normalise_output) keeps the fallback channel and chooses no
+    // color, as on cpu/simd
+    const bool validFlavor = valid_flavor_id( iflavorVec[ievt] );
     // SCALAR channelId for the current event (CUDA)
     unsigned int channelId = gpu_channelId( allChannelIds );
 
