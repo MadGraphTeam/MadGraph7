@@ -49,6 +49,11 @@ C     Crossing codes to scan. 1 (identity only) when the process
 C     was generated without crossing symmetry.
       INTEGER    NCROSS
       PARAMETER (NCROSS=%(hr_warmup_ncross)s)
+C     A row is good above LIMHEL/NCOMB of the helicity sum when
+C     every leg is massless (RELHEL). At these fixed energies a
+C     row suppressed by powers of m/E looks negligible while it
+C     is sizeable near threshold, so with a mass only an exact 0
+C     is dropped, as in the C++ scan (hel_massive).
       REAL*8     LIMHEL
       PARAMETER (LIMHEL=1D-12)
       REAL*8     ZERO
@@ -82,11 +87,11 @@ C     PMASSX: the masses of the process a crossing crosses into,
 C     slot by slot (its own leg order): its points are generated
 C     in its own frame
       REAL*8 PMASSX(NEXTERNAL)
-      REAL*8 SQRTS, T, ANS, TSARR(NCOMB)
-C     GOODHEL: the rows found above threshold at a sampled
-C     point; GOODOUT: GOODHEL closed over HMV, the rows that
-C     are baked.
-      LOGICAL GOODHEL(NCOMB), GOODOUT(NCOMB)
+      REAL*8 SQRTS, T, ANS, TSARR(NCOMB), RELHEL
+C     GOODHEL: the rows found above RELHEL at a sampled point;
+C     GOODREL: above LIMHEL (C-parity pairs compared there);
+C     GOODOUT: GOODHEL closed over HMV, the rows that are baked.
+      LOGICAL GOODHEL(NCOMB), GOODREL(NCOMB), GOODOUT(NCOMB)
 C     C-parity de-duplication. FLIP(I) is the row whose helicity
 C     configuration is the full negation of row I (an
 C     involution); CSYM stays true only while EVERY pair gave
@@ -122,6 +127,7 @@ C-----
       CALL %(proc_prefix)sRESET_ZEROAMP()
       DO I=1,NCOMB
         GOODHEL(I) = .FALSE.
+        GOODREL(I) = .FALSE.
       ENDDO
 
 C     FLIP is generated data (the C-parity partner of every
@@ -157,6 +163,8 @@ C         row; RAMBO would STOP the whole scan on it.
           IF (NINCOMING.EQ.1) THEN
             IF (PMASSX(1).LE.SUM(PMASSX(2:NEXTERNAL))) CYCLE
           ENDIF
+          RELHEL = LIMHEL
+          IF (ANY(PMASSX.NE.0D0)) RELHEL = 0D0
           DO ITRY=1, NPSUSE
             IF (NINCOMING.EQ.1) THEN
               SQRTS = PMASSX(1)
@@ -194,7 +202,8 @@ C             recycled calls.
               ANS = ANS + T
             ENDDO
             DO IHEL=1, NCOMB
-              IF (DABS(TSARR(IHEL)) .GT. ANS*LIMHEL/NCOMB) GOODHEL(IHEL)=.TRUE.
+              IF (DABS(TSARR(IHEL)) .GT. ANS*RELHEL/NCOMB) GOODHEL(IHEL)=.TRUE.
+              IF (DABS(TSARR(IHEL)) .GT. ANS*LIMHEL/NCOMB) GOODREL(IHEL)=.TRUE.
             ENDDO
 C           One mismatch anywhere permanently invalidates the C-parity
 C           reuse; the boosted points are compared too, so a pairing
@@ -249,13 +258,13 @@ C     the closure does not depend on how large they were there.
 C     Surviving C-parity pairs (representative first). The
 C     exporter drops the partner's amplitudes from the recycled
 C     matrix.f and copies the representative's |M|^2 into it
-C     instead. Only pairs found good at a sampled point, so that
-C     each pair was compared at least once: a row the closure
-C     added was below threshold everywhere and stays computed.
+C     instead. Only pairs above LIMHEL at a sampled point, so
+C     that each pair was compared at least once: a row kept only
+C     as non-zero or by the closure stays computed.
       IF (CSYM) THEN
         DO IHEL=1, NCOMB
-          IF (FLIP(IHEL).GT.IHEL .AND. GOODHEL(IHEL)
-     &        .AND. GOODHEL(FLIP(IHEL))) THEN
+          IF (FLIP(IHEL).GT.IHEL .AND. GOODREL(IHEL)
+     &        .AND. GOODREL(FLIP(IHEL))) THEN
             WRITE(*,*) 'CSYM PAIR: 1 ', IHEL, FLIP(IHEL)
           ENDIF
         ENDDO
