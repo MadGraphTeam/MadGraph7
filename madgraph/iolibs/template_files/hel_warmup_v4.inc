@@ -151,6 +151,12 @@ C     union over all of them.
             PMASSX(I) = PMASS(I)
           ENDDO
 %(hr_warmup_cross_mass)s
+C         A decay lighter than its products (a crossing
+C         into b~ > t~ e+ ve) has no physical point, so no
+C         row; RAMBO would STOP the whole scan on it.
+          IF (NINCOMING.EQ.1) THEN
+            IF (PMASSX(1).LE.SUM(PMASSX(2:NEXTERNAL))) CYCLE
+          ENDIF
           DO ITRY=1, NPSUSE
             IF (NINCOMING.EQ.1) THEN
               SQRTS = PMASSX(1)

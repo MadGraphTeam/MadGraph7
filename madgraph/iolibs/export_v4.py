@@ -9800,7 +9800,12 @@ C     fixed points first, so only the legs that must move do
             good_hels, bad_amps, bad_amps_perhel, csym_pairs = \
                 self._parse_hel_warmup(stdout)
             if not good_hels:
-                continue  # nothing measured -> keep the compute-all version
+                # A Fortran STOP (e.g. RAMBO below threshold) exits with
+                # status 0, so an empty measurement is the only sign of it.
+                logger.warning('hel_recycling warm-up found no good helicity '
+                    'in %s; keeping the compute-all matrix.f.\n%s', dirpath,
+                    stdout[-1500:])
+                continue
 
             bad_amps_perhel, csym_reuse, csym_dead = self._hel_recycling_csym(
                 csym_pairs, good_hels, bad_amps_perhel, info['ngraphs'])
