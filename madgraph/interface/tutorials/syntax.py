@@ -239,7 +239,12 @@ electroweak amplitude to interfere with, so its interference term is empty and
 the subprocess is gone: only the quark ones are left.
 
 **Side quest** -- two commands, and you see it instead of taking my word:
-%(p)s output standalone
+%(p)s output standalone --use_crossing=False
+
+(`--use_crossing=False` gives every subprocess a directory of its own. By
+default MG7 evaluates `q q~ > q q~` with the matrix element of `q q > q q`,
+of which it is a crossing, and writes no directory for it -- but its numbers
+are the ones worth looking at.)
 
 Either way, what carries on is the pure QCD term of the same process -- the
 first line of the table above, and worth generating for what it does to the
@@ -248,8 +253,8 @@ subprocess list:
 """ % {'counts': counts_line(interface), 'p': P, 'qcd': PURE_QCD},
      title='the interference is not in the diagrams',
      setup=_remember_counts,
-     hint="`output standalone` takes the side quest; `%s` carries on."
-          % PURE_QCD,
+     hint="`output standalone --use_crossing=False` takes the side quest; "
+          "`%s` carries on." % PURE_QCD,
      solution=PURE_QCD),
 
 Step('output', lambda interface: """
@@ -297,7 +302,7 @@ it asked for:
      title='side quest: the sign gives it away',
      hint="Nothing to do here -- `%s` picks the main line back up." % PURE_QCD,
      on_failure="`launch` needs a directory to run: write one first with "
-                "`output standalone`.",
+                "`output standalone --use_crossing=False`.",
      solution=PURE_QCD),
 
 Step('generate', lambda interface: """

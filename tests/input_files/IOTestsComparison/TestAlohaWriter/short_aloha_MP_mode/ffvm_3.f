@@ -26,7 +26,11 @@ P3(:) = -V3 % P (:)
   return
 endif
  TMP0 = (F1 % W(3)*(F2 % W(1)*(P3(0)+P3(3))+F2 % W(2)*(P3(1)-CI*(P3(2))))+F1 % W(4)*(F2 % W(1)*(P3(1)+CI*(P3(2)))+F2 % W(2)*(P3(0)-P3(3))))
-    denom = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 -CI* W3))
+    if (dble(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2).gt.0d0) then
+       denom = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 -CI* W3))
+    else
+       denom = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3**2)
+    endif
     V3%W(1)= denom*(-CI)*(F2 % W(1)*F1 % W(3)+F2 % W(2)*F1 % W(4)-P3(0)*OM3*TMP0)
     V3%W(2)= denom*(-CI)*(-F2 % W(2)*F1 % W(3)-F2 % W(1)*F1 % W(4)-P3(1)*OM3*TMP0)
     V3%W(3)= denom*(-CI)*(+CI*(F2 % W(2)*F1 % W(3))-CI*(F2 % W(1)*F1 % W(4))-P3(2)*OM3*TMP0)
@@ -62,7 +66,11 @@ P3(:) = -V3 % P (:)
   return
 endif
  TMP0 = (F1 % W(3)*(F2 % W(1)*(P3(0)+P3(3))+F2 % W(2)*(P3(1)-CI*(P3(2))))+F1 % W(4)*(F2 % W(1)*(P3(1)+CI*(P3(2)))+F2 % W(2)*(P3(0)-P3(3))))
-    denom = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 -CI* W3))
+    if (dble(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2).gt.0d0) then
+       denom = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 -CI* W3))
+    else
+       denom = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3**2)
+    endif
     V3%W(1)= denom*(-CI)*(F2 % W(1)*F1 % W(3)+F2 % W(2)*F1 % W(4)-P3(0)*OM3*TMP0)
     V3%W(2)= denom*(-CI)*(-F2 % W(2)*F1 % W(3)-F2 % W(1)*F1 % W(4)-P3(1)*OM3*TMP0)
     V3%W(3)= denom*(-CI)*(+CI*(F2 % W(2)*F1 % W(3))-CI*(F2 % W(1)*F1 % W(4))-P3(2)*OM3*TMP0)

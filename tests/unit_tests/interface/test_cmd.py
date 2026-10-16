@@ -24,6 +24,8 @@ import madgraph.interface.extended_cmd as ext_cmd
 import madgraph.various.misc as misc
 import os
 import logging
+import io
+import contextlib
 
 import tests.parallel_tests.test_aloha as test_aloha
 
@@ -964,6 +966,61 @@ class CheckDisplayWithoutProcessTest(unittest.TestCase):
         self.cmd.check_display(['processes'])   # must not raise
 
 
+class CrossingDisplayTest(unittest.TestCase):
+    """The crossed processes folded into a base (default --use_crossing) have no
+    amplitude of their own, yet are part of the generation: `display processes`
+    and the generation summary have to show them."""
+
+    def setUp(self):
+        import madgraph.interface.master_interface as cmd
+        self.cmd = cmd.MasterCmd()
+        self.cmd.do_import('model sm')
+
+    def _summary(self, line):
+        said = []
+        logger = logging.getLogger('cmdprint')
+        handler = logging.Handler()
+        handler.emit = lambda record: said.append(record.getMessage())
+        saved = (logger.handlers, logger.propagate, logger.level)
+        logger.handlers, logger.propagate = [handler], False
+        logger.setLevel(logging.INFO)
+        try:
+            self.cmd.exec_cmd(line, errorhandling=False, printcmd=False)
+        finally:
+            (logger.handlers, logger.propagate, logger.level) = saved
+        return [text for text in said if text.startswith('Total:')]
+
+    def _display(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.cmd.do_display('processes')
+        return out.getvalue()
+
+    def test_crossings_are_listed_and_counted(self):
+        total = self._summary('generate p p > w+ j')
+        self.assertEqual(total, ['Total: 1 processes with 2 diagrams (and 2 crossed '
+                                 'processes evaluated through them, see '
+                                 '"display processes")'])
+        text = self._display()
+        self.assertIn('Crossed processes evaluated through g Q > w+ Q:', text)
+        # a crossing and its beam swap are one entry, as a mirror process is
+        self.assertEqual(text.count('    Process: '), 2, text)
+        self.assertIn('_quark _anti_quark > w+ g', text)
+        self.assertIn('g _anti_quark > w+ _anti_quark', text)
+
+    def test_decay_chain_production_crossings(self):
+        self._summary('generate p p > z j, z > e+ e-')
+        text = self._display()
+        self.assertIn('Crossed processes evaluated through g Q > z Q:', text)
+        self.assertEqual(text.count('    Process: '), 2, text)
+
+    def test_nothing_is_added_without_crossing(self):
+        # the 1 + 2 processes the folded generation reports, each its own
+        total = self._summary('generate p p > w+ j --use_crossing=False')
+        self.assertEqual(total, ['Total: 3 processes with 6 diagrams'])
+        self.assertNotIn('Crossed', self._display())
+
+
 class RequiredSChannelErrorTest(unittest.TestCase):
     """A bad required s-channel has to be reported for what it is.
 
@@ -1040,3 +1097,121 @@ class DisplayInertCouplingOrderTest(unittest.TestCase):
         self.assertNotIn('inert', text)
         self.assertIn('QCD : weight = 1\n', text)
         self.assertIn('QED : weight = 2\n', text)
+
+
+class NoCrossingAliasTest(unittest.TestCase):
+    """'--no_crossing' (the MG5 3.x flag, which main still completes) is a
+    deprecated alias of '--use_crossing=False'.
+
+    Once do_add stopped popping it, it reached check_add as part of the
+    process definition: 'generate e+ e- > mu+ mu- --no_crossing' died with
+    'No particle --no_crossing in model'.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cmd = cmd.MasterCmd()
+        cls.cmd.do_import('model sm')
+
+    def test_it_is_popped_as_false(self):
+        args = ['p', '>', '--no_crossing']
+        with self.assertLogs('cmdprint', level='WARNING') as said:
+            self.assertIs(self.cmd.pop_use_crossing_flag(args), False)
+        self.assertEqual(args, ['p', '>'])
+        self.assertIn('--use_crossing=False', '\n'.join(said.output))
+
+    def test_a_generate_with_it_works(self):
+        with self.assertLogs('cmdprint', level='WARNING'):
+            self.cmd.exec_cmd('generate e+ e- > mu+ mu- --no_crossing')
+        self.assertEqual(len(self.cmd._curr_amps), 1)
+        self.assertFalse(self.cmd._use_crossing)
+
+
+class LaunchCopiesOnlyRunTimeSetsTest(unittest.TestCase):
+    """`launch -i` of an aMC@NLO or MadWeight output copies the MG5 `set`
+    history into the run interface it starts, and that run's check_set
+    rejects the generation-time zerowidth_tchannel.
+
+    MadGraphCmd.do_launch replayed every line with exec_cmd (which raises), so
+    `set zerowidth_tchannel False; generate p p > t t~ [QCD]; output X;
+    launch X -i` aborted there; only the aMC@NLO prompt's own launch skipped
+    it. The run interface is a stub around the real check_set, so no process
+    directory is needed.
+    """
+
+    history = ['import model sm',
+               'set zerowidth_tchannel False',
+               'set nb_core 4',
+               'generate p p > t t~ [QCD]',
+               'output PROC']
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cmd = cmd.MasterCmd()
+
+    def replayed(self, launch, mode, module, name, path='PROC'):
+        """The lines `launch` (a do_launch) sends to the run interface it
+        builds, with the run interface classes module.name and
+        module.nameShell (MasterCmd is a CmdShell) stubbed."""
+
+        from unittest import mock
+        import madgraph.interface.common_run_interface as common_run
+
+        sent = []
+
+        class _Run(common_run.CheckValidForCmd):
+            InvalidCmd = madgraph.InvalidCmd
+            _set_options = []
+
+            def __init__(self, me_dir, options):
+                self.options = dict(options)
+
+            def help_set(self):
+                pass
+
+            def pass_in_web_mode(self):
+                pass
+
+            def exec_cmd(self, line):
+                self.check_set(line.split()[1:])
+                sent.append(line)
+
+        def check_launch(args, options):
+            args[:] = [p for p in [mode, path] if p]
+
+        master = self.cmd
+        with mock.patch.object(master, 'check_launch', check_launch), \
+             mock.patch.object(master, 'history', list(self.history)), \
+             mock.patch.object(master, 'define_child_cmd_interface',
+                               lambda child: 'stop'), \
+             mock.patch.object(module, name, _Run), \
+             mock.patch.object(module, name + 'Shell', _Run):
+            self.assertEqual(launch(master, '%s -i' % path), 'stop')
+        return sent
+
+    def test_from_mg5_for_amcatnlo(self):
+        import madgraph.interface.madgraph_interface as mg_interface
+        import madgraph.interface.amcatnlo_run_interface as amcatnlo_run
+        sent = self.replayed(mg_interface.MadGraphCmd.do_launch, 'aMC@NLO',
+                             amcatnlo_run, 'aMCatNLOCmd')
+        self.assertEqual(sent, ['set nb_core 4'])
+
+    def test_from_mg5_for_madweight(self):
+        import madgraph.interface.madgraph_interface as mg_interface
+        import madgraph.interface.madweight_interface as madweight
+        sent = self.replayed(mg_interface.MadGraphCmd.do_launch, 'madweight',
+                             madweight, 'MadWeightCmd')
+        self.assertEqual(sent, ['set nb_core 4'])
+
+    def test_from_the_amcatnlo_prompt(self):
+        import shutil
+        import madgraph.interface.amcatnlo_interface as amcatnlo_interface
+        import madgraph.interface.amcatnlo_run_interface as amcatnlo_run
+        path = tempfile.mkdtemp(prefix='launch_replay')
+        try:
+            os.mkdir(pjoin(path, 'Events'))
+            sent = self.replayed(amcatnlo_interface.aMCatNLOInterface.do_launch,
+                                 None, amcatnlo_run, 'aMCatNLOCmd', path=path)
+        finally:
+            shutil.rmtree(path, ignore_errors=True)
+        self.assertEqual(sent, ['set nb_core 4'])

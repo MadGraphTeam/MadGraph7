@@ -53,7 +53,7 @@ namespace madmatrix
   int
   CPPProcess::flavorPDG( int iflavor, int ipar )
   {
-    return flavorPDGs[iflavor][ipar];
+%(flavorpdg_body)s
   }
 
   //--------------------------------------------------------------------------

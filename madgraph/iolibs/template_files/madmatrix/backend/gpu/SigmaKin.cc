@@ -58,6 +58,18 @@ namespace madmatrix
   static int cNGoodHel;
   static int cGoodHel[ncomb];
   __device__ __constant__ fptype cIPD[nIPD > 0 ? nIPD : 1];
+
+  // Crossing symmetry (ProcessTables::use_crossing, from --use_crossing), as on
+  // the cpu/simd backends: an event's flavor index is the EXTENDED id
+  // K*nmaxflavor + flav, K a row of the crossing table. One event per thread:
+  // calculate_jamps reads the thread's row once (the preamble of
+  // EvaluateDiagrams.inc) and evaluates the SAME base helicity row as every
+  // other thread, a leg that changed side being fed the opposite helicity with
+  // the opposite NSF flag (the same all-outgoing configuration). The crossings
+  // therefore share one good-helicity list, the union of their scans in
+  // sigmaKin_getGoodHel (it differs from the base's own only by the
+  // frame-dependent rows of a massive leg). No C-parity de-duplication on the
+  // GPU.
   __device__ __constant__ fptype cIPC[nIPC > 0 ? nIPC * 2 : 1];
   __device__ __constant__ int cIPF_partner1[ProcessTables::nMF * nIPF > 0 ? ProcessTables::nMF * nIPF : 1];
   __device__ __constant__ int cIPF_partner2[ProcessTables::nMF * nIPF > 0 ? ProcessTables::nMF * nIPF : 1];
@@ -122,6 +134,80 @@ namespace madmatrix
       return buffer[icol * nevt + ievt];
     }
   };
+
+  //--------------------------------------------------------------------------
+
+  // Initial-state spin*color average of the process crossing-table row
+  // `cross` crosses into; 0 for a row out of range, which normalise_output
+  // turns into a zero ME (as on cpu).
+  __device__ inline int
+  spincol_cross( int cross )
+  {
+    return ( cross >= 0 && cross < ncross ) ? xspincol_tab[cross] : 0;
+  }
+
+  // Identical-final-state factor of the crossed process: the device copy of
+  // backend/cpu ident_cross (see there).
+  __device__ int
+  ident_cross( int cross, int iflavor )
+  {
+    int perm[npar], ic[npar];
+    cross_pinv( cross, perm, ic );
+    int bpid[npar];
+    for( int k = 0; k < npar; k++ )
+      bpid[k] = ( ic[k] == 1 ) ? ids_base[perm[k]] : antipid_base[perm[k]];
+    bool used[npar];
+    for( int k = 0; k < npar; k++ ) used[k] = false;
+    int fact = ident_resonance;
+    for( int k = npari; k < npar; k++ )
+    {
+      if( used[k] || !countable_tab[perm[k]] ) continue;
+      int n = 1;
+      for( int l = k + 1; l < npar; l++ )
+      {
+        if( used[l] || !countable_tab[perm[l]] ) continue;
+        if( bpid[k] == bpid[l] && cFlavors[iflavor][perm[k]] == cFlavors[iflavor][perm[l]] )
+        {
+          used[l] = true;
+          n = n + 1;
+          fact = fact * n;
+        }
+      }
+    }
+    return fact;
+  }
+
+  // Reported (Fortran-indexed) helicity code of the base row `base_ihel`
+  // evaluated for this flavor id: the crossed process's own canonical code for
+  // a crossed event, the row+1 otherwise -- the device copy of backend/cpu
+  // selected_hel_code (see there for the convention).
+  __device__ inline int
+  selected_hel_code( int base_ihel, unsigned int flavor_id )
+  {
+    const int xcross = (int)( flavor_id / nmaxflavor );
+    if( xcross == 0 ) return base_ihel + 1;
+    if( xcross >= ncross ) return 0;
+    int xperm[npar], xic[npar];
+    cross_pinv( xcross, xperm, xic );
+    int code = 0;
+    for( int k = 0; k < npar; k++ )
+    {
+      // the base row's value, negated for a leg that changed side (xic -1)
+      const int val = (int)cHel[base_ihel][xperm[k]] * xic[k];
+      const int slot = xcross * npar + k; // this crossing's own states for slot k
+      int d = 0;
+      for( int dd = 0; dd < xhel_nhstate[slot]; dd++ )
+      {
+        if( xhel_states[slot * xhel_maxhel + dd] == val )
+        {
+          d = dd;
+          break;
+        }
+      }
+      code = code * xhel_nhstate[slot] + d;
+    }
+    return code + 1;
+  }
 
   //--------------------------------------------------------------------------
 
@@ -286,8 +372,15 @@ namespace madmatrix
     // Numerators for the current event (CUDA); denominators are no longer
     // accumulated here: they are derived as the sum of numerators later.
     fptype_amp_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
-    // Scalar iflavor for the current event
-    const unsigned int iflavor = F_ACCESS::kernelAccessConst( iflavorVec );
+    // Scalar iflavor for the current event. With crossing, the id is the extended
+    // K*nmaxflavor + flav: flav indexes cFlavors and the flavor masks, and the row
+    // K is applied by the preamble of EvaluateDiagrams.inc. Without crossing only
+    // an index below nmaxflavor names a flavor: any other one gets a NaN |M|^2 in
+    // normalise_output, and is evaluated as flavor 0 here only so that cFlavors is
+    // never read out of bounds.
+    const unsigned int iflavor_ext = F_ACCESS::kernelAccessConst( iflavorVec );
+    const unsigned int iflavor = use_crossing ? iflavor_ext % (unsigned int)nmaxflavor
+                                              : ( iflavor_ext < (unsigned int)nmaxflavor ? iflavor_ext : 0 );
 #include "EvaluateDiagrams.inc"
 #include "ColorFlows.inc" // defines jampflow_sv[ncolor_flow], which is not jamp_sv on the DDM basis
 
@@ -341,7 +434,10 @@ namespace madmatrix
     unsigned int hstFlavorVec[maxtry0] = {};
     unsigned int* devFlavorVec = nullptr;
     gpuMalloc( (void**)&devFlavorVec, maxtry * sizeof( unsigned int ) );
-    for( int iflav = 0; iflav < nmaxflavor; ++iflav )
+    // Crossing: every extended flavor id, i.e. every row of the crossing table
+    // times every flavor (as backend/cpu does), OR-ed into the one list.
+    constexpr int nscan = use_crossing ? ProcessTables::ncross * nmaxflavor : nmaxflavor;
+    for( int iflav = 0; iflav < nscan; ++iflav )
     {
     for( int i = 0; i < maxtry; ++i ) hstFlavorVec[i] = (unsigned int)iflav;
     gpuMemcpy( devFlavorVec, hstFlavorVec, maxtry * sizeof( unsigned int ), gpuMemcpyHostToDevice );
@@ -361,9 +457,7 @@ namespace madmatrix
       for( int ievt = 0; ievt < maxtry; ++ievt )
       {
         if( hstMEs[ievt] != 0 ) // NEW IMPLEMENTATION OF GETGOODHEL (#630): COMPARE EACH HELICITY CONTRIBUTION TO 0
-        {
           isGoodHel[ihel] = true;
-        }
       }
     }
     } // end loop over flavor combinations (per-flavor good-helicity union)
@@ -385,6 +479,8 @@ namespace madmatrix
         nGoodHel++;
       }
     }
+    // The helicity loop of sigmaKin, and the helicity stride of the jamp buffers
+    // (dcNGoodHel): the good helicities, the same list for every crossing.
     gpuMemcpyToSymbol( dcNGoodHel, &nGoodHel, sizeof( int ) );
     gpuMemcpyToSymbol( dcGoodHel, goodHel, ncomb * sizeof( int ) );
     cNGoodHel = nGoodHel;
@@ -454,7 +550,29 @@ namespace madmatrix
                     const fptype globaldenom )
   {
     const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread)
-    allMEs[ievt] = allMEs[ievt] * broken_symmetry_factor( iflavorVec[ievt] ) / globaldenom;
+    // Without crossing, an event whose flavor index is not a row of cFlavors was
+    // evaluated as flavor 0 by calculate_jamps. Flavor 0 stands in for it here too,
+    // so that broken_symmetry_factor never reads out of bounds, and its outputs are
+    // then overwritten with NaN, which cannot pass for a valid matrix element.
+    // With crossing every id is valid: the crossed denominator is rebuilt per
+    // event, as on cpu -- row 0 keeps the IDEN/BROKEN_SYM path, a crossed row
+    // takes the crossed initial-state spin*color times the identical-final-state
+    // factor of the actual flavors, and a row out of the table gives 0.
+    const unsigned int fid = iflavorVec[ievt];
+    const bool validFlavor = use_crossing || fid < (unsigned int)nmaxflavor;
+    if constexpr( use_crossing )
+    {
+      const int dcr = (int)( fid / (unsigned int)nmaxflavor );
+      const int dfl = (int)( fid % (unsigned int)nmaxflavor );
+      if( dcr == 0 )
+        allMEs[ievt] = allMEs[ievt] * broken_symmetry_factor( dfl ) / globaldenom;
+      else if( spincol_cross( dcr ) == 0 )
+        allMEs[ievt] = 0; // no such crossing-table row -> ME 0
+      else
+        allMEs[ievt] = allMEs[ievt] / ( (fptype)spincol_cross( dcr ) * (fptype)ident_cross( dcr, dfl ) );
+    }
+    else
+      allMEs[ievt] = allMEs[ievt] * broken_symmetry_factor( validFlavor ? (int)fid : 0 ) / globaldenom;
     if( storeChannelWeights ) // fix segfault #892 (not 'channelIds[0] != 0')
     {
       // The numerators have already been accumulated over all good helicities in place (atomicAdd in
@@ -480,6 +598,13 @@ namespace madmatrix
         allMEs[ievt] *= numerators[channelId - 1] / ( denominator + fptypeMin );
       }
     }
+    if( !validFlavor )
+    {
+      // Plain stores, nothing computed with the NaN afterwards: the denominator
+      // turns every channel weight (amp2) of the event into a NaN as well.
+      allMEs[ievt] = (fptype)nan( "" );
+      if( storeChannelWeights ) allDenominators[ievt] = (fptype_amp)nan( "" );
+    }
   }
 
   //--------------------------------------------------------------------------
@@ -489,6 +614,7 @@ namespace madmatrix
                       const fptype* allrndhel,          // input: random numbers[nevt] for helicity selection
                       fptype* ghelAllMEs,               // input/tmp: allMEs for nGoodHel <= ncomb individual/runningsum helicities (index is ighel)
                       fptype* allMEs,                   // output: allMEs[nevt], final sum over helicities
+                      const unsigned int* iflavorVec,   // input: flavor ids (crossing: the row of each helicity index is the event's own)
                       const int nevt,                   // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
                       const bool sampleSignedHelicity ) // input: see sigmaKin
   {
@@ -519,7 +645,12 @@ namespace madmatrix
           absSum += fabs( t );
           if( allrndhel[ievt] < absSum / absTotal ) break; // the last ratio is exactly 1
         }
-        allselhel[ievt] = dcGoodHel[ighelLast] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+        // The reported code as in the positive case below: with crossing the
+        // event's own crossed code
+        if constexpr( use_crossing )
+          allselhel[ievt] = selected_hel_code( dcGoodHel[ighelLast], iflavorVec[ievt] );
+        else
+          allselhel[ievt] = dcGoodHel[ighelLast] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
         allMEs[ievt] = copysign( absTotal, ghelAllMEs[ighelLast * nevt + ievt] );
         return;
       }
@@ -530,13 +661,21 @@ namespace madmatrix
       allMEs[ievt] += ghelAllMEs[ighel * nevt + ievt];
       ghelAllMEs[ighel * nevt + ievt] = allMEs[ievt]; // reuse the buffer to store the running sum for helicity selection
     }
-    // Event-by-event random choice of helicity #403
+    // Event-by-event random choice of helicity #403. With crossing, the reported
+    // code is the crossed one (selected_hel_code). An event with a zero or NaN
+    // |M|^2 (including a crossing row out of the table) keeps the 0 set above.
     for( int ighel = 0; ighel < dcNGoodHel; ighel++ )
     {
       if( allrndhel[ievt] < ( ghelAllMEs[ighel * nevt + ievt] / allMEs[ievt] ) )
       {
-        const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
-        allselhel[ievt] = ihelF;
+        if constexpr( use_crossing )
+          allselhel[ievt] = selected_hel_code( dcGoodHel[ighel], iflavorVec[ievt] );
+        else
+        {
+          (void)iflavorVec;
+          const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+          allselhel[ievt] = ihelF;
+        }
         break;
       }
     }
@@ -723,7 +862,7 @@ namespace madmatrix
       // (3) Wait for all helicity streams to complete, then finally compute the ME sum over all helicities and choose one helicity and one color
     }
     // Event-by-event random choice of helicity #403 and ME sum over helicities (defer this after the helicity loop to avoid breaking streams parallelism)
-    gpuLaunchKernelStream( add_and_select_hel, gpublocks, gputhreads, stream, allselhel, allrndhel, ghelAllMEs, allMEs, gpublocks * gputhreads, sampleSignedHelicity );
+    gpuLaunchKernelStream( add_and_select_hel, gpublocks, gputhreads, stream, allselhel, allrndhel, ghelAllMEs, allMEs, iflavorVec, gpublocks * gputhreads, sampleSignedHelicity );
 
     gpuLaunchKernelStream( normalise_output, gpublocks, gputhreads, stream, allMEs, iflavorVec, ghelAllNumerators, ghelAllDenominators, allChannelIds, storeChannelWeights, mulChannelWeight, helcolDenominators[0] );
 

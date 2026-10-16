@@ -141,6 +141,9 @@ namespace
     helicity_random[i_event] = helicity_random_in ? helicity_random_in[i_in + offset] : 0.5;
     color_random[i_event] = color_random_in ? color_random_in[i_in + offset] : 0.5;
     g_s[i_event] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_in + offset] ) : 1.2177157847767195;
+    // With crossing, an extended id K*nmaxflavor + flav (K a row of the crossing
+    // table) is evaluated as that crossing by sigmaKin; one past the table gets a
+    // zero |M|^2, as on cpu.
     flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_in + offset] : 0;
   }
 
@@ -478,6 +481,10 @@ extern "C"
       // events): ghel_jamps, whose size does not depend on ncolor_flow and nampso
       initialize(
         momenta, couplings, flavor_indices, matrix_elements, ghel_jamps, numerators, denominators, rounded_count );
+      // the good helicities reach dcGoodHel/dcNGoodHel through copies from pageable host
+      // memory, which may return before the device holds them: wait for them before the
+      // kernels of sigmaKin, on a stream that does not synchronise with the default one
+      checkGpu( gpuDeviceSynchronize() );
       instance->initialized = true;
     }
 
