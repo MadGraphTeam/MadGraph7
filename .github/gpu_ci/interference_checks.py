@@ -7,7 +7,7 @@ Any CPU backend (scalar, simd_128, ...) works too, to try the script without a G
 1. standalone ``u u~ > u u~`` with QED^2==0, ==2, ==4 and <=4, FPTYPE=d, at the classic
    RAMBO point (1000 GeV) of check_sa.exe:
    - QED^2==2, the QCD x EW interference alone, is the Fortran split-order value
-     -5.5828746494657265e-02 (an unmasked colour sum would give the total, +2.776);
+     -5.5828747824035893e-02 (an unmasked colour sum would give the total, +2.776);
    - the three components add up to the QED^2<=4 total of the same build: this pins the
      pair loop of the colour sum (all ORDERED pairs of amplitude orders, not a triangle);
    and QED^2==2 again with FPTYPE=m (colour algebra in single precision).
@@ -44,8 +44,9 @@ import time
 GPU_BACKENDS = ('cuda', 'hip')
 
 # u u~ > u u~ QED^2==2 at the check_sa RAMBO point, from the Fortran split-order
-# standalone (madmatrix CPU: -5.5828746494657258e-02)
-UUX_INTERFERENCE = -5.5828746494657265e-02
+# standalone (madmatrix CPU simd_128: -5.5828747824035928e-02); the t-channel Z has
+# no width (zerowidth_tchannel, the default: -5.5828746494657265e-02 with it)
+UUX_INTERFERENCE = -5.5828747824035893e-02
 # mg7 p p > u u~ QCD^2==2, fixed scale 91.188 GeV, NNPDF23_lo_as_0130_qed, default cuts:
 # three CPU runs of 200k events (tests/acceptance_tests/test_mg7_interference.py)
 UUX_MG7_CROSS, UUX_MG7_ERROR = -12253., 10.

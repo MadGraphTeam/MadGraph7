@@ -283,6 +283,24 @@ class CrossingTable(object):
             out.append(factor)
         return out
 
+    def beam_helicities(self, hel_part):
+        """Helicity-state count of each initial leg of the dependent process
+        served by each row, flattened K*2 + beam (beam two is 1 for a 1->N
+        process, 0 for an invalid row): `hel_part[slot]` is the count of base
+        leg `slot`. A crossing that moves a massive vector or a scalar into
+        the initial state changes the helicity average, which a single
+        helicity of the crossed process has to undo."""
+        out = []
+        for K, row in enumerate(self.rows):
+            for k in range(2):
+                if K in self.invalid:
+                    out.append(0)
+                elif k < self.ninitial:
+                    out.append(hel_part[row.D[k]])
+                else:
+                    out.append(1)
+        return out
+
     def flat(self, attr, offset=0):
         """The `attr` ('D', 'B', 'SD' or 'SB') of every row, flattened
         K*NEXTERNAL + slot, with `offset` added (1 for fortran slot numbers,

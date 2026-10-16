@@ -16,14 +16,14 @@ C     filter and SMATRIXHEL select on.
       SUBROUTINE %(proc_prefix)sSMATRIXHEL(P, HEL, FLAV_IDX, ANS)
 C     Matrix element restricted to a single helicity
 C     configuration, rescaled by HELAVGFACTOR exactly like the
-C     standard standalone. HEL is the CANONICAL mixed-radix
+C     standard standalone. HEL is the canonical mixed-radix
 C     helicity code (what the standard SMATRIX compares against
-C     HELALLOW), not a row index: NHEL(0,K) gives the row K had
-C     in the full pre-recycling enumeration, and HELALLOW turns
-C     that row into its code. The two coincide for an
-C     unpolarized process (HELALLOW is then 1..NCOMBFULL) but
-C     not when a polarization restriction selects a subset of
-C     the codes.
+C     HELALLOW): NHEL(0,K) gives the row K had in the full
+C     pre-recycling enumeration, and HELALLOW turns that row
+C     into its code. The radix runs over the same per-leg lists
+C     as that enumeration, a polarization restriction included,
+C     so HELALLOW is 1..NCOMBFULL and the code IS the row the
+C     caller (e.g. the reweighting) passes.
       IMPLICIT NONE
       INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
@@ -59,6 +59,11 @@ C ----------
 C BEGIN CODE
 C ----------
       ANS = 0D0
+C     HEL=-1: no helicity chosen, sum them (as USERHEL=-1)
+      IF (HEL.EQ.-1) THEN
+        CALL %(proc_prefix)sSMATRIX(P, FLAV_IDX, ANS)
+        RETURN
+      ENDIF
 %(hr_helcheck)s
       CALL %(proc_prefix)sGET_FLAVOR(FLAV_IDX, FLAVOR)
       DO K = 1, NEXTERNAL
@@ -168,7 +173,7 @@ C        IS_BORN_HEL_SELECTED, evaluated on the recycled table).
 %(hr_iden_line)s
       DO L = 1, NINITIAL
          IF (POLARIZATIONS(L,0).NE.-1) THEN
-            ANS = ANS * BEAMS_HELAVGFACTOR(L)
+            ANS = ANS * %(hr_helavg_beam)s
             ANS = ANS / POLARIZATIONS(L,0)
          ENDIF
       ENDDO

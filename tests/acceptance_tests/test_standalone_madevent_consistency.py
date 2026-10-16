@@ -18,6 +18,7 @@ from __future__ import absolute_import
 import os
 import re
 import shutil
+import struct
 import subprocess
 import tempfile
 import unittest
@@ -403,7 +404,6 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
                                'degenerate: the reference of %s is 0'
                                % (lane[3],))
 
-        self._lift_check_sa_flavor_cap(pdir)
         for blas_label, make_args in self.CPPBLAS_VARIANTS:
             if not self._build_check_sa(pdir, make_args):
                 self.skipTest('cannot build check_sa.exe (CPPBLAS=%s)'
@@ -837,57 +837,31 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
             ['make', '-j2'] + list(make_args) + ['check_sa.exe'], pdir)
         return rc == 0
 
-    # The CPU branch of run_perf_mode, where the per-event flavor ids are set
-    _FLVVEC_FROM = '    std::vector<unsigned int> flvVec( nevt, flavorID );\n#endif\n'
-    _FLVVEC_TO = (
-        '    std::vector<unsigned int> flvVec( nevt, flavorID );\n'
-        '    if( const char* mgfl = getenv( "MG_FLVLIST" ) )\n'
-        '    {\n'
-        '      std::vector<unsigned int> mgids;\n'
-        '      std::istringstream mgin( mgfl );\n'
-        '      std::string mgtok;\n'
-        '      while( std::getline( mgin, mgtok, \',\' ) ) mgids.push_back( (unsigned int)std::stoul( mgtok ) );\n'
-        '      for( unsigned int ievt = 0; ievt < nevt; ievt++ ) flvVec[ievt] = mgids[ievt % mgids.size()];\n'
-        '    }\n'
-        '#endif\n')
-
-    def _lift_check_sa_flavor_cap(self, pdir):
-        """Patch the shipped check_sa.cc (before _build_check_sa) so that,
-        with MG_FLVLIST=id0,id1,... set, it takes a different flavor id per
-        event: event i gets id[i % n]. (The shipped flavorID cap already
-        admits the extended ids of the crossing table.)"""
-        check = pjoin(pdir, 'check_sa.cc')
-        with open(check) as fsock:
-            src = fsock.read()
-        for old, new in ((self._FLVVEC_FROM, self._FLVVEC_TO),):
-            self.assertEqual(src.count(old), 1,
-                             'check_sa.cc changed, cannot patch %r' % old)
-            src = src.replace(old, new)
-        with open(check, 'w') as fsock:
-            fsock.write(src)
-
     def _run_check_sa_lanes(self, pdir, lanes):
-        """Per-event |M|^2 of the patched check_sa.exe for `lanes`, a list of
+        """Per-event |M|^2 of check_sa.exe for `lanes`, a list of
         (flavor id, momenta): event i is lanes[i % len(lanes)], over enough
         events to fill whole SIMD pages (two of them in mixed precision) on
-        any vector width."""
+        any vector width. The per-event (extended) flavor ids go through
+        check_sa's --flavors file."""
         nevt = 32 * ((len(lanes) + 31) // 32)
         lhe = pjoin(pdir, 'lanes.lhe')
         self._write_lhe_points(
             lhe, [lanes[ievt % len(lanes)][1] for ievt in range(nevt)])
-        env = dict(os.environ,
-                   MG_FLVLIST=','.join(str(lane[0]) for lane in lanes))
+        ids = [lanes[ievt % len(lanes)][0] for ievt in range(nevt)]
+        flv = pjoin(pdir, 'lanes.flv')
+        with open(flv, 'wb') as fsock:
+            fsock.write(struct.pack('<%dI' % nevt, *ids))
         output = subprocess.Popen(
-            ['./check_sa.exe', 'perf', '-v', '-f', str(lanes[0][0]),
+            ['./check_sa.exe', 'perf', '-v', '--flavors', flv,
              '-e', lhe, '1', str(nevt), '1'],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            cwd=pdir, env=env).communicate()[0].decode()
+            cwd=pdir).communicate()[0].decode()
         values = [float(value) for value in
                   re.findall(r'Matrix element =\s*([-\d.eE+]+)', output)]
         self.assertEqual(len(values), nevt,
                          'expected %d matrix elements from check_sa.exe in %s '
                          '(flavor ids %s), got:\n%s'
-                         % (nevt, pdir, env['MG_FLVLIST'], output))
+                         % (nevt, pdir, sorted(set(ids)), output))
         return values
 
     def _run_standalone_mg7(self, process, phase_space, ref_rows):

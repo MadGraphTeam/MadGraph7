@@ -257,6 +257,25 @@ class IOExportV4IOTest(IOTests.IOTestManager,
             'CALL %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P_USER,USERHEL,IC,BORNBUFF(0))',
             read('loop_optimized', 'loop_matrix_standalone.inc'))
 
+    def test_crossed_get_all_inter_takes_nhel_in_caller_order(self):
+        """GET_ALL_INTER_IDX (and its split-order twin
+        GET_ALL_INTER_SUMSO_IDX) take P, POS and NHEL in the caller's leg
+        order at a crossed FLAV_IDX: base slot I gets NHEL(PERM(I)), with no
+        sign, after APPLY_CROSSING (which leaves the helicity slots alone).
+        Uncrossed, PERM is the identity."""
+        snippet = export_v4.ProcessExporterFortranSA.CROSSING_SNIPPETS[
+            'allinter_cross_apply']
+        so = open(pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files',
+                        'matrix_standalone_splitOrders_crossing_v4.inc')).read()
+        so = so.split('GET_ALL_INTER_SUMSO_IDX(')[1].split('\n      END\n')[0]
+        for text in (snippet, so):
+            self.assertIn('NHELUSE(I) = NHEL(PERM(I))', text)
+            self.assertNotIn('SGN(I)*NHEL', text)
+            self.assertLess(text.index('APPLY_CROSSING('),
+                            text.index('NHELUSE(I) = NHEL(PERM(I))'))
+            self.assertLess(text.index('GET_CROSS_PERM('),
+                            text.index('NHELUSE(I) = NHEL(PERM(I))'))
+
     def test_matchbox_drivers_use_the_matrix_element_prefix(self):
         """check_sa.f calls the matrix element by name, and matchbox renames
         every routine after the process id -- ignoring the --prefix a caller
@@ -319,7 +338,8 @@ class IOExportV4IOTest(IOTests.IOTestManager,
             # fill_crossing_replace_dict_so -- the crossing machinery.
             for marker in ('DECODE_HEL', 'FILL_NHEL', '%(hel_allow_data)s',
                            '%(flip_data)s', 'GET_NHEL_IDX', 'GET_DENSITY',
-                           'GET_ALL_INTER', '%(so_crossing_routines)s',
+                           'GET_ALL_INTER', 'GET_ALL_INTER_SUMSO',
+                           '%(so_crossing_routines)s',
                            '%(so_pdg_function)s', '%(so_cross_decode)s'):
                 self.assertTrue(
                     sa.matrix_template_provides(self.mymatrixelement, marker),
@@ -333,9 +353,13 @@ class IOExportV4IOTest(IOTests.IOTestManager,
             self.assertTrue(
                 sa.matrix_template_has_pdg_decoder(self.mymatrixelement))
 
-            # Left out on purpose. The _IDX / _CROSSED / RESCALE density stack
-            # takes a crossing-carrying index the FLAVOR-array entry points
-            # cannot express -- the density here stays uncrossed. HELCODE
+            # Left out of the template on purpose. Its FLAVOR-array density
+            # stack stays uncrossed; the crossing-aware one (GET_DENSITY_IDX,
+            # GET_ALL_INTER_SUMSO_IDX, GET_INTER_RESCALE, through which the
+            # f2py PDG dispatch reaches a folded crossed subprocess) is only
+            # appended to so_crossing_routines, from
+            # matrix_standalone_splitOrders_crossing_v4.inc, when crossing is
+            # on -- an uncrossed FKS/MadLoop born never gets it. HELCODE
             # because the external helicity label is the row number, which is
             # what MadLoop passes. ENCODE_HEL because nothing anywhere calls
             # it. The default template's own crossing holes because this one
@@ -10990,6 +11014,90 @@ class OptimiseJampTest(unittest.TestCase):
         return list(zip(left_of, right_of, ratio_of))
 
 
+class HelstateDataPolarizationTest(unittest.TestCase):
+    """The canonical helicity code of _helstate_data must be the row number.
+
+    The code is a mixed-radix integer over per-leg helicity lists; the row is
+    the position in get_helicity_matrix(). Madevent stores the row it sampled
+    and decodes the event's helicities (and the EVA beam helicity) from these
+    tables, and every standalone caller asks for a row. With a radix over the
+    FULL particle states the two differed as soon as one leg was polarized,
+    so p p > w+{0} j wrote W+ helicity -1 in most of its events.
+    """
+
+    def setUp(self):
+        import models.import_ufo
+        self.exporter = export_v4.ProcessExporterFortranSA()
+        # keyed on the lepton id: with flavour grouping the electron is a
+        # member of the merged lepton group 82, and only that id has vertices
+        self.models = {
+            11: models.import_ufo.import_model(
+                    'sm', options={'apply_flavor_grouping': False}),
+            82: models.import_ufo.import_model('sm')}
+
+    def matrix_element(self, w_plus_polarization, lepton):
+        """l+ l- > w+ w-, the W+ restricted to `w_plus_polarization`."""
+        legs = base_objects.LegList()
+        for i, (pid, pol) in enumerate([(-lepton, []), (lepton, []),
+                                        (24, w_plus_polarization), (-24, [])], 1):
+            legs.append(base_objects.Leg({'id': pid, 'state': i > 2,
+                                          'number': i, 'polarization': pol}))
+        process = base_objects.Process({'legs': legs,
+                                        'model': self.models[lepton]})
+        return helas_objects.HelasMatrixElement(
+                                         diagram_generation.Amplitude(process))
+
+    @staticmethod
+    def data_values(text):
+        """The values of each DATA statement in `text`, one list per statement
+        (continuation lines included)."""
+        statements = re.split(r'\n(?=\s*DATA )', text.strip())
+        return [[int(v) for v in re.findall(r'-?\d+', stmt.split('/', 1)[1])]
+                for stmt in statements]
+
+    def tables(self, matrix_element):
+        data = self.exporter._helstate_data(matrix_element)
+        nhstate = self.data_values(data['nhstate_data'])[0]
+        states = self.data_values(data['states_data'])
+        helallow = self.data_values(data['hel_allow_data'])[0]
+        return nhstate, states, helallow
+
+    @staticmethod
+    def decode(code, nhstate, states):
+        """What DECODE_HEL / madevent's GET_NHEL do: last leg fastest."""
+        rest, config = code - 1, [0] * len(nhstate)
+        for k in reversed(range(len(nhstate))):
+            config[k] = states[k][rest % nhstate[k]]
+            rest //= nhstate[k]
+        return config
+
+    def check_code_is_row(self, matrix_element):
+        nhstate, states, helallow = self.tables(matrix_element)
+        rows = [list(row) for row in matrix_element.get_helicity_matrix()]
+        self.assertEqual(helallow, list(range(1, len(rows) + 1)))
+        for i, row in enumerate(rows, 1):
+            self.assertEqual(self.decode(i, nhstate, states), row,
+                             'row %d does not decode to itself' % i)
+        return nhstate
+
+    def test_polarized_leg_radix_is_its_restriction(self):
+        for lepton in (11, 82):
+            # {0}: the W+ digit has a single state, so 2*2*1*3 = 12 rows
+            self.assertEqual(
+                self.check_code_is_row(self.matrix_element([0], lepton)),
+                [2, 2, 1, 3])
+            # {T}: two of the three massive-vector states
+            self.assertEqual(
+                self.check_code_is_row(self.matrix_element([-1, 1], lepton)),
+                [2, 2, 2, 3])
+
+    def test_unpolarized_tables_unchanged(self):
+        for lepton in (11, 82):
+            self.assertEqual(
+                self.check_code_is_row(self.matrix_element([], lepton)),
+                [2, 2, 3, 3])
+
+
 class F2PYSplitterFlavorOrderTest(unittest.TestCase):
     """all_matrix.f has to repair a leg ordering FLAV_TABLE does not tabulate.
 
@@ -11016,11 +11124,20 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    def write(self, merged_particles):
+    def write(self, merged_particles, split_orders=False, crossed_rows=(),
+              output_options=None):
         """Run write_f2py_splitter for a single `q q > z q q` matrix element
         (5 legs, 2 incoming, 12 tabulated flavors) and return all_matrix.f with
-        the fortran continuations folded back into single lines."""
-        exporter = export_v4.ProcessExporterFortranSA(self.tmpdir)
+        the fortran continuations folded back into single lines. crossed_rows
+        are the crossing-table rows of folded crossed subprocesses."""
+        exporter = export_v4.ProcessExporterFortranSA(
+            self.tmpdir, opt={'output_options': dict(output_options or {})})
+        if split_orders:
+            exporter.split_order_prefixes.add('M0_')
+        if crossed_rows:
+            exporter.crossing_records['M0_'] = (
+                list(crossed_rows), True,
+                dict((K, list(range(5))) for K in crossed_rows))
         exporter.model = self.FakeModel({'merged_particles': merged_particles,
                                          'parameters': {('external',): []},
                                          'running_elements': []})
@@ -11044,22 +11161,88 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
         self.assertEqual(len(calls), 3)
         for call in calls:
             self.assertIn('M0_GET_FLAVOR_INDEX,M0_GET_FLAVOR,5,2,12', call)
-        # the density wrapper freezes the legs whose helicity is an open
-        # index of rho (POS); smatrixhel has no such leg.
-        self.assertEqual(len([c for c in calls
-                              if 'N_CHANGING,POS,.TRUE.' in c]), 1)
-        # smatrixhel also disarms the repair when a single helicity row was
-        # asked for: that row names the legs by position. So does
-        # get_all_inter, whose NHEL fixes every other leg by position.
-        self.assertEqual(len([c for c in calls
-                              if '0,MS_NOFROZEN,NHEL.LT.1' in c]), 1)
-        self.assertEqual(len([c for c in calls
-                              if 'N_CHANGING,POS,.FALSE.' in c]), 1)
+        # no leg is frozen: every per-leg datum moves with its leg instead
+        for call in calls:
+            self.assertIn('M0_GET_FLAVOR,5,2,12,.TRUE.,FLAVOR,LPDGS,', call)
+        self.assertNotIn('NOFROZEN', text)
+        # the density's and get_all_inter's open legs (POS) follow their
+        # legs, in the caller's order, so rho is not permuted; an ordering
+        # still unresolved is a miss (crossed fallback, then NaN), never a
+        # silent 0
+        flat = re.sub(r'\s+', ' ', text)
+        posfix = ('DO I = 1, N_CHANGING POSFIX(I) = POS(I) DO J = 1, NPDG'
+                  ' IF (LEGOF(J).EQ.POS(I)) POSFIX(I) = J ENDDO ENDDO'
+                  ' IF (M0_GET_FLAVOR_INDEX(FLAVOR).EQ.0) THEN'
+                  ' FOUND = .FALSE. ELSE CALL M0_GET_')
+        self.assertEqual(flat.count(posfix), 2)
+        self.assertIn('INTEGER POSFIX(N_CHANGING), J', text)
+        # smatrixhel repairs a request for one helicity code too: the code
+        # is re-keyed through the same permutation (FLAVOR_ORDER_HEL), read
+        # in this ME's helicity table (32 codes), so each helicity stays on
+        # its leg.
+        self.assertNotIn('NHEL.LT.1', text)
+        self.assertEqual(text.count('SUBROUTINE FLAVOR_ORDER_HEL('), 1)
+        self.assertIn('NHELFIX = NHEL IF (NHEL.GE.1) THEN CALL'
+                      ' M0_GET_NHEL_IDX(M0_GET_FLAVOR_INDEX(FLAVOR), FRDEN,'
+                      ' FRTAB) CALL FLAVOR_ORDER_HEL(NHEL, 5, 32, FRTAB, LEGOF,'
+                      ' NHELFIX) ENDIF CALL M0_SMATRIXHEL(PFIX, NHELFIX,',
+                      re.sub(r'\s+', ' ', text))
+        self.assertIn('INTEGER FRTAB(160), FRDEN, NHELFIX', text)
+        # every call reports where each leg went
+        for call in calls:
+            self.assertTrue(call.endswith('P,PFIX,LEGOF)'), call)
         # and every matrix element is handed the repaired momenta, not P
         for callee in ('M0_SMATRIXHEL(', 'M0_GET_DENSITY(', 'M0_GET_ALL_INTER('):
             self.assertIn('CALL %sPFIX' % callee, text)
-        # GET_ALL_INTER takes NHEL second (and overwrites its POS entries)
-        self.assertIn('CALL M0_GET_ALL_INTER(PFIX, LNHEL, POS,', text)
+        self.assertIn('CALL M0_GET_DENSITY(PFIX, POSFIX,', text)
+        # GET_ALL_INTER takes NHEL second, by leg position: the helicities
+        # follow their legs (and its POS entries may be overwritten)
+        self.assertIn('DO I = 1, NPDG HFIX(I) = LNHEL(LEGOF(I)) ENDDO'
+                      ' DO I = 1, N_CHANGING POSFIX(I) = POS(I)', flat)
+        self.assertIn('CALL M0_GET_ALL_INTER(PFIX, HFIX, POSFIX,', flat)
+
+    def test_per_process_f2py_entries_are_optional(self):
+        """The combined f2py_wrapper.f carries every subprocess' own
+        PY_<prefix>* entry points unless --f2py_per_process=False, which
+        MadSpin uses: f2py's build time grows faster than linearly with the
+        routines of one module, and the dispatching entries are all it needs."""
+        pdir = os.path.join(self.tmpdir, 'SubProcesses', 'P1_qq_zqq')
+        os.mkdir(pdir)
+        with open(os.path.join(pdir, 'f2py_matrix_wrapper.f'), 'w') as fsock:
+            fsock.write('      SUBROUTINE PY_M0_GET_FLAVOR_LAYOUT()\n'
+                        '      END\n')
+        wrapper = os.path.join(self.tmpdir, 'SubProcesses', 'f2py_wrapper.f')
+        for options, kept in (({}, True),
+                              ({'f2py_per_process': 'True'}, True),
+                              ({'f2py_per_process': 'False'}, False)):
+            self.write({81: [1, 2, 3, 4]}, output_options=options)
+            text = open(wrapper).read()
+            self.assertEqual('PY_M0_GET_FLAVOR_LAYOUT' in text, kept)
+            # the dispatching entry points are always there
+            for name in ('SMATRIXHEL(', 'SMATRIXHEL_IDX(', 'PY_GET_DENSITY(',
+                         'PY_GET_ALL_INTER('):
+                self.assertIn('SUBROUTINE ' + name, text)
+
+    def test_pdg_dispatch_checks_npdg_for_one_multiplicity(self):
+        """A PDGS array longer or shorter than the process is a miss (NaN
+        and an ERROR line) on every path. With a single multiplicity the
+        PDG branches used to be written without the NPDG test, so an
+        oversized array matched on its leading codes (only those are copied
+        into LPDGS), while the folded-crossing fallback refused it."""
+        for merged in ({81: [1, 2, 3, 4]}, {}):
+            text = self.write(merged, crossed_rows=(2,))
+            for entry in ('F77_SMATRIXHEL(', 'F77_DENSITY(',
+                          'F77_GET_ALL_INTER('):
+                body = text[text.index('SUBROUTINE ' + entry):]
+                body = body[:body.index('\n END\n')]
+                self.assertEqual(body.count('IF (NPDG.EQ.5)THEN'), 1, entry)
+                # the guard wraps the PDG branches; any other NPDG is a miss
+                guard = body.index('IF (NPDG.EQ.5)THEN')
+                self.assertLess(guard, body.index('81.EQ.LPDGS(1)'), entry)
+                self.assertRegex(re.sub(r'\s+', ' ', body[guard:]),
+                                 r'ELSE FOUND = \.FALSE\. ENDIF'
+                                 r' IF \(\.NOT\.FOUND\) CALL F77_NO_PROCESS',
+                                 entry)
 
     def test_nothing_changes_without_merged_particles(self):
         """No merged particle means one all-ones flavor per ME and no ordering
@@ -11070,3 +11253,88 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
         for callee in ('M0_SMATRIXHEL(', 'M0_GET_DENSITY(', 'M0_GET_ALL_INTER('):
             self.assertIn('CALL %sP' % callee, text)
         self.assertIn('CALL M0_GET_ALL_INTER(P, LNHEL, POS,', text)
+
+    def test_folded_crossing_reaches_density_and_get_all_inter(self):
+        """py_get_density / py_get_all_inter fall back to the folded
+        crossings when no PDG branch matches, as smatrixhel does, through
+        GET_DENSITY_IDX / GET_ALL_INTER_IDX (GET_ALL_INTER_SUMSO_IDX for a
+        split-order matrix element) at the extended index, handing over the
+        caller's NHEL copy; a miss everywhere goes to F77_NO_PROCESS (NaN)
+        rather than leaving zeros, and smatrixhel's to F77_NO_PROCESS_ANS.
+
+        A crossing row tabulates one leg order: smatrixhel, the density and
+        get_all_inter also accept the caller's same-code legs exchanged
+        inside the initial or the final state (F77_CROSSED_ORDER, a second
+        pass after the exact one); get_all_inter moves its NHEL, which names
+        legs by position, with the legs, and both move the open legs POS
+        (POSFIX), so that rho keeps the caller's rows and columns."""
+        for split_orders, inter in ((False, 'M0_GET_ALL_INTER_IDX('),
+                                    (True, 'M0_GET_ALL_INTER_SUMSO_IDX(')):
+            text = re.sub(r'\s+', '', self.write(
+                {81: [1, 2, 3, 4]}, split_orders=split_orders,
+                crossed_rows=(1, 3)))
+            for name in ('SMATRIXHEL', 'DENSITY', 'GET_ALL_INTER', 'ORDER'):
+                self.assertEqual(text.count(
+                    'SUBROUTINEF77_CROSSED_%s(' % name), 1)
+            self.assertIn('DATAM0_XROWS/1,3/', text)
+            posfix = ('DOI=1,N_CHANGINGPOSFIX(I)=POS(I)DOJ=1,NPDG'
+                      'IF(LEGOF(J).EQ.POS(I))POSFIX(I)=JENDDOENDDO')
+            self.assertIn(posfix + 'CALLM0_GET_DENSITY_IDX(PFIX,POSFIX,'
+                          'N_CHANGING,ALLOW_HEL,N_COMB,IDX,ALPHAS,SCALE2,'
+                          'INTER)', text)
+            self.assertIn('DOI=1,NPDGHFIX(I)=NHEL(LEGOF(I))ENDDO' + posfix +
+                          'CALL%sPFIX,HFIX,POSFIX,N_CHANGING,ALLOW_HEL,'
+                          'N_COMB,IDX,INTER)' % inter, text)
+            self.assertIn('NHELFIX=NHELIF(NHEL.GE.1)THENCALLM0_GET_NHEL_IDX('
+                          'IDX,XDEN,XTAB)CALLFLAVOR_ORDER_HEL(NHEL,NPDG,32,'
+                          'XTAB,LEGOF,NHELFIX)ENDIFCALLM0_SMATRIXHEL(PFIX,'
+                          'NHELFIX,IDX,ANS)', text)
+            # reached on a PDG miss and on a matched branch whose ordering
+            # did not resolve
+            self.assertIn('ELSEFOUND=.FALSE.ENDIFIF(.NOT.FOUND)CALL'
+                          'F77_CROSSED_DENSITY(PDGS,LPDGS,PROCID,NPDG,'
+                          'P,POS,', text)
+            self.assertIn('ELSEFOUND=.FALSE.ENDIFIF(.NOT.FOUND)CALL'
+                          'F77_CROSSED_GET_ALL_INTER(PDGS,LPDGS,'
+                          'PROCID,NPDG,P,LNHEL,POS,', text)
+            self.assertIn('ELSECALLF77_CROSSED_SMATRIXHEL(PDGS,LPDGS,PROCID,'
+                          'NPDG,P,NHEL,ANS,FOUND)', text)
+            # second pass: smatrixhel for a helicity code too (re-keyed
+            # with the legs), the density and get_all_inter with POS moved
+            self.assertNotIn('IF(NHEL.LT.1)NPASS=2', text)
+            self.assertEqual(text.count('IF(.TRUE.)NPASS=2'), 3)
+            self.assertEqual(text.count(
+                'LPDGS,IPASS.EQ.2,P,PFIX,LEGOF,SAME)'), 3)
+            self.assertNotIn('FROZEN', text)
+            self.assertIn('LEGOF(J)=PERM(J)', text)
+            self.assertEqual(text.count('IF(.NOT.FOUND)CALLF77_NO_PROCESS('), 2)
+            self.assertEqual(text.count(
+                "IF(.NOT.FOUND)CALLF77_NO_PROCESS_ANS('smatrixhel',"), 1)
+            self.assertIn('ANS=IEEE_VALUE(ANS,IEEE_QUIET_NAN)', text)
+            # every crossed routine reports whether a crossing matched
+            self.assertEqual(text.count('FOUND=.TRUE.RETURN'), 3)
+        # without a folded crossing there is nothing to fall back to: the
+        # miss is reported straight away
+        text = re.sub(r'\s+', '', self.write({81: [1, 2, 3, 4]}))
+        self.assertNotIn('F77_CROSSED_DENSITY', text)
+        # without merged particles no leg of a crossing can move, and the
+        # re-keying routine is not emitted: a helicity code goes as is
+        text = re.sub(r'\s+', '', self.write({}, crossed_rows=(1, 3)))
+        self.assertNotIn('FLAVOR_ORDER_HEL', text)
+        self.assertIn('CALLM0_SMATRIXHEL(PFIX,NHEL,IDX,ANS)', text)
+        self.assertEqual(text.count('IF(NHEL.LT.1)NPASS=2'), 1)
+        text = re.sub(r'\s+', '', self.write({81: [1, 2, 3, 4]}))
+        # per entry point: a PDG miss, and a PDGS of the wrong length
+        self.assertEqual(text.count('ELSEFOUND=.FALSE.'), 6)
+        self.assertEqual(text.count('IF(.NOT.FOUND)CALLF77_NO_PROCESS('), 2)
+        self.assertEqual(text.count('IF(.NOT.FOUND)CALLF77_NO_PROCESS_ANS('), 1)
+
+    def test_split_order_get_all_inter_sums_the_split_orders(self):
+        """A split-order GET_ALL_INTER fills INTER(NSQAMPSO,*), larger than
+        the buffer py_get_all_inter allocates: the dispatch must go through
+        GET_ALL_INTER_SUMSO, while the density (which sums the split orders
+        itself) keeps calling GET_DENSITY."""
+        text = self.write({}, split_orders=True)
+        self.assertIn('CALL M0_GET_ALL_INTER_SUMSO(P, LNHEL, POS,', text)
+        self.assertNotIn('CALL M0_GET_ALL_INTER(', text)
+        self.assertIn('CALL M0_GET_DENSITY(P, POS,', text)

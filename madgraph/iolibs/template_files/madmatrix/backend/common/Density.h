@@ -1,0 +1,102 @@
+// Copyright (C) 2020-2026 CERN and UCLouvain.
+// Licensed under the GNU Lesser General Public License (version 3 or later).
+// Integrated with the MadGraph7 project in Feb 2026.
+//
+// Spin-density matrices of the decaying particles of a process, the quantity
+// MadSpin contracts production and decay with. C++ backends (scalar, simd) only.
+//
+// The library of each subprocess exports these next to the UMAMI functions, and
+// umami_initialize (param card, couplings, helicity table) must have been called
+// once before any of them. Momenta are event major: momenta[count][npar][4],
+// (E, px, py, pz) per particle, in the leg order of the process. alpha_s and
+// flavor are per event, flavor being the index of the flavor combination
+// (ProcessData::flavorPDGs) of that event.
+//
+// With crossing (an output folding crossed processes, --use_crossing) flavor is
+// the extended id cross * nmaxflavor + flavor, cross a row of the crossing table
+// (ProcessTables.h; 0 the process itself), and an event of a crossed process
+// gives its momenta, pos and allow_hel in the leg order of that process and its
+// helicities as physical ones: the Fortran GET_DENSITY_IDX convention, the
+// crossed process's own helicities.
+//
+// The conventions are those of the Fortran standalone GET_DENSITY, so that
+// MadSpin reads the two the same way:
+//   - pos[n_changing] are the (1-based) legs whose helicity is left open, and
+//     allow_hel[n_comb][n_changing] the n_comb helicity combinations they take;
+//   - the other legs are summed over the rows of the helicity table whose open
+//     legs carry the first combination, allow_hel[0];
+//   - inter[count][n_comb*(n_comb+1)/2] (complex, as re/im pairs) holds
+//     rho(I,J) = sum_spectators JAMP_J^dagger C JAMP_I / iden for I <= J, I
+//     outer, iden being the spin/color average and identical-particle factor
+//     of the process (helcolDenominators, corrected for the actual flavors as
+//     SMATRIX does with BROKEN_SYM; for a crossing the crossed process's own,
+//     madmatrix_iden), and the beam polarisation set by madmatrix_set_beampol
+//     folded into the spectator sum.
+// A helicity row whose amplitudes all vanish over the first evaluations of a
+// given (flavor, open legs) is then skipped, exactly as the Fortran SMATRIX
+// filters its helicities.
+
+#ifndef MADMATRIX_DENSITY_H
+#define MADMATRIX_DENSITY_H 1
+
+#include <stddef.h>
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+  // Returns 0, or non-zero (nothing written) for an invalid request.
+  int madmatrix_density( size_t count,
+                         const double* momenta,
+                         const double* alpha_s,
+                         const unsigned int* flavor,
+                         int n_changing,
+                         const int* pos,
+                         int n_comb,
+                         const int* allow_hel,
+                         double* inter );
+
+  // madmatrix_density for momenta given in the rest frame of a boost:
+  // boosts[count][4] is, per event, the lab momentum of the frame its momenta are
+  // in (a MadSpin decay is generated at rest, and boosted along its parent).
+  int madmatrix_density_boosted( size_t count,
+                                 const double* momenta,
+                                 const double* boosts,
+                                 const double* alpha_s,
+                                 const unsigned int* flavor,
+                                 int n_changing,
+                                 const int* pos,
+                                 int n_comb,
+                                 const int* allow_hel,
+                                 double* inter );
+
+  // |M|^2 summed over helicities and colors, averaged as the Fortran SMATRIX:
+  // divided by iden, times the identical-particle factor of the flavor and with
+  // the beam polarisation. Returns 0, or non-zero for an invalid request.
+  int madmatrix_matrix_element( size_t count,
+                                const double* momenta,
+                                const double* alpha_s,
+                                const unsigned int* flavor,
+                                double* me );
+
+  // Beam polarisation of the two incoming legs, constant over a run. Same
+  // convention as madevent and the Fortran density: 1 (or anything with
+  // |pol| <= 1) is unpolarised, |pol| grows to 2 for a fully polarised beam and
+  // its sign gives the favoured helicity. Ignored for a 1 -> N process.
+  void madmatrix_set_beampol( double pol1, double pol2 );
+
+  // Process constants: npar, npari, ncomb, nmaxflavor, ncolor, iden, ncross (in
+  // this order; ncross the rows of the crossing table, 1 without crossing).
+  void madmatrix_process_info( int* info );
+
+  // The spin/color average and identical-particle factor of the process the
+  // (extended) flavor id names: iden for the process itself, the crossed
+  // denominator for a crossing, 0 for a row out of the table.
+  double madmatrix_iden( unsigned int flavor_id );
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // MADMATRIX_DENSITY_H

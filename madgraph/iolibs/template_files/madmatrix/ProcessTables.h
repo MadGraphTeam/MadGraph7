@@ -47,6 +47,17 @@ namespace madmatrix
     __device__ constexpr int broken_sym_block_starts[broken_sym_nentries] = { %(broken_sym_block_starts)s };
     __device__ constexpr int broken_sym_block_lengths[broken_sym_nentries] = { %(broken_sym_block_lengths)s };
 
+    // Good-helicity scan (sigmaKin_getGoodHel, host only). The scan points sit at
+    // a fixed sqrt(s), where a row suppressed by powers of m/E (a helicity flip
+    // on a b quark at 1500 GeV) looks negligible, though near threshold it is
+    // several per cent of |M|^2: with a massive external leg (hel_massive) only an
+    // exact 0 is dropped. hel_frame_leg[k] is 1 when the helicity states of leg
+    // k mix under a boost (a massive leg with spin, a massless spin-2 one): a
+    // row is good as soon as a row differing from it only at such legs is, so
+    // that the list holds in every frame (the fortran warm-up's HMV).
+    constexpr bool hel_massive = %(hel_massive)s;
+    constexpr int hel_frame_leg[ProcessData::npar] = { %(hel_frame_leg)s };
+
 %(crossing_tables)s
     // Row `cross` of the crossing table in the BASE-slot view: perm[b] is the
     // input slot whose momentum lands in base slot b and ic[b] its NSF sign

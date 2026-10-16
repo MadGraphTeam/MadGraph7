@@ -2525,6 +2525,14 @@ class MultiProcess(base_objects.PhysicsObject):
                      list of amplitudes (after generation)
     """
 
+    # Position of each subprocess in the order a merge_crossing=False
+    # generation lists them, stamped on its Process as `generation_rank` when
+    # it is generated or recorded as a crossing. Expanding recorded crossings
+    # (MadGraphCmd._expand_recorded_crossings) puts them back at that position,
+    # so the expanded output -- its P directories, and the iproc.dat that
+    # offsets each one's random seed -- matches a --use_crossing=False one.
+    _generation_rank = itertools.count()
+
     def default_setup(self):
         """Default values for all properties"""
 
@@ -2955,6 +2963,8 @@ class MultiProcess(base_objects.PhysicsObject):
                                 process,
                                 permutations[crossed_index],
                                 permutation)
+                            amplitude.get('process').generation_rank = \
+                                next(MultiProcess._generation_rank)
                             amplitudes.append(amplitude)
                             success_procs.append(sorted_legs)
                             permutations.append(permutation)
@@ -2968,6 +2978,8 @@ class MultiProcess(base_objects.PhysicsObject):
                             # base's crossing-aware SMATRIX (its partonic
                             # contribution is not lost, unlike merge_crossing=True).
                             index, (base_perm, crossed_perm) = record
+                            process.generation_rank = \
+                                next(MultiProcess._generation_rank)
                             amplitudes[index].get('crossed_processes')\
                                 .append((process, base_perm, crossed_perm))
                             logger.info("Crossed process %s recorded on %s "
@@ -2991,6 +3003,8 @@ class MultiProcess(base_objects.PhysicsObject):
                 else:
                     # Succeeded in generating diagrams
                     if amplitude.get('diagrams'):
+                        amplitude.get('process').generation_rank = \
+                            next(MultiProcess._generation_rank)
                         amplitudes.append(amplitude)
                         success_procs.append(sorted_legs)
                         permutations.append(permutation)
@@ -3235,7 +3249,11 @@ class MultiProcess(base_objects.PhysicsObject):
         None sends it back to a matrix element of its own.
 
         When no leg is restricted the pairing is the id order (the
-        `permutation` of both processes), exactly as before."""
+        `permutation` of both processes), exactly as before.
+
+        An off-shell leg ('*') is evaluated at the invariant mass of its
+        momentum (the external call of its slot), so it pairs only with an
+        off-shell leg, and an on-shell leg only with an on-shell one."""
         merged = model.get('merged_particles') or {}
 
         def flavors(leg):
@@ -3247,19 +3265,23 @@ class MultiProcess(base_objects.PhysicsObject):
             return None if flavor >= frozenset(group) else flavor
 
         def contains(base, crossed):
+            if base[1] != crossed[1]:
+                return False
+            base, crossed = base[0], crossed[0]
             return base is None or (crossed is not None and crossed <= base)
 
         def slots(legs):
             ids = base_objects.LegList(legs).get_outgoing_id_list(model)
-            return [(pid, i + 1, flavors(leg))
+            return [(pid, i + 1, (flavors(leg), bool(leg.get('offshell'))))
                     for i, (pid, leg) in enumerate(zip(ids, legs))]
 
         base, crossed = slots(base_legs), slots(crossed_legs)
         if sorted(p for p, _, _ in base) != sorted(p for p, _, _ in crossed):
             return None
-        if all(f is None for _, _, f in base + crossed):
-            return ([i for _, i in sorted((p, i) for p, i, _ in base)],
+        id_order = ([i for _, i in sorted((p, i) for p, i, _ in base)],
                     [i for _, i in sorted((p, i) for p, i, _ in crossed)])
+        if all(f == (None, False) for _, _, f in base + crossed):
+            return id_order
         base_perm, crossed_perm = [], []
         for pid in sorted(set(p for p, _, _ in base)):
             base_group = [(i, f) for p, i, f in base if p == pid]

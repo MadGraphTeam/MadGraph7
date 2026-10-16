@@ -7,11 +7,14 @@
 #include "umami.h"
 
 #include "ProcessData.h"
+#include "ProcessTables.h" // the crossing rows (choose_good_helicities)
 #include "CPPProcess.h" // needed to construct/initProc the process object (umami_initialize)
 #include "SigmaKin.h" // sigmaKin_getGoodHel/setGoodHel
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
+#include "rambo.h" // RAMBO points to choose the good helicities on (umami_initialize)
 
+#include <algorithm>
 #include <cfloat>
 #include <cmath>
 #include <string>
@@ -53,6 +56,17 @@ namespace
   }
 
 
+  // Set by choose_good_helicities where RAMBO has no phase space (a decay below
+  // threshold): the momenta of such a process are off shell, and a first call
+  // cannot choose its good helicities. In its rest frame a scalar to two
+  // off-shell vectors only has the rows of equal helicities, the others are
+  // rounding residuals, but they are not 0 once the decay is boosted: h > w+ w-
+  // at mh < 2 mW kept 3 of its 9 rows after a first call at rest, and |M|^2 in a
+  // boosted frame was then 8.5 times too small. Every row is kept instead, so
+  // that the result does not depend on the first call, at the cost of the
+  // vanishing rows of a low multiplicity.
+  bool g_keep_every_helicity = false;
+
   void* initialize_impl(
     const fptype_momenta* momenta,
     const fptype* couplings,
@@ -63,6 +77,12 @@ namespace
     std::size_t count )
   {
     bool is_good_hel[ProcessData::ncomb];
+    if( g_keep_every_helicity )
+    {
+      for( int ihel = 0; ihel < ProcessData::ncomb; ++ihel ) is_good_hel[ihel] = true;
+      sigmaKin_setGoodHel( is_good_hel );
+      return nullptr;
+    }
     sigmaKin_getGoodHel(
       momenta, couplings, flavor_indices, matrix_elements, numerators, denominators,
       is_good_hel,
@@ -116,6 +136,87 @@ namespace
   };
 
   std::vector<double> g_externalMasses;
+
+  // The good-helicity scan points: goodHelScanEvents RAMBO points per row of the
+  // crossing table, block K (events K*goodHelScanEvents on) at the masses of
+  // crossing K -- its input slot k carries the mass of the base slot it is fed
+  // to -- and with its extended id K*nmaxflavor, which is how sigmaKin_getGoodHel
+  // finds it. The base points serve a crossing that moves no mass. A crossing
+  // that does needs its own: a massive leg in a massless slot is off shell on the
+  // base points, where a row it needs can vanish to rounding. A crossing with no
+  // phase space at its masses (t > b e+ ve crossed into b~ > t~ e+ ve) is never
+  // evaluated on shell and needs no row: getGoodHel skips it
+  // (sigmaKin_setNoPhaseSpace), as the fortran warm-up does, and its block holds
+  // the base points under the base id. One RAMBO does not converge on gets them
+  // too, which getGoodHel scans the conservative way. Returns the number of
+  // events, 0 when the base process itself has no phase space.
+  std::size_t scan_points( std::vector<double>& momenta, std::vector<unsigned int>& flavor_indices )
+  {
+    constexpr std::size_t nevt = goodHelScanEvents;
+    constexpr int npar = ProcessData::npar;
+    constexpr int nblock = ProcessTables::use_crossing ? ProcessTables::ncross : 1;
+    const std::vector<double> base = rambo::helicity_scan_points( ProcessData::npari, g_externalMasses, nevt );
+    if( base.empty() ) return 0;
+    const std::size_t count = nblock * nevt;
+    momenta.assign( count * npar * 4, 0. );
+    flavor_indices.assign( count, 0 );
+    for( int cross = 0; cross < nblock; ++cross )
+    {
+      std::vector<double> own;
+      if( cross > 0 && !ProcessTables::xonshell_tab[cross] )
+      {
+        std::vector<double> masses( npar );
+        for( int k = 0; k < npar; ++k ) masses[k] = g_externalMasses[ProcessTables::xmass_slot_tab[cross * npar + k]];
+        if( rambo::has_phase_space( ProcessData::npari, masses ) )
+          own = rambo::helicity_scan_points( ProcessData::npari, masses, nevt );
+        else
+          sigmaKin_setNoPhaseSpace( cross );
+      }
+      const bool use_base = own.empty();
+      const std::vector<double>& points = use_base ? base : own;
+      const bool own_id = cross == 0 || ProcessTables::xonshell_tab[cross] || !use_base;
+      for( std::size_t ievt = 0; ievt < nevt; ++ievt )
+      {
+        const std::size_t jevt = cross * nevt + ievt;
+        flavor_indices[jevt] = own_id ? cross * ProcessData::nmaxflavor : 0;
+        for( int i = 0; i < npar * 4; ++i ) momenta[count * i + jevt] = points[nevt * i + ievt];
+      }
+    }
+    return count;
+  }
+
+  // The helicity filter (sigmaKin_getGoodHel) runs once per library and keeps a
+  // helicity if, at one of the scan points, its |M|^2 is above limhel/ncomb of the
+  // sum over helicities (the relative test of madevent, see limhel in SigmaKin.cc),
+  // or not exactly 0 with a massive external leg, closed over the helicities of
+  // the legs whose states mix under a boost.
+  // Run at the first umami_matrix_element call, it depended on what that call held:
+  // a first batch of special points, where some helicities happen to vanish (the
+  // forward direction of u u~ > e+ e-, say), dropped them for the rest of the run,
+  // and every later |M|^2 was wrong. It runs instead here, at initialization, on
+  // RAMBO points, half of them boosted (rambo::helicity_scan_points). The filter
+  // evaluates every flavor and every crossing of the table, into the one
+  // good-helicity list all of them share, each crossing on points of its own masses
+  // (scan_points). A 2 > 1 is scanned with its beams along random axes. Where there
+  // is no phase space (a decay below threshold), every helicity is kept
+  // (g_keep_every_helicity).
+  void choose_good_helicities( UmamiHandle handle )
+  {
+    std::vector<double> momenta;
+    std::vector<unsigned int> flavor_indices;
+    const std::size_t count = scan_points( momenta, flavor_indices );
+    if( count == 0 )
+    {
+      g_keep_every_helicity = true;
+      return;
+    }
+    std::vector<double> matrix_elements( count );
+    const UmamiInputKey input_keys[] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX };
+    const void* inputs[] = { momenta.data(), flavor_indices.data() };
+    const UmamiOutputKey output_keys[] = { UMAMI_OUT_MATRIX_ELEMENT };
+    void* outputs[] = { matrix_elements.data() };
+    umami_matrix_element( handle, count, count, 0, 2, input_keys, inputs, 1, output_keys, outputs );
+  }
 
 }
 
@@ -193,6 +294,9 @@ extern "C"
 
     auto instance = new InterfaceInstance();
     *handle = instance;
+    // once per library, like the filter (a thread-safe static initialization)
+    static const bool good_helicities = ( choose_good_helicities( instance ), true );
+    (void)good_helicities;
     return UMAMI_SUCCESS;
   }
 
@@ -231,6 +335,19 @@ extern "C"
     return UMAMI_ERROR_NOT_IMPLEMENTED;
   }
 
+  // Numbering of the outputs of a crossed call (crossing on, flavor index
+  // K*nmaxflavor + flavor: row K of the crossing table in ProcessTables.h).
+  // - UMAMI_OUT_HELICITY_INDEX is the crossed process's own helicity code,
+  //   the one its --use_crossing=False output reports (selected_hel_code).
+  // - UMAMI_OUT_COLOR_INDEX, UMAMI_OUT_DIAGRAM_INDEX and UMAMI_OUT_DIAGRAM_AMP2
+  //   number the colour flows and diagrams of the BASE subprocess (this P
+  //   directory's). To read a flow on the crossed legs, input slot k is base
+  //   leg xpinv_tab[K*npar+k], with colour and anticolour exchanged when
+  //   xsgni_tab is -1 (the leg changed side). This is not the numbering of the
+  //   --use_crossing=False output: two rows can serve the same flavours with
+  //   different leg assignments, so one base flow is a different flow of the
+  //   crossed process under each. `output mg7` decodes through the base this
+  //   way (export_mg7.py, get_crossed_subprocess_info).
   UmamiStatus umami_matrix_element(
     UmamiHandle handle,
     size_t count,
@@ -316,8 +433,16 @@ extern "C"
     }
 
     constexpr std::size_t vector_size = MemoryAccessMomentaBase::neppM;
-    // need to round to round to double page size for some reason
+    // The kernels run on one SIMD page of events at a time (neppM == neppV events,
+    // a single event for the scalar backend), and on two pages at a time in mixed
+    // precision (double amplitudes, float colour algebra): the batch is rounded up
+    // to that, and no further. Every extra event is computed for nothing: a call
+    // with one event used to evaluate two of them on the scalar backend.
+#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
     constexpr std::size_t page_size2 = 2 * vector_size;
+#else
+    constexpr std::size_t page_size2 = vector_size;
+#endif
     std::vector<std::size_t> permutation;
     std::size_t rounded_count;
 
@@ -350,17 +475,11 @@ extern "C"
         if ( vcount == 0 )
         {
           vindex = voffset * page_size2;
-          // Pre-fill the whole page with a valid padding id (crossing 0 of this
-          // reduced flavor) so that unused tail lanes never index the crossing
-          // tables out of range; real events overwrite their own slot below.
-          for ( std::size_t i = 0; i < page_size2; ++i) {
-            flavor_indices[voffset * page_size2 + i] = rflav;
-          }
+          // no pre-fill: a padding lane copies the first event of its page,
+          // extended id included (see the lane loop below)
           voffset += 1;
         }
-        const std::size_t slot = vindex + vcount;
-        permutation[i_event] = slot;
-        flavor_indices[slot] = flav; // per-event full extended id (flavor + crossing)
+        permutation[i_event] = vindex + vcount;
         vcount = (vcount + 1) % page_size2;
       }
       rounded_count = voffset * page_size2;
@@ -380,29 +499,33 @@ extern "C"
     HostBufferBase<fptype_amp, false> denominators( rounded_count );
     HostBufferBase<int, false> helicity_index( rounded_count );
     HostBufferBase<int, false> color_index( rounded_count );
-    if ( sort_flavors ) {
-      for( std::size_t i_event = 0; i_event < count; ++i_event )
-      {
-        std::size_t i_sorted = permutation[i_event];
-        transpose_momenta( &momenta_in[offset], momenta.data(), i_event, i_sorted, stride );
-        helicity_random[i_sorted] = random_helicity_in ? random_helicity_in[i_event + offset] : 0.5;
-        color_random[i_sorted] = random_color_in ? random_color_in[i_event + offset] : 0.5;
-        diagram_random[i_sorted] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
-        g_s[i_sorted] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
-      }
-    } else {
-      for( std::size_t i_event = 0; i_event < count; ++i_event )
-      {
-        transpose_momenta( &momenta_in[offset], momenta.data(), i_event, i_event, stride );
-        helicity_random[i_event] = random_helicity_in ? random_helicity_in[i_event + offset] : 0.5;
-        color_random[i_event] = random_color_in ? random_color_in[i_event + offset] : 0.5;
-        diagram_random[i_event] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
-        g_s[i_event] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
-        flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_event + offset] : 0;
-      }
-      for ( std::size_t i_event = count; i_event < rounded_count; ++i_event ) {
-        flavor_indices[i_event] = 0;
-      }
+    // The input event of each lane. The padding lanes, which complete the last page
+    // of a flavor, are copies of the first event of their page, as on GPUs. Left at
+    // zero (momenta and g_s), they evaluated to nan, and the good-helicity filter
+    // then run at the first call (which kept a helicity whose |M|^2 was not 0 at one
+    // of its first events) took that for a non-zero value whenever a padding lane
+    // was among them, as in a first call with a single event: every helicity was
+    // then kept for the rest of the run, the vanishing ones of a q q~ initial state
+    // included.
+    std::vector<std::size_t> source( rounded_count, count );
+    for( std::size_t i_event = 0; i_event < count; ++i_event )
+    {
+      source[sort_flavors ? permutation[i_event] : i_event] = i_event;
+    }
+    for( std::size_t lane = 0; lane < rounded_count; ++lane )
+    {
+      // a page is opened by an event, so its first lane is never padding
+      if( source[lane] == count ) source[lane] = source[lane - lane % page_size2];
+    }
+    for( std::size_t lane = 0; lane < rounded_count; ++lane )
+    {
+      const std::size_t i_event = source[lane];
+      transpose_momenta( &momenta_in[offset], momenta.data(), i_event, lane, stride );
+      helicity_random[lane] = random_helicity_in ? random_helicity_in[i_event + offset] : 0.5;
+      color_random[lane] = random_color_in ? random_color_in[i_event + offset] : 0.5;
+      diagram_random[lane] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
+      g_s[lane] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
+      flavor_indices[lane] = flavor_indices_in ? flavor_indices_in[i_event + offset] : 0;
     }
     computeDependentCouplings( g_s.data(), couplings.data(), rounded_count );
 
@@ -517,5 +640,16 @@ extern "C"
     InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
     delete instance;
     return UMAMI_SUCCESS;
+  }
+
+  // A madmatrix extension, not part of UMAMI: the number of rows in the one
+  // good-helicity list shared by every flavor and crossing. It counts both rows of
+  // a C-parity pair even when the helicity loop runs only one of them, so every
+  // backend gives the same number. The filter runs at the first umami_initialize
+  // (at the first umami_matrix_element call where RAMBO has no phase space; 0
+  // before it), shared by every instance.
+  int madmatrix_good_helicity_count()
+  {
+    return sigmaKin_getNGoodHel();
   }
 }

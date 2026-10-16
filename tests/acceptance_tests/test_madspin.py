@@ -279,11 +279,11 @@ decay z > l+ l-
             log = log_file.read()
             misc.sprint(log)
 
-        # MadSpin's default spinmode is "PA" (pole approximation), which
-        # routes through the density code path. The density path emits a
-        # single summary line of the form:
-        #   CRITICAL: MadSpin unweight efficiency: 0.3697
-        #            (10000 written / 27048 trials, 2.70 trials/event)
+        # MadSpin's default spinmode is "madspin" (offshell), which routes
+        # through the density code path. The density path emits a single
+        # summary line of the form:
+        #   CRITICAL: MadSpin unweight efficiency: 0.1000
+        #            (10000 written / 99958 trials, 10.00 trials/event)
         # rather than the legacy multi-line onshell summary
         # ("Total number of events written", "Average number of trial
         # points per production event", "Branching ratio to allowed
@@ -306,13 +306,17 @@ decay z > l+ l-
         self.assertEqual(n_written, 10000,
             msg='Expected 10000 written events, got %d' % n_written)
 
-        # trials/event is sampling dependent (~2.70 in density mode, ~4.98 on
-        # the legacy onshell path): only sanity-check it is present and in a
-        # physically reasonable range rather than pinning the exact value.
-        # It depends strongly on the production sample through MadSpin's
-        # maximum-weight estimate: with madevent decays, iseed 1-4 gave 4.4-15
-        # (and 34 on CI) and, before the refine normalisation changed, 4.6-152
-        # (9.3 on CI), so the bound only catches a broken unweighting.
+        # trials/event is sampling dependent: 9.6-12.6 over eight production
+        # samples of this card (spinmode madspin; PA takes ~2.8, the legacy
+        # onshell path ~4.98). It used to depend strongly on the production
+        # sample -- with madevent decays iseed 1-4 gave 4.4-15 (34 on CI), and
+        # 4.6-152 before the refine normalisation changed: the offshell
+        # max-weight scan reused one draw's production density for all the
+        # draws of an event, and the weight itself was unbounded -- a Z drawn
+        # up to sqrt(shat) pushes the gluon soft, w ~ 1/chi -- until
+        # offshell_min_recoil. Only sanity-check it is present and in a
+        # physically reasonable range rather than pinning the exact value: the
+        # bound only catches a broken unweighting.
         trials = re.search(r'([0-9]+(?:\.[0-9]+)?)\s*trials\s*/\s*event', log)
         if trials is not None:
             trials_per_event = float(trials.group(1))
@@ -349,7 +353,8 @@ decay z > l+ l-
 
         NB: 'set nevents 500' relies on the mg7 run_card editor accepting the
         legacy madevent name (mapped to generation.events); without it the run
-        would generate the full default 100k events and risk the timeout below.
+        would generate and decay the full default 100k events. That is checked
+        on the event count of the summary line, not on the wall-clock bound.
         """
         cmd_path = pjoin(self.path, 'test_madspin_mixed_flavor_mg7.cmd')
         log_path = pjoin(self.path, 'test_madspin_mixed_flavor_mg7.log')
@@ -374,18 +379,21 @@ decay z > l+ l-
             fsock.write(command)
 
         # Bounded and with stdin closed so the run never blocks on a prompt.
-        # With 'set nevents 500' honoured the decay is quick; a timeout here
-        # would signal a regression (e.g. nevents no longer applied -> the full
-        # 100k events get decayed).
+        # The bound only guards against a hang: the run costs about 100 s of
+        # CPU but its wall time follows the machine load (about 210-290 s at a
+        # load average of 100), so a tight bound fails on a busy machine.
+        timeout = 900
         with open(log_path, 'w') as log_file:
             try:
                 return_code = subprocess.call(
                     [sys.executable, pjoin(_file_path, os.path.pardir, 'bin', 'madgraph'), cmd_path],
                     cwd=pjoin(_file_path, os.path.pardir),
                     stdin=subprocess.DEVNULL,
-                    stdout=log_file, stderr=subprocess.STDOUT, timeout=240)
+                    stdout=log_file, stderr=subprocess.STDOUT, timeout=timeout)
             except subprocess.TimeoutExpired:
-                self.fail('mg7 + MadSpin run timed out (is set nevents applied?)')
+                load = os.getloadavg() if hasattr(os, 'getloadavg') else None
+                self.fail('mg7 + MadSpin run timed out after %s s (load average'
+                          ' %s; is set nevents applied?)' % (timeout, load))
         with open(log_path) as log_file:
             log = log_file.read()
         # On failure, surface the tail of the mg7 run log (which lives in a tmp
@@ -397,9 +405,13 @@ decay z > l+ l-
                   file=sys.stderr, flush=True)
         self.assertEqual(return_code, 0)
 
+        summary = re.search(
+            r'MadSpin\s+unweight\s+efficiency:\s*\S+\s*\((\d+)\s+written', log)
         self.assertIsNotNone(
-            re.search(r'MadSpin\s+unweight\s+efficiency', log),
+            summary,
             msg='mg7 + MadSpin: density-mode summary line not found in log')
+        # 'set nevents 500' reached the mg7 run card (generation.events)
+        self.assertEqual(int(summary.group(1)), 500)
         # store_result used to save the madevent results database to
         # HTML/results.pkl, which the mg7 output does not have
         self.assertEqual(

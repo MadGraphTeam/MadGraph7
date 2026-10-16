@@ -188,6 +188,506 @@ def splice_amp_chunks(path):
             for chunk_line in read_amp_chunk_body(chunk):
                 yield chunk_line
 
+
+class Dialect:
+    '''The language-specific text layer of the recycler.
+
+    Everything between reading a call and writing it back -- the DAG, the
+    helicity unfolding, the good-helicity and dead-amplitude filters, the
+    amplitude split -- is language independent and lives outside this class.
+    What a dialect owns is only: how to recognise a call and take it apart, how
+    to put it back together, which argument holds what, and how a wavefunction
+    or an amplitude is named. Subclass it to recycle a backend written in
+    another language (see CppDialect for madmatrix).
+    '''
+
+    name = 'fortran'
+    # the HELAS routines that build an external wavefunction (compared upper case)
+    # VXXXXXR is VXXXXX with an axial-gauge reference momentum appended after
+    # nsv; it is still an external wavefunction, and its first arguments are
+    # the ones read here (P(0,i) and NHEL(i)).
+    external_routines = ('OXXXXX', 'IXXXXX', 'VXXXXX', 'SXXXXX', 'VXXXXXR')
+    # which argument of a call receives its result
+    output_index = -1
+    # which argument of an external call carries the helicity
+    helicity_index = 2
+    # Whether a physical line can be continued on the next one, so that the
+    # reader has to hold a line back before it can act on it.
+    needs_lookahead = True
+    # Whether the source being read carries the things only a fortran
+    # matrix_orig.f has: the DATA (NHEL table, the color flow block, the AMP2
+    # block, and the two chunkers that cut the written file up afterwards. A
+    # backend that hands its helicity table in and keeps its color stage out of
+    # the recycled block sets this False.
+    fortran_blocks = True
+
+    # -- taking a call apart -------------------------------------------------
+    def called_function(self, line):
+        '''The name of the routine this line calls, or None.'''
+        if 'CALL' not in line.upper():
+            return None
+        return get_called_function(line)
+
+    def arguments(self, line):
+        '''The call's arguments, in order, blanks stripped.'''
+        return get_arguments(line)
+
+    def output_position(self, args):
+        '''Which argument of this call receives its result.'''
+        return self.output_index
+
+    def output_name(self, args):
+        '''The name the call writes its result to.'''
+        return args[self.output_position(args)].replace(' ', '')
+
+    def is_amplitude(self, function):
+        '''Whether a routine name is an amplitude (rather than a current).'''
+        return function.split('_')[-1] == '0'
+
+    # -- putting it back together --------------------------------------------
+    def apply_args(self, line, all_args):
+        '''`line` re-emitted once per argument list in `all_args`.'''
+        return apply_args(line, all_args)
+
+    def wavefunction_name(self, num):
+        return 'W(%d)' % num
+
+    def amplitude_name(self, num, diag):
+        return 'AMP(%d,%d)' % (num, diag)
+
+    # -- reading the meaning of an argument ----------------------------------
+    def external_leg(self, args):
+        '''The 1-based leg number an external call builds, read off its
+        momentum argument.'''
+        return int(re.findall(r'P\(0,(\d+)\)', args[0])[0])
+
+    def external_helicity_leg(self, args):
+        '''The 1-based leg whose helicity the external call reads, or None when
+        the call takes no helicity at all (a scalar).'''
+        helicity = args[self.helicity_index]
+        if 'NHEL' not in helicity.upper():
+            return None
+        return int(re.search(r'\(.*?\)', helicity).group()[1:-1])
+
+    def helicity_literal(self, hel):
+        '''How a fixed helicity value is written in place of the table read.'''
+        return int_to_string(hel)
+
+    def set_external_helicity(self, args, hel):
+        '''`args` with the helicity table read replaced by the fixed value
+        `hel`. A scalar has no helicity argument to replace; fortran overwrites
+        the slot the output name is about to take anyway, which is why this is
+        unconditional here.
+
+        A crossing-aware matrix element passes the NSF flag of leg i as
+        <nsf>*IC(i) (helas_call_writers, use_crossing_ic). A crossed call
+        evaluates each row with the legs that changed side negated
+        (APPLY_CROSSING_ROWS), so the baked helicity takes the same IC(i)
+        factor.'''
+        leg = self.external_helicity_leg(args)
+        args[self.helicity_index] = self.helicity_literal(hel)
+        if leg is not None and len(args) > 3 and \
+                re.search(r'\*\s*IC\(\s*%d\s*\)' % leg, args[3], re.I):
+            args[self.helicity_index] += '*IC(%d)' % leg
+        return args
+
+    def amplitude_diagram(self, line, args):
+        '''The diagram number an amplitude call writes into.'''
+        return int(re.search(r'\(.*?\)', self.output_name(args)).group()[1:-1])
+
+    # -- line shape ----------------------------------------------------------
+    def is_continuation(self, line):
+        '''Whether this physical line continues the previous one.'''
+        try:
+            return line[5] == '$'
+        except IndexError:
+            return False
+
+    def join_continuation(self, line, continuation):
+        return undo_multiline(line, continuation)
+
+    def wrap(self, line):
+        '''Break a written line so the compiler accepts it.'''
+        return do_multiline(line)
+
+    def comment(self, text):
+        return '! %s' % text
+
+    def helicity_row(self, row, old_row, hel_comb):
+        '''One line of the recycled helicity table: the row's index in the
+        ORIGINAL table followed by the helicity of each leg.'''
+        formatted_hel = [f'{hel}' if hel < 0 else f' {hel}' for hel in hel_comb]
+        return ('      DATA (NHEL(I,%d),I=0,%d) /%d,%s/'
+                % (row, len(hel_comb), old_row, ','.join(formatted_hel)))
+
+    def skip_line(self, line):
+        '''Whether the reader should ignore this line of the original source
+        entirely (a block the dialect has already taken for itself).'''
+        return False
+
+    def render_external(self, line, wav):
+        '''The text one copy of an external wavefunction turns into.'''
+        return self.apply_args(line, [wav.args])
+
+    # -- the amplitude split (P1N) -------------------------------------------
+    def render_amplitudes(self, line, new_amps, gauge, amp_splt):
+        '''The whole text one amplitude call turns into once unfolded over the
+        helicity rows that keep it.'''
+        if amp_splt:
+            return split_amps(line, new_amps, gauge=gauge)
+        return apply_args(line, [amp.args for amp in new_amps])
+
+
+class CppDialect(Dialect):
+    '''The C++ the madmatrix backend writes its HELAS calls in.
+
+    Differences from fortran, all of them local to the text:
+      - a call is `NAME<TEMPLATE, ARGS>( a, b, ... );`, so the argument list
+        starts after a balanced <...> and commas inside it are not separators;
+      - the result is not always the last argument: an external ends with its
+        leg index (`..., aloha_obj[5], 4 );`);
+      - the helicity is `cHel[ihel][k]`, and a scalar external simply has no
+        helicity argument at all rather than a slot to overwrite;
+      - every amplitude writes the same scratch `&amp_fp[0]`, so the row an
+        unfolded amplitude belongs to cannot be carried by its name. It is
+        carried by the object, and the fold of that amplitude into the row's
+        color flows -- which the exporter emitted next to the call, with a
+        ${row} hole -- is written out here, once per row.
+    '''
+
+    name = 'cpp'
+    fortran_blocks = False
+    needs_lookahead = False
+    # the fold of one amplitude into the color flows and the multichannel
+    # numerators, as the exporter wrote it next to the call: a ${row} hole per
+    # diagram number. Filled by read_folds().
+    FOLD_BEGIN = '//HRFOLD'
+    FOLD_END = '//HRENDFOLD'
+    # the same device for a crossed external, whose NSF blend is more than one
+    # line; keyed by the leg rather than the diagram
+    EXT_BEGIN = '//HREXT'
+    EXT_END = '//HRENDEXT'
+
+    _CALL = re.compile(r'^\s*([A-Za-z_]\w*)\s*[<(]')
+    _HELICITY = re.compile(r'cHel\s*\[\s*ihel\s*\]\s*\[\s*(\d+)\s*\]')
+    _SLOT = re.compile(r'^&?(?:aloha_obj|amp_fp)\s*\[')
+
+    def __init__(self):
+        self.folds = {}
+        self.externals = {}
+        self._in_block = False
+        # Where a line's argument list starts and ends, and what it splits into.
+        # Every one of these is asked once per COPY of the call -- get_deps,
+        # get_new_args and get_obj each re-ask, and so does every rendering --
+        # so at high multiplicity the char loops below are the whole cost of the
+        # recycling step. The fortran dialect caches for the same reason.
+        self._span_cache = {}
+        self._args_cache = {}
+
+    # -- taking a call apart -------------------------------------------------
+    def called_function(self, line):
+        stripped = line.split('//')[0].strip()
+        if not stripped.endswith(';'):
+            return None
+        match = self._CALL.match(stripped)
+        if not match or self._arg_start(stripped) is None:
+            return None
+        return match.group(1)
+
+    def _span(self, line):
+        '''(start, end) of the argument list: the first '(' outside a template
+        and the ')' that closes it, or (None, None).'''
+        try:
+            return self._span_cache[line]
+        except KeyError:
+            pass
+        start = None
+        depth = 0
+        previous = ''
+        for i, char in enumerate(line):
+            if char == '<':
+                depth += 1
+            elif char == '>' and previous != '-':   # not the arrow of a->b
+                depth -= 1
+            elif char == '(' and depth == 0:
+                start = i
+                break
+            previous = char
+        end = None
+        if start is not None:
+            depth = 0
+            for i in range(start, len(line)):
+                if line[i] == '(':
+                    depth += 1
+                elif line[i] == ')':
+                    depth -= 1
+                    if depth == 0:
+                        end = i
+                        break
+        span = (start, end)
+        if len(self._span_cache) >= self._CACHE_SIZE:
+            self._span_cache.clear()
+        self._span_cache[line] = span
+        return span
+
+    _CACHE_SIZE = 64
+
+    @classmethod
+    def _arg_start(cls, line):
+        '''Where the argument list opens (kept for callers that only want it).'''
+        return cls()._span(line)[0]
+
+    def arguments(self, line):
+        try:
+            return list(self._args_cache[line])
+        except KeyError:
+            pass
+        start, _end = self._span(line)
+        if start is None:
+            return ['']
+        depth = 0
+        args = ['']
+        for char in line[start:]:
+            if char in '([{':
+                depth += 1
+                if depth == 1:
+                    continue        # the '(' that opens the list
+            elif char in ')]}':
+                depth -= 1
+                if depth == 0:
+                    break           # the ')' that closes it
+            elif char == ',' and depth == 1:
+                args.append('')
+                continue
+            if char != ' ':
+                args[-1] += char
+        if len(self._args_cache) >= self._CACHE_SIZE:
+            self._args_cache.clear()
+        self._args_cache[line] = args
+        return list(args)
+
+    def output_position(self, args):
+        for i in range(len(args) - 1, -1, -1):
+            if self._SLOT.match(args[i]):
+                return i
+        return -1
+
+    # -- putting it back together --------------------------------------------
+    def apply_args(self, line, all_args):
+        start, end = self._span(line)
+        head, tail = line[:start], line[end + 1:]
+        return ''.join('%s( %s )%s' % (head, ', '.join(args), tail.rstrip('\n'))
+                       for args in all_args)
+
+    def wavefunction_name(self, num):
+        return 'aloha_obj[%d]' % (num - 1)
+
+    def amplitude_name(self, num, diag):
+        # every amplitude goes through the one scratch; which row it belongs to
+        # is on the object (set_name keeps it), not in the text
+        return '&amp_fp[0]'
+
+    # -- reading the meaning of an argument ----------------------------------
+    def external_leg(self, args):
+        # the leg index follows the output slot: `..., aloha_obj[5], 4 );`,
+        # and vxxxxxr adds its reference leg after it (`..., 4, 0 );`)
+        return int(args[self.output_position(args) + 1]) + 1
+
+    def external_helicity_leg(self, args):
+        for arg in args:
+            match = self._HELICITY.search(arg)
+            if match:
+                return int(match.group(1)) + 1
+        return None
+
+    def helicity_literal(self, hel):
+        return '%d' % hel
+
+    def set_external_helicity(self, args, hel):
+        for i, arg in enumerate(args):
+            if self._HELICITY.search(arg):
+                args[i] = self.helicity_literal(hel)
+                break               # a scalar has none: nothing to replace
+        return args
+
+    _AMP_TAG = re.compile(r'//\s*HRAMP\s+(\d+)')
+
+    def amplitude_diagram(self, line, args):
+        # the scratch every amplitude writes to cannot say which diagram it is,
+        # so the exporter tags the call with it
+        return int(self._AMP_TAG.search(line).group(1))
+
+    # -- line shape ----------------------------------------------------------
+    def is_continuation(self, line):
+        return False
+
+    def wrap(self, line):
+        return line
+
+    def comment(self, text):
+        return '// %s' % text
+
+    def helicity_row(self, row, old_row, hel_comb):
+        # The runtime helicity table (cHel) is not the recycler's to write: it
+        # already holds every row of the process. What the recycled block needs
+        # is which of those rows it built, and in what order -- the exporter
+        # writes that from the same list it hands in as good_elements. Left
+        # here as a comment so the generated source says it too.
+        return '  // recycled row %d is helicity row %d: %s' % (
+            row - 1, old_row - 1, ' '.join('%+d' % hel for hel in hel_comb))
+
+    # -- the per-row fold ----------------------------------------------------
+    def read_folds(self, path):
+        '''Take the tail blocks out of the original source.
+
+        Some of what a call turns into is not itself a call and so cannot be
+        unfolded as one, but still has to be written once per copy: the fold of
+        an amplitude into ITS helicity row's color flows, and the NSF blend of a
+        crossed external. The exporter writes both next to the call they belong
+        to, with ${row} / ${hel} / ${out} holes, and they are read here -- ahead
+        of the single streaming pass that then has to skip them -- and stamped
+        out by render_amplitudes / render_external below.'''
+        self.folds, self.externals = {}, {}
+        target, key = None, None
+        with open(path) as source:
+            for line in source:
+                stripped = line.strip()
+                if stripped.startswith(self.FOLD_BEGIN):
+                    target, key = self.folds, int(stripped[len(self.FOLD_BEGIN):])
+                    target[key] = []
+                elif stripped.startswith(self.EXT_BEGIN):
+                    target, key = self.externals, int(stripped[len(self.EXT_BEGIN):])
+                    target[key] = []
+                elif stripped.startswith((self.FOLD_END, self.EXT_END)):
+                    target = None
+                elif target is not None:
+                    target[key].append(line.rstrip('\n'))
+        return self.folds
+
+    def skip_line(self, line):
+        stripped = line.strip()
+        if stripped.startswith((self.FOLD_BEGIN, self.EXT_BEGIN)):
+            self._in_block = True
+            return True
+        if stripped.startswith((self.FOLD_END, self.EXT_END)):
+            self._in_block = False
+            return True
+        return self._in_block
+
+    # Below this many amplitudes sharing one partial contraction the split is a
+    # net loss: the P1N call and its scratch cost more than the vertex
+    # evaluations they save. Measured in the fortran backend, same conclusion.
+    # MG_HR_P1N_MIN overrides it, which is how the split is exercised on a
+    # process whose sharing is too shallow to reach the default.
+    P1N_MIN_SHARING = int(os.environ.get('MG_HR_P1N_MIN', 4))
+    # the ALOHAOBJ the partial contraction is written into (declared once by
+    # the recycled function's template)
+    P1N_SCRATCH = '_p1n'
+    _SLOT_INDEX = re.compile(r'aloha_obj\[(\d+)\]')
+
+    def is_wavefunction(self, arg):
+        return arg.startswith('aloha_obj[')
+
+    def _amp_fold(self, amp):
+        row = amp.numbers[0] - 1
+        return [Template(fold).safe_substitute(row=row)
+                for fold in self.folds.get(amp.diag_num, ())]
+
+    def _whole_amplitude(self, line, amp):
+        return [self.apply_args(line, [amp.args]).rstrip('\n')] + self._amp_fold(amp)
+
+    def _p1n_group(self, line, group, peel):
+        """One partial contraction shared by a group of amplitudes.
+
+        The vertex is evaluated once with the peeled leg left off -- that is
+        what <ROOT>P1N_<peel+1> is -- and each amplitude of the group is then
+        the plain dot product of that current with its own peeled wavefunction.
+
+        The flavour test is NOT uniform across peel positions, and getting it
+        backwards is silent: a P1N whose output is a BOSON applies the
+        amplitude's own flv_index test itself and zeroes the current (and never
+        sets the output's own flv_index), so testing again here would read a
+        stale index and could kill a non-zero amplitude; one whose output is a
+        FERMION propagates the partner's flv_index instead and defers the test,
+        so it has to be made here.
+        """
+        head = line.split('(')[0]
+        match = re.match(r'^(\s*)([A-Za-z_]\w*)_0\s*<([^>]*)>', head)
+        if not match:
+            return None
+        indent, root, template = match.groups()
+        access = [t.strip() for t in template.split(',')]
+        # the vertex writes an amplitude, the current does not: keep the
+        # wavefunction and coupling access classes, drop the amplitude one
+        access = [access[0], access[-1]]
+        spin = root[peel] if peel < len(root) else None
+        if spin not in ('F', 'V', 'S'):
+            return None                 # spin 2 / 3/2: not split, as in fortran
+        ncomp = 1 if spin == 'S' else 4
+        args = list(group[0].args)
+        args.pop(peel)
+        args[-1] = self.P1N_SCRATCH
+        lines = ['%s{' % indent,
+                 '%s  %sP1N_%d<%s>( %s );'
+                 % (indent, root, peel + 1, ', '.join(access), ', '.join(args)),
+                 '%s  const cxtype_sv* _pt = %s::kernelAccessConst( %s.w );'
+                 % (indent, access[0], self.P1N_SCRATCH)]
+        dot = ' + '.join('_pt[%d] * _pw[%d]' % (i, i) for i in range(ncomp))
+        for amp in group:
+            peeled = amp.args[peel]
+            lines.append('%s  { const cxtype_sv* _pw = %s::kernelAccessConst( %s.w );'
+                         % (indent, access[0], peeled))
+            if spin == 'F':
+                lines.append('%s    amp_sv[0] = ( %s.flv_index != %s.flv_index'
+                             ' || %s.flv_index == -1 ) ? cxzero_sv() : ( %s ); }'
+                             % (indent, self.P1N_SCRATCH, peeled,
+                                self.P1N_SCRATCH, dot))
+            else:
+                lines.append('%s    amp_sv[0] = %s; }' % (indent, dot))
+            lines.extend(self._amp_fold(amp))
+        lines.append('%s}' % indent)
+        return lines
+
+    def render_amplitudes(self, line, new_amps, gauge, amp_splt):
+        '''One amplitude, once per helicity row that keeps it: the call into the
+        shared scratch, then that row's fold. With amp_splt, the rows that share
+        every leg but one get the vertex evaluated once between them.'''
+        plan = plan_amp_split(new_amps, self.is_wavefunction) if amp_splt else None
+        if plan is None:
+            out = []
+            for amp in new_amps:
+                out.extend(self._whole_amplitude(line, amp))
+            return '\n'.join(out) + '\n'
+
+        peel, groups = plan
+        out = []
+        for group in groups:
+            split = (self._p1n_group(line, group, peel)
+                     if len(group) >= self.P1N_MIN_SHARING else None)
+            if split is None:
+                for amp in group:
+                    out.extend(self._whole_amplitude(line, amp))
+            else:
+                out.extend(split)
+        return '\n'.join(out) + '\n'
+
+    def render_external(self, line, wav):
+        '''One copy of an external: the call, then -- under crossing -- the NSF
+        blend that finishes it, told which helicity this copy is and which slot
+        it was given.'''
+        out = self.apply_args(line, [wav.args]).rstrip('\n')
+        tail = self.externals.get(wav.mg - 1)
+        if not tail:
+            return out
+        # set_name was given the wavefunction number, 1-based; the slots it
+        # indexes are 0-based
+        subs = {'hel': self.helicity_literal(wav.hel),
+                'out': wav.numbers[0] - 1}
+        return '\n'.join([out] + [Template(t).safe_substitute(subs)
+                                   for t in tail])
+
+
+
 class DAG:
 
     def __init__(self):
@@ -309,6 +809,11 @@ class MathsObject:
     # and get_number do not have to recompute what good_helicity just worked out.
     ext_deps = None
 
+    # The language the calls being recycled are written in. Class level like
+    # every other bit of state these classes share (good_hel, num_externals,
+    # ...), and reset by HelicityRecycler.__init__ along with the rest.
+    dialect = Dialect()
+
     def __init__(self, arguments, old_name, nature):
         self.args = arguments
         self.old_name = old_name
@@ -319,16 +824,20 @@ class MathsObject:
         self.linkdag = []
 
     def set_name(self, *args):
-        self.args[-1] = self.format_name(*args)
-        self.name = self.args[-1]
+        # what the name was made of, which is more than the name itself can
+        # hold in a language whose amplitudes all share one scratch variable
+        self.numbers = args
+        out = self.dialect.output_position(self.args)
+        self.args[out] = self.format_name(*args)
+        self.name = self.args[out]
 
     def format_name(self, *nums):
         pass
 
-    @staticmethod
-    def get_deps(line, graph):
-        old_args = get_arguments(line)
-        old_name = old_args[-1].replace(' ','')
+    @classmethod
+    def get_deps(cls, line, graph):
+        old_args = cls.dialect.arguments(line)
+        old_name = cls.dialect.output_name(old_args)
         matches = graph.old_names() & set([old.replace(' ','') for old in old_args])
         try:
             matches.remove(old_name)
@@ -375,10 +884,9 @@ class MathsObject:
             
         return this_comb_good and cls.ext_deps
 
-    @staticmethod
-    def get_new_args(line, wavs):
-        old_args = get_arguments(line)
-        old_name = old_args[-1].replace(' ','')
+    @classmethod
+    def get_new_args(cls, line, wavs):
+        old_args = cls.dialect.arguments(line)
         # Work out if wavs corresponds to an allowed helicity combination
         this_args = copy(old_args)
         wav_names = [w.name for w in wavs]
@@ -393,7 +901,7 @@ class MathsObject:
 
     @classmethod
     def get_obj(cls, line, wavs, graph, diag_num = None):
-        old_name = get_arguments(line)[-1].replace(' ','')
+        old_name = cls.dialect.output_name(cls.dialect.arguments(line))
         new_args = cls.get_new_args(line, wavs)
         num = cls.get_number(wavs, graph)
         
@@ -421,13 +929,13 @@ class External(MathsObject):
     good_wav_combs = []
     max_wav_num = 0
     # helicity tuple -> its row in the original NHEL table, filled by
-    # HelicityRecycler.get_good_hel once that table is complete
+    # HelicityRecycler.set_helicity_table once that table is complete
     all_hel_index = {}
 
-    def __init__(self, arguments, old_name):
+    def __init__(self, arguments, old_name, hel):
         super().__init__(arguments, old_name, 'external')
-        self.hel = int(self.args[2])
-        self.mg = int(arguments[0].split(',')[-1][:-1])
+        self.hel = int(hel)
+        self.mg = self.dialect.external_leg(arguments)
         self.hel_ranges = []
         self.raise_num()
 
@@ -439,37 +947,28 @@ class External(MathsObject):
     def generate_wavfuncs(cls, line, graph):
         # If graph is passed in Internal it should be done here to so
         # we can set names
-        old_args = get_arguments(line)
-        old_name = old_args[-1].replace(' ','')
+        dialect = cls.dialect
+        old_args = dialect.arguments(line)
+        old_name = dialect.output_name(old_args)
         graph.kill_old(old_name)
 
-        # A crossing-aware matrix element passes its NSF flag as <nsf>*IC(i)
-        # (helas_call_writers, use_crossing_ic). A crossed call evaluates each
-        # row with the legs that changed side negated (APPLY_CROSSING_ROWS), so
-        # the baked helicity value takes the same IC(i) factor.
-        ic_factor = ''
-        if 'NHEL' in old_args[2].upper():
-            nhel_index = re.search(r'\(.*?\)', old_args[2]).group()
-            ext_num = int(nhel_index[1:-1]) - 1
+        # (the crossing IC(i) factor of a side-changing leg, if any, is
+        # carried by dialect.set_external_helicity)
+        hel_leg = dialect.external_helicity_leg(old_args)
+        if hel_leg is not None:
+            ext_num = hel_leg - 1
             new_hels = sorted(list(External.hel_ranges[ext_num]), reverse=True)
-            new_hels = [int_to_string(i) for i in new_hels]
-            if len(old_args) > 3 and \
-                    re.search(r'\*\s*IC\(\s*%d\s*\)' % (ext_num + 1),
-                              old_args[3], re.I):
-                ic_factor = '*IC(%d)' % (ext_num + 1)
         else:
             # Spinor must be a scalar so give it hel = 0
-            ext_num = int(re.search(r'\(0,(\d+)\)', old_args[0]).group(1)) -1
-            new_hels = [' 0']
+            ext_num = dialect.external_leg(old_args) - 1
+            new_hels = [0]
 
         new_wavfuncs = []
         for hel in new_hels:
 
-            this_args = copy(old_args)
-            this_args[2] = hel
+            this_args = dialect.set_external_helicity(copy(old_args), hel)
 
-            this_wavfunc = External(this_args, old_name)
-            this_wavfunc.args[2] = hel + ic_factor
+            this_wavfunc = External(this_args, old_name, hel)
             this_wavfunc.set_name(len(graph.external_wavs) + len(graph.internal_wavs) +1)
 
             graph.store_wav(this_wavfunc)
@@ -510,17 +1009,16 @@ class External(MathsObject):
 
         cls.good_wav_combs = gwc
 
-    @staticmethod
-    def format_name(*nums):
-        return f'W({nums[0]})'
-    
+    def format_name(self, *nums):
+        return self.dialect.wavefunction_name(nums[0])
+
     def get_id(self):
         """ return the id of the particle under consideration """
-        
+
         try:
-           return self.id 
+           return self.id
         except:
-            self.id =  int(re.findall(r'P\(0,(\d+)\)', self.args[0])[0])
+            self.id = self.mg
             return self.id
         
         
@@ -562,9 +1060,8 @@ class Internal(MathsObject):
         self.raise_num()
 
 
-    @staticmethod
-    def format_name(*nums):
-        return f'W({nums[0]})'
+    def format_name(self, *nums):
+        return self.dialect.wavefunction_name(nums[0])
 
 class Amplitude(MathsObject):
     '''Class for storing Amplitudes'''
@@ -576,17 +1073,13 @@ class Amplitude(MathsObject):
         super().__init__(arguments, old_name, 'amplitude')
 
 
-    @staticmethod
-    def format_name(*nums):
-        return f'AMP({nums[0]},{nums[1]})'
+    def format_name(self, *nums):
+        return self.dialect.amplitude_name(nums[0], nums[1])
 
     @classmethod
     def generate_amps(cls, line, graph, all_hel=None, all_bad_hel=[]):
-        old_args = get_arguments(line)
-        old_name = old_args[-1].replace(' ','')
-
-        amp_index = re.search(r'\(.*?\)', old_name).group()
-        diag_num = int(amp_index[1:-1])
+        args = cls.dialect.arguments(line)
+        diag_num = cls.dialect.amplitude_diagram(line, args)
 
         deps = cls.get_deps(line, graph)
 
@@ -615,7 +1108,14 @@ class Amplitude(MathsObject):
 class HelicityRecycler():
     '''Class for recycling helicity'''
 
-    def __init__(self, good_elements, bad_amps=[], bad_amps_perhel=[], gauge='U'):
+    def __init__(self, good_elements, bad_amps=[], bad_amps_perhel=[], gauge='U',
+                 dialect=None):
+
+        # The language of the calls being recycled. Shared with the objects
+        # through the class attribute they all inherit, like the rest of the
+        # per-run state reset just below.
+        self.dialect = dialect if dialect is not None else Dialect()
+        MathsObject.dialect = self.dialect
 
         External.good_hel = []
         External.nhel_lines = ''
@@ -623,6 +1123,9 @@ class HelicityRecycler():
         External.wavs_same_leg = {}
         External.good_wav_combs = []
         External.all_hel_index = {}
+        # read back as NWAVEFUNCS: without the reset a P directory recycled
+        # after a bigger one in the same process inherits its array size
+        External.max_wav_num = 0
 
         Internal.max_wav_num = 0
         Internal.num_internals = 0
@@ -637,9 +1140,10 @@ class HelicityRecycler():
         # amplitudes. The C-parity de-duplication now adds EVERY amplitude of
         # every dropped mirror row: 128 x 28215 entries on g g > t t~ 4g and
         # 128 x 126630 on g g > 6g, turning the scan into the dominant cost of
-        # the whole recycling step. Sets make the same question O(1).
+        # the whole recycling step. Sets make the same question O(1) (tuples:
+        # the C++ warm-up hands the pairs in as lists).
         self.bad_amps = set(bad_amps)
-        self.bad_amps_perhel = set(bad_amps_perhel)
+        self.bad_amps_perhel = set(map(tuple, bad_amps_perhel))
 
         # Default file names
         self.input_file = 'matrix_orig.f'
@@ -666,17 +1170,21 @@ class HelicityRecycler():
         # skips it instead of summing colors over a row of zeros. Empty (every
         # row live) unless the same pairs are supplied.
         self.template_dict['csym_dead'] = '\n'
-        # Optional IF/ENDIF around the AMP2 (multi-channel) and JAMP2
-        # (colour-flow) accumulation of the helicity loop, so a config can
-        # contribute to the |M|^2 sum without contributing to either weight.
-        # Empty -- every kept config feeds both, as it always did -- unless
-        # gen_ximprove is recycling a matrix element SHARED by a crossing, whose
-        # config set has to cover every member of the class: a config that is
-        # dead for the caller at hand still has non-zero individual diagrams and
-        # JAMPs, and those are not the gauge-invariant |M|^2. See
-        # gen_ximprove.gensym.get_helicity.
+        # Optional IF/ENDIF around the JAMP2 (colour-flow) accumulation of the
+        # helicity loop, so a config can contribute to the |M|^2 sum without
+        # contributing to the colour weights. Empty -- every kept config feeds
+        # them, as it always did -- unless shared_rows (see amp2_blocks).
         self.template_dict['dead_row_if'] = '\n'
         self.template_dict['dead_row_endif'] = '\n'
+        # Set by gen_ximprove when it recycles a matrix element SHARED by a
+        # crossing: its config set is the union over every member of the
+        # class, so it holds configs that are dead for the caller at hand,
+        # and those still have non-zero individual diagrams and JAMPs. See
+        # amp2_blocks and gen_ximprove.gensym.get_helicity.
+        self.shared_rows = False
+        # The AMP2 (multi-channel) lines again, but always reading AMP(K,i)
+        # in place: the cut pass of amp2_blocks runs after the gathered loop.
+        self.amp2_lines_inplace = '\n'
 
         self.dag = DAG()
 
@@ -721,6 +1229,10 @@ class HelicityRecycler():
         self.procedure_name = file.split('.')[0].upper()
         self.procedure_kind = 'FUNCTION'
         self.input_file = file
+        # a dialect that owns blocks of the source reads them now, before the
+        # single streaming pass that has to skip them
+        if hasattr(self.dialect, 'read_folds'):
+            self.dialect.read_folds(file)
 
     def set_output(self, file):
         self.output_file = file
@@ -732,19 +1244,12 @@ class HelicityRecycler():
 
     def function_call(self, line):
         # Check a function is called at all
-        if 'CALL' not in line.upper():
-            return None
-
-        function = get_called_function(line)
+        function = self.dialect.called_function(line)
         if not function:
             return None
 
         # Now check for external spinor
-        # VXXXXXR is VXXXXX with an axial-gauge reference momentum appended
-        # after nsv; it is still an external wavefunction, and its first
-        # arguments are the ones this module reads (P(0,i) and NHEL(i)).
-        ext_calls = ['OXXXXX', 'IXXXXX', 'VXXXXX', 'SXXXXX', 'VXXXXXR']
-        if function.upper() in ext_calls:
+        if function.upper() in self.dialect.external_routines:
             return 'external'
 
         # Now check for internal
@@ -753,24 +1258,7 @@ class HelicityRecycler():
         if not self.dag.external_wavs:
             return None
 
-        # Search for internals by looking for calls to the externals
-        # Maybe I should just get a list of all internals?
-        matches = self.dag.old_names() & set(get_arguments(line))
-        try:
-            matches.remove(get_arguments(line)[-1])
-        except KeyError:
-            pass
-        # What if [-1] is garbage? Then I'm relying on needs changing.
-        # Is that OK?
-        if (function.split('_')[-1] != '0'):
-            return 'internal'
-        elif (function.split('_')[-1] == '0'):
-            return 'amplitude'
-        else:
-            print(f'Ahhhh what is going on here?\n{line}')
-            set_trace()
-
-        return None
+        return 'amplitude' if self.dialect.is_amplitude(function) else 'internal'
 
     # string manipulation
 
@@ -791,9 +1279,15 @@ class HelicityRecycler():
             return '%s(%s,%s)' % (self.AMP_GATHER, args, self.GATHER_LANE)
         return 'AMP( %s,%s)' % (self.loop_var, args)
 
-    def add_indices(self, line):
-        '''Point the amplitude reads at the gathered row and update the name of
-           the output variable.'''
+    def add_indices(self, line, inplace=False):
+        '''Point the amplitude reads at the gathered row (or, with inplace, at
+           row K of AMP itself) and update the name of the output variable.'''
+        if inplace:
+            gather, self.amp_gather = self.amp_gather, False
+            try:
+                return self.add_indices(line)
+            finally:
+                self.amp_gather = gather
         # The character in front is looked at rather than eaten, so that an
         # AMP( opening the statement is indexed too -- which is what a line
         # like "AMP(31) = AMP(31) + AMP(1)" needs. One level of brackets is
@@ -817,7 +1311,7 @@ class HelicityRecycler():
     def get_old_name(self, line):
         if f'{self.procedure_kind} {self.procedure_name}' in line:
             if 'SUBROUTINE' == self.procedure_kind:
-                self.old_out_name = get_arguments(line)[-1]
+                self.old_out_name = self.dialect.arguments(line)[-1]
             if 'FUNCTION' == self.procedure_kind:
                 self.old_out_name = line.split('(')[0].split()[-1]
 
@@ -826,7 +1320,7 @@ class HelicityRecycler():
         if 'diagram number' in line:
             self.amp_calc_started = True
         # Check if the calculation of this diagram is finished
-        if ('AMP' not in get_arguments(line)[-1]
+        if ('AMP' not in self.dialect.arguments(line)[-1]
                 and self.amp_calc_started and list(line)[0] != 'C'):
             # Check if the calculation of all diagrams is finished
             if self.function_call(line) not in ['external',
@@ -854,6 +1348,8 @@ class HelicityRecycler():
             self.in_amp2 = False
         elif not line.isspace() and 'DENOM' not in line:
             self.template_dict['amp2_lines'] += f'{line[0:6]}  {self.add_indices(line[6:])}'
+            self.amp2_lines_inplace += \
+                f'{line[0:6]}      {self.add_indices(line[6:], inplace=True)}'
 
     def prepare_bools(self):
         self.amp_calc_started = False
@@ -873,7 +1369,7 @@ class HelicityRecycler():
         if nature == 'external':
             new_objs = External.generate_wavfuncs(line, self.dag)
             for obj in new_objs:
-                obj.line = apply_args(line, [obj.args])
+                obj.line = self.dialect.render_external(line, obj)
         else:
             deps = Amplitude.get_deps(line, self.dag)
             name2dep = dict([(d.name,d) for d in sum(deps,[])])
@@ -882,7 +1378,7 @@ class HelicityRecycler():
         if nature == 'internal':
             new_objs = Internal.generate_wavfuncs(line, self.dag)
             for obj in new_objs:
-                obj.line = apply_args(line, [obj.args])
+                obj.line = self.dialect.apply_args(line, [obj.args])
                 obj.linkdag = []
                 for name in obj.args:
                     if name in name2dep:
@@ -890,7 +1386,8 @@ class HelicityRecycler():
                         obj.linkdag.append(name2dep[name])
                 
         if nature == 'amplitude':
-            nb_diag = re.findall(r'AMP\((\d+)\)', line)[0]
+            args = self.dialect.arguments(line)
+            nb_diag = str(self.dialect.amplitude_diagram(line, args))
             if nb_diag not in self.bad_amps:
                 new_objs = Amplitude.generate_amps(line, self.dag, self.all_hel, self.bad_amps_perhel)
                 out_line = self.apply_amps(line, new_objs)
@@ -914,11 +1411,8 @@ class HelicityRecycler():
         #return f'{line}\n' if nature == 'external' else line
 
     def apply_amps(self, line, new_objs):
-        if self.amp_splt:
-            return split_amps(line, new_objs, gauge=self.gauge)  
-        else: 
-
-            return apply_args(line, [i.args for i in new_objs])
+        return self.dialect.render_amplitudes(line, new_objs, self.gauge,
+                                             self.amp_splt)
 
     def get_gwc(self, line, category):
 
@@ -942,42 +1436,48 @@ class HelicityRecycler():
             self.all_hel.append(tuple(this_hel))
         elif self.nhel_started:
             self.nhel_started = False
-            
-            # the value is the 1-based id of the helicity in the original
-            # NHEL table: SMATRIX returns it (NHEL(0,I)) as the selected
-            # helicity, which get_nhel then reads back for the LHE spin column
-            if self.hel_filt:
-                hel_ids = [int(i) for i in self.good_elements]
-            else:
-                hel_ids = range(1, len(self.all_hel)+1)
-            External.good_hel = dict([(self.all_hel[i-1], i) for i in hel_ids])
+            self.set_helicity_table()
 
-            External.map_hel=dict([(hel,i) for i,hel in  enumerate(External.good_hel)])
-            # good_helicity needs the position of a helicity tuple in the FULL
-            # table (not the filtered one map_hel indexes) once per amplitude it
-            # unfolds; that was all_hel.index, a scan of the 128 rows 811 000
-            # times over g g > g g g g g. The table is complete by now -- every
-            # DATA (NHEL line precedes the first HELAS call.
-            External.all_hel_index = dict([(hel,i) for i,hel in enumerate(self.all_hel)])
-            External.hel_ranges = [set() for hel in next(iter(External.good_hel))]
-            for comb in External.good_hel:
-                for i, hel in enumerate(comb):
-                    External.hel_ranges[i].add(hel)
+    def set_helicity_table(self, all_hel=None):
+        '''Work out, from the full helicity table, which rows survive the
+        good-helicity filter and what each external leg's helicities then range
+        over. A backend whose table does not come from the source being read
+        (there is no DATA (NHEL to parse in C++) hands it in here instead.'''
+        if all_hel is not None:
+            self.all_hel = [tuple(hel) for hel in all_hel]
 
-            self.counter = 0
-            nhel_array = [self.nhel_string(hel)
-                          for hel in External.good_hel]
-            nhel_lines = '\n'.join(nhel_array)
-            self.template_dict['helicity_lines'] += nhel_lines
+        # the value is the 1-based id of the helicity in the original
+        # NHEL table: SMATRIX returns it (NHEL(0,I)) as the selected
+        # helicity, which get_nhel then reads back for the LHE spin column
+        if self.hel_filt:
+            hel_ids = [int(i) for i in self.good_elements]
+        else:
+            hel_ids = range(1, len(self.all_hel)+1)
+        External.good_hel = dict([(self.all_hel[i-1], i) for i in hel_ids])
 
-            self.template_dict['ncomb'] = len(External.good_hel)
+        External.map_hel=dict([(hel,i) for i,hel in  enumerate(External.good_hel)])
+        # good_helicity needs the position of a helicity tuple in the FULL
+        # table (not the filtered one map_hel indexes) once per amplitude it
+        # unfolds; that was a scan of the 128-row table 811 000 times over
+        # g g > g g g g g.
+        External.all_hel_index = dict([(hel,i) for i,hel in enumerate(self.all_hel)])
+        External.hel_ranges = [set() for hel in next(iter(External.good_hel))]
+        for comb in External.good_hel:
+            for i, hel in enumerate(comb):
+                External.hel_ranges[i].add(hel)
+
+        self.counter = 0
+        nhel_array = [self.nhel_string(hel)
+                      for hel in External.good_hel]
+        nhel_lines = '\n'.join(nhel_array)
+        self.template_dict['helicity_lines'] += nhel_lines
+
+        self.template_dict['ncomb'] = len(External.good_hel)
 
     def nhel_string(self, hel_comb):
         old_id = External.good_hel[hel_comb]
         self.counter += 1
-        formatted_hel = [f'{hel}' if hel < 0 else f' {hel}' for hel in hel_comb]
-        nexternal = len(hel_comb)
-        return (f'      DATA (NHEL(I,{self.counter}),I=0,{nexternal}) /{old_id},{",".join(formatted_hel)}/')
+        return self.dialect.helicity_row(self.counter, old_id, hel_comb)
 
     def read_orig(self):
 
@@ -987,28 +1487,28 @@ class HelicityRecycler():
 
         self.prepare_bools()
 
+        lookahead = self.dialect.needs_lookahead
         for line_num, line in tqdm(enumerate(input_file), total=get_num_lines(self.input_file)):
-            if line_num == 0:
+            if lookahead and line_num == 0:
                 line_cache = line
                 continue
 
             if '!SKIP' in line:
                 continue
 
-            char_5 = ''
-            try:
-                char_5 = line[5]
-            except IndexError:
-                pass
-            if char_5 == '$':
-                line_cache = undo_multiline(line_cache, line)
+            if self.dialect.skip_line(line):
                 continue
 
-            line, line_cache = line_cache, line
+            if lookahead:
+                if self.dialect.is_continuation(line):
+                    line_cache = self.dialect.join_continuation(line_cache, line)
+                    continue
+                line, line_cache = line_cache, line
 
-            self.get_old_name(line)
-            self.get_good_hel(line)
-            self.get_amp_stuff(line_num, line)
+            if self.dialect.fortran_blocks:
+                self.get_old_name(line)
+                self.get_good_hel(line)
+                self.get_amp_stuff(line_num, line)
             call_type = self.function_call(line)
             self.get_gwc(line, call_type)
 
@@ -1028,17 +1528,69 @@ class HelicityRecycler():
 
         
         
-        self.template_dict['helas_calls'] = '\n'.join([f'{obj.line.rstrip()} ! count {obj.nb_used}' 
-                                 for obj in self.template_dict['helas_calls']
-                                 if obj.nb_used > 0 and obj.line])
+        comment = self.dialect.comment
+        self.template_dict['helas_calls'] = '\n'.join(
+            ['%s %s' % (obj.line.rstrip(), comment('count %d' % obj.nb_used))
+             for obj in self.template_dict['helas_calls']
+             if obj.nb_used > 0 and obj.line])
+
+    def amp2_blocks(self):
+        """The madevent driver's AMP2 (multi-channel weight) accumulation.
+
+        By default every kept config feeds AMP2 inside the helicity loop, as it
+        always did. A matrix element shared by a crossing (shared_rows) holds
+        the union of the good configs of every caller, so for the caller at
+        hand some configs are rounding zeros of a cancellation between
+        diagrams that are themselves not small: summed into AMP2 they would
+        skew the single-diagram channel weights away from those of the
+        uncrossed output, which never keeps such configs. There AMP2 is
+        filled in a second pass, from the configs above the good-helicity cut
+        of this very point (|TS| > LIMHEL x sum|TS| / NCOMB, the cut the
+        filter is trained with). The JAMP2 colour weights keep the exact-zero
+        gate of dead_row_if: they are built from the JAMPs, which are left at
+        the same rounding as the |M|^2 they cancel to, not from the diagrams.
+        """
+
+        amp2 = self.template_dict['amp2_lines']
+        if not self.shared_rows:
+            return {'amp2_row_lines': 'if(sde_strat.eq.1) then%s\n'
+                                      '        endif' % amp2,
+                    'amp2_cut_lines': '\n',
+                    'dead_row_decl': '\n'}
+        k = self.loop_var
+        cut = '\n'.join([
+            '',
+            'C     A config dead for this caller cancels between non-small',
+            'C     diagrams: keep it out of the channel weights.',
+            '      IF (SDE_STRAT.EQ.1) THEN',
+            '        TSSUM = 0D0',
+            '        DO %s = 1, NCOMB' % k,
+            '          TSSUM = TSSUM + DABS(TS(%s))' % k,
+            '        ENDDO',
+            '        DO %s = 1, NCOMB' % k,
+            '          IF (DABS(TS(%s)).GT.TSSUM*LIMHEL/NCOMB) THEN' % k,
+            self.amp2_lines_inplace.rstrip('\n'),
+            '          ENDIF',
+            '        ENDDO',
+            '      ENDIF'])
+        return {'dead_row_if': 'IF (TS(%s).NE.0D0) THEN' % k,
+                'dead_row_endif': 'ENDIF',
+                'amp2_row_lines': '\n',
+                'amp2_cut_lines': cut,
+                'dead_row_decl': '\n'.join([
+                    'DOUBLE PRECISION TSSUM, LIMHEL',
+                    '      COMMON/TO_LIMHEL/LIMHEL'])}
 
     def read_template(self):
+        template_dict = dict(self.template_dict)
+        template_dict.update(self.amp2_blocks())
         out_file = open(self.output_file, 'w+')
         with open(self.template_file, 'r') as file:
             for line in file:
                 s = Template(line)
-                line = s.safe_substitute(self.template_dict)
-                line = '\n'.join([do_multiline(sub_lines) for sub_lines in line.split('\n')])
+                line = s.safe_substitute(template_dict)
+                line = '\n'.join([self.dialect.wrap(sub_lines)
+                                  for sub_lines in line.split('\n')])
                 out_file.write(line)
         out_file.close()
 
@@ -1207,9 +1759,13 @@ class HelicityRecycler():
             return
 
         atexit.register(self.clean_up)
+        # The gather and the two chunkers below act on a fortran matrix
+        # element only; a dialect without its blocks (C++) cuts its own.
+        fortran = self.dialect.fortran_blocks
         # before read_orig: it rewrites the color flow lines as it reads them,
         # and how they spell an amplitude is what this decides
-        self.set_gather_lines()
+        if fortran:
+            self.set_gather_lines()
         self.read_orig()
         # Two chunkers live here, one per backend, and exactly one of them
         # fires for any given matrix element. write_amp_chunks is madevent's:
@@ -1220,9 +1776,11 @@ class HelicityRecycler():
         # out of it, and only when the exporter set chunk_spec/chunk_stmts/
         # chunk_file. Neither backend configures the other's, so they never
         # both cut the same file -- do not "unify" them without checking that.
-        self.write_amp_chunks()
+        if fortran:
+            self.write_amp_chunks()
         self.read_template()
-        self.split_helas_block()
+        if fortran:
+            self.split_helas_block()
         atexit.unregister(self.clean_up)
 
     #===========================================================================
@@ -1544,6 +2102,62 @@ def get_called_function(line):
         return None
     return after_call.split('(', 1)[0].strip().split()[-1]
 
+def plan_amp_split(new_amps, is_wavefunction):
+    """How to split a set of unfolded amplitudes into partial contractions.
+
+    They all evaluate the same vertex at different helicities, so the column
+    that carries the MOST distinct wavefunctions is the one worth peeling: the
+    contraction of everything else is then shared by every amplitude that
+    agrees on the remaining columns. Returns (peeled column, [group, ...]),
+    each group a list of amplitudes in their original order, or None when there
+    is no wavefunction column to peel.
+    """
+    if not new_amps:
+        return None
+    columns = [i for i, a in enumerate(new_amps[0].args) if is_wavefunction(a)]
+    if not columns:
+        return None
+    occur = [collections.defaultdict(int) for _ in columns]
+    for amp in new_amps:
+        for j, i in enumerate(columns):
+            occur[j][amp.args[i]] += 1
+    peel = columns[[len(o) for o in occur].index(max(len(o) for o in occur))]
+    rest = [o for j, o in enumerate(occur) if columns[j] != peel]
+
+    # Which amplitudes carry a given wavefunction, one bit per amplitude. The
+    # selection below was a rescan of every amplitude for every combination of
+    # columns -- 12.5 million `w in amp.args` evaluations on g g > g g g g g,
+    # the largest single cost left in the recycling step -- and it is an AND of
+    # these masks instead. A HELAS call never uses the same wavefunction twice,
+    # so a name identifies the column it came from and asking "is w anywhere in
+    # this amplitude" is the same question as asking its column.
+    amp_masks = {}
+    for i, amp in enumerate(new_amps):
+        bit = 1 << i
+        for a in amp.args:
+            amp_masks[a] = amp_masks.get(a, 0) | bit
+    all_amps_mask = (1 << len(new_amps)) - 1
+
+    groups = []
+    for wfcts in product(*[o.keys() for o in rest]):
+        # Select the amplitudes produced by wfcts
+        mask = all_amps_mask
+        for w in wfcts:
+            mask &= amp_masks.get(w, 0)
+            if not mask:
+                break
+        if not mask:
+            continue
+        # lowest bit first, so the group keeps the order of new_amps
+        group = []
+        while mask:
+            low = mask & -mask
+            group.append(new_amps[low.bit_length() - 1])
+            mask ^= low
+        groups.append(group)
+    return peel, groups
+
+
 def split_amps(line, new_amps, gauge):
     if not new_amps:
         return ''
@@ -1560,56 +2174,13 @@ def split_amps(line, new_amps, gauge):
     guarded_call = guard_stmt.upper().startswith('IF')
     call_stmt_prefix = call_prefix if not guarded_call else (indent + '  ')
     fct = '%s%s%s' % (call_stmt_prefix, call_keyword, function_root)
-    for i,amp in enumerate(new_amps):
-        if i == 0:
-            occur = []
-            for a in amp.args:
-                if "W(" in a:
-                    tmp = collections.defaultdict(int)
-                    tmp[a] += 1
-                    occur.append(tmp)
-        else:
-            for i in range(len(occur)):
-                a = amp.args[i]
-                occur[i][a] +=1
-    # Each element in occur is the wavs that appear in a column, with
-    # the number of occurences
-    nb_wav =  [len(o) for o in occur]
-    to_remove = nb_wav.index(max(nb_wav)) 
-    # Remove the one that occurs the most
-    occur.pop(to_remove)
-    
+    plan = plan_amp_split(new_amps, lambda a: "W(" in a)
+    if plan is None:
+        return ''
+    to_remove, groups = plan
+
     lines = []
-    # Which amplitudes carry a given wavefunction, one bit per amplitude. The
-    # selection below was a rescan of every amplitude for every combination of
-    # columns -- 12.5 million `w in amp.args` evaluations on g g > g g g g g,
-    # the largest single cost left in the recycling step -- and it is an AND of
-    # these masks instead. A HELAS call never uses the same wavefunction twice,
-    # so a name identifies the column it came from and asking "is w anywhere in
-    # this amplitude" is the same question as asking its column.
-    amp_masks = {}
-    for i, amp in enumerate(new_amps):
-        bit = 1 << i
-        for a in amp.args:
-            amp_masks[a] = amp_masks.get(a, 0) | bit
-    all_amps_mask = (1 << len(new_amps)) - 1
-    # Get the wavs per column
-    wav_name = [o.keys() for o in occur]
-    for wfcts in product(*wav_name):
-        # Select the amplitudes produced by wfcts
-        mask = all_amps_mask
-        for w in wfcts:
-            mask &= amp_masks.get(w, 0)
-            if not mask:
-                break
-        if not mask:
-            continue
-        # lowest bit first, so sub_amps keeps the order of new_amps
-        sub_amps = []
-        while mask:
-            low = mask & -mask
-            sub_amps.append(new_amps[low.bit_length() - 1])
-            mask ^= low
+    for sub_amps in groups:
         if len(sub_amps) ==1:
             lines.append(apply_args(line, [i.args for i in sub_amps]).replace('\n',''))
             

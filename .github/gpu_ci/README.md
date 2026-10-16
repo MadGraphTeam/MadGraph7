@@ -24,18 +24,28 @@ allocation per workflow run, and every CI job of that run executes in it:
 | `pp_jj` | cluster | the same with `generate p p > j j` (`PROCESS`/`TAG` of `pp_ttx_mg7.sh`): its jet cuts act on several objects, which `p p > t t~` has none of |
 | `crossing_folding` | cluster | `p p > w+ j`, `p p > j j` and `p p > w+ j j` generated `--use_crossing=True`, each written folded and `--use_crossing=False` expanded, each run on the GPU and on cpu with one seed, then the cpu-made `p p > w+ j` gridpacks on the GPU (`crossing_folding_mg7.sh`): every run must agree with its counterpart (folded = expanded, GPU = cpu, gridpack = its run) |
 | `madspace_tests` | cluster | the madspace unit tests, `madspace/tests`, with `MADSPACE_TEST_DEVICE=cuda` or `hip` (`madspace_tests_gpu.sh`): the tests put their torch tensors on the GPU, so madspace runs them on its GPU runtime. Host-side tests (marker `cpu_only`) are skipped. pytest and scipy are installed in the cache when the modules lack them, and so is a CUDA torch wheel when the PyTorch module is a CPU build (manneback). The log and `junit.xml` are uploaded as an artifact |
+| `acceptance` | cluster | the acceptance tests that need a GPU, through `tests/test_manager.py` (`acceptance_gpu.sh`): they skip without `nvcc`/`hipcc` or a device, so a skip fails the job. Now `test_standalone_umami_first_call_gpu` (the good helicities chosen at `umami_initialize`, with device buffers). To add a test, append it to `DEFAULT_TESTS` in `acceptance_gpu.sh` |
 | `interference` | cluster | squared split orders on the GPU backend of madmatrix (`interference_gpu.sh`, `interference_checks.py`): standalone `u u~ > u u~` constraints, the helicity choice of an interference matrix element through umami, with `check_sa.exe` (exact and summed), and `p p > u u~ QCD^2==2` with mg7 against its CPU reference. Input `interference`, on by default and on push |
-| `madmatrix` | cluster | the GPU backend of madmatrix against its scalar CPU backend (`madmatrix_gpu.sh`, `madmatrix_checks.py`), with the `check_sa.exe` of each backend fed the same events from files: MSSM `p p > go go` event by event (running flavour couplings), a subprocess with no good helicity (`b b~ > ta+ ta- / z a`, ymtau = 0), and a non-blocking stream handed to umami (`g g > t t~ g`, `--nonblocking-stream`) |
+| `madmatrix` | cluster | the GPU backend of madmatrix against its scalar CPU backend (`madmatrix_gpu.sh`, `madmatrix_checks.py`), with the `check_sa.exe` of each backend fed the same events from files: MSSM `p p > go go` event by event (running flavour couplings), MSSM `p p > go go j` over every crossing of the subprocess that folds them (extended flavour ids, helicities and colours included), the same for `u g > u z` with `u u~ > z g` (a massive leg crossed into a massless slot) for `p p > z j --axial_gauge=True` (a crossed axial-gauge gluon) and for `p p > j j` and `p p > t t~ j` at `QED^2==2` (a crossed interference, whose helicities are signed: helicity sum and signed draws), a subprocess with no good helicity (`b b~ > ta+ ta- / z a`, ymtau = 0) and |M|^2 = 0 with good helicities (`p p > w+ j` at alpha_s = 0, after a call at 0.118): no helicity or colour, and a non-blocking stream handed to umami (`g g > t t~ g`, `--nonblocking-stream`) |
 | `stop_runner` | cluster | clean up, then create the stop file: `runner_batch.sh` stops the runner and the allocation ends |
 | `watchdog` | vmadgraph | from the start of the runner to the end of the allocation: if the allocation ends before `stop_runner` completed, cancel the run (`ceci-gate watch-runner`, `remote_watch_runner.sh`) |
+
+Without a GPU, `host_hip/` runs the madmatrix GPU code on the host: with `host_hip/bin` first on
+the `PATH`, `make BACKEND=hip` builds the GPU templates as host C++ (its `hipcc` rewrites the kernel
+launches, `include/hip/hip_runtime.h` runs every kernel serially with host memory as device
+memory), so `madmatrix_checks.py --backend hip` compares the logic of the GPU code with the CPU
+backend. The acceptance test `test_gpu_backend_host_emulation` does that for the crossing checks.
+It is no substitute for an nvcc/hipcc build on a device.
 
 To add a CI job, give it `needs: [start_runner, ...]`,
 `if: needs.start_runner.outputs.attempt == github.run_attempt` (see *Re-runs* below) and
 `runs-on: [self-hosted, "${{ inputs.runner_label }}"]`, and add it to the `needs` of `stop_runner`. It runs in the same allocation, after the others, so
 `time_limit` must cover all the jobs together. The first madspace build (OpenBLAS + GPU code)
 is the slow part. The default is kept short so that Slurm can backfill the allocation:
-20 minutes on lemaitre4 (successful runs take 1-12 minutes) and 30 minutes on manneback
-(usually 2-17 minutes, but the runner set-up and the checkout are sometimes slow there).
+30 minutes on both clusters. On lemaitre4 a run takes about 19 minutes with the madspace
+build cached (the madmatrix and acceptance jobs brought it there from 15), and a madspace
+rebuild adds about 3. On manneback runs usually take 2-17 minutes, but the runner set-up and
+the checkout are sometimes slow there.
 Raise it from the Actions tab for a run that needs more, or in the caller workflow when a
 new job makes every run longer.
 
