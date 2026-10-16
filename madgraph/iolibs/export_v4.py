@@ -11941,11 +11941,20 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         # matrix_madevent_v4.inc does not), and a process whose definition pins a
         # specific s-channel has its crossings generated separately, so it stays
         # on the plain path. When off the fills reproduce the historical code.
+        # So does an ME that serves no crossing: the routing (committed before
+        # any matrix file is written) left its table at the identity row and
+        # no router or cross-group dependent calls it with a crossed FLAV_IDX,
+        # so the decode would only ever see CROSSUSE = 0.
         me_use_crossing = (
             self.opt.get('use_crossing', True)
             and self.matrix_file == 'matrix_madevent_group_v4.inc'
             and not any(self.breaks_crossing_symmetry(proc)
-                        for proc in matrix_element.get('processes')))
+                        for proc in matrix_element.get('processes'))
+            and (len(self.madevent_crossing_table(matrix_element)) > 1
+                 or id(matrix_element) in getattr(
+                     self, '_crossgroup_base_mes', set())
+                 or id(matrix_element) in getattr(
+                     self, '_router_base_mes', set())))
         self.fill_crossing_replace_dict_me(matrix_element, replace_dict,
                                            me_use_crossing, proc_id,
                                            xgrow_map=xgrow_map)
