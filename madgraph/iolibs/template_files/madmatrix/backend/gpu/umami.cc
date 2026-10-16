@@ -268,9 +268,10 @@ namespace
   // good-helicity list all of them share, each crossing on points of its own masses
   // (scan_points). A 2 > 1 is scanned with its beams along random axes. Where there
   // is no phase space (a decay below threshold), every helicity is kept
-  // (g_keep_every_helicity). As in the cpu and simd backends, but the inputs and
-  // outputs of umami_matrix_element are device buffers here: the points are made on
-  // the host and copied over, and everything runs on the default stream.
+  // (g_keep_every_helicity).
+  // As in the cpu and simd backends, but the inputs and outputs of
+  // umami_matrix_element are device buffers here: the points are made on the host
+  // and copied over, and everything runs on the default stream.
   void choose_good_helicities( UmamiHandle handle )
   {
     std::vector<double> momenta;

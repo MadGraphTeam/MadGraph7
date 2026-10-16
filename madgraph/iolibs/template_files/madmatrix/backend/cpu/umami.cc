@@ -494,11 +494,12 @@ extern "C"
     HostBufferBase<int, false> color_index( rounded_count );
     // The input event of each lane. The padding lanes, which complete the last page
     // of a flavor, are copies of the first event of their page, as on GPUs. Left at
-    // zero (momenta and g_s), they evaluated to nan, and the good-helicity filter of
-    // the first call (a helicity is kept if its |M|^2 is not 0 for one of its first
-    // events) took that for a non-zero value whenever a padding lane was among
-    // them, as in a first call with a single event: every helicity was then kept
-    // for the rest of the run, the vanishing ones of a q q~ initial state included.
+    // zero (momenta and g_s), they evaluated to nan, and the good-helicity filter
+    // then run at the first call (which kept a helicity whose |M|^2 was not 0 at one
+    // of its first events) took that for a non-zero value whenever a padding lane
+    // was among them, as in a first call with a single event: every helicity was
+    // then kept for the rest of the run, the vanishing ones of a q q~ initial state
+    // included.
     std::vector<std::size_t> source( rounded_count, count );
     for( std::size_t i_event = 0; i_event < count; ++i_event )
     {
