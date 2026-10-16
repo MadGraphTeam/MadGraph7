@@ -774,6 +774,29 @@ class TestCppHelRecyclingCrossing(unittest.TestCase):
         self.assertGreater(self._compare_recycled('plain', 'recycled'), 0,
                            'no directory folds a crossing')
 
+    def test_crossed_decay_without_phase_space_recycled(self):
+        """--crossing_table=all gives t > b e+ ve the crossed decays of a
+        light parent (b~ > t~ e+ ve, ...), which have no phase space: they are
+        never evaluated on shell, so the scan skips them, as the fortran
+        warm-up does, and the directory is still recycled (it was refused),
+        with the base |M|^2, helicity and colour of the plain build"""
+        self._generate('t > b e+ ve', [('plain', '--crossing_table=all'),
+                                       ('recycled', '--hel_recycling=True '
+                                                    '--crossing_table=all')])
+        for plain, recycled in zip(self._pdirs('plain'), self._pdirs('recycled')):
+            tables = open(pjoin(recycled, 'ProcessTables.h')).read()
+            ncross = int(re.search(r'constexpr int ncross = (\d+);', tables).group(1))
+            self.assertGreater(ncross, 1, 'no crossing in the table')
+            self.assertTrue(os.path.exists(pjoin(recycled, 'HelRecyclingCalls.inc')),
+                            'no recycled build in %s' % recycled)
+            ids = [0] * self.nevt
+            me0, hel0, col0 = self._run(plain, ids, 'plain', True)
+            me1, hel1, col1 = self._run(recycled, ids, 'recycled', False)
+            for i in range(self.nevt):
+                self.assertGreater(me0[i], 0)
+                self.assertLessEqual(abs(me1[i] - me0[i]), self.tolerance * me0[i])
+                self.assertEqual((hel1[i], col1[i]), (hel0[i], col0[i]))
+
     @staticmethod
     def _tables(pdir):
         """npar, nflav, ncross, the flavor PDGs and the crossing tables a

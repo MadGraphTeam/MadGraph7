@@ -380,19 +380,26 @@ namespace rambo
   // (a decay below threshold) or RAMBO does not converge. A private generator:
   // the shared one (rn) makes the points of the check drivers, which must not
   // move.
+  // Whether a process of these masses has a physical point at all: not a decay
+  // lighter than its products, nor a 2 > 1 lighter than its beams. Where it has
+  // none it is never evaluated on shell (rambo would exit on it).
+  inline bool has_phase_space( int ninitial, const std::vector<double>& masses )
+  {
+    const int npar = masses.size();
+    double mfinal = 0;
+    for( int ipar = ninitial; ipar < npar; ++ipar ) mfinal += masses[ipar];
+    if( ninitial == 2 && npar == 3 ) return masses[2] > masses[0] + masses[1]; // 2 > 1
+    return npar - ninitial >= 2 && ( ninitial != 1 || masses[0] > mfinal );
+  }
+
   inline std::vector<double> helicity_scan_points( int ninitial, const std::vector<double>& masses, std::size_t nevt )
   {
     const int npar = masses.size();
-    double mfinal = 0, mtotal = 0;
-    for( int ipar = 0; ipar < npar; ++ipar )
-    {
-      mtotal += masses[ipar];
-      if( ipar >= ninitial ) mfinal += masses[ipar];
-    }
+    double mtotal = 0;
+    for( int ipar = 0; ipar < npar; ++ipar ) mtotal += masses[ipar];
     const bool fusion = ninitial == 2 && npar == 3; // 2 > 1
     // rambo exits on a closed phase space: check it first
-    if( fusion ? !( masses[2] > masses[0] + masses[1] )
-               : npar - ninitial < 2 || ( ninitial == 1 && !( masses[0] > mfinal ) ) ) return {};
+    if( !has_phase_space( ninitial, masses ) ) return {};
     // a decay is at rest instead, a 2 > 1 at sqrt(s) = the final mass
     const double energy = fusion ? masses[2] : std::max( 1500., 2 * mtotal );
     Random random;

@@ -144,9 +144,12 @@ namespace
   // finds it. The base points serve a crossing that moves no mass. A crossing
   // that does needs its own: a massive leg in a massless slot is off shell on the
   // base points, where a row it needs can vanish to rounding. A crossing with no
-  // phase space at its masses gets the base points under the base id instead,
-  // which getGoodHel scans the conservative way. Returns the number of events, 0
-  // when the base process itself has no phase space.
+  // phase space at its masses (t > b e+ ve crossed into b~ > t~ e+ ve) is never
+  // evaluated on shell and needs no row: getGoodHel skips it
+  // (sigmaKin_setNoPhaseSpace), as the fortran warm-up does, and its block holds
+  // the base points under the base id. One RAMBO does not converge on gets them
+  // too, which getGoodHel scans the conservative way. Returns the number of
+  // events, 0 when the base process itself has no phase space.
   std::size_t scan_points( std::vector<double>& momenta, std::vector<unsigned int>& flavor_indices )
   {
     constexpr std::size_t nevt = goodHelScanEvents;
@@ -164,7 +167,10 @@ namespace
       {
         std::vector<double> masses( npar );
         for( int k = 0; k < npar; ++k ) masses[k] = g_externalMasses[ProcessTables::xmass_slot_tab[cross * npar + k]];
-        own = rambo::helicity_scan_points( ProcessData::npari, masses, nevt );
+        if( rambo::has_phase_space( ProcessData::npari, masses ) )
+          own = rambo::helicity_scan_points( ProcessData::npari, masses, nevt );
+        else
+          sigmaKin_setNoPhaseSpace( cross );
       }
       const bool use_base = own.empty();
       const std::vector<double>& points = use_base ? base : own;

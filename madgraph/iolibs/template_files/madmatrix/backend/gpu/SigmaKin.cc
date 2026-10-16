@@ -60,6 +60,9 @@ namespace madmatrix
   __device__ __constant__ short cFlavors[nmaxflavor][npar];
   static int cNGoodHel;
   static int cGoodHel[ncomb];
+  // The crossing-table rows with no phase space at their own masses
+  // (sigmaKin_setNoPhaseSpace), which the good-helicity scan skips, as cpu
+  static bool cNoPhaseSpace[ncross];
   __device__ __constant__ fptype cIPD[nIPD > 0 ? nIPD : 1];
 
   // Crossing symmetry (ProcessTables::use_crossing, from --use_crossing), as on
@@ -534,6 +537,8 @@ namespace madmatrix
       // a placeholder row serves no process (xspincol_tab 0, read on the
       // host through its copy): skipped, as backend/cpu does
       if( xspincol_host_tab[iflav / nmaxflavor] == 0 ) continue;
+      // a crossed decay lighter than its products has no physical point
+      if( cNoPhaseSpace[iflav / nmaxflavor] ) continue;
     }
     for( int i = 0; i < maxtry; ++i ) hstFlavorVec[i] = (unsigned int)iflav;
     gpuMemcpy( devFlavorVec, hstFlavorVec, maxtry * sizeof( unsigned int ), gpuMemcpyHostToDevice );
@@ -603,6 +608,14 @@ namespace madmatrix
   sigmaKin_getNGoodHel()
   {
     return cNGoodHel; // the host copy of dcNGoodHel
+  }
+
+  //--------------------------------------------------------------------------
+
+  void
+  sigmaKin_setNoPhaseSpace( const int cross )
+  {
+    if( cross > 0 && cross < ncross ) cNoPhaseSpace[cross] = true;
   }
 
   //--------------------------------------------------------------------------

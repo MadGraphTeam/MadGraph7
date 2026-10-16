@@ -109,6 +109,11 @@ namespace madmatrix
   static bool cCsymBad;               // latched when ANY pair mismatched at a scan point (any crossing)
   static bool cCsymOk;                // the de-duplication is on
 
+  // The crossing-table rows with no phase space at their own masses
+  // (sigmaKin_setNoPhaseSpace): never evaluated on shell, so they need no
+  // good helicity, and the scan skips them as the fortran warm-up does.
+  static bool cNoPhaseSpace[ncross];
+
   // Initial-state spin*color average of the process crossing-table row
   // `cross` crosses into (the product of the per-leg spin*color of the base
   // legs it puts in the initial state, tabulated by the exporter). 0 for a
@@ -810,7 +815,8 @@ namespace madmatrix
   // of the batch when it has one -- events cross*goodHelScanEvents on, every one
   // of them of this crossing, as scan_points (umami.cc) makes them at the
   // crossing's own masses -- or -1, the first events then, which are the base
-  // process's (an API caller's first batch, a crossing without phase space).
+  // process's (an API caller's first batch, a crossing RAMBO found no point
+  // for; one with no phase space at all is not scanned, cNoPhaseSpace).
   inline int
   scan_block( const int cross, const unsigned int* iflavorVec, const int nevt )
   {
@@ -891,6 +897,8 @@ namespace madmatrix
     if constexpr( use_crossing )
     {
       if( spincol_cross( xcross ) == 0 ) continue;
+      // a crossed decay lighter than its products has no physical point
+      if( cNoPhaseSpace[xcross] ) continue;
     }
     for( int i = 0; i < maxtry0; ++i ) hgFlavorVec[i] = (unsigned int)iflav;
     // the points of this crossing: whole pages of the batch, so its momenta and
@@ -1074,6 +1082,14 @@ namespace madmatrix
   sigmaKin_getNGoodHel()
   {
     return cNGoodHelRows; // as on GPUs, which have no C-parity reduction
+  }
+
+  //--------------------------------------------------------------------------
+
+  void
+  sigmaKin_setNoPhaseSpace( const int cross )
+  {
+    if( cross > 0 && cross < ncross ) cNoPhaseSpace[cross] = true;
   }
 
   //--------------------------------------------------------------------------

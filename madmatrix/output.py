@@ -501,10 +501,11 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                 good_hels, zero_perhel, offshell = self._parse_hel_warmup(output)
                 if offshell:
                     # its vanishing amplitudes were measured off shell, and the
-                    # recycled build has no fallback for one it dropped
+                    # recycled build has no fallback for one it dropped (a
+                    # crossing with no phase space at all is not scanned)
                     logger.warning('hel_recycling warm-up has no points at the '
-                        'masses of crossing %s in %s (no phase space); it is '
-                        'written without recycling.',
+                        'masses of crossing %s in %s (RAMBO did not converge); '
+                        'it is written without recycling.',
                         ', '.join(str(k) for k in offshell), name)
                     continue
                 if not good_hels:

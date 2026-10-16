@@ -2287,9 +2287,12 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         if so and so['nampso'] > 1:
             return 'split amplitude orders'
         # A crossing that moves a massive leg into a slot of another mass is
-        # scanned by the warm-up on points of its own masses. When it has none
-        # (a crossed decay with no phase space) the warm-up says so and the
-        # directory is written without recycling (_run_hel_recycling_warmups).
+        # scanned by the warm-up on points of its own masses. One with no
+        # phase space there (a crossed decay lighter than its products) is
+        # never evaluated on shell and is not scanned, as in the fortran
+        # warm-up. When RAMBO finds no point for one that has phase space,
+        # the warm-up says so and the directory is written without recycling
+        # (_run_hel_recycling_warmups).
         return None
 
     def hr_orig_calls(self, color_amplitudes):

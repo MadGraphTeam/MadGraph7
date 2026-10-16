@@ -42,6 +42,11 @@ namespace madmatrix
   int                    // output: the good helicity rows set by sigmaKin_setGoodHel (0 before)
   sigmaKin_getNGoodHel();
 
+  // A crossing-table row with no phase space at its own masses (a crossed
+  // decay lighter than its products, see scan_points in umami.cc): set before
+  // sigmaKin_getGoodHel, which then leaves it out of the good-helicity scan.
+  void sigmaKin_setNoPhaseSpace( const int cross );
+
   void
   sigmaKin( const fptype_momenta* allmomenta,   // input: momenta[nevt*npar*4]
             const fptype* allcouplings,         // input: couplings[nevt*ndcoup*2]
