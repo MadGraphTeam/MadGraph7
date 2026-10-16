@@ -2391,10 +2391,9 @@ class MadSpinInterface(extended_cmd.Cmd):
         model_line = self.banner.get('proc_card', 'full_model_line')
 
         if not self.options['seed']:
-            self.options['seed'] = random.randint(0, int(30081*30081))
-            #self.do_set('seed %s' % self.seed)
-            logger.info('Will use seed %s' % self.options['seed'])
+            self.options['seed'] = random.randint(1, int(30081*30081))
             self.history.insert(0, 'set seed %s' % self.options['seed'])
+        logger.info('Will use seed %s' % self.options['seed'])
 
         if self.options['seed'] > 30081*30081: # can't use too big random number
             msg = 'Random seed too large ' + str(self.options['seed']) + ' > 30081*30081'
@@ -2631,10 +2630,9 @@ class MadSpinInterface(extended_cmd.Cmd):
 
         # Handle the banner of the output file
         if not self.options['seed']:
-            self.options['seed'] = random.randint(0, int(30081*30081))
-            #self.do_set('seed %s' % self.seed)
-            logger.info('Will use seed %s' % self.options['seed'])
+            self.options['seed'] = random.randint(1, int(30081*30081))
             self.history.insert(0, 'set seed %s' % self.options['seed'])
+        logger.info('Will use seed %s' % self.options['seed'])
 
         if self.options['seed'] > 30081*30081: # can't use too big random number
             msg = 'Random seed too large ' + str(self.options['seed']) + ' > 30081*30081'
@@ -2984,7 +2982,8 @@ class MadSpinInterface(extended_cmd.Cmd):
                 cls._mg7_backend_available = False
         return cls._mg7_backend_available
 
-    def generate_events_mg7(self, decay_dir, nb_event, run_name='run_01'):
+    def generate_events_mg7(self, decay_dir, nb_event, run_name='run_01',
+                            seed=None):
         """Run the mg7 (madmatrix/madspace) generator in ``decay_dir``.
 
         Returns ``(event_file, partial_width)``. The partial width comes out of
@@ -2995,10 +2994,17 @@ class MadSpinInterface(extended_cmd.Cmd):
         the parallel unweighting mmaps it and reads its own stripe by index
         (see :class:`NpyDecayPool`), so there is nothing to split and no
         per-worker file to write.
+
+        ``seed`` becomes the run's ``run.seed`` (see :meth:`_next_decay_seed`).
+        Left out, the run card keeps whatever it has -- for a fresh output that
+        is -1, a new random seed on every run, so the pool and hence the decayed
+        sample cannot be reproduced.
         """
         run_card_path = pjoin(decay_dir, 'Cards', 'run_card.toml')
         run_card = banner.RunCardMG7(run_card_path)
         run_card['generation']['events'] = int(nb_event)
+        if seed is not None:
+            run_card['run']['seed'] = int(seed)
         # mg7's numpy event file, not LHE: the pool is read straight back into
         # MadSpin, so the text round trip is pure overhead (~4 us an event) and
         # a strided reader over it costs nothing, where a strided reader over
@@ -3414,6 +3420,42 @@ class MadSpinInterface(extended_cmd.Cmd):
                        decay_dir, value)
         return value
 
+    def _init_seed(self):
+        """Start ``self.seed`` from the user's ``set seed``.
+
+        ``set seed`` lands in ``options['seed']``, never in ``self.seed``, so
+        this is where the card's value is picked up -- as it is, not as the seed
+        of a random draw. Only a card without a seed gets one drawn here, and
+        recorded (option and banner history) so the run can be reproduced.
+        """
+        if self.options['seed']:
+            self.seed = int(self.options['seed'])
+        else:
+            self.seed = random.randint(1, int(30081*30081))
+            self.do_set('seed %s' % self.seed)
+            self.history.insert(0, 'set seed %s' % self.seed)
+
+    def _next_decay_seed(self):
+        """The seed of the next decay-event generation, consumed.
+
+        ``self.seed`` is the running seed of the decay generations, whichever
+        generator runs them (madevent's ``iseed``, mg7's ``run.seed``): each
+        generation -- one per decay directory, and one per refill of a pool --
+        takes the current value and moves it on by one, so no two pools share a
+        random stream and the same card and input give the same pools. It starts
+        from the user's ``set seed``. The paths whose generations do not run in
+        a fixed order -- the per-particle fork (_generate_decay_entry) and the
+        refill owner (_owner_generate) -- key ``self.seed`` on the pool
+        themselves before generating.
+        """
+        if not self.seed:
+            self._init_seed()
+        seed = int(self.seed)
+        # madevent's iseed has to stay at or below 30081*30081 (ranmar), and 0
+        # would mean "random" to both generators
+        self.seed = seed % (30081 * 30081) + 1
+        return seed
+
     def generate_events(self, pdg, nb_event, mg5, restrict_file=None, cumul=False,
                         output_width=False, run_name='run_01'):
         """generate new events for this particle
@@ -3584,8 +3626,9 @@ class MadSpinInterface(extended_cmd.Cmd):
             if output_format == 'mg7':
                 # mg7 delivers exactly the requested number of events, so ask
                 # for what is needed rather than madevent's 0.8x undershoot.
-                out[i], pwidth = self.generate_events_mg7(decay_dir, nb_event,
-                                                          run_name=run_name)
+                out[i], pwidth = self.generate_events_mg7(
+                    decay_dir, nb_event, run_name=run_name,
+                    seed=self._next_decay_seed())
                 if output_width:
                     channel_widths[i] = pwidth
                     width = width + pwidth if cumul else width * pwidth
@@ -3629,13 +3672,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                 run_card["nevents"] = int(0.8*nb_event)
                 run_card.__setitem__('allow_overshoot_events', True, change_userdefine=True)
                 run_card.__setitem__('refine_evt_by_job', 5000, change_userdefine=True)
-                # Handle the banner of the output file
-                if not self.seed:
-                    self.seed = random.randint(0, int(30081*30081))
-                    self.do_set('seed %s' % self.seed)
-                    logger.info('Will use seed %s' % self.seed)
-                    self.history.insert(0, 'set seed %s' % self.seed)
-                run_card["iseed"] = self.seed
+                run_card["iseed"] = self._next_decay_seed()
                 run_card["systematics_program"] = 'None'
                 run_card['use_syst'] = False
                 # Under the parallel unweighting, have the final unweighting hand
@@ -3651,7 +3688,6 @@ class MadSpinInterface(extended_cmd.Cmd):
                 run_card.write(pjoin(decay_dir, "Cards", "run_card.dat"))
                 param_card = self.banner['slha']
                 open(pjoin(decay_dir, "Cards", "param_card.dat"),"w").write(param_card)
-                self.seed += 1
                 me5_cmd.exec_cmd("generate_events %s -f" % run_name)
                 if output_width:
                     channel_widths[i] = me5_cmd.results.current['cross']
@@ -3876,10 +3912,8 @@ class MadSpinInterface(extended_cmd.Cmd):
 
         # Handle the banner of the output file
         if not self.seed:
-            self.seed = random.randint(0, int(30081*30081))
-            self.do_set('seed %s' % self.seed)
+            self._init_seed()
             logger.info('Will use seed %s' % self.seed)
-            self.history.insert(0, 'set seed %s' % self.seed)
 
         if self.seed > 30081*30081: # can't use too big random number
             msg = 'Random seed too large ' + str(self.seed) + ' > 30081*30081'

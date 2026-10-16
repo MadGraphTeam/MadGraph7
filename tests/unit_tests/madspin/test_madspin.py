@@ -13636,6 +13636,153 @@ class TestMg7IsOnlyDemotedForGridpack(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class TestDecayGenerationSeed(unittest.TestCase):
+    """``set seed`` has to pin the decay pools, whichever generator makes them.
+
+    With ``decay_generator mg7`` (the default) it did not: generate_events_mg7
+    never wrote ``run.seed``, so every pool ran with -1 = a fresh random seed,
+    and two runs of the same card on the same input differed from the first
+    event on -- in every spin mode. And in the density modes the seed was not
+    even the user's: run_onshell looked at ``self.seed`` (still None, ``set
+    seed`` fills options['seed']) and drew one from the Python RNG, so the log
+    said ``Will use seed 858043599`` for a card that said ``set seed 77``.
+    """
+
+    def _stub(self, seed, decay_generator='mg7', nb_channel=2):
+        """A MadSpin with the real seed handling and generate_events, over a
+        generate_events_mg7 that only records the seed it is handed. The decay
+        directories already exist, so no matrix element is generated."""
+        import tempfile
+        tmp = tempfile.mkdtemp(prefix='ms_seed_')
+        self.addCleanup(shutil.rmtree, tmp, True)
+        for i in range(nb_channel):
+            os.makedirs(pjoin(tmp, 'decay_6_%s' % i))
+        interface = interface_madspin.MadSpinInterface
+
+        class Stub(object):
+            _init_seed = interface._init_seed
+            _next_decay_seed = interface._next_decay_seed
+            generate_events = interface.generate_events
+            _reader_paths = staticmethod(interface._reader_paths)
+            _split_group_tag = interface._split_group_tag
+            _DECAY_GROUP_TAG = interface._DECAY_GROUP_TAG
+
+            def __init__(self):
+                self.seeds = []
+                self.do_set_calls = []
+
+            def do_set(self, line):
+                self.do_set_calls.append(line)
+                self.options[line.split()[0]] = int(line.split()[1])
+
+            def _mg7_available(self):
+                return True
+
+            def generate_events_mg7(self, decay_dir, nb_event, run_name='run_01',
+                                    seed=None):
+                self.seeds.append((os.path.basename(decay_dir), run_name, seed))
+                return _FakeDecayFile([], name=pjoin(decay_dir, 'events.npy')), 1.0
+
+        class _P(object):
+            def get_name(self):
+                return 't'
+
+        class _M(object):
+            def get_particle(self, pdg):
+                return _P()
+
+        stub = Stub()
+        stub.options = {'seed': seed, 'decay_generator': decay_generator,
+                        'ms_dir': ''}
+        stub.seed = None
+        stub.history = []
+        stub.path_me = tmp
+        stub.model = _M()
+        stub.list_branches = {'t': ['t > w+ b'] * nb_channel}
+        return stub
+
+    def _generate(self, stub, **opts):
+        with misc.TMP_variable(interface_madspin.logger, 'info',
+                               lambda *a, **k: None):
+            stub.generate_events(6, 10, None, **opts)
+        return stub.seeds
+
+    # --------------------------------------------------- the user's own seed
+
+    def test_set_seed_is_used_as_it_is(self):
+        stub = self._stub(77)
+        stub._init_seed()
+        self.assertEqual(stub.seed, 77)
+        # already on the card, so nothing to record
+        self.assertEqual(stub.do_set_calls, [])
+        self.assertEqual(stub.history, [])
+
+    def test_without_set_seed_one_is_drawn_and_recorded(self):
+        """The banner has to say which seed reproduces the run."""
+        stub = self._stub(0)
+        stub._init_seed()
+        self.assertTrue(1 <= stub.seed <= 30081 * 30081)
+        self.assertEqual(stub.options['seed'], stub.seed)
+        self.assertEqual(stub.history, ['set seed %s' % stub.seed])
+
+    # ------------------------------------------------- one seed per generation
+
+    def test_each_generation_takes_the_next_seed(self):
+        stub = self._stub(77)
+        self.assertEqual([stub._next_decay_seed() for _ in range(3)],
+                         [77, 78, 79])
+
+    def test_the_seed_never_leaves_the_madevent_range(self):
+        """ranmar takes at most 30081*30081, and 0 means random to both
+        generators."""
+        stub = self._stub(30081 * 30081)
+        self.assertEqual(stub._next_decay_seed(), 30081 * 30081)
+        self.assertEqual(stub._next_decay_seed(), 1)
+
+    def test_every_mg7_pool_gets_a_seed_of_its_own(self):
+        """The regression proper: the mg7 generator is handed a seed, a
+        different one for each decay directory, and again a different one
+        for a refill of a pool already generated."""
+        stub = self._stub(77)
+        self._generate(stub)
+        self._generate(stub, restrict_file=[1], run_name='ms_refill_1')
+        self.assertEqual(stub.seeds,
+                         [('decay_6_0', 'run_01', 77),
+                          ('decay_6_1', 'run_01', 78),
+                          ('decay_6_1', 'ms_refill_1', 79)])
+
+    def test_the_same_card_gives_the_same_seeds(self):
+        self.assertEqual(self._generate(self._stub(77)),
+                         self._generate(self._stub(77)))
+        self.assertNotEqual(self._generate(self._stub(77)),
+                            self._generate(self._stub(78)))
+
+    def test_the_per_particle_fork_keeps_the_streams_apart(self):
+        """_generate_decays runs each decaying particle in a fork of its own,
+        and _generate_decay_entry keys self.seed on the particle there; the
+        mg7 pools have to follow it rather than restart from the card seed."""
+        import json
+        seeds = {}
+        state = random.getstate()
+        try:
+            for offset in (1, 2):
+                stub = self._stub(77)
+                stub.seed = 77
+                stub.mg5cmd = None
+                res = pjoin(stub.path_me, 'res.json')
+                with misc.TMP_variable(interface_madspin.logger, 'info',
+                                       lambda *a, **k: None):
+                    interface_madspin.MadSpinInterface._generate_decay_entry(
+                        stub, 6, {'nb_gen': 10, 'cumul': False}, 1, offset, res)
+                with open(res) as fsock:
+                    self.assertNotIn('error', json.load(fsock))
+                seeds[offset] = [s for _, _, s in stub.seeds]
+        finally:
+            random.setstate(state)
+        self.assertEqual(seeds[1], [1000080, 1000081])
+        self.assertEqual(seeds[2], [2000083, 2000084])
+
+
 class TestMg7WritesANumpyPoolEveryWorkerStrides(unittest.TestCase):
     """mg7 writes its decay pool as one ``events.npy`` and nothing splits it.
 
@@ -13769,6 +13916,15 @@ class TestMg7WritesANumpyPoolEveryWorkerStrides(unittest.TestCase):
         self._stub(1).generate_events_mg7(self.decay_dir, self.NB_EVENT)
         card = banner.RunCardMG7(pjoin(self.decay_dir, 'Cards', 'run_card.toml'))
         self.assertEqual(card['run']['output_format'], 'lhe_npy')
+
+    def test_the_run_card_carries_the_seed_it_is_given(self):
+        """Without it the pool ran with run.seed = -1, a fresh random seed on
+        every run, and the same card and input gave a different decayed
+        sample each time. See TestDecayGenerationSeed."""
+        self._stub(1).generate_events_mg7(self.decay_dir, self.NB_EVENT,
+                                          seed=1000080)
+        card = banner.RunCardMG7(pjoin(self.decay_dir, 'Cards', 'run_card.toml'))
+        self.assertEqual(card['run']['seed'], 1000080)
 
     def test_the_partial_width_comes_out_of_info_json(self):
         """A .npy has no <init> block, so the width comes from the run result

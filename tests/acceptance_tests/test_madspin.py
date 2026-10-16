@@ -634,3 +634,86 @@ decay w+ > all all
         self._run_one_mode("none", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_level_none')
         self._run_one_mode("madspin_v1", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_level_madspin_v1')
         self._run_one_mode("onshell_v1", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_onshell_v1')
+
+    @staticmethod
+    def _decayed_sample(path):
+        """The <init> block (sigma*BR) and the event blocks of an LHE file:
+        everything that has to come out the same, without the banner."""
+        with gzip.open(path, 'rt') as fsock:
+            text = fsock.read()
+        init = re.search(r'<init>.*?</init>', text, re.S)
+        return (init.group(0) if init else None,
+                re.findall(r'<event>.*?</event>', text, re.S))
+
+    def test_madspin_mg7_decays_reproducible_with_seed(self):
+        """The same card, seed and input give the same decayed sample with the
+        default decay_generator mg7.
+
+        Its decay pools used to run with mg7's run.seed = -1 -- a new random
+        seed on every run -- so two runs of this card differed from the first
+        event on (sigma*BR and the unweighting efficiency too), in every spin
+        mode, while decay_generator madevent was reproducible. Both paths are
+        covered: the density modes (one forked generation per decaying
+        particle) and spinmode none (serial generation).
+        """
+        import MadSpin.interface_madspin as interface_madspin
+        if not interface_madspin.MadSpinInterface._mg7_available():
+            self.skipTest('madspace is not built: MadSpin would generate the '
+                          'decays with madevent, which is not what is tested')
+
+        for spinmode in ('madspin', 'none'):
+            samples = []
+            for tag in ('a', 'b'):
+                run = pjoin(self.path, '%s_%s' % (spinmode, tag))
+                os.mkdir(run)
+                files.cp(pjoin(MG5DIR, 'tests', 'input_files', 'ttbar.lhe.gz'),
+                         pjoin(run, 'events.lhe.gz'))
+                card = pjoin(run, 'madspin_card.dat')
+                with open(card, 'w') as fsock:
+                    fsock.write('import events.lhe.gz\n'
+                                'set spinmode %s\n'
+                                'set decay_generator mg7\n'
+                                'set seed 77\n'
+                                'decay t > w+ b, w+ > e+ ve\n'
+                                'decay t~ > w- b~, w- > mu- vm~\n'
+                                'launch\n' % spinmode)
+                log_path = pjoin(run, 'madspin.log')
+                with open(log_path, 'w') as log:
+                    returncode = subprocess.call(
+                        [sys.executable, pjoin(MG5DIR, 'MadSpin', 'madspin'),
+                         card],
+                        cwd=run, stdin=subprocess.DEVNULL,
+                        stdout=log, stderr=subprocess.STDOUT, timeout=900)
+                decayed = pjoin(run, 'events_decayed.lhe.gz')
+                if returncode or not os.path.exists(decayed):
+                    with open(log_path) as log:
+                        print('\n===== %s %s: MadSpin log tail (rc=%s) =====\n%s'
+                              % (spinmode, tag, returncode,
+                                 '\n'.join(log.read().splitlines()[-100:])),
+                              file=sys.stderr, flush=True)
+                self.assertEqual(returncode, 0)
+                self.assertTrue(os.path.exists(decayed))
+
+                # the mg7 generator really made the pools, each with a fixed
+                # seed of its own
+                cards = glob.glob(pjoin(run, 'decay_*', 'Cards',
+                                        'run_card.toml'))
+                self.assertEqual(len(cards), 2, 'no mg7 decay pool in %s' % run)
+                seeds = [banner.RunCardMG7(path)['run']['seed']
+                         for path in cards]
+                self.assertTrue(all(seed > 0 for seed in seeds), seeds)
+                self.assertEqual(len(set(seeds)), 2, seeds)
+
+                samples.append(self._decayed_sample(decayed))
+
+            init_a, events_a = samples[0]
+            init_b, events_b = samples[1]
+            self.assertEqual(len(events_a), 25)
+            self.assertEqual(init_a, init_b,
+                             'spinmode %s: sigma*BR differs between the two '
+                             'runs' % spinmode)
+            for i, (event_a, event_b) in enumerate(zip(events_a, events_b)):
+                self.assertEqual(event_a, event_b,
+                                 'spinmode %s: event %s differs between the '
+                                 'two runs' % (spinmode, i))
+            self.assertEqual(len(events_a), len(events_b))
