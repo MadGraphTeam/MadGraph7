@@ -42,8 +42,10 @@ To add a CI job, give it `needs: [start_runner, ...]`,
 `runs-on: [self-hosted, "${{ inputs.runner_label }}"]`, and add it to the `needs` of `stop_runner`. It runs in the same allocation, after the others, so
 `time_limit` must cover all the jobs together. The first madspace build (OpenBLAS + GPU code)
 is the slow part. The default is kept short so that Slurm can backfill the allocation:
-20 minutes on lemaitre4 (successful runs take 1-12 minutes) and 30 minutes on manneback
-(usually 2-17 minutes, but the runner set-up and the checkout are sometimes slow there).
+30 minutes on both clusters. On lemaitre4 a run takes about 19 minutes with the madspace
+build cached (the madmatrix and acceptance jobs brought it there from 15), and a madspace
+rebuild adds about 3. On manneback runs usually take 2-17 minutes, but the runner set-up and
+the checkout are sometimes slow there.
 Raise it from the Actions tab for a run that needs more, or in the caller workflow when a
 new job makes every run longer.
 
