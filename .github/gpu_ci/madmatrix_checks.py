@@ -359,7 +359,13 @@ def crossed_gpu_vs_cpu(check_name, backend, name, proc_dirs, energy, seed, nevt,
     """Events over every extended flavour id K*nmaxflavor + flavour of each subprocess
     (crossing-table row K), a random alpha_s and random numbers per event: the GPU |M|^2,
     helicities and colours equal the CPU ones event by event. own_points: the momenta of
-    each event on shell for its own row (2 > 2 only), else the RAMBO points of the base."""
+    each event on shell for its own row (2 > 2 only), else the RAMBO points of the base.
+    The helicities compare event by event only because every subprocess checked here
+    violates C parity (chiral or electroweak couplings): on a C-symmetric one (g g > q q~,
+    g g > t t~) the CPU counts each helicity row once for itself and its C mirror and draws
+    between the two, the GPU orders every row, so the same random number selects other
+    rows (same frequencies). Build the CPU reference with -DMGONGPU_NOCSYM there, or
+    compare helicity frequencies."""
     rng = random.Random(seed)
     problems, details = [], []
     for proc_dir in proc_dirs:
