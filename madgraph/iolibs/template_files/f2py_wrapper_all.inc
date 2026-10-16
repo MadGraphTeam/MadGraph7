@@ -91,33 +91,36 @@ CF2PY integer, intent(hide), depend(PDGS) :: NPDG = len(PDGS)
       return
       end
 
-      SUBROUTINE %(f2py_prefix)sPY_GET_ALL_INTER(PDGS, PROCID, NPDG, P, POS,N_CHANGING, ALLOW_HEL, N_COMB, INTER)
-C     P momenta
-C     NHEL base of helicity that are not changing
-C     POS(N_CHNGING): position of the changing helicity
-C     n_changing: number of changing helicity
-C     ALLOW_HEL(NCOMB, N_CHANGING): combination of helicity to
-C     consider (all jamp computed)
-C     INTER((NCOMB*NCOMB+1)/2: all interference term (not the
-C     symmetric one)
-
+      SUBROUTINE %(f2py_prefix)sPY_GET_ALL_INTER(PDGS, PROCID, P, NHEL, POS, ALLOW_HEL, INTER, N_CHANGING, N_COMB, NPDG)
+C     PY_GET_DENSITY for ONE helicity of the legs not in POS: the
+C     interference terms between the N_COMB helicity combinations
+C     ALLOW_HEL of the legs POS, with every other leg at its NHEL
+C     helicity (the entries of NHEL at POS are ignored). Summed over
+C     those other helicities it gives PY_GET_DENSITY (unpolarised
+C     beams).
+C     No ALPHAS here: the couplings are the ones last set (INITIALISE,
+C     SMATRIXHEL or PY_GET_DENSITY).
+      IMPLICIT NONE
 CF2PY double precision, intent(in), dimension(0:3,npdg) :: p
 CF2PY integer, intent(in), dimension(npdg) :: pdgs
-CF2PY integer, intent(in):: procid
-CF2PY integer, intent(in), dimension(*):: pos
-CF2PY integer, intent(in) :: npdg
-CF2PY integer, intent(in), optional, depend(pos) :: n_changing=len(pos)
-CF2PY INTENT(IN) :: ALLOW_HEL(N_CHANGING*N_COMB)
-CF2PY INTENT(IN) :: N_COMB
-      INTEGER PDGS(*)
-      INTEGER NPDG, PROCID, N_CHANGING, N_COMB
-      INTEGER POS(*)
-      INTEGER ALLOW_HEL(*)
-      DOUBLE COMPLEX INTER(*)
-CF2PY INTENT(OUT) :: INTER(N_COMB*(N_COMB+1)/2)
-      call f77_get_all_inter(PDGS, PROCID, NPDG, P, POS, N_CHANGING,  ALLOW_HEL, N_COMB, INTER)
+CF2PY integer, intent(in) :: procid
+CF2PY integer, intent(in), dimension(npdg) :: nhel
+CF2PY integer, INTENT(IN) :: ALLOW_HEL(N_CHANGING*N_COMB)
+CF2PY integer, INTENT(IN) :: POS(N_CHANGING)
+CF2PY double complex INTENT(OUT), dimension(N_COMB*(N_COMB+1)/2) :: INTER
+CF2PY integer, intent(hide), depend(allow_hel, pos) :: N_COMB = len(ALLOW_HEL)/len(pos)
+CF2PY integer, intent(hide), depend(pos) :: N_CHANGING = len(pos)
+CF2PY integer, intent(hide), depend(PDGS) :: NPDG = len(PDGS)
 
-      return 
+      INTEGER PDGS(NPDG), NHEL(NPDG)
+      INTEGER PROCID, N_CHANGING, N_COMB, NPDG
+      INTEGER POS(N_CHANGING)
+      DOUBLE PRECISION P(0:3,NPDG)
+      INTEGER ALLOW_HEL(N_CHANGING*N_COMB)
+      DOUBLE COMPLEX INTER(N_COMB*(N_COMB+1)/2)
+      call %(f2py_prefix)sf77_get_all_inter(PDGS, PROCID, NPDG, P, NHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, INTER)
+
+      return
       end
 
 
