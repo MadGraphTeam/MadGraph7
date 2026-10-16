@@ -638,10 +638,7 @@ namespace
     constexpr unsigned int nevt = kMatrixBlocks * kMatrixThreads;
     const unsigned int nFlavors = CPPProcess::nmaxflavor;
 
-    mgOnGpu::TimerMap timermap;
-
 #ifdef MGONGPUCPP_GPUIMPL
-    timermap.start( "00 GpuInit" );
     GpuRuntime gpuRuntime( false );
 
     PinnedHostBufferRndNumMomenta hstRndmom( nevt );
@@ -758,7 +755,6 @@ namespace
 #ifdef MGONGPUCPP_GPUIMPL
       gpuMemcpy( devFlv.data(), flvVec.data(), nevt * sizeof( unsigned int ), gpuMemcpyHostToDevice );
 #endif
-      timermap.start( "3a SigmaKin" );
       UmamiInputKey in_keys[3] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_ALPHA_S };
       UmamiOutputKey out_keys[1] = { UMAMI_OUT_MATRIX_ELEMENT };
 #ifdef MGONGPUCPP_GPUIMPL
@@ -770,7 +766,6 @@ namespace
 #endif
       UmamiStatus st = umami_matrix_element(
         umami_handle, nevt, nevt, 0, 3, in_keys, inputs, 1, out_keys, outputs );
-      timermap.stop();
       if( st != UMAMI_SUCCESS )
       {
         std::cerr << "ERROR! umami_matrix_element failed (status=" << st << ")" << std::endl;
