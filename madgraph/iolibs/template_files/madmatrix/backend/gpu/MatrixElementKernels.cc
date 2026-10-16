@@ -14,6 +14,7 @@
 #include "MemoryBuffers.h"
 #include "color_sum.h" // for blasColorSumTmpSize
 
+#include <algorithm> // for std::max
 #include <cfenv> // for fetestexcept
 #include <iostream>
 #include <sstream>
@@ -309,7 +310,10 @@ namespace madmatrix
     sigmaKin_getGoodHel( m_momenta.data(), m_couplings.data(), m_iflavorVec.data(), m_matrixElements.data(), m_pHelNumerators->data(), m_pHelDenominators->data(), m_pHelJamps->data(), hstIsGoodHel.data(), nevt );
     // ... 0d3. Set good helicity list in host static memory
     int nGoodHel = sigmaKin_setGoodHel( hstIsGoodHel.data() );
-    assert( nGoodHel > 0 ); // SANITY CHECK: there should be at least one good helicity
+    // nGoodHel can be 0 (a subprocess whose |M|^2 vanishes identically): sigmaKin then skips the
+    // helicity loop and returns |M|^2 = 0, as on the CPU. The per-helicity buffers below are
+    // sized for one helicity at least, so that they are never empty (null) allocations.
+    const int nGoodHelAlloc = std::max( nGoodHel, 1 );
     // Create one GPU stream for each good helicity
     for( int ighel = 0; ighel < nGoodHel; ighel++ )
       gpuStreamCreate( &m_helStreams[ighel] );
@@ -325,10 +329,12 @@ namespace madmatrix
     }
 #endif
     // ... Create the "many-helicity" super-buffer of nGoodHel ME buffers (dynamically allocated because nGoodHel is determined at runtime)
-    m_pHelMEs.reset( new DeviceBufferSimple( nGoodHel * nevt ) );
+    m_pHelMEs.reset( new DeviceBufferSimple( nGoodHelAlloc * nevt ) );
     // ... Create the "many-helicity" super-buffer of nGoodHel ME buffers (dynamically allocated because nGoodHel is determined at runtime)
     // ... (calling reset here deletes the previously created "one-helicity" buffers used for helicity filtering)
-    m_pHelJamps.reset( new DeviceBufferAmp( nGoodHel * ProcessData::njampso * madmatrix::nx2 * nevt ) );
+
+    m_pHelJamps.reset( new DeviceBufferAmp( nGoodHelAlloc * ProcessData::njampso * madmatrix::nx2 * nevt ) );
+    
     // ... Create the numerator and denominator buffers. These no longer carry a helicity dimension:
     // ... the numerators are accumulated in place over all good helicities via atomicAdd in calculate_jamps
     // ... ([nevt][ndiagrams]) and the denominators are derived from them ([nevt]).
@@ -338,7 +344,7 @@ namespace madmatrix
     // Create the "many-helicity" super-buffer of temporary buffers for the cuBLAS/hipBLAS intermediate
     // results in color_sum_blas, and in mixed precision mode for the converted jamps too
     // (see blasColorSumTmpSize in color_sum.h, which is where the size is defined)
-    if( m_blasColorSum ) m_pHelBlasTmp.reset( new DeviceBufferSimple2( blasColorSumTmpSize( nGoodHel, nevt ) ) );
+    if( m_blasColorSum ) m_pHelBlasTmp.reset( new DeviceBufferSimple2( blasColorSumTmpSize( nGoodHelAlloc, nevt ) ) );
 #endif
     // Return the number of good helicities
     return nGoodHel;

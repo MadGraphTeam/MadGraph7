@@ -74,9 +74,8 @@ void update_mass_min_max(
 // Masses of the external momenta in the order they are handed to boost_beam,
 // i.e. after the channel permutation. A position whose mass differs between
 // permutations gets -1, and boost_beam reads that mass off the momentum.
-std::vector<double> lab_masses(
-    const Topology& topology, const nested_vector2<me_int_t>& permutations
-) {
+std::vector<double>
+lab_masses(const Topology& topology, const nested_vector2<me_int_t>& permutations) {
     std::vector<double> masses = topology.incoming_masses();
     const auto& out = topology.outgoing_masses();
     masses.insert(masses.end(), out.begin(), out.end());
@@ -258,7 +257,9 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     TChannelMode t_channel_mode,
     const std::optional<Cuts>& cuts,
     const std::vector<std::vector<std::size_t>>& permutations,
-    const std::optional<std::vector<std::size_t>>& color_order
+    const std::optional<std::vector<std::size_t>>& color_order,
+    double beam_rapidity,
+    bool mirror_beams
 ) :
     Mapping(
         "PhaseSpaceMapping",
@@ -286,18 +287,27 @@ PhaseSpaceMapping::PhaseSpaceMapping(
           )},
          {"x1", batch_float},
          {"x2", batch_float}},
-        permutations.size() > 1
-            ? NamedVector<Type>{{"permutation_index", batch_int}}
-            : NamedVector<Type>{}
+        [&] {
+            NamedVector<Type> conditions;
+            if (permutations.size() > 1) {
+                conditions.push_back("permutation_index", batch_int);
+            }
+            if (mirror_beams) {
+                conditions.push_back("mirror_index", batch_int);
+            }
+            return conditions;
+        }()
     ),
     _topology(topology),
-    _cuts(cuts.value_or(Cuts(
-        topology.outgoing_masses().size() + topology.incoming_masses().size()
-    ))),
+    _cuts(cuts.value_or(
+        Cuts(topology.outgoing_masses().size() + topology.incoming_masses().size())
+    )),
     _pi_factors(
         std::pow(2 * PI, 4 - 3 * static_cast<int>(topology.outgoing_masses().size()))
     ),
     _sqrt_s_lab(cm_energy),
+    _beam_rapidity(beam_rapidity),
+    _mirror_beams(mirror_beams),
     _leptonic(leptonic),
     // A decay has no beams to sample momentum fractions for: the root
     // virtuality is fixed at the decaying particle's mass (passed as
@@ -307,7 +317,17 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         (_topology.t_propagator_count() == 0 ||
          t_channel_mode != PhaseSpaceMapping::chili)
     ),
+    _two_to_one(topology.outgoing_masses().size() == 1),
     _t_mapping(std::monostate{}) {
+    if ((_beam_rapidity != 0. || _mirror_beams) && _topology.is_decay()) {
+        throw std::invalid_argument("a decay has no beams to give a rapidity");
+    }
+    if (_two_to_one && _topology.outgoing_masses().at(0) <= 0.) {
+        // s_hat = m^2 = 0 is outside the luminosity (tau = 0)
+        throw std::invalid_argument(
+            "a 2 -> 1 process needs a massive final-state particle"
+        );
+    }
     bool has_t_channel = _topology.t_propagator_count() > 0;
     struct DecayInfo {
         double m_min, pt_min, eta_max;
@@ -361,15 +381,18 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     auto at_or = [](const std::vector<double>& v, std::size_t i, double none) {
         return i < v.size() ? v.at(i) : none;
     };
-    auto pair_at = [](const std::vector<std::vector<double>>& m,
-                      std::size_t i,
-                      std::size_t j) {
-        return i < m.size() && j < m.at(i).size() ? m.at(i).at(j) : 0.;
-    };
+    auto pair_at =
+        [](const std::vector<std::vector<double>>& m, std::size_t i, std::size_t j) {
+            return i < m.size() && j < m.at(i).size() ? m.at(i).at(j) : 0.;
+        };
     constexpr double inf = std::numeric_limits<double>::infinity();
     std::vector<double> topo_pt_min(n_out, inf), topo_eta_max(n_out, 0.);
-    std::vector<std::vector<double>> topo_m_inv_min(n_out, std::vector<double>(n_out, inf));
-    std::vector<std::vector<double>> topo_dr_min(n_out, std::vector<double>(n_out, inf));
+    std::vector<std::vector<double>> topo_m_inv_min(
+        n_out, std::vector<double>(n_out, inf)
+    );
+    std::vector<std::vector<double>> topo_dr_min(
+        n_out, std::vector<double>(n_out, inf)
+    );
     for (const auto& position : event_position) {
         for (std::size_t t = 0; t < n_out; ++t) {
             std::size_t i = position.at(t);
@@ -407,11 +430,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     constexpr std::size_t no_leaf = static_cast<std::size_t>(-1);
     std::vector<std::vector<std::size_t>> node_leaves(_topology.decays().size());
     {
-        std::vector<std::size_t> decay_to_outgoing(
-            _topology.decays().size(), no_leaf
-        );
-        for (std::size_t out_pos = 0;
-             out_pos < _topology.outgoing_indices().size();
+        std::vector<std::size_t> decay_to_outgoing(_topology.decays().size(), no_leaf);
+        for (std::size_t out_pos = 0; out_pos < _topology.outgoing_indices().size();
              ++out_pos) {
             decay_to_outgoing.at(_topology.outgoing_indices().at(out_pos)) = out_pos;
         }
@@ -454,9 +474,13 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         }
         node_y_max.at(d) = y_max;
     }
-    // The rapidity of the partonic system, log(x1 / x2) / 2, is the root's.
+    // The rapidity of the partonic system, log(x1 / x2) / 2, is the root's. The
+    // cuts hold in the lab frame and x1, x2 live in the beams' centre-of-mass
+    // frame, which is boosted by beam_rapidity: |y_cm| <= |y_lab| + |y0|. (The
+    // bounds on the children, in the partonic frame, are unaffected.)
     if (_map_luminosity && read_cuts) {
-        _y_max_lab = node_y_max.at(0);
+        double y_root = node_y_max.at(0);
+        _y_max_lab = y_root >= 0. ? y_root + std::abs(beam_rapidity) : y_root;
     }
 
     // The floor a set of final-state particles (topology outgoing positions)
@@ -578,9 +602,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     // Two sources of such a floor: a cut on sqrt(s_hat) itself, and the pair
     // cuts, every one of which bounds the total exactly as it bounds a
     // propagator above.
-    double sqrt_s_hat_min = std::max(
-        read_cuts ? _cuts.sqrt_s_min() : 0., pair_floor(node_leaves.at(0))
-    );
+    double sqrt_s_hat_min =
+        std::max(read_cuts ? _cuts.sqrt_s_min() : 0., pair_floor(node_leaves.at(0)));
     // Only the luminosity mapping samples the root virtuality, and the root's
     // e_min is read nowhere else: build_forward_impl gives the root its s_min
     // only when it samples it, and the other propagators bound themselves by
@@ -658,8 +681,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         if (!is_com_decay || _map_luminosity) {
             double mass = decay.width == 0. ? 0. : decay.mass;
             double width = decay.width;
-            info.invariant =
-                Invariant(invariant_power, mass, width, decay.flat_window);
+            info.invariant = Invariant(invariant_power, mass, width, decay.flat_window);
         }
     }
     for (std::size_t index : _topology.decay_integration_order()) {
@@ -676,7 +698,9 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         std::vector<double> eta_max, pt_min, y_max;
         for (std::size_t index : topology.decays().at(0).child_indices) {
             auto& info = decay_info.at(index);
-            eta_max.push_back(info.eta_max);
+            // eta cuts hold in the lab frame, the t-channel is generated in the
+            // beams' centre-of-mass frame: |y_cm| <= |eta_lab| + |beam_rapidity|
+            eta_max.push_back(info.eta_max + std::abs(beam_rapidity));
             pt_min.push_back(info.pt_min);
             // rapidity bound of the child, composites included (node_y_max)
             y_max.push_back(node_y_max.at(index));
@@ -695,8 +719,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
                 );
             }
             // Reorder the per-pair cut matrices (indexed by topology outgoing
-            // position) into the child order in which masses/pt are handed to the chain,
-            // mirroring the pt_min reordering above. Composite (non-leaf)
+            // position) into the child order in which masses/pt are handed to the
+            // chain, mirroring the pt_min reordering above. Composite (non-leaf)
             // children carry no pairwise cut.
             const auto& out_idx = topology.outgoing_indices();
             const auto& child_indices = topology.decays().at(0).child_indices;
@@ -726,8 +750,14 @@ PhaseSpaceMapping::PhaseSpaceMapping(
                     }
                     m_inv_co.at(a).at(b) =
                         m_inv_full.at(child_to_out.at(a)).at(child_to_out.at(b));
-                    dr_co.at(a).at(b) =
-                        dr_full.at(child_to_out.at(a)).at(child_to_out.at(b));
+                    // Delta R uses pseudorapidities, which a longitudinal boost
+                    // does not shift uniformly for massive particles: a lab
+                    // cut is no bound in the beams' frame. The cut itself is
+                    // still applied to the lab momenta.
+                    if (beam_rapidity == 0.) {
+                        dr_co.at(a).at(b) =
+                            dr_full.at(child_to_out.at(a)).at(child_to_out.at(b));
+                    }
                 }
             }
             // The blocks of the chain that scatter the two beams (central 2->2,
@@ -771,12 +801,26 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     double invariant_power,
     TChannelMode mode,
     const std::optional<Cuts>& cuts,
-    const std::optional<std::vector<std::size_t>>& color_order
+    const std::optional<std::vector<std::size_t>>& color_order,
+    double beam_rapidity,
+    bool mirror_beams
 ) :
     PhaseSpaceMapping(
         Topology([&] {
-            if (external_masses.size() < 4) {
-                throw std::invalid_argument("The number of masses must be at least 4");
+            if (external_masses.size() < 3) {
+                throw std::invalid_argument("The number of masses must be at least 3");
+            }
+            if (external_masses.size() == 3) {
+                return Diagram(
+                    {external_masses.at(0), external_masses.at(1)},
+                    {external_masses.at(2)},
+                    {},
+                    {{
+                        {Diagram::incoming, 0},
+                        {Diagram::incoming, 1},
+                        {Diagram::outgoing, 0},
+                    }}
+                );
             }
             std::vector<Diagram::Vertex> vertices;
             auto n_out = external_masses.size() - 2;
@@ -810,7 +854,9 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         mode,
         cuts,
         {},
-        color_order
+        color_order,
+        beam_rapidity,
+        mirror_beams
     ) {}
 
 Mapping::Result PhaseSpaceMapping::build_forward_impl(
@@ -833,6 +879,40 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
 
     ValueVec dets{_pi_factors};
     Value x1 = 1.0, x2 = 1.0;
+
+    // permute, boost into the lab frame and apply the cuts
+    auto finish = [&](Value p_ext_stack) -> Result {
+        if (_permutations.size() > 1) {
+            p_ext_stack = fb.permute_momenta(
+                p_ext_stack, _permutations, conditions.at("permutation_index")
+            );
+        } else if (_permutations.size() == 1 &&
+                   !std::is_sorted(
+                       _permutations.at(0).begin(), _permutations.at(0).end()
+                   )) {
+            p_ext_stack = fb.permute_momenta(
+                p_ext_stack, _permutations, static_cast<me_int_t>(0)
+            );
+        }
+        auto p_ext_lab = to_lab(fb, p_ext_stack, x1, x2, conditions);
+        dets.push_back(_cuts.build_function(fb, {p_ext_lab}).at(0));
+        auto ps_weight = fb.cut_unphysical(fb.product(dets), p_ext_lab, x1, x2);
+        return {{{"momenta", p_ext_lab}, {"x1", x1}, {"x2", x2}}, ps_weight};
+    };
+
+    if (_two_to_one) {
+        // dPhi_1 = 2 pi delta(s_hat - m^2) (the 2 pi is _pi_factors): s_hat is
+        // fixed and the one random number left is the rapidity, through the
+        // split of tau = m^2 / s between x1 and x2.
+        double mass = _topology.outgoing_masses().at(0);
+        auto [x1_new, x2_new, det_x] =
+            fb.r_to_x1x2(next_random(), mass * mass, _sqrt_s_lab * _sqrt_s_lab);
+        x1 = x1_new;
+        x2 = x2_new;
+        dets.push_back(det_x);
+        auto [p1, p2] = fb.com_p_in(mass);
+        return finish(fb.stack({p1, p2, fb.add(p1, p2)}));
+    }
 
     // initialize masses and square masses
     std::vector<DecayData> decay_data(
@@ -890,6 +970,9 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
         dets.push_back(det_x);
     }
 
+    auto lab_x = lab_fractions(fb, x1, x2, conditions);
+    Value x1_lab = lab_x.first, x2_lab = lab_x.second;
+
     // if required, build t-channel part of phase space mapping
     ValueVec p_ext;
     std::visit(
@@ -912,8 +995,8 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
                 if constexpr (std::is_same_v<TMapping, TPropagatorMapping> ||
                               std::is_same_v<TMapping, ColorOrderedMapping>) {
                     if (t_mapping.has_rapidity_window()) {
-                        conds.push_back(x1);
-                        conds.push_back(x2);
+                        conds.push_back(x1_lab);
+                        conds.push_back(x2_lab);
                     }
                 }
                 auto t_result = t_mapping.build_forward(fb, args, conds);
@@ -979,7 +1062,7 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
                 // a root decay restricted by the cuts reads the boost to the lab
                 ValueVec decay_conds;
                 if (decay_map.condition_types().size() == 2) {
-                    decay_conds = {x1, x2};
+                    decay_conds = {x1_lab, x2_lab};
                 }
                 auto k_out = decay_map.build_forward(fb, decay_args, decay_conds);
                 for (auto [child_index, k] : zip(data.decay.child_indices, k_out)) {
@@ -995,26 +1078,81 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
     for (std::size_t decay_index : _topology.outgoing_indices()) {
         p_ext.push_back(decay_data.at(decay_index).momentum.value());
     }
-    auto p_ext_stack = fb.stack(p_ext);
+    return finish(fb.stack(p_ext));
+}
 
-    // permute momenta if permutations are given
-    if (_permutations.size() > 1) {
-        p_ext_stack = fb.permute_momenta(p_ext_stack, _permutations, conditions.at(0));
-    } else if (_permutations.size() == 1 &&
-               !std::is_sorted(
-                   _permutations.at(0).begin(), _permutations.at(0).end()
-               )) {
-        p_ext_stack =
-            fb.permute_momenta(p_ext_stack, _permutations, static_cast<me_int_t>(0));
+std::pair<Value, Value> PhaseSpaceMapping::lab_fractions(
+    FunctionBuilder& fb, Value x1, Value x2, const NamedVector<Value>& conditions
+) const {
+    if (_beam_rapidity == 0.) {
+        return {x1, x2};
     }
+    double exp_plus = std::exp(_beam_rapidity), exp_minus = std::exp(-_beam_rapidity);
+    if (!_mirror_beams) {
+        return {fb.mul(x1, exp_plus), fb.mul(x2, exp_minus)};
+    }
+    auto mirror_index = conditions.at("mirror_index");
+    return {
+        fb.mul(x1, fb.gather(mirror_index, std::vector<double>{exp_plus, exp_minus})),
+        fb.mul(x2, fb.gather(mirror_index, std::vector<double>{exp_minus, exp_plus}))
+    };
+}
 
-    // boost into correct frame and apply cuts
-    auto p_ext_lab = _map_luminosity
-        ? fb.boost_beam(p_ext_stack, Value(lab_masses(_topology, _permutations)), x1, x2)
-        : p_ext_stack;
-    dets.push_back(_cuts.build_function(fb, {p_ext_lab}).at(0));
-    auto ps_weight = fb.cut_unphysical(fb.product(dets), p_ext_lab, x1, x2);
-    return {{{"momenta", p_ext_lab}, {"x1", x1}, {"x2", x2}}, ps_weight};
+Value PhaseSpaceMapping::to_lab(
+    FunctionBuilder& fb,
+    Value momenta,
+    Value x1,
+    Value x2,
+    const NamedVector<Value>& conditions
+) const {
+    // boost_beam boosts by the rapidity 0.5 ln(x1 / x2). Without a mirror the
+    // partonic and beam boosts are one: scaling x1 by exp(y) and x2 by
+    // exp(-y) adds the beam rapidity y.
+    Value masses(lab_masses(_topology, _permutations));
+    double exp_plus = std::exp(_beam_rapidity), exp_minus = std::exp(-_beam_rapidity);
+    if (_map_luminosity && !_mirror_beams && _beam_rapidity != 0.) {
+        return fb.boost_beam(
+            momenta, masses, fb.mul(x1, exp_plus), fb.mul(x2, exp_minus)
+        );
+    }
+    if (_map_luminosity) {
+        momenta = fb.boost_beam(momenta, masses, x1, x2);
+    }
+    if (_mirror_beams) {
+        // a rotation: the masses of the legs are unchanged by it
+        momenta = fb.mirror_momenta(momenta, conditions.at("mirror_index"));
+    }
+    if (_beam_rapidity != 0.) {
+        momenta = fb.boost_beam(momenta, masses, exp_plus, exp_minus);
+    }
+    return momenta;
+}
+
+Value PhaseSpaceMapping::from_lab(
+    FunctionBuilder& fb,
+    Value momenta,
+    Value x1,
+    Value x2,
+    const NamedVector<Value>& conditions
+) const {
+    Value masses(lab_masses(_topology, _permutations));
+    double exp_plus = std::exp(_beam_rapidity), exp_minus = std::exp(-_beam_rapidity);
+    if (_map_luminosity && !_mirror_beams && _beam_rapidity != 0.) {
+        return fb.boost_beam_inverse(
+            momenta, masses, fb.mul(x1, exp_plus), fb.mul(x2, exp_minus)
+        );
+    }
+    if (_beam_rapidity != 0.) {
+        momenta = fb.boost_beam_inverse(momenta, masses, exp_plus, exp_minus);
+    }
+    if (_mirror_beams) {
+        // a rotation: the masses of the legs are unchanged by it
+        momenta = fb.mirror_momenta(momenta, conditions.at("mirror_index"));
+    }
+    if (_map_luminosity) {
+        momenta = fb.boost_beam_inverse(momenta, masses, x1, x2);
+    }
+    return momenta;
 }
 
 Mapping::Result PhaseSpaceMapping::build_inverse_impl(
@@ -1023,16 +1161,20 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
     const NamedVector<Value>& conditions
 ) const {
     Value p_ext_lab = inputs.at(0), x1 = inputs.at(1), x2 = inputs.at(2);
-    Value p_ext_stack =
-        _map_luminosity ? fb.boost_beam_inverse(
-                              p_ext_lab, Value(lab_masses(_topology, _permutations)), x1, x2
-                          )
-                        : p_ext_lab;
+    if (_two_to_one) {
+        auto [r, det_x] = fb.x1x2_to_r(x1, x2, _sqrt_s_lab * _sqrt_s_lab);
+        return {{{"random", fb.stack({r})}}, fb.mul(det_x, 1. / _pi_factors)};
+    }
+    Value p_ext_stack = from_lab(fb, p_ext_lab, x1, x2, conditions);
+    auto lab_x = lab_fractions(fb, x1, x2, conditions);
+    Value x1_lab = lab_x.first, x2_lab = lab_x.second;
 
     // permute momenta if permutations are given
     if (_permutations.size() > 1) {
         p_ext_stack = fb.permute_momenta(
-            p_ext_stack, invert_permutations(_permutations), conditions.at(0)
+            p_ext_stack,
+            invert_permutations(_permutations),
+            conditions.at("permutation_index")
         );
     } else if (_permutations.size() == 1 &&
                !std::is_sorted(
@@ -1048,12 +1190,11 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
     std::vector<DecayData> decay_data(
         _topology.decays().begin(), _topology.decays().end()
     );
-    for (auto [decay_index, mass, momentum] :
-         zip(_topology.outgoing_indices(),
+    for (auto [decay_index, mass, momentum] : zip(
+             _topology.outgoing_indices(),
              _topology.outgoing_masses(),
-             std::span(
-                 p_ext.begin() + _topology.incoming_masses().size(), p_ext.end()
-             ))) {
+             std::span(p_ext.begin() + _topology.incoming_masses().size(), p_ext.end())
+         )) {
         auto& data = decay_data.at(decay_index);
         data.mass = mass;
         data.mass2 = mass * mass;
@@ -1084,7 +1225,7 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
                 }
                 ValueVec decay_conds;
                 if (decay_map.condition_types().size() == 2) {
-                    decay_conds = {x1, x2};
+                    decay_conds = {x1_lab, x2_lab};
                 }
                 auto decay_out = decay_map.build_inverse(fb, decay_args, decay_conds);
                 data.computed_mass = decay_out.at(decay_map.random_dim());
@@ -1124,8 +1265,8 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
                 if constexpr (std::is_same_v<TMapping, TPropagatorMapping> ||
                               std::is_same_v<TMapping, ColorOrderedMapping>) {
                     if (t_mapping.has_rapidity_window()) {
-                        conds.push_back(x1);
-                        conds.push_back(x2);
+                        conds.push_back(x1_lab);
+                        conds.push_back(x2_lab);
                     }
                 }
                 auto t_result = t_mapping.build_inverse(fb, args, conds);

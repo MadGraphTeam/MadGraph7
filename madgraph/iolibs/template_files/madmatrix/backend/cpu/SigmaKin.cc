@@ -197,6 +197,7 @@ namespace madmatrix
     using A_ACCESS = HostAccessAmplitudes;      // TRIVIAL ACCESS (no kernel splitting yet): buffer for one event
     using CD_ACCESS = HostAccessCouplings;      // non-trivial access (dependent couplings): buffer includes all events
     using CI_ACCESS = HostAccessCouplingsFixed; // TRIVIAL access (independent couplings): buffer for one event
+    using CDPF_ACCESS = CD_ACCESS;              // the running flavor couplings gathered into dpf_value (one event page, as CD_ACCESS)
     using F_ACCESS = HostAccessIflavorVec;      // non-trivial access: buffer includes all events
     using NUM_ACCESS = HostAccessNumerators;    // non-trivial access: buffer includes all events
     mgDebug( 0, __FUNCTION__ );
@@ -266,9 +267,9 @@ namespace madmatrix
       // an ordinary value-based view over it. The flavor index is constant across a SIMD lane
       // (guaranteed by the phase-space integrator), so each lane gets its own running value
       // while sharing the same flavor selection. This is the direct analogue of Fortran's
-      // FLV_xx%VAL(k)%P => GC_yyy(J). The vertex routines are instantiated with CD_ACCESS so
-      // get_coupling_def reads dpf_value with the right per-flavor stride (CD_ACCESS::flv_stride).
-      constexpr int ndpfbuf = ( nDPF > 0 ? nDPF * nMF * CD_ACCESS::flv_stride : 1 );
+      // FLV_xx%VAL(k)%P => GC_yyy(J). The vertex routines are instantiated with CDPF_ACCESS
+      // (= CD_ACCESS here) so get_coupling_def reads dpf_value with the right per-flavor stride.
+      constexpr int ndpfbuf = ( nDPF > 0 ? nDPF * nMF * CDPF_ACCESS::flv_stride : 1 );
       // cppAlign is only defined for SIMD
       alignas( madmatrix::cppAlign ) fptype dpf_value[ndpfbuf]{};
       for( int idpf = 0; idpf < nDPF; idpf++ )
@@ -276,10 +277,10 @@ namespace madmatrix
         {
           const int idc = cDPF_idcoup[idpf * nMF + imf];
           if( idc >= 0 )
-            CD_ACCESS::kernelAccess( dpf_value + ( idpf * nMF + imf ) * CD_ACCESS::flv_stride ) =
+            CDPF_ACCESS::kernelAccess( dpf_value + ( idpf * nMF + imf ) * CDPF_ACCESS::flv_stride ) =
               CD_ACCESS::kernelAccessConst( COUPs[idc] );
         }
-      FLV_COUPLING_ARRAY<nDPF, nMF, CD_ACCESS::flv_stride> flvCOUPs_dep{ cDPF_partner1, cDPF_partner2, dpf_value };
+      FLV_COUPLING_ARRAY<nDPF, nMF, CDPF_ACCESS::flv_stride> flvCOUPs_dep{ cDPF_partner1, cDPF_partner2, dpf_value };
 
       // Reset color flows (reset jamp_sv) at the beginning of a new event or event page
       for( int i = 0; i < njampso; i++ ) { jamp_sv[i] = cxzero_sv<cxtype_amp_sv>(); }

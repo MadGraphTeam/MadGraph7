@@ -157,6 +157,51 @@ class IOExportV4IOTest(IOTests.IOTestManager,
 
     tearDown = test_file_writers.CheckFileCreate.clean_files
 
+    def test_standalone_files_next_to_matrix_file(self):
+        """The standalone output does not chdir to the process directory, so
+        the split-orders driver written along matrix.f must be placed next to
+        it, not in the directory MG was started from (nor its parent), and
+        only when writing is requested. nsqso_born.inc is only written for a
+        MadLoop born_matrix.f."""
+
+        tmpdir = tempfile.mkdtemp()
+        startdir = pjoin(tmpdir, 'parent', 'start')
+        procdir = pjoin(tmpdir, 'SubProcesses', 'P1_epem_aaa')
+        os.makedirs(startdir)
+        os.makedirs(procdir)
+        old_cwd = os.getcwd()
+        os.chdir(startdir)
+        try:
+            myproc = copy.copy(self.mymatrixelement.get('processes')[0])
+            myproc.set('split_orders', ['QED'])
+            matrix_element = helas_objects.HelasMatrixElement(
+                diagram_generation.Amplitude({'process': myproc}))
+            writer = writers.FortranWriter(pjoin(procdir, 'matrix.f'))
+            export_v4.ProcessExporterFortranSA().write_matrix_element_v4(
+                writer, matrix_element, self.myfortranmodel)
+            writer.close()
+
+            self.assertEqual(os.listdir(startdir), [])
+            self.assertEqual(os.listdir(pjoin(tmpdir, 'parent')), ['start'])
+            self.assertEqual(sorted(os.listdir(procdir)),
+                    ['check_sa_born_splitOrders.f', 'matrix.f'])
+
+            # write=False only returns the replace_dict: no driver either
+            os.remove(pjoin(procdir, 'check_sa_born_splitOrders.f'))
+            writer = writers.FortranWriter(pjoin(procdir, 'matrix.f'))
+            replace_dict = export_v4.ProcessExporterFortranSA(
+                ).write_matrix_element_v4(writer, matrix_element,
+                                          self.myfortranmodel, write=False)
+            writer.close()
+
+            self.assertEqual(replace_dict['nSqAmpSplitOrders'], 1)
+            self.assertEqual(os.path.getsize(pjoin(procdir, 'matrix.f')), 0)
+            self.assertEqual(os.listdir(procdir), ['matrix.f'])
+            self.assertEqual(os.listdir(startdir), [])
+        finally:
+            os.chdir(old_cwd)
+            shutil.rmtree(tmpdir)
+
     def test_flavor_mask_placeholders_present_in_nonstandalone_templates(self):
         template_dir = pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files')
         template_names = [
@@ -10838,17 +10883,22 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
         self.assertEqual(len(calls), 3)
         for call in calls:
             self.assertIn('M0_GET_FLAVOR_INDEX,M0_GET_FLAVOR,5,2,12', call)
-        # the density and interference wrappers freeze the legs whose helicity
-        # is an open index of rho (POS); smatrixhel has no such leg.
+        # the density wrapper freezes the legs whose helicity is an open
+        # index of rho (POS); smatrixhel has no such leg.
         self.assertEqual(len([c for c in calls
-                              if 'N_CHANGING,POS,.TRUE.' in c]), 2)
+                              if 'N_CHANGING,POS,.TRUE.' in c]), 1)
         # smatrixhel also disarms the repair when a single helicity row was
-        # asked for: that row names the legs by position.
+        # asked for: that row names the legs by position. So does
+        # get_all_inter, whose NHEL fixes every other leg by position.
         self.assertEqual(len([c for c in calls
                               if '0,MS_NOFROZEN,NHEL.LT.1' in c]), 1)
+        self.assertEqual(len([c for c in calls
+                              if 'N_CHANGING,POS,.FALSE.' in c]), 1)
         # and every matrix element is handed the repaired momenta, not P
         for callee in ('M0_SMATRIXHEL(', 'M0_GET_DENSITY(', 'M0_GET_ALL_INTER('):
             self.assertIn('CALL %sPFIX' % callee, text)
+        # GET_ALL_INTER takes NHEL second (and overwrites its POS entries)
+        self.assertIn('CALL M0_GET_ALL_INTER(PFIX, LNHEL, POS,', text)
 
     def test_nothing_changes_without_merged_particles(self):
         """No merged particle means one all-ones flavor per ME and no ordering
@@ -10858,3 +10908,4 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
         self.assertNotIn('PFIX', text)
         for callee in ('M0_SMATRIXHEL(', 'M0_GET_DENSITY(', 'M0_GET_ALL_INTER('):
             self.assertIn('CALL %sP' % callee, text)
+        self.assertIn('CALL M0_GET_ALL_INTER(P, LNHEL, POS,', text)
