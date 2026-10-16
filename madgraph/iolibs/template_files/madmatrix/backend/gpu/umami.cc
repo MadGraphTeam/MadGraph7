@@ -202,6 +202,21 @@ namespace
   // the first call still chooses. As in the cpu and simd backends, but the inputs and
   // outputs of umami_matrix_element are device buffers here: the points are made on
   // the host and copied over, and everything runs on the default stream.
+  // An incoming quark, gluon or photon comes out of a PDF (or of the photon flux of a
+  // lepton), which sets the partonic centre-of-mass frame in motion along the beams.
+  constexpr bool has_pdf_beams()
+  {
+    if( ProcessData::npari != 2 ) return false;
+    for( int iflav = 0; iflav < ProcessData::nmaxflavor; ++iflav )
+      for( int ipar = 0; ipar < ProcessData::npari; ++ipar )
+      {
+        const int pdg = ProcessData::flavorPDGs[iflav][ipar];
+        const int apdg = pdg < 0 ? -pdg : pdg;
+        if( ( apdg >= 1 && apdg <= 6 ) || apdg == 21 || apdg == 22 ) return true;
+      }
+    return false;
+  }
+
   void choose_good_helicities( UmamiHandle handle )
   {
     constexpr int npar = ProcessData::npar;
@@ -231,7 +246,22 @@ namespace
     for( std::size_t ievt = 0; ievt < nevt; ++ievt )
     {
       double weight = 0;
-      const std::vector<std::vector<double>> p = rambo::get_momenta( npari, energy, masses, weight, draw );
+      std::vector<std::vector<double>> p = rambo::get_momenta( npari, energy, masses, weight, draw );
+      // RAMBO points are in the partonic centre-of-mass frame, but with PDFs the matrix
+      // element is called in frames boosted along the beams (madspace's lab frame), and
+      // the helicity of a massive leg is not boost invariant: a helicity can vanish in
+      // the centre-of-mass frame only. Every other point is therefore boosted along z,
+      // with a random rapidity in [-2, 2], so that the choice covers both frames.
+      if( has_pdf_beams() && ievt % 2 == 1 )
+      {
+        const double y = 4 * draw( 0 ) - 2, ch = std::cosh( y ), sh = std::sinh( y );
+        for( std::vector<double>& q : p )
+        {
+          const double e = q[0], pz = q[3];
+          q[0] = e * ch + pz * sh;
+          q[3] = pz * ch + e * sh;
+        }
+      }
       for( int ipar = 0; ipar < npar; ++ipar )
       {
         // on shell, or rambo did not converge: leave the choice to the first call
