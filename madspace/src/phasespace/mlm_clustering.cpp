@@ -33,6 +33,49 @@ bool is_jet_pdg(int pdg_id, int max_jet_flavor) {
     return (a >= 1 && a <= max_jet_flavor) || a == 21 || a == 81;
 }
 
+// Mirrors is_octet() in Template/LO/SubProcesses/reweight.f: a colour octet,
+// which in the QCD sector means the gluon. The iqjets bookkeeping treats an
+// emitted gluon as a jet unconditionally - it has a soft singularity the shower
+// must be allowed to fill - and uses octet-ness again to decide which leg of a
+// non-jet vertex to demote.
+bool is_octet_pdg(int pdg_id, const std::unordered_map<int, int>& pdg_color_types);
+
+// Mirrors isparton() in Template/LO/SubProcesses/reweight.f: a line that can
+// be a beam parton, i.e. one the pdf reweighting can follow back into a beam.
+// Wider than is_jet_pdg: madevent tests against max(asrwgtflavor, maxjetflavor)
+// and asrwgtflavor defaults to 5, so the b is a parton even when it is not a
+// jet.
+bool is_parton_pdg(int pdg_id) {
+    int a = std::abs(pdg_id);
+    return (a >= 1 && a <= 5) || a == 21 || a == 81;
+}
+
+// Which density the pdf reweighting should ask for on a given line.
+//
+// The flavour cannot simply be baked in. One MLMClustering serves every flavour
+// channel of a subprocess, and external_pdg_ids is a single representative
+// assignment with the signs stripped (clean_pids in launch.py), so "the beam is
+// a u" is only true of one channel out of many. What is stable across the
+// channels is the *structure*: whether a line is a gluon, and whether it still
+// carries the flavour the beam came in with. Those two are baked here as
+// classes; the integrand resolves them per event once the flavour has been
+// sampled.
+//
+// Anything else - a quark line whose flavour changed along the way, which for
+// W+jets means past the W vertex - falls back to an absolute pdg taken from the
+// representative assignment. That is a real approximation, but it is confined
+// to lines whose flavour the representative was already guessing at, and a pdf
+// ratio between two nearby scales is far more sensitive to quark-versus-gluon
+// than to which quark.
+constexpr int flavor_class_none = -1;
+constexpr int flavor_class_gluon = 0;
+constexpr int flavor_class_beam1 = 1;
+constexpr int flavor_class_beam2 = 2;
+constexpr int flavor_class_first_absolute = 3;
+// _MERGED_PID_REPRESENTATIVE in launch.py, which is what external_pdg_ids has
+// already been mapped through by the time it gets here.
+constexpr int merged_quark_representative = 1;
+
 // Color representation of a line, as the signed color of the model (1 for a
 // singlet, +-3 for a (anti)triplet, 8 for an octet, +-6 for a sextet). The
 // merged-flavor placeholders that survive in propagator pdg ids stand for the
@@ -56,6 +99,10 @@ int color_rep(int pdg_id, const std::unordered_map<int, int>& pdg_color_types) {
 // splitting, which is what selects the clustering scales entering mu_R/mu_F.
 bool is_colored_pdg(int pdg_id, const std::unordered_map<int, int>& pdg_color_types) {
     return color_rep(pdg_id, pdg_color_types) != 1;
+}
+
+bool is_octet_pdg(int pdg_id, const std::unordered_map<int, int>& pdg_color_types) {
+    return color_rep(pdg_id, pdg_color_types) == 8;
 }
 
 // How the parton line of the mother of a clustering continues into its two
@@ -123,7 +170,92 @@ struct CompileContext {
     const std::unordered_map<int, int>& pdg_color_types;
     bool have_pdg_ids;
     int max_jet_flavor;
+    // |pdg| of each beam, to recognise a line that still carries the flavour
+    // the beam came in with.
+    int beam_pdg[2];
+    // The absolute flavours needed beyond gluon and the two beams, in the
+    // order the classes above index them.
+    std::vector<int>& absolute_pdgs;
+    // The propagator pdg ids each diagram puts on a line, keyed by (diagram,
+    // mask): what the union of mask_meta keeps only one of.
+    const std::map<std::pair<int, int>, std::vector<int>>& line_pdgs;
+    // Set once any clustering is marked same_flavor.
+    bool& has_same_flavor;
 };
+
+// Whether a line is a fermion whose flavour a g, a, Z or h vertex preserves.
+bool is_flavored_fermion_pdg(int pdg_id) {
+    int a = std::abs(pdg_id);
+    return (a >= 1 && a <= 6) || (a >= 11 && a <= 16);
+}
+
+// Whether every diagram among diags that has the line mask puts a g, a, Z or h
+// on it, so that the two bare external legs it joins must share their flavour.
+// madevent's cluster.f checks the same per graph, see flavor_filter there.
+bool joins_same_flavor(
+    const CompileContext& ctx, int mask, int mask_1, int mask_2,
+    const std::vector<int>& diags
+) {
+    if (!ctx.have_pdg_ids || std::popcount(static_cast<unsigned int>(mask_1)) != 1 ||
+        std::popcount(static_cast<unsigned int>(mask_2)) != 1 ||
+        !is_flavored_fermion_pdg(ctx.mask_meta.at(mask_1).pdg_id) ||
+        !is_flavored_fermion_pdg(ctx.mask_meta.at(mask_2).pdg_id)) {
+        return false;
+    }
+    bool any = false;
+    for (int diag : diags) {
+        auto search = ctx.line_pdgs.find({diag, mask});
+        if (search == ctx.line_pdgs.end()) {
+            return false;
+        }
+        for (int pdg_id : search->second) {
+            int a = std::abs(pdg_id);
+            if (a != 21 && a != 22 && a != 23 && a != 25) {
+                return false;
+            }
+            any = true;
+        }
+    }
+    return any;
+}
+
+// The flavour class of one line, allocating a new absolute class if it needs
+// one. flavor_class_none for anything the reweighting cannot follow.
+//
+// on_beam is the beam a line sits on, or -1 for one that sits on neither. It
+// only matters for the flavour-merged placeholder 81, which says "a light
+// quark" without saying which: on a quark beam that is the beam's own flavour
+// and resolves exactly, and anywhere else it falls back to the representative
+// quark that clean_pids in launch.py would have picked.
+int flavor_class(CompileContext& ctx, int pdg_id, int on_beam = -1) {
+    if (!ctx.have_pdg_ids || !is_parton_pdg(pdg_id)) {
+        return flavor_class_none;
+    }
+    int a = std::abs(pdg_id);
+    if (a == 21) {
+        return flavor_class_gluon;
+    }
+    if (a == 81) {
+        if (on_beam >= 0 && std::abs(ctx.beam_pdg[on_beam]) != 21 &&
+            is_parton_pdg(ctx.beam_pdg[on_beam])) {
+            return flavor_class_beam1 + on_beam;
+        }
+        a = merged_quark_representative;
+    }
+    for (int beam = 0; beam < 2; ++beam) {
+        if (a == std::abs(ctx.beam_pdg[beam])) {
+            return flavor_class_beam1 + beam;
+        }
+    }
+    auto found = std::find(ctx.absolute_pdgs.begin(), ctx.absolute_pdgs.end(), a);
+    if (found == ctx.absolute_pdgs.end()) {
+        ctx.absolute_pdgs.push_back(a);
+        return flavor_class_first_absolute +
+            static_cast<int>(ctx.absolute_pdgs.size()) - 1;
+    }
+    return flavor_class_first_absolute +
+        static_cast<int>(found - ctx.absolute_pdgs.begin());
+}
 
 using StateKey = std::pair<std::vector<int>, std::vector<int>>;
 struct StateItem {
@@ -138,6 +270,28 @@ struct StateItem {
     bool is_jet1;
     bool is_jet2;
     TraceMode trace_mode;
+    // Flavour of the *mother*. madevent's scale definition needs to know where
+    // a beam's parton line stops being a jet and where it stops being coloured.
+    bool is_jet_in;
+    bool is_colored_in;
+    // isjetvx() needs to know whether the mother repeats one daughter's
+    // flavour - a gluon emission off a quark line, say - and the iqjets
+    // demotion needs to know whether the mother is an octet.
+    bool is_octet_in;
+    bool mother_is_daughter1;
+    bool mother_is_daughter2;
+    // None of the three lines carries colour - a W W Z or h h h vertex. The
+    // demotion leaves those alone rather than treating them as a QCD vertex
+    // that failed the jet test.
+    bool all_colorless;
+    // Flavour class of the mother, i.e. of the beam line as it stands after
+    // this clustering. flavor_class_none ends the pdf reweighting chain,
+    // which is also what stops madevent following ibeam(j) any further.
+    int flavor_class_in;
+    // The two daughters are bare external fermions joined by a g, a, Z or h in
+    // every diagram left, so the clustering only exists for an event in which
+    // they carry the same flavour (TRACE_SAME_FLAVOR in kernels/mlm.hpp).
+    bool same_flavor;
 };
 
 // 1-based index into the Breit-Wigner tables handed to the kernel, or 0 for
@@ -158,7 +312,12 @@ int breit_wigner_index(CompileContext& ctx, const LineMeta& meta) {
 }
 
 StateItem make_state_item(
-    CompileContext& ctx, int next_state, int mask_in, int mask_1, int mask_2
+    CompileContext& ctx,
+    int next_state,
+    int mask_in,
+    int mask_1,
+    int mask_2,
+    const std::vector<int>& diags
 ) {
     int particle1 = std::countr_zero(static_cast<unsigned int>(mask_1));
     int particle2 = std::countr_zero(static_cast<unsigned int>(mask_2));
@@ -218,6 +377,11 @@ StateItem make_state_item(
         is_jet2 = is_jet_pdg(meta_2.pdg_id, ctx.max_jet_flavor);
     }
 
+    bool same_flavor = joins_same_flavor(ctx, mask_in, mask_1, mask_2, diags);
+    if (same_flavor) {
+        ctx.has_same_flavor = true;
+    }
+
     return {
         .next_state = next_state,
         .particle1 = particle1,
@@ -230,6 +394,20 @@ StateItem make_state_item(
         .is_jet1 = is_jet1,
         .is_jet2 = is_jet2,
         .trace_mode = trace_mode,
+        .is_jet_in = !ctx.have_pdg_ids ||
+            is_jet_pdg(meta_in.pdg_id, ctx.max_jet_flavor),
+        .is_colored_in = !ctx.have_pdg_ids || color_in != 1,
+        .is_octet_in = !ctx.have_pdg_ids ||
+            is_octet_pdg(meta_in.pdg_id, ctx.pdg_color_types),
+        .mother_is_daughter1 =
+            meta_in.pdg_id != 0 && meta_in.pdg_id == meta_1.pdg_id,
+        .mother_is_daughter2 =
+            meta_in.pdg_id != 0 && meta_in.pdg_id == meta_2.pdg_id,
+        .all_colorless = ctx.have_pdg_ids && color_in == 1 && color_1 == 1 &&
+            color_2 == 1,
+        .flavor_class_in =
+            flavor_class(ctx, meta_in.pdg_id, is_initial ? particle1 : -1),
+        .same_flavor = same_flavor,
     };
 }
 
@@ -318,6 +496,14 @@ void find_clusterings(
                             .is_jet1 = false,
                             .is_jet2 = false,
                             .trace_mode = trace_first,
+                            .is_jet_in = false,
+                            .is_colored_in = false,
+                            .is_octet_in = false,
+                            .mother_is_daughter1 = false,
+                            .mother_is_daughter2 = false,
+                            .all_colorless = false,
+                            .flavor_class_in = flavor_class_none,
+                            .same_flavor = false,
                         });
                     }
                 } else {
@@ -337,7 +523,7 @@ void find_clusterings(
             }
 
             states.at(prev_index)
-                .push_back(make_state_item(ctx, index, mask, mask_i, mask_j));
+                .push_back(make_state_item(ctx, index, mask, mask_i, mask_j, new_diags));
         }
     }
 }
@@ -354,6 +540,58 @@ void set_mask_meta(std::vector<LineMeta>& mask_meta, int mask, LineMeta meta) {
     }
 }
 
+// Append compiled states to the flat state machine. A clustering state is a
+// run of (data, next_offset, trace_data) triples ending at the triple whose data
+// has the is_last bit set; a terminal state is a count followed by that many
+// diagram indices. Returns the offset each state landed at.
+std::vector<int> append_state_layout(
+    std::vector<me_int_t>& machine, const nested_vector2<StateItem>& states
+) {
+    std::vector<int> first_indices;
+    first_indices.reserve(states.size());
+    for (int offset = static_cast<int>(machine.size()); auto& state : states) {
+        first_indices.push_back(offset);
+        if (state.size() == 0) {
+            // a dropped dead end: nothing points at it, so it takes no space
+        } else if (state.at(0).particle1 == 0 && state.at(0).particle2 == 0) {
+            offset += 1 + state.size();
+        } else {
+            offset += state_machine_item_size * state.size();
+        }
+    }
+    for (auto& state : states) {
+        if (state.size() == 0) {
+            continue;
+        }
+        if (state.at(0).particle1 == 0 && state.at(0).particle2 == 0) {
+            machine.push_back(state.size());
+            for (auto& item : state) {
+                machine.push_back(item.next_state);
+            }
+        } else {
+            for (auto& item : state) {
+                machine.push_back(
+                    (item.particle1 << 0) + (item.particle2 << 8) +
+                    (item.mass_index << 16) + (item.massive_in << 24) +
+                    (item.massive_out1 << 25) + (item.massive_out2 << 26) +
+                    (item.is_qcd << 27) + (item.is_jet1 << 28) + (item.is_jet2 << 29) +
+                    ((&item == &state.back()) << 30)
+                );
+                machine.push_back(first_indices.at(item.next_state));
+                machine.push_back(
+                    static_cast<int>(item.trace_mode) + (item.is_jet_in << 2) +
+                    (item.is_colored_in << 3) +
+                    ((item.flavor_class_in + 1) << 4) +
+                    (item.is_octet_in << 12) + (item.mother_is_daughter1 << 13) +
+                    (item.mother_is_daughter2 << 14) + (item.all_colorless << 15) +
+                    (item.same_flavor << 16)
+                );
+            }
+        }
+    }
+    return first_indices;
+}
+
 } // namespace
 
 MLMClustering::MLMClustering(
@@ -362,13 +600,19 @@ MLMClustering::MLMClustering(
     nested_vector2<std::size_t> diagram_indices,
     double cm_energy,
     JetScaleScheme jet_scale_scheme,
+    ScaleScheme scale_scheme,
     std::unordered_map<int, int> pdg_color_types,
     double xqcut,
     double bw_cutoff,
     double jet_radius,
     bool hadronic,
     std::vector<int> external_pdg_ids,
-    int max_jet_flavor
+    int max_jet_flavor,
+    PartonLineScheme parton_line_scheme,
+    AlphasScheme alphas_scheme,
+    bool pdf_reweighting,
+    ClusteringMeasure clustering_measure,
+    ClusteringHistory clustering_history
 ) :
     FunctionGenerator(
         "MLMClustering",
@@ -380,10 +624,41 @@ MLMClustering::MLMClustering(
          {"outgoing_scales",
           batch_float_array(topologies.at(0).outgoing_masses().size())},
          {"diagram_index", batch_int},
-         {"xqcut_weight", batch_float}}
+         {"xqcut_weight", batch_float},
+         {"alphas_scales",
+          batch_float_array(topologies.at(0).outgoing_masses().size() - 1)},
+         {"alphas_weight", batch_float},
+         // The scale the beam density itself is evaluated at. Not the same as
+         // fact_scale under pdf reweighting: madevent drops the density low on
+         // the clustering ladder and walks it back up, so the reported
+         // factorisation scale and the one the pdf is asked for differ.
+         {"pdf_scale1", batch_float},
+         {"pdf_scale2", batch_float},
+         // One slot per clustering that can put a pdf ratio on a beam line,
+         // plus one per beam for the 2 -> 1 root, which lies on both.
+         {"pdf_rw_flavor",
+          batch_int_array(topologies.at(0).outgoing_masses().size() + 1)},
+         {"pdf_rw_x",
+          batch_float_array(topologies.at(0).outgoing_masses().size() + 1)},
+         {"pdf_rw_q_num",
+          batch_float_array(topologies.at(0).outgoing_masses().size() + 1)},
+         {"pdf_rw_q_den",
+          batch_float_array(topologies.at(0).outgoing_masses().size() + 1)},
+         {"pdf_rw_active",
+          batch_float_array(topologies.at(0).outgoing_masses().size() + 1)},
+         {"pdf_rw_beam",
+          batch_float_array(topologies.at(0).outgoing_masses().size() + 1)}}
     ),
     _cm_energy(cm_energy),
     _jet_scale_scheme(jet_scale_scheme),
+    _scale_scheme(scale_scheme),
+    _parton_line_scheme(parton_line_scheme),
+    _alphas_scheme(alphas_scheme),
+    _pdf_reweighting(pdf_reweighting),
+    _clustering_measure(clustering_measure),
+    _clustering_history(clustering_history),
+    _beam_flags(0),
+    _jet_leg_mask(0),
     _xqcut(xqcut),
     _bw_cutoff(bw_cutoff),
     _jet_radius(jet_radius),
@@ -403,10 +678,52 @@ MLMClustering::MLMClustering(
         ));
     }
 
+    // madevent seeds its walk with the flavour of each beam: qcdline from
+    // isqcd(beam) and partonline from the same. Bake those two bits per beam
+    // in, since they are a property of the subprocess.
+    for (int beam = 0; beam < 2; ++beam) {
+        int pdg = have_pdg_ids ? external_pdg_ids.at(beam) : 21;
+        if (color_rep(pdg, pdg_color_types) != 1) {
+            _beam_flags |= 1 << (2 * beam);
+        }
+        if (is_jet_pdg(pdg, max_jet_flavor)) {
+            _beam_flags |= 1 << (2 * beam + 1);
+        }
+        // The flavour class the pdf reweighting starts each beam line at,
+        // stored as class + 1 so that 0 means "not a parton" and the chain
+        // never starts. A beam that is a parton is by construction either the
+        // gluon or its own class, so this needs no lookup.
+        int beam_class = !have_pdg_ids || !is_parton_pdg(pdg) ? flavor_class_none
+            : std::abs(pdg) == 21                             ? flavor_class_gluon
+                                                              : flavor_class_beam1 + beam;
+        _beam_flags |= (beam_class + 1) << (8 * (beam + 1));
+    }
+
+    for (std::size_t leg = 0; leg < n_ext; ++leg) {
+        int pdg = have_pdg_ids ? external_pdg_ids.at(leg) : 21;
+        if (is_jet_pdg(pdg, max_jet_flavor)) {
+            _jet_leg_mask |= 1 << leg;
+        }
+        // The high half carries octet-ness for the same leg. The kernel needs
+        // both and n_ext_max is 12, so one word holds them without another
+        // kernel argument.
+        if (is_octet_pdg(pdg, pdg_color_types)) {
+            _jet_leg_mask |= 1 << (leg + 16);
+        }
+    }
+
     nested_vector2<int> valid_diags(1 << n_ext);
     std::vector<LineMeta> mask_meta(1 << n_ext);
     std::vector<int> particle_masks;
     std::vector<int> all_diags;
+    // The lines of each diagram on its own, as (mask, properties): what the
+    // union above merges away. Only needed for the per-diagram histories.
+    std::vector<std::pair<std::size_t, std::vector<std::pair<int, LineMeta>>>>
+        diagram_lines;
+    auto add_line = [&](std::size_t diag_index, int mask, const LineMeta& meta) {
+        valid_diags.at(mask).push_back(diag_index);
+        diagram_lines.back().second.push_back({mask, meta});
+    };
 
     // The kernel indexes momenta and external_masses by external leg, while a
     // topology's masses are indexed by topology slot, so the permutation has to
@@ -422,6 +739,7 @@ MLMClustering::MLMClustering(
         auto& outgoing_masses = topo.outgoing_masses();
         for (auto [permutation, diag_index] : zip(permutations, diag_indices)) {
             all_diags.push_back(diag_index);
+            diagram_lines.push_back({diag_index, {}});
             particle_masks.assign(topo.decays().size(), 0);
             for (std::size_t i = 2; i < permutation.size(); ++i) {
                 particle_masks.at(topo.outgoing_indices().at(permutation.at(i) - 2)) = 1
@@ -473,12 +791,11 @@ MLMClustering::MLMClustering(
                     (particle_masks.at(decay.child_indices.at(0)) |
                      particle_masks.at(decay.child_indices.at(1)));
                 particle_masks.at(decay.index) = mask;
-                valid_diags.at(mask).push_back(diag_index);
-                set_mask_meta(
-                    mask_meta,
-                    mask,
-                    {.mass = decay.mass, .width = decay.width, .pdg_id = decay.pdg_id}
-                );
+                LineMeta meta{
+                    .mass = decay.mass, .width = decay.width, .pdg_id = decay.pdg_id
+                };
+                add_line(diag_index, mask, {meta.mass, meta.width, meta.pdg_id, true});
+                set_mask_meta(mask_meta, mask, meta);
             }
 
             if (!has_t_channel) {
@@ -486,9 +803,17 @@ MLMClustering::MLMClustering(
             }
 
             // for the t-channel part, one of the initial state particles has to be
-            // involved in the clustering. The k-th mask accumulated from either
-            // beam is the k-th t-channel propagator along the chain, which is
-            // walked starting from beam 2.
+            // involved in the clustering. find_t_vertices collects the t-channel
+            // propagators on the way back from beam 1 (index 0 of the incoming
+            // legs), so t_propagator_masses/pdg_ids start at the propagator next
+            // to that beam. The k-th mask accumulated from beam 1 (mask 1) is
+            // therefore propagator k, and the k-th from beam 2 (mask 2), walking
+            // the children in reverse, is propagator t_count - 1 - k. Getting
+            // this backwards swaps the flavour and mass of the two ends of every
+            // chain with two or more t-channel propagators: in g g > t t~ g the
+            // gluon line left after the beam emits the jet was read as the top,
+            // so the beam's parton line stopped at the jet and mu_R picked up
+            // the jet's own scale.
             auto& t_masses = topo.t_propagator_masses();
             auto& t_pdg_ids = topo.t_propagator_pdg_ids();
             std::size_t t_count = t_masses.size();
@@ -496,34 +821,41 @@ MLMClustering::MLMClustering(
             std::size_t k = 0;
             for (int mask = 1; std::size_t index : t_children) {
                 mask |= particle_masks.at(index);
-                valid_diags.at(mask).push_back(diag_index);
                 if (k < t_count) {
                     // width stays 0: a spacelike propagator is never resonant
-                    set_mask_meta(
-                        mask_meta,
-                        mask,
-                        {.mass = t_masses.at(t_count - 1 - k),
-                         .width = 0.,
-                         .pdg_id = t_pdg_ids.at(t_count - 1 - k)}
-                    );
+                    LineMeta meta{
+                        .mass = t_masses.at(k), .width = 0., .pdg_id = t_pdg_ids.at(k)
+                    };
+                    add_line(diag_index, mask, {meta.mass, 0., meta.pdg_id, true});
+                    set_mask_meta(mask_meta, mask, meta);
+                } else {
+                    add_line(diag_index, mask, {});
                 }
                 ++k;
             }
             k = 0;
             for (int mask = 2; std::size_t index : std::views::reverse(t_children)) {
                 mask |= particle_masks.at(index);
-                valid_diags.at(mask).push_back(diag_index);
                 if (k < t_count) {
-                    set_mask_meta(
-                        mask_meta,
-                        mask,
-                        {.mass = t_masses.at(k),
-                         .width = 0.,
-                         .pdg_id = t_pdg_ids.at(k)}
-                    );
+                    LineMeta meta{
+                        .mass = t_masses.at(t_count - 1 - k),
+                        .width = 0.,
+                        .pdg_id = t_pdg_ids.at(t_count - 1 - k)
+                    };
+                    add_line(diag_index, mask, {meta.mass, 0., meta.pdg_id, true});
+                    set_mask_meta(mask_meta, mask, meta);
+                } else {
+                    add_line(diag_index, mask, {});
                 }
                 ++k;
             }
+        }
+    }
+
+    std::map<std::pair<int, int>, std::vector<int>> line_pdgs;
+    for (auto& [diag_index, lines] : diagram_lines) {
+        for (auto& [mask, meta] : lines) {
+            line_pdgs[{static_cast<int>(diag_index), mask}].push_back(meta.pdg_id);
         }
     }
 
@@ -545,6 +877,11 @@ MLMClustering::MLMClustering(
         .pdg_color_types = pdg_color_types,
         .have_pdg_ids = have_pdg_ids,
         .max_jet_flavor = max_jet_flavor,
+        .beam_pdg = {have_pdg_ids ? external_pdg_ids.at(0) : 21,
+                     have_pdg_ids ? external_pdg_ids.at(1) : 21},
+        .absolute_pdgs = _pdf_absolute_pdgs,
+        .line_pdgs = line_pdgs,
+        .has_same_flavor = _has_same_flavor,
     };
     std::set<int> dead_states;
     find_clusterings(ctx, masks, all_diags, states, state_map, dead_states, 0);
@@ -565,55 +902,164 @@ MLMClustering::MLMClustering(
         ++i;
     }
 
-    // Layout: a clustering state is a run of (data, next_offset, trace_data)
-    // triples ending at the triple whose data has the is_last bit set; a
-    // terminal state is a count followed by that many diagram indices.
-    std::vector<int> first_indices;
-    first_indices.reserve(states.size());
-    for (int offset = 0; auto& state : states) {
-        first_indices.push_back(offset);
-        if (state.size() == 0) {
-            // a dropped dead end: nothing points at it, so it takes no space
-        } else if (state.at(0).particle1 == 0 && state.at(0).particle2 == 0) {
-            offset += 1 + state.size();
-        } else {
-            offset += state_machine_item_size * state.size();
-        }
+    append_state_layout(_cluster_state_machine, states);
+
+    if (clustering_history == ClusteringHistory::all_diagrams) {
+        return;
     }
-    for (auto& state : states) {
-        if (state.size() == 0) {
+
+    // One state machine per diagram, appended after the one over every
+    // diagram, so that offset 0 can keep meaning "no diagram of its own". Each
+    // is compiled exactly as the union is, only from that diagram's lines:
+    // where the union takes a line's flavour from whichever diagram came first
+    // - the gluon of gluon fusion on a t-channel line that a VBF diagram puts
+    // a W on - these see the diagram's own, and with it its own QCD vertices,
+    // parton lines and merging jets.
+    std::size_t diagram_table_size = 0;
+    for (auto& [diag_index, lines] : diagram_lines) {
+        diagram_table_size = std::max(diagram_table_size, diag_index + 1);
+    }
+    _diagram_start_states.assign(diagram_table_size, 0);
+    nested_vector2<int> diagram_valid(1 << n_ext);
+    std::vector<LineMeta> diagram_meta(1 << n_ext);
+    for (std::size_t leg = 0; leg < n_ext; ++leg) {
+        diagram_meta.at(1 << leg) = mask_meta.at(1 << leg);
+    }
+    CompileContext diagram_ctx{
+        .valid_diags = diagram_valid,
+        .mask_meta = diagram_meta,
+        .bw_masses = _bw_masses,
+        .bw_widths = _bw_widths,
+        .bw_indices = bw_indices,
+        .pdg_color_types = pdg_color_types,
+        .have_pdg_ids = have_pdg_ids,
+        .max_jet_flavor = max_jet_flavor,
+        .beam_pdg = {have_pdg_ids ? external_pdg_ids.at(0) : 21,
+                     have_pdg_ids ? external_pdg_ids.at(1) : 21},
+        .absolute_pdgs = _pdf_absolute_pdgs,
+        .line_pdgs = line_pdgs,
+        .has_same_flavor = _has_same_flavor,
+    };
+    nested_vector2<StateItem> diagram_states;
+    std::map<StateKey, int> diagram_state_map;
+    std::set<int> diagram_dead_states;
+    std::vector<std::pair<std::size_t, int>> diagram_roots;
+    std::set<std::size_t> compiled;
+    for (auto& [diag_index, lines] : diagram_lines) {
+        if (!compiled.insert(diag_index).second) {
             continue;
         }
-        if (state.at(0).particle1 == 0 && state.at(0).particle2 == 0) {
-            _cluster_state_machine.push_back(state.size());
-            for (auto& item : state) {
-                _cluster_state_machine.push_back(item.next_state);
-            }
-        } else {
-            for (auto& item : state) {
-                _cluster_state_machine.push_back(
-                    (item.particle1 << 0) + (item.particle2 << 8) +
-                    (item.mass_index << 16) + (item.massive_in << 24) +
-                    (item.massive_out1 << 25) + (item.massive_out2 << 26) +
-                    (item.is_qcd << 27) + (item.is_jet1 << 28) + (item.is_jet2 << 29) +
-                    ((&item == &state.back()) << 30)
-                );
-                _cluster_state_machine.push_back(first_indices.at(item.next_state));
-                _cluster_state_machine.push_back(static_cast<int>(item.trace_mode));
-            }
+        int diag = static_cast<int>(diag_index);
+        for (auto& [mask, meta] : lines) {
+            diagram_valid.at(mask) = {diag};
+            diagram_meta.at(mask) = meta;
         }
+        // The state keys carry the diagram, so no state is shared between two
+        // diagrams: their lines differ even where their masks agree.
+        int root = static_cast<int>(diagram_states.size());
+        diagram_states.push_back({});
+        diagram_state_map[{masks, {diag}}] = root;
+        find_clusterings(
+            diagram_ctx,
+            masks,
+            {diag},
+            diagram_states,
+            diagram_state_map,
+            diagram_dead_states,
+            root
+        );
+        if (diagram_states.at(root).size() > 0) {
+            diagram_roots.push_back({diag_index, root});
+        }
+        for (auto& [mask, meta] : lines) {
+            diagram_valid.at(mask).clear();
+            diagram_meta.at(mask) = {};
+        }
+    }
+    auto diagram_offsets = append_state_layout(_cluster_state_machine, diagram_states);
+    for (auto [diag_index, root] : diagram_roots) {
+        _diagram_start_states.at(diag_index) = diagram_offsets.at(root);
     }
 }
 
 NamedVector<Value> MLMClustering::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
-    std::array<Value, 6> mlm_out;
-    Value random = fb.squeeze(fb.random(fb.batch_size(args.values()), 1));
+    auto start_state =
+        fb.full({static_cast<me_int_t>(0), fb.batch_size({args.at(0)})});
+    return build_kernel(fb, args.at(0), start_state, 0, Value(), {});
+}
+
+NamedVector<Value> MLMClustering::build_with_flavors(
+    FunctionBuilder& fb,
+    Value momenta,
+    Value flavor_index,
+    const std::vector<me_int_t>& leg_flavors
+) const {
+    auto start_state = fb.full({static_cast<me_int_t>(0), fb.batch_size({momenta})});
+    return build_kernel(fb, momenta, start_state, 0, flavor_index, leg_flavors);
+}
+
+NamedVector<Value> MLMClustering::build_along_diagram(
+    FunctionBuilder& fb, Value momenta, Value diagram
+) const {
+    if (_clustering_history == ClusteringHistory::all_diagrams) {
+        throw std::logic_error(
+            "a clustering along one diagram needs a clustering_history other "
+            "than all_diagrams"
+        );
+    }
+    return build_from_start_state(
+        fb, momenta, fb.gather_int(diagram, _diagram_start_states)
+    );
+}
+
+NamedVector<Value> MLMClustering::build_from_start_state(
+    FunctionBuilder& fb,
+    Value momenta,
+    Value start_state,
+    Value flavor_index,
+    const std::vector<me_int_t>& leg_flavors
+) const {
+    if (_clustering_history == ClusteringHistory::all_diagrams) {
+        throw std::logic_error(
+            "a clustering along one diagram needs a clustering_history other "
+            "than all_diagrams"
+        );
+    }
+    return build_kernel(
+        fb,
+        momenta,
+        start_state,
+        static_cast<me_int_t>(_clustering_history),
+        flavor_index,
+        leg_flavors
+    );
+}
+
+NamedVector<Value> MLMClustering::build_kernel(
+    FunctionBuilder& fb,
+    Value momenta,
+    Value start_state,
+    me_int_t history_mode,
+    Value flavor_index,
+    const std::vector<me_int_t>& leg_flavors
+) const {
+    std::array<Value, 16> mlm_out;
+    Value random = fb.squeeze(fb.random(fb.batch_size({momenta}), 1));
+    // Without the flavours of the event a single row of zeros, which leaves
+    // every clustering allowed: the history over the union of all diagrams.
+    if (!flavor_index || leg_flavors.empty()) {
+        flavor_index = fb.full({static_cast<me_int_t>(0), fb.batch_size({momenta})});
+    }
+    std::vector<me_int_t> flavor_table = leg_flavors.empty()
+        ? std::vector<me_int_t>(_external_masses.size(), 0)
+        : leg_flavors;
     if (_hadronic) {
         mlm_out = fb.mlm_clustering_hadronic(
-            args.at(0),
+            momenta,
             random,
+            start_state,
             _cluster_state_machine,
             _external_masses,
             _bw_masses,
@@ -622,12 +1068,23 @@ NamedVector<Value> MLMClustering::build_function_impl(
             _jet_radius,
             _cm_energy,
             static_cast<me_int_t>(_jet_scale_scheme),
-            _xqcut
+            _xqcut,
+            static_cast<me_int_t>(_scale_scheme),
+            static_cast<me_int_t>(_beam_flags),
+            static_cast<me_int_t>(_jet_leg_mask),
+            static_cast<me_int_t>(_parton_line_scheme),
+            static_cast<me_int_t>(_alphas_scheme),
+            static_cast<me_int_t>(_pdf_reweighting),
+            static_cast<me_int_t>(_clustering_measure),
+            history_mode,
+            flavor_index,
+            flavor_table
         );
     } else {
         mlm_out = fb.mlm_clustering_leptonic(
-            args.at(0),
+            momenta,
             random,
+            start_state,
             _cluster_state_machine,
             _external_masses,
             _bw_masses,
@@ -636,8 +1093,57 @@ NamedVector<Value> MLMClustering::build_function_impl(
             _jet_radius,
             _cm_energy,
             static_cast<me_int_t>(_jet_scale_scheme),
-            _xqcut
+            _xqcut,
+            static_cast<me_int_t>(_scale_scheme),
+            static_cast<me_int_t>(_beam_flags),
+            static_cast<me_int_t>(_jet_leg_mask),
+            static_cast<me_int_t>(_parton_line_scheme),
+            static_cast<me_int_t>(_alphas_scheme),
+            static_cast<me_int_t>(_pdf_reweighting),
+            static_cast<me_int_t>(_clustering_measure),
+            history_mode,
+            flavor_index,
+            flavor_table
         );
     }
     return {return_types().keys(), {mlm_out.begin(), mlm_out.end()}};
+}
+
+MLMClusteringAlongDiagram::MLMClusteringAlongDiagram(const MLMClustering& clustering) :
+    FunctionGenerator(
+        "MLMClusteringAlongDiagram",
+        [&] {
+            auto types = clustering.arg_types();
+            types.push_back("diagram", batch_int);
+            return types;
+        }(),
+        clustering.return_types()
+    ),
+    _clustering(clustering) {}
+
+NamedVector<Value> MLMClusteringAlongDiagram::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    return _clustering.build_along_diagram(fb, args.at(0), args.at(1));
+}
+
+MLMClusteringWithFlavors::MLMClusteringWithFlavors(
+    const MLMClustering& clustering, std::vector<me_int_t> leg_flavors
+) :
+    FunctionGenerator(
+        "MLMClusteringWithFlavors",
+        [&] {
+            auto types = clustering.arg_types();
+            types.push_back("flavor_index", batch_int);
+            return types;
+        }(),
+        clustering.return_types()
+    ),
+    _clustering(clustering),
+    _leg_flavors(std::move(leg_flavors)) {}
+
+NamedVector<Value> MLMClusteringWithFlavors::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    return _clustering.build_with_flavors(fb, args.at(0), args.at(1), _leg_flavors);
 }

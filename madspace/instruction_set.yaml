@@ -2214,6 +2214,9 @@ mlm_clustering_hadronic:
     - name: random
       type: [float]
       desc:
+    - name: start_state
+      type: [int]
+      desc: state machine offset the walk starts at, 0 for the history over every diagram
     - name: state_machine
       type: [int, single, m]
       desc:
@@ -2241,6 +2244,36 @@ mlm_clustering_hadronic:
     - name: xqcut
       type: [float, single]
       desc:
+    - name: scale_scheme
+      type: [int, single]
+      desc:
+    - name: beam_flags
+      type: [int, single]
+      desc:
+    - name: jet_leg_mask
+      type: [int, single]
+      desc:
+    - name: parton_line_scheme
+      type: [int, single]
+      desc:
+    - name: alphas_scheme
+      type: [int, single]
+      desc:
+    - name: pdf_reweighting
+      type: [int, single]
+      desc:
+    - name: clustering_measure
+      type: [int, single]
+      desc:
+    - name: history_mode
+      type: [int, single]
+      desc: ClusteringHistory, how the start state and the history over every diagram are combined
+    - name: flavor_index
+      type: [int]
+      desc: sampled flavour of the event, i.e. the row of leg_flavors that applies to it
+    - name: leg_flavors
+      type: [int, single, f]
+      desc: abs pdg id of every external leg per flavour, row-major; a row of zeros (or a flavor_index past the table) leaves every clustering allowed
   outputs:
     - name: ren_scale
       type: [float]
@@ -2260,6 +2293,37 @@ mlm_clustering_hadronic:
     - name: xqcut_weight
       type: [float]
       desc:
+    - name: alphas_scales
+      type: [float, n-3]
+      desc: scale of each clustering vertex for the alpha_s reweighting
+    - name: alphas_weight
+      type: [float]
+      desc: zero when a reweighted vertex sits where the coupling is not usable
+    - name: pdf_scale1
+      type: [float]
+      desc: scale the beam-1 density is evaluated at, below fact_scale1 when reweighting
+    - name: pdf_scale2
+      type: [float]
+      desc: scale the beam-2 density is evaluated at, below fact_scale2 when reweighting
+    - name: pdf_rw_flavor
+      type: [int, n-1]
+      desc: flavour class of the beam line at each pdf reweighting step
+    - name: pdf_rw_x
+      type: [float, n-1]
+      desc: momentum fraction of the beam line at each step, relative to the beam
+    - name: pdf_rw_q_num
+      type: [float, n-1]
+      desc: scale the density is reweighted to at each step
+    - name: pdf_rw_q_den
+      type: [float, n-1]
+      desc: scale the density is reweighted from at each step
+    - name: pdf_rw_active
+      type: [float, n-1]
+      desc: one where a step contributes a pdf ratio, zero for an inert slot
+    - name: pdf_rw_beam
+      type: [float, n-1]
+      desc: which beam each step sits on, as 0 or 1
+
   vectorized: False
 
 mlm_clustering_leptonic:
@@ -2270,6 +2334,9 @@ mlm_clustering_leptonic:
     - name: random
       type: [float]
       desc:
+    - name: start_state
+      type: [int]
+      desc: state machine offset the walk starts at, 0 for the history over every diagram
     - name: state_machine
       type: [int, single, m]
       desc:
@@ -2297,6 +2364,36 @@ mlm_clustering_leptonic:
     - name: xqcut
       type: [float, single]
       desc:
+    - name: scale_scheme
+      type: [int, single]
+      desc:
+    - name: beam_flags
+      type: [int, single]
+      desc:
+    - name: jet_leg_mask
+      type: [int, single]
+      desc:
+    - name: parton_line_scheme
+      type: [int, single]
+      desc:
+    - name: alphas_scheme
+      type: [int, single]
+      desc:
+    - name: pdf_reweighting
+      type: [int, single]
+      desc:
+    - name: clustering_measure
+      type: [int, single]
+      desc:
+    - name: history_mode
+      type: [int, single]
+      desc: ClusteringHistory, how the start state and the history over every diagram are combined
+    - name: flavor_index
+      type: [int]
+      desc: sampled flavour of the event, i.e. the row of leg_flavors that applies to it
+    - name: leg_flavors
+      type: [int, single, f]
+      desc: abs pdg id of every external leg per flavour, row-major; a row of zeros (or a flavor_index past the table) leaves every clustering allowed
   outputs:
     - name: ren_scale
       type: [float]
@@ -2316,6 +2413,37 @@ mlm_clustering_leptonic:
     - name: xqcut_weight
       type: [float]
       desc:
+    - name: alphas_scales
+      type: [float, n-3]
+      desc: scale of each clustering vertex for the alpha_s reweighting
+    - name: alphas_weight
+      type: [float]
+      desc: zero when a reweighted vertex sits where the coupling is not usable
+    - name: pdf_scale1
+      type: [float]
+      desc: scale the beam-1 density is evaluated at, below fact_scale1 when reweighting
+    - name: pdf_scale2
+      type: [float]
+      desc: scale the beam-2 density is evaluated at, below fact_scale2 when reweighting
+    - name: pdf_rw_flavor
+      type: [int, n-1]
+      desc: flavour class of the beam line at each pdf reweighting step
+    - name: pdf_rw_x
+      type: [float, n-1]
+      desc: momentum fraction of the beam line at each step, relative to the beam
+    - name: pdf_rw_q_num
+      type: [float, n-1]
+      desc: scale the density is reweighted to at each step
+    - name: pdf_rw_q_den
+      type: [float, n-1]
+      desc: scale the density is reweighted from at each step
+    - name: pdf_rw_active
+      type: [float, n-1]
+      desc: one where a step contributes a pdf ratio, zero for an inert slot
+    - name: pdf_rw_beam
+      type: [float, n-1]
+      desc: which beam each step sits on, as 0 or 1
+
   vectorized: False
 
 ---

@@ -589,3 +589,22 @@ jobs:
             ./tests/test_manager.py test_w_production_with_ms_decay_mg7 -pA -t0 -l INFO
 
 
+  acceptancetest_mg7_launcher_cut_names:
+    needs: build_madspace
+    # Unit tests, but they belong here rather than in unittest.yml: they need a
+    # compiled madspace to check that the cut names the mg7 launcher writes are
+    # ones ms.Observable accepts, and the unit jobs have none (they would skip).
+    # No LHAPDF or model files: nothing is generated, the launcher's cut helpers
+    # are called on a stand-in run card. Hence no heptools restore, and no -pA:
+    # these live in the default tests/unit_tests path.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - name: test the mg7 launcher writes cut names madspace can build
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_every_cut_it_writes_builds_an_observable test_it_tightens_the_jet_pt_and_pair_mass_to_xqcut test_it_drops_the_jet_cone_cuts test_with_the_option_off_it_only_zeroes_cuts_above_xqcut test_it_leaves_an_unmerged_run_alone -t0 -l INFO

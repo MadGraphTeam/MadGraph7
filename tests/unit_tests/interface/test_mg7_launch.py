@@ -713,3 +713,83 @@ class TestPostProcessingIsSkippedWhenThereIsNothingToDo(unittest.TestCase):
         # _find_event_file would fail on the fake path, and MG7RunCmd would
         # fail harder: returning early means neither is reached
         launch.run_selected_tools(switch, _Process())
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class MG7AutoPtjMjjCutNamesTest(unittest.TestCase):
+    """The cuts auto_ptj_mjj writes must be ones madspace can build.
+
+    apply_auto_ptj_mjj names a cut after the observable it wants, and
+    parse_observable turns that name straight into an ms.Observable option.
+    Nothing else checks the two agree, so renaming an observable in madspace
+    (m_inv became pair_mass) left the launcher asking for a cut that no longer
+    existed, and every merged run with xqcut > 0 died building its cuts --
+    before reaching the clustering the cut exists for.
+
+    The two methods are called unbound, on a stand-in carrying just the run
+    card: building a real MadgraphProcess needs a process directory, which
+    would put this test out of reach of a unit run.
+    """
+
+    OUTGOING_PDGS = [21, 21, 25, 1, -1]
+
+    def setUp(self):
+        from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
+        self.launch = mg7_launch
+
+    def make_process(self, cuts, xqcut=20.0, auto=True):
+        return types.SimpleNamespace(run_card={
+            'beam': {'dynamical_scale_choice': 'mlm'},
+            'phasespace': {'xqcut': xqcut, 'auto_ptj_mjj': auto},
+            'multiparticles': {'jet': [21, 1, 2, -1, -2],
+                               'lepton': [11, 13, -11, -13]},
+            'cuts': dict(cuts),
+        })
+
+    def apply(self, cuts, **kwargs):
+        process = self.make_process(cuts, **kwargs)
+        out = {key: dict(values) for key, values in cuts.items()}
+        self.launch.MadgraphProcess.apply_auto_ptj_mjj(process, out)
+        return process, out
+
+    def test_every_cut_it_writes_builds_an_observable(self):
+        import madspace as ms
+
+        process, cuts = self.apply({'jet-pt': {'min': 10.0},
+                                    'jet-delta_r': {'min': 0.4}})
+        for key in cuts:
+            kwargs = self.launch.MadgraphProcess.parse_observable(
+                process, key, 'pt')
+            # raises TypeError if the observable name is not one madspace knows
+            ms.Observable(self.OUTGOING_PDGS, **kwargs)
+
+    def test_it_tightens_the_jet_pt_and_pair_mass_to_xqcut(self):
+        _, cuts = self.apply({'jet-pt': {'min': 10.0}}, xqcut=20.0)
+        self.assertEqual(cuts['jet-pt']['min'], 20.0)
+        self.assertEqual(cuts['jet-pair_mass']['min'], 20.0)
+
+    def test_it_drops_the_jet_cone_cuts(self):
+        """A dR cut would carve a hole out of the region the shower fills."""
+        _, cuts = self.apply({'jet-delta_r': {'min': 0.4},
+                              'jet-lepton-delta_r': {'min': 0.4}})
+        self.assertEqual(cuts['jet-delta_r']['min'], 0.0)
+        self.assertEqual(cuts['jet-lepton-delta_r']['min'], 0.0)
+
+    def test_with_the_option_off_it_only_zeroes_cuts_above_xqcut(self):
+        _, cuts = self.apply({'jet-pt': {'min': 50.0}}, xqcut=20.0, auto=False)
+        self.assertEqual(cuts['jet-pt']['min'], 0.0)
+        self.assertNotIn('jet-pair_mass', cuts)
+        _, cuts = self.apply({'jet-pt': {'min': 10.0}}, xqcut=20.0, auto=False)
+        self.assertEqual(cuts['jet-pt']['min'], 10.0)
+
+    def test_it_leaves_an_unmerged_run_alone(self):
+        for kwargs in ({'xqcut': 0.0}, {}):
+            process = self.make_process({'jet-pt': {'min': 10.0}}, **kwargs)
+            if not kwargs:
+                process.run_card['beam']['dynamical_scale_choice'] = \
+                    'transverse_mass'
+            cuts = {'jet-pt': {'min': 10.0}, 'jet-delta_r': {'min': 0.4}}
+            self.launch.MadgraphProcess.apply_auto_ptj_mjj(process, cuts)
+            self.assertEqual(cuts, {'jet-pt': {'min': 10.0},
+                                    'jet-delta_r': {'min': 0.4}})

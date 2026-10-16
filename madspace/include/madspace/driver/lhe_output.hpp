@@ -74,6 +74,15 @@ struct LHEEvent {
     double alpha_qcd;
     std::vector<LHEParticle> particles;
     bool has_cluster_scales;
+    // The renormalisation and factorisation scales, written as the standard
+    // LHEF3 <scales> attributes. SCALUP carries only one number, and the two
+    // codes do not agree on which: unwgt.f writes sqrt(max(q2fact)) there,
+    // i.e. mu_F, while this writer puts mu_R. Emitting both explicitly means a
+    // comparison does not have to guess.
+    double mu_r;
+    double mu_f1;
+    double mu_f2;
+    bool has_scales;
     // optional LHEF v3 weights (<rwgt> block); ids and values have the same length
     std::vector<int> rwgt_ids;
     std::vector<double> rwgt;
