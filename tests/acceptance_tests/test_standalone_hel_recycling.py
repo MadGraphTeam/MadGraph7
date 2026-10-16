@@ -294,6 +294,34 @@ class TestStandaloneHelRecyclingConsistency(StandaloneHelRecyclingConsistency):
         # ... and no leftover stub refusing to compute the density
         self.assertNotIn('NOT AVAILABLE WITH --HEL_RECYCLING', recycled)
 
+    def test_appended_get_amp_matches_standard(self):
+        """The per-helicity GET_AMP appended to the recycled output must be
+        the standard one, AMP zero-initialisation included: with a merged
+        flavor whose flavor mask skips diagrams (q q > q q: the u d flavor
+        has no u-channel), a skipped AMP slot that is not zeroed hands
+        leftover stack data to JAMP, and from there to the density,
+        GET_ALL_INTER and GET_VALUE results."""
+        self.do('define q = u d')
+        std_subdirs, hr_subdirs = self._generate_pair('q q > q q')
+
+        def get_amp(path):
+            with open(pjoin(path, 'matrix.f')) as fsock:
+                source = fsock.read()
+            match = re.search(r'\n\s+SUBROUTINE\s+\w*GET_AMP\s*\(.*?\n\s+END\s*\n',
+                              source, re.S | re.I)
+            self.assertTrue(match, 'no GET_AMP in %s' % path)
+            return match.group(0)
+
+        masked = 0
+        for std_sub, hr_sub in zip(std_subdirs, hr_subdirs):
+            std_body = get_amp(std_sub)
+            masked += 'CURRENT_AMP_MASK' in std_body.upper()
+            self.assertEqual(std_body, get_amp(hr_sub),
+                             'GET_AMP of %s differs from the standard one'
+                             % os.path.basename(hr_sub))
+        # not vacuous: at least one directory goes through the flavor mask
+        self.assertTrue(masked, 'no flavor-masked GET_AMP for q q > q q')
+
     def test_density_does_not_use_the_c_parity_reuse(self):
         """The C-parity de-duplication is only valid for the helicity-summed
         |M|^2: it asserts |M(h)|^2 == |M(-h)|^2, which says nothing about the

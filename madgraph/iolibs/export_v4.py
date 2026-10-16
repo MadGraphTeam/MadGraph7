@@ -9645,14 +9645,20 @@ C     fixed points first, so only the legs that must move do
         shared_anchor = ('      SUBROUTINE %(proc_prefix)sGET_NHEL('
                          'IDEN_STAR,NHEL_STAR)' % replace_dict)
         standard = open(pjoin(tmpl_dir, self.matrix_template)).read()
-        if shared_anchor.replace('%(proc_prefix)s', rd['proc_prefix']) \
-                not in standard % rd:
+        # The appended GET_AMP has a rank-1 AMP and nothing else zeroes it:
+        # its flavor setup must carry the AMP zero-initialisation that the
+        # recycled templates (which zero their own AMP) were built without,
+        # or a diagram masked off for this flavor leaves stack data in JAMP.
+        rd_standard = dict(rd)
+        rd_standard['flavor_mask_setup'] = \
+            self._get_flavor_mask_blocks(matrix_element,
+                                         append_amp_init=True)[1]
+        rendered = standard % rd_standard
+        if shared_anchor not in rendered:
             raise MadGraph5Error(
                 'hel_recycling: cannot find the shared-routine anchor in %s'
                 % self.matrix_template)
-        rendered = standard % rd
-        tail = rendered[rendered.index(
-            shared_anchor.replace('%(proc_prefix)s', rd['proc_prefix'])):]
+        tail = rendered[rendered.index(shared_anchor):]
 
         # template_matrix.f: %()s keys filled now; ${...} slots left to hel_recycle.
         # FortranWriter is still used (to split long color DATA lines), but it
