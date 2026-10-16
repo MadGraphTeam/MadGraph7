@@ -958,7 +958,7 @@ namespace
         {
           timermap.start( "1c CpHTDrnd" );
           copyDeviceFromHost( devRndmom, hstRndmom );
-          genrtime += timermap.stop();
+          timermap.stop();
         }
 #endif
 
@@ -967,6 +967,10 @@ namespace
         rambtime += timermap.stop();
         timermap.start( "2b RamboFin" );
         prsk->getMomentaFinal();
+#ifdef MGONGPUCPP_GPUIMPL
+        // Massless RAMBO runs on the device
+        checkGpu( gpuDeviceSynchronize() );
+#endif
         rambtime += timermap.stop();
 #ifdef MGONGPUCPP_GPUIMPL
         // Massive host only (copy)
@@ -974,7 +978,7 @@ namespace
         {
           timermap.start( "2c CpHTDmom" );
           copyDeviceFromHost( devMomenta, hstMomenta );
-          rambtime += timermap.stop();
+          timermap.stop();
         }
 #endif
       }
@@ -998,7 +1002,7 @@ namespace
 #ifdef MGONGPUCPP_GPUIMPL
         timermap.start( "2c CpHTDmom" );
         copyDeviceFromHost( devMomenta, hstMomenta );
-        rambtime += timermap.stop();
+        timermap.stop();
 #endif
       }
 
@@ -1006,6 +1010,7 @@ namespace
 #ifdef MGONGPUCPP_GPUIMPL
       gpuLaunchKernel( aosoa_to_umami_kernel, gpublocks, gputhreads, devMomenta.data(), devUmamiMomenta.data(), (std::size_t)nevt );
       checkGpu( gpuPeekAtLastError() );
+      checkGpu( gpuDeviceSynchronize() );
 #else
       for( std::size_t ievt = 0; ievt < nevt; ++ievt )
         aosoa_to_umami_one( hstMomenta.data(), umamiMomenta.data(), ievt, nevt );
@@ -1184,9 +1189,8 @@ int main( int argc, char** argv )
       mode = MODE_PERF; // legacy alias
     else if( ( arg == "--flavor" || arg == "-f" ) && argn + 1 < argc && is_number( argv[argn + 1] ) )
       flavorID = strtoul( argv[++argn], nullptr, 0 );
-    else if( arg == "--rambo-massless"  )
+    else if( arg == "--rambo-massless" )
     {
-      std::string r = argv[++argn];
       ramboType = RAMBO_MASSLESS;
       ramboTypeSet = true;
     }
