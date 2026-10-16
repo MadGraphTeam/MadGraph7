@@ -17,7 +17,7 @@ CF2PY double precision, intent(in) :: SCALE2
   integer npdg, nhel, procid
   double precision p(*)
   double precision ANS, ALPHAS, PI,SCALE2
-  integer flavor(%(maxpart)i),I
+  integer flavor(%(maxpart)i),lpdgs(%(maxpart)i),I
 %(flavor_index_decl)s
   include 'coupl.inc'
   
@@ -61,7 +61,7 @@ C
   INTEGER POS(n_changing)
   INTEGER ALLOW_HEL(n_changing*n_comb)
   DOUBLE COMPLEX INTER(n_comb*(n_comb+1)/2)
-  integer flavor(%(maxpart)i),I
+  integer flavor(%(maxpart)i),lpdgs(%(maxpart)i),I
 %(flavor_index_decl)s
 C     Update is done insider the direct density call functions
 
@@ -92,7 +92,7 @@ C      symmetric one)
   INTEGER POS(*)
   INTEGER ALLOW_HEL(*)
   DOUBLE COMPLEX INTER(*)
-  integer flavor(%(maxpart)i),I
+  integer flavor(%(maxpart)i),lpdgs(%(maxpart)i),I
 %(flavor_index_decl)s
 C     Update is done insider the direct density call functions
 
