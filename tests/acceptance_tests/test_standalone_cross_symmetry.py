@@ -60,6 +60,7 @@ import math
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -3481,6 +3482,52 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         self._patch_and_build(pdir)
         self.assertEqual(self._ngoodhel(pdir, self.IDENTITY, 'NGOODROWS'),
                          16, 'a mass-suppressed helicity row was dropped')
+
+    def test_massive_quark_pair_near_threshold(self):
+        """sm g g > b b~ near threshold equals the analytic |M|^2.
+
+        The good helicities are chosen once, on scan points at sqrt(s) =
+        max(1500, 2*mtotal) GeV, where the b helicity-flip rows are 4e-15 of
+        the sum. A relative cut there dropped them for every event, and the
+        matrix element came out 4% low at sqrt(s) = 1.3*2*MB and 19% low at
+        1.05*2*MB. The leading-order g g > Q Q~ formula (Combridge) is
+        exact at any sqrt(s), so the C++ |M|^2 must equal it to rounding."""
+        pdir = self._output_madmatrix('g g > b b~', 'sm_ggbbx')
+        self._patch_and_build(pdir)
+        mb, alphas = 4.7, 0.118
+        points = []
+        # 8 events: one full page of every SIMD width
+        for scale, cth, phi in ((1.02, 0.31, 0.4), (1.02, -0.93, 4.4),
+                                (1.05, -0.62, 1.9), (1.05, 0.12, 0.7),
+                                (1.3, 0.85, 3.3), (1.3, -0.44, 2.6),
+                                (3., -0.2, 5.1), (300., 0.47, 2.2)):
+            energy = scale * mb    # half of sqrt(s) = scale*2*MB
+            pmod = math.sqrt(energy ** 2 - mb ** 2)
+            sth = math.sqrt(1. - cth ** 2)
+            p3 = (energy, pmod * sth * math.cos(phi),
+                  pmod * sth * math.sin(phi), pmod * cth)
+            points.append(((energy, 0., 0., energy), (energy, 0., 0., -energy),
+                           p3, (energy, -p3[1], -p3[2], -p3[3])))
+        with open(pjoin(pdir, 'mom.bin'), 'wb') as fsock:
+            for event in points:
+                fsock.write(struct.pack('<16d', *[x for p in event for x in p]))
+        subprocess.check_call(
+            ['./check_sa.exe', 'perf', '--momenta', 'mom.bin', '--alphas',
+             str(alphas), '--dump-me', 'me.bin', '1', str(len(points)), '1'],
+            cwd=pdir, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        with open(pjoin(pdir, 'me.bin'), 'rb') as fsock:
+            mes = struct.unpack('<%dd' % len(points), fsock.read())
+        dot = lambda a, b: a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3]
+        gs2 = 4. * math.pi * alphas
+        for event, me in zip(points, mes):
+            s = 4. * event[0][0] ** 2
+            t1, t2 = 2 * dot(event[0], event[2]) / s, 2 * dot(event[1], event[2]) / s
+            rho = 4. * mb ** 2 / s
+            exact = gs2 ** 2 * (1. / (6. * t1 * t2) - 3. / 8.) * (
+                t1 ** 2 + t2 ** 2 + rho - rho ** 2 / (4. * t1 * t2))
+            self.assertAlmostEqual(me / exact, 1., delta=1e-8,
+                                   msg='sqrt(s) = %g GeV: |M|^2 %r, analytic '
+                                   '%r' % (math.sqrt(s), me, exact))
 
     def test_id_past_the_table_returns_zero(self):
         """An extended id past the last row of the crossing table names no
