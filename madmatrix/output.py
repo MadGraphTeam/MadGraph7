@@ -456,6 +456,8 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
         parameters). On any failure the directory keeps the ordinary code: correct
         but not recycled, which is the right way round to fail."""
         exporters = model_handling.OneProcessExporterMadMatrix._hr_warmups
+        axial = helas_call_writers.axial_gauge_requested(
+                                        self.opt.get('output_options'))
         for exporter in exporters:
             dirpath = exporter.path
             name = os.path.basename(dirpath)
@@ -475,6 +477,11 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                 # own masses) over every extended flavor id; any perf run
                 # triggers it
                 env = dict(os.environ, MG_DUMP_GOODHEL='1')
+                env.pop('MG_HR_EXACT_ZERO', None)
+                if axial:
+                    # the axial reference-vector zeros are a rounding residual
+                    # the collinear limit needs: drop exact zeros only
+                    env['MG_HR_EXACT_ZERO'] = '1'
                 run = subprocess.run([pjoin(dirpath, 'check_sa.exe'), 'perf',
                                       '1', '64', '1'],
                                      cwd=dirpath, env=env, stdout=subprocess.PIPE,

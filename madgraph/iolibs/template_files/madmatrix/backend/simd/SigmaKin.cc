@@ -430,9 +430,8 @@ namespace madmatrix
 #define NUM_ATOMIC_ADD( DST, VAL ) ( DST ) += ( VAL )
 
   // --hel_recycling warm-up probe (madmatrix/output.py). The recycled build drops
-  // the amplitudes that vanish at a given helicity -- in particular the ones a
-  // gauge choice (--axial_gauge) makes vanish identically -- and it has to be told
-  // which those are. A build with -DMG_HR_PROBE has every amplitude of the
+  // the amplitudes that vanish at a given helicity, and it has to be told which
+  // those are. A build with -DMG_HR_PROBE has every amplitude of the
   // generated diagrams record |amp|^2 (MG_HR_PROBE_AMP), and an amplitude is alive
   // at a helicity once it is above zeroamp_tol of the largest amplitude of that
   // helicity at the same point: a cancellation zero is a rounding residual, never
@@ -441,6 +440,12 @@ namespace madmatrix
   // getGoodHel samples, so an amplitude is dropped at a base row only if it
   // vanishes for every crossing served; sigmaKin_setGoodHel prints it under
   // MG_DUMP_GOODHEL. Scalar double builds only.
+  // Under --axial_gauge (MG_HR_EXACT_ZERO set by the exporter) only an exact 0 is
+  // dropped. The zeros of the reference-vector choice are exact only for exactly
+  // lightlike momenta: near the beam axis the 1/theta growth of the axial
+  // polarisation turns their rounding residual into a needed part of the gauge
+  // cancellation (dropped, d d~ > g g is 1.5e-5 off at 1e-6 rad), so they
+  // stay, as in the fortran standalone warm-up (AMP.ne.0).
 #ifdef MG_HR_PROBE
 #if defined MGONGPU_CPPSIMD or !defined MGONGPU_FPTYPE_DOUBLE
 #error "MG_HR_PROBE needs BACKEND=scalar FPTYPE=d"
@@ -458,7 +463,7 @@ namespace madmatrix
   inline void
   hr_probe_close( const int ihel )
   {
-    constexpr double zeroamp_tol = 1e-12;
+    static const double zeroamp_tol = getenv( "MG_HR_EXACT_ZERO" ) != nullptr ? 0. : 1e-12;
     if( hrProbeSeen.empty() )
     {
       hrProbeSeen.resize( ncomb );

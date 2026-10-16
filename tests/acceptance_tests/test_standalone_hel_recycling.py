@@ -841,6 +841,34 @@ class TestCppHelRecyclingCrossing(unittest.TestCase):
             return struct.unpack('<%d%s' % (len(data) // struct.calcsize(fmt), fmt), data)[:nreal]
         return read(files['me'], 'd'), read(files['hel'], 'i'), read(files['col'], 'i')
 
+    def test_axial_gauge_near_beam_recycled(self):
+        """--axial_gauge: d d~ > g g with a gluon within 1e-6 rad of the beam.
+        The diagrams that the reference-vector choice zeroes at a helicity are
+        zero only for exactly lightlike momenta: their rounding residual, grown
+        by the 1/theta of the axial polarisation, is part of the gauge
+        cancellation (dropped, the recycled build was 1.5e-5 off at 1e-6 rad).
+        The warm-up keeps them: recycled == not recycled"""
+        self._generate('d d~ > g g',
+                       [('plain', '--axial_gauge=True'),
+                        ('recycled', '--hel_recycling=True --axial_gauge=True')])
+        points = []
+        for theta in (1e-3, 1e-5, 1e-6, math.pi - 1e-6):
+            e, phi = 500., 0.3
+            v = [e * math.sin(theta) * math.cos(phi),
+                 e * math.sin(theta) * math.sin(phi), e * math.cos(theta)]
+            points.append([[e, 0., 0., e], [e, 0., 0., -e], [e] + v,
+                           [e] + [-x for x in v]])
+        ids = [0] * len(points)
+        (plain,), (recycled,) = self._pdirs('plain'), self._pdirs('recycled')
+        self.assertTrue(os.path.exists(pjoin(recycled, 'HelRecyclingCalls.inc')))
+        me0, hel0, col0 = self._run_at(plain, 'plain', ids, points)
+        me1, hel1, col1 = self._run_at(recycled, 'recycled', ids, points)
+        for i in range(len(points)):
+            self.assertGreater(me0[i], 0)
+            self.assertLessEqual(abs(me1[i] - me0[i]), self.tolerance * me0[i],
+                                 'point %d: %r vs %r' % (i, me1[i], me0[i]))
+            self.assertEqual((hel1[i], col1[i]), (hel0[i], col0[i]))
+
     def test_massive_leg_crossing_of_the_default_mode(self):
         """define q = g t t~; generate q q > q q: the default mode records
         g t > g t (and its kin) on g g > t t~, moving a top into a gluon slot,
