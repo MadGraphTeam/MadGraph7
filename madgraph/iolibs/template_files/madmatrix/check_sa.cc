@@ -339,7 +339,7 @@ namespace
   )
   {
     constexpr unsigned int UmamiInKeyNum = 3;
-    timermap.start( "3a SigmaKin" );
+    timermap.start( "3a UmamiCall" );
     UmamiInputKey in_keys[UmamiInKeyNum] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_ALPHA_S };
     UmamiOutputKey out_keys[1] = { UMAMI_OUT_MATRIX_ELEMENT };
 #ifdef MGONGPUCPP_GPUIMPL
