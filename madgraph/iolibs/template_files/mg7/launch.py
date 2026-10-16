@@ -9,6 +9,7 @@ import glob
 import shutil
 import json
 import subprocess
+import tempfile
 import re
 import logging
 from dataclasses import dataclass, field
@@ -485,7 +486,10 @@ class MadgraphProcess:
                 except FileExistsError:
                     run_index += 1
         # temporary npy files of the channel generators
-        if temp_dir:
+        self.auto_temp_path = temp_dir == "auto"
+        if self.auto_temp_path:
+            self.temp_path = tempfile.mkdtemp(prefix="mg7_events_")
+        elif temp_dir:
             self.temp_path = os.path.abspath(os.path.expanduser(temp_dir))
             os.makedirs(self.temp_path, exist_ok=True)
         else:
@@ -1937,10 +1941,11 @@ class MadgraphProcess:
         os.mkdir(events_path)
         self.contexts[0].save_globals(os.path.join(data_path, "globals.tar"))
 
+        include_estimates = self.gridpack_run_mode == "fix_max_weight"
         # one json object per channel, joined by hand so that the channel
         # json is not parsed and dumped again
         channel_entries = [
-            f"{json.dumps(channel.status().name)}:{channel.to_json(self.gridpack_run_mode == "fix_max_weight")}"
+            f"{json.dumps(channel.status().name)}:{channel.to_json(include_estimates)}"
             for channel in self.event_generator.channels()
         ]
         with open(os.path.join(data_path, "channels.json"), "w") as f:
@@ -2057,7 +2062,21 @@ class MadgraphProcess:
             with open(os.path.join(data_path, "systematics.json"), "w") as f:
                 json.dump(systematics_data, f)
         if self.run_card["gridpack"]["compress"]:
-            shutil.make_archive(gridpack_path, "gztar", self.run_path, "gridpack")
+            archive_path = gridpack_path + ".tar.gz"
+            pigz = shutil.which("pigz")
+            if pigz:
+                # multi-threaded gzip
+                with open(archive_path, "wb") as f:
+                    tar = subprocess.Popen(
+                        ["tar", "-cf", "-", "-C", self.run_path, "gridpack"],
+                        stdout=subprocess.PIPE,
+                    )
+                    gz = subprocess.run([pigz, "-c"], stdin=tar.stdout, stdout=f)
+                    tar.stdout.close()
+                    if tar.wait() != 0 or gz.returncode != 0:
+                        raise RuntimeError("compressing the gridpack failed")
+            else:
+                shutil.make_archive(gridpack_path, "gztar", self.run_path, "gridpack")
             shutil.rmtree(gridpack_path)
 
     def save_gridpack_lhe_meta(self, path) -> None:
@@ -4266,6 +4285,8 @@ def _release_channel_generators(process) -> None:
     process.event_generator = None
     process.phasespaces = None
     gc.collect()
+    if getattr(process, "auto_temp_path", False):
+        shutil.rmtree(process.temp_path, ignore_errors=True)
 
 
 def run_single(switch=None) -> "MadgraphProcess":

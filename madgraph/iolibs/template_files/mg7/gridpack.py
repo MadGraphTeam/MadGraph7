@@ -1,10 +1,12 @@
 #! /usr/bin/env python3
 
+import atexit
 import gzip
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 # search order for madspace package:
@@ -95,16 +97,9 @@ _INVOCATION_DIR = os.getcwd()
 
 
 def main() -> None:
-    # load run card and metadata. Use the RunCardMG7 representation when the
-    # madgraph package is importable; gridpacks are meant to be portable, so
-    # fall back to a plain tomllib parse otherwise (the card is the same TOML).
-    run_card_path = os.path.join("Cards", "grid_run_card.toml")
-    try:
-        from madgraph.various.banner import RunCardMG7
-        run_card = RunCardMG7(run_card_path)
-    except ImportError:
-        with open(run_card_path, "rb") as f:
-            run_card = tomllib.load(f)
+    # load run card and metadata
+    with open(os.path.join("Cards", "grid_run_card.toml"), "rb") as f:
+        run_card = tomllib.load(f)
     run_args = run_card["run"]
     gen_args = run_card["generation"]
     grid_args = run_card.get("gridpack", {})
@@ -129,8 +124,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--temp_output_dir", type=str, default=None,
-        help="directory for the temporary npy files (default: the run card "
-             "value, else the output directory)"
+        help="directory for the temporary npy files, 'auto' for a new temporary "
+             "directory (default: the run card value, else the output directory)"
     )
     parser.add_argument(
         "--ignore_source_hash", action="store_true",
@@ -181,6 +176,8 @@ def main() -> None:
     # initialize output directories; command line paths are relative to the
     # invocation directory, run card paths to the gridpack
     def resolve_dir(cli_value, card_value):
+        if (cli_value or card_value) == "auto":
+            return "auto"
         if cli_value:
             return os.path.abspath(
                 os.path.join(_INVOCATION_DIR, os.path.expanduser(cli_value)))
@@ -208,7 +205,10 @@ def main() -> None:
                 break
             except FileExistsError:
                 run_index += 1
-    if temp_dir is None:
+    if temp_dir == "auto":
+        temp_dir = tempfile.mkdtemp(prefix="mg7_events_")
+        atexit.register(shutil.rmtree, temp_dir, ignore_errors=True)
+    elif temp_dir is None:
         temp_dir = run_path
     else:
         os.makedirs(temp_dir, exist_ok=True)

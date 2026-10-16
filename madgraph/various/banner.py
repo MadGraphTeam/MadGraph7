@@ -6762,7 +6762,8 @@ class RunCardMG7(RunCard):
             comment="how the run creating the gridpack ends: regular (with events), "
                     "minimal or fix_max_weight (no events)")
         self.add_toml_param('gridpack', 'temp_output_dir', "", gridpack=True,
-            comment="directory for the temporary npy files; \"\" uses the output directory")
+            comment="directory for the temporary npy files; \"\" uses the output directory, "
+                    "\"auto\" a new temporary directory")
         self.add_toml_param('gridpack', 'output_dir', "", gridpack=True,
             comment="directory for the output files; \"\" creates a new run folder in Events")
 

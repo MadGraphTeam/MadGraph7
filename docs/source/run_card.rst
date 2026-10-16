@@ -132,7 +132,9 @@ See :doc:`gridpacks` for details.
 
 ``temp_output_dir`` (``""``)
     Directory for the temporary npy files of the channels. ``""`` uses the output
-    directory.
+    directory. ``"auto"`` creates a new temporary directory for each run, see
+    :py:func:`tempfile.mkdtemp`. Its location can be set with the ``TMPDIR``
+    environment variable.
 
 ``output_dir`` (``""``)
     Directory for the output files. ``""`` creates a new run folder

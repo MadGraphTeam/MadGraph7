@@ -824,6 +824,9 @@ std::string ChannelEventGenerator::to_json(bool include_estimates) const {
         double error = _abs_cross_section.error();
         if (_abs_cross_section.count() > 1 && std::isfinite(error) && error > 0) {
             j["abs_integral"] = {{"mean", _abs_cross_section.mean()}, {"error", error}};
+            j["integral"] = {
+                {"mean", _cross_section.mean()}, {"error", _cross_section.error()}
+            };
         }
     }
     return j.dump();
@@ -893,6 +896,12 @@ ChannelEventGenerator ChannelEventGenerator::load_json(
             channel.at("abs_integral").at("error").get<double>()
         );
     }
+    if (channel.contains("integral")) {
+        generator.set_integral_prior(
+            channel.at("integral").at("mean").get<double>(),
+            channel.at("integral").at("error").get<double>()
+        );
+    }
     return generator;
 }
 
@@ -913,6 +922,23 @@ void ChannelEventGenerator::set_abs_integral_prior(double mean, double error) {
     _abs_integral_prior = {mean, error};
 }
 
+void ChannelEventGenerator::set_integral_prior(double mean, double error) {
+    if (!std::isfinite(mean) || !std::isfinite(error) || error < 0) {
+        throw std::invalid_argument("The integral prior must be finite");
+    }
+    _integral_prior = {mean, error};
+}
+
+bool ChannelEventGenerator::uses_integral_prior() const {
+    double error = _abs_cross_section.error();
+    return _abs_integral_prior &&
+        (_abs_cross_section.count() < 2 || !std::isfinite(error) || !(error > 0));
+}
+
+std::pair<double, double> ChannelEventGenerator::integral_prior() const {
+    return _integral_prior ? *_integral_prior : *_abs_integral_prior;
+}
+
 double ChannelEventGenerator::abs_integral_estimate() const {
     double mean = _abs_cross_section.mean();
     if (!_abs_integral_prior) {
@@ -920,8 +946,7 @@ double ChannelEventGenerator::abs_integral_estimate() const {
     }
     auto [prior_mean, prior_error] = *_abs_integral_prior;
     double error = _abs_cross_section.error();
-    // too few samples for a variance
-    if (_abs_cross_section.count() < 2 || !std::isfinite(error) || !(error > 0)) {
+    if (uses_integral_prior()) {
         return prior_mean;
     }
     double prior_weight = 1. / (prior_error * prior_error);

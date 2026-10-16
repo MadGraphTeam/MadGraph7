@@ -86,7 +86,8 @@ Run the script from anywhere:
 Each call creates a new directory ``Events/<run_name>_NN``. Use ``--output_dir`` to write
 the output to a given directory instead, and ``--temp_output_dir`` to put the large
 temporary npy files of the channels somewhere else, for example on a fast local disk of a
-cluster node. Relative paths on the command line refer to the current directory. A gridpack generates LHE files
+cluster node. With ``--temp_output_dir auto``, a new temporary directory is created for
+each run (in ``$TMPDIR`` if set), so that runs sharing a gridpack do not collide. Relative paths on the command line refer to the current directory. A gridpack generates LHE files
 by default, since it usually feeds a shower or detector simulation. The file is
 compressed to ``events.lhe.gz``. Use ``--output_format`` to get one of the npy formats
 instead.

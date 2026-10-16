@@ -160,7 +160,8 @@ void EventGenerator::run_generate(GenerateMode mode) {
                     _channel_optimizing.at(channel_index) = true;
                     _ready_jobs.push_back({
                         .channel_index = channel_index,
-                        .unweight = true,
+                        // optimize_only keeps no events
+                        .unweight = mode != GenerateMode::optimize_only,
                         .batch_event_count = channel->next_vegas_batch_size(),
                         .is_vegas_batch = true,
                     });
@@ -550,10 +551,20 @@ void EventGenerator::update_integral_status() {
              !std::isfinite(abs_cross_section.variance()))) {
             bad_channel = channel.get();
         }
-        total_mean += cross_section.mean();
-        total_var += cross_section.variance() / cross_section.count();
-        total_mean_abs += abs_cross_section.mean();
-        total_var_abs += abs_cross_section.variance() / abs_cross_section.count();
+        if (channel->uses_integral_prior()) {
+            // not sampled in this run (no events assigned): use the earlier estimate
+            auto [mean, error] = channel->integral_prior();
+            auto [mean_abs, error_abs] = channel->abs_integral_prior();
+            total_mean += mean;
+            total_var += error * error;
+            total_mean_abs += mean_abs;
+            total_var_abs += error_abs * error_abs;
+        } else {
+            total_mean += cross_section.mean();
+            total_var += cross_section.variance() / cross_section.count();
+            total_mean_abs += abs_cross_section.mean();
+            total_var_abs += abs_cross_section.variance() / abs_cross_section.count();
+        }
         total_count += status.count;
         total_count_opt += status.count_opt;
         total_count_after_cuts += status.count_after_cuts;
@@ -1540,7 +1551,8 @@ void EventGenerator::print_gen_update_pretty(bool done) {
     if (!std::isnan(_status.error)) {
         int_str = format_with_error(_status.mean, _status.error);
         if (std::abs(_status.error) < std::abs(_status.mean)) {
-            rel_str = std::format("{:.4f} %", _status.error / std::abs(_status.mean) * 100);
+            rel_str =
+                std::format("{:.4f} %", _status.error / std::abs(_status.mean) * 100);
         }
         rsd_str = std::format("{:.3f}", _status.rel_std_dev);
         uweff_str = std::format(
