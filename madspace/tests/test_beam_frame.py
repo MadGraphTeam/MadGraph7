@@ -73,7 +73,7 @@ def test_beam_rapidity(rng, mode, leptonic):
     r = rng.random((N, sym.random_dim()))
     p_sym, x1_sym, x2_sym, det_sym = map(to_numpy, sym.map_forward([r], []))
     p_lab, x1, x2, det = map(to_numpy, lab.map_forward([r], []))
-    x1, x2 = np.broadcast_to(x1, (N,)), np.broadcast_to(x2, (N,))
+    x1, x2 = np.broadcast_to(x1, (N,)).copy(), np.broadcast_to(x2, (N,)).copy()
     ok = det_sym > 0
 
     # same point, same weight: the lab frame is a longitudinal boost away
