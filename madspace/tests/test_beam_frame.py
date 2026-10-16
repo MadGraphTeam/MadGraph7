@@ -7,6 +7,7 @@ import pytest
 from pytest import approx
 
 import madspace as ms
+from madspace_testing import to_numpy
 
 N = 2000
 
@@ -32,7 +33,7 @@ def test_two_to_one(rng):
     mapping = ms.PhaseSpaceMapping(two_to_one_topology(mass), sqrt_s)
     assert mapping.random_dim() == 1
     r = rng.random((N, 1))
-    p, x1, x2, det = map(np.asarray, mapping.map_forward([r], []))
+    p, x1, x2, det = map(to_numpy, mapping.map_forward([r], []))
 
     tau = mass**2 / sqrt_s**2
     assert x1 * x2 == approx(tau)
@@ -45,11 +46,11 @@ def test_two_to_one(rng):
     assert det == approx(2 * math.pi * abs(math.log(tau)) / sqrt_s**2)
 
     r_inv, det_inv = mapping.map_inverse([p, x1, x2], [])
-    assert np.asarray(r_inv) == approx(r)
-    assert np.asarray(det_inv) * det == approx(1.0)
+    assert to_numpy(r_inv) == approx(r)
+    assert to_numpy(det_inv) * det == approx(1.0)
 
     flat = ms.PhaseSpaceMapping([0.0, 0.0, mass], sqrt_s)
-    assert np.asarray(flat.map_forward([r], [])[0]) == approx(p)
+    assert to_numpy(flat.map_forward([r], [])[0]) == approx(p)
 
 
 def test_two_to_one_needs_pdf():
@@ -70,8 +71,8 @@ def test_beam_rapidity(rng, mode, leptonic):
     sym = ms.PhaseSpaceMapping(masses, e_cm, **kwargs)
     lab = ms.PhaseSpaceMapping(masses, e_cm, beam_rapidity=y0, **kwargs)
     r = rng.random((N, sym.random_dim()))
-    p_sym, x1_sym, x2_sym, det_sym = map(np.asarray, sym.map_forward([r], []))
-    p_lab, x1, x2, det = map(np.asarray, lab.map_forward([r], []))
+    p_sym, x1_sym, x2_sym, det_sym = map(to_numpy, sym.map_forward([r], []))
+    p_lab, x1, x2, det = map(to_numpy, lab.map_forward([r], []))
     x1, x2 = np.broadcast_to(x1, (N,)), np.broadcast_to(x2, (N,))
     ok = det_sym > 0
 
@@ -83,8 +84,8 @@ def test_beam_rapidity(rng, mode, leptonic):
     assert p_lab[ok, 1, 0] == approx(x2[ok] * e2)
 
     r_inv, det_inv = lab.map_inverse([p_lab, x1, x2], [])
-    assert np.asarray(r_inv)[ok] == approx(r[ok], abs=1e-6)
-    assert np.asarray(det_inv)[ok] * det[ok] == approx(1.0, rel=1e-5)
+    assert to_numpy(r_inv)[ok] == approx(r[ok], abs=1e-6)
+    assert to_numpy(det_inv)[ok] * det[ok] == approx(1.0, rel=1e-5)
 
 
 def test_beam_rapidity_cut_in_lab_frame(rng):
@@ -103,8 +104,8 @@ def test_beam_rapidity_cut_in_lab_frame(rng):
         [0.0] * 4, e_cm, beam_rapidity=y0, mode=ms.PhaseSpaceMapping.rambo
     )
     r = rng.random((N, mapping.random_dim()))
-    p, _, _, det = map(np.asarray, mapping.map_forward([r], []))
-    p_free, _, _, det_free = map(np.asarray, free.map_forward([r], []))
+    p, _, _, det = map(to_numpy, mapping.map_forward([r], []))
+    p_free, _, _, det_free = map(to_numpy, free.map_forward([r], []))
     eta = np.arctanh(p_free[:, 2:, 3] / np.linalg.norm(p_free[:, 2:, 1:], axis=2))
     passed = (eta > 0).all(axis=1) & (det_free > 0)
     assert passed.any() and not passed.all()
@@ -122,10 +123,10 @@ def test_mirror_beams(rng, pdf_asymmetric_only):
     mirror = ms.PhaseSpaceMapping(masses, e_cm, beam_rapidity=y0, mirror_beams=True)
     assert mirror.mirror_beams() and not plain.mirror_beams()
     r = rng.random((N, plain.random_dim()))
-    p, x1, x2, det = map(np.asarray, plain.map_forward([r], []))
+    p, x1, x2, det = map(to_numpy, plain.map_forward([r], []))
     zeros, ones = np.zeros(N, dtype=np.int32), np.ones(N, dtype=np.int32)
-    p0, x1_0, x2_0, det0 = map(np.asarray, mirror.map_forward([r], [zeros]))
-    p1, x1_1, x2_1, det1 = map(np.asarray, mirror.map_forward([r], [ones]))
+    p0, x1_0, x2_0, det0 = map(to_numpy, mirror.map_forward([r], [zeros]))
+    p1, x1_1, x2_1, det1 = map(to_numpy, mirror.map_forward([r], [ones]))
     ok = det > 0
     assert p0[ok] == approx(p[ok], abs=1e-8)
     assert det1 == approx(det)
@@ -141,7 +142,7 @@ def test_mirror_beams(rng, pdf_asymmetric_only):
     rot[..., 2:] *= -1
     assert p1[ok] == approx(boost_z(rot, y0), abs=1e-8)
     r_inv, det_inv = mirror.map_inverse([p1, x1_1, x2_1], [ones])
-    assert np.asarray(r_inv)[ok] == approx(r[ok], abs=1e-6)
+    assert to_numpy(r_inv)[ok] == approx(r[ok], abs=1e-6)
 
 
 # --- the mirror and the cuts -------------------------------------------------
@@ -202,9 +203,9 @@ def test_mirror_beams_cuts_the_written_orientation(rng, observable, bounds, sepa
     accepted, momenta, physical = {}, {}, {}
     for index in (0, 1):
         condition = np.full(N, index, dtype=np.int32)
-        p_cut, _, _, det_cut = map(np.asarray, cut.map_forward([r], [condition]))
+        p_cut, _, _, det_cut = map(to_numpy, cut.map_forward([r], [condition]))
         accepted[index] = det_cut > 0
-        p, _, _, det = map(np.asarray, free.map_forward([r], [condition]))
+        p, _, _, det = map(to_numpy, free.map_forward([r], [condition]))
         momenta[index], physical[index] = p, det > 0
         # whatever the cut mapping accepts passes the cut as written
         obs = eta(p_cut[:, 2:])
@@ -241,11 +242,11 @@ def test_cut_aware_sampling_loses_nothing_with_asymmetric_beams(rng, mirror_beam
             return []
         return [rng.integers(0, 2, n).astype(np.int32)]
 
-    det_cut = np.asarray(
+    det_cut = to_numpy(
         cut.map_forward([rng.random((n, cut.random_dim()))], conditions())[3]
     )
     p, _, _, det = map(
-        np.asarray,
+        to_numpy,
         free.map_forward([rng.random((n, free.random_dim()))], conditions()),
     )
     passed = (np.abs(eta(p[:, 2:])) < 1.5).all(axis=1)
