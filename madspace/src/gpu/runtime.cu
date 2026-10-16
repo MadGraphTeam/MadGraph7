@@ -40,8 +40,8 @@ void op_matrix_element(
     std::size_t output_count = locals[instruction.input_indices[2]].index_value();
     TensorVec contiguous_inputs(input_count);
     std::vector<UmamiInputKey> input_keys(input_count);
-    // one more output: the stream (UMAMI_OUT_GPU_STREAM), so that the matrix element runs
-    // in stream order with the rest of the function, not on the default stream
+    // one more output: the stream (UMAMI_OUT_GPU_STREAM), so that the matrix element
+    // runs in stream order with the rest of the function, not on the default stream
     std::vector<UmamiOutputKey> output_keys(output_count + 1);
     std::vector<void*> input_ptrs(input_count), output_ptrs(output_count + 1);
     for (std::size_t i = 0; i < input_count; ++i) {
@@ -1408,7 +1408,8 @@ void op_histogram(
     Tensor square_weights_tmp(
         DataType::dt_float, {padded_size}, device, AllocHint::temporary
     );
-    // the keys reduce_by_key writes: the n_bins bins, the underflow and the overflow bin
+    // the keys reduce_by_key writes: the n_bins bins, the underflow and the overflow
+    // bin
     Tensor reduce_tmp(DataType::dt_float, {n_bins + 2}, device, AllocHint::temporary);
 
     launch_kernel(
@@ -1583,7 +1584,8 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
     LastUseOfLocals last_use(function);
     InstructionDependencies dependencies(function);
 
-    std::size_t stream_count = 0, event_count = 0, backward_event_count = 0;
+    // at least the main stream, also for a function without instructions
+    std::size_t stream_count = 1, event_count = 0, backward_event_count = 0;
     for (auto& instr : function.instructions()) {
         if (instr.stream_index >= stream_count) {
             stream_count = instr.stream_index + 1;

@@ -1264,7 +1264,9 @@ PYBIND11_MODULE(_madspace_py, m) {
                 PhaseSpaceMapping::TChannelMode,
                 const std::optional<Cuts>&,
                 const nested_vector2<std::size_t>&,
-                const std::optional<std::vector<std::size_t>>&>(),
+                const std::optional<std::vector<std::size_t>>&,
+                double,
+                bool>(),
             py::arg("topology"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
@@ -1273,6 +1275,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("cuts") = std::nullopt,
             py::arg("permutations") = nested_vector2<std::size_t>{},
             py::arg("color_order") = std::nullopt,
+            py::arg("beam_rapidity") = 0.,
+            py::arg("mirror_beams") = false,
             pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping")
         )
         .def(
@@ -1283,7 +1287,9 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 PhaseSpaceMapping::TChannelMode,
                 std::optional<Cuts>,
-                const std::optional<std::vector<std::size_t>>&>(),
+                const std::optional<std::vector<std::size_t>>&,
+                double,
+                bool>(),
             py::arg("external_masses"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
@@ -1291,6 +1297,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("mode") = PhaseSpaceMapping::rambo,
             py::arg("cuts") = std::nullopt,
             py::arg("color_order") = std::nullopt,
+            py::arg("beam_rapidity") = 0.,
+            py::arg("mirror_beams") = false,
             pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping#2")
         )
         .def(
@@ -1313,6 +1321,17 @@ PYBIND11_MODULE(_madspace_py, m) {
             &PhaseSpaceMapping::channel_count,
             pydoc::doc("PhaseSpaceMapping::channel_count")
         )
+        .def(
+            "beam_rapidity",
+            &PhaseSpaceMapping::beam_rapidity,
+            pydoc::doc("PhaseSpaceMapping::beam_rapidity")
+        )
+        .def(
+            "mirror_beams",
+            &PhaseSpaceMapping::mirror_beams,
+            pydoc::doc("PhaseSpaceMapping::mirror_beams")
+        )
+        .def("cuts", &PhaseSpaceMapping::cuts, pydoc::doc("PhaseSpaceMapping::cuts"))
         .def(
             "empty", &PhaseSpaceMapping::empty, pydoc::doc("PhaseSpaceMapping::empty")
         );
@@ -2074,7 +2093,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<std::size_t>&,
                 const std::vector<std::size_t>&,
                 const std::vector<std::size_t>&,
-                std::size_t>(),
+                std::size_t,
+                const std::optional<PdfGrid>&>(),
             py::arg("mapping"),
             py::arg("diff_xs"),
             py::arg("adaptive_map") = std::monostate{},
@@ -2103,6 +2123,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("flavor_subproc_indices") = std::vector<std::size_t>{},
             py::arg("flavor_per_subproc_remap") = std::vector<std::size_t>{},
             py::arg("compressed_channel_weight_count") = 50,
+            py::arg("pdf_grid2") = std::nullopt,
             pydoc::doc("Integrand::Integrand")
         )
         .def(
@@ -3345,7 +3366,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::optional<AlphaSGrid>&,
                 ContextPtr,
                 const std::vector<std::optional<MatrixElement>>&,
-                const nested_vector2<me_int_t>&>(),
+                const nested_vector2<me_int_t>&,
+                const std::optional<PdfGrid>&>(),
             py::arg("config"),
             py::arg("subproc_args"),
             py::arg("nominal_pdf") = std::nullopt,
@@ -3353,6 +3375,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("context") = nullptr,
             py::arg("matrix_elements") = std::vector<std::optional<MatrixElement>>{},
             py::arg("me_flavor_remap") = nested_vector2<me_int_t>{},
+            py::arg("nominal_pdf2") = std::nullopt,
             pydoc::doc("SystematicsCalculator::SystematicsCalculator")
         )
         .def_property_readonly(
