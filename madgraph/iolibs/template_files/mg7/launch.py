@@ -240,7 +240,20 @@ class MadgraphProcess:
         self.param_card = ParamCard(self.param_card_path)
         with open(os.path.join("SubProcesses", "subprocesses.json")) as f:
             self.subprocess_data = json.load(f)
-        if self.run_card["phasespace"]["merge_subprocesses"]:
+        merge_subprocesses = self.run_card["phasespace"]["merge_subprocesses"]
+        if merge_subprocesses and self.run_card["beam"]["dynamical_scale_choice"] == "mlm":
+            # A merged subprocess bundles matrix elements whose legs differ -
+            # q q~ > l l g next to q g > l l q - while the MLM clustering is
+            # built once per subprocess from a single assignment of flavours to
+            # legs. It would cluster the gluon-initiated elements as if their
+            # beam were a quark, and pick the history per diagram from the
+            # weights of one element only.
+            logger.warning(
+                "merge_subprocesses is not supported with dynamical_scale_choice "
+                "= mlm; the subprocesses are kept separate"
+            )
+            merge_subprocesses = False
+        if merge_subprocesses:
             with open(os.path.join("SubProcesses", "merged_subprocesses.json")) as f:
                 self.merged_subprocess_data = json.load(f)
         else:
@@ -446,7 +459,7 @@ class MadgraphProcess:
         With the option off, madevent still drops the dR cuts, and only zeroes
         a pt or pair-mass cut that sits above xqcut - it never tightens.
         """
-        if self.run_card["beam"]["dynamical_scale_choice"] != "mlm":
+        if self.is_decay or self.run_card["beam"]["dynamical_scale_choice"] != "mlm":
             return
         xqcut = self.run_card["phasespace"]["xqcut"]
         if xqcut <= 0:
@@ -609,7 +622,17 @@ class MadgraphProcess:
             raise ValueError("Unknown dynamical scale choice")
         if self.is_decay:
             # One scale is available for a decay -- the decaying mass -- so use
-            # it, fixed, whatever the card asks for.
+            # it, fixed, whatever the card asks for. That includes "mlm": a
+            # decay has no beams to cluster into, so there is no merging to do.
+            if self.mlm_clustering:
+                logger.warning(
+                    "dynamical_scale_choice = mlm has no meaning for a decay; "
+                    "using the decaying mass as a fixed scale instead"
+                )
+                self.mlm_clustering = False
+            self.scale_kwargs.setdefault(
+                "dynamical_scale_type", ms.EnergyScale.half_transverse_mass
+            )
             self.scale_kwargs.update(
                 ren_scale_fixed=True,
                 fact_scale_fixed=True,
@@ -2047,7 +2070,15 @@ class MadgraphSubprocess:
             else None
         )
 
-        max_scale = 0.0 if self.process.leptonic else self.process.max_scale
+        # The scale range exists to keep the densities inside the PDF grid, so
+        # a run without beam densities - a lepton collider or a decay - has
+        # none: a floor there would only throw away events whose scale is
+        # legitimately low, a decay of a particle lighter than min_scale say.
+        if self.process.leptonic:
+            min_scale = max_scale = 0.0
+        else:
+            min_scale = self.process.run_card["beam"]["min_scale"]
+            max_scale = self.process.max_scale
         if self.process.mlm_clustering:
             mc_data = self.build_multi_channel_data()
             self.scale = ms.EnergyScale(
@@ -2089,14 +2120,18 @@ class MadgraphSubprocess:
                         ms.MLMClustering.ClusteringMeasure,
                         self.process.run_card["beam"]["clustering_measure"],
                     ),
+                    clustering_history=getattr(
+                        ms.MLMClustering.ClusteringHistory,
+                        self.process.run_card["beam"]["clustering_history"],
+                    ),
                 ),
-                min_scale=self.process.run_card["beam"]["min_scale"],
+                min_scale=min_scale,
                 max_scale=max_scale,
             )
         else:
             self.scale = ms.EnergyScale(
                 particle_count=self.particle_count,
-                min_scale=self.process.run_card["beam"]["min_scale"],
+                min_scale=min_scale,
                 max_scale=max_scale,
                 **self.process.scale_kwargs,
             )
@@ -2669,24 +2704,12 @@ class MadgraphSubprocess:
             flavor_factors.append(len(flav["options"]))
             flavor_mirror.append(flav["mirror"])
 
-        # With MLM the clustering already selects a diagram, so the matrix element
-        # takes it as an input instead of drawing one from its own random number.
-        if self.scale.is_mlm():
-            me_inputs = [
-                ms.MatrixElement.diagram_in
-                if inp == ms.MatrixElement.random_diagram_in
-                else inp
-                for inp in ms.Integrand.matrix_element_inputs
-            ]
-        else:
-            me_inputs = ms.Integrand.matrix_element_inputs
-
         cross_sections = []
         for matrix_element in self.matrix_elements:
             if matrix_element:
                 mat = ms.MatrixElement(
                     matrix_element,
-                    me_inputs,
+                    ms.Integrand.matrix_element_inputs,
                     ms.Integrand.matrix_element_outputs,
                     True,
                 )
@@ -2695,7 +2718,7 @@ class MadgraphSubprocess:
                 mat = ms.MatrixElement(
                     0xBADCAFE,
                     self.particle_count,
-                    me_inputs,
+                    ms.Integrand.matrix_element_inputs,
                     ms.Integrand.matrix_element_outputs,
                     self.meta["diagram_count"],
                     True,

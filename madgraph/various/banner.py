@@ -6649,10 +6649,31 @@ class RunCardMG7(RunCard):
         # Only read when dynamical_scale_choice = "mlm".
         self.add_toml_param('beam', 'clustering_measure', "fxfx",
             allowed=['fxfx', 'madevent'])
-        # Floor on mu_R and mu_F, whatever the dynamical scale choice. Below
-        # the lowest Q of a PDF grid the densities are undefined, so an event
-        # whose scales fall under this is dropped. madevent applies the same
-        # floor to mu_F. 0 disables it.
+        # Which diagrams the clustering history may follow:
+        #   "all_diagrams": the smallest-measure history over every diagram at
+        #                   once, each line's flavour taken from the first
+        #                   diagram that has it.
+        #   "diagram":      pick one diagram per event with probability
+        #                   proportional to its |A_i|^2 and cluster along it
+        #                   alone, with its own line flavours. Tells a VBF
+        #                   diagram's W/Z lines from gluon fusion's gluons.
+        #   "madevent":     keep the all_diagrams history unless it calls a
+        #                   different number of legs merging jets than the
+        #                   picked diagram does, as setclscales reclusters
+        #                   along the integration channel.
+        # Anything but "all_diagrams" evaluates the matrix element twice per
+        # event: once for the diagram weights, once at the scales of the chosen
+        # history. Only read when dynamical_scale_choice = "mlm", which also
+        # turns phasespace.merge_subprocesses off: the clustering is built
+        # from one flavour assignment per subprocess.
+        self.add_toml_param('beam', 'clustering_history', "all_diagrams",
+            allowed=['all_diagrams', 'diagram', 'madevent'])
+        # Floor on mu_R and mu_F. Below the lowest Q of a PDF grid the
+        # densities are undefined, so the scales are raised to it, which is
+        # what LHAPDF's freezing does for madevent. Under
+        # dynamical_scale_choice = "mlm" an event whose scales fall under it is
+        # dropped instead, as madevent's setclscales does at 2 GeV. Ignored
+        # for a run without beam PDFs (lepton collider, decay). 0 disables it.
         self.add_toml_param('beam', 'min_scale', 2.0)
 
         # -------------------------- [generation] ----------------------
