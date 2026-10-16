@@ -244,10 +244,11 @@ public:
     /// The matrix element previously loaded at position `index`; see @ref
     /// load_matrix_element.
     const MatrixElementApi& matrix_element(std::size_t index) const;
-    /// Write every global to `dir`, one `.npy` file per name.
-    void save_globals(const std::string& dir) const;
-    /// Define a global from every `.npy` file in `dir`, named after the file.
-    void load_globals(const std::string& dir);
+    /// Write every global to the tar archive `file`, as one `.npy` file per name.
+    void save_globals(const std::string& file) const;
+    /// Define a global from every `.npy` file in the tar archive `file`, named
+    /// after the file.
+    void load_globals(const std::string& file);
     /// The device every global and matrix element of this context lives on.
     DevicePtr device() { return _device; }
     /// The thread pool backing this context's device-local resources.

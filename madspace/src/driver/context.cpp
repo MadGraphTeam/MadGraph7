@@ -1,5 +1,6 @@
 #include "madspace/driver/context.hpp"
 
+#include <algorithm>
 #include <dlfcn.h>
 #include <filesystem>
 #include <nlohmann/json.hpp>
@@ -12,7 +13,9 @@ using namespace madspace;
 using json = nlohmann::json;
 
 namespace {
-UmamiStatus umami_key_query_not_implemented(bool const**, int*) { return UMAMI_ERROR_NOT_IMPLEMENTED; }
+UmamiStatus umami_key_query_not_implemented(bool const**, int*) {
+    return UMAMI_ERROR_NOT_IMPLEMENTED;
+}
 thread_local std::optional<std::uintptr_t> current_caller_stream;
 } // namespace
 
@@ -160,8 +163,7 @@ void MatrixElementApi::throw_error(const std::string& message) const {
     );
 }
 
-const MatrixElementApi&
-Context::load_matrix_element(
+const MatrixElementApi& Context::load_matrix_element(
     const std::string& file,
     const std::string& param_card,
     const std::unordered_map<std::string, double>& parameters
@@ -310,27 +312,31 @@ const MatrixElementApi& Context::matrix_element(std::size_t index) const {
     return *_matrix_elements.at(index).get();
 }
 
-void Context::save_globals(const std::string& dir) const {
-    namespace fs = std::filesystem;
-    fs::path dir_path(dir);
-    fs::create_directory(dir_path);
-
+void Context::save_globals(const std::string& file) const {
+    // sorted, so that the archive does not depend on the hash map order
+    std::vector<std::string> names;
+    names.reserve(_globals.size());
     for (auto& [name, tensor_and_grad] : _globals) {
-        auto& [tensor, requires_grad] = tensor_and_grad;
-        fs::path tensor_file = dir_path / name;
-        tensor_file += ".npy";
-        save_tensor(tensor_file, tensor);
+        names.push_back(name);
     }
+    std::sort(names.begin(), names.end());
+
+    TarWriter tar(file);
+    for (auto& name : names) {
+        save_tensor(tar, name + ".npy", _globals.at(name).first);
+    }
+    tar.close();
 }
 
-void Context::load_globals(const std::string& dir) {
-    namespace fs = std::filesystem;
-    for (auto& file : fs::directory_iterator(dir)) {
-        if (file.path().extension() != ".npy") {
+void Context::load_globals(const std::string& file) {
+    constexpr std::string_view extension = ".npy";
+    TarReader tar(file);
+    for (auto& file_name : tar.names()) {
+        if (!file_name.ends_with(extension)) {
             continue;
         }
-        std::string name = file.path().stem();
-        Tensor tensor = load_tensor(file.path());
+        std::string name = file_name.substr(0, file_name.size() - extension.size());
+        Tensor tensor = load_tensor(tar, file_name);
         Tensor global_tensor = define_global(
             name,
             tensor.dtype(),

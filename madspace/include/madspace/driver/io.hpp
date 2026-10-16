@@ -6,12 +6,19 @@
 #include <string>
 
 #include "madspace/driver/lhe_output.hpp"
+#include "madspace/driver/tar.hpp"
 #include "madspace/driver/tensor.hpp"
 
 namespace madspace {
 
+/// Read a tensor from the npy file `file`.
 Tensor load_tensor(const std::string& file);
+/// Write `tensor` to the npy file `file`.
 void save_tensor(const std::string& file, Tensor tensor);
+/// Read a tensor from the npy file `name` inside the tar archive `tar`.
+Tensor load_tensor(TarReader& tar, const std::string& name);
+/// Append `tensor` as an npy file called `name` to the tar archive `tar`.
+void save_tensor(TarWriter& tar, const std::string& name, Tensor tensor);
 
 struct FieldLayout {
     static constexpr const char* i32 = "<i4";
@@ -152,10 +159,8 @@ public:
 
     // `syst_weight_count` columns of systematic variation weights are appended
     // when f_syst_weights is set; `syst_weight_ids` names them (rwgt_<id>).
-    static std::vector<FieldLayout> layout(
-        int fields,
-        const std::vector<int>& syst_weight_ids = {}
-    ) {
+    static std::vector<FieldLayout>
+    layout(int fields, const std::vector<int>& syst_weight_ids = {}) {
         std::vector<FieldLayout> ret;
         if (fields & f_weight) {
             ret.push_back({"weight", FieldLayout::f64, 0});
