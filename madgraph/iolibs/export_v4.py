@@ -3500,7 +3500,12 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         matrix element every applicable crossing (each choice of the base legs
         that start in the initial state), not only the recorded ones -- for a
         standalone user evaluating an arbitrary crossing through the extended
-        flavor index, and for the crossing tests."""
+        flavor index, and for the crossing tests. The PDG-keyed entries
+        (f77_smatrixhel, f77_density) are not widened: they still serve only
+        the generated subprocesses and the recorded crossings
+        (crossed_smatrixhel_prefixes), so that a PDG lookup never answers a
+        process the user did not generate; the extra rows are reached by
+        their extended index only (f77_smatrixhel_idx, GET_DENSITY_IDX)."""
         options = getattr(self, 'cmd_options', None) or {}
         return str(options.get('crossing_table', '')).lower() == 'all'
 
