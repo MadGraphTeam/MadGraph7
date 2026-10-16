@@ -353,7 +353,8 @@ decay z > l+ l-
 
         NB: 'set nevents 500' relies on the mg7 run_card editor accepting the
         legacy madevent name (mapped to generation.events); without it the run
-        would generate the full default 100k events and risk the timeout below.
+        would generate and decay the full default 100k events. That is checked
+        on the event count of the summary line, not on the wall-clock bound.
         """
         cmd_path = pjoin(self.path, 'test_madspin_mixed_flavor_mg7.cmd')
         log_path = pjoin(self.path, 'test_madspin_mixed_flavor_mg7.log')
@@ -378,18 +379,21 @@ decay z > l+ l-
             fsock.write(command)
 
         # Bounded and with stdin closed so the run never blocks on a prompt.
-        # With 'set nevents 500' honoured the decay is quick; a timeout here
-        # would signal a regression (e.g. nevents no longer applied -> the full
-        # 100k events get decayed).
+        # The bound only guards against a hang: the run costs about 100 s of
+        # CPU but its wall time follows the machine load (about 210-290 s at a
+        # load average of 100), so a tight bound fails on a busy machine.
+        timeout = 900
         with open(log_path, 'w') as log_file:
             try:
                 return_code = subprocess.call(
                     [sys.executable, pjoin(_file_path, os.path.pardir, 'bin', 'madgraph'), cmd_path],
                     cwd=pjoin(_file_path, os.path.pardir),
                     stdin=subprocess.DEVNULL,
-                    stdout=log_file, stderr=subprocess.STDOUT, timeout=240)
+                    stdout=log_file, stderr=subprocess.STDOUT, timeout=timeout)
             except subprocess.TimeoutExpired:
-                self.fail('mg7 + MadSpin run timed out (is set nevents applied?)')
+                load = os.getloadavg() if hasattr(os, 'getloadavg') else None
+                self.fail('mg7 + MadSpin run timed out after %s s (load average'
+                          ' %s; is set nevents applied?)' % (timeout, load))
         with open(log_path) as log_file:
             log = log_file.read()
         # On failure, surface the tail of the mg7 run log (which lives in a tmp
@@ -401,9 +405,13 @@ decay z > l+ l-
                   file=sys.stderr, flush=True)
         self.assertEqual(return_code, 0)
 
+        summary = re.search(
+            r'MadSpin\s+unweight\s+efficiency:\s*\S+\s*\((\d+)\s+written', log)
         self.assertIsNotNone(
-            re.search(r'MadSpin\s+unweight\s+efficiency', log),
+            summary,
             msg='mg7 + MadSpin: density-mode summary line not found in log')
+        # 'set nevents 500' reached the mg7 run card (generation.events)
+        self.assertEqual(int(summary.group(1)), 500)
         # store_result used to save the madevent results database to
         # HTML/results.pkl, which the mg7 output does not have
         self.assertEqual(
