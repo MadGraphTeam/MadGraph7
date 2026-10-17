@@ -74,13 +74,18 @@ def normalize_lorentz_expression(
     spins: Sequence[int],
     *,
     model_symbols: ModelSymbolRegistry | None = None,
+    vertex: bool = True,
 ) -> NormalizedTensorExpression:
-    """Convert one wrapped UFO Lorentz expression into typed spenso form."""
+    """Convert one wrapped UFO Lorentz expression into typed spenso form.
+
+    ``vertex`` selects the vertex spinor order; propagators keep their own.
+    """
 
     _ensure_symbolica()
     context = _LorentzContext(
         tuple(int(spin) for spin in spins),
         model_symbols=model_symbols,
+        vertex=vertex,
     )
     expression = E(source)
     expression = _replace(expression, "UFO::PSlash(a_,b_)", context.p_slash)
@@ -164,6 +169,7 @@ class _LorentzContext:
         spins: tuple[int, ...],
         *,
         model_symbols: ModelSymbolRegistry | None = None,
+        vertex: bool = True,
     ) -> None:
         _ensure_symbolica()
         self.spins = spins
@@ -175,6 +181,16 @@ class _LorentzContext:
         self.projm_tensor = TensorExpression.projm(4)
         self.projp_tensor = TensorExpression.projp(4)
         self._fresh_index = 0
+        # Standard UFO vertices index a fermion pair in the opposite order to
+        # the internal spinor slots, e.g. Gamma(3,2,1) for the SM FFV1.
+        dirac_legs = (
+            [leg for leg, spin in enumerate(spins, 1) if spin == 2] if vertex else []
+        )
+        self._spinor_partner = {
+            leg: partner
+            for first, second in zip(dirac_legs[::2], dirac_legs[1::2], strict=False)
+            for leg, partner in ((first, second), (second, first))
+        }
 
     def metric(self, match: Mapping[Expression, Expression]) -> Expression:
         left = self._minkowski_slot(match[_WILDCARDS["a_"]])
@@ -287,7 +303,7 @@ class _LorentzContext:
             )
         if component != 1:
             raise ValueError(f"Dirac particle leg {leg} has no spin index {component}")
-        return f"ufo_s_{component}_{leg}"
+        return f"ufo_s_{component}_{self._spinor_partner.get(leg, leg)}"
 
     def _momentum_tensor(self, leg: int, slot) -> Expression:
         if leg < 1 or leg > len(self.spins):

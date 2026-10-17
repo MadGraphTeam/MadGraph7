@@ -28,6 +28,10 @@ typedef struct {
     /* runtime[j] = input[permutation[j]], including both incoming legs. */
     const size_t *permutation;
     double factor;
+    /* Exported helicity index (input leg order) -> runtime index, -1 if absent. */
+    const int *helicity_runtime;
+    /* Runtime helicity index -> exported helicity index. */
+    const size_t *helicity_export;
 } UmamiContribution;
 
 typedef struct {
@@ -43,6 +47,8 @@ typedef struct {
 typedef struct {
     const char *id;
     size_t particle_count, incoming_count, helicity_count, color_count;
+    /* Number of exported helicities, the metadata "helicities" table. */
+    size_t exported_helicity_count;
     const double *masses;
     size_t process_count;
     const UmamiProcess *processes;

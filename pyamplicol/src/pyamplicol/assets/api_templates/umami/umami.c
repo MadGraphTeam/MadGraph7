@@ -16,9 +16,18 @@
 #include UMAMI_PROVIDER_HEADER
 
 typedef struct {
+    char *name;
+    double real, imaginary;
+} Override;
+
+typedef struct {
     char *artifact;
     RusticolRuntimeHandle **runtimes;
     double *momenta;
+    double *helicity_values;
+    /* Parameters set so far, applied to the processes loaded later. */
+    Override *overrides;
+    size_t override_count;
 } Instance;
 
 static bool const supported_inputs[UMAMI_INPUT_KEY_COUNT] = {
@@ -26,6 +35,7 @@ static bool const supported_inputs[UMAMI_INPUT_KEY_COUNT] = {
     [UMAMI_IN_ALPHA_S] = UMAMI_HAS_ALPHA_S,
     [UMAMI_IN_FLAVOR_INDEX] = true,
     [UMAMI_IN_RANDOM_HELICITY] = true,
+    [UMAMI_IN_HELICITY_INDEX] = true,
     [UMAMI_IN_CHANNEL_INDEX] = true,
 };
 static bool const required_inputs[UMAMI_INPUT_KEY_COUNT] = {
@@ -101,7 +111,37 @@ static UmamiStatus load_process(Instance *instance, size_t process) {
                 umami_provider.id, entry->key);
         return UMAMI_ERROR;
     }
+    for (size_t i = 0; i < instance->override_count; ++i) {
+        Override const *override = &instance->overrides[i];
+        UmamiParameter const *known = parameter(process, override->name);
+        if (known == NULL) continue;
+        status = rusticol_runtime_set_model_parameter(runtime, override->name,
+            override->real, known->is_complex ? override->imaginary : 0.0);
+        if (status != RUSTICOL_STATUS_OK) {
+            (void)rusticol_runtime_free(runtime);
+            return native_error(status);
+        }
+    }
     instance->runtimes[process] = runtime;
+    return UMAMI_SUCCESS;
+}
+
+static UmamiStatus record_override(Instance *instance, char const *name,
+                                   double real, double imaginary) {
+    for (size_t i = 0; i < instance->override_count; ++i)
+        if (strcmp(instance->overrides[i].name, name) == 0) {
+            instance->overrides[i].real = real;
+            instance->overrides[i].imaginary = imaginary;
+            return UMAMI_SUCCESS;
+        }
+    Override *overrides = realloc(instance->overrides,
+                                  (instance->override_count + 1) * sizeof(*overrides));
+    if (overrides == NULL) return UMAMI_ERROR;
+    instance->overrides = overrides;
+    char *copy = malloc(strlen(name) + 1);
+    if (copy == NULL) return UMAMI_ERROR;
+    strcpy(copy, name);
+    overrides[instance->override_count++] = (Override){copy, real, imaginary};
     return UMAMI_SUCCESS;
 }
 
@@ -152,7 +192,9 @@ UmamiStatus umami_initialize(UmamiHandle *handle, char const *param_card_path) {
     instance->artifact = malloc(length);
     instance->runtimes = calloc(umami_provider.process_count, sizeof(*instance->runtimes));
     instance->momenta = calloc(4 * umami_provider.particle_count, sizeof(double));
-    if (instance->artifact == NULL || instance->runtimes == NULL || instance->momenta == NULL) {
+    instance->helicity_values = calloc(umami_provider.helicity_count + 1, sizeof(double));
+    if (instance->artifact == NULL || instance->runtimes == NULL || instance->momenta == NULL ||
+        instance->helicity_values == NULL) {
         umami_free(instance); return UMAMI_ERROR;
     }
     memcpy(instance->artifact, param_card_path, length);
@@ -196,10 +238,11 @@ UmamiStatus umami_set_parameter(UmamiHandle handle, char const *name,
     for (size_t i = 0; i < count; ++i) {
         UmamiParameter const *entry = parameter(i, name);
         if (entry == NULL) continue;
+        /* Load the first process using it, so that the value is validated now. */
+        if (!found && load_process(instance, i) != UMAMI_SUCCESS) goto rollback;
         found = true;
         if (!entry->mutable || (entry->is_complex && !isfinite(imaginary))) goto rollback;
-        status = load_process(instance, i);
-        if (status != UMAMI_SUCCESS) goto rollback;
+        if (instance->runtimes[i] == NULL) continue;
         status = native_error(rusticol_runtime_get_model_parameter(
             instance->runtimes[i], name, &previous[2*i], &previous[2*i+1]));
         if (status != UMAMI_SUCCESS) goto rollback;
@@ -208,6 +251,8 @@ UmamiStatus umami_set_parameter(UmamiHandle handle, char const *name,
         if (status != UMAMI_SUCCESS) goto rollback;
         changed[i] = true;
     }
+    if (found && record_override(instance, name, real, imaginary) != UMAMI_SUCCESS)
+        goto rollback;
     free(previous); free(changed);
     return found ? UMAMI_SUCCESS : UMAMI_ERROR;
 rollback:
@@ -218,9 +263,12 @@ rollback:
     return UMAMI_ERROR;
 }
 
+/* Total of one contribution, at a fixed runtime helicity if helicity is not NULL. With
+ * values, the values of all runtime helicities are written there and summed. */
 static UmamiStatus evaluate_contribution(Instance *instance, UmamiContribution const *entry,
                                         double const *momenta, size_t event, size_t stride,
-                                        double const *alpha_s, double *result) {
+                                        double const *alpha_s, uint32_t const *helicity,
+                                        double *values, double *result) {
     size_t process = entry->process_index;
     UmamiProcess const *description = &umami_provider.processes[process];
     UmamiStatus status = load_process(instance, process);
@@ -248,12 +296,30 @@ static UmamiStatus evaluate_contribution(Instance *instance, UmamiContribution c
             if (status != UMAMI_SUCCESS) return status;
         }
     }
-    int native_status = rusticol_runtime_evaluate_selected_f64(
-        runtime, instance->momenta, 4*n, 1,
-        NULL, 0,
-        entry->color_id == NULL ? NULL : &entry->color_id,
-        entry->color_id == NULL ? 0 : 1,
-        NULL, 0, NULL, 0, result, 1);
+    int native_status;
+    if (values != NULL) {
+        size_t helicity_count = 0, color_count = 0;
+        native_status = rusticol_runtime_evaluate_resolved_f64(
+            runtime, instance->momenta, 4*n, 1, NULL, 0,
+            entry->color_id == NULL ? NULL : &entry->color_id,
+            entry->color_id == NULL ? 0 : 1,
+            values, description->helicity_count, &helicity_count, &color_count);
+        if (native_status == RUSTICOL_STATUS_OK &&
+            (helicity_count != description->helicity_count || color_count != 1)) {
+            fprintf(stderr, "umami: unexpected resolved shape of process %s\n", description->key);
+            native_status = RUSTICOL_STATUS_RUNTIME_ERROR;
+        }
+        *result = 0.0;
+        for (size_t h = 0; native_status == RUSTICOL_STATUS_OK && h < helicity_count; ++h)
+            *result += values[h];
+    } else {
+        native_status = rusticol_runtime_evaluate_selected_f64(
+            runtime, instance->momenta, 4*n, 1,
+            NULL, 0,
+            entry->color_id == NULL ? NULL : &entry->color_id,
+            entry->color_id == NULL ? 0 : 1,
+            helicity, helicity == NULL ? 0 : 1, NULL, 0, result, 1);
+    }
     status = native_error(native_status);
     if (changed) {
         UmamiStatus restored = native_error(rusticol_runtime_set_model_parameter(
@@ -301,22 +367,58 @@ UmamiStatus umami_matrix_element(UmamiHandle handle, size_t count, size_t stride
         double random = in[UMAMI_IN_RANDOM_HELICITY] ?
             ((double const *)in[UMAMI_IN_RANDOM_HELICITY])[event] : 0.5;
         if (!isfinite(random) || random < 0.0 || random >= 1.0) return UMAMI_ERROR;
-        size_t helicities = umami_provider.processes[selection->contributions[0].process_index].helicity_count;
-        int label = (int)(random * (double)helicities);
+        double const *alpha_s =
+            in[UMAMI_IN_ALPHA_S] ? &((double const *)in[UMAMI_IN_ALPHA_S])[event] : NULL;
+        UmamiContribution const *first = &selection->contributions[0];
+        int label = 0;
         double total = 0.0;
-        for (size_t j = 0; j < selection->contribution_count; ++j) {
-            double value = 0.0;
-            UmamiStatus status = evaluate_contribution(instance, &selection->contributions[j],
-                in[UMAMI_IN_MOMENTA], event, stride,
-                in[UMAMI_IN_ALPHA_S] ? &((double const *)in[UMAMI_IN_ALPHA_S])[event] : NULL, &value);
+        if (in[UMAMI_IN_HELICITY_INDEX]) {
+            /* a fixed exported helicity, absent ones do not contribute */
+            label = ((int const *)in[UMAMI_IN_HELICITY_INDEX])[event];
+            if (label < 0 || (size_t)label >= umami_provider.exported_helicity_count)
+                return UMAMI_ERROR;
+            for (size_t j = 0; j < selection->contribution_count; ++j) {
+                UmamiContribution const *entry = &selection->contributions[j];
+                if (entry->helicity_runtime[label] < 0) continue;
+                uint32_t helicity = (uint32_t)entry->helicity_runtime[label];
+                double value = 0.0;
+                UmamiStatus status = evaluate_contribution(instance, entry,
+                    in[UMAMI_IN_MOMENTA], event, stride, alpha_s, &helicity, NULL, &value);
+                if (status != UMAMI_SUCCESS) return status;
+                total += entry->factor * value;
+            }
+        } else if (out[UMAMI_OUT_HELICITY_INDEX] && selection->contribution_count == 1) {
+            /* sample the helicity in proportion to its contribution */
+            double *values = instance->helicity_values;
+            UmamiStatus status = evaluate_contribution(instance, first,
+                in[UMAMI_IN_MOMENTA], event, stride, alpha_s, NULL, values, &total);
             if (status != UMAMI_SUCCESS) return status;
-            total += selection->contributions[j].factor * value;
+            size_t count = umami_provider.processes[first->process_index].helicity_count;
+            double target = random * total, cumulative = 0.0;
+            size_t chosen = 0;
+            for (size_t h = 0; h < count; ++h) {
+                if (values[h] <= 0.0) continue;
+                chosen = h;
+                cumulative += values[h];
+                if (cumulative > target) break;
+            }
+            label = (int)first->helicity_export[chosen];
+            total *= first->factor;
+        } else {
+            if (out[UMAMI_OUT_HELICITY_INDEX]) return UMAMI_ERROR_UNSUPPORTED_OUTPUT;
+            for (size_t j = 0; j < selection->contribution_count; ++j) {
+                double value = 0.0;
+                UmamiStatus status = evaluate_contribution(instance, &selection->contributions[j],
+                    in[UMAMI_IN_MOMENTA], event, stride, alpha_s, NULL, NULL, &value);
+                if (status != UMAMI_SUCCESS) return status;
+                total += selection->contributions[j].factor * value;
+            }
         }
         if (!isfinite(total)) return UMAMI_ERROR;
         if (out[UMAMI_OUT_MATRIX_ELEMENT]) ((double *)out[UMAMI_OUT_MATRIX_ELEMENT])[event] = total;
         if (out[UMAMI_OUT_HELICITY_INDEX]) ((int *)out[UMAMI_OUT_HELICITY_INDEX])[event] = label;
         if (out[UMAMI_OUT_COLOR_INDEX]) ((int *)out[UMAMI_OUT_COLOR_INDEX])[event] =
-            (int)selection->contributions[0].color_index;
+            (int)first->color_index;
     }
     return UMAMI_SUCCESS;
 }
@@ -327,6 +429,9 @@ UmamiStatus umami_free(UmamiHandle handle) {
     if (instance->runtimes != NULL)
         for (size_t i = 0; i < umami_provider.process_count; ++i)
             if (instance->runtimes[i] != NULL) (void)rusticol_runtime_free(instance->runtimes[i]);
-    free(instance->runtimes); free(instance->momenta); free(instance->artifact); free(instance);
+    for (size_t i = 0; i < instance->override_count; ++i) free(instance->overrides[i].name);
+    free(instance->overrides);
+    free(instance->runtimes); free(instance->momenta); free(instance->helicity_values);
+    free(instance->artifact); free(instance);
     return UMAMI_SUCCESS;
 }

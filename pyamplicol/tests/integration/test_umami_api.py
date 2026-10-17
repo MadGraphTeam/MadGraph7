@@ -342,6 +342,7 @@ def _batch(
     alpha_s=None,
     offset=0,
     count=None,
+    helicity=None,
 ):
     stride, n = len(points), len(points[0])
     momenta = (ct.c_double * (4 * n * stride))(
@@ -360,6 +361,8 @@ def _batch(
     }
     if alpha_s is not None:
         inputs[1] = (ct.c_double * stride)(*alpha_s)
+    if helicity is not None:
+        inputs[6] = (ct.c_int * stride)(*[helicity] * stride)
     outputs = {
         0: (ct.c_double * stride)(*[-123.0] * stride),
         3: (ct.c_int * stride)(*[-123] * stride),
@@ -432,22 +435,15 @@ def test_metadata_capabilities_and_hidden_native_symbols(providers):
             )
             flags = list(values[: length.value])
             if operation == "required_inputs":
-                assert flags == [
-                    True,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                    False,
-                ]
+                assert flags == [True] + [False] * (len(flags) - 1)
             elif operation == "supported_inputs":
                 assert flags[1] == provider.data["provider"]["supports_alpha_s"]
-                assert not flags[3] and not flags[5] and not flags[6] and not flags[7]
+                assert flags[6] and not flags[3] and not flags[5] and not flags[7]
+                assert not any(flags[9:])
             else:
-                assert flags == [True, False, has_color, True, False, False]
+                assert flags == [True, False, has_color, True] + [False] * (
+                    len(flags) - 4
+                )
 
 
 def test_all_exported_flavours_match_native_and_preserve_stride(providers):
@@ -473,8 +469,8 @@ def test_all_exported_flavours_match_native_and_preserve_stride(providers):
                     )
                     if 2 in outputs:
                         assert outputs[2] == [-123, entry["color_index"], -123]
-                    process = provider.data["runtime_processes"][entry["process_index"]]
-                    assert outputs[3] == [-123, len(process["helicity_ids"]) // 2, -123]
+                    assert outputs[3][::2] == [-123, -123]
+                    assert 0 <= outputs[3][1] < len(provider.data["helicities"])
 
 
 def test_grouped_members_match_physical_flows_at_asymmetric_point(providers):
@@ -669,6 +665,32 @@ def test_parameters_event_override_and_independent_concurrent_handles(providers)
             )
 
 
+def test_fixed_helicities_and_sampled_helicity(providers):
+    for provider in providers:
+        with provider.handle() as handle:
+            entry = _entry(provider)
+            exported = provider.data["channels"][0]["processes"][0]["runtime"]
+            point = _point(provider, entry)
+            status, outputs = _batch(provider, handle, (point,))
+            assert status == 0
+            total, label = outputs[0][0], outputs[3][0]
+            values = {}
+            for index in exported["helicity_export"]:
+                status, fixed = _batch(provider, handle, (point,), helicity=index)
+                assert status == 0 and fixed[3] == [index]
+                values[index] = fixed[0][0]
+            assert sum(values.values()) == pytest.approx(total, rel=1e-12)
+            # the label of the random number 0.5 in the runtime helicity order
+            cumulative, expected = 0.0, None
+            for index in exported["helicity_export"]:
+                if values[index] <= 0.0:
+                    continue
+                expected, cumulative = index, cumulative + values[index]
+                if cumulative > 0.5 * total:
+                    break
+            assert label == expected
+
+
 def test_error_contract_and_zero_count(providers):
     for provider in providers:
         invalid = ct.c_void_p(123)
@@ -685,7 +707,7 @@ def test_error_contract_and_zero_count(providers):
             selector = ct.c_int(0)
             pointer = (ct.c_void_p * 1)(ct.cast(ct.byref(selector), ct.c_void_p))
             assert (
-                evaluate(handle, 0, 0, 0, 1, (ct.c_int * 1)(6), pointer, 0, None, None)
+                evaluate(handle, 0, 0, 0, 1, (ct.c_int * 1)(7), pointer, 0, None, None)
                 == 3
             )
             assert (
