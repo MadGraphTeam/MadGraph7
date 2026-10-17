@@ -1985,6 +1985,7 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(rc['beam']['e_cm'], 13000.0)
         self.assertIs(rc['vegas']['enable'], True)
         self.assertEqual(rc['madnis']['enable'], 'auto')
+        self.assertEqual(rc['madnis']['nn_float_precision'], 'float64')
         self.assertEqual(rc['phasespace']['mode'], 'multichannel')
         # the "enable" key colliding between [vegas] and [madnis] is stored
         # independently, so editing one does not affect the other
@@ -2013,17 +2014,20 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(data['multiparticles']['photon'], [22])
         self.assertEqual(data['cuts']['sqrt_s'], {'min': 0.0})
         self.assertEqual(data['madnis']['adam_eps'], 1e-8)
+        self.assertEqual(data['madnis']['nn_float_precision'], 'float64')
 
     def test_round_trip(self):
         """write() then read() preserves every value"""
         rc = bannermod.RunCardMG7()
         rc['generation']['events'] = 250
         rc['phasespace']['mode'] = 'flat'
+        rc['madnis']['nn_float_precision'] = 'float32'
         out = io.StringIO()
         rc.write(out, template=self.template)
         rc2 = bannermod.RunCardMG7(out.getvalue())
         self.assertEqual(rc2['generation']['events'], 250)
         self.assertEqual(rc2['phasespace']['mode'], 'flat')
+        self.assertEqual(rc2['madnis']['nn_float_precision'], 'float32')
         self.assertEqual(rc2['multiparticles']['lepton'], rc['multiparticles']['lepton'])
         self.assertEqual(rc2['cuts']['jet-delta_r'], {'min': 0.4})
 

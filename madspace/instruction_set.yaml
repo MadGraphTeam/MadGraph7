@@ -231,6 +231,7 @@ sub:
   dims: 0
 
 mul:
+  precision: [float32, float64]
   inputs:
     - name: in1
       type: [float, ...]
@@ -2869,7 +2870,36 @@ interpolate_alpha_s:
 ---
 title: Normalizing flows and MLPs
 
+convert_float32:
+  inputs:
+    - name: in1
+      type: [float64, ...]
+      desc: "double-precision tensor"
+  outputs:
+    - name: out
+      type: [float32, ...]
+      desc: "the input rounded to single precision"
+  dims: 0
+  vectorized: False
+  differentiable: True
+  desc: "Converts a tensor to single precision. Used at the boundaries of single-precision @ref MLP networks."
+
+convert_float64:
+  inputs:
+    - name: in1
+      type: [float32, ...]
+      desc: "single-precision tensor"
+  outputs:
+    - name: out
+      type: [float64, ...]
+      desc: "the input in double precision"
+  dims: 0
+  vectorized: False
+  differentiable: True
+  desc: "Converts a tensor to double precision. Used at the boundaries of single-precision @ref MLP networks."
+
 matmul:
+  precision: [float32, float64]
   inputs:
     - name: x
       type: [float, n]
@@ -2891,6 +2921,7 @@ matmul:
   desc: "Affine layer y = weight x + bias. Building block of @ref MLP."
 
 relu:
+  precision: [float32, float64]
   inputs:
     - name: in1
       type: [float, ...]
@@ -2904,6 +2935,7 @@ relu:
   desc: "Element-wise ReLU activation. Building block of @ref MLP."
 
 leaky_relu:
+  precision: [float32, float64]
   inputs:
     - name: in1
       type: [float, ...]
@@ -2917,6 +2949,7 @@ leaky_relu:
   desc: "Element-wise leaky ReLU activation. Building block of @ref MLP."
 
 elu:
+  precision: [float32, float64]
   inputs:
     - name: in1
       type: [float, ...]
@@ -2930,6 +2963,7 @@ elu:
   desc: "Element-wise ELU activation. Building block of @ref MLP."
 
 gelu:
+  precision: [float32, float64]
   inputs:
     - name: in1
       type: [float, ...]
@@ -2943,6 +2977,7 @@ gelu:
   desc: "Element-wise GELU activation. Building block of @ref MLP."
 
 sigmoid:
+  precision: [float32, float64]
   inputs:
     - name: in1
       type: [float, ...]
@@ -2957,6 +2992,7 @@ sigmoid:
   desc: "Element-wise sigmoid activation. Building block of @ref MLP."
 
 scaled_tanh:
+  precision: [float32, float64]
   inputs:
     - name: in1
       type: [float, ...]
@@ -2971,6 +3007,7 @@ scaled_tanh:
   desc: "Element-wise scaled hyperbolic tangent activation. Building block of @ref MLP."
 
 softplus:
+  precision: [float32, float64]
   inputs:
     - name: in1
       type: [float, ...]

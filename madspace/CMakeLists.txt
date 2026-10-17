@@ -132,7 +132,7 @@ if(ENABLE_OPENBLAS)
             -DCMAKE_INSTALL_LIBDIR=lib
             -DBUILD_SHARED_LIBS=OFF
             -DBUILD_WITHOUT_LAPACK=ON
-            -DBUILD_SINGLE=OFF
+            -DBUILD_SINGLE=ON
             -DBUILD_DOUBLE=ON
             -DBUILD_COMPLEX=OFF
             -DBUILD_COMPLEX16=OFF
