@@ -41,6 +41,15 @@ def test_api_bundle_has_one_complete_root_layout() -> None:
         "API/fortran/Makefile",
         "API/rust/check_standalone.rs",
         "API/rust/Makefile",
+        "API/umami/Makefile",
+        "API/umami/umami.h",
+        "API/umami/umami_provider.h",
+        "API/umami/umami.c",
+        "API/umami/umami_driver.c",
+        "API/umami/umami.exports",
+        "API/umami/umami.exports.macos",
+        "API/umami/UMAMI_LICENSE",
+        "API/umami/README.md",
     }
     python = next(payload for payload in payloads if payload.path.endswith(".py"))
     assert python.executable is True
@@ -53,7 +62,11 @@ def test_api_bundle_has_one_complete_root_layout() -> None:
         if payload.path.endswith("Makefile")
     }
     assert all("/.pyamplicol-api-build/" in text for text in makefiles.values())
-    assert all('cd "$(ARTIFACT_DIR)"' in text for text in makefiles.values())
+    assert all(
+        'cd "$(ARTIFACT_DIR)"' in text
+        for path, text in makefiles.items()
+        if path != "API/umami/Makefile"
+    )
     assert all("API/cpp/check_standalone" not in text for text in makefiles.values())
     assert "CC ?= cc" in makefiles["API/c/Makefile"]
     assert "CXX ?= c++" in makefiles["API/cpp/Makefile"]
@@ -96,6 +109,16 @@ def test_api_bundle_has_one_complete_root_layout() -> None:
     assert "rusticol_runtime_" not in rust_source
     assert "extern crate" not in rust_source
     assert "serde" not in rust_source
+
+    umami_makefile = makefiles["API/umami/Makefile"]
+    assert "include providers.mk" in umami_makefile
+    assert "libumami.so" in umami_makefile
+    assert '"$(RUSTICOL_CONFIG_PATH)" --cflags' in umami_makefile
+    assert '"$(RUSTICOL_CONFIG_PATH)" --libs' in umami_makefile
+    # UMAMI receives the absolute artifact path explicitly. Keep the caller's
+    # working directory so an overridden relative BUILD_DIR remains valid.
+    assert '\t"$(RUN_DRIVER)" "$(ARTIFACT_DIR)" $(ARGS)' in umami_makefile
+    assert 'cd "$(ARTIFACT_DIR)"' not in umami_makefile
 
     c_source = next(
         payload.content.decode("utf-8")
@@ -141,16 +164,26 @@ def _write_api_bundle(root: Path) -> Path:
         target.write_bytes(payload.content)
         if payload.executable:
             target.chmod(0o755)
+    (api / "umami/providers.mk").write_text(
+        "UMAMI_PROVIDERS := p0\nUMAMI_SINGLE_PROVIDER := 1\n", encoding="ascii"
+    )
+    (api / "umami/provider_p0.h").write_text(
+        "/* dry-run fixture; real providers are generated per artifact */\n",
+        encoding="ascii",
+    )
     return api
 
 
 def _write_sdk_config(path: Path, marker: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    library = path.parent / "lib-fixture.a"
+    library.write_bytes(b"")
     path.write_text(
         "#!/bin/sh\n"
-        "case \"$1\" in\n"
+        'case "$1" in\n'
         f"  --cflags) printf '%s\\n' '-I/{marker}/include' ;;\n"
         f"  --libs) printf '%s\\n' '/{marker}/lib.a' ;;\n"
+        f"  --library) printf '%s\\n' '{library}' ;;\n"
         f"  --fortran-source) printf '%s\\n' '/{marker}/rusticol.f90' ;;\n"
         f"  --rust-source) printf '%s\\n' '/{marker}/rusticol.rs' ;;\n"
         f"  --rustflags) printf '%s\\n' '-L /{marker}' ;;\n"
@@ -176,7 +209,7 @@ def test_api_makefiles_find_source_checkout_sdk_without_activated_path(
     environment.pop("RUSTICOL_CONFIG", None)
 
     outputs: dict[str, str] = {}
-    for language in ("c", "cpp", "fortran", "rust"):
+    for language in ("c", "cpp", "fortran", "rust", "umami"):
         completed = subprocess.run(
             [make, "-n", "-C", str(api / language)],
             check=False,
@@ -191,6 +224,8 @@ def test_api_makefiles_find_source_checkout_sdk_without_activated_path(
     assert "/ancestor-sdk/include" in outputs["cpp"]
     assert "/ancestor-sdk/rusticol.f90" in outputs["fortran"]
     assert "/ancestor-sdk/rusticol.rs" in outputs["rust"]
+    assert "/ancestor-sdk/include" in outputs["umami"]
+    assert "libumami.so" in outputs["umami"]
 
     override = tmp_path / "override-rusticol-config"
     _write_sdk_config(override, "explicit-sdk")
@@ -229,9 +264,7 @@ def test_python_api_driver_reexecutes_nearest_source_checkout_python(
     python = checkout / ".venv/bin/python"
     python.parent.mkdir(parents=True)
     python.write_text(
-        "#!/bin/sh\nprintf '%s\\n' \"$@\" > "
-        + repr(os.fspath(record))
-        + "\n",
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + repr(os.fspath(record)) + "\n",
         encoding="ascii",
     )
     python.chmod(0o755)
@@ -276,10 +309,7 @@ def test_validation_points_are_sorted_and_require_four_vectors() -> None:
 
 def test_python_api_driver_enforces_canonical_model_parameter_card_values() -> None:
     namespace = runpy.run_path(
-        str(
-            ROOT
-            / "src/pyamplicol/assets/api_templates/python/check_standalone.py"
-        )
+        str(ROOT / "src/pyamplicol/assets/api_templates/python/check_standalone.py")
     )
     convert = namespace["_parameter_value"]
 

@@ -40,7 +40,9 @@ python-release:
     PYTHONPATH="$PWD/src" {{python}} -m pytest tests/release -q
 
 python-integration:
-    PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{python}} -m pytest tests/integration -q
+    # The restricted child needs a parent that has not imported Symbolica.
+    PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{python}} -m pytest tests/integration/test_spenso_restricted_mode.py -q
+    PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{python}} -m pytest tests/integration --ignore=tests/integration/test_spenso_restricted_mode.py -q
 
 # Focused compiler regressions only; no pyAmpliCol/Symbolica build is required.
 # Defaults to the release-lock SymJIT version; select a checkout with
@@ -70,10 +72,10 @@ fft-performance-acceptance: _source-checkout
     mkdir -p .artifacts/fft-performance/env/tmp .artifacts/fft-performance/env/cargo-home .artifacts/fft-performance/env/cargo-target .artifacts/fft-performance/env/pip-cache .artifacts/fft-performance/env/xdg-cache .artifacts/fft-performance/env/python-cache
     TMPDIR="$PWD/.artifacts/fft-performance/env/tmp" CARGO_HOME="$PWD/.artifacts/fft-performance/env/cargo-home" CARGO_TARGET_DIR="$PWD/.artifacts/fft-performance/env/cargo-target" CARGO_NET_OFFLINE=true PIP_CACHE_DIR="$PWD/.artifacts/fft-performance/env/pip-cache" PIP_NO_INDEX=1 XDG_CACHE_HOME="$PWD/.artifacts/fft-performance/env/xdg-cache" PYTHONPYCACHEPREFIX="$PWD/.artifacts/fft-performance/env/python-cache" PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{dev_python}} tools/ci/memory_watchdog.py --limit-gib 30 -- {{dev_python}} tools/developer/fft_gluon_performance_acceptance.py --include-optional --run-id "{{fft_performance_run_id}}"
 
-# Build a fresh wheel through the real backend and stage only ignored native
-# runtime/SDK resources beside the current Python source for source-tree tests.
+# Reuse a current staged runtime, or build through the real backend and stage
+# ignored native runtime/SDK resources for source-tree tests.
 source-runtime:
-    PYAMPLICOL_BUILD_MODE={{build_mode}} {{python}} tools/developer/prepare_source_runtime.py
+    PYAMPLICOL_BUILD_MODE={{build_mode}} {{python}} tools/developer/prepare_source_runtime.py --reuse-current
 
 # Developer-only independent Fortran oracle. Prepare its checkout with
 # `just dev-install --with-legacy-amplicol` first.
@@ -122,7 +124,8 @@ check:
     just rust-check
 
 test:
-    PYTHONPATH="$PWD/src" {{python}} -m pytest
+    PYTHONPATH="$PWD/src" {{python}} -m pytest tests/integration/test_spenso_restricted_mode.py -q
+    PYTHONPATH="$PWD/src" {{python}} -m pytest --ignore=tests/integration/test_spenso_restricted_mode.py
     just rust-test
 
 sdist:

@@ -474,7 +474,7 @@ vectors affects only `evaluate_correlated(...)` and inherited requests in
 
 ## References
 
-The [original MadNkLO note](https://github.com/mg5amcnlo/pyamplicol/blob/main/IMPLEMENTATION_DOCS/REFERENCES/ColorCorrelators_MadNkLO.pdf)
+The [archived MadNkLO note](https://github.com/mg5amcnlo/pyamplicol/blob/80aec6f706c409b2f8f6c793dff8d8f04b118f7d/IMPLEMENTATION_DOCS/REFERENCES/ColorCorrelators_MadNkLO.pdf)
 and [MadNkLO source at revision 646a3db](https://github.com/madnklo/madnklo/tree/646a3db9c8efd7b4cb00e9d89b9197cd5394c01b)
 provide background. The note's oriented, non-conjugated connections are not
 the runtime's literal bra-adjoint/ket convention: translate adjoints,

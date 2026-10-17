@@ -65,9 +65,18 @@ def _overlay(tmp_path: Path) -> Path:
         dependencies / "contributor-lock.toml",
     )
     shutil.copy2(ROOT / "Cargo.toml", overlay / "Cargo.toml")
-    shutil.copy2(
-        ROOT / "dependencies" / "candidate-Cargo.lock",
-        overlay / "Cargo.lock",
+    # Only dependency versions are read for these synthetic bundles. Derive
+    # that fixture from tracked inputs, not a developer's ignored Cargo lock.
+    with (dependencies / "contributor-lock.toml").open("rb") as stream:
+        contributor = tomllib.load(stream)
+    (overlay / "Cargo.lock").write_text(
+        "version = 4\n"
+        + "".join(
+            f"\n[[package]]\nname = {json.dumps(name)}\n"
+            f"version = {json.dumps(contributor[name]['candidate_version'])}\n"
+            for name in ("symbolica", "symjit")
+        ),
+        encoding="utf-8",
     )
     _write_fixture_assets(overlay, mode="candidate")
     package_root = overlay / "src" / "pyamplicol"

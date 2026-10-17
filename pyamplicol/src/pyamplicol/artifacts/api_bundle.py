@@ -50,6 +50,15 @@ _TEMPLATES: tuple[tuple[str, str, str, bool], ...] = (
         False,
     ),
     ("rust/Makefile", "text/x-makefile", "api-build-file", False),
+    ("umami/Makefile", "text/x-makefile", "api-build-file", False),
+    ("umami/umami.h", "text/x-chdr", "api-source", False),
+    ("umami/umami_provider.h", "text/x-chdr", "api-source", False),
+    ("umami/umami.c", "text/x-csrc", "api-source", False),
+    ("umami/umami_driver.c", "text/x-csrc", "api-source", False),
+    ("umami/umami.exports", "text/plain", "api-build-file", False),
+    ("umami/umami.exports.macos", "text/plain", "api-build-file", False),
+    ("umami/UMAMI_LICENSE", "text/plain", "sdk-metadata", False),
+    ("umami/README.md", "text/markdown", "sdk-metadata", False),
 )
 
 

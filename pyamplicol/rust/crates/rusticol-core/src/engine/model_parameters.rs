@@ -65,6 +65,29 @@ pub(super) fn parse_complex_parameter_overrides(
 }
 
 impl ExecutionRuntime {
+    pub(super) fn current_model_parameter_value(&self, name: &str) -> RusticolResult<(f64, f64)> {
+        let mut real = None;
+        let mut imaginary = 0.0;
+        for parameter in &self.model_parameters {
+            if parameter.runtime_name.as_deref().unwrap_or(&parameter.name) != name {
+                continue;
+            }
+            let value = self
+                .model_parameter_values_f64
+                .get(parameter.parameter_index)
+                .copied()
+                .ok_or_else(|| RusticolError::integrity("model-parameter value slot is absent"))?;
+            match parameter.complex_component.as_deref() {
+                Some("imag") => imaginary = value,
+                Some("real") | None => real = Some(value),
+                Some(_) => return Err(RusticolError::integrity("invalid parameter component")),
+            }
+        }
+        real.map(|value| (value, imaginary)).ok_or_else(|| {
+            RusticolError::model_parameter(format!("model parameter {name:?} has no runtime value"))
+        })
+    }
+
     pub(super) fn apply_model_parameter_overrides(
         &mut self,
         overrides: &BTreeMap<String, (f64, f64)>,

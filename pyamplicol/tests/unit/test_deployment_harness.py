@@ -298,6 +298,7 @@ def test_candidate_deployment_builds_fresh_instead_of_reusing_stale_wheel(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv("PYAMPLICOL_BUILD_MODE", raising=False)
     retained = tmp_path / "retained"
     retained.mkdir()
     stale = retained / "pyamplicol-0.1.0.dev0+candidate.stale-cp311-abi3-test.whl"
@@ -477,7 +478,7 @@ def test_native_sdk_smoke_compiles_and_runs_all_four_language_drivers(
         rendered = [os.fspath(item) for item in command]
         commands.append(rendered)
         command_environments.append(dict(_kwargs.get("env", {})))
-        if "pyamplicol._sdk.config" in rendered:
+        if "rusticol_config" in rendered:
             return subprocess.CompletedProcess(rendered, 0, json.dumps(sdk), "")
         language = None
         if any(item.endswith("check_standalone.py") for item in rendered):

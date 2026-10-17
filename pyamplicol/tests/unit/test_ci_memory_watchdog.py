@@ -960,7 +960,8 @@ def test_tests_workflow_guards_every_heavy_validation_phase() -> None:
     assert "psutil" not in workflow
     guarded = "tools/ci/memory_watchdog.py --limit-gib 30 --"
     # The installer stages the native runtime within its guarded invocation.
-    assert workflow.count(guarded) == 7
+    # Restricted-mode and ordinary integration checks use separate invocations.
+    assert workflow.count(guarded) == 8
     for heavy_command in (
         "dependencies/install_dependencies.py",
         "tests/unit/test_generation_execution_schema.py",

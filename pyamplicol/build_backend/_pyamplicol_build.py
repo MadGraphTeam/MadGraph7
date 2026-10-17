@@ -450,10 +450,24 @@ def _build_mode() -> str:
     return value
 
 
+def _consume_host_wheel_setting(
+    config_settings: Mapping[str, Any] | None,
+) -> tuple[Mapping[str, Any] | None, bool]:
+    """Remove the backend-only, explicitly opt-in host wheel setting."""
+
+    if config_settings is None or "pyamplicol.host-wheel" not in config_settings:
+        return config_settings, False
+    settings = dict(config_settings)
+    value = settings.pop("pyamplicol.host-wheel")
+    if value not in ("true", "false"):
+        raise RuntimeError("pyamplicol.host-wheel must be 'true' or 'false'")
+    return settings, value == "true"
+
+
 def _release_wheel_config_settings(
     config_settings: Mapping[str, Any] | None,
 ) -> Mapping[str, Any] | None:
-    """Ask Maturin to repair Linux release wheels for the declared platform."""
+    """Use release manylinux tags unless a host-only wheel was requested."""
 
     if config_settings is not None and (
         "maturin.build-args" in config_settings or "build-args" in config_settings
@@ -462,10 +476,14 @@ def _release_wheel_config_settings(
             "authenticated wheel builds do not accept caller-supplied Maturin "
             "build arguments"
         )
-    if _build_mode() != "release" or sys.platform != "linux":
+    config_settings, host_wheel = _consume_host_wheel_setting(config_settings)
+    if sys.platform != "linux" or (_build_mode() != "release" and not host_wheel):
         return config_settings
     settings = dict(config_settings or {})
-    settings["maturin.build-args"] = ["--compatibility", "manylinux_2_28"]
+    settings["maturin.build-args"] = [
+        "--compatibility",
+        "linux" if host_wheel else "manylinux_2_28",
+    ]
     return settings
 
 
@@ -1897,6 +1915,7 @@ def build_sdist(
 def get_requires_for_build_wheel(
     config_settings: Mapping[str, Any] | None = None,
 ) -> list[str]:
+    config_settings, _ = _consume_host_wheel_setting(config_settings)
     return _from_overlay(
         maturin.get_requires_for_build_wheel,
         config_settings,
@@ -1918,6 +1937,7 @@ def prepare_metadata_for_build_wheel(
     metadata_directory: str,
     config_settings: Mapping[str, Any] | None = None,
 ) -> str:
+    config_settings, _ = _consume_host_wheel_setting(config_settings)
     return _from_overlay(
         maturin.prepare_metadata_for_build_wheel,
         metadata_directory,

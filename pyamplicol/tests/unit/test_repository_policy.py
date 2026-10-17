@@ -14,6 +14,7 @@ from pyamplicol._internal import versions
 ROOT = Path(__file__).resolve().parents[2]
 FIRST_PARTY_ROOTS = (
     ROOT / "src" / "pyamplicol",
+    ROOT / "src" / "rusticol_config",
     ROOT / "build_backend",
     ROOT / "dependencies",
     ROOT / "tools",
@@ -95,6 +96,10 @@ def test_first_party_source_has_explicit_0bsd_spdx_identifier() -> None:
                 continue
             if not _eligible(path):
                 continue
+            # This authoritative third-party ABI header retains MadGraph's
+            # license; do not relicense it or exempt the first-party adapter.
+            if path == ROOT / "src/pyamplicol/assets/api_templates/umami/umami.h":
+                continue
             header = "\n".join(path.read_text(encoding="utf-8").splitlines()[:5])
             if "SPDX-License-Identifier: 0BSD" not in header:
                 missing.append(path.relative_to(ROOT).as_posix())
@@ -156,6 +161,16 @@ def test_vendored_ufo_sources_are_not_relicensed_as_first_party_code() -> None:
         in "\n".join(path.read_text(encoding="utf-8").splitlines()[:5])
         for path in ufo_root.rglob("*.py")
     )
+
+
+def test_vendored_umami_header_retains_its_upstream_license() -> None:
+    directory = ROOT / "src/pyamplicol/assets/api_templates/umami"
+    assert "SPDX-License-Identifier: 0BSD" not in (directory / "umami.h").read_text(
+        encoding="utf-8"
+    )
+    assert "Copyright (c) 2009, 2013, the MadTeam." in (
+        directory / "UMAMI_LICENSE"
+    ).read_text(encoding="utf-8")
 
 
 def test_pyamplicol_symbolica_heads_are_owned_by_the_central_registry() -> None:

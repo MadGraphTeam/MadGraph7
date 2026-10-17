@@ -25,12 +25,25 @@ The on-the-fly architecture page is retained because it records the current
 production contract and validation boundary; its historical dispositions are
 explicitly labelled as such.
 
+## Linux source-test wheels
+
+The contributor installer and `just source-runtime` build a host-compatible
+Linux wheel for local tests, rather than claiming compatibility with an older
+manylinux platform. They explicitly pass the backend setting
+`--config-setting pyamplicol.host-wheel=true` to `python -m build --wheel`.
+Published dependencies are unchanged. Normal release builds still target
+`manylinux_2_28` and must run in the appropriate build environment; a host wheel
+is not a substitute for the audited release artifact.
+
 ## Focused SymJIT dependency tests
 
 The source checkout includes small opt-in numerical/compiler regressions in
 `tests/integration/test_symjit_upstream_regressions.py`. They require Python
 3.11+, pytest and Cargo, but no pyAmpliCol native build or Symbolica installation.
 They are separate from full process-generation and performance tests.
+The reproducer bundles in `SYMJIT_FOLLOW_UP_FIXES/` and `DEPENDENCY_FIXES/`
+are local, untracked inputs; retain or supply those directories before running
+this optional suite. They are not included in a fresh checkout.
 
 ```sh
 # Published SymJIT 2.25.4; outstanding regressions fail rather than being xfailed.

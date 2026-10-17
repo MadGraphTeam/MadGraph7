@@ -151,6 +151,33 @@ def test_unsupported_expansion_cannot_silently_remove_a_whole_request() -> None:
         )
 
 
+def test_recurrence_generation_drops_expanded_processes_without_amplitudes() -> None:
+    """Recurrence builders need an amplitude: unconnectable children are skipped."""
+
+    backend = GenerationBackend(None, None)
+    model = BuiltinSMModel()
+    source = ProcessRequest.parse("p p > j j", name="pp_jj")
+
+    def expanded(expression: str, index: int) -> service_module._ExpandedProcess:
+        return service_module._ExpandedProcess(
+            request=ProcessRequest.parse(expression, name=f"pp_jj_{index}"),
+            process_ir=build_process_ir(expression),
+            source_expansion_size=3,
+            source_request=source,
+        )
+
+    candidates = (
+        expanded("d d~ > g g", 1),
+        expanded("d d > d d~", 2),
+        expanded("g g > g d", 3),
+    )
+    kept = backend._drop_processes_without_amplitudes(candidates, model)
+    assert kept == candidates[:1]
+
+    with pytest.raises(GenerationError, match="'p p > j j'"):
+        backend._drop_processes_without_amplitudes(candidates[1:], model)
+
+
 def test_generation_plan_and_physics_preserve_selected_coverage() -> None:
     config = RunConfig(
         action="generate",

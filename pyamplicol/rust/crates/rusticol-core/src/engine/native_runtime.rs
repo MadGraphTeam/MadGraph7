@@ -2309,6 +2309,23 @@ impl NativeRuntime {
             .collect())
     }
 
+    /// Return the current logical parameter value, including refreshed derived values.
+    pub fn model_parameter_value(&self, name: &str) -> Result<(f64, f64), RusticolError> {
+        if !self
+            .physics_v1
+            .get()?
+            .model_parameters
+            .iter()
+            .any(|parameter| parameter.name == name)
+        {
+            return Err(RusticolError::model_parameter(format!(
+                "model parameter {name:?} is not declared by process {}",
+                self.process
+            )));
+        }
+        self.runtime.current_model_parameter_value(name)
+    }
+
     pub fn model_parameters(&self) -> Result<Vec<NativeModelParameter>, RusticolError> {
         Ok(self
             .physics_v1

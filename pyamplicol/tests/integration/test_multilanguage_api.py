@@ -125,8 +125,8 @@ def _rusticol_config() -> tuple[str, ...] | None:
     discovered = shutil.which("rusticol-config")
     if discovered:
         return (discovered,)
-    if importlib.util.find_spec("pyamplicol._sdk.config") is not None:
-        return (sys.executable, "-m", "pyamplicol._sdk.config")
+    if importlib.util.find_spec("rusticol_config") is not None:
+        return (sys.executable, "-m", "rusticol_config")
     return None
 
 
@@ -570,10 +570,11 @@ def _run_driver(
         command.extend(("--set-parameter", parameter_id, f"{override:.17g}", "0"))
     if precision != 16:
         command.extend(("--precision", str(precision)))
-    if language == "python" and precision != 16:
-        # Artifact generation already owns the one unlicensed Symbolica instance
-        # allowed on a machine. Exercise the same generated entry point without
-        # asking a child process to acquire a second instance.
+    if language == "python":
+        # Generation owns the restricted Symbolica session, and importing the
+        # public Python API initializes Symbolica even for binary64 evaluation.
+        # Exercise the same generated entry point in that session. Independent
+        # Python subprocess coverage lives in the serialized deployment smoke.
         completed = _run_python_driver_in_process(command)
     else:
         completed = subprocess.run(
@@ -600,6 +601,34 @@ def _run_driver(
     assert payload["available"] is True
     assert payload["precision"] == precision
     return payload
+
+
+@pytest.mark.parametrize("precision", (16, 32, 64))
+def test_python_driver_reuses_the_generation_session_at_every_precision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, precision: int
+) -> None:
+    driver = tmp_path / "check_standalone.py"
+    bundle = _BuiltBundle(tmp_path, ("test",), driver, driver, driver, driver, driver)
+    commands: list[list[str]] = []
+
+    def in_process(command: list[str]) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        payload = {"language": "python", "available": True, "precision": precision}
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    def no_child(*_args: Any, **_kwargs: Any) -> None:
+        pytest.fail("Python API parity must reuse the generation session")
+
+    monkeypatch.setattr(
+        sys.modules[__name__], "_run_python_driver_in_process", in_process
+    )
+    monkeypatch.setattr(subprocess, "run", no_child)
+    assert _run_driver(bundle, "python", process="test", precision=precision)[
+        "precision"
+    ] == precision
+    assert len(commands) == 1
+    assert commands[0][:2] == [sys.executable, str(driver)]
+    assert ("--precision" in commands[0]) == (precision != 16)
 
 
 def _assert_numeric_sequence(actual: list[float], expected: list[float]) -> None:

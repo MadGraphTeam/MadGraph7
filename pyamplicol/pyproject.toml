@@ -80,7 +80,7 @@ fft-profiling = [
 
 [project.scripts]
 pyamplicol = "pyamplicol.cli:main"
-rusticol-config = "pyamplicol._sdk.config:main"
+rusticol-config = "rusticol_config:main"
 
 [project.urls]
 Homepage = "https://github.com/mg5amcnlo/pyamplicol"
@@ -91,7 +91,7 @@ Source = "https://github.com/mg5amcnlo/pyamplicol"
 [tool.maturin]
 manifest-path = "rust/crates/rusticol-python/Cargo.toml"
 python-source = "src"
-python-packages = ["pyamplicol"]
+python-packages = ["pyamplicol", "rusticol_config"]
 module-name = "pyamplicol._rusticol"
 bindings = "pyo3"
 features = ["extension-module", "numpy"]

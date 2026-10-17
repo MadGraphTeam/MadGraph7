@@ -26,7 +26,7 @@ from pyamplicol.artifacts import (
     PayloadRecord,
     load_manifest,
 )
-from pyamplicol.artifacts.manifest import PORTABLE_64LE_TARGET
+from pyamplicol.artifacts.manifest import PORTABLE_64LE_TARGET, compute_artifact_id
 from pyamplicol.artifacts.security import sha256_file
 from pyamplicol.config import (
     ConfigClamp,
@@ -237,6 +237,9 @@ class CompiledProcessArtifact:
         CompiledHelicitySelectorExecutionArtifact, ...
     ] = ()
     color_selector_executions: tuple[CompiledColorSelectorExecutionArtifact, ...] = ()
+    umami_physics: Mapping[str, object] | None = None
+    umami_color_sectors: tuple[Mapping[str, object], ...] = ()
+    umami_structural_keys: Mapping[str, str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -263,6 +266,9 @@ class EagerPlanV3ProcessArtifact:
     dag_summary: Mapping[str, object]
     validation_point: ValidationPointRecord
     generation_filters: Mapping[str, object]
+    umami_physics: Mapping[str, object] | None = None
+    umami_color_sectors: tuple[Mapping[str, object], ...] = ()
+    umami_structural_keys: Mapping[str, str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -302,6 +308,9 @@ class RecurrenceProcessArtifact:
     process_digest: str
     process_support_mask: int = 1
     helicity_selector_companion: RecurrenceHelicitySelectorPlanArtifact | None = None
+    umami_physics: Mapping[str, object] | None = None
+    umami_color_sectors: tuple[Mapping[str, object], ...] = ()
+    umami_structural_keys: Mapping[str, str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -361,6 +370,9 @@ class OnTheFlyProcessArtifact:
     query_construction_threads: int
     validation_point: ValidationPointRecord
     generation_filters: Mapping[str, object]
+    umami_physics: Mapping[str, object] | None = None
+    umami_color_sectors: tuple[Mapping[str, object], ...] = ()
+    umami_structural_keys: Mapping[str, str] | None = None
 
 
 ProcessArtifact = (
@@ -808,6 +820,89 @@ def _write_recurrence_helicity_selector_schedule_roots(
             )
 
 
+def _write_umami_bundle(
+    builder: ArtifactBuilder,
+    *,
+    processes: Sequence[ProcessArtifact],
+    process_records: Sequence[Mapping[str, object]],
+    compiled_model: CompiledModel,
+) -> None:
+    """Add export-only selector tables after runtime physics has been staged."""
+    from ..artifacts.umami import UmamiProcessInput, umami_bundle_payloads
+    from ..artifacts.umami_otf import restore_umami_on_the_fly_input
+
+    new_processes = {process.process_id: process for process in processes}
+    inputs = []
+    previous_umami = None
+    for record in process_records:
+        identifier = str(record["id"])
+        process = new_processes.get(identifier)
+        physics = (
+            process.umami_physics
+            if process is not None and process.umami_physics is not None
+            else json.loads(
+                builder.staged_path(str(record["physics_path"])).read_text(
+                    encoding="utf-8"
+                )
+            )
+        )
+        umami_input = UmamiProcessInput(
+            process_id=identifier,
+            expression=str(record["expression"]),
+            color_accuracy=str(record["color_accuracy"]),
+            external_pdgs=tuple(int(pdg) for pdg in record["external_pdgs"]),
+            physics=physics,
+            aliases=tuple(record.get("aliases", ())),
+            color_sectors=() if process is None else process.umami_color_sectors,
+            structural_keys=(
+                None if process is None else process.umami_structural_keys
+            ),
+        )
+        if physics.get("kind") == ON_THE_FLY_PUBLIC_METADATA_KIND:
+            # Appended processes retain compact runtime physics. Their previous
+            # SDK already contains every physical selector and colour tag.
+            if previous_umami is None:
+                try:
+                    previous = json.loads(
+                        builder.staged_path("API/umami/metadata.json").read_text(
+                            encoding="utf-8"
+                        )
+                    )
+                    previous_umami = (
+                        [
+                            json.loads(
+                                builder.staged_path(
+                                    "API/umami/" + str(provider["metadata"])
+                                ).read_text(encoding="utf-8")
+                            )
+                            for provider in previous["providers"]
+                        ]
+                        if previous.get("kind") == "pyamplicol-umami-provider-index"
+                        else [previous]
+                    )
+                except FileNotFoundError as exc:
+                    raise ValueError(
+                        "appending this OTF artifact requires its existing UMAMI "
+                        "metadata; regenerate the complete process set"
+                    ) from exc
+            umami_input = restore_umami_on_the_fly_input(umami_input, previous_umami)
+        inputs.append(umami_input)
+    for payload in umami_bundle_payloads(
+        processes=inputs,
+        compiled_model=compiled_model.to_dict(),
+        artifact_id=compute_artifact_id(
+            {"payloads": [record.as_dict() for record in builder.payload_records()]}
+        ),
+    ):
+        builder.add_bytes(
+            payload.path,
+            payload.content,
+            role=payload.role,
+            media_type=payload.media_type,
+            executable=payload.executable,
+        )
+
+
 def write_schema_v3_artifact(
     destination: str | Path,
     *,
@@ -1095,6 +1190,13 @@ def write_schema_v3_artifact(
         )
         if payload_hook is not None:
             extensions.update(payload_hook(builder))
+        if bundle_requested and hook is not None:
+            _write_umami_bundle(
+                builder,
+                processes=processes,
+                process_records=process_records,
+                compiled_model=compiled_model,
+            )
         builder.finalize(
             kind=(
                 "pyamplicol-process"

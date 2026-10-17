@@ -123,11 +123,7 @@ class CliInvocation:
     ) -> ConfigResolution:
         if any(
             str(override).partition("=")[0].strip() == "output.format"
-            and str(override)
-            .partition("=")[2]
-            .strip()
-            .strip("\"'")
-            .casefold()
+            and str(override).partition("=")[2].strip().strip("\"'").casefold()
             == "json"
             for override in self.overrides
         ):
@@ -363,8 +359,7 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         action=argparse.BooleanOptionalAction,
         default=argparse.SUPPRESS,
         help=(
-            "re-open and numerically smoke-test the written artifact "
-            "(off by default)"
+            "re-open and numerically smoke-test the written artifact (off by default)"
         ),
     )
     numerical_reuse = parser.add_mutually_exclusive_group()
@@ -877,9 +872,7 @@ def _namespace_to_invocation(
         else None
     )
     overrides = tuple(raw.pop("_overrides", ()))
-    raw["output.format"] = (
-        "json" if bool(raw.pop("_json_output", False)) else "human"
-    )
+    raw["output.format"] = "json" if bool(raw.pop("_json_output", False)) else "human"
     dry_run = bool(raw.pop("_dry_run", False))
     full_physics = bool(raw.pop("_full_physics", False))
     correlators = raw.pop("_correlators", None)

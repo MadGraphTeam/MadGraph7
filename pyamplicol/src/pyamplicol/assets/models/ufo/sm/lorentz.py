@@ -21,34 +21,34 @@ UUV1 = Lorentz(name="UUV1", spins=[-1, -1, 3], structure="-P(3,2)")
 
 SSS1 = Lorentz(name="SSS1", spins=[1, 1, 1], structure="1")
 
-FFS1 = Lorentz(name="FFS1", spins=[2, 2, 1], structure="ProjM(1,2)")
+FFS1 = Lorentz(name="FFS1", spins=[2, 2, 1], structure="ProjM(2,1)")
 
-FFS2 = Lorentz(name="FFS2", spins=[2, 2, 1], structure="ProjM(1,2) - ProjP(1,2)")
+FFS2 = Lorentz(name="FFS2", spins=[2, 2, 1], structure="ProjM(2,1) - ProjP(2,1)")
 
-FFS3 = Lorentz(name="FFS3", spins=[2, 2, 1], structure="ProjP(1,2)")
+FFS3 = Lorentz(name="FFS3", spins=[2, 2, 1], structure="ProjP(2,1)")
 
-FFS4 = Lorentz(name="FFS4", spins=[2, 2, 1], structure="ProjM(1,2) + ProjP(1,2)")
+FFS4 = Lorentz(name="FFS4", spins=[2, 2, 1], structure="ProjM(2,1) + ProjP(2,1)")
 
-FFV1 = Lorentz(name="FFV1", spins=[2, 2, 3], structure="Gamma(3,1,2)")
+FFV1 = Lorentz(name="FFV1", spins=[2, 2, 3], structure="Gamma(3,2,1)")
 
-FFV2 = Lorentz(name="FFV2", spins=[2, 2, 3], structure="Gamma(3,1,-1)*ProjM(-1,2)")
+FFV2 = Lorentz(name="FFV2", spins=[2, 2, 3], structure="Gamma(3,2,-1)*ProjM(-1,1)")
 
 FFV3 = Lorentz(
     name="FFV3",
     spins=[2, 2, 3],
-    structure="Gamma(3,1,-1)*ProjM(-1,2) - 2*Gamma(3,1,-1)*ProjP(-1,2)",
+    structure="Gamma(3,2,-1)*ProjM(-1,1) - 2*Gamma(3,2,-1)*ProjP(-1,1)",
 )
 
 FFV4 = Lorentz(
     name="FFV4",
     spins=[2, 2, 3],
-    structure="Gamma(3,1,-1)*ProjM(-1,2) + 2*Gamma(3,1,-1)*ProjP(-1,2)",
+    structure="Gamma(3,2,-1)*ProjM(-1,1) + 2*Gamma(3,2,-1)*ProjP(-1,1)",
 )
 
 FFV5 = Lorentz(
     name="FFV5",
     spins=[2, 2, 3],
-    structure="Gamma(3,1,-1)*ProjM(-1,2) + 4*Gamma(3,1,-1)*ProjP(-1,2)",
+    structure="Gamma(3,2,-1)*ProjM(-1,1) + 4*Gamma(3,2,-1)*ProjP(-1,1)",
 )
 
 VSS1 = Lorentz(name="VSS1", spins=[3, 1, 1], structure="P(1,2) - P(1,3)")

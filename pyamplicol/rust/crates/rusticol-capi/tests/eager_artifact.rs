@@ -2,10 +2,10 @@
 
 use rusticol_capi::{
     RUSTICOL_STATUS_OK, RusticolRuntimeHandle, rusticol_last_error_message,
-    rusticol_runtime_color_id, rusticol_runtime_evaluate_f64,
+    rusticol_runtime_artifact_id, rusticol_runtime_color_id, rusticol_runtime_evaluate_f64,
     rusticol_runtime_evaluate_resolved_f64, rusticol_runtime_execution_mode, rusticol_runtime_free,
-    rusticol_runtime_helicity_id, rusticol_runtime_load, rusticol_runtime_resolved_shape,
-    rusticol_runtime_set_model_parameter,
+    rusticol_runtime_get_model_parameter, rusticol_runtime_helicity_id, rusticol_runtime_load,
+    rusticol_runtime_resolved_shape, rusticol_runtime_set_model_parameter,
 };
 use std::ffi::{CStr, CString, c_char};
 use std::path::Path;
@@ -156,6 +156,31 @@ fn generated_eager_artifact_loads_and_evaluates_through_the_c_abi() {
     let handle = load_artifact(root);
     assert_eq!(execution_mode(handle), "eager");
 
+    let mut required = 0;
+    // SAFETY: The handle is live and required-size storage is writable.
+    assert_eq!(
+        unsafe { rusticol_runtime_artifact_id(handle, ptr::null_mut(), 0, &mut required) },
+        RUSTICOL_STATUS_OK
+    );
+    let mut identity = vec![0 as c_char; required];
+    // SAFETY: The output buffer has exactly the queried capacity.
+    assert_eq!(
+        unsafe {
+            rusticol_runtime_artifact_id(
+                handle,
+                identity.as_mut_ptr(),
+                identity.len(),
+                &mut required,
+            )
+        },
+        RUSTICOL_STATUS_OK
+    );
+    // SAFETY: A successful string getter includes a trailing NUL.
+    let identity = unsafe { CStr::from_ptr(identity.as_ptr()) }
+        .to_str()
+        .unwrap();
+    assert_eq!(identity, manifest["artifact_id"].as_str().unwrap());
+
     let mut output = [f64::NAN];
     // SAFETY: Every input and output buffer remains live and has the declared length.
     let status = unsafe {
@@ -263,6 +288,19 @@ fn generated_eager_artifact_loads_and_evaluates_through_the_c_abi() {
     let status =
         unsafe { rusticol_runtime_set_model_parameter(handle, parameter.as_ptr(), 0.006, 0.0) };
     assert_eq!(status, RUSTICOL_STATUS_OK, "{}", last_error());
+    let mut current_real = f64::NAN;
+    let mut current_imaginary = f64::NAN;
+    // SAFETY: Both outputs and the parameter name remain live for this call.
+    let status = unsafe {
+        rusticol_runtime_get_model_parameter(
+            handle,
+            parameter.as_ptr(),
+            &mut current_real,
+            &mut current_imaginary,
+        )
+    };
+    assert_eq!(status, RUSTICOL_STATUS_OK, "{}", last_error());
+    assert_eq!((current_real, current_imaginary), (0.006, 0.0));
     // SAFETY: Every input and output buffer remains live and has the declared length.
     let status = unsafe {
         rusticol_runtime_evaluate_f64(

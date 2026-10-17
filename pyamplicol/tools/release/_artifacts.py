@@ -79,6 +79,8 @@ _LINUX_PLATFORM_TAGS = {
     "manylinux_2_28_x86_64",
 }
 _REQUIRED_SDK_PATHS = {
+    "rusticol_config/__init__.py",
+    "rusticol_config/__main__.py",
     "pyamplicol/_sdk/include/rusticol.h",
     "pyamplicol/_sdk/include/rusticol.hpp",
     "pyamplicol/_sdk/fortran/rusticol.f90",
@@ -183,6 +185,20 @@ _REQUIRED_API_TEMPLATE_MEMBERS = {
     "pyamplicol/assets/api_templates/python/check_standalone.py",
     "pyamplicol/assets/api_templates/rust/Makefile",
     "pyamplicol/assets/api_templates/rust/check_standalone.rs",
+    *(
+        f"pyamplicol/assets/api_templates/umami/{name}"
+        for name in (
+            "Makefile",
+            "README.md",
+            "UMAMI_LICENSE",
+            "umami.h",
+            "umami.c",
+            "umami_provider.h",
+            "umami_driver.c",
+            "umami.exports",
+            "umami.exports.macos",
+        )
+    ),
 }
 _PREPARED_MODEL_WHEEL_PREFIX = "pyamplicol/assets/prepared_models"
 _PREPARED_MODEL_SDIST_PREFIX = "src/pyamplicol/assets/prepared_models"
@@ -431,14 +447,19 @@ def _validate_wheel_resource_layout(entries: dict[str, bytes]) -> None:
         raise ArtifactError(
             "wheel must contain exactly one top-level .dist-info directory"
         )
-    allowed_roots = {"pyamplicol", *dist_info_roots, *_ALLOWED_REPAIR_ROOTS}
+    allowed_roots = {
+        "pyamplicol",
+        "rusticol_config",
+        *dist_info_roots,
+        *_ALLOWED_REPAIR_ROOTS,
+    }
     misplaced = sorted(
         name for name in entries if PurePosixPath(name).parts[0] not in allowed_roots
     )
     if misplaced:
         raise ArtifactError(
-            "wheel contains members outside pyamplicol, its .dist-info, or an "
-            "approved repair-library root: " + ", ".join(misplaced)
+            "wheel contains members outside pyamplicol, rusticol_config, its "
+            ".dist-info, or an approved repair-library root: " + ", ".join(misplaced)
         )
     sboms = sorted(
         name

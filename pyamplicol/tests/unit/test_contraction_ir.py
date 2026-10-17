@@ -317,16 +317,11 @@ def test_component_contraction_is_coefficient_driven_and_never_truncates() -> No
         contraction_ir,
         coefficients=((1.0, 0.0), (1.0, 0.0)),
     )
-    assert (
-        str(
-            _contract_components(
-                unit_ir,
-                (S("left_0"), S("left_1")),
-                (S("right_0"), S("right_1")),
-            )
-        )
-        == "left_0*right_0+left_1*right_1"
-    )
+    assert _contract_components(
+        unit_ir,
+        (S("left_0"), S("left_1")),
+        (S("right_0"), S("right_1")),
+    ) == S("left_0") * S("right_0") + S("left_1") * S("right_1")
 
 
 class _ClosureChiralityProbe(Model):
