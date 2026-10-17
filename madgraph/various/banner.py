@@ -6714,10 +6714,9 @@ class RunCardMG7(RunCard):
         self.add_toml_param('run', 'cpu_mode', "auto", gridpack=True,
             allowed=['auto', 'scalar', 'simd_128', 'simd_256', 'simd_512', 'avx512y'],
             comment="SIMD width of the matrix elements on cpu devices; auto picks the widest one the host supports")
-        self.add_toml_param('run', 'madspace_cpu_mode', "scalar", gridpack=True,
+        self.add_toml_param('run', 'madspace_cpu_mode', "auto", gridpack=True,
             allowed=['auto', 'scalar', 'simd_128', 'simd_256', 'avx512y', 'simd_512'],
-            comment="SIMD width of the phase-space sampling on cpu devices (experimental); "
-                    "simd_128 is ARM only, auto makes the same choice as for cpu_mode")
+            comment="SIMD width of the phase-space sampling on cpu devices; simd_128 is ARM only")
         self.add_toml_param('run', 'precision', "color32", gridpack=True,
             allowed=['all64', 'all32', 'color32', 'denom64'],
             comment="matrix element precision: all64, all32, color32 (FP32 color sum) or denom64 (FP64 momenta and propagator denominators)")

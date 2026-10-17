@@ -136,7 +136,7 @@ def main() -> None:
     parser.add_argument(
         "--madspace_cpu_mode",
         type=str,
-        default=run_args.get("madspace_cpu_mode", "scalar"),
+        default=run_args.get("madspace_cpu_mode", "auto"),
         choices=["auto", "scalar", "simd_128", "simd_256", "avx512y", "simd_512"],
         help="SIMD width of the phase-space sampling (madspace) on the 'cpu' devices",
     )

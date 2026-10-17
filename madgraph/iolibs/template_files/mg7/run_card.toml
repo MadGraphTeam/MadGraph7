@@ -8,7 +8,7 @@ seed = %(run.seed)s
 device = %(run.device)s
 # SIMD width of the matrix elements on cpu devices; options: auto, scalar, simd_128, simd_256, simd_512, avx512y
 cpu_mode = %(run.cpu_mode)s
-# SIMD width of the phase-space sampling on cpu devices (experimental); options: auto, scalar, simd_128 (ARM only), simd_256, avx512y, simd_512
+# SIMD width of the phase-space sampling on cpu devices; options: auto, scalar, simd_128 (ARM only), simd_256, avx512y, simd_512
 madspace_cpu_mode = %(run.madspace_cpu_mode)s
 # matrix element precision; options: all64, all32, color32, denom64
 precision = %(run.precision)s

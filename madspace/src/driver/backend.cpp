@@ -80,7 +80,7 @@ std::pair<std::vector<std::string>, std::string> simd_mode_support() {
 #ifdef SIMD_AVAILABLE
 #if defined(__aarch64__) || defined(_M_ARM64)
     supported_modes.push_back("simd_128");
-    auto_mode = "simd_128";
+    // auto stays scalar: the vectorized mode is currently slower on ARM
 #elif defined(__x86_64__) || defined(_M_X64)
     if (__builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma")) {
         supported_modes.push_back("simd_256");
@@ -88,15 +88,12 @@ std::pair<std::vector<std::string>, std::string> simd_mode_support() {
     }
     if (__builtin_cpu_supports("avx512f") && __builtin_cpu_supports("avx512vl") &&
         __builtin_cpu_supports("avx512dq")) {
+        // never chosen by auto: slower than simd_512 in the x86 benchmarks
         supported_modes.push_back("avx512y");
-        // mirrors madmatrix's auto mode (avx512y except with clang, never
-        // simd_512); TODO: revisit once madspace has its own x86 benchmarks
-#ifndef __clang__
-        auto_mode = "avx512y";
-#endif
     }
     if (__builtin_cpu_supports("avx512f")) {
         supported_modes.push_back("simd_512");
+        auto_mode = "simd_512";
     }
 #endif
 #endif // SIMD_AVAILABLE

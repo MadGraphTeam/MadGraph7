@@ -49,10 +49,11 @@ fixed parameters. Their entries are described below.
     ``simd_256``, ``simd_512`` and ``avx512y``. ``auto`` picks the widest width the host
     supports.
 
-``madspace_cpu_mode`` (``"scalar"``)
-    SIMD width of the phase-space sampling on ``cpu`` devices. This is experimental. Choose
-    from ``auto``, ``scalar``, ``simd_128`` (ARM only), ``simd_256``, ``avx512y`` and
-    ``simd_512``. ``auto`` makes the same choice as for ``cpu_mode``.
+``madspace_cpu_mode`` (``"auto"``)
+    SIMD width of the phase-space sampling on ``cpu`` devices. Choose from ``auto``,
+    ``scalar``, ``simd_128`` (ARM only), ``simd_256``, ``avx512y`` and ``simd_512``.
+    ``auto`` picks ``simd_512``, then ``simd_256`` on x86. On ARM it picks ``scalar``,
+    because the vectorized mode is currently slower there.
 
 ``precision`` (``"color32"``)
     Floating-point precision of the matrix elements. ``all64`` and ``all32`` use double and
