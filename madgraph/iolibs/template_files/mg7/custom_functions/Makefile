@@ -41,7 +41,7 @@ ifeq ($(LANGUAGE),cuda)
 $(LIB): wrapper_gpu.cu $(BODY) parameters.h umami.h
 	@mkdir -p $(dir $(LIB))
 	$(NVCC) $(OPTFLAGS) -std=c++17 $(GPUARCHFLAGS) -Xcompiler -fPIC --shared $(CFLAGS) \
-		-o $@ wrapper_gpu.cu $(SONAME_FLAGS) $(LIBS)
+		-o $@ wrapper_gpu.cu -Xlinker -soname=$(notdir $(LIB)) $(LIBS)
 
 else ifeq ($(LANGUAGE),hip)
 
