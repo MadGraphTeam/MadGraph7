@@ -9905,8 +9905,8 @@ C     used fake id
                            [-4, 3, -5], [-5, -1, -6]]]
                           
 
-        import models.import_ufo
-        mymodel = models.import_ufo.import_model('sm', options={'apply_flavor_grouping':False})
+        import madgraph.models.import_ufo as import_ufo
+        mymodel = import_ufo.import_model('sm', options={'apply_flavor_grouping':False})
 
         wf_dict = {}
         for (idiag, diagram) in enumerate(diagrams):
@@ -10194,8 +10194,8 @@ class UFO_model_to_mg4_Test(unittest.TestCase):
     """Check the conversion model from UFO to MG4"""
     
     def setUp(self):
-        import models.import_ufo
-        self.mymodel = models.import_ufo.import_model('sm')
+        import madgraph.models.import_ufo as import_ufo
+        self.mymodel = import_ufo.import_model('sm')
     
     
     def test_refactorize(self):
@@ -10308,8 +10308,8 @@ class BrokenSymmetryDecayChainTest(unittest.TestCase):
     """Validate decay-aware broken symmetry decomposition."""
 
     def setUp(self):
-        import models.import_ufo
-        self.model = models.import_ufo.import_model('sm')
+        import madgraph.models.import_ufo as import_ufo
+        self.model = import_ufo.import_model('sm')
 
     def _make_process(self, initial_ids, final_ids, decays):
         legs = base_objects.LegList()
@@ -10410,8 +10410,8 @@ if __name__ == '__main__':
         """Write out pkl file with helas diagram for test_configs_8fs
         """
 
-        import models.import_ufo
-        mymodel = models.import_ufo.import_model('sm')
+        import madgraph.models.import_ufo as import_ufo
+        mymodel = import_ufo.import_model('sm')
         
         myleglist = base_objects.LegList()
 

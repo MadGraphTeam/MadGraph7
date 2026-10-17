@@ -23,7 +23,7 @@ This files defines how the restrict card can be build automatically """
 ### Important Warning ###
 
 from __future__ import absolute_import
-import models.build_restriction_lib as build_restrict_lib
+import madgraph.models.build_restriction_lib as build_restrict_lib
 all_categories = []
 
 

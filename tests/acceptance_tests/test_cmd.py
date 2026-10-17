@@ -2029,7 +2029,7 @@ class TestCmdShell2(unittest.TestCase,
         """
         import array
         import math
-        import models.check_param_card as check_param_card
+        import madgraph.models.check_param_card as check_param_card
 
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
