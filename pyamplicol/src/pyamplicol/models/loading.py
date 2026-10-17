@@ -442,6 +442,7 @@ def compile_model_source(
     phase_timings: dict[str, float] = {}
     phase_started = time.perf_counter()
     raw_loop_model = None
+    raw_loop_import_error = None
     if source_kind == "built-in-sm":
         from .builtin.adapters import build_model_payload
 
@@ -463,6 +464,7 @@ def compile_model_source(
             raw_loop_model = RawLoopModel.from_dict(
                 _mapping(worker_payload["raw_loop_model"], "raw_loop_model")
             )
+        raw_loop_import_error = worker_payload.get("raw_loop_import_error")
     phase_timings["model_loading"] = time.perf_counter() - phase_started
     phase_started = time.perf_counter()
     issues, capabilities = preflight_model(model_payload)
@@ -531,6 +533,12 @@ def compile_model_source(
     }
     if raw_loop_model is not None:
         capabilities["loop_model_import"] = dict(raw_loop_model.capabilities)
+    elif raw_loop_import_error is not None:
+        capabilities["loop_model_import"] = {
+            "stage": "raw-import-incomplete",
+            "error": str(raw_loop_import_error),
+            "loop_runtime_supported": False,
+        }
     conversion_seconds = time.perf_counter() - started
     phase_timings["total"] = conversion_seconds
     compiled = CompiledModel(
@@ -795,6 +803,7 @@ def _load_external_model(
 
         restriction = _loader_restriction_name(source, options.restriction)
         raw_loop_model = None
+        raw_loop_import_error = None
         if source.is_dir():
             from .loop_import import (
                 capture_raw_loop_model,
@@ -803,11 +812,17 @@ def _load_external_model(
             )
 
             module = import_scope.enter_context(imported_ufo_module(source))
-            raw_loop_model = capture_raw_loop_model(
-                module,
-                name=source.name,
-                restriction=raw_restriction(source, restriction),
-            )
+            try:
+                raw_loop_model = capture_raw_loop_model(
+                    module,
+                    name=source.name,
+                    restriction=raw_restriction(source, restriction),
+                )
+            except (TypeError, ValueError) as error:
+                # Extra UFO metadata ignored by the normalized tree loader must
+                # not reject a tree model. Keep the failure explicit and omit
+                # the entire sidecar; strict load_raw_loop_model still raises.
+                raw_loop_import_error = str(error)
         model, parameter_card = load_model(
             str(source),
             restriction,
@@ -835,6 +850,8 @@ def _load_external_model(
         }
         if raw_loop_model is not None:
             result["raw_loop_model"] = raw_loop_model.to_dict()
+        if raw_loop_import_error is not None:
+            result["raw_loop_import_error"] = raw_loop_import_error
         return result
 
 

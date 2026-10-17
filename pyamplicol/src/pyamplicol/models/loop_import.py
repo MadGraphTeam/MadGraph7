@@ -1,11 +1,17 @@
 # SPDX-License-Identifier: 0BSD
-"""Lossless, unlowered NLO UFO data captured before tree-model normalization.
+"""Unlowered NLO UFO data captured before tree-model normalization.
 
 This is an import boundary, not a loop evaluator or a completeness certificate.
 In particular, a scalar expression may reference Laurent-valued CT parameters;
 it must not be interpreted as an epsilon-zero coefficient before substitution.
 Expressions remain UFO strings. No series algebra or numerical evaluation is
 performed here.
+
+Python numeric literals have already been evaluated at this boundary. Exact
+source recovery still requires matching parameter/coupling declarations to
+their imported objects and retaining ``ast.get_source_segment`` for their
+``value`` arguments. Computed or dynamically reassigned values also require an
+exact lowering policy; source text alone does not certify their evaluation.
 """
 
 from __future__ import annotations
@@ -64,7 +70,7 @@ class RawLoopModel:
     fields become typed references. Maps with non-string keys (including CT
     coupling index tuples) are represented by ordered key/value entries. UFO
     expression strings and all explicit Laurent powers are retained verbatim.
-    Numeric literals already evaluated by Python retain their original value;
+    Numeric literals already evaluated by Python retain their runtime value;
     their source's lost decimal digits cannot be reconstructed by this importer.
     """
 
@@ -352,6 +358,9 @@ def capture_raw_loop_model(
         "dimensional_kernels_validated": False,
         "complex_mass_kernels_validated": False,
         "loop_runtime_supported": False,
+        "expression_strings_preserved": True,
+        "numeric_literal_source_preserved": False,
+        "arbitrary_precision_inputs_validated": False,
     }
     return RawLoopModel(name or module.__name__, collections, metadata, capabilities)
 

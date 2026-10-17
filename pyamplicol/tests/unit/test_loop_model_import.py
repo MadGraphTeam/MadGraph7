@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import pytest
 
+import pyamplicol
 from pyamplicol.models.contracts import CompiledModelIR
 from pyamplicol.models.loading import (
     CompiledModel,
@@ -242,6 +244,46 @@ def test_capture_precedes_tree_loader_loss(tmp_path: Path, monkeypatch) -> None:
     assert RawLoopModel.from_dict(result["raw_loop_model"]).record(
         "counterterm_parameters", "dZ"
     )["fields"]["value"]["terms"] == ((-1, "g**2"),)
+
+
+def test_unsupported_extra_metadata_keeps_tree_import_but_rejects_loop_capture(
+    tmp_path: Path,
+) -> None:
+    packaged = (
+        Path(pyamplicol.__file__).parent / "assets" / "models" / "ufo" / "scalars"
+    )
+    source = tmp_path / "tree_with_extra_metadata"
+    shutil.copytree(packaged, source, ignore=shutil.ignore_patterns("__pycache__"))
+    with (source / "__init__.py").open("a", encoding="utf-8") as stream:
+        stream.write("\nextra_metadata = object()\n")
+
+    # The real normalized loader accepts this model and ignores the extra field.
+    result = _load_external_model(source, options=ModelCompileOptions())
+    assert result["model"]["name"] == "tree_with_extra_metadata"
+    assert result["model"]["vertex_rules"]
+    assert "raw_loop_model" not in result
+    assert "model.extra_metadata" in result["raw_loop_import_error"]
+    with pytest.raises(ValueError, match=r"model\.extra_metadata"):
+        load_raw_loop_model(source)
+
+
+def test_numeric_source_precision_is_not_certified(tmp_path: Path) -> None:
+    digits = "0.123456789012345678901234567890123456789"
+    source = _write_ufo(tmp_path / "numeric_literals", digits)
+    with (source / "object_library.py").open("a", encoding="utf-8") as stream:
+        stream.write(
+            f"all_parameters = [SimpleNamespace(name='literal', value={digits})]\n"
+        )
+    model = load_raw_loop_model(source)
+    literal = model.record("parameters", "literal")["fields"]["value"]["expression"]
+    assert literal == repr(float(digits))
+    assert literal != digits
+    assert model.record("counterterm_parameters", "dZ")["fields"]["value"]["terms"] == (
+        (-1, digits),
+    )
+    assert model.capabilities["expression_strings_preserved"] is True
+    assert model.capabilities["numeric_literal_source_preserved"] is False
+    assert model.capabilities["arbitrary_precision_inputs_validated"] is False
 
 
 def test_compiled_model_serialization_retains_raw_sidecar(tmp_path: Path) -> None:
