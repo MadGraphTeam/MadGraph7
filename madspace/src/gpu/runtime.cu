@@ -1130,7 +1130,7 @@ void op_unweight(
 
     if (batch_size == 0) {
         indices = Tensor(
-            DataType::dt_float64, {0}, device, instruction.output_alloc_hints[0]
+            DataType::dt_int32, {0}, device, instruction.output_alloc_hints[0]
         );
         uw_weights = Tensor(
             DataType::dt_float64, {0}, device, instruction.output_alloc_hints[1]
