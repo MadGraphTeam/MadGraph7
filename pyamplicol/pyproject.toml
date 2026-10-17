@@ -117,6 +117,7 @@ include = [
   { path = "examples/**/*", format = ["sdist"] },
   { path = "rust/**/*", format = ["sdist"] },
   { path = "schemas/**/*", format = ["sdist"] },
+  { path = "source_hash.py", format = ["sdist"] },
   { path = "tests/**/*", format = ["sdist"] },
   { path = "tools/ci/__init__.py", format = ["sdist"] },
   { path = "tools/ci/memory_watchdog.py", format = ["sdist"] },
