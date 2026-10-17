@@ -142,6 +142,13 @@ def _release_bundle(
     *,
     model_source: str = "built-in-sm",
 ) -> SimpleNamespace:
+    with (overlay / "dependencies/release-lock.toml").open("rb") as stream:
+        release = tomllib.load(stream)
+    symbolica_version = release["symbolica"]["python_version"]
+    if "+candidate." in package_version:
+        symbolica_version = prepared_models_module._cargo_package_version(
+            overlay, "symbolica"
+        )
     package_root = overlay / "src" / "pyamplicol"
     compiled_schema = prepared_models_module._literal_assignment(
         package_root / "_internal" / "versions.py",
@@ -171,9 +178,7 @@ def _release_bundle(
         backend="jit",
         dependency_abis={
             "symbolica_serialization": symbolica_abi,
-            "symbolica_version": prepared_models_module._cargo_package_version(
-                overlay, "symbolica"
-            ),
+            "symbolica_version": symbolica_version,
             "symjit_application": symjit_abi,
             "symjit_plane_application": symjit_plane_abi,
         },
@@ -366,8 +371,12 @@ def test_release_source_ready_asset_uses_only_release_lock_identity(
     assert metadata["build_contract"] == {"mode": "release"}
     assert "native_build_inputs_sha256" not in metadata["producer"]
     assert metadata["producer"]["package_version"] == RELEASE_VERSION
-    assert metadata["dependencies"]["symbolica_version"] == "3.0.0"
-    assert metadata["dependencies"]["symjit_version"] == "2.26.4"
+    with (overlay / "dependencies/release-lock.toml").open("rb") as stream:
+        release = tomllib.load(stream)
+    assert metadata["dependencies"]["symbolica_version"] == release["symbolica"][
+        "python_version"
+    ]
+    assert metadata["dependencies"]["symjit_version"] == "2.27.3"
     assert bundle_path.read_bytes() == source_bundle.read_bytes()
 
 
