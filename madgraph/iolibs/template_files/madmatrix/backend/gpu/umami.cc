@@ -470,6 +470,10 @@ extern "C"
     InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
     if( !instance->initialized )
     {
+      // the helicity filtering runs on the default stream: wait for the inputs copied on
+      // gpu_stream, which need not synchronise with it (a non-blocking stream); its
+      // synchronous copies back to the host finish it before the work below
+      gpuStreamSynchronize( gpu_stream );
       // the jamp scratch of the helicity filtering (one helicity, njampso jamps, a few
       // events): ghel_jamps, whose size does not depend on ncolor_flow and nampso
       initialize(

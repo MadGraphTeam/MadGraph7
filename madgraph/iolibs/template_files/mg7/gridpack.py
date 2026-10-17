@@ -1,10 +1,12 @@
 #! /usr/bin/env python3
 
+import atexit
 import gzip
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 # search order for madspace package:
@@ -91,30 +93,20 @@ def write_lhe_header(run_path: str, meta) -> None:
     del writer  # closes the file (writes the closing tag)
 
 
+# directory the gridpack was called from; relative command line paths refer to it
+_INVOCATION_DIR = os.getcwd()
+
+
 def main() -> None:
-    # load run card and metadata. Use the RunCardMG7 representation when the
-    # madgraph package is importable; gridpacks are meant to be portable, so
-    # fall back to a plain tomllib parse otherwise (the card is the same TOML).
-    run_card_path = os.path.join("Cards", "grid_run_card.toml")
-    try:
-        from madgraph.various.banner import RunCardMG7
-        run_card = RunCardMG7(run_card_path)
-    except ImportError:
-        with open(run_card_path, "rb") as f:
-            run_card = tomllib.load(f)
+    # load run card and metadata
+    with open(os.path.join("Cards", "grid_run_card.toml"), "rb") as f:
+        run_card = tomllib.load(f)
     run_args = run_card["run"]
     gen_args = run_card["generation"]
+    grid_args = run_card.get("gridpack", {})
     param_card_path = os.path.join("Cards", "param_card.dat")
     with open(os.path.join("data", "data.json")) as f:
         madspace_data = json.load(f)
-    if madspace_data["source_hash"] != ms.SOURCE_HASH:
-        print()
-        print(
-            "\033[1m\033[31mWARNING\033[39m: The madspace version is not identical "
-            "to the one used to generate the gridpack. This can lead to errors or "
-            "incorrect results\033[0m"
-        )
-        print()
 
     # parse command line arguments
     parser = argparse.ArgumentParser()
@@ -124,6 +116,22 @@ def main() -> None:
         help="every run is reproducible from its seed; -1 draws a fresh random "
              "seed each run instead of fixing one here (still recorded in the "
              "run's info.json)"
+    )
+    parser.add_argument(
+        "--output_dir", type=str, default=None,
+        help="directory for the final output files instead of a new Events/<run> "
+             "folder (default: the run card value; relative paths refer to the "
+             "current directory)"
+    )
+    parser.add_argument(
+        "--temp_output_dir", type=str, default=None,
+        help="directory for the temporary npy files, 'auto' for a new temporary "
+             "directory (default: the run card value, else the output directory)"
+    )
+    parser.add_argument(
+        "--ignore_source_hash", action="store_true",
+        help="run even if the madspace version differs from the one used to "
+             "generate the gridpack (can lead to errors or incorrect results)"
     )
     parser.add_argument("--device", type=str, nargs="*")
     parser.add_argument(
@@ -150,25 +158,61 @@ def main() -> None:
     parser.add_argument("--cpu_batch_size", type=int, default=gen_args["cpu_batch_size"])
     parser.add_argument("--gpu_batch_size", type=int, default=gen_args["gpu_batch_size"])
     args = parser.parse_args()
+
+    if madspace_data["source_hash"] != ms.SOURCE_HASH:
+        message = (
+            "The madspace version is not identical to the one used to generate "
+            "the gridpack. This can lead to errors or incorrect results"
+        )
+        if not args.ignore_source_hash:
+            sys.exit(
+                f"\033[1m\033[31mERROR\033[39m: {message}.\n"
+                "Use --ignore_source_hash to run anyway.\033[0m"
+            )
+        print()
+        print(f"\033[1m\033[31mWARNING\033[39m: {message}\033[0m")
+        print()
     seed = resolve_seed(args.seed)
 
-    # initialize event directory
-    run_name = args.run_name
-    os.makedirs("Events", exist_ok=True)
-    run_dir_prefix = os.path.join("Events", f"{run_name}_")
-    existing_run_dirs = glob.glob(f"{run_dir_prefix}*")
-    run_index = 1
-    for run_dir in existing_run_dirs:
-        run_index_str = run_dir[len(run_dir_prefix):]
-        if run_index_str.isnumeric():
-            run_index = max(run_index, int(run_index_str) + 1)
-    while True:
-        try:
-            run_path = f"{run_dir_prefix}{run_index:02d}"
-            os.mkdir(run_path)
-            break
-        except FileExistsError:
-            run_index += 1
+    # initialize output directories; command line paths are relative to the
+    # invocation directory, run card paths to the gridpack
+    def resolve_dir(cli_value, card_value):
+        if (cli_value or card_value) == "auto":
+            return "auto"
+        if cli_value:
+            return os.path.abspath(
+                os.path.join(_INVOCATION_DIR, os.path.expanduser(cli_value)))
+        return os.path.abspath(os.path.expanduser(card_value)) if card_value else None
+
+    output_dir = resolve_dir(args.output_dir, grid_args.get("output_dir"))
+    temp_dir = resolve_dir(args.temp_output_dir, grid_args.get("temp_output_dir"))
+    if output_dir is not None:
+        run_path = output_dir
+        os.makedirs(run_path, exist_ok=True)
+    else:
+        run_name = args.run_name
+        os.makedirs("Events", exist_ok=True)
+        run_dir_prefix = os.path.join("Events", f"{run_name}_")
+        existing_run_dirs = glob.glob(f"{run_dir_prefix}*")
+        run_index = 1
+        for run_dir in existing_run_dirs:
+            run_index_str = run_dir[len(run_dir_prefix):]
+            if run_index_str.isnumeric():
+                run_index = max(run_index, int(run_index_str) + 1)
+        while True:
+            try:
+                run_path = f"{run_dir_prefix}{run_index:02d}"
+                os.mkdir(run_path)
+                break
+            except FileExistsError:
+                run_index += 1
+    if temp_dir == "auto":
+        temp_dir = tempfile.mkdtemp(prefix="mg7_events_")
+        atexit.register(shutil.rmtree, temp_dir, ignore_errors=True)
+    elif temp_dir is None:
+        temp_dir = run_path
+    else:
+        os.makedirs(temp_dir, exist_ok=True)
 
     # initialize context
     device_names = args.device if args.device else run_args["device"]
@@ -212,9 +256,9 @@ def main() -> None:
     # run-time matrix-element parameters (bwcutoff) of the run that made the
     # gridpack; gridpacks written before they were recorded used the default
     me_parameters = madspace_data.get("me_parameters", {})
-    global_dir = os.path.join("data", "globals")
+    globals_path = os.path.join("data", "globals.tar")
     for context in contexts:
-        context.load_globals(global_dir)
+        context.load_globals(globals_path)
     # custom functions come first, as in the run that made the gridpack
     device_types = [b if b in ("cuda", "hip") else "cpu" for b in backends]
     for entry in madspace_data.get("custom_functions", []):
@@ -228,15 +272,17 @@ def main() -> None:
             )
 
     # set up generators
+    with open(os.path.join("data", "channels.json")) as f:
+        channels = json.load(f)
     channel_generators = [
-        ms.ChannelEventGenerator.load(
-            os.path.join("data", "channels", file),
+        ms.ChannelEventGenerator.load_json(
+            json.dumps(channel),
             contexts,
-            event_file=os.path.join(run_path, f"events.{name}.npy"),
-            weight_file=os.path.join(run_path, f"weights.{name}.npy"),
+            event_file=os.path.join(temp_dir, f"events.{name}.npy"),
+            weight_file=os.path.join(temp_dir, f"weights.{name}.npy"),
             config=config,
         )
-        for name, file in madspace_data["channels"].items()
+        for name, channel in channels.items()
     ]
     event_generator = ms.EventGenerator(
         contexts=contexts,
@@ -354,9 +400,12 @@ def load_systematics(run_card, backends=(), param_card_path=None,
     subproc_args = [
         ms.SubprocessSystArgs.from_json(json.dumps(a)) for a in data["subproc_args"]
     ]
-    nominal_pdf = None
+    nominal_pdf = nominal_pdf2 = None
     if config.has_pdf:
         nominal_pdf = ms.PdfGrid(_locate_pdf_file(data["nominal_grid_file"]))
+        # the second beam's set, recorded only when it differs from the first
+        if data.get("nominal_grid_file2"):
+            nominal_pdf2 = ms.PdfGrid(_locate_pdf_file(data["nominal_grid_file2"]))
     # The mu_R variations always need an alpha_s grid, so a gridpack that does
     # not name one cannot reweight anything -- drop the systematics rather than
     # die here (gridpacks written before the launcher recorded the file for a
@@ -405,7 +454,7 @@ def load_systematics(run_card, backends=(), param_card_path=None,
             ))
     systematics = ms.SystematicsCalculator(
         config, subproc_args, nominal_pdf, nominal_alpha_s,
-        context, matrix_elements, flavor_remap)
+        context, matrix_elements, flavor_remap, nominal_pdf2=nominal_pdf2)
     for warning in systematics.warnings:
         print("WARNING systematics: %s" % warning)
     return systematics

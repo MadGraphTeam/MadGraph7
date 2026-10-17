@@ -10,8 +10,9 @@
   inverse reads a massless particle's mass off its momentum.
 """
 
-import numpy as np
 import pytest
+import torch
+from madspace_testing import generator, rand, randint
 
 import madspace as ms
 
@@ -27,14 +28,14 @@ def run(color_order, cm_energy, seed, cuts=None):
     cuts = cuts or {}
     n_out = len(color_order) - 2
     mapping = ms.ColorOrderedMapping(color_order, **cuts)
-    rng = np.random.default_rng(seed)
-    r = rng.random((N, mapping.random_dim()))
-    d = rng.integers(0, 2, size=(N, mapping.discrete_dim())).astype(np.int32)
-    inputs = [r[:, i].copy() for i in range(r.shape[1])]
-    inputs += [d[:, j].copy() for j in range(d.shape[1])]
-    conditions = [np.full(N, cm_energy)] + [np.zeros(N)] * n_out
+    g = generator(seed)
+    r = rand((N, mapping.random_dim()), generator=g)
+    d = randint(0, 2, (N, mapping.discrete_dim()), generator=g, dtype=torch.int32)
+    inputs = [r[:, i].contiguous() for i in range(r.shape[1])]
+    inputs += [d[:, j].contiguous() for j in range(d.shape[1])]
+    conditions = [torch.full((N,), cm_energy)] + [torch.zeros(N)] * n_out
     *momenta, det = mapping.map_forward(inputs, conditions)
-    return mapping, inputs, conditions, momenta, r, np.asarray(det)
+    return mapping, inputs, conditions, momenta, r, det
 
 
 @pytest.mark.parametrize(
@@ -45,29 +46,30 @@ def run(color_order, cm_energy, seed, cuts=None):
 def test_massless_on_shell(color_order):
     cm_energy = 13000.0
     *_, momenta, _, det = run(color_order, cm_energy, 5)
-    p = np.stack([np.asarray(k) for k in momenta], axis=1)[:, 2:]
+    p = torch.stack(momenta, dim=1)[:, 2:]
     p = p[det > 0]
-    m2 = p[..., 0] ** 2 - np.sum(p[..., 1:] ** 2, axis=-1)
+    m2 = p[..., 0] ** 2 - torch.sum(p[..., 1:] ** 2, dim=-1)
     # sqrt(|m^2|) / E is ~1e-8 from rounding alone; it reached 4e-5 before
-    assert np.max(np.sqrt(np.abs(m2)) / p[..., 0]) < 1e-6
+    assert torch.max(torch.sqrt(torch.abs(m2)) / p[..., 0]) < 1e-6
     # momentum conservation to a few ulps of the total energy
-    p_sum = np.sum(p, axis=1)
+    p_sum = torch.sum(p, dim=1)
     p_sum[:, 0] -= cm_energy
-    assert np.max(np.abs(p_sum)) < 1e-14 * cm_energy
+    assert torch.max(torch.abs(p_sum)) < 1e-14 * cm_energy
 
 
 def test_round_trip_with_cuts():
     order = [0, 2, 3, 4, 5, 1]
     mapping, inputs, conditions, momenta, r, det = run(order, 1000.0, 11, CUTS)
     out = mapping.map_inverse(momenta, conditions)
-    r_inv = np.stack([np.asarray(o) for o in out[: mapping.random_dim()]], axis=1)
-    det_inv = np.asarray(out[-1])
+    r_inv = torch.stack(out[: mapping.random_dim()], dim=1)
+    det_inv = out[-1]
     ok = det > 0
-    rt = np.abs(det * det_inv - 1.0)[ok]
+    rt = torch.abs(det * det_inv - 1.0)[ok]
     # about 3% of the points failed before, carrying ~4% of the fiducial volume
-    assert np.mean(rt > 1e-2) < 1e-4
-    assert np.quantile(rt, 0.999) < 1e-6
-    assert np.mean(np.max(np.abs(r_inv - r), axis=1)[ok] > 1e-6) < 1e-4
+    assert (rt > 1e-2).double().mean() < 1e-4
+    assert torch.quantile(rt, 0.999) < 1e-6
+    r_err = torch.max(torch.abs(r_inv - r), dim=1).values[ok]
+    assert (r_err > 1e-6).double().mean() < 1e-4
 
 
 @pytest.mark.parametrize(
@@ -87,19 +89,19 @@ def test_lab_frame_on_shell(masses):
         mode=ms.PhaseSpaceMapping.color_ordered,
         color_order=[0, 2, 3, 4, 5, 1],
     )
-    rng = np.random.default_rng(3)
-    inputs = [rng.random((N, mapping.random_dim()))]
+    g = generator(3)
+    inputs = [rand((N, mapping.random_dim()), generator=g)]
     if mapping.discrete_dim():
         inputs.append(
-            rng.integers(0, 2, size=(N, mapping.discrete_dim())).astype(np.int32)
+            randint(0, 2, (N, mapping.discrete_dim()), generator=g, dtype=torch.int32)
         )
     p, x1, x2, det = mapping.map_forward(inputs)
     # zero-weight points at x1 or x2 ~ 1e-13 have no meaningful momenta
     p = p[det > 1e-20]
-    m2 = p[..., 0] ** 2 - np.sum(p[..., 1:] ** 2, axis=-1)
+    m2 = p[..., 0] ** 2 - torch.sum(p[..., 1:] ** 2, dim=-1)
     # |p^2 - m^2| / E^2: a few 1e-15 for massless momenta, ~1e-12 for the top
     # that absorbs the rounding of the others; it reached ~1e-9 before
-    off_shell = np.abs(m2 - np.square(masses)) / p[..., 0] ** 2
-    assert np.max(off_shell) < 1e-11
-    violation = np.abs(np.sum(p[:, 2:], axis=1) - np.sum(p[:, :2], axis=1))
-    assert np.max(violation) < 1e-14 * cm_energy
+    off_shell = torch.abs(m2 - torch.tensor(masses) ** 2) / p[..., 0] ** 2
+    assert torch.max(off_shell) < 1e-11
+    violation = torch.abs(torch.sum(p[:, 2:], dim=1) - torch.sum(p[:, :2], dim=1))
+    assert torch.max(violation) < 1e-14 * cm_energy

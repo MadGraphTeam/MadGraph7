@@ -1,8 +1,9 @@
+import math
 from collections import namedtuple
 
-import numpy as np
 import pytest
-from pytest import approx
+import torch
+from madspace_testing import generator, rand, randn
 
 import madspace as ms
 
@@ -12,11 +13,38 @@ import madspace as ms
 
 
 def inv_mass_sq(p):
-    return p[..., 0] ** 2 - np.sum(p[..., 1:] ** 2, axis=-1)
+    return p[..., 0] ** 2 - torch.sum(p[..., 1:] ** 2, dim=-1)
 
 
 def mass(p):
-    return np.sqrt(np.maximum(inv_mass_sq(p), 0.0))
+    return torch.sqrt(torch.clamp(inv_mass_sq(p), min=0.0))
+
+
+def uniform(g, a, b, n):
+    return a + (b - a) * rand(n, generator=g)
+
+
+def beams(pz):
+    """Massless beams (pz, 0, 0, +pz) and (pz, 0, 0, -pz)."""
+    zeros = torch.zeros_like(pz)
+    return (
+        torch.stack([pz, zeros, zeros, +pz], dim=1),
+        torch.stack([pz, zeros, zeros, -pz], dim=1),
+    )
+
+
+def lab_beams(g):
+    """Massless beams with momenta smeared around (0, 0, +-4000)."""
+    pa3 = torch.tensor([[0, 0, 4000.0]]) + 500.0 * randn((N, 3), generator=g)
+    ea = torch.sqrt(torch.sum(pa3**2, dim=1))  # massless
+    pb3 = torch.tensor([[0, 0, -4000.0]]) + 500.0 * randn((N, 3), generator=g)
+    eb = torch.sqrt(torch.sum(pb3**2, dim=1))
+    return torch.cat([ea[:, None], pa3], dim=1), torch.cat([eb[:, None], pb3], dim=1)
+
+
+def assert_approx(actual, expected, rel=1e-6, abs=1e-12, msg=None):
+    """pytest.approx-like elementwise comparison of tensors."""
+    torch.testing.assert_close(actual, expected, rtol=rel, atol=abs, msg=msg)
 
 
 # ----------------------------
@@ -41,7 +69,7 @@ InputPoint = namedtuple(
 
 @pytest.fixture
 def rng():
-    return np.random.default_rng(1234)
+    return generator(1234)
 
 
 @pytest.fixture(
@@ -55,39 +83,31 @@ def input_points(rng, request):
     """
     com = request.param
 
-    pz = rng.uniform(1000.0, 4000.0, N)
-    e1 = pz  # massless beams in COM
-    e2 = pz
-    pa = np.stack([e1, np.zeros(N), np.zeros(N), +pz], axis=1)
-    pb = np.stack([e2, np.zeros(N), np.zeros(N), -pz], axis=1)
+    pz = uniform(rng, 1000.0, 4000.0, N)
+    pa, pb = beams(pz)  # massless beams in COM
 
     if not com:
         # boost to a random lab frame (the same recipe used in the 2->3 test)
-        pa3 = np.array([[0, 0, 4000.0]]) + rng.normal(0.0, 500.0, (N, 3))
-        ea = np.sqrt(np.sum(pa3**2, axis=1))  # massless
-        pa = np.concatenate([ea[:, None], pa3], axis=1)
-        pb3 = np.array([[0, 0, -4000.0]]) + rng.normal(0.0, 500.0, (N, 3))
-        eb = np.sqrt(np.sum(pb3**2, axis=1))
-        pb = np.concatenate([eb[:, None], pb3], axis=1)
+        pa, pb = lab_beams(rng)
 
     # m1: the fixed single-particle mass
     # mir_min: lower bound on recoil mass (e.g. sum of constituent masses).
     # Pick mir_min well below the sqrt(s) so there\'s room for the recoil.
-    m1 = rng.uniform(1.0, 50.0, N)
-    mir_min = rng.uniform(50.0, 200.0, N)
+    m1 = uniform(rng, 1.0, 50.0, N)
+    mir_min = uniform(rng, 50.0, 200.0, N)
 
-    r_phi = rng.random(N)
-    r_t1 = rng.random(N)
-    r_t2 = rng.random(N)
+    r_phi = rand(N, generator=rng)
+    r_t1 = rand(N, generator=rng)
+    r_t2 = rand(N, generator=rng)
 
     return InputPoint(r_phi, r_t1, r_t2, m1, mir_min, pa, pb)
 
 
 @pytest.fixture(
     params=[
-        (np.full(N, 5.0), np.full(N, 80.0)),
-        (np.full(N, 50.0), np.full(N, 150.0)),
-        (np.full(N, 100.0), np.full(N, 250.0)),
+        (5.0, 80.0),
+        (50.0, 150.0),
+        (100.0, 250.0),
     ],
     ids=[
         "light single, light recoil min",
@@ -97,17 +117,13 @@ def input_points(rng, request):
 )
 def fixed_input_points(rng, request):
     """Fixed (m1, mir_min) used by the phase-space-volume test."""
-    m1, mir_min = request.param
+    m1, mir_min = (torch.full((N,), m) for m in request.param)
 
-    pz = np.full(N, 3000.0)
-    e1 = pz
-    e2 = pz
-    pa = np.stack([e1, np.zeros(N), np.zeros(N), +pz], axis=1)
-    pb = np.stack([e2, np.zeros(N), np.zeros(N), -pz], axis=1)
+    pa, pb = beams(torch.full((N,), 3000.0))
 
-    r_phi = rng.random(N)
-    r_t1 = rng.random(N)
-    r_t2 = rng.random(N)
+    r_phi = rand(N, generator=rng)
+    r_t1 = rand(N, generator=rng)
+    r_t2 = rand(N, generator=rng)
 
     return InputPoint(r_phi, r_t1, r_t2, m1, mir_min, pa, pb)
 
@@ -133,7 +149,7 @@ def test_momentum_conservation(input_points):
     ]
 
     p1, p2, det = mapping.map_forward(inputs, conditions)
-    assert p1 + p2 == approx(input_points.pa + input_points.pb)
+    assert_approx(p1 + p2, input_points.pa + input_points.pb)
 
 
 def test_on_shell_mass(input_points):
@@ -152,7 +168,7 @@ def test_on_shell_mass(input_points):
     ]
 
     p1, p2, det = mapping.map_forward(inputs, conditions)
-    assert mass(p1) == approx(input_points.m1)
+    assert_approx(mass(p1), input_points.m1)
 
 
 def test_recoil_mass_minimum(input_points):
@@ -175,7 +191,7 @@ def test_recoil_mass_minimum(input_points):
     p1, p2, det = mapping.map_forward(inputs, conditions)
     m_ir = mass(p2)
     # allow a small numerical tolerance below mir_min
-    assert np.all(m_ir >= input_points.mir_min - 1e-6 * input_points.mir_min)
+    assert torch.all(m_ir >= input_points.mir_min - 1e-6 * input_points.mir_min)
 
 
 def test_inverse(input_points):
@@ -196,10 +212,10 @@ def test_inverse(input_points):
     p1, p2, det = mapping.map_forward(inputs, conditions)
     *inv_inputs, inv_det = mapping.map_inverse([p1, p2], conditions)
 
-    assert inv_det == approx(1 / det, rel=1e-5)
+    assert_approx(inv_det, 1 / det, rel=1e-5)
 
     for i, (inp, inv_inp) in enumerate(zip(inputs, inv_inputs)):
-        assert inp == approx(inv_inp), f"mismatch in input index {i}"
+        assert_approx(inp, inv_inp, msg=f"mismatch in input index {i}")
 
 
 def test_phase_space_volume_analytic(fixed_input_points):
@@ -230,9 +246,9 @@ def test_phase_space_volume_analytic(fixed_input_points):
     # All entries of fixed_input_points have the same s, m1, mir_min by construction.
     pa = fixed_input_points.pa[0]
     pb = fixed_input_points.pb[0]
-    s = (pa[0] + pb[0]) ** 2 - np.sum((pa[1:] + pb[1:]) ** 2)
-    m1_val = fixed_input_points.m1[0]
-    mir_min_val = fixed_input_points.mir_min[0]
+    s = float((pa[0] + pb[0]) ** 2 - torch.sum((pa[1:] + pb[1:]) ** 2))
+    m1_val = float(fixed_input_points.m1[0])
+    mir_min_val = float(fixed_input_points.mir_min[0])
 
     def lam(s, m1_sq, m2_sq):
         return (s - m1_sq - m2_sq) ** 2 - 4 * m1_sq * m2_sq
@@ -241,16 +257,16 @@ def test_phase_space_volume_analytic(fixed_input_points):
         l = lam(s, m1_val**2, mir_sq)
         if l <= 0:
             return 0.0
-        return np.pi / (2 * s) * np.sqrt(l)
+        return math.pi / (2 * s) * math.sqrt(l)
 
     analytic_volume, _ = quad(
         integrand,
         mir_min_val**2,
-        (np.sqrt(s) - m1_val) ** 2,
+        (math.sqrt(s) - m1_val) ** 2,
     )
 
-    mc_volume = np.mean(det)
-    mc_err = np.std(det) / np.sqrt(N)
+    mc_volume = det.mean().item()
+    mc_err = det.std(correction=0).item() / math.sqrt(N)
 
     # 5-sigma agreement
     diff = abs(mc_volume - analytic_volume)
@@ -271,19 +287,14 @@ def test_inverse_lab_specifically(rng):
     mapping = ms.DoubleT()
 
     # boosted lab frame
-    pz = rng.uniform(1000.0, 4000.0, N)
-    pa3 = np.array([[0, 0, 4000.0]]) + rng.normal(0.0, 500.0, (N, 3))
-    ea = np.sqrt(np.sum(pa3**2, axis=1))
-    pa = np.concatenate([ea[:, None], pa3], axis=1)
-    pb3 = np.array([[0, 0, -4000.0]]) + rng.normal(0.0, 500.0, (N, 3))
-    eb = np.sqrt(np.sum(pb3**2, axis=1))
-    pb = np.concatenate([eb[:, None], pb3], axis=1)
+    pz = uniform(rng, 1000.0, 4000.0, N)
+    pa, pb = lab_beams(rng)
 
-    m1 = np.full(N, 30.0)
-    mir_min = np.full(N, 100.0)
-    r_phi = rng.random(N)
-    r_t1 = rng.random(N)
-    r_t2 = rng.random(N)
+    m1 = torch.full((N,), 30.0)
+    mir_min = torch.full((N,), 100.0)
+    r_phi = rand(N, generator=rng)
+    r_t1 = rand(N, generator=rng)
+    r_t2 = rand(N, generator=rng)
 
     inputs = [r_phi, r_t1, r_t2]
     conditions = [pa, pb, m1, mir_min]
@@ -293,8 +304,8 @@ def test_inverse_lab_specifically(rng):
 
     names = ["r_phi", "r_t1", "r_t2"]
     for name, inp, inv_inp in zip(names, inputs, inv_inputs):
-        assert inp == approx(inv_inp), f"LAB mismatch in {name}"
-    assert inv_det == approx(1 / det, rel=1e-5)
+        assert_approx(inp, inv_inp, msg=f"LAB mismatch in {name}")
+    assert_approx(inv_det, 1 / det, rel=1e-5)
 
 
 # ----------------------------
@@ -317,16 +328,14 @@ def massless_input_points(rng, request):
     condition (Option B fix), this should round-trip cleanly."""
     _, m1_val = request.param
 
-    pz = np.full(N, 6500.0)  # 13 TeV
-    pa = np.stack([pz, np.zeros(N), np.zeros(N), +pz], axis=1)
-    pb = np.stack([pz, np.zeros(N), np.zeros(N), -pz], axis=1)
+    pa, pb = beams(torch.full((N,), 6500.0))  # 13 TeV
 
-    m1 = np.full(N, m1_val)
-    mir_min = np.full(N, 50.0)
+    m1 = torch.full((N,), m1_val)
+    mir_min = torch.full((N,), 50.0)
 
-    r_phi = rng.random(N)
-    r_t1 = rng.random(N)
-    r_t2 = rng.random(N)
+    r_phi = rand(N, generator=rng)
+    r_t1 = rand(N, generator=rng)
+    r_t2 = rand(N, generator=rng)
 
     return InputPoint(r_phi, r_t1, r_t2, m1, mir_min, pa, pb)
 
@@ -351,14 +360,14 @@ def test_inverse_massless(massless_input_points):
     *inv_inputs, inv_det = mapping.map_inverse([p1, p2], conditions)
 
     # det round-trip
-    assert inv_det == approx(1 / det, rel=1e-5)
+    assert_approx(inv_det, 1 / det, rel=1e-5)
 
     # random round-trip; r_t2 used to be the most sensitive (its bounds
     # depend on t1_abs which depended on the lossy m1^2 recompute).
     for i, (inp, inv_inp) in enumerate(zip(inputs, inv_inputs)):
-        assert inp == approx(
-            inv_inp, rel=1e-5, abs=1e-8
-        ), f"mismatch in input index {i}"
+        assert_approx(
+            inp, inv_inp, rel=1e-5, abs=1e-8, msg=f"mismatch in input index {i}"
+        )
 
 
 def test_phase_space_volume_massless(rng):
@@ -369,15 +378,15 @@ def test_phase_space_volume_massless(rng):
     mir_min_val = 80.0
     s_val = 13000.0**2
 
-    pa = np.tile([6500.0, 0, 0, 6500.0], (N, 1))
-    pb = np.tile([6500.0, 0, 0, -6500.0], (N, 1))
+    pa = torch.tensor([6500.0, 0, 0, 6500.0]).repeat(N, 1)
+    pb = torch.tensor([6500.0, 0, 0, -6500.0]).repeat(N, 1)
 
-    m1 = np.full(N, m1_val)
-    mir_min = np.full(N, mir_min_val)
+    m1 = torch.full((N,), m1_val)
+    mir_min = torch.full((N,), mir_min_val)
 
-    r_phi = rng.random(N)
-    r_t1 = rng.random(N)
-    r_t2 = rng.random(N)
+    r_phi = rand(N, generator=rng)
+    r_t1 = rand(N, generator=rng)
+    r_t2 = rand(N, generator=rng)
 
     mapping = ms.DoubleT()
     p1, p2, det = mapping.map_forward(
@@ -392,16 +401,16 @@ def test_phase_space_volume_massless(rng):
         l = lam(s_val, m1_val**2, mir_sq)
         if l <= 0:
             return 0.0
-        return np.pi / (2 * s_val) * np.sqrt(l)
+        return math.pi / (2 * s_val) * math.sqrt(l)
 
     analytic_volume, _ = quad(
         integrand,
         mir_min_val**2,
-        (np.sqrt(s_val) - m1_val) ** 2,
+        (math.sqrt(s_val) - m1_val) ** 2,
     )
 
-    mc_volume = np.mean(det)
-    mc_err = np.std(det) / np.sqrt(N)
+    mc_volume = det.mean().item()
+    mc_err = det.std(correction=0).item() / math.sqrt(N)
 
     diff = abs(mc_volume - analytic_volume)
     assert diff < 5 * mc_err, (

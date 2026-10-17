@@ -114,21 +114,52 @@ See :doc:`gridpacks` for details.
 ``include_madspace_source`` (``false``)
     Include the ``madspace`` source code.
 
+``compress`` (``false``)
+    Pack the gridpack into ``gridpack.tar.gz`` instead of leaving it as a directory.
+
+``run_mode`` (``"minimal"``)
+    How the run that creates the gridpack ends. Only used if ``save_gridpack`` is set.
+
+    - ``regular``: generate the events of the run, then store the gridpack.
+    - ``minimal``: no events. The gridpack is stored right after the MadNIS training or,
+      with VEGAS, once the grid of every channel has converged.
+    - ``fix_max_weight``: no events. Each channel runs until ``freeze_max_weight_after``
+      unweighted events are reached. Its maximum weight is then fixed in the gridpack,
+      and its integral is used to share the events between the channels. This can be
+      slow for channels with a low unweighting efficiency.
+
+    See :ref:`gridpack-run-mode`.
+
+``temp_output_dir`` (``""``)
+    Directory for the temporary npy files of the channels. ``""`` uses the output
+    directory. ``"auto"`` creates a new temporary directory for each run, see
+    :py:func:`tempfile.mkdtemp`. Its location can be set with the ``TMPDIR``
+    environment variable.
+
+``output_dir`` (``""``)
+    Directory for the output files. ``""`` creates a new run folder
+    ``Events/<run_name>_NN``. If set, no run folder is created.
+
 
 [beam]
 ------
 
-``e_cm`` (``13000.0``)
-    Center-of-mass energy in GeV. Units are accepted, for example ``"13 TeV"``.
+``ebeam1`` (``6500.0``), ``ebeam2`` (``6500.0``)
+    Energy of each beam in GeV, beam 1 moving along :math:`+z`. Units are accepted, for
+    example ``"7 TeV"``. The collision energy is :math:`2\sqrt{E_1 E_2}`. With different
+    energies the events are written, and the :math:`\eta` cuts applied, in this lab frame.
+    ``e_cm`` can still be read and set: ``set e_cm 13 TeV`` sets both beams to 6.5 TeV.
 
 ``leptonic`` (``false``)
-    Treat the beams as leptons: no PDFs are used and the partonic energy equals ``e_cm``.
-    This is set automatically for lepton-collider processes, together with ``e_cm = 1000``
-    and no jet cuts.
+    Treat the beams as leptons: no PDFs are used and the partonic energy equals the
+    collision energy. This is set automatically for lepton-collider processes, together
+    with 500 GeV beams and no jet cuts.
 
-``pdf`` (``"NNPDF40_lo_as_01180"``)
-    Name of the LHAPDF set. MG7 tries to download it if it is not installed. The default is
-    the 5-flavor NNPDF 4.0 LO set, which has 100 error members for the PDF variations.
+``pdf1`` (``"NNPDF40_lo_as_01180"``), ``pdf2`` (``"NNPDF40_lo_as_01180"``)
+    Name of the LHAPDF set of each beam. ``set beam.pdf X`` sets both. MG7 tries to
+    download a set that is not installed. The default is the 5-flavor NNPDF 4.0 LO set,
+    which has 100 error members for the PDF variations. With different sets on the two
+    beams the PDF member variations of ``[systematics]`` are dropped.
 
 ``fixed_ren_scale`` (``false``), ``fixed_fact_scale`` (``false``)
     Use the fixed values below instead of the dynamical scale choice. The two switches act
