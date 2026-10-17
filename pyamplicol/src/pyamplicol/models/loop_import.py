@@ -119,6 +119,40 @@ class _ValueObservation:
     error: str | None
 
 
+def _has_value_write(statement: ast.AST) -> bool:
+    for node in ast.walk(statement):
+        if (
+            isinstance(node, ast.Attribute)
+            and node.attr == "value"
+            and isinstance(node.ctx, (ast.Store, ast.Del))
+        ):
+            return True
+        if (
+            isinstance(node, ast.Subscript)
+            and isinstance(node.ctx, (ast.Store, ast.Del))
+            and any(
+                isinstance(part, ast.Attribute) and part.attr in {"value", "__dict__"}
+                for part in ast.walk(node)
+            )
+        ):
+            return True
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in {
+                "exec",
+                "eval",
+                "setattr",
+                "delattr",
+            }:
+                return True
+            if (
+                isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Attribute)
+                and node.func.value.attr == "value"
+            ):
+                return True
+    return False
+
+
 class _ValueSourceObserver:
     """Observe direct UFO constructors without replacing objects or their values."""
 
@@ -129,6 +163,7 @@ class _ValueSourceObserver:
         ] = {}
         self.observations: dict[int, _ValueObservation] = {}
         self.dynamic_writes = False
+        self.mutating_methods: set[tuple[str, int]] = set()
         for path in source.glob("*.py"):
             try:
                 with tokenize.open(path) as stream:
@@ -151,41 +186,43 @@ class _ValueSourceObserver:
             # changes are checked separately against the observed argument identity.
             for statement in tree.body:
                 if isinstance(statement, ast.ClassDef):
-                    continue
-                for node in ast.walk(statement):
-                    if (
-                        isinstance(node, ast.Attribute)
-                        and node.attr == "value"
-                        and isinstance(node.ctx, (ast.Store, ast.Del))
-                    ):
-                        self.dynamic_writes = True
-                    if (
-                        isinstance(node, ast.Subscript)
-                        and isinstance(node.ctx, (ast.Store, ast.Del))
-                        and any(
-                            isinstance(part, ast.Attribute)
-                            and part.attr in {"value", "__dict__"}
-                            for part in ast.walk(node)
+                    for method in ast.walk(statement):
+                        if (
+                            isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef))
+                            and method.name != "__init__"
+                            and _has_value_write(method)
+                        ):
+                            first_line = min(
+                                [
+                                    method.lineno,
+                                    *(
+                                        decorator.lineno
+                                        for decorator in method.decorator_list
+                                    ),
+                                ]
+                            )
+                            self.mutating_methods.add((str(path), first_line))
+                    if any(
+                        _has_value_write(body)
+                        for body in statement.body
+                        if not isinstance(
+                            body, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
                         )
                     ):
-                        self.dynamic_writes = True
-                    if isinstance(node, ast.Call):
-                        if isinstance(node.func, ast.Name) and node.func.id in {
-                            "exec",
-                            "eval",
-                            "setattr",
-                            "delattr",
-                        }:
-                            self.dynamic_writes = True
-                        if (
-                            isinstance(node.func, ast.Attribute)
-                            and isinstance(node.func.value, ast.Attribute)
-                            and node.func.value.attr == "value"
-                        ):
-                            self.dynamic_writes = True
+                        self.mutating_methods.add((str(path), statement.lineno))
+                    continue
+                if _has_value_write(statement):
+                    self.dynamic_writes = True
 
     def observe(self, frame: FrameType, event: str, _argument: object) -> None:
-        if event != "call" or frame.f_code.co_name != "__init__":
+        if event != "call":
+            return
+        if (
+            frame.f_code.co_filename,
+            frame.f_code.co_firstlineno,
+        ) in self.mutating_methods:
+            self.dynamic_writes = True
+        if frame.f_code.co_name != "__init__":
             return
         instance = frame.f_locals.get("self")
         if type(instance).__name__ not in _VALUE_TYPES:

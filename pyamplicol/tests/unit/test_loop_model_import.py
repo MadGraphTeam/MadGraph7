@@ -387,6 +387,15 @@ def test_direct_literals_retain_sixty_digits_and_laurent_coefficients(
             "a = Parameter(name='a', value=str(0.123456789012345678901))\n",
             "computed value",
         ),
+        (
+            "a = Parameter(name='a', value=0.123456789012345678901)\n"
+            "class Mutator:\n"
+            "    @staticmethod\n"
+            "    def change():\n"
+            "        a.value = 0.123456789012345678902\n"
+            "Mutator.change()\n",
+            "dynamic value writes",
+        ),
     ],
 )
 def test_ambiguous_computed_and_mutated_values_are_not_exact(
