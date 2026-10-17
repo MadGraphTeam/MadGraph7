@@ -103,6 +103,8 @@ if TYPE_CHECKING:
         ColorFFTBasis,
         EvaluationConfig,
         GenerationConfig,
+        LoopConfig,
+        R2Strategy,
         RunConfig,
     )
     from .correlators import (
@@ -152,6 +154,7 @@ __all__ = [
     "GenerationResult",
     "Generator",
     "HelicityConfiguration",
+    "LoopConfig",
     "ModelCompilationIssue",
     "ModelCompilationPhase",
     "ModelError",
@@ -163,6 +166,7 @@ __all__ = [
     "ProcessRequest",
     "ProcessSet",
     "PyAmpliColError",
+    "R2Strategy",
     "ReductionGroup",
     "ResolvedEvaluation",
     "RunConfig",
@@ -235,6 +239,8 @@ _CONFIG_EXPORTS = (
     "ColorFFTBasis",
     "EvaluationConfig",
     "GenerationConfig",
+    "LoopConfig",
+    "R2Strategy",
     "RunConfig",
 )
 _PUBLIC_EXPORTS = {

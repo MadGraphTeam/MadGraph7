@@ -515,6 +515,12 @@ def resolve_config(
     _raise_errors(clamp_errors)
 
     effective = _make_run_config(effective_values)
+    effective = replace(
+        effective,
+        evaluator=replace(
+            effective.evaluator, execution_mode=effective.resolved_execution_mode
+        ),
+    )
     effective = replace(effective, color=effective.resolved_color)
     if effective.evaluator.jit.compress == "auto":
         effective = replace(

@@ -27,11 +27,13 @@ from pyamplicol.config import (
     GenerationValidationConfig,
     JITConfig,
     LCFlowLayout,
+    LoopConfig,
     ModelConfig,
     OutputConfig,
     ProcessConfig,
     ProcessEntry,
     ProcessGroupAnalysis,
+    R2Strategy,
     RecurrenceEvaluatorConfig,
     RelationDiscoveryMode,
     RunConfig,
@@ -40,7 +42,7 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 83
+    assert len(FIELD_REGISTRY) == 85
     assert "generation.umami_grouping" not in FIELD_REGISTRY
     assert "evaluator.jit.direct_translation" not in FIELD_REGISTRY
     assert FIELD_REGISTRY["action"].required
@@ -55,15 +57,19 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     assert FIELD_REGISTRY["evaluator.jit.compress"].kind == "auto_bool"
     assert FIELD_REGISTRY["evaluator.jit.compress"].default == "auto"
     assert FIELD_REGISTRY["evaluator.execution_mode"].choices == (
+        EvaluatorExecutionMode.AUTO,
         EvaluatorExecutionMode.COMPILED,
         EvaluatorExecutionMode.EAGER,
         EvaluatorExecutionMode.RECURRENCE,
         EvaluatorExecutionMode.ON_THE_FLY,
+        EvaluatorExecutionMode.LOOP_RECURRENCE,
     )
     assert (
         FIELD_REGISTRY["evaluator.execution_mode"].default
-        is EvaluatorExecutionMode.RECURRENCE
+        is EvaluatorExecutionMode.AUTO
     )
+    assert FIELD_REGISTRY["process.loop_coupling_orders"].nullable
+    assert FIELD_REGISTRY["loop.r2_strategy"].choices == tuple(R2Strategy)
     assert FIELD_REGISTRY["color.lc_flow_layout"].default == (
         LCFlowLayout.TOPOLOGY_REPLAY
     )
@@ -140,6 +146,7 @@ def test_all_public_configuration_dataclasses_are_frozen() -> None:
         GenerationRelationDiscoveryConfig,
         GenerationValidationConfig,
         JITConfig,
+        LoopConfig,
         ModelConfig,
         OutputConfig,
         ProcessConfig,
@@ -217,7 +224,8 @@ def test_contract_defaults_are_typed() -> None:
     assert config.resolved_color.fft_basis is ColorFFTBasis.TRACE
     assert config.color.lc_flow_layout is LCFlowLayout.TOPOLOGY_REPLAY
     assert config.evaluator.backend is EvaluatorBackend.JIT
-    assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
+    assert config.evaluator.execution_mode is EvaluatorExecutionMode.AUTO
+    assert config.resolved_execution_mode is EvaluatorExecutionMode.RECURRENCE
     assert config.evaluator.jit.compress == "auto"
     assert config.evaluator.resolved_jit_compress is False
     assert config.evaluator.eager == EagerEvaluatorConfig()
@@ -341,7 +349,7 @@ def test_symmetric_group_fft_requires_contracted_color_and_supported_lane(
     for execution_mode in ("compiled", "eager"):
         with pytest.raises(
             ConfigurationError,
-            match=r"requires evaluator\.execution_mode='recurrence' or 'on-the-fly'",
+            match=r"requires evaluator\.execution_mode='recurrence'",
         ):
             RunConfig(
                 action="generate",

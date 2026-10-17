@@ -100,13 +100,19 @@ def test_automatic_fft_default_is_limited_to_supported_lanes(
             accuracy,
             "--execution-mode",
             execution_mode.value,
+            *(
+                ("--loop-coupling-order", "QCD")
+                if execution_mode is EvaluatorExecutionMode.LOOP_RECURRENCE
+                else ()
+            ),
         )
     ).resolve()
     assert resolution.requested.color.contraction is ColorContraction.AUTO
     assert resolution.requested.color.fft_basis is ColorFFTBasis.ADJOINT
-    supported = accuracy != "lc" and execution_mode in {
+    supported = accuracy != "lc" and resolution.effective.evaluator.execution_mode in {
         EvaluatorExecutionMode.RECURRENCE,
         EvaluatorExecutionMode.ON_THE_FLY,
+        EvaluatorExecutionMode.LOOP_RECURRENCE,
     }
     assert resolution.effective.color.contraction is (
         ColorContraction.AUTO if supported else ColorContraction.DIRECT

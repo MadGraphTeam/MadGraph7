@@ -410,11 +410,28 @@ class _GenerationConfigProvenance:
         config: GenerationConfig | RunConfig | ConfigResolution | None,
     ) -> _GenerationConfigProvenance:
         if isinstance(config, ConfigResolution):
-            effective = replace(config.effective, color=config.effective.resolved_color)
+            effective = replace(
+                config.effective,
+                evaluator=replace(
+                    config.effective.evaluator,
+                    execution_mode=config.effective.resolved_execution_mode,
+                ),
+                color=config.effective.resolved_color,
+            )
             return cls(config.requested, effective, config.clamps)
         effective = GenerationConfig() if config is None else config
         if isinstance(effective, RunConfig):
-            return cls(effective, replace(effective, color=effective.resolved_color))
+            return cls(
+                effective,
+                replace(
+                    effective,
+                    evaluator=replace(
+                        effective.evaluator,
+                        execution_mode=effective.resolved_execution_mode,
+                    ),
+                    color=effective.resolved_color,
+                ),
+            )
         return cls(effective, effective)
 
 

@@ -7492,6 +7492,14 @@ class GenerationBackend:
     def _validate_recurrence_request(self) -> None:
         """Keep recurrence-family requests out of compiled/eager lanes."""
 
+        if (
+            self._run_config is not None
+            and self._run_config.process.loop_coupling_orders is not None
+        ):
+            raise GenerationError(
+                "loop_recurrence generation is under construction: the complete "
+                "numerator, reduction and UV/R2 pipeline is not available yet"
+            )
         if self._on_the_fly_execution_enabled and self._color_accuracy not in {
             "lc",
             "nlc",

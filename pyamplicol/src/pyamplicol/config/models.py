@@ -76,10 +76,18 @@ class EvaluatorBackend(StrEnum):
 
 
 class EvaluatorExecutionMode(StrEnum):
+    AUTO = "auto"
     COMPILED = "compiled"
     EAGER = "eager"
     RECURRENCE = "recurrence"
     ON_THE_FLY = "on-the-fly"
+    LOOP_RECURRENCE = "loop_recurrence"
+
+
+class R2Strategy(StrEnum):
+    AUTO = "auto"
+    MODEL = "model"
+    DIRECT = "direct"
 
 
 _PORTABLE_CPP_EXTRA_FLAGS = frozenset({"-fno-math-errno"})
@@ -331,6 +339,9 @@ class ProcessConfig:
         default_factory=dict,
         metadata=_setting("map_int", dynamic_kind="int"),
     )
+    loop_coupling_orders: tuple[str, ...] | None = field(
+        default=None, metadata=_setting("list_str", nullable=True)
+    )
     max_color_sectors: int | None = field(
         default=None, metadata=_setting("int", nullable=True)
     )
@@ -401,6 +412,18 @@ class ProcessConfig:
             "max_coupling_orders",
             _integer_mapping(self.max_coupling_orders, "process.max_coupling_orders"),
         )
+        if self.loop_coupling_orders is not None:
+            corrections = _tuple_of_strings(
+                self.loop_coupling_orders, "process.loop_coupling_orders"
+            )
+            if not corrections or any(not name.strip() for name in corrections):
+                raise ConfigurationError(
+                    "process.loop_coupling_orders must be a nonempty list of "
+                    "correction names; omit it for tree generation"
+                )
+            object.__setattr__(
+                self, "loop_coupling_orders", tuple(sorted(set(corrections)))
+            )
         object.__setattr__(
             self,
             "max_color_sectors",
@@ -864,7 +887,7 @@ class EvaluatorConfig:
         metadata=_setting("str", choices=tuple(EvaluatorBackend)),
     )
     execution_mode: EvaluatorExecutionMode = field(
-        default=EvaluatorExecutionMode.RECURRENCE,
+        default=EvaluatorExecutionMode.AUTO,
         metadata=_setting("str", choices=tuple(EvaluatorExecutionMode)),
     )
     batch_size: int = field(default=128, metadata=_setting("int"))
@@ -1071,11 +1094,24 @@ class SymbolicaConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class LoopConfig:
+    r2_strategy: R2Strategy = field(
+        default=R2Strategy.AUTO, metadata=_setting("str", choices=tuple(R2Strategy))
+    )
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "r2_strategy", _enum(self.r2_strategy, R2Strategy, "loop.r2_strategy")
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class RunConfig:
     action: Action = field(metadata=_setting("str", choices=ACTIONS))
     schema_version: int = field(default=1, metadata=_setting("int", choices=(1,)))
     model: ModelConfig = field(default_factory=ModelConfig, metadata=_section())
     process: ProcessConfig = field(default_factory=ProcessConfig, metadata=_section())
+    loop: LoopConfig = field(default_factory=LoopConfig, metadata=_section())
     color: ColorConfig = field(default_factory=ColorConfig, metadata=_section())
     generation: GenerationConfig = field(
         default_factory=GenerationConfig, metadata=_section()
@@ -1104,6 +1140,7 @@ class RunConfig:
         expected = (
             ("model", ModelConfig),
             ("process", ProcessConfig),
+            ("loop", LoopConfig),
             ("color", ColorConfig),
             ("generation", GenerationConfig),
             ("evaluator", EvaluatorConfig),
@@ -1115,18 +1152,43 @@ class RunConfig:
         for name, expected_type in expected:
             if not isinstance(getattr(self, name), expected_type):
                 raise ConfigurationError(f"{name} must be a {expected_type.__name__}")
+        mode = self.evaluator.execution_mode
+        virtual = self.process.loop_coupling_orders is not None
+        if virtual and mode not in {
+            EvaluatorExecutionMode.AUTO,
+            EvaluatorExecutionMode.LOOP_RECURRENCE,
+        }:
+            raise ConfigurationError(
+                "process.loop_coupling_orders requires evaluator.execution_mode="
+                "'auto' or 'loop_recurrence'"
+            )
+        if not virtual and mode is EvaluatorExecutionMode.LOOP_RECURRENCE:
+            raise ConfigurationError(
+                "evaluator.execution_mode='loop_recurrence' requires "
+                "process.loop_coupling_orders"
+            )
         if (
             self.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
-            and self.evaluator.execution_mode
+            and self.resolved_execution_mode
             not in {
                 EvaluatorExecutionMode.RECURRENCE,
                 EvaluatorExecutionMode.ON_THE_FLY,
+                EvaluatorExecutionMode.LOOP_RECURRENCE,
             }
         ):
             raise ConfigurationError(
                 "color.contraction='symmetric-group-fft' requires "
-                "evaluator.execution_mode='recurrence' or 'on-the-fly'"
+                "evaluator.execution_mode='recurrence', 'on-the-fly' or "
+                "'loop_recurrence'"
             )
+
+    @property
+    def resolved_execution_mode(self) -> EvaluatorExecutionMode:
+        if self.evaluator.execution_mode is not EvaluatorExecutionMode.AUTO:
+            return self.evaluator.execution_mode
+        if self.process.loop_coupling_orders is not None:
+            return EvaluatorExecutionMode.LOOP_RECURRENCE
+        return EvaluatorExecutionMode.RECURRENCE
 
     @property
     def resolved_color(self) -> ColorConfig:
@@ -1142,10 +1204,11 @@ class RunConfig:
             color.contraction is ColorContraction.AUTO
             and (
                 color.accuracy is ColorAccuracy.LC
-                or self.evaluator.execution_mode
+                or self.resolved_execution_mode
                 not in {
                     EvaluatorExecutionMode.RECURRENCE,
                     EvaluatorExecutionMode.ON_THE_FLY,
+                    EvaluatorExecutionMode.LOOP_RECURRENCE,
                 }
             )
         ):
@@ -1183,6 +1246,7 @@ __all__ = [
     "JITConfig",
     "LCFlowLayout",
     "LogLevel",
+    "LoopConfig",
     "ModelConfig",
     "OutputConfig",
     "OutputFormat",
@@ -1190,6 +1254,7 @@ __all__ = [
     "ProcessEntry",
     "ProcessGroupAnalysis",
     "ProgressMode",
+    "R2Strategy",
     "RecurrenceEvaluatorConfig",
     "RelationDiscoveryMode",
     "RunConfig",

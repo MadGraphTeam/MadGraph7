@@ -219,6 +219,14 @@ def _add_model_options(parser: argparse.ArgumentParser) -> None:
 
 def _add_process_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
+        "--loop-coupling-order",
+        dest="process.loop_coupling_orders",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="NAME",
+        help="Request a virtual correction; repeat for a union of correction orders.",
+    )
+    parser.add_argument(
         "--name",
         dest="_process_names",
         action="append",
@@ -440,6 +448,12 @@ def _add_evaluator_options(
         default=argparse.SUPPRESS,
     )
     if include_runtime_controls:
+        parser.add_argument(
+            "--r2-strategy",
+            dest="loop.r2_strategy",
+            choices=("auto", "model", "direct"),
+            default=argparse.SUPPRESS,
+        )
         parser.add_argument(
             "--execution-mode",
             dest="evaluator.execution_mode",
