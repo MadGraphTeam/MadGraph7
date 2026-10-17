@@ -118,3 +118,4 @@ release_assets/prepared_models/*.pyamplicol-model
 # MadGraph7 installer
 /install/
 /install_settings.json
+src/pyamplicol/_source_hash.py

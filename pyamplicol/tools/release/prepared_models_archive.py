@@ -10,6 +10,11 @@ package asset directory and the release store.
     prepared_models_archive.py pack --output DIR
     prepared_models_archive.py unpack ARCHIVE
     prepared_models_archive.py fetch [--version V] [--output DIR]
+    prepared_models_archive.py regenerate --work DIR
+
+``regenerate`` repeats the release-prepared-models workflow on this host: it
+builds the bootstrap wheel, produces the packs with it and, as the packs are
+portable, installs them for both architectures.
 
 Stdlib only, so that installers can run it before any build dependency exists.
 """
@@ -21,11 +26,16 @@ import gzip
 import hashlib
 import io
 import json
+import os
+import platform
+import shutil
+import subprocess
 import sys
 import tarfile
 import tempfile
 import urllib.error
 import urllib.request
+import venv
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -87,9 +97,10 @@ def pack(source: Path, output: Path) -> Path:
             _add(tar, f"metadata/{stem}.metadata.json", metadata[stem])
         for digest in sorted(bundles):
             _add(tar, f"bundles/{digest}.pyamplicol-model", bundles[digest])
-    with path.open("wb") as raw_stream, gzip.GzipFile(
-        filename="", mode="wb", fileobj=raw_stream, mtime=0
-    ) as stream:
+    with (
+        path.open("wb") as raw_stream,
+        gzip.GzipFile(filename="", mode="wb", fileobj=raw_stream, mtime=0) as stream,
+    ):
         stream.write(buffer.getvalue())
     return path
 
@@ -179,6 +190,66 @@ def fetch(output: Path, version: str | None = None) -> Path:
     raise ArchiveError(f"no MadGraph7 release provides {ARCHIVE_NAME}")
 
 
+def _run(command: list[str | os.PathLike[str]]) -> None:
+    print("$ " + " ".join(str(part) for part in command), flush=True)
+    subprocess.run(command, cwd=ROOT, check=True)
+
+
+def regenerate(work: Path) -> None:
+    """Produce the packs on this host and install them into both stores."""
+
+    machine = platform.machine()
+    host = {"arm64": "aarch64", "aarch64": "aarch64", "x86_64": "x86_64"}.get(machine)
+    if host is None:
+        raise ArchiveError(f"cannot produce prepared models on {machine}")
+    for path in (work / "wheel", work / "output"):
+        if path.exists():
+            shutil.rmtree(path)
+    tools = ROOT / "tools"
+    _run(
+        [
+            sys.executable,
+            tools / "release" / "prepare_release_prepared_models.py",
+            "bootstrap-wheel",
+            work / "wheel",
+        ]
+    )
+    runtime = work / "runtime"
+    if not runtime.exists():
+        venv.create(runtime, with_pip=True)
+    python = runtime / "bin" / "python"
+    wheels = sorted((work / "wheel").glob("pyamplicol-*.whl"))
+    _run([python, "-m", "pip", "install", "--force-reinstall", *wheels])
+    _run(
+        [
+            python,
+            tools / "ci" / "eager_portability.py",
+            "produce",
+            work / "output",
+            "--python",
+            python,
+            "--asset-mode",
+            "release",
+            "--expected-system",
+            platform.system(),
+            "--expected-machine",
+            machine,
+        ]
+    )
+    produced = work / "output" / "release_assets" / "prepared_models"
+    for destination in (ASSET_DIRECTORY, RELEASE_STORE):
+        for arch in ARCHITECTURES:
+            for ident in IDENTIFIERS:
+                stem = f"{ident}-{host}"
+                record = json.loads((produced / f"{stem}.metadata.json").read_text())
+                data = (produced / record["bundle"]).read_bytes()
+                record["bundle"] = f"{ident}-{arch}.pyamplicol-model"
+                (destination / record["bundle"]).write_bytes(data)
+                (destination / f"{ident}-{arch}.metadata.json").write_text(
+                    json.dumps(record, indent=2, sort_keys=True) + "\n"
+                )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
@@ -193,12 +264,18 @@ def main(argv: list[str] | None = None) -> int:
     fetch_parser.add_argument(
         "--no-unpack", action="store_true", help="only download the archive"
     )
+    regenerate_parser = commands.add_parser(
+        "regenerate", help="produce the packs on this host"
+    )
+    regenerate_parser.add_argument("--work", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "pack":
             print(pack(args.source, args.output))
         elif args.command == "unpack":
             unpack(args.archive)
+        elif args.command == "regenerate":
+            regenerate(args.work)
         elif args.output is not None:
             archive = fetch(args.output, args.version)
             if not args.no_unpack:
@@ -206,7 +283,12 @@ def main(argv: list[str] | None = None) -> int:
         else:
             with tempfile.TemporaryDirectory() as temporary:
                 unpack(fetch(Path(temporary), args.version))
-    except (ArchiveError, OSError, urllib.error.URLError) as error:
+    except (
+        ArchiveError,
+        OSError,
+        urllib.error.URLError,
+        subprocess.CalledProcessError,
+    ) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
     return 0

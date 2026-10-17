@@ -111,6 +111,7 @@ ALLOWLIST = (
     "rust",
     "rust-toolchain.toml",
     "schemas",
+    "source_hash.py",
     "src",
     "tests",
     "tools/ci/__init__.py",
@@ -569,8 +570,10 @@ _SHARED_SYMLINKS = frozenset(
 
 
 def _in_git_checkout() -> bool:
-    """Whether ROOT is tracked in a Git work tree (possibly a subdirectory)."""
+    """Whether ROOT is a Git checkout, or a tracked subdirectory of one."""
 
+    if os.path.lexists(ROOT / ".git"):
+        return True
     completed = subprocess.run(
         ["git", "-C", str(ROOT), "ls-files", "--error-unmatch", "pyproject.toml"],
         env=_clean_environment(),
@@ -686,8 +689,9 @@ def _copy_allowlisted_source(destination: Path) -> None:
     for relative in inventory:
         source = ROOT / relative
         _reject_symlink_ancestors(source)
+        shared = relative in _SHARED_SYMLINKS
         try:
-            mode = (source.stat() if relative in _SHARED_SYMLINKS else source.lstat()).st_mode
+            mode = (source.stat() if shared else source.lstat()).st_mode
         except FileNotFoundError:
             # A tracked deletion remains deleted in the overlay.
             continue
@@ -695,7 +699,16 @@ def _copy_allowlisted_source(destination: Path) -> None:
             raise RuntimeError(f"build inputs must be regular files: {source}")
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target, follow_symlinks=relative in _SHARED_SYMLINKS)
+        shutil.copy2(source, target, follow_symlinks=shared)
+
+
+def _stage_source_hash(overlay: Path) -> None:
+    """Record the source hash that MadGraph7 compares with its source tree."""
+
+    compute = runpy.run_path(str(ROOT / "source_hash.py"))["compute_source_hash"]
+    target = overlay / "src" / "pyamplicol" / "_source_hash.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(f'SOURCE_HASH = "{compute(ROOT)}"\n', encoding="utf-8")
 
 
 def _stage_packaged_examples(overlay: Path) -> None:
@@ -1668,6 +1681,10 @@ def _clean_environment(
         if name not in _INJECTION_ENVIRONMENT_NAMES
         and not name.startswith(_INJECTION_ENVIRONMENT_PREFIXES)
     }
+    # A project-local rustup (MadGraph7 installer) only selects where the
+    # pinned RUSTUP_TOOLCHAIN lives.
+    if "RUSTUP_HOME" in os.environ:
+        environment["RUSTUP_HOME"] = os.environ["RUSTUP_HOME"]
     environment["PATH"] = _build_tool_path(os.environ.get("PATH", ""))
     if updates:
         environment.update(updates)
@@ -1757,7 +1774,10 @@ def _maturin_console_script() -> Path | None:
         candidate = Path(os.path.abspath(package.locate_file(relative)))
         if candidate.is_file():
             return candidate
-    return None
+    # `pip install --target DIR` puts the script in DIR/bin, which its RECORD
+    # does not describe.
+    candidate = Path(maturin.__file__).resolve().parents[1] / "bin" / "maturin"
+    return candidate if candidate.is_file() else None
 
 
 def _pinned_rustup_toolchain() -> str:
@@ -1915,6 +1935,7 @@ def _from_overlay(
                 if validate_prepared_models and not with_sdk:
                     stage_packaged_prepared_models(overlay, mode)
                 if with_sdk:
+                    _stage_source_hash(overlay)
                     _stage_packaged_examples(overlay)
                     _stage_packaged_profiling_campaign(overlay)
                     _stage_python_stub(overlay)
