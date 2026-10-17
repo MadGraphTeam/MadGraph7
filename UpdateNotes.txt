@@ -21,7 +21,13 @@ ANNOUNCEMENT:
        compute_widths in the param_card ('auto@NLO' stays 'auto --nlo'), also
        with 'set decay 6 auto --nlo --body_decay=3'. A width on auto that is
        not computed in the same call is now kept in the card (it used to be
-       dropped when another width was computed).
+       dropped when another width was computed). '--nlo=smwidth' and
+       '--nlo=mcatnlo' choose the code (SMWidth, QCD and EW, or MC@NLO, QCD);
+       the QCD widths of the two agree to 0.05% for t, W and Z.
+   OM: Bug fix: 'compute_widths --nlo' with SMWidth gave zero for every width
+       when the path of the param_card was longer than 100 characters (smwidth
+       cannot read it): it now works on copies with short names, and reports
+       an error when smwidth gives no width.
    OM: Bug fix: the alpha_s of a madspace decay (1 > N, also 'output mg7' of a
        decay) was alpha_s(m_Z) at any mass. It is now the 2-loop running up to
        the decaying mass, as in MadEvent: e.g. 4.7% lower alpha_s(125 GeV) and

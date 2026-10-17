@@ -227,3 +227,59 @@ class TestAutoWidthOptionsInCard(unittest.TestCase):
         self.assertAlmostEqual(decays[24]['total'], 2.0479, delta=0.005)
         with open(card) as stream:
             self.assertEqual(len(check_param_card.group_auto_widths(stream.read())), 0)
+
+
+@unittest.skipUnless(shutil.which('gfortran'), 'no Fortran compiler (SMWidth, aMC@NLO)')
+class TestAutoWidthNLOvsSMWidth(unittest.TestCase):
+    """The two NLO codes on the SM of loop_qcd_qed_sm: SMWidth (QCD and EW) and MC@NLO
+    (QCD), the table of docs/source/madevent_to_mg7.rst.
+
+    The QCD corrections of the two agree to 0.05% (SMWidth called with the orders
+    (1, 0): 1.4136, 2.1586, 2.5793 GeV for t, W, Z), and what SMWidth has on top of them
+    is the EW corrections, -3.3% for the top, -3.4% for the W, -3.5% for the Z. The card
+    of this test is in a directory whose path is longer than the 100 characters that
+    SMWidth reads.
+    """
+
+    # (SMWidth QCD+EW, MC@NLO QCD) in GeV, mass of the top 173.3 GeV
+    EXPECTED = {6: (1.3673, 1.4130), 24: (2.0847, 2.1576), 23: (2.4888, 2.5783)}
+
+    @classmethod
+    def setUpClass(cls):
+        cls.path = tempfile.mkdtemp(prefix='acc_test_auto_width_smwidth_' + 'x' * 70)
+        cmd = mgcmd.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('set automatic_html_opening False --no_save')
+        cls.cards = {}
+        try:
+            cmd.exec_cmd('import model loop_qcd_qed_sm')
+        except Exception as error:
+            shutil.rmtree(cls.path, ignore_errors=True)
+            raise unittest.SkipTest('loop_qcd_qed_sm is not available: %s' % error)
+        for name, option in (('smwidth', '--nlo=smwidth'),
+                             ('mcatnlo', '--nlo=mcatnlo --engine=madevent')):
+            card = pjoin(cls.path, 'param_card_%s.dat' % name)
+            cmd.exec_cmd('compute_widths t w+ z %s --output=%s' % (option, card))
+            cls.cards[name] = read_decays(card)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.path, ignore_errors=True)
+
+    def test_smwidth(self):
+        for pid, (expected, _) in self.EXPECTED.items():
+            self.assertAlmostEqual(self.cards['smwidth'][pid]['total'], expected,
+                                   delta=0.003 * expected, msg=str(pid))
+
+    def test_mcatnlo(self):
+        for pid, (_, expected) in self.EXPECTED.items():
+            self.assertAlmostEqual(self.cards['mcatnlo'][pid]['total'], expected,
+                                   delta=0.005 * expected, msg=str(pid))
+
+    def test_the_qcd_corrections_agree(self):
+        """MC@NLO (QCD) over SMWidth (QCD and EW) is what the EW corrections take
+        away from SMWidth: 1.033 to 1.036 for t, W and Z. Without the QCD corrections
+        it would be 1.13 for the top (LO over NLO QCD+EW) and 1.01 for W and Z."""
+        for pid in self.EXPECTED:
+            ratio = self.cards['mcatnlo'][pid]['total'] / self.cards['smwidth'][pid]['total']
+            self.assertAlmostEqual(ratio, 1.035, delta=0.007, msg=str(pid))

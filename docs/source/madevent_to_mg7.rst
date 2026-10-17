@@ -234,10 +234,11 @@ madspace: the widths are always computed with MadEvent then.
 NLO widths
 ^^^^^^^^^^
 
-``compute_widths --nlo`` computes the width at NLO in QCD. A model that comes with a dedicated
-code for it (``SMWidth``, which is HDECAY, for the Standard Model) uses it. For the others the
-two-body decays that have a colour charge, in the decaying particle or in a decay product, are
-run at NLO with MC@NLO (aMC@NLO at fixed order, one run per kind of decay, up to four at a time).
+``compute_widths --nlo`` computes the width at NLO. A model that comes with a dedicated code for
+it (``SMWidth``, for the Standard Model: NLO QCD and EW for t, W and Z, HDECAY for the Higgs)
+uses it. For the others the two-body decays that have a colour charge, in the decaying particle
+or in a decay product, are run at NLO in QCD with MC@NLO (aMC@NLO at fixed order, one run per
+kind of decay, up to four at a time). ``--nlo=smwidth`` and ``--nlo=mcatnlo`` choose the code.
 The model needs loop information: ``sm`` is replaced by ``loop_sm``, a model that cannot make
 loops stops the computation of that decay, which keeps its LO width with a warning. The decays
 into three bodies or more are always at LO (madspace, or MadEvent), so that
@@ -261,6 +262,62 @@ The options also go in the param_card, after the ``auto`` of a width::
 ``compute_widths``: ``--nlo``, ``--body_decay``, ``--precision_channel``, ``--min_br`` and
 ``--engine``. The widths with the same options are computed together, and
 ``set decay 6 auto --nlo --body_decay=3`` writes the same line from the card editor.
+
+Validation against SMWidth
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The two NLO codes can be run on the same model, the Standard Model with SMWidth
+(``loop_qcd_qed_sm``, alpha(MZ) scheme, with its default card: ``m_t`` = 173.3 GeV,
+``m_H`` = 125 GeV, ``alpha_s(m_Z)`` = 0.118)::
+
+    import model loop_qcd_qed_sm
+    compute_widths t w+ z --nlo=smwidth      # NLO QCD and EW, a few seconds
+    compute_widths t w+ z --nlo=mcatnlo      # NLO QCD, 4 runs of MC@NLO, about a minute
+
+SMWidth adds the EW corrections to the QCD ones, which MC@NLO does not have, so the comparison
+is made on the QCD part: the QCD-only column comes from the width functions of SMWidth called
+with the orders ``(qcd, qed) = (1, 0)``, the LO column with ``(0, 0)``. The errors of the
+MC@NLO column are the statistical ones of the runs (0.1%); the LO widths of the two codes agree
+to 1e-4. Widths in GeV:
+
+.. list-table::
+    :header-rows: 1
+    :widths: 10 14 18 22 16 20
+
+    * - particle
+      - LO
+      - SMWidth, NLO QCD
+      - MC@NLO, NLO QCD
+      - MC@NLO / SMWidth
+      - SMWidth, NLO QCD+EW (``--nlo``)
+    * - ``t``
+      - 1.5462
+      - 1.4136
+      - 1.4130 ± 0.0020
+      - 0.9996 ± 0.0014
+      - 1.3673
+    * - ``w+``
+      - 2.1049
+      - 2.1586
+      - 2.1576 ± 0.0022
+      - 0.9995 ± 0.0010
+      - 2.0847
+    * - ``z``
+      - 2.5138
+      - 2.5793
+      - 2.5783 ± 0.0020
+      - 0.9996 ± 0.0008
+      - 2.4888
+
+The QCD corrections agree to 0.05%, which is within the statistical error. The EW corrections
+that SMWidth also includes are -3.3% for the top, -3.4% for the W and -3.5% for the Z, relative
+to the NLO QCD width. In MC@NLO the corrections are the ``NLO/LO`` of each two-body decay:
+0.914 for ``t > w+ b``, 1.038 for ``w+ > u d~`` (``1 + alpha_s(m_W)/pi`` is 1.0383 in the
+dedicated code) and 1.037 for ``z > q q~``.
+
+The Higgs is not in the table: SMWidth returns the HDECAY total (running quark masses,
+and the loop-induced ``gg``, ``a a`` and ``z a``), where MC@NLO has the tree-level decays only
+and the Yukawa couplings of the model.
 
 Not supported yet
 -----------------

@@ -64,6 +64,16 @@ class AutoWidthOptionsTest(unittest.TestCase):
             'AUTO --engine=madevent --precision_channel=0.001 --min_br=0.01'),
             ['--precision_channel=0.001', '--min_br=0.01', '--engine=madevent'])
 
+    def test_the_code_of_the_nlo_widths(self):
+        self.assertEqual(check_param_card.auto_width_options('auto --nlo=MCATNLO'),
+                         ['--nlo=mcatnlo'])
+        self.assertEqual(check_param_card.auto_width_options(
+            'auto --body_decay=3 --nlo=smwidth'), ['--nlo=smwidth', '--body_decay=3'])
+        self.assertEqual(check_param_card.format_auto_width('auto --nlo=mcatnlo'),
+                         'Auto --nlo=mcatnlo')
+        with self.assertRaises(check_param_card.InvalidParam):
+            check_param_card.auto_width_options('auto --nlo=hdecay')
+
     def test_one_order_whatever_the_user_wrote(self):
         self.assertEqual(
             check_param_card.auto_width_options('auto --body_decay=3 --nlo'),
@@ -437,6 +447,41 @@ class NLOWidthsTest(unittest.TestCase):
         nlo.assert_not_called()
         self.assertEqual(result, {6: [[[24, 5], 1.49]]})
 
+    def test_the_nlo_argument(self):
+        def nlo(argument):
+            return self.cmd.check_compute_widths(
+                ['t', '--path=%s' % self.card] + argument)[1]['nlo']
+        self.assertFalse(nlo([]))
+        self.assertIs(nlo(['--nlo']), True)
+        self.assertIs(nlo(['--nlo=True']), True)
+        self.assertIs(nlo(['--nlo=False']), False)
+        self.assertEqual(nlo(['--nlo=MCATNLO']), 'mcatnlo')
+        self.assertEqual(nlo(['--nlo=smwidth']), 'smwidth')
+        with self.assertRaises(madgraph.InvalidCmd):
+            nlo(['--nlo=hdecay'])
+
+    def test_mcatnlo_can_be_chosen_when_the_model_has_a_dedicated_code(self):
+        result, dedicated, lo, nlo = self.run_compute_widths('t --nlo=mcatnlo', smwidth=True)
+        dedicated.assert_not_called()
+        lo.assert_called_once()
+        nlo.assert_called_once()
+
+    def test_smwidth_can_be_chosen(self):
+        result, dedicated, lo, nlo = self.run_compute_widths('t --nlo=smwidth', smwidth=False)
+        dedicated.assert_called_once()    # it says itself that the model has none
+        lo.assert_not_called()
+        nlo.assert_not_called()
+
+    def test_an_unknown_code(self):
+        with self.assertRaises(madgraph.InvalidCmd):
+            self.run_compute_widths('t --nlo=hdecay', smwidth=False)
+
+    def test_nlo_false_is_lo(self):
+        result, dedicated, lo, nlo = self.run_compute_widths('t --nlo=false', smwidth=True)
+        dedicated.assert_not_called()
+        lo.assert_called_once()
+        nlo.assert_not_called()
+
     def test_the_model_is_checked_for_smwidth(self):
         model = mock.Mock()
         model.get.return_value = self.tmp
@@ -554,6 +599,19 @@ class RunMCatNLOTest(unittest.TestCase):
         self.assertIn(' 0.002   = req_acc_FO       ! accuracy', [l.rstrip() for l in lines])
         self.assertIn(' 10000 = nevents ! events', lines)
         self.assertIn(' 5 = other', lines)
+
+    def test_the_gauge_is_passed_on(self):
+        for gauge, expected in (('unitary', False), ('default', False), ('Feynman', True)):
+            self.cmd.options['gauge'] = gauge
+            try:
+                fake = FakeAMCatNLO(self)
+                self.workdir = pjoin(self.tmp, 'nlo_%s' % gauge)
+                self.run_width(fake)
+            finally:
+                self.cmd.options['gauge'] = 'unitary'
+            self.assertEqual('set gauge %s\n' % gauge in fake.commands[0][1], expected, gauge)
+        # before the model is imported
+        self.assertIn('set gauge Feynman\nimport model /models/sm\n', fake.commands[0][1])
 
     def test_the_complex_mass_scheme_is_passed_on(self):
         fake = FakeAMCatNLO(self)
@@ -678,3 +736,82 @@ class LauncherTest(unittest.TestCase):
         self.assertIn('PCH=0', self.compile_args(10, ['PCH=0']))
         self.assertEqual(self.compile_args(2, ['PCH=1']).count('PCH=1'), 1)
         self.assertEqual(self.compile_args(10, ['PCH=1']).count('PCH=1'), 1)
+
+
+class SMWidthTest(unittest.TestCase):
+    """The dedicated code of the SM, SMWidth: it keeps the path of its card in 100
+    characters and reads nothing from a longer one, whence zero widths."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cmd = mgcmd.MasterCmd()
+        cls.cmd.no_notification()
+        cls.cmd.exec_cmd('import model sm')
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='test_auto_width_nlo')
+        self.smdir = pjoin(self.tmp, 'model', 'SMWidth')
+        os.makedirs(self.smdir)
+        with open(pjoin(self.smdir, 'smwidth'), 'w') as stream:   # built: no compilation
+            stream.write('#!/bin/sh\n')
+        parameter = mock.Mock(lhablock='SMINPUTS')
+        parameter.name = 'aEWM1'
+        self.model = mock.Mock()
+        self.model.get.side_effect = lambda key: {
+            'modelpath': pjoin(self.tmp, 'model'), 'name': 'stub',
+            'parameters': {('external',): [parameter]}}[key]
+        # a card whose path is longer than 100 characters
+        self.carddir = pjoin(self.tmp, 'a' * 40, 'b' * 40)
+        os.makedirs(self.carddir)
+        self.card = pjoin(self.carddir, 'param_card.dat')
+        with open(self.card, 'w') as stream:
+            stream.write(self.cmd._curr_model.write_param_card())
+        self.assertGreater(len(self.card), 100)
+        self.calls = []
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def run_smwidth(self, stdout):
+        def popen(command, **kwargs):
+            copies = {}
+            for name in command[1:3]:
+                if os.path.exists(pjoin(kwargs['cwd'], name)):
+                    with open(pjoin(kwargs['cwd'], name)) as stream:
+                        copies[name] = stream.read()
+            self.calls.append((command, kwargs['cwd'], copies))
+            process = mock.Mock()
+            process.communicate.return_value = (stdout.encode(), b'')
+            return process
+
+        with mock.patch.object(madgraph.interface.madgraph_interface.misc, 'Popen', popen):
+            return self.cmd.compute_widths_SMWidth(
+                't --nlo --path=%s --output=%s' % (self.card, pjoin(self.carddir, 'out.dat')),
+                model=self.model)
+
+    def test_a_long_path_is_not_given_to_smwidth(self):
+        out = self.run_smwidth('  decay     6  0.136728E+01\n')
+        command, cwd, copies = self.calls[0]
+        self.assertEqual(cwd, self.smdir)
+        self.assertEqual(command[0], './smwidth')
+        self.assertLess(len(command[1]), 100)
+        self.assertEqual(os.path.dirname(command[1]), '')
+        with open(self.card) as stream:
+            self.assertEqual(copies[command[1]], stream.read())
+
+    def test_the_copies_are_removed(self):
+        self.run_smwidth('  decay     6  0.136728E+01\n')
+        self.assertEqual(os.listdir(self.smdir), ['smwidth'])
+
+    def test_the_widths_are_written_and_returned(self):
+        out = self.run_smwidth('  decay     6  0.136728E+01\n')
+        self.assertEqual(out, {6: [[[], 1.36728]]})
+        card = check_param_card.ParamCard(pjoin(self.carddir, 'out.dat'))
+        self.assertAlmostEqual(card['decay'].get((6,)).value, 1.36728)
+
+    def test_no_width_from_smwidth_is_an_error(self):
+        """It used to give zero for every width, silently."""
+        with self.assertRaises(madgraph.MadGraph5Error) as caught:
+            self.run_smwidth(' Warning: file /very/long/path not found\n')
+        self.assertIn('no width', str(caught.exception))
+        self.assertEqual(os.listdir(self.smdir), ['smwidth'])

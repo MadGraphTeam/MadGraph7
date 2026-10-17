@@ -317,6 +317,11 @@ class CheckValidForCmd(object):
                 if ftype != 'param_card.dat':
                     raise self.InvalidCmd('%s is not a valid param_card.' % arg)
                 output['path'] = arg
+            elif arg.startswith('--nlo'):
+                value = arg.partition('=')[2].lower()
+                if value not in ('', 'true', 'false', 'smwidth', 'mcatnlo'):
+                    raise self.InvalidCmd('--nlo takes smwidth or mcatnlo, not %s' % value)
+                output['nlo'] = value if value in ('smwidth', 'mcatnlo') else value != 'false'
             elif arg.startswith('--engine='):
                 output['engine'] = arg.split('=',1)[1].lower()
                 if output['engine'] not in ('madspace', 'madevent'):

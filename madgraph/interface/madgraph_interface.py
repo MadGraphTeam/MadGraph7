@@ -1061,12 +1061,13 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("        default: take value from the model")
         logger.info("  --output=X: path where to write the resulting card. ")
         logger.info("        default: overwrite input file. If no input file, write it in the model directory")
-        logger.info("  --nlo: Compute the NLO (QCD) width. With the dedicated code of the model")
-        logger.info("        (SMWidth, for the SM) when it has one. Otherwise the two-body decays that")
-        logger.info("        have a colour charge are run at NLO with MC@NLO (it needs a model with")
-        logger.info("        loop information; sm uses loop_sm) and the decays into three bodies or")
-        logger.info("        more stay at LO: --nlo --body_decay=3 is the two-body decays at NLO and")
-        logger.info("        the three-body ones at LO, --body_decay=2 the two-body decays only.")
+        logger.info("  --nlo: Compute the NLO width. With the dedicated code of the model")
+        logger.info("        (SMWidth, for the SM: QCD and EW) when it has one. Otherwise the two-body")
+        logger.info("        decays that have a colour charge are run at NLO in QCD with MC@NLO (it")
+        logger.info("        needs a model with loop information; sm uses loop_sm) and the decays into")
+        logger.info("        three bodies or more stay at LO: --nlo --body_decay=3 is the two-body")
+        logger.info("        decays at NLO and the three-body ones at LO, --body_decay=2 the two-body")
+        logger.info("        decays only. --nlo=smwidth or --nlo=mcatnlo chooses the code.")
         logger.info("  --engine=X: integrator of the N-body decays (N>2): madspace or madevent")
         logger.info("        default: the auto_width_engine option (madspace)")
         logger.info("")
@@ -2422,7 +2423,11 @@ This will take effect only in a NEW terminal
         for i,arg in enumerate(args):
             if arg.startswith('--'):
                 if arg.startswith('--nlo'):
-                    options['nlo'] =True  
+                    # --nlo, or --nlo=smwidth / --nlo=mcatnlo to choose the code
+                    value = arg.partition('=')[2].lower()
+                    if value not in ('', 'true', 'false', 'smwidth', 'mcatnlo'):
+                        raise self.InvalidCmd('--nlo takes smwidth or mcatnlo, not %s' % value)
+                    options['nlo'] = value if value in ('smwidth', 'mcatnlo') else value != 'false'
                     continue
                 elif not '=' in arg:
                     raise self.InvalidCmd('Options required an equal (and then the value)')
@@ -13258,7 +13263,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         except ImportError:
             pass
 
-        if '--nlo' not in line:
+        if not re.search(r'--nlo(?:\s|$|=(?!false))', line):
             warning_text = """Please note that the automatic computation of the width is
     only valid in narrow-width approximation and at tree-level."""
             logger.warning(warning_text)
@@ -13272,8 +13277,16 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         if not isinstance(model, model_reader.ModelReader):
             model = model_reader.ModelReader(model)
 
-        if '--nlo' in line and self.has_smwidth(model):
-            # the model comes with a dedicated code for the NLO widths (the SM)
+        nlo = re.search(r'--nlo(?:=(\w+))?(?:\s|$)', line)
+        nlo_code = nlo.group(1).lower() if nlo and nlo.group(1) else None
+        if nlo_code not in (None, 'true', 'false', 'smwidth', 'mcatnlo'):
+            raise self.InvalidCmd('--nlo takes smwidth or mcatnlo, not %s' % nlo_code)
+        if nlo_code == 'false':
+            nlo = None
+        if nlo_code in ('true', 'false'):
+            nlo_code = None
+        if nlo and (nlo_code == 'smwidth' or (nlo_code is None and self.has_smwidth(model))):
+            # the dedicated code of the model for the NLO widths (the SM)
             return self.compute_widths_SMWidth(line, model=model)
 
         # the decay model of this computation, if the LO step makes one: the NLO
@@ -13283,8 +13296,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
         decay_info, particles, opts = self._compute_widths_lo(line, model, do2body,
                                                               decaymodel)
-        if '--nlo' in line:
-            # no dedicated code: the two-body decays are run at NLO with MC@NLO
+        if nlo:
+            # no dedicated code, or MC@NLO asked for: the two-body decays are run at
+            # NLO with MC@NLO
             decay_info = self.compute_widths_nlo(particles, opts, decay_info,
                                                  model, decaymodel)
         return decay_info
@@ -13765,6 +13779,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             fsock.write('set nb_core %s --no_save\n' % nb_core)
             if aloha.complex_mass:
                 fsock.write('set complex_mass_scheme True\n')
+            # the gauge of the session, which a model such as loop_qcd_qed_sm needs
+            gauge = self.options.get('gauge')
+            if gauge and gauge not in ('unitary', 'default'):
+                fsock.write('set gauge %s\n' % gauge)
             fsock.write('import model %s\n' % model_ref)
             fsock.write('generate %s\n' % process)
             fsock.write('output %s -f\n' % proc_dir)
@@ -13860,17 +13878,34 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             misc.compile(cwd=pjoin(model_path, 'SMWidth'))
 
         # look for the ident_card.dat
-        identpath=" "
         carddir=os.path.dirname(opts['path'])
-        if 'ident_card.dat' in os.listdir(carddir):
-            identpath=pjoin(carddir,'ident_card.dat')
+        has_ident = 'ident_card.dat' in os.listdir(carddir or '.')
+        # smwidth keeps the path of the cards in 100 characters: with a longer one
+        # it reads nothing and every width comes out as zero. It runs in its own
+        # directory, on copies of the cards with short names.
+        smdir = pjoin(model_path, 'SMWidth')
+        copies = ['smwidth_card_%d.dat' % os.getpid()]
+        files.cp(opts['path'], pjoin(smdir, copies[0]))
+        identpath = " "
+        if has_ident:
+            copies.append('smwidth_ident_%d.dat' % os.getpid())
+            files.cp(pjoin(carddir, 'ident_card.dat'), pjoin(smdir, copies[1]))
+            identpath = copies[1]
         #run the code
-        output,error = misc.Popen(['./smwidth',opts['path'],identpath,arg2],
-                                  stdout=subprocess.PIPE,
-                                  stdin=subprocess.PIPE,
-                                  cwd=pjoin(model_path, 'SMWidth')).communicate()
+        try:
+            output,error = misc.Popen(['./smwidth', copies[0], identpath, arg2],
+                                      stdout=subprocess.PIPE,
+                                      stdin=subprocess.PIPE,
+                                      cwd=smdir).communicate()
+        finally:
+            for name in copies:
+                if os.path.exists(pjoin(smdir, name)):
+                    os.remove(pjoin(smdir, name))
         pattern = re.compile(r'''  decay\s+(\+?\-?\d+)\s+(\+?\-?\d+\.\d+E\+?\-?\d+)''',re.I)
         width_list = pattern.findall(output.decode(errors='ignore'))
+        if not width_list:
+            raise MadGraph5Error('SMWidth returned no width:\n%s' %
+                                 '\n'.join(output.decode(errors='ignore').splitlines()[-8:]))
         width_dict = {}
         for pid,width in width_list:
             width_dict[int(pid)] = float(width)
