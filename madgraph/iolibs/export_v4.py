@@ -39,7 +39,7 @@ import  collections
 import aloha
 
 import madgraph
-import models
+import madgraph.models as models
 import madgraph.core.base_objects as base_objects
 import madgraph.core.color_algebra as color
 import madgraph.core.color_amp as color_amp
@@ -61,10 +61,10 @@ import madgraph.various.process_checks as process_checks
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph
 import aloha.create_aloha as create_aloha
-import models.import_ufo as import_ufo
-import models.write_param_card as param_writer
-import models.check_param_card as check_param_card
-from models import UFOError
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.write_param_card as param_writer
+import madgraph.models.check_param_card as check_param_card
+from madgraph.models import UFOError
 
 
 from madgraph import MadGraph5Error, MG5DIR, ReadWrite
@@ -6804,7 +6804,7 @@ class ProcessExporterFortranMW(ProcessExporterFortran):
         cp(_file_path+'/iolibs/file_writers.py', 
                               self.dir_path+'/bin/internal/file_writers.py')
         #model file                        
-        cp(_file_path+'../models/check_param_card.py', 
+        cp(_file_path+'models/check_param_card.py', 
                               self.dir_path+'/bin/internal/check_param_card.py')   
                 
         #madevent file
@@ -7665,7 +7665,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         cp(_file_path+'/iolibs/file_writers.py', 
                               self.dir_path+'/bin/internal/file_writers.py')
         #model file                        
-        cp(_file_path+'../models/check_param_card.py', 
+        cp(_file_path+'models/check_param_card.py', 
                               self.dir_path+'/bin/internal/check_param_card.py')   
         
         #copy all the file present in madevent directory
@@ -10986,11 +10986,11 @@ class UFO_model_to_mg4(object):
         file_to_link = ['formats.inc', 'rw_para.f', 'testprog.f']
     
         for filename in file_to_link:
-            cp( MG5DIR + '/models/template_files/fortran/' + filename, \
+            cp( MG5DIR + '/madgraph/models/template_files/fortran/' + filename, \
                                                                 self.dir_path)
             
         file = open(os.path.join(MG5DIR,\
-                              'models/template_files/fortran/rw_para.f')).read()
+                              'madgraph/models/template_files/fortran/rw_para.f')).read()
 
         if self.vector_size:
             includes=["include \'../vector.inc\'"]
@@ -11025,10 +11025,10 @@ class UFO_model_to_mg4(object):
             updateloop_default = '.false.'
 
         if self.opt['onia']:
-            cp( MG5DIR + '/models/template_files/fortran/rw_onia.f', \
+            cp( MG5DIR + '/madgraph/models/template_files/fortran/rw_onia.f', \
                                        os.path.join(self.dir_path,'rw_onia.f'))
             
-        cp( MG5DIR + '/models/template_files/fortran/' + lha_read_filename, \
+        cp( MG5DIR + '/madgraph/models/template_files/fortran/' + lha_read_filename, \
                                        os.path.join(self.dir_path,'lha_read.f'))
         
         file=file%{'includes':'\n      '.join(includes),
@@ -11040,7 +11040,7 @@ class UFO_model_to_mg4(object):
 
         if self.opt['export_format'] in ['madevent', 'FKS5_default', 'FKS5_optimized'] \
             or self.opt['loop_induced']:
-            cp( MG5DIR + '/models/template_files/fortran/makefile_madevent', 
+            cp( MG5DIR + '/madgraph/models/template_files/fortran/makefile_madevent', 
                 self.dir_path + '/makefile')
             if self.opt['export_format'] in ['FKS5_default', 'FKS5_optimized']:
                 path = pjoin(self.dir_path, 'makefile')
@@ -11050,7 +11050,7 @@ class UFO_model_to_mg4(object):
         elif self.opt['export_format'] in ['standalone_fortran', 'standalone_msP','standalone_msF',
                                   'madloop','madloop_optimized', 'standalone_rw', 
                                   'madweight','matchbox','madloop_matchbox', 'plugin']:
-            cp( MG5DIR + '/models/template_files/fortran/makefile_standalone', 
+            cp( MG5DIR + '/madgraph/models/template_files/fortran/makefile_standalone', 
                 self.dir_path + '/makefile')
         else:
             raise MadGraph5Error('Unknown format')
@@ -11413,7 +11413,7 @@ C
             replace_dict['include_vector'] = ''
 
         fsock = self.open('printout.f', format='fortran')
-        text = open(pjoin(MG5DIR , 'models', 'template_files','fortran', 'printout.f')).read()
+        text = open(pjoin(MG5DIR, 'madgraph', 'models', 'template_files','fortran', 'printout.f')).read()
         text = text % replace_dict
         fsock.write(text)
 
@@ -13837,7 +13837,7 @@ c         segments from -DABS(tiny*Ga) to Ga
             model_name = model.get('name')
             # IF MSSM convert the card to SLAH1
             if model_name == 'mssm' or model_name.startswith('mssm-'):
-                import models.check_param_card as translator    
+                import madgraph.models.check_param_card as translator    
                 # Check the format of the param_card for Pythia and make it correct
                 if rule_card_path:
                     translator.make_valid_param_card(output_path, rule_card_path)

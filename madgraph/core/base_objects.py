@@ -2284,7 +2284,7 @@ class Model(PhysicsObject):
     def write_param_card(self, filepath=None):
         """Write out the param_card, and return as string."""
         
-        import models.write_param_card as writer
+        import madgraph.models.write_param_card as writer
         if not filepath:
             out = io.StringIO() # it's suppose to be written in a file
         else:
