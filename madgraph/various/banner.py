@@ -6713,12 +6713,13 @@ class RunCardMG7(RunCard):
             comment="list of devices, each cpu, cuda or hip with an optional index (e.g. \"cuda:1\")")
         self.add_toml_param('run', 'cpu_mode', "auto", gridpack=True,
             allowed=['auto', 'scalar', 'simd_128', 'simd_256', 'simd_512', 'avx512y'],
-            comment="SIMD width on cpu devices; auto picks the widest one the host supports")
+            comment="SIMD width of the matrix elements on cpu devices; auto picks the widest one the host supports")
+        self.add_toml_param('run', 'madspace_cpu_mode', "auto", gridpack=True,
+            allowed=['auto', 'scalar', 'simd_128', 'simd_256', 'avx512y', 'simd_512'],
+            comment="SIMD width of the phase-space sampling on cpu devices; simd_128 is ARM only")
         self.add_toml_param('run', 'precision', "color32", gridpack=True,
             allowed=['all64', 'all32', 'color32', 'denom64'],
             comment="matrix element precision: all64, all32, color32 (FP32 color sum) or denom64 (FP64 momenta and propagator denominators)")
-        self.add_toml_param('run', 'simd_vector_size', -1,
-            comment="-1 chooses automatically; x86: 1, 4, 8; Apple silicon: 1, 2")
         self.add_toml_param('run', 'cpu_thread_pool_size', -1, gridpack=True,
             comment="threads for the cpu devices; -1 chooses automatically")
         self.add_toml_param('run', 'gpu_thread_pool_size', 1, gridpack=True,
@@ -7044,7 +7045,7 @@ class RunCardMG7(RunCard):
     get = __getitem__
 
     def __setitem__(self, name, value, *args, **opts):
-        """Refuse an unsupported cpu_mode instead of silently falling back.
+        """Refuse an unsupported (madspace_)cpu_mode instead of silently falling back.
 
         The generic ConfigFile machinery reacts to a value outside an 'allowed'
         list by logging a warning and keeping the previous value. For cpu_mode
@@ -7059,14 +7060,17 @@ class RunCardMG7(RunCard):
         tool reading such a sample (MadSpin, systematics, ...) abort on a
         parameter it never uses.
         """
-        if isinstance(name, str) and name.strip().lower() in ('cpu_mode', 'run.cpu_mode'):
-            allowed = self.allowed_value.get('run.cpu_mode', [])
+        key = name.strip().lower() if isinstance(name, str) else None
+        if key is not None and key.startswith('run.'):
+            key = key[4:]
+        if key in ('cpu_mode', 'madspace_cpu_mode'):
+            allowed = self.allowed_value.get('run.' + key, [])
             if allowed and str(value).strip().lower() not in [str(v).lower() for v in allowed]:
-                message = ("Invalid cpu_mode='%s': supported values are [ '%s' ]"
-                           % (str(value).strip(), "', '".join(str(v) for v in allowed)))
+                message = ("Invalid %s='%s': supported values are [ '%s' ]"
+                           % (key, str(value).strip(), "', '".join(str(v) for v in allowed)))
                 if getattr(self, '_from_banner', False):
                     logger.warning("%s; the run_card of the event file is read with "
-                                   "cpu_mode='%s'", message, self['run']['cpu_mode'])
+                                   "%s='%s'", message, key, self['run'][key])
                     return
                 raise InvalidRunCard(message)
         return super(RunCardMG7, self).__setitem__(name, value, *args, **opts)

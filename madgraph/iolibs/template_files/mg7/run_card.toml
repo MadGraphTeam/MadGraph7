@@ -6,12 +6,12 @@ run_name = %(run.run_name)s
 seed = %(run.seed)s
 # options: cpu, cuda, hip, each optionally with a device index, e.g. "cuda:1"
 device = %(run.device)s
-# SIMD width on cpu devices; options: auto, scalar, simd_128, simd_256, simd_512, avx512y
+# SIMD width of the matrix elements on cpu devices; options: auto, scalar, simd_128, simd_256, simd_512, avx512y
 cpu_mode = %(run.cpu_mode)s
+# SIMD width of the phase-space sampling on cpu devices; options: auto, scalar, simd_128 (ARM only), simd_256, avx512y, simd_512
+madspace_cpu_mode = %(run.madspace_cpu_mode)s
 # matrix element precision; options: all64, all32, color32, denom64
 precision = %(run.precision)s
-# -1 chooses automatically; x86: 1, 4, 8; Apple silicon: 1, 2
-simd_vector_size = %(run.simd_vector_size)s
 # -1 sets the thread count automatically
 cpu_thread_pool_size = %(run.cpu_thread_pool_size)s
 gpu_thread_pool_size = %(run.gpu_thread_pool_size)s

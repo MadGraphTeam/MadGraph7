@@ -28,7 +28,7 @@ struct IVec {
     IVec() = default;
     IVec(__m256i _v) : v(_v) {};
     IVec(int _v) : v(_mm256_set1_epi64x(_v)) {};
-    explicit IVec(__m256d _v) { v = _mm256_cvtepi32_epi64(_mm256_cvtpd_epi32(_v)); }
+    explicit IVec(__m256d _v) { v = _mm256_cvtepi32_epi64(_mm256_cvttpd_epi32(_v)); }
     operator __m256i() { return v; }
     IVec operator+=(IVec _v) {
         v = _mm256_add_epi64(v, _v);
@@ -41,7 +41,7 @@ struct BVec {
     BVec() = default;
     BVec(__m256d _v) : v(_v) {};
     BVec(__m256i _v) : v(_mm256_castsi256_pd(_v)) {};
-    BVec(bool _v) : v(_mm256_set1_pd(-1 * static_cast<int>(_v))) {};
+    BVec(bool _v) : v(_mm256_castsi256_pd(_mm256_set1_epi64x(_v ? -1 : 0))) {};
     operator __m256d() { return v; }
     operator __m256i() { return _mm256_castpd_si256(v); }
     __m256d v;
@@ -75,13 +75,17 @@ inline IVec vgather(
     ));
 }
 
-inline FVec vload(double* base_ptr, std::size_t stride) {
-    return _mm256_i32gather_pd(base_ptr, stride_seq(stride), 8);
+// contiguous loads and stores of the lanes of one batch element
+inline FVec vload(double* base_ptr) { return _mm256_loadu_pd(base_ptr); }
+
+inline IVec vload(int* base_ptr) {
+    return _mm256_cvtepi32_epi64(_mm_loadu_si128(reinterpret_cast<__m128i*>(base_ptr)));
 }
 
-inline IVec vload(int* base_ptr, std::size_t stride) {
-    return _mm256_cvtepi32_epi64(_mm_i32gather_epi32(base_ptr, stride_seq(stride), 4));
-}
+// the same value in every lane
+inline FVec vload_broadcast(double* base_ptr) { return _mm256_broadcast_sd(base_ptr); }
+
+inline IVec vload_broadcast(int* base_ptr) { return _mm256_set1_epi64x(*base_ptr); }
 
 inline void vscatter(
     double* base_ptr,
@@ -95,7 +99,7 @@ inline void vscatter(
         long long scalar[4];
         __m256i vec;
     } indices_buf;
-    _mm256_store_pd(values_buf, values);
+    _mm256_storeu_pd(values_buf, values);
     _mm256_store_si256(&indices_buf.vec, indices);
     for (int i = 0; i < 4; ++i) {
         base_ptr[index_stride * indices_buf.scalar[i] + batch_stride * i] =
@@ -126,23 +130,10 @@ inline void vscatter(
     }
 }
 
-inline void vstore(double* base_ptr, std::size_t stride, FVec values) {
-    double values_buf[4];
-    _mm256_store_pd(values_buf, values);
-    for (int i = 0; i < 4; ++i) {
-        base_ptr[i * stride] = values_buf[i];
-    }
-}
+inline void vstore(double* base_ptr, FVec values) { _mm256_storeu_pd(base_ptr, values); }
 
-inline void vstore(int* base_ptr, std::size_t stride, IVec values) {
-    union {
-        int scalar[4];
-        __m128i vec;
-    } values_buf;
-    _mm_store_si128(&values_buf.vec, truncate_i64_to_i32(values));
-    for (int i = 0; i < 4; ++i) {
-        base_ptr[i * stride] = values_buf.scalar[i];
-    }
+inline void vstore(int* base_ptr, IVec values) {
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(base_ptr), truncate_i64_to_i32(values));
 }
 
 inline FVec where(BVec arg1, FVec arg2, FVec arg3) {
@@ -193,10 +184,10 @@ inline FVec operator-(FVec arg1, FVec arg2) { return _mm256_sub_pd(arg1, arg2); 
 inline FVec operator*(FVec arg1, FVec arg2) { return _mm256_mul_pd(arg1, arg2); }
 inline FVec operator/(FVec arg1, FVec arg2) { return _mm256_div_pd(arg1, arg2); }
 inline IVec operator-(IVec arg1) {
-    return _mm256_sub_epi32(_mm256_set1_epi32(0), arg1);
+    return _mm256_sub_epi64(_mm256_setzero_si256(), arg1);
 }
-inline IVec operator+(IVec arg1, IVec arg2) { return _mm256_add_epi32(arg1, arg2); }
-inline IVec operator-(IVec arg1, IVec arg2) { return _mm256_sub_epi32(arg1, arg2); }
+inline IVec operator+(IVec arg1, IVec arg2) { return _mm256_add_epi64(arg1, arg2); }
+inline IVec operator-(IVec arg1, IVec arg2) { return _mm256_sub_epi64(arg1, arg2); }
 
 inline BVec isnan(FVec arg) { return arg != arg; }
 
