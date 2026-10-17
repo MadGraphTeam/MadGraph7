@@ -26,7 +26,7 @@ ERROR = BenchmarkStatistics(0.1, 0.05, 0.01)
 def comparison(model_time=1.0, direct_time=2.0) -> R2Comparison:
     return R2Comparison(
         WORKLOAD,
-        (8, 32),
+        16,
         BenchmarkComponentTiming(model_time, ERROR, 8),
         BenchmarkComponentTiming(direct_time, ERROR, 8),
         ERROR,
@@ -54,6 +54,8 @@ def test_auto_chooses_direct_without_evidence_and_model_with_a_clear_win() -> No
         ("precision_bits", 256),
         ("observable_signature", "spin-correlated"),
         ("parameter_state", "parameters-1"),
+        ("rescue_plan", (("arbitrary", 256),)),
+        ("stability_policy", "relative-1e-10"),
     ],
 )
 def test_incompatible_or_stale_profile_restores_default(field, value) -> None:
@@ -102,16 +104,21 @@ def test_forcing_cannot_reenable_a_pruned_or_uncertified_branch() -> None:
 def test_rescue_capability_is_checked_before_selecting_the_call_strategy() -> None:
     limited = replace(DIRECT, arithmetics=frozenset({"double"}))
     capabilities = R2Capabilities((MODEL, limited))
+    with_rescue = replace(WORKLOAD, rescue_plan=(("arbitrary", 256),))
     assert select(capabilities).effective is R2Strategy.DIRECT
-    assert (
-        select(capabilities, rescue_arithmetics=("arbitrary",)).effective
-        is R2Strategy.MODEL
-    )
+    assert select(capabilities, workload=with_rescue).effective is R2Strategy.MODEL
     with pytest.raises(ValueError, match="missing arithmetic: arbitrary"):
         select_r2_strategy(
             "direct",
             capabilities,
-            WORKLOAD,
+            with_rescue,
             batch_size=16,
-            rescue_arithmetics=("arbitrary",),
         )
+
+
+def test_rescue_precision_change_invalidates_profile() -> None:
+    original = replace(WORKLOAD, rescue_plan=(("arbitrary", 128),))
+    profile = replace(comparison(), workload=original)
+    assert select(workload=original, comparison=profile).effective is R2Strategy.MODEL
+    changed = replace(original, rescue_plan=(("arbitrary", 256),))
+    assert select(workload=changed, comparison=profile).effective is R2Strategy.DIRECT

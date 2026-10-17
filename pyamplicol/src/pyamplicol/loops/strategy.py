@@ -64,6 +64,8 @@ class R2Workload:
     precision_bits: int
     observable_signature: str
     parameter_state: str
+    rescue_plan: tuple[tuple[str, int], ...] = ()
+    stability_policy: str = "none"
 
     def __post_init__(self) -> None:
         if self.arithmetic not in _ARITHMETICS:
@@ -74,6 +76,13 @@ class R2Workload:
             or self.precision_bits < 2
         ):
             raise ValueError("precision_bits must be an integer of at least two")
+        rescue = tuple(tuple(attempt) for attempt in self.rescue_plan)
+        for arithmetic, bits in rescue:
+            if arithmetic not in _ARITHMETICS or (
+                isinstance(bits, bool) or not isinstance(bits, int) or bits < 2
+            ):
+                raise ValueError("invalid rescue arithmetic or precision")
+        object.__setattr__(self, "rescue_plan", rescue)
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,28 +95,23 @@ class R2Comparison:
     """
 
     workload: R2Workload
-    batch_range: tuple[int, int]
+    batch_size: int
     model: BenchmarkComponentTiming
     direct: BenchmarkComponentTiming
     paired_uncertainty: BenchmarkStatistics
 
     def __post_init__(self) -> None:
-        bounds = tuple(self.batch_range)
         if (
-            len(bounds) != 2
-            or any(isinstance(b, bool) or not isinstance(b, int) for b in bounds)
-            or not 1 <= bounds[0] <= bounds[1]
+            isinstance(self.batch_size, bool)
+            or not isinstance(self.batch_size, int)
+            or self.batch_size < 1
         ):
-            raise ValueError("batch_range must be a measured positive size range")
-        object.__setattr__(self, "batch_range", bounds)
+            raise ValueError("profile batch_size must be a measured positive size")
         if self.model.sample_count != self.direct.sample_count:
             raise ValueError("R2 timing comparison requires paired blocks")
 
     def demonstrates_model_win(self, workload: R2Workload, batch_size: int) -> bool:
-        if (
-            self.workload != workload
-            or not self.batch_range[0] <= batch_size <= self.batch_range[1]
-        ):
+        if self.workload != workload or batch_size != self.batch_size:
             return False
         if self.model.sample_count < 2:
             return False
@@ -135,7 +139,6 @@ def select_r2_strategy(
     workload: R2Workload,
     *,
     batch_size: int,
-    rescue_arithmetics: tuple[str, ...] = (),
     comparison: R2Comparison | None = None,
 ) -> R2Selection:
     """Return the immutable choice to reuse for this entire call and its rescue.
@@ -150,9 +153,7 @@ def select_r2_strategy(
         or batch_size < 0
     ):
         raise ValueError("batch_size must be a nonnegative integer")
-    required = {workload.arithmetic, *rescue_arithmetics}
-    if not required <= _ARITHMETICS:
-        raise ValueError("unknown rescue arithmetic")
+    required = {workload.arithmetic, *(attempt[0] for attempt in workload.rescue_plan)}
     available: set[R2Strategy] = set()
     reasons: dict[R2Strategy, str] = {}
     for branch in capabilities.branches:
