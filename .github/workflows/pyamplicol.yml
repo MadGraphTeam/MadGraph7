@@ -57,8 +57,14 @@ jobs:
           EVENT: ${{ github.event_name }}
           PUSH_BEFORE: ${{ github.event.before }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
+          # Release builds only build artifacts; main's run already tested them.
+          FULL_MATRIX: ${{ inputs.full_matrix && 'true' || 'false' }}
         run: |
           set -euo pipefail
+          if [[ "$FULL_MATRIX" == true ]]; then
+            echo "pyamplicol=false" | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
           case "$EVENT" in
             push) base="$PUSH_BEFORE" ;;
             pull_request) base="$PR_BASE" ;;
