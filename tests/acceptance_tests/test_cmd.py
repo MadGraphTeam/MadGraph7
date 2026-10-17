@@ -255,6 +255,7 @@ class TestCmdShell1(unittest.TestCase):
                     'apply_flavor_grouping': True,
                     'merge_same_topologies': True,
                     'merge_quartic_vertices': False,
+                    'auto_width_engine': 'madspace',
                     'nb_core_pythia8': None,
                     'nb_core_delphes': None,
                         }
