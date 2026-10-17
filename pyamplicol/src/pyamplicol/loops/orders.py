@@ -159,9 +159,8 @@ def compile_order_plan(
         if not item.eligibility.admits(frozenset(names)):
             continue
         previous = by_id.get(item.id)
-        if previous is not None:
-            if previous != item:
-                raise ValueError(f"conflicting loop contribution identity {item.id!r}")
+        if previous is not None and previous != item:
+            raise ValueError(f"conflicting loop contribution identity {item.id!r}")
         by_id[item.id] = item
     retained = tuple(by_id[key] for key in sorted(by_id))
     loop_orders = {item.order for item in retained}
