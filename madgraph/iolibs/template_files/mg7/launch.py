@@ -35,7 +35,7 @@ import madspace as ms
 # madspace is imported; stop its install directory from shadowing the caller's
 # yaml/packaging/... for the rest of what is now MG5's own session.
 _drop_install_path()
-from models.check_param_card import ParamCard
+from models.check_param_card import ParamCard, group_auto_widths
 from models.model_reader import Alphas_Runner
 from madgraph.iolibs.template_files.mg7 import hwu_output
 from madgraph.iolibs.template_files.mg7 import plots
@@ -59,6 +59,13 @@ if _source_hash != ms.SOURCE_HASH:
     print()
 
 logger = logging.getLogger("madgraph7")
+
+# From this many subprocess directories to compile, the standard headers are
+# precompiled once ('make PCH=1', see madmatrix.mk): each file of a small process
+# spends most of its time parsing them. Below, building the precompiled header
+# costs about what it saves.
+PCH_MIN_SUBPROCESSES = 4
+
 LOG_LEVEL_MAP = {
     ms.Logger.LogLevel.level_debug: logging.DEBUG,
     ms.Logger.LogLevel.level_info: logging.INFO,
@@ -1349,12 +1356,12 @@ class MadgraphProcess:
                 f"see log detail in {log_path}"
             )
             start_time = time.time()
-            self.make_subprocesses(
-                subproc_path,
-                [f"BACKEND={backend}", f"FPTYPE={fptype}", "USEBUILDDIR=1"]
-                + self.extra_make_args,
-                nb_core, log_path,
-            )
+            make_args = [f"BACKEND={backend}", f"FPTYPE={fptype}", "USEBUILDDIR=1"]
+            make_args += self.extra_make_args
+            if (len(missing) >= PCH_MIN_SUBPROCESSES
+                    and not any(arg.startswith("PCH=") for arg in make_args)):
+                make_args.append("PCH=1")
+            self.make_subprocesses(subproc_path, make_args, nb_core, log_path)
             logger.info(
                 f"Compilation of SubProcesses done in {time.time() - start_time:.1f} s"
             )
@@ -4357,12 +4364,14 @@ def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat"))
             text = f.read()
     except OSError:
         return
-    # matches "DECAY <pdg> auto" (optionally "auto@NLO"), as in
-    # common_run_interface.static_check_param_card
-    pdgs = re.findall(r"(?im)^\s*decay\s+([+-]?\d+)\s+auto", text)
-    if not pdgs:
+    # "DECAY <pdg> auto", with the options of compute_widths that may follow
+    # ("auto@NLO", "auto --nlo --body_decay=3"), as in
+    # common_run_interface.static_check_param_card: one compute_widths per set of
+    # options
+    groups = group_auto_widths(text)
+    if not groups:
         return
-    pdgs = list(dict.fromkeys(pdgs))  # de-duplicate, keep order
+    pdgs = [pdg for group in groups.values() for pdg in group]
 
     model = read_stored_model()
     if not model:
@@ -4377,8 +4386,10 @@ def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat"))
         return
 
     import tempfile
-    cmds = "import model %s\ncompute_widths %s --path=%s\n" % (
-        model, " ".join(pdgs), os.path.abspath(param_card_path))
+    cmds = "import model %s\n" % model
+    for options, group in groups.items():
+        cmds += "compute_widths %s --path=%s %s\n" % (
+            " ".join(group), os.path.abspath(param_card_path), " ".join(options))
     with tempfile.NamedTemporaryFile("w", suffix=".mg5", delete=False) as fh:
         fh.write(cmds)
         cmdfile = fh.name
@@ -4680,12 +4691,9 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.decay_widths:
-        # The matrix elements of a decay take microseconds to integrate, so
-        # the build is all there is to wait for: precompile the standard
-        # headers, which halves it (PCH=1, see madmatrix.mk).
         results = compute_decay_widths(
             ".", precision=args.precision, nb_core=args.nb_core,
-            extra_make_args=["PCH=1"] + args.make_arg)
+            extra_make_args=args.make_arg)
         with open(args.decay_widths, "w") as f:
             json.dump(results, f)
         return

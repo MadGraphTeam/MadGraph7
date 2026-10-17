@@ -210,9 +210,10 @@ Decay widths
 ``compute_widths`` and the ``auto`` widths of a ``param_card`` integrate the decays into
 three bodies or more with madspace, like the rest of MG7, where MadEvent used to be run. The
 two-body widths still come from the formulas of the model when it has them. Each decaying
-particle is written as a decay output (``output mg7``) in a temporary directory, built with
-precompiled headers and surveyed: the integration takes milliseconds and the build is what
-there is to wait for. For the Higgs of the ``heft`` model up to three bodies, the whole
+particle is written as a decay output (``output mg7``) in a temporary directory and surveyed:
+the integration takes milliseconds and the build is what there is to wait for. A build of at
+least four subprocess directories (this holds for any mg7 run) precompiles the standard
+headers first (``make PCH=1``, clang), which halves it. For the Higgs of the ``heft`` model up to three bodies, the whole
 command takes 6 s, against 26 s with MadEvent.
 
 ``alpha_s`` of a decay is run from the ``alpha_s(m_Z)`` of the card up to the mass of the
@@ -229,6 +230,37 @@ for one call with ``--engine``::
 MG7 goes back to MadEvent on its own, with a warning, if madspace cannot compute the widths
 and no engine was asked for with ``--engine``. The complex mass scheme is not available in
 madspace: the widths are always computed with MadEvent then.
+
+NLO widths
+^^^^^^^^^^
+
+``compute_widths --nlo`` computes the width at NLO in QCD. A model that comes with a dedicated
+code for it (``SMWidth``, which is HDECAY, for the Standard Model) uses it. For the others the
+two-body decays that have a colour charge, in the decaying particle or in a decay product, are
+run at NLO with MC@NLO (aMC@NLO at fixed order, one run per kind of decay, up to four at a time).
+The model needs loop information: ``sm`` is replaced by ``loop_sm``, a model that cannot make
+loops stops the computation of that decay, which keeps its LO width with a warning. The decays
+into three bodies or more are always at LO (madspace, or MadEvent), so that
+``--nlo --body_decay=3`` is the two-body decays at NLO and the three-body ones at LO, and
+``--nlo --body_decay=2`` the two-body decays alone::
+
+    compute_widths t w+ z h --nlo --body_decay=3
+
+The result depends on the renormalisation scheme of the model: with the pole-mass Yukawa of
+``loop_sm``, ``h > b b~`` gets a correction of -35%, which is the known
+``1 + 4/3 alpha_s/pi (9/4 + 3/2 log(m_b^2/m_H^2))`` and not what a physical width with a running
+Yukawa has.
+
+The options also go in the param_card, after the ``auto`` of a width::
+
+    DECAY  6 auto --nlo --body_decay=3
+    DECAY 25 auto --body_decay=2
+    DECAY 23 auto@NLO
+
+(``auto@NLO`` is the older spelling of ``auto --nlo``.) The options are those of
+``compute_widths``: ``--nlo``, ``--body_decay``, ``--precision_channel``, ``--min_br`` and
+``--engine``. The widths with the same options are computed together, and
+``set decay 6 auto --nlo --body_decay=3`` writes the same line from the card editor.
 
 Not supported yet
 -----------------

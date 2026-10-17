@@ -55,8 +55,9 @@ jobs:
   # A unit test, but it lives here rather than in unittest.yml because
   # MG7CmdTest imports the real launcher and self-skips without madspace.
   # test_auto_width_engine.py (compute_widths: the integrator option, its
-  # dispatch and the alpha_s of a decay) is run in the same job: its
-  # DecayAlphaSTest needs the launcher module too.
+  # dispatch and the alpha_s of a decay) and test_auto_width_nlo.py (the NLO widths
+  # with MC@NLO, the options of an 'auto' width, the precompiled headers of the
+  # build) are run in the same job: they need the launcher module too.
   unittest_mg7_launch:
     needs: build_madspace
     runs-on: ubuntu-24.04
@@ -73,7 +74,7 @@ jobs:
       - name: run the test_auto_width_engine unit tests
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_auto_width_engine -t0
+            ./tests/test_manager.py test_auto_width_engine test_auto_width_nlo -t0
 
 
   acceptancetest_mg7_bundle_1:
@@ -175,7 +176,9 @@ jobs:
       # ---- acceptancetest_mg7_auto_width ----
       # compute_widths of t, w+, z and h (SM, up to 3 bodies) with madspace (the
       # default) and with madevent: the two cards must agree, channel by channel
-      # and in the totals. Needs the madspace build and a C++ compiler, nothing else.
+      # and in the totals. Then the NLO widths (t > w+ b, h > b b~ with MC@NLO, the
+      # decays into three bodies at LO) and the options of an 'auto' width in the
+      # card. Needs the madspace build and the C++ and Fortran compilers.
       - name: "acceptancetest_mg7_auto_width"
         if: ${{ !cancelled() }}
         run: |

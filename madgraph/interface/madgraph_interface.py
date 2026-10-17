@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import absolute_import
 import atexit
 import collections
+import concurrent.futures
 import cmath
 import math
 import glob
@@ -1060,9 +1061,17 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("        default: take value from the model")
         logger.info("  --output=X: path where to write the resulting card. ")
         logger.info("        default: overwrite input file. If no input file, write it in the model directory")
-        logger.info("  --nlo: Compute NLO width [if the model support it]")
+        logger.info("  --nlo: Compute the NLO (QCD) width. With the dedicated code of the model")
+        logger.info("        (SMWidth, for the SM) when it has one. Otherwise the two-body decays that")
+        logger.info("        have a colour charge are run at NLO with MC@NLO (it needs a model with")
+        logger.info("        loop information; sm uses loop_sm) and the decays into three bodies or")
+        logger.info("        more stay at LO: --nlo --body_decay=3 is the two-body decays at NLO and")
+        logger.info("        the three-body ones at LO, --body_decay=2 the two-body decays only.")
         logger.info("  --engine=X: integrator of the N-body decays (N>2): madspace or madevent")
         logger.info("        default: the auto_width_engine option (madspace)")
+        logger.info("")
+        logger.info("  In a param_card, a width set to auto takes the same options:")
+        logger.info("        DECAY 6 auto --nlo --body_decay=3   (DECAY 6 auto@NLO is 'auto --nlo')")
         logger.info("")
         logger.info(" example: calculate_width h --body_decay=2 --output=./param_card")
 
@@ -13263,10 +13272,27 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         if not isinstance(model, model_reader.ModelReader):
             model = model_reader.ModelReader(model)
 
+        if '--nlo' in line and self.has_smwidth(model):
+            # the model comes with a dedicated code for the NLO widths (the SM)
+            return self.compute_widths_SMWidth(line, model=model)
+
+        # the decay model of this computation, if the LO step makes one: the NLO
+        # step needs the tree-level diagrams of the same model, and a second decay
+        # model made from the first one's model finds its vertices twice
+        self._widths_decaymodel = None
+
+        decay_info, particles, opts = self._compute_widths_lo(line, model, do2body,
+                                                              decaymodel)
         if '--nlo' in line:
-            # call SMWidth to calculate NLO Width
-            self.compute_widths_SMWidth(line, model=model)
-            return
+            # no dedicated code: the two-body decays are run at NLO with MC@NLO
+            decay_info = self.compute_widths_nlo(particles, opts, decay_info,
+                                                 model, decaymodel)
+        return decay_info
+
+    def _compute_widths_lo(self, line, model, do2body, decaymodel):
+        """The LO widths of do_compute_widths. Returns the decay_info (the
+        partial widths of every particle, {pid: [[decay products, width], ...]}),
+        the particles and the options of the command."""
 
         # check the argument and return those in a dictionary format
         particles, opts = self.check_compute_widths(self.split_arg(line))
@@ -13275,7 +13301,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             correct = True
             param_card = check_param_card.ParamCard(opts['path'])
             for param in param_card['decay']:
-                if param.value == "auto":
+                if check_param_card.auto_width_options(param.value) is not None:
                     param.value = 1
                     param.format = 'float'
                     correct = False
@@ -13344,7 +13370,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 madevent_interface.MadEventCmd.update_width_in_param_card(decay_info,
                                                        opts['path'], opts['output'])
                 if float(opts['body_decay']) == 2:
-                    return  decay_info
+                    return decay_info, particles, opts
         else:
             skip_2body = True
 
@@ -13357,12 +13383,13 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                                                   for key,value in opts.items()
                                                   if key not in ['precision_channel', 'engine'])
                                          ), skip_2body=skip_2body, model=decaymodel)
+        self._widths_decaymodel = self._curr_decaymodel
 
         if self._curr_amps:
             logger.info('Pass to numerical integration for computing the widths:')
         else:            
             logger.info('No need for N body-decay (N>2). Results are in %s' % opts['output'])
-            return  decay_info
+            return decay_info, particles, opts
 
         engine = opts['engine'] or self.options.get('auto_width_engine', 'madspace')
         if engine == 'madspace' and (self.options.get('complex_mass_scheme') or
@@ -13391,7 +13418,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                                                            opts['path'], opts['output'])
                 if self._curr_model['name'] == 'mssm' or self._curr_model['name'].startswith('mssm-'):
                     check_param_card.convert_to_slha1(opts['output'])
-                return decay_info
+                return decay_info, particles, opts
 
         # Do the MadEvent integration!!
         with misc.TMP_directory(dir=os.getcwd()) as path:
@@ -13477,7 +13504,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
         if self._curr_model['name'] == 'mssm' or self._curr_model['name'].startswith('mssm-'):
             check_param_card.convert_to_slha1(opts['output'])
-        return decay_info
+        return decay_info, particles, opts
 
 
 
@@ -13576,6 +13603,200 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         logger_mg.debug('madspace widths computed in %.1f s', time.time() - start)
         return decay_info
 
+    @staticmethod
+    def has_smwidth(model):
+        """Does the model come with SMWidth, the dedicated code (HDECAY) of the
+        NLO widths of the Standard Model?"""
+        return os.path.exists(pjoin(model.get('modelpath'), 'SMWidth'))
+
+    def compute_widths_nlo(self, particles, opts, decay_info, model, decaymodel=None):
+        """NLO (QCD) widths of the two-body decays, with MC@NLO (aMC@NLO at
+        fixed order). Used by 'compute_widths --nlo' when the model has no
+        dedicated code for it (SMWidth).
+
+        ``decay_info`` holds the LO widths. A two-body decay with a colour
+        charge in it, in the decaying particle or in a decay product, is run at
+        NLO and its width replaced. The others have no QCD correction, and the
+        decays into three bodies or more stay at LO, which is what
+        '--body_decay=3' asks for with '--nlo'. The param_card is rewritten with
+        the sums.
+
+        A decay that cannot be run (a model without loop information, ...) keeps
+        its LO width, with a warning. Returns the new decay_info."""
+
+        channels = []
+        for pid in particles:
+            decaying = model.get_particle(pid)
+            for index, (decay_to, width) in enumerate(decay_info.get(pid, [])):
+                if len(decay_to) != 2 or not width:
+                    continue
+                products = [model.get_particle(abs(code)) for code in decay_to]
+                if all(p.get('color') == 1 for p in [decaying] + products):
+                    continue # no QCD correction
+                channels.append((pid, index, tuple(decay_to)))
+        if not channels:
+            logger_mg.info('None of the two-body decays has a QCD correction: '
+                           'the widths are the LO ones.')
+            return decay_info
+
+        orders = self.two_body_born_orders(sorted(set(pid for pid, _, _ in channels)),
+                                           opts, decaymodel)
+        model_ref = self._curr_model.get('modelpath+restriction')
+        param_card = opts['output'] if os.path.exists(opts['output']) else opts['path']
+        precision = float(opts['precision_channel'])
+
+        def process_line(pid, decay_to):
+            names = [self.particle_name(model, pid)] + \
+                    [self.particle_name(model, code) for code in decay_to]
+            born = orders.get((pid, tuple(sorted(decay_to))))
+            if born is None:
+                raise MadGraph5Error('no tree-level diagram for this decay')
+            hierarchy = self._curr_model.get('order_hierarchy') or {'QCD': 1, 'QED': 2}
+            born = ' '.join('%s=%d' % (name, born.get(name, 0)) for name in hierarchy)
+            return '%s > %s %s %s [QCD]' % (names[0], names[1], names[2], born)
+
+        # Flavours the model treats alike (u and c, d and s, W > u d~ and W > c s~
+        # in the SM) have the same LO width to the last digit and the same NLO
+        # width: run one of them. The same decaying particle, the same colours
+        # and masses of the decay products, and the same LO width.
+        def signature(channel):
+            pid, index, decay_to = channel
+            products = [model.get_particle(abs(code)) for code in decay_to]
+            return (pid, tuple(sorted((p.get('color'), str(p.get('mass')))
+                                      for p in products)),
+                    float('%.9g' % decay_info[pid][index][1]))
+
+        signatures = [signature(channel) for channel in channels]
+        unique = []
+        for number, sig in enumerate(signatures):
+            if sig not in [signatures[first] for first in unique]:
+                unique.append(number)
+        workers = max(1, min(len(unique), 4))
+        cores = max(1, (self.options['nb_core'] or os.cpu_count() or 1) // workers)
+
+        logger_mg.info('NLO width of %d two-body decay(s) with MC@NLO (%d run(s)) ...',
+                       len(channels), len(unique))
+        start = time.time()
+        with misc.TMP_directory(dir=os.getcwd()) as path:
+            def run(number):
+                pid, _, decay_to = channels[number]
+                try:
+                    return self.run_mcatnlo_width(
+                        pjoin(path, 'nlo_%d' % number), process_line(pid, decay_to),
+                        model_ref, param_card, precision, cores)
+                except Exception as error:
+                    return error
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+                done = dict(zip(unique, pool.map(run, unique)))
+        outcomes = [done[next(first for first in unique if signatures[first] == sig)]
+                    for sig in signatures]
+
+        decay_info = copy.deepcopy(decay_info)
+        for (pid, index, decay_to), outcome in zip(channels, outcomes):
+            name = '%s > %s' % (self.particle_name(model, pid),
+                    ' '.join(self.particle_name(model, code) for code in decay_to))
+            lo = decay_info[pid][index][1]
+            if isinstance(outcome, Exception):
+                logger.warning('NLO width of %s failed (%s): the LO width %.5g GeV is kept.',
+                               name, outcome, lo)
+                continue
+            width, error = outcome
+            logger_mg.info('NLO width of %s: %.5g +- %.2g GeV (LO %.5g GeV, NLO/LO = %.3f)',
+                           name, width, error, lo, width / lo)
+            decay_info[pid][index][1] = width
+        logger_mg.debug('NLO widths computed in %.1f s', time.time() - start)
+
+        madevent_interface.MadEventCmd.update_width_in_param_card(
+                                      decay_info, opts['output'], opts['output'])
+        return decay_info
+
+    @staticmethod
+    def particle_name(model, code):
+        """The name of the particle of pdg code ``code`` (negative: the antiparticle)"""
+        particle = model.get_particle(abs(code))
+        return particle.get('name') if code > 0 else particle.get('antiname')
+
+    def two_body_born_orders(self, pids, opts, decaymodel=None):
+        """The coupling orders of the tree-level two-body decays of the particles
+        ``pids``: {(pid, sorted decay products): {'QED': 1}}. The NLO process
+        needs them, 'generate t > w+ b [QCD]' cannot guess them."""
+        all_amps = self._curr_amps
+        try:
+            self.do_decay_diagram('%s --body_decay=2 --path=%s' % (
+                  ' '.join(str(pid) for pid in pids), opts['path']),
+                  skip_2body=False, model=decaymodel or self._widths_decaymodel)
+            orders = {}
+            for amp in self._curr_amps:
+                legs = amp.get('process').get('legs')
+                key = (abs(legs[0].get('id')), tuple(sorted(l.get('id') for l in legs[1:])))
+                orders[key] = dict(amp.get('diagrams')[0].get('orders'))
+        finally:
+            self._curr_amps = all_amps
+        return orders
+
+    def run_mcatnlo_width(self, workdir, process, model_ref, param_card, precision, nb_core):
+        """The NLO (QCD) partial width of a decay, with aMC@NLO at fixed order:
+        'process' is generated with its [QCD] correction, exported, and run, in
+        processes of their own. ``param_card`` gives the values of the
+        parameters. Returns the width and its error, in GeV."""
+        os.makedirs(workdir)
+        proc_dir = pjoin(workdir, 'PROC_NLO')
+
+        def run(cmd, log_name):
+            log_path = pjoin(workdir, log_name)
+            with open(log_path, 'w') as log:
+                returncode = subprocess.call(cmd, cwd=workdir, stdout=log,
+                                             stderr=subprocess.STDOUT,
+                                             stdin=subprocess.DEVNULL)
+            with open(log_path) as log:
+                text = log.read()
+            if returncode or 'Error detected' in text:
+                lines = [l for l in text.splitlines() if l.strip()]
+                raise MadGraph5Error('%s (%s)' % (
+                    next((l for l in reversed(lines) if l.strip() and
+                          not l.startswith(('Traceback', ' ', 'quit'))),
+                         'exit status %s' % returncode), log_path))
+            return text
+
+        script = pjoin(workdir, 'generate.mg5')
+        with open(script, 'w') as fsock:
+            fsock.write('set automatic_html_opening False --no_save\n')
+            fsock.write('set nb_core %s --no_save\n' % nb_core)
+            if aloha.complex_mass:
+                fsock.write('set complex_mass_scheme True\n')
+            fsock.write('import model %s\n' % model_ref)
+            fsock.write('generate %s\n' % process)
+            fsock.write('output %s -f\n' % proc_dir)
+        run([sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'), script], 'generate.log')
+
+        # the parameters of the user, in the card the loop model wrote
+        card = pjoin(proc_dir, 'Cards', 'param_card.dat')
+        check_param_card.merge_param_card_values(param_card, card)
+        run_card = pjoin(proc_dir, 'Cards', 'run_card.dat')
+        with open(run_card) as fsock:
+            text = fsock.read()
+        text = re.sub(r'(?m)^(\s*)[-\d.eE+]+(\s*=\s*req_acc_FO\b)',
+                      lambda m: '%s%s%s' % (m.group(1), precision, m.group(2)), text)
+        with open(run_card, 'w') as fsock:
+            fsock.write(text)
+
+        script = pjoin(workdir, 'launch.txt')
+        with open(script, 'w') as fsock:
+            fsock.write('set automatic_html_opening False --no_save\n')
+            fsock.write('set nb_core %s --no_save\n' % nb_core)
+            fsock.write('launch NLO -f\n')
+        run([sys.executable, pjoin(proc_dir, 'bin', 'aMCatNLO'), script], 'launch.log')
+
+        pattern = re.compile(r'\(Partial\) decay width:\s*([-+\d.eE]+)\s*\+-\s*([-+\d.eE]+)\s*GeV')
+        for summary in sorted(glob.glob(pjoin(proc_dir, 'Events', '*', 'summary.txt')),
+                              reverse=True):
+            with open(summary) as fsock:
+                found = pattern.search(fsock.read())
+            if found:
+                return float(found.group(1)), float(found.group(2))
+        raise MadGraph5Error('no width in the results of aMC@NLO (%s)' % workdir)
+
     # Calculate decay width with SMWidth
     def compute_widths_SMWidth(self, line, model=None):
         """Compute widths with SMWidth.
@@ -13588,7 +13809,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             correct = True
             param_card = check_param_card.ParamCard(opts['path'])
             for param in param_card['decay']:
-                if param.value == "auto":
+                if check_param_card.auto_width_options(param.value) is not None:
                     param.value = 1
                     param.format = 'float'
                     correct = False
@@ -13654,11 +13875,14 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         for pid,width in width_list:
             width_dict[int(pid)] = float(width)
 
+        decay_info = {}
         for pid in particles:
             if not pid in width_dict:
                 width = 0
             else:
                 width = width_dict[pid]
+            # the total only: HDECAY does not give the channels
+            decay_info[pid] = [[[], width]]
             param = param_card['decay'].get((pid,))
             param.value = width
             param.format = 'float'
@@ -13675,7 +13899,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         else:
             param_card.write(opts['path'])
             logger.info('Results are written in %s' % opts['path'])
-        return
+        return decay_info
 
     # Calculate decay width
     def do_decay_diagram(self, line, skip_2body=False,  model=None):

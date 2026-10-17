@@ -12,7 +12,16 @@ ANNOUNCEMENT:
        madspace) or 'compute_widths ... --engine=madevent'. Falls back to
        MadEvent, with a warning, if madspace cannot do it. The precompiled
        standard headers (new 'make PCH=1' of madmatrix, clang only) halve the
-       build of those many small processes.
+       build of many small processes: used by mg7 runs of 4 subprocess
+       directories or more.
+   OM: compute_widths --nlo without a dedicated code for the model (SMWidth, the
+       SM) now runs the two-body decays with a colour charge at NLO with MC@NLO
+       (aMC@NLO fixed order, loop_sm for sm); the decays into 3 bodies or more
+       stay at LO. 'DECAY 6 auto --nlo --body_decay=3' takes the options of
+       compute_widths in the param_card ('auto@NLO' stays 'auto --nlo'), also
+       with 'set decay 6 auto --nlo --body_decay=3'. A width on auto that is
+       not computed in the same call is now kept in the card (it used to be
+       dropped when another width was computed).
    OM: Bug fix: the alpha_s of a madspace decay (1 > N, also 'output mg7' of a
        decay) was alpha_s(m_Z) at any mass. It is now the 2-loop running up to
        the decaying mass, as in MadEvent: e.g. 4.7% lower alpha_s(125 GeV) and

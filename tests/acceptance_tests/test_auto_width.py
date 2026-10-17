@@ -31,6 +31,7 @@ import tempfile
 import unittest
 
 import madgraph.interface.master_interface as mgcmd
+import models.check_param_card as check_param_card
 from madgraph.iolibs.template_files.mg7 import bootstrap as mg7_bootstrap
 
 pjoin = os.path.join
@@ -119,3 +120,110 @@ class TestAutoWidthEngines(unittest.TestCase):
             for products, width in decays[23]['channels'].items():
                 if len(products) == 3:
                     self.assertLess(width, 1e-6, '%s: Z > %s' % (engine, products))
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+@unittest.skipUnless(shutil.which('gfortran'), 'no Fortran compiler (aMC@NLO)')
+class TestAutoWidthNLO(unittest.TestCase):
+    """compute_widths --nlo with MC@NLO.
+
+    The SM of the repository has no dedicated code (SMWidth), so the two-body decays
+    with a colour charge are run at NLO with aMC@NLO (loop_sm) and the decays into
+    three bodies stay at LO, madspace's. t > w+ b is the known -9% (1 + 2 alpha_s/3pi
+    (5/2 - 2 pi^2/3)); h > b b~ has the pole-mass Yukawa of loop_sm, which makes it
+    1 + 4/3 alpha_s/pi (9/4 + 3/2 log(m_b^2/m_H^2)) = 0.64.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.path = tempfile.mkdtemp(prefix='acc_test_auto_width_nlo')
+        cmd = mgcmd.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('set automatic_html_opening False --no_save')
+        cmd.exec_cmd('import model sm')
+        cls.cards = {}
+        for name, option in (('lo', ''), ('nlo', '--nlo')):
+            card = pjoin(cls.path, 'param_card_%s.dat' % name)
+            cmd.exec_cmd('compute_widths t h --body_decay=3 %s --output=%s' % (option, card))
+            cls.cards[name] = read_decays(card)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.path, ignore_errors=True)
+
+    def k_factor(self, pid, products):
+        nlo = self.cards['nlo'][pid]['channels'][products]
+        lo = self.cards['lo'][pid]['channels'][products]
+        return nlo / lo
+
+    def test_the_top(self):
+        self.assertAlmostEqual(self.k_factor(6, (5, 24)), 0.909, delta=0.02)
+
+    def test_the_higgs_to_bottoms(self):
+        self.assertAlmostEqual(self.k_factor(25, (-5, 5)), 0.647, delta=0.04)
+
+    def test_no_colour_no_correction(self):
+        """h > ta+ ta-: the same width, exact in both"""
+        self.assertAlmostEqual(self.k_factor(25, (-15, 15)), 1, places=9)
+
+    def test_three_bodies_stay_at_lo(self):
+        """Another madspace run, so the integration error: 5% on each channel"""
+        for products, lo in self.cards['lo'][25]['channels'].items():
+            if len(products) == 3:
+                self.assertAlmostEqual(self.cards['nlo'][25]['channels'][products] / lo,
+                                       1, delta=0.05, msg=str(products))
+
+    def test_the_total_is_the_sum(self):
+        for name, decays in self.cards.items():
+            for pid in (6, 25):
+                self.assertAlmostEqual(
+                    decays[pid]['total'], sum(decays[pid]['channels'].values()),
+                    delta=1e-4 * decays[pid]['total'], msg='%s %s' % (name, pid))
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+@unittest.skipUnless(shutil.which('gfortran'), 'no Fortran compiler (aMC@NLO)')
+class TestAutoWidthOptionsInCard(unittest.TestCase):
+    """DECAY 6 auto --nlo --body_decay=3 in the param_card of an mg7 output: each
+    width is computed with its own options, and none is lost on the way."""
+
+    def setUp(self):
+        self.path = tempfile.mkdtemp(prefix='acc_test_auto_width_card')
+        self.cwd = os.getcwd()
+
+    def tearDown(self):
+        os.chdir(self.cwd)
+        shutil.rmtree(self.path, ignore_errors=True)
+
+    def test_options_of_the_widths(self):
+        cmd = mgcmd.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('set automatic_html_opening False --no_save')
+        cmd.exec_cmd('import model sm')
+        cmd.exec_cmd('generate g g > t t~')
+        run_dir = pjoin(self.path, 'PROC')
+        cmd.exec_cmd('output %s -f' % run_dir)
+
+        card = pjoin(run_dir, 'Cards', 'param_card.dat')
+        with open(card) as stream:
+            text = stream.read()
+        text = re.sub(r'(?m)^DECAY\s+6\s+[^\n#]*', 'DECAY  6 auto --nlo --body_decay=3 ', text)
+        text = re.sub(r'(?m)^DECAY\s+24\s+[^\n#]*', 'DECAY  24 auto --body_decay=2 ', text)
+        with open(card, 'w') as stream:
+            stream.write(text)
+
+        from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
+        os.chdir(run_dir)
+        mg7_launch.compute_auto_widths(card)
+        os.chdir(self.cwd)
+
+        decays = read_decays(card)
+        # t > w+ b at NLO: 1.356 GeV, the LO width being 1.4915 GeV
+        self.assertAlmostEqual(decays[6]['total'], 1.356, delta=0.04)
+        self.assertEqual(sorted(decays[6]['channels']), [(5, 24)])
+        # w+ at LO, two bodies: the 2.0479 GeV of the formulas
+        self.assertAlmostEqual(decays[24]['total'], 2.0479, delta=0.005)
+        with open(card) as stream:
+            self.assertEqual(len(check_param_card.group_auto_widths(stream.read())), 0)

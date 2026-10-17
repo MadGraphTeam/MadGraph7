@@ -455,7 +455,9 @@ endif
 # this makes the build ~3x faster. The precompiled header is shared by all the P*
 # directories (it lives in LIBDIR, tagged like the build) and is made up front by
 # 'commonlib', like the common library. Opt-in, and clang with a C++ (CPU) backend
-# only: other compilers and the GPU compilers have their own requirements.
+# only: other compilers and the GPU compilers have their own requirements. The mg7
+# launcher asks for it from 4 subprocess directories to build (PCH_MIN_SUBPROCESSES):
+# below, the header costs about what it saves.
 PCHFLAGS =
 ifeq ($(PCH),1)
   ifeq ($(GPUCC),)
