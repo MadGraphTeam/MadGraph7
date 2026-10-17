@@ -896,6 +896,19 @@ class MultiCore(Cluster):
                     self.queue.join()
                     break
                 
+                if self.stoprequest.isSet() and Running <= 0 and not force_one_more_loop:
+                    # A job failed: the workers have stopped and the jobs
+                    # still in the queue will never start. Drop them rather
+                    # than wait for them forever; the failure is raised below.
+                    while True:
+                        try:
+                            self.queue.get_nowait()
+                        except queue.Empty:
+                            break
+                        self.queue.task_done()
+                    update_status(0, 0, Done)
+                    break
+
                 if (Idle, Running, Done) != last_status:
                     if first and update_first:
                         update_first(Idle, Running, Done)

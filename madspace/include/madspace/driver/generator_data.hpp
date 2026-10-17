@@ -192,6 +192,10 @@ struct GeneratorStatus {
     std::size_t count_target;
     /// Number of survey iterations run.
     std::size_t iterations;
+    /// Number of optimization iterations in a row without enough improvement;
+    /// the channel counts as optimized when this reaches
+    /// @ref GeneratorConfig::optimization_patience.
+    std::size_t iters_without_improvement;
     /// Whether the survey/optimization phase has finished.
     bool optimized;
     /// Whether generation of this subprocess is complete.

@@ -87,7 +87,9 @@ def test_stack_of_literals_is_folded():
         assert stacked.literal_value == ([3], [1.0, 2.0, 3.0])
         return fb.mul(x, stacked)
 
-    func = build([("x", ms.batch_float_array(3))], [("y", ms.batch_float_array(3))], body)
+    func = build(
+        [("x", ms.batch_float_array(3))], [("y", ms.batch_float_array(3))], body
+    )
     assert instruction_names(func) == ["mul"]
 
 
@@ -103,7 +105,6 @@ def test_single_flavor_integrand_has_no_constant_gathers(tmp_path):
         "AlphaS_Vals: [0.3, 0.2, 0.12, 0.1, 0.08]\n"
     )
     running_coupling = ms.RunningCoupling(ms.AlphaSGrid(str(alphas_file)))
-    mapping = ms.PhaseSpaceMapping([0.0] * 5, 1000.0, leptonic=True)
     matrix_element = ms.MatrixElement(
         0xBADCAFE,
         5,
@@ -119,6 +120,9 @@ def test_single_flavor_integrand_has_no_constant_gathers(tmp_path):
         energy_scale=ms.CachedScale(),
     )
     for mirror in (False, True):
+        mapping = ms.PhaseSpaceMapping(
+            [0.0] * 5, 1000.0, leptonic=True, mirror_beams=mirror
+        )
         integrand = ms.Integrand(
             mapping,
             [diff_xs],

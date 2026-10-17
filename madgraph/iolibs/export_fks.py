@@ -2510,8 +2510,22 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                       'The OLP could not process the following line: \n%s'%line)
         
         return proc_def_to_label
-            
-                                
+
+
+    def write_bornmatrix(self, writer, matrix_element, fortran_model):
+        """Write born_matrix.f in the MadLoop V* directory. check_sudakov.f in
+        the P* directory above it includes the nsqso_born.inc written next to
+        born_matrix.f, so copy that file one level up."""
+
+        calls = super(ProcessExporterFortranFKS, self).write_bornmatrix(
+                                         writer, matrix_element, fortran_model)
+        nsqso_born = pjoin(os.path.dirname(os.path.abspath(writer.name)),
+                           'nsqso_born.inc')
+        if os.path.exists(nsqso_born):
+            files.cp(nsqso_born, pjoin(os.path.dirname(nsqso_born),
+                                       os.path.pardir))
+        return calls
+
     def generate_virt_directory(self, loop_matrix_element, fortran_model, dir_name):
         """writes the V**** directory inside the P**** directories specified in
         dir_name"""
