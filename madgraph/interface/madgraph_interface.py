@@ -43,6 +43,7 @@ import inspect
 import urllib.request, urllib.parse, urllib.error
 import random
 import io
+import json
 #useful shortcut
 pjoin = os.path.join
 
@@ -1060,6 +1061,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("  --output=X: path where to write the resulting card. ")
         logger.info("        default: overwrite input file. If no input file, write it in the model directory")
         logger.info("  --nlo: Compute NLO width [if the model support it]")
+        logger.info("  --engine=X: integrator of the N-body decays (N>2): madspace or madevent")
+        logger.info("        default: the auto_width_engine option (madspace)")
         logger.info("")
         logger.info(" example: calculate_width h --body_decay=2 --output=./param_card")
 
@@ -2404,7 +2407,7 @@ This will take effect only in a NEW terminal
         particles = set()
         options = {'path':None, 'output':None,
                    'min_br':None, 'body_decay':4.0025, 'precision_channel':0.01,
-                   'nlo':False}
+                   'nlo':False, 'engine':None}
         # check that the firsts argument is valid
         
         for i,arg in enumerate(args):
@@ -2474,6 +2477,11 @@ This will take effect only in a NEW terminal
 
         if not options['min_br']:
             options['min_br'] = (float(options['body_decay']) % 1) / 5
+        if options['engine'] is not None:
+            options['engine'] = str(options['engine']).lower()
+            if options['engine'] not in ('madspace', 'madevent'):
+                raise self.InvalidCmd(
+                    '--engine takes madspace or madevent, not %s' % options['engine'])
         return particles, options
 
 
@@ -3419,6 +3427,8 @@ class CompleteForCmd(cmd.CompleteCmd):
                 return self.list_completion(text, [str(i) for i in range(100)] + ['default'] )
             elif args[1] == 'run_mode':
                 return self.list_completion(text, [str(i) for i in range(3)] + ['default'])
+            elif args[1] == 'auto_width_engine':
+                return self.list_completion(text, ['madspace', 'madevent', 'default'])
             elif args[1] == 'cluster_type':
                 return self.list_completion(text, list(cluster.from_name.keys()) + ['default'])
             elif args[1] in ['cluster_queue', 'cluster_walltime',\
@@ -3763,7 +3773,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     'nlo_mixed_expansion',
                     'color_basis',
                     'merge_same_topologies',
-                    'merge_quartic_vertices'
+                    'merge_quartic_vertices',
+                    'auto_width_engine'
                     ]
     _valid_color_basis = ['auto', 'trace', 'ddm']
     _valid_nlo_modes = ['all','real','virt','sqrvirt','tree','noborn','LOonly', 'only',
@@ -3850,7 +3861,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'apply_flavor_grouping': True,
                           'color_basis': 'auto',
                           'merge_same_topologies': True,
-                          'merge_quartic_vertices': False
+                          'merge_quartic_vertices': False,
+                          'auto_width_engine': 'madspace'
                         }
 
     options_madevent = {'automatic_html_opening':True,
@@ -9383,7 +9395,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             self._export_dir = os.path.sep.join(path_split[:-2])
             return
 
-    def setup_mg7_environment(self):
+    def setup_mg7_environment(self, lhapdf=True):
         """Export what an mg7 run needs from MG5's configuration.
 
         These used to be built into the environment of the bin/generate_events
@@ -9391,6 +9403,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         the run shells out to (the madspace build, the real LHAPDF library used
         by systematics/MadSpin/reweight), and the only channel those have is
         os.environ -- so set it here rather than per child process.
+
+        ``lhapdf=False`` leaves LHAPDF out, for a run without PDFs (the survey
+        of a decay).
         """
         # The one-off madspace build picks up a cmake installed through MG5's
         # 'install cmake' from here (heptools_install_dir may point outside
@@ -9400,6 +9415,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             if not os.path.isabs(heptools_dir):
                 heptools_dir = pjoin(MG5DIR, heptools_dir)
             os.environ['MADGRAPH_HEPTOOLS_DIR'] = os.path.abspath(heptools_dir)
+
+        if not lhapdf:
+            return
 
         # The resolved LHAPDF location. The launcher resolves it the same way on
         # its own (launch.lhapdf_paths), so this only matters for the real
@@ -11727,6 +11745,36 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         self.check_set(args)
         self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0]) 
 
+    def help_set2_auto_width_engine(self):
+        logger.info("auto_width_engine <madspace|madevent>",'$MG:color:GREEN')
+        logger.info(" > (default: madspace) Integrator of the N-body decays (N>2)")
+        logger.info(" >   behind 'compute_widths' and the 'auto' widths of a card.")
+        logger.info(" > madspace: the madspace phase-space library of the mg7 output.")
+        logger.info(" >           Falls back to madevent if madspace is unusable.")
+        logger.info(" > madevent: the Fortran MadEvent integration of the former releases.")
+        logger.info(" > Override it for one call with 'compute_widths ... --engine=X'.")
+
+    def set2_auto_width_engine(self, args, log=True):
+        """Choose the integrator of the N-body decays computed by
+        'compute_widths' (and by the 'auto' widths of the param_card).
+
+        Both give the same widths: the 2-loop alpha_s is run to the mass of the
+        decaying particle in either of them, and the cuts are off. madspace is
+        the default; madevent is kept for the models madspace cannot export and
+        for reproducing results of earlier releases.
+
+        Example: set auto_width_engine madevent
+        """
+        args = ['auto_width_engine'] + args
+        self.check_set(args)
+        value = args[1].lower()
+        if value not in ('madspace', 'madevent'):
+            raise self.InvalidCmd(
+                "auto_width_engine takes madspace or madevent, not '%s'" % args[1])
+        self.options[args[0]] = value
+        if log:
+            logger.info('set auto_width_engine to %s' % value)
+
     def help_set2_merge_quartic_vertices(self):
         logger.info("merge_quartic_vertices <value>",'$MG:color:GREEN')
         logger.info(" > (default: False) [pure gluon amplitudes]")
@@ -13307,7 +13355,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         self.do_decay_diagram('%s %s' % (' '.join([repr(id) for id in particles]),
                                          ' '.join('--%s=%s' % (key,value)
                                                   for key,value in opts.items()
-                                                  if key not in ['precision_channel'])
+                                                  if key not in ['precision_channel', 'engine'])
                                          ), skip_2body=skip_2body, model=decaymodel)
 
         if self._curr_amps:
@@ -13315,6 +13363,35 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         else:            
             logger.info('No need for N body-decay (N>2). Results are in %s' % opts['output'])
             return  decay_info
+
+        engine = opts['engine'] or self.options.get('auto_width_engine', 'madspace')
+        if engine == 'madspace' and (self.options.get('complex_mass_scheme') or
+                                     aloha.complex_mass):
+            # the mg7 output has no complex mass scheme: its matrix elements
+            # would not even compile
+            if opts['engine']:
+                raise self.InvalidCmd('madspace does not support the complex mass '
+                                      'scheme. Use --engine=madevent.')
+            logger_mg.info('The complex mass scheme is not supported by madspace: '
+                           'the widths are computed with madevent.')
+            engine = 'madevent'
+        if engine == 'madspace':
+            try:
+                decay_info = self.integrate_widths_madspace(opts, decay_info)
+            except Exception as error:
+                if opts['engine']:
+                    # asked for explicitly: do not hide that it does not work
+                    raise
+                logger.warning('The width integration with madspace failed (%s).\n'
+                               'Falling back to madevent. Use \'set auto_width_engine madevent\' '
+                               'to select it and silence this message.', error)
+                logger.debug('madspace width failure', exc_info=True)
+            else:
+                madevent_interface.MadEventCmd.update_width_in_param_card(decay_info,
+                                                           opts['path'], opts['output'])
+                if self._curr_model['name'] == 'mssm' or self._curr_model['name'].startswith('mssm-'):
+                    check_param_card.convert_to_slha1(opts['output'])
+                return decay_info
 
         # Do the MadEvent integration!!
         with misc.TMP_directory(dir=os.getcwd()) as path:
@@ -13403,6 +13480,101 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         return decay_info
 
 
+
+    def run_madspace_decay_widths(self, decay_dir, precision):
+        """Integrate the decays of an mg7 output with madspace, in a process of
+        its own (see launch.compute_decay_widths), and return their widths."""
+        result_file = pjoin(decay_dir, 'decay_widths.json')
+        log_file = pjoin(decay_dir, 'decay_widths.log')
+        cmd = [sys.executable, pjoin(decay_dir, 'bin', 'generate_events'),
+               '--decay-widths=%s' % result_file, '--precision=%s' % precision]
+        if self.options['nb_core']:
+            cmd.append('--nb-core=%s' % self.options['nb_core'])
+        with open(log_file, 'w') as log:
+            returncode = subprocess.call(cmd, cwd=decay_dir, stdout=log,
+                                         stderr=subprocess.STDOUT,
+                                         stdin=subprocess.DEVNULL)
+        if returncode:
+            with open(log_file) as log:
+                tail = ''.join(log.readlines()[-15:])
+            raise MadGraph5Error('madspace failed to integrate the decays '
+                                 '(exit status %s):\n%s' % (returncode, tail))
+        with open(result_file) as fin:
+            return json.load(fin)
+
+    def integrate_widths_madspace(self, opts, decay_info):
+        """Integrate the N-body decays of self._curr_amps with madspace.
+
+        Counterpart of the MadEvent integration of do_compute_widths: the
+        amplitudes of the decay_diagram command are written as an mg7 output
+        and its survey (madspace) gives the partial widths. One output
+        directory per decaying particle, since a madspace decay directory has a
+        single decaying mass. The partial widths are added to a copy of
+        decay_info (the same {pid: [[decay products, width], ...]} the
+        two-body formulas fill), which is returned: when a particle fails
+        after others succeeded, the caller still has the decay_info it would
+        hand to MadEvent.
+        """
+        from madgraph.iolibs.template_files.mg7 import bootstrap as mg7_bootstrap
+        # the survey of a decay uses no PDF: only the build needs the environment
+        self.setup_mg7_environment(lhapdf=False)
+        mg7_bootstrap.ensure_madspace(interactive=False,
+                                      jobs=self.options['nb_core'])
+        decay_info = copy.deepcopy(decay_info)
+
+        amps_by_pid = collections.OrderedDict()
+        for amp in self._curr_amps:
+            pid = abs(amp.get('process').get('legs')[0].get('id'))
+            amps_by_pid.setdefault(pid, []).append(amp)
+
+        all_amps = self._curr_amps
+        start = time.time()
+        try:
+            for pid, amps in amps_by_pid.items():
+                self._curr_amps = diagram_generation.AmplitudeList(amps)
+                # 'output' only builds the matrix elements when there are none:
+                # without this every particle after the first would export the
+                # matrix elements of the previous one
+                self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+                particle = self._curr_model.get_particle(pid)
+                with misc.TMP_directory(dir=os.getcwd()) as path:
+                    decay_dir = pjoin(path, 'temp_decay')
+                    with misc.MuteLogger(['madgraph','ALOHA','cmdprint','madevent',
+                                          'madgraph7'], [40]*5):
+                        self.exec_cmd('output mg7 %s -f' % decay_dir, child=False)
+                        # the param_card to use is the one of the madevent run
+                        if os.path.exists(opts['output']):
+                            files.cp(opts['output'], pjoin(decay_dir, 'Cards', 'param_card.dat'))
+                        else:
+                            files.cp(opts['path'], pjoin(decay_dir, 'Cards', 'param_card.dat'))
+                        if self._curr_model['name'] == 'mssm' or self._curr_model['name'].startswith('mssm-'):
+                            check_param_card.convert_to_slha1(pjoin(decay_dir, 'Cards', 'param_card.dat'))
+                        results = self.run_madspace_decay_widths(
+                            decay_dir, float(opts['precision_channel']))
+
+                # one entry per final state: a decay can come in several flavour
+                # assignments or subprocesses
+                partial = collections.OrderedDict()
+                for res in results:
+                    key = tuple(sorted(res['outgoing']))
+                    partial[key] = partial.get(key, 0.) + res['width']
+                total = sum(partial.values())
+                error = sum(res['error']**2 for res in results) ** 0.5
+                logger_mg.info('%s: width from the N-body decays = %.5g +- %.2g GeV',
+                               particle.get('name'), total, error)
+                if pid not in decay_info:
+                    decay_info[pid] = []
+                for decay_to, width in partial.items():
+                    if 0 < width < 0.1 and particle['color'] != 1:
+                        logger.warning("partial width of particle %s lower than QCD scale:%s. Set it to zero. (%s)" \
+                                       % (particle.get('name'), width, list(decay_to)))
+                        continue
+                    decay_info[pid].append([list(decay_to), width])
+        finally:
+            self._curr_amps = all_amps
+            self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+        logger_mg.debug('madspace widths computed in %.1f s', time.time() - start)
+        return decay_info
 
     # Calculate decay width with SMWidth
     def compute_widths_SMWidth(self, line, model=None):

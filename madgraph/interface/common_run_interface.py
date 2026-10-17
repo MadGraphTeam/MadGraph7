@@ -295,7 +295,7 @@ class CheckValidForCmd(object):
         
         output = {'model': model, 'force': False, 'output': None, 
                   'path':None, 'particles': set(), 'body_decay':4.0025,
-                  'min_br':None, 'precision_channel':0.01}
+                  'min_br':None, 'precision_channel':0.01, 'engine':None}
         for arg in args:
             if arg.startswith('--output='):
                 output_path = arg.split('=',1)[1]
@@ -317,6 +317,10 @@ class CheckValidForCmd(object):
                 if ftype != 'param_card.dat':
                     raise self.InvalidCmd('%s is not a valid param_card.' % arg)
                 output['path'] = arg
+            elif arg.startswith('--engine='):
+                output['engine'] = arg.split('=',1)[1].lower()
+                if output['engine'] not in ('madspace', 'madevent'):
+                    raise self.InvalidCmd('--engine takes madspace or madevent, not %s' % output['engine'])
             elif arg.startswith('--'):
                 if "=" in arg:
                     name, value = arg.split('=',1)

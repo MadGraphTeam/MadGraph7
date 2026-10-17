@@ -5,6 +5,18 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   OM: compute_widths (and the 'auto' widths of a param_card) integrates the
+       N-body decays (N>2) with madspace instead of MadEvent: 6 s instead of
+       26 s for the Higgs of heft up to 3 bodies, with a more precise result.
+       Choose with 'set auto_width_engine madspace|madevent' (default
+       madspace) or 'compute_widths ... --engine=madevent'. Falls back to
+       MadEvent, with a warning, if madspace cannot do it. The precompiled
+       standard headers (new 'make PCH=1' of madmatrix, clang only) halve the
+       build of those many small processes.
+   OM: Bug fix: the alpha_s of a madspace decay (1 > N, also 'output mg7' of a
+       decay) was alpha_s(m_Z) at any mass. It is now the 2-loop running up to
+       the decaying mass, as in MadEvent: e.g. 4.7% lower alpha_s(125 GeV) and
+       9.7% lower width for h > g g in heft.
    OM: Bug fix: 'check_sa.exe perf' of 'output standalone' ignored the alpha_s
        of the param card and always used 0.118 (the 'matrix' mode was right).
        With --momenta/-e and --dump-me, the matrix elements at user points are

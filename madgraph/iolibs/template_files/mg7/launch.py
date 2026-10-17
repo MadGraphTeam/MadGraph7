@@ -36,6 +36,7 @@ import madspace as ms
 # yaml/packaging/... for the rest of what is now MG5's own session.
 _drop_install_path()
 from models.check_param_card import ParamCard
+from models.model_reader import Alphas_Runner
 from madgraph.iolibs.template_files.mg7 import hwu_output
 from madgraph.iolibs.template_files.mg7 import plots
 from madgraph.iolibs.template_files.mg7 import systematics_summary
@@ -282,7 +283,9 @@ class HistItem:
 
 
 class MadgraphProcess:
-    def __init__(self):
+    def __init__(self, extra_make_args=()):
+        # appended to the make command that builds the matrix elements
+        self.extra_make_args = list(extra_make_args)
         self.madnis_trained = False
         self.lhe_completer = None
         self.load_cards()
@@ -1170,31 +1173,55 @@ class MadgraphProcess:
                 logger.info("systematics, %s %s", label, value)
 
     def write_fixed_alphas_info(self) -> str:
-        """Write a minimal LHAPDF ``.info`` holding a constant alpha_s.
+        """Write a minimal LHAPDF ``.info`` with the alpha_s of a decay.
 
         A decay has no beams, so there is no PDF set to take alpha_s from --
         and demanding one (possibly downloading it) just to evaluate a coupling
         would be absurd. The renormalisation scale of a decay is fixed at the
-        decaying mass anyway, so a constant alpha_s is the right answer, not an
-        approximation: take it from the param card, exactly as the Fortran
-        decay matrix elements do.
+        decaying mass, so only alpha_s(M) matters. Like the Fortran decay
+        matrix elements (Source/alfas_functions.f, ``nloop = 2``) it is the
+        2-loop running from the alpha_s(m_Z) of the param card up to M -- not
+        alpha_s(m_Z) itself, which overshoots alpha_s(125 GeV) by 4.7% (and
+        h > g g, which goes like alpha_s^2, by 9.7%).
+
+        The grid carries the running over the whole scale range and has a node
+        exactly at the decaying mass, so the interpolation returns alpha_s(M)
+        untouched.
         """
         # SMINPUTS entry 3 is alpha_s(m_Z), the same value the Fortran
         # parameter setup feeds to G.
-        alpha_s = float(self.param_card.get_value("sminputs", 3))
+        alpha_s_mz = float(self.param_card.get_value("sminputs", 3))
+        runner = Alphas_Runner(alpha_s_mz, 2, cmass=1.42, bmass=4.7)
+        mass = float(self.decaying_mass)
         path = os.path.join(self.run_path, "fixed_alphas.info")
         # AlphaSGrid interpolates in log(q^2) across the grid, so give it a
         # comfortable number of nodes rather than the bare minimum of three.
-        q_values = [10 ** (i / 4.0) for i in range(-4, 21)]
+        # The running is only defined above the Landau pole, hence 1 GeV (or
+        # the decaying mass itself, if that is lower) as the lowest node.
+        nodes = [10 ** (i / 4.0) for i in range(0, 21)]
+        q_values = sorted(
+            [q for q in nodes if abs(q / mass - 1) > 1e-9] + [mass]
+        )
+        alpha_s_values = [runner(q) for q in q_values]
+        if min(alpha_s_values) <= 0.0:
+            raise ValueError(
+                f"alpha_s({mass:g} GeV) cannot be computed from "
+                f"alpha_s(m_Z) = {alpha_s_mz:g}: the scale is below the "
+                "perturbative running's range"
+            )
         with open(path, "w") as f:
-            f.write("SetDesc: constant alpha_s for a decay (no beams)\n")
-            f.write("AlphaS_Qs: [%s]\n" % ", ".join(f"{q:g}" for q in q_values))
+            f.write("SetDesc: 2-loop running alpha_s of a decay (no beams)\n")
+            f.write(
+                "AlphaS_Qs: [%s]\n" % ", ".join(f"{q:.12g}" for q in q_values)
+            )
             f.write(
                 "AlphaS_Vals: [%s]\n"
-                % ", ".join(f"{alpha_s:g}" for _ in q_values)
+                % ", ".join(f"{a:.12g}" for a in alpha_s_values)
             )
         logger.info(
-            "decay mode: fixed alpha_s = %g at mu = %g GeV", alpha_s, self.e_cm
+            "decay mode: alpha_s(mu = %g GeV) = %.6g (2-loop running from "
+            "alpha_s(m_Z) = %g, as madevent)",
+            mass, runner(mass), alpha_s_mz,
         )
         return path
 
@@ -1324,7 +1351,8 @@ class MadgraphProcess:
             start_time = time.time()
             self.make_subprocesses(
                 subproc_path,
-                [f"BACKEND={backend}", f"FPTYPE={fptype}", "USEBUILDDIR=1"],
+                [f"BACKEND={backend}", f"FPTYPE={fptype}", "USEBUILDDIR=1"]
+                + self.extra_make_args,
                 nb_core, log_path,
             )
             logger.info(
@@ -4368,6 +4396,78 @@ def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat"))
             pass
 
 
+def compute_decay_widths(
+    me_dir: str = ".", precision: float = 0.01, nb_core: int | None = None,
+    extra_make_args=(),
+) -> list[dict]:
+    """Integrate the decays of an mg7 decay directory and return their widths.
+
+    This is the madspace counterpart of madevent's ``survey decay``: only the
+    survey runs (no unweighting, no events, no systematics), and it stops once
+    every channel is below ``precision`` relative error, like the
+    ``--precision_channel`` of ``compute_widths``.
+
+    ``me_dir`` is an output directory of 1 -> n processes of one decaying
+    particle. It is meant to run in a process of its own (``bin/generate_events
+    --decay-widths=FILE``, which is how ``compute_widths`` calls it): the
+    madspace objects write their status file from a destructor, and the
+    caller removes the temporary directory as soon as the widths are back.
+    The result holds one entry per decay and flavour assignment::
+
+        {"incoming": 25, "outgoing": [5, -5], "width": 4.3e-3, "error": 1e-9}
+
+    (signed pdg ids, width in GeV). The processes of a subprocess that shares
+    one matrix element between several flavour assignments (they are the same
+    function of the momenta, or they would not be grouped) split its width
+    evenly. A decay the decaying particle is too light for has no entry.
+    """
+    cwd = os.getcwd()
+    os.chdir(me_dir)
+    process = None
+    try:
+        card_path = os.path.join("Cards", "run_card.toml")
+        card = RunCardMG7(card_path, consistency=False)
+        card["generation"]["survey_target_precision"] = precision
+        card["generation"]["survey_max_iters"] = 30
+        # one survey result per decay, not per group of mergeable ones
+        card["phasespace"]["merge_subprocesses"] = False
+        card["run"]["verbosity"] = "silent"
+        if nb_core:
+            card["run"]["cpu_thread_pool_size"] = int(nb_core)
+        card.write(card_path)
+
+        process = MadgraphProcess(extra_make_args=extra_make_args)
+        if not process.is_decay:
+            raise ValueError("compute_decay_widths needs a decay (1 -> n) output")
+        process.survey()
+
+        channel_status = process.event_generator.channel_status()
+        results = []
+        offset = 0
+        for subproc, phasespace in zip(process.subprocesses, process.phasespaces):
+            statuses = channel_status[offset:offset + len(phasespace.channels)]
+            offset += len(phasespace.channels)
+            width = sum(status.mean for status in statuses)
+            error = sum(status.error ** 2 for status in statuses) ** 0.5
+            options = _flavor_options(subproc.meta)
+            for option in options:
+                results.append({
+                    "incoming": option[0],
+                    "outgoing": list(option[1:]),
+                    "width": width / len(options),
+                    "error": error / len(options),
+                })
+        return results
+    finally:
+        if process is not None:
+            # StatusFile finishes info.json from its destructor: run it before
+            # the caller removes the directory (see init_event_dir)
+            _release_channel_generators(process)
+            del process
+            gc.collect()
+        os.chdir(cwd)
+
+
 def _release_channel_generators(process) -> None:
     """Drop the per-channel event/weight generators so their intermediate
     .npy files are deleted right away. madspace only frees them when the
@@ -4564,6 +4664,30 @@ def main() -> None:
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", action="store_false", dest="ask_edit_cards")
+    parser.add_argument(
+        "--decay-widths", metavar="JSON", default=None,
+        help="only integrate the 1 -> n decays of this directory and write "
+             "their widths (GeV) as JSON, see compute_decay_widths")
+    parser.add_argument(
+        "--precision", type=float, default=0.01,
+        help="relative precision aimed at for every channel (--decay-widths)")
+    parser.add_argument(
+        "--nb-core", type=int, default=None,
+        help="number of threads and compilation jobs (--decay-widths)")
+    parser.add_argument(
+        "--make-arg", action="append", default=[],
+        help="extra argument of the matrix element build (--decay-widths)")
     args = parser.parse_args()
+
+    if args.decay_widths:
+        # The matrix elements of a decay take microseconds to integrate, so
+        # the build is all there is to wait for: precompile the standard
+        # headers, which halves it (PCH=1, see madmatrix.mk).
+        results = compute_decay_widths(
+            ".", precision=args.precision, nb_core=args.nb_core,
+            extra_make_args=["PCH=1"] + args.make_arg)
+        with open(args.decay_widths, "w") as f:
+            json.dump(results, f)
+        return
 
     MG7Cmd().run_cmd("generate_events" if args.ask_edit_cards else "generate_events -f")

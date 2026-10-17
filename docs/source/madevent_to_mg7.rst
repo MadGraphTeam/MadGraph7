@@ -204,6 +204,32 @@ The groups in the last rows are your own entries in ``[multiparticles]``. The pa
 :ref:`cut syntax <run-card-cuts>` explains how the selections, ``-sum-`` and ``-sum`` are
 combined.
 
+Decay widths
+------------
+
+``compute_widths`` and the ``auto`` widths of a ``param_card`` integrate the decays into
+three bodies or more with madspace, like the rest of MG7, where MadEvent used to be run. The
+two-body widths still come from the formulas of the model when it has them. Each decaying
+particle is written as a decay output (``output mg7``) in a temporary directory, built with
+precompiled headers and surveyed: the integration takes milliseconds and the build is what
+there is to wait for. For the Higgs of the ``heft`` model up to three bodies, the whole
+command takes 6 s, against 26 s with MadEvent.
+
+``alpha_s`` of a decay is run from the ``alpha_s(m_Z)`` of the card up to the mass of the
+decaying particle, with the same two-loop running as MadEvent. The widths of the two
+integrators agree within the integration error (the ``--precision_channel`` of
+``compute_widths``, 1% by default, is the relative precision aimed at for each channel).
+
+The integrator is chosen with the ``auto_width_engine`` option, ``madspace`` by default, or
+for one call with ``--engine``::
+
+    set auto_width_engine madevent
+    compute_widths t --body_decay=3 --engine=madspace
+
+MG7 goes back to MadEvent on its own, with a warning, if madspace cannot compute the widths
+and no engine was asked for with ``--engine``. The complex mass scheme is not available in
+madspace: the widths are always computed with MadEvent then.
+
 Not supported yet
 -----------------
 

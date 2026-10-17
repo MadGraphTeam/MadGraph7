@@ -448,6 +448,24 @@ else ifeq ($(DEBUG),1)
   override OPTFLAGS = -O0
 endif
 
+# PCH=1: precompile the standard headers once per build instead of once per file.
+# Every translation unit of a subprocess reparses the same standard headers (~0.3 s
+# each with clang, i.e. most of what a small process costs, six files per
+# subprocess), so for many small processes -- the decay widths, for instance --
+# this makes the build ~3x faster. The precompiled header is shared by all the P*
+# directories (it lives in LIBDIR, tagged like the build) and is made up front by
+# 'commonlib', like the common library. Opt-in, and clang with a C++ (CPU) backend
+# only: other compilers and the GPU compilers have their own requirements.
+PCHFLAGS =
+ifeq ($(PCH),1)
+  ifeq ($(GPUCC),)
+    ifneq ($(shell $(CXX) --version | grep -i clang),)
+      override PCHFILE = $(LIBDIR)/pch_std_$(TAG).h.pch
+      override PCHFLAGS = -include-pch $(PCHFILE)
+    endif
+  endif
+endif
+
 # Dependency on src directory
 # The common library name carries the full BACKEND suffix so each vectorisation/GPU variant is distinct.
 MADMATRIX_COMMONLIB = madmatrix_common_$(BACKEND)
@@ -827,6 +845,8 @@ $(BUILDDIR)/.build.$(TAG):
 ifeq ($(shell $(CXX) --version | grep ^nvc++),)
 $(BUILDDIR)/CrossSectionKernels.o: CXXFLAGS := $(filter-out -ffast-math,$(CXXFLAGS))
 $(BUILDDIR)/CrossSectionKernels.o: CXXFLAGS += -fno-fast-math
+# the precompiled header was made with -ffast-math: clang refuses it otherwise
+$(BUILDDIR)/CrossSectionKernels.o: PCHFLAGS :=
 $(BUILDDIR)/CrossSectionKernels.o: GPUFLAGS += $(XCOMPILERFLAG) -fno-fast-math
 endif
 
@@ -845,9 +865,9 @@ endif
 # incompatible backends (different BACKEND, FPTYPE, etc.) in the same directory.
 # Use USEBUILDDIR=1 to build for multiple backends simultaneously without cleaning.
 ifeq ($(GPUCC),)
-$(BUILDDIR)/%%.o : %%.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../backend/common/*.h $(SRC)/*.h $(SRC)/rambo/*.h $(BUILDDIR)/.build.$(TAG)
+$(BUILDDIR)/%%.o : %%.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../backend/common/*.h $(SRC)/*.h $(SRC)/rambo/*.h $(BUILDDIR)/.build.$(TAG) $(PCHFILE)
 	@if [ ! -d $(BUILDDIR) ]; then echo "mkdir -p $(BUILDDIR)"; mkdir -p $(BUILDDIR); fi
-	$(CXX) $(CPPFLAGS) $(INCFLAGS) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(INCFLAGS) $(CXXFLAGS) $(PCHFLAGS) -c $< -o $@
 else
 $(BUILDDIR)/%%.o : %%.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../backend/common/*.h $(SRC)/*.h $(SRC)/rambo/*.h $(BUILDDIR)/.build.$(TAG)
 	@if [ ! -d $(BUILDDIR) ]; then echo "mkdir -p $(BUILDDIR)"; mkdir -p $(BUILDDIR); fi
@@ -857,7 +877,19 @@ endif
 #-------------------------------------------------------------------------------
 
 # Target (and build rules): common (src) library
-commonlib : $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so
+commonlib : $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so $(PCHFILE)
+
+# The precompiled standard headers (PCH=1), see above. Like the common library
+# they are made once, up front, by whoever owns the build.
+ifneq ($(PCHFILE),)
+ifeq ($(MADMATRIX_COMMONLIB_EXTERNAL),1)
+$(PCHFILE): ;
+else
+$(PCHFILE): ../../backend/common/pch_std.h $(BUILDDIR)/.build.$(TAG)
+	@mkdir -p $(LIBDIR)
+	$(CXX) $(CPPFLAGS) $(INCFLAGS) $(CXXFLAGS) -x c++-header $< -o $@
+endif
+endif
 
 # The common library is shared by every P* directory. When several of them are
 # built concurrently (SubProcesses/makefile fanning out under 'make -j N'), they
