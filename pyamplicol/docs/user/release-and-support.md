@@ -13,6 +13,17 @@ source distribution are available on [PyPI](https://pypi.org/project/pyamplicol/
 This page records the supported release boundary and explains how to report a
 problem.
 
+## Releases with MadGraph7
+
+pyAmpliCol is now developed in the
+[MadGraph7 repository](https://github.com/MadGraphTeam/MadGraph7/tree/main/pyamplicol)
+and released with MadGraph7: every MadGraph7 release publishes pyAmpliCol to
+PyPI with the same version number. These versions (0.2.x and later) sort below
+the standalone 1.0.x releases described below, so a plain
+`pip install pyamplicol` may still select 1.0.1; MadGraph7 always installs the
+exact matching version, `pyamplicol==<MadGraph7 version>`. Report problems in
+the [MadGraph7 issue tracker](https://github.com/MadGraphTeam/MadGraph7/issues).
+
 ## Current release boundary
 
 Version `1.0.1` is represented by the immutable
@@ -25,7 +36,7 @@ inventory is one source distribution and three `cp311-abi3` wheels:
 - macOS 11 or newer on x86-64;
 - manylinux 2.28 on x86-64.
 
-The [release-artifacts workflow](https://github.com/MadGraphTeam/pyamplicol/actions/workflows/release-artifacts.yml)
+The [release workflow](https://github.com/MadGraphTeam/MadGraph7/actions/workflows/release.yml)
 installs each wheel into a clean CPython 3.11 environment and exercises the
 Python, C11, C++17, Fortran 2008, and Rust 2021 APIs. It also runs a CPython
 3.14 abi3 smoke test, source preflight, and independent Fortran physics oracle.

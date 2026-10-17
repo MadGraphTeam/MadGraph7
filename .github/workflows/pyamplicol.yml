@@ -175,7 +175,16 @@ jobs:
           assert bootstrap.check_pyamplicol_source_hash()
           print("pyamplicol library key accepted; source hash matches")
           EOF
-      - name: Parallel generation is not restricted
+      - name: Warn before the library key expires
+        run: |
+          expiry=$(grep -o 'SU-[0-9]*-pyamplicol-[0-9.]*' pyamplicol/src/pyamplicol/__init__.py \
+            | sed 's/.*-//' | tr . -)
+          days=$(( ($(date -d "$expiry" +%s) - $(date +%s)) / 86400 ))
+          echo "pyamplicol's Symbolica library key expires on $expiry ($days days)."
+          if (( days < 90 )); then
+            echo "::warning::pyamplicol's Symbolica library key expires on $expiry; request a renewed key."
+          fi
+      - name: Symbolica is licensed outside the MadGraph root
         env:
           PYTHONPATH: ${{ github.workspace }}/pyamplicol/install
         run: |

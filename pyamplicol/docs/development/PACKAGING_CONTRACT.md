@@ -59,6 +59,17 @@ never fall back to contributor state.
 
 ## Release Prepared-Model Production
 
+Inside MadGraph7 neither the packs nor their metadata are tracked in Git. Each
+MadGraph7 release attaches one archive, `pyamplicol-prepared-models.tar.gz`,
+holding the metadata of every architecture pair and each distinct bundle once.
+`tools/release/prepared_models_archive.py fetch` downloads the archive of the
+matching release, else of the latest one, and writes the files into both
+directories below; `unpack` does the same for a local archive, `pack` creates
+one, and `regenerate` repeats the production described below on the current
+host. The installer and CI validate fetched packs against the source tree and
+regenerate them when they are stale. The release workflow attaches the archive
+its wheels were built with.
+
 The canonical package directory
 `src/pyamplicol/assets/prepared_models` remains candidate-owned in a source
 checkout. Contributor overlays and wheels use those files byte-for-byte and
@@ -74,8 +85,9 @@ stale release packs are build errors; the PEP 517 interface has no release
 bypass. The auxiliary store is deliberately outside the native-build identity,
 so producing its packs cannot change the bootstrap runtime that produced them.
 
-When those source-owned packs must be regenerated, manually dispatch
-`.github/workflows/release-prepared-models.yml`. Its dedicated backend entry
+When those source-owned packs must be regenerated, run
+`tools/release/prepared_models_archive.py regenerate` (CI does this through the
+`pyamplicol_prepared_models` action). Its dedicated backend entry
 point creates a temporary release-version bootstrap wheel with both package
 payloads and the auxiliary store removed. That wheel is explicitly marked
 `publishable: false` and
@@ -88,10 +100,10 @@ the producing package version, and a source identity derived only from
 `dependencies/release-lock.toml` and canonical `Cargo.lock`. Producer version
 is provenance: a pack may be reused by a later patch release when its schema,
 compiler, model-source, dependency, and application ABI identities all match.
-The workflow writes each pair below `release_assets/prepared_models` in its upload, then
-uploads it for review; it cannot commit, publish, or mutate the repository.
-Both architecture pairs must be committed to the source-only store in a later
-reviewed change before an ordinary release build can succeed.
+The producer writes each pair below `release_assets/prepared_models`; the packs
+are portable, so the pair produced on one host is installed for both
+architectures. The `pyamplicol-eager-portability.yml` workflow checks that
+packs produced on one architecture work on the others.
 
 ## Wheel Contents
 
