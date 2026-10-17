@@ -419,6 +419,16 @@ jobs:
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_w_production_with_ms_decay_mg7 -pA -t0 -l INFO
 
+      # ---- acceptancetest_mg7_madspin_seed ----
+      # MadSpin with the default decay_generator mg7: the same card and seed
+      # must give the same decayed sample (the mg7 decay pools used to run with
+      # run.seed = -1). Self-skips if madspace is not built.
+      - name: "acceptancetest_mg7_madspin_seed"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madspin_mg7_decays_reproducible_with_seed -pA -t0 -l INFO
+
 
   acceptancetest_mg7_leshouche_sextet:
     needs: build_madspace

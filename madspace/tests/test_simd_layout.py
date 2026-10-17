@@ -9,11 +9,15 @@ the scalar kernels. Inputs marked single in the instruction set have their own
 kernel type. These tests run in every SIMD mode (tests/run_simd_modes.py) and
 compare against numpy, so all of these paths have to agree. They also cover the
 constant folding rules that keep broadcast tensors away from the kernels.
+
+Except for the gradient tests, which also cover kernel code shared with the GPU,
+these are CPU runtime or graph building tests and are marked cpu_only.
 """
 
 import numpy as np
 import pytest
 import torch
+from madspace_testing import new_context
 from pytest import approx
 
 import madspace as ms
@@ -50,6 +54,7 @@ def instruction_names(function):
 # constant folding
 
 
+@pytest.mark.cpu_only
 def test_sub_with_constant_first_is_not_folded():
     func = build(
         [("x", ms.batch_float)],
@@ -62,6 +67,7 @@ def test_sub_with_constant_first_is_not_folded():
     assert y == approx(-x)
 
 
+@pytest.mark.cpu_only
 @pytest.mark.parametrize(
     "op, const_first, const",
     [
@@ -81,6 +87,7 @@ def test_identities_are_folded(op, const_first, const):
     assert instruction_names(func) == []
 
 
+@pytest.mark.cpu_only
 def test_stack_of_literals_is_folded():
     def body(fb, x):
         stacked = fb.stack([1.0, 2.0, 3.0])
@@ -93,6 +100,7 @@ def test_stack_of_literals_is_folded():
     assert instruction_names(func) == ["mul_float64"]
 
 
+@pytest.mark.cpu_only
 def test_single_flavor_integrand_has_no_constant_gathers(tmp_path):
     """With a single flavor the flavor index is a constant tensor: the flavor
     tables (remap, factors, mirror) must be resolved when building the graph
@@ -105,7 +113,6 @@ def test_single_flavor_integrand_has_no_constant_gathers(tmp_path):
         "AlphaS_Vals: [0.3, 0.2, 0.12, 0.1, 0.08]\n"
     )
     running_coupling = ms.RunningCoupling(ms.AlphaSGrid(str(alphas_file)))
-    mapping = ms.PhaseSpaceMapping([0.0] * 5, 1000.0, leptonic=True)
     matrix_element = ms.MatrixElement(
         0xBADCAFE,
         5,
@@ -121,6 +128,9 @@ def test_single_flavor_integrand_has_no_constant_gathers(tmp_path):
         energy_scale=ms.CachedScale(),
     )
     for mirror in (False, True):
+        mapping = ms.PhaseSpaceMapping(
+            [0.0] * 5, 1000.0, leptonic=True, mirror_beams=mirror
+        )
         integrand = ms.Integrand(
             mapping,
             [diff_xs],
@@ -149,6 +159,7 @@ def test_single_flavor_integrand_has_no_constant_gathers(tmp_path):
 # memory layouts
 
 
+@pytest.mark.cpu_only
 @pytest.mark.parametrize("order", ["C", "F"])
 def test_row_major_and_column_major_inputs(order):
     """Column-major (batch stride one) inputs run the vectorized kernels,
@@ -164,6 +175,7 @@ def test_row_major_and_column_major_inputs(order):
     assert z == approx(x * y + np.abs(y))
 
 
+@pytest.mark.cpu_only
 @pytest.mark.parametrize("size", [3, 8, 100])
 def test_literal_arrays(size):
     """Small literal arrays are stored padded to the vector size, large ones
@@ -180,6 +192,20 @@ def test_literal_arrays(size):
     assert y == approx(x * np.array(values) + 1.5)
 
 
+@pytest.mark.cpu_only
+def test_literal_output_is_not_padded():
+    func = build(
+        [("x", ms.batch_float)],
+        [("y", ms.batch_float_array(3))],
+        lambda fb, x: fb.stack([1.0, 2.0, 3.0]),
+    )
+    (y,) = call(func, rng.normal(size=BATCH_SIZE))
+    assert y.reshape(-1, 3)[0] == approx([1.0, 2.0, 3.0])
+    # the padded storage would give the inner dimension a stride of the vector size
+    assert y.strides[-1] == y.itemsize
+
+
+@pytest.mark.cpu_only
 def test_broadcast_full_input():
     """fb.full creates a batch-sized tensor with batch stride zero."""
 
@@ -193,6 +219,7 @@ def test_broadcast_full_input():
     assert y == approx(2.5 * x)
 
 
+@pytest.mark.cpu_only
 def test_cut_all_and_cut_any_with_scalar_bounds():
     func = build(
         [("obs", ms.batch_float_array(4))],
@@ -209,6 +236,7 @@ def test_cut_all_and_cut_any_with_scalar_bounds():
 # single inputs
 
 
+@pytest.mark.cpu_only
 def test_single_input_rejects_batched_argument():
     fb = ms.FunctionBuilder(
         ms.NamedTypes([("r", ms.batch_float)]),
@@ -219,6 +247,7 @@ def test_single_input_rejects_batched_argument():
         fb.breit_wigner_invariant(r, r, 1.0, 0.0, 100.0)
 
 
+@pytest.mark.cpu_only
 def test_single_inputs():
     """Breit-Wigner sampling with literal (single) mass and width, compared
     between its forward and inverse direction."""
@@ -246,7 +275,7 @@ def test_single_inputs():
 def test_global_probability_gradient_is_summed_over_events():
     """The gradient of a broadcast (global) probability vector is the sum of the
     contributions of all events."""
-    ctx = ms.Context()
+    ctx = new_context()
     ctx.define_global("test_simd_layout_probs", ms.DataType.float64, [4], True)
     ctx.get_global("test_simd_layout_probs").torch()[:] = torch.tensor(
         [[0.1, 0.4, 0.3, 0.2]]
@@ -272,7 +301,7 @@ def test_global_probability_gradient_is_summed_over_events():
     grad = param.grad.clone()
 
     eps = 1e-6
-    grad_fd = torch.zeros(4)
+    grad_fd = torch.zeros(4, dtype=torch.float64)
     with torch.no_grad():
         for i in range(4):
             param[0, i] += eps
@@ -281,13 +310,13 @@ def test_global_probability_gradient_is_summed_over_events():
             minus = loss()
             param[0, i] += eps
             grad_fd[i] = (plus - minus) / (2 * eps)
-    assert grad[0].numpy() == approx(grad_fd.numpy(), rel=1e-5)
+    assert grad[0].cpu().numpy() == approx(grad_fd.cpu().numpy(), rel=1e-5)
 
 
 def test_broadcast_gradient_through_stack():
     """stack of a broadcast (global) and a batched value: the gradient of the
     global accumulates the whole batch."""
-    ctx = ms.Context()
+    ctx = new_context()
     ctx.define_global("test_simd_layout_scalar", ms.DataType.float64, [], True)
     ctx.get_global("test_simd_layout_scalar").torch()[:] = 1.5
     fb = ms.FunctionBuilder(

@@ -159,6 +159,8 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    cpp/SubprocessSystArgs
    cpp/SystematicsCalculator
    cpp/SystematicsConfig
+   cpp/TarReader
+   cpp/TarWriter
    cpp/Tensor
    cpp/TensorView
    cpp/ThreadPool

@@ -214,6 +214,7 @@ add_library(
     src/driver/status_file.cpp
     src/driver/thread_pool.cpp
     src/driver/io.cpp
+    src/driver/tar.cpp
     src/driver/vegas_optimizer.cpp
     src/driver/discrete_optimizer.cpp
     src/driver/backend.cpp
@@ -268,6 +269,7 @@ add_library(
     include/madspace/driver/channel_generator.hpp
     include/madspace/driver/generator_data.hpp
     include/madspace/driver/io.hpp
+    include/madspace/driver/tar.hpp
     include/madspace/driver/vegas_optimizer.hpp
     include/madspace/driver/discrete_optimizer.hpp
     include/madspace/driver/backend.hpp

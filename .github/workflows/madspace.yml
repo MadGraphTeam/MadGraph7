@@ -87,6 +87,8 @@ jobs:
               scipy
               --extra-index-url https://download.pytorch.org/whl/cpu
               torch
+            # the GPU runs of these tests are in gpu_runner_ci.yml (job madspace_tests)
+            CIBW_TEST_ENVIRONMENT: MADSPACE_TEST_DEVICE=cpu
             # runs the unit tests once per SIMD mode supported by the runner
             CIBW_TEST_COMMAND: >
               python {project}/madspace/tests/run_simd_modes.py {project}/madspace/tests

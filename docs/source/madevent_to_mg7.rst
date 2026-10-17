@@ -15,7 +15,9 @@ existing scripts keep working. These are ``nevents``, ``gridpack``, ``fixed_ren_
 ``scale``, ``dsqrt_q2fact1``, ``dsqrt_q2fact2``, ``scalefact``, ``bwcutoff``, ``cut_decays``
 and ``use_syst``. The shortcuts ``set lhc``, ``set lep``, ``set fixed_scale``,
 ``set no_parton_cut`` and ``set dynamical_scale_choice HT/n`` work as before, and so does
-``set iseed``. MadEvent draws a random seed for ``iseed = 0``. MG7 does the same for
+``set iseed``. The beam settings ``ebeam``, ``ebeam1``, ``ebeam2``, ``lpp``, ``lpp1``,
+``lpp2``, ``pdlabel``, ``pdlabel1``, ``pdlabel2`` and ``lhaid`` are translated as in the
+table below. MadEvent draws a random seed for ``iseed = 0``. MG7 does the same for
 ``seed = -1`` and treats ``0`` as an ordinary fixed seed, so ``set iseed 0`` is translated.
 All other settings must use their new names.
 
@@ -30,19 +32,21 @@ Beams and PDFs
       - ``run_card.toml``
       - Notes
     * - ``ebeam1``, ``ebeam2``
-      - ``beam.e_cm``
-      - The sum of the two energies. Only symmetric beams are supported.
+      - ``beam.ebeam1``, ``beam.ebeam2``
+      - One energy per beam. With different energies the events are written, and the
+        :math:`\eta` cuts applied, in the lab frame.
     * - ``lpp1``, ``lpp2``
       - ``beam.leptonic``
       - ``false`` for proton beams and ``true`` for lepton beams without PDFs. Other beam
         types, such as elastic photons or antiprotons, are not supported.
     * - ``pdlabel``, ``lhaid``
-      - ``beam.pdf``
+      - ``beam.pdf1``, ``beam.pdf2``
       - The name of the LHAPDF set instead of its id. For example, ``lhaid = 331900`` becomes
-        ``"NNPDF40_lo_as_01180"``.
+        ``"NNPDF40_lo_as_01180"``. ``set beam.pdf`` sets both beams.
     * - ``pdlabel1``, ``pdlabel2``
-      - ``beam.pdf``
-      - MG7 uses one PDF set for both beams.
+      - ``beam.pdf1``, ``beam.pdf2``
+      - One set per beam. A beam without PDF exists only for a lepton collider, as
+        ``beam.leptonic``.
 
 Scales
 ------
@@ -212,8 +216,8 @@ The following MadEvent features have no MG7 equivalent. Settings for them are ig
 * Beam polarization and heavy-ion or equivalent-photon beams: ``polbeam1``, ``polbeam2``,
   ``nb_proton1``, ``nb_proton2``, ``nb_neutron1``, ``nb_neutron2``, ``mass_ion1``,
   ``mass_ion2``, ``ievo_eva``, ``evaorder``, ``eva_xcut``.
-* Different PDFs or fixed factorization scales for the two beams, and the scale
-  parameters ``mue_over_ref``, ``mue_ref_fixed`` and ``fixed_extra_scale``.
+* Fixed factorization scales for the two beams, and the scale parameters
+  ``mue_over_ref``, ``mue_ref_fixed`` and ``fixed_extra_scale``.
 * Cuts that are not a bound on a single observable: ``cutuse = 1``, which accepts an event if
   any of the ordered jet cuts passes, and the vector-boson-fusion cuts ``xetamin`` and
   ``deltaeta``, which require the two hardest jets to lie in opposite hemispheres.

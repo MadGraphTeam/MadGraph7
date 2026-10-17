@@ -18,7 +18,12 @@ import subprocess
 import sys
 import textwrap
 
+import pytest
+
 import madspace as ms
+
+# the survey runs on CPU threads of its own context
+pytestmark = pytest.mark.cpu_only
 
 TIMEOUT = 120
 

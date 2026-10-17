@@ -171,9 +171,9 @@ def test_flow_float32_subnets(tmp_path):
         torch.testing.assert_close(g32, g64, rtol=1e-3, atol=1e-4)
 
     # float32 globals survive saving and loading
-    ctx.save_globals(str(tmp_path))
+    ctx.save_globals(str(tmp_path / "globals.tar"))
     loaded = ms.Context()
-    loaded.load_globals(str(tmp_path))
+    loaded.load_globals(str(tmp_path / "globals.tar"))
     for name in names_f64:
         name32 = name.replace("f64", "f32")
         global32 = loaded.get_global(name32).torch()

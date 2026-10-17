@@ -2,13 +2,16 @@ import pytest
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from madspace_testing import default_context, generator, new_context, randn
 from pytest import approx
 
 import madspace as ms
 from madspace.torch import FunctionModule
 
-torch.set_default_dtype(torch.float64)
-torch.manual_seed(3210)
+
+def assert_approx(actual, expected):
+    """pytest.approx's default tolerances for tensors."""
+    torch.testing.assert_close(actual, expected, rtol=1e-6, atol=1e-12)
 
 
 PRECISIONS = {
@@ -29,7 +32,7 @@ def mlp(precision):
 
 @pytest.fixture
 def module_context():
-    return ms.Context()
+    return new_context()
 
 
 @pytest.fixture
@@ -71,8 +74,8 @@ def test_activation(activation):
         ms.NamedTypes([("out", ms.batch_float_array(10))]),
     )
     fb.output(0, getattr(fb, activation)(fb.input(0)))
-    func = FunctionModule(fb.function())
-    x = 10 * torch.randn((1000, 10))
+    func = FunctionModule(fb.function(), default_context())
+    x = 10 * randn((1000, 10), generator=generator(3210))
     x.requires_grad = True
 
     y_ms = func(x)
@@ -84,8 +87,8 @@ def test_activation(activation):
     y_torch.sum().backward()
     grad_torch = x.grad
 
-    assert y_ms.detach() == approx(y_torch.detach())
-    assert grad_me == approx(grad_torch)
+    assert_approx(y_ms.detach(), y_torch.detach())
+    assert_approx(grad_me, grad_torch)
 
 
 @pytest.mark.parametrize("grad_clip", [0.0, 0.01])
@@ -106,7 +109,7 @@ def test_training(mlp, mlp_module, module_context, precision, grad_clip):
             ]
             mlp_torch[2 * i].bias[:] = mlp_module.global_params[f"layer{i+1}:bias"][0]
 
-    ctx = ms.Context()
+    ctx = new_context()
     fb = ms.FunctionBuilder(
         ms.NamedTypes([("in", ms.batch_float_array(10))]),
         ms.NamedTypes([("out", ms.single_float), ("mlp_out", ms.batch_float)]),
@@ -131,13 +134,17 @@ def test_training(mlp, mlp_module, module_context, precision, grad_clip):
     def close(a, b):
         return a == approx(b, rel=tol, abs=tol)
 
+    def assert_close(actual, expected):
+        torch.testing.assert_close(actual, expected, rtol=tol, atol=tol)
+
     # the builtin optimizer clips the RMS gradient, not the norm
     n_params = sum(p.numel() for p in mlp_torch.parameters())
     max_norm = grad_clip * n_params**0.5
 
+    g = generator(3210)
     for i in range(10):
         # the input and the loss are in float64, only the network uses dtype
-        x = torch.randn((128, 10), dtype=torch.float64)
+        x = randn((128, 10), generator=g, dtype=torch.float64)
         y = x.square().sum(dim=1, keepdim=True)
 
         loss_ms = (y - mlp_module(x)).square().mean()
@@ -162,14 +169,14 @@ def test_training(mlp, mlp_module, module_context, precision, grad_clip):
 
         with torch.no_grad():
             for i in range(3):
-                w_torch = mlp_torch[2 * i].weight.numpy()
-                b_torch = mlp_torch[2 * i].bias.numpy()
+                w_torch = mlp_torch[2 * i].weight
+                b_torch = mlp_torch[2 * i].bias
                 w_ms = mlp_module.global_params[f"layer{i+1}:weight"]
                 b_ms = mlp_module.global_params[f"layer{i+1}:bias"]
                 assert w_ms.dtype == dtype
-                assert close(w_ms[0].numpy(), w_torch)
-                assert close(b_ms[0].numpy(), b_torch)
-                assert close(w_ms.grad[0].numpy(), mlp_torch[2 * i].weight.grad.numpy())
-                assert close(b_ms.grad[0].numpy(), mlp_torch[2 * i].bias.grad.numpy())
-                assert close(ctx.get_global(f"layer{i+1}.weight").numpy()[0], w_torch)
-                assert close(ctx.get_global(f"layer{i+1}.bias").numpy()[0], b_torch)
+                assert_close(w_ms[0], w_torch)
+                assert_close(b_ms[0], b_torch)
+                assert_close(w_ms.grad[0], mlp_torch[2 * i].weight.grad)
+                assert_close(b_ms.grad[0], mlp_torch[2 * i].bias.grad)
+                assert_close(ctx.get_global(f"layer{i+1}.weight").torch()[0], w_torch)
+                assert_close(ctx.get_global(f"layer{i+1}.bias").torch()[0], b_torch)

@@ -556,10 +556,17 @@ KERNELSPEC Pair<FourMom<T>, FVal<T>> p1com_from_tabs_cs(
     FourMom<T> p1_com;
     auto e1_com = 0.5 * (m_tot + ed);
     p1_com[0] = max(e1_com, 0.);
-    p1_com[3] =
-        -(m1 * m1 + ma_2 + t_abs - 2. * p1_com[0] * pa_com[0]) / (2.0 * pa_com_mag);
-    auto pt2 = pp * pp - p1_com[3] * p1_com[3];
-    auto pt = sqrt(max(pt2, 0.));
+    // p1 along pa at |t| = t_lo, against it at t_lo + 4 |pa| pp. t_lo through
+    // E - p = m^2 / (E + p), and p1_z, p1_t from the distances to the ends of
+    // the range: pp^2 - p1_z^2 cancels near an end, and differently with FMA
+    auto plus_a = pa_com[0] + pa_com_mag;
+    auto plus_1 = p1_com[0] + pp;
+    auto t_lo = (plus_a - plus_1) * (m1 * m1 / plus_1 - ma_2 / plus_a);
+    auto pa_2 = 2. * pa_com_mag;
+    auto to_lo = (t_abs - t_lo) / pa_2;
+    auto to_hi = (t_lo + 2. * pa_2 * pp - t_abs) / pa_2;
+    p1_com[3] = 0.5 * (to_hi - to_lo);
+    auto pt = sqrt(max(to_lo * to_hi, 0.));
     p1_com[1] = pt * cos_phi;
     p1_com[2] = pt * sin_phi;
 

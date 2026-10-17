@@ -1,5 +1,6 @@
 import argparse
 import gc
+import math
 import os
 import sys
 import time
@@ -9,6 +10,7 @@ import glob
 import shutil
 import json
 import subprocess
+import tempfile
 import re
 import logging
 from dataclasses import dataclass, field
@@ -281,6 +283,8 @@ class HistItem:
 
 class MadgraphProcess:
     def __init__(self):
+        self.madnis_trained = False
+        self.lhe_completer = None
         self.load_cards()
         self.init_backend()
         self.init_event_dir()
@@ -399,6 +403,14 @@ class MadgraphProcess:
         self.is_decay = incoming_counts == {1}
         if not self.is_decay:
             self.decaying_mass = None
+            single = [meta["outgoing"] for meta in self.subprocess_data
+                      if len(clean_pids(meta["outgoing"])) == 1]
+            if single and self.run_card["beam"]["leptonic"]:
+                raise ValueError(
+                    f"2 -> 1 processes ({single[0]} ...) need beams with a PDF "
+                    "(leptonic = false in [beam]): with fixed beam energies the "
+                    "one-particle phase space is a delta function in s_hat"
+                )
             return
 
         masses = {
@@ -460,22 +472,37 @@ class MadgraphProcess:
         ms.set_simd_mode(self.run_card["run"]["madspace_cpu_mode"])
 
     def init_event_dir(self) -> None:
-        run_name = self.run_card["run"]["run_name"]
-        os.makedirs("Events", exist_ok=True)
-        run_dir_prefix = os.path.join("Events", f"{run_name}_")
-        existing_run_dirs = glob.glob(f"{run_dir_prefix}*")
-        run_index = 1
-        for run_dir in existing_run_dirs:
-            run_index_str = run_dir[len(run_dir_prefix):]
-            if run_index_str.isnumeric():
-                run_index = max(run_index, int(run_index_str) + 1)
-        while True:
-            try:
-                self.run_path = f"{run_dir_prefix}{run_index:02d}"
-                os.mkdir(self.run_path)
-                break
-            except FileExistsError:
-                run_index += 1
+        output_dir = self.run_card["gridpack"]["output_dir"]
+        temp_dir = self.run_card["gridpack"]["temp_output_dir"]
+        if output_dir:
+            self.run_path = os.path.abspath(os.path.expanduser(output_dir))
+            os.makedirs(self.run_path, exist_ok=True)
+        else:
+            run_name = self.run_card["run"]["run_name"]
+            os.makedirs("Events", exist_ok=True)
+            run_dir_prefix = os.path.join("Events", f"{run_name}_")
+            existing_run_dirs = glob.glob(f"{run_dir_prefix}*")
+            run_index = 1
+            for run_dir in existing_run_dirs:
+                run_index_str = run_dir[len(run_dir_prefix):]
+                if run_index_str.isnumeric():
+                    run_index = max(run_index, int(run_index_str) + 1)
+            while True:
+                try:
+                    self.run_path = f"{run_dir_prefix}{run_index:02d}"
+                    os.mkdir(self.run_path)
+                    break
+                except FileExistsError:
+                    run_index += 1
+        # temporary npy files of the channel generators
+        self.auto_temp_path = temp_dir == "auto"
+        if self.auto_temp_path:
+            self.temp_path = tempfile.mkdtemp(prefix="mg7_events_")
+        elif temp_dir:
+            self.temp_path = os.path.abspath(os.path.expanduser(temp_dir))
+            os.makedirs(self.temp_path, exist_ok=True)
+        else:
+            self.temp_path = self.run_path
         # Absolute on purpose. StatusFile is a C++ object that finishes its
         # write from its destructor (rename info.json.tmp -> info.json), and
         # that destructor runs whenever Python gets round to collecting the
@@ -638,7 +665,7 @@ class MadgraphProcess:
             found = ("no usable lhapdf-config was found, so the set could not "
                      "be downloaded automatically")
         return (
-            "LHAPDF set %r, requested by [beam] pdf in Cards/run_card.toml, "
+            "LHAPDF set %r, requested by [beam] pdf1/pdf2 in Cards/run_card.toml, "
             "was not found.\n"
             "  searched: %s\n"
             "  %s\n"
@@ -668,9 +695,18 @@ class MadgraphProcess:
             # No beams: the total energy is the decaying particle's mass, and
             # "leptonic" is what the mappings call "no parton luminosity".
             self.e_cm = self.decaying_mass
+            self.beam_energies = (float(self.e_cm), 0.0)
+            self.beam_rapidity = 0.0
             self.leptonic = True
         else:
-            self.e_cm = beam_args["e_cm"]
+            ebeam1 = float(beam_args["ebeam1"])
+            ebeam2 = float(beam_args["ebeam2"])
+            self.beam_energies = (ebeam1, ebeam2)
+            # The phase space is generated in the beams' centre-of-mass frame
+            # (massless beams: s = 4 E1 E2) and boosted by this rapidity into
+            # the lab frame, where the events are written and the cuts applied.
+            self.e_cm = 2.0 * math.sqrt(ebeam1 * ebeam2)
+            self.beam_rapidity = 0.5 * math.log(ebeam1 / ebeam2)
             self.leptonic = beam_args["leptonic"]
 
         dynamical_scales = {
@@ -704,8 +740,10 @@ class MadgraphProcess:
                 scale_factor=1.,
             )
             self.pdf_grid = None
+            self.pdf_grid2 = None
             self.lhapdf = None
             self.pdf_dir = None
+            self.pdf_dir2 = None
             self.fixed_alphas_info = self.write_fixed_alphas_info()
             self.alphas_grid = ms.AlphaSGrid(self.fixed_alphas_info)
             for context in self.contexts:
@@ -713,17 +751,34 @@ class MadgraphProcess:
             self.running_coupling = ms.RunningCoupling(self.alphas_grid)
             return
 
-        pdf_set = beam_args["pdf"]
+        pdf_set = beam_args["pdf1"]
         self.pdf_set = pdf_set
+        self.pdf_set2 = beam_args["pdf2"]
         self.fixed_alphas_info = None
         self.lhapdf = self.ensure_pdf_set(pdf_set)
         self.pdf_dir = self.lhapdf.find_set(pdf_set)
         if self.pdf_dir is None:
             raise RuntimeError(self._no_pdf_message(pdf_set))
         self.pdf_grid = ms.PdfGrid(os.path.join(self.pdf_dir, pdf_set, f"{pdf_set}_0000.dat"))
+        # A second grid only when the beams differ (and have a PDF at all);
+        # otherwise beam 2 shares the first one.
+        self.pdf_grid2 = None
+        self.pdf_dir2 = self.pdf_dir
+        if self.pdf_set2 != pdf_set and not self.leptonic:
+            self.pdf_dir2 = self.ensure_pdf_set(self.pdf_set2).find_set(self.pdf_set2)
+            if self.pdf_dir2 is None:
+                raise RuntimeError(self._no_pdf_message(self.pdf_set2))
+            self.pdf_grid2 = ms.PdfGrid(os.path.join(
+                self.pdf_dir2, self.pdf_set2, f"{self.pdf_set2}_0000.dat"))
+            logger.info("PDF sets: %s (beam 1), %s (beam 2); alpha_s from %s",
+                        pdf_set, self.pdf_set2, pdf_set)
         self.alphas_grid = ms.AlphaSGrid(os.path.join(self.pdf_dir, pdf_set, f"{pdf_set}.info"))
         for context in self.contexts:
             self.pdf_grid.initialize_globals(context)
+            if self.pdf_grid2 is not None:
+                # the prefix ms.Integrand reads the second beam's grid from
+                # (Integrand::pdf2_prefix)
+                self.pdf_grid2.initialize_globals(context, "beam2")
             self.alphas_grid.initialize_globals(context)
         self.running_coupling = ms.RunningCoupling(self.alphas_grid)
 
@@ -904,7 +959,14 @@ class MadgraphProcess:
             config.nominal_lhaid = info["SetIndex"]
             config.nominal_error_type = info["ErrorType"]
             config.nominal_description = info["SetDesc"]
-            config.pdf_members = self.resolve_pdf_variations()
+            if self.pdf_grid2 is None:
+                config.pdf_members = self.resolve_pdf_variations()
+            else:
+                logger.warning(
+                    "systematics: the beams use different PDF sets (%s, %s), so "
+                    "no PDF variation is computed; the scale variations use both "
+                    "sets", self.pdf_set, self.pdf_set2)
+                config.pdf_members = []
         else:
             config.pdf_members = []
         args = self.build_systematics_args()
@@ -916,7 +978,8 @@ class MadgraphProcess:
             args, self.systematics_context)
         self.systematics = ms.SystematicsCalculator(
             config, args, self.pdf_grid, self.alphas_grid,
-            self.systematics_context, matrix_elements, flavor_remap)
+            self.systematics_context, matrix_elements, flavor_remap,
+            nominal_pdf2=self.pdf_grid2 if config.has_pdf else None)
         for warning in self.systematics.warnings:
             logger.warning("systematics: %s", warning)
         self.systematics_data = {
@@ -925,6 +988,9 @@ class MadgraphProcess:
             "nominal_grid_file": os.path.join(
                 self.pdf_dir, self.pdf_set, f"{self.pdf_set}_0000.dat")
                 if config.has_pdf else None,
+            "nominal_grid_file2": os.path.join(
+                self.pdf_dir2, self.pdf_set2, f"{self.pdf_set2}_0000.dat")
+                if config.has_pdf and self.pdf_grid2 is not None else None,
             "nominal_info_file": info_path,
             # matrix elements re-evaluated for the mixed-order subprocesses
             "me_paths": [meta["me_path"] for meta in self.subprocess_data],
@@ -1295,8 +1361,8 @@ class MadgraphProcess:
                     channel.event_generator = ms.ChannelEventGenerator(
                         contexts=self.contexts,
                         integrand=integrand,
-                        event_file=os.path.join(self.run_path, f"events.{i}.{channel.name}.npy"),
-                        weight_file=os.path.join(self.run_path, f"weights.{i}.{channel.name}.npy"),
+                        event_file=os.path.join(self.temp_path, f"events.{i}.{channel.name}.npy"),
+                        weight_file=os.path.join(self.temp_path, f"weights.{i}.{channel.name}.npy"),
                         config=self.event_generator_config,
                         subprocess_index=i,
                         name=f"{i}.{channel.name}",
@@ -1506,6 +1572,7 @@ class MadgraphProcess:
         for context in self.contexts[1:]:
             context.copy_globals_from(self.contexts[0])
         self.event_generator = self.build_event_generator(madnis_phasespaces)
+        self.madnis_trained = True
 
     def update_madnis_status_single(
         self, batch: int, batch_target: int, loss: float, lr: float, channel_count: int
@@ -1589,7 +1656,30 @@ class MadgraphProcess:
         self.madnis_upper_box.print_update()
         self.madnis_lower_box.print_update()
 
+    @property
+    def gridpack_run_mode(self) -> str:
+        """How this run ends: a gridpack run may skip the events (see the
+        [gridpack] run_mode run card option); any other run is a regular one."""
+        if not self.run_card["gridpack"]["save_gridpack"]:
+            return "regular"
+        return self.run_card["gridpack"]["run_mode"]
+
+    def finish_without_events(self) -> None:
+        """The end of a gridpack run that writes no events: only what the
+        gridpack needs is prepared, then it is stored."""
+        if self.gridpack_run_mode == "minimal":
+            # a trained MadNIS needs nothing more, a VEGAS grid has to converge
+            if not self.madnis_trained:
+                self.event_generator.optimize()
+        else:
+            self.event_generator.fix_max_weights()
+        self.build_systematics()
+        self.save_gridpack()
+
     def generate_events(self) -> None:
+        if self.gridpack_run_mode != "regular":
+            self.finish_without_events()
+            return
         start_time = get_start_time()
         self.event_generator.generate()
         output_format = self.run_card["run"]["output_format"]
@@ -1773,7 +1863,6 @@ class MadgraphProcess:
         `incoming` holds the *partonic* initial state (e.g. gluons), not the
         beam particle, so hadronic beams are protons (2212); leptonic beams are
         the incoming leptons themselves."""
-        half_e = float(self.e_cm) / 2.
         if self.is_decay:
             # No beams. LHE has no way to say that, so report the decaying
             # particle at rest as a single "beam"; the second slot is empty.
@@ -1782,22 +1871,23 @@ class MadgraphProcess:
             return [pdg, 0], [float(self.e_cm), 0.0]
         if not self.leptonic:
             # hadronic collider: proton beams (p-pbar is not distinguished)
-            return [2212, 2212], [half_e, half_e]
+            return [2212, 2212], list(self.beam_energies)
         data = self.subprocess_data[0]
         incoming = data["incoming"]
         flavor0 = data["flavors"][0]["options"][0]
         init_pdgs = flavor0[:len(incoming)]
         beam_pdgs = [pdg if abs(code) in (81, 82) else code
                      for code, pdg in zip(incoming, init_pdgs)]
-        return beam_pdgs, [half_e, half_e]
+        return beam_pdgs, list(self.beam_energies)
 
-    def _lhapdf_id(self):
-        """Central LHAPDF id of the beam PDF set (read from its .info SetIndex),
-        or -1 for a leptonic beam (no PDF)."""
+    def _lhapdf_id(self, beam=1):
+        """Central LHAPDF id of the PDF set of `beam` (read from its .info
+        SetIndex), or -1 for a leptonic beam (no PDF)."""
         if self.leptonic or not self.pdf_dir:
             return -1
-        pdf_set = self.run_card["beam"]["pdf"]
-        info = os.path.join(self.pdf_dir, pdf_set, "%s.info" % pdf_set)
+        pdf_set = self.pdf_set if beam == 1 else self.pdf_set2
+        pdf_dir = self.pdf_dir if beam == 1 else self.pdf_dir2
+        info = os.path.join(pdf_dir, pdf_set, "%s.info" % pdf_set)
         try:
             for line in open(info):
                 if line.strip().startswith("SetIndex:"):
@@ -1816,7 +1906,6 @@ class MadgraphProcess:
         building meta for a writer that bypasses that injection (e.g.
         write_lhe_header)."""
         beam_pdgs, energies = self._beam_info()
-        lhaid = self._lhapdf_id()
         pdf_group = -1 if self.leptonic else 0
         status = self.event_generator.status()
         xsec, err = status.mean, status.error
@@ -1844,7 +1933,7 @@ class MadgraphProcess:
             beam1_pdg_id=beam_pdgs[0], beam2_pdg_id=beam_pdgs[1],
             beam1_energy=energies[0], beam2_energy=energies[1],
             beam1_pdf_authors=pdf_group, beam2_pdf_authors=pdf_group,
-            beam1_pdf_id=lhaid, beam2_pdf_id=lhaid,
+            beam1_pdf_id=self._lhapdf_id(1), beam2_pdf_id=self._lhapdf_id(2),
             weight_mode=weight_mode,
             # positional: the pybind arg name for max_weight is non-kwarg-safe
             processes=[ms.LHEProcess(xsec, err, max_weight, 1)],
@@ -1897,22 +1986,24 @@ class MadgraphProcess:
         os.mkdir(gridpack_path)
         os.mkdir(data_path)
         os.mkdir(events_path)
-        self.contexts[0].save_globals(os.path.join(data_path, "globals"))
+        self.contexts[0].save_globals(os.path.join(data_path, "globals.tar"))
 
-        channel_path = os.path.join(data_path, "channels")
-        os.mkdir(channel_path)
-        channel_files = {}
-        for channel in self.event_generator.channels():
-            name = channel.status().name
-            file = f"channel{name}.json"
-            channel_files[name] = file
-            channel.save(os.path.join(channel_path, file))
+        include_estimates = self.gridpack_run_mode == "fix_max_weight"
+        # one json object per channel, joined by hand so that the channel
+        # json is not parsed and dumped again
+        channel_entries = [
+            f"{json.dumps(channel.status().name)}:{channel.to_json(include_estimates)}"
+            for channel in self.event_generator.channels()
+        ]
+        with open(os.path.join(data_path, "channels.json"), "w") as f:
+            f.write("{" + ",".join(channel_entries) + "}")
 
         lib_path = os.path.join(gridpack_path, "lib")
         if self.run_card["gridpack"]["include_source"]:
             os.mkdir(lib_path)
             shutil.copytree("src", os.path.join(gridpack_path, "src"))
             shutil.copytree("SubProcesses", os.path.join(gridpack_path, "SubProcesses"))
+            shutil.copytree("backend", os.path.join(gridpack_path, "backend"))
         else:
             shutil.copytree("lib", lib_path)
 
@@ -1927,6 +2018,7 @@ class MadgraphProcess:
             shutil.copytree(
                 _INSTALL_DIR / "madspace",
                 os.path.join(gridpack_path, "madspace", "install", "madspace"),
+                ignore=shutil.ignore_patterns("include"),
             )
 
         matrix_elements = []
@@ -1970,12 +2062,19 @@ class MadgraphProcess:
         # (bin/generate_events --output_format still selects an npy output).
         previous_output_format = self.run_card["run"]["output_format"]
         self.run_card["run"]["output_format"] = "lhe"
+        # the directories of this run mean nothing on the machine running the gridpack
+        previous_dirs = (self.run_card["gridpack"]["temp_output_dir"],
+                         self.run_card["gridpack"]["output_dir"])
+        self.run_card["gridpack"]["temp_output_dir"] = ""
+        self.run_card["gridpack"]["output_dir"] = ""
         try:
             self.run_card.write_gridpack_card(
                 os.path.join(cards_path, "grid_run_card.toml"))
         finally:
             self.run_card["run"]["cpu_mode"] = previous_cpu_mode
             self.run_card["run"]["output_format"] = previous_output_format
+            (self.run_card["gridpack"]["temp_output_dir"],
+             self.run_card["gridpack"]["output_dir"]) = previous_dirs
 
         bin_path = os.path.join(gridpack_path, "bin")
         os.mkdir(bin_path)
@@ -1986,7 +2085,6 @@ class MadgraphProcess:
         os.chmod(gen_events_file, 0o755)
 
         data = {
-            "channels": channel_files,
             "matrix_elements": matrix_elements,
             "me_parameters": me_parameters(self.run_card),
             "source_hash": ms.SOURCE_HASH,
@@ -2010,6 +2108,23 @@ class MadgraphProcess:
                 systematics_data["nominal_info_file"] = os.path.join("data", name)
             with open(os.path.join(data_path, "systematics.json"), "w") as f:
                 json.dump(systematics_data, f)
+        if self.run_card["gridpack"]["compress"]:
+            archive_path = gridpack_path + ".tar.gz"
+            pigz = shutil.which("pigz")
+            if pigz:
+                # multi-threaded gzip
+                with open(archive_path, "wb") as f:
+                    tar = subprocess.Popen(
+                        ["tar", "-cf", "-", "-C", self.run_path, "gridpack"],
+                        stdout=subprocess.PIPE,
+                    )
+                    gz = subprocess.run([pigz, "-c"], stdin=tar.stdout, stdout=f)
+                    tar.stdout.close()
+                    if tar.wait() != 0 or gz.returncode != 0:
+                        raise RuntimeError("compressing the gridpack failed")
+            else:
+                shutil.make_archive(gridpack_path, "gztar", self.run_path, "gridpack")
+            shutil.rmtree(gridpack_path)
 
     def save_gridpack_lhe_meta(self, path) -> None:
         """The run-independent part of the LHE header (cards, beams, PDF), for
@@ -2423,6 +2538,9 @@ class MadgraphSubprocess:
             if len(self.process.cut_data) > 0
             else None
         )
+        # A flavor standing for both beam orientations draws the orientation
+        # before the phase-space mapping, so boost, cuts and PDFs all see it.
+        self.mirror_beams = not self.process.is_decay and self.has_mirrored_flavors()
         # the integration histograms are functions of the momenta; the weight
         # distribution is a property of the final event sample, so it is only
         # filled by MadgraphProcess.build_event_histograms at combine time
@@ -2501,6 +2619,8 @@ class MadgraphSubprocess:
                     invariant_power=self.process.run_card["phasespace"]["invariant_power"],
                     permutations=chan_permutations,
                     leptonic=self.process.leptonic,
+                    beam_rapidity=self.process.beam_rapidity,
+                    mirror_beams=self.mirror_beams,
                 )
                 prefix = f"subproc{self.subproc_id}.channel{channel_id}"
                 if topo_count > 1:
@@ -2554,6 +2674,17 @@ class MadgraphSubprocess:
             subchan_weights=subchan_weights,
         )
 
+    def has_mirrored_flavors(self) -> bool:
+        """Does any flavor of this subprocess stand for both beam orientations?
+        Resolved the same way build_integrands resolves flavor_mirror."""
+        for flav in self.meta["flavors"]:
+            if self.unmerged_meta is not None:
+                subproc_index = self.meta["subprocesses"][flav["subprocess"]]
+                flav = self.unmerged_meta[subproc_index]["flavors"][flav["flavor"]]
+            if flav["mirror"]:
+                return True
+        return False
+
     def build_flat_phasespace(self) -> PhaseSpace:
         mapping = ms.PhaseSpaceMapping(
             self.incoming_masses + self.outgoing_masses,
@@ -2561,6 +2692,8 @@ class MadgraphSubprocess:
             mode=self.t_channel_mode(self.process.run_card["phasespace"]["flat_mode"]),
             cuts=self.cuts,
             leptonic=self.process.leptonic,
+            beam_rapidity=self.process.beam_rapidity,
+            mirror_beams=self.mirror_beams,
         )
         prefix = f"subproc{self.subproc_id}.flat"
         discrete_sym, discrete_flavor = self.build_discrete(
@@ -3180,7 +3313,8 @@ class MadgraphSubprocess:
                 flavor_diff_xs_indices,
                 flavor_subproc_indices,
                 flavor_per_subproc_remap,
-                madnis_args["compressed_channel_weight_count"]
+                madnis_args["compressed_channel_weight_count"],
+                None if self.process.leptonic else self.process.pdf_grid2,
             ))
         #print(integrands[1].function())
         #for i in integrands: print(i.function())
@@ -3306,6 +3440,11 @@ class MG7Cmd(Cmd):
             # configured in the session that is doing the launching.
             self.options.update({k: v for k, v in options.items()
                                  if k in self.options and v is not None})
+            # and so does its error policy: with crash_on_error a failing
+            # launch has to stop the script with a non-zero exit code, as a
+            # madevent launch does, instead of returning to the prompt.
+            if 'crash_on_error' in options:
+                self.options['crash_on_error'] = options['crash_on_error']
         self.plugin_path = []
         self.proc_characteristics = {'grouped_matrix': False, 'limitations': []}
         self._model = None  # lazily imported by get_model()
@@ -3612,6 +3751,28 @@ def build_selector_cmd(mother=None):
                         run_card.set('run.seed', seed, user=True)
                         logger.info("set iseed (mg7 run.seed) of the run_card.toml to %s%s",
                                     seed, " (random)" if seed == -1 else "")
+                        self.modified_card.add("run")
+                        return
+
+                    # madevent beam settings (ebeam, lpp, pdlabel, lhaid, per
+                    # beam or for both) onto the per-beam [beam] entries
+                    if rest and nlow in run_card.lo_beam_params:
+                        data_paths = lhapdf_paths().data_paths if nlow == "lhaid" else ()
+                        try:
+                            done = run_card.set_lo_beam_param(nlow, rest, masses, data_paths)
+                        except _banner_mod.InvalidRunCard as error:
+                            logger.warning("ignoring 'set %s %s': %s", name, rest, error)
+                            return
+                        logger.info("set %s %s: %s", nlow, rest, done)
+                        self.modified_card.add("run")
+                        return
+
+                    # quantities the card stores per beam: set both beams
+                    if rest and nlow in ("e_cm", "beam.e_cm", "beam.pdf"):
+                        value = rest if nlow == "beam.pdf" else run_card.evaluate(rest, masses)
+                        run_card.set(nlow, value, user=True)
+                        logger.info("set %s of the run_card.toml to %s (both beams)",
+                                    nlow, run_card["beam." + nlow.split(".")[-1]])
                         self.modified_card.add("run")
                         return
 
@@ -4226,6 +4387,8 @@ def _release_channel_generators(process) -> None:
     process.event_generator = None
     process.phasespaces = None
     gc.collect()
+    if getattr(process, "auto_temp_path", False):
+        shutil.rmtree(process.temp_path, ignore_errors=True)
 
 
 def run_single(switch=None) -> "MadgraphProcess":
@@ -4235,6 +4398,8 @@ def run_single(switch=None) -> "MadgraphProcess":
     process.survey()
     process.train_madnis()
     process.generate_events()
+    if process.gridpack_run_mode != "regular":
+        return process
     # run_card-driven LHE post-processing (displaced vertex + systematics)
     run_lhe_postprocessing(process)
     # run the post-processing tools (Pythia8/Delphes/MadSpin/reweight/analysis)

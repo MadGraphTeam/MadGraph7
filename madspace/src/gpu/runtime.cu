@@ -1616,7 +1616,8 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
     LastUseOfLocals last_use(function);
     InstructionDependencies dependencies(function);
 
-    std::size_t stream_count = 0, event_count = 0, backward_event_count = 0;
+    // at least the main stream, also for a function without instructions
+    std::size_t stream_count = 1, event_count = 0, backward_event_count = 0;
     for (auto& instr : function.instructions()) {
         if (instr.stream_index >= stream_count) {
             stream_count = instr.stream_index + 1;

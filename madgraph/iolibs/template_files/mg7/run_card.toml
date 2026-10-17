@@ -8,7 +8,7 @@ seed = %(run.seed)s
 device = %(run.device)s
 # SIMD width of the matrix elements on cpu devices; options: auto, scalar, simd_128, simd_256, simd_512, avx512y
 cpu_mode = %(run.cpu_mode)s
-# SIMD width of the phase-space sampling on cpu devices (experimental); options: auto, scalar, simd_128 (ARM only), simd_256, avx512y, simd_512
+# SIMD width of the phase-space sampling on cpu devices; options: auto, scalar, simd_128 (ARM only), simd_256, avx512y, simd_512
 madspace_cpu_mode = %(run.madspace_cpu_mode)s
 # matrix element precision; options: all64, all32, color32, denom64
 precision = %(run.precision)s
@@ -43,11 +43,22 @@ save_gridpack = %(gridpack.save_gridpack)s
 include_source = %(gridpack.include_source)s
 include_madspace = %(gridpack.include_madspace)s
 include_madspace_source = %(gridpack.include_madspace_source)s
+compress = %(gridpack.compress)s
+# end of a run creating a gridpack; options: regular, minimal (no events), fix_max_weight (no events)
+run_mode = %(gridpack.run_mode)s
+# temporary npy files; "" uses the output directory, "auto" a new temporary directory
+temp_output_dir = %(gridpack.temp_output_dir)s
+# output files; "" creates a new run folder in Events
+output_dir = %(gridpack.output_dir)s
 
 [beam]
-e_cm = %(beam.e_cm)s
+# beam 1 moves along +z; events and eta cuts are in this lab frame
+ebeam1 = %(beam.ebeam1)s
+ebeam2 = %(beam.ebeam2)s
 leptonic = %(beam.leptonic)s
-pdf = %(beam.pdf)s
+# "set beam.pdf X" sets both beams
+pdf1 = %(beam.pdf1)s
+pdf2 = %(beam.pdf2)s
 fixed_ren_scale = %(beam.fixed_ren_scale)s
 fixed_fact_scale = %(beam.fixed_fact_scale)s
 ren_scale = %(beam.ren_scale)s
