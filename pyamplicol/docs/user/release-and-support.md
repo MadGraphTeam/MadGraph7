@@ -15,10 +15,10 @@ problem.
 
 ## Current release boundary
 
-Version `1.0.0` is represented by the immutable
-[`v1.0.0` source snapshot](https://github.com/mg5amcnlo/pyamplicol/tree/v1.0.0),
-the [Thus Spoke Compute GitHub release](https://github.com/mg5amcnlo/pyamplicol/releases/tag/v1.0.0),
-and [PyPI release](https://pypi.org/project/pyamplicol/1.0.0/). Its validated
+Version `1.0.1` is represented by the immutable
+[`v1.0.1` source snapshot](https://github.com/mg5amcnlo/pyamplicol/tree/v1.0.1),
+the [GitHub release](https://github.com/mg5amcnlo/pyamplicol/releases/tag/v1.0.1),
+and [PyPI release](https://pypi.org/project/pyamplicol/1.0.1/). Its validated
 inventory is one source distribution and three `cp311-abi3` wheels:
 
 - macOS 11 or newer on Apple silicon;
@@ -31,7 +31,7 @@ Python, C11, C++17, Fortran 2008, and Rust 2021 APIs. It also runs a CPython
 3.14 abi3 smoke test, source preflight, and independent Fortran physics oracle.
 Publication uploads these already validated files without rebuilding them.
 
-Version 1.0.0 uses published Symbolica 3.0.0, SymJIT 2.26.4 and
+Version 1.0.1 uses published Symbolica 3.0.0, SymJIT 2.26.4 and
 ufo-model-loader 1.0.0, as recorded in the dependency lockfiles. No local
 dependency source patches or unpublished wheels are needed.
 

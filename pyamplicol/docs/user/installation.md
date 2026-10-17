@@ -80,7 +80,7 @@ Use a tagged snapshot when your platform has no compatible wheel or when you
 need a source build:
 
 ```console
-git clone --branch v1.0.0 --depth 1 \
+git clone --branch v1.0.1 --depth 1 \
   https://github.com/mg5amcnlo/pyamplicol.git
 cd pyamplicol
 python -m pip install .
