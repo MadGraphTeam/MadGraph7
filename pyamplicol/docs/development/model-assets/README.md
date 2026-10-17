@@ -90,3 +90,10 @@ parseability, and `importlib.resources` access.
 
 Raw UFO modules execute Python and must only be loaded from trusted sources.
 The serialized JSON forms are preferred for portable workflows.
+
+<!-- Page hierarchy for the MadGraph7 (Sphinx) documentation. -->
+```{toctree}
+:hidden:
+
+TRANSFORMATIONS
+```

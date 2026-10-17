@@ -706,8 +706,8 @@ included candidate times and baseline times were each added together.
    machine/source identity; no timing number is universal.
 
 For the exact controller contract and all current options, see the packaged
-[campaign template README](../../src/pyamplicol/_profiling_campaign/README.md)
-and [table-filling reference](../../src/pyamplicol/_profiling_campaign/TABLE_FILLING.md).
+[campaign template README](https://github.com/MadGraphTeam/MadGraph7/blob/main/pyamplicol/src/pyamplicol/_profiling_campaign/README.md)
+and [table-filling reference](https://github.com/MadGraphTeam/MadGraph7/blob/main/pyamplicol/src/pyamplicol/_profiling_campaign/TABLE_FILLING.md).
 For the physical difference between the two LC workloads and the four
 pyAmpliCol execution modes, continue with
 [LC workloads and execution modes](lc-workloads-and-execution-modes.md). The

@@ -554,3 +554,15 @@ syntax, so quote strings containing spaces.
 - [Models and Processes](models-and-processes.md)
 - [Runtime and Selectors](runtime-and-selectors.md)
 - [Exhaustive current schema](https://github.com/MadGraphTeam/pyamplicol/blob/main/examples/all_options.toml)
+
+<!-- Page hierarchy for the MadGraph7 (Sphinx) documentation. -->
+```{toctree}
+:hidden:
+
+models-and-processes
+ufo-model-coverage
+process-selection-and-permutations
+process-grouping
+generation-modes-and-evaluators
+command-line-interface
+```

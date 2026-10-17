@@ -275,3 +275,10 @@ The repository maintains concise normative contracts for contributors:
 - [Packaging contract](../development/PACKAGING_CONTRACT.md)
 - [Physics extraction contract](../development/PHYSICS_EXTRACTION_CONTRACT.md)
 - [On-the-fly mode architecture](../development/ON_THE_FLY_MODE_ARCHITECTURE.md)
+
+<!-- Page hierarchy for the MadGraph7 (Sphinx) documentation. -->
+```{toctree}
+:hidden:
+
+symbolica-and-licensing
+```

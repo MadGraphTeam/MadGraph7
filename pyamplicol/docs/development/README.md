@@ -60,3 +60,17 @@ PYAMPLICOL_SYMJIT_SOURCE=/absolute/path/to/symjit \
 variable is honoured by either command. ARM-specific tests are skipped on other
 architectures. The root `SYMJIT_FOLLOW_UP_FIXES/README.md` maps the checks to the
 reported defects and explains the relevant pyAmpliCol evaluation paths.
+
+<!-- Page hierarchy for the MadGraph7 (Sphinx) documentation. -->
+```{toctree}
+:hidden:
+
+API_CONTRACT
+CONFIG_CONTRACT
+ARCHITECTURE_DECISIONS
+PACKAGING_CONTRACT
+PHYSICS_EXTRACTION_CONTRACT
+MODEL_ASSET_PROVENANCE
+model-assets/README
+ON_THE_FLY_MODE_ARCHITECTURE
+```

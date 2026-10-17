@@ -627,4 +627,12 @@ language integration. To compare many validated process/mode combinations and
 turn the measurements into the report, follow the
 [profiling-campaign walkthrough](profiling-campaign-walkthrough.md). Every
 maintained packaged card and script is indexed in the
-[examples guide](../../examples/README.md).
+[examples guide](https://github.com/MadGraphTeam/MadGraph7/blob/main/pyamplicol/examples/README.md).
+
+<!-- Page hierarchy for the MadGraph7 (Sphinx) documentation. -->
+```{toctree}
+:hidden:
+
+lc-workloads-and-execution-modes
+profiling-campaign-walkthrough
+```

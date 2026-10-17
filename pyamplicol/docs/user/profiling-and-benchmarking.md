@@ -321,3 +321,14 @@ campaign workspaces remain local.
 - [Profiling Campaigns](profiling-campaigns.md)
 - [FullColor FFT Profiling](fullcolor-fft-profiling.md)
 - [Examples Gallery](examples-gallery.md)
+
+<!-- Page hierarchy for the MadGraph7 (Sphinx) documentation. -->
+```{toctree}
+:hidden:
+
+profiling-campaigns
+fullcolor-fft-profiling
+troubleshooting
+release-and-support
+../performance_reports/README
+```

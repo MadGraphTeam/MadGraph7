@@ -606,3 +606,15 @@ can handle; catch `PyAmpliColError` at an application boundary.
 - [Correlation Conventions](../correlator-conventions.md)
 - [Artifacts and Portability](artifacts-and-portability.md)
 - [Native APIs](native-apis.md)
+
+<!-- Page hierarchy for the MadGraph7 (Sphinx) documentation. -->
+```{toctree}
+:hidden:
+
+runtime-and-selectors
+native-apis
+artifacts-and-portability
+umami-api
+../correlators
+../correlator-conventions
+```

@@ -13,6 +13,58 @@ already contains the Python extension and the Rusticol native SDK.
 > **Recommended path:** use Python 3.11 or newer in a fresh virtual
 > environment and install from PyPI.
 
+## Installation for MadGraph7
+
+pyAmpliCol is developed inside the
+[MadGraph7 repository](https://github.com/MadGraphTeam/MadGraph7) (in
+`pyamplicol/`) and released together with MadGraph7, with the same version
+number. MadGraph7 uses it for processes generated with the `[amplicol]`
+matrix-element backend. Its installer works like the madspace one: by default
+it installs into `pyamplicol/install` inside the MadGraph7 directory and leaves
+the active Python environment untouched.
+
+From the MadGraph7 command line:
+
+```console
+install pyamplicol
+```
+
+or directly:
+
+```console
+python pyamplicol/install.py            # interactive
+python pyamplicol/install.py --bin      # wheel from PyPI (release tarballs)
+python pyamplicol/install.py --source   # build from source
+```
+
+| Option | Meaning |
+| --- | --- |
+| `-y`, `--yes` | No prompts; reuse the previous install mode. |
+| `--bin` | Install the PyPI wheel of this MadGraph7 version. Offered by default in release tarballs on platforms with a wheel. |
+| `--source` | Build from source. |
+| `-j N` | Parallel compilation jobs (`install pyamplicol` passes the `nb_core` option). |
+| `--system` | Install into the active Python environment instead of `pyamplicol/install`. |
+| `--clean` | Delete `pyamplicol/build` and `pyamplicol/install` first. |
+| `--build-models` | Regenerate the prepared models instead of downloading them. |
+
+A source build needs a C/C++ toolchain and the Rust version pinned in
+`rust-toolchain.toml`. When `rustup` is not available, the installer installs
+it into `pyamplicol/build/rust`, without touching `~/.rustup` or `~/.cargo`.
+The Cargo build tree is kept in `pyamplicol/build`, so rebuilds after a source
+change are incremental.
+
+The prepared SM and SM+HEFT models shipped in the package are not stored in
+Git. The installer downloads them from the MadGraph7 release (the release of
+this version, else the latest one) and checks that they match the source tree.
+When they do not, for example after a change to the model compiler, it
+regenerates them locally, which takes one extra build. The same can be done by
+hand with `tools/release/prepared_models_archive.py fetch` or `regenerate`.
+
+After installing, the installer checks that Symbolica accepts pyAmpliCol's
+library key (see [Symbolica licensing](#symbolica-licensing)). MadGraph7 also
+warns when the installed package was built from different sources than the
+ones in `pyamplicol/`; reinstall with `install pyamplicol -y` in that case.
+
 ## Install from PyPI
 
 ### macOS and Linux
@@ -80,11 +132,15 @@ Use a tagged snapshot when your platform has no compatible wheel or when you
 need a source build:
 
 ```console
-git clone --branch v1.0.1 --depth 1 \
-  https://github.com/MadGraphTeam/pyamplicol.git
-cd pyamplicol
+git clone --branch v0.2.1 --depth 1 \
+  https://github.com/MadGraphTeam/MadGraph7.git
+cd MadGraph7/pyamplicol
+python tools/release/prepared_models_archive.py fetch
 python -m pip install .
 ```
+
+Inside MadGraph7, `python pyamplicol/install.py --source --system` does the
+same, including the prepared models.
 
 A source build requires:
 
@@ -116,8 +172,9 @@ release wheel requires a clean Git checkpoint and complete release assets;
 published-dependency mode does not relax these publication guards.
 
 ```console
-git clone https://github.com/MadGraphTeam/pyamplicol.git
-cd pyamplicol
+git clone https://github.com/MadGraphTeam/MadGraph7.git
+cd MadGraph7/pyamplicol
+python tools/release/prepared_models_archive.py fetch
 just dev-install
 PYTHON=.venv/bin/python just dev-test
 ```
@@ -235,3 +292,11 @@ Do not work around this by mixing an extension from a different checkout.
 
 The exact build and publication boundary is recorded in
 [Release and Support](release-and-support.md).
+
+<!-- Page hierarchy for the MadGraph7 (Sphinx) documentation. -->
+```{toctree}
+:hidden:
+
+quick-start
+examples-gallery
+```
