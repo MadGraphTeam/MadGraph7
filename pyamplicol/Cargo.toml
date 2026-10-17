@@ -15,7 +15,7 @@ resolver = "2"
 [workspace.package]
 version = "1.0.1"
 edition = "2024"
-rust-version = "1.89.0"
+rust-version = "1.96"
 license = "0BSD"
 authors = [
   "Rikkert Frederix <rikkert.frederix@thep.lu.se>",
@@ -37,9 +37,17 @@ rayon = "1.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["float_roundtrip", "raw_value"] }
 sha2 = "0.10"
-symbolica = { version = "=3.0.0", default-features = true, features = ["bincode"] }
+symbolica = { version = "=3.0.1", default-features = false, features = ["bincode", "integer-gmp", "float-mpfr", "native_code_generation"] }
+symjit = { version = "=2.27.3", default-features = false }
 thiserror = "2.0"
 wide = "1.7"
+
+# NinjaRS's tested integration fork. Keep the numerical and graph crates on
+# the same revision as Symbolica; these fixes are not all merged upstream yet.
+[patch.crates-io]
+symbolica = { git = "https://github.com/ValentinHirschi/symbolica", rev = "e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8" }
+numerica = { git = "https://github.com/ValentinHirschi/symbolica", rev = "e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8" }
+graphica = { git = "https://github.com/ValentinHirschi/symbolica", rev = "e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8" }
 
 [profile.release]
 codegen-units = 1

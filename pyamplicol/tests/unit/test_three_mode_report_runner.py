@@ -1021,7 +1021,7 @@ def _canonical_symjit_evaluator(
         "input_len": input_len,
         "output_len": output_len,
         "application_path": application_path,
-        "application_abi": "symjit-application-storage-v3",
+        "application_abi": "symjit-application-storage-v4",
         "element_layout": "complex-f64",
         "batch_layout": "row-major",
         "compiler_type": "native",
@@ -1037,7 +1037,7 @@ def _canonical_symjit_evaluator(
         "plane_application": {
             "application_path": plane_path,
             "application_abi": "pyamplicol-symjit-plane-application-v2",
-            "storage_abi": "symjit-application-storage-v3",
+            "storage_abi": "symjit-application-storage-v4",
             "element_layout": "split-complex-plane-major",
             "descriptor_order": "inputs-re-im-then-outputs-re-im",
             "input_complex_count": input_len,
@@ -1287,7 +1287,7 @@ def _recurrence_source_fixture(
             "semantic_digest": "",
             "semantic_template_ids": ["prepared-finalization"],
             "simd_axis": "points-contiguous",
-            "target_triple": "symjit-storage-v3-portable",
+            "target_triple": "symjit-storage-v4-portable",
             "template_id": "template-0",
         },
         {
@@ -1313,7 +1313,7 @@ def _recurrence_source_fixture(
             "semantic_digest": "",
             "semantic_template_ids": ["source-current"],
             "simd_axis": "points-contiguous",
-            "target_triple": "symjit-storage-v3-portable",
+            "target_triple": "symjit-storage-v4-portable",
             "template_id": "template-1",
         },
     ]
@@ -1332,7 +1332,7 @@ def _recurrence_source_fixture(
         "prepared_kernel_pack_digest": prepared_digest,
         "prepared_kernel_payload_digest": "5" * 64,
         "recurrence_template_catalog_digest": "6" * 64,
-        "target_triple": "symjit-storage-v3-portable",
+        "target_triple": "symjit-storage-v4-portable",
         "templates": templates,
     }
     execution: dict[str, object] = {
@@ -2952,7 +2952,7 @@ def test_recurrence_source_identity_rejects_every_broken_link(
         prepared_binding["payload_digest"] = "0" * 64
         refresh_catalog = False
     elif corruption == "intrinsic_source_application_abi":
-        intrinsic_binding["source_application_abi"] = "symjit-application-storage-v3"
+        intrinsic_binding["source_application_abi"] = "symjit-application-storage-v4"
         refresh_catalog = True
     elif corruption == "intrinsic_direct_application_abi":
         intrinsic_binding["direct_application_abi"] = (

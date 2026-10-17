@@ -285,7 +285,7 @@ def test_python_rust_and_release_lock_wire_versions_are_identical() -> None:
         ROOT / "rust/crates/rusticol-core/src/engine/eager_manifest.rs"
     ).read_text(encoding="utf-8")
     match = re.search(
-        r'const SYMJIT_APPLICATION_STORAGE_V3_ABI: &str = "([^"]+)";',
+        r'const SYMJIT_APPLICATION_STORAGE_V4_ABI: &str = "([^"]+)";',
         eager_manifest,
     )
     assert match is not None

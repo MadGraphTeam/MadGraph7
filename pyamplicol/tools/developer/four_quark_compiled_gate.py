@@ -174,7 +174,7 @@ COMPILED_DIRECT_TABLE_DESCRIPTOR_ABI = "pyamplicol-eager-plane-table-descriptor-
 NATIVE_COMPILED_DIRECT_APPLICATION_ABI = (
     "pyamplicol-native-compiled-direct-application-v1"
 )
-SYMJIT_APPLICATION_ABI = "symjit-application-storage-v3"
+SYMJIT_APPLICATION_ABI = "symjit-application-storage-v4"
 SYMJIT_PLANE_APPLICATION_ABI = "pyamplicol-symjit-plane-application-v2"
 SYMJIT_RUNTIME_CAPABILITY = "symjit.application.complex-f64.v1"
 RESULT_KIND = "pyamplicol-four-quark-compiled-direct-arena-gate"

@@ -1,5 +1,18 @@
 # Dependency Modes
 
+The `loop` development branch currently integrates Rust Symbolica 3.0.1,
+Numerica and Graphica from the tested
+[`e679e8c` integration fork](https://github.com/ValentinHirschi/symbolica/commit/e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8),
+and SymJIT 2.27.3. These pins are recorded by Cargo. This is a source integration,
+with Rust 1.96 or newer required; it is not a completed release dependency set.
+The Python/Community source build and NinjaRS packaging remain integration gates.
+SymJIT now writes storage v4, which additionally stores the compiler argument
+capacity. Current producers and consumers require v4; the checked-in v3 prepared
+model and self-test payloads must be regenerated with the rebuilt native runtime.
+Changing only their metadata would not update the binary format.
+The release lock and release installation workflow described below still record
+the preceding published dependency set and must be reconciled before publication.
+
 pyAmpliCol defaults to published runtime dependencies and release-mode native
 builds. Historical pinned-source candidate machinery is retained, but its
 upstream pins need a coherent update before use with the current tensor APIs.

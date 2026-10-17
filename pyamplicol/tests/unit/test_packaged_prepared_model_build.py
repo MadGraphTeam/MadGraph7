@@ -212,7 +212,7 @@ def _release_bundle(
             "portable": True,
             "word_bits": 64,
             "endianness": "little",
-            "target_triple": "symjit-storage-v3-portable",
+            "target_triple": "symjit-storage-v4-portable",
             "cpu_features": [],
         },
     )
@@ -697,7 +697,7 @@ def test_wheel_staging_rejects_architecture_target_drift(tmp_path: Path) -> None
         / "built-in-sm-jit-o2-x86_64.metadata.json"
     )
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    metadata["target"]["target_triple"] = "symjit-storage-v3-aarch64"
+    metadata["target"]["target_triple"] = "symjit-storage-v4-aarch64"
     metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
 
     with pytest.raises(RuntimeError, match="target does not match"):

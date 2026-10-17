@@ -443,7 +443,7 @@ def _canonical_symjit_evaluator(
         "runtime_capability": "symjit.application.complex-f64.v1",
         "input_len": input_len,
         "output_len": output_len,
-        "application_abi": "symjit-application-storage-v3",
+        "application_abi": "symjit-application-storage-v4",
         "application_path": application_path,
         "element_layout": "complex-f64",
         "batch_layout": "row-major",
@@ -460,7 +460,7 @@ def _canonical_symjit_evaluator(
         "plane_application": {
             "application_path": plane_path,
             "application_abi": "pyamplicol-symjit-plane-application-v2",
-            "storage_abi": "symjit-application-storage-v3",
+            "storage_abi": "symjit-application-storage-v4",
             "element_layout": "split-complex-plane-major",
             "descriptor_order": "inputs-re-im-then-outputs-re-im",
             "input_complex_count": input_len,
@@ -539,7 +539,7 @@ def _recurrence_source_fixture(
         "semantic_digest": "",
         "semantic_template_ids": ["prepared-finalization"],
         "simd_axis": "points-contiguous",
-        "target_triple": "symjit-storage-v3-portable",
+        "target_triple": "symjit-storage-v4-portable",
         "template_id": "template-0",
     }
     prepared_digest = "a" * 64
@@ -557,7 +557,7 @@ def _recurrence_source_fixture(
         "prepared_kernel_pack_digest": prepared_digest,
         "prepared_kernel_payload_digest": "5" * 64,
         "recurrence_template_catalog_digest": "6" * 64,
-        "target_triple": "symjit-storage-v3-portable",
+        "target_triple": "symjit-storage-v4-portable",
         "templates": [template],
     }
     plan: dict[str, object] = {
@@ -698,7 +698,7 @@ def _compiled_stage(
             "runtime_capability": "symjit.application.complex-f64.v1",
             "input_len": 1,
             "output_len": 1,
-            "application_abi": "symjit-application-storage-v3",
+            "application_abi": "symjit-application-storage-v4",
             "application_path": "evaluators/stage.symjit",
             "element_layout": "complex-f64",
             "batch_layout": "row-major",
@@ -715,7 +715,7 @@ def _compiled_stage(
             "plane_application": {
                 "application_path": "evaluators/stage.plane.symjit",
                 "application_abi": "pyamplicol-symjit-plane-application-v2",
-                "storage_abi": "symjit-application-storage-v3",
+                "storage_abi": "symjit-application-storage-v4",
                 "element_layout": "split-complex-plane-major",
                 "descriptor_order": "inputs-re-im-then-outputs-re-im",
                 "input_complex_count": 1,
@@ -783,7 +783,7 @@ def test_compiled_arena_audits_fused_stages_and_parameter_exclusion() -> None:
                 "amplitude_stage": _compiled_stage(),
             },
             "model_parameter_evaluator": {
-                "evaluator": {"application_abi": "symjit-application-storage-v3"}
+                "evaluator": {"application_abi": "symjit-application-storage-v4"}
             },
         },
     }
@@ -1125,7 +1125,7 @@ def test_otf_artifact_audit_accepts_only_compact_seed_and_prepared_jit_contract(
         "backend": "jit",
         "eager_kernel_abi": "pyamplicol-eager-kernel-v1",
         "dependency_abis": {
-            "symjit_application": "symjit-application-storage-v3",
+            "symjit_application": "symjit-application-storage-v4",
             "symjit_plane_application": "pyamplicol-symjit-plane-application-v2",
         },
         "recurrence_template": {
@@ -1783,7 +1783,7 @@ def test_eager_and_recurrence_arena_abis_are_audited(tmp_path: Path) -> None:
                     "kind": "symjit-application-evaluator",
                     "runtime_capability": "symjit.application.complex-f64.v1",
                     "optimization_level": 2,
-                    "application_abi": "symjit-application-storage-v3",
+                    "application_abi": "symjit-application-storage-v4",
                 },
             },
         ],

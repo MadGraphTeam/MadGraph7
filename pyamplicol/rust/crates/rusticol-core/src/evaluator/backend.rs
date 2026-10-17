@@ -2639,6 +2639,85 @@ fn ensure_evaluator_state_consumed(
     )))
 }
 
+#[cfg(all(test, feature = "symbolica-runtime"))]
+mod python_serialization_tests {
+    use super::*;
+
+    fn evaluate_saved<T>(
+        exact: &ExpressionEvaluator<Complex<Rational>>,
+        convert: impl Fn(&Rational) -> T,
+        tolerance: T,
+    ) where
+        T: Real + PartialOrd + EvaluationDomain,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        let complex =
+            |value: &Complex<Rational>| Complex::new(convert(&value.re), convert(&value.im));
+        let mut evaluator = exact.clone().map_coeff(&complex);
+        let x = Complex::new(
+            Rational::from(2) + Rational::from((1, 2)).pow(80),
+            Rational::from(0),
+        );
+        let y = Complex::new(Rational::from(3), Rational::from(1));
+        let third = Complex::new(Rational::from((1, 3)), Rational::from(0));
+        let seventh = Complex::new(Rational::from((1, 7)), Rational::from(0));
+        let expected = [
+            x.clone() + y.clone() * third,
+            x.clone() * y.clone() + seventh,
+        ];
+        let inputs = [complex(&x), complex(&y)];
+        let mut output =
+            vec![Complex::new(convert(&Rational::from(0)), convert(&Rational::from(0))); 2];
+        evaluator.evaluate(&inputs, &mut output);
+        for (actual, expected) in output.iter().zip(expected.iter().map(complex)) {
+            let error = actual - &expected;
+            assert!(
+                error.re.norm() < tolerance && error.im.norm() < tolerance,
+                "serialized evaluator gave {actual}, expected {expected}"
+            );
+        }
+    }
+
+    /// Exercise the actual Python producer and this crate's production decoder.
+    /// Requires Python Symbolica when the optional runtime feature is tested.
+    #[test]
+    fn python_saved_evaluator_roundtrips_in_three_precisions() {
+        let python = std::env::var_os("PYAMPLICOL_TEST_PYTHON").unwrap_or_else(|| "python3".into());
+        let producer = std::process::Command::new(python)
+            .env("SYMBOLICA_HIDE_BANNER", "1")
+            .arg("-c")
+            .arg(
+                r#"
+import sys
+from symbolica import E, S, Expression
+x, y = S('pyamplicol_serialization_x', 'pyamplicol_serialization_y')
+evaluator = Expression.evaluator_multiple(
+    [x + y/3, x*y + E('1')/7], [x, y], n_cores=1, jit_compile=False)
+sys.stdout.buffer.write(evaluator.save())
+"#,
+            )
+            .output()
+            .expect("launch Python Symbolica producer (or set PYAMPLICOL_TEST_PYTHON)");
+        assert!(
+            producer.status.success(),
+            "Python evaluator producer failed: {}",
+            String::from_utf8_lossy(&producer.stderr)
+        );
+        let (_, exact, _) = load_evaluator_state_bytes(&producer.stdout, "Python Evaluator.save()")
+            .expect("decode the installed Python Symbolica evaluator with the shared core");
+        evaluate_saved(&exact, Rational::to_f64, 1e-14);
+        evaluate_saved(&exact, |r| DoubleFloat::from(r), DoubleFloat::from(1e-28));
+        evaluate_saved(
+            &exact,
+            |r| r.to_multi_prec_float(256),
+            Float::with_val(256, 1e-60),
+        );
+        let mut trailing = producer.stdout;
+        trailing.push(0);
+        assert!(load_evaluator_state_bytes(&trailing, "trailing byte").is_err());
+    }
+}
+
 #[cfg(test)]
 mod aosoa_tests {
     use super::*;
