@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / "build_backend"))
 
 import package_version  # noqa: E402
 
-RELEASE_VERSION = "1.0.0"
+RELEASE_VERSION = "1.0.1"
 
 
 def _copy_version_contract(tmp_path: Path) -> Path:

@@ -35,6 +35,23 @@ Version 1.0.0 uses published Symbolica 3.0.0, SymJIT 2.26.4 and
 ufo-model-loader 1.0.0, as recorded in the dependency lockfiles. No local
 dependency source patches or unpublished wheels are needed.
 
+## 1.0.1 release
+
+Version `1.0.1` adds process grouping for multiprocess outputs. Subprocesses
+with equal matrix elements are recorded in a new `process-groups.json`
+artifact payload, with their leg permutation, rational factor, and charge
+conjugation. `--flavor-blind` generates one representative per flavour
+class, optionally including charge conjugation, and every other flavour
+remains selectable from Python, the CLI, and the native SDKs, which route it
+to its representative. `--analyze-process-groups numerical` and
+`pyamplicol group-processes` find further relations numerically.
+`pyamplicol inspect` and the generation summary display the groups, and UMAMI
+exports flavour-blind members through their representative. UFO multiparticle
+expansion now enumerates multisets and drops candidates that violate a charge
+conserved by every vertex, which renumbers the process IDs of compiled-model
+multiprocess requests. Artifacts written by 1.0.1 declare the new payload and
+require a 1.0.1 runtime. See [Process Grouping](process-grouping.md).
+
 ## 1.0.0 release
 
 Version `1.0.0` preserves exact model constants, colour weights, and

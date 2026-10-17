@@ -879,7 +879,7 @@ checksum = "6b1e7f9a428571be2dc5bc0505c13fb6bf936822b894ec87abf8a08a4e51742d"
 
 [[package]]
 name = "rusticol-capi"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "rusticol-core",
  "serde_json",
@@ -887,7 +887,7 @@ dependencies = [
 
 [[package]]
 name = "rusticol-core"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "bincode",
  "libc",
@@ -905,7 +905,7 @@ dependencies = [
 
 [[package]]
 name = "rusticol-python"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "flate2",
  "num-bigint",
