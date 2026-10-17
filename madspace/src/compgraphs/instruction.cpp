@@ -939,6 +939,8 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
         case UMAMI_IN_RANDOM_COLOR:
         case UMAMI_IN_RANDOM_HELICITY:
         case UMAMI_IN_RANDOM_DIAGRAM:
+        case UMAMI_IN_MOMENTUM_FRACTION:
+        case UMAMI_IN_SCALE:
             if (input_type.dtype != DataType::dt_float ||
                 input_type.shape.size() != 0) {
                 throw std::invalid_argument(
@@ -952,10 +954,22 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
         case UMAMI_IN_HELICITY_INDEX:
         case UMAMI_IN_DIAGRAM_INDEX:
         case UMAMI_IN_CHANNEL_INDEX:
+        case UMAMI_IN_PARTICLE_COUNT:
+        case UMAMI_IN_PDG_ID:
+        case UMAMI_IN_BEAM_INDEX:
             if (input_type.dtype != DataType::dt_int || input_type.shape.size() != 0) {
                 throw std::invalid_argument(
                     std::format(
                         "matrix_element, argument {}: expected batch of integers", i + 1
+                    )
+                );
+            }
+            break;
+        case UMAMI_IN_PDG_IDS:
+            if (input_type.dtype != DataType::dt_int || input_type.shape.size() != 1) {
+                throw std::invalid_argument(
+                    std::format(
+                        "matrix_element, argument {}: expected array of integers", i + 1
                     )
                 );
             }
@@ -979,6 +993,12 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
         std::vector<int> shape;
         switch (output_key) {
         case UMAMI_OUT_MATRIX_ELEMENT:
+        case UMAMI_OUT_CUT:
+        case UMAMI_OUT_REN_SCALE:
+        case UMAMI_OUT_FACT_SCALE_1:
+        case UMAMI_OUT_FACT_SCALE_2:
+        case UMAMI_OUT_PDF:
+        case UMAMI_OUT_BIAS:
             dtype = DataType::dt_float;
             shape = {};
             break;

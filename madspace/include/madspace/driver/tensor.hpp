@@ -287,6 +287,8 @@ public:
     virtual void sync_barrier() const {}
     /// The kind of device this is.
     virtual DeviceType device_type() const = 0;
+    /// Index of the device among those of its type, 0 for the CPU.
+    virtual int device_index() const { return 0; }
     /// Make this device current for the calling thread.
     virtual void activate() const = 0;
     /// One Adam optimizer update step; see @ref AdamOptimizer.
