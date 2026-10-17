@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: 0BSD
+
+[package]
+name = "rusticol-loop-reduction"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "0BSD"
+publish = false
+
+# Kept separate until the application's Symbolica dependencies are aligned.
+[workspace]
+resolver = "3"
+exclude = ["upstream"]
+
+[dependencies]
+ninjars = { path = "upstream/crates/ninjars" }
+ninjars-symbolica = { path = "upstream/crates/ninjars-symbolica", features = ["native-masters"] }
+oneloop = { path = "upstream/references/oneloopmaster", default-features = false }
+symbolica = { version = "3.0.1", default-features = false, features = ["integer-gmp", "float-mpfr"] }
+
+[patch.crates-io]
+symbolica = { path = "upstream/references/symbolica" }
+numerica = { path = "upstream/references/symbolica/lib/numerica" }
+graphica = { path = "upstream/references/symbolica/lib/graphica" }
+symbolica-typst-plugin = { git = "https://github.com/symbolica-dev/symbolica-typst-plugin", rev = "57b7455b37c30f4f87353c0073e49f5225e937ab" }
+
+[profile.dev]
+debug = 0
+
+[profile.dev.package."*"]
+opt-level = 2
