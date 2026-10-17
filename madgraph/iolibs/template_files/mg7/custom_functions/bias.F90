@@ -9,20 +9,24 @@
 ! particle_count  number of external particles, incoming ones first
 ! pdg_ids         PDG ids of the external particles
 ! momenta         momenta(:, i) = (E, px, py, pz) of particle i in GeV, lab frame
+! params          parameters declared in parameters.h, e.g. params%pt0
 !
 ! Run `make` in this directory to build ../lib/custom_bias.so.
 
-function custom_bias(particle_count, pdg_ids, momenta) bind(C, name="custom_bias") result(value)
+function custom_bias(particle_count, pdg_ids, momenta, params) bind(C, name="custom_bias") result(value)
     use iso_c_binding
     implicit none
+#include "parameters.h"
     integer(c_int), value :: particle_count
     integer(c_int), intent(in) :: pdg_ids(particle_count)
     real(c_double), intent(in) :: momenta(0:3, particle_count)
+    type(custom_parameters), intent(in) :: params
     real(c_double) :: value
 
     ! Example: populate the tail of the pT distribution of the first
-    ! final-state particle, b = (pT / 100 GeV)^2 with a floor of 1.
-    ! value = max((momenta(1, 3)**2 + momenta(2, 3)**2) / 100d0**2, 1d0)
+    ! final-state particle, b = (pT / pt0)^2 with a floor of 1, with
+    ! X(pt0, 100.) in parameters.h.
+    ! value = max((momenta(1, 3)**2 + momenta(2, 3)**2) / params%pt0**2, 1d0)
 
     value = 1d0
 end function custom_bias

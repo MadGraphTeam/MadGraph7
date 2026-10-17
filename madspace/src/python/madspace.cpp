@@ -380,6 +380,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("output_keys"),
             py::arg("framework"),
             py::arg("name"),
+            py::arg("parameter_defaults") =
+                std::vector<std::pair<std::string, double>>{},
+            py::arg("parameters") = std::unordered_map<std::string, double>{},
             py::return_value_policy::reference_internal
         )
         .def(
@@ -507,7 +510,9 @@ PYBIND11_MODULE(_madspace_py, m) {
              {"helicity_index", UMAMI_OUT_HELICITY_INDEX},
              {"diagram_index", UMAMI_OUT_DIAGRAM_INDEX},
              {"cut", UMAMI_OUT_CUT},
-             {"scale", UMAMI_OUT_SCALE},
+             {"ren_scale", UMAMI_OUT_REN_SCALE},
+             {"fact_scale1", UMAMI_OUT_FACT_SCALE_1},
+             {"fact_scale2", UMAMI_OUT_FACT_SCALE_2},
              {"pdf", UMAMI_OUT_PDF},
              {"bias", UMAMI_OUT_BIAS},
          }) {
@@ -1520,7 +1525,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"helicity_index_out", MatrixElement::helicity_index_out},
             {"diagram_index_out", MatrixElement::diagram_index_out},
             {"cut_out", MatrixElement::cut_out},
-            {"scale_out", MatrixElement::scale_out},
+            {"ren_scale_out", MatrixElement::ren_scale_out},
+            {"fact_scale1_out", MatrixElement::fact_scale1_out},
+            {"fact_scale2_out", MatrixElement::fact_scale2_out},
             {"pdf_out", MatrixElement::pdf_out},
             {"bias_out", MatrixElement::bias_out},
         }

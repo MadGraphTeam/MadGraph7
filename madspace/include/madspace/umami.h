@@ -126,8 +126,14 @@ typedef enum {
     UMAMI_OUT_GPU_STREAM,
     /** value of a custom cut, 0 rejects the event, type: `double`, shape: `()` */
     UMAMI_OUT_CUT,
-    /** value of a custom energy scale, type: `double`, shape: `()` */
-    UMAMI_OUT_SCALE,
+    /** custom renormalization scale, type: `double`, shape: `()` */
+    UMAMI_OUT_REN_SCALE,
+    /** custom factorization scale of the first incoming particle, type: `double`,
+       shape: `()` */
+    UMAMI_OUT_FACT_SCALE_1,
+    /** custom factorization scale of the second incoming particle, type: `double`,
+       shape: `()` */
+    UMAMI_OUT_FACT_SCALE_2,
     /** value x f(x, Q) of a custom parton density, type: `double`, shape: `()` */
     UMAMI_OUT_PDF,
     /** value of a custom event bias, type: `double`, shape: `()` */

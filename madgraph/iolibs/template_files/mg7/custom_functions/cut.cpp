@@ -9,6 +9,7 @@
  * particle_count  number of external particles, incoming ones first
  * pdg_ids         PDG ids of the external particles
  * momenta         momenta[i] = (E, px, py, pz) of particle i in GeV, lab frame
+ * params          parameters declared in parameters.h, e.g. params->pt_min
  *
  * Run `make` in this directory to build ../lib/custom_cut.so.
  */
@@ -19,13 +20,22 @@ using std::fmax;
 using std::pow;
 using std::sqrt;
 
-extern "C" bool custom_cut(int particle_count, const int* pdg_ids, const double momenta[][4]) {
+#include "parameters.h"
+
+extern "C" bool custom_cut(
+    int particle_count,
+    const int* pdg_ids,
+    const double momenta[][4],
+    const CustomParameters* params
+) {
     (void)particle_count;
     (void)pdg_ids;
     (void)momenta;
-    // Example: require pT > 20 GeV for the first final-state particle.
+    (void)params;
+    // Example: require pT > pt_min for the first final-state particle, with
+    // X(pt_min, 20.) in parameters.h.
     // double px = momenta[2][1], py = momenta[2][2];
-    // return px * px + py * py > 20. * 20.;
+    // return px * px + py * py > params->pt_min * params->pt_min;
 
     return true;
 }

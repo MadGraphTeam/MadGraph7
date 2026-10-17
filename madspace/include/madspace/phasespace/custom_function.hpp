@@ -13,7 +13,9 @@ namespace madspace {
  * Context::load_matrix_element. It receives the momenta
  * (`UMAMI_IN_MOMENTA`), the particle count (`UMAMI_IN_PARTICLE_COUNT`) and the
  * PDG ids of the external particles (`UMAMI_IN_PDG_IDS`). It returns one value
- * per event, under `UMAMI_OUT_CUT`, `UMAMI_OUT_SCALE` or `UMAMI_OUT_BIAS`.
+ * per event under `UMAMI_OUT_CUT` or `UMAMI_OUT_BIAS`, or a scale returns the
+ * three values `UMAMI_OUT_REN_SCALE`, `UMAMI_OUT_FACT_SCALE_1` and
+ * `UMAMI_OUT_FACT_SCALE_2`.
  *
  * With a single PDG-id option the ids are constant. With several options the
  * ids are selected per event by the `flavor_index` argument.
@@ -26,14 +28,16 @@ namespace madspace {
  *   Present only with more than one option.
  *
  * **Returns**
- * - `cut`, `scale` or `bias` – `float`, shape `(batch,)` – the function value.
+ * - `cut` or `bias` – `float`, shape `(batch,)` – the function value.
+ * - `ren_scale`, `fact_scale1`, `fact_scale2` – `float`, shape `(batch,)` – the
+ *   scales, for a function of type `scale`.
  */
 class CustomFunction : public FunctionGenerator {
 public:
     /// What the custom function computes.
     enum CustomFunctionType {
         cut,   ///< Acceptance factor, 0 rejects the event.
-        scale, ///< Energy scale.
+        scale, ///< Renormalization and factorization scales.
         bias   ///< Event bias.
     };
 

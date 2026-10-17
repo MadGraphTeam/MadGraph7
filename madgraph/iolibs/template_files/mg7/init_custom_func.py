@@ -30,16 +30,26 @@ UMAMI_HEADER = os.path.join(
 )
 
 FUNCTIONS = {
-    "cut": ("UMAMI_OUT_CUT", "a cut, 1 keeps the event and 0 rejects it"),
-    "scale": ("UMAMI_OUT_SCALE", "the renormalization and factorization scale"),
-    "pdf": ("UMAMI_OUT_PDF", "a parton density x f(x, Q)"),
-    "bias": ("UMAMI_OUT_BIAS", "an event bias for the unweighting"),
+    "cut": (["UMAMI_OUT_CUT"], "a cut, true keeps the event and false rejects it"),
+    "scale": (
+        ["UMAMI_OUT_REN_SCALE", "UMAMI_OUT_FACT_SCALE_1", "UMAMI_OUT_FACT_SCALE_2"],
+        "the renormalization and factorization scales",
+    ),
+    "pdf": (["UMAMI_OUT_PDF"], "a parton density x f(x, Q)"),
+    "bias": (["UMAMI_OUT_BIAS"], "an event bias for the unweighting"),
+}
+# example parameter of parameters.h: (name, default, run card value)
+EXAMPLE_PARAMETERS = {
+    "cut": ("pt_min", "20.", "30.0"),
+    "scale": ("ht_fraction", "0.5", "0.25"),
+    "pdf": ("gluon_norm", "3.", "2.5"),
+    "bias": ("pt0", "100.", "200.0"),
 }
 # language: (body template extension, description)
 LANGUAGES = {
     "c": ("c", "C"),
     "cpp": ("cpp", "C++"),
-    "fortran": ("f90", "Fortran"),
+    "fortran": ("F90", "Fortran"),
     "cuda": ("cu", "CUDA, for runs on NVIDIA GPUs"),
     "hip": ("cu", "HIP, for runs on AMD GPUs"),
     "python-numpy": ("py", "Python with numpy, for CPU runs, no compilation"),
@@ -152,17 +162,21 @@ def write_files(out_dir, function, language):
     values = {
         "kind": function,
         "function_name": f"custom_{function}",
-        "output_key": FUNCTIONS[function][0],
+        "output_keys": ", ".join(FUNCTIONS[function][0]),
         "is_pdf": int(function == "pdf"),
+        "is_scale": int(function == "scale"),
         "return_type": "bool" if function == "cut" else "double",
         "body_file": body_file,
         "language": language,
+        "example": EXAMPLE_PARAMETERS[function][0],
+        "example_default": EXAMPLE_PARAMETERS[function][1],
+        "example_value": EXAMPLE_PARAMETERS[function][2],
     }
     os.makedirs(out_dir, exist_ok=True)
     shutil.copy(os.path.join(TEMPLATE_DIR, f"{function}.{extension}"), os.path.join(out_dir, body_file))
     shutil.copy(UMAMI_HEADER, os.path.join(out_dir, "umami.h"))
     wrapper = "wrapper_gpu.cu" if language in ("cuda", "hip") else "wrapper_cpu.c"
-    for template in (wrapper, "Makefile"):
+    for template in (wrapper, "Makefile", "parameters.h"):
         with open(os.path.join(TEMPLATE_DIR, template)) as f:
             text = f.read() % values
         with open(os.path.join(out_dir, template), "w") as f:

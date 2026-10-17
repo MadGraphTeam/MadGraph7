@@ -64,43 +64,55 @@ _NSIGMA = 3
 _SEED = 1234
 _TOP_PT_CUT = 150.
 
-# bodies of the custom functions, in C++
+# bodies of the custom functions, in C++. The cut takes its threshold from the
+# run card, through the parameter pt_min of parameters.h.
 _CUT_BODY = r'''
 #include <cmath>
-extern "C" bool custom_cut(int particle_count, const int* pdg_ids, const double momenta[][4]) {
+#include "parameters.h"
+extern "C" bool custom_cut(int particle_count, const int* pdg_ids, const double momenta[][4],
+                           const CustomParameters* params) {
     for (int i = 2; i < 4; ++i) {
-        if (std::hypot(momenta[i][1], momenta[i][2]) < %(cut)r) {
+        if (std::hypot(momenta[i][1], momenta[i][2]) < params->pt_min) {
             return false;
         }
     }
     return true;
 }
-''' % {'cut': _TOP_PT_CUT}
+'''
+_CUT_PARAMETERS = 'X(pt_min, 20.) X(unused, 1.)'
+_CUT_CARD = {'pt_min': _TOP_PT_CUT}
 
 # forward jets only: asymmetric under the beam mirror, so the cut must see the
 # momenta the event is written with
 _FORWARD_JET_BODY = r'''
-extern "C" bool custom_cut(int particle_count, const int* pdg_ids, const double momenta[][4]) {
+#include "parameters.h"
+extern "C" bool custom_cut(int particle_count, const int* pdg_ids, const double momenta[][4],
+                           const CustomParameters* params) {
     return momenta[4][3] > 0.;
 }
 '''
 
 _SCALE_BODY = r'''
 #include <cmath>
-extern "C" double custom_scale(int particle_count, const int* pdg_ids, const double momenta[][4]) {
+#include "parameters.h"
+extern "C" void custom_scale(int particle_count, const int* pdg_ids, const double momenta[][4],
+                             const CustomParameters* params, double* ren_scale,
+                             double* fact_scale1, double* fact_scale2) {
     double ht = 0.;
     for (int i = 2; i < particle_count; ++i) {
         double e = momenta[i][0], pz = momenta[i][3];
         ht += std::sqrt(std::fmax(e * e - pz * pz, 0.));
     }
-    return ht / 2.;
+    *ren_scale = *fact_scale1 = *fact_scale2 = ht / 2.;
 }
 '''
 
 _PDF_BODY = r'''
 #include <mutex>
 #include "LHAPDF/LHAPDF.h"
-extern "C" double custom_pdf(int beam_index, int pdg_id, double x, double q) {
+#include "parameters.h"
+extern "C" double custom_pdf(int beam_index, int pdg_id, double x, double q,
+                             const CustomParameters* params) {
     static LHAPDF::PDF* pdf = LHAPDF::mkPDF("%(pdf)s", 0);
     static std::mutex mutex;
     std::lock_guard<std::mutex> lock(mutex);
@@ -110,7 +122,9 @@ extern "C" double custom_pdf(int beam_index, int pdg_id, double x, double q) {
 
 _BIAS_BODY = r'''
 #include <cmath>
-extern "C" double custom_bias(int particle_count, const int* pdg_ids, const double momenta[][4]) {
+#include "parameters.h"
+extern "C" double custom_bias(int particle_count, const int* pdg_ids, const double momenta[][4],
+                              const CustomParameters* params) {
     double pt2 = momenta[2][1] * momenta[2][1] + momenta[2][2] * momenta[2][2];
     return std::fmax(pt2 / (100. * 100.), 1.);
 }
@@ -125,13 +139,15 @@ def custom_cut(momenta, pdg_ids):
     return (pt >= %(cut)r).all(axis=1)
 ''' % {'cut': _TOP_PT_CUT}
 
+# the torch cut takes its threshold from the run card, the numpy one has none
 _CUT_TORCH = '''import torch
 FRAMEWORK = "torch"
+PARAMETERS = {"pt_min": 20.}
 
-def custom_cut(momenta, pdg_ids):
+def custom_cut(momenta, pdg_ids, params):
     pt = torch.hypot(momenta[:, 2:4, 1], momenta[:, 2:4, 2])
-    return (pt >= %(cut)r).all(dim=1)
-''' % {'cut': _TOP_PT_CUT}
+    return (pt >= params.pt_min).all(dim=1)
+'''
 
 _SCALE_NUMPY = _PY_HEADER + '''
 def custom_scale(momenta, pdg_ids):
@@ -250,9 +266,11 @@ class MG7CustomFunctionsTest(unittest.TestCase):
         text = open(toml).read()
         open(toml, 'w').write(edit(text))
 
-    def init_custom_function(self, proc_dir, kind, body, language='cpp'):
+    def init_custom_function(self, proc_dir, kind, body, language='cpp',
+                             parameters_h=None, card_parameters=None):
         """bin/init_custom_func for ``kind`` in ``language``, with ``body``;
-        the run builds C++ functions."""
+        the run builds C++ functions. ``parameters_h`` is the X-macro list of
+        parameters.h, ``card_parameters`` the values set in the run card."""
         log = pjoin(proc_dir, 'init_custom_func.log')
         with open(log, 'w') as logfh:
             ret = subprocess.call(
@@ -263,6 +281,17 @@ class MG7CustomFunctionsTest(unittest.TestCase):
         body_file = 'custom_%s.%s' % (kind, _EXTENSIONS[language])
         with open(pjoin(proc_dir, 'custom_%s' % kind, body_file), 'w') as f:
             f.write(body)
+        if parameters_h:
+            path = pjoin(proc_dir, 'custom_%s' % kind, 'parameters.h')
+            text = open(path).read().replace(
+                '#define CUSTOM_PARAMETERS(X)\n',
+                '#define CUSTOM_PARAMETERS(X) %s\n' % parameters_h, 1)
+            open(path, 'w').write(text)
+        if card_parameters:
+            lines = ''.join('%s_parameters.%s = %r\n' % (kind, name, value)
+                            for name, value in card_parameters.items())
+            self.edit_card(proc_dir, lambda t: t.replace(
+                '[custom_functions]\n', '[custom_functions]\n' + lines, 1))
 
     def builtin_reference(self, name, edit):
         """The run with the built-in setting ``edit``, shared by the languages."""
@@ -302,11 +331,11 @@ class MG7CustomFunctionsTest(unittest.TestCase):
             '%s: %.5g +- %.3g pb against %.5g +- %.3g pb'
             % (what, got[0], got[1], ref[0], ref[1]))
 
-    def check_cut(self, language, body):
+    def check_cut(self, language, body, **parameters):
         ref = self.builtin_reference('CUT_BUILTIN', lambda t: t.replace(
             '[cuts]\n', '[cuts]\ntop-pt.min = %r\n' % _TOP_PT_CUT))
         custom = self.copy_for('cut', language)
-        self.init_custom_function(custom, 'cut', body, language)
+        self.init_custom_function(custom, 'cut', body, language, **parameters)
         got = self.run_process(custom)
         self.assertCompatible(got, ref, 'custom cut in %s' % language)
 
@@ -317,7 +346,8 @@ class MG7CustomFunctionsTest(unittest.TestCase):
                 self.assertGreaterEqual(_pt(p), _TOP_PT_CUT * (1 - 1e-6))
 
     def test_custom_cut_mg7(self):
-        self.check_cut('cpp', _CUT_BODY)
+        self.check_cut('cpp', _CUT_BODY, parameters_h=_CUT_PARAMETERS,
+                       card_parameters=_CUT_CARD)
 
     def test_custom_cut_numpy_mg7(self):
         self.check_cut('python-numpy', _CUT_NUMPY)
@@ -327,7 +357,7 @@ class MG7CustomFunctionsTest(unittest.TestCase):
                                capture_output=True)
         if check.returncode != 0:
             self.skipTest('torch is unavailable')
-        self.check_cut('python-torch', _CUT_TORCH)
+        self.check_cut('python-torch', _CUT_TORCH, card_parameters=_CUT_CARD)
 
     def test_custom_cut_mirror_mg7(self):
         """A pz > 0 jet cut on p p > t t~ j halves the cross section, and every
@@ -454,13 +484,16 @@ class MG7CustomFunctionsTest(unittest.TestCase):
             function = ms.CustomFunction(
                 apis[kind], getattr(ms.CustomFunction, kind), 4, [[21, 21, 6, -6]])
             values = ms.FunctionRuntime(function.function(), context)(momenta)
-            for value, event in zip(np.array(values), momenta):
-                if kind == 'scale':
-                    p = [a + b for a, b in zip(event[0], event[1])]
-                    target = math.sqrt(p[0] ** 2 - p[1] ** 2 - p[2] ** 2 - p[3] ** 2)
-                else:
-                    target = 1.
-                self.assertAlmostEqual(value, target, places=9)
+            # a scale has three outputs: renormalization and factorization scales
+            outputs = values if kind == 'scale' else [values]
+            for output in outputs:
+                for value, event in zip(np.array(output), momenta):
+                    if kind == 'scale':
+                        p = [a + b for a, b in zip(event[0], event[1])]
+                        target = math.sqrt(p[0] ** 2 - p[1] ** 2 - p[2] ** 2 - p[3] ** 2)
+                    else:
+                        target = 1.
+                    self.assertAlmostEqual(value, target, places=9)
         pdf = ms.PartonDensity(ms.CustomPdf(apis['pdf']), [21, 2], 0)
         values = ms.FunctionRuntime(pdf.function(), context)(
             np.array([0.1, 0.5]), np.array([100., 100.]))

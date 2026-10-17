@@ -994,7 +994,9 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
         switch (output_key) {
         case UMAMI_OUT_MATRIX_ELEMENT:
         case UMAMI_OUT_CUT:
-        case UMAMI_OUT_SCALE:
+        case UMAMI_OUT_REN_SCALE:
+        case UMAMI_OUT_FACT_SCALE_1:
+        case UMAMI_OUT_FACT_SCALE_2:
         case UMAMI_OUT_PDF:
         case UMAMI_OUT_BIAS:
             dtype = DataType::dt_float;

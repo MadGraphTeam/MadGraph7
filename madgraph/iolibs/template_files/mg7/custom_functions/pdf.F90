@@ -11,18 +11,22 @@
 ! pdg_id          PDG id of the parton
 ! x               momentum fraction
 ! q               factorization scale in GeV
+! params          parameters declared in parameters.h, e.g. params%gluon_norm
 !
 ! Run `make` in this directory to build ../lib/custom_pdf.so.
 
-function custom_pdf(beam_index, pdg_id, x, q) bind(C, name="custom_pdf") result(value)
+function custom_pdf(beam_index, pdg_id, x, q, params) bind(C, name="custom_pdf") result(value)
     use iso_c_binding
     implicit none
+#include "parameters.h"
     integer(c_int), value :: beam_index, pdg_id
     real(c_double), value :: x, q
+    type(custom_parameters), intent(in) :: params
     real(c_double) :: value
     real(c_double) :: norm
 
-    ! default: a toy density, replace it with your own
+    ! default: a toy density, replace it with your own. Its gluon
+    ! normalization could be a parameter, with X(gluon_norm, 3.) in parameters.h.
     if (pdg_id == 21) then
         norm = 3d0
     else

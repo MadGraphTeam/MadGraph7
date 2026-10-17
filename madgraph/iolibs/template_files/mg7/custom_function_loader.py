@@ -2,7 +2,8 @@
 
 Shared by bin/generate_events of a process directory and of a gridpack. A path
 ending in .so is a UMAMI library built by bin/init_custom_func, a path ending in
-.py a Python module defining custom_<kind> and FRAMEWORK.
+.py a Python module defining custom_<kind>, FRAMEWORK and optionally the
+PARAMETERS it takes, with their defaults.
 """
 
 import importlib.util
@@ -11,6 +12,13 @@ import os
 
 logger = logging.getLogger("madevent")
 
+# the outputs of custom_<kind> in a Python module
+PYTHON_OUTPUTS = {
+    "cut": ["cut"],
+    "scale": ["ren_scale", "fact_scale1", "fact_scale2"],
+    "bias": ["bias"],
+    "pdf": ["pdf"],
+}
 # the arguments passed to custom_<kind> in a Python module
 PYTHON_INPUTS = {
     "cut": ["momenta", "pdg_ids"],
@@ -54,11 +62,33 @@ def _cut_as_float(function, framework):
     return cut
 
 
-def load_custom_function(ms, contexts, device_types, kind, path):
+def _three_scales(function):
+    """Wrap a scale function, so that a single result is used for all scales."""
+
+    def scale(*args):
+        result = function(*args)
+        return tuple(result) if isinstance(result, (tuple, list)) else (result,) * 3
+
+    scale.__name__ = getattr(function, "__name__", "custom_scale")
+    return scale
+
+
+def load_custom_function(ms, contexts, device_types, kind, path, parameters=None):
     """Load the custom ``kind`` function at ``path`` into each context, in the
-    same order everywhere. Returns the ``MatrixElementApi`` of each context."""
+    same order everywhere, with the values of ``parameters`` ({name: value})
+    replacing the defaults. Returns the ``MatrixElementApi`` of each context."""
+    parameters = {str(k): float(v) for k, v in (parameters or {}).items()}
     if path.endswith(".so"):
-        apis = [context.load_matrix_element(path, "") for context in contexts]
+        try:
+            apis = [context.load_matrix_element(path, "", parameters)
+                    for context in contexts]
+        except RuntimeError as error:
+            if "could not set parameter" not in str(error):
+                raise
+            raise RuntimeError(
+                f"[custom_functions] {kind}_parameters: {error}. Declare the "
+                f"parameters of {path} in custom_{kind}/parameters.h"
+            ) from error
         for api, device in zip(apis, device_types):
             if api.device_type() != device:
                 raise RuntimeError(
@@ -93,9 +123,26 @@ def load_custom_function(ms, contexts, device_types, kind, path):
             logger.info("Limiting torch to one thread per madspace thread")
             torch.set_num_threads(1)
 
+    declared = getattr(module, "PARAMETERS", None)
+    unknown = sorted(set(parameters) - set(declared or {}))
+    if unknown:
+        raise RuntimeError(
+            f"[custom_functions] {kind}_parameters: {path} does not declare "
+            f"{', '.join(unknown)} in its PARAMETERS"
+        )
     if kind == "cut":
         function = _cut_as_float(function, framework)
+    elif kind == "scale":
+        function = _three_scales(function)
     python_function = ms.PythonFunction(
-        function, PYTHON_INPUTS[kind], [kind], framework=framework, name=name
+        function,
+        PYTHON_INPUTS[kind],
+        PYTHON_OUTPUTS[kind],
+        framework=framework,
+        name=name,
+        parameters=declared,
     )
-    return [context.add_matrix_element(python_function) for context in contexts]
+    return [
+        context.add_matrix_element(python_function, parameters=parameters)
+        for context in contexts
+    ]

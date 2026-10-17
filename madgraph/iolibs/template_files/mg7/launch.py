@@ -563,11 +563,14 @@ class MadgraphProcess:
                     f"[custom_functions] {kind} = {path!r}: file not found. "
                     "Create a .so library or a .py file with bin/init_custom_func."
                 )
-            apis = load_custom_function(ms, self.contexts, self.device_types, kind, path)
+            parameters = self.run_card.custom_parameters(kind)
+            apis = load_custom_function(
+                ms, self.contexts, self.device_types, kind, path, parameters
+            )
             if len({api.index() for api in apis}) != 1:
                 raise RuntimeError(f"custom {kind} function loaded at different indices")
             self.custom_functions[kind] = apis[0]
-            self.custom_function_paths.append([kind, path])
+            self.custom_function_paths.append([kind, path, parameters])
             logger.info("Using the custom %s function %s", kind, path)
 
     @staticmethod
@@ -2080,7 +2083,7 @@ class MadgraphProcess:
             shutil.copytree("lib", lib_path)
         # the gridpack refers to its own copies, by paths relative to it
         gridpack_custom_paths = []
-        for kind, path in self.custom_function_paths:
+        for kind, path, parameters in self.custom_function_paths:
             rel_path = os.path.normpath(path)
             if os.path.isabs(rel_path) or rel_path.startswith(".."):
                 rel_path = os.path.join("custom_functions", kind, os.path.basename(path))
@@ -2088,7 +2091,7 @@ class MadgraphProcess:
             if not os.path.exists(target):
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 shutil.copy(path, target)
-            gridpack_custom_paths.append([kind, rel_path])
+            gridpack_custom_paths.append([kind, rel_path, parameters])
 
         if self.run_card["gridpack"]["include_madspace_source"]:
             shutil.copytree(

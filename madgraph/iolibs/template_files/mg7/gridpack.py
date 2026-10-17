@@ -262,9 +262,10 @@ def main() -> None:
     # custom functions come first, as in the run that made the gridpack
     device_types = [b if b in ("cuda", "hip") else "cpu" for b in backends]
     for entry in madspace_data.get("custom_functions", []):
-        # older gridpacks store only the path of a .so library
-        kind, path = entry if isinstance(entry, list) else ("", entry)
-        load_custom_function(ms, contexts, device_types, kind, path)
+        # [kind, path, parameters]; older gridpacks store fewer entries
+        entry = entry if isinstance(entry, list) else ["", entry]
+        kind, path, parameters = (entry + [{}])[:3]
+        load_custom_function(ms, contexts, device_types, kind, path, parameters)
     for context, backend in zip(contexts, backends):
         for me_path in madspace_data["matrix_elements"]:
             context.load_matrix_element(

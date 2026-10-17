@@ -49,10 +49,15 @@ NamedVector<Value> EnergyScale::build_function_impl(
             {"fact_scale2", fb.full({_fact_scale2, batch_size})},
         };
     }
-    Value scale;
+    auto batch_size = fb.batch_size({momenta});
+    Value ren_scale, fact_scale1, fact_scale2;
     if (_custom_scale) {
-        scale = _custom_scale->build_function(fb, {momenta}).at(0);
+        auto scales = _custom_scale->build_function(fb, {momenta});
+        ren_scale = scales.at(0);
+        fact_scale1 = scales.at(1);
+        fact_scale2 = scales.at(2);
     } else {
+        Value scale;
         switch (_dynamical_scale_type) {
         case transverse_energy:
             scale = fb.scale_transverse_energy(momenta);
@@ -69,16 +74,22 @@ NamedVector<Value> EnergyScale::build_function_impl(
         default:
             throw std::runtime_error("invalid dynamical scale type");
         }
+        // dynamical scale only; a fixed scale is an absolute value
+        if (_scale_factor != 1.) {
+            scale = fb.mul(scale, _scale_factor);
+        }
+        ren_scale = fact_scale1 = fact_scale2 = scale;
     }
-    // dynamical scale only; a fixed scale is an absolute value
-    if (_scale_factor != 1.) {
-        scale = fb.mul(scale, _scale_factor);
+    if (_custom_scale && _scale_factor != 1.) {
+        ren_scale = fb.mul(ren_scale, _scale_factor);
+        fact_scale1 = fb.mul(fact_scale1, _scale_factor);
+        fact_scale2 = fb.mul(fact_scale2, _scale_factor);
     }
-    auto batch_size = fb.batch_size({momenta});
     return {
-        {"ren_scale", _ren_scale_fixed ? fb.full({_ren_scale, batch_size}) : scale},
+        {"ren_scale", _ren_scale_fixed ? fb.full({_ren_scale, batch_size}) : ren_scale},
         {"fact_scale1",
-         _fact_scale_fixed ? fb.full({_fact_scale1, batch_size}) : scale},
-        {"fact_scale2", _fact_scale_fixed ? fb.full({_fact_scale2, batch_size}) : scale}
+         _fact_scale_fixed ? fb.full({_fact_scale1, batch_size}) : fact_scale1},
+        {"fact_scale2",
+         _fact_scale_fixed ? fb.full({_fact_scale2, batch_size}) : fact_scale2}
     };
 }

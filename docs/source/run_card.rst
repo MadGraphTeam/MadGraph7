@@ -351,7 +351,8 @@ An empty string disables the function. See :doc:`custom_functions` for details.
     is applied on top of the ``[cuts]``.
 
 ``scale`` (``""``)
-    Custom scale. It replaces ``dynamical_scale_choice``.
+    Custom renormalization and factorization scales. They replace
+    ``dynamical_scale_choice``.
 
 ``pdf`` (``""``)
     Custom parton density. It replaces the PDF set, but :math:`\alpha_s` still comes from
@@ -360,6 +361,10 @@ An empty string disables the function. See :doc:`custom_functions` for details.
 ``bias`` (``""``)
     Custom event bias. Events are generated with the weight times the bias and written with
     the weight divided by the bias.
+
+``<function>_parameters.<name>``
+    A parameter of a custom function, for example ``cut_parameters.pt_min = 30.0``. It replaces
+    the default value declared by the function. See :ref:`custom-function-parameters`.
 
 .. _run-card-multiparticles:
 

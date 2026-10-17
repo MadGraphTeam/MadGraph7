@@ -133,6 +133,8 @@ cut = %(custom_functions.cut)s
 scale = %(custom_functions.scale)s # replaces dynamical_scale_choice
 pdf = %(custom_functions.pdf)s # replaces the PDF set, alpha_s still comes from [beam] pdf
 bias = %(custom_functions.bias)s # events are generated with |w| b and written with w / b
+# parameters declared by a function, e.g. cut_parameters.pt_min = 30.0
+$custom_function_parameters
 
 [multiparticles]
 $multiparticles

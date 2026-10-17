@@ -10,6 +10,7 @@
  * particle_count  number of external particles, incoming ones first
  * pdg_ids         PDG ids of the external particles
  * momenta         momenta[i] = (E, px, py, pz) of particle i in GeV, lab frame
+ * params          parameters declared in parameters.h, e.g. params->pt0
  *
  * Run `make` in this directory to build ../lib/custom_bias.so.
  */
@@ -20,14 +21,23 @@ using std::fmax;
 using std::pow;
 using std::sqrt;
 
-extern "C" double custom_bias(int particle_count, const int* pdg_ids, const double momenta[][4]) {
+#include "parameters.h"
+
+extern "C" double custom_bias(
+    int particle_count,
+    const int* pdg_ids,
+    const double momenta[][4],
+    const CustomParameters* params
+) {
     (void)particle_count;
     (void)pdg_ids;
     (void)momenta;
+    (void)params;
     // Example: populate the tail of the pT distribution of the first
-    // final-state particle, b = (pT / 100 GeV)^2 with a floor of 1.
+    // final-state particle, b = (pT / pt0)^2 with a floor of 1, with
+    // X(pt0, 100.) in parameters.h.
     // double px = momenta[2][1], py = momenta[2][2];
-    // return fmax((px * px + py * py) / (100. * 100.), 1.);
+    // return fmax((px * px + py * py) / (params->pt0 * params->pt0), 1.);
 
     return 1.;
 }

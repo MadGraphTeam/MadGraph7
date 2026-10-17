@@ -23,6 +23,7 @@ struct PythonFunctionState {
     std::array<bool, UMAMI_INPUT_KEY_COUNT> supported_inputs{};
     std::array<bool, UMAMI_INPUT_KEY_COUNT> required_inputs{};
     std::array<bool, UMAMI_OUTPUT_KEY_COUNT> supported_outputs{};
+    std::vector<std::pair<std::string, double>> parameter_defaults;
 
     ~PythonFunctionState() {
         if (Py_IsInitialized()) {
@@ -32,6 +33,12 @@ struct PythonFunctionState {
             function.release();
         }
     }
+};
+
+// One UMAMI instance, with its own parameter values. Kept free of Python
+// objects, since instances are created on the thread pool without the GIL.
+struct PythonFunctionInstance {
+    std::vector<double> parameters;
 };
 
 } // namespace
@@ -68,9 +75,12 @@ const MatrixElementApi& add_python_function(
     const std::vector<int>& required_input_keys,
     const std::vector<int>& output_keys,
     const std::string& framework,
-    const std::string& name
+    const std::string& name,
+    const std::vector<std::pair<std::string, double>>& parameter_defaults,
+    const std::unordered_map<std::string, double>& parameters
 ) {
     auto state = std::make_shared<PythonFunctionState>();
+    state->parameter_defaults = parameter_defaults;
     state->function = function;
     state->name = name;
     state->device_index = context.device()->device_index();
@@ -140,13 +150,33 @@ const MatrixElementApi& add_python_function(
         return UMAMI_SUCCESS;
     };
     functions.initialize = [state](UmamiHandle* handle, char const*) {
-        *handle = state.get();
+        auto instance = new PythonFunctionInstance;
+        for (auto& [parameter_name, value] : state->parameter_defaults) {
+            instance->parameters.push_back(value);
+        }
+        *handle = instance;
         return UMAMI_SUCCESS;
     };
-    functions.free = [](UmamiHandle) { return UMAMI_SUCCESS; };
+    functions.set_parameter =
+        [state](UmamiHandle handle, char const* parameter_name, double real, double) {
+            auto instance = static_cast<PythonFunctionInstance*>(handle);
+            for (std::size_t i = 0;
+                 auto& [known_name, value] : state->parameter_defaults) {
+                if (known_name == parameter_name) {
+                    instance->parameters.at(i) = real;
+                    return UMAMI_SUCCESS;
+                }
+                ++i;
+            }
+            return UMAMI_ERROR;
+        };
+    functions.free = [](UmamiHandle handle) {
+        delete static_cast<PythonFunctionInstance*>(handle);
+        return UMAMI_SUCCESS;
+    };
     functions.matrix_element =
         [state](
-            UmamiHandle,
+            UmamiHandle handle,
             std::size_t count,
             std::size_t stride,
             std::size_t offset,
@@ -200,6 +230,16 @@ const MatrixElementApi& add_python_function(
                                 py::int_(reinterpret_cast<std::uintptr_t>(outputs[i]));
                         }
                     }
+                    py::object parameter_values = py::none();
+                    if (!state->parameter_defaults.empty()) {
+                        py::dict values;
+                        auto instance = static_cast<PythonFunctionInstance*>(handle);
+                        for (std::size_t i = 0; i < instance->parameters.size(); ++i) {
+                            values[py::str(state->parameter_defaults.at(i).first)] =
+                                instance->parameters.at(i);
+                        }
+                        parameter_values = values;
+                    }
                     state->function.attr("_call")(
                         state->device_name,
                         state->device_index,
@@ -208,7 +248,8 @@ const MatrixElementApi& add_python_function(
                         offset,
                         input_dict,
                         output_dict,
-                        stream ? py::object(py::int_(*stream)) : py::object(py::none())
+                        stream ? py::object(py::int_(*stream)) : py::object(py::none()),
+                        parameter_values
                     );
                 } catch (py::error_already_set& e) {
                     error = e.what();
@@ -221,7 +262,7 @@ const MatrixElementApi& add_python_function(
             }
             return UMAMI_SUCCESS;
         };
-    return context.add_matrix_element(std::move(functions), name);
+    return context.add_matrix_element(std::move(functions), name, "", parameters);
 }
 
 } // namespace madspace_py

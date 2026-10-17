@@ -13,6 +13,10 @@ momenta     float64 tensor of shape (batch, particle_count, 4), the momenta
             (E, px, py, pz) of the external particles in GeV, lab frame,
             incoming ones first
 pdg_ids     int32 tensor of shape (batch, particle_count), their PDG ids
+params      the parameters of PARAMETERS, e.g. params.pt_min. Their values
+            are set in Cards/run_card.toml with
+            [custom_functions]
+            cut_parameters.pt_min = ...
 
 Enable it in Cards/run_card.toml with
 [custom_functions]
@@ -23,10 +27,13 @@ import torch
 
 FRAMEWORK = "torch"
 
+# names and default values of the parameters, e.g. {"pt_min": 20.}
+PARAMETERS = {}
 
-def custom_cut(momenta, pdg_ids):
-    # Example: require pT > 20 GeV for the first final-state particle.
+
+def custom_cut(momenta, pdg_ids, params):
+    # Example: require pT > pt_min for the first final-state particle.
     # pt = torch.hypot(momenta[:, 2, 1], momenta[:, 2, 2])
-    # return pt > 20.
+    # return pt > params.pt_min
 
     return torch.ones(len(momenta), dtype=torch.bool, device=momenta.device)

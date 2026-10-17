@@ -14,6 +14,10 @@ beam_index  int32 tensor of shape (batch,), the beam, 0 or 1
 pdg_id      int32 tensor of shape (batch,), the PDG id of the parton
 x           float64 tensor of shape (batch,), the momentum fraction
 q           float64 tensor of shape (batch,), the factorization scale in GeV
+params      the parameters of PARAMETERS, e.g. params.gluon_norm. Their values
+            are set in Cards/run_card.toml with
+            [custom_functions]
+            pdf_parameters.gluon_norm = ...
 
 Enable it in Cards/run_card.toml with
 [custom_functions]
@@ -24,8 +28,12 @@ import torch
 
 FRAMEWORK = "torch"
 
+# names and default values of the parameters, e.g. {"gluon_norm": 3.}
+PARAMETERS = {}
 
-def custom_pdf(beam_index, pdg_id, x, q):
-    # default: a toy density, replace it with your own
+
+def custom_pdf(beam_index, pdg_id, x, q, params):
+    # default: a toy density, replace it with your own. Its gluon
+    # normalization could be params.gluon_norm.
     norm = torch.where(pdg_id == 21, 3., 0.5).double()
     return norm * torch.sqrt(x) * (1. - x) ** 3

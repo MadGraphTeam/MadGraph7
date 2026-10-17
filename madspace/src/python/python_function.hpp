@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <pybind11/pybind11.h>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "madspace/driver/context.hpp"
@@ -32,7 +34,9 @@ const madspace::MatrixElementApi& add_python_function(
     const std::vector<int>& required_input_keys,
     const std::vector<int>& output_keys,
     const std::string& framework,
-    const std::string& name
+    const std::string& name,
+    const std::vector<std::pair<std::string, double>>& parameter_defaults = {},
+    const std::unordered_map<std::string, double>& parameters = {}
 );
 
 } // namespace madspace_py
