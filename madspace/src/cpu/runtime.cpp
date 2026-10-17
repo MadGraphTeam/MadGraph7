@@ -1132,7 +1132,8 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
         );
         for (auto& in : instr.inputs) {
             auto& local = function.locals().at(in.local_index);
-            bool is_literal = !std::holds_alternative<std::monostate>(local.literal_value);
+            bool is_literal =
+                !std::holds_alternative<std::monostate>(local.literal_value);
             bool is_int_intermediate = local.type.dtype == DataType::dt_int &&
                 static_cast<std::size_t>(in.local_index) >= function.inputs().size() &&
                 !global_locals.contains(in.local_index);
@@ -1229,11 +1230,26 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
     }
     for (auto& out : function.outputs()) {
         _output_indices.push_back(out.local_index);
+        // literal outputs are returned unpadded, so that callers see a plain tensor
+        auto& literal_value = function.locals().at(out.local_index).literal_value;
+        _literal_outputs.push_back(
+            std::holds_alternative<std::monostate>(literal_value)
+                ? Tensor()
+                : Tensor::simd_padded_literal(literal_value, 1, cpu_device())
+        );
         _copy_output_grads.push_back(
             grad_accumulated.at(out.local_index) ||
             output_counts.at(out.local_index) > 1
         );
     }
+}
+
+TensorVec CpuRuntime::collect_outputs(const TensorVec& locals) const {
+    TensorVec outputs;
+    for (auto [index, literal] : zip(_output_indices, _literal_outputs)) {
+        outputs.push_back(literal ? literal : locals[index]);
+    }
+    return outputs;
 }
 
 TensorVec CpuRuntime::run(const TensorVec& inputs) {
@@ -1290,10 +1306,7 @@ TensorVec CpuRuntime::run_single(const TensorVec& inputs) const {
 #include "runtime_mixin.inc"
         }
     }
-    TensorVec outputs;
-    for (auto index : _output_indices) {
-        outputs.push_back(locals[index]);
-    }
+    TensorVec outputs = collect_outputs(locals);
     return outputs;
 }
 
@@ -1341,10 +1354,7 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> CpuRuntime::run_with_grad_si
 #include "runtime_mixin.inc"
         }
     }
-    TensorVec outputs;
-    for (auto index : _output_indices) {
-        outputs.push_back(locals[index]);
-    }
+    TensorVec outputs = collect_outputs(locals);
     return {outputs, locals, eval_grad};
 }
 
@@ -1531,10 +1541,7 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> CpuRuntime::run_concurrent(
         }
     }
 
-    TensorVec outputs;
-    for (auto index : _output_indices) {
-        outputs.push_back(locals[index]);
-    }
+    TensorVec outputs = collect_outputs(locals);
     if (with_grad) {
         return {outputs, locals, eval_grad};
     } else {

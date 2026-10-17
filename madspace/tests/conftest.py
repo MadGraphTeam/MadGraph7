@@ -26,7 +26,7 @@ def pytest_configure(config):
 
 def pytest_report_header(config):
     name = torch.cuda.get_device_name(DEVICE) if ON_GPU else "cpu"
-    simd_mode = os.environ.get("MADSPACE_SIMD_MODE", "scalar")
+    simd_mode = os.environ.get("MADSPACE_SIMD_MODE", "auto")
     return [
         f"madspace test device: {BACKEND} ({name})",
         f"madspace SIMD mode: {simd_mode}",

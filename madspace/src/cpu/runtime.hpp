@@ -74,6 +74,7 @@ private:
         const std::vector<bool>& eval_grad,
         bool return_contiguous_grads
     ) const;
+    TensorVec collect_outputs(const TensorVec& locals) const;
     std::pair<TensorVec, TensorVec> run_backward_concurrent(
         const TensorVec& output_grads,
         const TensorVec& stored_locals,
@@ -83,6 +84,8 @@ private:
 
     std::vector<Instruction> _instructions;
     SizeVec _output_indices;
+    // unpadded copies of the outputs that are literals, empty for the others
+    TensorVec _literal_outputs;
     std::vector<bool> _copy_output_grads;
     std::size_t _input_count;
     TensorVec _locals_init;

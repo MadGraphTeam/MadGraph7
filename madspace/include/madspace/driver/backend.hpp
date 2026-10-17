@@ -50,8 +50,8 @@ void set_lib_path(const std::string& lib_path);
 /// SIMD mode of the CPU backend: "scalar", "simd_128" (ARM), "simd_256" (AVX2),
 /// "avx512y" (AVX512 with 256-bit vectors), "simd_512" (AVX512) or "auto" (simd_512,
 /// then simd_256 on x86 and scalar on ARM, where the vectorized mode is currently
-/// slower). Must be set before the CPU backend is first used; defaults to
-/// $MADSPACE_SIMD_MODE or "scalar".
+/// slower). Defaults to $MADSPACE_SIMD_MODE or "auto". Must be set before the CPU
+/// backend is first used; afterwards, requesting a different mode throws.
 void set_simd_mode(const std::string& simd_mode);
 /// SIMD modes supported by this build on this host (without "auto"), ordered by
 /// increasing vector width; see @ref set_simd_mode.

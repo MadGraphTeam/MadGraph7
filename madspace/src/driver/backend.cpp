@@ -13,7 +13,9 @@ namespace {
 
 struct LoadedBackend {
     inline static std::string lib_path = "";
+    // resolved SIMD mode requested with set_simd_mode, and the one actually loaded
     inline static std::string simd_mode = "";
+    inline static std::string loaded_simd_mode = "";
     inline static std::unordered_map<DevicePtr, LoadedBackend*> device_backends;
 
     LoadedBackend(const std::string& file) {
@@ -100,33 +102,38 @@ std::pair<std::vector<std::string>, std::string> simd_mode_support() {
     return {supported_modes, auto_mode};
 }
 
+// SIMD mode that a requested mode ("auto" or an explicit one) resolves to
+std::string resolve_simd_mode(const std::string& mode) {
+    auto [supported_modes, auto_mode] = simd_mode_support();
+    if (mode == "auto") {
+        return auto_mode;
+    }
+    if (std::find(supported_modes.begin(), supported_modes.end(), mode) ==
+        supported_modes.end()) {
+        std::string supported;
+        for (auto& supported_mode : supported_modes) {
+            supported += std::format(" '{}'", supported_mode);
+        }
+        throw std::runtime_error(
+            std::format(
+                "unsupported madspace SIMD mode '{}', supported on this host: "
+                "'auto'{}",
+                mode,
+                supported
+            )
+        );
+    }
+    return mode;
+}
+
 const LoadedBackend& cpu_backend() {
     static LoadedBackend backend = [&] {
-        auto [supported_modes, auto_mode] = simd_mode_support();
-
         std::string mode = LoadedBackend::simd_mode;
         if (mode.empty()) {
             char* env_var = std::getenv("MADSPACE_SIMD_MODE");
-            mode = env_var ? env_var : "scalar";
+            mode = resolve_simd_mode(env_var ? env_var : "auto");
         }
-        if (mode == "auto") {
-            mode = auto_mode;
-        } else if (std::find(supported_modes.begin(), supported_modes.end(), mode) ==
-                   supported_modes.end()) {
-            std::string supported;
-            for (auto& supported_mode : supported_modes) {
-                supported += std::format(" '{}'", supported_mode);
-            }
-            throw std::runtime_error(
-                std::format(
-                    "unsupported madspace SIMD mode '{}', supported on this host: "
-                    "'auto'{}",
-                    mode,
-                    supported
-                )
-            );
-        }
-
+        LoadedBackend::loaded_simd_mode = mode;
         if (mode == "scalar") {
             return LoadedBackend("libmadspace_cpu");
         } else {
@@ -198,5 +205,17 @@ std::vector<std::string> madspace::supported_simd_modes() {
 }
 
 void madspace::set_simd_mode(const std::string& simd_mode) {
-    LoadedBackend::simd_mode = simd_mode;
+    std::string mode = resolve_simd_mode(simd_mode);
+    const std::string& loaded_mode = LoadedBackend::loaded_simd_mode;
+    if (!loaded_mode.empty() && mode != loaded_mode) {
+        throw std::runtime_error(
+            std::format(
+                "can not switch the madspace SIMD mode to '{}': the CPU backend was "
+                "already loaded with '{}'",
+                mode,
+                loaded_mode
+            )
+        );
+    }
+    LoadedBackend::simd_mode = mode;
 }
