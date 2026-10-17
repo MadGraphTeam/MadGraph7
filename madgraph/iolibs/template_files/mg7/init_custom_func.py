@@ -154,6 +154,7 @@ def write_files(out_dir, function, language):
         "function_name": f"custom_{function}",
         "output_key": FUNCTIONS[function][0],
         "is_pdf": int(function == "pdf"),
+        "return_type": "bool" if function == "cut" else "double",
         "body_file": body_file,
         "language": language,
     }

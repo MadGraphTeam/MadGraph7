@@ -67,15 +67,23 @@ _TOP_PT_CUT = 150.
 # bodies of the custom functions, in C++
 _CUT_BODY = r'''
 #include <cmath>
-extern "C" double custom_cut(int particle_count, const int* pdg_ids, const double momenta[][4]) {
+extern "C" bool custom_cut(int particle_count, const int* pdg_ids, const double momenta[][4]) {
     for (int i = 2; i < 4; ++i) {
         if (std::hypot(momenta[i][1], momenta[i][2]) < %(cut)r) {
-            return 0.;
+            return false;
         }
     }
-    return 1.;
+    return true;
 }
 ''' % {'cut': _TOP_PT_CUT}
+
+# forward jets only: asymmetric under the beam mirror, so the cut must see the
+# momenta the event is written with
+_FORWARD_JET_BODY = r'''
+extern "C" bool custom_cut(int particle_count, const int* pdg_ids, const double momenta[][4]) {
+    return momenta[4][3] > 0.;
+}
+'''
 
 _SCALE_BODY = r'''
 #include <cmath>
@@ -114,7 +122,7 @@ _PY_HEADER = 'import numpy as np\nFRAMEWORK = "numpy"\n'
 _CUT_NUMPY = _PY_HEADER + '''
 def custom_cut(momenta, pdg_ids):
     pt = np.hypot(momenta[:, 2:4, 1], momenta[:, 2:4, 2])
-    return np.where((pt >= %(cut)r).all(axis=1), 1., 0.)
+    return (pt >= %(cut)r).all(axis=1)
 ''' % {'cut': _TOP_PT_CUT}
 
 _CUT_TORCH = '''import torch
@@ -122,7 +130,7 @@ FRAMEWORK = "torch"
 
 def custom_cut(momenta, pdg_ids):
     pt = torch.hypot(momenta[:, 2:4, 1], momenta[:, 2:4, 2])
-    return (pt >= %(cut)r).all(dim=1).double()
+    return (pt >= %(cut)r).all(dim=1)
 ''' % {'cut': _TOP_PT_CUT}
 
 _SCALE_NUMPY = _PY_HEADER + '''
@@ -320,6 +328,31 @@ class MG7CustomFunctionsTest(unittest.TestCase):
         if check.returncode != 0:
             self.skipTest('torch is unavailable')
         self.check_cut('python-torch', _CUT_TORCH)
+
+    def test_custom_cut_mirror_mg7(self):
+        """A pz > 0 jet cut on p p > t t~ j halves the cross section, and every
+        written event passes it, also for the mirrored flavors."""
+        _require_mg7_runtime(self)
+        proc_dir = pjoin(self.path, 'TTJ')
+        mg = MGCmd.MasterCmd()
+        mg.no_notification()
+        mg.exec_cmd('set automatic_html_opening False --no_save')
+        mg.exec_cmd('generate p p > t t~ j')
+        mg.exec_cmd('output mg7 %s' % proc_dir)
+        toml = pjoin(proc_dir, 'Cards', 'run_card.toml')
+        _edit_run_card(toml, _EVENTS, disable_jet_cuts=False)
+        self.edit_card(proc_dir, lambda t: _set(_set(
+            t, 'output_format', '"lhe"'), 'seed', _SEED))
+        ref = self.run_process(proc_dir)
+
+        shutil.rmtree(pjoin(proc_dir, 'Events'))
+        os.mkdir(pjoin(proc_dir, 'Events'))
+        self.init_custom_function(proc_dir, 'cut', _FORWARD_JET_BODY)
+        got = self.run_process(proc_dir)
+        self.assertCompatible(got, (ref[0] / 2, ref[1] / 2), 'forward jet cut')
+        _, _, momenta = _read_lhe(got[2])
+        self.assertTrue(all(event[4][3] > 0. for event in momenta),
+                        'events with a backward jet were written')
 
     def check_scale(self, language, body):
         def dynamic(text):

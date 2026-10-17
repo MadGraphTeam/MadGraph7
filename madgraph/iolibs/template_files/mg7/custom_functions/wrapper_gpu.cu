@@ -5,6 +5,8 @@
 
 #include "umami.h"
 
+#include <cstdio>
+
 #ifdef __HIPCC__
 #include <hip/hip_runtime.h>
 typedef hipStream_t gpuStream_t;
@@ -52,8 +54,12 @@ __global__ void evaluate(
 constexpr UmamiInputKey input_keys[] = {
     UMAMI_IN_MOMENTA, UMAMI_IN_PARTICLE_COUNT, UMAMI_IN_PDG_IDS
 };
-// largest particle count supported by the GPU wrapper
-constexpr int max_particle_count = 32;
+// largest particle count supported by the GPU wrapper, raise it with
+// make CFLAGS=-DCUSTOM_MAX_PARTICLE_COUNT=64
+#ifndef CUSTOM_MAX_PARTICLE_COUNT
+#define CUSTOM_MAX_PARTICLE_COUNT 32
+#endif
+constexpr int max_particle_count = CUSTOM_MAX_PARTICLE_COUNT;
 
 __global__ void evaluate(
     std::size_t count,
@@ -68,6 +74,20 @@ __global__ void evaluate(
         return;
     }
     int n = particle_count[i];
+    if (n > max_particle_count) {
+        // abort the kernel, the error then surfaces at the next GPU call
+        printf(
+            "custom %(kind)s: %%d particles, the wrapper supports at most %%d. Rebuild "
+            "with make CFLAGS=-DCUSTOM_MAX_PARTICLE_COUNT=<n>\n",
+            n,
+            max_particle_count
+        );
+#ifdef __HIPCC__
+        abort();
+#else
+        __trap();
+#endif
+    }
     int event_pdg_ids[max_particle_count];
     double event_momenta[max_particle_count][4];
     // column-major layout with the batch dimension contiguous
@@ -77,7 +97,8 @@ __global__ void evaluate(
             event_momenta[j][k] = momenta[stride * (n * k + j) + i];
         }
     }
-    output[i] = %(function_name)s(n, event_pdg_ids, event_momenta);
+    // a cut returns bool, converted to 1 or 0
+    output[i] = static_cast<double>(%(function_name)s(n, event_pdg_ids, event_momenta));
 }
 #endif
 

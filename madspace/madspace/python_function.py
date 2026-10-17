@@ -117,7 +117,7 @@ class PythonFunction:
 
     def _view(self, address, dtype, shape, stride, offset, device):
         return self._from_dlpack(
-            _tensor_view(address, dtype, shape, stride, offset, device)
+            _tensor_view(address, dtype, shape, stride, offset, *device)
         )
 
     def _numpy_output(self, address, dtype, count, offset):
@@ -128,13 +128,20 @@ class PythonFunction:
         return self._numpy.frombuffer(buffer, dtype=self._numpy.dtype(ctype))
 
     def _stream(self, device, stream):
-        if self.framework == "torch" and device != "cpu" and stream is not None:
+        if self.framework == "torch" and device[0] != "cpu" and stream is not None:
             torch = self._torch
-            return torch.cuda.stream(torch.cuda.ExternalStream(stream))
+            # torch names HIP devices "cuda" as well
+            torch_device = torch.device("cuda", device[1])
+            return torch.cuda.stream(
+                torch.cuda.ExternalStream(stream, device=torch_device)
+            )
         return contextlib.nullcontext()
 
-    def _call(self, device, count, stride, offset, inputs, outputs, stream):
+    def _call(
+        self, device_name, device_index, count, stride, offset, inputs, outputs, stream
+    ):
         """Called by the UMAMI implementation with the raw buffer addresses."""
+        device = (device_name, device_index)
         with self._stream(device, stream):
             n = self.particle_count
             if self._needs_particle_count and n is None:
@@ -198,9 +205,9 @@ class PythonFunction:
                 )
             expected = torch.float64 if dtype == DataType.float else torch.int32
             result_device = "cpu" if result.device.type == "cpu" else "gpu"
-            if result_device != ("cpu" if device == "cpu" else "gpu"):
+            if result_device != ("cpu" if device[0] == "cpu" else "gpu"):
                 raise ValueError(
-                    f"{prefix} must be on the {device} device, not {result.device}"
+                    f"{prefix} must be on the {device[0]} device, not {result.device}"
                 )
         else:
             numpy = self._numpy

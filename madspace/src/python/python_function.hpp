@@ -19,7 +19,8 @@ madspace::Tensor tensor_view(
     const std::vector<std::size_t>& shape,
     const std::vector<std::size_t>& stride,
     std::size_t offset,
-    const std::string& device_name
+    const std::string& device_name,
+    std::size_t device_index = 0
 );
 
 /// Add a UMAMI matrix element to `context` that calls `function._call` with

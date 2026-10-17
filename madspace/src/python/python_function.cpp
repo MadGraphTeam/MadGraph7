@@ -18,6 +18,7 @@ struct PythonFunctionState {
     py::object function;
     std::string name;
     std::string device_name;
+    std::size_t device_index = 0;
     UmamiDevice umami_device;
     std::array<bool, UMAMI_INPUT_KEY_COUNT> supported_inputs{};
     std::array<bool, UMAMI_INPUT_KEY_COUNT> required_inputs{};
@@ -41,15 +42,16 @@ Tensor tensor_view(
     const std::vector<std::size_t>& shape,
     const std::vector<std::size_t>& stride,
     std::size_t offset,
-    const std::string& device_name
+    const std::string& device_name,
+    std::size_t device_index
 ) {
     DevicePtr device;
     if (device_name == "cpu") {
         device = cpu_device();
     } else if (device_name == "cuda") {
-        device = cuda_device();
+        device = cuda_device(device_index);
     } else if (device_name == "hip") {
-        device = hip_device();
+        device = hip_device(device_index);
     } else {
         throw std::invalid_argument(std::format("unknown device {}", device_name));
     }
@@ -71,6 +73,7 @@ const MatrixElementApi& add_python_function(
     auto state = std::make_shared<PythonFunctionState>();
     state->function = function;
     state->name = name;
+    state->device_index = context.device()->device_index();
     switch (context.device()->device_type()) {
     case DeviceType::cpu:
         state->umami_device = UMAMI_DEVICE_CPU;
@@ -199,6 +202,7 @@ const MatrixElementApi& add_python_function(
                     }
                     state->function.attr("_call")(
                         state->device_name,
+                        state->device_index,
                         count,
                         stride,
                         offset,

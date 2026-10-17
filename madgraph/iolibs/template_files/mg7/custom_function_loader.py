@@ -35,11 +35,38 @@ def _import_module(path):
     return _modules[path]
 
 
+def _cut_as_float(function, framework):
+    """Wrap a cut returning booleans, so that madspace gets float64 1 or 0."""
+    if framework == "torch":
+        import torch
+
+        def cut(*args):
+            result = function(*args)
+            return result.to(torch.float64) if isinstance(result, torch.Tensor) else result
+    else:
+        import numpy as np
+
+        def cut(*args):
+            result = function(*args)
+            return result.astype(np.float64, copy=False) if isinstance(result, np.ndarray) else result
+
+    cut.__name__ = getattr(function, "__name__", "custom_cut")
+    return cut
+
+
 def load_custom_function(ms, contexts, device_types, kind, path):
     """Load the custom ``kind`` function at ``path`` into each context, in the
     same order everywhere. Returns the ``MatrixElementApi`` of each context."""
     if path.endswith(".so"):
-        return [context.load_matrix_element(path, "") for context in contexts]
+        apis = [context.load_matrix_element(path, "") for context in contexts]
+        for api, device in zip(apis, device_types):
+            if api.device_type() != device:
+                raise RuntimeError(
+                    f"[custom_functions] {kind} = {path!r}: the library was built for "
+                    f"{api.device_type()}, but the run uses {device}. Rebuild it with "
+                    "bin/init_custom_func for that device."
+                )
+        return apis
     if not path.endswith(".py"):
         raise RuntimeError(
             f"[custom_functions] {kind} = {path!r}: expected a .so library or a .py file"
@@ -66,6 +93,8 @@ def load_custom_function(ms, contexts, device_types, kind, path):
             logger.info("Limiting torch to one thread per madspace thread")
             torch.set_num_threads(1)
 
+    if kind == "cut":
+        function = _cut_as_float(function, framework)
     python_function = ms.PythonFunction(
         function, PYTHON_INPUTS[kind], [kind], framework=framework, name=name
     )

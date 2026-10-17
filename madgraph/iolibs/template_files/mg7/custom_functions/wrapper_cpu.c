@@ -6,6 +6,7 @@
 
 #include "umami.h"
 
+#include <stdbool.h>
 #include <stdlib.h>
 
 #define CUSTOM_IS_PDF %(is_pdf)d
@@ -17,7 +18,8 @@ static const int input_keys[] = {
     UMAMI_IN_MOMENTUM_FRACTION, UMAMI_IN_SCALE, UMAMI_IN_PDG_ID, UMAMI_IN_BEAM_INDEX
 };
 #else
-double %(function_name)s(int particle_count, const int* pdg_ids, const double (*momenta)[4]);
+// a cut returns bool, converted to 1 or 0 below
+%(return_type)s %(function_name)s(int particle_count, const int* pdg_ids, const double (*momenta)[4]);
 static const int input_keys[] = {UMAMI_IN_MOMENTA, UMAMI_IN_PARTICLE_COUNT, UMAMI_IN_PDG_IDS};
 #endif
 #define INPUT_COUNT (sizeof(input_keys) / sizeof(input_keys[0]))
@@ -181,7 +183,7 @@ UmamiStatus umami_matrix_element(
                 event_momenta[j][k] = momenta[stride * (n * k + j) + i];
             }
         }
-        output[i] = %(function_name)s(n, event_pdg_ids, (const double (*)[4])event_momenta);
+        output[i] = (double)%(function_name)s(n, event_pdg_ids, (const double (*)[4])event_momenta);
     }
     free(event_pdg_ids);
     free(event_momenta);

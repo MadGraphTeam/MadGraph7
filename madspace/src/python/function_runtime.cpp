@@ -212,9 +212,9 @@ std::tuple<int, int> madspace_py::dlpack_device(Tensor tensor) {
     case DeviceType::cpu:
         return {kDLCPU, 0};
     case DeviceType::cuda:
-        return {kDLCUDA, 0};
+        return {kDLCUDA, tensor.device()->device_index()};
     case DeviceType::hip:
-        return {kDLROCM, 0};
+        return {kDLROCM, tensor.device()->device_index()};
     default:
         throw std::logic_error("unreachable");
     }

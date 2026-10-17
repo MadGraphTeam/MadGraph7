@@ -108,12 +108,12 @@ C, C++ and CUDA/HIP:
 
 .. code-block:: c
 
-    double custom_cut(int particle_count, const int* pdg_ids, const double momenta[][4]);
+    bool custom_cut(int particle_count, const int* pdg_ids, const double momenta[][4]);
     double custom_scale(int particle_count, const int* pdg_ids, const double momenta[][4]);
     double custom_bias(int particle_count, const int* pdg_ids, const double momenta[][4]);
     double custom_pdf(int beam_index, int pdg_id, double x, double q);
 
-In C++, the functions are declared ``extern "C"``. In CUDA and HIP, they are
+In C, ``bool`` comes from ``<stdbool.h>``. In C++, the functions are declared ``extern "C"``. In CUDA and HIP, they are
 ``__device__`` functions and run on the GPU, one thread per event.
 
 Fortran:
@@ -127,14 +127,14 @@ Fortran:
         real(c_double), intent(in) :: momenta(0:3, particle_count)
         real(c_double) :: value
 
-The PDF takes ``integer(c_int), value :: beam_index, pdg_id`` and
+The cut returns ``logical(c_bool)`` instead. The PDF takes
+``integer(c_int), value :: beam_index, pdg_id`` and
 ``real(c_double), value :: x, q``.
 
 What the functions return:
 
 ``cut``
-    1 to keep the event, 0 to reject it. The value multiplies the event weight, so values
-    in between act as a weight factor.
+    True to keep the event, false to reject it.
 
 ``scale``
     The scale in GeV, used for the renormalization scale and both factorization scales.
@@ -180,8 +180,8 @@ The cut, scale and bias functions take ``(momenta, pdg_ids)``:
 The PDF function takes ``(beam_index, pdg_id, x, q)``, each with shape ``(batch,)``.
 ``beam_index`` and ``pdg_id`` are int32, ``x`` and ``q`` are float64.
 
-Every function returns a float64 array of shape ``(batch,)``, with the same meaning as for
-the compiled functions. MG7 checks the type, the dtype, the shape and the device of the
+The cut returns a boolean array of shape ``(batch,)``, the other functions a float64 array
+of shape ``(batch,)``, with the same meaning as for the compiled functions. MG7 checks the type, the dtype, the shape and the device of the
 result. With numpy the arguments are numpy arrays, and with ``FRAMEWORK = "torch"`` they are
 torch tensors. They are views of MG7's own buffers, so they must not be modified or kept
 after the call.
@@ -200,7 +200,7 @@ The same cut as in the C++ example below, with numpy:
 
     def custom_cut(momenta, pdg_ids):
         pt = np.hypot(momenta[:, 2:4, 1], momenta[:, 2:4, 2])
-        return np.where((pt >= 150.).all(axis=1), 1., 0.)
+        return (pt >= 150.).all(axis=1)
 
 :math:`H_T/2` with torch, for CPU or GPU runs:
 
@@ -235,13 +235,13 @@ C++:
 
     #include <cmath>
 
-    extern "C" double custom_cut(int particle_count, const int* pdg_ids, const double momenta[][4]) {
+    extern "C" bool custom_cut(int particle_count, const int* pdg_ids, const double momenta[][4]) {
         for (int i = 2; i < 4; ++i) {
             if (std::hypot(momenta[i][1], momenta[i][2]) < 150.) {
-                return 0.;
+                return false;
             }
         }
-        return 1.;
+        return true;
     }
 
 :math:`H_T/2` as the scale, in Fortran:
@@ -321,4 +321,3 @@ Limitations
 - A gridpack stores the custom libraries and Python files it was made with. They cannot
   be changed in the gridpack. A Python function in a gridpack needs the same Python
   packages, such as numpy or torch, where the gridpack runs.
-- Python functions with torch support only the first GPU of a machine.
