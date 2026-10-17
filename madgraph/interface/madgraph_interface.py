@@ -1068,6 +1068,10 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("        three bodies or more stay at LO: --nlo --body_decay=3 is the two-body")
         logger.info("        decays at NLO and the three-body ones at LO, --body_decay=2 the two-body")
         logger.info("        decays only. --nlo=smwidth or --nlo=mcatnlo chooses the code.")
+        logger.info("  --corrections=X: corrections of the MC@NLO runs: QCD (default), QED (the")
+        logger.info("        electroweak corrections, EW is accepted) or QCD+QED. The electroweak ones")
+        logger.info("        are for every two-body decay, not only the coloured ones, and need a")
+        logger.info("        model with loop information (loop_qcd_qed_sm).")
         logger.info("  --engine=X: integrator of the N-body decays (N>2): madspace or madevent")
         logger.info("        default: the auto_width_engine option (madspace)")
         logger.info("")
@@ -2417,7 +2421,7 @@ This will take effect only in a NEW terminal
         particles = set()
         options = {'path':None, 'output':None,
                    'min_br':None, 'body_decay':4.0025, 'precision_channel':0.01,
-                   'nlo':False, 'engine':None}
+                   'nlo':False, 'engine':None, 'corrections':None}
         # check that the firsts argument is valid
         
         for i,arg in enumerate(args):
@@ -2496,6 +2500,17 @@ This will take effect only in a NEW terminal
             if options['engine'] not in ('madspace', 'madevent'):
                 raise self.InvalidCmd(
                     '--engine takes madspace or madevent, not %s' % options['engine'])
+        if options['corrections'] is not None:
+            try:
+                options['corrections'] = check_param_card.parse_nlo_corrections(
+                                                           options['corrections'])
+            except check_param_card.InvalidParam as error:
+                raise self.InvalidCmd(str(error))
+            if not options['nlo']:
+                raise self.InvalidCmd('--corrections needs --nlo')
+            if options['nlo'] == 'smwidth':
+                raise self.InvalidCmd('SMWidth computes the QCD and the electroweak '
+                    'corrections together: --corrections is for --nlo=mcatnlo')
         return particles, options
 
 
@@ -13285,7 +13300,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             nlo = None
         if nlo_code in ('true', 'false'):
             nlo_code = None
-        if nlo and (nlo_code == 'smwidth' or (nlo_code is None and self.has_smwidth(model))):
+        # SMWidth does not choose its corrections (QCD and EW): asking for some is
+        # asking for MC@NLO
+        mcatnlo_only = re.search(r'--corrections=', line) is not None
+        if nlo and (nlo_code == 'smwidth' or
+                    (nlo_code is None and not mcatnlo_only and self.has_smwidth(model))):
             # the dedicated code of the model for the NLO widths (the SM)
             return self.compute_widths_SMWidth(line, model=model)
 
@@ -13395,7 +13414,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         self.do_decay_diagram('%s %s' % (' '.join([repr(id) for id in particles]),
                                          ' '.join('--%s=%s' % (key,value)
                                                   for key,value in opts.items()
-                                                  if key not in ['precision_channel', 'engine'])
+                                                  if key not in ['precision_channel', 'engine',
+                                                                 'corrections'])
                                          ), skip_2body=skip_2body, model=decaymodel)
         self._widths_decaymodel = self._curr_decaymodel
 
@@ -13624,20 +13644,28 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         return os.path.exists(pjoin(model.get('modelpath'), 'SMWidth'))
 
     def compute_widths_nlo(self, particles, opts, decay_info, model, decaymodel=None):
-        """NLO (QCD) widths of the two-body decays, with MC@NLO (aMC@NLO at
-        fixed order). Used by 'compute_widths --nlo' when the model has no
-        dedicated code for it (SMWidth).
+        """NLO widths of the two-body decays, with MC@NLO (aMC@NLO at fixed
+        order). Used by 'compute_widths --nlo' when the model has no dedicated
+        code for it (SMWidth), or with '--corrections'.
 
-        ``decay_info`` holds the LO widths. A two-body decay with a colour
-        charge in it, in the decaying particle or in a decay product, is run at
-        NLO and its width replaced. The others have no QCD correction, and the
-        decays into three bodies or more stay at LO, which is what
-        '--body_decay=3' asks for with '--nlo'. The param_card is rewritten with
-        the sums.
+        ``decay_info`` holds the LO widths. The corrections are those of
+        opts['corrections']: QCD (the default), QED (the electroweak ones), or both.
+        A two-body decay is run at NLO and its width replaced when it has a QCD
+        correction -- a colour charge in the decaying particle or in a decay product
+        -- or, with the electroweak corrections, always: every decay has one. The
+        decays into three bodies or more stay at LO, which is what '--body_decay=3'
+        asks for with '--nlo'. The param_card is rewritten with the sums.
 
         A decay that cannot be run (a model without loop information, ...) keeps
         its LO width, with a warning. Returns the new decay_info."""
 
+        corrections = (opts.get('corrections') or 'QCD').split('+')
+        if 'QED' in corrections and 'QED' not in (self._curr_model.get('perturbation_couplings') or []):
+            logger.warning('The model has no QED loop information: the electroweak '
+                'corrections are computed with the loop model MG finds for it '
+                '(loop_qcd_qed_sm), whose electroweak input scheme and parameters may '
+                'not be those of the card. Load a model with loop information '
+                '(loop_qcd_qed_sm, loop_qcd_qed_sm_Gmu) to choose them.')
         channels = []
         for pid in particles:
             decaying = model.get_particle(pid)
@@ -13645,12 +13673,13 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 if len(decay_to) != 2 or not width:
                     continue
                 products = [model.get_particle(abs(code)) for code in decay_to]
-                if all(p.get('color') == 1 for p in [decaying] + products):
+                if 'QED' not in corrections and \
+                        all(p.get('color') == 1 for p in [decaying] + products):
                     continue # no QCD correction
                 channels.append((pid, index, tuple(decay_to)))
         if not channels:
-            logger_mg.info('None of the two-body decays has a QCD correction: '
-                           'the widths are the LO ones.')
+            logger_mg.info('None of the two-body decays has a %s correction: '
+                           'the widths are the LO ones.', '+'.join(corrections))
             return decay_info
 
         orders = self.two_body_born_orders(sorted(set(pid for pid, _, _ in channels)),
@@ -13659,25 +13688,44 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         param_card = opts['output'] if os.path.exists(opts['output']) else opts['path']
         precision = float(opts['precision_channel'])
 
+        with misc.MuteLogger(['madgraph'], [40]):
+            default_names = base_objects.Model.load_default_name()
+
         def process_line(pid, decay_to):
-            names = [self.particle_name(model, pid)] + \
-                    [self.particle_name(model, code) for code in decay_to]
+            names = [self.particle_name(model, pid, default_names)] + \
+                    [self.particle_name(model, code, default_names) for code in decay_to]
             born = orders.get((pid, tuple(sorted(decay_to))))
             if born is None:
                 raise MadGraph5Error('no tree-level diagram for this decay')
             hierarchy = self._curr_model.get('order_hierarchy') or {'QCD': 1, 'QED': 2}
             born = ' '.join('%s=%d' % (name, born.get(name, 0)) for name in hierarchy)
-            return '%s > %s %s %s [QCD]' % (names[0], names[1], names[2], born)
+            return '%s > %s %s %s [%s]' % (names[0], names[1], names[2], born,
+                                           ' '.join(corrections))
 
         # Flavours the model treats alike (u and c, d and s, W > u d~ and W > c s~
         # in the SM) have the same LO width to the last digit and the same NLO
-        # width: run one of them. The same decaying particle, the same colours
-        # and masses of the decay products, and the same LO width.
+        # width: run one of them. The same decaying particle, the same colours,
+        # masses and charges of the decay products, and the same LO width.
+        # The electroweak corrections also see the isospin partner of the decay
+        # products, in the loops: the b, whose partner is the top quark, is not a d
+        # (Z > b b~ is 1.5% lower than Z > d d~ at NLO EW). Only the light quarks of
+        # a type, and the leptons and the neutrinos of the three families, are taken
+        # as alike for them; any other particle has its own run.
+        def kind(code):
+            code = abs(code)
+            for name, codes in (('d', (1, 3)), ('u', (2, 4)), ('l', (11, 13, 15)),
+                                ('v', (12, 14, 16))):
+                if code in codes:
+                    return name
+            return code
+
         def signature(channel):
             pid, index, decay_to = channel
             products = [model.get_particle(abs(code)) for code in decay_to]
-            return (pid, tuple(sorted((p.get('color'), str(p.get('mass')))
-                                      for p in products)),
+            flavours = tuple(sorted(str(kind(code)) for code in decay_to)) \
+                       if 'QED' in corrections else ()
+            return (pid, tuple(sorted((p.get('color'), str(p.get('mass')), p.get('charge'))
+                                      for p in products)), flavours,
                     float('%.9g' % decay_info[pid][index][1]))
 
         signatures = [signature(channel) for channel in channels]
@@ -13688,8 +13736,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         workers = max(1, min(len(unique), 4))
         cores = max(1, (self.options['nb_core'] or os.cpu_count() or 1) // workers)
 
-        logger_mg.info('NLO width of %d two-body decay(s) with MC@NLO (%d run(s)) ...',
-                       len(channels), len(unique))
+        logger_mg.info('NLO %s width of %d two-body decay(s) with MC@NLO (%d run(s)) ...',
+                       '+'.join(corrections), len(channels), len(unique))
         start = time.time()
         with misc.TMP_directory(dir=os.getcwd()) as path:
             def run(number):
@@ -13708,8 +13756,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
         decay_info = copy.deepcopy(decay_info)
         for (pid, index, decay_to), outcome in zip(channels, outcomes):
-            name = '%s > %s' % (self.particle_name(model, pid),
-                    ' '.join(self.particle_name(model, code) for code in decay_to))
+            name = '%s > %s' % (self.particle_name(model, pid, default_names),
+                    ' '.join(self.particle_name(model, code, default_names)
+                             for code in decay_to))
             lo = decay_info[pid][index][1]
             if isinstance(outcome, Exception):
                 logger.warning('NLO width of %s failed (%s): the LO width %.5g GeV is kept.',
@@ -13726,8 +13775,17 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         return decay_info
 
     @staticmethod
-    def particle_name(model, code):
-        """The name of the particle of pdg code ``code`` (negative: the antiparticle)"""
+    def particle_name(model, code, default=None):
+        """The name of the particle of pdg code ``code`` (negative: the antiparticle)
+        in the MG convention (mu-, ta+, ...), which is the one of a session that imports
+        the model: the NLO runs generate their process in such a session, whereas
+        the model of the decays keeps the names of the UFO (m-, tt+). ``default`` is
+        the table of these names, read when it is not given."""
+        if default is None:
+            with misc.MuteLogger(['madgraph'], [40]):
+                default = base_objects.Model.load_default_name()
+        if code in default:
+            return default[code]
         particle = model.get_particle(abs(code))
         return particle.get('name') if code > 0 else particle.get('antiname')
 
@@ -13765,12 +13823,13 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                                              stdin=subprocess.DEVNULL)
             with open(log_path) as log:
                 text = log.read()
-            if returncode or 'Error detected' in text:
-                lines = [l for l in text.splitlines() if l.strip()]
-                raise MadGraph5Error('%s (%s)' % (
-                    next((l for l in reversed(lines) if l.strip() and
-                          not l.startswith(('Traceback', ' ', 'quit'))),
-                         'exit status %s' % returncode), log_path))
+            if returncode or re.search(r'Error detected|interrupted with error|Traceback', text):
+                lines = [l.strip() for l in text.splitlines() if l.strip()]
+                # the error of MG, 'InvalidCmd : ...', or the last line
+                message = next((l for l in reversed(lines)
+                                if re.match(r'\w*(Error|Exception|Cmd)\w* ?:', l)),
+                               lines[-1] if lines else 'exit status %s' % returncode)
+                raise MadGraph5Error('%s (%s)' % (message, log_path))
             return text
 
         script = pjoin(workdir, 'generate.mg5')

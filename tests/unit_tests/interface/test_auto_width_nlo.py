@@ -26,6 +26,7 @@ of the build need madspace and skip without it.
 
 from __future__ import absolute_import
 
+import copy
 import logging
 import os
 import shutil
@@ -73,6 +74,28 @@ class AutoWidthOptionsTest(unittest.TestCase):
                          'Auto --nlo=mcatnlo')
         with self.assertRaises(check_param_card.InvalidParam):
             check_param_card.auto_width_options('auto --nlo=hdecay')
+
+    def test_the_corrections_of_mcatnlo(self):
+        parse = check_param_card.parse_nlo_corrections
+        self.assertEqual(parse('qcd'), 'QCD')
+        self.assertEqual(parse('QED'), 'QED')
+        self.assertEqual(parse('ew'), 'QED')
+        self.assertEqual(parse('qcd+ew'), 'QCD+QED')
+        self.assertEqual(parse('QED,QCD'), 'QCD+QED')
+        self.assertEqual(parse('ew+qed'), 'QED')
+        for value in ('', 'weak', 'qcd+foo', '+'):
+            with self.assertRaises(check_param_card.InvalidParam, msg=value):
+                parse(value)
+
+    def test_the_corrections_in_an_auto_width(self):
+        self.assertEqual(check_param_card.auto_width_options(
+            'auto --corrections=ew --nlo'), ['--nlo', '--corrections=QED'])
+        self.assertEqual(check_param_card.format_auto_width(
+            'auto --nlo --corrections=qcd+ew'), 'Auto --nlo --corrections=QCD+QED')
+        with self.assertRaises(check_param_card.InvalidParam):
+            check_param_card.auto_width_options('auto --nlo --corrections=weak')
+        with self.assertRaises(check_param_card.InvalidParam):
+            check_param_card.auto_width_options('auto --nlo --corrections')
 
     def test_one_order_whatever_the_user_wrote(self):
         self.assertEqual(
@@ -403,6 +426,123 @@ class NLOWidthsTest(unittest.TestCase):
             self.assertEqual(model_ref, self.cmd._curr_model.get('modelpath+restriction'))
             self.assertEqual(param_card, self.card)
 
+    def run_nlo_with(self, corrections, **kwargs):
+        self.opts['corrections'] = corrections
+        try:
+            return self.run_nlo(**kwargs)
+        finally:
+            del self.opts['corrections']
+
+    def test_electroweak_corrections_are_for_every_two_body_decay(self):
+        """Colourless ones too: t, the quarks, leptons and neutrinos of the Z, h > ta ta"""
+        decay_info = self.run_nlo_with('QED')
+        processes = [sorted(process.split(' QCD')[0].replace(' > ', ' ').split())
+                     for process, _, _, _ in self.runs]
+        for expected in ('t > w+ b', 'h > ta- ta+', 'z > e- e+', 'z > ve ve~'):
+            self.assertIn(sorted(expected.replace(' > ', ' ').split()), processes,
+                          (expected, processes))
+        for process, _, _, _ in self.runs:
+            self.assertTrue(process.endswith('[QED]'), process)
+        # the decays into three bodies stay at LO
+        widths = dict((tuple(decay_to), width) for decay_to, width in decay_info[23])
+        self.assertEqual(widths[(-24, -1, 2)], 1e-7)
+        self.assertAlmostEqual(widths[(-11, 11)], 0.084 * 0.9)
+
+    def test_flavours_alike_for_the_electroweak_corrections(self):
+        """d and s, u and c, and the massless leptons and the neutrinos of the
+        families are run once; the b, whose isospin partner is the top quark, is
+        another run, even with the mass and the LO width of the d (a model with a
+        massless b: the NLO EW Z > b b~ is 1.5% below Z > d d~). For the QCD
+        corrections alone massless quarks are all alike."""
+        class Particle(object):
+            def __init__(self, color, mass, charge):
+                self.values = {'color': color, 'mass': mass, 'charge': charge}
+            def get(self, key):
+                return self.values[key]
+        massless = {}
+        for code in (1, 3, 5):
+            massless[code] = Particle(3, 'ZERO', -1. / 3)
+        for code in (2, 4):
+            massless[code] = Particle(3, 'ZERO', 2. / 3)
+        for code in (11, 13, 15):
+            massless[code] = Particle(1, 'ZERO', -1.)
+        for code in (12, 14, 16):
+            massless[code] = Particle(1, 'ZERO', 0.)
+        massless[23] = Particle(1, 'mdl_MZ', 0.)
+        model = mock.Mock()
+        model.get_particle.side_effect = lambda code: massless[abs(code)]
+        info = {23: [[[-1, 1], 0.372], [[-3, 3], 0.372], [[-5, 5], 0.372],
+                     [[-2, 2], 0.290], [[-4, 4], 0.290],
+                     [[-11, 11], 0.084], [[-13, 13], 0.084], [[-15, 15], 0.084],
+                     [[-12, 12], 0.166], [[-14, 14], 0.166], [[-16, 16], 0.166]]}
+
+        def runs(corrections):
+            self.runs[:] = []
+            LO, self.LO = self.LO, info
+            self.opts['corrections'] = corrections
+            try:
+                with mock.patch.object(self.cmd, 'run_mcatnlo_width',
+                                       lambda w, process, *a: self.runs.append(process) or (1., 0.)), \
+                     mock.patch.object(self.cmd, 'two_body_born_orders', self.born_orders), \
+                     mock.patch.object(madevent_interface.MadEventCmd,
+                                       'update_width_in_param_card', mock.Mock()):
+                    self.cmd.compute_widths_nlo([23], self.opts, copy.deepcopy(info),
+                                                model)
+            finally:
+                self.LO = LO
+                del self.opts['corrections']
+            return sorted(process.split(' QCD')[0] for process in self.runs)
+
+        qed = runs('QED')
+        self.assertEqual(len(qed), 5, qed)           # d s | b | u c | e mu ta | nu
+        self.assertEqual(len([p for p in qed if ' b' in p]), 1, qed)
+        self.assertEqual(len(runs('QCD')), 2)        # d s b | u c
+
+    def test_qcd_and_electroweak_corrections(self):
+        self.run_nlo_with('QCD+QED')
+        for process, _, _, _ in self.runs:
+            self.assertTrue(process.endswith('[QCD QED]'), process)
+        self.assertEqual(len(self.runs), 8)
+
+    def test_the_electroweak_corrections_need_loop_information(self):
+        """sm has none: a warning says the loop model of MG decides the scheme"""
+        warnings = []
+        handler = logging.Handler()
+        handler.emit = lambda record: warnings.append(record.getMessage())
+        handler.setLevel(logging.WARNING)
+        logger = logging.getLogger('cmdprint')
+        logger.addHandler(handler)
+        try:
+            self.run_nlo_with('QED')
+            qed = list(warnings)
+            del warnings[:]
+            self.run_nlo_with('QCD')
+        finally:
+            logger.removeHandler(handler)
+        self.assertTrue([w for w in qed if 'QED loop information' in w], qed)
+        self.assertFalse([w for w in warnings if 'QED loop information' in w])
+
+    def test_names_of_particles_in_the_mg_convention(self):
+        """The model of the decays has the names of the UFO (m-, tt+), the session
+        that runs the process the ones of MG (mu-, ta+)."""
+        class Particle(object):
+            def __init__(self, name, antiname):
+                self.names = {'name': name, 'antiname': antiname}
+            def get(self, key):
+                return self.names[key]
+        model = mock.Mock()
+        model.get_particle.side_effect = lambda code: {
+            13: Particle('m-', 'm+'), 15: Particle('tt-', 'tt+'),
+            24: Particle('w+', 'w-'), 1000022: Particle('n1', 'n1')}[code]
+        default = {13: 'mu-', -13: 'mu+', 15: 'ta-', -15: 'ta+'}
+        name = self.cmd.particle_name
+        self.assertEqual(name(model, 13, default), 'mu-')
+        self.assertEqual(name(model, -13, default), 'mu+')
+        self.assertEqual(name(model, -15, default), 'ta+')
+        # not in the table: the name of the model
+        self.assertEqual(name(model, -24, default), 'w-')
+        self.assertEqual(name(model, 1000022, default), 'n1')
+
     def test_names_of_particles(self):
         name = self.cmd.particle_name
         self.assertEqual(name(self.model, 24), 'w+')
@@ -459,6 +599,44 @@ class NLOWidthsTest(unittest.TestCase):
         self.assertEqual(nlo(['--nlo=smwidth']), 'smwidth')
         with self.assertRaises(madgraph.InvalidCmd):
             nlo(['--nlo=hdecay'])
+
+    def test_the_corrections_argument(self):
+        def corrections(argument):
+            return self.cmd.check_compute_widths(
+                ['t', '--path=%s' % self.card] + argument)[1]['corrections']
+        self.assertIsNone(corrections(['--nlo']))
+        self.assertEqual(corrections(['--nlo', '--corrections=ew']), 'QED')
+        self.assertEqual(corrections(['--nlo=mcatnlo', '--corrections=QCD+EW']), 'QCD+QED')
+        with self.assertRaises(madgraph.InvalidCmd):
+            corrections(['--nlo', '--corrections=weak'])
+        with self.assertRaises(madgraph.InvalidCmd):
+            corrections(['--corrections=QED'])                    # needs --nlo
+        with self.assertRaises(madgraph.InvalidCmd):
+            corrections(['--nlo=smwidth', '--corrections=QED'])   # SMWidth has both
+
+    def test_corrections_ask_for_mcatnlo(self):
+        """SMWidth does not choose its corrections"""
+        result, dedicated, lo, nlo = self.run_compute_widths(
+            't --nlo --corrections=QED', smwidth=True)
+        dedicated.assert_not_called()
+        lo.assert_called_once()
+        nlo.assert_called_once()
+
+    def test_the_corrections_are_not_given_to_decay_diagram(self):
+        seen = []
+
+        def fake_decay_diagram(line, *args, **opts):
+            seen.append(line)
+            self.cmd._curr_amps = []
+
+        with mock.patch.object(self.cmd, 'do_decay_diagram', fake_decay_diagram), \
+             mock.patch.object(self.cmd, 'has_smwidth', lambda model: False), \
+             mock.patch.object(self.cmd, 'compute_widths_nlo',
+                               mock.Mock(side_effect=lambda p, o, d, m, dm=None: d)):
+            self.cmd.do_compute_widths(
+                't --nlo --corrections=ew --body_decay=3 --path=%s' % self.card)
+        self.assertEqual(len(seen), 1)
+        self.assertNotIn('corrections', seen[0])
 
     def test_mcatnlo_can_be_chosen_when_the_model_has_a_dedicated_code(self):
         result, dedicated, lo, nlo = self.run_compute_widths('t --nlo=mcatnlo', smwidth=True)
@@ -627,6 +805,19 @@ class RunMCatNLOTest(unittest.TestCase):
             self.run_width(fake)
         self.assertIn('loop corrections', str(caught.exception))
         self.assertEqual(len(fake.commands), 1)         # no run of the missing process
+
+    def test_a_process_with_an_unknown_particle(self):
+        """MG prints a traceback and 'InvalidCmd : ...' for it, and no 'Error detected':
+        the lepton decays used to fail with a message about a missing file."""
+        fake = FakeAMCatNLO(self, generate_failure=
+            'generate w+ > m+ vm QED=1 QCD=0 [QED]\n'
+            'Traceback (most recent call last):\n'
+            '  File "extended_cmd.py", line 1693, in onecmd_orig\n'
+            "InvalidCmd : 'm+' is not a valid particle\n")
+        with self.assertRaises(madgraph.MadGraph5Error) as caught:
+            self.run_width(fake)
+        self.assertIn("is not a valid particle", str(caught.exception))
+        self.assertEqual(len(fake.commands), 1)
 
     def test_a_failed_run(self):
         fake = FakeAMCatNLO(self, launch_failure='Fortran runtime error: boom\n')

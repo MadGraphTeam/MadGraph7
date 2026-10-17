@@ -283,3 +283,67 @@ class TestAutoWidthNLOvsSMWidth(unittest.TestCase):
         for pid in self.EXPECTED:
             ratio = self.cards['mcatnlo'][pid]['total'] / self.cards['smwidth'][pid]['total']
             self.assertAlmostEqual(ratio, 1.035, delta=0.007, msg=str(pid))
+
+
+@unittest.skipUnless(shutil.which('gfortran'), 'no Fortran compiler (SMWidth, aMC@NLO)')
+class TestAutoWidthNLOEWvsSMWidth(unittest.TestCase):
+    """The electroweak corrections of the two-body decays with MC@NLO against SMWidth,
+    on the SM of loop_qcd_qed_sm: the NLO QCD+EW widths of the top quark, the W and the
+    Z (17 decays, 8 runs of aMC@NLO, about two minutes).
+
+    SMWidth with the orders (1, 1), 1.3918 / 2.0847 / 2.4888 GeV for t, W, Z, and with
+    the orders (0, 1), 1.5245 / 2.0309 / 2.4234 GeV, for the electroweak corrections
+    alone. The top quark of 'compute_widths --nlo' also has the finite width of the W,
+    1.3673 GeV, a three-body effect that the two-body decays do not have: it is left out
+    of the expected value. The electroweak correction of Z > b b~ is 1.5% below the one of
+    Z > d d~ (the top quark is the isospin partner of the b), which a run of the b for
+    the d and the s would miss by 0.5% on the width of the Z.
+    """
+
+    EXPECTED = {6: 1.3900, 24: 2.0839, 23: 2.4878}     # MC@NLO, QCD+EW
+    SMWIDTH = {6: 1.3918, 24: 2.0847, 23: 2.4888}      # the orders (1, 1)
+
+    @classmethod
+    def setUpClass(cls):
+        cls.path = tempfile.mkdtemp(prefix='acc_test_auto_width_ew')
+        cmd = mgcmd.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('set automatic_html_opening False --no_save')
+        try:
+            cmd.exec_cmd('import model loop_qcd_qed_sm')
+        except Exception as error:
+            shutil.rmtree(cls.path, ignore_errors=True)
+            raise unittest.SkipTest('loop_qcd_qed_sm is not available: %s' % error)
+        cls.cards = {}
+        for name, option in (
+                ('smwidth', '--nlo=smwidth'),
+                ('mcatnlo', '--nlo --corrections=QCD+QED --body_decay=2 --engine=madevent')):
+            card = pjoin(cls.path, 'param_card_%s.dat' % name)
+            cmd.exec_cmd('compute_widths t w+ z %s --output=%s' % (option, card))
+            cls.cards[name] = read_decays(card)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.path, ignore_errors=True)
+
+    def test_mcatnlo(self):
+        for pid, expected in self.EXPECTED.items():
+            self.assertAlmostEqual(self.cards['mcatnlo'][pid]['total'], expected,
+                                   delta=0.004 * expected, msg=str(pid))
+
+    def test_agrees_with_smwidth(self):
+        for pid, expected in self.SMWIDTH.items():
+            self.assertAlmostEqual(self.cards['mcatnlo'][pid]['total'] / expected, 1,
+                                   delta=0.004, msg=str(pid))
+
+    def test_the_built_in_widths_of_the_w_and_the_z(self):
+        """no finite width of the W for them: the same widths in both"""
+        for pid in (24, 23):
+            self.assertAlmostEqual(
+                self.cards['mcatnlo'][pid]['total'] / self.cards['smwidth'][pid]['total'],
+                1, delta=0.004, msg=str(pid))
+
+    def test_bottom_and_down_are_not_alike(self):
+        """Z > b b~ has a larger electroweak correction than Z > d d~"""
+        channels = self.cards['mcatnlo'][23]['channels']
+        self.assertLess(channels[(-5, 5)], 0.99 * channels[(-1, 1)])

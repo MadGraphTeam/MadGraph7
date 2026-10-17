@@ -39,8 +39,29 @@ class InvalidParam(Exception):
 #     DECAY 6 auto                            what compute_widths does by default
 #     DECAY 25 auto --nlo --body_decay=3      two-body decays at NLO, the rest at LO
 #     DECAY 25 auto --nlo=mcatnlo             NLO from MC@NLO even if the model has SMWidth
+#     DECAY 23 auto --nlo --corrections=QCD+QED   NLO QCD and EW two-body decays with MC@NLO
 #     DECAY 6 auto@NLO                        the older spelling of 'auto --nlo'
-AUTO_WIDTH_OPTIONS = ('nlo', 'body_decay', 'precision_channel', 'min_br', 'engine')
+AUTO_WIDTH_OPTIONS = ('nlo', 'body_decay', 'precision_channel', 'min_br', 'engine',
+                      'corrections')
+
+def parse_nlo_corrections(value):
+    """The corrections asked for with 'compute_widths --nlo --corrections=VALUE',
+    for the NLO widths of MC@NLO: 'QCD', 'QED' (the electroweak corrections, 'EW'
+    is accepted too) or both, written 'QCD+QED' (or 'QCD,QED'). Returns the
+    canonical text, in the order QCD, QED. Raises InvalidParam otherwise."""
+
+    names = [name for name in re.split(r'[+,]', str(value).strip().upper()) if name]
+    if not names:
+        raise InvalidParam("--corrections needs QCD, QED (or EW), or QCD+QED")
+    found = set()
+    for name in names:
+        if name == 'EW':
+            name = 'QED'
+        if name not in ('QCD', 'QED'):
+            raise InvalidParam("--corrections takes QCD, QED (or EW), or QCD+QED, not '%s'"
+                               % value)
+        found.add(name)
+    return '+'.join(name for name in ('QCD', 'QED') if name in found)
 
 def auto_width_options(value):
     """The compute_widths arguments carried by the value of a width, as a list
@@ -68,6 +89,8 @@ def auto_width_options(value):
             options[name] = '--nlo=%s' % value if value else '--nlo'
         elif '=' not in token or not token.split('=', 1)[1]:
             raise InvalidParam("'%s' needs a value: %s=VALUE" % (token, token))
+        elif name == 'corrections':
+            options[name] = '--corrections=%s' % parse_nlo_corrections(token.split('=', 1)[1])
         else:
             options[name] = '--%s=%s' % (name, token.split('=', 1)[1])
     # one order, whatever the user's: the same options make the same group

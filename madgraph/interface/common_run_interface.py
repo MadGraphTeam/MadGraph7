@@ -295,7 +295,8 @@ class CheckValidForCmd(object):
         
         output = {'model': model, 'force': False, 'output': None, 
                   'path':None, 'particles': set(), 'body_decay':4.0025,
-                  'min_br':None, 'precision_channel':0.01, 'engine':None}
+                  'min_br':None, 'precision_channel':0.01, 'engine':None,
+                  'corrections':None}
         for arg in args:
             if arg.startswith('--output='):
                 output_path = arg.split('=',1)[1]
@@ -322,6 +323,12 @@ class CheckValidForCmd(object):
                 if value not in ('', 'true', 'false', 'smwidth', 'mcatnlo'):
                     raise self.InvalidCmd('--nlo takes smwidth or mcatnlo, not %s' % value)
                 output['nlo'] = value if value in ('smwidth', 'mcatnlo') else value != 'false'
+            elif arg.startswith('--corrections='):
+                try:
+                    output['corrections'] = param_card_mod.parse_nlo_corrections(
+                                                              arg.split('=',1)[1])
+                except param_card_mod.InvalidParam as error:
+                    raise self.InvalidCmd(str(error))
             elif arg.startswith('--engine='):
                 output['engine'] = arg.split('=',1)[1].lower()
                 if output['engine'] not in ('madspace', 'madevent'):
