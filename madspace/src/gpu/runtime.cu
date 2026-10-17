@@ -134,15 +134,6 @@ auto gpublas_gemm(Args... args) {
     }
 }
 
-template <typename F, typename... Args>
-auto gpublas_gemv(Args... args) {
-    if constexpr (std::is_same_v<F, float>) {
-        return gpublasSgemv(args...);
-    } else {
-        return gpublasDgemv(args...);
-    }
-}
-
 template <typename F>
 void op_matmul(
     const GpuRuntime::Instruction& instruction,
@@ -193,11 +184,27 @@ void op_matmul(
     bias.reset(device);
 }
 
+// bias_grad[j] += sum_i output_grad[i, j]; the matrix is column-major with
+// leading dimension batch_size, so each column is a contiguous segment. One block
+// per column: single launch, no atomics (deterministic) and no temporary storage.
+// Accumulates in double, as the float32 cuBLAS paths would otherwise split the
+// reduction over several kernels.
+constexpr int BIAS_GRAD_THREADS = 512;
+
 template <typename F>
-__global__ void kernel_one(std::size_t batch_size, GpuTensorView<F, 1, true> output) {
-    me_int_t i = blockDim.x * blockIdx.x + threadIdx.x;
-    if (i < batch_size) {
-        output[i] = 1.;
+__global__ void kernel_bias_grad(
+    std::size_t batch_size, const F* __restrict__ output_grad, F* bias_grad
+) {
+    using BlockReduce = cub::BlockReduce<double, BIAS_GRAD_THREADS>;
+    __shared__ typename BlockReduce::TempStorage temp_storage;
+    const F* column = output_grad + blockIdx.x * batch_size;
+    double sum = 0.;
+    for (std::size_t i = threadIdx.x; i < batch_size; i += BIAS_GRAD_THREADS) {
+        sum += column[i];
+    }
+    sum = BlockReduce(temp_storage).Sum(sum);
+    if (threadIdx.x == 0) {
+        bias_grad[blockIdx.x] += static_cast<F>(sum);
     }
 }
 
@@ -290,27 +297,12 @@ void backward_op_matmul(
     );
 
     // compute bias_grad += sum_i output_grad_ij
-    Tensor ones(dtype_of<F>(), {batch_size}, device, AllocHint::temporary);
-    launch_kernel(
-        kernel_one<F>, batch_size, device.stream(), batch_size, ones.view<F, 1>()
+    kernel_bias_grad<F><<<dims_out, BIAS_GRAD_THREADS, 0, stream>>>(
+        batch_size,
+        static_cast<const F*>(output_grad.data()),
+        static_cast<F*>(bias_grad.data())
     );
-    check_error(
-        gpublas_gemv<F>(
-            handle,
-            GPUBLAS_OP_T,
-            batch_size,
-            dims_out,
-            &alpha,
-            static_cast<F*>(output_grad.data()),
-            batch_size,
-            static_cast<F*>(ones.data()),
-            1,
-            &beta,
-            static_cast<F*>(bias_grad.data()),
-            1
-        )
-    );
-    ones.reset(device);
+    check_error();
     input.reset(device);
     weight.reset(device);
     output_grad.reset(device);
