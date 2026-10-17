@@ -11,13 +11,14 @@ import sys
 import threading
 import time
 from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from copy import copy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from .loop_import import RawLoopModel
     from .prepared import PreparedModelBundle
 
 from .._internal.versions import (
@@ -204,6 +205,7 @@ class CompiledModel:
     issues: tuple[ModelCompatibilityIssue, ...]
     phase_timings: Mapping[str, float]
     conversion_seconds: float
+    raw_loop_model: RawLoopModel | None = None
     _serialized_path: Path | None = field(default=None, compare=False, repr=False)
     _prepared_bundle: PreparedModelBundle | None = field(
         default=None,
@@ -236,7 +238,7 @@ class CompiledModel:
         return None if self._prepared_bundle is None else self._prepared_bundle.backend
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "kind": COMPILED_MODEL_KIND,
             "schema_version": COMPILED_MODEL_SCHEMA_VERSION,
             "model_compiler_version": MODEL_COMPILER_VERSION,
@@ -253,6 +255,9 @@ class CompiledModel:
             "phase_timings": dict(self.phase_timings),
             "conversion_seconds": self.conversion_seconds,
         }
+        if self.raw_loop_model is not None:
+            payload["raw_loop_model"] = self.raw_loop_model.to_dict()
+        return payload
 
     def write(self, path: Path) -> Path:
         output = _compiled_model_output_path(path)
@@ -301,6 +306,13 @@ class CompiledModel:
         raw_issues = payload.get("issues", ())
         if not isinstance(raw_issues, list):
             raise ValueError("compiled model issues must be a list")
+        raw_loop_model = None
+        if payload.get("raw_loop_model") is not None:
+            from .loop_import import RawLoopModel
+
+            raw_loop_model = RawLoopModel.from_dict(
+                _mapping(payload["raw_loop_model"], "raw_loop_model")
+            )
         return CompiledModel(
             source=_mapping(payload.get("source"), "source"),
             producer=producer,
@@ -320,6 +332,7 @@ class CompiledModel:
                 ).items()
             },
             conversion_seconds=float(payload.get("conversion_seconds", 0.0)),
+            raw_loop_model=raw_loop_model,
             _serialized_path=(
                 None if serialized_path is None else Path(serialized_path).resolve()
             ),
@@ -428,6 +441,7 @@ def compile_model_source(
     started = time.perf_counter()
     phase_timings: dict[str, float] = {}
     phase_started = time.perf_counter()
+    raw_loop_model = None
     if source_kind == "built-in-sm":
         from .builtin.adapters import build_model_payload
 
@@ -443,6 +457,12 @@ def compile_model_source(
             str(name): _complex_pair(value, context=f"parameter {name}")
             for name, value in card.items()
         }
+        if worker_payload.get("raw_loop_model") is not None:
+            from .loop_import import RawLoopModel
+
+            raw_loop_model = RawLoopModel.from_dict(
+                _mapping(worker_payload["raw_loop_model"], "raw_loop_model")
+            )
     phase_timings["model_loading"] = time.perf_counter() - phase_started
     phase_started = time.perf_counter()
     issues, capabilities = preflight_model(model_payload)
@@ -509,6 +529,8 @@ def compile_model_source(
             if kernel.evaluation_equivalence_verified
         ),
     }
+    if raw_loop_model is not None:
+        capabilities["loop_model_import"] = dict(raw_loop_model.capabilities)
     conversion_seconds = time.perf_counter() - started
     phase_timings["total"] = conversion_seconds
     compiled = CompiledModel(
@@ -528,6 +550,7 @@ def compile_model_source(
         issues=issues,
         phase_timings=phase_timings,
         conversion_seconds=conversion_seconds,
+        raw_loop_model=raw_loop_model,
     )
     if use_cache:
         compiled.write(cache_path)
@@ -766,11 +789,25 @@ def _load_external_model(
     # These imports intentionally live inside the execution boundary so package
     # import, metadata inspection, and built-in-SM planning stay dependency-light.
     _require_ufo_model_loader()
-    with _sanitized_model_environment():
+    with _sanitized_model_environment(), ExitStack() as import_scope:
         from ufo_model_loader.commands import load_model
         from ufo_model_loader.common import JSONLook
 
         restriction = _loader_restriction_name(source, options.restriction)
+        raw_loop_model = None
+        if source.is_dir():
+            from .loop_import import (
+                capture_raw_loop_model,
+                imported_ufo_module,
+                raw_restriction,
+            )
+
+            module = import_scope.enter_context(imported_ufo_module(source))
+            raw_loop_model = capture_raw_loop_model(
+                module,
+                name=source.name,
+                restriction=raw_restriction(source, restriction),
+            )
         model, parameter_card = load_model(
             str(source),
             restriction,
@@ -788,7 +825,7 @@ def _load_external_model(
                 raise ValueError("serialized model propagator must be an object")
             particle = str(propagator["particle"])
             propagator[PROPAGATOR_SOURCE_FIELD] = propagator_sources[particle]
-        return {
+        result: dict[str, object] = {
             "loader_version": _distribution_version("ufo-model-loader", "missing"),
             "model": model_payload,
             "parameter_card": {
@@ -796,6 +833,9 @@ def _load_external_model(
                 for name, value in sorted(parameter_card.items())
             },
         }
+        if raw_loop_model is not None:
+            result["raw_loop_model"] = raw_loop_model.to_dict()
+        return result
 
 
 def _classify_external_propagators(model: Any) -> dict[str, str]:

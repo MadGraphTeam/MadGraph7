@@ -1,0 +1,336 @@
+# SPDX-License-Identifier: 0BSD
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
+
+import pytest
+
+from pyamplicol.models.contracts import CompiledModelIR
+from pyamplicol.models.loading import (
+    CompiledModel,
+    ModelCompileOptions,
+    _load_external_model,
+)
+from pyamplicol.models.loop_import import (
+    RawLoopModel,
+    capture_raw_loop_model,
+    load_raw_loop_model,
+)
+
+
+def _nlo_module() -> ModuleType:
+    module = ModuleType("test_nlo")
+    zero = SimpleNamespace(name="ZERO", nature="internal", type="real", value="0")
+    dz = SimpleNamespace(
+        name="dZ",
+        nature="internal",
+        type="complex",
+        value={
+            -2: "g**2",
+            -1: "complex(0,1)*g**2",
+            0: "g**2*reglog(M**2/muR**2)",
+        },
+    )
+    scalar = SimpleNamespace(name="GC_UV", value="g*dZ", order={"QCD": 3})
+    series = SimpleNamespace(
+        name="GC_series", value={-1: "g**3", 0: "2*g**3"}, order={"QCD": 3}
+    )
+    gluon = SimpleNamespace(name="g", pdg_code=21, spin=3, mass=zero, width=zero)
+    ghost = SimpleNamespace(name="gh", pdg_code=9000001, spin=-1, mass=zero, width=zero)
+    goldstone = SimpleNamespace(
+        name="G0",
+        pdg_code=250,
+        spin=1,
+        mass=zero,
+        width=zero,
+        goldstoneboson=False,
+        GoldstoneBoson=True,
+    )
+    gluon.counterterm = {(1, 0): {-1: "dZ"}}
+    gluon.loop_particles = [[ghost]]
+    lorentz = SimpleNamespace(
+        name="VVV", spins=[3, 3, 3], structure="P(1,2)*Metric(2,3)"
+    )
+    vertex = SimpleNamespace(
+        name="V_duplicate",
+        type="UV",
+        particles=[gluon, gluon, gluon],
+        color=["f(1,2,3)"],
+        lorentz=[lorentz],
+        loop_particles=[[[gluon], [ghost]], [[gluon, ghost]]],
+        couplings={(0, 0, 0): scalar, (0, 0, 1): series},
+    )
+    second = SimpleNamespace(
+        **{**vars(vertex), "type": "R2", "particles": [goldstone, gluon, gluon]}
+    )
+    order = SimpleNamespace(
+        name="QCD", expansion_order=99, hierarchy=1, perturbative_expansion=1
+    )
+    module.all_parameters = [zero]
+    module.all_CTparameters = [dz]
+    module.all_couplings = [scalar, series]
+    module.all_particles = [gluon, ghost, goldstone]
+    module.all_lorentz = [lorentz]
+    module.all_vertices = []
+    module.all_CTvertices = [vertex, second]
+    module.all_orders = [order]
+    module.gauge = [0, 1]
+    module.regularization_scheme = "declared-test-scheme"
+    return module
+
+
+def test_preserves_laurent_references_ct_indices_and_loop_groups() -> None:
+    module = _nlo_module()
+    captured = capture_raw_loop_model(module)
+    data = captured.to_dict()
+    parameters = data["collections"]["counterterm_parameters"]
+    assert parameters[0]["fields"]["value"] == {
+        "kind": "laurent",
+        "terms": [
+            [power, value] for power, value in module.all_CTparameters[0].value.items()
+        ],
+    }
+    # A scalar expression containing a CT parameter is NOT an epsilon-zero term.
+    assert captured.record("couplings", "GC_UV")["fields"]["value"] == {
+        "kind": "expression",
+        "expression": "g*dZ",
+    }
+    vertices = data["collections"]["counterterm_vertices"]
+    assert [item["id"] for item in vertices] == [0, 1]
+    assert [item["name"] for item in vertices] == ["V_duplicate", "V_duplicate"]
+    with pytest.raises(ValueError, match=r"ambiguous.*record ID"):
+        captured.record("counterterm_vertices", "V_duplicate")
+    entries = vertices[0]["fields"]["couplings"]["entries"]
+    assert [entry[0] for entry in entries] == [
+        {"kind": "tuple", "items": [0, 0, 0]},
+        {"kind": "tuple", "items": [0, 0, 1]},
+    ]
+    assert [entry[1]["name"] for entry in entries] == ["GC_UV", "GC_series"]
+    groups = vertices[0]["fields"]["loop_particles"]
+    assert [
+        [[p["name"] for p in alternative] for alternative in group] for group in groups
+    ] == [[["g"], ["gh"]], [["g", "gh"]]]
+    assert data["collections"]["particles"][0]["fields"]["counterterm"]["entries"][0][
+        0
+    ] == {"kind": "tuple", "items": [1, 0]}
+    assert captured.capabilities["ghost_particles"] == ("gh",)
+    assert captured.capabilities["goldstone_particles"] == ("G0",)
+    assert captured.capabilities["perturbative_orders"] == ("QCD",)
+    assert captured.capabilities["loop_runtime_supported"] is False
+    assert captured.capabilities["model_r2_complete"] is None
+    assert captured.metadata["regularization_scheme"] == "declared-test-scheme"
+
+    module.all_CTparameters[0].value[-1] = "changed after capture"
+    assert RawLoopModel.from_dict(json.loads(json.dumps(data))).to_dict() == data
+    assert captured.to_dict() == data
+    with pytest.raises(TypeError):
+        captured.record("couplings", "GC_UV")["fields"]["value"]["expression"] = "0"
+
+
+def test_custom_propagators_and_ufo2_function_types_are_preserved() -> None:
+    module = _nlo_module()
+    module.all_particles[0].propagator = SimpleNamespace(
+        name="custom", numerator="-complex(0,1)*Metric(1,2)", denominator="P(1)**2-M**2"
+    )
+    module.all_functions = [
+        SimpleNamespace(
+            name="f", arguments=("z",), argstype=(complex,), expression="z.conjugate()"
+        )
+    ]
+    captured = capture_raw_loop_model(module)
+    assert (
+        captured.record("particles", "g")["fields"]["propagator"]["collection"]
+        == "propagators"
+    )
+    assert (
+        captured.record("propagators", "custom")["fields"]["denominator"]
+        == "P(1)**2-M**2"
+    )
+    argstype = captured.to_dict()["collections"]["functions"][0]["fields"]["argstype"]
+    assert argstype == {
+        "kind": "tuple",
+        "items": [{"kind": "type", "name": "builtins.complex"}],
+    }
+
+
+def _write_ufo(path: Path, expression: str) -> Path:
+    path.mkdir(parents=True)
+    (path / "object_library.py").write_text(
+        "from types import SimpleNamespace\n"
+        "all_CTparameters = [SimpleNamespace(name='dZ', nature='internal', "
+        f"type='real', value={{-1: {expression!r}}})]\n",
+        encoding="utf-8",
+    )
+    (path / "__init__.py").write_text(
+        "import object_library\nall_CTparameters = object_library.all_CTparameters\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_same_name_ufo_imports_are_isolated_and_restrictions_remain_unapplied(
+    tmp_path: Path, monkeypatch
+) -> None:
+    first = _write_ufo(tmp_path / "first" / "same_name", "g**2")
+    second = _write_ufo(tmp_path / "second" / "same_name", "h**2")
+    restriction = "BLOCK MASS\n  6  0.0\n"
+    (first / "restrict_default.dat").write_text(restriction, encoding="utf-8")
+    previous_path = sys.path[:]
+    sentinel = ModuleType("object_library")
+    monkeypatch.setitem(sys.modules, "object_library", sentinel)
+    for path, expression in ((first, "g**2"), (second, "h**2"), (first, "g**2")):
+        model = load_raw_loop_model(path)
+        assert model.record("counterterm_parameters", "dZ")["fields"]["value"][
+            "terms"
+        ] == ((-1, expression),)
+        assert sys.modules["object_library"] is sentinel
+        assert "same_name" not in sys.modules
+        assert sys.path == previous_path
+    assert model.metadata["restriction"] == {
+        "applied": False,
+        "name": "default",
+        "card": restriction,
+    }
+    assert not tuple(tmp_path.rglob("*.pyc"))
+    assert (
+        load_raw_loop_model(first, restriction="none").metadata["restriction"]["card"]
+        is None
+    )
+
+
+def test_failed_ufo_capture_restores_import_environment(tmp_path: Path) -> None:
+    source = _write_ufo(tmp_path / "broken_ufo", "g**2")
+    (source / "__init__.py").write_text(
+        "import object_library\nraise RuntimeError('broken UFO')\n", encoding="utf-8"
+    )
+    previous_path = sys.path[:]
+    previous_bytecode = sys.dont_write_bytecode
+    with pytest.raises(RuntimeError, match="broken UFO"):
+        load_raw_loop_model(source)
+    assert "broken_ufo" not in sys.modules
+    assert sys.path == previous_path
+    assert sys.dont_write_bytecode == previous_bytecode
+
+
+def test_capture_precedes_tree_loader_loss(tmp_path: Path, monkeypatch) -> None:
+    from ufo_model_loader import commands
+
+    from pyamplicol.models import loading
+
+    source = _write_ufo(tmp_path / "before_loss", "g**2")
+
+    class TreeModel:
+        def wrap_indices_in_lorentz_structures(self):
+            pass
+
+        def to_json(self, _look):
+            return '{"name":"tree-only","propagators":[]}'
+
+    def normalize(*_args, **_kwargs):
+        # Simulate destructive loss at the normalization boundary itself.
+        sys.modules["before_loss"].all_CTparameters[0].value.clear()
+        return TreeModel(), {}
+
+    monkeypatch.setattr(commands, "load_model", normalize)
+    monkeypatch.setattr(loading, "_classify_external_propagators", lambda _model: {})
+    result = _load_external_model(source, options=ModelCompileOptions())
+    assert result["model"]["name"] == "tree-only"
+    assert RawLoopModel.from_dict(result["raw_loop_model"]).record(
+        "counterterm_parameters", "dZ"
+    )["fields"]["value"]["terms"] == ((-1, "g**2"),)
+
+
+def test_compiled_model_serialization_retains_raw_sidecar(tmp_path: Path) -> None:
+    raw = capture_raw_loop_model(_nlo_module())
+    empty_ir = CompiledModelIR(
+        name="test",
+        orders=(),
+        parameters=(),
+        particles=(),
+        couplings=(),
+        propagators=(),
+        vertex_terms=(),
+        oriented_kernels=(),
+        direct_contractions=(),
+        closure_contractions=(),
+    )
+    compiled = CompiledModel(
+        source={},
+        producer={},
+        model={"name": "test"},
+        ir=empty_ir,
+        parameter_defaults={},
+        capabilities={},
+        issues=(),
+        phase_timings={},
+        conversion_seconds=0.0,
+        raw_loop_model=raw,
+    )
+    written = compiled.write(tmp_path / "model")
+    restored = CompiledModel.from_dict(
+        json.loads(written.read_text()), validate_fingerprint=False
+    )
+    assert restored.raw_loop_model.to_dict() == raw.to_dict()
+    payload = compiled.to_dict()
+    del payload["raw_loop_model"]
+    assert (
+        CompiledModel.from_dict(payload, validate_fingerprint=False).raw_loop_model
+        is None
+    )
+
+
+def test_local_loop_sm_regression() -> None:
+    source = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
+    if source is None:
+        pytest.skip(
+            "set PYAMPLICOL_NLO_UFO_REFERENCE to the local MadLoop loop_sm model"
+        )
+    model = load_raw_loop_model(source)
+    assert len(model.collections["counterterm_parameters"]) == 21
+    assert len(model.collections["counterterm_vertices"]) == 103
+    assert model.record("counterterm_parameters", "G_UVg")["fields"]["value"][
+        "terms"
+    ] == ((-1, "-((G**2)/(2.0*48.0*cmath.pi**2))*11.0*CA"),)
+    assert model.record("couplings", "UV_3Gg")["fields"]["value"] == {
+        "kind": "expression",
+        "expression": "-G_UVg*G",
+    }
+    r2 = model.record("counterterm_vertices", "V_R2RGA")["fields"]
+    assert "d(-1,1,3)*d(-1,2,4)" in r2["color"]
+    assert len(r2["loop_particles"]) == 2
+    assert model.capabilities["perturbative_orders"] == ("QCD",)
+    assert model.capabilities["ghost_particles"] == ("gh", "gh~")
+    assert model.capabilities["goldstone_particles"] == ("G0", "G+", "G-")
+
+
+def test_local_full_ew_duplicate_vertex_names_are_preserved() -> None:
+    source = os.environ.get("PYAMPLICOL_EW_NLO_UFO_REFERENCE")
+    if source is None:
+        pytest.skip(
+            "set PYAMPLICOL_EW_NLO_UFO_REFERENCE to the full loop_qcd_qed_sm model"
+        )
+    model = load_raw_loop_model(source)
+    vertices = [
+        record
+        for record in model.collections["counterterm_vertices"]
+        if record["name"] == "V_R2AGmGp"
+    ]
+    # The released UFO gives A G- G+ and Z G- G+ the same original name.
+    assert len(vertices) == 2
+    assert vertices[0]["id"] != vertices[1]["id"]
+    assert [vertex["fields"]["particles"][0]["name"] for vertex in vertices] == [
+        "A",
+        "Z",
+    ]
+    coupling_names = [
+        vertex["fields"]["couplings"]["entries"][0][1]["name"] for vertex in vertices
+    ]
+    assert coupling_names == ["R2_AGmGp", "R2_ZGmGp"]
+    assert len(model.collections["counterterm_parameters"]) == 105
+    assert len(model.collections["counterterm_vertices"]) == 499
+    assert model.capabilities["perturbative_orders"] == ("QCD", "QED")
+    assert RawLoopModel.from_dict(json.loads(json.dumps(model.to_dict()))) == model
