@@ -28,6 +28,7 @@ print(pyamplicol.__version__)
 | `CorrelatorConfig`, `ColorCorrelator` | Declare allowed spin replacements and named colour operators at generation. |
 | `CorrelatedValue` | A correlated result with `Decimal` real and imaginary parts. |
 | `BenchmarkRunner` | Profile an artifact or loaded runtime. |
+| `group_processes` | Group the subprocesses of an artifact with equal matrix elements. |
 | `generate`, `load`, `benchmark` | One-shot convenience functions. |
 
 The shipped scripts under
@@ -466,6 +467,31 @@ immutable, non-finite, or invalid values reject the entire update.
 
 `Runtime.load(..., model_parameters=...)` applies a complete mapping before the
 runtime is returned. Complex inputs may be represented as Python complex values.
+
+## Group equivalent subprocesses
+
+```python
+from pyamplicol.api import group_processes
+
+summary = group_processes("artifacts/pp_jj")
+for relation in summary["new_relations"]:
+    print(relation["process"], "=", relation["factor"], "x", relation["representative"])
+```
+
+`group_processes` evaluates each group representative stored in
+`process-groups.json` in f64 at three on-shell points, each with its own
+deterministic variation of up to 10% of the external and normalization model
+parameters other than masses and widths. Two subprocesses with the same
+external particle types are grouped when, through a leg permutation (and
+charge conjugation, unless `consider_charge_conjugation=False`), every
+resolved helicity and colour
+component of one is a common rational factor times the other's; numerator and
+denominator are at most 99 and `only_unit_multiplier=True` accepts only 1.
+Subprocesses generated with a selected helicity or colour subset are never
+grouped. The map is updated in place and rerunning adds nothing; the artifact
+ID and UMAMI files are unchanged. `analysis="none"` only writes the trivial map
+of an artifact that has none. This is the `pyamplicol group-processes`
+command; see [Process Grouping](process-grouping.md) for the details.
 
 ## Precision
 

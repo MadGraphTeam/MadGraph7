@@ -253,8 +253,9 @@ identical-final-state normalization.
 
 Equivalence is derived from model expressions and generated computation, not
 equal default parameters, particle categories or a hard-coded Standard Model
-process list. Unproved relations remain separate. Grouping never assumes
-equal PDFs, exchanges the two beams, or identifies unequal mass parameters.
+process list. Unproved relations remain separate, except for the explicit
+`--flavor-blind` assumption described below. Grouping never assumes equal
+PDFs, exchanges the two beams, or identifies unequal mass parameters.
 
 A representative's weighted integral reproduces its orbit
 **only under the recorded assumptions**, including cuts invariant under the
@@ -267,6 +268,35 @@ and applying each cut to its physical contribution; they cannot be applied to
 the compact weighted representatives. Physical incoming PDGs and their PDF
 weights remain distinct. Grouping metadata does not change the native evaluator
 build identity.
+
+### Flavour-blind members
+
+With `--flavor-blind`, generation keeps one representative per flavour class
+and records the other processes as ungenerated members in
+`process-groups.json`. The provider still exports every member, without a
+`runtime_processes` row of its own: its selectors evaluate the representative's
+runtime through the recorded momentum permutation, and its `members[].runtime`
+names the representative. A member with the incoming PDGs of an existing
+selector evaluated identically becomes one more `matrix_elements` row of that
+selector, like other final-state flavours; otherwise it is a selector of its
+own.
+
+The permutation may exchange the incoming legs, as between `u g > u g` and
+`g u > u g`. This relabels the member's momenta explicitly and is not a beam
+exchange assumption: the selector keeps the member's physical incoming PDGs for
+its PDF weights. Members related by charge conjugation, such as `u~ g > u~ g`,
+use the representative's colour flows reversed, so their LHE colour tags and
+helicity labels are those of the member.
+
+The equality of these matrix elements is the user's `--flavor-blind`
+assumption, not a proof. Every provider exporting such members records it as an
+additional `grouping.assumptions` entry; `process-groups.json` keeps any
+warning issued when a relabelling is not a symmetry of the model. A member
+whose relabelling moves unequal masses, or maps a restricted helicity selection
+onto a different set, is exported by a separate provider that loads the
+representative's runtime. Processes grouped numerically were generated and keep
+their ordinary export. [Process Grouping](process-grouping.md) defines the
+flavour classes, the recorded relations and their warnings.
 
 ## MadSpace example
 

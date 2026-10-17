@@ -2687,3 +2687,354 @@ fn undeclared_tree_entries_are_ignored_for_trusted_artifacts() {
     fs::set_permissions(&executable, permissions).unwrap();
     VerifiedArtifact::open(&executable_artifact.root).expect("ignore undeclared executable");
 }
+
+fn process_group_member(
+    process_id: &str,
+    process: &str,
+    pdgs: Value,
+    permutation: Value,
+    factor: (i64, i64),
+    conjugated: bool,
+) -> Value {
+    json!({
+        "process_id": process_id,
+        "process": process,
+        "pdgs": pdgs,
+        "initial_count": 2,
+        "factor": {"numerator": factor.0, "denominator": factor.1},
+        "permutation": permutation,
+        "conjugated": conjugated,
+        "basis": "flavor-blind",
+        "generated": false,
+    })
+}
+
+fn process_groups_document(members: Vec<Value>) -> Value {
+    let mut all_members = vec![json!({
+        "process_id": "p0",
+        "process": "d d~ > a g",
+        "pdgs": [1, -1, 22, 21],
+        "initial_count": 2,
+        "factor": {"numerator": 1, "denominator": 1},
+        "permutation": [0, 1, 2, 3],
+        "conjugated": false,
+        "basis": "identity",
+        "generated": true,
+    })];
+    all_members.extend(members);
+    json!({
+        "kind": "pyamplicol-process-groups",
+        "schema_version": 1,
+        "analyses": [{"kind": "future-analysis", "anything": [1, 2]}],
+        "groups": [{
+            "representative": {"process_id": "p0", "process": "d d~ > a g"},
+            "members": all_members,
+        }],
+    })
+}
+
+fn process_group_artifact(document: &Value) -> TestArtifact {
+    let mut artifact = TestArtifact::new();
+    artifact.manifest["processes"][0]["expression"] = json!("d d~ > a g");
+    artifact.manifest["processes"][0]["external_pdgs"] = json!([1, -1, 22, 21]);
+    let bytes = serde_json::to_vec_pretty(document).expect("serialize process groups");
+    add_test_payload(
+        &mut artifact,
+        "process-groups.json",
+        "process-groups",
+        &bytes,
+        None,
+        false,
+    );
+    artifact.write_manifest();
+    artifact
+}
+
+fn default_process_groups() -> Value {
+    process_groups_document(vec![
+        process_group_member(
+            "u_ubar_flipped",
+            "u~ u > a g",
+            json!([-2, 2, 22, 21]),
+            json!([1, 0, 2, 3]),
+            (8, 2),
+            false,
+        ),
+        json!({
+            "process_id": "s_sbar_conjugate",
+            "process": "s s~ > a g",
+            "pdgs": [3, -3, 22, 21],
+            "initial_count": 2,
+            "factor": {"numerator": 1, "denominator": 1},
+            "permutation": [1, 0, 2, 3],
+            "conjugated": true,
+            "basis": "numerical",
+            "generated": false,
+            "warning": "assumed, not verified",
+            "future_key": {"ignored": true},
+        }),
+    ])
+}
+
+#[test]
+fn process_group_members_route_to_their_representative() {
+    let artifact = process_group_artifact(&default_process_groups());
+    let verified = VerifiedArtifact::open(&artifact.root).unwrap();
+
+    let by_id = verified.select_process(Some("u_ubar_flipped")).unwrap();
+    assert_eq!(by_id.process.id, "p0");
+    assert_eq!(by_id.requested_id, "u_ubar_flipped");
+    assert!(by_id.alias.is_none());
+    assert!(!by_id.inferred_permutation);
+    assert!(by_id.remaps_public_process());
+    assert_eq!(by_id.public_expression, "u~ u > a g");
+    assert_eq!(by_id.external_pdgs, [-2, 2, 22, 21]);
+    assert_eq!(by_id.external_permutation, [1, 0, 2, 3]);
+    let relation = by_id
+        .process_group
+        .as_ref()
+        .expect("process-group relation");
+    assert_eq!(
+        (relation.factor_numerator, relation.factor_denominator),
+        (4, 1)
+    );
+    assert!(!relation.conjugated);
+    assert!(!relation.has_unit_factor());
+    assert_eq!(relation.external_particles, ["u~", "u", "a", "g"]);
+
+    let by_expression = verified.select_process(Some(" U~   u > A g ")).unwrap();
+    assert_eq!(by_expression.requested_id, "u_ubar_flipped");
+    assert_eq!(by_expression.external_permutation, [1, 0, 2, 3]);
+    assert!(!by_expression.inferred_permutation);
+
+    // Requested public order <- member order <- representative order.
+    let permuted = verified.select_process(Some("u~ u > g a")).unwrap();
+    assert_eq!(permuted.requested_id, "u_ubar_flipped");
+    assert!(permuted.inferred_permutation);
+    assert_eq!(permuted.public_expression, "u~ u > g a");
+    assert_eq!(permuted.external_pdgs, [-2, 2, 21, 22]);
+    assert_eq!(permuted.external_permutation, [1, 0, 3, 2]);
+    assert_eq!(
+        permuted.process_group.expect("relation").external_particles,
+        ["u~", "u", "g", "a"]
+    );
+
+    let swapped = verified.select_process(Some("u u~ > a g")).unwrap();
+    assert_eq!(swapped.external_permutation, [0, 1, 2, 3]);
+    assert_eq!(swapped.external_pdgs, [2, -2, 22, 21]);
+
+    let conjugate = verified.select_process(Some("s~ s > g a")).unwrap();
+    assert_eq!(conjugate.requested_id, "s_sbar_conjugate");
+    assert_eq!(conjugate.external_permutation, [0, 1, 3, 2]);
+    assert_eq!(conjugate.external_pdgs, [-3, 3, 21, 22]);
+    let relation = conjugate.process_group.expect("conjugate relation");
+    assert!(relation.conjugated);
+    assert!(relation.has_unit_factor());
+
+    // Stored processes keep precedence and never carry a relation.
+    let stored = verified.select_process(Some("d~ d > g a")).unwrap();
+    assert_eq!(stored.requested_id, "p0");
+    assert!(stored.process_group.is_none());
+    assert_eq!(stored.external_permutation, [1, 0, 3, 2]);
+
+    let unknown = verified.select_process(Some("c c~ > a g")).unwrap_err();
+    assert_eq!(unknown.kind(), crate::RusticolErrorKind::Selector);
+    let crossing = verified.select_process(Some("u~ a > u g")).unwrap_err();
+    assert_eq!(crossing.kind(), crate::RusticolErrorKind::Selector);
+}
+
+#[test]
+fn process_group_member_permutation_composes_through_member_order() {
+    // Three final-state legs make side permutations non-commuting, so only
+    // `public[member[r]]` puts the representative photon on the requested one.
+    let mut document = process_groups_document(vec![process_group_member(
+        "u_ubar_member",
+        "u~ u > g a g",
+        json!([-2, 2, 21, 22, 21]),
+        json!([1, 0, 3, 2, 4]),
+        (4, 1),
+        false,
+    )]);
+    document["groups"][0]["representative"]["process"] = json!("d d~ > a g g");
+    let representative = &mut document["groups"][0]["members"][0];
+    representative["process"] = json!("d d~ > a g g");
+    representative["pdgs"] = json!([1, -1, 22, 21, 21]);
+    representative["permutation"] = json!([0, 1, 2, 3, 4]);
+    let mut artifact = TestArtifact::new();
+    artifact.manifest["processes"][0]["expression"] = json!("d d~ > a g g");
+    artifact.manifest["processes"][0]["external_pdgs"] = json!([1, -1, 22, 21, 21]);
+    let bytes = serde_json::to_vec_pretty(&document).expect("serialize process groups");
+    add_test_payload(
+        &mut artifact,
+        "process-groups.json",
+        "process-groups",
+        &bytes,
+        None,
+        false,
+    );
+    artifact.write_manifest();
+    let verified = VerifiedArtifact::open(&artifact.root).unwrap();
+
+    let selection = verified.select_process(Some("u u~ > g g a")).unwrap();
+    assert_eq!(selection.requested_id, "u_ubar_member");
+    assert_eq!(selection.external_pdgs, [2, -2, 21, 21, 22]);
+    // Representative legs d, d~, a, g, g sit at requested u, u~, a, g, g.
+    assert_eq!(selection.external_permutation, [0, 1, 4, 2, 3]);
+}
+
+#[test]
+fn process_group_map_is_read_only_after_stored_selection_fails() {
+    let mut artifact = process_group_artifact(&default_process_groups());
+    fs::write(
+        artifact.root.join("process-groups.json"),
+        b"{\"tampered\": true}",
+    )
+    .expect("tamper process groups");
+    artifact.write_manifest();
+    let verified = VerifiedArtifact::open(&artifact.root).unwrap();
+
+    assert_eq!(
+        verified.select_process(Some("p0")).unwrap().requested_id,
+        "p0"
+    );
+    assert_eq!(
+        verified
+            .select_process(Some("d d~ > g a"))
+            .unwrap()
+            .requested_id,
+        "p0"
+    );
+    assert_eq!(verified.select_process(None).unwrap().requested_id, "p0");
+    let error = verified.select_process(Some("u_ubar_flipped")).unwrap_err();
+    assert!(matches!(
+        error.kind(),
+        crate::RusticolErrorKind::Integrity | crate::RusticolErrorKind::Artifact
+    ));
+}
+
+#[test]
+fn process_group_payload_digest_is_verified() {
+    let artifact = process_group_artifact(&default_process_groups());
+    let mut document = default_process_groups();
+    document["groups"][0]["members"][1]["factor"]["numerator"] = json!(9);
+    let mut bytes = serde_json::to_vec_pretty(&document).unwrap();
+    let declared = fs::metadata(artifact.root.join("process-groups.json"))
+        .unwrap()
+        .len() as usize;
+    bytes.resize(declared, b' ');
+    fs::write(artifact.root.join("process-groups.json"), &bytes).unwrap();
+
+    let verified = VerifiedArtifact::open(&artifact.root).unwrap();
+    let error = verified.select_process(Some("u_ubar_flipped")).unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+    assert!(error.to_string().contains("sha256"));
+}
+
+#[test]
+fn invalid_process_group_maps_are_rejected() {
+    let member = |permutation: Value, factor: (i64, i64)| {
+        process_groups_document(vec![process_group_member(
+            "u_ubar",
+            "u u~ > a g",
+            json!([2, -2, 22, 21]),
+            permutation,
+            factor,
+            false,
+        )])
+    };
+    let mut wrong_representative = member(json!([0, 1, 2, 3]), (1, 1));
+    wrong_representative["groups"][0]["representative"]["process_id"] = json!("missing");
+    let mut representative_not_first = member(json!([0, 1, 2, 3]), (1, 1));
+    representative_not_first["groups"][0]["members"]
+        .as_array_mut()
+        .unwrap()
+        .reverse();
+    let mut reused_id = member(json!([0, 1, 2, 3]), (1, 1));
+    reused_id["groups"][0]["members"][1]["process_id"] = json!("p0");
+    let mut wrong_kind = member(json!([0, 1, 2, 3]), (1, 1));
+    wrong_kind["kind"] = json!("something-else");
+    let mut wrong_count = member(json!([0, 1, 2, 3]), (1, 1));
+    wrong_count["groups"][0]["members"][1]["process"] = json!("u > u~ a g");
+    let cases = [
+        (member(json!([2, 1, 0, 3]), (1, 1)), "'>' boundary"),
+        (member(json!([0, 0, 2, 3]), (1, 1)), "complete zero-based"),
+        (member(json!([0, 1, 2]), (1, 1)), "has length 3"),
+        (member(json!([0, 1, 2, 3]), (1, 0)), "positive rational"),
+        (member(json!([0, 1, 2, 3]), (-1, 2)), "positive rational"),
+        (wrong_representative, "not a stored process"),
+        (representative_not_first, "identity relation"),
+        (reused_id, "listed more than once"),
+        (wrong_kind, "unsupported process-groups payload"),
+        (wrong_count, "particle counts"),
+    ];
+    for (document, expected) in cases {
+        let artifact = process_group_artifact(&document);
+        let verified = VerifiedArtifact::open(&artifact.root).unwrap();
+        let error = verified.select_process(Some("u_ubar")).unwrap_err();
+        assert!(
+            error.to_string().contains(expected),
+            "{expected:?} not in {error}"
+        );
+    }
+
+    let mut collision = TestArtifact::new();
+    collision.manifest["processes"][0]["expression"] = json!("d d~ > a g");
+    collision.manifest["processes"][0]["external_pdgs"] = json!([1, -1, 22, 21]);
+    collision.manifest["processes"][0]["aliases"] = json!([{
+        "id": "u_ubar",
+        "expression": "d~ d > a g",
+        "external_pdgs": [-1, 1, 22, 21],
+        "external_permutation": [1, 0, 2, 3],
+    }]);
+    let bytes = serde_json::to_vec(&member(json!([0, 1, 2, 3]), (1, 1))).unwrap();
+    add_test_payload(
+        &mut collision,
+        "process-groups.json",
+        "process-groups",
+        &bytes,
+        None,
+        false,
+    );
+    collision.write_manifest();
+    let verified = VerifiedArtifact::open(&collision.root).unwrap();
+    let error = verified.select_process(Some("u u~ > a g")).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("reuses a stored process or alias id")
+    );
+}
+
+#[test]
+fn ambiguous_process_group_member_expressions_list_member_ids() {
+    let document = process_groups_document(vec![
+        process_group_member(
+            "first",
+            "u u~ > a g",
+            json!([2, -2, 22, 21]),
+            json!([0, 1, 2, 3]),
+            (4, 1),
+            false,
+        ),
+        process_group_member(
+            "second",
+            "u u~ > a g",
+            json!([2, -2, 22, 21]),
+            json!([0, 1, 2, 3]),
+            (4, 1),
+            false,
+        ),
+    ]);
+    let artifact = process_group_artifact(&document);
+    let verified = VerifiedArtifact::open(&artifact.root).unwrap();
+    let error = verified.select_process(Some("u u~ > a g")).unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Selector);
+    assert!(error.to_string().contains("first, second"));
+    assert_eq!(
+        verified
+            .select_process(Some("second"))
+            .unwrap()
+            .requested_id,
+        "second"
+    );
+}

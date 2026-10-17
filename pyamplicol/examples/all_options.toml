@@ -3,7 +3,7 @@
 # This card is for resolution/documentation, not as a recommended physics run.
 
 # action: Required command action. Choices are generate, evaluate, benchmark,
-# inspect, model-inspect, model-compile, and model-processes.
+# inspect, model-inspect, model-compile, model-processes, and group-processes.
 action = "generate"
 
 # schema_version: Configuration schema. The only current value is 1.
@@ -47,6 +47,20 @@ selected_color_sector_ids = [0]
 # process.selected_source_helicities: Optional fixed source helicities keyed by
 # one-based external-leg label. Default is an empty table.
 selected_source_helicities = { "1" = -1, "2" = 1 }
+# process.flavor_blind: Generate one representative per flavour-relabelling
+# class and record the others as unverified members in process-groups.json.
+# Default false.
+flavor_blind = false
+# process.consider_charge_conjugation: Also relate processes by charge
+# conjugation for flavor_blind and numerical grouping. Default true.
+consider_charge_conjugation = true
+# process.only_unit_multiplier: Accept only numerical relations with factor 1.
+# Default false.
+only_unit_multiplier = false
+# process.analyze_process_groups: "none" or "numerical". After generation,
+# "numerical" compares generated processes at random points and records equal
+# matrix elements up to a rational factor. Default none.
+analyze_process_groups = "none"
 
 # process.multiparticles: User-defined particle-name expansions, merged over
 # model defaults. Every model supplies "all" for its valid propagating physical

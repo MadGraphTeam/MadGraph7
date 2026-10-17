@@ -110,7 +110,7 @@ flows, and resolved metadata; particles never cross the `>` boundary. See
 ## Explore the documentation
 
 - **Using pyAmpliCol:** [Examples Gallery](user/examples-gallery.md), [Command-Line Interface](user/command-line-interface.md), [Runtime and Selectors](user/runtime-and-selectors.md)
-- **Generation:** [Models and Processes](user/models-and-processes.md), including scalar HEFT, and [Generation Modes and Evaluators](user/generation-modes-and-evaluators.md)
+- **Generation:** [Models and Processes](user/models-and-processes.md), including scalar HEFT, [Generation Modes and Evaluators](user/generation-modes-and-evaluators.md), and [Process Grouping](user/process-grouping.md) of subprocesses with equal matrix elements
 - **Guided workflows:** [LC workloads and execution modes](user/lc-workloads-and-execution-modes.md), [Profiling campaign: from measurements to the PDF](user/profiling-campaign-walkthrough.md), [FullColor FFT Profiling](user/fullcolor-fft-profiling.md)
 - **Deployment:** [Artifacts and Portability](user/artifacts-and-portability.md), [Release and Platform Support](user/release-and-support.md)
 - **Background:** [Architecture Overview](user/architecture-overview.md), [Symbolica and Licensing](user/symbolica-and-licensing.md)

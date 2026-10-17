@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from fractions import Fraction
 from typing import Any, cast
 
 from pyamplicol.api.errors import ArtifactError, CompatibilityError
@@ -24,6 +25,18 @@ class NativeProcessSelection:
     representative_process_id: str
     representative_process_key: str
     external_permutation: tuple[int, ...]
+    # Set when the selection is a non-generated process-group member.
+    process_group: NativeProcessGroupRelation | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class NativeProcessGroupRelation:
+    """How a non-generated process-group member relates to its representative."""
+
+    member_process_id: str
+    representative_process_key: str
+    factor: Fraction
+    conjugated: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,8 +55,7 @@ def exact_runtime_state_payload(native_runtime: Any) -> Mapping[str, object]:
         payload = json.loads(native_runtime._exact_runtime_state_json())
     except AttributeError as exc:
         raise CompatibilityError(
-            "the installed Rusticol extension is too old for high-precision "
-            "evaluation"
+            "the installed Rusticol extension is too old for high-precision evaluation"
         ) from exc
     except (TypeError, json.JSONDecodeError) as exc:
         raise ArtifactError("Rusticol returned invalid exact-runtime state") from exc
@@ -106,7 +118,131 @@ def native_process_selection(
         representative_process_id=representative_id,
         representative_process_key=representative_key,
         external_permutation=cast(tuple[int, ...], permutation),
+        process_group=_process_group_relation(
+            payload, str(getattr(native_runtime, "process_id", ""))
+        ),
     )
+
+
+def native_process_group_relation(
+    native_runtime: Any,
+) -> NativeProcessGroupRelation | None:
+    """Return the selected member's relation, or ``None`` for stored processes."""
+
+    return _process_group_relation(
+        exact_runtime_state_payload(native_runtime),
+        str(getattr(native_runtime, "process_id", "")),
+    )
+
+
+def _process_group_relation(
+    payload: Mapping[str, object],
+    member_process_id: str,
+) -> NativeProcessGroupRelation | None:
+    representative = payload.get("process_group_member_of")
+    if representative is None:
+        return None
+    factor = payload.get("process_group_factor")
+    conjugated = payload.get("charge_conjugated")
+    if (
+        not isinstance(representative, str)
+        or not representative
+        or not isinstance(factor, Mapping)
+        or not isinstance(conjugated, bool)
+    ):
+        raise ArtifactError("Rusticol exact-runtime process-group relation is invalid")
+    numerator = factor.get("numerator")
+    denominator = factor.get("denominator")
+    if (
+        isinstance(numerator, bool)
+        or not isinstance(numerator, int)
+        or isinstance(denominator, bool)
+        or not isinstance(denominator, int)
+        or numerator < 1
+        or denominator < 1
+    ):
+        raise ArtifactError("Rusticol exact-runtime process-group factor is invalid")
+    return NativeProcessGroupRelation(
+        member_process_id=member_process_id,
+        representative_process_key=representative,
+        factor=Fraction(numerator, denominator),
+        conjugated=conjugated,
+    )
+
+
+def charge_conjugate_color_id(identifier: str) -> str:
+    """Map an LC color-flow ID through charge conjugation (word reversal).
+
+    The map is an involution and leaves contracted-color IDs unchanged.
+    """
+
+    if not identifier.startswith("flow:") or identifier == "flow:singlet":
+        return identifier
+    return "flow:" + ",".join(reversed(identifier.removeprefix("flow:").split(",")))
+
+
+def _execution_physics(
+    public: dict[str, object],
+    representative: Mapping[str, object],
+    native_runtime: Any,
+) -> dict[str, object]:
+    """Undo a process-group member's relabelling of Rusticol's public physics.
+
+    The exact executors evaluate the representative: they need its flavours
+    in the public order and, for a charge-conjugated member, the unreversed LC
+    words that Rusticol's own execution lanes use. Ordinary selections are
+    returned unchanged.
+    """
+
+    payload = exact_runtime_state_payload(native_runtime)
+    relation = _process_group_relation(payload, str(public.get("process_id")))
+    if relation is None:
+        return public
+    permutation = payload.get("external_permutation")
+    representative_particles = representative.get("external_particles")
+    public_particles = public.get("external_particles")
+    if (
+        not isinstance(permutation, list)
+        or not isinstance(representative_particles, list)
+        or not isinstance(public_particles, list)
+        or sorted(permutation) != list(range(len(public_particles)))
+        or len(representative_particles) != len(public_particles)
+    ):
+        raise ArtifactError("Rusticol public physics has an inconsistent particle axis")
+    particles = [dict(item) for item in public_particles]
+    for representative_index, public_index in enumerate(permutation):
+        source = representative_particles[representative_index]
+        particles[public_index]["particle"] = source["particle"]
+        particles[public_index]["pdg"] = source["pdg"]
+    execution = {**public, "external_particles": particles}
+    if relation.conjugated:
+        colors = []
+        for item in cast(list[dict[str, object]], public["color_components"]):
+            color = dict(item)
+            if color.get("kind") == "lc-flow":
+                color["id"] = charge_conjugate_color_id(str(color["id"]))
+                color["representative_id"] = charge_conjugate_color_id(
+                    str(color["representative_id"])
+                )
+                color["word"] = list(reversed(cast(list[int], color["word"])))
+            colors.append(color)
+        reduction = dict(cast(dict[str, object], public["reduction"]))
+        reduction["groups"] = [
+            {
+                **group,
+                "representative_color_id": charge_conjugate_color_id(
+                    str(group["representative_color_id"])
+                ),
+                "physical_color_ids": [
+                    charge_conjugate_color_id(str(identifier))
+                    for identifier in cast(list[object], group["physical_color_ids"])
+                ],
+            }
+            for group in cast(list[dict[str, object]], reduction["groups"])
+        ]
+        execution["color_components"] = colors
+        execution["reduction"] = reduction
+    return execution
 
 
 def native_physics_axes(
@@ -118,7 +254,9 @@ def native_physics_axes(
     Rusticol preserves axis order while rewriting process-order-dependent IDs,
     vectors, and LC words.  Exact executors use these maps only to translate
     representative execution overrides onto that already-validated public
-    payload.
+    payload. For a process-group member the payload is the representative's
+    execution view; callers relabel results with
+    :func:`native_process_group_relation`.
     """
 
     try:
@@ -131,12 +269,13 @@ def native_physics_axes(
         raise ArtifactError("Rusticol returned invalid public physics") from exc
     if not isinstance(public, dict):
         raise ArtifactError("Rusticol public physics is not an object")
+    public = _execution_physics(public, representative_physics, native_runtime)
     if public.get("color_accuracy") != representative_physics.get("color_accuracy"):
         raise ArtifactError(
             "Rusticol public physics changes the representative color accuracy"
         )
     return NativePhysicsAxes(
-        public_physics=cast(dict[str, object], public),
+        public_physics=public,
         helicity_ids=_aligned_axis_ids(
             representative_physics,
             public,
@@ -282,9 +421,12 @@ def _remapped_ids(
 
 __all__ = [
     "NativePhysicsAxes",
+    "NativeProcessGroupRelation",
     "NativeProcessSelection",
+    "charge_conjugate_color_id",
     "exact_runtime_state_payload",
     "native_physics_axes",
+    "native_process_group_relation",
     "native_process_selection",
     "remap_reduction",
     "remap_reduction_group",

@@ -16,7 +16,7 @@ overrides in order, then recorded license/resource clamping.
 
 - `schema_version: int = 1`
 - `action: generate | evaluate | benchmark | inspect | model-inspect |
-  model-compile | model-processes`
+  model-compile | model-processes | group-processes`
 
 ## Model
 
@@ -38,6 +38,10 @@ overrides in order, then recorded license/resource clamping.
 - `reference_color_order: list[int] = []`
 - `selected_color_sector_ids: list[int] = []`
 - `selected_source_helicities: table[int, int] = {}`
+- `flavor_blind: bool = false`
+- `consider_charge_conjugation: bool = true`
+- `only_unit_multiplier: bool = false`
+- `analyze_process_groups: none | numerical = none`
 
 Model defaults and this explicit table are merged by name. Every model supplies
 `all` for its declaration-ordered valid physical external states; an explicit
@@ -47,6 +51,15 @@ combinatorially.
 The explicit color-sector, reference-order, and source-helicity controls are
 developer-facing generation constraints. Ordinary users should leave them at
 their defaults and use the runtime selectors below.
+
+The four process-group fields decide what `process-groups.json` records:
+`flavor_blind` generates one representative per flavour-relabelling class and
+records the others as unverified members; `analyze_process_groups = "numerical"`
+merges generated processes whose matrix elements agree numerically up to a
+rational factor, restricted to factor 1 by `only_unit_multiplier`.
+`consider_charge_conjugation` also admits charge-conjugate relations in both
+cases. The `group-processes` action reads `evaluation.artifact` and these
+fields; its CLI defaults `analyze_process_groups` to `numerical`.
 
 ## Color
 

@@ -278,7 +278,9 @@ def controller_factory(monkeypatch, tmp_path):
         correlations,
         "native_process_selection",
         lambda runtime, processes: SimpleNamespace(
-            representative_process_id="p", external_permutation=(0, 1)
+            representative_process_id="p",
+            external_permutation=(0, 1),
+            process_group=None,
         ),
     )
     monkeypatch.setattr(correlations, "CorrelatedExactExecutor", _Executor)
@@ -347,7 +349,9 @@ def test_public_catalogue_uses_selected_process_not_global_declarations(
         correlations,
         "native_process_selection",
         lambda native, processes: SimpleNamespace(
-            representative_process_id="q", external_permutation=(0, 1)
+            representative_process_id="q",
+            external_permutation=(0, 1),
+            process_group=None,
         ),
     )
     runtime = object.__new__(Runtime)
@@ -391,7 +395,9 @@ def test_public_catalogue_rejects_permuted_alias_before_executor(
         correlations,
         "native_process_selection",
         lambda native, processes: SimpleNamespace(
-            representative_process_id="p", external_permutation=(1, 0)
+            representative_process_id="p",
+            external_permutation=(1, 0),
+            process_group=None,
         ),
     )
 

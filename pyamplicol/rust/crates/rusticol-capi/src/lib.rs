@@ -836,6 +836,42 @@ pub unsafe extern "C" fn rusticol_runtime_external_permutation(
     })
 }
 
+/// Writes the exact factor and charge conjugation relating the selected process to the
+/// representative that evaluates it: `ME = numerator / denominator * ME_representative`.
+/// Selections other than non-generated process-group members report `1/1` and `0`.
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live. Each output must be writable for one value.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_process_group_relation(
+    handle: *const RusticolRuntimeHandle,
+    numerator: *mut u64,
+    denominator: *mut u64,
+    conjugated: *mut i32,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate pointers.
+        let handle = unsafe { required_handle(handle) }?;
+        if numerator.is_null() || denominator.is_null() {
+            return Err(invalid("process-group factor output is null"));
+        }
+        let factor = handle.runtime.process_group_factor();
+        // SAFETY: The caller supplies writable storage for one u64 each.
+        unsafe {
+            *numerator = factor.numerator;
+            *denominator = factor.denominator;
+        }
+        unsafe {
+            write_i32(
+                i32::from(handle.runtime.charge_conjugated()),
+                conjugated,
+                "charge-conjugation output",
+            )
+        }
+    })
+}
+
 /// Loads one JSON kinematic point in public/requested external order.
 ///
 /// # Safety

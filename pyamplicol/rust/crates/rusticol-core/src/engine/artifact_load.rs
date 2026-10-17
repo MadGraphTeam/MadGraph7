@@ -9,6 +9,7 @@ use super::on_the_fly_manifest::{
 use super::*;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 use crate::recurrence::RECURRENCE_RUNTIME_KIND;
+use std::borrow::Cow;
 
 pub(super) enum LoadedExecutionManifest {
     Compiled(Box<ExecutionManifest>),
@@ -759,7 +760,9 @@ pub(super) fn apply_process_permutation_metadata(
     for (representative_index, alias_index) in permutation.iter().copied().enumerate() {
         expected_alias_pdgs[alias_index] = physics.external_particles[representative_index].pdg;
     }
-    if selection.external_pdgs != expected_alias_pdgs {
+    // A process-group member keeps the representative flavours here; they
+    // are relabelled by `apply_process_group_metadata`.
+    if selection.process_group.is_none() && selection.external_pdgs != expected_alias_pdgs {
         return Err(RusticolError::integrity(format!(
             "process selection {:?} PDG order {:?} does not match the representative physics payload and permutation; expected {:?}",
             selection.public_expression, selection.external_pdgs, expected_alias_pdgs
@@ -882,7 +885,7 @@ pub(super) fn apply_process_permutation_metadata(
         .external_particles
         .iter()
         .map(|particle| particle.pdg)
-        .ne(selection.external_pdgs.iter().copied())
+        .ne(expected_alias_pdgs.iter().copied())
     {
         return Err(RusticolError::integrity(format!(
             "process selection {:?} external particle metadata does not match its public PDG order",
@@ -891,6 +894,68 @@ pub(super) fn apply_process_permutation_metadata(
     }
     physics.validate()?;
     Ok(physics)
+}
+
+/// Relabel public metadata of a selected process-group member.
+///
+/// `physics` is the representative metadata already remapped to the public
+/// order by [`apply_process_permutation_metadata`]; the execution lanes keep
+/// using it. The returned copy carries the member's flavours and, for a
+/// charge-conjugated relation, reversed LC words whose IDs map to the
+/// execution IDs through [`charge_conjugate_color_id`].
+pub(super) fn apply_process_group_metadata(
+    physics: &ProcessPhysicsV1,
+    selection: &crate::ArtifactSelection,
+) -> RusticolResult<ProcessPhysicsV1> {
+    let mut physics = physics.clone();
+    let Some(group) = &selection.process_group else {
+        return Ok(physics);
+    };
+    if group.external_particles.len() != physics.external_particles.len()
+        || selection.external_pdgs.len() != physics.external_particles.len()
+    {
+        return Err(RusticolError::integrity(format!(
+            "process-group member {:?} does not have one flavour per external particle",
+            selection.requested_id
+        )));
+    }
+    for ((particle, name), pdg) in physics
+        .external_particles
+        .iter_mut()
+        .zip(&group.external_particles)
+        .zip(&selection.external_pdgs)
+    {
+        particle.particle.clone_from(name);
+        particle.pdg = *pdg;
+    }
+    if group.conjugated {
+        let conjugate = |id: &mut String| *id = charge_conjugate_color_id(id).into_owned();
+        for color in &mut physics.color_components {
+            if let PhysicsColorComponentV1::LcFlow(flow) = color {
+                flow.word.reverse();
+                conjugate(&mut flow.id);
+                conjugate(&mut flow.representative_id);
+            }
+        }
+        for reduction in &mut physics.reduction.groups {
+            conjugate(&mut reduction.representative_color_id);
+            reduction.physical_color_ids.iter_mut().for_each(conjugate);
+        }
+    }
+    physics.validate()?;
+    Ok(physics)
+}
+
+/// Map an LC color-flow ID through global charge conjugation, which reverses
+/// the flow word. The map is an involution; other IDs are unchanged.
+pub(super) fn charge_conjugate_color_id(id: &str) -> Cow<'_, str> {
+    match id.strip_prefix("flow:") {
+        Some(word) if word != "singlet" && word.contains(',') => Cow::Owned(format!(
+            "flow:{}",
+            word.rsplit(',').collect::<Vec<_>>().join(",")
+        )),
+        _ => Cow::Borrowed(id),
+    }
 }
 
 fn canonical_helicity_id(values: &[i32]) -> String {

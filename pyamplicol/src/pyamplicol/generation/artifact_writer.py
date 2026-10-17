@@ -27,6 +27,12 @@ from pyamplicol.artifacts import (
     load_manifest,
 )
 from pyamplicol.artifacts.manifest import PORTABLE_64LE_TARGET, compute_artifact_id
+from pyamplicol.artifacts.process_groups import (
+    PROCESS_GROUPS_MEDIA_TYPE,
+    initial_process_groups,
+    process_groups_payload,
+    validate_process_groups,
+)
 from pyamplicol.artifacts.security import sha256_file
 from pyamplicol.config import (
     ConfigClamp,
@@ -97,6 +103,7 @@ from .evaluator_container import (
     PacbinReader,
     write_pacbin_atomic,
 )
+from .process_grouping import PROCESS_GROUPS_PATH, PROCESS_GROUPS_ROLE, ProcessGroupMap
 from .recurrence_schedule_sharing import (
     RECURRENCE_PROCESS_BINDING_ABI,
     RECURRENCE_SCHEDULE_INDEX_PATH,
@@ -826,6 +833,7 @@ def _write_umami_bundle(
     processes: Sequence[ProcessArtifact],
     process_records: Sequence[Mapping[str, object]],
     compiled_model: CompiledModel,
+    process_groups: ProcessGroupMap | None = None,
 ) -> None:
     """Add export-only selector tables after runtime physics has been staged."""
     from ..artifacts.umami import UmamiProcessInput, umami_bundle_payloads
@@ -856,6 +864,17 @@ def _write_umami_bundle(
             color_sectors=() if process is None else process.umami_color_sectors,
             structural_keys=(
                 None if process is None else process.umami_structural_keys
+            ),
+            # Flavour-blind members were not generated: they are exported as
+            # selectors evaluated through this representative's runtime.
+            group_members=(
+                ()
+                if process_groups is None or identifier not in process_groups.groups
+                else tuple(
+                    member
+                    for member in process_groups.groups[identifier].members[1:]
+                    if not member.generated
+                )
             ),
         )
         if physics.get("kind") == ON_THE_FLY_PUBLIC_METADATA_KIND:
@@ -915,6 +934,7 @@ def write_schema_v3_artifact(
     api_bundle_hook: ApiBundleHook | None = None,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
     payload_hook: ArtifactPayloadHook | None = None,
+    process_groups: ProcessGroupMap | None = None,
 ) -> ArtifactWriteResult:
     if not processes:
         raise ValueError("schema-v3 generation requires at least one concrete process")
@@ -1177,6 +1197,13 @@ def write_schema_v3_artifact(
             evaluator_payload_container=evaluator_payload_container,
             target=target,
         )
+        # Written after the recurrence bootstrap froze its payload inventory:
+        # the map is rewritten in place later and is not part of that image.
+        group_map = _write_process_groups(
+            builder,
+            process_groups=process_groups,
+            process_records=process_records,
+        )
         extensions = _extensions(
             existing,
             processes=processes,
@@ -1196,6 +1223,7 @@ def write_schema_v3_artifact(
                 processes=processes,
                 process_records=process_records,
                 compiled_model=compiled_model,
+                process_groups=group_map,
             )
         builder.finalize(
             kind=(
@@ -1247,6 +1275,67 @@ def write_schema_v3_artifact(
         validation_points=validations,
         api_bundle_path=api_bundle_path,
     )
+
+
+def _write_process_groups(
+    builder: ArtifactBuilder,
+    *,
+    process_groups: ProcessGroupMap | None,
+    process_records: Sequence[Mapping[str, object]],
+) -> ProcessGroupMap:
+    """Stage ``process-groups.json`` covering every process of the artifact.
+
+    An append keeps the stored groups, and a newly generated process leaves a
+    group in which it was only an assumed member. Processes without a recorded
+    group map to themselves.
+    """
+
+    stored = builder.staged_path(PROCESS_GROUPS_PATH)
+    group_map = (
+        ProcessGroupMap.from_json(stored.read_text(encoding="utf-8"))
+        if stored.is_file()
+        else ProcessGroupMap()
+    )
+    record_ids = [str(record["id"]) for record in process_records]
+    new_ids = set(record_ids).difference(
+        member.process_id for member in group_map.members() if member.generated
+    )
+    for group in group_map.groups.values():
+        group.members = [
+            member
+            for member in group.members
+            if member.generated or member.process_id not in new_ids
+        ]
+    if process_groups is not None:
+        for group in process_groups.groups.values():
+            group_map.add_group(
+                [
+                    member
+                    for member in group.members
+                    if member.generated or group_map.group_of(member.process_id) is None
+                ]
+            )
+        group_map.analyses.extend(process_groups.analyses)
+    grouped = {member.process_id for member in group_map.members()}
+    ungrouped = initial_process_groups(
+        (
+            str(record["id"]),
+            str(record["expression"]),
+            cast(Sequence[int], record["external_pdgs"]),
+        )
+        for record in process_records
+        if str(record["id"]) not in grouped
+    )
+    for group in ungrouped.groups.values():
+        group_map.add_group(group.members)
+    validate_process_groups(group_map, record_ids)
+    builder.add_bytes(
+        PROCESS_GROUPS_PATH,
+        process_groups_payload(group_map),
+        role=PROCESS_GROUPS_ROLE,
+        media_type=PROCESS_GROUPS_MEDIA_TYPE,
+    )
+    return group_map
 
 
 def _write_global_payloads(

@@ -855,3 +855,164 @@ def test_real_generation_exercises_structural_proofs(providers):
             )
             members = [member for entry in entries for member in entry["members"]]
             assert members[0]["pdgs"] != members[1]["pdgs"]
+
+
+@pytest.fixture(scope="module")
+def flavor_blind(tmp_path_factory):
+    """``p p > j j`` with --flavor-blind and, as reference, every flavour.
+
+    The built-in expansion has no ``g q > q g``: the explicit ones add members
+    whose relation exchanges the incoming legs.
+    """
+    if importlib.util.find_spec("pyamplicol._rusticol") is None:
+        _unavailable("the Rusticol extension has not been built")
+    if shutil.which("make") is None or shutil.which(os.environ.get("CC", "cc")) is None:
+        _unavailable("UMAMI integration requires make and a C compiler")
+    config_executable = _config_executable()
+    root = tmp_path_factory.mktemp("umami-flavor-blind")
+    artifacts = {}
+    with packaged_prepared_model_path(BUILTIN_SM_JIT_O2) as prepared_model:
+        for blind in (True, False):
+            config = RunConfig(
+                action="generate",
+                process=ProcessConfig(flavor_scheme=2, flavor_blind=blind),
+                color=ColorConfig(accuracy="lc"),
+                generation=GenerationConfig(
+                    workers=1,
+                    emit_api_bundle=True,
+                    relation_discovery=GenerationRelationDiscoveryConfig(mode="off"),
+                    validation=GenerationValidationConfig(
+                        enabled=False, post_build_validation=False
+                    ),
+                ),
+                evaluator=EvaluatorConfig(
+                    execution_mode="recurrence",
+                    optimization=EvaluatorOptimizationConfig(cores=1),
+                    jit=JITConfig(optimization_level=2),
+                ),
+            )
+            artifacts[blind] = root / ("blind" if blind else "reference")
+            Generator(config).generate(
+                ProcessSet.from_expressions(("p p > j j", "g u > u g", "g u~ > u~ g")),
+                artifacts[blind],
+                model=ModelSource.from_path(prepared_model),
+            )
+    build = root / "build"
+    completed = subprocess.run(
+        [
+            "make",
+            "-C",
+            str(artifacts[True] / "API/umami"),
+            f"BUILD_DIR={build}",
+            f"RUSTICOL_CONFIG={config_executable}",
+        ],
+        env=dict(
+            os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[2] / "src")
+        ),
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    return artifacts[True], artifacts[False], build
+
+
+def _canonical_tags(flow):
+    names = {}
+    return tuple(
+        tuple(names.setdefault(tag, len(names) + 1) if tag else 0 for tag in pair)
+        for pair in flow
+    )
+
+
+def test_flavor_blind_members_match_separately_generated_processes(flavor_blind):
+    from pyamplicol.artifacts.umami import FLAVOR_BLIND_ASSUMPTION
+    from pyamplicol.artifacts.umami_reweight import load_umami_metadata
+
+    blind, reference, build = flavor_blind
+    groups = json.loads((blind / "process-groups.json").read_text())
+    assumed = {
+        member["process_id"]
+        for group in groups["groups"]
+        for member in group["members"]
+        if not member["generated"]
+    }
+    assert assumed
+    members = [member for group in groups["groups"] for member in group["members"]]
+    assert any(member["conjugated"] for member in members)
+    assert any(member["permutation"][:2] == [1, 0] for member in members)
+    # The same physical flow of a separately generated process, by its LHE tags.
+    reference_colors = {
+        (
+            member["process_id"],
+            _canonical_tags(data["color_flows"][member["color_flows"]]),
+        ): member["color_id"]
+        for data in load_umami_metadata(reference)
+        for channel in data["channels"]
+        for entry in channel["processes"]
+        for member in entry["members"]
+    }
+    # An asymmetric massless point in each member's physical leg order.
+    sine, cosine = math.sqrt(1 - 0.31**2), 0.31
+    direction = (sine * math.cos(0.7), sine * math.sin(0.7), cosine)
+    point = (
+        (500.0, 0.0, 0.0, 500.0),
+        (500.0, 0.0, 0.0, -500.0),
+        (500.0, *(500.0 * v for v in direction)),
+        (500.0, *(-500.0 * v for v in direction)),
+    )
+    natives, checked = {}, []
+    for data in load_umami_metadata(blind):
+        provider = Provider(
+            blind, build, data, _library(build / data["provider"]["library"]), []
+        )
+        generated = {process["id"] for process in data["runtime_processes"]}
+        with provider.handle() as handle:
+            for channel, description in enumerate(data["channels"]):
+                for flavour, exported in enumerate(description["processes"]):
+                    for member in exported["members"]:
+                        process_id = member["process_id"]
+                        if process_id in generated:
+                            continue
+                        assert member["runtime"]["process_id"] != process_id
+                        assert (
+                            FLAVOR_BLIND_ASSUMPTION in data["grouping"]["assumptions"]
+                        )
+                        color = reference_colors[
+                            (
+                                process_id,
+                                _canonical_tags(
+                                    data["color_flows"][member["color_flows"]]
+                                ),
+                            )
+                        ]
+                        if process_id not in natives:
+                            natives[process_id] = Runtime.load(
+                                reference, process=process_id
+                            )
+                        expected = float(
+                            complex(
+                                natives[process_id].evaluate(
+                                    (point,), color_flows=(color,)
+                                )[0]
+                            ).real
+                        )
+                        status, outputs = _batch(
+                            provider,
+                            handle,
+                            (_member_input(exported["runtime"], member, point),),
+                            channel=channel,
+                            flavour=flavour,
+                        )
+                        assert status == 0
+                        assert outputs[0][0] == pytest.approx(
+                            expected, rel=1e-12, abs=1e-15
+                        )
+                        checked.append((process_id, color))
+    # Every physical flow of every assumed member is exported exactly once.
+    assert sorted(checked) == sorted(
+        (process_id, color)
+        for (process_id, _), color in reference_colors.items()
+        if process_id in assumed
+    )

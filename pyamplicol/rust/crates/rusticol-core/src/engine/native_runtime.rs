@@ -2,6 +2,7 @@
 
 use super::*;
 
+use std::borrow::Cow;
 use std::sync::OnceLock;
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
@@ -96,11 +97,7 @@ impl LazyProcessPhysicsV1 {
                     let physics =
                         ProcessPhysicsV1::from_json(&bytes, &selection.process.physics_path)?;
                     validate_representative_physics(&physics, selection)?;
-                    if selection.alias.is_some() || selection.inferred_permutation {
-                        apply_process_permutation_metadata(physics, selection)
-                    } else {
-                        Ok(physics)
-                    }
+                    public_process_physics(physics, selection)
                 }
                 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 DeferredProcessPhysicsV1::OnTheFly {
@@ -110,16 +107,45 @@ impl LazyProcessPhysicsV1 {
                 } => {
                     let physics = metadata.synthesize(selectors)?;
                     validate_representative_physics(&physics, selection)?;
-                    if selection.alias.is_some() || selection.inferred_permutation {
-                        apply_process_permutation_metadata(physics, selection)
-                    } else {
-                        Ok(physics)
-                    }
+                    public_process_physics(physics, selection)
                 }
             }
         });
         result.as_ref().map_err(Clone::clone)
     }
+}
+
+/// Public metadata of `selection`: the representative physics remapped to the
+/// requested order and, for a process-group member, relabelled as the member.
+fn public_process_physics(
+    physics: ProcessPhysicsV1,
+    selection: &crate::ArtifactSelection,
+) -> RusticolResult<ProcessPhysicsV1> {
+    if !selection.remaps_public_process() {
+        return Ok(physics);
+    }
+    let physics = apply_process_permutation_metadata(physics, selection)?;
+    if selection.process_group.is_some() {
+        apply_process_group_metadata(&physics, selection)
+    } else {
+        Ok(physics)
+    }
+}
+
+fn process_group_routing(
+    selection: &crate::ArtifactSelection,
+    representative_key: &str,
+) -> Option<Box<ProcessGroupRouting>> {
+    selection.process_group.as_ref().map(|group| {
+        Box::new(ProcessGroupRouting {
+            representative_process_key: representative_key.to_string(),
+            factor: NativeRationalFactor {
+                numerator: group.factor_numerator,
+                denominator: group.factor_denominator,
+            },
+            conjugated: group.conjugated,
+        })
+    })
 }
 
 fn validate_representative_physics(
@@ -1486,7 +1512,7 @@ impl NativeRuntime {
             )
         })?;
         let selection = artifact.select_process(Some(process_id))?;
-        if selection.alias.is_some() || selection.inferred_permutation {
+        if selection.remaps_public_process() {
             return Err(RusticolError::invalid_argument(
                 "compact eager reduction groups must be requested by representative process ID",
             ));
@@ -1549,7 +1575,7 @@ impl NativeRuntime {
             )
         })?;
         let selection = artifact.select_process(Some(process_id))?;
-        if selection.alias.is_some() || selection.inferred_permutation {
+        if selection.remaps_public_process() {
             return Err(RusticolError::invalid_argument(
                 "compact eager exact sections must be requested by representative process ID",
             ));
@@ -1610,7 +1636,7 @@ impl NativeRuntime {
             )
         })?;
         let selection = artifact.select_process(Some(process_id))?;
-        if selection.alias.is_some() || selection.inferred_permutation {
+        if selection.remaps_public_process() {
             return Err(RusticolError::invalid_argument(
                 "compact recurrence exact sections must be requested by representative process ID",
             ));
@@ -1667,7 +1693,7 @@ impl NativeRuntime {
         let process = selection.public_expression.clone();
         let process_key = selection.requested_id.clone();
         let representative_process_id = selection.process.id.clone();
-        let public_remap = selection.alias.is_some() || selection.inferred_permutation;
+        let public_remap = selection.remaps_public_process();
         let nonidentity_permutation = selection
             .external_permutation
             .iter()
@@ -1740,6 +1766,13 @@ impl NativeRuntime {
         let input_crossing_map =
             prevalidate_input_crossing_lookup(runtime.external_count, input_crossing_map)?;
         runtime.attach_physics(Arc::new(PhysicsRuntime::new(physics_v1.clone())?))?;
+        // Execution keeps the representative flavours and LC words; only the
+        // exposed metadata names the selected process-group member.
+        let physics_v1 = if selection.process_group.is_some() {
+            apply_process_group_metadata(&physics_v1, &selection)?
+        } else {
+            physics_v1
+        };
         if matches!(&execution_lane, NativeExecutionLane::Compiled) {
             runtime.initialize_compiled_helicity_execution_plan(
                 public_remap.then_some(selection.external_permutation.as_slice()),
@@ -1772,6 +1805,7 @@ impl NativeRuntime {
             external_permutation: selection.external_permutation.clone(),
             input_crossing_map,
             permutation_alias_of: public_remap.then(|| representative_key.clone()),
+            process_group: process_group_routing(&selection, &representative_key),
             final_state_permutation_alias_of: final_state_only.then_some(representative_key),
             physics_v1: LazyProcessPhysicsV1::loaded(physics_v1),
             warnings_muted: false,
@@ -1868,17 +1902,34 @@ impl NativeRuntime {
         model_parameters_path: Option<&Path>,
     ) -> Result<Self, RusticolError> {
         let artifact = VerifiedArtifact::open_with_manifest_preflight(artifact_path, |manifest| {
-            let selection = manifest.select_process(process_id)?;
-            ensure_selected_runtime_capabilities_supported(
-                &selection.process.required_runtime_capabilities,
-            )
+            match manifest.select_process(process_id) {
+                Ok(selection) => ensure_selected_runtime_capabilities_supported(
+                    &selection.process.required_runtime_capabilities,
+                ),
+                // A process-group member resolves only after the map payload
+                // is read; its representative is checked below.
+                Err(_)
+                    if manifest
+                        .payloads
+                        .iter()
+                        .any(|payload| payload.role == crate::PayloadRole::ProcessGroups) =>
+                {
+                    Ok(())
+                }
+                Err(error) => Err(error),
+            }
         })?;
         let artifact_id = artifact.manifest().artifact_id.clone();
         let selection = artifact.select_process(process_id)?;
+        if selection.process_group.is_some() {
+            ensure_selected_runtime_capabilities_supported(
+                &selection.process.required_runtime_capabilities,
+            )?;
+        }
         let (manifest, evaluator_root) = load_verified_evaluator(&artifact, &selection)?;
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         if let LoadedExecutionManifest::OnTheFly(on_the_fly) = &manifest {
-            let public_remap = selection.alias.is_some() || selection.inferred_permutation;
+            let public_remap = selection.remaps_public_process();
             let nonidentity_permutation = selection
                 .external_permutation
                 .iter()
@@ -1945,6 +1996,7 @@ impl NativeRuntime {
                 external_permutation: selection.external_permutation.clone(),
                 input_crossing_map,
                 permutation_alias_of: public_remap.then(|| representative_key.clone()),
+                process_group: process_group_routing(&selection, &representative_key),
                 final_state_permutation_alias_of: final_state_only.then_some(representative_key),
                 physics_v1: LazyProcessPhysicsV1::deferred_on_the_fly(
                     public_metadata,
@@ -2143,6 +2195,12 @@ impl NativeRuntime {
             external_permutation: self.external_permutation.clone(),
             permutation_alias_of: self.permutation_alias_of.clone(),
             final_state_permutation_alias_of: self.final_state_permutation_alias_of.clone(),
+            process_group_member_of: self
+                .process_group
+                .as_ref()
+                .map(|group| group.representative_process_key.clone()),
+            process_group_factor: self.process_group_factor(),
+            charge_conjugated: self.charge_conjugated(),
             color_accuracy: self.runtime.color_accuracy.clone(),
             external_pdg_order: self.runtime.external_pdg_order.clone(),
             external_count: self.runtime.external_count,
@@ -2184,6 +2242,12 @@ impl NativeRuntime {
             "representative_process_id": self.representative_process_id,
             "representative_process_key": self.runtime.key,
             "external_permutation": self.external_permutation,
+            "process_group_member_of": self
+                .process_group
+                .as_ref()
+                .map(|group| group.representative_process_key.as_str()),
+            "process_group_factor": self.process_group_factor(),
+            "charge_conjugated": self.charge_conjugated(),
         }))
         .map_err(|error| {
             RusticolError::serialization(format!(
@@ -2207,6 +2271,68 @@ impl NativeRuntime {
     /// Full representative-index to public-index external permutation.
     pub fn external_permutation(&self) -> &[usize] {
         &self.external_permutation
+    }
+
+    /// Exact factor multiplying every representative matrix element; one
+    /// unless the selection is a process-group member.
+    pub fn process_group_factor(&self) -> NativeRationalFactor {
+        self.process_group.as_ref().map_or(
+            NativeRationalFactor {
+                numerator: 1,
+                denominator: 1,
+            },
+            |group| group.factor,
+        )
+    }
+
+    /// Whether the selection is the charge conjugate of its representative.
+    pub fn charge_conjugated(&self) -> bool {
+        self.process_group
+            .as_ref()
+            .is_some_and(|group| group.conjugated)
+    }
+
+    /// Scale representative matrix elements to the selected member.
+    pub(super) fn apply_process_group_factor(&self, values: &mut [f64]) {
+        let Some(group) = self.process_group.as_deref() else {
+            return;
+        };
+        let NativeRationalFactor {
+            numerator,
+            denominator,
+        } = group.factor;
+        if numerator != denominator {
+            let (numerator, denominator) = (numerator as f64, denominator as f64);
+            for value in values {
+                *value = *value * numerator / denominator;
+            }
+        }
+    }
+
+    /// Translate caller color IDs to the IDs the execution lanes use.
+    pub(super) fn execution_color_ids<'a>(
+        &self,
+        ids: Option<&'a [String]>,
+    ) -> Option<Cow<'a, [String]>> {
+        let ids = ids?;
+        Some(if self.charge_conjugated() {
+            Cow::Owned(
+                ids.iter()
+                    .map(|id| charge_conjugate_color_id(id).into_owned())
+                    .collect(),
+            )
+        } else {
+            Cow::Borrowed(ids)
+        })
+    }
+
+    /// Translate execution color IDs back to the caller's labels.
+    pub(super) fn publish_color_ids(&self, ids: &mut [String]) {
+        if self.charge_conjugated() {
+            for id in ids {
+                *id = charge_conjugate_color_id(id).into_owned();
+            }
+        }
     }
 
     /// Load one public-order kinematic point from JSON.
@@ -2369,6 +2495,8 @@ impl NativeRuntime {
         helicity_ids: Option<&[String]>,
         color_ids: Option<&[String]>,
     ) -> Result<(usize, usize), RusticolError> {
+        let color_ids = self.execution_color_ids(color_ids);
+        let color_ids = color_ids.as_deref();
         self.validate_selector_capabilities(helicity_ids.is_some(), color_ids.is_some())?;
         let selected_helicities = selector_set(helicity_ids, "helicity")?;
         let selected_colors = selector_set(color_ids, "color component")?;
@@ -2415,6 +2543,8 @@ impl NativeRuntime {
         &self,
         requested_color_ids: Option<&[String]>,
     ) -> RusticolResult<Option<String>> {
+        let requested_color_ids = self.execution_color_ids(requested_color_ids);
+        let requested_color_ids = requested_color_ids.as_deref();
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         if let NativeExecutionLane::OnTheFly(runtime) = &self.execution_lane {
             let selection = runtime
@@ -2453,6 +2583,7 @@ impl NativeRuntime {
                     selected_color_ids.push(resolved);
                 }
             }
+            self.publish_color_ids(&mut selected_color_ids);
             return serde_json::to_string(&serde_json::json!({
                 "process_id": self.process_key,
                 "process_expression": self.process,
@@ -2478,6 +2609,8 @@ impl NativeRuntime {
         helicity_ids: Option<&[String]>,
         color_ids: Option<&[String]>,
     ) -> RusticolResult<Option<String>> {
+        let color_ids = self.execution_color_ids(color_ids);
+        let color_ids = color_ids.as_deref();
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         if let NativeExecutionLane::OnTheFly(runtime) = &self.execution_lane {
             if runtime.uses_contracted_color() && color_ids.is_some() {
@@ -2597,6 +2730,8 @@ impl NativeRuntime {
             &'observer mut super::on_the_fly_warm_up::NativeOnTheFlyWarmUpObserver<'observer>,
         >,
     ) -> RusticolResult<super::on_the_fly_warm_up::NativeOnTheFlyWarmUpResult> {
+        let color_ids = self.execution_color_ids(color_ids);
+        let color_ids = color_ids.as_deref();
         let expected = self.runtime.external_count.checked_mul(4).ok_or_else(|| {
             RusticolError::invalid_argument("on-the-fly warm-up momentum shape exceeds usize")
         })?;
@@ -2656,6 +2791,8 @@ impl NativeRuntime {
                 "recurrence selector plans require a recurrence artifact",
             ));
         };
+        let color_ids = self.execution_color_ids(color_ids);
+        let color_ids = color_ids.as_deref();
         self.validate_selector_capabilities(helicity_ids.is_some(), color_ids.is_some())?;
         let selected_helicities = selector_set(helicity_ids, "helicity")?;
         let selected_colors = selector_set(color_ids, "color component")?;
@@ -2695,6 +2832,7 @@ impl NativeRuntime {
         })();
         self.input_crossing_map = crossing_lookup;
         result?;
+        self.apply_process_group_factor(&mut output);
         Ok(output)
     }
 
@@ -2722,7 +2860,9 @@ impl NativeRuntime {
             self.run_f64_batch_into(batch, output)
         })();
         self.input_crossing_map = crossing_lookup;
-        result
+        result?;
+        self.apply_process_group_factor(output);
+        Ok(())
     }
 
     /// Evaluate recurrence totals with a previously resolved selector plan.
@@ -2766,7 +2906,9 @@ impl NativeRuntime {
             }
         })();
         self.input_crossing_map = crossing_lookup;
-        result
+        result?;
+        self.apply_process_group_factor(output);
+        Ok(())
     }
 
     /// Evaluate one total per point with optional global or per-point selectors.
@@ -2801,6 +2943,31 @@ impl NativeRuntime {
 
     #[allow(clippy::too_many_arguments)]
     pub fn evaluate_f64_into_with_selectors(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        helicity_ids: Option<&[String]>,
+        color_ids: Option<&[String]>,
+        helicity_by_point: Option<&[u32]>,
+        color_by_point: Option<&[u32]>,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        let color_ids = self.execution_color_ids(color_ids);
+        self.evaluate_representative_f64_into_with_selectors(
+            momenta,
+            point_count,
+            helicity_ids,
+            color_ids.as_deref(),
+            helicity_by_point,
+            color_by_point,
+            output,
+        )?;
+        self.apply_process_group_factor(output);
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn evaluate_representative_f64_into_with_selectors(
         &mut self,
         momenta: &[f64],
         point_count: usize,
@@ -3658,6 +3825,24 @@ impl NativeRuntime {
         helicity_ids: Option<&[String]>,
         color_ids: Option<&[String]>,
     ) -> Result<NativeProfiledEvaluation, RusticolError> {
+        let color_ids = self.execution_color_ids(color_ids);
+        let mut evaluation = self.evaluate_representative_f64_profile(
+            momenta,
+            point_count,
+            helicity_ids,
+            color_ids.as_deref(),
+        )?;
+        self.apply_process_group_factor(&mut evaluation.values);
+        Ok(evaluation)
+    }
+
+    fn evaluate_representative_f64_profile(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        helicity_ids: Option<&[String]>,
+        color_ids: Option<&[String]>,
+    ) -> Result<NativeProfiledEvaluation, RusticolError> {
         let total_start = Instant::now();
         let (batch, native_input_pack_elapsed, native_input_crossing_elapsed) =
             self.prepare_f64_batch_profile(momenta, point_count)?;
@@ -3792,8 +3977,36 @@ impl NativeRuntime {
         helicity_by_point: Option<&[u32]>,
         color_by_point: Option<&[u32]>,
     ) -> Result<NativeProfiledEvaluation, RusticolError> {
+        let color_ids = self.execution_color_ids(color_ids);
+        let mut evaluation = self.evaluate_representative_f64_profile_with_selectors(
+            momenta,
+            point_count,
+            helicity_ids,
+            color_ids.as_deref(),
+            helicity_by_point,
+            color_by_point,
+        )?;
+        self.apply_process_group_factor(&mut evaluation.values);
+        Ok(evaluation)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn evaluate_representative_f64_profile_with_selectors(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        helicity_ids: Option<&[String]>,
+        color_ids: Option<&[String]>,
+        helicity_by_point: Option<&[u32]>,
+        color_by_point: Option<&[u32]>,
+    ) -> Result<NativeProfiledEvaluation, RusticolError> {
         if helicity_by_point.is_none() && color_by_point.is_none() {
-            return self.evaluate_f64_profile(momenta, point_count, helicity_ids, color_ids);
+            return self.evaluate_representative_f64_profile(
+                momenta,
+                point_count,
+                helicity_ids,
+                color_ids,
+            );
         }
         if helicity_ids.is_some() && helicity_by_point.is_some() {
             return Err(RusticolError::selector(
@@ -4184,6 +4397,25 @@ impl NativeRuntime {
         helicity_ids: Option<&[String]>,
         color_ids: Option<&[String]>,
     ) -> Result<NativeResolvedEvaluation, RusticolError> {
+        let color_ids = self.execution_color_ids(color_ids);
+        let mut resolved = self.evaluate_representative_resolved_f64(
+            momenta,
+            point_count,
+            helicity_ids,
+            color_ids.as_deref(),
+        )?;
+        self.apply_process_group_factor(&mut resolved.values);
+        self.publish_color_ids(&mut resolved.color_ids);
+        Ok(resolved)
+    }
+
+    fn evaluate_representative_resolved_f64(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        helicity_ids: Option<&[String]>,
+        color_ids: Option<&[String]>,
+    ) -> Result<NativeResolvedEvaluation, RusticolError> {
         self.validate_selector_capabilities(helicity_ids.is_some(), color_ids.is_some())?;
         self.record_resolved_warnings(helicity_ids, color_ids)?;
         validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
@@ -4293,7 +4525,8 @@ impl NativeRuntime {
         }
         if decimal_digits == 32 {
             let batch = self.prepare_double_batch(momenta, point_count)?;
-            let (values, _profile) = self.runtime.run_double(&batch)?;
+            let (mut values, _profile) = self.runtime.run_double(&batch)?;
+            self.apply_process_group_factor_high_precision(&mut values);
             return Ok(NativeDecimalEvaluation {
                 values: format_decimal_values(values, decimal_digits),
                 decimal_digits,
@@ -4301,11 +4534,31 @@ impl NativeRuntime {
         }
         let binary_precision = decimal_digits_to_bits(decimal_digits);
         let batch = self.prepare_float_batch(momenta, point_count, binary_precision)?;
-        let (values, _profile) = self.runtime.run_float(&batch, binary_precision)?;
+        let (mut values, _profile) = self.runtime.run_float(&batch, binary_precision)?;
+        self.apply_process_group_factor_high_precision(&mut values);
         Ok(NativeDecimalEvaluation {
             values: format_decimal_values(values, decimal_digits),
             decimal_digits,
         })
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    fn apply_process_group_factor_high_precision<T>(&self, values: &mut [T])
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        let NativeRationalFactor {
+            numerator,
+            denominator,
+        } = self.process_group_factor();
+        if numerator != denominator {
+            let numerator = T::from(numerator as f64);
+            let denominator = T::from(denominator as f64);
+            for value in values {
+                *value = value.clone() * numerator.clone() / denominator.clone();
+            }
+        }
     }
 
     #[cfg(feature = "symbolica-runtime")]
@@ -4322,6 +4575,8 @@ impl NativeRuntime {
                 "precision must be a positive number of decimal digits",
             ));
         }
+        let color_ids = self.execution_color_ids(color_ids);
+        let color_ids = color_ids.as_deref();
         self.validate_selector_capabilities(helicity_ids.is_some(), color_ids.is_some())?;
         if self.execution_lane.is_eager() {
             return Err(eager_parity_pending("resolved higher-precision evaluation"));
@@ -4345,8 +4600,14 @@ impl NativeRuntime {
                     })
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            let resolved =
-                self.evaluate_resolved_f64(&values, point_count, helicity_ids, color_ids)?;
+            let mut resolved = self.evaluate_representative_resolved_f64(
+                &values,
+                point_count,
+                helicity_ids,
+                color_ids,
+            )?;
+            self.apply_process_group_factor(&mut resolved.values);
+            self.publish_color_ids(&mut resolved.color_ids);
             let totals = resolved.totals();
             return Ok(NativeDecimalResolvedEvaluation {
                 values: format_decimal_values(resolved.values, decimal_digits),
@@ -4361,25 +4622,30 @@ impl NativeRuntime {
             self.runtime.physics.clone().ok_or_else(|| {
                 RusticolError::artifact("resolved physics metadata is unavailable")
             })?;
-        if decimal_digits == 32 {
+        let mut evaluation = if decimal_digits == 32 {
             let batch = self.prepare_double_batch(momenta, point_count)?;
-            let (resolved, _profile) = self.runtime.run_resolved_generic(
+            let (mut resolved, _profile) = self.runtime.run_resolved_generic(
                 &batch,
                 None,
                 selected_helicities.as_ref(),
                 selected_colors.as_ref(),
             )?;
-            return decimal_resolved_evaluation(resolved, &physics.manifest, decimal_digits);
-        }
-        let binary_precision = decimal_digits_to_bits(decimal_digits);
-        let batch = self.prepare_float_batch(momenta, point_count, binary_precision)?;
-        let (resolved, _profile) = self.runtime.run_resolved_generic(
-            &batch,
-            Some(binary_precision),
-            selected_helicities.as_ref(),
-            selected_colors.as_ref(),
-        )?;
-        decimal_resolved_evaluation(resolved, &physics.manifest, decimal_digits)
+            self.apply_process_group_factor_high_precision(&mut resolved.values);
+            decimal_resolved_evaluation(resolved, &physics.manifest, decimal_digits)?
+        } else {
+            let binary_precision = decimal_digits_to_bits(decimal_digits);
+            let batch = self.prepare_float_batch(momenta, point_count, binary_precision)?;
+            let (mut resolved, _profile) = self.runtime.run_resolved_generic(
+                &batch,
+                Some(binary_precision),
+                selected_helicities.as_ref(),
+                selected_colors.as_ref(),
+            )?;
+            self.apply_process_group_factor_high_precision(&mut resolved.values);
+            decimal_resolved_evaluation(resolved, &physics.manifest, decimal_digits)?
+        };
+        self.publish_color_ids(&mut evaluation.color_ids);
+        Ok(evaluation)
     }
 
     pub fn set_model_parameters(

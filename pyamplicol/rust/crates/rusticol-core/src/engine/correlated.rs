@@ -166,13 +166,20 @@ fn rational_f64(parts: &[Value; 2]) -> RusticolResult<f64> {
 
 impl CorrelatedRuntime {
     fn load(native: &NativeRuntime) -> RusticolResult<Self> {
-        if !matches!(native.execution_lane, NativeExecutionLane::Compiled)
-            || native
-                .external_permutation
-                .iter()
-                .copied()
-                .ne(0..native.runtime.external_count)
+        let identity = native
+            .external_permutation
+            .iter()
+            .copied()
+            .eq(0..native.runtime.external_count);
+        if let Some(group) = native.process_group.as_deref()
+            && (group.conjugated || !identity)
         {
+            return Err(RusticolError::compatibility(format!(
+                "correlated evaluation of process-group member {:?} through its representative {:?} is available only for an identity leg order without charge conjugation; generate the process explicitly",
+                native.process_key, group.representative_process_key
+            )));
+        }
+        if !matches!(native.execution_lane, NativeExecutionLane::Compiled) || !identity {
             return Err(RusticolError::compatibility(
                 "correlations require compiled process output with identity external ordering",
             ));
@@ -561,7 +568,9 @@ impl NativeRuntime {
         self.ensure_correlated()?;
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
-            evaluate_many(self, momenta, point_count, requests, helicity_ids)
+            let mut evaluation = evaluate_many(self, momenta, point_count, requests, helicity_ids)?;
+            self.apply_process_group_factor(evaluation.values.as_flattened_mut());
+            Ok(evaluation)
         }
         #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
         {

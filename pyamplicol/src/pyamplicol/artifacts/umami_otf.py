@@ -94,12 +94,19 @@ def restore_umami_on_the_fly_input(
     The SDK retains every physical selector and its colour tags in its member
     records, even when integration orbits have been compressed. Recover those
     records, not just the exported representatives or their multiplicities.
+    Another provider may also load this runtime for flavour-blind members only.
     """
     matches = [
         (document, runtime)
         for document in documents
         for runtime in document["runtime_processes"]
         if runtime["id"] == process.process_id
+        and any(
+            member["process_id"] == process.process_id
+            for channel in document["channels"]
+            for entry in channel["processes"]
+            for member in entry["members"]
+        )
     ]
     if len(matches) != 1:
         raise ValueError("UMAMI append requires the previous OTF process metadata")

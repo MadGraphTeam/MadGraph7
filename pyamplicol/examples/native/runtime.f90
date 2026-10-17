@@ -28,7 +28,7 @@ program runtime_fortran
   call runtime%set_model_parameter( &
       "aS", 0.117_c_double)
 
-  ! The external-SM d d~ > Z g g subprocess p_p_to_z_j_j_4,
+  ! The external-SM d d~ > Z g g subprocess p_p_to_z_j_j_3,
   ! flattened as
   ! [point][particle][E,px,py,pz].
   momenta = [ &

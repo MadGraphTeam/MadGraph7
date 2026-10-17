@@ -353,6 +353,24 @@ pyamplicol model processes 'p p > all all' \
 `all` is intentionally broad and may produce a combinatorial expansion for a
 large UFO model. Prefer a focused custom label when possible.
 
+With a UFO or other compiled model (and in `model processes`), expansion
+enumerates each side of `>` as a multiset of particles, so two candidates
+never differ only by an ordering within a side. Process IDs count these
+candidates, so they differ from those of earlier pyAmpliCol versions, which
+counted every ordered candidate: re-read them with `pyamplicol inspect` after
+regenerating. The built-in SM catalogue keeps its own ordered enumeration.
+When generating with a compiled model, candidates that violate an additive
+charge conserved by every model vertex are dropped before the colour and
+amplitude checks. The charges are derived from the vertex list itself: electric charge,
+and quark or lepton numbers per generation whenever the vertices conserve
+them (quark numbers reduce to baryon number with a non-diagonal CKM matrix).
+With the shipped serialized Standard Model (`sm.json`, default
+restriction) this leaves exactly the 385 tree-level subprocesses of
+`p p > j j j j`. `model processes` applies the same filter, but not the
+colour and amplitude checks. The built-in SM keeps its catalogue prefilters (`flavor_scheme`,
+`max_quark_lines`). See
+[Conserved charges in UFO expansion](process-grouping.md#conserved-charges-in-ufo-expansion).
+
 ## Permutation-equivalent processes
 
 Multiprocess expansion stores one representative for candidates that differ
@@ -380,6 +398,38 @@ requires the generated external-leg ordering and rejects nonidentity
 permutations. Declare spin and colour legs using that process's one-based
 labels; a declaration used for a process set must be valid for every generated
 member. Ordinary runtime permutation support is unchanged.
+
+## Flavour-blind generation
+
+`--flavor-blind` (`process.flavor_blind`) generates one subprocess per flavour
+class: subprocesses related by a relabelling of flavours with equal spin,
+colour, mass and width and, unless `--no-consider-charge-conjugation`, by
+charge conjugation. For the built-in SM, `p p > j j j j` at `flavor_scheme = 5`
+has 486 subprocesses, 33 flavour classes and 23 classes with charge
+conjugation.
+
+Process IDs are assigned before the classes are formed, so a generated
+representative has the same ID with or without the flag. The representative
+is the canonical member: smaller `|PDG|` first and particles before
+antiparticles, so `d d~ > g g` represents `u u~ > g g` and `d g > d g`
+represents `u~ g > u~ g`. The other members are not generated; they are
+recorded in `process-groups.json` with the leg permutation onto the
+representative. A subprocess with an explicit `ProcessAlias` keeps its own
+artifact entry.
+
+The equality is assumed, not verified. A member gets a warning, logged and
+stored with it, when its relation is not a symmetry of the model vertices
+that the representative is generated with: those within
+`max_coupling_orders` and, under the default `minimal` coupling-order policy,
+within the representative's minimal coupling-order envelope. A relabelling
+must map each such vertex onto one with the same structure and coupling;
+charge conjugation also requires every such vertex to couple fermions
+vector-like. Pure-QCD jet classes therefore pass, while `p p > z j` warns: the
+photon and Z couplings distinguish `u` from `d`, and the chiral Z coupling
+breaks charge conjugation. The check looks at vertices rather than diagrams
+and can warn about a relation that holds for the subprocess at hand.
+[Process Grouping](process-grouping.md) covers flavour classes, warnings and
+the numerical analysis in detail.
 
 ## Tree-level support and omitted candidates
 

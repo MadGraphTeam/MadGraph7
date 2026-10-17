@@ -69,9 +69,9 @@ What each card demonstrates:
 | `evaluate_resolved.toml` | Physical helicity/LC-flow components and explicit sum |
 | `benchmark.toml` | One-second calibrated profile of the optimized total |
 
-The generation request finds 19 ordered candidates, collapses them into eight
-side-permutation classes, stores seven tree-level representatives, and reports
-the loop-induced `g g > Z g g` class as omitted. Evaluation selects the public
+The generation request finds eight candidates, one per side-permutation class,
+stores seven tree-level representatives, and reports the loop-induced
+`g g > Z g g` class as omitted. Evaluation selects the public
 ordering `d d~ > g z g`; the stored representative is reused automatically.
 
 The three result cards use colored human tables by default. Add `--json` for
@@ -276,9 +276,9 @@ The `native/` directory shows SDK use independent of generated driver sources:
 
 ```console
 make -C native
-native/runtime_cpp artifacts/pp_zjj p_p_to_z_j_j_4 \
+native/runtime_cpp artifacts/pp_zjj p_p_to_z_j_j_3 \
   data/model_parameters.json
-native/runtime_fortran artifacts/pp_zjj p_p_to_z_j_j_4 \
+native/runtime_fortran artifacts/pp_zjj p_p_to_z_j_j_3 \
   data/model_parameters.json
 ```
 

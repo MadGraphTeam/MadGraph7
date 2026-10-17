@@ -9,7 +9,8 @@ import os
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from copy import deepcopy
-from decimal import Decimal
+from decimal import ROUND_HALF_EVEN, Decimal, localcontext
+from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -50,7 +51,10 @@ from pyamplicol.reporting import (
     ProgressStart,
     ProgressUpdate,
 )
-from pyamplicol.runtime._native_selection import native_process_selection
+from pyamplicol.runtime._native_selection import (
+    charge_conjugate_color_id,
+    native_process_selection,
+)
 
 if TYPE_CHECKING:
     from .eager_exact import EagerExactExecutor
@@ -755,6 +759,31 @@ class RusticolRuntimeBackend:
         return permutation
 
     @property
+    def process_group_factor(self) -> Fraction:
+        """Exact factor relating the selected process to its representative."""
+
+        raw = self._native_metadata.get("process_group_factor")
+        if raw is None:
+            return Fraction(1)
+        if not isinstance(raw, Mapping):
+            raise ArtifactError("native runtime process-group factor is invalid")
+        numerator, denominator = raw.get("numerator"), raw.get("denominator")
+        if (
+            type(numerator) is not int
+            or type(denominator) is not int
+            or numerator < 1
+            or denominator < 1
+        ):
+            raise ArtifactError("native runtime process-group factor is invalid")
+        return Fraction(numerator, denominator)
+
+    @property
+    def charge_conjugated(self) -> bool:
+        """Whether the selected process is its representative's conjugate."""
+
+        return self._native_metadata.get("charge_conjugated") is True
+
+    @property
     def artifact_id(self) -> str:
         """Return the manifest identity authenticated by the native loader."""
 
@@ -794,7 +823,9 @@ class RusticolRuntimeBackend:
         self,
         manifest: ArtifactManifest,
     ) -> None:
-        selected_id = self._native_metadata.get("process_key")
+        selected_id = self._native_metadata.get("process_group_member_of")
+        if selected_id is None:
+            selected_id = self._native_metadata.get("process_key")
         if not isinstance(selected_id, str) or not selected_id:
             selected_id = self.physics.process_id
         process = _selected_manifest_process(manifest, selected_id)
@@ -1526,6 +1557,14 @@ class RusticolRuntimeBackend:
                 self._exact_executor = SymbolicaExactExecutor(
                     self._artifact_path, self.physics.process_id, self._runtime
                 )
+            factor, conjugated = self.process_group_factor, self.charge_conjugated
+            if factor != 1 or conjugated:
+                self._exact_executor = cast(
+                    "_ExactExecutor",
+                    _ProcessGroupExactExecutor(
+                        self._exact_executor, factor, conjugated
+                    ),
+                )
         return self._exact_executor
 
     def _diagnostic_project_onshell(
@@ -1643,6 +1682,69 @@ class RusticolRuntimeBackend:
             )
         vectors = cast(list[tuple[float, float, float, float]], reordered)
         return (tuple(vectors),)
+
+
+class _ProcessGroupExactExecutor:
+    """Present a representative's exact results as a process-group member.
+
+    Values are multiplied by the member's exact factor; a charge-conjugated
+    member's LC color-flow IDs are the reversed representative words, mapped
+    on input and output exactly as in the native lane.
+    """
+
+    def __init__(self, inner: Any, factor: Fraction, conjugated: bool) -> None:
+        self._inner = inner
+        self._factor = factor
+        self._conjugated = conjugated
+
+    def _color_ids(self, values: Sequence[str] | None) -> tuple[str, ...] | None:
+        if values is None or not self._conjugated:
+            return None if values is None else tuple(values)
+        return tuple(charge_conjugate_color_id(value) for value in values)
+
+    def _scaled(self, value: complex | Decimal, precision: int) -> complex | Decimal:
+        if self._factor == 1:
+            return value
+        if not isinstance(value, Decimal):
+            return value * self._factor.numerator / self._factor.denominator
+        digits = max(precision, len(value.as_tuple().digits))
+        with localcontext() as context:
+            context.rounding = ROUND_HALF_EVEN
+            # Exact product, then one correctly rounded division.
+            context.prec = digits + len(str(self._factor.numerator))
+            product = value * self._factor.numerator
+            context.prec = digits
+            return product / self._factor.denominator
+
+    def evaluate_resolved(
+        self,
+        momenta: Momenta,
+        *,
+        helicities: Sequence[str] | None,
+        color_flows: Sequence[str] | None,
+        precision: int,
+    ) -> ResolvedEvaluation:
+        resolved = self._inner.evaluate_resolved(
+            momenta,
+            helicities=helicities,
+            color_flows=self._color_ids(color_flows),
+            precision=precision,
+        )
+        return ResolvedEvaluation(
+            values=tuple(
+                tuple(
+                    tuple(self._scaled(value, precision) for value in colors)
+                    for colors in point
+                )
+                for point in resolved.values
+            ),
+            helicity_ids=resolved.helicity_ids,
+            color_ids=cast(tuple[str, ...], self._color_ids(resolved.color_ids)),
+            color_accuracy=resolved.color_accuracy,
+        )
+
+    def _diagnostic_project_onshell(self, momenta: Momenta, *, precision: int) -> Any:
+        return self._inner._diagnostic_project_onshell(momenta, precision=precision)
 
 
 def load_runtime_backend(

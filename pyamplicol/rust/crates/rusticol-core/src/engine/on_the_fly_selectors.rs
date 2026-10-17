@@ -1890,6 +1890,7 @@ mod tests {
             external_pdgs: vec![1, -1, 22, 21],
             external_permutation: vec![0, 1, 3, 2],
             inferred_permutation: true,
+            process_group: None,
         };
         let lazy = super::super::native_runtime::LazyProcessPhysicsV1::deferred_on_the_fly(
             metadata,

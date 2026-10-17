@@ -149,7 +149,7 @@ retained:
 
 ```text
 Skipped 1 concrete subprocess with no model-supported tree-level amplitudes:
-p_p_to_z_j_j_19 (g g > Z g g)
+p_p_to_z_j_j_8 (g g > Z g g)
 ```
 
 That warning is expected for the inclusive example. A request containing only

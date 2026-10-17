@@ -94,6 +94,7 @@ if TYPE_CHECKING:
         WarmUpResult,
         benchmark,
         generate,
+        group_processes,
         load,
     )
     from .config import (
@@ -171,6 +172,7 @@ __all__ = [
     "__version__",
     "benchmark",
     "generate",
+    "group_processes",
     "load",
 ]
 
@@ -253,6 +255,7 @@ _PUBLIC_EXPORTS = {
     **{name: (".api.results", name) for name in _RESULT_EXPORTS},
     **{name: (".api.services", name) for name in _SERVICE_EXPORTS},
     **{name: (".config", name) for name in _CONFIG_EXPORTS},
+    "group_processes": (".api.process_groups", "group_processes"),
 }
 
 

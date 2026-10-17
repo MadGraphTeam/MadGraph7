@@ -56,6 +56,8 @@ class CorrelatorCatalogue:
     declarations: CorrelatorConfig
     matrices: tuple[_Matrix, ...]
     coherent_groups: Sequence[Mapping[str, object]]
+    # Exact factor of a process-group member evaluated by its representative.
+    factor: Fraction = Fraction(1)
 
 
 def _exact_integer(value: object) -> int:
@@ -244,9 +246,19 @@ def load_correlator_catalogue(backend: Any) -> CorrelatorCatalogue:
         ):
             raise ValueError("correlations require a complete source basis")
         selection = native_process_selection(native, manifest.processes)
-        if selection.external_permutation != tuple(
+        identity = selection.external_permutation == tuple(
             range(len(selection.external_permutation))
-        ):
+        )
+        relation = selection.process_group
+        if relation is not None and (relation.conjugated or not identity):
+            raise CompatibilityError(
+                "correlated evaluation of process-group member "
+                f"{relation.member_process_id!r} through its representative "
+                f"{relation.representative_process_key!r} is available only for "
+                "an identity leg order without charge conjugation; generate the "
+                "process explicitly"
+            )
+        if not identity:
             raise CompatibilityError(
                 "correlated catalogues and evaluation do not support "
                 "non-identity process aliases"
@@ -272,7 +284,13 @@ def load_correlator_catalogue(backend: Any) -> CorrelatorCatalogue:
     except (KeyError, TypeError, ValueError, OSError) as exc:
         raise ArtifactError(f"invalid correlator catalogue: {exc}") from exc
     return CorrelatorCatalogue(
-        artifact, process_id, native, declarations, matrices, coherent_groups
+        artifact,
+        process_id,
+        native,
+        declarations,
+        matrices,
+        coherent_groups,
+        Fraction(1) if relation is None else relation.factor,
     )
 
 
@@ -390,7 +408,33 @@ class CorrelatorEvaluator:
             helicities=helicities,
             precision=amplitude_precision,
         )
-        return _contract(batch, self._matrices[color_correlation], precision=precision)
+        return self._scaled(
+            _contract(batch, self._matrices[color_correlation], precision=precision),
+            precision,
+        )
+
+    def _scaled(
+        self, values: tuple[CorrelatedValue, ...], precision: int
+    ) -> tuple[CorrelatedValue, ...]:
+        """Apply a process-group member's exact factor with one rounding."""
+
+        factor = self._catalogue.factor
+        if factor == 1:
+            return values
+        with localcontext() as context:
+            context.rounding = ROUND_HALF_EVEN
+            scaled = []
+            for value in values:
+                parts = []
+                for part in (value.real, value.imag):
+                    context.prec = max(precision, len(part.as_tuple().digits)) + len(
+                        str(factor.numerator)
+                    )
+                    product = part * factor.numerator
+                    context.prec = precision
+                    parts.append(product / factor.denominator)
+                scaled.append(CorrelatedValue(parts[0], parts[1]))
+        return tuple(scaled)
 
     def evaluate_many(
         self,
@@ -492,4 +536,7 @@ class CorrelatorEvaluator:
                     results[label].append(value)
         if any(len(values) != len(momenta) for values in results.values()):
             raise ArtifactError("correlated batch did not cover all requested points")
-        return {label: tuple(values) for label, values in results.items()}
+        return {
+            label: self._scaled(tuple(values), precision)
+            for label, values in results.items()
+        }

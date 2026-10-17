@@ -282,12 +282,29 @@ outgoing legs. An ambiguous expression fails with the candidate stable IDs.
 The drivers also accept the representative stable ID:
 
 ```console
---process p_p_to_z_j_j_4
+--process p_p_to_z_j_j_3
 ```
 
 After loading, the API exposes the representative stable key and active
 representative-to-public permutation. The public process expression remains
 the ordering requested by the caller.
+
+The same selectors reach processes that a `--flavor-blind` generation listed
+in `process-groups.json` without generating them. Rusticol evaluates the
+representative, multiplies every matrix element by the member's exact factor,
+and, for a charge-conjugated member, reverses the LC flow words (and maps flow
+selectors back). Runtime metadata JSON reports `process_group_member_of`,
+`process_group_factor` (`{"numerator", "denominator"}`), and
+`charge_conjugated` in every language. The C ABI adds one getter:
+
+```c
+uint64_t numerator, denominator;
+int32_t conjugated;
+rusticol_runtime_process_group_relation(runtime, &numerator, &denominator, &conjugated);
+```
+
+Selections other than non-generated members report `1/1` and `0`. See
+[Process-group members](process-selection-and-permutations.md#process-group-members).
 
 ## Custom kinematics
 

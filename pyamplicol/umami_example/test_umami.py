@@ -67,6 +67,7 @@ def main() -> None:
 
     runtimes = {}
     physical_sums = {}
+    generated = {process["id"] for process in data["runtime_processes"]}
     checked = 0
     maximum_error = 0.0
     for channel_index, channel in enumerate(data["channels"]):
@@ -116,6 +117,10 @@ def main() -> None:
             )
             checked += n
             for member in process["members"]:
+                if member["process_id"] not in generated:
+                    # A --flavor-blind member has no native runtime of its own:
+                    # its equality with the representative is assumed.
+                    continue
                 # Automatic grouping includes identical-particle integration orbits.
                 # Compose the maps to evaluate each member at the original
                 # labelled point, not at the representative's labelled point.

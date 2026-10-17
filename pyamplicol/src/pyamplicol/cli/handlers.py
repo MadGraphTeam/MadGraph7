@@ -54,6 +54,8 @@ class CliServices(Protocol):
 
     def model_processes(self, config: RunConfig, progress: ProgressSink) -> object: ...
 
+    def group_processes(self, config: RunConfig, progress: ProgressSink) -> object: ...
+
 
 def dispatch(
     config: RunConfig,
@@ -85,6 +87,8 @@ def dispatch(
         return services.model_compile(config, progress)
     if config.action == "model-processes":
         return services.model_processes(config, progress)
+    if config.action == "group-processes":
+        return services.group_processes(config, progress)
     raise ConfigurationError(f"unsupported action {config.action!r}")
 
 
@@ -176,7 +180,8 @@ def _select_compact_process_inspection(
             return replace(inspection, processes=(selected,))
         raise ConfigurationError(
             f"inspect process selector {selector!r} did not match a stable "
-            "representative ID, alias ID, or exact process expression"
+            "representative ID, alias ID, or exact process expression; add "
+            "--full-physics to resolve permutations and process-group members"
         )
 
     identifier_matches = [
@@ -369,6 +374,23 @@ class DefaultCliServices:
         if full_physics and config.evaluation.process is None:
             raise ConfigurationError("inspect --full-physics requires --process")
 
+        selector = config.evaluation.process
+        if full_physics:
+            # Rusticol owns process selection, so side permutations and
+            # non-generated process-group members resolve as in `evaluate`.
+            from pyamplicol.api import Runtime
+
+            return _load_process_output(
+                config.evaluation.artifact,
+                progress,
+                lambda: (
+                    Runtime.load(
+                        config.evaluation.artifact,
+                        process=selector,
+                    ).physics
+                ),
+            )
+
         from pyamplicol.artifacts import inspect_artifact
 
         inspection = _load_process_output(
@@ -376,25 +398,9 @@ class DefaultCliServices:
             progress,
             lambda: inspect_artifact(config.evaluation.artifact),
         )
-        selector = config.evaluation.process
         if selector is None:
             return inspection
-        compact = _select_compact_process_inspection(inspection, selector)
-        if not full_physics:
-            return compact
-
-        from pyamplicol.api import Runtime
-
-        return _load_process_output(
-            config.evaluation.artifact,
-            progress,
-            lambda: (
-                Runtime.load(
-                    config.evaluation.artifact,
-                    process=selector,
-                ).physics
-            ),
-        )
+        return _select_compact_process_inspection(inspection, selector)
 
     def model_inspect(self, config: RunConfig, progress: ProgressSink) -> object:
         del progress
@@ -516,6 +522,7 @@ class DefaultCliServices:
         if not config.process.entries:
             raise ConfigurationError("model processes requires a process request")
 
+        from pyamplicol.processes.conservation import conserved_charges
         from pyamplicol.processes.model import (
             ModelParticleCatalog,
             build_model_process_ir,
@@ -523,6 +530,7 @@ class DefaultCliServices:
         )
 
         compiled = _compile_configured_model(config, require_supported=True)
+        charges = conserved_charges(compiled.ir)
         catalog = ModelParticleCatalog(
             compiled.ir.name,
             compiled.ir.particles,
@@ -539,6 +547,7 @@ class DefaultCliServices:
                 request,
                 catalog,
                 multiparticles=multiparticles,
+                charges=charges,
             ):
                 process_ir = build_model_process_ir(
                     process,
@@ -566,6 +575,20 @@ class DefaultCliServices:
             },
             "entries": concrete,
         }
+
+    def group_processes(self, config: RunConfig, progress: ProgressSink) -> object:
+        del progress
+        if config.evaluation.artifact is None:
+            raise ConfigurationError("group-processes requires an artifact")
+
+        from pyamplicol.api.process_groups import group_processes
+
+        return group_processes(
+            config.evaluation.artifact,
+            analysis=str(config.process.analyze_process_groups),
+            only_unit_multiplier=config.process.only_unit_multiplier,
+            consider_charge_conjugation=config.process.consider_charge_conjugation,
+        )
 
 
 __all__ = ["CliServices", "DefaultCliServices", "dispatch"]

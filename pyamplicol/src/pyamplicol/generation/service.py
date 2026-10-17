@@ -10,9 +10,10 @@ import logging
 import math
 import os
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
+from fractions import Fraction
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Lock
@@ -38,6 +39,7 @@ from pyamplicol.api.requests import (
     ProcessSet,
 )
 from pyamplicol.api.results import GenerationPlan, GenerationResult, ProcessPhysics
+from pyamplicol.artifacts.process_groups import initial_process_groups
 from pyamplicol.config import (
     ClampRequest,
     ConfigResolution,
@@ -151,6 +153,16 @@ from .on_the_fly_seed import (
     project_on_the_fly_process_seed_v1,
 )
 from .physics_metadata import build_resolved_physics_from_dag
+from .process_grouping import (
+    GroupingBasis,
+    GroupingParticle,
+    GroupingProcess,
+    GroupMember,
+    LegMapping,
+    flavor_blind_classes,
+    flavor_blind_mapping,
+    particle_table,
+)
 from .progress import GenerationPhaseReporter, PhaseHandle
 from .recurrence_color import (
     RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
@@ -227,7 +239,8 @@ from .validation import (
 
 if TYPE_CHECKING:
     from ..licensing import SymbolicaLicenseState
-    from .artifact_writer import ApiBundleHook
+    from .artifact_writer import ApiBundleHook, ProcessArtifact
+    from .process_grouping import ProcessGroupMap
 
 
 _ProcessInput = TypeVar("_ProcessInput")
@@ -2641,6 +2654,8 @@ class _ExpandedProcess:
     aliases: tuple[Mapping[str, object], ...] = ()
     source_expansion_size: int = 1
     source_request: ProcessRequest | None = None
+    # Flavour-blind members represented by this process, never generated.
+    group_members: tuple[GroupMember, ...] = ()
 
 
 class _NoModelSupportedAmplitudes(GenerationError):
@@ -2708,7 +2723,13 @@ def _warn_unsupported_processes(unsupported: Sequence[_UnsupportedProcess]) -> N
     if not unsupported:
         return
     rendered = ", ".join(
-        f"{item.expanded.request.name} ({item.expanded.process_ir.process})"
+        f"{item.expanded.request.name} ({item.expanded.process_ir.process}"
+        + (
+            f", with {len(item.expanded.group_members)} flavor-blind member(s)"
+            if item.expanded.group_members
+            else ""
+        )
+        + ")"
         for item in unsupported
     )
     _LOGGER.warning(
@@ -3245,6 +3266,22 @@ def _map_process_phase(
     return tuple(cast(_ProcessOutput, result) for result in ordered)
 
 
+def _initial_process_groups(
+    artifact_processes: Sequence[ProcessArtifact],
+    expanded: Iterable[_ExpandedProcess],
+) -> ProcessGroupMap:
+    """Each written process with the members recorded at expansion."""
+
+    members = {entry.request.name: entry.group_members for entry in expanded}
+    return initial_process_groups(
+        (
+            (process.process_id, process.expression, process.external_pdgs)
+            for process in artifact_processes
+        ),
+        members,
+    )
+
+
 class GenerationBackend:
     def __init__(
         self,
@@ -3399,7 +3436,8 @@ class GenerationBackend:
                 else 7
                 if execution_mode == "eager"
                 else 8
-            ),
+            )
+            + int(self._numerical_process_grouping),
             details={
                 "execution_mode": execution_mode,
                 "backend": backend.upper(),
@@ -3654,6 +3692,10 @@ class GenerationBackend:
                         progress_callback=(
                             artifact_progress if phase.sink is not None else None
                         ),
+                        process_groups=_initial_process_groups(
+                            artifact_processes,
+                            (entry.expanded for entry in prepared),
+                        ),
                     )
                     phase.update(
                         phase.total or phase.completed,
@@ -3683,6 +3725,8 @@ class GenerationBackend:
                 del prepared
                 del artifact_processes
                 gc.collect()
+                # After releasing the generation state: analysis loads runtimes.
+                self._analyze_process_groups(write_result.output, reporter)
 
             with reporter.phase(
                 "validation",
@@ -3829,6 +3873,10 @@ class GenerationBackend:
                     progress_callback=(
                         artifact_progress if phase.sink is not None else None
                     ),
+                    process_groups=_initial_process_groups(
+                        artifact_processes,
+                        (item.expanded for item in generated),
+                    ),
                 )
                 phase.update(
                     phase.total or phase.completed,
@@ -3852,6 +3900,7 @@ class GenerationBackend:
             del artifact_processes
             del generated
             gc.collect()
+            self._analyze_process_groups(write_result.output, reporter)
 
         with reporter.phase(
             "validation",
@@ -4280,6 +4329,10 @@ class GenerationBackend:
                     progress_callback=(
                         artifact_progress if phase.sink is not None else None
                     ),
+                    process_groups=_initial_process_groups(
+                        artifact_processes,
+                        (item.expanded for item in generated),
+                    ),
                 )
                 phase.update(
                     phase.total or phase.completed,
@@ -4306,6 +4359,7 @@ class GenerationBackend:
             del artifact_processes
             del generated
             gc.collect()
+            self._analyze_process_groups(write_result.output, reporter)
 
         with reporter.phase(
             "validation",
@@ -4426,7 +4480,79 @@ class GenerationBackend:
                     )
                 )
             phase.update(request_index, message=request.name)
+        if self._flavor_blind:
+            # Names are assigned above, so process IDs do not depend on the flag.
+            table = self._grouping_particle_table(resolved)
+            result = _collapse_flavor_blind_classes(
+                result,
+                table,
+                consider_charge_conjugation=self._consider_charge_conjugation,
+                relation_warning=self._flavor_blind_relation_warning(resolved, table),
+            )
         return tuple(result)
+
+    def _grouping_particle_table(
+        self,
+        resolved: _ResolvedModel,
+    ) -> dict[int, GroupingParticle]:
+        """Particle types for process grouping, from the compiled model."""
+
+        model = self._artifact_model(resolved).ir
+        return particle_table(
+            model.particles,
+            {parameter.name: parameter for parameter in model.parameters},
+        )
+
+    def _flavor_blind_relation_warning(
+        self,
+        resolved: _ResolvedModel,
+        table: Mapping[int, GroupingParticle],
+    ) -> _RelationWarning:
+        """Check relations against the vertices each representative is built from."""
+
+        from .process_grouping_symmetry import VertexSymmetryTable
+
+        model = resolved.model
+        compiled = resolved.compiled
+        if compiled is not None and resolved.use_compiled_process_catalog:
+            symmetry = VertexSymmetryTable.from_compiled_ir(compiled.ir)
+        else:
+            model = model or _builtin_sm_model()
+            symmetry = VertexSymmetryTable.from_builtin_model(model)
+        explicit = self._coupling_order_limits
+        run = self._run_config
+        minimal = run is not None and run.process.coupling_order_policy == "minimal"
+        limits_by_representative: dict[str, Mapping[str, int]] = {}
+
+        def warning(
+            member: GroupingProcess,
+            representative: GroupingProcess,
+            mapping: LegMapping,
+            representative_ir: CanonicalProcessIR,
+        ) -> str | None:
+            nonlocal model
+            limits = limits_by_representative.get(representative.process_id)
+            if limits is None:
+                limits = explicit
+                if minimal:
+                    if model is None:
+                        from ..models.external import CompiledUFOModel
+
+                        model = CompiledUFOModel(cast(_CompiledModelPayload, compiled))
+                    limits = (
+                        infer_minimal_coupling_order_limits(
+                            representative_ir,
+                            model=model,
+                            max_coupling_orders=explicit or None,
+                        )
+                        or explicit
+                    )
+                limits_by_representative[representative.process_id] = limits
+            return symmetry.relation_warning(
+                member, representative, mapping, table, limits=limits
+            )
+
+        return warning
 
     def _compile_for_generation(
         self,
@@ -4535,6 +4661,36 @@ class GenerationBackend:
     def _write_artifact(self, *args: Any, **kwargs: Any) -> ArtifactWriteResult:
         """Keep optional payloads inside the existing publication transaction."""
         return write_schema_v3_artifact(*args, **kwargs)
+
+    @property
+    def _numerical_process_grouping(self) -> bool:
+        run = self._run_config
+        return run is not None and run.process.analyze_process_groups == "numerical"
+
+    def _analyze_process_groups(
+        self,
+        artifact: Path,
+        reporter: GenerationPhaseReporter,
+    ) -> None:
+        """Merge numerically found process groups into the written artifact."""
+
+        run = self._run_config
+        if run is None or not self._numerical_process_grouping:
+            return
+        from .process_grouping_numerical import update_artifact_process_groups
+
+        with reporter.phase(
+            "process-grouping",
+            "Analyzing process groups numerically",
+            total=1,
+        ) as phase:
+            update_artifact_process_groups(
+                artifact,
+                analysis=str(run.process.analyze_process_groups),
+                only_unit_multiplier=run.process.only_unit_multiplier,
+                consider_charge_conjugation=run.process.consider_charge_conjugation,
+            )
+            phase.update(1, message="process-groups.json updated")
 
     def _prepare_warmup_process_inner(
         self,
@@ -7403,6 +7559,16 @@ class GenerationBackend:
         }
 
     @property
+    def _flavor_blind(self) -> bool:
+        run = self._run_config
+        return run is not None and run.process.flavor_blind
+
+    @property
+    def _consider_charge_conjugation(self) -> bool:
+        run = self._run_config
+        return run is None or run.process.consider_charge_conjugation
+
+    @property
     def _process_selection(self) -> _ProcessSelection:
         if self._process_selection_override is not None:
             return self._process_selection_override
@@ -7812,6 +7978,7 @@ class GenerationBackend:
                 for entry in enumeration.entries
             )
 
+        from ..processes.conservation import conserved_charges
         from ..processes.model import (
             ModelParticleCatalog,
             build_model_process_ir,
@@ -7835,8 +8002,14 @@ class GenerationBackend:
                 request.expression,
                 catalog,
                 multiparticles=multiparticles,
+                charges=conserved_charges(resolved_model.compiled.ir),
             )
         )
+        if not candidates:
+            raise GenerationError(
+                f"process request {request.expression!r} has no concrete process "
+                "conserving the additive charges of the model vertices"
+            )
         selected, rejected = _select_color_ready_processes(
             candidates,
             color_accuracy=self._color_accuracy,
@@ -8460,6 +8633,87 @@ def _process_side_permutation_class(
         tuple(sorted(leg.particle.casefold() for leg in process.initial_legs)),
         tuple(sorted(leg.particle.casefold() for leg in process.final_legs)),
     )
+
+
+_RelationWarning = Callable[
+    [GroupingProcess, GroupingProcess, LegMapping, CanonicalProcessIR],
+    str | None,
+]
+
+
+def _grouping_process(entry: _ExpandedProcess) -> GroupingProcess:
+    pdgs = tuple(leg.pdg for leg in entry.process_ir.legs)
+    if any(pdg is None for pdg in pdgs):
+        raise GenerationError(
+            f"process {entry.request.name!r} has an unresolved external particle"
+        )
+    return GroupingProcess(
+        process_id=entry.request.name,
+        expression=entry.request.expression,
+        pdgs=tuple(int(cast(int, pdg)) for pdg in pdgs),
+        initial_count=len(entry.process_ir.initial_legs),
+    )
+
+
+def _collapse_flavor_blind_classes(
+    entries: Sequence[_ExpandedProcess],
+    table: Mapping[int, GroupingParticle],
+    *,
+    consider_charge_conjugation: bool,
+    relation_warning: _RelationWarning,
+) -> list[_ExpandedProcess]:
+    """Keep the representative of each flavour class and record the others on it.
+
+    Processes with explicit aliases keep their own artifact entry.
+    """
+
+    by_name = {entry.request.name: entry for entry in entries}
+    members: dict[str, list[GroupMember]] = {}
+    warnings: list[str] = []
+    for flavour_class in flavor_blind_classes(
+        [_grouping_process(entry) for entry in entries],
+        table,
+        consider_charge_conjugation=consider_charge_conjugation,
+    ):
+        representative = flavour_class[0]
+        for process in flavour_class[1:]:
+            if by_name[process.process_id].aliases:
+                continue
+            mapping = flavor_blind_mapping(
+                process,
+                representative,
+                table,
+                consider_charge_conjugation=consider_charge_conjugation,
+            )
+            warning = relation_warning(
+                process,
+                representative,
+                mapping,
+                by_name[representative.process_id].process_ir,
+            )
+            if warning is not None:
+                warnings.append(warning)
+            members.setdefault(representative.process_id, []).append(
+                GroupMember.identity(replace(process, generated=False)).related(
+                    mapping,
+                    factor=Fraction(1),
+                    basis=GroupingBasis.FLAVOR_BLIND,
+                    warning=warning,
+                )
+            )
+    if warnings:
+        _LOGGER.warning(
+            "flavor-blind grouping assumes %d relation(s) that are not symmetries "
+            "of the model vertices allowed by the coupling orders, e.g. %s",
+            len(warnings),
+            "; ".join(warnings[:3]),
+        )
+    grouped = {member.process_id for group in members.values() for member in group}
+    return [
+        replace(entry, group_members=tuple(members.get(entry.request.name, ())))
+        for entry in entries
+        if entry.request.name not in grouped
+    ]
 
 
 def _permuted_process_identity(

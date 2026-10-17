@@ -34,7 +34,7 @@ pyamplicol benchmark.toml
 
 `evaluate_total.toml` selects the concrete channel through the requested public
 ordering `d d~ > g z g`. Its representative stable ID is
-`p_p_to_z_j_j_4`. Its
+`p_p_to_z_j_j_3`. Its
 parameter card updates the genuine UFO external inputs `aS` and `MZ`.
 These three showcase cards print colorized terminal tables by default. Add
 `--json` when a machine-readable result is wanted instead.
@@ -395,9 +395,9 @@ the SDK discovered from an installed wheel:
 
 ```console
 make -C native
-native/runtime_cpp artifacts/pp_zjj p_p_to_z_j_j_4 \
+native/runtime_cpp artifacts/pp_zjj p_p_to_z_j_j_3 \
   data/model_parameters.json
-native/runtime_fortran artifacts/pp_zjj p_p_to_z_j_j_4 \
+native/runtime_fortran artifacts/pp_zjj p_p_to_z_j_j_3 \
   data/model_parameters.json
 ```
 

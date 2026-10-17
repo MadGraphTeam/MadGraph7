@@ -14,6 +14,7 @@ from pyamplicol.config import (
     EvaluatorExecutionMode,
     LCFlowLayout,
     ProcessEntry,
+    ProcessGroupAnalysis,
     RelationDiscoveryMode,
 )
 
@@ -386,11 +387,82 @@ def test_all_contract_actions_have_subcommands() -> None:
         "model-inspect": ("model", "inspect"),
         "model-compile": ("model", "compile"),
         "model-processes": ("model", "processes"),
+        "group-processes": ("group-processes",),
     }
     for action, argv in arguments.items():
         assert parse_cli(argv).action == action
 
     assert parse_cli(("profile",)).action == "benchmark"
+
+
+def test_generate_process_grouping_flags_keep_flavor_scheme() -> None:
+    default = parse_cli(("generate",)).resolve().effective.process
+    assert not default.flavor_blind
+    assert default.consider_charge_conjugation
+    assert not default.only_unit_multiplier
+    assert default.analyze_process_groups is ProcessGroupAnalysis.NONE
+
+    process = (
+        parse_cli(
+            (
+                "generate",
+                "--flavor-scheme",
+                "4",
+                "--flavor-blind",
+                "--no-consider-charge-conjugation",
+                "--only-unit-multiplier",
+                "--analyze-process-groups",
+                "numerical",
+            )
+        )
+        .resolve()
+        .effective.process
+    )
+    assert process.flavor_scheme == 4
+    assert process.flavor_blind
+    assert not process.consider_charge_conjugation
+    assert process.only_unit_multiplier
+    assert process.analyze_process_groups is ProcessGroupAnalysis.NUMERICAL
+
+
+def test_group_processes_defaults_to_numerical_analysis(tmp_path: Path) -> None:
+    artifact = tmp_path / "artifact"
+    config = parse_cli(("group-processes", str(artifact))).resolve().effective
+    assert config.action == "group-processes"
+    assert config.evaluation.artifact == artifact.resolve()
+    assert config.process.analyze_process_groups is ProcessGroupAnalysis.NUMERICAL
+    assert config.process.consider_charge_conjugation
+
+    explicit = (
+        parse_cli(
+            (
+                "group-processes",
+                str(artifact),
+                "--analyze-process-groups",
+                "none",
+                "--only-unit-multiplier",
+                "--no-consider-charge-conjugation",
+            )
+        )
+        .resolve()
+        .effective.process
+    )
+    assert explicit.analyze_process_groups is ProcessGroupAnalysis.NONE
+    assert explicit.only_unit_multiplier
+    assert not explicit.consider_charge_conjugation
+    # The choice "none" is not the null literal of --set.
+    overridden = parse_cli(
+        (
+            "group-processes",
+            str(artifact),
+            "--set",
+            "process.analyze_process_groups=none",
+        )
+    ).resolve()
+    overridden_process = overridden.effective.process
+    assert overridden_process.analyze_process_groups is ProcessGroupAnalysis.NONE
+    with pytest.raises(SystemExit):
+        parse_cli(("group-processes", str(artifact), "--flavor-blind"))
 
 
 def test_inspect_full_physics_is_an_explicit_transient_opt_in(

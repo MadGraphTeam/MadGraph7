@@ -2706,7 +2706,7 @@ impl NativeRuntime {
         let result = (|| {
             let artifact = VerifiedArtifact::open(artifact_path)?;
             let selection = artifact.select_process(Some(process_id))?;
-            if selection.alias.is_some() || selection.inferred_permutation {
+            if selection.remaps_public_process() {
                 return Err(RusticolError::invalid_argument(
                     "on-the-fly artifact probing requires a representative process ID",
                 ));
@@ -3147,7 +3147,7 @@ impl NativeRuntime {
         let on_the_fly_artifact = VerifiedArtifact::open(on_the_fly_artifact_path)?;
         let on_the_fly_selection =
             on_the_fly_artifact.select_process(Some(on_the_fly_process_id))?;
-        if on_the_fly_selection.alias.is_some() || on_the_fly_selection.inferred_permutation {
+        if on_the_fly_selection.remaps_public_process() {
             return Err(RusticolError::invalid_argument(
                 "execution diagnostics require a representative on-the-fly process ID",
             ));
@@ -3212,7 +3212,7 @@ impl NativeRuntime {
         let recurrence_artifact = VerifiedArtifact::open(recurrence_artifact_path)?;
         let recurrence_selection =
             recurrence_artifact.select_process(Some(recurrence_process_id))?;
-        if recurrence_selection.alias.is_some() || recurrence_selection.inferred_permutation {
+        if recurrence_selection.remaps_public_process() {
             return Err(RusticolError::invalid_argument(
                 "execution diagnostics require a representative recurrence process ID",
             ));

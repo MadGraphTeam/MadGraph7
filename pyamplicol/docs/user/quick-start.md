@@ -115,7 +115,7 @@ cross `>`.
 
 If multiple stored representatives could match, selection fails with the
 candidate stable IDs instead of guessing. A stable ID such as
-`p_p_to_z_j_j_4` is always an unambiguous alternative.
+`p_p_to_z_j_j_3` is always an unambiguous alternative.
 
 ## 6. Profile the runtime
 

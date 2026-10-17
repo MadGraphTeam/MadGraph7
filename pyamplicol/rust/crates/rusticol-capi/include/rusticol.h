@@ -203,6 +203,16 @@ int rusticol_runtime_external_permutation(
     size_t capacity,
     size_t *required
 );
+/* Exact relation of the selected process to the representative evaluating it:
+ * ME = numerator / denominator * ME_representative, with reversed LC color-flow
+ * words when conjugated is 1. Processes other than non-generated members of the
+ * artifact's process-group map report 1/1 and 0. */
+int rusticol_runtime_process_group_relation(
+    const RusticolRuntimeHandle *handle,
+    uint64_t *numerator,
+    uint64_t *denominator,
+    int32_t *conjugated
+);
 /* Load one public-order [external][4] JSON point into a flat f64 buffer. */
 int rusticol_runtime_load_kinematics_json(
     const RusticolRuntimeHandle *handle,

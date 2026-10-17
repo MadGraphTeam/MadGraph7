@@ -43,6 +43,7 @@ A generated root resembles:
 ```text
 artifacts/pp_zjj/
   artifact.json
+  process-groups.json
   evaluators.pacbin
   model/
   processes/
@@ -78,8 +79,9 @@ payload sizes, and dependency metadata.
 `runtime.artifact_id` is the lowercase SHA-256 identity of runtime-bearing
 payload records under the current schema-v3 identity contract. It deliberately
 excludes provenance that cannot change runtime behavior, such as requested and
-effective configuration records, validation momenta, timing, and report-only
-metadata.
+effective configuration records, validation momenta, timing, the
+`process-groups.json` map of subprocesses with equal matrix elements, and
+report-only metadata.
 
 ```python
 from pyamplicol import Runtime
@@ -229,6 +231,12 @@ Generation writes artifacts transactionally. The output mode is explicit:
 Use a separate output for materially different configuration during
 experimentation. Avoid manually editing a sealed artifact: its declared size,
 digest, and semantic links will no longer match.
+
+The one supported in-place update is `pyamplicol group-processes`, which
+rewrites `process-groups.json` (payload role `process-groups`) and its record
+in `artifact.json` under the same lock that serializes generation. The artifact
+ID does not change. An append keeps the stored groups and adds the new
+subprocesses.
 
 ## Copying and archiving
 

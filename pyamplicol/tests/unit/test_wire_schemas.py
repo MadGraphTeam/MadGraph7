@@ -163,7 +163,15 @@ def _valid_manifest() -> dict[str, object]:
                 "size_bytes": 2,
                 "sha256": "3" * 64,
                 "executable": False,
-            }
+            },
+            {
+                "path": "process-groups.json",
+                "role": "process-groups",
+                "media_type": "application/json",
+                "size_bytes": 2,
+                "sha256": "4" * 64,
+                "executable": False,
+            },
         ],
         "dependencies": [],
     }

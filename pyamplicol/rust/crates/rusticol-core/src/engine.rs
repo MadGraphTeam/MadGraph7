@@ -3329,6 +3329,14 @@ pub struct NativeRuntimeMetadata {
     /// Representative process key when a stored or inferred permutation is active.
     pub permutation_alias_of: Option<String>,
     pub final_state_permutation_alias_of: Option<String>,
+    /// Representative process key when the selected process was not generated
+    /// and is routed through the artifact's process-group map.
+    pub process_group_member_of: Option<String>,
+    /// Exact factor applied to every representative matrix element.
+    pub process_group_factor: NativeRationalFactor,
+    /// Whether the selected process is the charge conjugate of its
+    /// representative; public LC color-flow words are then reversed.
+    pub charge_conjugated: bool,
     pub color_accuracy: String,
     pub external_pdg_order: Vec<i32>,
     pub external_count: usize,
@@ -3337,6 +3345,20 @@ pub struct NativeRuntimeMetadata {
     pub interaction_count: usize,
     pub stage_count: usize,
     pub amplitude_output_count: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+pub struct NativeRationalFactor {
+    pub numerator: u64,
+    pub denominator: u64,
+}
+
+/// Public relabelling of a process-group member evaluated by its representative.
+#[derive(Clone, Debug)]
+struct ProcessGroupRouting {
+    representative_process_key: String,
+    factor: NativeRationalFactor,
+    conjugated: bool,
 }
 
 /// Prepared batch-global selectors for allocation-free recurrence evaluation.
@@ -4343,6 +4365,8 @@ pub struct NativeRuntime {
     input_crossing_map: Option<Vec<InputCrossingMapEntry>>,
     permutation_alias_of: Option<String>,
     final_state_permutation_alias_of: Option<String>,
+    // Absent for stored processes, aliases, and permutations of either.
+    process_group: Option<Box<ProcessGroupRouting>>,
     physics_v1: native_runtime::LazyProcessPhysicsV1,
     warnings_muted: bool,
     warned_kinds: BTreeSet<String>,

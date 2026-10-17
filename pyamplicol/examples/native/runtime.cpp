@@ -22,7 +22,7 @@ int main(int argc, char **argv) {
         }
         runtime.set_model_parameter("aS", 0.117);
 
-        // The external-SM d d~ > Z g g subprocess p_p_to_z_j_j_4,
+        // The external-SM d d~ > Z g g subprocess p_p_to_z_j_j_3,
         // flattened as
         // [point][particle][E,px,py,pz].
         const std::vector<double> momenta{

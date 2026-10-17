@@ -6,6 +6,7 @@ import inspect
 import os
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -881,6 +882,31 @@ class Runtime:
         ):
             raise CompatibilityError("runtime external permutation is invalid")
         return permutation
+
+    @property
+    def process_group_factor(self) -> Fraction:
+        """Exact factor relating the selected process to its representative.
+
+        A process selected through the artifact's process-group map evaluates
+        ``factor * ME_representative`` at the permuted momenta; every other
+        selection reports one.
+        """
+
+        value = getattr(self._backend, "process_group_factor", None)
+        if value is None:
+            return Fraction(1)
+        if not isinstance(value, Fraction) or value <= 0:
+            raise CompatibilityError("runtime process-group factor is invalid")
+        return value
+
+    @property
+    def charge_conjugated(self) -> bool:
+        """Whether the selection is the charge conjugate of its representative.
+
+        Its LC color-flow words are then the reversed representative words.
+        """
+
+        return getattr(self._backend, "charge_conjugated", False) is True
 
     def set_model_parameter(self, name: str, value: complex | float | int) -> None:
         self.set_model_parameters({name: value})

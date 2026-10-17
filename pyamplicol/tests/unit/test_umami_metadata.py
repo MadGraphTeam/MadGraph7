@@ -4,12 +4,14 @@ from __future__ import annotations
 import copy
 import json
 from dataclasses import replace
+from fractions import Fraction
 from itertools import permutations
 from types import SimpleNamespace
 
 import pytest
 
 from pyamplicol.artifacts.umami import (
+    FLAVOR_BLIND_ASSUMPTION,
     UmamiProcessInput,
     build_umami_metadata,
     umami_bundle_payloads,
@@ -17,6 +19,12 @@ from pyamplicol.artifacts.umami import (
 from pyamplicol.artifacts.umami_otf import (
     build_umami_on_the_fly_physics,
     restore_umami_on_the_fly_input,
+)
+from pyamplicol.generation.process_grouping import (
+    GroupingBasis,
+    GroupingProcess,
+    GroupMember,
+    ProcessGroupMap,
 )
 from pyamplicol.processes.ir import (
     CanonicalProcessIR,
@@ -704,3 +712,224 @@ def test_writer_append_recovers_old_compact_otf_sdk(tmp_path, monkeypatch):
     assert recovered["provider"]["helicity_count"] == 1
     assert recovered["color_flows"] == data["color_flows"]
     assert len(entries(recovered)) == 1
+
+
+def blind_member(identifier, pdgs, permutation=None, *, conjugated=False):
+    return GroupMember(
+        process_id=identifier,
+        expression=identifier,
+        pdgs=tuple(pdgs),
+        initial_count=2,
+        permutation=tuple(range(len(pdgs)) if permutation is None else permutation),
+        conjugated=conjugated,
+        basis=GroupingBasis.FLAVOR_BLIND,
+        generated=False,
+    )
+
+
+def physical_flows(data, process_id):
+    """Colour ID -> LHE tags, renumbered by first use, of one physical process."""
+
+    def canonical(flow):
+        names = {}
+        return [
+            [names.setdefault(tag, len(names) + 1) if tag else 0 for tag in pair]
+            for pair in flow
+        ]
+
+    return {
+        member["color_id"]: canonical(data["color_flows"][member["color_flows"]])
+        for entry in entries(data)
+        for member in entry["members"]
+        if member["process_id"] == process_id
+    }
+
+
+def quark_gluon(identifier="a", pdgs=(991, 990, 991, 990)):
+    # Every helicity of the incoming legs: a set invariant under their swap.
+    p = process(identifier, pdgs=pdgs, words=((3, 2, 4, 1), (3, 4, 2, 1)))
+    template = p.physics["helicities"][0]
+    p.physics["helicities"][:] = [
+        {**template, "id": f"h{i}", "representative_id": f"h{i}", "values": values}
+        for i, values in enumerate(
+            [[1, 1, 1, 1], [1, -1, 1, 1], [-1, 1, 1, 1], [-1, -1, 1, 1]]
+        )
+    ]
+    return p
+
+
+def test_flavor_blind_member_with_equal_incoming_flavours_is_an_extra_row():
+    a = process("a", pdgs=(990, 990, 991, -991), words=((3, 1, 2, 4),))
+    (data,) = export(
+        replace(a, group_members=(blind_member("m", (990, 990, 992, -992)),))
+    )
+    (row,) = entries(data)
+    assert [p["id"] for p in data["runtime_processes"]] == ["a"]
+    assert data["pdg_ids"] == [[990, 990, 991, -991], [990, 990, 992, -992]]
+    assert row["matrix_elements"] == [
+        {"pdg_ids": 0, "factor": 1},
+        {"pdg_ids": 1, "factor": 1},
+    ]
+    representative, member = row["members"]
+    assert member["process_id"] == "m"
+    assert member["pdgs"] == [990, 990, 992, -992]
+    assert member["color_id"] == "flow:3,1,2,4"
+    assert member["runtime"] == representative["runtime"]
+    assert data["grouping"]["physical_contributions"] == 2
+    assert data["grouping"]["exported_contributions"] == 1
+    assert data["grouping"]["assumptions"][-1] == FLAVOR_BLIND_ASSUMPTION
+    assert FLAVOR_BLIND_ASSUMPTION not in export(a)[0]["grouping"]["assumptions"]
+
+
+def test_flavor_blind_member_with_swapped_incoming_legs_maps_axes():
+    # "g u > u g" is "u g > u g" with the incoming legs exchanged.
+    a = quark_gluon()
+    member = blind_member("m", (990, 991, 991, 990), (1, 0, 2, 3))
+    (data,) = export(replace(a, group_members=(member,)))
+    assert [p["id"] for p in data["runtime_processes"]] == ["a"]
+    rows = entries(data)
+    # Different incoming flavours remain separate selectors.
+    assert all(
+        len({m["process_id"] for m in row["members"]}) == 1
+        and len(row["matrix_elements"]) == 1
+        for row in rows
+    )
+    members = [m for row in rows for m in row["members"] if m["process_id"] == "m"]
+    assert len(members) == 2
+    assert data["grouping"]["physical_contributions"] == 4
+    runtime_values = [h["values"] for h in a.physics["helicities"]]
+    for physical in members:
+        runtime = physical["runtime"]
+        assert runtime["process_id"] == "a" and runtime["process_index"] == 0
+        assert runtime["permutation"] == [1, 0, 2, 3]
+        assert [data["helicities"][i] for i in runtime["helicity_export"]] == [
+            [v[1], v[0], *v[2:]] for v in runtime_values
+        ]
+    # The relabelled tags are those of the member exported on its own.
+    reference = process("m", pdgs=member.pdgs, words=((3, 1, 4, 2), (3, 4, 1, 2)))
+    assert physical_flows(data, "m") == physical_flows(export(reference)[0], "m")
+
+
+def test_conjugated_flavor_blind_member_reverses_colour_flows():
+    a = quark_gluon()
+    member = blind_member("c", (-991, 990, -991, 990), conjugated=True)
+    (data,) = export(replace(a, group_members=(member,)))
+    members = [
+        m for row in entries(data) for m in row["members"] if m["process_id"] == "c"
+    ]
+    assert {m["color_id"]: m["runtime"]["color_id"] for m in members} == {
+        "flow:1,4,2,3": "flow:3,2,4,1",
+        "flow:1,2,4,3": "flow:3,4,2,1",
+    }
+    reference = process("c", pdgs=member.pdgs, words=((1, 4, 2, 3), (1, 2, 4, 3)))
+    assert physical_flows(data, "c") == physical_flows(export(reference)[0], "c")
+    assert all(m["runtime"]["permutation"] == [0, 1, 2, 3] for m in members)
+
+
+def test_member_moving_unequal_masses_reuses_runtime_in_its_own_provider():
+    a = process("a", pdgs=(995, 990, 995, 990), words=((2, 4),))
+    member = blind_member("m", (990, 995, 995, 990), (1, 0, 2, 3))
+    first, second = export(replace(a, group_members=(member,)))
+    assert first["provider"]["masses"] == [7, 0, 7, 0]
+    assert second["provider"]["masses"] == [0, 7, 7, 0]
+    assert FLAVOR_BLIND_ASSUMPTION not in first["grouping"]["assumptions"]
+    # No runtime row of its own: the second provider loads the representative.
+    assert [p["id"] for p in second["runtime_processes"]] == ["a"]
+    assert {m["process_id"] for row in entries(second) for m in row["members"]} == {
+        "m"
+    }
+    payloads = {
+        p.path: p.content
+        for p in umami_bundle_payloads(
+            processes=[replace(a, group_members=(member,))], compiled_model=model()
+        )
+    }
+    header = payloads["API/umami/provider_p1.h"].decode()
+    assert '"a"' in header and '"m"' not in header
+
+
+def test_otf_append_ignores_providers_loading_a_runtime_only_for_members():
+    a = process("a", pdgs=(995, 990, 995, 990), words=((2, 4),))
+    a.physics["helicities"][0].update(
+        id="h:+1,+1,+1,+1", representative_id="h:+1,+1,+1,+1"
+    )
+    member = blind_member("m", (990, 995, 995, 990), (1, 0, 2, 3))
+    a = replace(a, group_members=(member,))
+    documents = export(a)
+    assert len(documents) == 2
+    assert export(restore_umami_on_the_fly_input(a, documents)) == documents
+
+
+def test_flavours_with_different_runtime_permutations_are_not_merged():
+    a = process("a", pdgs=(990, 990, 991, -991), words=((3, 1, 2, 4),))
+    member = blind_member("m", (990, 990, 992, -992), (1, 0, 2, 3))
+    (data,) = export(replace(a, group_members=(member,)))
+    rows = entries(data)
+    assert len(rows) == 2
+    assert [len(row["matrix_elements"]) for row in rows] == [1, 1]
+    assert rows[0]["runtime"]["permutation"] != rows[1]["runtime"]["permutation"]
+
+
+def test_member_factor_multiplies_the_representative_runtime():
+    # ME_member(p) = factor * ME_representative(q): a selector of its own.
+    a = process("a", pdgs=(990, 990, 991, -991), words=((3, 1, 2, 4),))
+    member = replace(blind_member("m", (990, 990, 992, -992)), factor=Fraction(1, 2))
+    (data,) = export(replace(a, group_members=(member,)))
+    assert [row["runtime"]["factor"] for row in entries(data)] == [1, 0.5]
+    assert [row["matrix_elements"] for row in entries(data)] == [
+        [{"pdg_ids": 0, "factor": 1}],
+        [{"pdg_ids": 1, "factor": 1}],
+    ]
+
+
+def test_writer_exports_only_ungenerated_group_members(tmp_path):
+    from pyamplicol.generation.artifact_writer import _write_umami_bundle
+
+    a = process("a", pdgs=(990, 990, 991, -991), words=((3, 1, 2, 4),))
+    b = process("b", pdgs=(992, -992, 990, 990), words=((2, 3, 4, 1),))
+    groups = ProcessGroupMap()
+    groups.add_group(
+        [
+            GroupMember.identity(GroupingProcess("a", "a", a.external_pdgs, 2)),
+            replace(
+                GroupMember.identity(GroupingProcess("b", "b", b.external_pdgs, 2)),
+                basis=GroupingBasis.NUMERICAL,
+            ),
+            blind_member("m", (990, 990, 992, -992)),
+        ]
+    )
+    records = []
+    for p in (a, b):
+        path = f"processes/{p.process_id}/physics.json"
+        (tmp_path / path).parent.mkdir(parents=True)
+        (tmp_path / path).write_text(json.dumps(p.physics), encoding="utf-8")
+        records.append(
+            {
+                "id": p.process_id,
+                "expression": p.expression,
+                "color_accuracy": "lc",
+                "external_pdgs": list(p.external_pdgs),
+                "physics_path": path,
+            }
+        )
+    written = {}
+    builder = SimpleNamespace(
+        staged_path=lambda path: tmp_path / path,
+        payload_records=lambda: [],
+        add_bytes=lambda path, content, **kwargs: written.setdefault(path, content),
+    )
+    _write_umami_bundle(
+        builder,
+        processes=(),
+        process_records=records,
+        compiled_model=SimpleNamespace(to_dict=model),
+        process_groups=groups,
+    )
+    data = json.loads(written["API/umami/metadata.json"])
+    assert [p["id"] for p in data["runtime_processes"]] == ["a", "b"]
+    runtimes = {
+        m["process_id"]: m["runtime"]["process_id"]
+        for row in entries(data)
+        for m in row["members"]
+    }
+    assert runtimes == {"a": "a", "b": "b", "m": "a"}

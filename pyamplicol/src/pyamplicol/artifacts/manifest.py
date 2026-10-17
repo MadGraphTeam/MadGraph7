@@ -69,6 +69,7 @@ _PAYLOAD_ROLES = {
     "api-source",
     "api-build-file",
     "sdk-metadata",
+    "process-groups",
 }
 _RUNTIME_IDENTITY_PAYLOAD_ROLES = frozenset(
     {

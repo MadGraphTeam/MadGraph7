@@ -4,7 +4,7 @@ from __future__ import annotations
 import itertools
 import re
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import cast
 
@@ -14,6 +14,7 @@ from ..models.contracts import (
     CompiledParticleRecord,
     validate_color_representation,
 )
+from .conservation import ConservedCharges
 from .core_syntax import (
     canonical_process_key,
     split_process_set,
@@ -181,7 +182,15 @@ def expand_model_processes(
     catalog: ModelParticleCatalog,
     *,
     multiparticles: Mapping[str, Sequence[str]] | None = None,
+    charges: ConservedCharges | None = None,
 ) -> tuple[str, ...]:
+    """Concrete processes of ``process_set``, one per multiset of each side.
+
+    Side permutations describe the same matrix element, so each side is
+    enumerated as a multiset. With ``charges``, processes violating a
+    conserved additive charge of the model are dropped.
+    """
+
     aliases = {
         name: tuple(values) for name, values in catalog.default_multiparticles().items()
     }
@@ -200,11 +209,44 @@ def expand_model_processes(
             )
         if not final_slots:
             raise ValueError("pyAmpliCol processes require at least one final particle")
-        for initial in itertools.product(*initial_slots):
-            for final in itertools.product(*final_slots):
+        finals: dict[tuple[int, ...], list[tuple[str, ...]]] = {}
+        for final in _side_multisets(final_slots):
+            key = () if charges is None else charges.total(final)
+            finals.setdefault(key, []).append(final)
+        for initial in _side_multisets(initial_slots):
+            key = () if charges is None else charges.total(initial)
+            for final in finals.get(key, ()):
                 concrete = f"{' '.join(initial)} > {' '.join(final)}"
                 expanded.setdefault(concrete, None)
     return tuple(expanded)
+
+
+def _side_multisets(slots: Sequence[tuple[str, ...]]) -> Iterator[tuple[str, ...]]:
+    """Each particle multiset that fills ``slots`` once.
+
+    Slots with the same options are filled by non-decreasing option index:
+    the order in which a cartesian product meets a multiset first, unless
+    slots with different but overlapping options interleave.
+    """
+
+    groups: dict[tuple[str, ...], list[int]] = {}
+    for position, options in enumerate(slots):
+        groups.setdefault(options, []).append(position)
+    seen: set[tuple[str, ...]] = set()
+    for choice in itertools.product(
+        *(
+            itertools.combinations_with_replacement(options, len(positions))
+            for options, positions in groups.items()
+        )
+    ):
+        assignment = [""] * len(slots)
+        for positions, names in zip(groups.values(), choice, strict=True):
+            for position, name in zip(positions, names, strict=True):
+                assignment[position] = name
+        key = tuple(sorted(assignment))
+        if key not in seen:
+            seen.add(key)
+            yield tuple(assignment)
 
 
 def build_model_process_ir(

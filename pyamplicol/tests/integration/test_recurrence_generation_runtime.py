@@ -20,6 +20,10 @@ import pyamplicol.generation.service as generation_service
 from pyamplicol import CompiledModel, Generator, ModelSource, Runtime
 from pyamplicol.api.errors import ArtifactError, EvaluationError
 from pyamplicol.artifacts import inspect_artifact, load_manifest
+from pyamplicol.artifacts.process_groups import (
+    read_process_groups,
+    write_process_groups,
+)
 from pyamplicol.assets.prepared_models import (
     BUILTIN_SM_JIT_O2,
     packaged_prepared_model_path,
@@ -1636,6 +1640,17 @@ def test_builtin_lc_recurrence_artifact_loads_and_matches_compiled(
         compiled,
         points,
     )
+
+    # The image's payload inventory excludes process-groups.json, which is
+    # rewritten in place without changing the artifact identity.
+    if process_expression == _PROCESS:
+        group_map = read_process_groups(recurrence_artifact)
+        assert group_map is not None
+        group_map.analyses.append({"variant": "in-place-update"})
+        write_process_groups(recurrence_artifact, group_map)
+        reloaded = Runtime.load(recurrence_artifact)
+        assert reloaded.artifact_id == manifest.artifact_id
+        assert reloaded.evaluate(points, precision=50) == exact_before_update
 
     # The process-ready image is authenticated before decoding and must never
     # fall back to the looser JSON path after corruption.

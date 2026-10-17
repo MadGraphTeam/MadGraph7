@@ -164,6 +164,27 @@ expansion. Coupling-order names come from the selected model: the generic
 engine treats them as model-defined filtering and scheduling data and does not
 assign arbitrary names fixed QCD or electroweak meanings.
 
+### Process groups
+
+Four `process` fields control which subprocesses are recorded as sharing one
+matrix element in the artifact's `process-groups.json`:
+
+```toml
+[process]
+flavor_blind = false                 # generate one subprocess per flavour class
+consider_charge_conjugation = true   # also relate charge-conjugate subprocesses
+only_unit_multiplier = false         # accept numerical relations only with factor 1
+analyze_process_groups = "none"      # or "numerical", run after generation
+```
+
+`flavor_blind` is an assumption, not a check: members whose flavour relabelling
+is not a symmetry of the model couplings are reported with a warning.
+`consider_charge_conjugation` matters only with `flavor_blind` or numerical
+analysis. See
+[Group equivalent subprocesses](command-line-interface.md#group-equivalent-subprocesses)
+for the CLI flags and the `group-processes` command, and
+[Process Grouping](process-grouping.md) for the full description.
+
 ## Color accuracy and LC layout
 
 ```toml

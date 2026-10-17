@@ -18,6 +18,7 @@ from pyamplicol.config import (
     ConfigResolution,
     ConfigurationError,
     EvaluatorExecutionMode,
+    ProcessGroupAnalysis,
     resolve_config,
 )
 
@@ -256,6 +257,48 @@ def _add_process_options(parser: argparse.ArgumentParser) -> None:
         action="append",
         default=argparse.SUPPRESS,
         metavar="NAME=INTEGER",
+    )
+
+
+def _add_process_grouping_options(
+    parser: argparse.ArgumentParser,
+    *,
+    generation: bool,
+) -> None:
+    if generation:
+        parser.add_argument(
+            "--flavor-blind",
+            dest="process.flavor_blind",
+            action="store_true",
+            default=argparse.SUPPRESS,
+            help=(
+                "generate one representative per flavour-relabelling class and "
+                "record the others as its group members (assumed, not verified)"
+            ),
+        )
+    parser.add_argument(
+        "--consider-charge-conjugation",
+        dest="process.consider_charge_conjugation",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help="also relate processes through charge conjugation (default: on)",
+    )
+    parser.add_argument(
+        "--only-unit-multiplier",
+        dest="process.only_unit_multiplier",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="accept only numerically found relations with factor 1",
+    )
+    parser.add_argument(
+        "--analyze-process-groups",
+        dest="process.analyze_process_groups",
+        choices=tuple(ProcessGroupAnalysis),
+        default=argparse.SUPPRESS if generation else ProcessGroupAnalysis.NUMERICAL,
+        help=(
+            "search for subprocesses with equal matrix elements up to a "
+            f"rational factor (default: {'none' if generation else 'numerical'})"
+        ),
     )
 
 
@@ -659,6 +702,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_model_options(generate)
     _add_process_options(generate)
+    _add_process_grouping_options(generate, generation=True)
     _add_color_options(generate)
     _add_generation_options(generate)
     generate.add_argument(
@@ -715,6 +759,17 @@ def build_parser() -> argparse.ArgumentParser:
             "physics (potentially very large at high multiplicity)"
         ),
     )
+
+    group_processes = subparsers.add_parser(
+        "group-processes",
+        parents=[common],
+        help=(
+            "Find generated subprocesses with equal matrix elements and update "
+            "the artifact's process-groups.json in place."
+        ),
+    )
+    group_processes.add_argument("artifact", type=Path, nargs="?", default=None)
+    _add_process_grouping_options(group_processes, generation=False)
 
     model = subparsers.add_parser(
         "model",

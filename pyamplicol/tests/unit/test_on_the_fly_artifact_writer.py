@@ -18,6 +18,10 @@ from pyamplicol.api.requests import ModelSource, ProcessRequest, ProcessSet
 from pyamplicol.api.services import Generator
 from pyamplicol.artifacts import inspect_artifact, load_manifest
 from pyamplicol.artifacts import inspection as artifact_inspection
+from pyamplicol.artifacts.process_groups import (
+    initial_process_groups,
+    read_process_groups,
+)
 from pyamplicol.color import build_color_plan
 from pyamplicol.config import (
     Action,
@@ -39,6 +43,7 @@ from pyamplicol.generation.evaluator_container import (
     PacbinReader,
     write_pacbin_atomic,
 )
+from pyamplicol.generation.process_grouping import GroupingBasis, GroupMember
 from pyamplicol.generation.progress import PhaseHandle
 from pyamplicol.generation.recurrence_physics import (
     build_on_the_fly_runtime_metadata,
@@ -797,6 +802,82 @@ def test_on_the_fly_writer_append_skips_structural_proofs_for_complete_set(
     assert [
         process.execution_mode for process in inspect_artifact(artifact).processes
     ] == ["on-the-fly", "on-the-fly"]
+
+
+def test_writer_records_process_groups_and_appended_processes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _prepare_writer_identity(monkeypatch)
+    source_path = _prepared_model_path()
+    source = ModelSource.from_path(source_path)
+    compiled = load_compiled_model(source_path)
+    artifact = tmp_path / "artifact"
+    assumed = GroupMember(
+        process_id="u_ubar_to_z",
+        expression="u u~ > z",
+        pdgs=(2, -2, 23),
+        initial_count=2,
+        permutation=(0, 1, 2),
+        basis=GroupingBasis.FLAVOR_BLIND,
+        generated=False,
+    )
+    write_schema_v3_artifact(
+        artifact,
+        mode="error",
+        source=source,
+        compiled_model=compiled,
+        configuration=_configuration(),
+        processes=(_process_artifact(tmp_path, runtime_name="first.pacbin"),),
+        timings={"total": 0.1},
+        api_bundle_hook=None,
+        process_groups=initial_process_groups(
+            [(_PROCESS_ID, "d d~ > z", (1, -1, 23))], {_PROCESS_ID: [assumed]}
+        ),
+    )
+    stored = read_process_groups(artifact)
+    assert stored is not None
+    assert [(member.process_id, member.generated) for member in stored.members()] == [
+        (_PROCESS_ID, True),
+        ("u_ubar_to_z", False),
+    ]
+
+    # Generating an assumed member makes it a representative of its own.
+    write_schema_v3_artifact(
+        artifact,
+        mode="append",
+        source=source,
+        compiled_model=compiled,
+        configuration=_configuration(),
+        processes=(
+            _process_artifact(
+                tmp_path,
+                runtime_name="second.pacbin",
+                process_id="u_ubar_to_z",
+                expression="u u~ > z",
+            ),
+        ),
+        timings={"total": 0.2},
+        api_bundle_hook=None,
+    )
+    manifest = load_manifest(artifact, verify_payloads=True)
+    assert [
+        (record.role, record.media_type)
+        for record in manifest.payloads
+        if record.path == "process-groups.json"
+    ] == [("process-groups", "application/json")]
+    appended = read_process_groups(artifact)
+    assert appended is not None
+    assert {
+        identifier: [
+            (member.process_id, member.factor, member.permutation, member.basis)
+            for member in group.members
+        ]
+        for identifier, group in appended.groups.items()
+    } == {
+        _PROCESS_ID: [(_PROCESS_ID, 1, (0, 1, 2), GroupingBasis.IDENTITY)],
+        "u_ubar_to_z": [("u_ubar_to_z", 1, (0, 1, 2), GroupingBasis.IDENTITY)],
+    }
 
 
 @pytest.mark.parametrize(

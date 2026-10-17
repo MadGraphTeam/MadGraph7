@@ -34,6 +34,16 @@ class _RuntimeSchemaStub:
         return {"stages": []}
 
 
+def _process_artifact_stub(expanded: object) -> SimpleNamespace:
+    """The process fields that the artifact writer reads besides payloads."""
+
+    return SimpleNamespace(
+        process_id=expanded.request.name,  # type: ignore[attr-defined]
+        expression=expanded.request.expression,  # type: ignore[attr-defined]
+        external_pdgs=tuple(leg.pdg for leg in expanded.process_ir.legs),  # type: ignore[attr-defined]
+    )
+
+
 def test_parallel_process_phase_overlaps_and_preserves_input_order() -> None:
     rendezvous = Barrier(2)
     state_lock = Lock()
@@ -337,9 +347,7 @@ def test_licensed_multiparticle_expansion_drives_workers_and_provenance(
         _phase: object,
     ) -> SimpleNamespace:
         materialization_threads.append(get_ident())
-        return SimpleNamespace(
-            process_id=process.compiled.expanded.request.name  # type: ignore[union-attr]
-        )
+        return _process_artifact_stub(process.compiled.expanded)  # type: ignore[union-attr]
 
     monkeypatch.setattr(
         backend,
@@ -476,8 +484,8 @@ def test_generation_prunes_unsupported_multiparticle_tree_channel(
     monkeypatch.setattr(
         backend,
         "_materialize_evaluator",
-        lambda process, _model, _root, _phase: SimpleNamespace(
-            process_id=process.compiled.expanded.request.name,
+        lambda process, _model, _root, _phase: _process_artifact_stub(
+            process.compiled.expanded
         ),
     )
     captured: dict[str, object] = {}
@@ -565,9 +573,8 @@ def test_eager_generation_never_enters_compiled_evaluator_lane(
     eager_processes: list[str] = []
 
     def construct_eager(process: object, *_args: object) -> SimpleNamespace:
-        process_id = process.expanded.request.name  # type: ignore[union-attr]
-        eager_processes.append(process_id)
-        return SimpleNamespace(process_id=process_id)
+        eager_processes.append(process.expanded.request.name)  # type: ignore[union-attr]
+        return _process_artifact_stub(process.expanded)  # type: ignore[union-attr]
 
     monkeypatch.setattr(backend, "_construct_eager_artifact", construct_eager)
 

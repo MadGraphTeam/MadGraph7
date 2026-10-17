@@ -25,6 +25,7 @@ drives the typed [Python API](python-api.md).
 | `profile` | Calibrate and measure the optimized total path | `pyamplicol profile artifacts/builtin_ddbar_to_zg --target-runtime 1` |
 | `benchmark` | Compatibility alias for `profile` | Existing cards use `action = "benchmark"` |
 | `inspect` | Show artifact and process metadata without running it | `pyamplicol inspect artifacts/builtin_ddbar_to_zg` |
+| `group-processes` | Find generated subprocesses with equal matrix elements | `pyamplicol group-processes artifacts/pp_jj` |
 | `model inspect` | Summarize a built-in, JSON, UFO, or compiled model | `pyamplicol model inspect models/json/sm/sm.json` |
 | `model compile` | Compile portable model IR or a prepared kernel bundle | See [Models and Processes](models-and-processes.md) |
 | `model processes` | Expand and inspect a process request without generating it | `pyamplicol model processes "p p > all all" --model built-in-sm` |
@@ -108,6 +109,11 @@ Useful generation options include:
 - `--name NAME` to name a request;
 - `--multiparticle 'p=d,d~,g'` to define a multiparticle label;
 - `--flavor-scheme N` and `--max-quark-lines N` to constrain expansion;
+- `--flavor-blind` to generate one subprocess per flavour-relabelling class
+  (see [Group equivalent subprocesses](#group-equivalent-subprocesses));
+- `--analyze-process-groups {none,numerical}`, `--only-unit-multiplier`, and
+  `--[no-]consider-charge-conjugation` to search the generated subprocesses
+  for equal matrix elements;
 - `--color-accuracy {lc,nlc,full}`;
 - `--color-contraction {direct,symmetric-group-fft}`;
 - `--fft {trace,adjoint}` as a shorthand selecting symmetric-group FFT and its basis;
@@ -231,6 +237,37 @@ the ordering contract.
 Inspection does not execute evaluator state. Human output uses compact colored
 tables; machine output is available with `--json`.
 
+## Group equivalent subprocesses
+
+Every artifact records in `process-groups.json` which subprocesses share one
+matrix element, up to a rational factor and a leg permutation. By default each
+generated subprocess is its own group.
+
+`generate --flavor-blind` assumes that subprocesses related by a relabelling of
+flavours with equal spin, colour, mass, and width (and, unless
+`--no-consider-charge-conjugation`, by charge conjugation) are equal. Only one
+representative per class is generated; the others are recorded as its members
+and exported to UMAMI through the representative's runtime. The assumption is
+not verified: a warning names the members whose relabelling is not a symmetry
+of the model couplings, for example electroweak couplings of different quark
+flavours.
+
+The numerical analysis compares generated subprocesses with equal external
+particle types at three random phase-space points and merges those whose
+resolved components agree up to one common rational factor:
+
+```console
+pyamplicol generate "p p > j j" artifacts/pp_jj --analyze-process-groups numerical
+pyamplicol group-processes artifacts/pp_jj --only-unit-multiplier
+```
+
+`group-processes` runs the numerical analysis (its default) on an existing
+artifact and rewrites `process-groups.json` in place; the artifact ID and the
+UMAMI export are unchanged. `--only-unit-multiplier` accepts only relations
+with factor 1. Subprocesses generated with a selected helicity or colour subset
+are never grouped numerically. [Process Grouping](process-grouping.md)
+describes the relations, the warnings and the file format in full.
+
 ## Evaluate
 
 Evaluate a momenta file with optional parameter updates:
@@ -255,7 +292,7 @@ Global selectors may be repeated:
 
 ```console
 pyamplicol evaluate artifacts/pp_zjj \
-  --process p_p_to_z_j_j_4 \
+  --process p_p_to_z_j_j_3 \
   --helicity 'h:-1,+1,-1,+1,+1' \
   --color-flow 1 \
   --momenta data/pp_zjj_momenta.json

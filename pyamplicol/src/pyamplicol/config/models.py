@@ -22,11 +22,17 @@ class Action(StrEnum):
     MODEL_INSPECT = "model-inspect"
     MODEL_COMPILE = "model-compile"
     MODEL_PROCESSES = "model-processes"
+    GROUP_PROCESSES = "group-processes"
 
 
 class CouplingOrderPolicy(StrEnum):
     MINIMAL = "minimal"
     EXPLICIT = "explicit"
+
+
+class ProcessGroupAnalysis(StrEnum):
+    NONE = "none"
+    NUMERICAL = "numerical"
 
 
 class ColorAccuracy(StrEnum):
@@ -338,6 +344,13 @@ class ProcessConfig:
         default_factory=dict,
         metadata=_setting("map_int", dynamic_kind="int"),
     )
+    flavor_blind: bool = field(default=False, metadata=_setting("bool"))
+    consider_charge_conjugation: bool = field(default=True, metadata=_setting("bool"))
+    only_unit_multiplier: bool = field(default=False, metadata=_setting("bool"))
+    analyze_process_groups: ProcessGroupAnalysis = field(
+        default=ProcessGroupAnalysis.NONE,
+        metadata=_setting("str", choices=tuple(ProcessGroupAnalysis)),
+    )
 
     def __post_init__(self) -> None:
         if isinstance(self.entries, (str, bytes)):
@@ -414,6 +427,22 @@ class ProcessConfig:
             _signed_integer_mapping(
                 self.selected_source_helicities,
                 "process.selected_source_helicities",
+            ),
+        )
+        for name in (
+            "flavor_blind",
+            "consider_charge_conjugation",
+            "only_unit_multiplier",
+        ):
+            if not isinstance(getattr(self, name), bool):
+                raise ConfigurationError(f"process.{name} must be a boolean")
+        object.__setattr__(
+            self,
+            "analyze_process_groups",
+            _enum(
+                self.analyze_process_groups,
+                ProcessGroupAnalysis,
+                "process.analyze_process_groups",
             ),
         )
 
@@ -1159,6 +1188,7 @@ __all__ = [
     "OutputFormat",
     "ProcessConfig",
     "ProcessEntry",
+    "ProcessGroupAnalysis",
     "ProgressMode",
     "RecurrenceEvaluatorConfig",
     "RelationDiscoveryMode",

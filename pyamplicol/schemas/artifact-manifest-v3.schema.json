@@ -506,7 +506,8 @@
             "validation-momenta",
             "api-source",
             "api-build-file",
-            "sdk-metadata"
+            "sdk-metadata",
+            "process-groups"
           ]
         },
         "media_type": {

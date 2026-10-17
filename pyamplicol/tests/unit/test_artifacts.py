@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import json
+import threading
 from pathlib import Path
 
 import pytest
@@ -21,7 +22,17 @@ from pyamplicol.artifacts import (
     normalize_relative_path,
 )
 from pyamplicol.artifacts.manifest import PORTABLE_64LE_TARGET
+from pyamplicol.artifacts.process_groups import (
+    initial_process_groups,
+    read_process_groups,
+    write_process_groups,
+)
 from pyamplicol.generation.evaluator_container import PacbinReader
+from pyamplicol.generation.process_grouping import (
+    GroupingBasis,
+    GroupMember,
+    ProcessGroupMap,
+)
 
 
 def _producer(
@@ -1003,3 +1014,84 @@ def test_manifest_rejects_alias_pdg_order_inconsistent_with_permutation(
 
     with pytest.raises(ArtifactError, match="does not match external_permutation"):
         load_manifest(root, verify_payloads=False)
+
+
+def _flavor_blind_group_map() -> ProcessGroupMap:
+    return initial_process_groups(
+        [("dd_to_z", "d d~ > z", (1, -1, 23))],
+        {
+            "dd_to_z": [
+                GroupMember(
+                    process_id="uu_to_z",
+                    expression="u u~ > z",
+                    pdgs=(2, -2, 23),
+                    initial_count=2,
+                    permutation=(0, 1, 2),
+                    basis=GroupingBasis.FLAVOR_BLIND,
+                    generated=False,
+                    warning="Z couplings differ between d and u",
+                )
+            ]
+        },
+    )
+
+
+def test_process_groups_are_rewritten_in_place_without_changing_identity(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "artifact"
+    _build(root)
+    assert read_process_groups(root) is None
+    before = load_manifest(root)
+
+    group_map = _flavor_blind_group_map()
+    write_process_groups(root, group_map)
+    first = load_manifest(root, verify_payloads=True)
+    stored = read_process_groups(root)
+    assert stored is not None
+    assert stored.as_document() == group_map.as_document()
+    assert first.artifact_id == before.artifact_id
+    assert [
+        (record.path, record.role, record.media_type) for record in first.payloads
+    ] == [
+        ("physics/process.json", "runtime-physics", "application/json"),
+        ("process-groups.json", "process-groups", "application/json"),
+    ]
+
+    stored.analyses.append({"analysis": "numerical", "merged": 0})
+    write_process_groups(root, stored)
+    second = load_manifest(root, verify_payloads=True)
+    assert second.artifact_id == before.artifact_id
+    assert second.payloads[1].sha256 != first.payloads[1].sha256
+    reread = read_process_groups(root)
+    assert reread is not None
+    assert reread.analyses == [{"analysis": "numerical", "merged": 0}]
+
+
+def test_process_groups_must_list_each_artifact_process_once(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "artifact"
+    _build(root)
+    unrelated = initial_process_groups([("uu_to_z", "u u~ > z", (2, -2, 23))])
+    with pytest.raises(ArtifactError, match="missing: \\['dd_to_z'\\]"):
+        write_process_groups(root, unrelated)
+    assert read_process_groups(root) is None
+
+
+def test_process_group_update_waits_for_the_generation_lock(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "artifact"
+    _build(root)
+    writer = threading.Thread(
+        target=write_process_groups, args=(root, _flavor_blind_group_map())
+    )
+    with ArtifactTransaction(root, mode="append"):
+        writer.start()
+        writer.join(timeout=0.2)
+        assert writer.is_alive()
+        assert read_process_groups(root) is None
+    writer.join()
+    assert read_process_groups(root) is not None
+    load_manifest(root, verify_payloads=True)

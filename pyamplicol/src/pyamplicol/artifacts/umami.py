@@ -3,8 +3,11 @@
 
 Identical final particles permit relabelling of physical colour contributions.
 Other equivalences require generation certificates or exact structural keys;
-equal masses or parameter defaults are not a proof. Integration multiplicities
-live in the JSON, not in the C provider.
+equal masses or parameter defaults are not a proof. The exception is the
+explicit ``--flavor-blind`` assumption: its ungenerated group members are
+exported through their representative's runtime and recorded in
+``grouping.assumptions``. Integration multiplicities live in the JSON, not in
+the C provider.
 """
 
 from __future__ import annotations
@@ -14,9 +17,17 @@ import math
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .api_bundle import ApiBundlePayload
+
+if TYPE_CHECKING:
+    from ..generation.process_grouping import GroupMember
+
+FLAVOR_BLIND_ASSUMPTION = (
+    "flavor-blind matrix elements: ungenerated process-group members are "
+    "evaluated through their relabelled representative (assumed, not proven)"
+)
 
 
 @dataclass(frozen=True)
@@ -34,6 +45,9 @@ class UmamiProcessInput:
     # Used when re-exporting an appended compact OTF process: its previous SDK
     # contains authoritative physical LHE tags, while physics.json stays compact.
     color_flows: Mapping[str, Sequence[Sequence[int]]] | None = None
+    # Ungenerated group members evaluated through this process's runtime:
+    # ME_member(p) = factor * ME_this(q) with q[r] = p[permutation[r]].
+    group_members: tuple[GroupMember, ...] = ()
 
 
 def _records(value: Any) -> list[Mapping[str, Any]]:
@@ -139,6 +153,21 @@ def _permutation(values: Sequence[int], count: int) -> tuple[int, ...]:
     if sorted(result) != list(range(count)):
         raise ValueError("UMAMI external permutation is not a complete bijection")
     return result
+
+
+def _member_permutation(
+    member: GroupMember, count: int, incoming: int
+) -> tuple[int, ...]:
+    """The ``representative leg -> member leg`` map; incoming swaps are allowed."""
+    permutation = _permutation(member.permutation, count)
+    if len(member.pdgs) != count or any(
+        (leg < incoming) != (target < incoming)
+        for leg, target in enumerate(permutation)
+    ):
+        raise ValueError(
+            f"UMAMI group member {member.process_id!r} must keep initial legs initial"
+        )
+    return permutation
 
 
 def _color_flow(
@@ -394,6 +423,8 @@ def _merge_flavour_orbits(data):
 
     Do not use runtime reflection reuse to further collapse same-flavour colour
     orders: their integration partition was already constructed physically.
+    A merged flavour is evaluated by the kept selector, so the complete runtime
+    evaluation (permutation, factor and colour tags included) must agree.
     """
     candidates = {}
     incoming = data["provider"]["incoming_count"]
@@ -405,6 +436,9 @@ def _merge_flavour_orbits(data):
             key = (
                 runtime["process_index"],
                 runtime["color_id"],
+                runtime["color_index"],
+                tuple(runtime["permutation"]),
+                runtime["factor"],
                 tuple(data["pdg_ids"][next(iter(pdgs))][:incoming]),
             )
             previous = next(
@@ -450,9 +484,38 @@ def build_umami_metadata(
     compiled_model: Mapping[str, Any],
     artifact_id: str | None = None,
 ) -> tuple[dict[str, Any], ...]:
-    """Return separate, directly consumable metadata documents per provider."""
+    """Return separate, directly consumable metadata documents per provider.
+
+    Each provider exports sources ``(process, member)``: a generated process
+    (``member`` is None) or one of its ungenerated group members, evaluated
+    through the process's runtime without a runtime row of its own.
+    """
     particles, parameters, defaults = _model_tables(compiled_model)
-    groups: list[tuple[tuple, list[UmamiProcessInput], list[tuple[str, float]]]] = []
+    groups: list[tuple[tuple, list[tuple], list[tuple[str, float]]]] = []
+
+    def physical(source, incoming: int) -> tuple:
+        process, member = source
+        pdgs = process.external_pdgs if member is None else tuple(member.pdgs)
+        return pdgs[:incoming], tuple(sorted(pdgs[incoming:]))
+
+    def place(signature, source, masses, preferred=None):
+        # Alternative selections of the same external process are not additive.
+        key = physical(source, signature[1])
+        compatible = next(
+            (
+                g
+                for g in ([preferred] if preferred else []) + groups
+                if g[0] == signature
+                and all(physical(other, signature[1]) != key for other in g[1])
+            ),
+            None,
+        )
+        if compatible is None:
+            compatible = (signature, [], masses)
+            groups.append(compatible)
+        compatible[1].append(source)
+        return compatible
+
     for process in processes:
         external = _records(process.physics.get("external_particles"))
         if not external or len(external) != len(process.external_pdgs):
@@ -483,8 +546,11 @@ def build_umami_metadata(
             _mass(particles[pdg], parameters, process_defaults)
             for pdg in process.external_pdgs
         ]
+        # The available helicity set, not its enumeration order.
         helicity_domain = tuple(
-            tuple(h["values"]) for h in _records(process.physics.get("helicities"))
+            sorted(
+                tuple(h["values"]) for h in _records(process.physics.get("helicities"))
+            )
         )
         signature = (
             len(external),
@@ -493,32 +559,31 @@ def build_umami_metadata(
             tuple(masses),
             helicity_domain,
         )
-        # Alternative selections of the same external process are not additive.
-        compatible = next(
-            (
-                g
-                for g in groups
-                if g[0] == signature
-                and all(
-                    p.external_pdgs[:incoming] != process.external_pdgs[:incoming]
-                    or sorted(p.external_pdgs[incoming:])
-                    != sorted(process.external_pdgs[incoming:])
-                    for p in g[1]
-                )
-            ),
-            None,
-        )
-        if compatible is None:
-            groups.append((signature, [process], masses))
-        else:
-            compatible[1].append(process)
+        home = place(signature, (process, None), masses)
+        for member in process.group_members:
+            # A member's legs carry its own masses; a member whose relabelling
+            # moves unequal masses needs a provider of its own.
+            relation = _member_permutation(member, len(external), incoming)
+            member_masses = [
+                _mass(particles[int(pdg)], parameters, process_defaults)
+                for pdg in member.pdgs
+            ]
+            domain = tuple(
+                sorted(tuple(_relabelled(v, relation)) for v in helicity_domain)
+            )
+            place(
+                (*signature[:3], tuple(member_masses), domain),
+                (process, member),
+                member_masses,
+                home,
+            )
     documents = []
-    for index, (_, members, masses) in enumerate(groups):
+    for index, (_, sources, masses) in enumerate(groups):
         provider_id = f"p{index}"
         documents.append(
             _build_provider(
                 provider_id,
-                members,
+                sources,
                 masses,
                 compiled_model,
                 particles,
@@ -531,12 +596,18 @@ def build_umami_metadata(
 
 
 def _build_provider(
-    provider_id, processes, masses, model, particles, parameters, single
+    provider_id, sources, masses, model, particles, parameters, single
 ):
-    first_external = _records(processes[0].physics["external_particles"])
+    first_external = _records(sources[0][0].physics["external_particles"])
     count = len(first_external)
     incoming = sum(p["role"] == "initial" for p in first_external)
     identity = list(range(count))
+    assumptions = [
+        "identical-final-particle permutation-invariant observables and cuts",
+        "final-state flavour-blind observables and cuts",
+    ]
+    if any(member is not None for _, member in sources):
+        assumptions.append(FLAVOR_BLIND_ASSUMPTION)
     data: dict[str, Any] = {
         "kind": "pyamplicol-umami-metadata",
         "schema_version": 1,
@@ -547,14 +618,9 @@ def _build_provider(
             "incoming_count": incoming,
             "masses": [m[1] for m in masses],
             "mass_parameters": [m[0] for m in masses],
-            "color_accuracy": processes[0].color_accuracy,
+            "color_accuracy": sources[0][0].color_accuracy,
         },
-        "grouping": {
-            "assumptions": [
-                "identical-final-particle permutation-invariant observables and cuts",
-                "final-state flavour-blind observables and cuts",
-            ],
-        },
+        "grouping": {"assumptions": assumptions},
         "channels": [],
         "pdg_ids": [],
         "color_orders": [],
@@ -572,44 +638,57 @@ def _build_provider(
     channel_patterns: dict[tuple, list[int]] = {}
     physical_count = 0
     runtime_helicities: list[list[list[int]]] = []
-    for process_index, process in enumerate(processes):
+    runtime_indices: dict[str, int] = {}
+    for process, group_member in sources:
         physics = process.physics
         external = _records(physics["external_particles"])
         labels = {int(p["label"]): i for i, p in enumerate(external)}
-        alpha_s = _alpha_s_name(model, physics, parameters)
         helicities = _records(physics.get("helicities"))
-        data["runtime_processes"].append(
-            {
-                "id": process.process_id,
-                "expression": process.expression,
-                "pdgs": list(process.external_pdgs),
-                "color_accuracy": process.color_accuracy,
-                "alpha_s_parameter": alpha_s,
-                "parameters": [
-                    {
-                        **p,
-                        **_slha_reference(parameters.get(p["name"], {})),
-                        "is_complex": (
-                            parameters.get(p["name"], {}).get("parameter_type")
-                            == "complex"
-                            or p.get("kind") == "coupling"
-                            or p.get("default_imaginary", 0.0) != 0.0
-                        ),
-                    }
-                    for p in _records(physics.get("model_parameters"))
-                ],
-                "helicity_ids": [h["id"] for h in helicities],
-                "coverage": dict(physics.get("coverage", {})),
-            }
-        )
-        data["aliases"].extend(
-            {"process_id": process.process_id, **dict(a)} for a in process.aliases
-        )
+        if process.process_id not in runtime_indices:
+            runtime_indices[process.process_id] = len(data["runtime_processes"])
+            data["runtime_processes"].append(
+                {
+                    "id": process.process_id,
+                    "expression": process.expression,
+                    "pdgs": list(process.external_pdgs),
+                    "color_accuracy": process.color_accuracy,
+                    "alpha_s_parameter": _alpha_s_name(model, physics, parameters),
+                    "parameters": [
+                        {
+                            **p,
+                            **_slha_reference(parameters.get(p["name"], {})),
+                            "is_complex": (
+                                parameters.get(p["name"], {}).get("parameter_type")
+                                == "complex"
+                                or p.get("kind") == "coupling"
+                                or p.get("default_imaginary", 0.0) != 0.0
+                            ),
+                        }
+                        for p in _records(physics.get("model_parameters"))
+                    ],
+                    "helicity_ids": [h["id"] for h in helicities],
+                    "coverage": dict(physics.get("coverage", {})),
+                }
+            )
+            data["aliases"].extend(
+                {"process_id": process.process_id, **dict(a)} for a in process.aliases
+            )
+            runtime_helicities.append([list(h["values"]) for h in helicities])
+        process_index = runtime_indices[process.process_id]
+        source_id, pdgs = process.process_id, process.external_pdgs
+        relation = None
+        if group_member is not None:
+            # Representative leg r is the member's leg relation[r]: helicity
+            # values and colour tags move with it, momenta through the runtime.
+            relation = _member_permutation(group_member, count, incoming)
+            source_id, pdgs = group_member.process_id, tuple(group_member.pdgs)
+            helicities = [
+                {**h, "values": _relabelled(h["values"], relation)} for h in helicities
+            ]
         # Helicity values in the input leg order, interned per contribution
         # once its final-state legs are relabelled to the channel.
         helicity_groups: dict[str, list[list[int]]] = {}
         helicity_mappings = []
-        runtime_helicities.append([list(h["values"]) for h in helicities])
         for h in helicities:
             key = str(h.get("representative_id", h["id"]))
             helicity_groups.setdefault(key, []).append(list(h["values"]))
@@ -642,6 +721,21 @@ def _build_provider(
                 if process.color_flows is not None
                 else _color_flow(word, external, particles, sectors_by_word.get(word))
             )
+            physical_color = None if contracted else color_id
+            if relation is not None:
+                # Charge conjugation reverses the word and swaps the colour
+                # and anticolour tags of every leg.
+                word_slots = [relation[slot] for slot in order[: len(word)]]
+                if group_member.conjugated:
+                    word_slots.reverse()
+                order = word_slots + [i for i in identity if i not in word_slots]
+                if flow is not None:
+                    if group_member.conjugated:
+                        flow = [pair[::-1] for pair in flow]
+                    flow = _relabelled(flow, relation)
+                    physical_color = _flow_id(
+                        [int(external[slot]["label"]) for slot in word_slots]
+                    )
             color_index = None if flow is None else _intern(data["color_flows"], flow)
             rep_color, perm = replay.get(color_id, (color_id, tuple(identity)))
             runtime = {
@@ -660,10 +754,16 @@ def _build_provider(
                     # The proof key already includes normalization and colour
                     # contraction; exact cross-flavour equality needs no cuts.
                     structural_representatives[semantic_key] = dict(runtime)
+            if relation is not None:
+                runtime = {
+                    **runtime,
+                    "permutation": [relation[slot] for slot in runtime["permutation"]],
+                    "factor": runtime["factor"] * float(group_member.factor),
+                }
             member = {
-                "process_id": process.process_id,
-                "pdgs": list(process.external_pdgs),
-                "color_id": None if contracted else color_id,
+                "process_id": source_id,
+                "pdgs": list(pdgs),
+                "color_id": physical_color,
                 "color_flows": color_index,
                 "runtime": dict(runtime),
                 "factor": 1.0,
@@ -671,12 +771,12 @@ def _build_provider(
             orbit_key, aligned_order = _identical_orbit(
                 order,
                 flow,
-                process.external_pdgs,
+                pdgs,
                 incoming,
                 helicities,
                 len(word),
             )
-            orbit = (process_index, orbit_key)
+            orbit = (source_id, orbit_key)
             if orbit in orbit_entries:
                 entry, representative_order, representative_runtime, relabel = (
                     orbit_entries[orbit]
@@ -691,7 +791,7 @@ def _build_provider(
                     ],
                 }
                 pdg_index = _intern(
-                    data["pdg_ids"], _relabelled(list(process.external_pdgs), relabel)
+                    data["pdg_ids"], _relabelled(list(pdgs), relabel)
                 )
                 _add_terms(entry, [{"pdg_ids": pdg_index, "factor": 1.0}])
                 entry["members"].append(member)
@@ -713,7 +813,7 @@ def _build_provider(
             if entry_color_index is not None:
                 entry_runtime["color_index"] = entry_color_index
             pdg_index = _intern(
-                data["pdg_ids"], _relabelled(list(process.external_pdgs), relabel)
+                data["pdg_ids"], _relabelled(list(pdgs), relabel)
             )
             entry = {
                 "matrix_elements": [{"pdg_ids": pdg_index, "factor": 1.0}],
@@ -832,6 +932,7 @@ def umami_bundle_payloads(
 
 
 __all__ = [
+    "FLAVOR_BLIND_ASSUMPTION",
     "UmamiProcessInput",
     "build_umami_metadata",
     "umami_bundle_payloads",

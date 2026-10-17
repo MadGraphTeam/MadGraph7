@@ -23,6 +23,7 @@ if TYPE_CHECKING:
         ModelCompilationIssue,
         ModelCompilationPhase,
     )
+    from .process_groups import group_processes
     from .protocols import (
         BenchmarkBackend,
         BenchmarkFactory,
@@ -123,6 +124,7 @@ __all__ = [
     "WarmUpResult",
     "benchmark",
     "generate",
+    "group_processes",
     "install_backend_factories",
     "load",
 ]
@@ -199,6 +201,7 @@ _PUBLIC_EXPORTS = {
     **{name: (".requests", name) for name in _REQUEST_EXPORTS},
     **{name: (".results", name) for name in _RESULT_EXPORTS},
     **{name: (".services", name) for name in _SERVICE_EXPORTS},
+    "group_processes": (".process_groups", "group_processes"),
 }
 
 

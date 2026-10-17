@@ -331,7 +331,8 @@ def parse_override(
     if not value_text:
         raise ConfigurationError(f"override {path!r} has no value")
 
-    if value_text.lower() in ("null", "none"):
+    # A choice spelled "none" (process.analyze_process_groups) is not null.
+    if value_text.lower() in ("null", "none") and value_text not in item.choices:
         parsed: object = None
     else:
         try:

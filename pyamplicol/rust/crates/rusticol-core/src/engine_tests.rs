@@ -876,6 +876,7 @@ fn stored_alias_selection(
         external_pdgs: alias.external_pdgs.clone(),
         external_permutation: alias.external_permutation.clone(),
         inferred_permutation: false,
+        process_group: None,
     }
 }
 
@@ -1046,6 +1047,7 @@ fn final_state_alias_three_cycle_remaps_lc_metadata_and_selectors() {
         point_selector_scratch: PointSelectorExecutionScratch::default(),
         selector_simd_lane_width: 1,
         correlated: None,
+        process_group: None,
     };
     let metadata = runtime.metadata();
     assert_eq!(metadata.external_pdg_order, vec![1, -1, 22, 23, 21]);
@@ -1066,6 +1068,198 @@ fn final_state_alias_three_cycle_remaps_lc_metadata_and_selectors() {
         exact_state["external_permutation"],
         serde_json::json!([0, 1, 3, 4, 2])
     );
+}
+
+fn conjugated_member_selection(physics: &ProcessPhysicsV1) -> crate::ArtifactSelection {
+    let mut selection = stored_alias_selection(physics, &three_cycle_alias());
+    selection.process.aliases.clear();
+    selection.alias = None;
+    selection.requested_id = "s_sbar_member".to_string();
+    selection.public_expression = "s~ s > a z g".to_string();
+    selection.external_pdgs = vec![-3, 3, 22, 23, 21];
+    selection.external_permutation = vec![1, 0, 3, 4, 2];
+    selection.process_group = Some(crate::ProcessGroupRelation {
+        factor_numerator: 3,
+        factor_denominator: 2,
+        conjugated: true,
+        external_particles: ["s~", "s", "a", "z", "g"].map(str::to_string).to_vec(),
+    });
+    selection
+}
+
+#[test]
+fn process_group_member_relabels_flavours_and_reverses_lc_words() {
+    let representative = alias_test_physics("lc");
+    let selection = conjugated_member_selection(&representative);
+    let execution = apply_process_permutation_metadata(representative, &selection).unwrap();
+    let public = apply_process_group_metadata(&execution, &selection).unwrap();
+
+    assert_eq!(public.process_id, "s_sbar_member");
+    assert_eq!(public.process, "s~ s > a z g");
+    assert_eq!(
+        public
+            .external_particles
+            .iter()
+            .map(|particle| (particle.particle.as_str(), particle.pdg))
+            .collect::<Vec<_>>(),
+        [("s~", -3), ("s", 3), ("a", 22), ("z", 23), ("g", 21)]
+    );
+    // Execution keeps the representative flavours in the public order.
+    assert_eq!(
+        execution
+            .external_particles
+            .iter()
+            .map(|particle| particle.pdg)
+            .collect::<Vec<_>>(),
+        [-1, 1, 22, 23, 21]
+    );
+    assert_eq!(execution.helicities, public.helicities);
+    for (execution_color, public_color) in execution
+        .color_components
+        .iter()
+        .zip(&public.color_components)
+    {
+        let (
+            PhysicsColorComponentV1::LcFlow(execution_flow),
+            PhysicsColorComponentV1::LcFlow(public_flow),
+        ) = (execution_color, public_color)
+        else {
+            panic!("expected LC flows");
+        };
+        let mut reversed = execution_flow.word.clone();
+        reversed.reverse();
+        assert_eq!(public_flow.word, reversed);
+        assert_eq!(
+            public_flow.id,
+            format!(
+                "flow:{}",
+                reversed
+                    .iter()
+                    .map(usize::to_string)
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+        );
+        assert_eq!(
+            charge_conjugate_color_id(&public_flow.id),
+            execution_flow.id
+        );
+        assert_eq!(
+            charge_conjugate_color_id(&execution_flow.representative_id),
+            public_flow.representative_id
+        );
+    }
+    assert_eq!(
+        public.reduction.groups[0].physical_color_ids,
+        execution.reduction.groups[0]
+            .physical_color_ids
+            .iter()
+            .map(|id| charge_conjugate_color_id(id).into_owned())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(charge_conjugate_color_id("flow:singlet"), "flow:singlet");
+    assert_eq!(charge_conjugate_color_id("flow:7"), "flow:7");
+    assert_eq!(
+        charge_conjugate_color_id("color:contracted"),
+        "color:contracted"
+    );
+
+    let contracted = alias_test_physics("full");
+    let selection = conjugated_member_selection(&contracted);
+    let execution = apply_process_permutation_metadata(contracted, &selection).unwrap();
+    let public = apply_process_group_metadata(&execution, &selection).unwrap();
+    assert_eq!(public.color_components, execution.color_components);
+    assert_eq!(public.reduction, execution.reduction);
+}
+
+#[test]
+fn process_group_runtime_scales_outputs_and_translates_color_ids() {
+    let representative = alias_test_physics("lc");
+    let selection = conjugated_member_selection(&representative);
+    let execution_physics = apply_process_permutation_metadata(representative, &selection).unwrap();
+    let public_physics = apply_process_group_metadata(&execution_physics, &selection).unwrap();
+    let mut execution = empty_generic_runtime();
+    execution.external_count = 5;
+    execution.physics = Some(Arc::new(
+        PhysicsRuntime::new(execution_physics.clone()).unwrap(),
+    ));
+    let mut runtime = NativeRuntime {
+        root: PathBuf::new(),
+        artifact_id: "0".repeat(64),
+        runtime: execution,
+        execution_lane: NativeExecutionLane::Compiled,
+        process: selection.public_expression.clone(),
+        process_key: selection.requested_id.clone(),
+        representative_process_id: "representative".to_string(),
+        external_permutation: selection.external_permutation.clone(),
+        input_crossing_map: None,
+        permutation_alias_of: Some("p0".to_string()),
+        final_state_permutation_alias_of: None,
+        process_group: None,
+        physics_v1: native_runtime::LazyProcessPhysicsV1::loaded(public_physics.clone()),
+        warnings_muted: false,
+        warned_kinds: BTreeSet::new(),
+        pending_warnings: Vec::new(),
+        point_selector_scratch: PointSelectorExecutionScratch::default(),
+        selector_simd_lane_width: 1,
+        correlated: None,
+    };
+
+    // Without a relation, values and IDs pass through unchanged.
+    let mut values = [2.0, 6.0];
+    runtime.apply_process_group_factor(&mut values);
+    assert_eq!(values, [2.0, 6.0]);
+    let caller = ["flow:2,3,5,4,1".to_string()];
+    assert_eq!(
+        runtime.execution_color_ids(Some(&caller)).as_deref(),
+        Some(&caller[..])
+    );
+
+    runtime.process_group = Some(Box::new(ProcessGroupRouting {
+        representative_process_key: "p0".to_string(),
+        factor: NativeRationalFactor {
+            numerator: 3,
+            denominator: 2,
+        },
+        conjugated: true,
+    }));
+    runtime.apply_process_group_factor(&mut values);
+    assert_eq!(values, [3.0, 9.0]);
+    let public_ids = runtime.color_ids().unwrap();
+    let execution_ids = runtime
+        .execution_color_ids(Some(&public_ids))
+        .expect("translated IDs")
+        .into_owned();
+    assert_eq!(
+        execution_ids,
+        execution_physics
+            .color_components
+            .iter()
+            .map(|color| color.id().to_string())
+            .collect::<Vec<_>>()
+    );
+    let mut round_trip = execution_ids.clone();
+    runtime.publish_color_ids(&mut round_trip);
+    assert_eq!(round_trip, public_ids);
+
+    let metadata = runtime.metadata();
+    assert_eq!(metadata.process_group_member_of.as_deref(), Some("p0"));
+    assert_eq!(
+        metadata.process_group_factor,
+        NativeRationalFactor {
+            numerator: 3,
+            denominator: 2
+        }
+    );
+    assert!(metadata.charge_conjugated);
+    let exact_state: serde_json::Value =
+        serde_json::from_str(&runtime.exact_runtime_state_json().unwrap()).unwrap();
+    assert_eq!(
+        exact_state["process_group_factor"],
+        serde_json::json!({"numerator": 3, "denominator": 2})
+    );
+    assert_eq!(exact_state["charge_conjugated"], true);
+    assert_eq!(exact_state["process_group_member_of"], "p0");
 }
 
 #[test]
@@ -4097,6 +4291,7 @@ fn contracted_color_coverage_does_not_warn_as_incomplete() {
             point_selector_scratch: PointSelectorExecutionScratch::default(),
             selector_simd_lane_width: 1,
             correlated: None,
+            process_group: None,
         };
 
         runtime.record_resolved_warnings(None, None).unwrap();
@@ -4406,6 +4601,7 @@ fn zero_native_runtime() -> NativeRuntime {
         point_selector_scratch: PointSelectorExecutionScratch::default(),
         selector_simd_lane_width: 1,
         correlated: None,
+        process_group: None,
     }
 }
 
@@ -4538,6 +4734,7 @@ fn scalar_on_the_fly_native_runtime_with_color_contraction(
         point_selector_scratch: PointSelectorExecutionScratch::default(),
         selector_simd_lane_width: 1,
         correlated: None,
+        process_group: None,
     }
 }
 

@@ -59,7 +59,10 @@ factorial multiplier; native identical-particle normalization is already include
 Proven equivalent contributions with different physical final-state flavours
 are also grouped. Equivalence uses model expressions and generated computation,
 not equal default parameters or Standard Model-specific particle rules.
-Unproved relations remain separate.
+Unproved relations remain separate. The one exception is generation with
+`--flavor-blind`: its ungenerated flavour-class members are evaluated through
+their representative's runtime, and each provider exporting them records that
+assumption in `grouping.assumptions`.
 
 Integration multiplicities require cuts invariant under the recorded particle
 permutations; they are not factors for pointwise sums. Metadata retains physical

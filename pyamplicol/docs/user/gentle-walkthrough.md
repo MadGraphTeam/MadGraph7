@@ -86,7 +86,7 @@ pyamplicol inspect artifacts/pp_zjj_recurrence
 
 The coloured tables list the model, runtime, concrete representatives, aliases,
 helicity and colour coverage, and the recurrence execution mode. Pick the
-representative with stable ID `p_p_to_z_j_j_4`, or use its readable requested
+representative with stable ID `p_p_to_z_j_j_3`, or use its readable requested
 ordering `d d~ > g z g`:
 
 ```console
@@ -283,7 +283,7 @@ You may therefore select either a stable ID:
 
 ```console
 pyamplicol inspect artifacts/pp_zjj_recurrence \
-  --process p_p_to_z_j_j_4
+  --process p_p_to_z_j_j_3
 ```
 
 or a readable ordering:
@@ -450,7 +450,7 @@ Use a process selector to shorten the table:
 
 ```console
 pyamplicol inspect artifacts/pp_zjj_recurrence \
-  --process p_p_to_z_j_j_4
+  --process p_p_to_z_j_j_3
 ```
 
 The explicit full-physics view materializes complete helicity and colour
@@ -458,7 +458,7 @@ metadata and may be very large:
 
 ```console
 pyamplicol inspect artifacts/pp_zjj_recurrence \
-  --process p_p_to_z_j_j_4 \
+  --process p_p_to_z_j_j_3 \
   --full-physics
 ```
 

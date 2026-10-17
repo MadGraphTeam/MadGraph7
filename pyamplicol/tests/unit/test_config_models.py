@@ -31,6 +31,7 @@ from pyamplicol.config import (
     OutputConfig,
     ProcessConfig,
     ProcessEntry,
+    ProcessGroupAnalysis,
     RecurrenceEvaluatorConfig,
     RelationDiscoveryMode,
     RunConfig,
@@ -39,7 +40,7 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 79
+    assert len(FIELD_REGISTRY) == 83
     assert "generation.umami_grouping" not in FIELD_REGISTRY
     assert "evaluator.jit.direct_translation" not in FIELD_REGISTRY
     assert FIELD_REGISTRY["action"].required
@@ -108,6 +109,13 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     assert FIELD_REGISTRY["process.reference_color_order"].kind == "list_int"
     assert FIELD_REGISTRY["process.selected_color_sector_ids"].kind == "list_int"
     assert FIELD_REGISTRY["process.selected_source_helicities"].dynamic_kind == "int"
+    assert FIELD_REGISTRY["process.flavor_blind"].default is False
+    assert FIELD_REGISTRY["process.consider_charge_conjugation"].default is True
+    assert FIELD_REGISTRY["process.only_unit_multiplier"].default is False
+    assert FIELD_REGISTRY["process.analyze_process_groups"].choices == (
+        ProcessGroupAnalysis.NONE,
+        ProcessGroupAnalysis.NUMERICAL,
+    )
     assert "process.requests" not in FIELD_REGISTRY
     assert "process.names" not in FIELD_REGISTRY
     assert "evaluator.stage_local_parameter_layout" not in FIELD_REGISTRY
@@ -171,6 +179,23 @@ def test_process_entries_validate_names_and_uniqueness() -> None:
                 ProcessEntry("u u~ > z", "same"),
             )
         )
+
+
+def test_process_grouping_settings_are_typed() -> None:
+    process = ProcessConfig()
+    assert not process.flavor_blind
+    assert process.consider_charge_conjugation
+    assert not process.only_unit_multiplier
+    assert process.analyze_process_groups is ProcessGroupAnalysis.NONE
+    assert (
+        ProcessConfig(analyze_process_groups="numerical").analyze_process_groups  # type: ignore[arg-type]
+        is ProcessGroupAnalysis.NUMERICAL
+    )
+    with pytest.raises(ConfigurationError, match=r"process\.flavor_blind"):
+        ProcessConfig(flavor_blind=1)  # type: ignore[arg-type]
+    with pytest.raises(ConfigurationError, match=r"process\.analyze_process_groups"):
+        ProcessConfig(analyze_process_groups="symbolic")  # type: ignore[arg-type]
+    assert RunConfig(action="group-processes").action is Action.GROUP_PROCESSES
 
 
 def test_schema_and_jit_settings_reject_wrong_boolean_integer_types() -> None:

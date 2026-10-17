@@ -359,13 +359,13 @@ def test_native_examples_use_installed_sdk_discovery_and_public_wrappers() -> No
     assert ".evaluate_resolved(" in cpp
     assert "set_model_parameters_json" in cpp
     assert 'set_model_parameter("aS"' in cpp
-    assert "p_p_to_z_j_j_4" in cpp
+    assert "p_p_to_z_j_j_3" in cpp
     assert "use rusticol, only: rusticol_runtime" in fortran
     assert "runtime%evaluate_resolved" in fortran
     assert "model_parameters=trim(parameters)" in fortran
     assert "runtime%set_model_parameter" in fortran
     assert '"aS"' in fortran
-    assert "p_p_to_z_j_j_4" in fortran
+    assert "p_p_to_z_j_j_3" in fortran
     assert "momenta(20)" in fortran
 
     generated_rust = (

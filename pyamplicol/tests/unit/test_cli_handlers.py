@@ -9,6 +9,7 @@ import pty
 import sys
 import termios
 import threading
+import types
 from dataclasses import replace
 from pathlib import Path
 
@@ -60,6 +61,7 @@ class _Services:
     model_inspect = evaluate
     model_compile = evaluate
     model_processes = evaluate
+    group_processes = evaluate
 
 
 class _ProfileServices(_Services):
@@ -408,6 +410,47 @@ def test_cli_dispatches_protocol_and_keeps_json_on_stdout(tmp_path: Path) -> Non
     assert "symbolica" not in sys.modules
 
 
+def test_group_processes_command_calls_the_public_api(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[Path, dict[str, object]]] = []
+
+    def group_processes(artifact: Path, **options: object) -> dict[str, object]:
+        calls.append((artifact, options))
+        return {"artifact": str(artifact), "merged": 0}
+
+    module = types.ModuleType("pyamplicol.api.process_groups")
+    module.group_processes = group_processes  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "pyamplicol.api.process_groups", module)
+    stdout = io.StringIO()
+    status = run_cli(
+        (
+            "group-processes",
+            str(tmp_path / "artifact"),
+            "--only-unit-multiplier",
+            "--json",
+            "--progress",
+            "off",
+        ),
+        stdout=stdout,
+        stderr=io.StringIO(),
+    )
+
+    assert status == 0
+    assert calls == [
+        (
+            (tmp_path / "artifact").resolve(),
+            {
+                "analysis": "numerical",
+                "only_unit_multiplier": True,
+                "consider_charge_conjugation": True,
+            },
+        )
+    ]
+    assert json.loads(stdout.getvalue())["merged"] == 0
+
+
 def test_cli_defaults_to_a_colored_table_for_structured_results(
     tmp_path: Path,
 ) -> None:
@@ -622,7 +665,11 @@ def test_inspect_process_defaults_to_compact_metadata_without_runtime(
     assert stderr.getvalue() == ""
 
 
+# Rusticol resolves full-physics selectors, including side permutations and
+# non-generated process-group members absent from the compact inventory.
+@pytest.mark.parametrize("selector", ("stable-alias", "u u~ > a a"))
 def test_inspect_full_physics_is_the_only_runtime_materialization_path(
+    selector: str,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -657,7 +704,7 @@ def test_inspect_full_physics_is_the_only_runtime_materialization_path(
             "inspect",
             str(artifact),
             "--process",
-            "stable-alias",
+            selector,
             "--full-physics",
             "--json",
             "--progress",
@@ -669,5 +716,5 @@ def test_inspect_full_physics_is_the_only_runtime_materialization_path(
 
     assert status == 0
     assert json.loads(stdout.getvalue()) == dense_physics
-    assert loads == [(artifact.resolve(), "stable-alias")]
+    assert loads == [(artifact.resolve(), selector)]
     assert stderr.getvalue() == ""

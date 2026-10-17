@@ -25,7 +25,7 @@ pub mod recurrence;
 
 pub use artifact::{
     ArtifactKind, ArtifactManifest, ArtifactProcess, ArtifactSelection, Payload, PayloadRole,
-    ProcessAlias, Target, VerifiedArtifact, runtime_target_info,
+    ProcessAlias, ProcessGroupRelation, Target, VerifiedArtifact, runtime_target_info,
 };
 pub use eager_lowering_v3::*;
 pub use eager_plan_v3_pacbin::*;
@@ -53,10 +53,11 @@ pub use engine::{
     NativeEagerExactClosure, NativeEagerExactCoupling, NativeEagerExactFinalization,
     NativeEagerExactInvocation, NativeEagerExactSections, NativeEagerExactStage,
     NativeExternalParticle, NativeHelicityConfiguration, NativeModelParameter,
-    NativeProfiledEvaluation, NativeRecurrenceExactExecutor, NativeRecurrenceExactFactor,
-    NativeRecurrenceExactSections, NativeRecurrenceSelectorPlan, NativeResolvedEvaluation,
-    NativeRuntime, NativeRuntimeMetadata, NativeRuntimeProfile, NativeSpinCorrelationVectors,
-    RuntimeCapability, preflight_prepared_kernel_pack, supported_runtime_capabilities,
+    NativeProfiledEvaluation, NativeRationalFactor, NativeRecurrenceExactExecutor,
+    NativeRecurrenceExactFactor, NativeRecurrenceExactSections, NativeRecurrenceSelectorPlan,
+    NativeResolvedEvaluation, NativeRuntime, NativeRuntimeMetadata, NativeRuntimeProfile,
+    NativeSpinCorrelationVectors, RuntimeCapability, preflight_prepared_kernel_pack,
+    supported_runtime_capabilities,
 };
 #[cfg(feature = "on-the-fly-test-support")]
 pub use engine::{

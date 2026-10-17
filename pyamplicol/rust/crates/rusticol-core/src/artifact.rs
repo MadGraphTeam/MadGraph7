@@ -208,6 +208,7 @@ pub enum PayloadRole {
     ApiSource,
     ApiBuildFile,
     SdkMetadata,
+    ProcessGroups,
 }
 
 #[derive(Clone, Debug, Decode, Deserialize, Eq, PartialEq, Serialize)]
@@ -277,6 +278,36 @@ pub struct ArtifactSelection {
     /// Whether the permutation was inferred from a concrete expression rather
     /// than persisted as an explicit artifact alias.
     pub inferred_permutation: bool,
+    /// Present when the caller selected a process that was not generated and
+    /// is routed through `process-groups.json` to `process`.
+    pub process_group: Option<ProcessGroupRelation>,
+}
+
+impl ArtifactSelection {
+    /// Whether public metadata differs from the stored representative.
+    pub fn remaps_public_process(&self) -> bool {
+        self.alias.is_some() || self.inferred_permutation || self.process_group.is_some()
+    }
+}
+
+/// Relation of a selected process-group member to its generated representative:
+/// `ME_member(p) = numerator / denominator * ME_representative(q)` with
+/// `q[r] = p[external_permutation[r]]`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProcessGroupRelation {
+    pub factor_numerator: u64,
+    pub factor_denominator: u64,
+    /// The relation includes global charge conjugation: public LC color-flow
+    /// words are the reversed words of the permuted representative.
+    pub conjugated: bool,
+    /// Member particle names in the public external order.
+    pub external_particles: Vec<String>,
+}
+
+impl ProcessGroupRelation {
+    pub fn has_unit_factor(&self) -> bool {
+        self.factor_numerator == self.factor_denominator
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -997,8 +1028,36 @@ impl VerifiedArtifact {
         &self.manifest
     }
 
+    /// Resolve a selector against the manifest, then against non-generated
+    /// members of the declared process-group map. The map is read only when
+    /// no stored process ID, alias, or stored expression (exact or
+    /// side-permuted) matches.
     pub fn select_process(&self, requested: Option<&str>) -> RusticolResult<ArtifactSelection> {
-        self.manifest.select_process(requested)
+        self.manifest
+            .select_process_with_groups(requested, || self.process_groups())
+    }
+
+    fn process_groups(&self) -> RusticolResult<Option<ProcessGroups>> {
+        let mut declared = self
+            .payloads
+            .values()
+            .filter(|payload| payload.role == PayloadRole::ProcessGroups);
+        let Some(payload) = declared.next() else {
+            return Ok(None);
+        };
+        if declared.next().is_some() {
+            return Err(RusticolError::artifact(
+                "artifact declares more than one process-groups payload",
+            ));
+        }
+        let bytes = read_declared_payload(&self.root, payload)?;
+        if format!("{:x}", Sha256::digest(&bytes)) != payload.sha256 {
+            return Err(RusticolError::integrity(format!(
+                "process-groups payload {:?} does not match its declared sha256",
+                payload.path
+            )));
+        }
+        ProcessGroups::from_json(&bytes, &self.manifest).map(Some)
     }
 
     pub fn payload(&self, path: &str) -> RusticolResult<&Payload> {
@@ -1464,6 +1523,7 @@ fn payload_role_name(role: PayloadRole) -> &'static str {
         PayloadRole::ApiSource => "api-source",
         PayloadRole::ApiBuildFile => "api-build-file",
         PayloadRole::SdkMetadata => "sdk-metadata",
+        PayloadRole::ProcessGroups => "process-groups",
     }
 }
 
@@ -1591,7 +1651,7 @@ fn validate_recurrence_bootstrap_process(process: &ArtifactProcess) -> RusticolR
         validate_permutation(
             &alias.external_permutation,
             process.external_pdgs.len(),
-            &alias.id,
+            &format!("alias {:?}", alias.id),
         )?;
         if !permutation_preserves_process_sides(&alias.external_permutation, initial_count) {
             return Err(RusticolError::artifact(format!(
@@ -1873,6 +1933,17 @@ impl ArtifactManifest {
         &self,
         requested: Option<&str>,
     ) -> RusticolResult<ArtifactSelection> {
+        self.select_process_with_groups(requested, || Ok(None))
+    }
+
+    /// Resolve `requested` in precedence order. `groups` is called at most
+    /// once, and only after every stored process, alias, and side permutation
+    /// of their expressions failed to match.
+    pub(crate) fn select_process_with_groups(
+        &self,
+        requested: Option<&str>,
+        groups: impl FnOnce() -> RusticolResult<Option<ProcessGroups>>,
+    ) -> RusticolResult<ArtifactSelection> {
         let selected_id = if let Some(requested) = requested {
             requested
         } else if let Some(default) = self.default_process_id.as_deref() {
@@ -1955,6 +2026,11 @@ impl ArtifactManifest {
         }
 
         let Some(requested_tokens) = parse_process_expression(selected_id) else {
+            if let Some(groups) = groups()?
+                && let Some(selection) = groups.select(self, selected_id, None)?
+            {
+                return Ok(selection);
+            }
             if selected_id.contains('>') {
                 return Err(RusticolError::selector(format!(
                     "concrete process expression {selected_id:?} must contain one '>' with at least one particle on each side"
@@ -1988,6 +2064,7 @@ impl ArtifactManifest {
                     external_pdgs,
                     external_permutation: permutation,
                     inferred_permutation: true,
+                    process_group: None,
                 });
             } else if process_tokens_are_permutation_equivalent_ignoring_sides(
                 &representative_tokens,
@@ -2026,6 +2103,11 @@ impl ArtifactManifest {
             }
             _ => {}
         }
+        if let Some(groups) = groups()?
+            && let Some(selection) = groups.select(self, selected_id, Some(&requested_tokens))?
+        {
+            return Ok(selection);
+        }
         if !crossing_only_matches.is_empty() {
             crossing_only_matches.sort_unstable();
             crossing_only_matches.dedup();
@@ -2049,6 +2131,7 @@ fn representative_selection(process: &ArtifactProcess) -> ArtifactSelection {
         external_pdgs: process.external_pdgs.clone(),
         external_permutation: (0..process.external_pdgs.len()).collect(),
         inferred_permutation: false,
+        process_group: None,
     }
 }
 
@@ -2061,6 +2144,7 @@ fn alias_selection(process: &ArtifactProcess, alias: &ProcessAlias) -> ArtifactS
         external_pdgs: alias.external_pdgs.clone(),
         external_permutation: alias.external_permutation.clone(),
         inferred_permutation: false,
+        process_group: None,
     }
 }
 
@@ -2171,6 +2255,338 @@ fn normalize_process_expression(expression: &str) -> String {
         .map(str::to_lowercase)
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+const PROCESS_GROUPS_KIND: &str = "pyamplicol-process-groups";
+const PROCESS_GROUPS_SCHEMA_VERSION: u64 = 1;
+
+// Unknown keys (`analyses`, `basis`, `warning`, ...) are ignored on purpose.
+#[derive(Deserialize)]
+struct ProcessGroupsDocument {
+    kind: String,
+    schema_version: u64,
+    groups: Vec<ProcessGroupRecord>,
+}
+
+#[derive(Deserialize)]
+struct ProcessGroupRecord {
+    representative: ProcessGroupRepresentativeRecord,
+    members: Vec<ProcessGroupMemberRecord>,
+}
+
+#[derive(Deserialize)]
+struct ProcessGroupRepresentativeRecord {
+    process_id: String,
+}
+
+#[derive(Deserialize)]
+struct ProcessGroupMemberRecord {
+    process_id: String,
+    process: String,
+    pdgs: Vec<i32>,
+    initial_count: usize,
+    factor: ProcessGroupFactorRecord,
+    permutation: Vec<usize>,
+    conjugated: bool,
+    generated: bool,
+}
+
+#[derive(Deserialize)]
+struct ProcessGroupFactorRecord {
+    numerator: i64,
+    denominator: i64,
+}
+
+/// The non-generated members of a validated `process-groups.json`.
+#[derive(Clone, Debug)]
+pub(crate) struct ProcessGroups {
+    members: Vec<ProcessGroupMember>,
+}
+
+#[derive(Clone, Debug)]
+struct ProcessGroupMember {
+    id: String,
+    expression: String,
+    tokens: ProcessExpressionTokens,
+    /// Particle names and PDGs in the member's own order.
+    particles: Vec<String>,
+    pdgs: Vec<i32>,
+    representative_id: String,
+    /// Representative external index to member external index.
+    permutation: Vec<usize>,
+    factor_numerator: u64,
+    factor_denominator: u64,
+    conjugated: bool,
+}
+
+impl ProcessGroups {
+    pub(crate) fn from_json(bytes: &[u8], manifest: &ArtifactManifest) -> RusticolResult<Self> {
+        let document: ProcessGroupsDocument = serde_json::from_slice(bytes).map_err(|error| {
+            RusticolError::serialization(format!(
+                "could not parse the process-groups payload: {error}"
+            ))
+        })?;
+        if document.kind != PROCESS_GROUPS_KIND
+            || document.schema_version != PROCESS_GROUPS_SCHEMA_VERSION
+        {
+            return Err(RusticolError::compatibility(format!(
+                "unsupported process-groups payload kind {:?} schema {}",
+                document.kind, document.schema_version
+            )));
+        }
+        let stored_ids = manifest
+            .processes
+            .iter()
+            .flat_map(|process| {
+                std::iter::once(process.id.as_str())
+                    .chain(process.aliases.iter().map(|alias| alias.id.as_str()))
+            })
+            .collect::<BTreeSet<_>>();
+        let mut member_ids = BTreeSet::new();
+        let mut members = Vec::new();
+        for group in document.groups {
+            let representative_id = group.representative.process_id;
+            let process = manifest
+                .processes
+                .iter()
+                .find(|process| process.id == representative_id)
+                .ok_or_else(|| {
+                    RusticolError::artifact(format!(
+                        "process-group representative {representative_id:?} is not a stored process"
+                    ))
+                })?;
+            let count = process.external_pdgs.len();
+            let initial_count = parse_process_expression(&process.expression)
+                .map(|tokens| tokens.initial.len())
+                .ok_or_else(|| {
+                    RusticolError::artifact(format!(
+                        "process {representative_id:?} has no incoming and outgoing particles"
+                    ))
+                })?;
+            let identity = group.members.first().is_some_and(|member| {
+                member.process_id == representative_id
+                    && member.generated
+                    && !member.conjugated
+                    && member.factor.numerator == member.factor.denominator
+                    && member.permutation.iter().copied().eq(0..count)
+            });
+            if !identity {
+                return Err(RusticolError::artifact(format!(
+                    "process group {representative_id:?} must list its representative first with the identity relation"
+                )));
+            }
+            for member in group.members {
+                let id = member.process_id;
+                validate_public_id(&id, "process-group member id")?;
+                if !member_ids.insert(id.clone()) {
+                    return Err(RusticolError::artifact(format!(
+                        "process-group member {id:?} is listed more than once"
+                    )));
+                }
+                if member.generated {
+                    if !manifest.processes.iter().any(|process| process.id == id) {
+                        return Err(RusticolError::artifact(format!(
+                            "generated process-group member {id:?} is not a stored process"
+                        )));
+                    }
+                    continue;
+                }
+                if stored_ids.contains(id.as_str()) {
+                    return Err(RusticolError::artifact(format!(
+                        "non-generated process-group member {id:?} reuses a stored process or alias id"
+                    )));
+                }
+                let tokens = parse_process_expression(&member.process)
+                    .filter(|tokens| {
+                        tokens.initial.len() == initial_count
+                            && tokens.initial.len() + tokens.final_state.len() == count
+                    })
+                    .ok_or_else(|| {
+                        RusticolError::artifact(format!(
+                            "process-group member {id:?} expression {:?} does not have the incoming and outgoing particle counts of {representative_id:?}",
+                            member.process
+                        ))
+                    })?;
+                if member.pdgs.len() != count || member.initial_count != initial_count {
+                    return Err(RusticolError::artifact(format!(
+                        "process-group member {id:?} PDGs or initial count disagree with {representative_id:?}"
+                    )));
+                }
+                validate_permutation(
+                    &member.permutation,
+                    count,
+                    &format!("process-group member {id:?}"),
+                )?;
+                if !permutation_preserves_process_sides(&member.permutation, initial_count) {
+                    return Err(RusticolError::artifact(format!(
+                        "process-group member {id:?} permutation moves a particle across the '>' boundary"
+                    )));
+                }
+                let (factor_numerator, factor_denominator) = positive_rational(
+                    member.factor.numerator,
+                    member.factor.denominator,
+                )
+                .ok_or_else(|| {
+                    RusticolError::artifact(format!(
+                        "process-group member {id:?} factor {}/{} is not a positive rational",
+                        member.factor.numerator, member.factor.denominator
+                    ))
+                })?;
+                members.push(ProcessGroupMember {
+                    particles: member
+                        .process
+                        .split_whitespace()
+                        .filter(|token| *token != ">")
+                        .map(str::to_string)
+                        .collect(),
+                    id,
+                    expression: member.process,
+                    tokens,
+                    pdgs: member.pdgs,
+                    representative_id: representative_id.clone(),
+                    permutation: member.permutation,
+                    factor_numerator,
+                    factor_denominator,
+                    conjugated: member.conjugated,
+                });
+            }
+        }
+        Ok(Self { members })
+    }
+
+    /// Match a member by stable ID, exact expression, or side permutation of
+    /// its expression, mirroring the precedence used for stored processes.
+    fn select(
+        &self,
+        manifest: &ArtifactManifest,
+        selected_id: &str,
+        requested: Option<&ProcessExpressionTokens>,
+    ) -> RusticolResult<Option<ArtifactSelection>> {
+        if let Some(member) = self.members.iter().find(|member| member.id == selected_id) {
+            return member.selection(manifest, None).map(Some);
+        }
+        let Some(requested) = requested else {
+            return Ok(None);
+        };
+        let exact = self
+            .members
+            .iter()
+            .filter(|member| member.tokens.canonical == requested.canonical)
+            .collect::<Vec<_>>();
+        match exact.as_slice() {
+            [] => {}
+            [member] => return member.selection(manifest, None).map(Some),
+            _ => {
+                return Err(ambiguous_member_selection(
+                    selected_id,
+                    "is ambiguous",
+                    exact.iter().map(|member| member.id.as_str()),
+                ));
+            }
+        }
+        let mut matches = self
+            .members
+            .iter()
+            .filter_map(|member| {
+                side_preserving_process_permutation(&member.tokens, requested)
+                    .map(|permutation| (member, permutation))
+            })
+            .collect::<Vec<_>>();
+        if let Some(minimum) = matches
+            .iter()
+            .map(|(_, permutation)| permutation_displacement(permutation))
+            .min()
+        {
+            matches.retain(|(_, permutation)| permutation_displacement(permutation) == minimum);
+        }
+        match matches.as_slice() {
+            [] => Ok(None),
+            [(member, permutation)] => member
+                .selection(manifest, Some((permutation, &requested.canonical)))
+                .map(Some),
+            _ => Err(ambiguous_member_selection(
+                selected_id,
+                "is permutation-ambiguous",
+                matches.iter().map(|(member, _)| member.id.as_str()),
+            )),
+        }
+    }
+}
+
+impl ProcessGroupMember {
+    /// `public` is the member-index to public-index permutation and the
+    /// public expression of an inferred ordering; `None` keeps the member's.
+    fn selection(
+        &self,
+        manifest: &ArtifactManifest,
+        public: Option<(&[usize], &str)>,
+    ) -> RusticolResult<ArtifactSelection> {
+        let process = manifest
+            .processes
+            .iter()
+            .find(|process| process.id == self.representative_id)
+            .ok_or_else(|| {
+                RusticolError::internal("process-group representative left the manifest")
+            })?;
+        let count = self.pdgs.len();
+        let identity = (0..count).collect::<Vec<_>>();
+        let (member_to_public, public_expression) =
+            public.unwrap_or((&identity, self.expression.as_str()));
+        let mut external_pdgs = vec![0; count];
+        let mut particles = vec![String::new(); count];
+        for (member_index, public_index) in member_to_public.iter().copied().enumerate() {
+            external_pdgs[public_index] = self.pdgs[member_index];
+            particles[public_index].clone_from(&self.particles[member_index]);
+        }
+        Ok(ArtifactSelection {
+            process: process.clone(),
+            requested_id: self.id.clone(),
+            alias: None,
+            public_expression: public_expression.to_string(),
+            external_pdgs,
+            // Representative -> member -> public.
+            external_permutation: self
+                .permutation
+                .iter()
+                .map(|member_index| member_to_public[*member_index])
+                .collect(),
+            inferred_permutation: public.is_some(),
+            process_group: Some(ProcessGroupRelation {
+                factor_numerator: self.factor_numerator,
+                factor_denominator: self.factor_denominator,
+                conjugated: self.conjugated,
+                external_particles: particles,
+            }),
+        })
+    }
+}
+
+fn ambiguous_member_selection<'a>(
+    selected_id: &str,
+    problem: &str,
+    ids: impl Iterator<Item = &'a str>,
+) -> RusticolError {
+    let mut ids = ids.collect::<Vec<_>>();
+    ids.sort_unstable();
+    RusticolError::selector(format!(
+        "process expression {selected_id:?} {problem}; select one of these process-group member ids: {}",
+        ids.join(", ")
+    ))
+}
+
+/// Reduce `numerator / denominator` and return it when it is positive.
+fn positive_rational(numerator: i64, denominator: i64) -> Option<(u64, u64)> {
+    if numerator == 0 || denominator == 0 || (numerator < 0) != (denominator < 0) {
+        return None;
+    }
+    let (mut numerator, mut denominator) = (numerator.unsigned_abs(), denominator.unsigned_abs());
+    let (mut left, mut right) = (numerator, denominator);
+    while right != 0 {
+        (left, right) = (right, left % right);
+    }
+    numerator /= left;
+    denominator /= left;
+    Some((numerator, denominator))
 }
 
 #[cfg(test)]
@@ -2557,7 +2973,7 @@ fn validate_manifest(manifest: &ArtifactManifest) -> RusticolResult<()> {
             validate_permutation(
                 &alias.external_permutation,
                 process.external_pdgs.len(),
-                &alias.id,
+                &format!("alias {:?}", alias.id),
             )?;
             let alias_expression =
                 parse_process_expression(&alias.expression).ok_or_else(|| {
@@ -3141,10 +3557,10 @@ fn validate_datetime(value: &str) -> RusticolResult<()> {
     Ok(())
 }
 
-fn validate_permutation(values: &[usize], size: usize, alias_id: &str) -> RusticolResult<()> {
+fn validate_permutation(values: &[usize], size: usize, owner: &str) -> RusticolResult<()> {
     if values.len() != size {
         return Err(RusticolError::artifact(format!(
-            "alias {alias_id:?} permutation has length {}, expected {size}",
+            "{owner} permutation has length {}, expected {size}",
             values.len()
         )));
     }
@@ -3152,7 +3568,7 @@ fn validate_permutation(values: &[usize], size: usize, alias_id: &str) -> Rustic
     let expected = (0..size).collect::<BTreeSet<_>>();
     if found != expected {
         return Err(RusticolError::artifact(format!(
-            "alias {alias_id:?} permutation is not a complete zero-based permutation"
+            "{owner} permutation is not a complete zero-based permutation"
         )));
     }
     Ok(())

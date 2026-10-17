@@ -16,7 +16,8 @@ evaluations.
 They accept generation-time colour-operator IDs and runtime spin vectors, not
 the ordinary LC flow selector. This path currently supports full-colour SU(3)
 only, and requires the original generated particle ordering (no nonidentity
-aliases or automatic permutations).
+aliases or automatic permutations). A process-group member is accepted only
+with that ordering and without charge conjugation; its factor is applied.
 
 > **Start here:** follow [Quick Start](quick-start.md) to create the example workspace and
 > generate `artifacts/pp_zjj`. See [Generation Modes and Evaluators](generation-modes-and-evaluators.md) for the generation
@@ -44,7 +45,7 @@ pyamplicol inspect artifacts/pp_zjj --json > pp_zjj-inventory.json
 For one process, either a stable ID or a process expression is accepted:
 
 ```console
-pyamplicol inspect artifacts/pp_zjj --process p_p_to_z_j_j_4
+pyamplicol inspect artifacts/pp_zjj --process p_p_to_z_j_j_3
 pyamplicol inspect artifacts/pp_zjj --process 'd d~ > g z g'
 ```
 
@@ -100,7 +101,7 @@ crosses the `>` boundary. Repeated identical particles use deterministic
 first-unused matching. If several stored representatives would fit, loading
 fails and reports their stable IDs instead of guessing.
 
-For example, the representative `p_p_to_z_j_j_4` is stored for one ordering,
+For example, the representative `p_p_to_z_j_j_3` is stored for one ordering,
 but this is a valid public selection:
 
 ```python
@@ -123,6 +124,23 @@ axes:
 
 Consequently, momenta supplied to this runtime must follow `d, d~, g, z, g`,
 not the representative's internal order.
+
+A sixth step resolves processes that a `--flavor-blind` generation did not
+generate but listed in the artifact's process-group map. Such a member is
+evaluated by its representative at the composed permutation, with every
+matrix element multiplied by the member's exact factor. A charge-conjugated
+member reverses each LC flow word, so its flow IDs and selectors are the
+member's own:
+
+```python
+runtime = Runtime.load("artifacts/qg", process="u~ g > u~ g")
+print(runtime.representative_process_key)
+print(runtime.process_group_factor, runtime.charge_conjugated)
+```
+
+Every other selection reports `process_group_factor == 1` and
+`charge_conjugated is False`. See
+[Process-group members](process-selection-and-permutations.md#process-group-members).
 
 ## Momenta
 
