@@ -1,0 +1,165 @@
+name: Candidate artifacts
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-tool-tests:
+    name: Candidate workflow and release-tool preflight
+    runs-on: ubuntu-24.04
+    env:
+      PYAMPLICOL_BUILD_MODE: release
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install test tools
+        run: python -m pip install "pytest>=8.3,<9" "ruff>=0.9,<1"
+      - name: Focused clean-checkout release tests
+        run: >-
+          python -m pytest
+          tests/release
+          tests/unit/test_dependency_gate.py
+          tests/unit/test_release_*.py
+          -q
+      - name: Release-tool lint
+        run: ruff check tools/release tests/release tests/unit/test_release_*.py
+
+  macos-candidate:
+    name: Candidate artifact (${{ matrix.target }})
+    needs: release-tool-tests
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: macos-arm64
+          - runner: macos-15-intel
+            target: macos-x86_64
+    runs-on: ${{ matrix.runner }}
+    concurrency:
+      group: "pyamplicol-symbolica-${{ startsWith(matrix.runner, 'macos-') && matrix.runner || format('{0}-{1}', matrix.runner, github.run_id) }}"
+      cancel-in-progress: false
+      queue: max
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+      PYAMPLICOL_BUILD_MODE: candidate
+      PYAMPLICOL_REQUIRE_NATIVE_TESTS: "1"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: dtolnay/rust-toolchain@46511b1c83438f0dd37c02d843619ece5a4abb5b # 1.97.1
+      - name: Prepare pinned candidate dependency inputs
+        run: >-
+          python tools/ci/memory_watchdog.py --limit-gib 30 --
+          python dependencies/install_dependencies.py
+          --dependencies-only
+      - name: Install build tools
+        run: python -m pip install "build>=1.2,<2" "maturin==1.15.0"
+      - name: Build and audit non-publishable candidate artifacts
+        run: >-
+          python tools/ci/memory_watchdog.py --limit-gib 30 --
+          python tools/release/build_release_artifacts.py
+          --candidate
+          --output-dir .artifacts/candidate-ci
+      - name: Require C++17 and Fortran 2008 SDK toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v make
+          cxx="$(command -v c++)"
+          fc="$(command -v gfortran || true)"
+          if [[ -z "$fc" ]]; then
+            brew install gcc
+            prefix="$(brew --prefix gcc)"
+            for candidate in "$prefix/bin/gfortran" "$prefix"/bin/gfortran-*; do
+              if [[ -x "$candidate" ]]; then
+                fc="$candidate"
+                break
+              fi
+            done
+          fi
+          test -n "$fc"
+          "$cxx" --version
+          "$fc" --version
+          printf 'CXX=%s\n' "$cxx" >> "$GITHUB_ENV"
+          printf 'FC=%s\n' "$fc" >> "$GITHUB_ENV"
+      - name: Test the installed candidate wheel and native SDK
+        run: >-
+          python tools/ci/memory_watchdog.py --limit-gib 30 --
+          python tools/release/test_deployment.py
+          --candidate
+          --python "$(command -v python)"
+          --wheel .artifacts/candidate-ci/pyamplicol-*.whl
+          --no-build
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pyamplicol-candidate-${{ matrix.target }}
+          path: .artifacts/candidate-ci/
+          if-no-files-found: error
+          retention-days: 14
+  manylinux-candidate:
+    name: Candidate artifact (manylinux-x86_64)
+    needs: release-tool-tests
+    runs-on: ubuntu-24.04
+    env:
+      PYAMPLICOL_BUILD_MODE: candidate
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Build and audit non-publishable candidates in manylinux_2_28 x86_64
+        run: |
+          docker run --rm \
+            -v "$PWD:/io" \
+            -w /io \
+            -e PYAMPLICOL_BUILD_MODE=candidate \
+            -e PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 \
+            quay.io/pypa/manylinux_2_28_x86_64@sha256:b04887b645dde99b9e955aeae3ff4da414992d0bd88259f046295b56361c5614 \
+            /bin/bash -euxo pipefail -c '
+              git config --global --add safe.directory /io
+              yum install -y gcc-c++ gcc-gfortran make
+              command -v c++
+              command -v gfortran
+              command -v make
+              curl --proto "=https" --tlsv1.2 -sSf \
+                -o /tmp/rustup-init \
+                https://static.rust-lang.org/rustup/archive/1.28.2/x86_64-unknown-linux-gnu/rustup-init
+              echo "20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c  /tmp/rustup-init" \
+                | sha256sum --check --strict
+              chmod +x /tmp/rustup-init
+              /tmp/rustup-init -y --profile minimal --default-toolchain 1.97.1
+              source "$HOME/.cargo/env"
+              export RUSTUP_TOOLCHAIN=1.97.1
+              PYTHON=/opt/python/cp311-cp311/bin/python
+              "$PYTHON" -m pip install "build>=1.2,<2" "maturin==1.15.0"
+              "$PYTHON" tools/ci/memory_watchdog.py --limit-gib 30 -- \
+                "$PYTHON" dependencies/install_dependencies.py \
+                --dependencies-only
+              "$PYTHON" tools/ci/memory_watchdog.py --limit-gib 30 -- \
+                "$PYTHON" tools/release/build_release_artifacts.py \
+                --candidate \
+                --output-dir .artifacts/candidate-ci
+              "$PYTHON" tools/ci/memory_watchdog.py --limit-gib 30 -- \
+                "$PYTHON" tools/release/test_deployment.py \
+                --candidate \
+                --python "$PYTHON" \
+                --wheel .artifacts/candidate-ci/pyamplicol-*.whl \
+                --no-build
+            '
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pyamplicol-candidate-manylinux-x86_64
+          path: .artifacts/candidate-ci/
+          if-no-files-found: error
+          retention-days: 14
