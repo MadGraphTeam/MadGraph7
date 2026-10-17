@@ -194,7 +194,9 @@ def setup_rust(env: dict) -> dict:
     if rustup is None or rustup.parent == local_bin:
         env["RUSTUP_HOME"] = str(RUST_DIR / "rustup")
         env["PATH"] = os.pathsep.join([str(local_bin), env.get("PATH", "")])
-        rust_env = dict(env, CARGO_HOME=str(RUST_DIR / "cargo"))
+        rust_env = dict(
+            env, CARGO_HOME=str(RUST_DIR / "cargo"), RUSTUP_INIT_SKIP_PATH_CHECK="yes"
+        )
     if rustup is None:
         print(f"\nNo rustup found; installing Rust {toolchain} into {RUST_DIR}")
         RUST_DIR.mkdir(parents=True, exist_ok=True)
