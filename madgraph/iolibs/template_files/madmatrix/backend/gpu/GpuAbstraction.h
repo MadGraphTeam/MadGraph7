@@ -7,7 +7,7 @@
 #ifndef MG5AMC_GPUABSTRACTION_H
 #define MG5AMC_GPUABSTRACTION_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include <cassert>
 
@@ -15,7 +15,7 @@
 
 #ifdef __CUDACC__ // this must be __CUDACC__
 
-#ifndef MGONGPU_HAS_NO_BLAS
+#ifndef MADMATRIX_HAS_NO_BLAS
 #include "cublas_v2.h"
 #endif
 
@@ -60,7 +60,7 @@
 
 #define gpuBlasStatus_t cublasStatus_t
 #define GPUBLAS_STATUS_SUCCESS CUBLAS_STATUS_SUCCESS
-#ifndef MGONGPU_HAS_NO_BLAS
+#ifndef MADMATRIX_HAS_NO_BLAS
 #define gpuBlasHandle_t cublasHandle_t
 #else
 #define gpuBlasHandle_t void // hack to keep the same API also in noBLAS builds
@@ -86,7 +86,7 @@
 
 #elif defined __HIPCC__
 
-#ifndef MGONGPU_HAS_NO_BLAS
+#ifndef MADMATRIX_HAS_NO_BLAS
 #include "hipblas/hipblas.h"
 #endif
 
@@ -131,7 +131,7 @@
 
 #define gpuBlasStatus_t hipblasStatus_t
 #define GPUBLAS_STATUS_SUCCESS HIPBLAS_STATUS_SUCCESS
-#ifndef MGONGPU_HAS_NO_BLAS
+#ifndef MADMATRIX_HAS_NO_BLAS
 #define gpuBlasHandle_t hipblasHandle_t
 #else
 #define gpuBlasHandle_t void // hack to keep the same API also in noBLAS builds
@@ -157,7 +157,7 @@
 
 //--------------------------------------------------------------------------
 
-#ifdef MGONGPU_FPTYPE2_FLOAT
+#ifdef MADMATRIX_FPTYPE2_FLOAT
 #define gpuBlasTaxpy gpuBlasSaxpy
 #define gpuBlasTdot gpuBlasSdot
 #define gpuBlasTgemv gpuBlasSgemv

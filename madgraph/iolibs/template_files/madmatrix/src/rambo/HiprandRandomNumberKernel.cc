@@ -4,7 +4,7 @@
 // Further modified by: A. Valassi (2024).
 // Integrated with the MadGraph7 project in Feb 2026.
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "GpuRuntime.h"
 #include "MemoryBuffers.h"
@@ -12,7 +12,7 @@
 
 #include <cassert>
 
-#ifndef MGONGPU_HAS_NO_HIPRAND /* clang-format off */
+#ifndef MADMATRIX_HAS_NO_HIPRAND /* clang-format off */
 #ifndef __HIP_PLATFORM_AMD__
 #define __HIP_PLATFORM_AMD__ 1 // enable hiprand for AMD (rocrand)
 #endif
@@ -31,14 +31,14 @@ inline void assertHiprand( hiprandStatus_t code, const char *file, int line, boo
 namespace madmatrix
 {
   //--------------------------------------------------------------------------
-#ifndef MGONGPU_HAS_NO_HIPRAND
+#ifndef MADMATRIX_HAS_NO_HIPRAND
   HiprandRandomNumberKernel::HiprandRandomNumberKernel( BufferRndNumMomenta& rnarray, const bool onDevice )
     : RandomNumberKernelBase( rnarray )
     , m_isOnDevice( onDevice )
   {
     if( m_isOnDevice )
     {
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
       if( !m_rnarray.isOnDevice() )
         throw std::runtime_error( "HiprandRandomNumberKernel on device with a host random number array" );
 #else
@@ -114,15 +114,15 @@ namespace madmatrix
 
   void HiprandRandomNumberKernel::generateRnarray()
   {
-#if defined MGONGPU_FPTYPE_DOUBLE
+#if defined MADMATRIX_FPTYPE_DOUBLE
     checkHiprand( hiprandGenerateUniformDouble( m_rnGen, m_rnarray.data(), m_rnarray.size() ) );
-#elif defined MGONGPU_FPTYPE_FLOAT
+#elif defined MADMATRIX_FPTYPE_FLOAT
     checkHiprand( hiprandGenerateUniform( m_rnGen, m_rnarray.data(), m_rnarray.size() ) );
 #endif
     /*
     printf( "\nHiprandRandomNumberKernel::generateRnarray size = %d\n", (int)m_rnarray.size() );
     fptype* data = m_rnarray.data();
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     if( m_rnarray.isOnDevice() )
     {
       data = new fptype[m_rnarray.size()]();
@@ -131,7 +131,7 @@ namespace madmatrix
 #endif
     for( int i = 0; i < ( (int)m_rnarray.size() / 4 ); i++ )
       printf( "[%4d] %f %f %f %f\n", i * 4, data[i * 4], data[i * 4 + 2], data[i * 4 + 2], data[i * 4 + 3] );
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     if( m_rnarray.isOnDevice() ) delete[] data;
 #endif
     */

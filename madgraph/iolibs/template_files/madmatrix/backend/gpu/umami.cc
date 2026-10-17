@@ -44,7 +44,7 @@ namespace
   // __host__ __device__ decoration in GPU builds. DBL_MIN is used rather than
   // std::numeric_limits<double>::min(), which is a host function and cannot be
   // called from device code.
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
   __host__ __device__
 #endif
     inline double
@@ -430,7 +430,7 @@ extern "C"
         {reinterpret_cast<void**>(&color_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&ghel_matrix_elements), rounded_count * ProcessData::ncomb * sizeof( fptype )},
         // njampso = ncolor per amplitude split order (just ncolor without split orders)
-        {reinterpret_cast<void**>(&ghel_jamps), rounded_count * ProcessData::ncomb * ProcessData::njampso * mgOnGpu::nx2 * sizeof( fptype_amp )},
+        {reinterpret_cast<void**>(&ghel_jamps), rounded_count * ProcessData::ncomb * ProcessData::njampso * madmatrix::nx2 * sizeof( fptype_amp )},
     }};
     std::size_t total_size = 0;
     constexpr std::size_t MAX_SIZE = std::max( { sizeof( fptype ), sizeof( fptype_momenta ), sizeof( fptype ), sizeof( int ) } );

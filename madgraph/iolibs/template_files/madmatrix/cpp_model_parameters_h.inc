@@ -14,11 +14,11 @@
 #ifndef Parameters_H
 #define Parameters_H
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "mgOnGpuCxtypes.h"
-#ifdef MGONGPU_HAS_VECTORS_H // the simd backend (see its mgOnGpuConfig.h)
-#include "mgOnGpuVectors.h"
+#include "MadMatrixCxtypes.h"
+#ifdef MADMATRIX_HAS_VECTORS_H // the simd backend (see its MadMatrixConfig.h)
+#include "MadMatrixVectors.h"
 #endif
 
 #include "constexpr_math.h"
@@ -30,7 +30,7 @@
 // For simplicity, keep this code hardcoded also for SM processes (a nullptr is needed as in the case nBsm == 0)
 %(bsmdefine)s
 
-#ifndef MGONGPU_HARDCODE_PARAM%(eftwarn0)s
+#ifndef MADMATRIX_HARDCODE_PARAM%(eftwarn0)s
 
 #include "read_slha.h"
 
@@ -185,13 +185,13 @@ namespace madmatrix
 #pragma GCC diagnostic ignored "-Wunused-parameter"        // e.g. <<warning: unused parameter ‘G’ [-Wunused-parameter]>>
 #pragma GCC diagnostic ignored "-Wunused-variable"         // e.g. <<warning: unused variable ‘mdl_G__exp__2’ [-Wunused-variable]>>
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable" // e.g. <<warning: variable ‘mdl_G__exp__2’ set but not used [-Wunused-but-set-variable]>>
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
 #pragma nv_diagnostic push
 #pragma nv_diag_suppress 177 // e.g. <<warning #177-D: variable "mdl_G__exp__2" was declared but never referenced>>
 #endif
     __host__ __device__ inline const DependentCouplings_sv computeDependentCouplings_fromG( const fptype_sv& G_sv, const double* bsmIndepParamPtr )
     {
-#ifdef MGONGPU_HARDCODE_PARAM
+#ifdef MADMATRIX_HARDCODE_PARAM
       using namespace Parameters;
 #else%(eftspecial0)s
 #endif
@@ -199,7 +199,7 @@ namespace madmatrix
       // (1) mdl_complexi is always (0,1); (2) mdl_complexi is undefined in device code; (3) need cxsmpl conversion to cxtype in code below
       const cxtype cI( 0., 1. );
       DependentCouplings_sv out;
-#if not( defined MGONGPU_CPPSIMD && defined MGONGPU_FPTYPE_FLOAT )
+#if not( defined MADMATRIX_SIMD && defined MADMATRIX_FPTYPE_FLOAT )
       // Couplings are (scalar, or vector of) doubles, or scalar floats - default implementation
       {
         const fptype_sv& G = G_sv;
@@ -224,7 +224,7 @@ namespace madmatrix
 #endif
       return out;
     }
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
 #pragma GCC diagnostic pop
 #pragma nv_diagnostic pop
 #endif

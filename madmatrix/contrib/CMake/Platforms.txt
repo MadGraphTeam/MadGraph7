@@ -5,5 +5,5 @@
 # Integrated with the MadGraph7 project in Feb 2026.
 
 if (CMAKE_HOST_APPLE)
-  add_definitions(-DMGONGPU_HAS_NO_CURAND)
+  add_definitions(-DMADMATRIX_HAS_NO_CURAND)
 endif(CMAKE_HOST_APPLE)

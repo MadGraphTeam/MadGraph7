@@ -11,9 +11,9 @@
 #ifndef MASSLESS_RAMBO_H
 #define MASSLESS_RAMBO_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "mgOnGpuFptypes.h"
+#include "MadMatrixFptypes.h"
 
 #include "CPPProcess.h"
 
@@ -85,7 +85,7 @@ namespace massless_rambo {
       static bool first = true;
       if( first )
       {
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
         if constexpr( M_ACCESS::isOnDevice() ) // avoid
         {
           const int ievt0 = 0;
@@ -168,7 +168,7 @@ namespace massless_rambo {
     wt = po2log;
     if( nparf != 2 ) wt = ( 2. * nparf - 4. ) * log( energy ) + z[nparf - 1];
 
-#ifndef MGONGPUCPP_GPUIMPL
+#ifndef MADMATRIX_GPUIMPL
     // issue warnings if weight is too small or too large
     static int iwarn[5] = { 0, 0, 0, 0, 0 };
     if( wt < -180. )

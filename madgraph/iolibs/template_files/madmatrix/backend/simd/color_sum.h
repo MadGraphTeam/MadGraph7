@@ -7,14 +7,14 @@
 #ifndef COLOR_SUM_H
 #define COLOR_SUM_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "mgOnGpuVectors.h"
+#include "MadMatrixVectors.h"
 
 #include "ProcessData.h"
 
 #include <cstddef>
-#ifdef MGONGPU_CPP_HAS_BLAS
+#ifdef MADMATRIX_CPP_HAS_BLAS
 #include <vector> // the batched C++ color sum keeps the jamps of every good helicity
 #endif
 
@@ -41,7 +41,7 @@ namespace madmatrix
   // Only defined for processes whose color matrix is large enough that the
   // BLAS call is worth setting up (see blas_wanted): the color sum for every
   // good helicity of one event page in one go.
-#ifdef MGONGPU_CPP_HAS_BLAS
+#ifdef MADMATRIX_CPP_HAS_BLAS
   void
   color_sum_cpu_blas( fptype* allMEs,                  // input/output: allMEs[nevt], add |M|^2 summed over all good helicities
                       fptype_sv* MEs_ighel,            // output: [ncomb] running sum of |M|^2 up to ighel (first - and/or only - neppV page)

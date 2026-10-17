@@ -198,7 +198,7 @@ ifeq ($(BACKEND),cuda)
   GPUFLAGS += $(CUDA_INC) $(USE_NVTX) 
 
   # C++ standard
-  GPUFLAGS += -std=c++17 # need CUDA >= 11.2 (see #333): this is enforced in mgOnGpuConfig.h
+  GPUFLAGS += -std=c++17 # need CUDA >= 11.2 (see #333): this is enforced in MadMatrixConfig.h
 
   # For nvcc, use -maxrregcount to control the maximum number of registries (this does not exist in hipcc)
   # Without -maxrregcount: baseline throughput: 6.5E8 (16384 32 12) up to 7.3E8 (65536 128 12)
@@ -432,7 +432,7 @@ $(info OMPFLAGS=$(OMPFLAGS))
 CXXFLAGS += $(OMPFLAGS)
 
 # Set the build flags appropriate to each BACKEND choice (example: "make BACKEND=scalar")
-# [NB MGONGPU_PVW512 is needed because "-mprefer-vector-width=256" is not exposed in a macro]
+# [NB MADMATRIX_PVW512 is needed because "-mprefer-vector-width=256" is not exposed in a macro]
 # [Use 'g++ <buildflags> -E -dM - < /dev/null' to check which #define's are enabled]
 # [See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=96476]
 ifeq ($(UNAME_P),ppc64le)
@@ -447,7 +447,7 @@ ifeq ($(UNAME_P),ppc64le)
   endif
 else ifeq ($(UNAME_M),arm64) # ARM on Apple silicon
   ifeq ($(BACKEND),scalar) # this internally undefines __ARM_NEON
-    override AVXFLAGS = -DMGONGPU_NOARMNEON
+    override AVXFLAGS = -DMADMATRIX_NOARMNEON
   else ifeq ($(BACKEND),simd_128) # __ARM_NEON is always defined on Apple silicon
     override AVXFLAGS =
   else ifeq ($(BACKEND),simd_256)
@@ -479,7 +479,7 @@ else ifneq ($(shell $(CXX) --version | grep ^nvc++),) # support nvc++ #531
   else ifeq ($(BACKEND),avx512y)
     override AVXFLAGS = -march=skylake -mprefer-vector-width=256 # AVX512 with 256 width (ymm registers) [DEFAULT for gcc]
   else ifeq ($(BACKEND),simd_512)
-    override AVXFLAGS = -march=skylake -DMGONGPU_PVW512 # AVX512 with 512 width (zmm registers)
+    override AVXFLAGS = -march=skylake -DMADMATRIX_PVW512 # AVX512 with 512 width (zmm registers)
   endif
 else
   ifeq ($(BACKEND),scalar)
@@ -491,7 +491,7 @@ else
   else ifeq ($(BACKEND),avx512y)
     override AVXFLAGS = -march=skylake-avx512 -mprefer-vector-width=256 # AVX512 with 256 width (ymm registers) [DEFAULT for gcc]
   else ifeq ($(BACKEND),simd_512)
-    override AVXFLAGS = -march=skylake-avx512 -DMGONGPU_PVW512 # AVX512 with 512 width (zmm registers)
+    override AVXFLAGS = -march=skylake-avx512 -DMADMATRIX_PVW512 # AVX512 with 512 width (zmm registers)
   endif
 endif
 # For the moment, use AVXFLAGS everywhere (in C++ builds): eventually, use them only in encapsulated implementations?
@@ -502,14 +502,14 @@ endif
 # Set the build flags appropriate to each FPTYPE choice (example: "make FPTYPE=f")
 $(info FPTYPE='$(FPTYPE)')
 ifeq ($(FPTYPE),d)
-  CXXFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_DOUBLE
-  GPUFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_DOUBLE
+  CXXFLAGS += -DMADMATRIX_FPTYPE_DOUBLE -DMADMATRIX_FPTYPE2_DOUBLE
+  GPUFLAGS += -DMADMATRIX_FPTYPE_DOUBLE -DMADMATRIX_FPTYPE2_DOUBLE
 else ifeq ($(FPTYPE),f)
-  CXXFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT
-  GPUFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT
+  CXXFLAGS += -DMADMATRIX_FPTYPE_FLOAT -DMADMATRIX_FPTYPE2_FLOAT
+  GPUFLAGS += -DMADMATRIX_FPTYPE_FLOAT -DMADMATRIX_FPTYPE2_FLOAT
 else ifeq ($(FPTYPE),m)
-  CXXFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
-  GPUFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
+  CXXFLAGS += -DMADMATRIX_FPTYPE_DOUBLE -DMADMATRIX_FPTYPE2_FLOAT
+  GPUFLAGS += -DMADMATRIX_FPTYPE_DOUBLE -DMADMATRIX_FPTYPE2_FLOAT
 else
   $(error Unknown FPTYPE='$(FPTYPE)': only 'd', 'f' and 'm' are supported)
 endif
@@ -517,8 +517,8 @@ endif
 # Set the build flags appropriate to each HELINL choice (example: "make HELINL=1")
 $(info HELINL='$(HELINL)')
 ifeq ($(HELINL),1)
-  CXXFLAGS += -DMGONGPU_INLINE_HELAMPS
-  GPUFLAGS += -DMGONGPU_INLINE_HELAMPS
+  CXXFLAGS += -DMADMATRIX_INLINE_HELAMPS
+  GPUFLAGS += -DMADMATRIX_INLINE_HELAMPS
 else ifneq ($(HELINL),0)
   $(error Unknown HELINL='$(HELINL)': only '0' and '1' are supported)
 endif
@@ -526,8 +526,8 @@ endif
 # Set the build flags appropriate to each HRDCOD choice (example: "make HRDCOD=1")
 $(info HRDCOD='$(HRDCOD)')
 ifeq ($(HRDCOD),1)
-  CXXFLAGS += -DMGONGPU_HARDCODE_PARAM
-  GPUFLAGS += -DMGONGPU_HARDCODE_PARAM
+  CXXFLAGS += -DMADMATRIX_HARDCODE_PARAM
+  GPUFLAGS += -DMADMATRIX_HARDCODE_PARAM
 else ifneq ($(HRDCOD),0)
   $(error Unknown HRDCOD='$(HRDCOD)': only '0' and '1' are supported)
 endif
@@ -541,7 +541,7 @@ override RNDLIBFLAGS=
 
 # Set the RNDCXXFLAGS and RNDLIBFLAGS build flags appropriate to each HASCURAND choice (example: "make HASCURAND=hasNoCurand")
 ifeq ($(HASCURAND),hasNoCurand)
-  override RNDCXXFLAGS += -DMGONGPU_HAS_NO_CURAND
+  override RNDCXXFLAGS += -DMADMATRIX_HAS_NO_CURAND
 else ifeq ($(HASCURAND),hasCurand)
   override RNDLIBFLAGS += -L$(CUDA_HOME)/lib64/ -lcurand # NB: -lcuda is not needed here!
 else
@@ -550,7 +550,7 @@ endif
 
 # Set the RNDCXXFLAGS and RNDLIBFLAGS build flags appropriate to each HASHIPRAND choice (example: "make HASHIPRAND=hasNoHiprand")
 ifeq ($(HASHIPRAND),hasNoHiprand)
-  override RNDCXXFLAGS += -DMGONGPU_HAS_NO_HIPRAND
+  override RNDCXXFLAGS += -DMADMATRIX_HAS_NO_HIPRAND
 else ifeq ($(HASHIPRAND),hasHiprand)
   override RNDLIBFLAGS += -L$(HIP_HOME)/lib/ -lhiprand
 else ifneq ($(HASHIPRAND),hasHiprand)

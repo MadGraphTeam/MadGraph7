@@ -4,12 +4,12 @@
 // Further modified by: J. Teig, A. Valassi (2022-2024).
 // Integrated with the MadGraph7 project in Feb 2026.
 
-#ifndef MGONGPUCXTYPES_H
-#define MGONGPUCXTYPES_H 1
+#ifndef MADMATRIXCXTYPES_H
+#define MADMATRIXCXTYPES_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "mgOnGpuFptypes.h"
+#include "MadMatrixFptypes.h"
 
 #include <iostream>
 #include <type_traits>
@@ -21,28 +21,28 @@
 #include <complex>
 
 // Complex type in cuda: thrust or cucomplex or cxsmpl
-#ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
-#if defined MGONGPU_CUCXTYPE_THRUST
+#ifdef __CUDACC__ // this must be __CUDACC__ (not MADMATRIX_GPUIMPL)
+#if defined MADMATRIX_CUCXTYPE_THRUST
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wtautological-compare" // for icpx2021/clang13 (https://stackoverflow.com/a/15864661)
 #include <thrust/complex.h>
 #pragma clang diagnostic pop
-#elif defined MGONGPU_CUCXTYPE_CUCOMPLEX
+#elif defined MADMATRIX_CUCXTYPE_CUCOMPLEX
 #include <cuComplex.h>
-#elif not defined MGONGPU_CUCXTYPE_CXSMPL
-#error You must CHOOSE (ONE AND) ONLY ONE of MGONGPU_CUCXTYPE_THRUST or MGONGPU_CUCXTYPE_CUCOMPLEX or MGONGPU_CUCXTYPE_CXSMPL
+#elif not defined MADMATRIX_CUCXTYPE_CXSMPL
+#error You must CHOOSE (ONE AND) ONLY ONE of MADMATRIX_CUCXTYPE_THRUST or MADMATRIX_CUCXTYPE_CUCOMPLEX or MADMATRIX_CUCXTYPE_CXSMPL
 #endif
 // Complex type in HIP: cxsmpl
 #elif defined __HIPCC__
-#if not defined MGONGPU_HIPCXTYPE_CXSMPL
-#error You must CHOOSE (ONE AND) ONLY ONE of MGONGPU_HIPCXTYPE_CXSMPL
+#if not defined MADMATRIX_HIPCXTYPE_CXSMPL
+#error You must CHOOSE (ONE AND) ONLY ONE of MADMATRIX_HIPCXTYPE_CXSMPL
 #endif
 #else
 // Complex type in c++ or HIP: std::complex or cxsmpl
-#if defined MGONGPU_CPPCXTYPE_STDCOMPLEX
+#if defined MADMATRIX_CPPCXTYPE_STDCOMPLEX
 #include <cmath>
-#elif not defined MGONGPU_CPPCXTYPE_CXSMPL
-#error You must CHOOSE (ONE AND) ONLY ONE of MGONGPU_CPPCXTYPE_STDCOMPLEX or MGONGPU_CPPCXTYPE_CXSMPL
+#elif not defined MADMATRIX_CPPCXTYPE_CXSMPL
+#error You must CHOOSE (ONE AND) ONLY ONE of MADMATRIX_CPPCXTYPE_STDCOMPLEX or MADMATRIX_CPPCXTYPE_CXSMPL
 #endif
 #endif
 
@@ -50,11 +50,11 @@
 // COMPLEX TYPES: INSTRUMENTED CUCOMPLEX CLASS (cucomplex)
 //==========================================================================
 
-#ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
-#if defined MGONGPU_CUCXTYPE_CUCOMPLEX
+#ifdef __CUDACC__ // this must be __CUDACC__ (not MADMATRIX_GPUIMPL)
+#if defined MADMATRIX_CUCXTYPE_CUCOMPLEX
 namespace madmatrix
 {
-#if defined MGONGPU_FPTYPE_DOUBLE
+#if defined MADMATRIX_FPTYPE_DOUBLE
   class cucomplex
   {
   public:
@@ -79,7 +79,7 @@ namespace madmatrix
   private:
     cuDoubleComplex m_ri;
   };
-#elif defined MGONGPU_FPTYPE_FLOAT
+#elif defined MADMATRIX_FPTYPE_FLOAT
   class cucomplex
   {
   public:
@@ -113,8 +113,8 @@ namespace madmatrix
 // COMPLEX TYPES: SIMPLE COMPLEX CLASS (cxsmpl)
 //==========================================================================
 
-// NB: namespace mgOnGpu includes types which are defined in exactly the same way for CPU and GPU builds (see #318 and #725)
-namespace mgOnGpu /* clang-format off */
+// NB: namespace madmatrix includes types which are defined in exactly the same way for CPU and GPU builds (see #318 and #725)
+namespace madmatrix /* clang-format off */
 {
   // The number of floating point types in a complex type (real, imaginary)
   constexpr int nx2 = 2;
@@ -136,14 +136,14 @@ namespace mgOnGpu /* clang-format off */
     __host__ __device__ constexpr const FP& real() const { return m_real; }
     __host__ __device__ constexpr const FP& imag() const { return m_imag; }
     template<typename FP2> __host__ __device__ constexpr operator cxsmpl<FP2>() const { return cxsmpl<FP2>( m_real, m_imag ); }
-#ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
-#ifdef MGONGPU_CUCXTYPE_THRUST
+#ifdef __CUDACC__ // this must be __CUDACC__ (not MADMATRIX_GPUIMPL)
+#ifdef MADMATRIX_CUCXTYPE_THRUST
     template<typename FP2> __host__ __device__ constexpr operator thrust::complex<FP2>() const { return thrust::complex<FP2>( m_real, m_imag ); }
-#elif defined MGONGPU_CUCXTYPE_CUCOMPLEX 
+#elif defined MADMATRIX_CUCXTYPE_CUCOMPLEX 
     __host__ __device__ constexpr operator madmatrix::cucomplex() const { return madmatrix::cucomplex( m_real, m_imag ); }
 #endif
 #else
-#ifdef MGONGPU_CPPCXTYPE_STDCOMPLEX
+#ifdef MADMATRIX_CPPCXTYPE_STDCOMPLEX
     template<typename FP2> __host__ __device__ constexpr operator std::complex<FP2>() const { return std::complex<FP2>( m_real, m_imag ); }
 #endif
 #endif
@@ -152,7 +152,7 @@ namespace mgOnGpu /* clang-format off */
   };
 
   template<typename FP>
-  constexpr // (NB: now valid code? in the past this failed as "a constexpr function cannot have a nonliteral return type mgOnGpu::cxsmpl")
+  constexpr // (NB: now valid code? in the past this failed as "a constexpr function cannot have a nonliteral return type madmatrix::cxsmpl")
   inline __host__ __device__ cxsmpl<FP>
   conj( const cxsmpl<FP>& c )
   {
@@ -161,7 +161,7 @@ namespace mgOnGpu /* clang-format off */
 } /* clang-format on */
 
 // Expose the cxsmpl class outside the namespace
-using mgOnGpu::cxsmpl;
+using madmatrix::cxsmpl;
 
 // Printout to stream for user defined types
 namespace madmatrix
@@ -297,16 +297,16 @@ namespace madmatrix
 namespace madmatrix
 {
   // --- Type definitions (complex type: cxtype)
-#ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
-#if defined MGONGPU_CUCXTYPE_THRUST
+#ifdef __CUDACC__ // this must be __CUDACC__ (not MADMATRIX_GPUIMPL)
+#if defined MADMATRIX_CUCXTYPE_THRUST
   typedef thrust::complex<fptype> cxtype;
-#elif defined MGONGPU_CUCXTYPE_CUCOMPLEX
+#elif defined MADMATRIX_CUCXTYPE_CUCOMPLEX
   typedef cucomplex cxtype;
 #else
   typedef cxsmpl<fptype> cxtype;
 #endif
 #else // c++
-#if defined MGONGPU_CPPCXTYPE_STDCOMPLEX
+#if defined MADMATRIX_CPPCXTYPE_STDCOMPLEX
   typedef std::complex<fptype> cxtype;
 #else
   typedef cxsmpl<fptype> cxtype;
@@ -314,16 +314,16 @@ namespace madmatrix
 #endif
 
   // SANITY CHECK: memory access may be based on casts of fptype[2] to cxtype (e.g. for wavefunctions)
-  static_assert( sizeof( cxtype ) == mgOnGpu::nx2 * sizeof( fptype ), "sizeof(cxtype) is not 2*sizeof(fptype)" );
+  static_assert( sizeof( cxtype ) == madmatrix::nx2 * sizeof( fptype ), "sizeof(cxtype) is not 2*sizeof(fptype)" );
 
   // --- Multi-precision complex types (same platform logic as cxtype)
-#ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
-#if defined MGONGPU_CUCXTYPE_THRUST
+#ifdef __CUDACC__ // this must be __CUDACC__ (not MADMATRIX_GPUIMPL)
+#if defined MADMATRIX_CUCXTYPE_THRUST
   typedef thrust::complex<fptype_momenta> cxtype_momenta;
   typedef cxtype_momenta cxtype_denom;
   typedef thrust::complex<fptype_amp> cxtype_amp;
   typedef thrust::complex<fptype_colour> cxtype_colour;
-#elif defined MGONGPU_CUCXTYPE_CUCOMPLEX
+#elif defined MADMATRIX_CUCXTYPE_CUCOMPLEX
   // cucomplex is not templated; use cxsmpl for stage-specific types
   typedef cxsmpl<fptype_momenta> cxtype_momenta;
   typedef cxtype_momenta cxtype_denom;
@@ -336,7 +336,7 @@ namespace madmatrix
   typedef cxsmpl<fptype_colour> cxtype_colour;
 #endif
 #else // c++
-#if defined MGONGPU_CPPCXTYPE_STDCOMPLEX
+#if defined MADMATRIX_CPPCXTYPE_STDCOMPLEX
   typedef std::complex<fptype_momenta> cxtype_momenta;
   typedef cxtype_momenta cxtype_denom;
   typedef std::complex<fptype_amp> cxtype_amp;
@@ -350,14 +350,14 @@ namespace madmatrix
 #endif
 
   // SANITY CHECKS
-  static_assert( sizeof( cxtype_momenta ) == mgOnGpu::nx2 * sizeof( fptype_momenta ), "sizeof(cxtype_momenta) is not 2*sizeof(fptype_momenta)" );
-  static_assert( sizeof( cxtype_amp ) == mgOnGpu::nx2 * sizeof( fptype_amp ), "sizeof(cxtype_amp) is not 2*sizeof(fptype_amp)" );
-  static_assert( sizeof( cxtype_colour ) == mgOnGpu::nx2 * sizeof( fptype2 ), "sizeof(cxtype_colour) is not 2*sizeof(fptype2)" );
+  static_assert( sizeof( cxtype_momenta ) == madmatrix::nx2 * sizeof( fptype_momenta ), "sizeof(cxtype_momenta) is not 2*sizeof(fptype_momenta)" );
+  static_assert( sizeof( cxtype_amp ) == madmatrix::nx2 * sizeof( fptype_amp ), "sizeof(cxtype_amp) is not 2*sizeof(fptype_amp)" );
+  static_assert( sizeof( cxtype_colour ) == madmatrix::nx2 * sizeof( fptype2 ), "sizeof(cxtype_colour) is not 2*sizeof(fptype2)" );
 }
 
 // DANGEROUS! this was mixing different cxtype definitions for CPU and GPU builds (see #318 and #725)
 // DO NOT expose typedefs and operators outside the namespace
-//using mgOnGpu::cxtype;
+//using madmatrix::cxtype;
 
 //==========================================================================
 // COMPLEX TYPES: (PLATFORM-SPECIFIC) FUNCTIONS AND OPERATORS
@@ -366,7 +366,7 @@ namespace madmatrix
 //One namespace. Split ber backend.
 namespace madmatrix
 {
-#if defined MGONGPU_CUCXTYPE_CXSMPL or defined MGONGPU_HIPCXTYPE_CXSMPL or defined MGONGPU_CPPCXTYPE_CXSMPL
+#if defined MADMATRIX_CUCXTYPE_CXSMPL or defined MADMATRIX_HIPCXTYPE_CXSMPL or defined MADMATRIX_CPPCXTYPE_CXSMPL
 
   //------------------------------
   // CUDA or C++ - using cxsmpl
@@ -430,11 +430,11 @@ namespace madmatrix
   inline __host__ __device__ cxsmpl<FP>
   cxconj( const cxsmpl<FP>& c ) { return conj( c ); }
 
-#endif // #if defined MGONGPU_CUCXTYPE_CXSMPL or defined MGONGPU_HIPCXTYPE_CXSMPL or defined MGONGPU_CPPCXTYPE_CXSMPL
+#endif // #if defined MADMATRIX_CUCXTYPE_CXSMPL or defined MADMATRIX_HIPCXTYPE_CXSMPL or defined MADMATRIX_CPPCXTYPE_CXSMPL
 
   //==========================================================================
 
-#if defined __CUDACC__ and defined MGONGPU_CUCXTYPE_THRUST // cuda + thrust (this must be __CUDACC__ and not MGONGPUCPP_GPUIMPL)
+#if defined __CUDACC__ and defined MADMATRIX_CUCXTYPE_THRUST // cuda + thrust (this must be __CUDACC__ and not MADMATRIX_GPUIMPL)
 
   //------------------------------
   // CUDA - using thrust::complex
@@ -490,17 +490,17 @@ namespace madmatrix
   inline __host__ __device__ thrust::complex<FP>
   cxconj( const thrust::complex<FP>& c ) { return thrust::conj( c ); }
 
-#endif // #if defined __CUDACC__ and defined MGONGPU_CUCXTYPE_THRUST
+#endif // #if defined __CUDACC__ and defined MADMATRIX_CUCXTYPE_THRUST
 
   //==========================================================================
 
-#if defined __CUDACC__ and defined MGONGPU_CUCXTYPE_CUCOMPLEX // cuda + cucomplex (this must be __CUDACC__ and not MGONGPUCPP_GPUIMPL)
+#if defined __CUDACC__ and defined MADMATRIX_CUCXTYPE_CUCOMPLEX // cuda + cucomplex (this must be __CUDACC__ and not MADMATRIX_GPUIMPL)
 
   //------------------------------
   // CUDA - using cuComplex
   //------------------------------
 
-#if defined MGONGPU_FPTYPE_DOUBLE // cuda + cucomplex + double
+#if defined MADMATRIX_FPTYPE_DOUBLE // cuda + cucomplex + double
 
   //+++++++++++++++++++++++++
   // cuDoubleComplex ONLY
@@ -556,7 +556,7 @@ namespace madmatrix
     return out;
   }
 
-#elif defined MGONGPU_FPTYPE_FLOAT // cuda + cucomplex + float
+#elif defined MADMATRIX_FPTYPE_FLOAT // cuda + cucomplex + float
 
   //+++++++++++++++++++++++++
   // cuFloatComplex ONLY
@@ -730,11 +730,11 @@ namespace madmatrix
   inline __host__ __device__ cxsmpl<FP>
   cxconj( const cxsmpl<FP>& c ) { return conj( c ); }
 
-#endif // #if defined __CUDACC__ and defined MGONGPU_CUCXTYPE_CUCOMPLEX
+#endif // #if defined __CUDACC__ and defined MADMATRIX_CUCXTYPE_CUCOMPLEX
 
   //==========================================================================
 
-#if not defined __CUDACC__ and defined MGONGPU_CPPCXTYPE_STDCOMPLEX // c++/hip + stdcomplex (this must be __CUDACC__ and not MGONGPUCPP_GPUIMPL)
+#if not defined __CUDACC__ and defined MADMATRIX_CPPCXTYPE_STDCOMPLEX // c++/hip + stdcomplex (this must be __CUDACC__ and not MADMATRIX_GPUIMPL)
 
   //------------------------------
   // C++ - using std::complex
@@ -770,7 +770,7 @@ namespace madmatrix
     return c;
   }
 
-#if defined MGONGPU_FPTYPE_FLOAT
+#if defined MADMATRIX_FPTYPE_FLOAT
   inline cxtype
   cxmake( const std::complex<double>& c ) // std::complex to std::complex (cast double-to-float)
   {
@@ -794,7 +794,7 @@ namespace madmatrix
   inline std::complex<FP>
   cxconj( const std::complex<FP>& c ) { return conj( c ); }
 
-#endif // #if not defined __CUDACC__ and defined MGONGPU_CPPCXTYPE_STDCOMPLEX
+#endif // #if not defined __CUDACC__ and defined MADMATRIX_CPPCXTYPE_STDCOMPLEX
 
 } // end namespace madmatrix
 
@@ -806,7 +806,7 @@ namespace madmatrix
 namespace madmatrix
 {
   // The cxtype_ref class (a const reference to two non-const fp variables) was originally designed for cxtype_v::operator[]
-  // It used to be included in the code only when MGONGPU_HAS_CPPCXTYPEV_BRK (originally MGONGPU_HAS_CPPCXTYPE_REF) is defined
+  // It used to be included in the code only when MADMATRIX_HAS_CPPCXTYPEV_BRK (originally MADMATRIX_HAS_CPPCXTYPE_REF) is defined
   // It is now always included in the code because it is needed also to access an fptype wavefunction buffer as a cxtype
   class cxtype_ref
   {
@@ -871,4 +871,4 @@ namespace madmatrix
 
 //==========================================================================
 
-#endif // MGONGPUCXTYPES_H
+#endif // MADMATRIXCXTYPES_H

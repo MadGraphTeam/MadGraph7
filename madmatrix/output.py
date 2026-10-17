@@ -93,8 +93,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 
     # Information to find the template file that we want to include from madgraph
     # you can include additional file from the plugin directory as well
-    # AV - use template files from PLUGINDIR instead of MG5DIR and add gpu/mgOnGpuVectors.h
-    # [NB: mgOnGpuConfig.h, check_sa.cc and fcheck_sa.f are handled through dedicated methods]
+    # AV - use template files from PLUGINDIR instead of MG5DIR and add gpu/MadMatrixVectors.h
     ###s = MG5DIR + '/madgraph/iolibs/template_files/'
 
     templates_path = pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files')
@@ -257,7 +256,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         and wants the QCD-EW cross term alone, which no amount of dropping
         diagrams at generation can produce.
 
-        The BLAS color sums (CPU: compile time, GPU: CUDACPP_RUNTIME_BLASCOLORSUM)
+        The BLAS color sums (CPU: compile time, GPU: MADMATRIX_RUNTIME_BLASCOLORSUM)
         cannot pair split orders and are not used for such a process.
         """
 

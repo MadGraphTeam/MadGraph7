@@ -591,40 +591,6 @@ class UFOModelConverterGPU(UFOModelConverterCPP):
     
     aloha_writer = 'cudac'
     cc_ext = 'cu'
-        # Template files to use
-    #include_dir = '.'
-    #c_file_dir = '.'
-    #param_template_h = 'cpp_model_parameters_h.inc'
-    #param_template_cc = 'cpp_model_parameters_cc.inc'
-    aloha_template_h = pjoin('gpu','cpp_hel_amps_h.inc')
-    aloha_template_cc = pjoin('gpu','cpp_hel_amps_cc.inc')
-    helas_h = pjoin('gpu', 'helas.h')
-    helas_cc = pjoin('gpu', 'helas.cu')
-
-    def read_aloha_template_files(self, ext):
-        """Read all ALOHA template files with extension ext, strip them of
-        compiler options and namespace options, and return in a list"""
-
-        path = pjoin(MG5DIR, 'aloha','template_files')
-        out = []
-        
-        if ext == 'h':
-            out.append(open(pjoin(path, self.helas_h)).read())
-        else:
-            out.append(open(pjoin(path, self.helas_cc)).read())
-    
-        return out
-
-    def write_process_h_file(self, writer):
-        
-        replace_dict = UFOModelConverterCPP.write_process_h_file(self, None)
-        replace_dict['include_for_complex'] = '#include "mgOnGpuTypes.h"'
-        if writer:
-            file = self.read_template_file(self.process_template_h) % replace_dict
-            # Write the file
-            writer.writelines(file)
-        else:
-            return replace_dict
 
 class OneProcessExporterCPP(object):
     """Class to take care of exporting a set of matrix elements to

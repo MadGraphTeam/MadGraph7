@@ -41,13 +41,13 @@ namespace madmatrix
     , m_matrixElements( matrixElements )
     , m_selhel( selhel )
     , m_selcol( selcol )
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
     , m_nevtProcessedByChannel()
     , m_tag()
 #endif
   {
     //std::cout << "DEBUG: MatrixElementKernelBase ctor " << this << std::endl;
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
     for( size_t channelId = 0; channelId < ProcessData::ndiagrams + 1; channelId++ ) // [0...ndiagrams] (TEMPORARY: 0=multichannel)
       m_nevtProcessedByChannel[channelId] = 0;
 #endif
@@ -58,17 +58,17 @@ namespace madmatrix
   MatrixElementKernelBase::~MatrixElementKernelBase()
   {
     //std::cout << "DEBUG: MatrixElementKernelBase dtor " << this << std::endl;
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
     MatrixElementKernelBase::dumpNevtProcessedByChannel();
 #endif
-#ifdef MGONGPUCPP_VERBOSE
+#ifdef MADMATRIX_VERBOSE
     MatrixElementKernelBase::dumpSignallingFPEs();
 #endif
   }
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
   void MatrixElementKernelBase::updateNevtProcessedByChannel( const unsigned int* pHstChannelIds, const size_t nevt )
   {
     if( pHstChannelIds != nullptr )
@@ -92,7 +92,7 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
   void MatrixElementKernelBase::dumpNevtProcessedByChannel()
   {
     size_t nevtProcessed = 0;
@@ -216,7 +216,7 @@ namespace madmatrix
     computeDependentCouplings( m_gs.data(), m_couplings.data(), m_gs.size() );
     const unsigned int* pChannelIds = ( useChannelIds ? m_channelIds.data() : nullptr );
     sigmaKin( m_momenta.data(), m_couplings.data(), m_iflavorVec.data(), m_rndhel.data(), m_rndcol.data(), pChannelIds, nullptr, m_matrixElements.data(), m_selhel.data(), m_selcol.data(), m_numerators.data(), m_denominators.data(), nullptr, true, nevt() );
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
     //std::cout << "DEBUG: MatrixElementKernelHost::computeMatrixElements " << this << " " << ( useChannelIds ? "T" : "F" ) << " " << nevt() << std::endl;
     MatrixElementKernelBase::updateNevtProcessedByChannel( pChannelIds, nevt() );
 #endif

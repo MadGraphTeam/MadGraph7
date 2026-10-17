@@ -6,11 +6,11 @@
 
 #include "color_sum.h"
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "ColorData.h" // P1-generated: colorMatrix/colorDenom
 #include "MemoryAccessMatrixElements.h"
-#include "mgOnGpuCxtypes.h"
+#include "MadMatrixCxtypes.h"
 
 namespace madmatrix
 {
@@ -159,7 +159,7 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-#ifndef MGONGPU_HAS_NO_BLAS
+#ifndef MADMATRIX_HAS_NO_BLAS
   // Convert the jamps from fptype to fptype2, which is only ever double to float in mixed
   // floating point mode: the color sum reads them where compute_jamps wrote them otherwise.
   __global__ void
@@ -171,7 +171,7 @@ namespace madmatrix
     const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
     constexpr int ihel = 0; // the input buffer allJamps already points to a specific helicity
     // NB! The same striding as in compute_jamps and cuBLAS is used here
-    for( int ix2 = 0; ix2 < mgOnGpu::nx2; ix2++ )
+    for( int ix2 = 0; ix2 < madmatrix::nx2; ix2++ )
       for( int icol = 0; icol < ncolor; icol++ )
         allJamps2[ix2 * ncolor * nhel * nevt + icol * nhel * nevt + ihel * nevt + ievt] =
           allJamps[ix2 * ncolor * nhel * nevt + icol * nhel * nevt + ihel * nevt + ievt];
@@ -199,8 +199,8 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-#ifndef MGONGPU_HAS_NO_BLAS
-#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#ifndef MADMATRIX_HAS_NO_BLAS
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
   __global__ void
   convertF2D_MEs( fptype* allMEs,             // output: allMEs[nevt] for one specific helicity
                   const fptype_colour* allMEsFpt2 ) // input: allMEs[nevt] for one specific helicity
@@ -213,7 +213,7 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-#ifndef MGONGPU_HAS_NO_BLAS
+#ifndef MADMATRIX_HAS_NO_BLAS
   void
   color_sum_blas( fptype* ghelAllMEs,           // output: allMEs super-buffer[nhel][nevt], add |M|^2 separately for each helicity
                   const fptype_amp* ghelAllJamps,   // input: allJamps super-buffer[2][ncol][nhel][nevt] for nhel good helicities
@@ -234,11 +234,11 @@ namespace madmatrix
     // the converted jamps and the fptype2 MEs: see the layout in blasColorSumTmpSize, which
     // is what MatrixElementKernels.cc allocates.
     fptype2* ghelAllZtempBoth = ghelAllBlasTmp;                                        // start of the fptype2[ncolor*2*nhel*nevt] buffer
-#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
     // Mixed precision mode: the jamps go through a buffer of their own, as they must be
     // converted from double to float on the way
-    fptype_colour* ghelAllJampsBuf = ghelAllBlasTmp + ncolor * mgOnGpu::nx2 * nhel * nevt;    // start of the second one
-    fptype_colour* ghelAllMEsFpt2 = ghelAllBlasTmp + 2 * ncolor * mgOnGpu::nx2 * nhel * nevt; // start of the fptype_colour[nhel*nevt] buffer
+    fptype_colour* ghelAllJampsBuf = ghelAllBlasTmp + ncolor * madmatrix::nx2 * nhel * nevt;    // start of the second one
+    fptype_colour* ghelAllMEsFpt2 = ghelAllBlasTmp + 2 * ncolor * madmatrix::nx2 * nhel * nevt; // start of the fptype_colour[nhel*nevt] buffer
     const fptype_colour* ghelAllJamps2 = convertD2F_AllJamps( ghelAllJampsBuf, ghelAllJamps, ghelStreams, nhel, gpublocks, gputhreads );
 #else
     static_assert( std::is_same<fptype_colour, fptype>::value );
@@ -309,7 +309,7 @@ namespace madmatrix
                                               ghelAllMEsFpt2, 1, 1,                     // output is a 1x1 result for each "batch" (i.e. for each ievt)
                                               nevtN ) );                                // there are nevt (nhel*nevt) "batches"
 
-#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
     // Convert MEs from float to double
     for( int ighel = 0; ighel < nhel; ighel++ )
     {
@@ -338,7 +338,7 @@ namespace madmatrix
     // CASE 1: KERNEL
     if( !pBlasHandle )
     {
-      assert( ghelAllBlasTmp == nullptr );  // sanity check for HASBLAS=hasNoBlas or CUDACPP_RUNTIME_BLASCOLORSUM not set
+      assert( ghelAllBlasTmp == nullptr );  // sanity check for HASBLAS=hasNoBlas or MADMATRIX_RUNTIME_BLASCOLORSUM not set
       if (processAllHelicities) {
         gpuLaunchKernel2D( color_sum_kernel, gpublocks, nGoodHel, gputhreads, ghelStreams[0], ghelAllMEs, ghelAllJamps, nGoodHel, nevt );
       } else {
@@ -355,7 +355,7 @@ namespace madmatrix
     // CASE 2: BLAS
     else
     {
-#ifdef MGONGPU_HAS_NO_BLAS
+#ifdef MADMATRIX_HAS_NO_BLAS
       assert( false ); // sanity check: no path to this statement for HASBLAS=hasNoBlas
 #else
       // sanity check: MatrixElementKernelDevice never enables BLAS for split amplitude

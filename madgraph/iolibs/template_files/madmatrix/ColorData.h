@@ -9,7 +9,7 @@
 #ifndef COLORDATA_H
 #define COLORDATA_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 #include "ProcessData.h"
 
 namespace ColorMatrixData
@@ -33,7 +33,7 @@ namespace ColorMatrixData
 %(sqso_tables)s
 }
 
-namespace mgOnGpu
+namespace madmatrix
 {
   // Diagram: C-indexed [0,ndiagrams). Channel (channelId): F-indexed [1,nchannels],
   // not all diagrams have one (#919); channelId-1 indexes channel2iconfig. Config
