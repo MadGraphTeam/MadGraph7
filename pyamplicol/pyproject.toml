@@ -83,10 +83,10 @@ pyamplicol = "pyamplicol.cli:main"
 rusticol-config = "rusticol_config:main"
 
 [project.urls]
-Homepage = "https://github.com/mg5amcnlo/pyamplicol"
-Documentation = "https://mg5amcnlo.github.io/pyamplicol/"
-Issues = "https://github.com/mg5amcnlo/pyamplicol/issues"
-Source = "https://github.com/mg5amcnlo/pyamplicol"
+Homepage = "https://github.com/MadGraphTeam/pyamplicol"
+Documentation = "https://madgraph.org/pyamplicol/"
+Issues = "https://github.com/MadGraphTeam/pyamplicol/issues"
+Source = "https://github.com/MadGraphTeam/pyamplicol"
 
 [tool.maturin]
 manifest-path = "rust/crates/rusticol-python/Cargo.toml"

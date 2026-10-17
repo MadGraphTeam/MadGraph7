@@ -14,10 +14,10 @@ snapshots below.
 The repository publishes four selected rendered snapshots from manual
 measurement campaigns:
 
-- [MacBook M3 report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
-- [AMD EPYC report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
-- [FullColor FFT selected-helicity snapshot](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/summary_plots_final.pdf)
-- [FullColor FFT helicity-sum snapshot](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/summary_plots_final_helicity_sum.pdf)
+- [MacBook M3 report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
+- [AMD EPYC report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
+- [FullColor FFT selected-helicity snapshot](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/summary_plots_final.pdf)
+- [FullColor FFT helicity-sum snapshot](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/summary_plots_final_helicity_sum.pdf)
 
 The first two PDFs are general host reports. The FullColor FFT selected-
 helicity snapshot times one shared known-nonzero helicity from helicity-general

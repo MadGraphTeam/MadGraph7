@@ -14,7 +14,7 @@ where to read the authoritative license terms.
 > This page is a technical guide, not legal advice. Upstream license terms and
 > eligibility rules control. The complete notices distributed with pyAmpliCol
 > are in
-> [`THIRD_PARTY_NOTICES.md`](https://github.com/mg5amcnlo/pyamplicol/blob/main/THIRD_PARTY_NOTICES.md)
+> [`THIRD_PARTY_NOTICES.md`](https://github.com/MadGraphTeam/pyamplicol/blob/main/THIRD_PARTY_NOTICES.md)
 > and the repository's `licenses/` directory.
 
 ## Package license at startup
@@ -280,7 +280,7 @@ calls within pyAmpliCol; other Symbolica use requires its own applicable
 authorization.
 
 Exact dependency versions and notices are included in release metadata and
-[`THIRD_PARTY_NOTICES.md`](https://github.com/mg5amcnlo/pyamplicol/blob/main/THIRD_PARTY_NOTICES.md).
+[`THIRD_PARTY_NOTICES.md`](https://github.com/MadGraphTeam/pyamplicol/blob/main/THIRD_PARTY_NOTICES.md).
 
 ## Original AmpliCol is not a pyAmpliCol runtime dependency
 

@@ -11,7 +11,7 @@ options, and Python configuration classes. Unknown fields are rejected rather
 than ignored, with a nearest-field suggestion when a likely spelling exists.
 
 The complete field-by-field reference is the shipped
-[`examples/all_options.toml`](https://github.com/mg5amcnlo/pyamplicol/blob/main/examples/all_options.toml).
+[`examples/all_options.toml`](https://github.com/MadGraphTeam/pyamplicol/blob/main/examples/all_options.toml).
 This page focuses on practical configurations.
 
 ## Minimal generation card
@@ -553,4 +553,4 @@ syntax, so quote strings containing spaces.
 - [LC workloads and execution modes](lc-workloads-and-execution-modes.md)
 - [Models and Processes](models-and-processes.md)
 - [Runtime and Selectors](runtime-and-selectors.md)
-- [Exhaustive current schema](https://github.com/mg5amcnlo/pyamplicol/blob/main/examples/all_options.toml)
+- [Exhaustive current schema](https://github.com/MadGraphTeam/pyamplicol/blob/main/examples/all_options.toml)

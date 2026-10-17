@@ -318,8 +318,8 @@ TeX, and source remain; the next plain refresh restores the complete report.
 
 The repository retains only two rendered report snapshots:
 
-- [MacBook M3 report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
-- [AMD EPYC report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
+- [MacBook M3 report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
+- [AMD EPYC report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
 
 Raw campaign results are intentionally not published in the repository. A
 fresh copied campaign contains everything needed to reproduce the report
@@ -363,5 +363,5 @@ state.
 - [Profiling campaign walkthrough](profiling-campaign-walkthrough.md) — the campaign idea, retained evidence, PDF lifecycle, and matrix interpretation.
 - [Artifacts and Portability](artifacts-and-portability.md) — process-artifact portability and trust.
 - [Troubleshooting](troubleshooting.md) — campaign state, source revision, and dashboard issues.
-- [Packaged campaign guide](https://github.com/mg5amcnlo/pyamplicol/blob/main/src/pyamplicol/_profiling_campaign/TABLE_FILLING.md).
+- [Packaged campaign guide](https://github.com/MadGraphTeam/pyamplicol/blob/main/src/pyamplicol/_profiling_campaign/TABLE_FILLING.md).
 - [Published report index](../performance_reports/README.md).

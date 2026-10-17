@@ -32,7 +32,7 @@ print(pyamplicol.__version__)
 | `generate`, `load`, `benchmark` | One-shot convenience functions. |
 
 The shipped scripts under
-[`examples/python/`](https://github.com/mg5amcnlo/pyamplicol/tree/main/examples/python)
+[`examples/python/`](https://github.com/MadGraphTeam/pyamplicol/tree/main/examples/python)
 are complete runnable programs.
 
 ## Plan and generate with the built-in model
@@ -222,7 +222,7 @@ result = Generator(resolution).generate(
 ```
 
 The complete maintained implementation is
-[`examples/python/typed_generation.py`](https://github.com/mg5amcnlo/pyamplicol/blob/main/examples/python/typed_generation.py).
+[`examples/python/typed_generation.py`](https://github.com/MadGraphTeam/pyamplicol/blob/main/examples/python/typed_generation.py).
 
 ## Load a runtime
 
@@ -546,7 +546,7 @@ environment metadata, native timing breakdown, stage attribution, and work
 counters when the runtime exposes them.
 
 The runnable reference is
-[`examples/python/benchmark.py`](https://github.com/mg5amcnlo/pyamplicol/blob/main/examples/python/benchmark.py).
+[`examples/python/benchmark.py`](https://github.com/MadGraphTeam/pyamplicol/blob/main/examples/python/benchmark.py).
 
 ## Convenience functions
 

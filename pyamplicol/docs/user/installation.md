@@ -81,7 +81,7 @@ need a source build:
 
 ```console
 git clone --branch v1.0.1 --depth 1 \
-  https://github.com/mg5amcnlo/pyamplicol.git
+  https://github.com/MadGraphTeam/pyamplicol.git
 cd pyamplicol
 python -m pip install .
 ```
@@ -116,7 +116,7 @@ release wheel requires a clean Git checkpoint and complete release assets;
 published-dependency mode does not relax these publication guards.
 
 ```console
-git clone https://github.com/mg5amcnlo/pyamplicol.git
+git clone https://github.com/MadGraphTeam/pyamplicol.git
 cd pyamplicol
 just dev-install
 PYTHON=.venv/bin/python just dev-test

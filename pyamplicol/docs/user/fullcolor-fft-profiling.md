@@ -263,8 +263,8 @@ produce similar scaling.
 
 Published rolling snapshots:
 
-- [selected-helicity FullColor FFT PDF](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/summary_plots_final.pdf)
-- [complete-helicity-sum FullColor FFT PDF](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/summary_plots_final_helicity_sum.pdf)
+- [selected-helicity FullColor FFT PDF](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/summary_plots_final.pdf)
+- [complete-helicity-sum FullColor FFT PDF](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/summary_plots_final_helicity_sum.pdf)
 
 These are measurement-host results rather than release-CI benchmarks. Raw
 campaign workspaces remain local.

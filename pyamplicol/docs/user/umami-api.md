@@ -28,7 +28,7 @@ existing `just dev-install` workflow from a clean checkout. Python-only changes
 can instead use `env PYTHONPATH="$PWD/src" .venv/bin/python ...` from the repository
 root when a matching native runtime is already staged; they do not require a
 new Rusticol build. See the
-[example README](https://github.com/mg5amcnlo/pyamplicol/tree/umami/umami_example#updating-a-checkout-or-stale-environment)
+[example README](https://github.com/MadGraphTeam/pyamplicol/tree/umami/umami_example#updating-a-checkout-or-stale-environment)
 for complete commands.
 
 ## Generate and build
@@ -301,7 +301,7 @@ flavour classes, the recorded relations and their warnings.
 ## MadSpace example
 
 The repository's
-[`umami_example`](https://github.com/mg5amcnlo/pyamplicol/tree/umami/umami_example)
+[`umami_example`](https://github.com/MadGraphTeam/pyamplicol/tree/umami/umami_example)
 contains close adaptations of AmpliCol's loading and integration examples. They
 use the real MadSpace matrix-element loader, phase-space mappings and
 differential cross section, with VEGAS from MadNIS. The default is a bounded

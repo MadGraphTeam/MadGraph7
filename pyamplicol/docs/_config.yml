@@ -1,8 +1,8 @@
 title: pyAmpliCol
 description: Fast color-ordered scattering amplitudes from Python and native APIs.
-url: https://mg5amcnlo.github.io
+url: https://madgraph.org
 baseurl: /pyamplicol
-repository: mg5amcnlo/pyamplicol
+repository: MadGraphTeam/pyamplicol
 permalink: pretty
 
 remote_theme: just-the-docs/just-the-docs@2ed4c0af735e95af5c0dcf7a605b07d903005b4e
@@ -43,14 +43,14 @@ readme_index:
 
 aux_links:
   Repository:
-    - https://github.com/mg5amcnlo/pyamplicol
+    - https://github.com/MadGraphTeam/pyamplicol
   PyPI:
     - https://pypi.org/project/pyamplicol/
 aux_links_new_tab: true
 
 gh_edit_link: true
 gh_edit_link_text: Edit this page on GitHub
-gh_edit_repository: https://github.com/mg5amcnlo/pyamplicol
+gh_edit_repository: https://github.com/MadGraphTeam/pyamplicol
 gh_edit_branch: main
 gh_edit_source: docs
 gh_edit_view_mode: edit

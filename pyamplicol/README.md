@@ -1,15 +1,15 @@
 <!-- SPDX-License-Identifier: 0BSD -->
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/mg5amcnlo/pyamplicol/main/docs/assets/pyamplicol_logo.png" alt="pyAmpliCol" width="760">
+  <img src="https://raw.githubusercontent.com/MadGraphTeam/pyamplicol/main/docs/assets/pyamplicol_logo.png" alt="pyAmpliCol" width="760">
 </p>
 
 <p align="center">
   <a href="https://pypi.org/project/pyamplicol/"><img src="https://img.shields.io/pypi/v/pyamplicol.svg" alt="PyPI"></a>
   <a href="https://pypi.org/project/pyamplicol/"><img src="https://img.shields.io/pypi/pyversions/pyamplicol.svg" alt="Python versions"></a>
-  <a href="https://mg5amcnlo.github.io/pyamplicol/"><img src="https://img.shields.io/badge/docs-User%20Guide-2f81f7.svg?logo=githubpages" alt="pyAmpliCol documentation"></a>
-  <a href="https://github.com/mg5amcnlo/pyamplicol/actions/workflows/tests.yml"><img src="https://github.com/mg5amcnlo/pyamplicol/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
-  <a href="https://github.com/mg5amcnlo/pyamplicol/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-0BSD-blue.svg" alt="License: 0BSD"></a>
+  <a href="https://madgraph.org/pyamplicol/"><img src="https://img.shields.io/badge/docs-User%20Guide-2f81f7.svg?logo=githubpages" alt="pyAmpliCol documentation"></a>
+  <a href="https://github.com/MadGraphTeam/pyamplicol/actions/workflows/tests.yml"><img src="https://github.com/MadGraphTeam/pyamplicol/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
+  <a href="https://github.com/MadGraphTeam/pyamplicol/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-0BSD-blue.svg" alt="License: 0BSD"></a>
 </p>
 
 <p align="center"><strong>Fast color-ordered scattering amplitudes from Python and native APIs.</strong></p>
@@ -19,7 +19,7 @@ built-in, JSON, or UFO models. It provides a typed Python API and CLI, fast
 Rust-backed execution, runtime helicity and color-flow selection, and generated
 Python, C11, C++17, Fortran 2008, and Rust 2021 interfaces.
 
-Explore the complete [pyAmpliCol documentation](https://mg5amcnlo.github.io/pyamplicol/)
+Explore the complete [pyAmpliCol documentation](https://madgraph.org/pyamplicol/)
 for guided workflows, API examples, technical reference, and release support.
 
 Opt-in [tree-level spin and colour correlations](docs/correlators.md) prepare
@@ -49,7 +49,7 @@ need a Rust compiler. pyAmpliCol has no LHAPDF dependency.
 Build the tagged 1.0.1 source snapshot with:
 
 ```console
-git clone --branch v1.0.1 --depth 1 https://github.com/mg5amcnlo/pyamplicol.git
+git clone --branch v1.0.1 --depth 1 https://github.com/MadGraphTeam/pyamplicol.git
 cd pyamplicol
 python -m pip install .
 ```
@@ -85,7 +85,7 @@ It needs updated, coherent upstream pins before use; use the published lane
 for current-source development and tests.
 
 Full installation details are in the
-[documentation](https://mg5amcnlo.github.io/pyamplicol/).
+[documentation](https://madgraph.org/pyamplicol/).
 
 ## Quick start
 
@@ -164,7 +164,7 @@ boundary. Stable process IDs remain available when more than one generated
 representative could match an expression.
 
 See the
-[examples guide](https://github.com/mg5amcnlo/pyamplicol/blob/main/examples/README.md)
+[examples guide](https://github.com/MadGraphTeam/pyamplicol/blob/main/examples/README.md)
 for complete cards, parameter updates, selector examples, and generated API
 drivers.
 
@@ -244,7 +244,7 @@ cd ./pyamplicol-profiling-campaign
 That deliberately small real campaign measures only the final-state-
 multiplicity-one `d d~ > Z` recurrence cell. Broader campaign selections are
 intended for dedicated profiling hosts. The
-[documentation](https://mg5amcnlo.github.io/pyamplicol/) covers selection,
+[documentation](https://madgraph.org/pyamplicol/) covers selection,
 continuation, optional original-AmpliCol comparisons, artifact retention, and
 PDF generation.
 
@@ -364,10 +364,10 @@ complete host identity produced by a fresh profiler run.
 The public performance index retains four selected rendered snapshots. Raw
 JSON, generated tables, attempts, and campaign workspaces stay untracked:
 
-- [MacBook M3 report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
-- [AMD EPYC report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
-- [FullColor FFT selected-helicity snapshot](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/summary_plots_final.pdf)
-- [FullColor FFT helicity-sum snapshot](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/summary_plots_final_helicity_sum.pdf)
+- [MacBook M3 report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
+- [AMD EPYC report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
+- [FullColor FFT selected-helicity snapshot](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/summary_plots_final.pdf)
+- [FullColor FFT helicity-sum snapshot](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/summary_plots_final_helicity_sum.pdf)
 
 These are manual measurement snapshots rather than release-CI results; raw
 campaign data remains local. The general host report format is reproducible
@@ -376,7 +376,7 @@ checkout orchestrator above.
 
 ## Documentation
 
-Read the complete [pyAmpliCol documentation](https://mg5amcnlo.github.io/pyamplicol/).
+Read the complete [pyAmpliCol documentation](https://madgraph.org/pyamplicol/).
 
 ## Dependencies and license
 
@@ -386,4 +386,4 @@ immutable revision of the official
 
 pyAmpliCol is distributed under the 0BSD license. Third-party components and
 model assets retain their own terms; see
-[THIRD_PARTY_NOTICES.md](https://github.com/mg5amcnlo/pyamplicol/blob/main/THIRD_PARTY_NOTICES.md).
+[THIRD_PARTY_NOTICES.md](https://github.com/MadGraphTeam/pyamplicol/blob/main/THIRD_PARTY_NOTICES.md).

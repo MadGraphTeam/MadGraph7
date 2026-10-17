@@ -16,8 +16,8 @@ problem.
 ## Current release boundary
 
 Version `1.0.1` is represented by the immutable
-[`v1.0.1` source snapshot](https://github.com/mg5amcnlo/pyamplicol/tree/v1.0.1),
-the [GitHub release](https://github.com/mg5amcnlo/pyamplicol/releases/tag/v1.0.1),
+[`v1.0.1` source snapshot](https://github.com/MadGraphTeam/pyamplicol/tree/v1.0.1),
+the [GitHub release](https://github.com/MadGraphTeam/pyamplicol/releases/tag/v1.0.1),
 and [PyPI release](https://pypi.org/project/pyamplicol/1.0.1/). Its validated
 inventory is one source distribution and three `cp311-abi3` wheels:
 
@@ -25,7 +25,7 @@ inventory is one source distribution and three `cp311-abi3` wheels:
 - macOS 11 or newer on x86-64;
 - manylinux 2.28 on x86-64.
 
-The [release-artifacts workflow](https://github.com/mg5amcnlo/pyamplicol/actions/workflows/release-artifacts.yml)
+The [release-artifacts workflow](https://github.com/MadGraphTeam/pyamplicol/actions/workflows/release-artifacts.yml)
 installs each wheel into a clean CPython 3.11 environment and exercises the
 Python, C11, C++17, Fortran 2008, and Rust 2021 APIs. It also runs a CPython
 3.14 abi3 smoke test, source preflight, and independent Fortran physics oracle.
@@ -134,8 +134,8 @@ Rendered performance PDFs are repository documents, not PyPI wheel payloads or
 release-CI benchmarks. Their links intentionally point to the current `main`
 branch:
 
-- [MacBook M3 report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
-- [AMD EPYC report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
+- [MacBook M3 report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
+- [AMD EPYC report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
 
 ## How artifacts are validated and published
 
@@ -149,8 +149,8 @@ This keeps the tested and published bytes identical without adding a second
 release build.
 
 GitHub workflow history is available under
-[Actions](https://github.com/mg5amcnlo/pyamplicol/actions), and tagged source
-snapshots under [Releases](https://github.com/mg5amcnlo/pyamplicol/releases).
+[Actions](https://github.com/MadGraphTeam/pyamplicol/actions), and tagged source
+snapshots under [Releases](https://github.com/MadGraphTeam/pyamplicol/releases).
 
 ## Compatibility promises
 
@@ -185,7 +185,7 @@ See [Symbolica and Licensing](symbolica-and-licensing.md),
 
 ## Report a problem
 
-Use [GitHub Issues](https://github.com/mg5amcnlo/pyamplicol/issues) for a
+Use [GitHub Issues](https://github.com/MadGraphTeam/pyamplicol/issues) for a
 reproducible bug, compatibility failure, or documentation gap. Search existing
 issues first.
 
@@ -283,7 +283,7 @@ without including exploit details in a public issue.
 ## Links
 
 - [PyPI](https://pypi.org/project/pyamplicol/)
-- [GitHub releases](https://github.com/mg5amcnlo/pyamplicol/releases)
-- [Issue tracker](https://github.com/mg5amcnlo/pyamplicol/issues)
-- [License](https://github.com/mg5amcnlo/pyamplicol/blob/main/LICENSE)
-- [Third-party notices](https://github.com/mg5amcnlo/pyamplicol/blob/main/THIRD_PARTY_NOTICES.md)
+- [GitHub releases](https://github.com/MadGraphTeam/pyamplicol/releases)
+- [Issue tracker](https://github.com/MadGraphTeam/pyamplicol/issues)
+- [License](https://github.com/MadGraphTeam/pyamplicol/blob/main/LICENSE)
+- [Third-party notices](https://github.com/MadGraphTeam/pyamplicol/blob/main/THIRD_PARTY_NOTICES.md)

@@ -139,10 +139,10 @@ helicities). C++ uses `std::nullopt` versus an explicit vector; Rust uses
 Optional helicity IDs select physical helicities of the unreplaced legs.
 
 Complete examples for the mixed adjoint/fundamental N3LO interference are in
-[`examples/native/correlated.c`](https://github.com/mg5amcnlo/pyamplicol/blob/correlators/examples/native/correlated.c),
-[`correlated.cpp`](https://github.com/mg5amcnlo/pyamplicol/blob/correlators/examples/native/correlated.cpp),
-[`correlated.f90`](https://github.com/mg5amcnlo/pyamplicol/blob/correlators/examples/native/correlated.f90), and
-[`correlated.rs`](https://github.com/mg5amcnlo/pyamplicol/blob/correlators/examples/native/correlated.rs).
+[`examples/native/correlated.c`](https://github.com/MadGraphTeam/pyamplicol/blob/correlators/examples/native/correlated.c),
+[`correlated.cpp`](https://github.com/MadGraphTeam/pyamplicol/blob/correlators/examples/native/correlated.cpp),
+[`correlated.f90`](https://github.com/MadGraphTeam/pyamplicol/blob/correlators/examples/native/correlated.f90), and
+[`correlated.rs`](https://github.com/MadGraphTeam/pyamplicol/blob/correlators/examples/native/correlated.rs).
 The [generation example](../correlators.md#native-correlated-evaluations)
 prepares their input. Build all four with `make -C examples/native correlated`;
 each executable accepts `ARTIFACT PROCESS`. The generated ordinary standalone

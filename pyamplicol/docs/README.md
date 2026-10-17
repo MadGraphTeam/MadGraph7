@@ -5,14 +5,14 @@ description: "Generate and evaluate color-ordered scattering amplitudes from Pyt
 ---
 <!-- SPDX-License-Identifier: 0BSD -->
 <p align="center">
-  <img src="https://raw.githubusercontent.com/mg5amcnlo/pyamplicol/main/docs/assets/pyamplicol_logo.png" alt="pyAmpliCol" width="680">
+  <img src="https://raw.githubusercontent.com/MadGraphTeam/pyamplicol/main/docs/assets/pyamplicol_logo.png" alt="pyAmpliCol" width="680">
 </p>
 
 <p align="center">
   <a href="https://pypi.org/project/pyamplicol/"><img src="https://img.shields.io/pypi/v/pyamplicol.svg" alt="PyPI"></a>
   <a href="https://pypi.org/project/pyamplicol/"><img src="https://img.shields.io/pypi/pyversions/pyamplicol.svg" alt="Python versions"></a>
-  <a href="https://github.com/mg5amcnlo/pyamplicol/actions/workflows/tests.yml"><img src="https://github.com/mg5amcnlo/pyamplicol/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
-  <a href="https://github.com/mg5amcnlo/pyamplicol/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-0BSD-blue.svg" alt="License: 0BSD"></a>
+  <a href="https://github.com/MadGraphTeam/pyamplicol/actions/workflows/tests.yml"><img src="https://github.com/MadGraphTeam/pyamplicol/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
+  <a href="https://github.com/MadGraphTeam/pyamplicol/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-0BSD-blue.svg" alt="License: 0BSD"></a>
 </p>
 
 <p align="center"><strong>Fast color-ordered scattering amplitudes from Python and native APIs.</strong></p>

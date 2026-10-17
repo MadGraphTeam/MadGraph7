@@ -114,7 +114,7 @@ have `2!` DDM orderings instead of `3!` trace orderings; the Higgs is not
 counted as a coloured leg. The artifact uses full-colour recurrence over the
 wheel-owned prepared JIT O2 kernels. Use `--fft trace` to compare the original
 representation, without assuming a speedup at every multiplicity. See the website's
-[Models and Processes](https://mg5amcnlo.github.io/pyamplicol/user/models-and-processes/)
+[Models and Processes](https://madgraph.org/pyamplicol/user/models-and-processes/)
 guide for execution-mode and trusted-UFO details.
 
 ## Process Grouping With `p p > j j j j`
@@ -202,7 +202,7 @@ subcommand defaults to `numerical`. Here the analysis takes about a second
 and reports no new relation: the 23 classes are already distinct. To test
 the flavour-blind assumption itself, generate all 486 subprocesses without
 `flavor_blind` (much slower) and let the analysis rebuild the same 23 groups;
-see the [process grouping guide](https://mg5amcnlo.github.io/pyamplicol/user/process-grouping/).
+see the [process grouping guide](https://madgraph.org/pyamplicol/user/process-grouping/).
 
 ## Run `q q~ > Z + 6g` With Recurrence, Compiled, And Eager
 
@@ -259,8 +259,8 @@ process output normally in the new program, then call
 selectors. This is explicit API functionality: the separate CLI `profile`
 command above does not automatically read a saved cache. Small Python and
 C/C++/Fortran/Rust examples are in the online manual's
-[save/restore guide](https://mg5amcnlo.github.io/pyamplicol/user/runtime-and-selectors/#saving-an-otf-warm-cache)
-and [native API guide](https://mg5amcnlo.github.io/pyamplicol/user/native-apis/#saving-and-restoring-an-otf-cache).
+[save/restore guide](https://madgraph.org/pyamplicol/user/runtime-and-selectors/#saving-an-otf-warm-cache)
+and [native API guide](https://madgraph.org/pyamplicol/user/native-apis/#saving-and-restoring-an-otf-cache).
 
 The smaller single-process card remains useful for quick inspection and a CLI
 profile without multiprocess expansion:
@@ -496,4 +496,4 @@ Both examples apply a direct `aS` override, evaluate the five-particle
 validation point, and verify that resolved components reproduce the total.
 
 Current release validation and upload status are listed in
-the [release and support guide](https://mg5amcnlo.github.io/pyamplicol/user/release-and-support/).
+the [release and support guide](https://madgraph.org/pyamplicol/user/release-and-support/).
