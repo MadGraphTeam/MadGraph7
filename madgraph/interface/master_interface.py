@@ -626,6 +626,9 @@ class Switcher(object):
     def help_set2_OLP(self, *args, **opts):
         return self.cmd.help_set2_OLP(self, *args, **opts)
 
+    def help_set2_auto_width_engine(self, *args, **opts):
+        return self.cmd.help_set2_auto_width_engine(self, *args, **opts)
+
     def help_set2_cluster_temp_path(self, *args, **opts):
         return self.cmd.help_set2_cluster_temp_path(self, *args, **opts)
 
