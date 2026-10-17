@@ -38,9 +38,8 @@ env:
   SYMBOLICA_HIDE_BANNER: "1"
 
 jobs:
-  # The heavy jobs only run when something pyamplicol depends on changed. This
-  # is a job rather than a `paths:` filter so that the workflow still reports a
-  # (green) run for every commit, which release.yml's CI gate requires.
+  # Skips the heavy jobs unless pyamplicol changed; a job, not `paths:`, so every
+  # commit still gets a (green) run for release.yml's CI gate.
   changes:
     runs-on: ubuntu-24.04
     outputs:
@@ -144,9 +143,8 @@ jobs:
           tests/unit/test_api_requests.py::test_public_compiled_model_uses_the_canonical_schema
           -q
 
-  # Builds pyamplicol through the MadGraph installer, checks that Symbolica
-  # accepts the package library key after the move into MadGraph7, and leaves
-  # the install cached for other workflows (install_pyamplicol action).
+  # Builds through the MadGraph installer and checks that Symbolica accepts the
+  # package library key; the install is cached for install_pyamplicol.
   installer:
     name: MadGraph installer and Symbolica library key
     needs: changes

@@ -142,9 +142,8 @@ jobs:
     with:
       full_matrix: true
 
-  # Same reasons as publish_pypi for living here. The pyamplicol project on
-  # PyPI has its own trusted publisher, configured with this workflow and the
-  # same "pypi" environment.
+  # Defined here for the same reason as publish_pypi; pyamplicol's PyPI trusted
+  # publisher names this workflow and the same "pypi" environment.
   publish_pypi_pyamplicol:
     name: Publish pyamplicol to PyPI
     needs: [pyamplicol, publish_pypi]

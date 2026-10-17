@@ -20,9 +20,7 @@ runs:
         path: pyamplicol/install
         key: pyamplicol-${{ runner.os }}-py${{ env.PAC_PY }}-${{ hashFiles('pyamplicol/src/**', 'pyamplicol/rust/**', 'pyamplicol/build_backend/**', 'pyamplicol/Cargo.*', 'pyamplicol/pyproject.toml', 'pyamplicol/rust-toolchain.toml', 'pyamplicol/dependencies/*.toml') }}
 
-    # About 1.5 GB, so one entry per dependency set rather than per commit:
-    # the dependencies stay compiled and pyamplicol's own crates rebuild
-    # incrementally on top.
+    # ~1.5 GB: one entry per dependency set, pyamplicol's crates rebuild on top.
     - name: Cache Cargo build tree
       if: steps.cache-pyamplicol.outputs.cache-hit != 'true'
       uses: actions/cache@v5

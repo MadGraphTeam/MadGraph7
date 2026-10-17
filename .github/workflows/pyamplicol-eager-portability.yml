@@ -1,8 +1,7 @@
 name: pyAmpliCol eager JIT pack architecture transfer
 
-# Ported from the standalone pyamplicol repository. Checks that prepared packs
-# produced on one architecture work on the others, which the MadGraph7
-# installer relies on when it regenerates packs locally.
+# Ported from pyamplicol: packs produced on one architecture must work on the
+# others, which the installer relies on when it regenerates them locally.
 
 on:
   pull_request:

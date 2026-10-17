@@ -19,9 +19,8 @@ if os.path.isdir(os.path.join(_local_install, "madspace")):
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
-# The pyAmpliCol pages live in pyamplicol/docs, where its tests and release
-# tooling expect them. They are copied (not symlinked: MyST resolves relative
-# links from the real path) into source/pyamplicol, which is gitignored.
+# pyamplicol/docs is copied (not symlinked: MyST resolves links from the real
+# path) into the gitignored source/pyamplicol.
 def _copy_pyamplicol_docs():
     import shutil
 

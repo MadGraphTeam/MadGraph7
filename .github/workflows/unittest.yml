@@ -203,9 +203,8 @@ jobs:
             ./tests/test_manager.py test_madspace_install -t0
 
       # ---- unittest_pyamplicol_install ----
-      # tests/unit_tests/various/test_pyamplicol_install.py: pyamplicol/install.py
-      # (pip, rustup and the build stubbed), its version sync with VERSION and
-      # its source hash
+      # tests/unit_tests/various/test_pyamplicol_install.py: install.py (build
+      # stubbed), the version sync with VERSION and the source hash
       - name: "unittest_pyamplicol_install: run the pyamplicol installer unit tests"
         if: ${{ !cancelled() }}
         run: |
