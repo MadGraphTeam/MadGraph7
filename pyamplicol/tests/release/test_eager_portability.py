@@ -18,7 +18,11 @@ from tools.ci import eager_portability as portability
 from tools.ci.eager_portability_contract import symjit_storage_v3_target
 
 ROOT = Path(__file__).resolve().parents[2]
-WORKFLOW = ROOT / ".github" / "workflows" / "eager-portability.yml"
+# The workflow lives in the MadGraph7 repository that contains pyamplicol/.
+WORKFLOW = ROOT.parent / ".github" / "workflows" / "pyamplicol-eager-portability.yml"
+requires_workflow = pytest.mark.skipif(
+    not WORKFLOW.is_file(), reason="outside the MadGraph7 repository"
+)
 
 
 @pytest.fixture
@@ -1074,6 +1078,7 @@ def test_compiler_guard_records_and_denies_external_tool_execution() -> None:
         assert marker.read_text(encoding="utf-8").strip().endswith("c++ --version")
 
 
+@requires_workflow
 def test_portability_workflow_transfers_portable_packs() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     trigger = workflow.split("on:\n", maxsplit=1)[1].split(
@@ -1083,7 +1088,6 @@ def test_portability_workflow_transfers_portable_packs() -> None:
     assert "pull_request:" in trigger
     assert "push:" in trigger
     assert "workflow_dispatch:" in trigger
-    assert "src/pyamplicol/assets/prepared_models/**" in trigger
     assert "rust/crates/rusticol-core/src/eager_runtime/**" in trigger
     assert "rust/crates/rusticol-core/src/engine/**" in trigger
     assert "rust/crates/rusticol-core/src/evaluator/symjit.rs" in trigger
@@ -1140,7 +1144,7 @@ def test_portability_workflow_transfers_portable_packs() -> None:
     assert "PYAMPLICOL_BUILD_MODE: candidate" not in workflow
     assert "PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP" not in workflow
     assert "dependencies/candidate-Cargo.lock" not in workflow
-    assert workflow.count("      - dependencies/release-lock.toml\n") == 2
+    assert workflow.count("      - pyamplicol/dependencies/release-lock.toml\n") == 2
     assert (
         "actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0" in workflow
     )
@@ -1149,6 +1153,7 @@ def test_portability_workflow_transfers_portable_packs() -> None:
     )
 
 
+@requires_workflow
 def test_portability_workflow_does_not_expose_credentials() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 

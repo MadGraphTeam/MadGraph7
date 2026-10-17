@@ -951,11 +951,19 @@ def test_ci_helper_is_sdist_only_for_packaged_profiling_runtime() -> None:
     )
 
 
-def test_tests_workflow_guards_every_heavy_validation_phase() -> None:
-    workflow = (ROOT / ".github/workflows/tests.yml").read_text(encoding="utf-8")
+# The CI workflow lives in the MadGraph7 repository that contains pyamplicol/.
+_MADGRAPH_WORKFLOW = ROOT.parent / ".github/workflows/pyamplicol.yml"
 
-    assert workflow.startswith("name: Tests\n")
-    assert 'python-version: ["3.11", "3.12", "3.13", "3.14"]' in workflow
+
+@pytest.mark.skipif(
+    not _MADGRAPH_WORKFLOW.is_file(), reason="outside the MadGraph7 repository"
+)
+def test_tests_workflow_guards_every_heavy_validation_phase() -> None:
+    text = _MADGRAPH_WORKFLOW.read_text(encoding="utf-8")
+    workflow = text.split("\n  release-runtime:\n", 1)[1].split("\n  # ----", 1)[0]
+
+    assert text.startswith("name: pyAmpliCol\n")
+    assert 'python-version: ["3.11", "3.12", "3.13", "3.14"]' in text
     assert "ulimit -v" not in workflow
     assert "psutil" not in workflow
     guarded = "tools/ci/memory_watchdog.py --limit-gib 30 --"
