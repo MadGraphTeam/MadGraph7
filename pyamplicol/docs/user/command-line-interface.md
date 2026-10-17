@@ -237,6 +237,80 @@ the ordering contract.
 Inspection does not execute evaluator state. Human output uses compact colored
 tables; machine output is available with `--json`.
 
+The `Process groups` section shows the artifact's
+[process-group map](process-grouping.md): an overview row, then one table of
+groups, each representative in bold followed by its members. Colours mark
+`generated` (green) and `routed` (cyan) members, `C` (magenta), factors other
+than 1 and warnings (yellow), and the basis of each relation. For example, for
+`p p > j j j j` generated with `--flavor-blind --analyze-process-groups
+numerical` (abridged):
+
+```text
+Process groups
+
++--------+--------------+-----------+--------+------------+-------------+------------------+-----------+----------+
+| groups | subprocesses | generated | routed | conjugated | factor != 1 | bases            | analyses  | warnings |
++--------+--------------+-----------+--------+------------+-------------+------------------+-----------+----------+
+|     23 |          486 |        23 |    463 |        140 |           0 | flavor-blind 463 | numerical |        0 |
++--------+--------------+-----------+--------+------------+-------------+------------------+-----------+----------+
+
++--------------------+---------------------------------------------------------------------------------------------+
+| representative     | members                                                                                     |
++--------------------+---------------------------------------------------------------------------------------------+
+| d d > d d d d~     |  4 routed    u u > u u u u~      s s > s s s s~      c c > c c c c~      b b > b b b b~     |
+| p_p_to_j_j_j_j_1   |  5 routed C  d~ d~ > d d~ d~ d~  u~ u~ > u u~ u~ u~  s~ s~ > s s~ s~ s~  c~ c~ > c c~ c~ c~ |
+| 10 subprocesses    |              b~ b~ > b b~ b~ b~                                                             |
++--------------------+---------------------------------------------------------------------------------------------+
+...
++--------------------+---------------------------------------------------------------------------------------------+
+
+routed: not generated, evaluated through its representative; C: charge-conjugated relation
+compact view of 486 subprocesses; IDs and leg permutations: --json; one group row by row: --process REPRESENTATIVE
+numerical analysis: 3 points, tolerance 1e-09
+```
+
+`routed` members are not generated and are evaluated through their
+representative; `C` marks a charge-conjugated relation. A map with at most 80
+subprocesses is listed one member per row, with its process ID, role, and
+basis, plus a factor column when a factor differs from 1, a `C` column when a
+relation is conjugated, a permutation column when a leg permutation is not the
+identity, and a `note` column with `[n]` references to the warnings printed
+below the table. Larger maps list each group's members as a grid of process
+strings, one block per relation; subprocesses alone in their group are listed
+as `ungrouped`. When every process is its own group, the section is the single
+line `Process groups: none; each of the N processes is its own group`. With
+`--process`, only the selected process's group is shown, so `--process
+REPRESENTATIVE` lists a large group member by member. A routed member has no
+runtime process of its own: without `--full-physics`, selecting it stops with
+an error that names its representative. `--json` reports the
+complete map under `process_groups`: `stored`, `analyses`, and per group the
+`representative_id`, `representative`, and `members` (`id`, `process`, `pdgs`,
+`initial_count`, `factor` as a fraction string, `permutation`, `conjugated`,
+`basis`, `generated`, `warning`).
+
+`--process MEMBER --full-physics` on a grouped process adds a `Process Group`
+table, and a `process_group` object to the JSON. For a member, it gives the
+representative, factor, conjugation and the leg permutation from the
+representative to the requested leg order; for a representative, the size of
+its group, and that permutation when the requested leg order is not the stored
+one:
+
+```text
++-----------------------------------------------------------------------------------------+
+|                                      Process Group                                      |
++----------------+------------------------------------------------------------------------+
+| field          | value                                                                  |
++----------------+------------------------------------------------------------------------+
+| role           | routed member: not generated, evaluated through the representative     |
+| representative | p_p_to_j_j_j_j_52  d u~ > d d d~ u~                                    |
+| factor         | 1                                                                      |
+| conjugated     | yes (C)                                                                |
+| permutation    | p = [1 0 4 5 3 2]: representative leg r takes the momentum of leg p[r] |
+| basis          | flavor-blind                                                           |
+| group          | 40 subprocesses: 1 generated, 39 routed, 20 conjugated                 |
++----------------+------------------------------------------------------------------------+
+```
+
 ## Group equivalent subprocesses
 
 Every artifact records in `process-groups.json` which subprocesses share one
@@ -251,6 +325,36 @@ and exported to UMAMI through the representative's runtime. The assumption is
 not verified: a warning names the members whose relabelling is not a symmetry
 of the model couplings, for example electroweak couplings of different quark
 flavours.
+
+Generation logs the outcome of this pre-grouping before any representative is
+generated:
+
+```text
+INFO pyamplicol.generation: Flavor-blind grouping: 486 subprocesses -> 23 generated representatives; 463 routed members (140 by charge conjugation); 0 relabelling warnings
+```
+
+The summary table printed at the end has a `process grouping` row, coloured
+like the `inspect` display, read from the written `process-groups.json`
+(abridged):
+
+```text
+| processes              | 23 requests                                                                              |
+| process grouping       | 486 subprocesses -> 23 groups: 23 generated, 463 routed                                  |
+|                        | 463 flavor-blind relations (140 charge-conjugated); 0 warnings                           |
+|                        | numerical analysis: 3 points, tolerance 1e-09                                            |
+```
+
+Its first line counts the subprocesses, groups, and generated and routed
+subprocesses; the second, the relations by basis, those that are
+charge-conjugated or have a factor other than 1, and the relabelling warnings;
+the last ones, each recorded numerical analysis. The `Generated Processes`
+table gains a `group` column: the size of each representative's group, or
+`member of REPRESENTATIVE` for a member generated in its own right, followed by
+its factor when it is not 1 and `C` when the relation is conjugated, as in
+`member of d_dbar_to_a_a (x16)`. When
+every subprocess is its own group, the column is omitted, and so is the row
+unless an analysis was recorded; the row then reads `no relation found; each of
+the N processes is its own group`.
 
 The numerical analysis compares generated subprocesses with equal external
 particle types at three random phase-space points and merges those whose

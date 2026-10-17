@@ -67,6 +67,7 @@ class _RecordingServices:
     model_inspect = _record
     model_compile = _record
     model_processes = _record
+    group_processes = _record
 
 
 @pytest.mark.parametrize("card", RUN_CARDS, ids=lambda path: path.stem)

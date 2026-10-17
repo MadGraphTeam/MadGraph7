@@ -56,7 +56,7 @@ def test_run_cards_parse_and_resolve_without_domain_backends(card: Path) -> None
     elif config.action == "evaluate":
         assert config.evaluation.artifact is not None
         assert config.evaluation.momenta is not None
-    elif config.action == "benchmark":
+    elif config.action in {"benchmark", "inspect", "group-processes"}:
         assert config.evaluation.artifact is not None
 
 
@@ -268,6 +268,44 @@ def test_otf_pp_zjj_example_pins_one_flow_f64_warm_up_and_profile() -> None:
     assert "n_cores=n_cores" in script
     assert '"--n-cores"' in script
     assert "PrettyTable" in script
+
+
+def test_pp_4j_grouping_examples_share_one_flavor_blind_artifact() -> None:
+    generate = resolve_config(EXAMPLES / "generate_pp_4j_flavor_blind.toml").effective
+    inspect = resolve_config(EXAMPLES / "inspect_pp_4j.toml").effective
+    member = resolve_config(EXAMPLES / "evaluate_pp_4j_member.toml").effective
+    grouping = resolve_config(EXAMPLES / "group_pp_4j.toml").effective
+
+    assert generate.model.source == "built-in-sm"
+    assert generate.process.entries == (ProcessEntry("p p > j j j j"),)
+    assert generate.process.multiparticles == {}
+    assert generate.process.flavor_scheme == 5
+    assert generate.process.max_coupling_orders == {"QED": 0}
+    assert generate.process.flavor_blind
+    assert generate.process.consider_charge_conjugation
+    assert generate.color.accuracy.value == "lc"
+    artifact = EXAMPLES / "artifacts/pp_4j_flavor_blind"
+    assert generate.generation.output == artifact
+    for config in (inspect, member, grouping):
+        assert config.evaluation.artifact == artifact
+
+    assert member.evaluation.process == "u~ g > u~ g g g"
+    assert member.evaluation.momenta == EXAMPLES / "data/pp_4j_momenta.json"
+    # Run cards default to "none"; only the subcommand defaults to numerical.
+    assert grouping.process.analyze_process_groups.value == "numerical"
+
+    momenta = json.loads(
+        (EXAMPLES / "data/pp_4j_momenta.json").read_text(encoding="utf-8")
+    )
+    assert len(momenta) == 1 and len(momenta[0]) == 6
+    point = momenta[0]
+    for index in range(4):
+        incoming = sum(particle[index] for particle in point[:2])
+        outgoing = sum(particle[index] for particle in point[2:])
+        assert incoming == pytest.approx(outgoing, rel=1e-13, abs=1e-12)
+    for particle in point:
+        mass_squared = particle[0] ** 2 - sum(c**2 for c in particle[1:])
+        assert mass_squared == pytest.approx(0.0, abs=1e-9)
 
 
 def test_example_data_has_finite_momenta_and_scalar_parameters() -> None:

@@ -718,3 +718,228 @@ def test_inspect_full_physics_is_the_only_runtime_materialization_path(
     assert json.loads(stdout.getvalue()) == dense_physics
     assert loads == [(artifact.resolve(), selector)]
     assert stderr.getvalue() == ""
+
+
+def test_inspect_process_keeps_only_the_selected_process_group(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pyamplicol.artifacts as artifact_module
+    from pyamplicol.artifacts.inspection import (
+        ArtifactProcessGroupInspection,
+        ArtifactProcessGroupMemberInspection,
+        ArtifactProcessGroupsInspection,
+    )
+
+    def group(identifier: str, process: str) -> ArtifactProcessGroupInspection:
+        member = ArtifactProcessGroupMemberInspection(
+            id=identifier,
+            process=process,
+            pdgs=(1, -1, 23),
+            initial_count=2,
+            factor="1",
+            permutation=(0, 1, 2),
+            conjugated=False,
+            basis="identity",
+            generated=True,
+        )
+        return ArtifactProcessGroupInspection(identifier, process, (member,))
+
+    inspection = replace(
+        _inspection_with_alias(),
+        process_groups=ArtifactProcessGroupsInspection(
+            stored=True,
+            groups=(group("d_dbar_to_z", "d d~ > z"), group("u_ubar_to_z", "u u~ > z")),
+        ),
+    )
+    monkeypatch.setattr(artifact_module, "inspect_artifact", lambda _path: inspection)
+    stdout = io.StringIO()
+
+    status = run_cli(
+        (
+            "inspect",
+            str(tmp_path / "artifact"),
+            "--process",
+            "stable-alias",
+            "--json",
+            "--progress",
+            "off",
+        ),
+        stdout=stdout,
+        stderr=io.StringIO(),
+    )
+
+    assert status == 0
+    groups = json.loads(stdout.getvalue())["process_groups"]["groups"]
+    assert [group["representative_id"] for group in groups] == ["d_dbar_to_z"]
+
+
+def test_inspect_process_names_the_group_of_a_routed_member(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pyamplicol.artifacts as artifact_module
+    from pyamplicol.artifacts.inspection import (
+        ArtifactProcessGroupInspection,
+        ArtifactProcessGroupMemberInspection,
+        ArtifactProcessGroupsInspection,
+    )
+
+    def member(
+        identifier: str, process: str, *, generated: bool
+    ) -> ArtifactProcessGroupMemberInspection:
+        return ArtifactProcessGroupMemberInspection(
+            id=identifier,
+            process=process,
+            pdgs=(1, -1, 23),
+            initial_count=2,
+            factor="1",
+            permutation=(0, 1, 2),
+            conjugated=False,
+            basis="flavor-blind" if not generated else "identity",
+            generated=generated,
+        )
+
+    inspection = replace(
+        _inspection_with_alias(),
+        process_groups=ArtifactProcessGroupsInspection(
+            stored=True,
+            groups=(
+                ArtifactProcessGroupInspection(
+                    "d_dbar_to_z",
+                    "d d~ > z",
+                    (
+                        member("d_dbar_to_z", "d d~ > z", generated=True),
+                        member("u_ubar_to_z", "u u~ > z", generated=False),
+                    ),
+                ),
+            ),
+        ),
+    )
+    monkeypatch.setattr(artifact_module, "inspect_artifact", lambda _path: inspection)
+
+    for selector in ("u_ubar_to_z", "u u~ > z", "s s~ > z"):
+        stderr = io.StringIO()
+        status = run_cli(
+            (
+                "inspect",
+                str(tmp_path / "artifact"),
+                "--process",
+                selector,
+                "--progress",
+                "off",
+            ),
+            stdout=io.StringIO(),
+            stderr=stderr,
+        )
+
+        assert status == 2
+        message = " ".join(stderr.getvalue().split())
+        if selector == "s s~ > z":
+            assert "did not match a stable representative ID" in message
+            continue
+        assert (
+            "inspect process u_ubar_to_z (u u~ > z) is a routed member of process "
+            "group d_dbar_to_z (d d~ > z) with no runtime of its own; --process "
+            "d_dbar_to_z lists the group, and --full-physics shows the member's "
+            "relation and physics"
+        ) in message
+
+
+def test_inspect_full_physics_adds_the_process_group_of_a_grouped_selection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pyamplicol.api as api_module
+    import pyamplicol.artifacts.inspection as inspection_module
+    from pyamplicol.api import (
+        ColorFlow,
+        HelicityConfiguration,
+        PhysicsReduction,
+        ProcessPhysics,
+        ReductionGroup,
+    )
+    from pyamplicol.artifacts.inspection import ArtifactProcessGroupSelection
+
+    physics = ProcessPhysics(
+        process_id="u_ubar_to_z",
+        process="u u~ > z",
+        color_accuracy="lc",
+        helicity_coverage="complete",
+        color_coverage="complete",
+        color_kind="flow",
+        structural_zero_helicity_count=0,
+        external_particles=(),
+        helicities=(
+            HelicityConfiguration("h0", 0, (1, -1, 0), True, False, "h0", 1.0),
+        ),
+        color_flows=(ColorFlow("c0", 0, (1, 2), True, "c0", 1.0),),
+        contracted_color_components=(),
+        reduction=PhysicsReduction(
+            "lc-diagonal", (ReductionGroup("g0", "h0", "c0", ("h0",), ("c0",)),)
+        ),
+        model_parameters=(),
+        selector_capabilities=("helicity", "color_flow"),
+    )
+    selection = ArtifactProcessGroupSelection(
+        process_id="u_ubar_to_z",
+        role="routed member",
+        representative_id="d_dbar_to_z",
+        representative="d d~ > z",
+        factor="1",
+        permutation=(1, 0, 2),
+        conjugated=False,
+        basis="flavor-blind",
+        warning=None,
+        group_size=2,
+        routed_count=1,
+        conjugated_count=0,
+    )
+    requests: list[tuple[Path, str, tuple[int, ...] | None]] = []
+
+    class MemberRuntime:
+        external_permutation = (1, 0, 2)
+
+        def __init__(self) -> None:
+            self.physics = physics
+
+        @classmethod
+        def load(cls, _artifact: Path, *, process: str | None = None) -> object:
+            return cls()
+
+    def select(
+        artifact: Path,
+        process_id: str,
+        *,
+        permutation: tuple[int, ...] | None = None,
+    ) -> ArtifactProcessGroupSelection:
+        requests.append((artifact, process_id, permutation))
+        return selection
+
+    monkeypatch.setattr(api_module, "Runtime", MemberRuntime)
+    monkeypatch.setattr(inspection_module, "process_group_selection", select)
+    artifact = tmp_path / "artifact"
+    stdout = io.StringIO()
+
+    status = run_cli(
+        (
+            "inspect",
+            str(artifact),
+            "--process",
+            "u~ u > z",
+            "--full-physics",
+            "--json",
+            "--progress",
+            "off",
+        ),
+        stdout=stdout,
+        stderr=io.StringIO(),
+    )
+
+    assert status == 0
+    payload = json.loads(stdout.getvalue())
+    assert payload["process_id"] == "u_ubar_to_z"
+    assert payload["helicities"][0]["id"] == "h0"
+    assert payload["process_group"]["representative_id"] == "d_dbar_to_z"
+    assert payload["process_group"]["permutation"] == [1, 0, 2]
+    assert requests == [(artifact.resolve(), "u_ubar_to_z", (1, 0, 2))]

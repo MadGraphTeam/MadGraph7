@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import replace
+from dataclasses import fields, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
 
@@ -177,7 +177,35 @@ def _select_compact_process_inspection(
             )
         if representatives:
             selected = next(iter(representatives.values()))
-            return replace(inspection, processes=(selected,))
+            groups = inspection.process_groups
+            if groups is not None:
+                groups = replace(
+                    groups,
+                    groups=tuple(
+                        group
+                        for group in groups.groups
+                        if any(member.id == selected.id for member in group.members)
+                    ),
+                )
+            return replace(inspection, processes=(selected,), process_groups=groups)
+        groups = inspection.process_groups
+        for group in () if groups is None else groups.groups:
+            member = next(
+                (
+                    item
+                    for item in group.members[1:]
+                    if not item.generated and selector in {item.id, item.process}
+                ),
+                None,
+            )
+            if member is not None:
+                raise ConfigurationError(
+                    f"inspect process {member.id} ({member.process}) is a routed "
+                    f"member of process group {group.representative_id} "
+                    f"({group.representative}) with no runtime of its own; "
+                    f"--process {group.representative_id} lists the group, and "
+                    "--full-physics shows the member's relation and physics"
+                )
         raise ConfigurationError(
             f"inspect process selector {selector!r} did not match a stable "
             "representative ID, alias ID, or exact process expression; add "
@@ -200,6 +228,35 @@ def _select_compact_process_inspection(
             or any(alias.expression == selector for alias in process.aliases)
         ]
     )
+
+
+def _full_physics_inspection(artifact: Path, selector: str | None) -> object:
+    """Return the selected process physics and, when grouped, its relation.
+
+    Rusticol owns process selection, so side permutations and non-generated
+    process-group members resolve as in `evaluate`. A grouped selection keeps
+    every physics field at the top level and adds ``process_group``.
+    """
+
+    from pyamplicol.api import Runtime
+    from pyamplicol.api.results import ProcessPhysics
+    from pyamplicol.artifacts.inspection import process_group_selection
+
+    runtime = Runtime.load(artifact, process=selector)
+    physics = runtime.physics
+    if not isinstance(physics, ProcessPhysics):
+        return physics
+    group = process_group_selection(
+        artifact,
+        physics.process_id,
+        permutation=runtime.external_permutation,
+    )
+    if group is None:
+        return physics
+    return {
+        **{item.name: getattr(physics, item.name) for item in fields(physics)},
+        "process_group": group,
+    }
 
 
 def _compile_configured_model(
@@ -376,19 +433,11 @@ class DefaultCliServices:
 
         selector = config.evaluation.process
         if full_physics:
-            # Rusticol owns process selection, so side permutations and
-            # non-generated process-group members resolve as in `evaluate`.
-            from pyamplicol.api import Runtime
-
+            artifact = config.evaluation.artifact
             return _load_process_output(
-                config.evaluation.artifact,
+                artifact,
                 progress,
-                lambda: (
-                    Runtime.load(
-                        config.evaluation.artifact,
-                        process=selector,
-                    ).physics
-                ),
+                lambda: _full_physics_inspection(artifact, selector),
             )
 
         from pyamplicol.artifacts import inspect_artifact

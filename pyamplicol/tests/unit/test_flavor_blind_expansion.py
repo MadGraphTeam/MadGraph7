@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import itertools
+import logging
 from fractions import Fraction
 from pathlib import Path
 from typing import cast
@@ -151,6 +152,7 @@ def _plan_names(**process: object) -> dict[str, str]:
 
 def test_flavor_blind_plan_keeps_one_process_per_flavour_class(
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
 
@@ -158,7 +160,12 @@ def test_flavor_blind_plan_keeps_one_process_per_flavour_class(
     without_conjugation = _plan_names(
         flavor_blind=True, consider_charge_conjugation=False
     )
-    with_conjugation = _plan_names(flavor_blind=True)
+    with caplog.at_level(logging.INFO, logger="pyamplicol.generation"):
+        with_conjugation = _plan_names(flavor_blind=True)
+    assert (
+        "Flavor-blind grouping: 486 subprocesses -> 23 generated representatives; "
+        "463 routed members (140 by charge conjugation); 0 relabelling warnings"
+    ) in caplog.messages
 
     assert len(every) == 486
     assert len(without_conjugation) == 33

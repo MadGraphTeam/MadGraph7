@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import itertools
 import json
 from dataclasses import dataclass, replace
 from decimal import Decimal
@@ -27,6 +28,12 @@ from pyamplicol.artifacts import (
     ArtifactDependencyInspection,
     ArtifactInspection,
     ArtifactProcessInspection,
+)
+from pyamplicol.artifacts.inspection import (
+    ArtifactProcessGroupInspection,
+    ArtifactProcessGroupMemberInspection,
+    ArtifactProcessGroupSelection,
+    ArtifactProcessGroupsInspection,
 )
 from pyamplicol.cli.main import write_result
 from pyamplicol.cli.utilities import ExampleEntry, UtilityResult
@@ -1037,3 +1044,450 @@ def test_artifact_inspection_color_is_optional() -> None:
     assert "\x1b[36mcompiled" in rendered
     assert "\x1b[36msymbolica" in rendered
     assert "\x1b[33mSymbolica Software License Agreement" in rendered
+
+
+def _member(
+    identifier: str,
+    process: str,
+    *,
+    factor: str = "1",
+    permutation: tuple[int, ...] = (0, 1, 2, 3),
+    conjugated: bool = False,
+    basis: str = "flavor-blind",
+    generated: bool = False,
+    warning: str | None = None,
+) -> ArtifactProcessGroupMemberInspection:
+    return ArtifactProcessGroupMemberInspection(
+        id=identifier,
+        process=process,
+        pdgs=(1,) * len(permutation),
+        initial_count=2,
+        factor=factor,
+        permutation=permutation,
+        conjugated=conjugated,
+        basis=basis,
+        generated=generated,
+        warning=warning,
+    )
+
+
+def _group(
+    representative: str, process: str, *members: ArtifactProcessGroupMemberInspection
+) -> ArtifactProcessGroupInspection:
+    return ArtifactProcessGroupInspection(
+        representative_id=representative,
+        representative=process,
+        members=(
+            _member(representative, process, basis="identity", generated=True),
+            *members,
+        ),
+    )
+
+
+def _grouped_inspection() -> ArtifactInspection:
+    """A flavour-blind map with a conjugated, a non-unit and a warned member."""
+
+    groups = ArtifactProcessGroupsInspection(
+        stored=True,
+        groups=(
+            _group(
+                "ddbar_zg",
+                "d d~ > z g",
+                _member("uubar_zg", "u u~ > z g", warning="Z couplings differ"),
+                _member(
+                    "dbar_d_zg",
+                    "d~ d > z g",
+                    permutation=(1, 0, 2, 3),
+                    conjugated=True,
+                ),
+                _member(
+                    "ssbar_zg",
+                    "s s~ > z g",
+                    factor="16/9",
+                    basis="numerical",
+                    generated=True,
+                ),
+            ),
+            _group("gg_zg", "g g > z g"),
+        ),
+        analyses=({"variant": "numerical", "only_unit_multiplier": True},),
+    )
+    return replace(_artifact_inspection(), process_groups=groups)
+
+
+def test_process_group_map_renders_overview_rows_and_footnotes() -> None:
+    rendered = render_summary(_grouped_inspection(), color=False)
+
+    assert rendered is not None
+    assert "\x1b[" not in rendered
+    section = rendered[rendered.index("Process groups") : rendered.index("Execution")]
+    lines = section.splitlines()
+    assert lines[3].split("|")[1:7] == [
+        " groups ",
+        " subprocesses ",
+        " generated ",
+        " routed ",
+        " conjugated ",
+        " factor != 1 ",
+    ]
+    assert [cell.strip() for cell in lines[5].split("|")[1:10]] == [
+        "2",
+        "5",
+        "3",
+        "2",
+        "1",
+        "1",
+        "flavor-blind 2",
+        "numerical",
+        "1",
+    ]
+    assert "| numerical 1    | (unit factor |" in lines[6]
+    assert "| ddbar_zg     | d d~ > z g | representative |        |   |" in section
+    assert "| |- ssbar_zg  | s s~ > z g | generated      |   16/9 |   |" in section
+    assert "| |- uubar_zg  | u u~ > z g | routed         |      1 |   |" in section
+    assert "| `- dbar_d_zg | d~ d > z g | routed         |      1 | C | [1 0 2 3]" in (
+        section
+    )
+    assert "| flavor-blind | [1]  |" in section
+    assert "| gg_zg        | g g > z g  | representative |" in section
+    assert "\n[1] Z couplings differ" in section
+    assert "C: charge-conjugated relation" in section
+    assert "permutation p: representative leg r" in section
+    assert "factor F: ME = F x ME(representative)" in section
+    assert "\nnumerical analysis: unit factors only" in section
+    assert "| contents        | 1 process, 1 alias; 5 subprocesses in 2 groups " in (
+        rendered
+    )
+    assert all(len(line) <= 120 for line in lines)
+
+
+def test_unit_factor_process_group_map_omits_the_factor_column() -> None:
+    groups = ArtifactProcessGroupsInspection(
+        stored=True,
+        groups=(
+            _group(
+                "ddbar_zg",
+                "d d~ > z g",
+                _member("uubar_zg", "u u~ > z g"),
+                _member("ssbar_zg", "s s~ > z g"),
+            ),
+        ),
+    )
+
+    rendered = render_summary(
+        replace(_artifact_inspection(), process_groups=groups), color=False
+    )
+
+    assert rendered is not None
+    section = rendered[rendered.index("Process groups") : rendered.index("Execution")]
+    assert "| process ID  | process    | role           | basis        |" in section
+    assert "| |- ssbar_zg | s s~ > z g | routed         | flavor-blind |" in section
+    assert "| `- uubar_zg | u u~ > z g | routed         | flavor-blind |" in section
+    assert "factor F" not in section
+    assert "permutation" not in section
+    assert "C: charge-conjugated" not in section
+
+    # a numerical group of generated members needs no legend at all
+    numerical = ArtifactProcessGroupsInspection(
+        stored=True,
+        groups=(
+            _group(
+                "ddbar_zg",
+                "d d~ > z g",
+                _member("ssbar_zg", "s s~ > z g", basis="numerical", generated=True),
+            ),
+        ),
+    )
+    rendered = render_summary(
+        replace(_artifact_inspection(), process_groups=numerical), color=False
+    )
+    assert rendered is not None
+    section = rendered[rendered.index("Process groups") : rendered.index("Execution")]
+    assert section.endswith(
+        "+-------------+------------+----------------+-----------+\n\n"
+    )
+    assert "| `- ssbar_zg | s s~ > z g | generated      | numerical |" in section
+
+
+def test_process_group_map_colors_relations() -> None:
+    rendered = render_summary(_grouped_inspection(), color=True)
+
+    assert rendered is not None
+    assert "\x1b[36mProcess groups" in rendered
+    assert "\x1b[1m\x1b[32md d~ > z g" in rendered  # representative in bold
+    # bold without a colour stays readable on light and dark terminals
+    assert "\x1b[1mrepresentative" in rendered
+    assert "\x1b[37m" not in rendered[rendered.index("Process groups") :]
+    assert "\x1b[33m16/9" in rendered  # non-unit factor
+    assert "\x1b[32m1\x1b[0m" in rendered  # unit factor
+    assert "\x1b[1m\x1b[35mC" in rendered  # conjugation marker
+    assert "\x1b[94mflavor-blind" in rendered
+    assert "\x1b[32mnumerical" in rendered
+    assert "\x1b[36mrouted" in rendered
+    assert "\x1b[33m[1]" in rendered  # warning reference and footnote
+
+
+def test_trivial_process_group_map_is_a_one_line_note() -> None:
+    inspection = _artifact_inspection()
+    identity = ArtifactProcessGroupsInspection(
+        stored=True, groups=(_group("ddbar_zg", "d d~ > z g"),)
+    )
+
+    rendered = render_summary(replace(inspection, process_groups=identity), color=False)
+    absent = render_summary(
+        replace(inspection, process_groups=replace(identity, stored=False)),
+        color=False,
+    )
+
+    assert rendered is not None and absent is not None
+    assert "Process groups: none; the process is its own group" in rendered
+    assert "subprocesses" not in rendered
+    assert "Process groups: no process-groups.json" in absent
+
+
+def _generation_result(*names: tuple[str, str]) -> GenerationResult:
+    return GenerationResult(
+        output=Path("artifact"),
+        processes=ProcessSet(
+            tuple(
+                ProcessRequest.parse(expression, name=name)
+                for name, expression in names
+            )
+        ),
+        mode="error",
+    )
+
+
+def test_generation_summary_reports_the_process_grouping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    groups = _grouped_inspection().process_groups
+    monkeypatch.setattr(
+        "pyamplicol.artifacts.inspection.stored_process_groups",
+        lambda _output: groups,
+    )
+    result = _generation_result(
+        ("ddbar_zg", "d d~ > z g"), ("ssbar_zg", "s s~ > z g"), ("gg_zg", "g g > z g")
+    )
+
+    rendered = render_summary(result, color=False)
+    colored = render_summary(result, color=True)
+
+    assert rendered is not None and colored is not None
+    lines = rendered.splitlines()
+    row = next(
+        index for index, line in enumerate(lines) if "| process grouping" in line
+    )
+    assert "| processes " in lines[row - 1]
+    # the warning count moves to its own line rather than overflow 88 columns
+    assert [line.split("|")[2].strip() for line in lines[row : row + 4]] == [
+        "5 subprocesses -> 2 groups: 3 generated, 2 routed",
+        "2 flavor-blind + 1 numerical relations (1 charge-conjugated, 1 with factor "
+        "!= 1)",
+        "1 warning",
+        "numerical analysis: unit factors only",
+    ]
+    assert "| existing-output policy" in lines[row + 4]
+    assert "| name     | process    | group                      |" in rendered
+    assert "| ddbar_zg | d d~ > z g | 4 subprocesses (2 routed)  |" in rendered
+    # a generated member names its representative and its non-unit factor
+    assert "| ssbar_zg | s s~ > z g | member of ddbar_zg (x16/9) |" in rendered
+    assert "| gg_zg    | g g > z g  |                            |" in rendered
+    assert "\x1b[36mprocess grouping" in colored
+    assert "\x1b[1m5 subprocesses" in colored
+    assert "\x1b[32m3 generated" in colored
+    assert "\x1b[36m2 routed" in colored
+    assert "\x1b[94mflavor-blind" in colored
+    assert "\x1b[32mnumerical" in colored
+    assert "\x1b[35m1 charge-conjugated" in colored
+    assert "\x1b[33m1 with factor != 1" in colored
+    assert "\x1b[33m1 warning" in colored
+
+
+def test_generation_summary_omits_a_trivial_process_grouping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trivial = ArtifactProcessGroupsInspection(
+        stored=True,
+        groups=(_group("ddbar_zg", "d d~ > z g"), _group("gg_zg", "g g > z g")),
+    )
+    stored: list[ArtifactProcessGroupsInspection | None] = [trivial, None]
+    monkeypatch.setattr(
+        "pyamplicol.artifacts.inspection.stored_process_groups",
+        lambda _output: stored.pop(0),
+    )
+    result = _generation_result(("ddbar_zg", "d d~ > z g"), ("gg_zg", "g g > z g"))
+
+    for _ in range(2):
+        rendered = render_summary(result, color=False)
+        assert rendered is not None
+        assert "process grouping" not in rendered
+        assert "| name     | process    |\n" in rendered
+
+    analysed = replace(trivial, analyses=({"variant": "numerical", "points": 3},))
+    monkeypatch.setattr(
+        "pyamplicol.artifacts.inspection.stored_process_groups",
+        lambda _output: analysed,
+    )
+    rendered = render_summary(result, color=False)
+    assert rendered is not None
+    # worded as `inspect` words a trivial map
+    assert (
+        "| process grouping       | no relation found; each of the 2 processes is "
+        "its own group" in rendered
+    )
+    assert "|                        | numerical analysis: 3 points " in rendered
+    assert "| group" not in rendered
+
+
+def test_large_process_group_map_lists_members_compactly() -> None:
+    flavours = ("d", "u", "s", "c", "b")
+    members = [
+        _member(
+            f"m{index}",
+            f"{first} {second}~ > {first} {second}~ {third} {third}~",
+            conjugated=index >= 60,
+        )
+        for index, (first, second, third) in enumerate(
+            itertools.product(flavours, repeat=3)
+        )
+        if index < 100
+    ]
+    groups = ArtifactProcessGroupsInspection(
+        stored=True,
+        groups=(
+            _group("ddbar_4j", "d d~ > d d~ d d~", *members),
+            _group("gg_4g", "g g > g g g g"),
+        ),
+    )
+
+    rendered = render_summary(
+        replace(_artifact_inspection(), process_groups=groups), color=False
+    )
+
+    assert rendered is not None
+    section = rendered[rendered.index("Process groups") : rendered.index("Execution")]
+    lines = section.splitlines()
+    assert "| representative   | members" in section
+    assert any(
+        line.startswith("| d d~ > d d~ d d~ | 60 routed    d d~ > d d~ d d~  ")
+        for line in lines
+    )
+    assert (
+        "| ddbar_4j         |              d d~ > d d~ b b~  d u~ > d u~ d d~"
+        in section
+    )
+    assert "| 101 subprocesses |" in section
+    assert "|                  | 40 routed C  " in section
+    assert "| ungrouped        |              g g > g g g g" in section
+    assert "| 1 subprocess     |" in section
+    assert "compact view of 102 subprocesses" in section
+    assert "--process REPRESENTATIVE" in section
+    assert "|- " not in section
+    # four members per line instead of one row each
+    assert len(lines) < 50
+    assert all(len(line) <= 120 for line in lines)
+
+    # `--process REPRESENTATIVE` keeps one group, which is listed row by row
+    selected = render_summary(
+        replace(
+            _artifact_inspection(),
+            process_groups=replace(groups, groups=groups.groups[:1]),
+        ),
+        color=False,
+    )
+    assert selected is not None
+    assert "| |- m0 " in selected
+    assert "compact view" not in selected
+
+
+def test_grouped_full_physics_renders_the_process_group_block() -> None:
+    selection = ArtifactProcessGroupSelection(
+        process_id="dbar_d_zg",
+        role="routed member",
+        representative_id="ddbar_zg",
+        representative="d d~ > z g",
+        factor="1",
+        permutation=(1, 0, 2, 3),
+        conjugated=True,
+        basis="flavor-blind",
+        warning=None,
+        group_size=4,
+        routed_count=2,
+        conjugated_count=1,
+    )
+    physics = {
+        "process_id": "dbar_d_zg",
+        "process": "d~ d > z g",
+        "external_particles": [],
+        "helicities": [{"id": "h:-1,-1,-1,-1"}],
+    }
+
+    rendered = render_summary({**physics, "process_group": selection}, color=False)
+    representative = render_summary(
+        {
+            **physics,
+            "process_group": replace(
+                selection, role="representative", conjugated=False
+            ),
+        },
+        color=False,
+    )
+
+    assert rendered is not None and representative is not None
+    assert rendered.index("Process Group") < rendered.index("Process Physics")
+    assert "routed member: not generated, evaluated through the representative" in (
+        rendered
+    )
+    assert "| representative | ddbar_zg  d d~ > z g" in rendered
+    assert (
+        "| permutation    | p = [1 0 2 3]: representative leg r takes the momentum "
+        "of leg p[r]"
+    ) in rendered
+    assert "| conjugated     | yes (C)" in rendered
+    assert "4 subprocesses: 2 generated, 2 routed, 1 conjugated" in rendered
+    assert "representative: generated, evaluated by its own runtime" in (representative)
+    # the representative requested in another leg order shows that order
+    assert (
+        "| permutation | p = [1 0 2 3]: representative leg r takes the momentum of "
+        "leg p[r] |"
+    ) in representative
+    stored_order = render_summary(
+        {
+            **physics,
+            "process_group": replace(
+                selection,
+                role="representative",
+                conjugated=False,
+                permutation=(0, 1, 2, 3),
+            ),
+        },
+        color=False,
+    )
+    assert stored_order is not None
+    assert "permutation" not in stored_order.split("Process Physics")[0]
+
+
+def test_process_groups_json_is_complete_and_uncolored() -> None:
+    stream = io.StringIO()
+    write_result(_grouped_inspection(), format="json", stream=stream, color=True)
+
+    assert "\x1b[" not in stream.getvalue()
+    payload = json.loads(stream.getvalue())["process_groups"]
+    assert payload["stored"] is True
+    assert payload["analyses"] == [
+        {"only_unit_multiplier": True, "variant": "numerical"}
+    ]
+    assert [len(group["members"]) for group in payload["groups"]] == [4, 1]
+    assert payload["groups"][0]["members"][2] == {
+        "basis": "flavor-blind",
+        "conjugated": True,
+        "factor": "1",
+        "generated": False,
+        "id": "dbar_d_zg",
+        "initial_count": 2,
+        "pdgs": [1, 1, 1, 1],
+        "permutation": [1, 0, 2, 3],
+        "process": "d~ d > z g",
+        "warning": None,
+    }

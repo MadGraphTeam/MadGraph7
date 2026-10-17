@@ -8709,6 +8709,24 @@ def _collapse_flavor_blind_classes(
             "; ".join(warnings[:3]),
         )
     grouped = {member.process_id for group in members.values() for member in group}
+    conjugated = sum(
+        member.conjugated for group in members.values() for member in group
+    )
+    _LOGGER.info(
+        "Flavor-blind grouping: %d subprocess%s -> %d generated "
+        "representative%s; %d routed member%s (%d by charge conjugation%s); "
+        "%d relabelling warning%s",
+        len(entries),
+        "" if len(entries) == 1 else "es",
+        len(entries) - len(grouped),
+        "" if len(entries) - len(grouped) == 1 else "s",
+        len(grouped),
+        "" if len(grouped) == 1 else "s",
+        conjugated,
+        "" if consider_charge_conjugation else ", disabled",
+        len(warnings),
+        "" if len(warnings) == 1 else "s",
+    )
     return [
         replace(entry, group_members=tuple(members.get(entry.request.name, ())))
         for entry in entries

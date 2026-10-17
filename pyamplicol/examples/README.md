@@ -66,6 +66,10 @@ These three showcase cards print colorized terminal tables by default. Add
 | `builtin_sm_eager.toml` | Built-in SM LC generation using the wheel-owned prepared JIT O2 pack |
 | `builtin_sm_on_the_fly.toml` | Built-in SM LC generation as a compact on-the-fly seed using the same prepared JIT O2 pack |
 | `otf_pp_zjj.toml` | Generate compact OTF LC `p p > Z j j`, then profile one flow with a helicity sum |
+| `generate_pp_4j_flavor_blind.toml` | Flavour-blind built-in SM `p p > j j j j` at `QED = 0`, LC: 23 generated representatives for 486 subprocesses |
+| `inspect_pp_4j.toml` | Summary of that artifact, including its process-group map |
+| `evaluate_pp_4j_member.toml` | Evaluate the non-generated member `u~ g > u~ g g g` through its representative |
+| `group_pp_4j.toml` | Numerical `group-processes` analysis of the generated representatives |
 | `all_options.toml` | Every current schema field, active and commented |
 
 ## Generate Pure Gluons With Adjoint FFT
@@ -112,6 +116,93 @@ wheel-owned prepared JIT O2 kernels. Use `--fft trace` to compare the original
 representation, without assuming a speedup at every multiplicity. See the website's
 [Models and Processes](https://mg5amcnlo.github.io/pyamplicol/user/models-and-processes/)
 guide for execution-mode and trusted-UFO details.
+
+## Process Grouping With `p p > j j j j`
+
+With five massless quark flavours, `p p > j j j j` expands into 486
+subprocesses. In pure QCD they fall into 23 classes whose members share one
+matrix element, related by a relabelling of quark flavours, charge
+conjugation, and a reordering of the legs within each side. Four cards
+generate one representative per class, show the grouping, evaluate a
+subprocess that was never generated, and run the numerical analysis:
+
+```console
+pyamplicol generate_pp_4j_flavor_blind.toml
+pyamplicol inspect_pp_4j.toml
+pyamplicol evaluate_pp_4j_member.toml
+pyamplicol group_pp_4j.toml
+```
+
+The same steps run in the private `examples run` workspace with
+`pyamplicol examples run generate_pp_4j_flavor_blind`, then
+`inspect_pp_4j`, `evaluate_pp_4j_member`, and `group_pp_4j`.
+
+**Generate.** The card uses the built-in SM with its default five-flavour `p`
+and `j`, `process.max_coupling_orders = { QED = 0 }`, and LC recurrence over
+the wheel-owned JIT O2 kernels. `process.flavor_blind = true` generates only
+the 23 class representatives into `artifacts/pp_4j_flavor_blind`, which takes
+about 30 seconds on an Apple M3 Pro laptop. The other 463 subprocesses, 140
+of them related by charge conjugation, are recorded in
+`artifacts/pp_4j_flavor_blind/process-groups.json` as members of their class.
+Equal matrix elements within a class are assumed, not verified. They hold for
+massless pure-QCD jets, so this request produces no relabelling warning; with
+photon, `Z` or `W` couplings allowed, generation warns about the relations
+that may break. The card refuses an existing output; add
+`--set generation.mode=replace` to regenerate.
+
+**Inspect.** `inspect_pp_4j.toml` is equivalent to
+`pyamplicol inspect artifacts/pp_4j_flavor_blind`. After the 23 generated
+processes it shows the process-group map: a summary of the 486 subprocesses,
+then one row per representative with the members routed through it, the
+charge-conjugated ones marked `C`. Select a representative to list its group
+member by member, or a member with `--full-physics` to see how it is routed:
+
+```console
+pyamplicol inspect artifacts/pp_4j_flavor_blind --process 'd g > d g g g'
+pyamplicol inspect artifacts/pp_4j_flavor_blind \
+  --process 'u~ g > u~ g g g' --full-physics
+```
+
+**Evaluate a member.** `u~ g > u~ g g g` is not in the artifact. The runtime
+finds it in `process-groups.json` and evaluates its representative
+`d g > d g g g` (relabelling `u -> d` plus charge conjugation) at the
+correspondingly permuted momenta. `data/pp_4j_momenta.json` holds one massless
+2-to-4 point at `sqrt(s) = 1 TeV` in the member's leg order. The total,
+`7.271103230388e-08`, agrees with a separately generated
+`u~ g > u~ g g g` to about `1e-14` relative. Any of the 486 subprocesses, in
+any order of the legs within each side, can be selected the same way:
+
+```console
+pyamplicol evaluate_pp_4j_member.toml \
+  --set 'evaluation.process=u~ u > u~ u g g'
+pyamplicol evaluate --card evaluate_pp_4j_member.toml --resolved \
+  --helicity 'h:-1,-1,-1,-1,-1,-1'
+```
+
+The resolved table lists helicities and LC flows in the member's leg order;
+for a conjugated member each flow word is reversed. Without `--helicity` it
+lists all 64 helicities times 24 flows. Python selects members
+with `Runtime.load("artifacts/pp_4j_flavor_blind", process="u~ g > u~ g g g")`,
+whose `representative_process_key`, `process_group_factor` and
+`charge_conjugated` describe the routing. The generated API drivers accept
+the same selection, for example:
+
+```console
+python artifacts/pp_4j_flavor_blind/API/python/check_standalone.py \
+  --process 'u~ g > u~ g g g' --kinematics data/pp_4j_momenta.json --json
+```
+
+**Group numerically.** `group_pp_4j.toml` is equivalent to
+`pyamplicol group-processes artifacts/pp_4j_flavor_blind`. It compares the 23
+generated representatives at random points, merges those whose resolved
+values agree up to a rational factor, and rewrites `process-groups.json` in
+place. The card sets `process.analyze_process_groups = "numerical"` because
+run cards otherwise use the schema default `none`; the `group-processes`
+subcommand defaults to `numerical`. Here the analysis takes about a second
+and reports no new relation: the 23 classes are already distinct. To test
+the flavour-blind assumption itself, generate all 486 subprocesses without
+`flavor_blind` (much slower) and let the analysis rebuild the same 23 groups;
+see the [process grouping guide](https://mg5amcnlo.github.io/pyamplicol/user/process-grouping/).
 
 ## Run `q q~ > Z + 6g` With Recurrence, Compiled, And Eager
 

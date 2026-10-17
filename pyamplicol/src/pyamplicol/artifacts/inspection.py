@@ -28,8 +28,10 @@ from pyamplicol._internal.versions import (
     SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
 )
 from pyamplicol.api.errors import ArtifactError
+from pyamplicol.generation.process_grouping import GroupMember, ProcessGroupMap
 
 from .manifest import MANIFEST_NAME, ArtifactManifest, load_manifest
+from .process_groups import initial_process_groups, read_process_groups
 from .security import confined_path, normalize_relative_path
 
 _EAGER_RUNTIME_KIND = "pyamplicol-runtime-eager-execution"
@@ -190,6 +192,72 @@ class ArtifactDependencyInspection:
 
 
 @dataclass(frozen=True, slots=True)
+class ArtifactProcessGroupMemberInspection:
+    """One subprocess of a process group and its relation to the representative.
+
+    ``ME(p) = factor * ME_representative(q)`` with ``q[r] = p[permutation[r]]``;
+    ``factor`` is the reduced fraction text, such as ``"1"`` or ``"16/9"``.
+    """
+
+    id: str
+    process: str
+    pdgs: tuple[int, ...]
+    initial_count: int
+    factor: str
+    permutation: tuple[int, ...]
+    conjugated: bool
+    basis: str
+    generated: bool
+    warning: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactProcessGroupInspection:
+    """A generated representative and its members, the representative first."""
+
+    representative_id: str
+    representative: str
+    members: tuple[ArtifactProcessGroupMemberInspection, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactProcessGroupsInspection:
+    """The artifact's process-group map, in artifact process order.
+
+    ``stored`` is false for an artifact without ``process-groups.json``, whose
+    processes are then each their own group.
+    """
+
+    stored: bool
+    groups: tuple[ArtifactProcessGroupInspection, ...]
+    analyses: tuple[Mapping[str, object], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactProcessGroupSelection:
+    """The process-group relation of one selected process.
+
+    ``role`` is ``representative``, ``routed member`` (not generated, evaluated
+    through the representative) or ``generated member`` (related numerically,
+    evaluated by its own runtime process). ``permutation`` relates the
+    representative's legs to the selected leg order, as in a group member.
+    """
+
+    process_id: str
+    role: str
+    representative_id: str
+    representative: str
+    factor: str
+    permutation: tuple[int, ...]
+    conjugated: bool
+    basis: str
+    warning: str | None
+    group_size: int
+    routed_count: int
+    conjugated_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class ArtifactInspection:
     kind: str
     path: Path
@@ -216,6 +284,7 @@ class ArtifactInspection:
     evaluator_container_abi: str | None = None
     evaluator_container_member_count: int | None = None
     evaluator_container_unpacked_size_bytes: int | None = None
+    process_groups: ArtifactProcessGroupsInspection | None = None
 
 
 def _mapping(value: object, context: str) -> Mapping[str, object]:
@@ -2878,6 +2947,143 @@ def _process_inspection(
     )
 
 
+def _group_member_inspection(
+    member: GroupMember,
+) -> ArtifactProcessGroupMemberInspection:
+    return ArtifactProcessGroupMemberInspection(
+        id=member.process_id,
+        process=member.expression,
+        pdgs=member.pdgs,
+        initial_count=member.initial_count,
+        factor=str(member.factor),
+        permutation=member.permutation,
+        conjugated=member.conjugated,
+        basis=str(member.basis),
+        generated=member.generated,
+        warning=member.warning,
+    )
+
+
+def _groups_inspection(
+    group_map: ProcessGroupMap,
+    *,
+    stored: bool,
+    process_ids: Sequence[str] = (),
+) -> ArtifactProcessGroupsInspection:
+    """Return ``group_map`` with its groups in ``process_ids`` order."""
+
+    order = {process_id: index for index, process_id in enumerate(process_ids)}
+    groups = sorted(
+        group_map.groups.values(),
+        key=lambda group: (
+            order.get(group.representative.process_id, len(order)),
+            group.representative.process_id,
+        ),
+    )
+    return ArtifactProcessGroupsInspection(
+        stored=stored,
+        groups=tuple(
+            ArtifactProcessGroupInspection(
+                representative_id=group.representative.process_id,
+                representative=group.representative.expression,
+                members=tuple(
+                    _group_member_inspection(member) for member in group.members
+                ),
+            )
+            for group in groups
+        ),
+        analyses=tuple(dict(analysis) for analysis in group_map.analyses),
+    )
+
+
+def _process_groups_inspection(
+    manifest: ArtifactManifest,
+) -> ArtifactProcessGroupsInspection:
+    """Read the stored process-group map; without one, each process is a group."""
+
+    group_map = read_process_groups(manifest.root)
+    stored = group_map is not None
+    if group_map is None:
+        group_map = initial_process_groups(
+            (
+                str(process["id"]),
+                str(process["expression"]),
+                cast(Sequence[int], process["external_pdgs"]),
+            )
+            for process in manifest.processes
+        )
+    return _groups_inspection(
+        group_map,
+        stored=stored,
+        process_ids=[str(process["id"]) for process in manifest.processes],
+    )
+
+
+def stored_process_groups(
+    artifact: str | Path,
+) -> ArtifactProcessGroupsInspection | None:
+    """Return the artifact's stored process-group map, or ``None`` without one.
+
+    Unlike :func:`inspect_artifact`, this reads only ``artifact.json`` and
+    ``process-groups.json`` and verifies no payload.
+    """
+
+    group_map = read_process_groups(artifact)
+    return None if group_map is None else _groups_inspection(group_map, stored=True)
+
+
+def process_group_selection(
+    artifact: str | Path,
+    process_id: str,
+    *,
+    permutation: Sequence[int] | None = None,
+) -> ArtifactProcessGroupSelection | None:
+    """Return how ``process_id`` relates to its stored process group.
+
+    Returns ``None`` when the artifact stores no map or the process is alone in
+    its group. ``permutation`` is the runtime's external permutation of the
+    requested leg order: from the representative's legs for a routed member,
+    whose runtime already composes the stored relation, and from the
+    process's own legs otherwise. The returned permutation relates the
+    representative to the requested leg order.
+    """
+
+    group_map = read_process_groups(artifact)
+    group = None if group_map is None else group_map.group_of(process_id)
+    if group is None or len(group.members) == 1:
+        return None
+    member = next(item for item in group.members if item.process_id == process_id)
+    representative = group.representative
+    relation_permutation = member.permutation
+    if permutation is not None:
+        requested = tuple(int(index) for index in permutation)
+        relation_permutation = (
+            tuple(requested[index] for index in member.permutation)
+            if member.generated
+            else requested
+        )
+    if member.process_id == representative.process_id:
+        role = "representative"
+    elif member.generated:
+        role = "generated member"
+    else:
+        role = "routed member"
+    return ArtifactProcessGroupSelection(
+        process_id=member.process_id,
+        role=role,
+        representative_id=representative.process_id,
+        representative=representative.expression,
+        factor=str(member.factor),
+        permutation=relation_permutation,
+        conjugated=member.conjugated,
+        basis=str(member.basis),
+        warning=member.warning,
+        group_size=len(group.members),
+        routed_count=sum(not item.generated for item in group.members),
+        conjugated_count=sum(item.conjugated for item in group.members),
+    )
+
+
 def _reject_retired_recurrence_metadata(artifact: str | Path) -> None:
     """Reject pre-release recurrence artifacts before payload verification."""
 
@@ -3027,6 +3233,7 @@ def inspect_artifact(artifact: str | Path) -> ArtifactInspection:
         evaluator_container_abi=container_abi,
         evaluator_container_member_count=container_member_count,
         evaluator_container_unpacked_size_bytes=container_unpacked_size,
+        process_groups=_process_groups_inspection(manifest),
     )
 
 
@@ -3034,6 +3241,12 @@ __all__ = [
     "ArtifactAliasInspection",
     "ArtifactDependencyInspection",
     "ArtifactInspection",
+    "ArtifactProcessGroupInspection",
+    "ArtifactProcessGroupMemberInspection",
+    "ArtifactProcessGroupSelection",
+    "ArtifactProcessGroupsInspection",
     "ArtifactProcessInspection",
     "inspect_artifact",
+    "process_group_selection",
+    "stored_process_groups",
 ]

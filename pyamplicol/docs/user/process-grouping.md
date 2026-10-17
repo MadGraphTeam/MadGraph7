@@ -201,6 +201,12 @@ Generation then proceeds as follows:
 A subprocess with an explicit `ProcessAlias` keeps its own artifact entry and
 is not folded into a class.
 
+Generation logs the outcome of step 3 in one line, such as
+`Flavor-blind grouping: 486 subprocesses -> 23 generated representatives; 463
+routed members (140 by charge conjugation); 0 relabelling warnings`, and the
+summary table printed at the end has a `process grouping` row; see the
+[worked example](#worked-example-p-p--j-j-j-j).
+
 Members stay selectable. Every SDK (`Runtime.load(..., process=...)`,
 `pyamplicol evaluate --process`, `rusticol_runtime_load` and the C++, Fortran
 and Rust wrappers) resolves a member ID or expression, in any side order,
@@ -579,6 +585,51 @@ Reading it:
 Every subprocess of the artifact appears exactly once as a generated member,
 and a representative is always generated.
 
+`pyamplicol inspect` shows the map in its `Process groups` section (colours
+omitted here). For the five subprocesses above:
+
+```text
+Process groups
+
++--------+--------------+-----------+--------+------------+-------------+-------------+-----------+----------+
+| groups | subprocesses | generated | routed | conjugated | factor != 1 | bases       | analyses  | warnings |
++--------+--------------+-----------+--------+------------+-------------+-------------+-----------+----------+
+|      2 |            5 |         5 |      0 |          1 |           1 | numerical 3 | numerical |        0 |
++--------+--------------+-----------+--------+------------+-------------+-------------+-----------+----------+
+
++---------------------+-------------+----------------+--------+---+-------------+-----------+
+| process ID          | process     | role           | factor | C | permutation | basis     |
++---------------------+-------------+----------------+--------+---+-------------+-----------+
+| d_dbar_to_a_a       | d d~ > a a  | representative |        |   |             |           |
+| `- u_ubar_to_a_a    | u u~ > a a  | generated      |     16 |   |             | numerical |
++---------------------+-------------+----------------+--------+---+-------------+-----------+
+| d_g_to_d_g          | d g > d g   | representative |        |   |             |           |
+| |- g_u_to_u_g       | g u > u g   | generated      |      1 |   | [1 0 2 3]   | numerical |
+| `- dbar_g_to_dbar_g | d~ g > d~ g | generated      |      1 | C |             | numerical |
++---------------------+-------------+----------------+--------+---+-------------+-----------+
+
+C: charge-conjugated relation; factor F: ME = F x ME(representative)
+permutation p: representative leg r takes the momentum of member leg p[r]
+numerical analysis: 3 points, tolerance 1e-09
+```
+
+A `generated` member has its own runtime process, and a `routed` member is
+evaluated through its representative. The permutation column is empty for the
+identity. The factor, `C` and permutation columns appear only when some member
+needs them, and a `note` column with `[n]` references to the warnings printed
+below the table appears when a member has a warning. Maps with more than 80
+subprocesses list each group's members as a grid of process strings instead;
+see [Inspect and select a process](command-line-interface.md#inspect-and-select-a-process).
+An artifact without grouping prints one line, `Process groups: none; each of
+the N processes is its own group`.
+
+The summary printed by this `generate` command reports the same map in its
+`process grouping` row, `5 subprocesses -> 2 groups: 5 generated, 0 routed`,
+followed by `3 numerical relations (1 charge-conjugated, 1 with factor != 1);
+0 warnings` and the analysis settings. Its `Generated Processes` table lists
+`u u~ > a a` as `member of d_dbar_to_a_a (x16)` and `d~ g > d~ g` as
+`member of d_g_to_d_g (C)`.
+
 ## UMAMI export of flavour-blind members
 
 The UMAMI provider exports every flavour-blind member, although it has no
@@ -640,6 +691,30 @@ pyamplicol generate "p p > j j j j" artifacts/pp_4j_blind \
   --model built-in-sm --flavor-blind --analyze-process-groups numerical
 ```
 
+Before generating, the command logs the flavour classes it found:
+
+```text
+INFO pyamplicol.generation: Flavor-blind grouping: 486 subprocesses -> 23 generated representatives; 463 routed members (140 by charge conjugation); 0 relabelling warnings
+```
+
+and its final summary reads the written map back (abridged, colours omitted):
+
+```text
+| processes              | 23 requests                                                                              |
+| process grouping       | 486 subprocesses -> 23 groups: 23 generated, 463 routed                                  |
+|                        | 463 flavor-blind relations (140 charge-conjugated); 0 warnings                           |
+|                        | numerical analysis: 3 points, tolerance 1e-09                                            |
+...
++--------------------+------------------+-----------------------------+
+| name               | process          | group                       |
++--------------------+------------------+-----------------------------+
+| p_p_to_j_j_j_j_1   | d d > d d d d~   | 10 subprocesses (9 routed)  |
+| p_p_to_j_j_j_j_2   | d d > d d u u~   | 40 subprocesses (39 routed) |
+...
+| p_p_to_j_j_j_j_486 | g g > g g g g    |                             |
++--------------------+------------------+-----------------------------+
+```
+
 The minimal coupling-order envelope is pure QCD, so no relation warns. The
 artifact contains 23 runtime processes, and `process-groups.json` has 23
 groups covering all 486 subprocesses: 463 flavour-blind members, 140 of them
@@ -668,6 +743,14 @@ representative leg 0, the incoming `d`, takes the momentum of member leg 1,
 the incoming `u~`, which conjugation and the relabelling `u <-> d` turn into a
 `d`. Loaded by its own expression, each of these three members agrees with a
 separately generated copy of the same subprocess to about `1e-14`.
+
+`pyamplicol inspect artifacts/pp_4j_blind` summarises the 23 classes and lists
+the members of each, grouped into non-conjugated and conjugated blocks, with
+`g g > g g g g` listed as `ungrouped`.
+`--process p_p_to_j_j_j_j_52` lists one class member by member, with
+permutations, and `--process 'd u~ > d u u~ u~' --full-physics` adds a
+`Process Group` table with that member's representative, factor, conjugation
+and permutation.
 
 The UMAMI provider in `API/umami` has 23 `runtime_processes` rows. Its
 `members` cover all 486 subprocess IDs, and its `grouping.assumptions` list

@@ -5,9 +5,12 @@ from __future__ import annotations
 
 import importlib
 import math
+import re
+import textwrap
 from collections.abc import Mapping, Sequence
-from dataclasses import fields, is_dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -206,14 +209,20 @@ def _colored(text: str, *, key: str, enabled: bool) -> str:
     return f"{color}{text}{colorama.Style.RESET_ALL}"
 
 
-def _paint(text: str, color_name: str, *, enabled: bool) -> str:
-    if not enabled:
+def _paint(
+    text: str, color_name: str | None, *, enabled: bool, bold: bool = False
+) -> str:
+    """Colour ``text``; ``None`` keeps the terminal colour, for bold-only text."""
+
+    if not enabled or not text or (color_name is None and not bold):
         return text
     try:
         colorama: Any = importlib.import_module("colorama")
     except ImportError:
         return text
-    return f"{getattr(colorama.Fore, color_name)}{text}{colorama.Style.RESET_ALL}"
+    style = colorama.Style.BRIGHT if bold else ""
+    fore = "" if color_name is None else getattr(colorama.Fore, color_name)
+    return f"{style}{fore}{text}{colorama.Style.RESET_ALL}"
 
 
 def _integer(value: object, name: str) -> int:
@@ -1491,6 +1500,63 @@ def _benchmark_summary(
     return "\n\n".join(sections)
 
 
+# Width of the value column of the generation summary.
+_SUMMARY_VALUE_WIDTH = 88
+
+
+def _generated_process_groups(output: Path) -> Mapping[str, object] | None:
+    """The stored process-group map of a written artifact, when readable."""
+
+    from pyamplicol.api.errors import ArtifactError
+    from pyamplicol.artifacts.inspection import stored_process_groups
+
+    try:
+        groups = stored_process_groups(output)
+    except (OSError, ValueError, ArtifactError):
+        return None
+    return None if groups is None else cast(Mapping[str, object], _plain(groups))
+
+
+def _generated_group_texts(
+    record: Mapping[str, object],
+    *,
+    color: bool,
+) -> dict[str, str]:
+    """The group column of each generated process of a grouped artifact.
+
+    A representative shows its group size; a generated member, its
+    representative and any factor other than 1 or charge conjugation.
+    Processes alone in their group have no entry.
+    """
+
+    texts: dict[str, str] = {}
+    for group in cast(list[Mapping[str, object]], record["groups"]):
+        representative, *members = _group_members(group)
+        if not members:
+            continue
+        routed = sum(not bool(member["generated"]) for member in members)
+        size = _subprocess_count(len(members) + 1)
+        texts[str(representative["id"])] = (
+            f"{size} ({_paint(f'{routed} routed', _ROUTED_COLOR, enabled=color)})"
+            if routed
+            else size
+        )
+        for member in members:
+            if not bool(member["generated"]):
+                continue
+            relation = []
+            if str(member["factor"]) != "1":
+                relation.append(_factor_text(member["factor"], color=color, prefix="x"))
+            if bool(member["conjugated"]):
+                relation.append(_conjugation_mark(color=color))
+            texts[str(member["id"])] = (
+                "member of "
+                + _paint(str(representative["id"]), "CYAN", enabled=color)
+                + (f" ({', '.join(relation)})" if relation else "")
+            )
+    return texts
+
+
 def _generation_summary(
     result: object,
     *,
@@ -1537,6 +1603,12 @@ def _generation_summary(
     process_count = f"{request_count} request{'s' if request_count != 1 else ''}"
     if alias_count:
         process_count += f"; {alias_count} aliases"
+    grouping = _generated_process_groups(result.output)
+    grouping_text = (
+        ""
+        if grouping is None
+        else _process_grouping_text(grouping, color=color, width=_SUMMARY_VALUE_WIDTH)
+    )
     rows = (
         ("output", str(result.output)),
         ("processes", process_count),
@@ -1548,7 +1620,7 @@ def _generation_summary(
     table.align["field"] = "l"
     table.align["value"] = "l"
     table.max_width["field"] = 30
-    table.max_width["value"] = 88
+    table.max_width["value"] = _SUMMARY_VALUE_WIDTH
     table.hrules = prettytable.HRuleStyle.FRAME
     value_colors = {
         "output": "GREEN",
@@ -1564,7 +1636,19 @@ def _generation_summary(
                 _paint(value, value_colors[field], enabled=color),
             )
         )
-    process_table = prettytable.PrettyTable(("name", "process"))
+        if field == "processes" and grouping_text:
+            # coloured like the `inspect` process-group overview
+            table.add_row(
+                (_paint("process grouping", "CYAN", enabled=color), grouping_text)
+            )
+    group_texts = (
+        {}
+        if grouping is None or not grouping_text
+        else _generated_group_texts(grouping, color=color)
+    )
+    process_table = prettytable.PrettyTable(
+        ("name", "process", "group") if group_texts else ("name", "process")
+    )
     process_table.title = _paint("Generated Processes", "CYAN", enabled=color)
     process_table.align = "l"
     process_table.max_width["name"] = 34
@@ -1576,6 +1660,7 @@ def _generation_summary(
                 _paint(request.name, "CYAN", enabled=color),
                 _paint(request.expression, "GREEN", enabled=color),
             )
+            + ((group_texts.get(request.name, ""),) if group_texts else ())
         )
     for alias in result.processes.aliases:
         process_table.add_row(
@@ -1583,8 +1668,752 @@ def _generation_summary(
                 _paint(alias.name, "MAGENTA", enabled=color),
                 f"alias of {alias.process_name}",
             )
+            + (("",) if group_texts else ())
         )
     return f"{table.get_string()}\n\n{process_table.get_string()}"
+
+
+# Maps with at most this many subprocesses list one row per member; larger ones
+# list each group's members as a wrapped grid of process strings.
+_PROCESS_GROUP_ROW_LIMIT = 80
+# Target width of the process-group tables and notes.
+_PROCESS_GROUP_WIDTH = 120
+# Colours of the process-group views, shared by `inspect` and `generate`.
+_GENERATED_COLOR = "GREEN"
+_ROUTED_COLOR = "CYAN"
+_CONJUGATED_COLOR = "MAGENTA"
+_ATTENTION_COLOR = "YELLOW"  # factors other than 1, warnings
+_BASIS_COLORS = {"flavor-blind": "LIGHTBLUE_EX", "numerical": "GREEN"}
+_Member = Mapping[str, object]
+# (routed, conjugated, factor, basis) of a member's relation
+_Relation = tuple[bool, bool, Fraction, str]
+
+
+@dataclass(frozen=True, slots=True)
+class _GroupCounts:
+    """Counts of a process-group map; ``bases`` counts the related members."""
+
+    groups: int
+    subprocesses: int
+    generated: int
+    conjugated: int
+    non_unit: int
+    warnings: int
+    bases: tuple[tuple[str, int], ...]
+
+    @property
+    def routed(self) -> int:
+        return self.subprocesses - self.generated
+
+    @property
+    def trivial(self) -> bool:
+        return self.subprocesses == self.groups
+
+
+def _count(count: int, singular: str, plural: str | None = None) -> str:
+    return f"{count} {singular if count == 1 else plural or f'{singular}s'}"
+
+
+def _subprocess_count(count: int) -> str:
+    return _count(count, "subprocess", "subprocesses")
+
+
+def _own_groups_text(count: int) -> str:
+    """The note of a trivial map: every process is its own group."""
+
+    if count == 1:
+        return "the process is its own group"
+    return f"each of the {count} processes is its own group"
+
+
+def _natural_key(text: str) -> tuple[tuple[int, int | str], ...]:
+    return tuple(
+        (0, int(part)) if part.isdigit() else (1, part)
+        for part in re.split(r"(\d+)", text)
+        if part
+    )
+
+
+def _group_members(group: Mapping[str, object]) -> list[Mapping[str, object]]:
+    return cast(list[Mapping[str, object]], group["members"])
+
+
+def _group_counts(groups: Sequence[Mapping[str, object]]) -> _GroupCounts:
+    members = [member for group in groups for member in _group_members(group)]
+    bases: dict[str, int] = {}
+    for group in groups:
+        for member in _group_members(group)[1:]:
+            basis = str(member["basis"])
+            bases[basis] = bases.get(basis, 0) + 1
+    return _GroupCounts(
+        groups=len(groups),
+        subprocesses=len(members),
+        generated=sum(bool(member["generated"]) for member in members),
+        conjugated=sum(bool(member["conjugated"]) for member in members),
+        non_unit=sum(str(member["factor"]) != "1" for member in members),
+        warnings=sum(bool(member.get("warning")) for member in members),
+        bases=tuple(sorted(bases.items())),
+    )
+
+
+def _ordered_group_members(
+    group: Mapping[str, object],
+) -> list[Mapping[str, object]]:
+    """Representative first, then generated, routed and conjugated members."""
+
+    representative, *members = _group_members(group)
+    return [
+        representative,
+        *sorted(
+            members,
+            key=lambda member: (
+                not bool(member["generated"]),
+                bool(member["conjugated"]),
+                _natural_key(str(member["id"])),
+            ),
+        ),
+    ]
+
+
+def _is_identity_permutation(permutation: object) -> bool:
+    values = cast(Sequence[int], permutation)
+    return list(values) == list(range(len(values)))
+
+
+def _permutation_text(permutation: object) -> str:
+    if _is_identity_permutation(permutation):
+        return ""
+    return (
+        "[" + " ".join(str(index) for index in cast(Sequence[int], permutation)) + "]"
+    )
+
+
+def _factor_text(factor: object, *, color: bool, prefix: str = "") -> str:
+    text = str(factor)
+    return _paint(
+        f"{prefix}{text}",
+        _GENERATED_COLOR if text == "1" else _ATTENTION_COLOR,
+        enabled=color,
+    )
+
+
+def _basis_text(basis: object, *, color: bool) -> str:
+    text = str(basis)
+    return _paint(text, _BASIS_COLORS.get(text), enabled=color)
+
+
+def _role_text(member: Mapping[str, object], *, color: bool) -> str:
+    if bool(member["generated"]):
+        return _paint("generated", _GENERATED_COLOR, enabled=color)
+    return _paint("routed", _ROUTED_COLOR, enabled=color)
+
+
+def _conjugation_mark(*, color: bool) -> str:
+    return _paint("C", _CONJUGATED_COLOR, enabled=color, bold=True)
+
+
+def _warning_count(count: int, *, color: bool) -> str:
+    return _paint(
+        _count(count, "warning"),
+        _ATTENTION_COLOR if count else _GENERATED_COLOR,
+        enabled=color,
+    )
+
+
+def _analysis_labels(analyses: Sequence[Mapping[str, object]]) -> list[str]:
+    labels: list[str] = []
+    for analysis in analyses:
+        flags = []
+        if analysis.get("only_unit_multiplier") is True:
+            flags.append("unit factor only")
+        if analysis.get("consider_charge_conjugation") is False:
+            flags.append("no C")
+        text = str(analysis.get("variant", "analysis"))
+        labels.append(f"{text} ({', '.join(flags)})" if flags else text)
+    return labels
+
+
+def _analysis_text(analysis: Mapping[str, object]) -> str:
+    """One recorded analysis, such as ``numerical analysis: 3 points, ...``."""
+
+    details: list[str] = []
+    points = analysis.get("points")
+    if isinstance(points, int) and not isinstance(points, bool):
+        details.append(_count(points, "point"))
+    tolerance = analysis.get("tolerance")
+    if isinstance(tolerance, (int, float)) and not isinstance(tolerance, bool):
+        details.append(f"tolerance {tolerance:g}")
+    if analysis.get("only_unit_multiplier") is True:
+        details.append("unit factors only")
+    if analysis.get("consider_charge_conjugation") is False:
+        details.append("without charge conjugation")
+    text = f"{analysis.get('variant', 'grouping')} analysis"
+    return f"{text}: {', '.join(details)}" if details else text
+
+
+def _group_size_text(size: int, generated: int, conjugated: int, *, color: bool) -> str:
+    """``N subprocesses: G generated, R routed, C conjugated``, coloured."""
+
+    parts = [
+        _paint(f"{generated} generated", _GENERATED_COLOR, enabled=color),
+        _paint(f"{size - generated} routed", _ROUTED_COLOR, enabled=color),
+    ]
+    if conjugated:
+        parts.append(
+            _paint(f"{conjugated} conjugated", _CONJUGATED_COLOR, enabled=color)
+        )
+    return f"{_subprocess_count(size)}: {', '.join(parts)}"
+
+
+def _process_grouping_text(
+    record: Mapping[str, object],
+    *,
+    color: bool,
+    width: int,
+) -> str:
+    """The grouping outcome of a process-group map, in lines of ``width``.
+
+    The first line gives the reduction, the next the relations and warnings,
+    and the last ones the recorded analyses. It is empty for a trivial map
+    without analyses.
+    """
+
+    groups = cast(list[Mapping[str, object]], record["groups"])
+    analyses = cast(list[Mapping[str, object]], record.get("analyses", []))
+    counts = _group_counts(groups)
+    lines: list[str] = []
+    if counts.trivial:
+        if not analyses:
+            return ""
+        lines.append(f"no relation found; {_own_groups_text(counts.groups)}")
+    else:
+        reduction = _paint(
+            _subprocess_count(counts.subprocesses), None, enabled=color, bold=True
+        )
+        lines.append(
+            f"{reduction} -> {_count(counts.groups, 'group')}: "
+            + _paint(f"{counts.generated} generated", _GENERATED_COLOR, enabled=color)
+            + ", "
+            + _paint(f"{counts.routed} routed", _ROUTED_COLOR, enabled=color)
+        )
+        related = counts.subprocesses - counts.groups
+        relations = " + ".join(
+            f"{count} {_basis_text(basis, color=color)}"
+            for basis, count in counts.bases
+        )
+        details: list[str] = []
+        if counts.conjugated:
+            details.append(
+                _paint(
+                    f"{counts.conjugated} charge-conjugated",
+                    _CONJUGATED_COLOR,
+                    enabled=color,
+                )
+            )
+        if counts.non_unit:
+            details.append(
+                _paint(
+                    f"{counts.non_unit} with factor != 1",
+                    _ATTENTION_COLOR,
+                    enabled=color,
+                )
+            )
+        relation_text = f"{relations} {'relation' if related == 1 else 'relations'}"
+        if details:
+            relation_text += f" ({', '.join(details)})"
+        lines.append(
+            _legend(
+                (relation_text, _warning_count(counts.warnings, color=color)),
+                width=width,
+            )
+        )
+    lines.extend(_analysis_text(analysis) for analysis in analyses)
+    return "\n".join(lines)
+
+
+def _wrapped_note(text: str, *, indent: str = "") -> str:
+    return textwrap.fill(
+        text,
+        width=_PROCESS_GROUP_WIDTH,
+        subsequent_indent=indent,
+        break_on_hyphens=False,
+    )
+
+
+_ANSI_STYLE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _legend(items: Sequence[str], *, width: int = _PROCESS_GROUP_WIDTH) -> str:
+    """Join ``items`` with semicolons, breaking lines only between items."""
+
+    lines: list[tuple[int, str]] = []
+    for item in items:
+        size = len(_ANSI_STYLE.sub("", item))
+        if lines and lines[-1][0] + size + 2 <= width:
+            used, text = lines[-1]
+            lines[-1] = (used + size + 2, f"{text}; {item}")
+        else:
+            lines.append((size, item))
+    return "\n".join(text for _size, text in lines)
+
+
+def _padded(plain: str, painted: str, width: int) -> str:
+    return painted + " " * (width - len(plain))
+
+
+def _process_groups_overview(
+    groups: Sequence[Mapping[str, object]],
+    analyses: Sequence[Mapping[str, object]],
+    *,
+    prettytable: Any,
+    color: bool,
+) -> str:
+    counts = _group_counts(groups)
+    table = prettytable.PrettyTable(
+        (
+            "groups",
+            "subprocesses",
+            "generated",
+            "routed",
+            "conjugated",
+            "factor != 1",
+            "bases",
+            "analyses",
+            "warnings",
+        )
+    )
+    table.align = "r"
+    table.align["bases"] = "l"
+    table.align["analyses"] = "l"
+    # One basis per line; long analysis descriptions wrap to keep 120 columns.
+    table.max_width["analyses"] = 12
+    table.hrules = prettytable.HRuleStyle.FRAME
+    table.add_row(
+        (
+            _paint(str(counts.groups), None, enabled=color, bold=True),
+            _paint(str(counts.subprocesses), None, enabled=color, bold=True),
+            _paint(str(counts.generated), _GENERATED_COLOR, enabled=color),
+            _paint(str(counts.routed), _ROUTED_COLOR, enabled=color),
+            _paint(
+                str(counts.conjugated),
+                _CONJUGATED_COLOR,
+                enabled=color and counts.conjugated > 0,
+            ),
+            _paint(
+                str(counts.non_unit),
+                _ATTENTION_COLOR if counts.non_unit else _GENERATED_COLOR,
+                enabled=color,
+            ),
+            "\n".join(
+                f"{_basis_text(basis, color=color)} {count}"
+                for basis, count in counts.bases
+            )
+            or "none",
+            "\n".join(_analysis_labels(analyses)) or "none",
+            _paint(
+                str(counts.warnings),
+                _ATTENTION_COLOR if counts.warnings else _GENERATED_COLOR,
+                enabled=color,
+            ),
+        )
+    )
+    return cast(str, table.get_string())
+
+
+def _process_group_detail_table(
+    groups: Sequence[Mapping[str, object]],
+    footnotes: Mapping[str, int],
+    *,
+    prettytable: Any,
+    color: bool,
+) -> str:
+    members = [member for group in groups for member in _group_members(group)]
+    show_factor = any(str(member["factor"]) != "1" for member in members)
+    show_conjugated = any(bool(member["conjugated"]) for member in members)
+    show_permutation = not all(
+        _is_identity_permutation(member["permutation"]) for member in members
+    )
+    headers = ["process ID", "process", "role"]
+    if show_factor:
+        headers.append("factor")
+    if show_conjugated:
+        headers.append("C")
+    if show_permutation:
+        headers.append("permutation")
+    headers.append("basis")
+    if footnotes:
+        headers.append("note")
+    table = prettytable.PrettyTable(headers)
+    table.align = "l"
+    if show_factor:
+        table.align["factor"] = "r"
+    if show_conjugated:
+        table.align["C"] = "c"
+    table.hrules = prettytable.HRuleStyle.FRAME
+    for group_index, group in enumerate(groups):
+        ordered = _ordered_group_members(group)
+        representative = ordered[0]
+        rows: list[list[str]] = [
+            [
+                _paint(str(representative["id"]), "CYAN", enabled=color, bold=True),
+                _paint(
+                    str(representative["process"]), "GREEN", enabled=color, bold=True
+                ),
+                _paint("representative", None, enabled=color, bold=True),
+            ]
+            + [""] * (len(headers) - 3)
+        ]
+        for index, member in enumerate(ordered[1:], start=2):
+            branch = "`- " if index == len(ordered) else "|- "
+            row = [
+                branch + _paint(str(member["id"]), "CYAN", enabled=color),
+                str(member["process"]),
+                _role_text(member, color=color),
+            ]
+            if show_factor:
+                row.append(_factor_text(member["factor"], color=color))
+            if show_conjugated:
+                row.append(
+                    _conjugation_mark(color=color) if bool(member["conjugated"]) else ""
+                )
+            if show_permutation:
+                row.append(_permutation_text(member["permutation"]))
+            row.append(_basis_text(member["basis"], color=color))
+            if footnotes:
+                warning = member.get("warning")
+                row.append(
+                    _paint(
+                        f"[{footnotes[str(warning)]}]", _ATTENTION_COLOR, enabled=color
+                    )
+                    if warning
+                    else ""
+                )
+            rows.append(row)
+        for index, row in enumerate(rows):
+            table.add_row(
+                row,
+                divider=index == len(rows) - 1 and group_index < len(groups) - 1,
+            )
+    return cast(str, table.get_string())
+
+
+def _process_group_compact_table(
+    groups: Sequence[Mapping[str, object]],
+    footnotes: Mapping[str, int],
+    *,
+    prettytable: Any,
+    color: bool,
+) -> str:
+    """One row per group, its members as a grid of process strings.
+
+    Members are listed in one block per relation, labelled with their count,
+    role and conjugation. Factor and basis columns appear in the labels only
+    when they vary; the overview reports them otherwise.
+    """
+
+    grouped = [group for group in groups if len(_group_members(group)) > 1]
+    ungrouped = [
+        _group_members(group)[0] for group in groups if len(_group_members(group)) == 1
+    ]
+
+    def token(member: _Member) -> tuple[str, str]:
+        process = str(member["process"])
+        warning = member.get("warning")
+        if not warning:
+            return process, process
+        marker = f"[{footnotes[str(warning)]}]"
+        return (
+            f"{process} {marker}",
+            f"{process} {_paint(marker, _ATTENTION_COLOR, enabled=color)}",
+        )
+
+    classes: list[list[tuple[_Relation, list[_Member]]]] = []
+    for group in grouped:
+        by_relation: dict[_Relation, list[_Member]] = {}
+        for member in _ordered_group_members(group)[1:]:
+            key = (
+                not bool(member["generated"]),
+                bool(member["conjugated"]),
+                Fraction(str(member["factor"])),
+                str(member["basis"]),
+            )
+            by_relation.setdefault(key, []).append(member)
+        classes.append(sorted(by_relation.items(), key=lambda item: item[0]))
+    relations = [(key, len(members)) for items in classes for key, members in items]
+    count_width = max((len(str(count)) for _key, count in relations), default=1)
+    role_width = max(
+        (len("routed" if key[0] else "generated") for key, _count in relations),
+        default=0,
+    )
+    show_factor = any(key[2] != 1 for key, _count in relations)
+    show_basis = len({key[3] for key, _count in relations}) > 1
+    factor_width = max((len(f"x{key[2]}") for key, _count in relations), default=0)
+    basis_width = max((len(key[3]) for key, _count in relations), default=0)
+    label_width = (
+        count_width
+        + role_width
+        + 3
+        + (factor_width + 1 if show_factor else 0)
+        + (basis_width + 1 if show_basis else 0)
+    )
+
+    def label(key: _Relation, count: int) -> str:
+        routed, conjugated, factor, basis = key
+        role = "routed" if routed else "generated"
+        parts = [
+            f"{count:>{count_width}}",
+            _padded(
+                role,
+                _paint(
+                    role,
+                    _ROUTED_COLOR if routed else _GENERATED_COLOR,
+                    enabled=color,
+                ),
+                role_width,
+            ),
+            _conjugation_mark(color=color) if conjugated else " ",
+        ]
+        if show_factor:
+            parts.append(
+                _padded(
+                    f"x{factor}",
+                    _factor_text(factor, color=color, prefix="x"),
+                    factor_width,
+                )
+            )
+        if show_basis:
+            parts.append(_padded(basis, _basis_text(basis, color=color), basis_width))
+        return " ".join(parts)
+
+    tokens = [
+        token(member)
+        for items in classes
+        for _key, members in items
+        for member in members
+    ] + [token(member) for member in ungrouped]
+    cell_width = max(len(plain) for plain, _painted in tokens) + 2
+    group_width = max(
+        [len("ungrouped"), len(_subprocess_count(len(ungrouped)))]
+        + [
+            len(text)
+            for group in grouped
+            for text in (
+                str(group["representative"]),
+                str(group["representative_id"]),
+                _subprocess_count(len(_group_members(group))),
+            )
+        ]
+    )
+    members_width = _PROCESS_GROUP_WIDTH - group_width - 7
+    per_line = max(1, (members_width - label_width) // cell_width)
+
+    def grid(members: Sequence[tuple[str, str]], first: str) -> list[str]:
+        lines: list[str] = []
+        for start in range(0, len(members), per_line):
+            chunk = members[start : start + per_line]
+            cells = [_padded(plain, painted, cell_width) for plain, painted in chunk]
+            prefix = first if start == 0 else " " * label_width
+            lines.append(f"{prefix}  {''.join(cells).rstrip()}")
+        return lines
+
+    table = prettytable.PrettyTable(("representative", "members"))
+    table.align = "l"
+    table.hrules = prettytable.HRuleStyle.FRAME
+    rows: list[tuple[str, str]] = []
+    for group, items in zip(grouped, classes, strict=True):
+        rows.append(
+            (
+                "\n".join(
+                    (
+                        _paint(
+                            str(group["representative"]),
+                            "GREEN",
+                            enabled=color,
+                            bold=True,
+                        ),
+                        _paint(str(group["representative_id"]), "CYAN", enabled=color),
+                        _subprocess_count(len(_group_members(group))),
+                    )
+                ),
+                "\n".join(
+                    line
+                    for key, members in items
+                    for line in grid(
+                        [token(member) for member in members],
+                        label(key, len(members)),
+                    )
+                ),
+            )
+        )
+    if ungrouped:
+        rows.append(
+            (
+                _paint("ungrouped", None, enabled=color, bold=True)
+                + "\n"
+                + _subprocess_count(len(ungrouped)),
+                "\n".join(
+                    grid([token(member) for member in ungrouped], " " * label_width)
+                ),
+            )
+        )
+    for index, row in enumerate(rows):
+        table.add_row(row, divider=index < len(rows) - 1)
+    return cast(str, table.get_string())
+
+
+def _process_groups_summary(
+    record: Mapping[str, object],
+    *,
+    prettytable: Any,
+    color: bool,
+) -> str:
+    groups = cast(list[Mapping[str, object]], record["groups"])
+    analyses = cast(list[Mapping[str, object]], record.get("analyses", []))
+    heading = _paint("Process groups", "CYAN", enabled=color)
+    counts = _group_counts(groups)
+    if counts.trivial:
+        own = _own_groups_text(counts.groups)
+        if not bool(record.get("stored", True)):
+            return f"{heading}: no process-groups.json; {own}"
+        if analyses:
+            labels = "; ".join(_analysis_text(analysis) for analysis in analyses)
+            return f"{heading}: no relation found ({labels}); {own}"
+        return f"{heading}: none; {own}"
+    members = [member for group in groups for member in _group_members(group)]
+    footnotes: dict[str, int] = {}
+    for group in groups:
+        for member in _ordered_group_members(group):
+            warning = member.get("warning")
+            if warning and str(warning) not in footnotes:
+                footnotes[str(warning)] = len(footnotes) + 1
+    # One group, as selected by `--process REPRESENTATIVE`, is always detailed.
+    detailed = counts.groups == 1 or counts.subprocesses <= _PROCESS_GROUP_ROW_LIMIT
+    table = (_process_group_detail_table if detailed else _process_group_compact_table)(
+        groups, footnotes, prettytable=prettytable, color=color
+    )
+    legend: list[str] = []
+    if counts.routed:
+        routed = _paint("routed", _ROUTED_COLOR, enabled=color)
+        legend.append(f"{routed}: not generated, evaluated through its representative")
+    if counts.conjugated:
+        legend.append(f"{_conjugation_mark(color=color)}: charge-conjugated relation")
+    if counts.non_unit:
+        legend.append("factor F: ME = F x ME(representative)")
+    if not detailed:
+        legend.extend(
+            (
+                f"compact view of {_subprocess_count(counts.subprocesses)}",
+                "IDs and leg permutations: --json",
+                "one group row by row: --process REPRESENTATIVE",
+            )
+        )
+    elif not all(_is_identity_permutation(member["permutation"]) for member in members):
+        legend.append(
+            "permutation p: representative leg r takes the momentum of member leg p[r]"
+        )
+    notes = [_legend(legend)] if legend else []
+    notes.extend(map(_analysis_text, analyses))
+    for warning, number in footnotes.items():
+        marker = f"[{number}]"
+        text = _wrapped_note(f"{marker} {warning}", indent=" " * (len(marker) + 1))
+        notes.append(
+            _paint(marker, _ATTENTION_COLOR, enabled=color) + text.removeprefix(marker)
+        )
+    sections = [
+        heading,
+        _process_groups_overview(
+            groups, analyses, prettytable=prettytable, color=color
+        ),
+        table,
+    ]
+    if notes:
+        sections.append("\n".join(notes))
+    return "\n\n".join(sections)
+
+
+def _process_group_selection_summary(
+    record: Mapping[str, object],
+    *,
+    prettytable: Any,
+    color: bool,
+) -> str:
+    role = str(record["role"])
+    table = prettytable.PrettyTable(("field", "value"))
+    table.title = _paint("Process Group", "CYAN", enabled=color)
+    table.align = "l"
+    table.max_width["value"] = 88
+    table.hrules = prettytable.HRuleStyle.FRAME
+    size = _integer(record["group_size"], "group size")
+    routed = _integer(record["routed_count"], "routed count")
+    conjugated = _integer(record["conjugated_count"], "conjugated count")
+    group_text = _group_size_text(size, size - routed, conjugated, color=color)
+    permutation = _permutation_text(record["permutation"])
+    # `permutation` relates the representative to the requested leg order
+    permutation_text = (
+        f"p = {permutation}: representative leg r takes the momentum of leg p[r]"
+        if permutation
+        else "identity"
+    )
+    rows: list[tuple[str, str]]
+    if role == "representative":
+        rows = [
+            (
+                "role",
+                _paint(
+                    "representative: generated, evaluated by its own runtime",
+                    _GENERATED_COLOR,
+                    enabled=color,
+                    bold=True,
+                ),
+            ),
+            *((("permutation", permutation_text),) if permutation else ()),
+            ("group", group_text),
+        ]
+    else:
+        routed_member = role == "routed member"
+        rows = [
+            (
+                "role",
+                _paint(
+                    "routed member: not generated, evaluated through the representative"
+                    if routed_member
+                    else "generated member: evaluated by its own runtime",
+                    _ROUTED_COLOR if routed_member else _GENERATED_COLOR,
+                    enabled=color,
+                    bold=True,
+                ),
+            ),
+            (
+                "representative",
+                _paint(str(record["representative_id"]), "CYAN", enabled=color)
+                + "  "
+                + _paint(str(record["representative"]), "GREEN", enabled=color),
+            ),
+            ("factor", _factor_text(record["factor"], color=color)),
+            (
+                "conjugated",
+                _paint("yes (C)", _CONJUGATED_COLOR, enabled=color, bold=True)
+                if bool(record["conjugated"])
+                else "no",
+            ),
+            ("permutation", permutation_text),
+            ("basis", _basis_text(record["basis"], color=color)),
+            ("group", group_text),
+        ]
+        warning = record.get("warning")
+        if warning:
+            rows.append(
+                (
+                    "warning",
+                    "\n".join(
+                        _paint(line, _ATTENTION_COLOR, enabled=color)
+                        for line in textwrap.wrap(str(warning), 88)
+                    ),
+                )
+            )
+    for field, value in rows:
+        table.add_row((_paint(field, "CYAN", enabled=color), value))
+    return cast(str, table.get_string())
 
 
 def _artifact_inspection_summary(
@@ -1638,6 +2467,20 @@ def _artifact_inspection_summary(
             f"({_byte_size(container_unpacked)} unpacked; "
             f"{plain.get('evaluator_container_abi')})"
         )
+    contents = (
+        f"{_count(len(processes), 'process', 'processes')}, "
+        f"{_count(len(aliases), 'alias', 'aliases')}"
+    )
+    process_groups = plain.get("process_groups")
+    if isinstance(process_groups, Mapping):
+        counts = _group_counts(
+            cast(list[Mapping[str, object]], process_groups["groups"])
+        )
+        if not counts.trivial:
+            contents += (
+                f"; {_subprocess_count(counts.subprocesses)} in "
+                f"{_count(counts.groups, 'group')}"
+            )
     summary_rows = (
         ("path", plain["path"]),
         ("artifact type", str(plain["artifact_kind"]).removeprefix("pyamplicol-")),
@@ -1647,7 +2490,7 @@ def _artifact_inspection_summary(
         ("target", target),
         ("model", f"{model}; {plain['model_source']}"),
         ("default process", plain.get("default_process_id")),
-        ("contents", f"{len(processes)} processes, {len(aliases)} aliases"),
+        ("contents", contents),
         (
             "runtime",
             f"{plain['runtime_engine']} {plain['runtime_version']}",
@@ -1734,6 +2577,12 @@ def _artifact_inspection_summary(
         _paint("Processes", "CYAN", enabled=color),
         cast(str, process_table.get_string()),
     ]
+    if isinstance(process_groups, Mapping):
+        sections.append(
+            _process_groups_summary(
+                process_groups, prettytable=prettytable, color=color
+            )
+        )
 
     execution_table = prettytable.PrettyTable(("process", "execution field", "value"))
     execution_table.align = "l"
@@ -2107,6 +2956,8 @@ def _human_result_title(value: object, plain: object) -> str:
             return "Model Inspection"
         if {"model", "supported", "output"} <= keys:
             return "Model Compilation"
+        if {"process_id", "external_particles", "helicities"} <= keys:
+            return "Process Physics"
     name = class_name.removesuffix("Result")
     words: list[str] = []
     current = ""
@@ -2333,6 +3184,21 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
             plain,
             prettytable=prettytable,
             color=color,
+        )
+    if isinstance(plain, Mapping) and isinstance(plain.get("process_group"), Mapping):
+        # `inspect --process MEMBER --full-physics` of a grouped process
+        physics = {key: entry for key, entry in plain.items() if key != "process_group"}
+        return "\n\n".join(
+            (
+                _process_group_selection_summary(
+                    cast(Mapping[str, object], plain["process_group"]),
+                    prettytable=prettytable,
+                    color=color,
+                ),
+                _mapping_summary(
+                    physics, physics, prettytable=prettytable, color=color
+                ),
+            )
         )
     if isinstance(plain, Mapping):
         return _mapping_summary(

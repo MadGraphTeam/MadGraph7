@@ -93,6 +93,10 @@ machine-readable stdout.
 | `builtin_sm_eager.toml` | Built-in SM eager execution with wheel-owned prepared kernels | Small eager example |
 | `builtin_sm_on_the_fly.toml` | Built-in SM compact OTF LC artifact | Small generation example; first selected family is built at runtime |
 | `otf_pp_zjj.toml` | `p p > Z j j` OTF generation, one-point warm-up, and profiling | Short guided OTF workflow |
+| `generate_pp_4j_flavor_blind.toml` | Flavour-blind `p p > j j j j` at `QED = 0`: 23 representatives for 486 subprocesses | About 30 seconds |
+| `inspect_pp_4j.toml` | Artifact summary and process-group map | Fast after generation |
+| `evaluate_pp_4j_member.toml` | Non-generated member `u~ g > u~ g g g` routed through its representative | Fast after generation |
+| `group_pp_4j.toml` | Numerical `group-processes` analysis of the representatives | About a second after generation |
 | `process_set_mixed_multiplicity.toml` | Named 2-to-2 and 2-to-3 processes in one artifact | Small multiprocess example |
 | `external_ufo_sm.toml` | Trusted UFO-directory loading | Imports trusted model Python |
 | `external_json_scalars.toml` | Repeated scalar particles and a contact model | Small external-JSON example |
@@ -122,6 +126,33 @@ the effective coupling order to `HIG = 1`. Recurrence uses the wheel-owned JIT
 O2 prepared kernels. See
 [Models and Processes](models-and-processes.md#built-in-scalar-heft-model) for
 the compiled, eager, on-the-fly, Python API, and trusted-UFO variants.
+
+## Process grouping with `p p > j j j j`
+
+Four cards show [process grouping](process-grouping.md) on the 486
+five-flavour subprocesses of pure-QCD `p p > j j j j` in the built-in SM:
+
+```console
+pyamplicol generate_pp_4j_flavor_blind.toml
+pyamplicol inspect_pp_4j.toml
+pyamplicol evaluate_pp_4j_member.toml
+pyamplicol group_pp_4j.toml
+```
+
+| Step | Equivalent command | Result |
+| --- | --- | --- |
+| Generate | `pyamplicol generate "p p > j j j j" artifacts/pp_4j_flavor_blind --model built-in-sm --flavor-blind --max-coupling-order QED=0` | 23 representatives at LC; 463 members, 140 of them conjugated, in `process-groups.json`; about 30 seconds |
+| Inspect | `pyamplicol inspect artifacts/pp_4j_flavor_blind` | Generated processes and the process-group map |
+| Evaluate a member | `pyamplicol evaluate artifacts/pp_4j_flavor_blind --process "u~ g > u~ g g g" --momenta data/pp_4j_momenta.json` | Routed through `d g > d g g g` with relabelling and charge conjugation |
+| Group numerically | `pyamplicol group-processes artifacts/pp_4j_flavor_blind` | No new relation: the 23 classes are distinct |
+
+`u~ g > u~ g g g` was never generated, yet its value agrees with a separately
+generated copy to about `1e-14`. Any of the 486 subprocesses, in any leg order
+within each side, can be selected in the same way, from the CLI, Python, or
+the generated API drivers. Flavour-blind generation assumes equal matrix
+elements within a class; see
+[When to use it](process-grouping.md#when-to-use-it) before using it with
+electroweak couplings.
 
 ## Three materialized execution modes on one process
 
