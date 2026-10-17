@@ -462,6 +462,8 @@ def main(argv: list[str] | None = None) -> None:
             "install",
             "--upgrade",
             "--no-build-isolation",
+            # A wheel for this host only; manylinux tags need a manylinux container.
+            "--config-settings=pyamplicol.host-wheel=true",
             ".",
         ]
         if target is not None:

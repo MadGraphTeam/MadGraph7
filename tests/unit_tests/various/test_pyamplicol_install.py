@@ -109,6 +109,8 @@ class TestMain(unittest.TestCase):
         self.main('--source', '-y', '-j', '3')
         build = self.commands[-1]
         self.assertIn('--no-build-isolation', build)
+        # Linux hosts are newer than manylinux_2_28; the wheel is for this host only.
+        self.assertIn('--config-settings=pyamplicol.host-wheel=true', build)
         self.assertIn(f'--target={self.tmp / "install"}', build)
         self.assertEqual(json.loads(install.SETTINGS_FILE.read_text()), {'mode': 'source'})
 
