@@ -5,6 +5,8 @@ import json
 import os
 import shutil
 import sys
+from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -284,6 +286,208 @@ def test_numeric_source_precision_is_not_certified(tmp_path: Path) -> None:
     assert model.capabilities["expression_strings_preserved"] is True
     assert model.capabilities["numeric_literal_source_preserved"] is False
     assert model.capabilities["arbitrary_precision_inputs_validated"] is False
+
+
+def _write_literal_ufo(path: Path, declarations: str, *, constructor_suffix="") -> Path:
+    path.mkdir()
+    classes = []
+    for name, registry in (
+        ("Parameter", "all_parameters"),
+        ("CTParameter", "all_CTparameters"),
+        ("Coupling", "all_couplings"),
+    ):
+        classes.append(
+            f"{registry} = []\nclass {name}:\n"
+            "    def __init__(self, name, value):\n"
+            "        self.name = name\n        self.value = value\n"
+            f"        {registry}.append(self)\n{constructor_suffix}"
+        )
+    (path / "object_library.py").write_text("\n".join(classes), encoding="utf-8")
+    (path / "parameters.py").write_text(
+        "from .object_library import Parameter, CTParameter, Coupling\n" + declarations,
+        encoding="utf-8",
+    )
+    (path / "__init__.py").write_text(
+        "from . import object_library, parameters\n"
+        "from .object_library import all_parameters, all_CTparameters, all_couplings\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_direct_literals_retain_sixty_digits_and_laurent_coefficients(
+    tmp_path: Path,
+) -> None:
+    from symbolica import E
+
+    digits = "0." + "1234567890" * 6
+    source = _write_literal_ufo(
+        tmp_path / "literal_ufo",
+        f"a = Parameter(name='same', value={digits})\n"
+        "b = Parameter(name='same', value=-3.123456789012345678901e-17)\n"
+        f"ct = CTParameter(name='ct', value={{-1: {digits}, 0: 'a**2'}})\n"
+        f"c = Coupling(name='c', value={digits})\n",
+    )
+    model = load_raw_loop_model(source)
+    assert model.exact_value("parameters", 0)["expression"] == digits
+    assert (
+        model.exact_value("parameters", 1)["expression"]
+        == "-3.123456789012345678901e-17"
+    )
+    assert model.exact_value("counterterm_parameters", 0)["terms"] == (
+        (-1, digits),
+        (0, "a**2"),
+    )
+    assert model.exact_value("couplings", 0)["expression"] == digits
+    source_record = model.collections["parameters"][0]["fields"]["value_source"]
+    assert source_record == {
+        "kind": "source-literal",
+        "exact": True,
+        "file": "parameters.py",
+        "line": 2,
+        "argument": digits,
+    }
+    # Standard exact decimal conversion feeds Symbolica's rational parser. This
+    # deliberately avoids the UFO loader's float-based pseudo-float conversion.
+    exact = Fraction(Decimal(model.exact_value("parameters", 0)["expression"]))
+    expression = E(f"{exact.numerator}/{exact.denominator}")
+    assert expression == E(f"{digits[2:]}/10^60")
+    rounded = Fraction(float(digits))
+    assert expression != E(f"{rounded.numerator}/{rounded.denominator}")
+    assert model.capabilities["numeric_literal_source_preserved"] is True
+    assert model.capabilities["arbitrary_precision_inputs_validated"] is False
+    restored = RawLoopModel.from_dict(json.loads(json.dumps(model.to_dict())))
+    assert restored.exact_value("parameters", 0) == model.exact_value("parameters", 0)
+
+
+@pytest.mark.parametrize(
+    "declarations, reason",
+    [
+        ("a = Parameter(name='a', value=1.0/3.0)\n", "computed value"),
+        (
+            "def make():\n    return Parameter(name='a', value=0.1)\na = make()\n",
+            "direct module declaration",
+        ),
+        (
+            "a = Parameter(name='a', value=0.123456789012345678901)\n"
+            "a.value = 0.123456789012345678902\n",
+            "dynamic value writes",
+        ),
+        (
+            "a = Parameter(name='a', value={-1: 0.123456789012345678901})\n"
+            "a.value[-1] = 0.123456789012345678902\n",
+            "dynamic value writes",
+        ),
+        (
+            "a = Parameter(name='a', value=0.1)\n"
+            "b = Parameter(name='b', value=0.2)\na = b\n",
+            "no longer binds",
+        ),
+        (
+            "a = Parameter(name='a', value=str(0.123456789012345678901))\n",
+            "computed value",
+        ),
+    ],
+)
+def test_ambiguous_computed_and_mutated_values_are_not_exact(
+    tmp_path: Path, declarations: str, reason: str
+) -> None:
+    source = _write_literal_ufo(tmp_path / "ambiguous_ufo", declarations)
+    model = load_raw_loop_model(source)
+    assert model.capabilities["numeric_literal_source_preserved"] is False
+    with pytest.raises(ValueError, match=reason):
+        model.exact_value("parameters", 0)
+
+
+def test_constructor_cannot_silently_replace_literal_value(tmp_path: Path) -> None:
+    source = _write_literal_ufo(
+        tmp_path / "changed_constructor",
+        "a = Parameter(name='a', value=0.1)\n",
+        constructor_suffix="        self.value = self.value + 0.0\n",
+    )
+    model = load_raw_loop_model(source)
+    with pytest.raises(ValueError, match="changed or overridden"):
+        model.exact_value("parameters", 0)
+
+
+def test_explicit_exact_overrides_do_not_modify_imported_tree_values(
+    tmp_path: Path,
+) -> None:
+    from pyamplicol.models.loop_import import imported_ufo_module
+
+    digits = "0." + "1234567890" * 6
+    source = _write_literal_ufo(
+        tmp_path / "override_ufo", "a = Parameter(name='a', value=1.0/3.0)\n"
+    )
+    with imported_ufo_module(source) as module:
+        original = module.all_parameters[0].value
+        for override, expected in (
+            (digits, digits),
+            (Decimal(digits), digits),
+            (Fraction(1, 3), "(1/3)"),
+        ):
+            model = capture_raw_loop_model(
+                module, value_overrides={("parameters", 0): override}
+            )
+            assert model.exact_value("parameters", 0)["expression"] == expected
+            assert module.all_parameters[0].value is original
+        with pytest.raises(ValueError, match="must use exact"):
+            capture_raw_loop_model(
+                module, value_overrides={("parameters", 0): float(digits)}
+            )
+
+
+def test_import_observer_restores_existing_profiler_after_failure(
+    tmp_path: Path,
+) -> None:
+    source = _write_literal_ufo(
+        tmp_path / "profile_failure", "raise RuntimeError('deliberate failure')\n"
+    )
+    previous = sys.getprofile()
+    events = []
+
+    def profiler(frame, event, _argument):
+        if event == "call" and frame.f_code.co_filename == str(
+            source / "parameters.py"
+        ):
+            events.append(frame.f_code.co_name)
+
+    try:
+        sys.setprofile(profiler)
+        with pytest.raises(RuntimeError, match="deliberate failure"):
+            load_raw_loop_model(source)
+        assert sys.getprofile() is profiler
+        assert events == ["<module>"]
+    finally:
+        sys.setprofile(previous)
+
+
+def test_real_tree_loading_retains_rounded_tree_value_and_exact_sidecar(
+    tmp_path: Path,
+) -> None:
+    packaged = (
+        Path(pyamplicol.__file__).parent / "assets" / "models" / "ufo" / "scalars"
+    )
+    source = tmp_path / "tree_with_exact_sidecar"
+    shutil.copytree(packaged, source, ignore=shutil.ignore_patterns("__pycache__"))
+    parameters = source / "parameters.py"
+    digits = "0." + "1234567890" * 6
+    parameters.write_text(
+        parameters.read_text().replace("value=1.0,", f"value={digits},", 1)
+    )
+    result = _load_external_model(
+        source, options=ModelCompileOptions(restriction="none")
+    )
+    raw = RawLoopModel.from_dict(result["raw_loop_model"])
+    record = raw.record("parameters", "lam")
+    assert raw.exact_value("parameters", record["id"])["expression"] == digits
+    tree = next(
+        parameter
+        for parameter in result["model"]["parameters"]
+        if parameter["name"] == "lam"
+    )
+    assert tree["value"] == [float(digits), 0.0]
+    assert result["model"]["vertex_rules"]
 
 
 def test_compiled_model_serialization_retains_raw_sidecar(tmp_path: Path) -> None:
