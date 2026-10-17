@@ -189,7 +189,7 @@ def require_clean_checkout(*, allow_dirty_candidate: bool, mode: str) -> None:
     if mode != "candidate" or allow_dirty_candidate:
         return
     completed = run(
-        ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+        ["git", "status", "--porcelain=v1", "--untracked-files=all", "--", "."],
         cwd=ROOT,
         env=clean_environment(),
         capture_output=True,

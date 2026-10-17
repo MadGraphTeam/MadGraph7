@@ -107,3 +107,14 @@ docs/**/*.toc
 .trash/
 .agent-work/
 .DS_Store
+
+# Prepared-model packs and metadata come from the release archive
+# (tools/release/prepared_models_archive.py), not from Git.
+src/pyamplicol/assets/prepared_models/*.metadata.json
+src/pyamplicol/assets/prepared_models/*.pyamplicol-model
+release_assets/prepared_models/*.metadata.json
+release_assets/prepared_models/*.pyamplicol-model
+
+# MadGraph7 installer
+/install/
+/install_settings.json

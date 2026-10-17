@@ -250,6 +250,8 @@ _INJECTION_ENVIRONMENT_NAMES = {
     "MACOSX_DEPLOYMENT_TARGET",
     "OBJC_INCLUDE_PATH",
     "PKG_CONFIG_PATH",
+    "PYAMPLICOL_BUILD_CACHE_ROOT",
+    "PYAMPLICOL_BUILD_JOBS",
     "PYAMPLICOL_BUILD_OVERLAY",
     "PYAMPLICOL_CANDIDATE_CACHE_ROOT",
     "PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256",
@@ -553,8 +555,51 @@ def _is_allowlisted(relative: Path) -> bool:
     )
 
 
+# Inside MadGraph7 these come from the prepared-model release archive (see
+# tools/release/prepared_models_archive.py) and are not tracked by Git.
+_UNTRACKED_PREPARED_MODEL_DIRECTORIES = (
+    Path("src/pyamplicol/assets/prepared_models"),
+    Path("release_assets/prepared_models"),
+)
+_UNTRACKED_PREPARED_MODEL_SUFFIXES = (".metadata.json", ".pyamplicol-model")
+# Symlinks to files shared with the rest of MadGraph7; copied by content.
+_SHARED_SYMLINKS = frozenset(
+    {Path("src/pyamplicol/assets/api_templates/umami/umami.h")}
+)
+
+
+def _in_git_checkout() -> bool:
+    """Whether ROOT is tracked in a Git work tree (possibly a subdirectory)."""
+
+    completed = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "--error-unmatch", "pyproject.toml"],
+        env=_clean_environment(),
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return completed.returncode == 0
+
+
+def _local_build() -> bool:
+    """Opt-in MadGraph7 installer build from a dirty tree or release tarball."""
+
+    return os.environ.get("PYAMPLICOL_LOCAL_BUILD", "0") == "1"
+
+
+def _untracked_prepared_models() -> list[Path]:
+    files: list[Path] = []
+    for directory in _UNTRACKED_PREPARED_MODEL_DIRECTORIES:
+        if not (ROOT / directory).is_dir():
+            continue
+        for path in sorted((ROOT / directory).iterdir()):
+            if path.name.endswith(_UNTRACKED_PREPARED_MODEL_SUFFIXES):
+                files.append(directory / path.name)
+    return files
+
+
 def _git_inventory(*, build_inputs_only: bool = True) -> list[Path] | None:
-    if not os.path.lexists(ROOT / ".git"):
+    if not _in_git_checkout():
         return None
     completed = subprocess.run(
         ["git", "-C", str(ROOT), "ls-files", "--cached", "-z", "--"],
@@ -577,7 +622,7 @@ def _git_inventory(*, build_inputs_only: bool = True) -> list[Path] | None:
             # complete source contract.
             return None
     inventory: list[Path] = []
-    for relative in files:
+    for relative in [*files, *_untracked_prepared_models()]:
         if relative.is_absolute() or ".." in relative.parts:
             raise RuntimeError(f"Git reported an unsafe build input: {relative}")
         if not build_inputs_only or (
@@ -595,7 +640,7 @@ def _archive_inventory() -> list[Path]:
             child_relative = relative / child.name
             if _is_excluded(child_relative):
                 continue
-            if child.is_symlink():
+            if child.is_symlink() and child_relative not in _SHARED_SYMLINKS:
                 raise RuntimeError(f"build inputs may not be symlinks: {child}")
             if child.is_dir():
                 visit(child, child_relative)
@@ -629,7 +674,7 @@ def _reject_symlink_ancestors(path: Path) -> None:
             mode = current.lstat().st_mode
         except FileNotFoundError:
             return
-        if stat.S_ISLNK(mode):
+        if stat.S_ISLNK(mode) and current.relative_to(ROOT) not in _SHARED_SYMLINKS:
             raise RuntimeError(f"build inputs may not be symlinks: {current}")
 
 
@@ -642,7 +687,7 @@ def _copy_allowlisted_source(destination: Path) -> None:
         source = ROOT / relative
         _reject_symlink_ancestors(source)
         try:
-            mode = source.lstat().st_mode
+            mode = (source.stat() if relative in _SHARED_SYMLINKS else source.lstat()).st_mode
         except FileNotFoundError:
             # A tracked deletion remains deleted in the overlay.
             continue
@@ -650,7 +695,7 @@ def _copy_allowlisted_source(destination: Path) -> None:
             raise RuntimeError(f"build inputs must be regular files: {source}")
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target, follow_symlinks=False)
+        shutil.copy2(source, target, follow_symlinks=relative in _SHARED_SYMLINKS)
 
 
 def _stage_packaged_examples(overlay: Path) -> None:
@@ -1112,7 +1157,27 @@ def _stage_release_build_info(overlay: Path, version: str) -> None:
     """Create or retain the minimal provenance marker for a published release."""
 
     path = overlay / "src" / "pyamplicol" / "_build_info.json"
-    if (ROOT / ".git").exists():
+    if _local_build() and not path.exists():
+        revision = _clean_source_revision(allow_dirty=True) or "0" * 40
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "publishable": True,
+                    "selftest_fixture_bootstrap": False,
+                    "source_revision": revision,
+                    "version": version,
+                },
+                indent=2,
+                sort_keys=True,
+                allow_nan=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return
+    if _in_git_checkout():
         revision = _clean_source_revision()
         if revision is None:
             raise RuntimeError(
@@ -1246,6 +1311,7 @@ def _untracked_profiling_campaign_roots(
 def _clean_source_revision(
     *,
     allow_generated_report_outputs: bool = False,
+    allow_dirty: bool = False,
 ) -> str | None:
     """Return the exact source revision only for a clean Git checkout.
 
@@ -1254,20 +1320,18 @@ def _clean_source_revision(
     therefore cannot accidentally certify uncommitted or ambient source.
     """
 
-    if not (ROOT / ".git").exists():
+    if not _in_git_checkout():
         return None
     environment = _clean_environment()
     try:
-        top_level = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
+        prefix = subprocess.run(
+            ["git", "rev-parse", "--show-prefix"],
             cwd=ROOT,
             env=environment,
             check=True,
             capture_output=True,
-            text=True,
         ).stdout.strip()
-        if Path(top_level).resolve() != ROOT.resolve():
-            return None
+        # Only this project's subtree counts; paths are made ROOT-relative.
         status = subprocess.run(
             [
                 "git",
@@ -1276,13 +1340,21 @@ def _clean_source_revision(
                 "-z",
                 "--untracked-files=all",
                 "--no-renames",
+                "--",
+                ".",
             ],
             cwd=ROOT,
             env=environment,
             check=True,
             capture_output=True,
         ).stdout
-        if status and (
+        status = b"\0".join(
+            record[:3] + record[3 + len(prefix) :]
+            if record[3:].startswith(prefix)
+            else record
+            for record in status.split(b"\0")
+        )
+        if status and not allow_dirty and (
             not allow_generated_report_outputs
             or not _generated_report_status_only(status)
         ):
@@ -1434,6 +1506,24 @@ def _candidate_cache_root(mode: str) -> Path | None:
     return candidate
 
 
+def _local_cache_root() -> Path | None:
+    """Return the persistent build directory of a MadGraph7 installer build.
+
+    A fixed overlay and Cargo target directory keep rebuilds incremental.
+    """
+
+    if not _local_build():
+        return None
+    raw = os.environ.get("PYAMPLICOL_BUILD_CACHE_ROOT")
+    if raw is None:
+        return None
+    root = Path(raw).expanduser()
+    if not root.is_absolute():
+        raise RuntimeError("PYAMPLICOL_BUILD_CACHE_ROOT must be an absolute path")
+    root.mkdir(parents=True, exist_ok=True)
+    return root.resolve()
+
+
 @contextmanager
 def _candidate_cache_lock(cache_root: Path) -> Iterator[None]:
     """Serialize refresh and use of the fixed contributor build overlay."""
@@ -1465,7 +1555,7 @@ def _populate_overlay(
     if mode == "release" and project_release_prepared_models:
         project_release_packaged_prepared_model_store(
             source,
-            require_store=os.path.lexists(ROOT / ".git"),
+            require_store=_in_git_checkout() or _local_build(),
         )
     else:
         discard_release_packaged_prepared_model_store(source)
@@ -1504,7 +1594,7 @@ def _overlay(
         else None
     )
     cache_root = (
-        _candidate_cache_root(mode)
+        _candidate_cache_root(mode) or _local_cache_root()
         if temporary_directory is None and cargo_target_directory is None
         else None
     )
@@ -1788,6 +1878,9 @@ def _from_overlay(
                 "PYAMPLICOL_BUILD_OVERLAY": str(overlay),
                 "RUSTUP_TOOLCHAIN": _pinned_rustup_toolchain(),
             }
+            jobs = os.environ.get("PYAMPLICOL_BUILD_JOBS")
+            if jobs:
+                environment["CARGO_BUILD_JOBS"] = jobs
             build_info_path = overlay / "src" / "pyamplicol" / "_build_info.json"
             if build_info_path.is_file():
                 try:

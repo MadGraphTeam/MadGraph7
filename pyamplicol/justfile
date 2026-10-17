@@ -13,7 +13,7 @@ default:
     @just --list
 
 _source-checkout:
-    @if [[ ! -e .git || ! -f dependencies/contributor-lock.toml || ! -f dependencies/install_dependencies.py ]]; then \
+    @if ! git ls-files --error-unmatch pyproject.toml >/dev/null 2>&1 || [[ ! -f dependencies/contributor-lock.toml || ! -f dependencies/install_dependencies.py ]]; then \
         printf '%s\n' "error: this command requires a full pyAmpliCol Git source checkout; contributor commands are unavailable from a release source distribution" >&2; \
         exit 1; \
     fi

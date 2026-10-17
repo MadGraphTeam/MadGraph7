@@ -12,10 +12,12 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "build_backend"))
+sys.path.insert(0, str(ROOT / "tools" / "release"))
 
 import package_version  # noqa: E402
+import sync_version  # noqa: E402
 
-RELEASE_VERSION = "1.0.1"
+RELEASE_VERSION = sync_version.madgraph_version()
 
 
 def _copy_version_contract(tmp_path: Path) -> Path:
