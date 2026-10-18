@@ -936,7 +936,41 @@ precision. The high-precision tests additionally check the universal double
 pole and exact global Gf rebinding with input bits beyond binary64; they do not
 claim an independent 80-digit reference for the full finite part. Empty batches,
 point-dependent ordinary scale bindings and retained snapshots are covered.
-UV/model-R2, complete source correlations, arbitrary source tensor coverage and
-complex-mass certification are separate remaining work. Until the source CT
-frame and paired snapshot binding are connected, composition with the legacy
-model-counterterm assembler rejects explicitly.
+Arbitrary source tensor coverage, source dimensional numerators and complex-mass
+certification remain separate work. Model CT composition requires the explicit
+source frame and paired snapshot binding described below; it cannot mix a raw
+source vertex with a calibrated builtin representative.
+
+`physical_source.source_model_program` now assembles source UV and model R2 over
+the same augmented native model as its Born and bare-loop catalogues. The
+prepared model records the original `ufo` vertex frame. Every matched fermion
+CT must have a tested FFV expression as well as exact local source evidence;
+epsilon structures still reject. CT recurrences apply the same typed endpoint
+adapter as ordinary vertices. The neutral-lepton conformance helper admits only
+the proven ordered lepton/antilepton A/Z FFV and neutral A/Z two-point source
+expressions. Other source rules remain present and unvalidated, so a process
+that needs one fails the existing tensor-basis guard.
+
+The source factory requires the full selected CT collection and all its species;
+the preparation step records this from its existing source keys. This prevents
+passing a UV/R2-pruned catalogue to the source-model interface. It does not infer
+general renormalization or tensor completeness, and deliberately restricted
+legacy QCD control factories keep their existing scope.
+
+Native CT aliases select exact `(source coupling, Laurent power)` outputs from a
+compiled `ScalarBindingPlan`. One `NativeScaleBindings` view evaluates those
+outputs and their active diagnostics per point with the **captured bare-call
+snapshot**, including the source MU_R substitution. No Python event loop, scalar
+decimal roundtrip, helper-body inlining or second global parameter state is
+introduced. Local CT currents then share the physical states and Born weights
+and enter the existing sector-aware UV/R2 contraction. Source particle-field
+insertions currently reject explicitly until their anonymous source expressions
+have an equivalent paired binding; the tested Gmu process has none.
+
+For full real-mass Gmu `e- e+ -> m- m+`, 59 matched CT insertion graphs produce
+75 retained Laurent currents. Independent MadLoop controls compare N4 bare, UV,
+R2 and total separately at three points, both at MU_R=1000 and in one batch with
+MU_R=(500,1500,2000). The generated reference recomputes its source EW scale
+couplings for each point. All three arithmetic modes are checked, together with
+global Gf bits beyond binary64, source snapshot retention across an update,
+empty batches and rejection of mixed frames or missing source collections.

@@ -52,6 +52,7 @@ def source_bare_program(
     arithmetic="double",
     precision=None,
     backend=None,
+    prepared_counterterms=None,
     **options,
 ):
     """Prepare source graph currents without lowering scalars through floats."""
@@ -67,12 +68,27 @@ def source_bare_program(
         raise ValueError(
             "physical source programs require their certified vertex frame"
         )
+    model = structure.native
+    if prepared_counterterms is not None:
+        if (
+            prepared_counterterms.ordinary_model is not structure.native
+            or prepared_counterterms.source.raw is not structure.raw
+            or prepared_counterterms.source.scalar_program is not structure.scalars
+            or prepared_counterterms.vertex_spinor_frame != "ufo"
+        ):
+            raise ValueError(
+                "source counterterms must share the structural model and frame"
+            )
+        model = prepared_counterterms.native
     perturbative = {
         order["name"]: order["fields"].get("perturbative_expansion", 0)
         for order in structure.raw.collections["coupling_orders"]
     }
     process = build_loop_process(
-        structure.native.process(incoming, outgoing),
+        structure.native.process(incoming, outgoing)
+        if prepared_counterterms is None
+        else prepared_counterterms.process(incoming, outgoing),
+        ordinary_model=structure.native,
         selected_corrections=selected_corrections,
         perturbative_orders=perturbative,
         born_order_bounds=born_order_bounds,
@@ -83,19 +99,19 @@ def source_bare_program(
     rules = {vertex.interaction for graph in graphs for vertex in graph.vertices}
     coupling_names = {
         name
-        for rule in structure.native.vertex_rules
+        for rule in model.vertex_rules
         if rule.name in rules
         for row in rule.couplings
         for name in row
         if name is not None
     }
-    for rule in structure.native.vertex_rules:
+    for rule in model.vertex_rules:
         if rule.name not in rules:
             continue
         for column, name in enumerate(rule.lorentz_structures):
             if not any(row[column] is not None for row in rule.couplings):
                 continue
-            lorentz = structure.native.lorentz_structure(name)
+            lorentz = model.lorentz_structure(name)
             expression = lorentz.structure
             if 2 in lorentz.spins and not certified_ffv_source(lorentz):
                 raise NotImplementedError(
@@ -105,10 +121,7 @@ def source_bare_program(
                 raise NotImplementedError(
                     "source epsilon tensors require the certified native phase adapter"
                 )
-    symbols = {
-        structure.native.coupling(name).symbol.get_name(): name
-        for name in coupling_names
-    }
+    symbols = {model.coupling(name).symbol.get_name(): name for name in coupling_names}
     source_parameters = {
         S(f"UFO::{record['name']}"): record["name"]
         for record in structure.raw.collections["parameters"]
@@ -148,3 +161,66 @@ def source_bare_program(
         **options,
     )
     return NativeSourceBareProgram(structure, state, bare)
+
+
+@dataclass(frozen=True, slots=True)
+class NativeSourceModelProgram:
+    """Source-owned model-rule assembly with one immutable snapshot per call."""
+
+    source_bare: NativeSourceBareProgram
+    virtual: Any
+    matched: Any
+
+    def update_parameters(self, changes):
+        return self.source_bare.update_parameters(changes)
+
+    def evaluate_decimal(self, momenta, scales_squared):
+        return self.virtual.evaluate_decimal(momenta, scales_squared)
+
+    def evaluate_ordered_decimal(self, momenta, scales_squared):
+        return self.virtual.evaluate_ordered_decimal(momenta, scales_squared)
+
+
+def source_model_program(structure, prepared, incoming, outgoing, **options):
+    """Assemble admitted source CT rules with the same physical vertex frame.
+
+    The supplied prepared model must retain every relevant source rule and
+    certify every matched tensor basis. This internal interface does not infer
+    arbitrary model completeness or a renormalization scheme from the rule list.
+    """
+    from .counterterms import match_counterterms
+    from .physical_counterterms import NativeModelVirtualProgram
+    from .wavefunction import match_external_field_counterterms
+
+    if not prepared.source_entries_complete or prepared.unavailable_entries:
+        raise ValueError(
+            "source model assembly requires the complete source CT collection "
+            "and all its species; prepare counterterms without an entry subset "
+            "against the full structural model"
+        )
+    source_bare = source_bare_program(
+        structure, incoming, outgoing, prepared_counterterms=prepared, **options
+    )
+    process = source_bare.bare.process
+    corrections = process.orders.correction_names
+    matched = match_counterterms(
+        prepared,
+        prepared.process(incoming, outgoing, counterterms=True),
+        process,
+        selected_corrections=corrections,
+    )
+    fields = match_external_field_counterterms(
+        prepared.source,
+        process,
+        selected_corrections=corrections,
+        allowed_amplitude_orders={
+            pair.loop for sector in process.orders.sectors for pair in sector.pairs
+        },
+    )
+    virtual = NativeModelVirtualProgram(
+        source_bare.bare,
+        matched.insertions,
+        source_bindings=(),
+        external_fields=fields.insertions,
+    )
+    return NativeSourceModelProgram(source_bare, virtual, matched)

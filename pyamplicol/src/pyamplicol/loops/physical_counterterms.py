@@ -60,6 +60,7 @@ class _CountertermCurrent:
     coefficient_diagnostics: tuple[Any, ...] = ()
     scalar_program: Any = None
     color_tensors: tuple[Any, ...] = ()
+    source_scalar_columns: tuple[int, ...] = ()
 
 
 @dataclass(slots=True)
@@ -129,12 +130,6 @@ class NativeModelVirtualProgram:
     ):
         from symbolica import E, Replacement, S
 
-        if getattr(bare, "vertex_spinor_frame", None) is not None:
-            raise NotImplementedError(
-                "source counterterms require a matching certified vertex frame "
-                "and source scalar snapshot binding"
-            )
-
         from pyamplicol.config.models import ColorAccuracy
 
         from .color_bilinears import SUNColorSpace, external_color_tensor
@@ -184,6 +179,79 @@ class NativeModelVirtualProgram:
             for insertion in self.matched_insertions
             if r2_strategy == "model" or insertion.rule.kind != "R2"
         )
+        self.source_scale_view = None
+        source_positions = {}
+        source_state = getattr(bare, "model_state", None)
+        if getattr(bare, "vertex_spinor_frame", None) is not None:
+            if (
+                bare.vertex_spinor_frame != "native-physical"
+                or source_state is None
+                or not self.insertions
+                or any(
+                    item.rule.vertex_spinor_frame != "ufo"
+                    or item.rule.scalar_program is not source_state.plan.program
+                    for item in self.insertions
+                )
+            ):
+                raise NotImplementedError(
+                    "source counterterms require a matching certified vertex frame "
+                    "and source scalar snapshot binding"
+                )
+            if self.source_bindings or formal_nc is not None or r2_strategy != "model":
+                raise NotImplementedError(
+                    "source counterterms require model R2 and owned scalar bindings"
+                )
+            if external_fields:
+                raise NotImplementedError(
+                    "source external fields require a paired anonymous scalar binding"
+                )
+            from types import SimpleNamespace
+
+            from ufo_model_loader.symbolica_processing import wrap_indices
+
+            from .model_expressions import parse_exact_ufo
+            from .scalar_bindings import NativeScaleBindings, prepare_scalar_bindings
+            from .vertex_frames import certified_ffv_source
+
+            raw = source_state.plan.program.library.raw
+            for item in self.insertions:
+                for entry in item.rule.entries:
+                    spins = tuple(
+                        raw.collections["particles"][index]["fields"]["spin"]
+                        for index in entry.particle_ids
+                    )
+                    expression = wrap_indices(parse_exact_ufo(entry.lorentz))
+                    if S("UFO::Epsilon") in expression.get_all_symbols():
+                        raise NotImplementedError(
+                            "source CT epsilon tensors are not certified"
+                        )
+                    if 2 in spins and not certified_ffv_source(
+                        SimpleNamespace(spins=spins, structure=expression)
+                    ):
+                        raise NotImplementedError(
+                            "source CT fermion tensor lacks physical frame conformance"
+                        )
+
+            outputs = tuple(
+                sorted(
+                    {
+                        (entry.coupling.name, power)
+                        for item in self.insertions
+                        for _, entry in item.rule.couplings
+                        for power in (0, -1, -2)
+                    }
+                )
+            )
+            plan = prepare_scalar_bindings(
+                source_state.plan.program.library.raw,
+                outputs,
+                program=source_state.plan.program,
+                fixed_parameters=source_state.plan.fixed_parameters,
+            )
+            self.source_scale_view = NativeScaleBindings(source_state, plan)
+            source_positions = {output: index for index, output in enumerate(outputs)}
+        elif any(item.rule.vertex_spinor_frame is not None for item in self.insertions):
+            raise ValueError("source/native counterterm vertex frames differ")
         if space is not None and any(
             insertion.rule.scalar_program is not None
             for insertion in (*self.insertions, *external_fields)
@@ -219,6 +287,7 @@ class NativeModelVirtualProgram:
                 insertion.graph,
                 variables=bare.recurrences[0].dag.momentum_variables,
                 momenta=bare.momenta,
+                vertex_spinor_frame=bare.vertex_spinor_frame,
             )
             dag = recurrence.dag
             if any(
@@ -257,7 +326,28 @@ class NativeModelVirtualProgram:
                 **options,
             )
             for power in (0, -1, -2):
-                substitutions = insertion.coefficient_expressions(power)
+                columns = (
+                    tuple(
+                        source_positions[entry.coupling.name, power]
+                        for _, entry in insertion.rule.couplings
+                    )
+                    if self.source_scale_view is not None
+                    else ()
+                )
+                substitutions = (
+                    tuple(
+                        zip(
+                            insertion.rule.coupling_symbols,
+                            (
+                                self.source_scale_view.plan.expressions[index]
+                                for index in columns
+                            ),
+                            strict=True,
+                        )
+                    )
+                    if self.source_scale_view is not None
+                    else insertion.coefficient_expressions(power)
+                )
                 expressions = [
                     part.value.replace_multiple(replacements)
                     for _, part in substitutions
@@ -316,6 +406,7 @@ class NativeModelVirtualProgram:
                             diagnostics,
                             insertion.rule.scalar_program,
                             color_tensors,
+                            columns,
                         )
                     )
         self.external_fields = tuple(external_fields)
@@ -399,6 +490,8 @@ class NativeModelVirtualProgram:
                     for row in current.color_weights
                 )
         for current in self.currents:
+            if self.source_scale_view is not None:
+                continue
             current.coefficient_evaluator = backend.CoefficientEvaluator(
                 _saved_scalar_pairs(
                     current.coefficient_expressions,
@@ -539,6 +632,13 @@ class NativeModelVirtualProgram:
         """
         backend = self.bare.backend
         helicities = batch.helicity_count
+        source_values = None
+        if self.source_scale_view is not None:
+            if batch.model_snapshot is None:
+                raise ValueError("source counterterm batch has no model snapshot")
+            source_values = self.source_scale_view.evaluate_native(
+                batch.scales_squared, snapshot=batch.model_snapshot
+            )
         coefficient_inputs = backend.NativeBatch.concat_columns(
             [
                 batch.model_arguments.take_rows(
@@ -549,13 +649,19 @@ class NativeModelVirtualProgram:
         )
         amplitudes = []
         for current in self.currents:
-            coefficients = current.coefficient_evaluator.evaluate_batch(
-                coefficient_inputs
-            )
-            require_finite_batch(
-                coefficients, "counterterm scalar coefficients and active diagnostics"
-            )
-            coefficients = coefficients.take_columns(range(0, coefficients.columns, 2))
+            if source_values is None:
+                coefficients = current.coefficient_evaluator.evaluate_batch(
+                    coefficient_inputs
+                )
+                require_finite_batch(
+                    coefficients,
+                    "counterterm scalar coefficients and active diagnostics",
+                )
+                coefficients = coefficients.take_columns(
+                    range(0, coefficients.columns, 2)
+                )
+            else:
+                coefficients = source_values.take_columns(current.source_scalar_columns)
             coefficients = coefficients.take_rows(
                 np.repeat(np.arange(batch.size), helicities).tolist(),
                 row_ids=batch.lane_ids,
@@ -587,7 +693,7 @@ class NativeModelVirtualProgram:
             )
         return tuple(amplitudes)
 
-    def evaluate_ordered_decimal(self, momenta, scales_squared, *, model_values):
+    def evaluate_ordered_decimal(self, momenta, scales_squared, *, model_values=None):
         native = self.bare.evaluate_ordered_native(
             momenta, scales_squared, model_values=model_values
         )
@@ -660,7 +766,7 @@ class NativeModelVirtualProgram:
             self.r2_strategy,
         )
 
-    def evaluate_decimal(self, momenta, scales_squared, *, model_values):
+    def evaluate_decimal(self, momenta, scales_squared, *, model_values=None):
         """Single-order adapter; summing distinct physical sectors is explicit."""
         self.bare.require_single_order("single-sector model virtual adapter")
         result = self.evaluate_ordered_decimal(

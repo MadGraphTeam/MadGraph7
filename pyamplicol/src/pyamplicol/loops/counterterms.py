@@ -64,6 +64,7 @@ class CountertermRule:
     basis_correspondences: tuple[CountertermBasisCorrespondence | None, ...] = ()
     primitive_validations: tuple[CountertermPrimitiveValidation | None, ...] = ()
     tensor_representatives: tuple[CountertermTensorRepresentative | None, ...] = ()
+    vertex_spinor_frame: str | None = None
 
     @property
     def has_ordinary_basis_correspondence(self) -> bool:
@@ -96,7 +97,9 @@ class PreparedCountertermModel:
     rules: Mapping[str, CountertermRule]
     unavailable_entries: tuple[tuple[Any, ...], ...]
     tag: str = _TAG
+    vertex_spinor_frame: str | None = None
     tensor_convention_validated: bool = field(default=False, init=False)
+    source_entries_complete: bool = False
 
     def process(self, incoming, outgoing, *, counterterms=False, **filters):
         """Construct a process sharing the prepared model and explicit rules.
@@ -146,6 +149,7 @@ def prepare_counterterm_model(
     ordinary_basis_representatives: Iterable[OrdinaryBasisRepresentative] = (),
     primitive_validations: Iterable[CountertermPrimitiveValidation] = (),
     tensor_representatives: Iterable[CountertermTensorRepresentative] = (),
+    vertex_spinor_frame: str | None = None,
 ) -> PreparedCountertermModel:
     """Append homogeneous, tagged CT rules through native model interchange.
 
@@ -158,6 +162,15 @@ def prepare_counterterm_model(
     """
     from symbolica.community import hepkit as hep
     from ufo_model_loader.symbolica_processing import wrap_indices
+
+    if vertex_spinor_frame not in (None, "ufo"):
+        raise ValueError("stored source counterterm frame must be ufo")
+    ordinary_basis_representatives = tuple(ordinary_basis_representatives)
+    tensor_representatives = tuple(tensor_representatives)
+    if vertex_spinor_frame == "ufo" and (
+        ordinary_basis_representatives or tensor_representatives
+    ):
+        raise ValueError("raw source counterterms cannot mix native representatives")
 
     payload = json.loads(ordinary_model.to_json())
     representatives = OrdinaryBasisCatalogue(
@@ -332,6 +345,7 @@ def prepare_counterterm_model(
             tensor_representatives=tuple(
                 tensor_evidence.get(entry.key) for entry in members
             ),
+            vertex_spinor_frame=vertex_spinor_frame,
         )
     native_model = hep.Model.from_json(json.dumps(payload))
     rules = {
@@ -349,6 +363,13 @@ def prepare_counterterm_model(
         source,
         MappingProxyType(rules),
         tuple(unavailable),
+        vertex_spinor_frame=vertex_spinor_frame,
+        source_entries_complete=seen
+        == {
+            ("counterterm_vertices", record["id"], *key["items"])
+            for record in source.raw.collections["counterterm_vertices"]
+            for key, _coupling in record["fields"]["couplings"]["entries"]
+        },
     )
 
 

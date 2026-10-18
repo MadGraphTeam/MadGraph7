@@ -98,6 +98,26 @@ def _catalogue(
     )
 
 
+def test_complete_source_selection_distinguishes_prepared_and_ir_pruning(hep):
+    source, native = _source(hep, [{"kind": "R2"}, {"kind": "UVloop"}])
+    complete = prepare_counterterm_model(source, native, vertex_spinor_frame="ufo")
+    assert complete.source_entries_complete and not complete.unavailable_entries
+    assert all(rule.vertex_spinor_frame == "ufo" for rule in complete.rules.values())
+    pruned = prepare_counterterm_model(source, native, entries=source.kernels[:1])
+    assert not pruned.source_entries_complete
+    pruned_ir = prepare_counterterm_model(
+        replace(source, kernels=source.kernels[:1]), native
+    )
+    assert not pruned_ir.source_entries_complete
+    with pytest.raises(ValueError, match="cannot mix native representatives"):
+        prepare_counterterm_model(
+            source,
+            native,
+            vertex_spinor_frame="ufo",
+            tensor_representatives=(object(),),
+        )
+
+
 def test_prepared_counterterm_trace_is_native_tensor_not_scalar(hep):
     source, ordinary = _source(
         hep,

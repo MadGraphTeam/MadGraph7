@@ -66,13 +66,18 @@ def points():
     return np.asarray(json.loads(path.read_text())["points"], dtype=str)
 
 
-def _program(source, arithmetic="double", precision=None):
+def _program(source, arithmetic="double", precision=None, prepared=None):
     from symbolica import E
 
-    from pyamplicol.loops.physical_source import source_bare_program
+    from pyamplicol.loops.physical_source import (
+        source_bare_program,
+        source_model_program,
+    )
 
-    return source_bare_program(
-        source,
+    factory = source_bare_program if prepared is None else source_model_program
+    arguments = (source,) if prepared is None else (source, prepared)
+    return factory(
+        *arguments,
         ("e-", "e+"),
         ("m-", "m+"),
         selected_corrections=["QED"],
@@ -273,4 +278,153 @@ def test_source_dimensional_frame_is_not_inferred(source):
             state_kinds=("u", "v_bar", "u_bar", "v"),
             initial_average=E("4"),
             dimensional_numerators=True,
+        )
+
+
+@pytest.fixture(scope="module")
+def counterterms(source):
+    from pyamplicol.loops.counterterms import prepare_counterterm_model
+    from pyamplicol.loops.model import build_loop_model
+    from pyamplicol.loops.model_electroweak import (
+        neutral_lepton_counterterm_validations,
+    )
+
+    ir = build_loop_model(source.raw, scalar_program=source.scalars)
+    prepared = prepare_counterterm_model(
+        ir,
+        source.native,
+        primitive_validations=neutral_lepton_counterterm_validations(ir),
+        vertex_spinor_frame="ufo",
+    )
+    assert prepared.source_entries_complete and not prepared.unavailable_entries
+    return prepared
+
+
+def test_source_model_rejects_pruned_or_unavailable_counterterm_collections():
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.physical_source import source_model_program
+
+    for complete, unavailable in ((False, ()), (True, (("missing",),))):
+        prepared = SimpleNamespace(
+            source_entries_complete=complete, unavailable_entries=unavailable
+        )
+        with pytest.raises(ValueError, match="complete source CT collection"):
+            source_model_program(None, prepared, (), ())
+
+
+@pytest.mark.parametrize(
+    "arithmetic,precision,tolerance,bit",
+    [
+        ("double", None, "2e-11", 0),
+        ("double-double", None, "2e-26", 80),
+        ("arbitrary", 80, "2e-67", 180),
+    ],
+)
+def test_full_source_model_components_scales_and_snapshot(
+    source, counterterms, points, arithmetic, precision, tolerance, bit
+):
+    from dataclasses import replace
+
+    from pyamplicol.loops.physical_counterterms import NativeModelVirtualProgram
+
+    program = _program(source, arithmetic, precision, counterterms)
+    model, bare = program.virtual, program.source_bare.bare
+    assert len(program.matched.insertions) == 59
+    assert not model.field_currents
+    assert model.source_scale_view.global_state is program.source_bare.state
+    assert all(current.coefficient_evaluator is None for current in model.currents)
+    assert all(item.rule.vertex_spinor_frame == "ufo" for item in model.insertions)
+    result = program.evaluate_decimal(points, ["1000000"] * 3)
+    expected = {
+        "uv": [
+            [0.0006974628709385066, -0.0001501768968413483, 0],
+            [0.0005026410170483123, -0.00008329131552308456, 0],
+            [0.0006608485463514334, 0.000026484252229958202, 0],
+        ],
+        "r2": [
+            [-0.00007942496245631837, 0, 0],
+            [-0.000050256519953281034, 0, 0],
+            [-0.000037496173851166774, 0, 0],
+        ],
+        "virtual": [
+            [0.001817211023441716, -0.00048812239376902906, -0.00013202400437376525],
+            [0.00037589135775946, -0.00014491387524600278, -0.00008112962622186653],
+            [0.0004942803863104847, -0.000003314335230700264, -0.000029148380531899732],
+        ],
+        "bare": [
+            [0.001199173114959527, -0.00033794549692768073, -0.00013202400437376525],
+            [-0.00007649313933557234, -0.00006162255972291822, -0.00008112962622186653],
+            [
+                -0.00012907198618978188,
+                -0.000029798587460658466,
+                -0.000029148380531899732,
+            ],
+        ],
+    }
+    for name, values in expected.items():
+        np.testing.assert_allclose(
+            getattr(result, name)[:, :, 0].astype(float), values, rtol=5e-11, atol=1e-17
+        )
+    scales = ["250000", "2250000", "4000000"]
+    changed = program.evaluate_decimal(points, scales)
+    # Independent native MadLoop calls update MU_R and source EW COUP3 per event.
+    expected_scales = {
+        "uv": [
+            [0.0009056522562001524, -0.0001501768968413483, 0],
+            [0.00043509757254223266, -0.00008329131552308456, 0],
+            [0.0006975635158762997, 0.000026484252229958202, 0],
+        ],
+        "bare": [
+            [0.001540802390094379, -0.00015492136413186242, -0.00013202400437376525],
+            [-0.00015314047315447595, -0.00012741302505656633, -0.00008112962622186653],
+            [-0.0001983904545106025, -0.00007020682302780786, -0.000029148380531899732],
+        ],
+        "virtual": [
+            [0.002367029683838213, -0.0003050982609732107, -0.00013202400437376525],
+            [0.00023170057943447685, -0.0002107043405796509, -0.00008112962622186653],
+            [0.0004616768875145301, -0.00004372257079784966, -0.000029148380531899732],
+        ],
+        "r2": expected["r2"],
+    }
+    for name, values in expected_scales.items():
+        np.testing.assert_allclose(
+            getattr(changed, name)[:, :, 0].astype(float),
+            values,
+            rtol=5e-11,
+            atol=1e-17,
+        )
+    batch = bare.prepare_currents_native(points[:1], scales[:1]).batch
+    before = [
+        value.to_decimal()
+        for value in model.evaluate_counterterm_currents_native(batch)
+    ]
+    with localcontext() as context:
+        context.prec = 110
+        factor = Decimal(2) if not bit else 1 + Decimal(2) ** -bit
+        program.update_parameters({"Gf": str(Decimal("0.0000116639") * factor)})
+        assert batch.model_snapshot is not program.source_bare.state.snapshot()
+        after = [
+            value.to_decimal()
+            for value in model.evaluate_counterterm_currents_native(batch)
+        ]
+        assert before == after  # CTs retain exactly the bare call's model revision.
+        rebound = program.evaluate_decimal(points[:1], scales[:1])
+        for name in ("bare", "uv", "r2", "virtual"):
+            target, actual = getattr(changed, name), getattr(rebound, name)
+            assert Decimal(actual[0, 0, 0]) != Decimal(target[0, 0, 0])
+            assert abs(
+                Decimal(actual[0, 0, 0]) / Decimal(target[0, 0, 0]) - factor**3
+            ) < Decimal(tolerance)
+    empty = program.evaluate_decimal(points[:0], [])
+    assert empty.virtual.shape == (0, 3, 2)
+    first = model.insertions[0]
+    wrong = replace(first, rule=replace(first.rule, vertex_spinor_frame=None))
+    with pytest.raises(NotImplementedError, match="matching certified vertex frame"):
+        NativeModelVirtualProgram(
+            bare, (wrong, *model.insertions[1:]), source_bindings=()
+        )
+    with pytest.raises(NotImplementedError, match="anonymous scalar binding"):
+        NativeModelVirtualProgram(
+            bare, model.insertions, source_bindings=(), external_fields=(object(),)
         )
