@@ -1802,6 +1802,7 @@ version = "0.29.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "700d18fa267b73b9b521fd7e13580e2f446916f176cacee1ab63fcc8191f1655"
 dependencies = [
+ "inventory",
  "libc",
  "once_cell",
  "portable-atomic",

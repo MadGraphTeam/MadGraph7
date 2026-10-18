@@ -82,14 +82,14 @@ mkdir -p "$PYLOOP_WORKSPACE/builds/loop-python-module"
 cp "$CARGO_TARGET_DIR/debug/lib_loop_reduction.so" \
   "$PYLOOP_WORKSPACE/builds/loop-python-module/_loop_reduction.so"
 PYTHONPATH="$PYLOOP_WORKSPACE/builds/loop-python-module" \
-  python -m pytest python/test_consumer.py -q
+  python -m pytest python/test_consumer.py python/test_native_batch.py -q
 ```
 
 The explicit `arithmetic` selector accepts `double` (53 bits), `double-double`
 (true 106-bit DoubleFloat), or `arbitrary` (MPFR-backed Float). Only arbitrary
 arithmetic accepts the required `precision` in decimal digits; it also accepts
-16 or 32 digits without silently selecting either fixed-precision carrier. Decimal input
-pairs avoid binary64 conversion; explicitly sized decimal output retains enough
+16 or 32 digits without silently selecting either fixed-precision carrier. Decimal
+input pairs avoid binary64 conversion; explicitly sized decimal output retains enough
 digits to round-trip each carrier. Buffers are flattened lane-major complex
 pairs, with four pairs per momentum and one original ID per lane. The three
 returned entries are **finite, single pole, double pole** in raw integral
@@ -101,10 +101,30 @@ wavefunctions. Its rows contain positive on-shell physical momenta, helicities
 Chiral adjoints map the existing core states to these names. Execution is one
 native bulk call, with no claim of hardware SIMD for these scalar routines.
 
+`NativeBatch` keeps immutable typed values with explicit row IDs. It supports
+column selection/concatenation, row compaction/broadcasting, and row regrouping;
+new IDs must be explicit when broadcasting or regrouping. Concatenation and
+reduction reject mismatched IDs, carriers, or working precision. Decimal strings
+are needed only at external ingress/egress, not between numerical stages.
+
+`CoefficientPlan` consumes saved local evaluators and integer input slot maps.
+Its arena is `[global parameters | node 0 outputs | node 1 outputs | ...]`;
+forward references and malformed maps fail at construction. Node evaluators
+execute all lanes through Symbolica's native batch interface with reusable
+arena/gather/output storage. Selected final slots become a typed `NativeBatch`
+that feeds `PolynomialPlan.evaluate_batch` directly. The reducer also accepts
+an optional lane-major n×n exact S-matrix of `(V_i−V_j)²`, which must retain
+prescribed on-shell invariants for arbitrary-precision master classification.
+`ReductionBatch.statuses` covers every input row; `.values` is available when
+all lanes succeed, while `.successful_values()` retains only successful IDs.
+`CoefficientEvaluator.evaluate_batch` and `massless_spinors_batch` share these
+buffers, allowing couplings, wavefunctions and final contractions to stay native.
+
 This is a native batch conformance boundary, not a public virtual-amplitude
-API or a completed fast evaluation pipeline. Production coefficient-DAG
-scheduling, buffer reuse across Python boundaries, physical normalization,
-precision rescue, and the binary64 fast reduction path remain integration work.
+API or a completed fast evaluation pipeline. Production graph/model scheduling,
+physical normalization, precision rescue, and the binary64 fast reduction path
+remain integration work. Explicit zero epsilon sectors currently still execute
+the reducer; throughput tuning and physical performance gates remain open.
 The main workspace excludes this experimental workspace and has no NinjaRS path
 dependency, so its normal builds do not require the `upstream` symlink.
 

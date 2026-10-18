@@ -5,9 +5,12 @@
 
 use std::fmt::LowerExp;
 
+mod batch;
+use batch::{BatchCarrier, Data, NativeBatch};
+
 use pyo3::{exceptions::PyValueError, prelude::*};
 use rusticol_loop_reduction::{
-    AmplitudeInput, Complex, EvaluationStatus, FourMomentum, Laurent, NativeFloat,
+    AmplitudeInput, Complex, EvaluationStatus, FourMomentum, Lane, Laurent, NativeFloat,
     PolynomialReducer,
 };
 use symbolica::{
@@ -196,6 +199,41 @@ impl CoefficientEvaluator {
         })
     }
 
+    fn evaluate_batch(&mut self, py: Python<'_>, input: &NativeBatch) -> PyResult<NativeBatch> {
+        if self.precision_bits != input.precision_bits {
+            return Err(error("batch arithmetic or precision differs"));
+        }
+        fn run<T: BatchCarrier>(
+            evaluator: &mut BatchExpressionEvaluator<Complex<T>>,
+            values: &[Complex<T>],
+            input: &NativeBatch,
+        ) -> PyResult<NativeBatch>
+        where
+            Complex<T>: Real + EvaluationDomain,
+        {
+            if input.columns != evaluator.get_input_len() {
+                return Err(error("coefficient input dimensions differ"));
+            }
+            let zero = T::parse_decimal("0", input.precision_bits).map_err(error)?;
+            let count = evaluator.get_output_len();
+            let size = input
+                .rows
+                .checked_mul(count)
+                .ok_or_else(|| error("batch dimensions overflow"))?;
+            let mut output = vec![Complex::new(zero.clone(), zero); size];
+            evaluator
+                .evaluate_batch(values, &mut output, input.rows)
+                .map_err(error)?;
+            NativeBatch::typed(output, input.ids.clone(), count, input.precision_bits)
+        }
+        py.detach(|| match (&mut self.evaluator, &input.data) {
+            (Coefficients::Double(e), Data::Double(v)) => run(e, v, input),
+            (Coefficients::DoubleDouble(e), Data::DoubleDouble(v)) => run(e, v, input),
+            (Coefficients::Arbitrary(e), Data::Arbitrary(v)) => run(e, v, input),
+            _ => Err(error("batch arithmetic or precision differs")),
+        })
+    }
+
     /// Binary64 inputs stay binary64; higher precision requires decimal inputs.
     fn evaluate_f64(
         &mut self,
@@ -230,6 +268,8 @@ where
     Complex<T>: Real + EvaluationDomain,
 {
     sectors: [PolynomialReducer<T>; 3],
+    propagators: usize,
+    parameter_count: usize,
 }
 
 impl<T: Carrier> Reductions<T>
@@ -271,6 +311,8 @@ where
         }
         Ok(Self {
             sectors: sectors.try_into().ok().unwrap(),
+            propagators: n,
+            parameter_count: parameters.len(),
         })
     }
 
@@ -303,6 +345,34 @@ where
         let masses = parse_all(masses)?;
         let scales = parse_all(scales)?;
         let parameters = parse_all(parameters)?;
+        Ok(self
+            .evaluate_native(ids, &shifts, &masses, &scales, &parameters, None)?
+            .into_iter()
+            .map(|lane| {
+                (
+                    lane.id,
+                    lane.status,
+                    lane.value.map(|value| {
+                        [
+                            decimal_complex(value.finite, bits),
+                            decimal_complex(value.single_pole, bits),
+                            decimal_complex(value.double_pole, bits),
+                        ]
+                    }),
+                )
+            })
+            .collect())
+    }
+
+    fn evaluate_native(
+        &mut self,
+        ids: &[u64],
+        shifts: &[FourMomentum<Complex<T>>],
+        masses: &[Complex<T>],
+        scales: &[Complex<T>],
+        parameters: &[Complex<T>],
+        s_matrix: Option<&[Complex<T>]>,
+    ) -> PyResult<Vec<Lane<Complex<T>, String>>> {
         let mut results = Vec::with_capacity(3);
         for sector in &mut self.sectors {
             results.push(
@@ -310,13 +380,13 @@ where
                     .evaluate(
                         ids,
                         AmplitudeInput {
-                            shifts: &shifts,
-                            masses_squared: &masses,
-                            scales_squared: &scales,
+                            shifts,
+                            masses_squared: masses,
+                            scales_squared: scales,
                             sampling_scales: &[],
-                            s_matrix: None,
+                            s_matrix,
                         },
-                        &parameters,
+                        parameters,
                     )
                     .map_err(error)?,
             );
@@ -336,17 +406,14 @@ where
                     .find(|(_, status)| **status != EvaluationStatus::Success)
                     .map(|(sector, status)| format!("epsilon sector {sector}: {status:?}"));
                 let value = match (zero.value, one.value, two.value) {
-                    (Some(a), Some(b), Some(c)) => {
-                        let value = Laurent::epsilon_sectors(a, b, c);
-                        Some([
-                            decimal_complex(value.finite, bits),
-                            decimal_complex(value.single_pole, bits),
-                            decimal_complex(value.double_pole, bits),
-                        ])
-                    }
+                    (Some(a), Some(b), Some(c)) => Some(Laurent::epsilon_sectors(a, b, c)),
                     _ => None,
                 };
-                (zero.id, status.unwrap_or_else(|| "success".into()), value)
+                Lane {
+                    id: zero.id,
+                    status: status.unwrap_or_else(|| "success".into()),
+                    value,
+                }
             })
             .collect())
     }
@@ -477,19 +544,30 @@ fn spinors<T: Carrier>(
             Ok(p.try_into().unwrap_or_else(|_| unreachable!()))
         })
         .collect::<PyResult<Vec<[T; 4]>>>()?;
-    let states = rusticol_core::__private::massless_dirac_batch(&momenta, helicities, &antiquarks)
+    Ok(physical_spinors(&momenta, helicities, kinds, &antiquarks)?
+        .into_iter()
+        .map(|row| row.map(|component| decimal_complex(component, bits)))
+        .collect())
+}
+
+fn physical_spinors<T: Carrier>(
+    momenta: &[[T; 4]],
+    helicities: &[i32],
+    kinds: &[String],
+    antiquarks: &[bool],
+) -> PyResult<Vec<[Complex<T>; 4]>> {
+    let states = rusticol_core::__private::massless_dirac_batch(momenta, helicities, antiquarks)
         .map_err(error)?;
     Ok(states
         .into_iter()
         .zip(kinds)
         .map(|(x, kind)| {
-            let x = if kind == "u" || kind == "v_bar" {
+            if kind == "u" || kind == "v_bar" {
                 // Chiral Dirac adjoint: conjugation followed by gamma^0.
                 [x[2].conj(), x[3].conj(), x[0].conj(), x[1].conj()]
             } else {
                 x
-            };
-            x.map(|component| decimal_complex(component, bits))
+            }
         })
         .collect())
 }
@@ -516,6 +594,7 @@ fn massless_spinors_decimal(
 
 #[pymodule]
 fn _loop_reduction(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    batch::register(module)?;
     module.add_class::<CoefficientEvaluator>()?;
     module.add_class::<PolynomialPlan>()?;
     module.add_function(wrap_pyfunction!(massless_spinors_decimal, module)?)?;
