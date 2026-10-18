@@ -44,6 +44,8 @@ class PhysicalColorSpace:
     _overlaps: dict[tuple[Any, Any], Any] = field(
         default_factory=dict, init=False, repr=False
     )
+    _bras: dict[Any, Any] = field(default_factory=dict, init=False, repr=False)
+    _kets: dict[Any, Any] = field(default_factory=dict, init=False, repr=False)
 
     def overlap(self, left: Any, right: Any) -> Any:
         """Return exact left† right, without averaging or formal continuation."""
@@ -57,12 +59,18 @@ class PhysicalColorSpace:
         if key not in self._overlaps:
             require_exact_numbers(key[0])
             require_exact_numbers(key[1])
-            bra = left.wrap_indices(
-                S("physical_color_bilinear::bra"), dummies_only=True
-            ).dirac_adjoint(preserve_indices=True)
-            ket = right.wrap_indices(
-                S("physical_color_bilinear::ket"), dummies_only=True
-            )
+            # Rectangular matrices reuse each exact left and right tensor many
+            # times. Keep their dependency-prepared, independently scoped forms;
+            # no canonicalization or numerical equality enters the cache key.
+            if key[0] not in self._bras:
+                self._bras[key[0]] = left.wrap_indices(
+                    S("physical_color_bilinear::bra"), dummies_only=True
+                ).dirac_adjoint(preserve_indices=True)
+            if key[1] not in self._kets:
+                self._kets[key[1]] = right.wrap_indices(
+                    S("physical_color_bilinear::ket"), dummies_only=True
+                )
+            bra, ket = self._bras[key[0]], self._kets[key[1]]
             settings = dict(
                 gamma=False,
                 color=True,
