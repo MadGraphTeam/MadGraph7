@@ -224,3 +224,30 @@ in a native batch against isolated MadLoop external-field output. It uses the
 reference Born values and binary64 comparison, so it validates field scalar
 normalization and multiplicity, not a full amplitude or arbitrary-precision
 physics. Full native physical assembly is a separate integration check.
+
+## Four-gluon primitive and multicolour assembly boundary
+
+The independent `four_gluon_oracle.py` control covers the active `V_R2RGA` rule:
+four Lorentz bases (1,040 ALOHA comparisons), twelve colour bases plus two
+complex trace probes (196 exact overlaps against MadGraph), and all 57 source
+basis keys. Exact native SU(3) component contractions are used for the colour
+oracle: some products of compact symmetric traces remain unevaluated by the
+current symbolic colour simplifier. Complex probes retain the relative `d*f`
+orientation, while the full Lorentz component basis includes nontransverse
+off-shell currents. The named conformance scope is
+`local-four-gluon-r2-aloha-and-mg-color-control` and can be attached to those
+exact source tensors/ports with `CountertermPrimitiveValidation`.
+
+Only the active source rule is tested. This neither reactivates the commented
+alternate four-gluon rule nor supplies its missing general-Nc continuation.
+Scalar R2 coefficients, gauge cancellation and complete physical interference
+still require process-level comparisons.
+
+Physical assembly must retain `ColorCurrent`'s `(node, colour)` alternatives
+through both Born and loop closure. Native coefficient execution can expose
+the unique terminal nodes as multiple outputs, with a rectangular Born-term
+by loop-term colour matrix. Shared physical external vectors multiply every
+local Lorentz alternative in the same native half-edge frame. Graph signs and
+symmetry factors enter each closed term once; branching introduces no extra
+graph multiplicity. Contracting or rebinding local tensors by ordinal axis
+position instead of their native port labels would mix distinct tensor bases.
