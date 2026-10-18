@@ -55,6 +55,45 @@ fixed SU(3) constants. Preserving them does not reconstruct their Nc dependence.
 with fixed Nf, but never applies them automatically or certifies LC/NLC.
 Legacy inconsistent non-QCD Lorentz spin signatures fail when requested.
 
+## Exact restrictions and external requests
+
+`prepare_loop_restrictions(raw, simplify=True)` applies the captured restriction
+card to a derived raw declaration view and retains the original unchanged. The
+installed UFO `ParamCard` parser owns block/LHA addresses. Source-line annotations
+in comments preserve the original numeric lexemes; its binary64 values are never
+used. Every source record and address must survive exactly, so duplicate records
+(including values that round to the same double), unknown addresses, malformed
+headers, scans, continuations, nonfinite literals, scale-dependent blocks and
+decay tables are rejected. Signed decimal and Fortran D-exponent literals are
+exact. Complex parameters require both real and `IM` blocks; partial component
+updates are explicitly unsupported and cannot erase an omitted component.
+
+Nonzero entries replace adjustable defaults. Simplification fixes exactly zero
+external parameters, including omitted exact-zero defaults, under the existing
+loader convention. It does not identify equal nonzero parameters. Structural
+lowering carries these fixed values into scalar binding and rejects contradictory
+overrides. Without simplification, even a zero-valued adjustable mass retains
+its structural massive classification. The existing raw restriction metadata
+holds this result; no additional identity or manifest is introduced.
+
+`prepare_loop_external_request(model, incoming, outgoing)` resolves particle
+names or PDGs through the native model. It derives directed scalar/Dirac/vector
+state kinds, structural helicities, component offsets, initial spin and colour
+averages, and identical-final factorials. The complete divisor follows the
+existing physical engine: initial spin × initial colour × identical-final
+factor, with couplings retained in the local kernels. Ghosts, Goldstones,
+nonpropagating states, Majorana fermions and unsupported spins/representations
+are rejected. This is request preparation, not a process capability certificate.
+
+`source_bare_program` and `source_model_program` now use these model-derived
+defaults when state kinds or normalization are omitted. Existing explicit
+internal overrides remain supported. The derived defaults are retained as
+plain request metadata for the existing artifact boundary. Complete neutral
+source controls exercise the defaults against independent Born/bare/UV/R2
+references, per-point scales and retained model snapshots in all three carriers.
+Public loop generation remains guarded until portable plan integration and
+selected-model capability checks are complete.
+
 ## Local colour alternatives
 
 `loops.color_terms.split_local_color_terms` expands one native local factor and

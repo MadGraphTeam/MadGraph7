@@ -67,8 +67,6 @@ def points():
 
 
 def _program(source, arithmetic="double", precision=None, prepared=None):
-    from symbolica import E
-
     from pyamplicol.loops.physical_source import (
         source_bare_program,
         source_model_program,
@@ -78,11 +76,9 @@ def _program(source, arithmetic="double", precision=None, prepared=None):
     arguments = (source,) if prepared is None else (source, prepared)
     return factory(
         *arguments,
-        ("e-", "e+"),
-        ("m-", "m+"),
+        (11, -11) if arithmetic == "double" else ("e-", "e+"),
+        (13, -13) if arithmetic == "double" else ("m-", "m+"),
         selected_corrections=["QED"],
-        state_kinds=("u", "v_bar", "u_bar", "v"),
-        initial_average=E("4"),
         born_order_bounds={"QCD": 0, "QED": 2},
         loop_order_bounds={"QCD": 0, "QED": 4},
         parameters={

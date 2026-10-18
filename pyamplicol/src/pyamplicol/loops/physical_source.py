@@ -8,6 +8,7 @@ from typing import Any
 
 from .graphs import build_loop_process
 from .physical_process import NativeBareProcessProgram
+from .request import LoopExternalRequest, prepare_loop_external_request
 from .scalar_bindings import NativeScalarBindings, NativeScaleBindings
 from .vertex_frames import certified_source_dirac_frame
 
@@ -26,6 +27,7 @@ class NativeSourceBareProgram:
     structure: Any
     state: NativeScalarBindings
     bare: NativeBareProcessProgram
+    external_request: LoopExternalRequest
 
     def update_parameters(self, changes):
         return self.state.update(changes)
@@ -43,8 +45,8 @@ def source_bare_program(
     outgoing,
     *,
     selected_corrections,
-    state_kinds,
-    initial_average,
+    state_kinds=None,
+    initial_average=None,
     born_order_bounds=None,
     loop_order_bounds=None,
     allowed_pairs=None,
@@ -58,7 +60,7 @@ def source_bare_program(
     """Prepare source graph currents without lowering scalars through floats."""
     if backend is None:
         import _loop_reduction as backend
-    from symbolica import S
+    from symbolica import E, S
 
     if structure.scalars.library.raw is not structure.raw:
         raise ValueError("source structure and scalar owner differ")
@@ -68,6 +70,12 @@ def source_bare_program(
         raise ValueError(
             "physical source programs require their certified vertex frame"
         )
+    request = prepare_loop_external_request(structure.native, incoming, outgoing)
+    incoming, outgoing = request.incoming, request.outgoing
+    if state_kinds is None:
+        state_kinds = request.state_kinds
+    if initial_average is None:
+        initial_average = E(str(request.initial_average))
     model = structure.native
     if prepared_counterterms is not None:
         if (
@@ -160,7 +168,7 @@ def source_bare_program(
         backend=backend,
         **options,
     )
-    return NativeSourceBareProgram(structure, state, bare)
+    return NativeSourceBareProgram(structure, state, bare, request)
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,7 +213,11 @@ def source_model_program(structure, prepared, incoming, outgoing, **options):
     corrections = process.orders.correction_names
     matched = match_counterterms(
         prepared,
-        prepared.process(incoming, outgoing, counterterms=True),
+        prepared.process(
+            source_bare.external_request.incoming,
+            source_bare.external_request.outgoing,
+            counterterms=True,
+        ),
         process,
         selected_corrections=corrections,
     )

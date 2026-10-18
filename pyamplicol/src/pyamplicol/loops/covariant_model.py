@@ -220,10 +220,15 @@ def build_covariant_structure(
         raise NotImplementedError(
             "custom source propagators require covariant certification"
         )
-    if raw.metadata.get("restriction", {}).get("card") is not None:
+    restriction = raw.metadata.get("restriction", {})
+    if restriction.get("card") is not None and not restriction.get("applied", False):
         raise NotImplementedError(
             "unapplied source restrictions require explicit exact lowering"
         )
+    if restriction.get("applied", False):
+        from .model_restrictions import restriction_fixed_parameters
+
+        fixed_parameters = restriction_fixed_parameters(raw, fixed_parameters)
     program = scalars if scalars is not None else lower_scalar_program(raw)
     if program.library.raw is not raw:
         raise ValueError("scalar program belongs to another raw model")
