@@ -1090,6 +1090,17 @@ def quark_gluon_model_virtual_program(
     return _qcd_model_virtual_program(source, ("g", "g"), **options)
 
 
+def quark_three_gluon_model_virtual_program(
+    source, *, color_accuracy="full", formal_color=False, **options
+):
+    """Fixed-SU(3) u ubar -> ggg control, including final-state factor 1/6."""
+    if formal_color or color_accuracy != "full":
+        raise NotImplementedError(
+            "multi-term virtual color projection is not supported"
+        )
+    return _qcd_model_virtual_program(source, ("g", "g", "g"), **options)
+
+
 def _qcd_model_virtual_program(
     source,
     outgoing,
@@ -1118,14 +1129,15 @@ def _qcd_model_virtual_program(
     if r2_strategy == "direct" and not gluon_only:
         raise NotImplementedError("direct physical control currently requires gg -> gg")
     incoming = ("g", "g") if gluon_only else ("u", "u~")
-    gluon_final = tuple(outgoing) == ("g", "g")
+    gluon_final = tuple(outgoing) in (("g", "g"), ("g", "g", "g"))
     if gluon_only:
         state_kinds, average = (
             ("epsilon", "epsilon", "epsilon_bar", "epsilon_bar"),
             "512",
         )
     elif gluon_final:
-        state_kinds, average = ("u", "v_bar", "epsilon_bar", "epsilon_bar"), "72"
+        state_kinds = ("u", "v_bar") + ("epsilon_bar",) * len(outgoing)
+        average = "72" if len(outgoing) == 2 else "216"
     else:
         state_kinds, average = ("u", "v_bar", "u_bar", "v"), "36"
     if gluon_only:
@@ -1204,8 +1216,8 @@ def _qcd_model_virtual_program(
         ordinary_model=model,
         selected_corrections=["QCD"],
         perturbative_orders={"QCD": 1},
-        born_order_bounds={"QCD": 2, "QED": 0},
-        loop_order_bounds={"QCD": 4, "QED": 0},
+        born_order_bounds={"QCD": len(outgoing), "QED": 0},
+        loop_order_bounds={"QCD": len(outgoing) + 2, "QED": 0},
     )
     matched = match_counterterms(
         prepared,
