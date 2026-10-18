@@ -456,7 +456,7 @@ def test_model_r2_completes_native_bare_in_all_precisions(
                 (len(points), 2) if name == "born" else (len(points), 3, 2)
             )
             for name in ("born", "virtual", "bare", "uv", "r2")
-        }
+        },
     )
     _compare(result, points, scales, "0.118", "132.507", tolerance)
     # Source couplings share the same precise global model input binding as Born.
@@ -498,3 +498,172 @@ def test_complete_result_against_actual_madloop_and_uncalibrated_basis_rejected(
     )
     with pytest.raises(NotImplementedError, match="calibrated tensor correspondence"):
         NativeModelVirtualProgram(program.bare, [uncertified], source_bindings=[])
+
+
+@pytest.mark.parametrize(
+    "options",
+    [{}, {"arithmetic": "double-double"}, {"arithmetic": "arbitrary", "precision": 60}],
+)
+def test_partial_native_points_keep_ids_and_all_components(source, points, options):
+    from symbolica import E, S
+
+    program = drell_yan_model_virtual_program(source, **options)
+    model_values = ["0.118", "132.507"]
+    ordinary = program.evaluate_ordered_native(
+        points[:2], ["1000000"] * 2, model_values=model_values
+    )
+    singular = np.asarray([["500", "0", "0", "500"]] * 4)
+    mixed = np.stack([points[1], singular, points[0]])
+    partial = program.evaluate_ordered_partial_native(
+        mixed, ["1000000"] * 3, model_values=model_values, point_ids=[42, 5, 91]
+    )
+    assert partial.requested_point_ids == (42, 5, 91)
+    assert partial.batch.point_ids == [42, 91]
+    assert {failure.point_id for failure in partial.failures} == {5}
+    assert all(
+        point == expected
+        for expected, statuses in zip([42, 91], partial.statuses, strict=True)
+        for point, status in statuses
+        if status == "success"
+    )
+    for actual, expected in zip(
+        [partial.born, *partial.component_batches, partial.totals],
+        [ordinary.born, *ordinary.component_batches, ordinary.totals],
+        strict=True,
+    ):
+        expected = expected.take_rows([1, 0], row_ids=[42, 91])
+        assert actual.row_ids == [42, 91]
+        assert actual.nonfinite_rows() == []
+        assert actual.agreement_rows(expected, "1e-13", "1e-100") == [
+            (42, True),
+            (91, True),
+        ]
+    with pytest.raises(ArithmeticError):
+        program.evaluate_ordered_native(
+            mixed, ["1000000"] * 3, model_values=model_values
+        )
+    failed = program.evaluate_ordered_partial_native(
+        mixed[1:2], ["1000000"], model_values=model_values, point_ids=[5]
+    )
+    assert failed.batch.point_ids == [] and failed.requested_point_ids == (5,)
+    assert {failure.point_id for failure in failed.failures} == {5}
+    assert all(
+        value.rows == 0
+        for value in [failed.born, *failed.component_batches, failed.totals]
+    )
+    empty = program.evaluate_ordered_partial_native(
+        points[:0], [], model_values=model_values, point_ids=[]
+    )
+    assert empty.requested_point_ids == () and empty.failures == ()
+    assert empty.totals.rows == 0
+    with pytest.raises(ValueError, match="distinct nonnegative"):
+        program.evaluate_ordered_partial_native(
+            points[:2], ["1000000"] * 2, model_values=model_values, point_ids=[9, 9]
+        )
+
+    original = program.insertions[0].rule.couplings[0][1].coupling.value.expression
+    scale = S("partial_ct::scale")
+    insertion = _replace_ct_scalar(program, original / (scale - E("4000000")))
+    singular_ct = NativeModelVirtualProgram(
+        program.bare,
+        [insertion],
+        source_bindings=(
+            *program.source_bindings,
+            (scale, program.bare.scale_squared_symbol),
+        ),
+    )
+    result = singular_ct.evaluate_ordered_partial_native(
+        points[:2],
+        ["4000000", "1000000"],
+        model_values=model_values,
+        point_ids=[17, 28],
+    )
+    assert result.batch.point_ids == [28]
+    assert {failure.point_id for failure in result.failures} == {17}
+    assert any("scalar coefficients" in failure.stage for failure in result.failures)
+    check = singular_ct.evaluate_ordered_native(
+        points[1:2], ["1000000"], model_values=model_values
+    )
+    assert result.totals.agreement_rows(
+        check.totals.take_rows([0], row_ids=[28]), "1e-13", "1e-100"
+    ) == [(28, True)]
+
+
+@pytest.mark.parametrize(
+    "options",
+    [{}, {"arithmetic": "double-double"}, {"arithmetic": "arbitrary", "precision": 60}],
+)
+def test_partial_real_reducer_failure_evicts_prior_families(source, options):
+    fixture = Path(__file__).resolve().parents[2] / "tools/loop_reference/uudd_qcd.json"
+    good = np.asarray(json.loads(fixture.read_text())["points"], dtype=str)
+    forward = np.asarray(
+        [
+            ["500", "0", "0", "500"],
+            ["500", "0", "0", "-500"],
+            ["500", "0", "0", "500"],
+            ["500", "0", "0", "-500"],
+        ]
+    )
+    program = distinct_flavour_model_virtual_program(source, **options)
+    values = ["0.118", "173"]
+    baseline = program.evaluate_ordered_native(
+        good[:2], ["1000000"] * 2, model_values=values
+    )
+    mixed = np.stack([good[0], forward, good[1]])
+    result = program.evaluate_ordered_partial_native(
+        mixed, ["1000000"] * 3, model_values=values, point_ids=[8, 400, 2]
+    )
+    assert result.requested_point_ids == (8, 400, 2)
+    assert result.batch.point_ids == [8, 2]
+    assert {failure.point_id for failure in result.failures} == {400}
+    assert any(
+        f.stage == "loop reduction"
+        and "DegenerateGram" in f.detail
+        and f.family_index > program.bare.families[0].index
+        for f in result.failures
+    )
+    for actual, expected in zip(
+        [result.born, *result.component_batches, result.totals],
+        [baseline.born, *baseline.component_batches, baseline.totals],
+        strict=True,
+    ):
+        assert actual.nonfinite_rows() == []
+        assert actual.agreement_rows(
+            expected.take_rows([0, 1], row_ids=[8, 2]), "1e-13", "1e-100"
+        ) == [(8, True), (2, True)]
+    with pytest.raises(ArithmeticError, match="DegenerateGram"):
+        program.evaluate_ordered_native(mixed, ["1000000"] * 3, model_values=values)
+    # A later changing-size call cannot retain omitted values from the failed batch.
+    repeat = program.evaluate_ordered_partial_native(
+        good[1:2], ["1000000"], model_values=values, point_ids=[2]
+    )
+    assert repeat.failures == () and repeat.batch.point_ids == [2]
+    assert repeat.totals.agreement_rows(
+        result.totals.take_rows([1]), "1e-13", "1e-100"
+    ) == [(2, True)]
+
+
+def test_exact_family_guards_keep_original_ids_after_compaction(source, points):
+    from pyamplicol.loops.numerical_lanes import LaneFailures, select_bare_currents
+
+    program = drell_yan_model_virtual_program(source).bare
+    currents = program.prepare_currents_native(
+        points[:2],
+        ["1000000"] * 2,
+        model_values=["0.118", "132.507"],
+        point_ids=[71, 29],
+    )
+    currents = select_bare_currents(currents, [1])
+    # Exercise the exact-ingress/rounding boundary independently of currents:
+    # exact finite coordinates can yield invariants overflowing binary64.
+    currents.momenta_pairs = [
+        ["1e200", "0"] if i % 4 == 0 else ["0", "0"]
+        for i in range(len(currents.momenta_pairs))
+    ]
+    shifts, _, matrix = program.family_kinematics_native(currents, program.families[0])
+    assert shifts.row_ids == matrix.row_ids == [29]
+    assert matrix.nonfinite_rows() == [29]
+    failures = LaneFailures()
+    failures.require_finite(matrix, "exact invariant matrix")
+    assert failures.point_ids == {29}
+    assert failures.successful_indices([29]) == []

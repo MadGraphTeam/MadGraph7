@@ -58,6 +58,8 @@ class NativeModelVirtualEvaluation:
     uv_external_fields: Any
     totals: Any
     statuses: Any
+    requested_point_ids: tuple[int, ...] = ()
+    failures: tuple[Any, ...] = ()
 
     @property
     def component_batches(self):
@@ -650,13 +652,14 @@ class NativeModelVirtualProgram:
         bare._model_color_metrics_bound = True
         bare._formal_color_projected = space is not None
 
-    def evaluate_counterterm_currents_native(self, batch):
+    def evaluate_counterterm_currents_native(self, batch, *, _failures=None):
         """Checked CT amplitudes followed by field factors on a shared batch.
 
         The caller supplies the already prepared ordinary physical states.
         Colour contraction and interference are separate, so directed kernels
         can reuse each current without repeating numerical preparation.
         """
+        guard = require_finite_batch if _failures is None else _failures.require_finite
         backend = self.bare.backend
         helicities = batch.helicity_count
         source_values = None
@@ -680,7 +683,7 @@ class NativeModelVirtualProgram:
                 coefficients = current.coefficient_evaluator.evaluate_batch(
                     coefficient_inputs
                 )
-                require_finite_batch(
+                guard(
                     coefficients,
                     "counterterm scalar coefficients and active diagnostics",
                 )
@@ -697,7 +700,7 @@ class NativeModelVirtualProgram:
             amplitude = current.executor.evaluate_batch(
                 combined.take_columns(current.input_columns)
             )
-            require_finite_batch(
+            guard(
                 amplitude,
                 "counterterm current",
                 rows_per_point=helicities,
@@ -707,7 +710,7 @@ class NativeModelVirtualProgram:
             coefficients = current.coefficient_evaluator.evaluate_batch(
                 coefficient_inputs
             )
-            require_finite_batch(
+            guard(
                 coefficients,
                 "external-field scalar coefficients and active diagnostics",
             )
@@ -725,17 +728,44 @@ class NativeModelVirtualProgram:
         native = self.bare.evaluate_ordered_native(
             momenta, scales_squared, model_values=model_values
         )
+        return self._complete_native(native)
+
+    def evaluate_ordered_partial_native(
+        self, momenta, scales_squared, *, model_values=None, point_ids=None
+    ):
+        """Keep only valid points; ordinary evaluation still raises on failure."""
+        from .numerical_lanes import LaneFailures, require_partial_domain
+
+        require_partial_domain(self.bare)
+        if self.r2_strategy != "model" or self.color_projection is not None:
+            raise NotImplementedError(
+                "partial completion requires full-colour model R2"
+            )
+        native = self.bare.evaluate_ordered_partial_native(
+            momenta, scales_squared, model_values=model_values, point_ids=point_ids
+        )
+        failures = LaneFailures()
+        failures.entries.extend(native.failures)
+        failures.point_ids.update(failure.point_id for failure in native.failures)
+        return self._complete_native(native, failures)
+
+    def _complete_native(self, native, failures=None):
+        from .numerical_lanes import select_physical_batch
+
+        guard = require_finite_batch if failures is None else failures.require_finite
         batch, backend = native.batch, self.bare.backend
-        amplitudes = self.evaluate_counterterm_currents_native(batch)
+        amplitudes = self.evaluate_counterterm_currents_native(
+            batch, _failures=failures
+        )
         inputs = backend.NativeBatch.concat_columns(
             [native.born_amplitudes, *amplitudes]
         )
         counterterms = self.projector.evaluate_batch(
             inputs.reshape_rows(
-                batch.size, len(self.bare.helicities) * inputs.columns, batch.point_ids
+                batch.size, batch.helicity_count * inputs.columns, batch.point_ids
             )
         )
-        require_finite_batch(counterterms, "counterterm projection")
+        guard(counterterms, "counterterm projection")
         if self.r2_strategy == "direct":
             if native.rational is None:
                 raise ValueError("dimensional numerator evaluation omitted R2")
@@ -749,7 +779,7 @@ class NativeModelVirtualProgram:
         assembled = self.assemble.evaluate_batch(
             backend.NativeBatch.concat_columns([native.virtual, counterterms])
         )
-        require_finite_batch(assembled, "complete virtual assembly")
+        guard(assembled, "complete virtual assembly")
         sectors = len(self.bare.order_layout.virtual)
         width = 3 * sectors
         component_batches = [
@@ -763,9 +793,26 @@ class NativeModelVirtualProgram:
         totals = self.sum_order_values.evaluate_batch(
             backend.NativeBatch.concat_columns([native.born, *component_batches])
         )
-        require_finite_batch(totals, "sum over completed perturbative orders")
+        guard(totals, "sum over completed perturbative orders")
+        born, statuses = native.born, native.statuses
+        if failures is not None:
+            indices = failures.successful_indices(batch.point_ids)
+            if len(indices) != batch.size:
+                batch = select_physical_batch(batch, indices)
+                born = born.take_rows(indices)
+                component_batches = [
+                    value.take_rows(indices) for value in component_batches
+                ]
+                totals = totals.take_rows(indices)
+                statuses = tuple(statuses[index] for index in indices)
         return NativeModelVirtualEvaluation(
-            batch, native.born, *component_batches, totals, native.statuses
+            batch,
+            born,
+            *component_batches,
+            totals,
+            statuses,
+            native.requested_point_ids,
+            () if failures is None else tuple(failures.entries),
         )
 
     def evaluate_ordered_decimal(self, momenta, scales_squared, *, model_values=None):

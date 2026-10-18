@@ -255,5 +255,25 @@ must be compared again after its final output conversion if the configured
 accuracy bound is to apply to the returned numbers.
 
 These primitives do not enable an automatic verification or rescue policy, nor
-add a second precision pass to ordinary evaluations. Process-level policy and
-structured partial numerical failures are separate integration work.
+add a second precision pass to ordinary evaluations. Process-level verification and rescue policy remain separate integration work.
+
+The internal physical programs now expose `evaluate_ordered_partial_native` for
+built-in full-colour, four-dimensional model-rule controls. This opt-in boundary
+returns only points whose Born currents, family reductions, UV/R2/field currents,
+all ordered components and totals are finite and whose reductions succeeded.
+`requested_point_ids` records the input order; `batch.point_ids` names only the
+survivors. Structured `failures` retain each original point, stage and available
+order/family status. Custom point IDs support compact retry batches. Any failed
+order or family evicts the whole point, including already integrated families;
+missing values are never replaced by zeros. The ordinary evaluation methods
+still raise on a numerical failure.
+
+This partial boundary begins after shared wavefunction/global-model preparation.
+A state-construction error, including carrier overflow of an otherwise finite
+exact input, can still abort that preparation for the whole batch. Such an error
+is not silently reclassified as per-point failure. Source-owned model snapshots,
+formal-colour views, direct R2 and spin/directed observable views are not yet
+certified for partial evaluation. The new path does not establish accuracy,
+choose a rescue precision, or perform additional precision evaluations. Genuine
+singular Born/CT and later-family `DegenerateGram` controls validate failure
+isolation in binary64, DoubleFloat and arbitrary precision.

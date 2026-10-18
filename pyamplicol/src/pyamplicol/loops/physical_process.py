@@ -86,6 +86,8 @@ class NativeBareEvaluation:
     virtual: Any
     statuses: tuple[tuple[tuple[int, str], ...], ...]
     rational: Any = None
+    requested_point_ids: tuple[int, ...] = ()
+    failures: tuple[Any, ...] = ()
 
 
 @dataclass(slots=True)
@@ -868,6 +870,7 @@ class NativeBareProcessProgram:
         model_values=None,
         helicities=None,
         spin_sources=None,
+        point_ids=None,
     ):
         """Bind one physical batch and evaluate its Born and loop currents once."""
         momenta, scales = (
@@ -905,14 +908,23 @@ class NativeBareProcessProgram:
                 [values, np.full(len(values), "0", dtype=object)], axis=1
             ).tolist()
 
-        def native(values, nrows, columns):
+        def native(values, nrows, columns, row_ids=None):
             return batch_type.from_decimal(
-                pairs(values), nrows, columns, **self.options
+                pairs(values), nrows, columns, row_ids=row_ids, **self.options
             )
 
-        point_ids, lane_ids = list(range(size)), list(range(rows))
+        point_ids = list(range(size)) if point_ids is None else list(point_ids)
+        if (
+            len(point_ids) != size
+            or any(type(point) is not int or point < 0 for point in point_ids)
+            or len(set(point_ids)) != size
+        ):
+            raise ValueError("physical point IDs must be distinct nonnegative integers")
+        lane_ids = [
+            point * helicities + h for point in point_ids for h in range(helicities)
+        ]
         momenta_pairs = pairs(momenta)
-        physical = native(momenta, size, 4 * legs)
+        physical = native(momenta, size, 4 * legs, row_ids=point_ids)
         lanes = physical.take_rows(
             np.repeat(np.arange(size), helicities).tolist(), row_ids=lane_ids
         )
@@ -932,7 +944,7 @@ class NativeBareProcessProgram:
                 state_kinds=self.state_kinds,
                 backend=self.backend,
             )
-        scales = native(scales, size, 1)
+        scales = native(scales, size, 1, row_ids=point_ids)
         if self.model_state is None:
             model_arguments = native(model_values, 1, len(model_values))
             model = self.model_evaluator.evaluate_batch(model_arguments)
@@ -988,7 +1000,10 @@ class NativeBareProcessProgram:
     def family_kinematics_native(self, currents, family):
         """Exact ingress invariants and global or source scale-dependent masses."""
         bindings = family.exact_evaluator.evaluate_decimal(
-            currents.momenta_pairs, currents.batch.size, **self.options
+            currents.momenta_pairs,
+            currents.batch.size,
+            row_ids=currents.batch.point_ids,
+            **self.options,
         )
         n = family.kinematics.propagators
         return (
@@ -1009,109 +1024,199 @@ class NativeBareProcessProgram:
             currents.batch.point_ids,
         )
 
+    def evaluate_ordered_partial_native(
+        self, momenta, scales_squared, *, model_values=None, point_ids=None
+    ):
+        """Return only successful native points, with explicit failure metadata.
+
+        This is a numerical-failure boundary, not an accuracy or rescue policy.
+        Original IDs may be supplied for a compacted retry batch.
+        """
+        from .numerical_lanes import LaneFailures, require_partial_domain
+
+        require_partial_domain(self)
+        currents = self.prepare_currents_native(
+            momenta, scales_squared, model_values=model_values, point_ids=point_ids
+        )
+        return self._evaluate_currents_native(currents, LaneFailures())
+
     def evaluate_ordered_native(self, momenta, scales_squared, *, model_values=None):
         """Original decimal input enters exact kinematics and native arithmetic."""
         currents = self.prepare_currents_native(
             momenta, scales_squared, model_values=model_values
         )
+        return self._evaluate_currents_native(currents)
+
+    def _evaluate_currents_native(self, currents, failures=None):
+        from .numerical_lanes import select_bare_currents
+
         batch_type = self.backend.NativeBatch
+        requested_ids = tuple(currents.batch.point_ids)
         size, point_ids = currents.batch.size, currents.batch.point_ids
-        helicities, born = len(self.helicities), currents.born
-        scales = currents.batch.scales_squared
+        helicities = currents.batch.helicity_count
         born_squared = self.born_projector.evaluate_batch(
-            born.reshape_rows(size, helicities * born.columns, point_ids)
+            currents.born.reshape_rows(
+                size, helicities * currents.born.columns, point_ids
+            )
         )
-        require_finite_batch(born_squared, "Born projection")
-        integrated, rational_integrated, statuses = [], [], []
+        integrated, rational_integrated, status_maps = [], [], []
+        guard = require_finite_batch if failures is None else failures.require_finite
+        guard(born_squared, "Born projection")
+
+        def compact(*point_buffers):
+            nonlocal currents, born_squared, size, point_ids
+            if failures is None:
+                return point_buffers
+            indices = failures.successful_indices(point_ids)
+            if len(indices) == size:
+                return point_buffers
+            currents = select_bare_currents(currents, indices)
+            born_squared = born_squared.take_rows(indices)
+            integrated[:] = [value.take_rows(indices) for value in integrated]
+            rational_integrated[:] = [
+                value.take_rows(indices) for value in rational_integrated
+            ]
+            size, point_ids = currents.batch.size, currents.batch.point_ids
+            return tuple(value.take_rows(indices) for value in point_buffers)
+
+        if failures is not None:
+            guard(currents.born, "Born current", rows_per_point=helicities)
+            for index, current in enumerate(currents.loops):
+                guard(current, f"loop current {index}", rows_per_point=helicities)
+            compact()
         for family in self.families:
             coefficients = family.projector.evaluate_batch(
                 self.family_projection_arguments(currents, family)
             )
+            if failures is not None:
+                guard(coefficients, f"family {family.index} numerator projection")
+                (coefficients,) = compact(coefficients)
+            shifts, masses, matrix = self.family_kinematics_native(currents, family)
+            if failures is not None:
+                guard(shifts, f"family {family.index} shifts")
+                guard(matrix, f"family {family.index} invariant matrix")
+                # Built-in masses are global. Invalid global model formulas were
+                # already rejected at ingress and cannot be rescued pointwise.
+                require_finite_batch(masses, f"family {family.index} global masses")
+                coefficients, shifts, matrix = compact(coefficients, shifts, matrix)
             channel_count = len(family.sector_indices)
-            row_ids = (
-                (
-                    np.arange(size)[:, None] * len(self.order_layout.virtual)
-                    + np.asarray(family.sector_indices)[None, :]
-                )
-                .reshape(-1)
-                .tolist()
-            )
+            row_ids = [
+                point * len(self.order_layout.virtual) + sector
+                for point in point_ids
+                for sector in family.sector_indices
+            ]
             point_rows = np.repeat(np.arange(size), channel_count).tolist()
             coefficients = coefficients.reshape_rows(
                 size * channel_count, len(family.powers), row_ids
             )
-            shifts, masses, matrix = self.family_kinematics_native(currents, family)
             shifts = shifts.take_rows(point_rows, row_ids=row_ids)
             matrix = matrix.take_rows(point_rows, row_ids=row_ids)
             masses = masses.take_rows(
                 point_rows if masses.rows == size else [0] * (size * channel_count),
                 row_ids=row_ids,
             )
-            channel_scales = scales.take_rows(point_rows, row_ids=row_ids)
+            channel_scales = currents.batch.scales_squared.take_rows(
+                point_rows, row_ids=row_ids
+            )
             reduced = family.reducer.evaluate_batch(
                 shifts, masses, channel_scales, coefficients, s_matrix=matrix
             )
-            failures = [
+            bad = [
                 (*divmod(row, len(self.order_layout.virtual)), family.index, status)
                 for row, status in reduced.statuses
                 if status != "success"
             ]
-            if failures:
+            if bad and failures is None:
                 raise ArithmeticError(
                     "native process reduction failed (point, order, family, status): "
-                    f"{failures}"
+                    f"{bad}"
                 )
-            integrated.append(
-                reduced.values.reshape_rows(size, channel_count * 3, point_ids)
-            )
+            if failures is not None:
+                for point, order, index, status in bad:
+                    failures.record(
+                        point,
+                        "loop reduction",
+                        status,
+                        order_index=order,
+                        family_index=index,
+                    )
+                values = reduced.successful_values()
+                for row in values.nonfinite_rows():
+                    point, order = divmod(row, len(self.order_layout.virtual))
+                    failures.record(
+                        point,
+                        "loop reduction",
+                        "nonfinite successful reduction",
+                        order_index=order,
+                        family_index=family.index,
+                    )
+                compact()
+                positions = {row: i for i, row in enumerate(values.row_ids)}
+                values = values.take_rows(
+                    [
+                        positions[point * len(self.order_layout.virtual) + sector]
+                        for point in point_ids
+                        for sector in family.sector_indices
+                    ]
+                )
+            else:
+                values = reduced.values
+            integrated.append(values.reshape_rows(size, channel_count * 3, point_ids))
             status_by_row = dict(reduced.statuses)
-            statuses.extend(
-                tuple(
-                    (
+            status_maps.extend(
+                {
+                    point: (
                         point,
                         status_by_row[point * len(self.order_layout.virtual) + sector],
                     )
-                    for point in range(size)
-                )
+                    for point in point_ids
+                }
                 for sector in family.sector_indices
             )
             if self.dimensional_numerators:
                 if family.rational_reducer is None:
                     rational_integrated.append(
-                        self.zero_poles.evaluate_batch(scales.take_columns([]))
+                        self.zero_poles.evaluate_batch(
+                            currents.batch.scales_squared.take_columns([])
+                        )
                     )
                 else:
                     rational = family.rational_reducer.evaluate_batch(
                         shifts, masses, channel_scales, coefficients, s_matrix=matrix
                     )
-                    failures = [
+                    bad = [
                         (point, family.index, status)
                         for point, status in rational.statuses
                         if status != "success"
                     ]
-                    if failures:
+                    if bad:
                         raise ArithmeticError(
                             "native dimensional remainder reduction failed "
-                            f"(point, family, status): {failures}"
+                            f"(point, family, status): {bad}"
                         )
                     rational_integrated.append(
                         rational.values.reshape_rows(size, channel_count * 3, point_ids)
                     )
         virtual = self.postprocess.evaluate_batch(batch_type.concat_columns(integrated))
-        require_finite_batch(virtual, "bare virtual assembly")
+        guard(virtual, "bare virtual assembly")
         rational = None
         if self.dimensional_numerators:
             rational = self.postprocess.evaluate_batch(
                 batch_type.concat_columns(rational_integrated)
             )
-            require_finite_batch(rational, "direct rational assembly")
+            guard(rational, "direct rational assembly")
+        (virtual,) = compact(virtual)
         return NativeBareEvaluation(
             currents.batch,
-            born,
+            currents.born,
             born_squared,
             virtual,
-            tuple(tuple(family[point] for family in statuses) for point in range(size)),
+            tuple(
+                tuple(family[point] for family in status_maps) for point in point_ids
+            ),
             rational,
+            requested_ids,
+            () if failures is None else tuple(failures.entries),
         )
 
 
