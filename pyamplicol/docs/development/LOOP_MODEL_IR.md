@@ -315,3 +315,34 @@ The saved native evaluators run these branches in double, DoubleFloat and
 arbitrary precision. Formal projection owns the bare program's weight
 evaluators; another model wrapper cannot mutate or reuse a projected bare
 program. Construct a fresh bare program for each projection.
+
+## Pure-gluon source basis controls
+
+`prepare_gluon_counterterm_basis(source, native_model)` provides a bounded
+pure-QCD gluon catalogue for `prepare_counterterm_model`: its `entries`,
+`ordinary_representatives` and `primitive_validations` stay separate from graph
+matching. Every ordinary representative requires exact ordered ports, source
+colour, normalized Lorentz tensor and scalar coupling identity. For `loop_sm`
+and the bundled QCD/QED model these are `V_36`'s cubic slot and `V_37`'s three
+diagonal quartic slots. Unknown or modified pure-gluon structures fail; model
+scalar renormalization and the active R2 quartic's formal-Nc continuation remain
+uncertified. The primitive whitelist contains only the already checked two-point
+and active four-point R2 tensors, and never reactivates the commented model rule.
+
+`gluon_vertex_oracle.py` independently checks all Lorentz components at real and
+complex off-shell momenta for the ordinary/UV/R2 cubic rule and ordinary/UV quartic
+rules. Its 1,672 ALOHA comparisons and 34 exact MadGraph colour overlaps cover
+26 source basis records. `four_gluon_oracle.py` retains its independent active
+R2 quartic checks. No reference routine or source model is patched.
+
+For the initial six-flavour `gg -> gg` graph set, native matching gives four Born
+graphs, 186 bare loops and 119 local CT insertions: 42 R2 cubic, 42 UV cubic,
+21 R2 propagator, seven active R2 quartic and seven UV quartic insertions. The
+seven alternatives are the six quarks and the source gauge group; no additional
+ghost multiplier is introduced. External fields remain a separate stream:
+four Born graphs times four gluon legs times the three declared heavy-quark
+groups gives 48 source records. With massless bottom/charm, only the top group
+is active. MadLoop groups the four identical leg factors into `4*UVWFCT_G_2`
+for each of its six Born colour/Lorentz amplitudes and two Laurent sectors.
+The generic field-factor oracle verifies the same factor against the isolated
+reference field contribution at three points, using the independent Born values.
