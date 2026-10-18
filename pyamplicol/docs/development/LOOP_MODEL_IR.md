@@ -792,3 +792,25 @@ effective couplings a complex phase: it retains a nonzero imaginary R2 result
 and verifies that the two isolated Born origins recombine in the same squared
 order for every component and both cross terms. That phase is a contraction
 test, not a source-model renormalization convention.
+
+## Literal gluon source preparation
+
+`NativeSpinSourcePlan` reuses the tree `CorrelatorConfig` joint spin classes
+and exact vector-input parser. Labels are public one-based legs. The current
+bridge admits massless PDG21 vector slots and reads their existing tree
+`SourceIR` crossing metadata once during preparation. Supplied temporal, spatial
+and imaginary components remain literal: they are not projected, normalized,
+negated or conjugated for an outgoing `epsilon_bar` slot. Only the ordinary
+source crossing phase is applied, once, by a native dependency evaluator.
+
+Each declared class has an immutable compact spectator-helicity layout; selected
+legs contribute one source state, and unselected legs retain their ordinary
+helicity sum. The shared bare process and its averaging factor remain unchanged.
+Native vectors broadcast from one row or carry one row per physical point;
+carrier, precision, finite components and point IDs are checked. The decimal
+entrypoint uses the tree parser before native ingress. Empty batches and exact
+complex inputs beyond binary64 are covered in all three arithmetic modes.
+
+This source-preparation boundary alone does not certify a physical spin-
+correlated loop result. Complete physical contractions and source-dependent
+Ward checks are a separate integration step.
