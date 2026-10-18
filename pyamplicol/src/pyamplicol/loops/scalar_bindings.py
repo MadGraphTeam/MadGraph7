@@ -1,16 +1,17 @@
 # SPDX-License-Identifier: 0BSD
-"""Exact source model bindings executed once per global parameter state.
+"""Exact global source bindings and native per-point scale views.
 
-This is a scalar-program consumer. It does not set a physics scheme, run a
-coupling, bind per-event renormalization scales or certify an EW process.
+These scalar-program consumers do not set a physics scheme, run a coupling or
+certify an EW process.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from graphlib import TopologicalSorter
+from threading import Lock
 from types import MappingProxyType
 from typing import Any
 
@@ -187,6 +188,17 @@ def prepare_scalar_bindings(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class NativeScalarSnapshot:
+    """One checked global state; native buffers remain valid after updates."""
+
+    arguments: Any
+    values: Any
+    overrides: Mapping[str, tuple[str, str]]
+    revision: int
+    _owner: object = field(repr=False, compare=False)
+
+
 class NativeScalarBindings:
     """Recompute a selected exact model state with atomic external updates.
 
@@ -210,7 +222,11 @@ class NativeScalarBindings:
             import _loop_reduction as backend
 
         self.plan, self.backend = plan, backend
-        self.options = {"arithmetic": arithmetic, "precision": precision}
+        self.options = MappingProxyType(
+            {"arithmetic": arithmetic, "precision": precision}
+        )
+        self._update_lock = Lock()
+        self._identity = object()
         self._evaluator = backend.CoefficientEvaluator(
             plan.evaluator_bytes(), **self.options
         )
@@ -238,17 +254,33 @@ class NativeScalarBindings:
             if guards
             else None
         )
-        self._overrides = self._normalize({} if parameters is None else parameters)
-        self._values = self._evaluate(self._overrides)
-        self.revision = 0
+        overrides = self._normalize({} if parameters is None else parameters)
+        arguments, values = self._evaluate(overrides)
+        self._state = NativeScalarSnapshot(
+            arguments, values, MappingProxyType(overrides), 0, self._identity
+        )
+
+    def snapshot(self) -> NativeScalarSnapshot:
+        """Read arguments, values and revision together without copying carriers."""
+        return self._state
+
+    @property
+    def revision(self):
+        return self._state.revision
 
     @property
     def overrides(self):
-        return MappingProxyType(dict(self._overrides))
+        return self._state.overrides
+
+    @property
+    def inputs(self):
+        return self._state.arguments.take_columns(
+            list(range(len(self.plan.external_names)))
+        )
 
     @property
     def values(self):
-        return self._values.take_columns(list(range(len(self.plan.outputs))))
+        return self._state.values.take_columns(list(range(len(self.plan.outputs))))
 
     def _normalize(self, changes):
         if isinstance(changes, Mapping):
@@ -300,11 +332,115 @@ class NativeScalarBindings:
             )
         computed = self._evaluator.evaluate_batch(arguments)
         require_finite_batch(computed, "model scalar values and active diagnostics")
-        return computed.take_columns(list(range(0, 2 * len(self.plan.outputs), 2)))
+        return arguments, computed.take_columns(
+            list(range(0, 2 * len(self.plan.outputs), 2))
+        )
 
     def update(self, changes: Mapping[str, str | tuple[str, str]]):
-        candidate = {**self._overrides, **self._normalize(changes)}
-        values = self._evaluate(candidate)
-        self._overrides, self._values = candidate, values
-        self.revision += 1
-        return self.values
+        # Native evaluation releases the GIL. Serialize writers, then publish
+        # all state fields with one assignment; readers retain either snapshot.
+        with self._update_lock:
+            previous = self._state
+            candidate = {**previous.overrides, **self._normalize(changes)}
+            arguments, values = self._evaluate(candidate)
+            self._state = NativeScalarSnapshot(
+                arguments,
+                values,
+                MappingProxyType(candidate),
+                previous.revision + 1,
+                self._identity,
+            )
+            return values.take_columns(list(range(len(self.plan.outputs))))
+
+
+class NativeScaleBindings:
+    """Compiled scale-dependent outputs sharing one global parameter owner.
+
+    Only the selected real external scale is replaced by sqrt(mu_r2). All other
+    inputs come from a single owner snapshot per call. Selected output plans may
+    differ but must share their ScalarProgram, external layout and fixed map.
+    No independent update interface, running coupling or per-point model inputs
+    are introduced. As with native evaluators, calls on one view are serialized.
+    """
+
+    def __init__(
+        self,
+        global_state: NativeScalarBindings,
+        plan: ScalarBindingPlan | None = None,
+        *,
+        scale_parameter="MU_R",
+    ):
+        from symbolica import S
+
+        if not isinstance(global_state, NativeScalarBindings):
+            raise TypeError("scale bindings require a NativeScalarBindings owner")
+        owner = global_state.plan
+        plan = owner if plan is None else plan
+        if plan.program is not owner.program:
+            raise ValueError("scale plan must share the identical ScalarProgram owner")
+        if (
+            plan.external_names != owner.external_names
+            or plan.external_types != owner.external_types
+            or plan.input_symbols != owner.input_symbols
+            or plan.fixed_parameters != owner.fixed_parameters
+        ):
+            raise ValueError("scale plan external layout or fixed parameters differ")
+        if scale_parameter in owner.fixed_parameters:
+            raise ValueError("scale parameter is fixed during generation")
+        if scale_parameter not in owner.external_names:
+            raise ValueError("scale parameter must be an adjustable external parameter")
+        index = owner.external_names.index(scale_parameter)
+        if owner.external_types[index] != "real":
+            raise ValueError("scale parameter must be real")
+        self.global_state, self.plan = global_state, plan
+        self.scale_parameter, self._scale_index = scale_parameter, index
+        self.backend = global_state.backend
+        library = plan.program.library
+        scale = S("loop_model_scale::mu_r2")
+        scale_outputs = (
+            library.lower(
+                "1 / (1 if s.imag == 0 and s.real > 0 else 0)",
+                locals={"s": scale},
+            ),
+            library.lower("cmath.sqrt(s)", locals={"s": scale}),
+        )
+        self._scale = self.backend.CoefficientEvaluator(
+            library.evaluator(scale_outputs, (scale,)).save(), **global_state.options
+        )
+        self._evaluator = self.backend.CoefficientEvaluator(
+            plan.evaluator_bytes(), **global_state.options
+        )
+
+    def evaluate_native(self, mu_r2, *, snapshot: NativeScalarSnapshot | None = None):
+        """Return checked source values in scale-lane order, entirely natively."""
+        snapshot = self.global_state.snapshot() if snapshot is None else snapshot
+        if (
+            not isinstance(snapshot, NativeScalarSnapshot)
+            or snapshot._owner is not self.global_state._identity
+        ):
+            raise ValueError("scale snapshot belongs to a different global state")
+        if not isinstance(mu_r2, self.backend.NativeBatch):
+            raise TypeError("scales require a NativeBatch")
+        if mu_r2.columns != 1:
+            raise ValueError("scales require one mu_r2 column")
+        require_finite_batch(mu_r2, "renormalization scales")
+        # The native evaluator checks both carrier and precision, including
+        # empty batches and arbitrary precision whose bits match double/DD.
+        scales = self._scale.evaluate_batch(mu_r2)
+        require_finite_batch(scales, "positive real renormalization scales")
+        arguments = snapshot.arguments.take_rows(
+            [0] * mu_r2.rows, row_ids=mu_r2.row_ids
+        )
+        columns = [
+            scales.take_columns([2])
+            if index == self._scale_index
+            else arguments.take_columns([index])
+            for index in range(len(self.plan.external_names))
+        ]
+        computed = self._evaluator.evaluate_batch(
+            self.backend.NativeBatch.concat_columns(columns)
+        )
+        require_finite_batch(
+            computed, "scale-dependent scalar values and active diagnostics"
+        )
+        return computed.take_columns(list(range(0, 2 * len(self.plan.outputs), 2)))

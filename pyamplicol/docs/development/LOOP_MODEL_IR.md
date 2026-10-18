@@ -663,14 +663,32 @@ strings and complex decimal pairs. They never enter a binary64 parameter map.
 Real-type input validation rejects even imaginary strings below binary64 range.
 Defaults are used only for parameters without overrides. Updates validate every
 selected value and active diagnostic before atomically replacing state; failed
-updates preserve the previous values, overrides and revision. Returned values
-are independent native one-row batches suitable for native event broadcasting.
+updates preserve the previous arguments, values, overrides and revision. The
+immutable `snapshot()` exposes those four fields together, and retained native
+buffers remain valid across later updates. Concurrent writers are serialized;
+readers take one consistent snapshot. Returned values are native one-row batches
+suitable for native event broadcasting.
 
-This is a global scalar-state consumer, not a production EW runtime. Per-point
-renormalization-scale bindings and scale-dependent UV coefficients still need
-their separate physical execution stage. No coupling running or scheme choices
-are inferred here. Exact cold output expressions can also prove structural
-zero mass aliases without evaluating adjustable external defaults.
+`NativeScaleBindings(global_state, plan=None, scale_parameter="MU_R")` is a
+compiled per-point view of that same global state. An alternate output plan can
+select CT/Laurent coefficients, but must use the identical `ScalarProgram`,
+external names/types/input order and exact fixed-parameter map. The selected
+scale must be a real, adjustable external parameter. `evaluate_native(mu_r2)`
+accepts one native scale column, validates positive real finite values, computes
+the square root with the dependency evaluator and replaces only that input in
+the broadcast global row. Both selected values and active source diagnostics
+are evaluated natively. No intermediate decimal or Python complex transport is
+used. Native carrier/precision checks apply even to empty batches; original
+lane IDs survive broadcasts, tail batches and failure reporting. Each call
+reads the owner snapshot once, and subsequent calls observe successful updates.
+The optional `snapshot=` argument retains one revision across ordinary and UV
+physical stages; snapshots from another state are rejected even with the same
+plan. This is an in-memory ownership check, not an artifact identity.
+
+These are scalar-state consumers, not a production EW runtime. Wiring scale
+views into the full physical UV stage is a separate step. No coupling running
+or scheme choices are inferred here. Exact cold output expressions can also
+prove structural zero mass aliases without evaluating adjustable defaults.
 
 ## Structural covariant source model
 
