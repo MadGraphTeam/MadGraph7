@@ -251,3 +251,29 @@ local Lorentz alternative in the same native half-edge frame. Graph signs and
 symmetry factors enter each closed term once; branching introduces no extra
 graph multiplicity. Contracting or rebinding local tensors by ordinal axis
 position instead of their native port labels would mix distinct tensor bases.
+
+
+`loops.graph_basis` now supplies those preparation interfaces. The
+`build_color_tree_recurrence` result includes every tree propagator denominator;
+`build_color_loop_recurrence` keeps attached tree denominators explicit for
+later Born weighting. Both expose `terms`, `final_nodes`, `color_expressions`,
+the common coefficient `dag`, exact momentum symbols and shared independent
+external spin components. Feed `final_nodes` to `NativeCoefficientDAG` to execute
+all alternatives in one native batch. The original single-colour
+`build_open_loop_recurrence` delegates to this same traversal and rejects a
+multi-term result explicitly.
+
+Optional local kernel providers bind to one graph/routing, validate each raw
+Lorentz term, declare auxiliary polynomial variables/weights, and materialize
+individual local tensors. They cannot replace colour factors or graph traversal.
+The graph's overall sign and symmetry factor multiply the closed current after
+provider materialization; dimensional-algebra certification belongs to the
+provider and is not implied by accepting auxiliary variables.
+
+Exact small-graph tests compare the complete unsplit native numerator with the
+term recurrence for all four gluon Born graphs and representative one-/two-quartic
+bubbles and one-quartic triangles. They cover every cut, family routing, bridge
+denominators and the bubble symmetry factor. Separate multiple-output native
+batch checks cover double, DoubleFloat and 70-digit arithmetic with retained row
+identities and empty batches. These are preparation/kernel checks; external
+physical vector states and full gluon virtual assembly remain separate gates.

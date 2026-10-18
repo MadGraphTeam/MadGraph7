@@ -122,6 +122,7 @@ class ColorTermDAG:
         dependencies: tuple[ColorCurrent, ...] = (),
         *,
         library: Any = None,
+        materialize: Any = None,
     ) -> ColorCurrent:
         if any(current.dag is not self.dag for current in dependencies):
             raise ValueError("colour currents must belong to this coefficient DAG")
@@ -131,7 +132,11 @@ class ColorTermDAG:
         for local in local_terms:
             if local.lorentz.to_expression() == 0 or local.color.to_expression() == 0:
                 continue
-            factor = local.lorentz.to_tensor(library).to_dense()
+            factor = (
+                local.lorentz.to_tensor(library)
+                if materialize is None
+                else materialize(local)
+            ).to_dense()
             factor_key = (tuple(factor.axes), tuple(factor.shape), tuple(factor))
             for inputs in product(*(current.terms for current in dependencies)):
                 nodes = tuple(term.node for term in inputs)
