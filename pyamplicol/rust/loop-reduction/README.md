@@ -308,9 +308,10 @@ numerical failures. Original scale literals are checked before point eviction.
 Native state statuses compact whole physical points before coefficient DAGs;
 original decimal inputs remain available for wider-precision retries. Global
 model formula errors still raise for the batch. The bounded real-mass source
-charged-lepton neutral-current model-rule control also supports partial evaluation; CMS, source
-external fields, formal colour, direct R2 and spin/directed source views remain
-excluded. The partial method itself neither establishes
+charged-lepton neutral-current model-rule control also supports partial
+evaluation; CMS, source external fields, formal colour and spin/directed source
+views remain excluded. The bounded direct-R2 four-gluon control is described
+below. The partial method itself neither establishes
 accuracy nor chooses a rescue precision. Genuine singular Born/CT and later-family
 `DegenerateGram` controls validate failure isolation in all three carriers;
 finite original state overflow is isolated in binary64/DoubleFloat and finite
@@ -342,8 +343,8 @@ A bounded near-forward uudd control exercises an actual rescue: binary64 and
 DoubleFloat report a degenerate Gram cut, while 70- and 100-digit evaluations
 agree and satisfy the requested binary64 output bound. This tests the recovery
 mechanism, not general near-singular numerical reliability. A cheap production
-stability policy, correlated/direct/formal coverage and benchmark-matched
-verification cost remain separate work.
+stability policy, correlated/formal coverage and benchmark-matched verification
+cost remain separate work.
 
 
 Source-owned partial and verification calls capture one checked global snapshot
@@ -372,3 +373,25 @@ attempt of the current call. A separate actual `G_UVt` source CT exercises finit
 source scale view removes that lane before consumption; arbitrary precision
 retains both lanes. These are bounded empirical controls, not general EW
 stability certification.
+
+
+Optional partial/verification evaluation also admits the certified full-colour
+QCD `gg -> gg` direct-R2 control. Each family evaluates N4 and Delta from the
+same coefficient/kinematic lanes, records both native reduction statuses, and
+then removes whole failed points from both outputs and all prior families.
+Final N4 and rational sums share the same gather. Higher arithmetic views rebuild
+complete local dimensional numerators and epsilon sectors from original decimal
+inputs; the selected `direct` strategy stays fixed, with source R2 excluded and
+UV/field terms retained. No model/direct switching occurs during rescue. Native
+complete and stability results record the executed R2 strategy, and verification
+rejects an attempt whose strategy differs from the captured choice. The dense
+`fast-tensor` adapter, source direct R2, CMS and formal/correlated views remain
+outside this partial boundary.
+
+Ninja's repeated-propagator validation remains a whole-batch unsupported-domain
+error. Such a topology is not silently converted into a numerical status or a
+higher-precision success. In particular, the former exact-forward uudd sparse
+fixture now encounters this guard with the current producer/reducer snapshot;
+it does not establish lane-local failure handling for repeated propagators.
+Distinct collinear box shifts exercise actual degenerate-Gram/unstable statuses
+in all three carriers without duplicate denominators.

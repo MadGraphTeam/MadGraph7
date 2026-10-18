@@ -82,14 +82,27 @@ def require_partial_domain(bare):
         raise NotImplementedError(
             "partial fast-tensor coefficient-head evaluation is not certified"
         )
-    if (
-        bare.dimensional_numerators
-        or getattr(bare, "color_accuracy", "full") != "full"
-        or getattr(bare, "_formal_color_projected", False)
+    if getattr(bare, "color_accuracy", "full") != "full" or getattr(
+        bare, "_formal_color_projected", False
     ):
         raise NotImplementedError(
             "partial native evaluation currently requires full-colour "
-            "four-dimensional model-rule controls"
+            "certified internal controls"
+        )
+    if bare.dimensional_numerators and (
+        bare.model_state is not None
+        or not bare.order_layout.is_single
+        or tuple(bare.process.orders.correction_names) != ("QCD",)
+        or bare.state_kinds != ("epsilon", "epsilon", "epsilon_bar", "epsilon_bar")
+        or any(
+            edge.particle.pdg_code != 21
+            for edge in bare.process.born[0].native.external_edges
+        )
+        or any(recurrence.kernel_provider is None for recurrence in bare.recurrences)
+    ):
+        raise NotImplementedError(
+            "partial dimensional evaluation requires the certified "
+            "QCD four-gluon control"
         )
 
     if bare.model_state is not None:

@@ -54,6 +54,7 @@ class NativeStableModelResult:
     totals: Any
     orders: Any
     channels: Any
+    r2_strategy: str
     diagnostics: tuple[NativeStabilityDiagnostic, ...]
 
     @property
@@ -81,13 +82,14 @@ def _select(values, ids):
 
 
 class NativeModelStabilityProgram:
-    """Explicit verification/rescue view over one fixed model-R2 physical plan.
+    """Explicit verification/rescue view over one fixed R2 physical plan.
 
     Higher views are compiled lazily from the same exact cold process/model data.
     Each call copies its original decimal inputs once. No rounded intermediate is
     used to reconstruct a higher-precision physical evaluation. Source owners
-    retain one exact snapshot across attempts. Direct-R2, projected-colour, CMS
-    and correlated views remain outside this boundary.
+    retain one exact snapshot across attempts. The certified direct-R2 gg control
+    preserves its strategy and dimensional sectors. Projected-colour, CMS and
+    correlated views remain outside this boundary.
     Malformed original inputs and global model formula errors still propagate.
     Numerical external-state failures retain sparse original point identities.
     """
@@ -96,8 +98,15 @@ class NativeModelStabilityProgram:
         self, program, higher_arithmetics, *, relative_tolerance, absolute_tolerance
     ):
         require_partial_domain(program.bare)
-        if program.r2_strategy != "model" or program.color_projection is not None:
-            raise NotImplementedError("verification requires full-colour model R2")
+        if (
+            program.r2_strategy not in {"model", "direct"}
+            or program.color_projection is not None
+        ):
+            raise NotImplementedError(
+                "verification requires a certified full-colour R2 strategy"
+            )
+        self.r2_strategy = program.r2_strategy
+        self.dimensional_numerators = program.bare.dimensional_numerators
         self.program = program
         self.backend = program.bare.backend
         self.requested = ArithmeticSpec(program.bare.arithmetic, program.bare.precision)
@@ -163,6 +172,7 @@ class NativeModelStabilityProgram:
                 backend=original.backend,
                 reduction_engine="generic",
                 coefficient_engine="interpreted",
+                dimensional_numerators=self.dimensional_numerators,
                 cache_coefficient_kernels=original.cache_coefficient_kernels,
                 share_coefficient_schedules=original.share_coefficient_schedules,
                 **spec.options,
@@ -172,7 +182,7 @@ class NativeModelStabilityProgram:
                 self.program.matched_insertions,
                 source_bindings=self.program.source_bindings,
                 external_fields=self.program.external_fields,
-                r2_strategy="model",
+                r2_strategy=self.r2_strategy,
             )
         return self._views[spec]
 
@@ -198,7 +208,8 @@ class NativeModelStabilityProgram:
             )
         require_partial_domain(self.program.bare)
         if (
-            self.program.r2_strategy != "model"
+            self.program.r2_strategy != self.r2_strategy
+            or self.program.bare.dimensional_numerators != self.dimensional_numerators
             or self.program.color_projection is not None
         ):
             raise ValueError("verification plan strategy or colour scope changed")
@@ -243,6 +254,8 @@ class NativeModelStabilityProgram:
                 point_ids=selected,
                 model_snapshot=snapshot,
             )
+            if result.r2_strategy != self.r2_strategy:
+                raise ValueError("native attempt changed the captured R2 strategy")
             for point in selected:
                 attempts[point].append(spec)
             for point, statuses in zip(
@@ -377,6 +390,7 @@ class NativeModelStabilityProgram:
             packet.take_columns(range(born_count + 6 * width, packet.columns)),
             self.program.bare.order_layout,
             self.program.bare.order_channels,
+            self.r2_strategy,
             diagnostics,
         )
         if not allow_partial and len(result.point_ids) != len(ids):

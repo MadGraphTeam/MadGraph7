@@ -58,6 +58,7 @@ class NativeModelVirtualEvaluation:
     uv_external_fields: Any
     totals: Any
     statuses: Any
+    r2_strategy: str
     requested_point_ids: tuple[int, ...] = ()
     failures: tuple[Any, ...] = ()
 
@@ -746,12 +747,13 @@ class NativeModelVirtualProgram:
 
         require_partial_domain(self.bare)
         if (
-            self.r2_strategy != "model"
+            self.r2_strategy not in {"model", "direct"}
             or self.color_projection is not None
             or (self.bare.model_state is not None and self.external_fields)
         ):
             raise NotImplementedError(
-                "partial completion requires full-colour model R2 without source fields"
+                "partial completion requires a certified full-colour R2 strategy "
+                "without source fields"
             )
         native = self.bare.evaluate_ordered_partial_native(
             momenta,
@@ -839,6 +841,7 @@ class NativeModelVirtualProgram:
             *component_batches,
             totals,
             statuses,
+            self.r2_strategy,
             native.requested_point_ids,
             () if failures is None else tuple(failures.entries),
         )

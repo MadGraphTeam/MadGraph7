@@ -1173,6 +1173,39 @@ class NativeBareProcessProgram:
             size, point_ids = currents.batch.size, currents.batch.point_ids
             return tuple(value.take_rows(indices) for value in point_buffers)
 
+        def reduction_values(reduced, family, stage):
+            sectors = len(self.order_layout.virtual)
+            bad = [
+                (*divmod(row, sectors), family.index, status)
+                for row, status in reduced.statuses
+                if status != "success"
+            ]
+            if failures is None:
+                if bad:
+                    raise ArithmeticError(
+                        f"native {stage} failed (point, order, family, status): {bad}"
+                    )
+                return reduced.values
+            for point, order, index, status in bad:
+                failures.record(
+                    point, stage, status, order_index=order, family_index=index
+                )
+            values = reduced.successful_values()
+            for row in values.nonfinite_rows():
+                point, order = divmod(row, sectors)
+                failures.record(
+                    point,
+                    stage,
+                    "nonfinite successful reduction",
+                    order_index=order,
+                    family_index=family.index,
+                )
+            return values
+
+        def gather_reduced(values, row_ids):
+            positions = {row: index for index, row in enumerate(values.row_ids)}
+            return values.take_rows([positions[row] for row in row_ids])
+
         if failures is not None:
             guard(currents.born, "Born current", rows_per_point=helicities)
             for index, current in enumerate(currents.loops):
@@ -1220,48 +1253,39 @@ class NativeBareProcessProgram:
             reduced = family.reducer.evaluate_batch(
                 shifts, masses, channel_scales, coefficients, s_matrix=matrix
             )
-            bad = [
-                (*divmod(row, len(self.order_layout.virtual)), family.index, status)
-                for row, status in reduced.statuses
-                if status != "success"
-            ]
-            if bad and failures is None:
-                raise ArithmeticError(
-                    "native process reduction failed (point, order, family, status): "
-                    f"{bad}"
-                )
+            values = reduction_values(reduced, family, "loop reduction")
+            rational_values = None
+            if self.dimensional_numerators:
+                if family.rational_reducer is None:
+                    rational_values = self.zero_poles.evaluate_batch(
+                        channel_scales.take_columns([])
+                    )
+                else:
+                    remainder = family.rational_reducer.evaluate_batch(
+                        shifts, masses, channel_scales, coefficients, s_matrix=matrix
+                    )
+                    rational_values = reduction_values(
+                        remainder, family, "dimensional remainder reduction"
+                    )
+            # N4 and Delta use the same family lanes. Observe both statuses
+            # before evicting whole points, including prior integrated families.
             if failures is not None:
-                for point, order, index, status in bad:
-                    failures.record(
-                        point,
-                        "loop reduction",
-                        status,
-                        order_index=order,
-                        family_index=index,
-                    )
-                values = reduced.successful_values()
-                for row in values.nonfinite_rows():
-                    point, order = divmod(row, len(self.order_layout.virtual))
-                    failures.record(
-                        point,
-                        "loop reduction",
-                        "nonfinite successful reduction",
-                        order_index=order,
-                        family_index=family.index,
-                    )
                 compact()
-                positions = {row: i for i, row in enumerate(values.row_ids)}
-                values = values.take_rows(
-                    [
-                        positions[point * len(self.order_layout.virtual) + sector]
-                        for point in point_ids
-                        for sector in family.sector_indices
-                    ]
-                )
-            else:
-                values = reduced.values
+                selected_rows = [
+                    point * len(self.order_layout.virtual) + sector
+                    for point in point_ids
+                    for sector in family.sector_indices
+                ]
+                values = gather_reduced(values, selected_rows)
+                if rational_values is not None:
+                    rational_values = gather_reduced(rational_values, selected_rows)
             integrated.append(values.reshape_rows(size, channel_count * 3, point_ids))
+            if rational_values is not None:
+                rational_integrated.append(
+                    rational_values.reshape_rows(size, channel_count * 3, point_ids)
+                )
             status_by_row = dict(reduced.statuses)
+            # Surviving channel success includes its Delta reduction above.
             status_maps.extend(
                 {
                     point: (
@@ -1272,30 +1296,6 @@ class NativeBareProcessProgram:
                 }
                 for sector in family.sector_indices
             )
-            if self.dimensional_numerators:
-                if family.rational_reducer is None:
-                    rational_integrated.append(
-                        self.zero_poles.evaluate_batch(
-                            currents.batch.scales_squared.take_columns([])
-                        )
-                    )
-                else:
-                    rational = family.rational_reducer.evaluate_batch(
-                        shifts, masses, channel_scales, coefficients, s_matrix=matrix
-                    )
-                    bad = [
-                        (point, family.index, status)
-                        for point, status in rational.statuses
-                        if status != "success"
-                    ]
-                    if bad:
-                        raise ArithmeticError(
-                            "native dimensional remainder reduction failed "
-                            f"(point, family, status): {bad}"
-                        )
-                    rational_integrated.append(
-                        rational.values.reshape_rows(size, channel_count * 3, point_ids)
-                    )
         virtual = self.postprocess.evaluate_batch(batch_type.concat_columns(integrated))
         guard(virtual, "bare virtual assembly")
         rational = None
@@ -1304,7 +1304,10 @@ class NativeBareProcessProgram:
                 batch_type.concat_columns(rational_integrated)
             )
             guard(rational, "direct rational assembly")
-        (virtual,) = compact(virtual)
+        if rational is None:
+            (virtual,) = compact(virtual)
+        else:
+            virtual, rational = compact(virtual, rational)
         return NativeBareEvaluation(
             currents.batch,
             currents.born,

@@ -320,3 +320,26 @@ def test_partial_preparation_isolates_finite_original_state_overflow(
         assert failures.entries == [] and currents.batch.point_ids == [7, 91]
         assert currents.born.nonfinite_rows() == []
         assert all(value.nonfinite_rows() == [] for value in currents.loops)
+
+
+def test_native_result_preserves_strategy_and_rejects_attempt_relabeling(source):
+    from dataclasses import replace
+
+    model = drell_yan_model_virtual_program(source)
+    program = NativeModelStabilityProgram(
+        model, [], relative_tolerance="1e-10", absolute_tolerance="1e-20"
+    )
+    data = points("drell_yan_qcd.json")[:1]
+    arguments = dict(model_values=["0.118", "132.507"])
+    evaluate = model.evaluate_ordered_partial_native
+    native = evaluate(data, ["1000000"], **arguments)
+    assert native.r2_strategy == "model"
+    result = program.evaluate_native(data, ["1000000"], **arguments)
+    assert result.r2_strategy == "model"
+
+    def wrong_strategy(*args, **kwargs):
+        return replace(evaluate(*args, **kwargs), r2_strategy="direct")
+
+    model.evaluate_ordered_partial_native = wrong_strategy
+    with pytest.raises(ValueError, match="changed the captured R2 strategy"):
+        program.evaluate_native(data, ["1000000"], **arguments)

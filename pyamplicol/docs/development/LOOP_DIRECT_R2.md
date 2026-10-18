@@ -334,6 +334,18 @@ uses P=4. This does not infer a continuation of the excluded model R2 quartic
 rules. Other mixed-grade multi-term CTs require a separate incidence proof.
 
 These controls do not enable public direct eligibility, general chiral or
-massive-gauge continuation, or a performance selection policy. Reduction
-failures in either channel still raise for the diagnostic batch; per-channel
-lane status and rescue integration remain open.
+massive-gauge continuation, or a performance selection policy. Ordinary
+diagnostic evaluation still raises for a reduction failure in either channel;
+the optional bounded partial/rescue view is described below.
+
+
+The internal full-colour QCD four-gluon model wrapper supports optional sparse
+verification/rescue with direct R2 fixed across every attempt. N4 and Delta
+reduction failures are collected before a common whole-point gather, preserving
+original IDs and previously integrated families. Both final sums are gathered
+together. Retried coefficient DAGs preserve physical/evanescent sectors and
+explicit epsilon powers; model R2 is never substituted during a direct retry.
+The native result records its executed strategy. Cross-precision agreement is
+empirical evidence under the configured bounds, including requested-carrier
+rounding, not independent certification of the reducer. This scope does not
+include source-owned direct kernels, CMS, formal colour or correlated views.
