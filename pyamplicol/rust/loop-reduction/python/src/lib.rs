@@ -10,6 +10,7 @@ mod exact;
 mod fast;
 mod predicates;
 mod states;
+mod stability;
 use batch::{BatchCarrier, Data, NativeBatch};
 use fast::FastReductions;
 

@@ -8,7 +8,7 @@ use symbolica::{
     evaluate::Instruction,
 };
 
-fn decimal_rational(value: &str) -> PyResult<Rational> {
+pub(super) fn decimal_rational(value: &str) -> PyResult<Rational> {
     // Lexical decimal conversion only. Integer powers, products and rational
     // normalization all use Numerica, without a floating intermediate.
     let (negative, value) = if let Some(value) = value.strip_prefix('-') {

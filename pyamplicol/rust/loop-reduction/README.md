@@ -228,3 +228,32 @@ dependency, so its normal builds do not require the `upstream` symlink.
   scheme alignment are separate requirements.
 - Dependency licensing and packaging, including oneloopmaster's unpublished
   development status, must be resolved before distributing this stack.
+
+## Native verification transport
+
+`NativeBatch.convert_arithmetic(arithmetic, precision=...)` converts existing
+values directly through Symbolica's numerical carriers and preserves lane IDs.
+It does not recover lost input information: a higher-precision rescue must rerun
+the original exact inputs. Promotion alone is never accuracy evidence. A value
+outside the requested carrier's range becomes nonfinite and must be rejected by
+the caller's ordinary finite-lane guard.
+
+`agreement_rows(other, relative_tolerance, absolute_tolerance)` compares every
+real and imaginary component with
+`|a-b| <= absolute_tolerance + relative_tolerance*max(|a|,|b|)`. The comparison
+uses the dependency's exact rational images of the represented numbers and
+decimal tolerances. This preserves sparse DoubleFloat low words and avoids
+binary64 complex-norm overflow or underflow. Nonfinite values always
+disagree. The method requires identical row IDs and column counts and returns
+only per-lane Boolean evidence; it does not claim independent reducer accuracy.
+
+`NativeBatch.merge_rows(original_ids, batches)` combines disjoint successful
+groups in the original ID order, retaining only present rows. Missing lanes
+remain absent, with no zero or stale-value placeholder. Groups must already use
+the same requested output carrier and column layout. A higher-precision result
+must be compared again after its final output conversion if the configured
+accuracy bound is to apply to the returned numbers.
+
+These primitives do not enable an automatic verification or rescue policy, nor
+add a second precision pass to ordinary evaluations. Process-level policy and
+structured partial numerical failures are separate integration work.
