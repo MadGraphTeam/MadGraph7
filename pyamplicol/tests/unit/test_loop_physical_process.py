@@ -136,6 +136,27 @@ def test_bare_process_agrees_with_independent_madloop_components(
         )
 
 
+@pytest.mark.parametrize(
+    "attribute,stage",
+    [("born_projector", "Born projection"), ("postprocess", "bare virtual assembly")],
+)
+def test_nonfinite_final_physical_projection_is_not_a_success(
+    native, points, attribute, stage
+):
+    from types import SimpleNamespace
+
+    program = distinct_flavour_qcd_program(backend=native, reduction_engine="fast")
+
+    def failed_projection(values):
+        return native.NativeBatch.from_decimal(
+            [["NaN", "0"]] * values.rows, values.rows, 1, row_ids=values.row_ids
+        )
+
+    setattr(program, attribute, SimpleNamespace(evaluate_batch=failed_projection))
+    with pytest.raises(ArithmeticError, match=f"nonfinite {stage}"):
+        program.evaluate_decimal(points[:1], ["1000000"], model_values=["0.118", "173"])
+
+
 def test_native_jit_coefficients_match_multi_family_interpreter(native, points):
     results = []
     for engine in ("interpreted", "jit"):

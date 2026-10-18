@@ -17,7 +17,7 @@ import numpy as np
 
 from .exact import require_exact_numbers
 from .graphs import build_loop_process
-from .kernels import NativeCoefficientDAG
+from .kernels import NativeCoefficientDAG, require_finite_batch
 from .kinematics import build_loop_kinematics
 from .physical import _born_dag, _denominator, _saved
 from .recurrence import build_open_loop_recurrence, momentum_component_library
@@ -458,6 +458,7 @@ class NativeBareProcessProgram:
         born_squared = self.born_projector.evaluate_batch(
             born.reshape_rows(size, helicities * born.columns, point_ids)
         )
+        require_finite_batch(born_squared, "Born projection")
         scales = native(scales, size, 1)
         model_positions = {name: i for i, name in enumerate(self.model_names)}
         integrated, statuses = [], []
@@ -497,6 +498,7 @@ class NativeBareProcessProgram:
             integrated.append(reduced.values)
             statuses.append(tuple(reduced.statuses))
         virtual = self.postprocess.evaluate_batch(batch_type.concat_columns(integrated))
+        require_finite_batch(virtual, "bare virtual assembly")
         return NativeBareEvaluation(
             NativePhysicalBatch(
                 size,

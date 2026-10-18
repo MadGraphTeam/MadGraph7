@@ -194,6 +194,18 @@ class CoefficientDAG:
         return tuple(outputs)
 
 
+def require_finite_batch(values: Any, stage: str, *, rows_per_point: int = 1) -> None:
+    """Fail this diagnostic batch before exposing nonfinite native results.
+
+    Only failing row identities cross Python. This is not a rescue policy.
+    Helicity-packed callers declare their grouping to retain original point IDs.
+    """
+    failures = values.nonfinite_rows()
+    if failures:
+        locations = [(row // rows_per_point, row) for row in failures]
+        raise ArithmeticError(f"nonfinite {stage} (point, lane): {locations}")
+
+
 class NativeCoefficientDAG:
     """One native schedule over saved local instructions at a fixed precision.
 

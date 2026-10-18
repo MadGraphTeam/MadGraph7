@@ -15,7 +15,7 @@ from typing import Any
 import numpy as np
 
 from .exact import require_exact_numbers
-from .kernels import NativeCoefficientDAG
+from .kernels import NativeCoefficientDAG, require_finite_batch
 from .physical import _born_dag, _saved
 from .physical_process import _color_bilinear, _external_color
 
@@ -179,7 +179,9 @@ class NativeModelVirtualProgram:
         for current in self.currents:
             coefficients = current.coefficient_evaluator.evaluate_batch(
                 coefficient_inputs
-            ).take_rows(
+            )
+            require_finite_batch(coefficients, "counterterm scalar coefficients")
+            coefficients = coefficients.take_rows(
                 np.repeat(np.arange(batch.size), len(self.bare.helicities)).tolist(),
                 row_ids=batch.lane_ids,
             )
@@ -191,13 +193,17 @@ class NativeModelVirtualProgram:
                     for i, name in enumerate(current.coefficient_names)
                 }
             )
-            amplitudes.append(
-                current.executor.evaluate_batch(
-                    combined.take_columns(
-                        [positions[p.get_name()] for p in current.dag.parameters]
-                    )
+            amplitude = current.executor.evaluate_batch(
+                combined.take_columns(
+                    [positions[p.get_name()] for p in current.dag.parameters]
                 )
             )
+            require_finite_batch(
+                amplitude,
+                "counterterm current",
+                rows_per_point=len(self.bare.helicities),
+            )
+            amplitudes.append(amplitude)
         inputs = backend.NativeBatch.concat_columns(
             [native.born_amplitudes, *amplitudes]
         )
@@ -206,9 +212,11 @@ class NativeModelVirtualProgram:
                 batch.size, len(self.bare.helicities) * inputs.columns, batch.point_ids
             )
         )
+        require_finite_batch(counterterms, "counterterm projection")
         assembled = self.assemble.evaluate_batch(
             backend.NativeBatch.concat_columns([native.virtual, counterterms])
         )
+        require_finite_batch(assembled, "complete virtual assembly")
         born = np.asarray(native.born.to_decimal(), dtype=object).reshape(batch.size, 2)
         bare = np.asarray(native.virtual.to_decimal(), dtype=object).reshape(
             batch.size, 3, 2

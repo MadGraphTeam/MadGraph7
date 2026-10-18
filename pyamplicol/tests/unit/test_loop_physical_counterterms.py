@@ -171,6 +171,30 @@ def test_local_uv_scale_is_per_point_and_laurent_domain_is_explicit(source, poin
         )
 
 
+def test_singular_counterterm_reports_original_point_before_result(source, points):
+    from symbolica import E, S
+
+    base = drell_yan_model_virtual_program(source)
+    original = base.insertions[0].rule.couplings[0][1].coupling.value.expression
+    scale = S("ct_finiteness_test::scale")
+    insertion = _replace_ct_scalar(base, original / (scale - E("4000000")))
+    program = NativeModelVirtualProgram(
+        base.bare,
+        [insertion],
+        source_bindings=(
+            *base.source_bindings,
+            (scale, base.bare.scale_squared_symbol),
+        ),
+    )
+    with pytest.raises(
+        ArithmeticError,
+        match=r"nonfinite counterterm scalar coefficients.*\[\(1, 1\)\]",
+    ):
+        program.evaluate_decimal(
+            points[:2], ["1000000", "4000000"], model_values=["0.118", "132.507"]
+        )
+
+
 @pytest.mark.parametrize(
     "arithmetic,precision,tolerance",
     [
