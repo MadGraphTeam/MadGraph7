@@ -123,6 +123,17 @@ all lanes succeed, while `.successful_values()` retains only successful IDs.
 `CoefficientEvaluator.evaluate_batch` and `massless_spinors_batch` share these
 buffers, allowing couplings, wavefunctions and final contractions to stay native.
 
+`ExactPolynomialEvaluator` reuses the shared saved-evaluator decoder but accepts
+only straight-line rational polynomial instructions. Decimal inputs are parsed
+exactly into Numerica integers/rationals, evaluated in Symbolica's existing
+rational-ring evaluator, then converted once to the requested carrier. This
+preserves both prescribed zeros and small nonzero invariants that would disappear
+if momenta were rounded first. Exact preprocessing runs one native row block
+using the dependency's scalar ring evaluator; it is not instruction-vectorized.
+The caller remains responsible for exact source expressions and symbolic physical
+assumptions before saving the evaluator. Mathematical constants, transcendental
+functions, negative/noninteger powers, calls and control flow are rejected.
+
 This is a native batch conformance boundary, not a public virtual-amplitude
 API or a completed fast evaluation pipeline. Production graph/model scheduling,
 physical normalization and precision rescue remain integration work. Both engines

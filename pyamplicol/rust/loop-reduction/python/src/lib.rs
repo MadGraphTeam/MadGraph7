@@ -6,6 +6,7 @@
 use std::fmt::LowerExp;
 
 mod batch;
+mod exact;
 mod fast;
 use batch::{BatchCarrier, Data, NativeBatch};
 use fast::FastReductions;
@@ -645,6 +646,7 @@ fn massless_spinors_decimal(
 #[pymodule]
 fn _loop_reduction(module: &Bound<'_, PyModule>) -> PyResult<()> {
     batch::register(module)?;
+    exact::register(module)?;
     module.add_class::<CoefficientEvaluator>()?;
     module.add_class::<PolynomialPlan>()?;
     module.add_function(wrap_pyfunction!(massless_spinors_decimal, module)?)?;
