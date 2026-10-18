@@ -9,7 +9,7 @@ from typing import Any
 from .graphs import build_loop_process
 from .physical_process import NativeBareProcessProgram
 from .scalar_bindings import NativeScalarBindings, NativeScaleBindings
-from .vertex_frames import certified_ffv_source
+from .vertex_frames import certified_source_dirac_frame
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,7 +19,7 @@ class NativeSourceBareProgram:
     Parameters remain global. Updating the state recomputes selected values and
     active diagnostics atomically. Numerical event evaluation then consumes its
     immutable native snapshot directly. The local Dirac source frame is mapped
-    to the certified physical FFV frame. This internal interface does not
+    to the certified physical FFV/FFS frame. This internal interface does not
     certify UV/R2 completion, a general model or a complex-mass scheme.
     """
 
@@ -113,7 +113,7 @@ def source_bare_program(
                 continue
             lorentz = model.lorentz_structure(name)
             expression = lorentz.structure
-            if 2 in lorentz.spins and not certified_ffv_source(lorentz):
+            if 2 in lorentz.spins and not certified_source_dirac_frame(lorentz):
                 raise NotImplementedError(
                     f"source fermion tensor {name} lacks physical frame conformance"
                 )

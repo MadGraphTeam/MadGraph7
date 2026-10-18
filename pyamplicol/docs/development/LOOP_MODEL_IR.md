@@ -1007,12 +1007,39 @@ source vertex with a calibrated builtin representative.
 `physical_source.source_model_program` now assembles source UV and model R2 over
 the same augmented native model as its Born and bare-loop catalogues. The
 prepared model records the original `ufo` vertex frame. Every matched fermion
-CT must have a tested FFV expression as well as exact local source evidence;
+CT must have a tested FFV/FFS expression as well as exact local source evidence;
 epsilon structures still reject. CT recurrences apply the same typed endpoint
 adapter as ordinary vertices. The neutral-lepton conformance helper admits only
 the proven ordered lepton/antilepton A/Z FFV and neutral A/Z two-point source
 expressions. Other source rules remain present and unvalidated, so a process
 that needs one fails the existing tensor-basis guard.
+
+The separate `massive_neutral_lepton_counterterm_validations` catalogue adds
+the tested ordered electron/muon H/G0 scalar-Dirac bases and neutral G0-A/Z
+mixing entries, retaining every source key and all other unvalidated entries.
+The real-mass massive-muon control sets `MM=ymm=0.105658`, retains the same full
+Gmu electroweak species, and uses three exactly on-shell terminating-decimal
+points. It has two Born graphs, 145 loop graphs and 64 matched local CT
+insertions, with no source particle-field insertions. Independent MadLoop
+checks retain N4, UV, R2 and total separately, and isolate the 47 loop records
+containing scalar-Dirac vertices. The isolated interference is roughly
+`1e-10`--`1e-9`, so a full-amplitude comparison alone is insufficient to test it.
+Double, DoubleFloat and arbitrary-precision execution agree with the independent
+binary64 components; the finite reference does not certify 80-digit physics.
+The saved DoubleFloat/AP80 outputs agree to at least 31.0 decimal digits for
+Born, 28.1 for N4, 30.8 for UV/R2 and 27.9 for the complete real Laurent
+components. Scaling the complete difference by `|N4|+|UV|+|R2|` gives 28.1
+digits; the much smaller isolated FFS terms agree to 26.3 digits. Structural
+zero coefficients remain exact. Tiny imaginary accumulation residuals are
+reported separately (at most `1.51e-36` in DoubleFloat and `8.24e-84` in AP80),
+so they do not become misleading relative-error estimates near zero.
+The massive control's double pole receives contributions only from the two
+massless electron legs. Its exact pole identity and global Gf rebinding probe
+the selected carrier without a fitted finite-part formula. Source dimensional
+numerators, arbitrary charged/scalar external processes and CMS completeness
+remain outside this admission. The separate selective-rescue source boundary
+still requires structurally massless charged leptons; this massive control does
+not relax that gate.
 
 The source factory requires the full selected CT collection and all its species;
 the preparation step records this from its existing source keys. This prevents

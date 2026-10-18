@@ -67,3 +67,46 @@ def test_neutral_scalar_vector_evidence_retains_exact_keys_and_port_scope():
             neutral_scalar_vector_counterterm_validations(source(records, **overrides))
             == ()
         )
+
+
+def test_massive_neutral_ffs_evidence_keeps_exact_source_keys_and_ports():
+    pytest.importorskip("symbolica")
+    from pyamplicol.loops.model_electroweak import (
+        massive_neutral_lepton_counterterm_validations,
+    )
+
+    def candidate(*, pdgs=(-13, 13, 250), spins=(2, 2, 1), colors=(1, 1, 1)):
+        model = source((), pdgs=pdgs, spins=spins, colors=colors)
+        model.kernels = tuple(
+            SimpleNamespace(
+                key=("counterterm_vertices", index, 0, 0, 0),
+                kind="R2",
+                particle_ids=(0, 1, 2),
+                color="1",
+                lorentz=lorentz,
+            )
+            for index, lorentz in enumerate(
+                (
+                    "ProjM(2,1)-ProjP(2,1)",
+                    "ProjM(2,1)+ProjP(2,1)",
+                    "Gamma5(2,1)",  # unadmitted source spelling/basis
+                )
+            )
+        )
+        return model
+
+    for pdgs in ((-13, 13, 250), (-13, 13, 25), (-11, 11, 25)):
+        model = candidate(pdgs=pdgs)
+        result = massive_neutral_lepton_counterterm_validations(model)
+        assert tuple(row.source_key for row in result) == tuple(
+            row.key for row in model.kernels[:2]
+        )
+    for overrides in (
+        {"pdgs": (13, -13, 250)},
+        {"pdgs": (-14, 13, 251)},
+        {"spins": (2, 2, 3)},
+        {"colors": (3, 3, 1)},
+    ):
+        assert (
+            massive_neutral_lepton_counterterm_validations(candidate(**overrides)) == ()
+        )

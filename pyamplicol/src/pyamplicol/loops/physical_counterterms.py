@@ -241,7 +241,7 @@ class NativeModelVirtualProgram:
 
             from .model_expressions import parse_exact_ufo
             from .scalar_bindings import NativeScaleBindings, prepare_scalar_bindings
-            from .vertex_frames import certified_ffv_source
+            from .vertex_frames import certified_source_dirac_frame
 
             raw = source_state.plan.program.library.raw
             for item in self.insertions:
@@ -255,7 +255,7 @@ class NativeModelVirtualProgram:
                         raise NotImplementedError(
                             "source CT epsilon tensors are not certified"
                         )
-                    if 2 in spins and not certified_ffv_source(
+                    if 2 in spins and not certified_source_dirac_frame(
                         SimpleNamespace(spins=spins, structure=expression)
                     ):
                         raise NotImplementedError(
