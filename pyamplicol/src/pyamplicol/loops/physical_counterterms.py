@@ -578,6 +578,17 @@ def gluon_scattering_model_virtual_program(
     return _qcd_model_virtual_program(source, ("g", "g"), gluon_only=True, **options)
 
 
+def quark_gluon_model_virtual_program(
+    source, *, color_accuracy="full", formal_color=False, **options
+):
+    """Fixed-SU(3) u ubar -> gg with the explicitly controlled quark slash."""
+    if formal_color or color_accuracy != "full":
+        raise NotImplementedError(
+            "multi-term virtual color projection is not supported"
+        )
+    return _qcd_model_virtual_program(source, ("g", "g"), **options)
+
+
 def _qcd_model_virtual_program(
     source,
     outgoing,
@@ -601,6 +612,16 @@ def _qcd_model_virtual_program(
 
     model = h.Model.qcd_qed()
     incoming = ("g", "g") if gluon_only else ("u", "u~")
+    gluon_final = tuple(outgoing) == ("g", "g")
+    if gluon_only:
+        state_kinds, average = (
+            ("epsilon", "epsilon", "epsilon_bar", "epsilon_bar"),
+            "512",
+        )
+    elif gluon_final:
+        state_kinds, average = ("u", "v_bar", "epsilon_bar", "epsilon_bar"), "72"
+    else:
+        state_kinds, average = ("u", "v_bar", "u_bar", "v"), "36"
     if gluon_only:
         from .model_gluons import prepare_gluon_counterterm_basis
 
@@ -611,6 +632,18 @@ def _qcd_model_virtual_program(
             entries=basis.entries,
             ordinary_basis_representatives=basis.ordinary_representatives,
             primitive_validations=basis.primitive_validations,
+        )
+    elif gluon_final:
+        from .model_qcd import prepare_qcd_counterterm_basis
+
+        basis = prepare_qcd_counterterm_basis(source, model, quark_pdgs=(2,))
+        prepared = prepare_counterterm_model(
+            source,
+            model,
+            entries=basis.entries,
+            ordinary_basis_representatives=basis.ordinary_representatives,
+            primitive_validations=basis.primitive_validations,
+            tensor_representatives=basis.tensor_representatives,
         )
     else:
         representatives, validations = [], []
@@ -689,10 +722,8 @@ def _qcd_model_virtual_program(
         )
     bare = NativeBareProcessProgram(
         process,
-        state_kinds=("epsilon", "epsilon", "epsilon_bar", "epsilon_bar")
-        if gluon_only
-        else ("u", "v_bar", "u_bar", "v"),
-        initial_average=E("512" if gluon_only else "36"),
+        state_kinds=state_kinds,
+        initial_average=E(average),
         model_expressions=expressions,
         model_inputs=(alpha_s, top_mass),
         **options,

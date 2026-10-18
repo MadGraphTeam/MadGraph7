@@ -414,3 +414,20 @@ external ghost tensor. The independent field stream contains 18 source records
 charm/bottom only six top-group records remain active. MadLoop's different
 69 local HELAS amplitudes count includes separate tensor/Laurent structures;
 it is not a counterterm graph count.
+
+The internal `quark_gluon_model_virtual_program` uses the same native process
+and CT assembly with mixed Dirac/vector states and the explicit normalization
+1/72. Its isolated `V_R2UU` subset agrees with independently filtered MadLoop
+at all three points, including the nonzero finite contribution and zero poles.
+The physical assembler applies no additional transpose, insertion phase or
+normalization adjustment to the contraction-derived representative.
+
+Complete component tests cover bare, local UV, external-field UV, total UV,
+R2 and the full virtual result in double, DoubleFloat and arbitrary precision.
+Independent analytic Born, double-pole and heavy-quark UV/field formulas check
+global coupling/mass rebinding and separate point scales beyond binary64 input
+precision. The local and field UV finite terms cancel in this process; testing
+them separately prevents that cancellation from hiding a scale-binding error.
+Reference finite-amplitude agreement remains a binary64 check. This control
+still selects one Born coupling order and one virtual squared-order sector;
+projected multiple-colour-term CT assembly is unsupported.

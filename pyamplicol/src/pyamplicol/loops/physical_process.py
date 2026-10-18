@@ -668,6 +668,17 @@ def gluon_scattering_qcd_program(**options):
     )
 
 
+def quark_gluon_qcd_program(**options):
+    """Native u ubar -> gg control, with the final identical-state factor 1/2."""
+    return _qcd_process_program(
+        ("u", "u~"),
+        ("g", "g"),
+        ("u", "v_bar", "epsilon_bar", "epsilon_bar"),
+        72,
+        **options,
+    )
+
+
 def _qcd_process_program(incoming, outgoing, state_kinds, average, **options):
     from symbolica import E, S
     from symbolica.community import hepkit as h
