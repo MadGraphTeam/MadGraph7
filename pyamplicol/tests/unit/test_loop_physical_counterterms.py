@@ -440,7 +440,24 @@ def test_model_r2_completes_native_bare_in_all_precisions(
     assert len(program.insertions) == len(program.currents) == 1
     assert program.currents[0].insertion.rule.kind == "R2"
     scales = ["1000000", "2000000", "700000"]
-    result = program.evaluate_decimal(points, scales, model_values=["0.118", "132.507"])
+    native = program.evaluate_ordered_native(
+        points, scales, model_values=["0.118", "132.507"]
+    )
+    assert native.batch.point_ids == native.born.row_ids == [0, 1, 2]
+    assert len(native.component_batches) == 6
+    assert all(value.columns == 3 for value in native.component_batches)
+    assert native.totals.columns == 19
+    from types import SimpleNamespace
+
+    result = SimpleNamespace(
+        statuses=native.statuses,
+        **{
+            name: np.asarray(getattr(native, name).to_decimal(), dtype=object).reshape(
+                (len(points), 2) if name == "born" else (len(points), 3, 2)
+            )
+            for name in ("born", "virtual", "bare", "uv", "r2")
+        }
+    )
     _compare(result, points, scales, "0.118", "132.507", tolerance)
     # Source couplings share the same precise global model input binding as Born.
     alpha_s = "0.100000000000000000000000000123456789"

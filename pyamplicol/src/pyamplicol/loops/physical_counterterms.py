@@ -44,6 +44,33 @@ class ModelVirtualResult:
     convention: str = "MadLoop-Cepsilon-virtual-assembled"
 
 
+@dataclass(frozen=True, slots=True)
+class NativeModelVirtualEvaluation:
+    """Complete ordered components retained in their original native carrier."""
+
+    batch: Any
+    born: Any
+    virtual: Any
+    bare: Any
+    uv: Any
+    r2: Any
+    uv_local: Any
+    uv_external_fields: Any
+    totals: Any
+    statuses: Any
+
+    @property
+    def component_batches(self):
+        return (
+            self.virtual,
+            self.bare,
+            self.uv,
+            self.r2,
+            self.uv_local,
+            self.uv_external_fields,
+        )
+
+
 @dataclass(slots=True)
 class _CountertermCurrent:
     insertion: Any
@@ -693,7 +720,8 @@ class NativeModelVirtualProgram:
             )
         return tuple(amplitudes)
 
-    def evaluate_ordered_decimal(self, momenta, scales_squared, *, model_values=None):
+    def evaluate_ordered_native(self, momenta, scales_squared, *, model_values=None):
+        """Evaluate every component without transporting numerical values to Python."""
         native = self.bare.evaluate_ordered_native(
             momenta, scales_squared, model_values=model_values
         )
@@ -736,16 +764,26 @@ class NativeModelVirtualProgram:
             backend.NativeBatch.concat_columns([native.born, *component_batches])
         )
         require_finite_batch(totals, "sum over completed perturbative orders")
+        return NativeModelVirtualEvaluation(
+            batch, native.born, *component_batches, totals, native.statuses
+        )
+
+    def evaluate_ordered_decimal(self, momenta, scales_squared, *, model_values=None):
+        native = self.evaluate_ordered_native(
+            momenta, scales_squared, model_values=model_values
+        )
+        batch = native.batch
+        sectors = len(self.bare.order_layout.virtual)
 
         def values(buffer, *shape):
             return np.asarray(buffer.to_decimal(), dtype=object).reshape(
                 batch.size, *shape, 2
             )
 
-        summed = values(totals, 19)
+        summed = values(native.totals, 19)
         return OrderedModelVirtualResult(
             values(native.born, len(self.bare.order_layout.born)),
-            *[values(buffer, sectors, 3) for buffer in component_batches],
+            *[values(buffer, sectors, 3) for buffer in native.component_batches],
             self.bare.order_layout,
             self.bare.order_channels,
             native.statuses,
