@@ -59,6 +59,7 @@ class _CountertermCurrent:
     color_grade: int | None = None
     coefficient_diagnostics: tuple[Any, ...] = ()
     scalar_program: Any = None
+    color_tensors: tuple[Any, ...] = ()
 
 
 @dataclass(slots=True)
@@ -220,6 +221,10 @@ class NativeModelVirtualProgram:
                 for term in recurrence.terms
             ):
                 raise ValueError("CT color term must have one scalar coefficient")
+            color_tensors = tuple(
+                external_color_tensor(insertion.graph, term.color)
+                for term in recurrence.terms
+            )
             if space is None:
                 colors = tuple(
                     _external_color(insertion.graph, term.color)
@@ -235,10 +240,7 @@ class NativeModelVirtualProgram:
             else:
                 weights = space.rectangular(
                     bare.born_color_tensors,
-                    tuple(
-                        external_color_tensor(insertion.graph, term.color)
-                        for term in recurrence.terms
-                    ),
+                    color_tensors,
                 )
             executor = NativeCoefficientDAG(
                 dag,
@@ -307,6 +309,7 @@ class NativeModelVirtualProgram:
                             degree,
                             diagnostics,
                             insertion.rule.scalar_program,
+                            color_tensors,
                         )
                     )
         self.external_fields = tuple(external_fields)
@@ -521,11 +524,14 @@ class NativeModelVirtualProgram:
         bare._model_color_metrics_bound = True
         bare._formal_color_projected = space is not None
 
-    def evaluate_ordered_decimal(self, momenta, scales_squared, *, model_values):
-        native = self.bare.evaluate_ordered_native(
-            momenta, scales_squared, model_values=model_values
-        )
-        batch, backend = native.batch, self.bare.backend
+    def evaluate_counterterm_currents_native(self, batch):
+        """Checked CT amplitudes followed by field factors on a shared batch.
+
+        The caller supplies the already prepared ordinary physical states.
+        Colour contraction and interference are separate, so directed kernels
+        can reuse each current without repeating numerical preparation.
+        """
+        backend = self.bare.backend
         coefficient_inputs = backend.NativeBatch.concat_columns(
             [
                 batch.model_arguments.take_rows(
@@ -574,6 +580,14 @@ class NativeModelVirtualProgram:
                     row_ids=batch.lane_ids,
                 )
             )
+        return tuple(amplitudes)
+
+    def evaluate_ordered_decimal(self, momenta, scales_squared, *, model_values):
+        native = self.bare.evaluate_ordered_native(
+            momenta, scales_squared, model_values=model_values
+        )
+        batch, backend = native.batch, self.bare.backend
+        amplitudes = self.evaluate_counterterm_currents_native(batch)
         inputs = backend.NativeBatch.concat_columns(
             [native.born_amplitudes, *amplitudes]
         )

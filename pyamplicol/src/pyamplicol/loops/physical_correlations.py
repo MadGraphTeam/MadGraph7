@@ -70,6 +70,23 @@ def directed_color_legs(bare):
     return _physical_color_ports(bare)[0]
 
 
+def _rename_physical_color_tensors(tensors):
+    """Use the same zero-based physical ports on extra CT colour tensors."""
+    result = []
+    for expression in tensors:
+        mapping = {}
+        for axis in expression.axes:
+            match = re.fullmatch(
+                r"physical_color_leg_(\d+)",
+                axis.index.get_name().rsplit("::", 1)[-1],
+            )
+            if match is None:
+                raise ValueError("unknown native physical colour port")
+            mapping[axis.index] = int(match[1])
+        result.append(expression.rename_indices(mapping))
+    return tuple(result)
+
+
 @dataclass(frozen=True, slots=True)
 class NativeDirectedBareEvaluation:
     batch: Any
@@ -234,11 +251,14 @@ class NativeDirectedBareProgram:
         bare._directed_color_metrics_bound = True
 
     def _check_scope(self):
-        bare = self.bare
-        if getattr(bare, "_model_color_metrics_bound", False):
+        if getattr(self.bare, "_model_color_metrics_bound", False):
             raise ValueError(
                 "directed bare diagnostics cannot use a model-bound program"
             )
+        self._check_metric_scope()
+
+    def _check_metric_scope(self):
+        bare = self.bare
         if bare.dimensional_numerators:
             raise NotImplementedError("directed diagnostics require N4 without R2")
         if getattr(bare, "color_accuracy", "full") != "full" or getattr(
@@ -259,6 +279,12 @@ class NativeDirectedBareProgram:
         currents = bare.prepare_currents_native(
             momenta, scales_squared, model_values=model_values
         )
+        return self.evaluate_currents_native(currents)
+
+    def evaluate_currents_native(self, currents):
+        """Contract already prepared currents without repeating state work."""
+        self._check_scope()
+        bare = self.bare
         batch = bare.backend.NativeBatch
         size, point_ids = currents.batch.size, currents.batch.point_ids
         order_count = len(bare.order_layout.virtual)
