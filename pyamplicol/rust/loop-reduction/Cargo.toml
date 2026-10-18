@@ -15,6 +15,7 @@ members = ["python"]
 exclude = ["upstream"]
 
 [dependencies]
+rusticol-core = { path = "../crates/rusticol-core", features = ["symbolica-runtime", "python-generation-bridge"] }
 ninjars = { path = "upstream/crates/ninjars" }
 ninjars-graph = { path = "upstream/crates/ninjars-graph" }
 ninjars-symbolica = { path = "upstream/crates/ninjars-symbolica", features = ["native-masters"] }

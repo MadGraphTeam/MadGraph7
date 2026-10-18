@@ -7,7 +7,17 @@ use crate::{Complex, NativeFloat};
 use std::fmt::{Display, LowerExp};
 use symbolica::domains::float::{DoubleFloat, Float};
 mod batch;
+mod coefficients;
+mod predicates;
+mod schedule;
 pub use batch::{Batch, BatchCarrier, Data, shape};
+pub use coefficients::{CoefficientEvaluator, exact_state};
+pub use schedule::{CoefficientKernelCache, CoefficientPlan};
+
+/// Install immutable source-scalar callbacks before decoding saved programs.
+pub fn register_scalar_primitives() {
+    predicates::register();
+}
 pub type DecimalComplex = [String; 2];
 pub type ExecutionResult<T> = Result<T, ExecutionError>;
 #[derive(Debug, Clone)]

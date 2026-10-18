@@ -13,8 +13,8 @@ repository.workspace = true
 default = ["f64-compiled", "f64-symjit"]
 f64-compiled = ["dep:libloading", "dep:num-complex", "dep:symjit"]
 f64-symjit = ["dep:num-complex", "dep:symjit"]
-# Unstable cross-crate bridge used only by the private PyO3 extension during
-# artifact generation. It is intentionally absent from the default feature set.
+# Unstable cross-crate bridge for artifact generation and the native loop
+# consumer. It is intentionally absent from the default feature set.
 python-generation-bridge = ["f64-symjit"]
 # Non-default parity seam for the private Python development harness.  This
 # feature is deliberately absent from production/default builds.

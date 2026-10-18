@@ -7,7 +7,6 @@ mod batch;
 mod exact;
 mod fast;
 mod portable;
-mod predicates;
 mod stability;
 mod states;
 use batch::{BatchCarrier, Data, NativeBatch};
@@ -22,7 +21,7 @@ use symbolica::{
     atom::Atom,
     domains::float::{DoubleFloat, Float, Real},
     domains::rational::Rational,
-    evaluate::{BatchExpressionEvaluator, EvaluationDomain, ExpressionEvaluator},
+    evaluate::{EvaluationDomain, ExpressionEvaluator},
 };
 
 use rusticol_loop_reduction::runtime::{
@@ -43,171 +42,47 @@ fn parse_complex<T: Carrier>(value: &DecimalComplex, bits: u32) -> PyResult<Comp
 }
 
 fn exact_state(bytes: &[u8]) -> PyResult<ExpressionEvaluator<Complex<Rational>>> {
-    rusticol_core::__private::decode_exact_evaluator_state(bytes).map_err(error)
+    runtime::exact_state(bytes).map_err(error)
 }
 
-fn batch_evaluator<T: Carrier>(
-    exact: ExpressionEvaluator<Complex<Rational>>,
-    prototype: &T,
-) -> BatchExpressionEvaluator<Complex<T>>
-where
-    Complex<T>: Real + EvaluationDomain,
-{
-    exact
-        .map_coeff_with_prec(
-            &|r| {
-                Complex::new(
-                    prototype.from_rational(&r.re),
-                    prototype.from_rational(&r.im),
-                )
-            },
-            prototype.get_precision(),
-        )
-        .into_batch_evaluator()
-}
-
-enum Coefficients {
-    Double(BatchExpressionEvaluator<Complex<f64>>),
-    DoubleDouble(BatchExpressionEvaluator<Complex<DoubleFloat>>),
-    Arbitrary(BatchExpressionEvaluator<Complex<Float>>),
-}
-
-/// Execute saved scalar coefficient instructions across all lanes natively.
+/// Python ownership of the shared native saved evaluator.
 #[pyclass]
-struct CoefficientEvaluator {
-    evaluator: Coefficients,
-    #[pyo3(get)]
-    precision_bits: u32,
-}
-
-fn evaluate_coefficients<T: Carrier>(
-    evaluator: &mut BatchExpressionEvaluator<Complex<T>>,
-    values: &[DecimalComplex],
-    rows: usize,
-    bits: u32,
-) -> PyResult<Vec<DecimalComplex>>
-where
-    Complex<T>: Real + EvaluationDomain,
-{
-    let parameters: Vec<_> = values
-        .iter()
-        .map(|value| parse_complex::<T>(value, bits))
-        .collect::<PyResult<_>>()?;
-    let zero = parse_complex::<T>(&["0".into(), "0".into()], bits)?;
-    let size = rows
-        .checked_mul(evaluator.get_output_len())
-        .ok_or_else(|| error("coefficient output dimensions overflow"))?;
-    let mut output = vec![zero; size];
-    evaluator
-        .evaluate_batch(&parameters, &mut output, rows)
-        .map_err(error)?;
-    Ok(output
-        .into_iter()
-        .map(|value| decimal_complex(value, bits))
-        .collect())
-}
-
+struct CoefficientEvaluator(runtime::CoefficientEvaluator);
 #[pymethods]
 impl CoefficientEvaluator {
     #[new]
     #[pyo3(signature = (state, arithmetic="double", precision=None))]
     fn new(state: &[u8], arithmetic: &str, precision: Option<u32>) -> PyResult<Self> {
-        let (arithmetic, bits) = arithmetic_mode(arithmetic, precision)?;
-        let exact = exact_state(state)?;
-        let evaluator = match arithmetic {
-            Arithmetic::Double => Coefficients::Double(batch_evaluator(exact, &0_f64)),
-            Arithmetic::DoubleDouble => {
-                Coefficients::DoubleDouble(batch_evaluator(exact, &DoubleFloat::from(0.0)))
-            }
-            Arithmetic::Arbitrary => {
-                Coefficients::Arbitrary(batch_evaluator(exact, &Float::with_val(bits, 0)))
-            }
-        };
-        Ok(Self {
-            evaluator,
-            precision_bits: bits,
-        })
+        runtime::CoefficientEvaluator::new(state, arithmetic, precision)
+            .map(Self)
+            .map_err(error)
     }
-
-    /// Inputs and outputs are flattened row-major complex decimal pairs.
+    #[getter]
+    fn precision_bits(&self) -> u32 {
+        self.0.precision_bits()
+    }
     fn evaluate_decimal(
         &mut self,
         py: Python<'_>,
         values: Vec<DecimalComplex>,
         rows: usize,
     ) -> PyResult<Vec<DecimalComplex>> {
-        py.detach(|| match &mut self.evaluator {
-            Coefficients::Double(e) => evaluate_coefficients(e, &values, rows, self.precision_bits),
-            Coefficients::DoubleDouble(e) => {
-                evaluate_coefficients(e, &values, rows, self.precision_bits)
-            }
-            Coefficients::Arbitrary(e) => {
-                evaluate_coefficients(e, &values, rows, self.precision_bits)
-            }
-        })
+        py.detach(|| self.0.evaluate_decimal(values, rows))
+            .map_err(error)
     }
-
     fn evaluate_batch(&mut self, py: Python<'_>, input: &NativeBatch) -> PyResult<NativeBatch> {
-        if self.precision_bits != input.precision_bits() {
-            return Err(error("batch arithmetic or precision differs"));
-        }
-        fn run<T: BatchCarrier>(
-            evaluator: &mut BatchExpressionEvaluator<Complex<T>>,
-            values: &[Complex<T>],
-            input: &NativeBatch,
-        ) -> PyResult<NativeBatch>
-        where
-            Complex<T>: Real + EvaluationDomain,
-        {
-            if input.columns() != evaluator.get_input_len() {
-                return Err(error("coefficient input dimensions differ"));
-            }
-            let zero = T::parse_decimal("0", input.precision_bits()).map_err(error)?;
-            let count = evaluator.get_output_len();
-            let size = input
-                .rows()
-                .checked_mul(count)
-                .ok_or_else(|| error("batch dimensions overflow"))?;
-            let mut output = vec![Complex::new(zero.clone(), zero); size];
-            evaluator
-                .evaluate_batch(values, &mut output, input.rows())
-                .map_err(error)?;
-            NativeBatch::typed(output, input.ids().to_vec(), count, input.precision_bits())
-        }
-        py.detach(|| match (&mut self.evaluator, input.data()) {
-            (Coefficients::Double(e), Data::Double(v)) => run(e, v, input),
-            (Coefficients::DoubleDouble(e), Data::DoubleDouble(v)) => run(e, v, input),
-            (Coefficients::Arbitrary(e), Data::Arbitrary(v)) => run(e, v, input),
-            _ => Err(error("batch arithmetic or precision differs")),
-        })
+        py.detach(|| self.0.evaluate_batch(&input.0))
+            .map(NativeBatch)
+            .map_err(error)
     }
-
-    /// Binary64 inputs stay binary64; higher precision requires decimal inputs.
     fn evaluate_f64(
         &mut self,
         py: Python<'_>,
         values: Vec<[f64; 2]>,
         rows: usize,
     ) -> PyResult<Vec<[f64; 2]>> {
-        let Coefficients::Double(evaluator) = &mut self.evaluator else {
-            return Err(error(
-                "use evaluate_decimal to preserve higher-precision inputs",
-            ));
-        };
-        py.detach(|| {
-            let parameters: Vec<_> = values
-                .into_iter()
-                .map(|[re, im]| Complex::new(re, im))
-                .collect();
-            let size = rows
-                .checked_mul(evaluator.get_output_len())
-                .ok_or_else(|| error("coefficient output dimensions overflow"))?;
-            let mut output = vec![Complex::new(0., 0.); size];
-            evaluator
-                .evaluate_batch(&parameters, &mut output, rows)
-                .map_err(error)?;
-            Ok(output.into_iter().map(|z| [z.re, z.im]).collect())
-        })
+        py.detach(|| self.0.evaluate_f64(values, rows))
+            .map_err(error)
     }
 }
 
@@ -690,7 +565,7 @@ fn massless_spinors_decimal(
 
 #[pymodule]
 fn _loop_reduction(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    predicates::register();
+    runtime::register_scalar_primitives();
     portable::register(module)?;
     batch::register(module)?;
     exact::register(module)?;

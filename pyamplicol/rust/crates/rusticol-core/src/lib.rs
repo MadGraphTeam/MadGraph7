@@ -88,7 +88,7 @@ pub const C_ABI_VERSION: u32 = 1;
 pub const SYMBOLICA_SERIALIZATION_ABI: &str = "symbolica-bincode2-v1";
 
 /// Unstable implementation details shared with pyAmpliCol's private PyO3
-/// extension. This module is absent from ordinary/default rusticol-core builds.
+/// extension and native loop consumer. Absent from ordinary/default builds.
 #[cfg(feature = "python-generation-bridge")]
 #[doc(hidden)]
 pub mod __private {

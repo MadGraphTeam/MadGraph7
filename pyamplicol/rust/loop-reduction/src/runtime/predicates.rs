@@ -34,12 +34,20 @@ fn predicate<T: Real + SingleFloat + PartialOrd>(args: &[Complex<T>], mode: u8) 
 }
 
 pub(super) fn register() {
+    static REGISTER: std::sync::Once = std::sync::Once::new();
+    REGISTER.call_once(register_definitions);
+}
+
+fn register_definitions() {
     macro_rules! install {
         ($name:literal, $mode:literal) => {
-            let _ = symbol!($name, eval = EvaluationInfo::new()
-                .register(|x: &[Complex<f64>]| predicate(x, $mode))
-                .register(|x: &[Complex<DoubleFloat>]| predicate(x, $mode))
-                .register(|x: &[Complex<Float>]| predicate(x, $mode)));
+            let _ = symbol!(
+                $name,
+                eval = EvaluationInfo::new()
+                    .register(|x: &[Complex<f64>]| predicate(x, $mode))
+                    .register(|x: &[Complex<DoubleFloat>]| predicate(x, $mode))
+                    .register(|x: &[Complex<Float>]| predicate(x, $mode))
+            );
         };
     }
     install!("pyamplicol_scalar_v1::truth", 0);

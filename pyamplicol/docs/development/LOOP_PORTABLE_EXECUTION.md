@@ -70,11 +70,15 @@ metadata access, retained-producer preparation and partial/rescue evaluation.
 Ordinary complete evaluation and fresh arithmetic rebinding remain available.
 
 Typed buffer storage, arithmetic selection, decimal conversion, gathers,
-concatenation and regrouping now live in the non-Python
-`rusticol_loop_reduction::runtime` module. The Python `NativeBatch` owns that
-same Rust value and delegates these operations. This is the first extraction
-step toward native coordination; the complete process coordinator still runs
-in Python, and no SDK loop entry point is activated by this move.
+concatenation, regrouping, saved scalar evaluators and the tiled coefficient
+schedule now live in the non-Python `rusticol_loop_reduction::runtime` module.
+The Python classes own these same Rust values and delegate their operations.
+The existing dependency interpreter/JIT and cold-template cache have one
+implementation. Fixed scalar callbacks register at shared decoding, so native
+callers restore the same saved instructions without importing the Python
+consumer. These are extraction steps toward native coordination; the complete
+process coordinator still runs in Python, and no SDK loop entry point is
+activated by this move.
 
 NinjaRS currently exposes no public serialization/rebinding interface for its
 private generic Laurent expansion plan. Loading therefore constructs a fresh
