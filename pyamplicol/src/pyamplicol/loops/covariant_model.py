@@ -396,12 +396,22 @@ def build_covariant_structure(
                 str(propagator.denominator),
             )
         particle["propagator"] = propagator.name
+        # Native family extraction retains the source mass symbol (apart from
+        # ZERO), including aliases proved structurally massless above. Keep that
+        # same symbolic denominator; the exact source binding supplies its zero.
+        denominator = propagator.denominator
+        if native.is_massless and native.mass != 0:
+            denominator_proxy = SimpleNamespace(**vars(proxy))
+            denominator_proxy.is_massive = lambda: True
+            denominator = Propagator.from_particle(
+                denominator_proxy, "Feynman"
+            ).denominator
         payload["propagators"].append(
             dict(
                 name=propagator.name,
                 particle=particle["name"],
-                numerator=propagator.numerator.to_canonical_string(),
-                denominator=propagator.denominator.to_canonical_string(),
+                numerator=wrap_indices(propagator.numerator).to_canonical_string(),
+                denominator=wrap_indices(denominator).to_canonical_string(),
             )
         )
     used_couplings, lorentz_names = set(), {}

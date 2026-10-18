@@ -332,3 +332,55 @@ def test_fixed_lepton_masses_and_yukawas_remove_exactly_zero_source_vertices(gmu
     }
     assert all(p["value"] is None for p in specialized["parameters"])
     assert {coupling["name"] for coupling in specialized["couplings"]}.isdisjoint(zero)
+
+
+def test_fixed_gmu_masses_preserve_native_graph_family_denominators(gmu):
+    from symbolica import S
+
+    from pyamplicol.loops.graphs import build_loop_process
+
+    zeros = (
+        "aEW0M1",
+        "MD",
+        "MU",
+        "MS",
+        "MC",
+        "MB",
+        "Me",
+        "MM",
+        "MTA",
+        "lamWS",
+        "AWS",
+        "rhoWS",
+        "etaWS",
+        "ymdo",
+        "ymup",
+        "yms",
+        "ymc",
+        "ymb",
+        "yme",
+        "ymm",
+        "ymtau",
+    )
+    fixed = build_covariant_structure(
+        gmu.raw,
+        scalars=gmu.scalars,
+        compatibility="gmu_particle_anti",
+        fixed_parameters={name: "0" for name in zeros},
+    )
+    assert fixed.native.particle("e-").mass == S("UFO::Me")
+    assert fixed.native.particle("m-").mass == S("UFO::MM")
+    assert fixed.native.particle("e-").is_massless
+    assert fixed.native.particle("m-").is_massless
+    # This exercises the strict custom-denominator gate and native family
+    # extraction, not just the structurally massless particle classifier.
+    process = build_loop_process(
+        fixed.native.process(("e-", "e+"), ("m-", "m+")),
+        selected_corrections=["QED"],
+        perturbative_orders={"QED": 1},
+        born_order_bounds={"QCD": 0, "QED": 2},
+        loop_order_bounds={"QCD": 0, "QED": 4},
+    )
+    assert len(process.born) == 2
+    assert len(process.loops) == 98
+    assert all(graph.family is not None for graph in process.loops)
