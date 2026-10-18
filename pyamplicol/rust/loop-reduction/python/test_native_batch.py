@@ -152,8 +152,11 @@ def test_native_schedule_and_buffer_invariants_fail_before_execution():
         reducer.evaluate_batch(shifts, batch, batch, dd)
 
 
-def test_failed_reduction_lanes_are_hidden_and_successful_compaction_retains_ids():
-    reducer = PolynomialPlan(1, ["c", "0", "0"], ["c"])
+@pytest.mark.parametrize("engine", ["generic", "fast"])
+def test_failed_reduction_lanes_are_hidden_and_successful_compaction_retains_ids(
+    engine,
+):
+    reducer = PolynomialPlan(1, ["c", "0", "0"], ["c"], engine=engine)
 
     def batch(values, columns):
         return NativeBatch.from_decimal(values, 2, columns, row_ids=[9, 3])
@@ -167,7 +170,7 @@ def test_failed_reduction_lanes_are_hidden_and_successful_compaction_retains_ids
     )
     assert failed.statuses[0] == (9, "success")
     assert failed.statuses[1][0] == 3
-    assert "NonFiniteResult" in failed.statuses[1][1]
+    assert "NonFinite" in failed.statuses[1][1]
     assert failed.successful_values().row_ids == [9]
     with pytest.raises(ValueError, match="failed lanes"):
         _ = failed.values

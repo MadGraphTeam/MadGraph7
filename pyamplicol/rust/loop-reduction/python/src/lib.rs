@@ -6,7 +6,9 @@
 use std::fmt::LowerExp;
 
 mod batch;
+mod fast;
 use batch::{BatchCarrier, Data, NativeBatch};
+use fast::FastReductions;
 
 use pyo3::{exceptions::PyValueError, prelude::*};
 use rusticol_loop_reduction::{
@@ -268,6 +270,8 @@ where
     Complex<T>: Real + EvaluationDomain,
 {
     sectors: [PolynomialReducer<T>; 3],
+    active: [bool; 3],
+    zero: Complex<T>,
     propagators: usize,
     parameter_count: usize,
 }
@@ -296,11 +300,14 @@ where
             .map(|p| parse(p))
             .collect::<PyResult<Vec<_>>>()?;
         let mut sectors = Vec::with_capacity(3);
-        for expression in expressions {
+        let mut active = [false; 3];
+        for (index, expression) in expressions.iter().enumerate() {
+            let expression = parse(expression)?;
+            active[index] = !expression.is_zero();
             sectors.push(
                 PolynomialReducer::new(
                     n,
-                    parse(expression)?,
+                    expression,
                     variables.clone(),
                     parameters.clone(),
                     prototype.clone(),
@@ -309,7 +316,13 @@ where
                 .map_err(error)?,
             );
         }
+        // Still execute one zero sector for authoritative input validation.
+        if !active.iter().any(|value| *value) {
+            active[0] = true;
+        }
         Ok(Self {
+            active,
+            zero: Complex::new(prototype.zero(), prototype.zero()),
             sectors: sectors.try_into().ok().unwrap(),
             propagators: n,
             parameter_count: parameters.len(),
@@ -374,7 +387,23 @@ where
         s_matrix: Option<&[Complex<T>]>,
     ) -> PyResult<Vec<Lane<Complex<T>, String>>> {
         let mut results = Vec::with_capacity(3);
-        for sector in &mut self.sectors {
+        for (index, sector) in self.sectors.iter_mut().enumerate() {
+            if !self.active[index] {
+                results.push(
+                    ids.iter()
+                        .map(|&id| Lane {
+                            id,
+                            status: EvaluationStatus::Success,
+                            value: Some(Laurent::from([
+                                self.zero.clone(),
+                                self.zero.clone(),
+                                self.zero.clone(),
+                            ])),
+                        })
+                        .collect(),
+                );
+                continue;
+            }
             results.push(
                 sector
                     .evaluate(
@@ -421,6 +450,7 @@ where
 
 enum Plans {
     Double(Reductions<f64>),
+    Fast(FastReductions),
     DoubleDouble(Reductions<DoubleFloat>),
     Arbitrary(Reductions<Float>),
 }
@@ -437,15 +467,32 @@ struct PolynomialPlan {
 #[pymethods]
 impl PolynomialPlan {
     #[new]
-    #[pyo3(signature = (propagators, epsilon_sectors, parameters, arithmetic="double", precision=None))]
+    #[pyo3(signature = (propagators, epsilon_sectors, parameters, arithmetic="double", precision=None, engine="generic"))]
     fn new(
         propagators: usize,
         epsilon_sectors: [String; 3],
         parameters: Vec<String>,
         arithmetic: &str,
         precision: Option<u32>,
+        engine: &str,
     ) -> PyResult<Self> {
         let (arithmetic, bits) = arithmetic_mode(arithmetic, precision)?;
+        if engine != "generic" && engine != "fast" {
+            return Err(error("engine must be generic or fast"));
+        }
+        if engine == "fast" {
+            if !matches!(arithmetic, Arithmetic::Double) {
+                return Err(error("fast engine supports only double arithmetic"));
+            }
+            return Ok(Self {
+                plan: Plans::Fast(FastReductions::new(
+                    &epsilon_sectors,
+                    &parameters,
+                    propagators,
+                )?),
+                precision_bits: bits,
+            });
+        }
         let plan = match arithmetic {
             Arithmetic::Double => Plans::Double(Reductions::new(
                 &epsilon_sectors,
@@ -484,6 +531,9 @@ impl PolynomialPlan {
         parameters: Vec<DecimalComplex>,
     ) -> PyResult<Vec<RawLane>> {
         py.detach(|| match &mut self.plan {
+            Plans::Fast(p) => {
+                p.evaluate_decimal(&ids, &shifts, &masses_squared, &scales_squared, &parameters)
+            }
             Plans::Double(p) => p.evaluate(
                 &ids,
                 &shifts,

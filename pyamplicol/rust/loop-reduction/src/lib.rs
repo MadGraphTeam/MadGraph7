@@ -12,9 +12,9 @@
 
 use std::ops::Add;
 
-use ninjars::fast::{
-    C64, FastAmplitude, FastInput, FastNumerator, FastOptions, FastResult, FastStatus,
-};
+use ninjars::fast::GenericNumerator;
+pub use ninjars::fast::{C64, FastInput, FastStatus};
+use ninjars::fast::{FastAmplitude, FastNumerator, FastOptions, FastResult};
 use ninjars::{Amplitude, Numerator, Real, Result};
 pub use ninjars::{AmplitudeInput, Complex, EvaluationStatus, FourMomentum};
 use ninjars_symbolica::{
@@ -227,5 +227,36 @@ impl<N: FastNumerator> FastReducer<N> {
                 }
             })
             .collect())
+    }
+}
+
+/// Binary64 fast reduction using NinjaRS's generic-polynomial callback adapter.
+/// Explicit mu2 is retained; no coefficient is converted through textual form.
+pub struct FastPolynomialReducer {
+    reducer: FastReducer<GenericNumerator<PolynomialNumerator<f64>>>,
+}
+impl FastPolynomialReducer {
+    pub fn new(
+        propagators: usize,
+        expression: Atom,
+        variables: [Atom; 5],
+        parameters: Vec<Atom>,
+    ) -> Result<Self> {
+        let numerator = PolynomialNumerator::new(expression, variables, parameters, 0_f64)?;
+        Ok(Self {
+            reducer: FastReducer::new(propagators, GenericNumerator::new(numerator))?,
+        })
+    }
+    pub fn evaluate(
+        &mut self,
+        ids: &[u64],
+        input: FastInput<'_>,
+        parameters: &[Complex<f64>],
+    ) -> Result<Vec<Lane<C64, FastStatus>>> {
+        self.reducer
+            .numerator_mut()
+            .inner_mut()
+            .set_parameter_batch(parameters, input.lanes)?;
+        self.reducer.evaluate(ids, input)
     }
 }

@@ -490,6 +490,12 @@ where
         .map(|p| FourMomentum::from([p[0].clone(), p[1].clone(), p[2].clone(), p[3].clone()]))
         .collect();
     let lanes = plan.evaluate_native(&input.ids, &shifts, masses, scales, parameters, matrix)?;
+    reduced_batch(lanes, input.precision_bits)
+}
+fn reduced_batch<T: BatchCarrier>(
+    lanes: Vec<Lane<Complex<T>, String>>,
+    bits: u32,
+) -> PyResult<ReductionBatch> {
     let mut values = Vec::with_capacity(shape(lanes.len(), 3)?);
     let mut ids = Vec::with_capacity(lanes.len());
     let mut statuses = Vec::with_capacity(lanes.len());
@@ -501,7 +507,7 @@ where
         }
     }
     Ok(ReductionBatch {
-        values: NativeBatch::typed(values, ids, 3, input.precision_bits)?,
+        values: NativeBatch::typed(values, ids, 3, bits)?,
         statuses,
     })
 }
@@ -562,6 +568,38 @@ impl PolynomialPlan {
             }};
         }
         py.detach(|| match &mut self.plan {
+            Plans::Fast(p) => {
+                if shifts.columns != p.propagators * 4
+                    || masses_squared.columns != p.propagators
+                    || scales_squared.columns != 1
+                    || parameters.columns != p.parameter_count
+                    || s_matrix.is_some_and(|s| s.columns != p.propagators * p.propagators)
+                {
+                    return Err(error("reduction batch dimensions differ"));
+                }
+                let (Data::Double(s), Data::Double(m), Data::Double(r), Data::Double(c)) = (
+                    &shifts.data,
+                    &masses_squared.data,
+                    &scales_squared.data,
+                    &parameters.data,
+                ) else {
+                    return Err(error("batch arithmetic or precision differs"));
+                };
+                let matrix = s_matrix.map(|s| {
+                    let Data::Double(v) = &s.data else {
+                        unreachable!()
+                    };
+                    v.as_slice()
+                });
+                let shifts: Vec<_> = s
+                    .chunks_exact(4)
+                    .map(|v| FourMomentum::from([v[0], v[1], v[2], v[3]]))
+                    .collect();
+                reduced_batch(
+                    p.evaluate_native(&parameters.ids, &shifts, m, r, c, matrix)?,
+                    53,
+                )
+            }
             Plans::Double(p) => run!(p, Double),
             Plans::DoubleDouble(p) => run!(p, DoubleDouble),
             Plans::Arbitrary(p) => run!(p, Arbitrary),

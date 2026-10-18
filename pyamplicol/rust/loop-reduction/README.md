@@ -82,7 +82,7 @@ mkdir -p "$PYLOOP_WORKSPACE/builds/loop-python-module"
 cp "$CARGO_TARGET_DIR/debug/lib_loop_reduction.so" \
   "$PYLOOP_WORKSPACE/builds/loop-python-module/_loop_reduction.so"
 PYTHONPATH="$PYLOOP_WORKSPACE/builds/loop-python-module" \
-  python -m pytest python/test_consumer.py python/test_native_batch.py -q
+  python -m pytest python -q
 ```
 
 The explicit `arithmetic` selector accepts `double` (53 bits), `double-double`
@@ -115,6 +115,9 @@ arena/gather/output storage. Selected final slots become a typed `NativeBatch`
 that feeds `PolynomialPlan.evaluate_batch` directly. The reducer also accepts
 an optional lane-major n×n exact S-matrix of `(V_i−V_j)²`, which must retain
 prescribed on-shell invariants for arbitrary-precision master classification.
+The caller must derive these invariants exactly before rounding, using existing
+model/kinematic algebra and exact input evaluation; subtracting already-rounded
+shift vectors and passing that result does not establish exact invariants.
 `ReductionBatch.statuses` covers every input row; `.values` is available when
 all lanes succeed, while `.successful_values()` retains only successful IDs.
 `CoefficientEvaluator.evaluate_batch` and `massless_spinors_batch` share these
@@ -122,9 +125,16 @@ buffers, allowing couplings, wavefunctions and final contractions to stay native
 
 This is a native batch conformance boundary, not a public virtual-amplitude
 API or a completed fast evaluation pipeline. Production graph/model scheduling,
-physical normalization, precision rescue, and the binary64 fast reduction path
-remain integration work. Explicit zero epsilon sectors currently still execute
-the reducer; throughput tuning and physical performance gates remain open.
+physical normalization and precision rescue remain integration work. Both engines
+skip symbolically zero epsilon sectors during evaluation; an all-zero plan
+still executes one sector to retain the upstream input validation.
+`PolynomialPlan(..., engine="fast")` selects the existing NinjaRS binary64 fast
+coordinator and native master provider, using its generic polynomial callback
+adapter (including explicit μ²). It accepts only `arithmetic="double"`, real
+shifts/scales/invariant matrices, and the same complex squared masses supported
+by the upstream fast input contract. Its fixed 1e-9 master threshold is distinct
+from the default generic route's exact-zero policy; the fast route is opt-in.
+Throughput tuning and physical performance gates remain open.
 The main workspace excludes this experimental workspace and has no NinjaRS path
 dependency, so its normal builds do not require the `upstream` symlink.
 
