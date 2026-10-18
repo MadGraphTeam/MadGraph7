@@ -81,3 +81,53 @@ Graph insertion/rebinding, physical external states, process-level colour
 contraction and branch-growth optimization are separate integration steps.
 Local catalogue frames must be rebound before two distinct sites are combined;
 reusing their original half-edge labels would incorrectly identify indices.
+
+## Native counterterm process matching
+
+`loops.counterterms.prepare_counterterm_model` appends homogeneous CT rules to
+the ordinary native model with a private insertion order. Exact Laurent scalar
+expressions remain unevaluated; aliases use the native coupling symbols, including
+their namespaces. The returned model must generate both the ordinary catalogue
+and CT candidates. `prepared.process(..., counterterms=False)` restricts generation
+to ordinary rules; use `build_loop_process(..., ordinary_model=prepared.ordinary_model)`
+so effective CT interactions cannot change perturbative species membership.
+
+`match_counterterms` generates zero-loop trees with exactly one tagged CT. It
+compares their attached currents to actual admitted loops, matching the sum of
+orders on the cycle vertices rather than the total amplitude order. R2 and
+UVmass alternatives match the unique positive loop species; empty alternatives
+are wildcards. UVloop alternatives impose forbidden-species restrictions only.
+UVtree uses tagged tree generation without a loop witness. Alternative indices
+are retained: repeated identical alternatives deliberately repeat the insertion.
+The legacy UFO type `UV` is classified with MadLoop 3.7's import rule: an identical
+two-particle pair is UVmass, otherwise UVloop. The reference is
+`models/import_ufo.py:1571–1655` and
+`madgraph/loop/loop_diagram_generation.py:1210–1525` in the supplied MG5 source.
+
+HepKit finds components and excises each attached current. Excision's artificial
+boundary can be incoming or outgoing depending on the original internal edge
+orientation, so its raw diagram ID is insufficient. Public `Symbolica.Graph`
+canonicalizes a metadata projection retaining native interaction IDs, interaction
+port slots, particle identities and directed flow, plus all physical external
+labels and states. Only the artificial boundary state is normalized. The native
+model fingerprint is checked before using these current keys. Tests distinguish
+identical external support with different internal rules and external label
+assignments. No canonical-labeling, traversal or graph-generation algorithm is
+implemented in pyAmpliCol.
+
+The counterterm inherits its freshly generated tree weight, never the sign or
+symmetry denominator of a loop witness. Multiple crossed loops can witness the
+same insertion without multiplying its weight. Bivalent CT rules require a
+finite native generation bound: with one CT of valence at least two and ordinary
+vertices of valence at least three, `max_vertices = n_external - 1` is exact.
+Ordinary one/two-point rules and CT tadpoles fail explicitly at this boundary.
+
+Eight native controls cover Drell–Yan, crossed fermion boxes, repeated/wildcard
+alternatives, UVtree versus UVloop, joint correction selection and current
+identity. The full compatible `loop_sm` subset selects one `R2_UUA` and no UV
+insertion for photon-only QCD Drell–Yan. Source CT tensors are still uncalibrated:
+the bundled native model uses a different FFV spinor-slot convention from the
+standard loop UFO. Matching graphs does not validate that convention, supply
+external-leg wavefunction CTs, certify a renormalization scheme, or certify
+formal-Nc continuation. Missing species of a restricted ordinary model remain
+explicitly recorded as unavailable basis entries.

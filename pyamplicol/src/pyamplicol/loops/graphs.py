@@ -369,6 +369,7 @@ def build_loop_process(
     allowed_pairs: Iterable[BornLoopPair] | None = None,
     born_order_bounds: Mapping[str, int | tuple[int, int | None]] | None = None,
     loop_order_bounds: Mapping[str, int | tuple[int, int | None]] | None = None,
+    ordinary_model: Any = None,
 ) -> LoopProcessIR:
     """Generate a small native graph catalogue with explicit physical filters.
 
@@ -377,13 +378,20 @@ def build_loop_process(
     every generated Born/selected-loop order pair. A provided list is exact,
     with no inference from order increments. Bounds use HepKit's exact/range
     coupling-power semantics. This oracle is intentionally not the production
-    loop-generation dispatcher.
+    loop-generation dispatcher. For a model augmented with counterterm rules,
+    supply its original ``ordinary_model``: perturbative species membership is
+    defined by ordinary interactions, never by effective counterterm vertices.
+    Species identities are signed PDG codes shared by the two models.
     """
     names = tuple(sorted(set(selected_corrections)))
     if not names or any(perturbative_orders.get(name, 0) < 1 for name in names):
         raise ValueError("requested corrections require declared NLO model support")
     rule_orders = _rule_orders(process.model)
-    species_orders = _species_orders(process.model, rule_orders)
+    species_model = process.model if ordinary_model is None else ordinary_model
+    species_orders = _species_orders(
+        species_model,
+        rule_orders if ordinary_model is None else _rule_orders(ordinary_model),
+    )
     propagator_denominators = _propagator_denominators(process.model)
     options = dict(
         maximum_bridges=None,
