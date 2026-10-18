@@ -210,6 +210,7 @@ class NativeCoefficientDAG:
         precision: int | None = None,
         backend: Any = None,
         output_nodes: tuple[int, ...] | None = None,
+        coefficient_engine: str = "interpreted",
     ):
         if backend is None:
             import _loop_reduction as backend
@@ -238,8 +239,10 @@ class NativeCoefficientDAG:
             input_slots,
             len(positions),
             [slot for index in self.output_nodes for slot in node_slots[index]],
+            engine=coefficient_engine,
             **self.native_options,
         )
+        self.coefficient_engine = self.plan.engine
 
     def evaluate_batch(self, values: Any) -> Any:
         """Return one typed native buffer; rows and their identities are retained."""

@@ -136,17 +136,22 @@ def test_model_r2_completes_native_bare_in_all_precisions(
     assert empty.virtual.shape == (0, 3, 2) and empty.statuses == ()
 
 
+@pytest.mark.parametrize("coefficient_engine", ["interpreted", "jit"])
 def test_complete_result_against_actual_madloop_and_uncalibrated_basis_rejected(
-    source, points
+    source, points, coefficient_engine
 ):
     path = os.environ.get("PYAMPLICOL_DRELL_YAN_REFERENCE")
     if not path:
         pytest.skip("set PYAMPLICOL_DRELL_YAN_REFERENCE to the MadLoop report")
     reference = json.loads(Path(path).read_text())
-    program = drell_yan_model_virtual_program(source)
+    program = drell_yan_model_virtual_program(
+        source, coefficient_engine=coefficient_engine
+    )
     result = program.evaluate_decimal(
         points, ["1000000"] * len(points), model_values=["0.118", "132.507"]
     )
+    assert result.coefficient_engine == coefficient_engine
+    assert program.currents[0].executor.coefficient_engine == coefficient_engine
     for index, row in enumerate(reference["results"]):
         np.testing.assert_allclose(
             result.virtual[index, :, 0].astype(float),

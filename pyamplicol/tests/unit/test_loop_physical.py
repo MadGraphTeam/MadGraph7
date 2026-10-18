@@ -270,11 +270,17 @@ def test_failed_reduction_reports_original_point_and_lane_without_reading_values
         program.evaluate_decimal(points, ["1000000"] * len(points))
 
 
-def test_binary64_fast_reduction_matches_physical_control(native, points):
-    program = DrellYanBareProgram(backend=native, reduction_engine="fast")
+@pytest.mark.parametrize("coefficient_engine", ["interpreted", "jit"])
+def test_binary64_fast_reduction_matches_physical_control(
+    native, points, coefficient_engine
+):
+    program = DrellYanBareProgram(
+        backend=native, reduction_engine="fast", coefficient_engine=coefficient_engine
+    )
     scales = ["1000000", "2000000", "700000"]
     result = program.evaluate_decimal(points, scales)
     assert result.reduction_engine == "fast"
+    assert result.coefficient_engine == coefficient_engine
     _compare(result, points, scales, Decimal("2e-11"))
     _compare(
         program.evaluate_decimal(points[1:2], ["900000"], alpha_s="0.1"),

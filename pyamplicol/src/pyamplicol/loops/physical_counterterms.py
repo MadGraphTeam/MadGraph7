@@ -30,6 +30,8 @@ class ModelVirtualResult:
     statuses: Any
     arithmetic: str
     precision: int | None
+    reduction_engine: str
+    coefficient_engine: str
     convention: str = "MadLoop-Cepsilon-model-counterterms-assembled"
 
 
@@ -82,7 +84,11 @@ class NativeModelVirtualProgram:
                 for born in bare.born_colors
             )
             executor = NativeCoefficientDAG(
-                dag, output_nodes=(len(dag.nodes) - 1,), backend=backend, **options
+                dag,
+                output_nodes=(len(dag.nodes) - 1,),
+                backend=backend,
+                coefficient_engine=bare.coefficient_engine,
+                **options,
             )
             for power in (0, -1, -2):
                 substitutions = insertion.coefficient_substitutions(power)
@@ -195,6 +201,8 @@ class NativeModelVirtualProgram:
             native.statuses,
             self.bare.arithmetic,
             self.bare.precision,
+            self.bare.reduction_engine,
+            self.bare.coefficient_engine,
         )
 
 

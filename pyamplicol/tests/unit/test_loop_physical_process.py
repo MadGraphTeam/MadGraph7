@@ -136,6 +136,33 @@ def test_bare_process_agrees_with_independent_madloop_components(
         )
 
 
+def test_native_jit_coefficients_match_multi_family_interpreter(native, points):
+    results = []
+    for engine in ("interpreted", "jit"):
+        program = distinct_flavour_qcd_program(
+            backend=native, coefficient_engine=engine, reduction_engine="fast"
+        )
+        result = program.evaluate_decimal(
+            points, ["1000000"] * 3, model_values=["0.118", "173"]
+        )
+        assert result.coefficient_engine == engine
+        assert all(
+            executor.coefficient_engine == engine
+            for executor in (*program.born_executors, *program.loop_executors)
+        )
+        results.append(result)
+    np.testing.assert_allclose(
+        results[0].virtual.astype(float),
+        results[1].virtual.astype(float),
+        rtol=2e-11,
+        atol=1e-15,
+    )
+    with pytest.raises(ValueError, match="double"):
+        distinct_flavour_qcd_program(
+            backend=native, coefficient_engine="jit", arithmetic="double-double"
+        )
+
+
 def test_high_precision_convergence_and_original_momentum_bits(native, points):
     # Convergence is an arithmetic control, not an independent 80-digit finite
     # reference. Born and the universal double pole have exact controls above.

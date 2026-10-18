@@ -34,6 +34,7 @@ class BareProcessResult:
     arithmetic: str
     precision: int | None
     reduction_engine: str
+    coefficient_engine: str
     convention: str = "MadLoop-Cepsilon-bare-four-dimensional-no-R2-no-UV"
 
 
@@ -113,6 +114,7 @@ class NativeBareProcessProgram:
         arithmetic: str = "double",
         precision: int | None = None,
         reduction_engine: str = "generic",
+        coefficient_engine: str = "interpreted",
         backend: Any = None,
     ):
         if backend is None:
@@ -193,16 +195,25 @@ class NativeBareProcessProgram:
             )
         self.born_executors = tuple(
             NativeCoefficientDAG(
-                dag, output_nodes=(len(dag.nodes) - 1,), backend=backend, **self.options
+                dag,
+                output_nodes=(len(dag.nodes) - 1,),
+                backend=backend,
+                coefficient_engine=coefficient_engine,
+                **self.options,
             )
             for dag in self.born_dags
         )
         self.loop_executors = tuple(
             NativeCoefficientDAG(
-                r.dag, output_nodes=(final,), backend=backend, **self.options
+                r.dag,
+                output_nodes=(final,),
+                backend=backend,
+                coefficient_engine=coefficient_engine,
+                **self.options,
             )
             for r, final in zip(self.recurrences, self.loop_finals, strict=True)
         )
+        self.coefficient_engine = self.born_executors[0].coefficient_engine
         self.born_metric = tuple(
             tuple(
                 _color_bilinear(left, right, initial_average) for right in born_colors
@@ -362,6 +373,7 @@ class NativeBareProcessProgram:
             self.arithmetic,
             self.precision,
             self.reduction_engine,
+            self.coefficient_engine,
         )
 
     def evaluate_native(self, momenta, scales_squared, *, model_values):

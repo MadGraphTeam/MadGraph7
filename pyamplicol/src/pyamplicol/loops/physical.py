@@ -37,6 +37,7 @@ class DrellYanBareResult:
     precision: int | None
     reduction_schedule: str
     reduction_engine: str
+    coefficient_engine: str
     convention: str = "MadLoop-Cepsilon-bare-four-dimensional-no-R2-no-UV"
 
 
@@ -131,6 +132,7 @@ class DrellYanBareProgram:
         backend: Any = None,
         reduction_schedule: str = "born-weighted",
         reduction_engine: str = "generic",
+        coefficient_engine: str = "interpreted",
     ):
         if backend is None:
             import _loop_reduction as backend
@@ -168,14 +170,17 @@ class DrellYanBareProgram:
             self.born_dag,
             backend=backend,
             output_nodes=(len(self.born_dag.nodes) - 1,),
+            coefficient_engine=coefficient_engine,
             **self.native_options,
         )
         self.loop_executor = NativeCoefficientDAG(
             self.loop.dag,
             backend=backend,
             output_nodes=(self.loop_final,),
+            coefficient_engine=coefficient_engine,
             **self.native_options,
         )
+        self.coefficient_engine = self.born_executor.coefficient_engine
         # Exact component contractions establish this explicit-Nc=3 control.
         born_color = born_color.to_tensor().to_dense()
         loop_color = self.loop.color_expression.to_tensor().to_dense()
@@ -430,4 +435,5 @@ class DrellYanBareProgram:
             self.precision,
             self.reduction_schedule,
             self.reduction_engine,
+            self.coefficient_engine,
         )
