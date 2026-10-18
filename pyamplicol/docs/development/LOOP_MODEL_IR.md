@@ -512,3 +512,35 @@ virtual catalogues have exactly one entry.
 For the existing single-sector dimensional diagnostic, ordered `virtual` still
 contains N4 alone and `rational` contains the separate direct remainder; the
 convention explicitly labels both channels without claiming UV completion.
+
+### Exact source scalar frontend
+
+`loops.scalar_frontend.lower_scalar_program` is an explicit preparation entrypoint
+for the bounded UFO scalar language. It preserves exact numeric tokens, source
+conditionals and Python `and`/`or` operand-return semantics. Source helper bodies
+are certified at construction, and actual `function_library` namespace bindings
+select their record identities. The Gmu model's final CMS `reglog` binding therefore
+replaces its earlier principal-log definition without deleting either raw record.
+Unknown scope, arbitrary Python syntax and ambiguous argument strings fail.
+
+The resulting `ScalarProgram` retains a diagnostic beside every value. Saved
+native evaluators export interleaved `(value, diagnostic)` outputs; callers must
+check **both** for finiteness. The diagnostic follows only active branches,
+including inside separately serialized source helper bodies. This is necessary
+because a NaN used directly as a conditional predicate can select a finite value.
+The fixed native `pyamplicol_scalar_v1` truth, equality and real-order predicates
+use the selected carrier's comparison operations. They reject nonfinite operands
+and nonreal ordered comparisons. They are registered before native decoding and
+cannot be rebound through the Python consumer API; their versioned definitions
+are fixed for the lifetime of an evaluator cache. Source helper bodies, unlike
+callback implementations, are included in saved evaluator bytes. Typed component
+access uses `Complex.re`/`Complex.im` directly: arithmetic reconstruction through
+`z +/- conj(z)` can overflow finite inputs or erase subnormal components.
+
+CT dependencies are substituted before dependency-owned Laurent extraction.
+Epsilon-dependent opaque function arguments are explicitly unsupported until
+native helper expansion is implemented; they never become unspecified formal
+derivatives. Ordinary parameter definitions remain separate for exact binding by
+a future EW assembler. The existing QCD lowering/physical path is unchanged, and
+successful source preparation does not enable EW process generation or certify
+EW counterterm completeness, complex-mass conventions or numerical physics.

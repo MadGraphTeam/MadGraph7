@@ -48,7 +48,7 @@ _COLLECTIONS = {
 }
 
 _VALUE_COLLECTIONS = {"parameters", "counterterm_parameters", "couplings"}
-_VALUE_TYPES = {"Parameter", "CTParameter", "Coupling"}
+_VALUE_TYPES = {"Parameter", "CTParameter", "Coupling", "Function"}
 
 
 def _runtime_exact(value: object) -> bool:
@@ -139,13 +139,14 @@ class _ValueObservation:
     source: dict[str, object]
     error: str | None
     dependencies: tuple[object, ...]
+    attribute: str
 
 
 def _has_value_write(statement: ast.AST) -> bool:
     for node in ast.walk(statement):
         if (
             isinstance(node, ast.Attribute)
-            and node.attr == "value"
+            and node.attr in {"value", "expression", "expr"}
             and isinstance(node.ctx, (ast.Store, ast.Del))
         ):
             return True
@@ -153,7 +154,8 @@ def _has_value_write(statement: ast.AST) -> bool:
             isinstance(node, ast.Subscript)
             and isinstance(node.ctx, (ast.Store, ast.Del))
             and any(
-                isinstance(part, ast.Attribute) and part.attr in {"value", "__dict__"}
+                isinstance(part, ast.Attribute)
+                and part.attr in {"value", "expression", "expr", "__dict__"}
                 for part in ast.walk(node)
             )
         ):
@@ -169,7 +171,7 @@ def _has_value_write(statement: ast.AST) -> bool:
             if (
                 isinstance(node.func, ast.Attribute)
                 and isinstance(node.func.value, ast.Attribute)
-                and node.func.value.attr == "value"
+                and node.func.value.attr in {"value", "expression", "expr"}
             ):
                 return True
     return False
@@ -254,7 +256,8 @@ class _ValueSourceObserver:
         caller = frame.f_back
         if caller is None or caller.f_code.co_filename not in self.files:
             return
-        value = frame.f_locals.get("value")
+        attribute = "expression" if type(instance).__name__ == "Function" else "value"
+        value = frame.f_locals.get(attribute)
         lines, declarations = self.files[caller.f_code.co_filename]
         candidates = declarations.get(caller.f_lineno, [])
         binding = None
@@ -285,7 +288,7 @@ class _ValueSourceObserver:
             ):
                 raise ValueError("constructor identity is not statically bound")
             values = [
-                keyword.value for keyword in call.keywords if keyword.arg == "value"
+                keyword.value for keyword in call.keywords if keyword.arg == attribute
             ]
             if len(values) != 1 or any(
                 keyword.arg is None for keyword in call.keywords
@@ -353,6 +356,7 @@ class _ValueSourceObserver:
             source,
             error,
             tuple(dependencies),
+            "expr" if type(instance).__name__ == "Function" else attribute,
         )
 
     def value(
@@ -366,7 +370,7 @@ class _ValueSourceObserver:
                 "reason": "no observed direct constructor",
             }
         reason = observation.error
-        runtime = getattr(instance, "value", None)
+        runtime = getattr(instance, observation.attribute, None)
         if self.dynamic_writes:
             reason = "model contains potentially dynamic value writes"
         elif reason is None and (
@@ -707,6 +711,15 @@ def capture_raw_loop_model(
                 for key, item in vars(value).items()
                 if key != "value" or collection not in _VALUE_COLLECTIONS
             }
+            if collection == "functions":
+                if observer is not None:
+                    _body, fields["expression_source"] = observer.value(value)
+                else:
+                    fields["expression_source"] = {
+                        "kind": "unsupported",
+                        "exact": False,
+                        "reason": "helper source declaration was not observed",
+                    }
             if collection in _VALUE_COLLECTIONS and hasattr(value, "value"):
                 exact = None
                 if (collection, index) in overrides:
@@ -752,6 +765,19 @@ def capture_raw_loop_model(
         and not callable(value)
         and type(value).__module__ != "__future__"
     }
+    function_namespace = getattr(module, "function_library", None)
+    metadata["function_bindings"] = {
+        name: references[id(value)][1]
+        for name, value in (
+            vars(function_namespace).items()
+            if isinstance(function_namespace, ModuleType)
+            else ()
+        )
+        if id(value) in references and references[id(value)][0] == "functions"
+    }
+    metadata["function_binding_scope"] = (
+        "function_library" if isinstance(function_namespace, ModuleType) else None
+    )
     metadata["restriction"] = dict(
         restriction or {"applied": False, "name": None, "card": None}
     )
