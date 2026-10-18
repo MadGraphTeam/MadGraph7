@@ -54,3 +54,30 @@ fixed SU(3) constants. Preserving them does not reconstruct their Nc dependence.
 `FormalColorIdentities` states explicit SU(Nc) CA/CF/TR/TF/Ncol substitutions
 with fixed Nf, but never applies them automatically or certifies LC/NLC.
 Legacy inconsistent non-QCD Lorentz spin signatures fail when requested.
+
+## Local colour alternatives
+
+`loops.color_terms.split_local_color_terms` expands one native local factor and
+retains each independent colour tensor. The existing single-colour separation
+proof classifies the local monomials. `model_basis_terms` instead consumes the
+unsummed UFO entries directly and extracts an explicitly selected epsilon
+coefficient. It does not select eligible loop groups; its caller must supply
+those entries after process matching.
+
+`ColorTermDAG` wraps the coefficient DAG. An open `ColorCurrent` carries
+`(coefficient_node, native_colour_tensor)` alternatives. Only local basis choices
+branch, while previous Lorentz currents remain node references. At a named
+site, identical local tensors and dependency nodes reuse a coefficient
+instruction. Alternatives sharing that instruction add their colour factors
+using native tensor arithmetic, preserving multiplicity. Distinct coefficient
+instructions remain separate, with visible branch counts. There is no global
+Lorentz expansion, trace, colour approximation or inferred symmetry factor.
+
+This primitive covers the physical four-gluon rule's three independent local
+colour tensors and the model's selected four-gluon R2 basis. Its tests include
+a two-site, nine-branch coefficient calculation against an independent native
+local contraction, exact scalar/node reuse, and R2 tensor-DAG construction.
+Graph insertion/rebinding, physical external states, process-level colour
+contraction and branch-growth optimization are separate integration steps.
+Local catalogue frames must be rebound before two distinct sites are combined;
+reusing their original half-edge labels would incorrectly identify indices.
