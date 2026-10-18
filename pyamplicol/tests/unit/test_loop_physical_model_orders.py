@@ -339,6 +339,127 @@ def _photon_targets(point, scale, alpha_s, inverse_alpha):
     ]
 
 
+def test_directed_complete_mixed_orders_and_complex_effective_cross_terms(
+    control, catalogue
+):
+    from symbolica import E
+
+    from pyamplicol.color.connections import ColorConnection, EmitGluon
+    from pyamplicol.loops.model_expressions import LaurentExpression
+    from pyamplicol.loops.physical_correlations import directed_color_legs
+    from pyamplicol.loops.physical_model_correlations import NativeDirectedModelProgram
+
+    # A deliberate complex multiplier on effective rules is an algebra control,
+    # not a claim about an SM renormalization convention. The actual source QCD
+    # completeness is checked separately by uudd/top identity histories.
+    original, insertions, fields = catalogue
+    modified = tuple(
+        replace(
+            item,
+            rule=replace(
+                item.rule,
+                couplings=tuple(
+                    (
+                        name,
+                        replace(
+                            entry,
+                            coupling=replace(
+                                entry.coupling,
+                                value=LaurentExpression(
+                                    entry.coupling.value.expression * E("1+1i")
+                                ),
+                            ),
+                        ),
+                    )
+                    for name, entry in item.rule.couplings
+                ),
+            ),
+        )
+        for item in insertions
+    )
+    model = _program(control, catalogue, insertions=modified, reduction_engine="fast")
+    points, scales, inputs = (
+        _points()[:2],
+        ["1000000", "900000"],
+        ["0.118", "132.507", "173"],
+    )
+    baseline = model.evaluate_ordered_decimal(points, scales, model_values=inputs)
+
+    def histories(bare):
+        legs = directed_color_legs(bare)
+        identity = ColorConnection(legs)
+        left = ColorConnection(legs, (EmitGluon(0, -1), EmitGluon(0, -2)))
+        right = ColorConnection(legs, (EmitGluon(1, -1), EmitGluon(2, -2)))
+        return ((identity, identity), (left, right), (right, left))
+
+    directed = NativeDirectedModelProgram(model, histories(model.bare))
+    result = directed.evaluate_decimal(points, scales, model_values=inputs)
+    with localcontext() as context:
+        context.prec = 80
+        for component in (
+            "born",
+            "virtual",
+            "bare",
+            "uv",
+            "r2",
+            "uv_local",
+            "uv_external_fields",
+        ):
+            actual = getattr(result, component)
+            expected = getattr(baseline, component)
+            for value, target in zip(actual[:, 0].flat, expected.flat, strict=True):
+                assert abs(Decimal(value) - Decimal(target)) < Decimal("4e-11")
+            for index in np.ndindex(actual[:, 1].shape):
+                sign = 1 if index[-1] == 0 else -1
+                assert abs(
+                    Decimal(actual[:, 1][index]) - sign * Decimal(actual[:, 2][index])
+                ) < Decimal("4e-11")
+        assert max(
+            abs(Decimal(value)) for value in result.r2[:, 1, :, :, 1].flat
+        ) > Decimal("1e-5")
+    # Isolate the two Born origins of S42; their directed effective terms must
+    # recombine using the same exact masks as the bare reductions.
+    isolated = []
+    for born_order, loop_order in (
+        (_order(2, 0), _order(2, 2)),
+        (_order(0, 2), _order(4, 0)),
+    ):
+        plan = compile_order_plan(
+            selected_corrections=["QCD"],
+            perturbative_orders={"QCD": 1},
+            born_orders=original.orders.born_orders,
+            contributions=original.orders.contributions,
+            allowed_pairs=[BornLoopPair(born_order, loop_order)],
+        )
+        selected = _program(
+            control,
+            catalogue,
+            process=replace(original, orders=plan),
+            insertions=tuple(i for i in modified if i.graph.order == loop_order),
+            fields=tuple(i for i in fields if i.order == loop_order),
+            reduction_engine="fast",
+        )
+        selected = NativeDirectedModelProgram(selected, histories(selected.bare))
+        isolated.append(selected.evaluate_decimal(points, scales, model_values=inputs))
+    sector = tuple(item.order for item in result.orders.virtual).index(_order(4, 2))
+    with localcontext() as context:
+        context.prec = 80
+        for component in (
+            "virtual",
+            "bare",
+            "uv",
+            "r2",
+            "uv_local",
+            "uv_external_fields",
+            "first",
+            "second",
+        ):
+            combined = getattr(result, component)[:, :, sector]
+            left, right = (getattr(item, component)[:, :, 0] for item in isolated)
+            for value, a, b in zip(combined.flat, left.flat, right.flat, strict=True):
+                assert abs(Decimal(value) - Decimal(a) - Decimal(b)) < Decimal("4e-11")
+
+
 def test_complete_mixed_sector_retains_both_explicit_born_origins(control, catalogue):
     path = os.environ.get("PYAMPLICOL_MIXED_UUDD_QCD_REFERENCE")
     if not path:

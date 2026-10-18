@@ -757,45 +757,38 @@ cards, infer ties between equal parameters, or certify EW counterterm completion
 Unapplied source restriction cards continue to reject. Model preparation must
 pass the same fixed bindings to its subsequent physical consumers.
 
-## Directed bare numerical diagnostics
+## Complete directed model-rule QCD controls
 
-`NativeDirectedBareProgram(bare, histories)` evaluates a list of ordered
-`(bra, ket)` colour connections on an unmodified full-colour bare program.
-`directed_color_legs` exposes the actual native amplitude ports with zero-based
-physical momentum-leg labels. Their signed representations include the native
-crossing convention and must not be inferred from physical particle names.
-The dependency constructs the ordered rectangular colour weights. Each matrix
-is evaluated at exact Nc=3 with the original physical averaging factor.
+`NativeDirectedModelProgram(model, histories)` extends the same directed
+contractions to an existing validated `NativeModelVirtualProgram`. Its current
+scope is unmodified full SU(3) colour with model R2 and QCD corrections. Formal
+colour projections and direct dimensional R2 reject; no EW, spin, flavour
+mapping, FFT or public process-dispatch completeness is implied.
 
-Physical states, global model values and each exact representative Born/loop
-coefficient schedule execute once per batch, independently of the number of
-requested histories. One family kinematic preparation is broadcast over all
-active directions and squared-order sectors. Native reduction lanes have the
-stable identity `point * (directions * sectors) + direction * sectors + sector`,
-where directions `2*h` and `2*h+1` denote history `h` and its swap. Status columns
-carry `(direction, sector, family)` metadata and retain those original lane IDs.
+The ordinary model executor exposes checked unprojected CT amplitudes and field
+factors on the already prepared physical batch. The directed executor reuses
+those currents and their retained native colour tensors. It contracts the
+forward and swapped-history Born/CT matrices independently, with the exact
+Born/loop order pairings. The swapped term is conjugated after its complete
+complex contraction. Source effective rules already contain the loop measure,
+so no extra `i/(16*pi**2)` multiplies them. Field insertions retain the source
+`delta-Z/2` factor and the right-hand terms of their specific Born graph.
 
-Both complex Born-weighted numerators use the same Feynman prescription. After
-reduction and multiplication by `i/(16*pi**2)`, assembly adds the forward value
-to the conjugate of the swapped value. Conjugating an unintegrated numerator
-does not provide the second term. The result retains complex directed Born
-contractions and both separate cross terms; it does not apply `2 Re` to a
-non-Hermitian kernel. Decimal arrays have axes `point, history, squared order`
-and, for virtual values, `(finite, single pole, double pole)`, followed by the
-real/imaginary pair. Native buffers carry all intermediate arithmetic.
+The result retains complex Born, bare, local UV, external-field UV, total UV,
+R2 and completed virtual arrays, plus the total first and second cross terms.
+All values stay in native double, DoubleFloat or arbitrary-precision buffers
+until final decimal transport. Histories share one ordinary state/current batch
+and one execution of each CT current. Reduction statuses retain their original
+point/direction/order/family identities; invalid CT scalars, active diagnostics,
+currents or contractions raise before exposing a result. Successful reduction
+still does not independently establish numerical accuracy or provide rescue.
 
-Actual `u ubar -> d dbar` controls in double, DoubleFloat and arbitrary precision
-check identity histories, physical Casimirs, colour-charge conservation, swapped
-conjugation and a non-Hermitian history with a nonzero absorptive finite part.
-Instrumentation checks that histories do not repeat current or kinematic work.
-A mixed-order control retains all three Born and four virtual squared-order
-sectors, with exact complex coupling factors used to test a genuinely complex
-Born contraction. This scalar-binding diagnostic is not an SM parameter claim.
-Empty, changing and tail batches retain point/direction/sector identities.
-
-This interface contains N4 only: no UV, model/direct R2, external-field, spin,
-mapping or public correlated-completeness claim follows. Dimensional programs,
-model-bound programs and changed colour metrics reject explicitly. Attachment
-locks ordinary metric mutation; later model binding is detected before directed
-evaluation. Dependency reduction success retains its existing accuracy semantics
-and does not establish an independent rescue or accuracy certificate.
+The light-quark and top-pair QCD controls pass ordinary identity-history
+agreement for every component, Casimir scaling, colour-charge conservation,
+swapped-history conjugation and nonzero absorptive complex contributions in all
+three arithmetic modes. The massive control includes both physical external
+field factors. A separate mixed-Born QCD algebra diagnostic deliberately gives
+effective couplings a complex phase: it retains a nonzero imaginary R2 result
+and verifies that the two isolated Born origins recombine in the same squared
+order for every component and both cross terms. That phase is a contraction
+test, not a source-model renormalization convention.

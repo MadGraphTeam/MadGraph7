@@ -314,7 +314,10 @@ class NativeDirectedBareProgram:
             shifts, masses, matrix = bare.family_kinematics_native(currents, family)
             reduced = family.reducer.evaluate_batch(
                 shifts.take_rows(point_rows, row_ids=row_ids),
-                masses.take_rows([0] * (size * count), row_ids=row_ids),
+                masses.take_rows(
+                    point_rows if masses.rows == size else [0] * (size * count),
+                    row_ids=row_ids,
+                ),
                 currents.batch.scales_squared.take_rows(point_rows, row_ids=row_ids),
                 coefficients,
                 s_matrix=matrix.take_rows(point_rows, row_ids=row_ids),

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections import Counter
 from decimal import Decimal, localcontext
 from pathlib import Path
@@ -32,6 +33,184 @@ def native():
 def points():
     path = Path(__file__).resolve().parents[2] / "tools/loop_reference/uudd_qcd.json"
     return np.asarray(json.loads(path.read_text())["points"], dtype=str)
+
+
+@pytest.fixture(scope="module")
+def model_source(native):
+    from pyamplicol.loops.model import build_loop_model
+    from pyamplicol.models.loop_import import load_raw_loop_model
+
+    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
+    if not path:
+        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+    return build_loop_model(load_raw_loop_model(path))
+
+
+@pytest.mark.parametrize("massive", [False, True])
+@pytest.mark.parametrize(
+    "arithmetic,precision,engine,tolerance",
+    [
+        ("double", None, "fast", Decimal("3e-11")),
+        ("double-double", None, "generic", Decimal("3e-24")),
+        ("arbitrary", 60, "generic", Decimal("3e-47")),
+    ],
+)
+def test_complete_model_components_share_currents_and_keep_complex_histories(
+    model_source, native, monkeypatch, massive, arithmetic, precision, engine, tolerance
+):
+    from pyamplicol.loops.physical_counterterms import (
+        distinct_flavour_model_virtual_program,
+        top_pair_model_virtual_program,
+    )
+    from pyamplicol.loops.physical_model_correlations import NativeDirectedModelProgram
+
+    factory = (
+        top_pair_model_virtual_program
+        if massive
+        else distinct_flavour_model_virtual_program
+    )
+    name = "top_pair_qcd.json" if massive else "uudd_qcd.json"
+    path = Path(__file__).resolve().parents[2] / "tools/loop_reference" / name
+    momenta = np.asarray(json.loads(path.read_text())["points"], dtype=str)[:2]
+    model = factory(
+        model_source,
+        backend=native,
+        arithmetic=arithmetic,
+        precision=precision,
+        reduction_engine=engine,
+    )
+    baseline = model.evaluate_ordered_decimal(
+        momenta, ["1000000", "900000"], model_values=["0.118", "173"]
+    )
+    directed = NativeDirectedModelProgram(
+        model, _histories(model.bare, conservation=True)
+    )
+    calls = Counter()
+    evaluate = NativeCoefficientDAG.evaluate_batch
+
+    def counted(executor, arguments):
+        calls[id(executor)] += 1
+        return evaluate(executor, arguments)
+
+    monkeypatch.setattr(NativeCoefficientDAG, "evaluate_batch", counted)
+    result = directed.evaluate_decimal(
+        momenta, ["1000000", "900000"], model_values=["0.118", "173"]
+    )
+    expected = Counter(id(current.executor) for current in model.currents)
+    for executors, sharing in (
+        (model.bare.born_executors, model.bare.born_sharing),
+        (model.bare.loop_executors, model.bare.loop_sharing),
+    ):
+        expected.update(id(executors[index]) for index in sharing.representatives)
+    assert calls == expected  # CT work also occurs once, independent of directions.
+    with localcontext() as context:
+        context.prec = 110
+        for name in (
+            "born",
+            "virtual",
+            "bare",
+            "uv",
+            "r2",
+            "uv_local",
+            "uv_external_fields",
+        ):
+            values = _decimals(getattr(result, name))
+            _close(values[:, 0], _decimals(getattr(baseline, name)), tolerance)
+            _close(values[:, 1], values[:, 0] * Decimal(4) / 3, tolerance)
+            _close(
+                sum(values[:, i] for i in (1, 4, 5, 6)),
+                np.zeros_like(values[:, 0]),
+                tolerance,
+            )
+            _close(values[:, 3], _conjugate(values[:, 2]), tolerance)
+            assert not getattr(result, name).flags.writeable
+        _close(
+            _decimals(result.virtual),
+            _decimals(result.first) + _decimals(result.second),
+            tolerance,
+        )
+        _close(
+            _decimals(result.first[:, 2]),
+            _conjugate(_decimals(result.second[:, 3])),
+            tolerance,
+        )
+        _close(
+            _decimals(result.virtual),
+            _decimals(result.bare) + _decimals(result.uv) + _decimals(result.r2),
+            tolerance,
+        )
+        assert abs(Decimal(result.virtual[0, 2, 0, 0, 1])) > Decimal("1e-4")
+        if massive:
+            assert abs(Decimal(result.uv_external_fields[0, 0, 0, 0, 0])) > Decimal(
+                "1e-3"
+            )
+    for point, row in enumerate(result.statuses):
+        for (lane, status), (direction, sector, _family) in zip(
+            row, result.channels, strict=True
+        ):
+            assert lane == point * directed.directions + direction + sector
+            assert status == "success"
+    empty = directed.evaluate_decimal(momenta[:0], [], model_values=["0.118", "173"])
+    assert empty.virtual.shape == (0, 7, 1, 3, 2) and empty.statuses == ()
+    assert empty.uv_external_fields.shape == empty.virtual.shape
+
+
+def test_complete_directed_rejects_singular_counterterms_and_scope_mutation(
+    model_source, points
+):
+    from dataclasses import replace
+
+    from symbolica import E
+
+    from pyamplicol.loops.model_expressions import LaurentExpression
+    from pyamplicol.loops.physical_counterterms import (
+        NativeModelVirtualProgram,
+        distinct_flavour_model_virtual_program,
+    )
+    from pyamplicol.loops.physical_model_correlations import NativeDirectedModelProgram
+
+    base = distinct_flavour_model_virtual_program(model_source, reduction_engine="fast")
+    original = base.insertions[0]
+    singular = replace(
+        original,
+        rule=replace(
+            original.rule,
+            couplings=tuple(
+                (
+                    name,
+                    replace(
+                        entry,
+                        coupling=replace(
+                            entry.coupling,
+                            value=LaurentExpression(
+                                entry.coupling.value.expression
+                                / (base.bare.scale_squared_symbol - E("4000000"))
+                            ),
+                        ),
+                    ),
+                )
+                for name, entry in original.rule.couplings
+            ),
+        ),
+    )
+    # This deliberately incomplete catalogue tests failure reporting only.
+    model = NativeModelVirtualProgram(
+        base.bare, [singular], source_bindings=base.source_bindings
+    )
+    directed = NativeDirectedModelProgram(model, _histories(base.bare)[:2])
+    with pytest.raises(ArithmeticError, match=r"counterterm scalar.*\[\(1, 1\)\]"):
+        directed.evaluate_native(
+            points[:2], ["1000000", "4000000"], model_values=["0.118", "173"]
+        )
+    with pytest.raises(ValueError, match="bound to a model program"):
+        base.bare.set_color_metrics(base.bare.born_metric, base.bare.loop_metric)
+    model.r2_strategy = "direct"
+    with pytest.raises(NotImplementedError, match="model R2"):
+        directed.evaluate_native(points[:0], [], model_values=["0.118", "173"])
+    model.r2_strategy = "model"
+    model.currents.pop()
+    with pytest.raises(ValueError, match="catalogue changed"):
+        directed.evaluate_native(points[:0], [], model_values=["0.118", "173"])
 
 
 def _histories(bare, *, conservation=False):
