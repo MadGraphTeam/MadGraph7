@@ -95,12 +95,45 @@ def expand_color_conditionals(expression, nc):
     return result
 
 
+def split_color_grades(expressions, nc):
+    """Separate exact scalar aliases into Nc powers without merging currents.
+
+    Each returned ``(degree, coefficients)`` retains the original alias order,
+    including zero entries. The coefficients contain no Nc. A caller evaluates
+    a separate current for each grade and projects ``Nc**degree * overlap``;
+    projecting the two factors independently would lose the common structural
+    degree. This scalar split does not prove which Lorentz terms an alias feeds.
+    """
+    from symbolica import E
+
+    expressions = tuple(expressions)
+    normalized = tuple(
+        expand_color_conditionals(expression, nc).together().expand()
+        for expression in expressions
+    )
+    rows = prepare_color_projection(nc, [[value] for value in normalized]).rows
+    grades = sorted({degree for row in rows for degree, _ in row})
+    coefficients = tuple(dict(row) for row in rows)
+    result = tuple(
+        (degree, tuple(row.get(degree, E("0")) for row in coefficients))
+        for degree in grades
+    )
+    for column, expected in enumerate(normalized):
+        reconstructed = sum(
+            (nc**degree * values[column] for degree, values in result), E("0")
+        )
+        if (reconstructed - expected).together().expand() != 0:
+            raise ValueError("scalar color-grade reconstruction is incomplete")
+    return result
+
+
 def project_physical_color(bare, nc, additional_rows, accuracy):
     """Project exact unaveraged rows, then bind Nc=3 and physical averages.
 
     Additional rows include *both* their model scalar color invariants and
-    tensor overlaps. They are returned without an average for native CT alias
-    binding. This seam does not infer a model's SU(Nc) continuation.
+    tensor overlaps, e.g. ``Nc**grade * Born_CT_overlap`` after scalar grading.
+    They are returned without an average for the caller's native contraction.
+    This seam does not infer a model's SU(Nc) continuation or alias incidence.
     """
     from symbolica import E
 
