@@ -107,6 +107,70 @@ def _compare(result, points, scales, alpha_s, inverse_alpha, tolerance):
     assert all(status == "success" for row in result.statuses for _, status in row)
 
 
+def _replace_ct_scalar(program, expression, *, kind="UVloop"):
+    from pyamplicol.loops.model_expressions import LaurentExpression
+
+    insertion = program.insertions[0]
+    assert len(insertion.rule.couplings) == 1
+    name, entry = insertion.rule.couplings[0]
+    entry = replace(
+        entry, coupling=replace(entry.coupling, value=LaurentExpression(expression))
+    )
+    return replace(
+        insertion, rule=replace(insertion.rule, kind=kind, couplings=((name, entry),))
+    )
+
+
+def test_local_uv_scale_is_per_point_and_laurent_domain_is_explicit(source, points):
+    from symbolica import E, Expression, S
+
+    from pyamplicol.loops.model_expressions import epsilon_symbol, parse_exact_ufo
+
+    base = drell_yan_model_virtual_program(source, arithmetic="arbitrary", precision=70)
+    original = base.insertions[0].rule.couplings[0][1].coupling.value.expression
+    scale = S("ct_scale_test::mu_r2")
+    modified = _replace_ct_scalar(
+        base, original * ((scale / E("1000000")).log() + 1 / epsilon_symbol())
+    )
+    program = NativeModelVirtualProgram(
+        base.bare,
+        [modified],
+        source_bindings=(
+            *base.source_bindings,
+            (scale, base.bare.scale_squared_symbol),
+        ),
+    )
+    with localcontext() as context:
+        context.prec = 160
+        scales = [
+            "1000000",
+            "4000000",
+            str(Decimal("1000000") * (1 + Decimal(2) ** -140)),
+        ]
+        repeated = np.repeat(points[:1], len(scales), axis=0)
+        result = program.evaluate_decimal(
+            repeated, scales, model_values=["0.118", "132.507"]
+        )
+        r2 = _expected(points[0], "1000000", "0.118", "132.507")[-1]
+        logs = Expression.evaluator_multiple(
+            [(parse_exact_ufo(value) / E("1000000")).log() for value in scales],
+            [],
+            n_cores=1,
+            jit_compile=False,
+        ).evaluate_complex_with_prec([], 110)
+        for row, logarithm in zip(result.uv, logs, strict=True):
+            expected = r2 * logarithm.to_decimal_tuple()[0]
+            assert abs(Decimal(row[0, 0]) - expected) < Decimal("1e-66")
+            assert abs(Decimal(row[1, 0]) - r2) < Decimal("1e-66")
+        assert Decimal(result.uv[2, 0, 0]) != 0
+        assert all(Decimal(value) == 0 for value in result.r2.flat)
+    unsupported = _replace_ct_scalar(base, original / epsilon_symbol() ** 3)
+    with pytest.raises(NotImplementedError, match="Laurent powers"):
+        NativeModelVirtualProgram(
+            base.bare, [unsupported], source_bindings=base.source_bindings
+        )
+
+
 @pytest.mark.parametrize(
     "arithmetic,precision,tolerance",
     [

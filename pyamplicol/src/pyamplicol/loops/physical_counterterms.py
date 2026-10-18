@@ -50,17 +50,20 @@ class NativeModelVirtualProgram:
     """Combine bare loops and source-derived CT trees without repeating states.
 
     ``source_bindings`` translates source parameter symbols into the bare
-    program's global model inputs. No normalized binary64 model values are read.
-    Unknown source parameters fail during evaluator construction.
+    program's global model inputs and ``bare.scale_squared_symbol``. The latter
+    binds each point's renormalization scale; model inputs remain global.
+    No normalized binary64 model values are read. Unknown source parameters
+    fail during evaluator construction.
     """
 
     def __init__(self, bare, insertions, *, source_bindings):
         from symbolica import E, Replacement, S
 
         self.bare = bare
+        self.source_bindings = tuple(source_bindings)
         backend, options = bare.backend, bare.options
         replacements = []
-        for source, target in source_bindings:
+        for source, target in self.source_bindings:
             require_exact_numbers(target)
             replacements.append(Replacement(source, target))
         allowed = {pair.loop for pair in bare.process.orders.sectors[0].pairs}
@@ -75,6 +78,15 @@ class NativeModelVirtualProgram:
                 raise ValueError(
                     "counterterm order is absent from the allowed Born/loop pairings"
                 )
+            for _, entry in insertion.rule.couplings:
+                if any(
+                    coefficient != 0 and power not in (E("-2"), E("-1"), E("0"))
+                    for power, coefficient in entry.coupling.value.series(0)
+                ):
+                    raise NotImplementedError(
+                        f"counterterm {entry.vertex_name} has unsupported "
+                        "Laurent powers outside -2..0"
+                    )
             dag, color = _born_dag(
                 insertion.graph, bare.recurrences[0].dag.variables, bare.momenta
             )
@@ -106,7 +118,11 @@ class NativeModelVirtualProgram:
                         dag,
                         executor,
                         backend.CoefficientEvaluator(
-                            _saved(expressions, bare.model_inputs), **options
+                            _saved(
+                                expressions,
+                                (*bare.model_inputs, bare.scale_squared_symbol),
+                            ),
+                            **options,
                         ),
                         tuple(symbol.get_name() for symbol, _ in substitutions),
                         weights,
@@ -151,11 +167,22 @@ class NativeModelVirtualProgram:
             momenta, scales_squared, model_values=model_values
         )
         batch, backend = native.batch, self.bare.backend
+        coefficient_inputs = backend.NativeBatch.concat_columns(
+            [
+                batch.model_arguments.take_rows(
+                    [0] * batch.size, row_ids=batch.point_ids
+                ),
+                batch.scales_squared,
+            ]
+        )
         amplitudes = []
         for current in self.currents:
             coefficients = current.coefficient_evaluator.evaluate_batch(
-                batch.model_arguments
-            ).take_rows([0] * batch.rows, row_ids=batch.lane_ids)
+                coefficient_inputs
+            ).take_rows(
+                np.repeat(np.arange(batch.size), len(self.bare.helicities)).tolist(),
+                row_ids=batch.lane_ids,
+            )
             combined = backend.NativeBatch.concat_columns([batch.bound, coefficients])
             positions = dict(batch.positions)
             positions.update(

@@ -49,6 +49,7 @@ class NativePhysicalBatch:
     bound: Any
     positions: dict[str, int]
     model_arguments: Any
+    scales_squared: Any
 
 
 @dataclass(slots=True)
@@ -141,6 +142,7 @@ class NativeBareProcessProgram:
         self.reduction_engine = reduction_engine
         self.options = {"arithmetic": arithmetic, "precision": precision}
         self.model_inputs = model_inputs
+        self.scale_squared_symbol = S("loop_physical_process::mu_r2")
         self.model_names = tuple(sorted(model_expressions))
         self.model_evaluator = backend.CoefficientEvaluator(
             _saved(
@@ -497,7 +499,14 @@ class NativeBareProcessProgram:
         virtual = self.postprocess.evaluate_batch(batch_type.concat_columns(integrated))
         return NativeBareEvaluation(
             NativePhysicalBatch(
-                size, rows, point_ids, lane_ids, bound, positions, model_arguments
+                size,
+                rows,
+                point_ids,
+                lane_ids,
+                bound,
+                positions,
+                model_arguments,
+                scales,
             ),
             born,
             born_squared,
