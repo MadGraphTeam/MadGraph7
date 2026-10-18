@@ -16,6 +16,7 @@ from pyamplicol.loops.physical_counterterms import (
     NativeModelVirtualProgram,
     distinct_flavour_model_virtual_program,
     drell_yan_model_virtual_program,
+    top_pair_model_virtual_program,
 )
 
 
@@ -228,6 +229,119 @@ def _uudd_born_uv(point, scale, alpha_s="0.118", mass="173"):
         value.to_decimal_tuple()[0]
         for value in evaluator.evaluate_complex_with_prec([], 110)
     ]
+
+
+def _top_uv_expected(point, scale, alpha_s):
+    from symbolica import E, Expression
+
+    from pyamplicol.loops.model_expressions import parse_exact_ufo
+
+    p = [[parse_exact_ufo(value) for value in leg] for leg in point]
+
+    def square(vector):
+        return vector[0] ** 2 - sum((v**2 for v in vector[1:]), E("0"))
+
+    s, t, u = [
+        square([a + sign * b for a, b in zip(p[0], p[leg], strict=True)])
+        for leg, sign in ((1, 1), (2, -1), (3, -1))
+    ]
+    alpha, mass2 = parse_exact_ufo(alpha_s), E("173^2")
+    born = (
+        E("4/9")
+        * (4 * E("pi") * alpha) ** 2
+        * ((t - mass2) ** 2 + (u - mass2) ** 2 + 2 * mass2 * s)
+        / s**2
+    )
+    logarithm = (parse_exact_ufo(scale) / mass2).log()
+    ratio = alpha / (2 * E("pi"))
+    # On-shell heavy-quark field renormalization, including both external legs.
+    values = [
+        born * ratio * E("2/3") * logarithm,
+        -7 * born * ratio,
+        -born * ratio * E("4/3") * (4 + 3 * logarithm),
+        -3 * born * ratio * E("4/3"),
+    ]
+    evaluator = Expression.evaluator_multiple(values, [], n_cores=1, jit_compile=False)
+    return [
+        v.to_decimal_tuple()[0] for v in evaluator.evaluate_complex_with_prec([], 110)
+    ]
+
+
+@pytest.mark.parametrize(
+    "arithmetic,precision,engine,coefficient_engine,tolerance",
+    [
+        ("double", None, "fast", "jit", Decimal("3e-11")),
+        ("double-double", None, "generic", "interpreted", Decimal("3e-26")),
+        ("arbitrary", 60, "generic", "interpreted", Decimal("3e-53")),
+    ],
+)
+def test_complete_top_pair_includes_actual_external_field_factors(
+    source, arithmetic, precision, engine, coefficient_engine, tolerance
+):
+    fixture = (
+        Path(__file__).resolve().parents[2] / "tools/loop_reference/top_pair_qcd.json"
+    )
+    points = np.asarray(
+        json.loads(fixture.read_text(), parse_float=str, parse_int=str)["points"],
+        dtype=str,
+    )
+    program = top_pair_model_virtual_program(
+        source,
+        arithmetic=arithmetic,
+        precision=precision,
+        reduction_engine=engine,
+        coefficient_engine=coefficient_engine,
+    )
+    assert len(program.external_fields) == 2 and len(program.field_currents) == 4
+    result = program.evaluate_decimal(
+        points, ["1000000"] * 3, model_values=["0.118", "173"]
+    )
+    reference_path = os.environ.get("PYAMPLICOL_TOP_PAIR_COMPONENT_REFERENCE")
+    if reference_path:
+        reference = json.loads(Path(reference_path).read_text())
+        for index, row in enumerate(reference["rows"]):
+            for name, key in (
+                ("bare", "bare"),
+                ("uv", "uv"),
+                ("r2", "r2"),
+                ("virtual", "full"),
+                ("uv_local", "uv_vertex"),
+                ("uv_external_fields", "wf"),
+            ):
+                np.testing.assert_allclose(
+                    getattr(result, name)[index, :, 0].astype(float),
+                    [
+                        row[key][pole]
+                        for pole in ("finite", "single_pole", "double_pole")
+                    ],
+                    rtol=1e-10,
+                    atol=1e-13,
+                )
+    scales, alpha = ["900000", "2100000"], "0.100000000000000000000000001"
+    rebound = program.evaluate_decimal(points[1:], scales, model_values=[alpha, "173"])
+    with localcontext() as context:
+        context.prec = 120
+        for index, (point, scale) in enumerate(zip(points[1:], scales, strict=True)):
+            expected = _top_uv_expected(point, scale, alpha)
+            actual = [
+                rebound.uv_local[index, 0, 0],
+                rebound.uv_local[index, 1, 0],
+                rebound.uv_external_fields[index, 0, 0],
+                rebound.uv_external_fields[index, 1, 0],
+            ]
+            for value, target in zip(actual, expected, strict=True):
+                assert abs(Decimal(value) - target) < abs(target) * tolerance
+            for pole in range(3):
+                assert (
+                    abs(
+                        Decimal(rebound.uv[index, pole, 0])
+                        - Decimal(rebound.uv_local[index, pole, 0])
+                        - Decimal(rebound.uv_external_fields[index, pole, 0])
+                    )
+                    < tolerance
+                )
+    empty = program.evaluate_decimal(points[:0], [], model_values=["0.118", "173"])
+    assert empty.uv_external_fields.shape == (0, 3, 2)
 
 
 @pytest.mark.parametrize(

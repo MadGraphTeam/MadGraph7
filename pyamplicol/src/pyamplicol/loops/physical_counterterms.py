@@ -27,6 +27,8 @@ class ModelVirtualResult:
     bare: Any
     uv: Any
     r2: Any
+    uv_local: Any
+    uv_external_fields: Any
     statuses: Any
     arithmetic: str
     precision: int | None
@@ -46,6 +48,26 @@ class _CountertermCurrent:
     color_weights: tuple[Any, ...]
 
 
+@dataclass(slots=True)
+class _ExternalFieldCurrent:
+    insertion: Any
+    epsilon_power: int
+    born_index: int
+    coefficient_evaluator: Any
+
+
+def _require_laurent_domain(value, context):
+    from symbolica import E
+
+    if any(
+        coefficient != 0 and power not in (E("-2"), E("-1"), E("0"))
+        for power, coefficient in value.series(0)
+    ):
+        raise NotImplementedError(
+            f"{context} has unsupported Laurent powers outside -2..0"
+        )
+
+
 class NativeModelVirtualProgram:
     """Combine bare loops and source-derived CT trees without repeating states.
 
@@ -56,7 +78,7 @@ class NativeModelVirtualProgram:
     fail during evaluator construction.
     """
 
-    def __init__(self, bare, insertions, *, source_bindings):
+    def __init__(self, bare, insertions, *, source_bindings, external_fields=()):
         from symbolica import E, Replacement, S
 
         self.bare = bare
@@ -80,14 +102,9 @@ class NativeModelVirtualProgram:
                     "counterterm order is absent from the allowed Born/loop pairings"
                 )
             for _, entry in insertion.rule.couplings:
-                if any(
-                    coefficient != 0 and power not in (E("-2"), E("-1"), E("0"))
-                    for power, coefficient in entry.coupling.value.series(0)
-                ):
-                    raise NotImplementedError(
-                        f"counterterm {entry.vertex_name} has unsupported "
-                        "Laurent powers outside -2..0"
-                    )
+                _require_laurent_domain(
+                    entry.coupling.value, f"counterterm {entry.vertex_name}"
+                )
             dag, color = _born_dag(
                 insertion.graph, bare.recurrences[0].dag.variables, bare.momenta
             )
@@ -129,7 +146,39 @@ class NativeModelVirtualProgram:
                         weights,
                     )
                 )
-        parameters, ultraviolet, rational = [], [E("0")] * 3, [E("0")] * 3
+        self.external_fields = tuple(external_fields)
+        self.field_currents = []
+        born_indices = {graph.id: i for i, graph in enumerate(bare.process.born)}
+        for insertion in self.external_fields:
+            if insertion.order not in allowed or insertion.born.id not in born_indices:
+                raise ValueError(
+                    "external field is outside the admitted Born/loop catalogue"
+                )
+            _require_laurent_domain(insertion.rule.coefficient, "external field")
+            for power in (0, -1, -2):
+                value = insertion.coefficient(power).replace_multiple(replacements)
+                require_exact_numbers(value)
+                if value == 0:
+                    continue
+                self.field_currents.append(
+                    _ExternalFieldCurrent(
+                        insertion,
+                        power,
+                        born_indices[insertion.born.id],
+                        backend.CoefficientEvaluator(
+                            _saved(
+                                [value], (*bare.model_inputs, bare.scale_squared_symbol)
+                            ),
+                            **options,
+                        ),
+                    )
+                )
+        parameters, ultraviolet, rational, fields = (
+            [],
+            [E("0")] * 3,
+            [E("0")] * 3,
+            [E("0")] * 3,
+        )
         for helicity in range(len(bare.helicities)):
             born = [
                 S(f"loop_counterterm::born{helicity}_{i}")
@@ -154,12 +203,36 @@ class NativeModelVirtualProgram:
                     rational if current.insertion.rule.kind == "R2" else ultraviolet
                 )
                 target[-current.epsilon_power] += value + value.conj()
+            for index, current in enumerate(self.field_currents):
+                factor = S(f"loop_counterterm::field{helicity}_{index}")
+                parameters.append(factor)
+                # The model's particle factor already includes delta-Z/2.
+                amplitude = factor * born[current.born_index]
+                value = sum(
+                    (
+                        left.conj()
+                        * bare.born_metric[i][current.born_index]
+                        * amplitude
+                        for i, left in enumerate(born)
+                    ),
+                    E("0"),
+                )
+                fields[-current.epsilon_power] += value + value.conj()
         self.projector = backend.CoefficientEvaluator(
-            _saved([*ultraviolet, *rational], parameters), **options
+            _saved([*ultraviolet, *rational, *fields], parameters), **options
         )
-        poles = [S(f"loop_counterterm::pole{i}") for i in range(9)]
+        poles = [S(f"loop_counterterm::pole{i}") for i in range(12)]
         self.assemble = backend.CoefficientEvaluator(
-            _saved([poles[i] + poles[i + 3] + poles[i + 6] for i in range(3)], poles),
+            _saved(
+                [
+                    *[
+                        poles[i] + poles[i + 3] + poles[i + 6] + poles[i + 9]
+                        for i in range(3)
+                    ],
+                    *[poles[i + 3] + poles[i + 9] for i in range(3)],
+                ],
+                poles,
+            ),
             **options,
         )
 
@@ -205,6 +278,19 @@ class NativeModelVirtualProgram:
                 rows_per_point=len(self.bare.helicities),
             )
             amplitudes.append(amplitude)
+        for current in self.field_currents:
+            coefficients = current.coefficient_evaluator.evaluate_batch(
+                coefficient_inputs
+            )
+            require_finite_batch(coefficients, "external-field scalar coefficients")
+            amplitudes.append(
+                coefficients.take_rows(
+                    np.repeat(
+                        np.arange(batch.size), len(self.bare.helicities)
+                    ).tolist(),
+                    row_ids=batch.lane_ids,
+                )
+            )
         inputs = backend.NativeBatch.concat_columns(
             [native.born_amplitudes, *amplitudes]
         )
@@ -223,17 +309,19 @@ class NativeModelVirtualProgram:
             batch.size, 3, 2
         )
         ct = np.asarray(counterterms.to_decimal(), dtype=object).reshape(
-            batch.size, 6, 2
+            batch.size, 9, 2
         )
         virtual = np.asarray(assembled.to_decimal(), dtype=object).reshape(
-            batch.size, 3, 2
+            batch.size, 6, 2
         )
         return ModelVirtualResult(
             born,
-            virtual,
+            virtual[:, :3],
             bare,
+            virtual[:, 3:],
+            ct[:, 3:6],
             ct[:, :3],
-            ct[:, 3:],
+            ct[:, 6:],
             native.statuses,
             self.bare.arithmetic,
             self.bare.precision,
@@ -335,6 +423,15 @@ def distinct_flavour_model_virtual_program(source, **options):
     two-point primitives bound this control. Global model inputs are alpha_s
     and top mass; bottom/charm masses are zero. Scale remains per point.
     """
+    return _qcd_model_virtual_program(source, ("d", "d~"), **options)
+
+
+def top_pair_model_virtual_program(source, **options):
+    """Top-pair source UV/R2 and external-field factors on supplied on-shell data."""
+    return _qcd_model_virtual_program(source, ("t", "t~"), **options)
+
+
+def _qcd_model_virtual_program(source, outgoing, **options):
     from symbolica import E, S
     from symbolica.community import hepkit as h
 
@@ -345,6 +442,7 @@ def distinct_flavour_model_virtual_program(source, **options):
         OrdinaryBasisRepresentative,
     )
     from .physical_process import NativeBareProcessProgram
+    from .wavefunction import match_external_field_counterterms
 
     model = h.Model.qcd_qed()
     representatives, validations = [], []
@@ -355,11 +453,16 @@ def distinct_flavour_model_virtual_program(source, **options):
             source.raw.collections["particles"][i]["fields"] for i in entry.particle_ids
         ]
         pdgs = tuple(p["pdg_code"] for p in particles)
-        if entry.kind == "tree" and pdgs in ((-1, 1, 21), (-2, 2, 21)):
+        ordinary_rules = {
+            (-1, 1, 21): "V_74",
+            (-2, 2, 21): "V_135",
+            (-6, 6, 21): "V_137",
+        }
+        if entry.kind == "tree" and pdgs in ordinary_rules:
             representatives.append(
                 OrdinaryBasisRepresentative(
                     entry.key,
-                    "V_74" if pdgs[0] == -1 else "V_135",
+                    ordinary_rules[pdgs],
                     0,
                     0,
                     "native-qcd-qed-vector-current-control",
@@ -389,7 +492,7 @@ def distinct_flavour_model_virtual_program(source, **options):
         primitive_validations=validations,
     )
     process = build_loop_process(
-        prepared.process(["u", "u~"], ["d", "d~"]),
+        prepared.process(["u", "u~"], outgoing),
         ordinary_model=model,
         selected_corrections=["QCD"],
         perturbative_orders={"QCD": 1},
@@ -398,7 +501,7 @@ def distinct_flavour_model_virtual_program(source, **options):
     )
     matched = match_counterterms(
         prepared,
-        prepared.process(["u", "u~"], ["d", "d~"], counterterms=True),
+        prepared.process(["u", "u~"], outgoing, counterterms=True),
         process,
         selected_corrections=["QCD"],
     )
@@ -425,10 +528,22 @@ def distinct_flavour_model_virtual_program(source, **options):
         (S("UFO::MC"), E("0")),
         (S("UFO::Ncol"), E("3")),
         (S("UFO::CA"), E("3")),
+        (S("UFO::CF"), E("4/3")),
         (S("UFO::TF"), E("1/2")),
         (S("UFO::lhv"), E("1")),
         (S("UFO::MU_R"), bare.scale_squared_symbol ** E("1/2")),
     ]
+    fields = match_external_field_counterterms(
+        source,
+        process,
+        selected_corrections=["QCD"],
+        allowed_amplitude_orders={
+            pair.loop for pair in process.orders.sectors[0].pairs
+        },
+    )
     return NativeModelVirtualProgram(
-        bare, matched.insertions, source_bindings=substitutions
+        bare,
+        matched.insertions,
+        source_bindings=substitutions,
+        external_fields=fields.insertions,
     )
