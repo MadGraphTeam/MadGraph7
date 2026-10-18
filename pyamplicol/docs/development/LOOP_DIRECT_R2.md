@@ -223,11 +223,61 @@ The dependency inventory for this construction was checked at three surfaces:
   local gauge-cycle constructor was found in these source/API/example searches;
   the prototype composes the existing metric, projector and routing operations.
 
-Process-wide direct completion remains disabled. The new integrated graph
-certificate covers cubic vector/ghost bubbles and triangles; quartic rules have
-local block checks, not yet full graph/process reduction checks. Massive gauge
-and Goldstone sectors, physical chiral vertices, open fermion chains and mixed
-spin cycles remain outside this provider. Full model-R2 agreement in the same
-HV convention, complete graph coverage and the process performance gates remain
-separate requirements. No universal scheme-conversion formula is inferred, and
-no dependency source was modified.
+These first integrated graph checks cover cubic vector/ghost bubbles and
+triangles; the complete retained gluon-graph coverage below extends them.
+Massive gauge and Goldstone sectors, physical chiral vertices, open fermion
+chains and mixed spin cycles remain outside this provider. No universal
+scheme-conversion formula is inferred, and no dependency source was modified.
+
+## Complete retained gluon-graph kernel coverage
+
+`direct_kernels.dimensional_kernels(graph)` selects the closed vectorlike
+fermion or massless Yang--Mills/ghost provider. Binding still checks every local
+source factor. Unsupported or mixed cycles fail explicitly; this dispatch does
+not establish eligibility for a complete process.
+
+The actual `qcd_qed` source selection for `g g -> g g`, Born order QCD=2 and
+loop order QCD=4 with QED=0, retains 186 loops and 258 Lorentz/colour terms:
+
+| Cycle | Bubbles | Triangles | Boxes |
+| --- | ---: | ---: | ---: |
+| Closed quarks, all six source flavours | 18 | 72 | 36 |
+| Ghosts | 3 | 12 | 6 |
+| Vectors, no quartic vertex | 3 | 6 | 3 |
+| Vectors, one quartic vertex | 18 | 6 | 0 |
+| Vectors, two quartic vertices | 3 | 0 | 0 |
+
+Every retained graph builds with the selected dimensional provider. The largest
+structural weighted numerator rank is four. No tadpole remains in this source
+selection; this observation does not certify tadpoles in other processes.
+At an exact physical momentum control with general external vector components,
+all auxiliary-free polynomial coefficients agree exactly with ordinary
+four-dimensional recurrences, retaining each separate native colour tensor.
+The comparison covers all 186 graphs, including both fermion orientations and
+massless and massive source quarks. It is a full coefficient comparison at that
+kinematic control, not a proof over all possible phase space.
+
+Independent full-D source contractions additionally cover a one-quartic bubble,
+a two-quartic bubble, a quartic triangle, a vector box and a ghost box. Each uses
+two nonzero exact external-colour projections. This small oracle expands and
+contracts the original unsplit source graph with dependency operations; it
+does not substitute recurrence instructions. Both the dimensional trace and
+the local recurrence retain the entire loop-momentum polynomial. The two-quartic
+bubble is also invariant under independent choices of cut and weighted edge,
+so its dimensional multiplicity enters exactly once.
+
+`closed_reduction_powers(recurrence, node=...)` is the shared reducer boundary.
+It maps scalar closed output labels to `(q0,q1,q2,q3,mu2,epsilon)` powers and
+allows scalar descendants such as a tree-denominator multiplication. For a
+closed vectorlike fermion, `None` explicitly denotes the proven odd auxiliary
+gamma5-trace projection; such nonzero auxiliary terms are expected and must not
+be rejected as if they were physical evanescent traces. No open current may be
+projected. Gauge/ghost closures must instead have no odd-mu labels and reject
+them. Fermion epsilon powers and more than one gauge dimensional-trace factor
+also reject. The auxiliary-free columns give N4; the remaining accepted columns
+give the direct dimensional remainder before reduction and Laurent convolution.
+
+This kernel coverage does not itself enable public direct generation. Complete
+Born interference, model-R2 agreement in the same HV convention, exclusive
+process-wide completion, precision and performance remain responsibilities of
+the physical assembler and its independent controls.
