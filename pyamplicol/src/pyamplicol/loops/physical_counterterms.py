@@ -652,7 +652,9 @@ class NativeModelVirtualProgram:
         bare._model_color_metrics_bound = True
         bare._formal_color_projected = space is not None
 
-    def evaluate_counterterm_currents_native(self, batch, *, _failures=None):
+    def evaluate_counterterm_currents_native(
+        self, batch, *, _failures=None, _source_values=None
+    ):
         """Checked CT amplitudes followed by field factors on a shared batch.
 
         The caller supplies the already prepared ordinary physical states.
@@ -662,8 +664,8 @@ class NativeModelVirtualProgram:
         guard = require_finite_batch if _failures is None else _failures.require_finite
         backend = self.bare.backend
         helicities = batch.helicity_count
-        source_values = None
-        if self.source_scale_view is not None:
+        source_values = _source_values
+        if self.source_scale_view is not None and source_values is None:
             if batch.model_snapshot is None:
                 raise ValueError("source counterterm batch has no model snapshot")
             source_values = self.source_scale_view.evaluate_native(
@@ -731,18 +733,32 @@ class NativeModelVirtualProgram:
         return self._complete_native(native)
 
     def evaluate_ordered_partial_native(
-        self, momenta, scales_squared, *, model_values=None, point_ids=None
+        self,
+        momenta,
+        scales_squared,
+        *,
+        model_values=None,
+        point_ids=None,
+        model_snapshot=None,
     ):
         """Keep only valid points; ordinary evaluation still raises on failure."""
         from .numerical_lanes import LaneFailures, require_partial_domain
 
         require_partial_domain(self.bare)
-        if self.r2_strategy != "model" or self.color_projection is not None:
+        if (
+            self.r2_strategy != "model"
+            or self.color_projection is not None
+            or (self.bare.model_state is not None and self.external_fields)
+        ):
             raise NotImplementedError(
-                "partial completion requires full-colour model R2"
+                "partial completion requires full-colour model R2 without source fields"
             )
         native = self.bare.evaluate_ordered_partial_native(
-            momenta, scales_squared, model_values=model_values, point_ids=point_ids
+            momenta,
+            scales_squared,
+            model_values=model_values,
+            point_ids=point_ids,
+            model_snapshot=model_snapshot,
         )
         failures = LaneFailures()
         failures.entries.extend(native.failures)
@@ -750,12 +766,24 @@ class NativeModelVirtualProgram:
         return self._complete_native(native, failures)
 
     def _complete_native(self, native, failures=None):
-        from .numerical_lanes import select_physical_batch
+        from .numerical_lanes import select_bare_evaluation, select_physical_batch
 
         guard = require_finite_batch if failures is None else failures.require_finite
+        source_values = None
+        if failures is not None and self.source_scale_view is not None:
+            source_values, source_failures = (
+                self.source_scale_view.evaluate_partial_native(
+                    native.batch.scales_squared, snapshot=native.batch.model_snapshot
+                )
+            )
+            failures.entries.extend(source_failures)
+            failures.point_ids.update(item.point_id for item in source_failures)
+            indices = failures.successful_indices(native.batch.point_ids)
+            if len(indices) != native.batch.size:
+                native = select_bare_evaluation(native, indices)
         batch, backend = native.batch, self.bare.backend
         amplitudes = self.evaluate_counterterm_currents_native(
-            batch, _failures=failures
+            batch, _failures=failures, _source_values=source_values
         )
         inputs = backend.NativeBatch.concat_columns(
             [native.born_amplitudes, *amplitudes]

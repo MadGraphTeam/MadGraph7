@@ -428,3 +428,97 @@ def test_full_source_model_components_scales_and_snapshot(
         NativeModelVirtualProgram(
             bare, model.insertions, source_bindings=(), external_fields=(object(),)
         )
+
+
+def test_source_snapshot_partial_scales_and_higher_precision_rescue(
+    source, counterterms, points
+):
+    from pyamplicol.loops.scalar_bindings import NativeScalarBindings
+    from pyamplicol.loops.stability import (
+        ArithmeticSpec,
+        NativeModelStabilityProgram,
+        NumericalVerificationError,
+    )
+
+    original = _program(source, prepared=counterterms)
+    model, state = original.virtual, original.source_bare.state
+    snapshot = state.snapshot()
+    data = np.repeat(points[:1], 2, axis=0)
+    ids = [17, 91]
+    scales = ["1000000", "1e400"]
+    stability = NativeModelStabilityProgram(
+        model,
+        [
+            ArithmeticSpec("double-double"),
+            ArithmeticSpec("arbitrary", 70),
+            ArithmeticSpec("arbitrary", 100),
+        ],
+        relative_tolerance="1e-9",
+        absolute_tolerance="1e-14",
+    )
+    partial = stability.evaluate_native(data, scales, point_ids=ids, allow_partial=True)
+    assert partial.point_ids == (17,)
+    assert partial.diagnostics[1].status == "failed"
+    assert any(
+        "scale ingress" in failure.stage
+        for _mode, failure in partial.diagnostics[1].failures
+    )
+    with pytest.raises(NumericalVerificationError):
+        stability.evaluate_native(data, scales, point_ids=ids)
+    # Snapshot ownership is checked even if every input lane will be removed.
+    foreign = NativeScalarBindings(state.plan, parameters=snapshot.overrides)
+    with pytest.raises(ValueError, match="different global state"):
+        model.evaluate_ordered_partial_native(
+            data[1:], scales[1:], point_ids=ids[1:], model_snapshot=foreign.snapshot()
+        )
+    with pytest.raises(ValueError, match="named inputs"):
+        stability.evaluate_native(data[:0], [], model_values=[])
+
+    # Update the owner after call-entry capture. Both primary and every higher
+    # precision must evaluate the retained source revision and its exact inputs.
+    prepare = model.bare.prepare_currents_native
+    seen = []
+
+    def update_after_capture(*args, **kwargs):
+        captured = kwargs["model_snapshot"]
+        seen.append(captured)
+        state.update({"Gf": "0.0000233278"})
+        return prepare(*args, **kwargs)
+
+    model.bare.prepare_currents_native = update_after_capture
+    try:
+        checked = stability.evaluate_native(data, scales, point_ids=ids, verify=True)
+    finally:
+        model.bare.prepare_currents_native = prepare
+    assert seen == [snapshot]
+    assert state.snapshot() is not snapshot
+    assert checked.point_ids == (17, 91)
+    assert checked.diagnostics[0].status == "success"
+    rescued = checked.diagnostics[1]
+    assert rescued.status == "rescued"
+    assert rescued.verification_pair == (
+        ArithmeticSpec("arbitrary", 70),
+        ArithmeticSpec("arbitrary", 100),
+    )
+    assert rescued.output_arithmetic == ArithmeticSpec("double")
+    assert checked.totals.take_rows([0]).agreement_rows(
+        partial.totals, "0", "1e-150"
+    ) == [(17, True)]
+    assert all(
+        buffer.row_ids == ids and buffer.precision_bits == 53
+        for buffer in [checked.born, *checked.component_batches, checked.totals]
+    )
+    # Cached higher views reconstruct each subsequent exact snapshot, rather
+    # than retaining their first set of source parameters.
+    rebound = stability.evaluate_native(
+        data[:1], scales[:1], point_ids=ids[:1], verify=True
+    )
+    assert rebound.born.agreement_rows(checked.born.take_rows([0]), "1e-9", "0") == [
+        (17, False)
+    ]
+    current = state.snapshot()
+    with pytest.raises((ValueError, ArithmeticError)):
+        state.update({"Gf": "NaN"})
+    assert state.snapshot() is current
+    empty = stability.evaluate_native(data[:0], [], verify=True)
+    assert empty.point_ids == () and empty.totals.rows == 0

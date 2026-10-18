@@ -708,9 +708,18 @@ The optional `snapshot=` argument retains one revision across ordinary and UV
 physical stages; snapshots from another state are rejected even with the same
 plan. This is an in-memory ownership check, not an artifact identity.
 
-These are scalar-state consumers, not a production EW runtime. Wiring scale
-views into the full physical UV stage is a separate step. No coupling running
-or scheme choices are inferred here. Exact cold output expressions can also
+`reconstruct_snapshot(source_owner, snapshot)` on another carrier binding of the
+identical plan rebuilds exact defaults and captured overrides without publishing
+an update. The source owner is checked before numerical work. Its native rounded
+arguments and values are never used as higher-precision inputs.
+`NativeScaleBindings.evaluate_partial_native` returns sparse native values and
+original-ID numerical failures; it filters scale and active-diagnostic failures
+before their values enter later evaluators. Metadata/carrier errors still raise,
+including for empty batches. The ordinary method retains its raising behavior.
+
+These are scalar-state consumers, not a production EW runtime. Their bounded
+physical UV integration is described below. No coupling running or scheme choices
+are inferred here. Exact cold output expressions can also
 prove structural zero mass aliases without evaluating adjustable defaults.
 
 ## Structural covariant source model

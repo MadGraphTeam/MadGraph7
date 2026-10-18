@@ -307,9 +307,10 @@ conversion, while finite originals overflowing a carrier remain distinguishable
 numerical failures. Original scale literals are checked before point eviction.
 Native state statuses compact whole physical points before coefficient DAGs;
 original decimal inputs remain available for wider-precision retries. Global
-model formula errors still raise for the batch. Source-owned model snapshots,
-formal-colour views, direct R2 and spin/directed observable views are not yet
-certified for partial evaluation. The partial method itself neither establishes
+model formula errors still raise for the batch. The bounded real-mass source
+charged-lepton neutral-current model-rule control also supports partial evaluation; CMS, source
+external fields, formal colour, direct R2 and spin/directed source views remain
+excluded. The partial method itself neither establishes
 accuracy nor chooses a rescue precision. Genuine singular Born/CT and later-family
 `DegenerateGram` controls validate failure isolation in all three carriers;
 finite original state overflow is isolated in binary64/DoubleFloat and finite
@@ -341,5 +342,33 @@ A bounded near-forward uudd control exercises an actual rescue: binary64 and
 DoubleFloat report a degenerate Gram cut, while 70- and 100-digit evaluations
 agree and satisfy the requested binary64 output bound. This tests the recovery
 mechanism, not general near-singular numerical reliability. A cheap production
-stability policy, source snapshot reconstruction, correlated/direct/formal
-coverage and benchmark-matched verification cost remain separate work.
+stability policy, correlated/direct/formal coverage and benchmark-matched
+verification cost remain separate work.
+
+
+Source-owned partial and verification calls capture one checked global snapshot
+before dropping any point. Its original overrides and exact source defaults are
+re-evaluated in each higher arithmetic using the identical cold scalar plan;
+rounded model values are never widened into higher inputs. Higher views retain
+that snapshot even if the live source state changes during evaluation. They
+publish no update to either owner. Ordinary and CT scale views remove nonfinite
+scale/active-diagnostic lanes before consuming their values, and gather native
+pointwise model rows, physical states and already reduced families consistently.
+Original point IDs survive every gather. Invalid original global parameters,
+failed atomic global updates and global formula errors remain whole-call errors;
+this boundary does not promise rescue of a global binding that cannot be formed
+in the requested carrier. Existing CMS declaration metadata and declared complex
+mass parameters exclude that unvalidated domain independently of numerical mass
+values.
+
+
+The source rescue control uses the complete real-mass Gmu charged-lepton process
+with custom IDs, one ordinary scale and one exact finite `mu_r2=1e400`.
+Double/DoubleFloat reject the latter lane; 70- and 100-digit evaluations agree
+across every component and satisfy the final double output bound. A concurrent
+source Gf update after capture changes the next call but cannot change any
+attempt of the current call. A separate actual `G_UVt` source CT exercises finite
+`mu_r2=1e-320`: its logarithm argument overflows in double/DoubleFloat, so the
+source scale view removes that lane before consumption; arbitrary precision
+retains both lanes. These are bounded empirical controls, not general EW
+stability certification.

@@ -85,8 +85,9 @@ class NativeModelStabilityProgram:
 
     Higher views are compiled lazily from the same exact cold process/model data.
     Each call copies its original decimal inputs once. No rounded intermediate is
-    used to reconstruct a higher-precision physical evaluation. Source-owned,
-    direct-R2, projected-colour and correlated views remain outside this boundary.
+    used to reconstruct a higher-precision physical evaluation. Source owners
+    retain one exact snapshot across attempts. Direct-R2, projected-colour, CMS
+    and correlated views remain outside this boundary.
     Malformed original inputs and global model formula errors still propagate.
     Numerical external-state failures retain sparse original point identities.
     """
@@ -117,18 +118,47 @@ class NativeModelStabilityProgram:
             # The existing native exact decimal parser validates the bound once.
             empty.agreement_rows(empty, relative_tolerance, absolute_tolerance)
 
-    def _view(self, spec):
+    def _view(self, spec, source_snapshot=None):
         if spec not in self._views:
             from .physical_counterterms import NativeModelVirtualProgram
             from .physical_process import NativeBareProcessProgram
 
             original = self.program.bare
+            if original.model_state is None:
+                bindings = dict(
+                    model_expressions=original.model_expressions,
+                    model_inputs=original.model_inputs,
+                )
+            else:
+                from .scalar_bindings import NativeScalarBindings, NativeScaleBindings
+
+                original.model_state.require_snapshot(source_snapshot)
+                state = NativeScalarBindings(
+                    original.model_state.plan,
+                    backend=self.backend,
+                    parameters=source_snapshot.overrides,
+                    **spec.options,
+                )
+                bindings = dict(
+                    model_state=state,
+                    model_output_indices=dict(
+                        zip(
+                            original.model_names,
+                            original.model_output_indices,
+                            strict=True,
+                        )
+                    ),
+                    model_scale_view=NativeScaleBindings(
+                        state,
+                        original.model_scale_view.plan,
+                        scale_parameter=original.model_scale_view.scale_parameter,
+                    ),
+                )
             bare = NativeBareProcessProgram(
                 original.process,
                 state_kinds=original.state_kinds,
                 initial_average=original.initial_average,
-                model_expressions=original.model_expressions,
-                model_inputs=original.model_inputs,
+                **bindings,
                 vertex_spinor_frame=original.vertex_spinor_frame,
                 backend=original.backend,
                 reduction_engine="generic",
@@ -151,7 +181,7 @@ class NativeModelStabilityProgram:
         momenta,
         scales_squared,
         *,
-        model_values,
+        model_values=None,
         verify=False,
         allow_partial=False,
         point_ids=None,
@@ -172,9 +202,18 @@ class NativeModelStabilityProgram:
             or self.program.color_projection is not None
         ):
             raise ValueError("verification plan strategy or colour scope changed")
+        source_state = self.program.bare.model_state
+        if source_state is not None:
+            if model_values is not None:
+                raise ValueError(
+                    "update the source model state through its named inputs"
+                )
+            source_snapshot = source_state.require_snapshot(source_state.snapshot())
+        else:
+            source_snapshot = None
+            model_values = tuple(model_values) if model_values is not None else None
         momenta = np.array(momenta, dtype=object, copy=True)
         scales = np.array(scales_squared, dtype=object, copy=True)
-        model_values = tuple(model_values)
         from .physical_process import _physical_point_ids
 
         ids = tuple(
@@ -191,11 +230,18 @@ class NativeModelStabilityProgram:
 
         def attempt(spec, selected):
             rows = [positions[point] for point in selected]
-            result = self._view(spec).evaluate_ordered_partial_native(
+            view = self._view(spec, source_snapshot)
+            snapshot = source_snapshot
+            if source_state is not None and spec != self.requested:
+                snapshot = view.bare.model_state.reconstruct_snapshot(
+                    source_state, source_snapshot
+                )
+            result = view.evaluate_ordered_partial_native(
                 momenta[rows],
                 scales[rows],
                 model_values=model_values,
                 point_ids=selected,
+                model_snapshot=snapshot,
             )
             for point in selected:
                 attempts[point].append(spec)

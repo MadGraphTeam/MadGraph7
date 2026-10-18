@@ -887,6 +887,7 @@ class NativeBareProcessProgram:
         spin_sources=None,
         point_ids=None,
         _failures=None,
+        model_snapshot=None,
     ):
         """Bind one physical batch and evaluate its Born and loop currents once."""
         momenta, scales = (
@@ -899,6 +900,8 @@ class NativeBareProcessProgram:
         size, rows = len(momenta), len(momenta) * helicities
         snapshot = None
         if self.model_state is None:
+            if model_snapshot is not None:
+                raise ValueError("a model snapshot requires its source owner")
             if model_values is None or len(model_values) != len(self.model_inputs):
                 raise ValueError("global model input shape differs")
             decimal_model_values = model_values
@@ -907,6 +910,11 @@ class NativeBareProcessProgram:
                 raise ValueError(
                     "update the source model state through its named inputs"
                 )
+            snapshot = self.model_state.require_snapshot(
+                self.model_state.snapshot()
+                if model_snapshot is None
+                else model_snapshot
+            )
             decimal_model_values = ()
         if any(
             not isinstance(value, str)
@@ -990,13 +998,42 @@ class NativeBareProcessProgram:
             model = self.model_evaluator.evaluate_batch(model_arguments)
             require_finite_batch(model, "global model formulas")
         else:
-            snapshot = self.model_state.snapshot()
             model_arguments = snapshot.arguments
-            selected = (
-                self.model_scale_view.evaluate_native(scales, snapshot=snapshot)
-                if self.model_scale_view is not None
-                else snapshot.values
-            )
+            if self.model_scale_view is not None and _failures is not None:
+                selected, source_failures = (
+                    self.model_scale_view.evaluate_partial_native(
+                        scales, snapshot=snapshot
+                    )
+                )
+                _failures.entries.extend(source_failures)
+                _failures.point_ids.update(item.point_id for item in source_failures)
+                indices = _failures.successful_indices(point_ids)
+                if len(indices) != size:
+                    lane_rows = [
+                        point * helicities + h
+                        for point in indices
+                        for h in range(helicities)
+                    ]
+                    point_ids = [point_ids[point] for point in indices]
+                    lane_ids = [lane_ids[lane] for lane in lane_rows]
+                    size, rows = len(indices), len(lane_rows)
+                    width = 4 * legs
+                    momenta_pairs = [
+                        pair
+                        for point in indices
+                        for pair in momenta_pairs[point * width : (point + 1) * width]
+                    ]
+                    lanes, states = (
+                        lanes.take_rows(lane_rows),
+                        states.take_rows(lane_rows),
+                    )
+                    scales = scales.take_rows(indices)
+            else:
+                selected = (
+                    self.model_scale_view.evaluate_native(scales, snapshot=snapshot)
+                    if self.model_scale_view is not None
+                    else snapshot.values
+                )
             model = selected.take_columns(self.model_output_indices)
         model_rows = (
             np.repeat(np.arange(size), helicities).tolist()
@@ -1065,7 +1102,13 @@ class NativeBareProcessProgram:
         )
 
     def evaluate_ordered_partial_native(
-        self, momenta, scales_squared, *, model_values=None, point_ids=None
+        self,
+        momenta,
+        scales_squared,
+        *,
+        model_values=None,
+        point_ids=None,
+        model_snapshot=None,
     ):
         """Return only successful native points, with explicit failure metadata.
 
@@ -1085,6 +1128,7 @@ class NativeBareProcessProgram:
             model_values=model_values,
             point_ids=requested_ids,
             _failures=failures,
+            model_snapshot=model_snapshot,
         )
         result = self._evaluate_currents_native(currents, failures)
         result.requested_point_ids = requested_ids

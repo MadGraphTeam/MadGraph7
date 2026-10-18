@@ -384,3 +384,45 @@ def test_reconstructed_snapshot_uses_exact_defaults_and_retained_overrides(sourc
     other = NativeScalarBindings(prepare_scalar_bindings(source, (("z", 0),)))
     with pytest.raises(ValueError, match="identical plan"):
         higher.reconstruct_snapshot(other, other.snapshot())
+
+
+def test_actual_source_counterterm_scale_overflow_is_sparse_and_recoverable():
+    backend = pytest.importorskip("_loop_reduction")
+    path = os.environ.get("PYAMPLICOL_EW_UFO_REFERENCE")
+    if not path:
+        pytest.skip("set PYAMPLICOL_EW_UFO_REFERENCE to the full Gmu source")
+    raw = load_raw_loop_model(path, restriction="full")
+    # This real source CT contains reglog(MT**2/MU_R**2). The input scale is
+    # finite in double/DD, but its ratio overflows there; AP retains the input.
+    plan = prepare_scalar_bindings(raw, (("G_UVt", 0), ("G_UVt", -1)))
+    values = []
+    for arithmetic, precision in (
+        ("double", None),
+        ("double-double", None),
+        ("arbitrary", 70),
+        ("arbitrary", 100),
+    ):
+        options = {"arithmetic": arithmetic, "precision": precision}
+        state = NativeScalarBindings(plan, parameters={"MT": "173.3"}, **options)
+        view = NativeScaleBindings(state)
+        scales = backend.NativeBatch.from_exact_decimal(
+            [("1000000", "0"), ("1e-320", "0")], 2, 1, row_ids=[17, 91], **options
+        )
+        assert not scales.nonfinite_rows()
+        result, failures = view.evaluate_partial_native(scales)
+        if arithmetic != "arbitrary":
+            assert result.row_ids == [17]
+            assert [item.point_id for item in failures] == [91]
+            assert "active diagnostics" in failures[0].stage
+            with pytest.raises(ArithmeticError, match="91"):
+                view.evaluate_native(scales)
+        else:
+            assert result.row_ids == [17, 91] and not failures
+            values.append(result)
+        assert (
+            view.evaluate_native(scales.take_rows([0])).to_decimal()
+            == result.take_rows([0]).to_decimal()
+        )
+    assert all(
+        good for _id, good in values[0].agreement_rows(values[1], "1e-60", "1e-60")
+    )

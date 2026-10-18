@@ -54,10 +54,8 @@ def select_physical_batch(batch, indices):
 
 
 def select_bare_currents(currents, indices):
-    """Gather built-in-model currents; source-owned pointwise models are gated."""
+    """Gather currents and pointwise source values without changing the snapshot."""
     batch = currents.batch
-    if batch.model_snapshot is not None:
-        raise NotImplementedError("partial source-model currents are not certified")
     h = batch.helicity_count
     lanes = [point * h + helicity for point in indices for helicity in range(h)]
     width = len(currents.momenta_pairs) // batch.size if batch.size else 0
@@ -66,6 +64,11 @@ def select_bare_currents(currents, indices):
         batch=select_physical_batch(batch, indices),
         born=currents.born.take_rows(lanes),
         loops=tuple(value.take_rows(lanes) for value in currents.loops),
+        model=(
+            currents.model.take_rows(indices)
+            if currents.model.rows == batch.size
+            else currents.model
+        ),
         momenta_pairs=[
             pair
             for point in indices
@@ -80,12 +83,55 @@ def require_partial_domain(bare):
             "partial fast-tensor coefficient-head evaluation is not certified"
         )
     if (
-        bare.model_state is not None
-        or bare.dimensional_numerators
+        bare.dimensional_numerators
         or getattr(bare, "color_accuracy", "full") != "full"
         or getattr(bare, "_formal_color_projected", False)
     ):
         raise NotImplementedError(
-            "partial native evaluation currently requires built-in full-colour "
+            "partial native evaluation currently requires full-colour "
             "four-dimensional model-rule controls"
         )
+
+    if bare.model_state is not None:
+        raw = bare.model_state.plan.program.library.raw
+        mass_names = {
+            particle["fields"]["mass"]["name"]
+            for particle in raw.collections["particles"]
+        }
+        if "complex_mass_derivation" in raw.metadata or any(
+            raw.record("parameters", name)["fields"].get("type") != "real"
+            for name in mass_names
+        ):
+            raise NotImplementedError(
+                "partial source complex-mass evaluation is not certified"
+            )
+        if (
+            bare.vertex_spinor_frame != "native-physical"
+            or bare.model_scale_view is None
+            or any(not leg.massless for leg in bare.state_layout.legs)
+            or any(
+                abs(edge.particle.pdg_code) not in {11, 13, 15}
+                for edge in bare.process.born[0].native.external_edges
+            )
+        ):
+            raise NotImplementedError(
+                "partial source evaluation requires the massless "
+                "charged-lepton neutral-current control domain"
+            )
+
+
+def select_bare_evaluation(native, indices):
+    """Remove complete points from an already reduced sparse bare result."""
+    h = native.batch.helicity_count
+    lanes = [point * h + helicity for point in indices for helicity in range(h)]
+    return replace(
+        native,
+        batch=select_physical_batch(native.batch, indices),
+        born_amplitudes=native.born_amplitudes.take_rows(lanes),
+        born=native.born.take_rows(indices),
+        virtual=native.virtual.take_rows(indices),
+        rational=None
+        if native.rational is None
+        else native.rational.take_rows(indices),
+        statuses=tuple(native.statuses[index] for index in indices),
+    )
