@@ -68,7 +68,11 @@ def test_native_mass_classification_preserves_exact_zero_aliases(source):
         "PSlash" not in propagator["numerator"] and "P(" not in propagator["numerator"]
     )
     assert "Metric" in propagator["numerator"]
-    assert result.native.particle("t").mass == S("UFO::Zalias")
+    # FeynKit can canonicalize exact internal zero aliases to native ZERO.
+    # Source identity belongs to the retained raw declaration in either form.
+    assert result.native.particle("t").mass in (0, S("UFO::Zalias"))
+    assert result.native.particle("t").mass_parameter in ("ZERO", "Zalias")
+    assert result.raw.record("particles", "t")["fields"]["mass"]["name"] == "Zalias"
     # Materialize the stored propagator as a native two-port local rule, using
     # native index localization rather than interpreting UFO Metric ourselves.
     payload["vertex_rules"] = [
@@ -286,6 +290,13 @@ def test_fixed_masses_are_structural_and_shared_with_numeric_bindings(source):
     assert all(Decimal(x) == 0 for pair in runtime.values.to_decimal() for x in pair)
     with pytest.raises(ValueError, match="fixed during generation"):
         runtime.update({"M": "1"})
+    # A zero numerical default is still an adjustable external input. Its
+    # runtime update cannot rewrite the retained source or structural model.
+    adjustable_runtime = NativeScalarBindings(adjustable.scalar_bindings((("M", 0),)))
+    adjustable_runtime.update({"M": "1"})
+    assert Decimal(adjustable_runtime.values.to_decimal()[0][0]) == 1
+    assert not adjustable.native.particle("s").is_massless
+    assert raw.to_dict() == original
     assert all(
         p["value"] is None for p in json.loads(fixed.native.to_json())["parameters"]
     )
@@ -368,8 +379,12 @@ def test_fixed_gmu_masses_preserve_native_graph_family_denominators(gmu):
         compatibility="gmu_particle_anti",
         fixed_parameters={name: "0" for name in zeros},
     )
-    assert fixed.native.particle("e-").mass == S("UFO::Me")
-    assert fixed.native.particle("m-").mass == S("UFO::MM")
+    for particle, mass in (("e-", "Me"), ("m-", "MM")):
+        assert fixed.native.particle(particle).mass in (0, S(f"UFO::{mass}"))
+        assert fixed.native.particle(particle).mass_parameter in ("ZERO", mass)
+        assert fixed.raw.record("particles", particle)["fields"]["mass"]["name"] == mass
+        assert fixed.raw.record("parameters", mass)["fields"]["nature"] == "external"
+        assert fixed.fixed_parameters[mass] == ("0", "0")
     assert fixed.native.particle("e-").is_massless
     assert fixed.native.particle("m-").is_massless
     # This exercises the strict custom-denominator gate and native family
