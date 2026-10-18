@@ -3,16 +3,18 @@
 # Internal graph-free loop execution
 
 `loops.portable.write_loop_pacbin` lowers a retained, complete full-colour
-legacy model-R2 program to the existing `evaluators.pacbin` envelope.
+legacy model-R2 or certified direct-R2 four-gluon program to the existing
+`evaluators.pacbin` envelope.
 `PortableLoopPlan.open(...).bind(...)` creates a fresh numerical view in double,
 DoubleFloat or arbitrary precision. This is an internal execution roundtrip;
 public artifact generation/loading and standalone SDK loop dispatch remain gated.
 
-The initial physical control is `u u~ -> d d~`. It has nonzero UV and R2
-contributions but **no external-field currents**. External-field payload slots
-are represented; this control does not certify their nonzero execution. Direct
-R2, source-owned scalar plans, formal colour projection, correlations and rescue
-are not admitted by this first portable boundary.
+The ordinary physical controls are `u u~ -> d d~` and `u u~ -> t t~`.
+The latter retains nonzero external-field contributions, independently of the
+local UV and R2 currents. The direct control is `g g -> g g`: all three N4 and
+dimensional-remainder epsilon sectors survive persistence, with UV currents and
+external fields retained and model R2 excluded. Source-owned scalar plans,
+formal colour projection, correlations and rescue remain outside this boundary.
 
 ## Persisted data
 
@@ -27,7 +29,7 @@ path validation are reused. There is no second manifest, digest or container.
 Persisted numerical data are:
 
 - Physical state kinds, structural masslessness, component offsets and helicity
-  rows; exact model-input names and integer column maps.
+  rows and external PDGs; exact model-input names and integer column maps.
 - Symbolica's saved local evaluator bytes and native coefficient arena slots.
 - The already proven execution-sharing groups. Aliases reference the exact
   representative schedule and ordered columns that the original hot path uses;
@@ -35,8 +37,16 @@ Persisted numerical data are:
 - Numerical loop-output and order-sector indices, denominator counts, coefficient
   powers, exact kinematic/mass/projector evaluator states and numerator strings.
 - Saved Born, counterterm, final-assembly and order-summing evaluator states.
-  Counterterm execution retains scalar diagnostics and input columns, without
-  source insertion or tree objects.
+  Counterterm execution retains source-kind tags, scalar diagnostics and input
+  columns, without source insertion or tree objects.
+
+The internal v2 descriptor is regenerated rather than migrated. The native
+reader checks that direct selection is dimensional, uses the certified QCD
+four-gluon state layout and QCD4/QCD6 Born/virtual sectors, and contains no
+effective R2 currents. Coefficient labels
+retain weighted rank `q_degree + 2*mu2_degree` and epsilon degree at most two.
+NinjaRS continues to own numerator parsing and epsilon-sector reduction; no
+private Laurent or tensor algebra is introduced by loading.
 
 Producer graphs, recurrence objects, symbolic Python objects, colour tensors,
 live evaluator workspaces, model values and event results are excluded.
@@ -65,10 +75,12 @@ private generic Laurent expansion plan. Loading therefore constructs a fresh
 parameters. This preserves dependency-owned algebra, but does not remove that
 cold setup cost or establish cross-version NinjaRS binary-plan compatibility.
 
-`tests/unit/test_loop_portable.py` exercises the complete control in all three
+`tests/unit/test_loop_portable.py` exercises the complete controls in all three
 carriers, native result/old-buffer lifetime, changed exact parameters/scales,
 empty batches and noncontiguous IDs. It also loads in a fresh process without a
 source UFO, with producer constructors disabled, and checks malformed layouts
-through the Rust reader. Independent MadLoop components are checked when
-`PYAMPLICOL_UUDD_COMPONENT_REFERENCE` is provided. Native success remains
+through the Rust reader. Independent MadLoop components are checked when the
+corresponding `PYAMPLICOL_UUDD_COMPONENT_REFERENCE`,
+`PYAMPLICOL_TOP_PAIR_COMPONENT_REFERENCE` or `PYAMPLICOL_GG_COMPONENT_REFERENCE`
+is provided. Native success remains
 numerical status rather than an independent accuracy certificate.

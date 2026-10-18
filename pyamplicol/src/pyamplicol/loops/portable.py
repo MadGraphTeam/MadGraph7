@@ -2,9 +2,10 @@
 """Bounded graph-free loop plans in the existing authenticated PACBIN envelope.
 
 This internal bridge does not activate public loop artifacts or SDK execution.
-Only full-colour legacy model-R2 execution is admitted. Producer graphs, symbolic
-objects and numerical buffers are never persisted. The shared Rust core owns the
-single descriptor/member validation boundary; Symbolica owns its exact bytecode.
+Full-colour legacy model-R2 and certified direct gg execution are admitted.
+Producer graphs, symbolic objects and numerical buffers are never persisted.
+The shared Rust core owns the single descriptor/member validation boundary;
+Symbolica owns its exact bytecode.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from pyamplicol.generation.evaluator_container import (
     write_pacbin_atomic,
 )
 
-_PLAN_MEMBER = "schedule/loop-runtime-v1.json"
+_PLAN_MEMBER = "schedule/loop-runtime-v2.json"
 _BARE_EVALUATORS = (
     "model_evaluator",
     "born_projector",
@@ -33,8 +34,6 @@ _BARE_EVALUATORS = (
 def write_loop_pacbin(program, destination):
     """Lower one checked retained control into plain execution data and bytecode."""
     prepared = program.prepared  # Existing scope/strategy checks remain authoritative.
-    if program.r2_strategy != "model" or program.bare.dimensional_numerators:
-        raise NotImplementedError("portable execution initially requires model R2")
     bare = program.bare
     payloads, payload_ids, schedules, schedule_ids = {}, {}, [], {}
 
@@ -73,9 +72,16 @@ def write_loop_pacbin(program, destination):
         }
 
     data = {
-        "schema": 1,
+        "schema": 2,
         "r2_strategy": program.r2_strategy,
         "dimensional_numerators": bare.dimensional_numerators,
+        "external_pdgs": [
+            edge.particle.pdg_code
+            for edge in sorted(
+                bare.process.born[0].native.external_edges,
+                key=lambda edge: edge.external_index,
+            )
+        ],
         "state_legs": [asdict(leg) for leg in bare.state_layout.legs],
         "helicities": bare.helicities,
         "initial_average": int(str(bare.initial_average)),
@@ -121,6 +127,7 @@ def write_loop_pacbin(program, destination):
     for item in prepared.currents:
         data["currents"].append(
             {
+                "kind": dict(item.metadata)["insertion"].rule.kind,
                 "schedule": schedule(item.instructions),
                 "coefficient_state": state(item.coefficient_state),
                 "input_columns": dict(item.metadata)["input_columns"],
@@ -334,7 +341,17 @@ class PortableLoopPlan:
                         engine=reduction_engine,
                         **options,
                     ),
-                    rational_reducer=None,
+                    rational_reducer=(
+                        backend.PolynomialPlan(
+                            item["propagators"],
+                            item["rational_numerators"],
+                            [f"c{i}" for i in range(len(item["powers"]))],
+                            engine=reduction_engine,
+                            **options,
+                        )
+                        if item["rational_numerators"] != ["0", "0", "0"]
+                        else None
+                    ),
                 )
             )
         bare.order_channels = tuple(

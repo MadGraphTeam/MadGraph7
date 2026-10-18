@@ -220,7 +220,7 @@ def _rewrite(path, destination, mutate, *, wrong_kind=False):
     "mutation,message",
     [
         (lambda d: d.update(schema=99), "schema"),
-        (lambda d: d.update(r2_strategy="direct"), "model-R2"),
+        (lambda d: d.update(r2_strategy="direct"), "strategy/dimensional"),
         (lambda d: d["state_legs"][1].update(offset=999), "offset"),
         (lambda d: d["families"][0]["powers"][0].__setitem__(0, 999), "rank"),
         (lambda d: d["schedules"][0]["output_slots"].append(2**40), "output"),
@@ -341,3 +341,205 @@ def test_native_order_semantics(portable_control, tmp_path, mutation, message):
     _rewrite(portable_control[1], path, mutation)
     with pytest.raises(ValueError, match=message):
         PortableLoopPlan.open(path)
+
+
+@pytest.fixture(scope="module", params=["direct_gg", "model_top"])
+def extended_control(request, tmp_path_factory):
+    symbolica = pytest.importorskip("symbolica")
+    backend = pytest.importorskip("_loop_reduction")
+    source = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
+    if (
+        not symbolica.is_licensed()
+        or not source
+        or not hasattr(backend, "PortableLoopPlan")
+    ):
+        pytest.skip("licensed source model and native portable bridge required")
+    from pyamplicol.loops.model import build_loop_model
+    from pyamplicol.loops.physical_counterterms import (
+        gluon_scattering_model_virtual_program,
+        top_pair_model_virtual_program,
+    )
+    from pyamplicol.loops.portable import write_loop_pacbin
+    from pyamplicol.models.loop_import import load_raw_loop_model
+
+    direct = request.param == "direct_gg"
+    factory = (
+        gluon_scattering_model_virtual_program
+        if direct
+        else top_pair_model_virtual_program
+    )
+    options = {"r2_strategy": "direct"} if direct else {}
+    program = factory(
+        build_loop_model(load_raw_loop_model(source)),
+        reduction_engine="fast",
+        coefficient_engine="jit",
+        **options,
+    )
+    path = tmp_path_factory.mktemp(request.param) / "evaluators.pacbin"
+    write_loop_pacbin(program, path)
+    name = "gluon_scattering" if direct else "top_pair"
+    fixture = (
+        Path(__file__).resolve().parents[2] / f"tools/loop_reference/{name}_qcd.json"
+    )
+    points = np.asarray(json.loads(fixture.read_text())["points"], dtype=str)[:2]
+    return program, path, points
+
+
+def test_direct_sectors_and_nonzero_fields_survive_portable_rebinding(
+    extended_control, monkeypatch
+):
+    from pyamplicol.loops.portable import PortableLoopPlan
+
+    original, path, points = extended_control
+    direct = original.r2_strategy == "direct"
+    plan = PortableLoopPlan.open(path)
+    metadata = json.loads(plan._native.metadata_json())
+    assert metadata["dimensional_numerators"] is direct
+    assert all(current["kind"] != "R2" for current in metadata["currents"]) is direct
+    if direct:
+        assert metadata["external_pdgs"] == [21] * 4
+        assert any(f["rational_numerators"][1] != "0" for f in metadata["families"])
+        assert any(
+            any(p[4:] != [0, 0] for p in f["powers"]) for f in metadata["families"]
+        )
+    else:
+        assert len(metadata["fields"]) == len(original.field_currents) == 4
+    _forbid_producer(monkeypatch)
+    retained = []
+    previous = None
+    for arithmetic, precision, engine, tolerance in (
+        ("double", None, "fast", "2e-11"),
+        ("double-double", None, "generic", "1e-25"),
+        ("arbitrary", 60, "generic", "1e-48"),
+    ):
+        options = dict(
+            arithmetic=arithmetic, precision=precision, reduction_engine=engine
+        )
+        reference_view = original.rebind(**options)
+        view = plan.bind(**options) if previous is None else previous.rebind(**options)
+        expected = reference_view.evaluate_ordered_native(
+            points, ["1000000"] * 2, model_values=["0.118", "173"]
+        )
+        actual = view.evaluate_ordered_native(
+            points, ["1000000"] * 2, model_values=["0.118", "173"], point_ids=[61, 8]
+        )
+        assert actual.r2_strategy == original.r2_strategy
+        assert actual.batch.point_ids == [61, 8]
+        assert all(
+            row and all(lane == point and status == "success" for lane, status in row)
+            for point, row in zip(actual.batch.point_ids, actual.statuses, strict=True)
+        )
+        for result, reference in zip(_batches(actual), _batches(expected), strict=True):
+            reference = reference.take_rows([0, 1], result.row_ids)
+            assert all(
+                ok for _, ok in result.agreement_rows(reference, tolerance, tolerance)
+            )
+        assert all(
+            current.executor is not other.executor
+            for current, other in zip(
+                view.currents, reference_view.currents, strict=True
+            )
+        )
+        assert all(
+            current.coefficient_evaluator is not other.coefficient_evaluator
+            for current, other in zip(
+                view.field_currents, reference_view.field_currents, strict=True
+            )
+        )
+        assert any(
+            Decimal(pair[0]) != 0 for pair in actual.uv_external_fields.to_decimal()
+        )
+        if direct:
+            assert any(f.rational_reducer is not None for f in view.bare.families)
+        reference_path = os.environ.get(
+            "PYAMPLICOL_GG_COMPONENT_REFERENCE"
+            if direct
+            else "PYAMPLICOL_TOP_PAIR_COMPONENT_REFERENCE"
+        )
+        if arithmetic == "double" and reference_path:
+            rows = json.loads(Path(reference_path).read_text())["rows"][:2]
+            for name, key in (
+                ("virtual", "full"),
+                ("bare", "bare"),
+                ("uv", "uv"),
+                ("r2", "r2"),
+                ("uv_local", "uv_vertex"),
+                ("uv_external_fields", "wf"),
+            ):
+                np.testing.assert_allclose(
+                    np.asarray(getattr(actual, name).to_decimal(), dtype=float)[
+                        :, 0
+                    ].reshape(2, 3),
+                    [
+                        [
+                            row[key][pole]
+                            for pole in ("finite", "single_pole", "double_pole")
+                        ]
+                        for row in rows
+                    ],
+                    rtol=5e-11,
+                    atol=1e-10,
+                )
+        retained.append((actual, [value.to_decimal() for value in _batches(actual)]))
+        with localcontext() as context:
+            context.prec = 110
+            alpha = (
+                str(Decimal("0.118") * (1 + Decimal(2) ** -140))
+                if arithmetic == "arbitrary"
+                else "0.12"
+            )
+        changed = view.evaluate_ordered_native(
+            points[:1], ["700000"], model_values=[alpha, "173"], point_ids=[8]
+        )
+        changed_reference = reference_view.evaluate_ordered_native(
+            points[:1], ["700000"], model_values=[alpha, "173"]
+        )
+        for result, reference in zip(
+            _batches(changed), _batches(changed_reference), strict=True
+        ):
+            assert all(
+                ok
+                for _, ok in result.agreement_rows(
+                    reference.take_rows([0], [8]), tolerance, tolerance
+                )
+            )
+        empty = view.evaluate_ordered_native(
+            points[:0], [], model_values=["0.118", "173"]
+        )
+        assert empty.r2_strategy == original.r2_strategy and empty.virtual.rows == 0
+        assert all(
+            [v.to_decimal() for v in _batches(result)] == values
+            for result, values in retained
+        )
+        previous = view
+
+
+def test_native_direct_metadata_rejects_mixed_or_uncertified_sectors(
+    extended_control, tmp_path
+):
+    from pyamplicol.loops.portable import PortableLoopPlan
+
+    original, source, _ = extended_control
+    if original.r2_strategy != "direct":
+        pytest.skip("direct-only capability check")
+
+    def change_squared_order(data):
+        # Keep the generic pair-sum invariant while leaving the certified gg order.
+        data["order_layout"]["born"][0].update(
+            order=[["QCD", 6]], pairs=[[[["QCD", 3]], [["QCD", 3]]]]
+        )
+
+    for index, (mutate, message) in enumerate(
+        (
+            (lambda d: d["external_pdgs"].__setitem__(0, 1), "four-gluon"),
+            (lambda d: d["currents"][0].update(kind="R2"), "counterterm"),
+            (lambda d: d["families"][0]["powers"][0].__setitem__(4, 3), "rank/sector"),
+            (lambda d: d["families"][0]["powers"][0].__setitem__(5, 3), "rank/sector"),
+            (lambda d: d.update(r2_strategy="model"), "strategy/dimensional"),
+            (change_squared_order, "four-gluon"),
+        )
+    ):
+        path = tmp_path / f"invalid-direct-{index}.pacbin"
+        _rewrite(source, path, mutate)
+        with pytest.raises(ValueError, match=message):
+            PortableLoopPlan.open(path)

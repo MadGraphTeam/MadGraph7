@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-pub const LOOP_RUNTIME_MEMBER: &str = "schedule/loop-runtime-v1.json";
+pub const LOOP_RUNTIME_MEMBER: &str = "schedule/loop-runtime-v2.json";
 type Order = Vec<(String, u32)>;
 
 macro_rules! record {
@@ -41,10 +41,10 @@ record!(Family {
     exact_state: String, mass_state: String, projector_state: String,
     numerators: [String; 3], rational_numerators: [String; 3]
 });
-record!(Counterterm { schedule: usize, coefficient_state: String, input_columns: Vec<usize> });
+record!(Counterterm { kind: String, schedule: usize, coefficient_state: String, input_columns: Vec<usize> });
 record!(LoopRuntimePlan {
     schema: u32, r2_strategy: String, dimensional_numerators: bool,
-    state_legs: Vec<StateLeg>, helicities: Vec<Vec<i32>>, initial_average: u64,
+    external_pdgs: Vec<i32>, state_legs: Vec<StateLeg>, helicities: Vec<Vec<i32>>, initial_average: u64,
     model_inputs: Vec<String>, model_count: usize, bound_positions: BTreeMap<String, usize>,
     order_layout: OrderLayout, schedules: Vec<Schedule>, born: ScheduleGroup, loops: ScheduleGroup,
     families: Vec<Family>, bare_evaluators: BTreeMap<String, String>,
@@ -138,10 +138,11 @@ pub fn load_loop_runtime_pacbin(path: impl AsRef<Path>) -> RusticolResult<Loaded
     let bytes = reader.member_bytes(LOOP_RUNTIME_MEMBER)?;
     let plan: LoopRuntimePlan =
         serde_json::from_slice(bytes).map_err(|e| invalid(e.to_string()))?;
-    require(plan.schema == 1, "unsupported schema")?;
+    require(plan.schema == 2, "unsupported schema")?;
     require(
-        plan.r2_strategy == "model" && !plan.dimensional_numerators,
-        "only ordinary full-colour model-R2 runtime plans are supported",
+        (plan.r2_strategy == "model" && !plan.dimensional_numerators)
+            || (plan.r2_strategy == "direct" && plan.dimensional_numerators),
+        "inconsistent R2 strategy/dimensional numerator selection",
     )?;
     let mut sizes = BTreeMap::new();
     for member in reader.members() {
@@ -180,6 +181,31 @@ impl LoopRuntimePlan {
             legs > 1 && !self.helicities.is_empty() && self.initial_average > 0,
             "empty state layout or normalization",
         )?;
+        require(
+            self.external_pdgs.len() == legs && self.external_pdgs.iter().all(|&pdg| pdg != 0),
+            "external particle layout differs",
+        )?;
+        if self.r2_strategy == "direct" {
+            require(
+                self.external_pdgs == [21, 21, 21, 21]
+                    && self.order_layout.born.len() == 1
+                    && self.order_layout.r#virtual.len() == 1
+                    && self.order_layout.born[0].order == [("QCD".into(), 4)]
+                    && self.order_layout.born[0].pairs
+                        == [(vec![("QCD".into(), 2)], vec![("QCD".into(), 2)])]
+                    && self.order_layout.r#virtual[0].order == [("QCD".into(), 6)]
+                    && self.order_layout.r#virtual[0].pairs.len() == 1
+                    && self.order_layout.r#virtual[0].pairs[0].born == [("QCD".into(), 2)]
+                    && self.order_layout.r#virtual[0].pairs[0].r#loop == [("QCD".into(), 4)]
+                    && self.order_layout.correction_names == ["QCD"]
+                    && self.state_legs.iter().enumerate().all(|(i, leg)| {
+                        leg.massless
+                            && leg.incoming == (i < 2)
+                            && leg.kind == if i < 2 { "epsilon" } else { "epsilon_bar" }
+                    }),
+                "direct R2 requires the certified QCD four-gluon layout",
+            )?;
+        }
         let mut state_width = 0;
         for (index, leg) in self.state_legs.iter().enumerate() {
             require(
@@ -394,14 +420,15 @@ impl LoopRuntimePlan {
             )?;
             require(
                 family.powers.iter().all(|p| {
-                    p[4] == 0
-                        && p[5] == 0
-                        && p[..4].iter().map(|&x| u64::from(x)).sum::<u64>() <= n as u64 + 1
+                    (self.dimensional_numerators || (p[4] == 0 && p[5] == 0))
+                        && p[5] <= 2
+                        && p[..4].iter().map(|&x| u64::from(x)).sum::<u64>() + 2 * u64::from(p[4])
+                            <= n as u64 + 1
                 }),
                 "unsupported numerator rank/sector",
             )?;
             require(
-                family.rational_numerators.iter().all(|p| p == "0"),
+                self.dimensional_numerators || family.rational_numerators.iter().all(|p| p == "0"),
                 "ordinary plan contains dimensional remainder",
             )?;
             shape(
@@ -426,6 +453,11 @@ impl LoopRuntimePlan {
         )?;
         let mut amplitude_width = born_width;
         for current in &self.currents {
+            require(
+                matches!(current.kind.as_str(), "R2" | "UVtree" | "UVloop" | "UVmass")
+                    && (self.r2_strategy != "direct" || current.kind != "R2"),
+                "unsupported or mixed counterterm R2 kind",
+            )?;
             require(
                 current.schedule < self.schedules.len(),
                 "CT schedule out of range",
