@@ -42,7 +42,7 @@ where
 
 #[cfg(feature = "symbolica-runtime")]
 pub(super) fn is_zero<T: RealLike>(value: &T) -> bool {
-    value.to_f64() == 0.0
+    value.is_zero()
 }
 
 #[cfg(feature = "symbolica-runtime")]
@@ -257,8 +257,8 @@ where
     let px = momentum[1].clone();
     let py = momentum[2].clone();
     let pz = momentum[3].clone();
-    if energy.to_f64() > 0.0 {
-        let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz.to_f64() < 0.0 {
+    if energy > T::new_zero() {
+        let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz < T::new_zero() {
             T::new_zero()
         } else {
             t_max(&(energy.clone() + pz.clone()), &T::new_zero()).sqrt()
@@ -280,7 +280,7 @@ where
         }
         return [complex_zero(), complex_zero(), chi2, chi1];
     }
-    let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz.to_f64() > 0.0 {
+    let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz > T::new_zero() {
         T::new_zero()
     } else {
         -t_max(&(-(energy.clone() + pz.clone())), &T::new_zero()).sqrt()
@@ -313,8 +313,8 @@ where
     let px = momentum[1].clone();
     let py = momentum[2].clone();
     let pz = momentum[3].clone();
-    if energy.to_f64() > 0.0 {
-        let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz.to_f64() < 0.0 {
+    if energy > T::new_zero() {
+        let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz < T::new_zero() {
             T::new_zero()
         } else {
             -t_max(&(energy.clone() + pz.clone()), &T::new_zero()).sqrt()
@@ -336,7 +336,7 @@ where
         }
         return [chi2, chi1, complex_zero(), complex_zero()];
     }
-    let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz.to_f64() > 0.0 {
+    let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz > T::new_zero() {
         T::new_zero()
     } else {
         t_max(&(-(energy.clone() + pz.clone())), &T::new_zero()).sqrt()
@@ -412,7 +412,7 @@ where
     T: Real + RealLike + From<f64> + PartialOrd + Clone,
 {
     let energy = momentum[0].clone();
-    if energy.to_f64() < 0.0 {
+    if energy < T::new_zero() {
         return ext_massive_vector_generic(&negate_generic(momentum), -helicity, mass);
     }
     let px = momentum[1].clone();
@@ -637,14 +637,14 @@ pub(super) fn ext_gluon(momentum: [f64; 4], helicity: i32) -> [Complex<f64>; 4] 
 #[cfg(feature = "symbolica-runtime")]
 pub(super) fn ext_gluon_generic<T>(momentum: &[T; 4], helicity: i32) -> [Complex<T>; 4]
 where
-    T: Real + RealLike + From<f64> + Clone,
+    T: Real + RealLike + From<f64> + PartialOrd + Clone,
 {
     let energy = momentum[0].clone();
     let px = momentum[1].clone();
     let py = momentum[2].clone();
     let pz = momentum[3].clone();
     let sqh = (energy.one() / energy.from_i64(2)).sqrt();
-    if energy.to_f64() > 0.0 {
+    if energy > T::new_zero() {
         let hel = energy.from_i64(helicity as i64);
         let pp = energy;
         let pt = (px.clone() * px.clone() + py.clone() * py.clone()).sqrt();
@@ -753,8 +753,8 @@ where
     let px = momentum[1].clone();
     let py = momentum[2].clone();
     let pz = momentum[3].clone();
-    if energy.to_f64() > 0.0 {
-        let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz.to_f64() < 0.0 {
+    if energy > T::new_zero() {
+        let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz < T::new_zero() {
             T::new_zero()
         } else {
             t_max(&(energy.clone() + pz.clone()), &T::new_zero()).sqrt()
@@ -779,7 +779,7 @@ where
         }
         return vec![complex_zero(), complex_zero()];
     }
-    let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz.to_f64() > 0.0 {
+    let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz > T::new_zero() {
         T::new_zero()
     } else {
         -t_max(&(-(energy.clone() + pz.clone())), &T::new_zero()).sqrt()
@@ -864,8 +864,8 @@ where
     let px = momentum[1].clone();
     let py = momentum[2].clone();
     let pz = momentum[3].clone();
-    if energy.to_f64() > 0.0 {
-        let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz.to_f64() < 0.0 {
+    if energy > T::new_zero() {
+        let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz < T::new_zero() {
             T::new_zero()
         } else {
             -t_max(&(energy.clone() + pz.clone()), &T::new_zero()).sqrt()
@@ -890,7 +890,7 @@ where
         }
         return vec![complex_zero(), complex_zero()];
     }
-    let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz.to_f64() > 0.0 {
+    let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz > T::new_zero() {
         T::new_zero()
     } else {
         t_max(&(-(energy.clone() + pz.clone())), &T::new_zero()).sqrt()
@@ -960,4 +960,40 @@ mod tests {
             }
         }
     }
+}
+
+/// Evaluate existing tree massless Dirac states in one native batch.
+/// Positive-energy quark rows are u_bar; antiquark rows are v, in the
+/// chiral representation. The caller may form u/v_bar by the Dirac adjoint.
+#[cfg(feature = "symbolica-runtime")]
+pub(crate) fn massless_dirac_batch<T>(
+    momenta: &[[T; 4]],
+    helicities: &[i32],
+    antiquarks: &[bool],
+) -> RusticolResult<Vec<[Complex<T>; 4]>>
+where
+    T: Real + RealLike + From<f64> + PartialOrd + Clone,
+{
+    if momenta.len() != helicities.len() || momenta.len() != antiquarks.len() {
+        return Err(RusticolError::invalid_argument(
+            "massless state batch dimensions differ",
+        ));
+    }
+    momenta
+        .iter()
+        .zip(helicities)
+        .zip(antiquarks)
+        .map(|((p, h), anti)| {
+            if !matches!(h, -1 | 1) {
+                return Err(RusticolError::invalid_argument(
+                    "massless fermion helicity must be -1 or 1",
+                ));
+            }
+            Ok(if *anti {
+                ext_antiquark_dirac_generic(p, *h)
+            } else {
+                ext_quark_dirac_generic(p, *h)
+            })
+        })
+        .collect()
 }

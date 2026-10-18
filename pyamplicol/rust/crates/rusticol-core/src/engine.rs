@@ -4847,6 +4847,8 @@ pub(crate) use evaluator::decode_exact_evaluator_state;
 #[path = "wavefunctions.rs"]
 mod wavefunctions;
 use wavefunctions::*;
+#[cfg(feature = "symbolica-runtime")]
+pub(crate) use wavefunctions::massless_dirac_batch;
 
 #[cfg(test)]
 #[path = "engine_tests.rs"]

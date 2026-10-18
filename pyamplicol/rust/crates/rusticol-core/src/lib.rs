@@ -96,6 +96,23 @@ pub mod __private {
     };
     use crate::recurrence::{PreparedDirectExecutorCatalog, SemanticDigest};
 
+    /// Reuse the generic tree massless Dirac wavefunctions in one native batch.
+    #[cfg(feature = "symbolica-runtime")]
+    pub fn massless_dirac_batch<T>(
+        momenta: &[[T; 4]],
+        helicities: &[i32],
+        antiquarks: &[bool],
+    ) -> RusticolResult<Vec<[symbolica::domains::float::Complex<T>; 4]>>
+    where
+        T: symbolica::domains::float::Real
+            + symbolica::domains::float::RealLike
+            + From<f64>
+            + PartialOrd
+            + Clone,
+    {
+        crate::engine::massless_dirac_batch(momenta, helicities, antiquarks)
+    }
+
     /// Decode the exact coefficients of a Python `Evaluator.save()` payload.
     /// Reuses the production decoder and its complete-input validation.
     #[cfg(feature = "symbolica-runtime")]

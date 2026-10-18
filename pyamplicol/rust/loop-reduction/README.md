@@ -85,13 +85,21 @@ PYTHONPATH="$PYLOOP_WORKSPACE/builds/loop-python-module" \
   python -m pytest python/test_consumer.py -q
 ```
 
-Precision 16 uses binary64, precision 32 uses true 106-bit DoubleFloat, and
-higher requested decimal precision uses an MPFR-backed Float. Decimal input
+The explicit `arithmetic` selector accepts `double` (53 bits), `double-double`
+(true 106-bit DoubleFloat), or `arbitrary` (MPFR-backed Float). Only arbitrary
+arithmetic accepts the required `precision` in decimal digits; it also accepts
+16 or 32 digits without silently selecting either fixed-precision carrier. Decimal input
 pairs avoid binary64 conversion; explicitly sized decimal output retains enough
 digits to round-trip each carrier. Buffers are flattened lane-major complex
 pairs, with four pairs per momentum and one original ID per lane. The three
 returned entries are **finite, single pole, double pole** in raw integral
 normalization. Failed lanes carry `None` instead of numerical values.
+
+`massless_spinors_decimal` reuses the shared core's generic tree massless Dirac
+wavefunctions. Its rows contain positive on-shell physical momenta, helicities
+±1, and kinds `u`, `v`, `u_bar`, or `v_bar`; rows can mix kinds and helicities.
+Chiral adjoints map the existing core states to these names. Execution is one
+native bulk call, with no claim of hardware SIMD for these scalar routines.
 
 This is a native batch conformance boundary, not a public virtual-amplitude
 API or a completed fast evaluation pipeline. Production coefficient-DAG

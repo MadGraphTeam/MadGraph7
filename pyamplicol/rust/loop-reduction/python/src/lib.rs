@@ -25,7 +25,7 @@ fn error(value: impl std::fmt::Display) -> PyErr {
     PyValueError::new_err(value.to_string())
 }
 
-trait Carrier: NativeFloat + LowerExp {
+trait Carrier: NativeFloat + LowerExp + From<f64> {
     fn parse_decimal(value: &str, bits: u32) -> Result<Self, String>;
 }
 
@@ -64,13 +64,29 @@ fn decimal_complex<T: Carrier>(value: Complex<T>, bits: u32) -> DecimalComplex {
     ]
 }
 
-fn precision_bits(digits: u32) -> PyResult<u32> {
-    match digits {
-        16 => Ok(53),
-        32 => Ok(106),
-        33.. => Float::decimal_digits_to_bits(f64::from(digits)).map_err(error),
+#[derive(Clone, Copy)]
+enum Arithmetic {
+    Double,
+    DoubleDouble,
+    Arbitrary,
+}
+
+fn arithmetic_mode(arithmetic: &str, precision: Option<u32>) -> PyResult<(Arithmetic, u32)> {
+    match (arithmetic, precision) {
+        ("double", None) => Ok((Arithmetic::Double, 53)),
+        ("double-double", None) => Ok((Arithmetic::DoubleDouble, 106)),
+        ("arbitrary", Some(digits)) if digits > 0 => Ok((
+            Arithmetic::Arbitrary,
+            Float::decimal_digits_to_bits(f64::from(digits)).map_err(error)?,
+        )),
+        ("arbitrary", _) => Err(error(
+            "arbitrary arithmetic requires a positive decimal precision",
+        )),
+        ("double" | "double-double", Some(_)) => {
+            Err(error("precision applies only to arbitrary arithmetic"))
+        }
         _ => Err(error(
-            "precision must be 16, 32, or more than 32 decimal digits",
+            "arithmetic must be double, double-double, or arbitrary",
         )),
     }
 }
@@ -87,12 +103,15 @@ where
     Complex<T>: Real + EvaluationDomain,
 {
     exact
-        .map_coeff(&|r| {
-            Complex::new(
-                prototype.from_rational(&r.re),
-                prototype.from_rational(&r.im),
-            )
-        })
+        .map_coeff_with_prec(
+            &|r| {
+                Complex::new(
+                    prototype.from_rational(&r.re),
+                    prototype.from_rational(&r.im),
+                )
+            },
+            prototype.get_precision(),
+        )
         .into_batch_evaluator()
 }
 
@@ -140,14 +159,18 @@ where
 #[pymethods]
 impl CoefficientEvaluator {
     #[new]
-    #[pyo3(signature = (state, precision=16))]
-    fn new(state: &[u8], precision: u32) -> PyResult<Self> {
-        let bits = precision_bits(precision)?;
+    #[pyo3(signature = (state, arithmetic="double", precision=None))]
+    fn new(state: &[u8], arithmetic: &str, precision: Option<u32>) -> PyResult<Self> {
+        let (arithmetic, bits) = arithmetic_mode(arithmetic, precision)?;
         let exact = exact_state(state)?;
-        let evaluator = match precision {
-            16 => Coefficients::Double(batch_evaluator(exact, &0_f64)),
-            32 => Coefficients::DoubleDouble(batch_evaluator(exact, &DoubleFloat::from(0.0))),
-            _ => Coefficients::Arbitrary(batch_evaluator(exact, &Float::with_val(bits, 0))),
+        let evaluator = match arithmetic {
+            Arithmetic::Double => Coefficients::Double(batch_evaluator(exact, &0_f64)),
+            Arithmetic::DoubleDouble => {
+                Coefficients::DoubleDouble(batch_evaluator(exact, &DoubleFloat::from(0.0)))
+            }
+            Arithmetic::Arbitrary => {
+                Coefficients::Arbitrary(batch_evaluator(exact, &Float::with_val(bits, 0)))
+            }
         };
         Ok(Self {
             evaluator,
@@ -347,28 +370,29 @@ struct PolynomialPlan {
 #[pymethods]
 impl PolynomialPlan {
     #[new]
-    #[pyo3(signature = (propagators, epsilon_sectors, parameters, precision=16))]
+    #[pyo3(signature = (propagators, epsilon_sectors, parameters, arithmetic="double", precision=None))]
     fn new(
         propagators: usize,
         epsilon_sectors: [String; 3],
         parameters: Vec<String>,
-        precision: u32,
+        arithmetic: &str,
+        precision: Option<u32>,
     ) -> PyResult<Self> {
-        let bits = precision_bits(precision)?;
-        let plan = match precision {
-            16 => Plans::Double(Reductions::new(
+        let (arithmetic, bits) = arithmetic_mode(arithmetic, precision)?;
+        let plan = match arithmetic {
+            Arithmetic::Double => Plans::Double(Reductions::new(
                 &epsilon_sectors,
                 &parameters,
                 propagators,
                 0_f64,
             )?),
-            32 => Plans::DoubleDouble(Reductions::new(
+            Arithmetic::DoubleDouble => Plans::DoubleDouble(Reductions::new(
                 &epsilon_sectors,
                 &parameters,
                 propagators,
                 DoubleFloat::from(0.0),
             )?),
-            _ => Plans::Arbitrary(Reductions::new(
+            Arithmetic::Arbitrary => Plans::Arbitrary(Reductions::new(
                 &epsilon_sectors,
                 &parameters,
                 propagators,
@@ -421,9 +445,79 @@ impl PolynomialPlan {
     }
 }
 
+fn spinors<T: Carrier>(
+    momenta: &[[String; 4]],
+    helicities: &[i32],
+    kinds: &[String],
+    bits: u32,
+) -> PyResult<Vec<[DecimalComplex; 4]>> {
+    if momenta.len() != kinds.len() || momenta.len() != helicities.len() {
+        return Err(error("massless state batch dimensions differ"));
+    }
+    let antiquarks = kinds
+        .iter()
+        .map(|kind| match kind.as_str() {
+            "u" | "u_bar" => Ok(false),
+            "v" | "v_bar" => Ok(true),
+            _ => Err(error("massless state kind must be u, v, u_bar, or v_bar")),
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    let momenta = momenta
+        .iter()
+        .map(|p| {
+            let p = p
+                .iter()
+                .map(|x| T::parse_decimal(x, bits).map_err(error))
+                .collect::<PyResult<Vec<_>>>()?;
+            if p.iter().any(|x| !x.is_finite()) || p[0] <= p[0].zero() {
+                return Err(error(
+                    "massless states require finite physical momenta with positive energy",
+                ));
+            }
+            Ok(p.try_into().unwrap_or_else(|_| unreachable!()))
+        })
+        .collect::<PyResult<Vec<[T; 4]>>>()?;
+    let states = rusticol_core::__private::massless_dirac_batch(&momenta, helicities, &antiquarks)
+        .map_err(error)?;
+    Ok(states
+        .into_iter()
+        .zip(kinds)
+        .map(|(x, kind)| {
+            let x = if kind == "u" || kind == "v_bar" {
+                // Chiral Dirac adjoint: conjugation followed by gamma^0.
+                [x[2].conj(), x[3].conj(), x[0].conj(), x[1].conj()]
+            } else {
+                x
+            };
+            x.map(|component| decimal_complex(component, bits))
+        })
+        .collect())
+}
+
+/// Existing massless tree states for positive on-shell physical momenta.
+/// Rows may mix helicities and kinds; all rows execute in one native call.
+#[pyfunction]
+#[pyo3(signature = (momenta, helicities, kinds, arithmetic="double", precision=None))]
+fn massless_spinors_decimal(
+    py: Python<'_>,
+    momenta: Vec<[String; 4]>,
+    helicities: Vec<i32>,
+    kinds: Vec<String>,
+    arithmetic: &str,
+    precision: Option<u32>,
+) -> PyResult<Vec<[DecimalComplex; 4]>> {
+    let (arithmetic, bits) = arithmetic_mode(arithmetic, precision)?;
+    py.detach(|| match arithmetic {
+        Arithmetic::Double => spinors::<f64>(&momenta, &helicities, &kinds, bits),
+        Arithmetic::DoubleDouble => spinors::<DoubleFloat>(&momenta, &helicities, &kinds, bits),
+        Arithmetic::Arbitrary => spinors::<Float>(&momenta, &helicities, &kinds, bits),
+    })
+}
+
 #[pymodule]
 fn _loop_reduction(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<CoefficientEvaluator>()?;
     module.add_class::<PolynomialPlan>()?;
+    module.add_function(wrap_pyfunction!(massless_spinors_decimal, module)?)?;
     Ok(())
 }
