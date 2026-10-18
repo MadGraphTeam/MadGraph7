@@ -10,11 +10,17 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
 from .graphs import GraphIR, LoopProcessIR
 from .model import LoopModelIR
 from .model_expressions import LaurentExpression, epsilon_symbol, parse_exact_ufo
 from .orders import canonical_order, squared_order
+from .scalar_frontend import (
+    ScalarExpression,
+    require_laurent_scalar,
+    require_scalar_value,
+)
 
 
 def _entries(value, context):
@@ -25,6 +31,43 @@ def _entries(value, context):
 
 def _laurent(value, source):
     from symbolica import E, S
+
+    if source.scalar_program is not None:
+        library = source.scalar_program.library
+        bindings = {}
+        for definition in source.scalars.values():
+            original = library.lower_value(
+                source.raw.exact_value(definition.collection, definition.id)
+            )
+            if (
+                definition.collection == "counterterm_parameters"
+                or original.value != definition.value.expression
+                or original.diagnostic != definition.diagnostic
+            ):
+                bindings[definition.name] = ScalarExpression(
+                    definition.value.expression, definition.diagnostic
+                )
+        parts, seen = [], set()
+        for power, coefficient in _entries(value, "external-field Laurent value"):
+            if type(power) is not int or power in seen:
+                raise ValueError(
+                    "external-field epsilon powers must be distinct integers"
+                )
+            if isinstance(coefficient, bool) or not isinstance(coefficient, (str, int)):
+                raise ValueError(
+                    "external-field values require exact expression strings or integers"
+                )
+            seen.add(power)
+            parts.append((power, library.lower(str(coefficient), locals=bindings)))
+        scalar = ScalarExpression(
+            sum(
+                (part.value * epsilon_symbol() ** power for power, part in parts),
+                E("0"),
+            ),
+            sum((part.diagnostic for _, part in parts), E("0")),
+        )
+        require_laurent_scalar(scalar)
+        return LaurentExpression(scalar.value), scalar.diagnostic
 
     expression, seen = E("0"), set()
     for power, coefficient in _entries(value, "external-field Laurent value"):
@@ -49,7 +92,7 @@ def _laurent(value, source):
             expression = expression.replace(
                 S(f"UFO::{definition.name}"), definition.value.expression
             )
-    return LaurentExpression(expression)
+    return LaurentExpression(expression), E("0")
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +105,16 @@ class ExternalFieldRule:
     loop_group_index: int
     alternatives: tuple[tuple[int, ...], ...]
     coefficient: LaurentExpression
+    diagnostic: Any = field(default=None, repr=False)
+    scalar_program: Any = field(default=None, repr=False)
+
+    def coefficient_expression(self, power: int) -> ScalarExpression:
+        from symbolica import E
+
+        return ScalarExpression(
+            self.coefficient.coefficient(power),
+            E("0") if self.diagnostic is None else self.diagnostic,
+        )
 
     @property
     def order(self):
@@ -139,6 +192,7 @@ def prepare_external_field_rules(source: LoopModelIR) -> tuple[ExternalFieldRule
                 raise ValueError(
                     "external-field alternatives require known positive PDGs"
                 )
+            coefficient, diagnostic = _laurent(value, source)
             rules.append(
                 ExternalFieldRule(
                     particle["id"],
@@ -148,7 +202,9 @@ def prepare_external_field_rules(source: LoopModelIR) -> tuple[ExternalFieldRule
                     orders[powers.index(1)],
                     group_index,
                     alternatives,
-                    _laurent(value, source),
+                    coefficient,
+                    diagnostic,
+                    source.scalar_program,
                 )
             )
     return tuple(rules)
@@ -165,8 +221,15 @@ class ExternalFieldInsertion:
     def order(self):
         return squared_order(self.born.order, self.rule.order)
 
+    def coefficient_expression(self, epsilon_power: int) -> ScalarExpression:
+        return self.rule.coefficient_expression(epsilon_power)
+
     def coefficient(self, epsilon_power: int):
-        return self.rule.coefficient.coefficient(epsilon_power)
+        return require_scalar_value(
+            self.coefficient_expression(epsilon_power),
+            "external-field coefficient",
+            self.rule.scalar_program,
+        )
 
 
 @dataclass(frozen=True, slots=True)

@@ -126,7 +126,7 @@ def prepare_qcd_counterterm_basis(source, native_model, *, quark_pdgs=(2,)):
                         continue
                     if (
                         native_model.coupling(coupling).expression
-                        - entry.coupling.value.expression
+                        - entry.scalar_value()
                     ).expand() != 0:
                         continue
                     candidates.append(

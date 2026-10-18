@@ -133,7 +133,7 @@ def prepare_gluon_counterterm_basis(source, native_model) -> GluonCountertermBas
                     ).expand() != 0:
                         continue
                     if (
-                        entry.coupling.value.expression
+                        entry.scalar_value()
                         - native_model.coupling(coupling).expression
                     ).expand() != 0:
                         continue

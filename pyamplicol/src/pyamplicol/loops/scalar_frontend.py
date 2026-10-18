@@ -479,6 +479,53 @@ class ScalarProgram:
     definitions: Any
 
 
+def require_laurent_scalar(expression: ScalarExpression) -> None:
+    """Reject epsilon hidden in native opaque functions or active diagnostics."""
+    from symbolica import AtomType
+
+    from .model_expressions import epsilon_symbol
+
+    epsilon = epsilon_symbol()
+    pending = [expression.value, expression.diagnostic]
+    while pending:
+        atom = pending.pop()
+        if atom.get_type() == AtomType.Fn and epsilon in atom.get_all_symbols():
+            raise NotImplementedError(
+                "epsilon-dependent scalar helper or function arguments "
+                "require expansion"
+            )
+        if atom.get_type() not in {AtomType.Num, AtomType.Var}:
+            pending.extend(atom)
+    if epsilon in expression.diagnostic.get_all_symbols():
+        raise NotImplementedError("epsilon-dependent predicate diagnostic")
+
+
+def require_scalar_value(expression: ScalarExpression, context: str, program=None):
+    """Value-only access cannot discard diagnostics or an owning helper library."""
+    from symbolica import AtomType
+
+    if expression.diagnostic != 0:
+        raise NotImplementedError(
+            f"{context} requires paired scalar value and diagnostic"
+        )
+    if program is not None:
+        helpers = {
+            head.get_name()
+            for value, diagnostic, _ in program.library.helpers.values()
+            for head in (value, diagnostic)
+        }
+        pending = [expression.value]
+        while pending:
+            atom = pending.pop()
+            if atom.get_type() == AtomType.Fn and atom.get_name() in helpers:
+                raise NotImplementedError(
+                    f"{context} requires the owning scalar helper library"
+                )
+            if atom.get_type() not in {AtomType.Num, AtomType.Var}:
+                pending.extend(atom)
+    return expression.value
+
+
 def lower_scalar_program(raw: Any) -> ScalarProgram:
     """Lower exact declarations and CT dependencies without discarding diagnostics.
 
@@ -487,7 +534,7 @@ def lower_scalar_program(raw: Any) -> ScalarProgram:
     Ordinary parameter definitions remain separate for exact binding by a caller.
     This preparation function does not enable an EW process factory.
     """
-    from symbolica import AtomType, S
+    from symbolica import S
 
     from .model_expressions import LaurentExpression, epsilon_symbol
 
@@ -532,19 +579,7 @@ def lower_scalar_program(raw: Any) -> ScalarProgram:
         )
         if bindings:
             ct_dependent.add(symbol)
-        # Native opaque calls must not hide epsilon dependence from series.
-        pending = [expression.value, expression.diagnostic]
-        while pending:
-            atom = pending.pop()
-            if atom.get_type() == AtomType.Fn and epsilon in atom.get_all_symbols():
-                raise NotImplementedError(
-                    "epsilon-dependent scalar helper or function arguments "
-                    "require expansion"
-                )
-            if atom.get_type() not in {AtomType.Num, AtomType.Var}:
-                pending.extend(atom)
-        if epsilon in expression.diagnostic.get_all_symbols():
-            raise NotImplementedError("epsilon-dependent predicate diagnostic")
+        require_laurent_scalar(expression)
         resolved[symbol] = expression
         definitions[key] = SourceScalarDefinition(
             key[0],

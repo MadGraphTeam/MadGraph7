@@ -596,6 +596,38 @@ a future EW assembler. The existing QCD lowering/physical path is unchanged, and
 successful source preparation does not enable EW process generation or certify
 EW counterterm completeness, complex-mass conventions or numerical physics.
 
+### Paired scalar ownership in model and counterterm preparation
+
+`build_loop_model(raw, scalar_program=program)` accepts the exact source scalar
+program as an additive alternative to legacy QCD lowering. The program must
+belong to the identical immutable raw source object and contain its complete
+declaration set. The IR and every kernel retain that owner and the original
+`SourceScalarDefinition` objects. `KernelBasisEntry.scalar_expression(power)`
+returns the value and active diagnostic together; source helper definitions are
+kept in the owner's library rather than expanded or discarded.
+
+Local CT insertions expose `coefficient_expressions(power)` and external-field
+insertions expose `coefficient_expression(power)`. Field coefficients use the
+same branch-preserving frontend, including CT-dependent source aliases. Native
+CT and field evaluators serialize the owning helper library, evaluate paired
+outputs in one native batch, and check every value and diagnostic before selecting
+the physical value columns. A coefficient with an identically zero value is not
+discarded when its diagnostic can be active. Legacy value-only preparation
+accessors explicitly reject diagnostic-bearing or helper-dependent definitions.
+
+An empty outer UFO `loop_particles` list denotes an unrestricted loop group,
+matching MadGraph's import convention. Preparation normalizes this to a wildcard
+for each declared coupling group while retaining the raw empty source list.
+
+Regression controls cover complete QCD top-pair component parity in all three
+arithmetic modes, source helper serialization, inactive invalid branches, and
+active invalid CT/field conditions whose physical values remain finite or zero.
+The full Gmu source can now prepare this unsummed IR. This does not certify its
+physical tensor conventions or UV/R2 completeness. Paired source programs with
+formal colour projection remain explicitly unsupported until scalar grading and
+diagnostics are handled together. General per-point scale binding remains a
+separate stage from the existing controlled QCD scale inputs.
+
 ## Directed native colour weights
 
 `loops.color_connections` adapts the existing typed `ColorConnection` histories

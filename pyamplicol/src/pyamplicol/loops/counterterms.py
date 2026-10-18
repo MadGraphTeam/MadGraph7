@@ -60,6 +60,7 @@ class CountertermRule:
     # stay in the model; consumers select epsilon sectors after substitution.
     couplings: tuple[tuple[str, KernelBasisEntry], ...]
     coupling_symbols: tuple[Any, ...] = field(default=(), repr=False)
+    scalar_program: Any = field(default=None, repr=False)
     basis_correspondences: tuple[CountertermBasisCorrespondence | None, ...] = ()
     primitive_validations: tuple[CountertermPrimitiveValidation | None, ...] = ()
     tensor_representatives: tuple[CountertermTensorRepresentative | None, ...] = ()
@@ -262,6 +263,9 @@ def prepare_counterterm_model(
             payload["couplings"].append(
                 {
                     "name": alias,
+                    # Structural metadata only: graph tensors retain the alias.
+                    # Its numerical value and diagnostic are bound together from
+                    # the source-owned rule in the physical CT consumer.
                     "expression": entry.coupling.value.expression.to_canonical_string(),
                     "orders": [list(order) for order in entry.order] + [[_TAG, 1]],
                     "value": None,
@@ -320,6 +324,7 @@ def prepare_counterterm_model(
             alternatives,
             fields.get("perturbation_type"),
             tuple(aliases),
+            scalar_program=source.scalar_program,
             basis_correspondences=correspondences,
             primitive_validations=tuple(
                 primitive_evidence.get(entry.key) for entry in members
@@ -476,13 +481,27 @@ class CountertermInsertion:
     alternative_index: int
     witness_loop_ids: tuple[str, ...]
 
-    def coefficient_substitutions(self, epsilon_power: int):
-        """Exact CT coupling replacements, after CT-parameter substitution."""
+    def coefficient_expressions(self, epsilon_power: int):
+        """Native aliases paired with exact values and active diagnostics."""
         return tuple(
-            (symbol, entry.coupling.value.coefficient(epsilon_power))
+            (symbol, entry.scalar_expression(epsilon_power))
             for symbol, (_, entry) in zip(
                 self.rule.coupling_symbols, self.rule.couplings, strict=True
             )
+        )
+
+    def coefficient_substitutions(self, epsilon_power: int):
+        """Legacy value-only access rejects diagnostic-bearing source scalars."""
+        from .scalar_frontend import require_scalar_value
+
+        return tuple(
+            (
+                symbol,
+                require_scalar_value(
+                    value, "counterterm substitution", self.rule.scalar_program
+                ),
+            )
+            for symbol, value in self.coefficient_expressions(epsilon_power)
         )
 
 

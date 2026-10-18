@@ -21,6 +21,12 @@ from .model_expressions import (
     parse_exact_ufo,
 )
 from .orders import canonical_order
+from .scalar_frontend import (
+    ScalarExpression,
+    ScalarProgram,
+    SourceScalarDefinition,
+    require_scalar_value,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,8 +49,26 @@ class KernelBasisEntry:
     # Alternatives within the selected UFO group retain their original species
     # sequence and multiplicity. They are not summed into an inferred Nf.
     loop_particles: tuple[tuple[int, ...], ...] | None
-    coupling: ScalarDefinition
+    coupling: ScalarDefinition | SourceScalarDefinition
     order: tuple[tuple[str, int], ...]
+    scalar_program: ScalarProgram | None = field(default=None, repr=False)
+
+    def scalar_expression(self, power: int | None = None) -> ScalarExpression:
+        """Retain the source diagnostic when selecting a Laurent coefficient."""
+        from symbolica import E
+
+        value = self.coupling.value
+        return ScalarExpression(
+            value.expression if power is None else value.coefficient(power),
+            self.coupling.diagnostic
+            if isinstance(self.coupling, SourceScalarDefinition)
+            else E("0"),
+        )
+
+    def scalar_value(self, power: int | None = None):
+        return require_scalar_value(
+            self.scalar_expression(power), f"kernel {self.key}", self.scalar_program
+        )
 
     @property
     def key(self) -> tuple[Any, ...]:
@@ -106,6 +130,7 @@ class LoopModelIR:
     kernels: tuple[KernelBasisEntry, ...]
     # Retain helper definitions without evaluating arbitrary Python bodies.
     functions: tuple[Any, ...]
+    scalar_program: ScalarProgram | None = field(default=None, repr=False)
     color_identities: FormalColorIdentities = FormalColorIdentities()
     stage: str = field(default="exact-local-kernel-preparation", init=False)
     scheme_validated: bool = field(default=False, init=False)
@@ -133,9 +158,35 @@ def _reference(raw: Any, value: Any, collection: str) -> Any:
     return record
 
 
-def build_loop_model(raw: Any) -> LoopModelIR:
-    """Prepare exact coefficients and unsummed basis entries from a raw sidecar."""
-    scalars = lower_scalar_definitions(raw)
+def build_loop_model(
+    raw: Any, *, scalar_program: ScalarProgram | None = None
+) -> LoopModelIR:
+    """Prepare exact unsummed kernels, optionally retaining a paired scalar owner.
+
+    An explicitly supplied program must belong to this exact raw object. Its
+    definitions and library remain intact; selecting coefficients never converts
+    diagnostic-bearing source records into legacy value-only definitions.
+    """
+    if scalar_program is None:
+        scalars = lower_scalar_definitions(raw)
+    else:
+        if scalar_program.library.raw is not raw:
+            raise ValueError(
+                "scalar program belongs to a different raw source instance"
+            )
+        scalars = scalar_program.definitions
+        expected = {
+            (collection, record["id"]): record["name"]
+            for collection in ("parameters", "counterterm_parameters", "couplings")
+            for record in raw.collections[collection]
+        }
+        if set(scalars) != set(expected) or any(
+            not isinstance(scalars[key], SourceScalarDefinition)
+            or (scalars[key].collection, scalars[key].id, scalars[key].name)
+            != (*key, name)
+            for key, name in expected.items()
+        ):
+            raise ValueError("scalar program declarations differ from the raw source")
     entries = []
     for collection in ("vertices", "counterterm_vertices"):
         for vertex in raw.collections[collection]:
@@ -158,13 +209,22 @@ def build_loop_model(raw: Any) -> LoopModelIR:
                 group = indices[2] if expected == 3 else None
                 loop_particles = None
                 if group is not None:
-                    loop_particles = tuple(
-                        tuple(
-                            _reference(raw, item, "particles")["id"]
-                            for item in alternative
+                    groups = fields["loop_particles"]
+                    if not groups:
+                        # UFO/MadLoop: an empty outer list gives one unrestricted
+                        # alternative for each declared coupling group. The raw
+                        # empty list remains untouched in the source sidecar.
+                        loop_particles = ((),)
+                    elif group >= len(groups):
+                        raise ValueError(f"absent loop group in {vertex['name']}")
+                    else:
+                        loop_particles = tuple(
+                            tuple(
+                                _reference(raw, item, "particles")["id"]
+                                for item in alternative
+                            )
+                            for alternative in groups[group]
                         )
-                        for alternative in fields["loop_particles"][group]
-                    )
                 coupling_record = _reference(raw, coupling_ref, "couplings")
                 lorentz_record = _reference(
                     raw, fields["lorentz"][lorentz], "lorentz_structures"
@@ -187,10 +247,16 @@ def build_loop_model(raw: Any) -> LoopModelIR:
                         loop_particles,
                         scalars[("couplings", coupling_record["id"])],
                         canonical_order(coupling_record["fields"]["order"]["entries"]),
+                        scalar_program,
                     )
                 )
     return LoopModelIR(
-        raw.name, raw, scalars, tuple(entries), raw.collections["functions"]
+        raw.name,
+        raw,
+        scalars,
+        tuple(entries),
+        raw.collections["functions"],
+        scalar_program,
     )
 
 

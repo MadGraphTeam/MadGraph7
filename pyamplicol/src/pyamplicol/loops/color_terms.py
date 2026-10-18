@@ -72,7 +72,7 @@ def model_basis_terms(
         raise ValueError("local basis entries must belong to one vertex")
     result = []
     for entry in entries:
-        scalar = entry.coupling.value.coefficient(epsilon_power)
+        scalar = entry.scalar_value(epsilon_power)
         if scalar == 0:
             continue
         native = catalogue.lower(entry)

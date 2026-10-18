@@ -223,9 +223,7 @@ class OrdinaryBasisCatalogue:
             require_exact_numbers(coupling.expression)
             if canonical_order(tuple(coupling.orders.items())) != source_entry.order:
                 raise ValueError("ordinary representative coupling order differs")
-            if (
-                coupling.expression - source_entry.coupling.value.expression
-            ).expand() != 0:
+            if (coupling.expression - source_entry.scalar_value()).expand() != 0:
                 raise ValueError(
                     "ordinary representative exact coupling expression differs"
                 )

@@ -20,6 +20,7 @@ from .kernels import NativeCoefficientDAG, require_finite_batch
 from .physical import _saved
 from .physical_orders import OrderedModelVirtualResult, SummedModelValues
 from .physical_process import _color_bilinear, _external_color
+from .scalar_frontend import ScalarExpression
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +57,8 @@ class _CountertermCurrent:
     term_count: int
     input_columns: tuple[int, ...]
     color_grade: int | None = None
+    coefficient_diagnostics: tuple[Any, ...] = ()
+    scalar_program: Any = None
 
 
 @dataclass(slots=True)
@@ -67,6 +70,25 @@ class _ExternalFieldCurrent:
     coefficient_expression: Any
     color_weights: tuple[Any, ...]
     color_grade: int | None = None
+    coefficient_diagnostic: Any = None
+    scalar_program: Any = None
+
+
+def _saved_scalar_pairs(values, diagnostics, parameters, program):
+    expressions = tuple(
+        ScalarExpression(value, diagnostic)
+        for value, diagnostic in zip(values, diagnostics, strict=True)
+    )
+    if program is not None:
+        return program.library.evaluator(expressions, tuple(parameters)).save()
+    return _saved(
+        [
+            part
+            for expression in expressions
+            for part in (expression.value, expression.diagnostic)
+        ],
+        parameters,
+    )
 
 
 def _require_laurent_domain(value, context):
@@ -149,11 +171,19 @@ class NativeModelVirtualProgram:
         admitted_loops = {graph.id for graph in bare.loop_graphs}
         self.currents = []
         self.matched_insertions = tuple(insertions)
+        external_fields = tuple(external_fields)
         self.insertions = tuple(
             insertion
             for insertion in self.matched_insertions
             if r2_strategy == "model" or insertion.rule.kind != "R2"
         )
+        if space is not None and any(
+            insertion.rule.scalar_program is not None
+            for insertion in (*self.insertions, *external_fields)
+        ):
+            raise NotImplementedError(
+                "paired source scalars require a separate formal-colour continuation"
+            )
         for insertion in self.insertions:
             rule = insertion.rule
             if rule.perturbation_type and rule.perturbation_type not in corrections:
@@ -219,13 +249,18 @@ class NativeModelVirtualProgram:
                 **options,
             )
             for power in (0, -1, -2):
-                substitutions = insertion.coefficient_substitutions(power)
+                substitutions = insertion.coefficient_expressions(power)
                 expressions = [
-                    value.replace_multiple(replacements) for _, value in substitutions
+                    part.value.replace_multiple(replacements)
+                    for _, part in substitutions
                 ]
-                for expression in expressions:
+                diagnostics = tuple(
+                    part.diagnostic.replace_multiple(replacements)
+                    for _, part in substitutions
+                )
+                for expression in (*expressions, *diagnostics):
                     require_exact_numbers(expression)
-                if all(expression == 0 for expression in expressions):
+                if all(expression == 0 for expression in (*expressions, *diagnostics)):
                     continue
                 coefficient_names = tuple(
                     symbol.get_name() for symbol, _ in substitutions
@@ -270,6 +305,8 @@ class NativeModelVirtualProgram:
                             len(recurrence.terms),
                             tuple(positions[p.get_name()] for p in executor.parameters),
                             degree,
+                            diagnostics,
+                            insertion.rule.scalar_program,
                         )
                     )
         self.external_fields = tuple(external_fields)
@@ -293,7 +330,9 @@ class NativeModelVirtualProgram:
                 )
             _require_laurent_domain(insertion.rule.coefficient, "external field")
             for power in (0, -1, -2):
-                value = insertion.coefficient(power).replace_multiple(replacements)
+                scalar = insertion.coefficient_expression(power)
+                value = scalar.value.replace_multiple(replacements)
+                diagnostic = scalar.diagnostic.replace_multiple(replacements)
                 weights = tuple(
                     tuple(row[index] for index in born_indices[insertion.born.id])
                     for row in bare.born_metric
@@ -307,7 +346,8 @@ class NativeModelVirtualProgram:
                         ),
                     )
                 require_exact_numbers(value)
-                if value == 0:
+                require_exact_numbers(diagnostic)
+                if value == 0 and diagnostic == 0:
                     continue
                 grades = (
                     ((None, (value,)),)
@@ -329,6 +369,8 @@ class NativeModelVirtualProgram:
                                 for row in weights
                             ),
                             degree,
+                            diagnostic,
+                            insertion.rule.scalar_program,
                         )
                     )
         if space is not None:
@@ -349,17 +391,21 @@ class NativeModelVirtualProgram:
                 )
         for current in self.currents:
             current.coefficient_evaluator = backend.CoefficientEvaluator(
-                _saved(
+                _saved_scalar_pairs(
                     current.coefficient_expressions,
+                    current.coefficient_diagnostics,
                     (*bare.model_inputs, bare.scale_squared_symbol),
+                    current.scalar_program,
                 ),
                 **options,
             )
         for current in self.field_currents:
             current.coefficient_evaluator = backend.CoefficientEvaluator(
-                _saved(
+                _saved_scalar_pairs(
                     [current.coefficient_expression],
+                    [current.coefficient_diagnostic],
                     (*bare.model_inputs, bare.scale_squared_symbol),
+                    current.scalar_program,
                 ),
                 **options,
             )
@@ -493,7 +539,10 @@ class NativeModelVirtualProgram:
             coefficients = current.coefficient_evaluator.evaluate_batch(
                 coefficient_inputs
             )
-            require_finite_batch(coefficients, "counterterm scalar coefficients")
+            require_finite_batch(
+                coefficients, "counterterm scalar coefficients and active diagnostics"
+            )
+            coefficients = coefficients.take_columns(range(0, coefficients.columns, 2))
             coefficients = coefficients.take_rows(
                 np.repeat(np.arange(batch.size), len(self.bare.helicities)).tolist(),
                 row_ids=batch.lane_ids,
@@ -512,7 +561,11 @@ class NativeModelVirtualProgram:
             coefficients = current.coefficient_evaluator.evaluate_batch(
                 coefficient_inputs
             )
-            require_finite_batch(coefficients, "external-field scalar coefficients")
+            require_finite_batch(
+                coefficients,
+                "external-field scalar coefficients and active diagnostics",
+            )
+            coefficients = coefficients.take_columns([0])
             amplitudes.append(
                 coefficients.take_rows(
                     np.repeat(
