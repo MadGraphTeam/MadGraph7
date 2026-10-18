@@ -109,3 +109,33 @@ anomaly-sensitive traces remain outside this certificate. There is no universal
 FDH-to-HV correction inferred from these results. General split-space support,
 if required for those domains, is an explicit dependency/API design gate rather
 than a private algebra implementation. No dependency was modified by this work.
+
+## Graph-derived closed vectorlike cycles
+
+`ClosedVectorlikeFermionKernels` now plugs into the ordinary dependency-owned
+open-loop traversal. Before materialization it verifies each cycle propagator
+against its source `normalization*(slash(P)+m)` and each cycle vertex against a
+scalar identity or one physical vector gamma. Directed opposite fermion flows,
+unit loop signatures and the common sign of the native affine routing are
+checked explicitly. The extra slash carries both the source momentum signature
+and the routing sign. Physical momentum variables remain separate from auxiliary
+polynomial variables when constructing exact denominators and S matrices.
+
+Exact checks use actual massive-quark two-, three- and four-gluon cycles from the
+QCD model's four-gluon graph set, including their off-shell tree attachments,
+both oriented words, alternative bubble cuts and canonical family routing.
+An independent oracle contracts the unmodified source graph in D dimensions
+before selecting physical external ports. All six even closed polynomials agree;
+the box contains nonzero mu-four terms. Local odd factors are checked before
+closure, since the complete trace can already be even and hide a wrong common
+routing sign. The construction accepts longer certified chains within the
+reducer's domain; this graph-derived test set currently covers lengths two to
+four. Native reduction of these graph-derived controls is a separate integration
+check, beyond the already passing stripped-triangle test above.
+
+This provider remains an internal graph-numerator prototype. It does not certify
+physical axial vertices, open fermion chains, internal D-vector/ghost states or
+whole-process direct completion, and does not mix direct and effective-rule
+completion within a process. Tree attachments retain the supported physical
+four-dimensional source rules. Source-template checks do not by themselves prove
+all possible model conventions or gauge sectors.

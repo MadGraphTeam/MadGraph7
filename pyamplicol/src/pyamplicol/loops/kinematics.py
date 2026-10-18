@@ -70,7 +70,7 @@ def build_loop_kinematics(
     from symbolica.community import tensor as t
 
     graph = recurrence.graph
-    variables = recurrence.dag.variables
+    variables = recurrence.dag.momentum_variables
     momenta = recurrence.momentum_parameters
     if graph.loop_count != 1 or len(variables) != 4:
         raise ValueError("kinematic binding requires one four-component loop momentum")

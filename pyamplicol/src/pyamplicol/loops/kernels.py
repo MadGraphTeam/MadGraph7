@@ -87,6 +87,7 @@ class CoefficientDAG:
             raise ValueError(
                 "each auxiliary variable requires a nonnegative integer weight"
             )
+        self.momentum_variables = variables
         self.variables = variables + extra_variables
         if len(set(self.variables)) != len(self.variables):
             raise ValueError("all polynomial variables must be distinct")
