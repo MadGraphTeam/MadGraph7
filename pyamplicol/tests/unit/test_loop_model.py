@@ -190,6 +190,24 @@ def test_all_initial_qcd_components_lower_with_native_tensor_interfaces(qcd_mode
         entry.coupling.value.series(0)
 
 
+def test_real_gluon_two_point_trace_retains_two_adjoint_axes(qcd_model):
+    from symbolica import E
+
+    ir, catalogue = qcd_model
+    entries = [entry for entry in ir.kernels if entry.vertex_name == "V_R2GG"]
+    assert entries and all(entry.color == "Tr(1,2)" for entry in entries)
+    for entry in entries:
+        color = catalogue.lower(entry).color
+        assert color.rank == 2
+        components = color.to_tensor().to_dense()
+        assert tuple(components.shape) == (8, 8)
+        assert all(
+            components[a, b] == E("1/2") * int(a == b)
+            for a in range(8)
+            for b in range(8)
+        )
+
+
 def test_quark_photon_r2_uses_exact_model_mixed_factor(qcd_model):
     ir, catalogue = qcd_model
     entry = next(entry for entry in ir.kernels if entry.vertex_name == "V_R2uuA")

@@ -95,6 +95,24 @@ def _catalogue(
     )
 
 
+def test_prepared_counterterm_trace_is_native_tensor_not_scalar(hep):
+    source, ordinary = _source(
+        hep,
+        [dict(particles=(21, 21), lorentz="Metric(1,2)", color="Tr(1,2)")],
+    )
+    prepared = prepare_counterterm_model(source, ordinary)
+    rule = next(iter(prepared.rules.values()))
+    graph = hep.FeynmanDiagram.from_dot(
+        prepared.native,
+        f'digraph local {{ ext [style=invis]; v [int_id="{rule.name}"]; '
+        'ext -> v [particle="g"]; ext -> v [particle="g"]; }',
+    ).apply_feynman_rules()
+    tensor = graph.vertices[0].numerator_expression()
+    assert tensor.rank == 4  # two Lorentz and two adjoint ports
+    assert "UFO::Tr" not in tensor.to_canonical_string()
+    assert rule.entries[0].color == "Tr(1,2)"
+
+
 def test_drell_yan_local_order_exact_coefficients_and_alternative_multiplicity(hep):
     source, ordinary = _source(
         hep,

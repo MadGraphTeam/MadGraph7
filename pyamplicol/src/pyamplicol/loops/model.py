@@ -14,6 +14,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
+from .model_color import prepare_color_expression
 from .model_expressions import (
     ScalarDefinition,
     lower_scalar_definitions,
@@ -253,7 +254,15 @@ class CovariantKernelCatalogue:
                 "name": "LOOP_LOCAL",
                 "particles": list(entry.particle_names),
                 "color_structures": [
-                    parse_exact_ufo(source).to_canonical_string()
+                    prepare_color_expression(
+                        source,
+                        [
+                            self.model.raw.collections["particles"][index]["fields"][
+                                "color"
+                            ]
+                            for index in entry.particle_ids
+                        ],
+                    ).to_canonical_string()
                     if domain == "color"
                     else "1"
                 ],

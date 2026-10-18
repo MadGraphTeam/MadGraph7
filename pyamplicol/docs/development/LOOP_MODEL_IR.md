@@ -149,3 +149,29 @@ identity and whether all entries have a representative. Unmatched structures
 remain uncalibrated; chiral, Sigma and new two/four-point structures acquire no
 certificate from this mapping. A calibration label alone is not a physical
 validation result, and the whole-model convention flag remains false.
+
+## Native fundamental colour traces
+
+The current HepKit UFO dispatcher does not lower `Tr`: passing it through would
+leave a rank-zero scalar with unresolved colour indices. `model_color` prepares
+that head through public `tensor.trace`, `TensorExpression.color_t`, and typed
+HepKit UFO indices before native graph localization. The original sidecar colour
+expression stays unchanged. Both local catalogue lowering and augmented CT model
+construction use this boundary. Unknown UFO colour function heads fail explicitly.
+
+The initial trace envelope is SU(3) with distinct positive adjoint external-leg
+indices; negative dummy indices and other representations are unsupported.
+Native algebra and component tests establish actual adjoint ports,
+`Tr(Ta Tb) = delta_ab/2`, cyclic invariance, and the noncommuting three-generator
+identity `Tr(Ta Tb Tc) - Tr(Tb Ta Tc) = i f_abc/2`. No private trace or colour
+algebra is implemented, and this does not establish general-Nc model validity.
+
+`tools/loop_reference/ct_tensor_oracle.py` independently compares the three
+`loop_sm` gluon two-point R2 Lorentz structures with generated ALOHA routines:
+`p^2 g`, `p_mu p_nu`, and `g`. It checks every polarization basis pair and a
+complex polarization pair at real and complex off-shell momenta, removing the
+explicit ALOHA `-i*COUP` convention. Native arithmetic is exact; ALOHA is binary64.
+The report records source hashes and 102 comparisons. This local check does not
+validate CT scalar values, a whole process, chiral tensors or arbitrary-precision
+physics. It supplies a separate primitive control rather than extrapolating the
+ordinary FFV convention bridge to new structures.

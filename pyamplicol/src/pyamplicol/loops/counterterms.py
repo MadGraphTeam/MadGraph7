@@ -32,6 +32,7 @@ from .graphs import (
     _summed_orders,
 )
 from .model import KernelBasisEntry, LoopModelIR
+from .model_color import prepare_color_expression
 from .model_correspondence import (
     CountertermBasisCorrespondence,
     OrdinaryBasisCatalogue,
@@ -187,11 +188,10 @@ def prepare_counterterm_model(
         correspondences = tuple(representatives.counterterm(entry) for entry in members)
         local_colors, local_lorentz = {}, {}
         for entry, correspondence in zip(members, correspondences, strict=True):
-            color = (
-                correspondence.color
-                if correspondence
-                else parse_exact_ufo(entry.color).to_canonical_string()
-            )
+            source_color = prepare_color_expression(
+                entry.color, [species[pdg]["color"] for pdg in particle_pdgs]
+            ).to_canonical_string()
+            color = correspondence.color if correspondence else source_color
             lorentz_value = (
                 correspondence.lorentz
                 if correspondence
