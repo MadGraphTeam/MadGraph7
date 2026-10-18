@@ -21,7 +21,7 @@ from .exact import require_exact_numbers
 @dataclass(frozen=True, slots=True)
 class CoefficientLabel:
     component: int
-    powers: tuple[int, int, int, int]
+    powers: tuple[int, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,11 +36,21 @@ class CoefficientKernel:
     shape: tuple[int, ...]
     expressions: tuple[Any, ...] = field(repr=False, compare=False)
     evaluator: Any = field(repr=False, compare=False)
+    variable_weights: tuple[int, ...] = (1, 1, 1, 1)
 
     @property
     def rank(self) -> int:
-        """Structural polynomial rank; coefficient relations may lower it."""
-        return max((sum(label.powers) for label in self.output_labels), default=0)
+        """Structural weighted rank; coefficient relations may lower it."""
+        return max(
+            (
+                sum(
+                    p * w
+                    for p, w in zip(label.powers, self.variable_weights, strict=True)
+                )
+                for label in self.output_labels
+            ),
+            default=0,
+        )
 
     def evaluator_bytes(self) -> bytes:
         """Dependency-owned exact evaluator storage, with ordered labels above."""
@@ -55,10 +65,35 @@ class CoefficientDAG:
     mu2_power = 0
     direct_r2_certified = False
 
-    def __init__(self, variables: tuple[Any, ...]):
+    def __init__(
+        self,
+        variables: tuple[Any, ...],
+        *,
+        extra_variables: tuple[Any, ...] = (),
+        extra_weights: tuple[int, ...] = (),
+    ):
+        """Keep auxiliary polynomial powers explicit without interpreting them.
+
+        The four momentum components carry weight one. Callers specify weights
+        for auxiliary variables, e.g. one for an evanescent slash parameter and
+        zero for epsilon. This bookkeeping does not certify any dimensional
+        algebra or permit truncating intermediate auxiliary powers.
+        """
         if len(variables) != 4 or len(set(variables)) != 4:
             raise ValueError("four distinct loop-momentum component variables required")
-        self.variables = variables
+        if len(extra_variables) != len(extra_weights) or any(
+            type(weight) is not int or weight < 0 for weight in extra_weights
+        ):
+            raise ValueError(
+                "each auxiliary variable requires a nonnegative integer weight"
+            )
+        self.variables = variables + extra_variables
+        if len(set(self.variables)) != len(self.variables):
+            raise ValueError("all polynomial variables must be distinct")
+        self.variable_weights = (1, 1, 1, 1, *extra_weights)
+        if extra_variables:
+            self.domain = "uninterpreted-auxiliary-polynomial-kernels"
+            self.epsilon_power = self.mu2_power = None
         self.nodes: list[CoefficientKernel] = []
 
     def add(self, name: str, factor: Any, dependencies: tuple[int, ...] = ()) -> int:
@@ -124,7 +159,7 @@ class CoefficientDAG:
                 labels.append(CoefficientLabel(component, tuple(powers)))
                 expressions.append(expression)
         if not expressions:
-            labels.append(CoefficientLabel(0, (0, 0, 0, 0)))
+            labels.append(CoefficientLabel(0, (0,) * len(self.variables)))
             expressions.append(E("0"))
         inputs = set(input_symbols)
         parameters = tuple(
@@ -154,6 +189,7 @@ class CoefficientDAG:
                 tuple(output.shape),
                 tuple(expressions),
                 evaluator,
+                self.variable_weights,
             )
         )
         return index
