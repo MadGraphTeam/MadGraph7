@@ -1230,6 +1230,40 @@ class ModelTestRunning(unittest.TestCase):
         # the model itself is untouched
         self.assertEqual(self.model.get_running_blocks(), set(['DIM64F']))
 
+    def test_rge_parameters_used(self):
+        """The outputs without RGE (mg7, madmatrix, ...) warn when the process
+        depends on a running Wilson coefficient; get_all_running_coupling
+        flags the couplings depending on them, not only those with aS."""
+
+        model = self.model
+        coupling_dep = model.get('coupling_dep')
+        running = [c for c, dep in coupling_dep.items()
+                   if 'aS' not in dep and model.depends_on_scale(dep)]
+        fixed = [c for c, dep in coupling_dep.items()
+                 if not model.depends_on_scale(dep)]
+        self.assertTrue(running)
+        self.assertTrue(model.get_rge_parameters_used(running[:1]))
+        self.assertTrue(model.get_rge_parameters_used(['-%s' % running[0]]))
+        self.assertEqual(model.get_rge_parameters_used(fixed), set())
+        self.assertNotIn('aS', model.get_rge_parameters_used(list(coupling_dep)))
+
+        all_running = model.get_all_running_coupling()
+        self.assertIn(running[0], all_running)
+        self.assertTrue(model.is_running_coupling(running[0], reset_cache=True))
+        self.assertFalse(model.is_running_coupling(fixed[0]))
+
+        cmd = self.cmd
+        cmd.do_generate('u u~ > t t~ NP=2 NP^2==2 QCD=2 QED=0')
+        self.assertIn('cQq81', cmd.get_rge_parameters_used())
+        cmd._export_format = 'mg7'
+        with self.assertLogs('cmdprint', level='WARNING') as log:
+            cmd.warn_rge_not_supported()
+        self.assertIn('cQq81', '\n'.join(log.output))
+
+        # no running Wilson coefficient in the diagrams: no warning
+        cmd.do_generate('u u~ > t t~ QCD=2 QED=0 NP=0')
+        self.assertEqual(cmd.get_rge_parameters_used(), set())
+
     def test_running_coupling_indexed_by_event(self):
         """The helas calls of a coupling depending on a running Wilson
         coefficient but not on aS carry the event index, as the arrays of

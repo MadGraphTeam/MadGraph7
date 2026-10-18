@@ -2052,11 +2052,9 @@ class Model(PhysicsObject):
         """ return the list of all coupling which are running for this model """
 
         all_running_coupling = []
-        all_running_type = ['aS'] + self.get_running()
-        not_running_index = [] # to allow to add at the end of the list the non running one
         for type_coup, coup_list in self.get('couplings').items():
-            if any([c in all_running_type for c in type_coup]):
-                all_running_coupling += coup_list
+            if self.depends_on_scale(type_coup):
+                all_running_coupling += [c.name for c in coup_list]
         return all_running_coupling
     
     def is_running_coupling(self, name, reset_cache=False):
@@ -2090,6 +2088,23 @@ class Model(PhysicsObject):
 
         names = self.get_scale_dependent_parameters()
         return any(name in names for name in dependence)
+
+    def get_rge_parameters_used(self, couplings):
+        """Names of the parameters evolved by the RGE of running.py (aS
+        excluded) on which at least one of these couplings depends. Only the
+        madevent/aMC@NLO Fortran outputs evolve them event by event."""
+
+        names = self.get_scale_dependent_parameters() - set(['aS'])
+        if not names:
+            return set()
+        coupling_dep = self.get('coupling_dep')
+        used = set()
+        for coup in couplings:
+            if not isinstance(coup, str):
+                coup = coup.name if hasattr(coup, 'name') else coup.get('name')
+            dependence = coupling_dep.get(coup.lstrip('-'), ())
+            used.update(name for name in dependence if name in names)
+        return used
 
     def get_running_blocks(self):
         """Names (as in running.py) of the param_card blocks for which a
