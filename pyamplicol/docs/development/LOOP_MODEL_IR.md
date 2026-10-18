@@ -974,3 +974,32 @@ MU_R=(500,1500,2000). The generated reference recomputes its source EW scale
 couplings for each point. All three arithmetic modes are checked, together with
 global Gf bits beyond binary64, source snapshot retention across an update,
 empty batches and rejection of mixed frames or missing source collections.
+
+`model_cms.prepare_gmu_complex_mass_declarations` provides a bounded cold
+declaration view for the external-mass Gmu source. The result retains the original
+raw object and one derived immutable raw model. Every structural/scalar consumer
+uses that same derived model; there is no competing runtime definition override.
+The transformation appends `CMASS_MZ/MW/MT/MH = sqrt(M**2-i*M*width)` declarations,
+retains real external mass/width inputs, continues dependent internal parameter
+types and expressions, enables the source CMSParam branch, and converts all
+source Yukawa inputs to enforced internal mass aliases. Existing exact source
+name tokens are rewritten without parsing numeric lexemes through binary64.
+Alias definitions are appended after rewriting, so their real inputs cannot
+accidentally become self-references. The original Gmu antiparticle metadata
+repair is checked before aliasing; its diagnostic is retained.
+
+Pole-mass references cover the complete covariant multiplet, including ghosts
+whose original width metadata is ZERO. The actual optimized MadLoop ee-to-mumu
+CMS export groups the charged-ghost bubbles with W/Goldstone bubbles and supplies
+the complex W mass to the reducer; its ghost numerator mass argument is unused.
+This is evidence for that bounded optimized control, not a claim about every
+MadLoop export. Source Gfbar/GfRedefinitionChoice, recms/crecms, branch logarithms,
+all CT bases and all helper bindings remain source-defined. No new
+renormalization formula or denominator-only width insertion is introduced.
+
+Cold-view tests cover native numerator/denominator aliases and selected scalar
+continuation in all three arithmetic modes, including exact pole-mass-square
+identities beyond binary64 and zero-width updates without regeneration. The
+declaration view itself carries no physical CMS certificate; complete bare,
+UV/R2 and total component comparisons and the zero-width physical continuation
+are separate gates.
