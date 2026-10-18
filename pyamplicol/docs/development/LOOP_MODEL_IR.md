@@ -1076,3 +1076,14 @@ The physical finite CMS branch/renormalization prescription remains unresolved:
 an independent Recola comparison agrees on Born and poles but differs in the
 finite part. These controls certify implementation of the supplied source
 semantics, and do not enable a physical CMS capability flag.
+
+The separate `neutral_scalar_vector_counterterm_validations` helper binds exact
+source keys for the neutral `G0-A/Z` two-point structures `P(2,1)` and `P(2,2)`.
+The local oracle in `tools/loop_reference/scalar_vector_oracle.py` compares each
+vector component and complex currents against unmodified loop-mode ALOHA, with
+real, complex and independent leg momenta. All 60 controls pass within
+`2.82e-16` scaled error. Scalar legs have no tensor port; their current value
+multiplies the local vector contraction. The helper is separate from process
+admission and does not certify scalar coefficients, mixing insertion phases or
+the UV scheme. Its exact ordered-port/source-expression guard rejects charged
+partners, reordered slots and untested linear combinations.

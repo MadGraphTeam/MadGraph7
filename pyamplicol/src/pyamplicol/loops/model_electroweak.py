@@ -8,6 +8,44 @@ from .model_expressions import parse_exact_ufo
 from .vertex_frames import certified_ffv_source
 
 
+def neutral_scalar_vector_counterterm_validations(source):
+    """Bind tested G0--A/Z momentum tensors to their exact source basis keys.
+
+    This separate local certificate does not extend process admission, select
+    counterterms, evaluate their scalar couplings, or certify a UV scheme.
+    """
+    structures = tuple(map(parse_exact_ufo, ("P(2,1)", "P(2,2)")))
+    result = []
+    for entry in source.kernels:
+        if entry.kind == "tree" or parse_exact_ufo(entry.color) != 1:
+            continue
+        particles = [
+            source.raw.collections["particles"][i]["fields"] for i in entry.particle_ids
+        ]
+        pdgs = tuple(p["pdg_code"] for p in particles)
+        spins = tuple(p["spin"] for p in particles)
+        colors = tuple(p["color"] for p in particles)
+        expression = parse_exact_ufo(entry.lorentz)
+        if (
+            pdgs in ((250, 22), (250, 23))
+            and spins == (1, 3)
+            and colors == (1, 1)
+            and any((expression - item).expand() == 0 for item in structures)
+        ):
+            result.append(
+                CountertermPrimitiveValidation(
+                    entry.key,
+                    entry.color,
+                    entry.lorentz,
+                    pdgs,
+                    spins,
+                    colors,
+                    "source-neutral-scalar-vector-two-point-ALOHA-control",
+                )
+            )
+    return tuple(result)
+
+
 def neutral_lepton_counterterm_validations(source):
     """Bind exact source keys to tested FFV and neutral two-vector primitives.
 
