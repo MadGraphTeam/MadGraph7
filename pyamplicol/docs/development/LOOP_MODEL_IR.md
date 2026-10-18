@@ -360,8 +360,31 @@ normalization 1/512 (initial spin/colour averaging and the identical final-state
 factor 1/2). It retains four Born graphs with six colour terms and 186 loop
 graphs with 258 terms in 52 families. This factory is the full-SU(3) bare
 control; the model/direct wrappers supply UV/R2 completion and formal projection.
-General vector states with nonzero mass are rejected until their helicity and
-input consistency contract is implemented.
+The shared physical assembler also accepts scalar and massive-vector state
+layouts. `ExternalStateLayout` records each leg's component offset and physical
+helicities: scalars have one component and helicity zero, Dirac and massless
+vector legs have four components and two helicities, and massive vectors include
+the longitudinal helicity. Exact fixed-zero model masses select the massless
+catalogue; changing an adjustable mass numerically does not change the compiled
+state space. The derived `initial_spin_average` is exposed separately from the
+caller-owned total normalization, which remains unchanged.
+
+The dependency prepares width-one and width-four states in at most two native
+bulk calls, followed by native column packing into the original leg order.
+Scalar unit wavefunctions have no recurrence tensor ports. Bound model columns,
+compact vector-source views and partial-lane compaction use these actual widths.
+A failed state removes its entire original physical point before helicity sums.
+The dependency's undefined longitudinal rest-vector state remains an explicit
+failure; no local polarization formula or momentum repair is introduced.
+Supplied momenta must still satisfy the declared external model masses, and a
+general scale-aware shell-consistency check remains open.
+
+All three arithmetic carriers pass scalar contact-model Born and bubble-pole
+controls, and an isolated scalar--massive-vector contact model agrees with the
+independent physical-completeness Born sum. The latter is a layout control, not
+an SM process prediction or a general source-model/renormalization certificate.
+Arbitrary external-vector sources retain their separately certified massless
+gluon domain.
 
 
 ## Pure-gluon source basis controls

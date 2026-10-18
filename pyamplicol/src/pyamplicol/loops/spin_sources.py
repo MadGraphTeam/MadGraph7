@@ -207,19 +207,26 @@ class NativeSpinSourceProgram:
 
 
 def replace_vector_sources(
-    states, sources, *, point_rows, lane_ids, state_kinds, backend
+    states, sources, *, point_rows, lane_ids, state_layout, backend
 ):
     """Gather native source columns into compact physical spectator rows."""
     if not sources:
         return states
-    if any(type(leg) is not int or not 1 <= leg <= len(state_kinds) for leg in sources):
+    if any(
+        type(leg) is not int or not 1 <= leg <= len(state_layout.legs)
+        for leg in sources
+    ):
         raise ValueError("spin source label is outside the physical vector slots")
     columns = []
-    for index, kind in enumerate(state_kinds):
-        if index + 1 in sources:
-            if kind not in {"epsilon", "epsilon_bar"}:
+    for leg in state_layout.legs:
+        if leg.index + 1 in sources:
+            if leg.kind not in {"epsilon", "epsilon_bar"}:
                 raise ValueError("spin overrides require vector source slots")
-            columns.append(sources[index + 1].take_rows(point_rows, row_ids=lane_ids))
+            columns.append(
+                sources[leg.index + 1].take_rows(point_rows, row_ids=lane_ids)
+            )
         else:
-            columns.append(states.take_columns(range(4 * index, 4 * (index + 1))))
+            columns.append(
+                states.take_columns(range(leg.offset, leg.offset + leg.components))
+            )
     return backend.NativeBatch.concat_columns(columns)

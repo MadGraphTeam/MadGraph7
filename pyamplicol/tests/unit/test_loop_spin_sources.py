@@ -94,7 +94,7 @@ def test_native_literal_components_joint_layout_and_original_bits(bare):
             prepared,
             point_rows=[0] * 4 + [1] * 4,
             lane_ids=ids,
-            state_kinds=bare.state_kinds,
+            state_layout=bare.state_layout,
             backend=bare.backend,
         )
         assert values.row_ids == ids

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 """Internal native bare-process assembly over verified graph families.
 
-This physical control supports on-shell Dirac and massless vector states.
+This physical control supports on-shell scalar, Dirac and vector states.
 Local currents, explicit perturbative-order pairs, exact SU(3)
 bilinears and native family maps determine every numerator. UV/R2 completion,
 formal-Nc projection and public process dispatch remain separate boundaries.
@@ -12,7 +12,6 @@ preserves them; a general tolerance and mass-consistency gate is not yet provide
 from __future__ import annotations
 
 from dataclasses import dataclass
-from itertools import product
 from types import MappingProxyType
 from typing import Any
 
@@ -39,6 +38,7 @@ from .physical_orders import (
     PhysicalOrderLayout,
     SummedBareValues,
 )
+from .physical_states import ExternalStateLayout
 from .recurrence import momentum_component_library
 
 
@@ -239,13 +239,6 @@ class NativeBareProcessProgram:
             raise NotImplementedError(
                 "multi-order dimensional assembly is not certified"
             )
-        if any(
-            kind not in {"u", "v", "u_bar", "v_bar", "epsilon", "epsilon_bar"}
-            for kind in state_kinds
-        ):
-            raise NotImplementedError(
-                "physical control requires Dirac or vector states"
-            )
         require_exact_numbers(initial_average)
         self.model_state = model_state
         self.vertex_spinor_frame = vertex_spinor_frame
@@ -310,16 +303,13 @@ class NativeBareProcessProgram:
                 key=lambda edge: edge.external_index,
             )
         )
-        if any(
-            kind in {"epsilon", "epsilon_bar"} and mass != 0
-            for kind, mass in zip(state_kinds, self.external_masses, strict=True)
-        ):
-            raise NotImplementedError(
-                "physical vector control currently requires massless states"
-            )
+        self.state_layout = ExternalStateLayout.from_graph(
+            process.born[0], state_kinds, self.model_expressions
+        )
+        self.initial_spin_average = self.state_layout.initial_spin_average
         self.initial_average = initial_average
-        self.state_kinds = state_kinds
-        self.helicities = tuple(product((-1, 1), repeat=len(state_kinds)))
+        self.state_kinds = tuple(state_kinds)
+        self.helicities = self.state_layout.helicities
         self.arithmetic, self.precision = arithmetic, precision
         self.reduction_engine = reduction_engine
         self.dimensional_numerators = dimensional_numerators
@@ -379,15 +369,21 @@ class NativeBareProcessProgram:
         }
         self.bound_positions.update(
             {
-                symbol.get_name(): 4 * legs + 4 * leg + component
-                for leg, symbols in self.external_states
-                for component, symbol in enumerate(symbols)
+                name: 4 * legs + position
+                for name, position in self.state_layout.state_positions(
+                    self.external_states
+                ).items()
             }
         )
         self.bound_positions.update(
-            {name: 8 * legs + i for i, name in enumerate(self.model_names)}
+            {
+                name: 4 * legs + self.state_layout.components + i
+                for i, name in enumerate(self.model_names)
+            }
         )
-        self.bound_columns = 8 * legs + len(self.model_names)
+        self.bound_columns = (
+            4 * legs + self.state_layout.components + len(self.model_names)
+        )
         variables = representative.dag.momentum_variables
         self.born_recurrences = tuple(
             build_color_tree_recurrence(
@@ -405,6 +401,7 @@ class NativeBareProcessProgram:
             for _ in item.terms
         )
         for item in self.born_recurrences:
+            self.state_layout.state_positions(item.external_states)
             if any(
                 len(item.dag.nodes[term.node].output_labels) != 1
                 or any(item.dag.nodes[term.node].output_labels[0].powers)
@@ -425,6 +422,7 @@ class NativeBareProcessProgram:
         self.loop_finals, loop_colors, self.loop_term_offsets = [], [], []
         self.loop_color_tensors = []
         for recurrence in self.recurrences:
+            self.state_layout.state_positions(recurrence.external_states)
             if recurrence.momentum_parameters != self.momenta:
                 raise ValueError("native graph external momentum frames differ")
             library = momentum_component_library(
@@ -941,25 +939,16 @@ class NativeBareProcessProgram:
         lanes = physical.take_rows(
             np.repeat(np.arange(size), helicities).tolist(), row_ids=lane_ids
         )
-        state_ids = [lane * legs + leg for lane in lane_ids for leg in range(legs)]
-        state_inputs = lanes.reshape_rows(rows * legs, 4, state_ids)
-        state_helicities = (
-            np.tile(np.asarray(helicity_states), (size, 1)).reshape(-1).tolist()
-        )
-        state_kinds = list(self.state_kinds) * rows
         native_scales = None
-        if _failures is None:
-            states = self.backend.wavefunctions_batch(
-                state_inputs, state_helicities, state_kinds
-            )
-        else:
+        if _failures is not None:
             # Validate all original scale literals before dropping any point.
             native_scales = native(scales, size, 1, row_ids=point_ids)
             _failures.require_finite(native_scales, "renormalization scale ingress")
-            states, state_statuses = self.backend.wavefunctions_partial_batch(
-                state_inputs, state_helicities, state_kinds
-            )
-            for state_id, status in state_statuses:
+        state_blocks = self.state_layout.prepare_native(
+            self.backend, lanes, helicity_states, partial=_failures is not None
+        )
+        if _failures is not None:
+            for state_id, status in state_blocks.statuses:
                 if status != "success":
                     _failures.record(
                         state_id // (helicities * legs),
@@ -979,17 +968,7 @@ class NativeBareProcessProgram:
                 momenta_pairs = pairs(momenta[indices])
                 lanes = lanes.take_rows(lane_rows)
                 native_scales = native_scales.take_rows(indices)
-                positions = {
-                    state_id: row for row, state_id in enumerate(states.row_ids)
-                }
-                states = states.take_rows(
-                    [
-                        positions[lane * legs + leg]
-                        for lane in lane_ids
-                        for leg in range(legs)
-                    ]
-                )
-        states = states.reshape_rows(rows, 4 * legs, lane_ids)
+        states = state_blocks.assemble(lane_ids)
         if spin_sources:
             from .spin_sources import replace_vector_sources
 
@@ -998,7 +977,7 @@ class NativeBareProcessProgram:
                 spin_sources,
                 point_rows=np.repeat(np.arange(size), helicities).tolist(),
                 lane_ids=lane_ids,
-                state_kinds=self.state_kinds,
+                state_layout=self.state_layout,
                 backend=self.backend,
             )
         scales = (
