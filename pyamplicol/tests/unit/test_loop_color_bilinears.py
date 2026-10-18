@@ -85,6 +85,31 @@ def test_compact_trace_channels_lift_like_explicit_generator_loops(algebra):
             assert (actual - (nc**2 - 1) * (nc**2 - 2) / (8 * nc)).together() == 0
 
 
+def test_crossed_symmetric_trace_products_use_native_projector_expansion(algebra):
+    s, t = algebra
+    nc = s.S("symmetric_color_trace_test::Nc", is_real=True)
+    generator = t.TensorExpression.color_t(8, 3)
+
+    def symmetric(a, b, c):
+        # UFO d^{abc} = 4 Tr(T^{(a} T^b T^{c)}), with Tr(Ta Tb)=delta/2.
+        return 4 * t.trace(
+            t.Representation.cof(3),
+            t.FactorProjector.symmetric(
+                *(generator(label, t.AUTO, t.AUTO) for label in (a, b, c))
+            ),
+        )
+
+    left = symmetric("a", "c", "x") * symmetric("b", "d", "x")
+    right = symmetric("a", "d", "x") * symmetric("b", "c", "x")
+    space = SUNColorSpace(nc)
+    value = space.overlap(left, right)
+    expected = 32 - s.E("17/2") * nc**2 + nc**4 / 2 - 24 / nc**2
+    assert (value - expected).together() == 0
+    assert value.replace(nc, 3) == s.E("-20/3") == _dense_overlap(left, right)
+    assert space.overlap(right, left) == value
+    assert (space.overlap(left, s.E("2i") * right) - s.E("2i") * value).together() == 0
+
+
 @pytest.mark.parametrize(
     "incoming,outgoing,born_count",
     [
