@@ -425,7 +425,7 @@ def test_source_particle_fields_complete_all_arithmetic(
 
 @pytest.mark.parametrize("gluons", [False, True], ids=["uudd", "gg-fields"])
 def test_complete_source_retained_views_without_producer_work(
-    prepared, monkeypatch, tmp_path, gluons
+    prepared, monkeypatch, gluons
 ):
     from pyamplicol.loops import (
         physical_counterterms,
@@ -435,7 +435,6 @@ def test_complete_source_retained_views_without_producer_work(
     from pyamplicol.loops.color_bilinears import PhysicalColorSpace
     from pyamplicol.loops.kernels import CoefficientKernel, PreparedCoefficientDAG
     from pyamplicol.loops.kinematics import LoopKinematicPlan
-    from pyamplicol.loops.portable import write_loop_pacbin
     from pyamplicol.loops.scalar_bindings import ScalarBindingPlan
     from pyamplicol.loops.scalar_frontend import ScalarFunctionLibrary
 
@@ -516,9 +515,6 @@ def test_complete_source_retained_views_without_producer_work(
         (ScalarFunctionLibrary, "evaluator"),
     ):
         monkeypatch.setattr(owner, name, forbidden)
-    with pytest.raises(NotImplementedError, match="source-owned scalar"):
-        write_loop_pacbin(program.virtual, tmp_path / "source.pacbin")
-    assert not (tmp_path / "source.pacbin").exists()
     for arithmetic, precision, tolerance in (
         ("double", None, "3e-11"),
         ("double-double", None, "3e-25"),

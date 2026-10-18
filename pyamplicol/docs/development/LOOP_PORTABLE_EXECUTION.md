@@ -3,7 +3,7 @@
 # Internal graph-free loop execution
 
 `loops.portable.write_loop_pacbin` lowers a retained, complete full-colour
-legacy model-R2 or certified direct-R2 four-gluon program to the existing
+source/legacy model-R2 or certified direct-R2 four-gluon program to the existing
 `evaluators.pacbin` envelope.
 `PortableLoopPlan.open(...).bind(...)` creates a fresh numerical view in double,
 DoubleFloat or arbitrary precision. This is an internal execution roundtrip;
@@ -13,8 +13,10 @@ The ordinary physical controls are `u u~ -> d d~` and `u u~ -> t t~`.
 The latter retains nonzero external-field contributions, independently of the
 local UV and R2 currents. The direct control is `g g -> g g`: all three N4 and
 dimensional-remainder epsilon sectors survive persistence, with UV currents and
-external fields retained and model R2 excluded. Source-owned scalar plans,
-formal colour projection, correlations and rescue remain outside this boundary.
+external fields retained and model R2 excluded. Source-owned model-R2 plans retain
+one scalar owner and ordinary/CT scale views, including anonymous external-field
+coefficients. Source dimensional/direct, formal colour projection, correlations
+and rescue remain outside this boundary.
 
 ## Persisted data
 
@@ -40,7 +42,29 @@ Persisted numerical data are:
   Counterterm execution retains source-kind tags, scalar diagnostics and input
   columns, without source insertion or tree objects.
 
-The internal v2 descriptor is regenerated rather than migrated. The native
+The internal v3 descriptor is regenerated rather than migrated. Its model
+binding is explicitly either legacy evaluator input or a source scalar owner;
+scalar current bindings are correspondingly either saved evaluators or selected
+source-output columns. The native reader rejects mixed ownership, invalid
+parameter types/names, non-finite exact override literals, real parameters with
+any nonzero imaginary part, mismatched scale selection and invalid column maps.
+Source owner values, defaults and real-type guards retain their paired diagnostic
+instructions. Both scale views refer to the same owner by descriptor structure;
+no raw UFO, scalar library or producer reference is required to reconstruct it.
+The source `model_inputs` labels are qualified display metadata; named updates
+and input order are defined solely by the scalar owner's external names/types.
+
+The internal format retains the captured initial exact external override strings
+and fixed parameter values. `bind(parameters=...)` overlays supplied values on
+those captured overrides. Source `update_parameters(...)` keeps the existing
+atomic checked update semantics; `rebind(parameters=...)` captures the current
+owner snapshot once and overlays any supplied values without dropping omitted
+keys. Every view has a fresh owner, while its ordinary and CT scale evaluations
+share one captured event-batch snapshot and the per-point renormalization scale.
+The existing callback registry and exact decimal parser now live in the shared
+core decoder, with the runtime delegating to that one implementation.
+
+The native
 reader checks that direct selection is dimensional, uses the certified QCD
 four-gluon state layout and QCD4/QCD6 Born/virtual sectors, and contains no
 effective R2 currents. Coefficient labels
@@ -49,7 +73,7 @@ NinjaRS continues to own numerator parsing and epsilon-sector reduction; no
 private Laurent or tensor algebra is introduced by loading.
 
 Producer graphs, recurrence objects, symbolic Python objects, colour tensors,
-live evaluator workspaces, model values and event results are excluded.
+live evaluator workspaces, rounded model values and event results are excluded.
 Normalization factors already belong to the saved projection evaluators; the
 integer initial-average field is metadata and is not reapplied.
 
@@ -111,3 +135,12 @@ corresponding `PYAMPLICOL_UUDD_COMPONENT_REFERENCE`,
 `PYAMPLICOL_TOP_PAIR_COMPONENT_REFERENCE` or `PYAMPLICOL_GG_COMPONENT_REFERENCE`
 is provided. Native success remains
 numerical status rather than an independent accuracy certificate.
+
+`tests/unit/test_loop_source_portable.py` covers the generic source-compiled
+four-gluon model-R2 program, including nonzero field contributions. It compares
+loaded and retained execution in all three carriers, saved/current exact override
+overlays, per-point scales, retained snapshots, owner isolation, empty batches,
+malformed scalar descriptors and loading in a fresh process with source producers
+disabled. Independent component checks use the existing binary64 MadLoop capture;
+roundtrip agreement itself is a transport/control-flow check, not a new physics
+or arbitrary-precision accuracy certificate.
