@@ -14,7 +14,8 @@ use fast::FastReductions;
 use pyo3::{exceptions::PyValueError, prelude::*};
 use rusticol_loop_reduction::{
     AmplitudeInput, Complex, EvaluationStatus, FourMomentum, Lane, Laurent, NativeFloat,
-    PolynomialReducer,
+    PolynomialReducer, SamplingScaleProvider, SamplingScaleSource, SamplingScaleStatus,
+    SymbolicaSamplingScales,
 };
 use symbolica::{
     atom::Atom,
@@ -275,6 +276,9 @@ where
     zero: Complex<T>,
     propagators: usize,
     parameter_count: usize,
+    sampling: Option<SymbolicaSamplingScales<T>>,
+    sampling_values: Vec<Complex<T>>,
+    sampling_statuses: Vec<SamplingScaleStatus>,
 }
 
 impl<T: Carrier> Reductions<T>
@@ -327,6 +331,13 @@ where
             sectors: sectors.try_into().ok().unwrap(),
             propagators: n,
             parameter_count: parameters.len(),
+            sampling: if n >= 4 {
+                Some(SymbolicaSamplingScales::new(n, prototype).map_err(error)?)
+            } else {
+                None
+            },
+            sampling_values: Vec::new(),
+            sampling_statuses: Vec::new(),
         })
     }
 
@@ -387,6 +398,23 @@ where
         parameters: &[Complex<T>],
         s_matrix: Option<&[Complex<T>]>,
     ) -> PyResult<Vec<Lane<Complex<T>, String>>> {
+        if let Some(sampling) = &mut self.sampling {
+            self.sampling_values.resize(ids.len(), self.zero.clone());
+            self.sampling_values.fill(self.zero.clone());
+            self.sampling_statuses.resize(
+                ids.len(),
+                SamplingScaleStatus::Selected(SamplingScaleSource::UnitFallback),
+            );
+            sampling
+                .evaluate_batch(
+                    shifts,
+                    masses,
+                    ids.len(),
+                    &mut self.sampling_values,
+                    &mut self.sampling_statuses,
+                )
+                .map_err(error)?;
+        }
         let mut results = Vec::with_capacity(3);
         for (index, sector) in self.sectors.iter_mut().enumerate() {
             if !self.active[index] {
@@ -413,7 +441,7 @@ where
                             shifts,
                             masses_squared: masses,
                             scales_squared: scales,
-                            sampling_scales: &[],
+                            sampling_scales: &self.sampling_values,
                             s_matrix,
                         },
                         parameters,
@@ -429,7 +457,17 @@ where
             .into_iter()
             .zip(one)
             .zip(two)
-            .map(|((zero, one), two)| {
+            .enumerate()
+            .map(|(row, ((zero, one), two))| {
+                if let Some(SamplingScaleStatus::InvalidInput(failure)) =
+                    self.sampling_statuses.get(row)
+                {
+                    return Lane {
+                        id: zero.id,
+                        status: format!("sampling scale: {failure:?}"),
+                        value: None,
+                    };
+                }
                 let status = [zero.status, one.status, two.status]
                     .iter()
                     .enumerate()

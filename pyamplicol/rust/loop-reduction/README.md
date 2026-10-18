@@ -122,6 +122,13 @@ shift vectors and passing that result does not establish exact invariants.
 all lanes succeed, while `.successful_values()` retains only successful IDs.
 `CoefficientEvaluator.evaluate_batch` and `massless_spinors_batch` share these
 buffers, allowing couplings, wavefunctions and final contractions to stay native.
+For four or more propagators the generic consumer invokes NinjaRS's existing
+`SymbolicaSamplingScales` once per batch and supplies its auxiliary scales to
+each active epsilon sector. These are distinct from the renormalization scale
+and the exact S-matrix. Failed scale-selection lanes retain their original IDs
+and expose no values. The analytic `I4[mu^4] = -1/6` regression covers complex
+masses, changing batch sizes and coefficient bits beyond binary64 in all three
+arithmetic modes.
 
 `ExactPolynomialEvaluator` reuses the shared saved-evaluator decoder but accepts
 only straight-line rational polynomial instructions. Decimal inputs are parsed

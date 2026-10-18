@@ -16,7 +16,11 @@ use ninjars::fast::GenericNumerator;
 pub use ninjars::fast::{C64, FastInput, FastStatus};
 use ninjars::fast::{FastAmplitude, FastNumerator, FastOptions, FastResult};
 use ninjars::{Amplitude, Numerator, Real, Result};
-pub use ninjars::{AmplitudeInput, Complex, EvaluationStatus, FourMomentum};
+pub use ninjars::{
+    AmplitudeInput, Complex, EvaluationStatus, FourMomentum, SamplingScaleProvider,
+    SamplingScaleSource, SamplingScaleStatus,
+};
+pub use ninjars_symbolica::SymbolicaSamplingScales;
 use ninjars_symbolica::{
     OneLoopNativeMasters, PolynomialNumerator, SymbolicaAmplitudeKernels, SymbolicaCuts,
     SymbolicaHighCuts, SymbolicaMasters,
