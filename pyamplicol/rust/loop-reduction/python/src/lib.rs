@@ -9,7 +9,7 @@ mod fast;
 mod portable;
 mod stability;
 mod states;
-use batch::{BatchCarrier, Data, NativeBatch};
+use batch::{Data, NativeBatch};
 use fast::FastReductions;
 
 use pyo3::{exceptions::PyValueError, prelude::*};
@@ -21,7 +21,7 @@ use symbolica::{
     atom::Atom,
     domains::float::{DoubleFloat, Float, Real},
     domains::rational::Rational,
-    evaluate::{EvaluationDomain, ExpressionEvaluator},
+    evaluate::EvaluationDomain,
 };
 
 use rusticol_loop_reduction::runtime::{
@@ -39,10 +39,6 @@ fn arithmetic_mode(arithmetic: &str, precision: Option<u32>) -> PyResult<(Arithm
 }
 fn parse_complex<T: Carrier>(value: &DecimalComplex, bits: u32) -> PyResult<Complex<T>> {
     runtime::parse_complex(value, bits).map_err(error)
-}
-
-fn exact_state(bytes: &[u8]) -> PyResult<ExpressionEvaluator<Complex<Rational>>> {
-    runtime::exact_state(bytes).map_err(error)
 }
 
 /// Python ownership of the shared native saved evaluator.

@@ -2233,7 +2233,6 @@ dependencies = [
 name = "rusticol-loop-python"
 version = "0.1.0"
 dependencies = [
- "feynkit-kinematics",
  "pyo3",
  "rusticol-core",
  "rusticol-loop-reduction",
@@ -2244,6 +2243,7 @@ dependencies = [
 name = "rusticol-loop-reduction"
 version = "0.1.0"
 dependencies = [
+ "feynkit-kinematics",
  "ninjars",
  "ninjars-graph",
  "ninjars-symbolica",

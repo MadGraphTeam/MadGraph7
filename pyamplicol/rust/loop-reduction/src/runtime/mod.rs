@@ -8,11 +8,17 @@ use std::fmt::{Display, LowerExp};
 use symbolica::domains::float::{DoubleFloat, Float};
 mod batch;
 mod coefficients;
+mod exact;
 mod predicates;
 mod schedule;
+mod states;
 pub use batch::{Batch, BatchCarrier, Data, shape};
 pub use coefficients::{CoefficientEvaluator, exact_state};
+pub use exact::{ExactPolynomialEvaluator, decimal_rational};
 pub use schedule::{CoefficientKernelCache, CoefficientPlan};
+pub use states::{
+    PartialStates, on_shell_wavefunctions_batch, wavefunctions_batch, wavefunctions_partial_batch,
+};
 
 /// Install immutable source-scalar callbacks before decoding saved programs.
 pub fn register_scalar_primitives() {

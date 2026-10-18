@@ -70,7 +70,8 @@ metadata access, retained-producer preparation and partial/rescue evaluation.
 Ordinary complete evaluation and fresh arithmetic rebinding remain available.
 
 Typed buffer storage, arithmetic selection, decimal conversion, gathers,
-concatenation, regrouping, saved scalar evaluators and the tiled coefficient
+concatenation, regrouping, exact rational ingress and kinematic evaluation,
+dependency wavefunction blocks, saved scalar evaluators and the tiled coefficient
 schedule now live in the non-Python `rusticol_loop_reduction::runtime` module.
 The Python classes own these same Rust values and delegate their operations.
 The existing dependency interpreter/JIT and cold-template cache have one

@@ -15,6 +15,7 @@ members = ["python"]
 exclude = ["upstream"]
 
 [dependencies]
+feynkit-kinematics = { path = "upstream/references/gammaloop_ninja_shared/crates/feynkit-kinematics", default-features = false, features = ["native"] }
 rusticol-core = { path = "../crates/rusticol-core", features = ["symbolica-runtime", "python-generation-bridge"] }
 ninjars = { path = "upstream/crates/ninjars" }
 ninjars-graph = { path = "upstream/crates/ninjars-graph" }
