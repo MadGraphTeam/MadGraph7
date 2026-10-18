@@ -667,3 +667,59 @@ def test_exact_family_guards_keep_original_ids_after_compaction(source, points):
     failures.require_finite(matrix, "exact invariant matrix")
     assert failures.point_ids == {29}
     assert failures.successful_indices([29]) == []
+
+
+def test_pointwise_family_masses_follow_exact_invariant_compaction(source, points):
+    """Exercise source-row transport with distinct masses, not a new process."""
+    from symbolica import E, S
+
+    from pyamplicol.loops.numerical_lanes import LaneFailures
+    from pyamplicol.loops.physical_process import _saved
+
+    bare = drell_yan_model_virtual_program(source).bare
+    currents = bare.prepare_currents_native(
+        points[:3],
+        ["1000000"] * 3,
+        model_values=["0.118", "132.507"],
+        point_ids=[71, 29, 83],
+    )
+    # The physical scalar protocol admits one model row per point. Supply
+    # distinct native mass columns to test that exact-kinematics eviction of
+    # the first point does not broadcast its mass into later surviving rows.
+    currents.model = bare.backend.NativeBatch.from_decimal(
+        [("2", "0"), ("3", "0"), ("5", "0")], 3, 1, row_ids=[71, 29, 83]
+    )
+    bare.model_scale_view = object()
+    family = bare.families[0]
+    mass = S("pointwise_mass_test::m2")
+    family.masses = bare.backend.CoefficientEvaluator(
+        _saved([mass] * family.kinematics.propagators, [mass]), **bare.options
+    )
+    family.mass_columns = (0,)
+    width = 4 * len(bare.state_kinds)
+    currents.momenta_pairs[:width] = [
+        ["1e200", "0"] if i % 4 == 0 else ["0", "0"] for i in range(width)
+    ]
+    original, seen = family.reducer, []
+
+    class RecordingReducer:
+        def evaluate_batch(self, shifts, masses, scales, coefficients, **kwargs):
+            seen.append(masses)
+            return original.evaluate_batch(
+                shifts, masses, scales, coefficients, **kwargs
+            )
+
+    family.reducer = RecordingReducer()
+    failures = LaneFailures()
+    result = bare._evaluate_currents_native(currents, failures)
+    assert failures.point_ids == {71}
+    assert result.batch.point_ids == [29, 83]
+    assert seen[0].row_ids == [29, 83]
+    columns = family.kinematics.propagators
+    expected = [("3", "0")] * columns + [("5", "0")] * columns
+    assert all(
+        E(real) == E(want_real) and E(imaginary) == E(want_imaginary)
+        for (real, imaginary), (want_real, want_imaginary) in zip(
+            seen[0].to_decimal(), expected, strict=True
+        )
+    )

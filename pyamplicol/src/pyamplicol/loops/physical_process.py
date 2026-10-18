@@ -1189,10 +1189,15 @@ class NativeBareProcessProgram:
             if failures is not None:
                 guard(shifts, f"family {family.index} shifts")
                 guard(matrix, f"family {family.index} invariant matrix")
-                # Built-in masses are global. Invalid global model formulas were
-                # already rejected at ingress and cannot be rescued pointwise.
-                require_finite_batch(masses, f"family {family.index} global masses")
-                coefficients, shifts, matrix = compact(coefficients, shifts, matrix)
+                if self.model_scale_view is not None:
+                    guard(masses, f"family {family.index} source masses")
+                    coefficients, shifts, matrix, masses = compact(
+                        coefficients, shifts, matrix, masses
+                    )
+                else:
+                    # Global model formula errors cannot be isolated pointwise.
+                    require_finite_batch(masses, f"family {family.index} global masses")
+                    coefficients, shifts, matrix = compact(coefficients, shifts, matrix)
             channel_count = len(family.sector_indices)
             row_ids = [
                 point * len(self.order_layout.virtual) + sector
