@@ -188,3 +188,39 @@ an ordinary correspondence or this independent primitive evidence. The record
 does not run a comparison, validate scalar renormalization or set whole-model
 validation flags. Supplying it is an explicit assertion that the named local
 control has already been performed for precisely these structures and ports.
+
+## External-field factors
+
+`loops.wavefunction` reads `particle.counterterm` independently of effective
+vertex insertion. One key contains a power for each coupling order in the UFO's
+original registry order, followed by the declared loop-group index. Exactly one
+unit power selects a one-loop field correction with two additional fundamental
+coupling powers. Higher-loop entries are skipped. Laurent arithmetic and
+CT-dependent alias substitution reuse the existing native scalar lowering.
+Particle-field values currently require exact expression strings or integers;
+unobserved float/complex attributes fail rather than acquire false exactness.
+
+`match_external_field_counterterms` retains each already-generated Born graph
+and records its external-leg index, selected model factor and loop-alternative
+index. It uses the positive-PDG particle definition for the antiparticle too.
+Each allowed alternative contributes separately, including repeated alternatives;
+an empty alternative is a wildcard. The caller supplies the complete resolved
+forbidden-species set and, when needed, an explicit allowed amplitude-order
+envelope. This stream does not infer those filters from bare-loop order
+differences or require a loop witness. It creates no new graph or Lorentz tensor.
+
+MadLoop's `import_ufo.py:1355–1383` and
+`loop_diagram_generation.py:1290–1332` define this convention. In `loop_sm`,
+`tWcft_UV` already includes the field factor delta-Z/2: the two external top legs
+contribute twice that model coefficient to the Born amplitude. No extra half,
+loop integration factor or loop symmetry factor is applied. Physical contraction
+then uses the usual `2 Re(Born* CT)`. The separate field IR leaves scheme
+validation false; vertex CT matching's external-field-completion flag is not
+silently changed by constructing it.
+
+The executable `tools/loop_reference/wavefunction_oracle.py` derives these two
+top factors from the source model and evaluates all three Laurent coefficients
+in a native batch against isolated MadLoop external-field output. It uses the
+reference Born values and binary64 comparison, so it validates field scalar
+normalization and multiplicity, not a full amplitude or arbitrary-precision
+physics. Full native physical assembly is a separate integration check.
