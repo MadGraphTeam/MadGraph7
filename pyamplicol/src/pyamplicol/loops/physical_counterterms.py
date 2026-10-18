@@ -18,6 +18,7 @@ from .exact import require_exact_numbers
 from .graph_basis import build_color_tree_recurrence
 from .kernels import NativeCoefficientDAG, require_finite_batch
 from .physical import _saved
+from .physical_orders import OrderedModelVirtualResult, SummedModelValues
 from .physical_process import _color_bilinear, _external_color
 
 
@@ -110,7 +111,8 @@ class NativeModelVirtualProgram:
         from .color_bilinears import SUNColorSpace, external_color_tensor
         from .physical_color import project_physical_color, split_color_grades
 
-        bare.require_single_order("model counterterm assembly")
+        if formal_nc is not None or r2_strategy == "direct":
+            bare.require_single_order("formal or direct model counterterm assembly")
         self.bare = bare
         if r2_strategy not in {"model", "direct"}:
             raise ValueError("internal R2 strategy must be model or direct")
@@ -137,7 +139,14 @@ class NativeModelVirtualProgram:
         for source, target in self.source_bindings:
             require_exact_numbers(target)
             replacements.append(Replacement(source, target))
-        allowed = {pair.loop for pair in bare.process.orders.sectors[0].pairs}
+        sectors = bare.process.orders.sectors
+        self.sector_pairs = tuple(
+            frozenset((pair.born, pair.loop) for pair in sector.pairs)
+            for sector in sectors
+        )
+        allowed = {pair.loop for sector in sectors for pair in sector.pairs}
+        corrections = frozenset(bare.process.orders.correction_names)
+        admitted_loops = {graph.id for graph in bare.loop_graphs}
         self.currents = []
         self.matched_insertions = tuple(insertions)
         self.insertions = tuple(
@@ -146,6 +155,16 @@ class NativeModelVirtualProgram:
             if r2_strategy == "model" or insertion.rule.kind != "R2"
         )
         for insertion in self.insertions:
+            rule = insertion.rule
+            if rule.perturbation_type and rule.perturbation_type not in corrections:
+                raise ValueError("counterterm correction is outside the selected set")
+            if rule.kind == "UVtree":
+                # Source-defined UVtree interactions are eligible without a loop
+                # witness; an unmatched ordinary CT must never take this branch.
+                if not corrections.intersection(name for name, _ in rule.order):
+                    raise ValueError("UVtree has no selected source correction order")
+            elif not admitted_loops.intersection(insertion.witness_loop_ids):
+                raise ValueError("counterterm has no admitted loop graph witness")
             if not insertion.rule.has_validated_tensor_basis:
                 raise NotImplementedError(
                     "counterterm lacks a calibrated tensor correspondence "
@@ -264,7 +283,11 @@ class NativeModelVirtualProgram:
             for index, graph in enumerate(bare.process.born)
         }
         for insertion in self.external_fields:
-            if insertion.order not in allowed or insertion.born.id not in born_indices:
+            if (
+                insertion.rule.correction not in corrections
+                or insertion.order not in allowed
+                or insertion.born.id not in born_indices
+            ):
                 raise ValueError(
                     "external field is outside the admitted Born/loop catalogue"
                 )
@@ -340,11 +363,12 @@ class NativeModelVirtualProgram:
                 ),
                 **options,
             )
+        width = 3 * len(sectors)
         parameters, ultraviolet, rational, fields = (
             [],
-            [E("0")] * 3,
-            [E("0")] * 3,
-            [E("0")] * 3,
+            [E("0")] * width,
+            [E("0")] * width,
+            [E("0")] * width,
         )
         for helicity in range(len(bare.helicities)):
             born = [
@@ -358,47 +382,91 @@ class NativeModelVirtualProgram:
                     for term in range(current.term_count)
                 ]
                 parameters.extend(amplitudes)
-                # Source rules include their own loop factor. Each colour term
-                # interferes with every Born term before taking the real part.
-                value = sum(
-                    (
-                        left.conj() * weight * amplitude
-                        for left, row in zip(born, current.color_weights, strict=True)
-                        for weight, amplitude in zip(row, amplitudes, strict=True)
-                    ),
-                    E("0"),
-                )
+                # Keep complex interference until closure. Source rules already
+                # include the loop factor; pair masks only select Born bra terms.
                 target = (
                     rational if current.insertion.rule.kind == "R2" else ultraviolet
                 )
-                target[-current.epsilon_power] += value + value.conj()
+                for sector, pairs in enumerate(self.sector_pairs):
+                    value = sum(
+                        (
+                            left.conj() * weight * amplitude
+                            for left, order, row in zip(
+                                born,
+                                bare.born_term_orders,
+                                current.color_weights,
+                                strict=True,
+                            )
+                            if (order, current.insertion.graph.order) in pairs
+                            for weight, amplitude in zip(row, amplitudes, strict=True)
+                        ),
+                        E("0"),
+                    )
+                    target[3 * sector - current.epsilon_power] += value + value.conj()
             for index, current in enumerate(self.field_currents):
                 factor = S(f"loop_counterterm::field{helicity}_{index}")
                 parameters.append(factor)
-                # The model's particle factor already includes delta-Z/2.
-                value = sum(
-                    (
-                        left.conj() * weight * factor * born[right]
-                        for left, row in zip(born, current.color_weights, strict=True)
-                        for right, weight in zip(current.born_indices, row, strict=True)
-                    ),
-                    E("0"),
-                )
-                fields[-current.epsilon_power] += value + value.conj()
+                # The source includes delta-Z/2. Right-hand terms belong to
+                # the insertion's exact Born graph; only the left order is masked.
+                for sector, pairs in enumerate(self.sector_pairs):
+                    value = sum(
+                        (
+                            left.conj() * weight * factor * born[right]
+                            for left, order, row in zip(
+                                born,
+                                bare.born_term_orders,
+                                current.color_weights,
+                                strict=True,
+                            )
+                            if (order, current.insertion.order) in pairs
+                            for right, weight in zip(
+                                current.born_indices, row, strict=True
+                            )
+                        ),
+                        E("0"),
+                    )
+                    fields[3 * sector - current.epsilon_power] += value + value.conj()
         self.projector = backend.CoefficientEvaluator(
             _saved([*ultraviolet, *rational, *fields], parameters), **options
         )
-        poles = [S(f"loop_counterterm::pole{i}") for i in range(12)]
+        poles = [S(f"loop_counterterm::pole{i}") for i in range(4 * width)]
         self.assemble = backend.CoefficientEvaluator(
             _saved(
                 [
                     *[
-                        poles[i] + poles[i + 3] + poles[i + 6] + poles[i + 9]
-                        for i in range(3)
+                        sum((poles[i + k * width] for k in range(4)), E("0"))
+                        for i in range(width)
                     ],
-                    *[poles[i + 3] + poles[i + 9] for i in range(3)],
+                    *[poles[i + width] + poles[i + 3 * width] for i in range(width)],
                 ],
                 poles,
+            ),
+            **options,
+        )
+        # Sum every returned component in the selected carrier, before strings.
+        born_count = len(bare.order_layout.born)
+        sum_parameters = [
+            S(f"loop_counterterm::sum{i}") for i in range(born_count + 6 * width)
+        ]
+        self.sum_order_values = backend.CoefficientEvaluator(
+            _saved(
+                [
+                    sum(sum_parameters[:born_count], E("0")),
+                    *[
+                        sum(
+                            (
+                                sum_parameters[
+                                    born_count + component * width + 3 * sector + pole
+                                ]
+                                for sector in range(len(sectors))
+                            ),
+                            E("0"),
+                        )
+                        for component in range(6)
+                        for pole in range(3)
+                    ],
+                ],
+                sum_parameters,
             ),
             **options,
         )
@@ -407,8 +475,8 @@ class NativeModelVirtualProgram:
         bare._model_color_metrics_bound = True
         bare._formal_color_projected = space is not None
 
-    def evaluate_decimal(self, momenta, scales_squared, *, model_values):
-        native = self.bare.evaluate_native(
+    def evaluate_ordered_decimal(self, momenta, scales_squared, *, model_values):
+        native = self.bare.evaluate_ordered_native(
             momenta, scales_squared, model_values=model_values
         )
         batch, backend = native.batch, self.bare.backend
@@ -476,24 +544,32 @@ class NativeModelVirtualProgram:
             backend.NativeBatch.concat_columns([native.virtual, counterterms])
         )
         require_finite_batch(assembled, "complete virtual assembly")
-        born = np.asarray(native.born.to_decimal(), dtype=object).reshape(batch.size, 2)
-        bare = np.asarray(native.virtual.to_decimal(), dtype=object).reshape(
-            batch.size, 3, 2
+        sectors = len(self.bare.order_layout.virtual)
+        width = 3 * sectors
+        component_batches = [
+            assembled.take_columns(range(width)),
+            native.virtual,
+            assembled.take_columns(range(width, 2 * width)),
+            counterterms.take_columns(range(width, 2 * width)),
+            counterterms.take_columns(range(width)),
+            counterterms.take_columns(range(2 * width, 3 * width)),
+        ]
+        totals = self.sum_order_values.evaluate_batch(
+            backend.NativeBatch.concat_columns([native.born, *component_batches])
         )
-        ct = np.asarray(counterterms.to_decimal(), dtype=object).reshape(
-            batch.size, 9, 2
-        )
-        virtual = np.asarray(assembled.to_decimal(), dtype=object).reshape(
-            batch.size, 6, 2
-        )
-        return ModelVirtualResult(
-            born,
-            virtual[:, :3],
-            bare,
-            virtual[:, 3:],
-            ct[:, 3:6],
-            ct[:, :3],
-            ct[:, 6:],
+        require_finite_batch(totals, "sum over completed perturbative orders")
+
+        def values(buffer, *shape):
+            return np.asarray(buffer.to_decimal(), dtype=object).reshape(
+                batch.size, *shape, 2
+            )
+
+        summed = values(totals, 19)
+        return OrderedModelVirtualResult(
+            values(native.born, len(self.bare.order_layout.born)),
+            *[values(buffer, sectors, 3) for buffer in component_batches],
+            self.bare.order_layout,
+            self.bare.order_channels,
             native.statuses,
             self.bare.arithmetic,
             self.bare.precision,
@@ -506,7 +582,40 @@ class NativeModelVirtualProgram:
             None
             if self.color_projection is None
             else self.color_projection.virtual_degree,
+            SummedModelValues(
+                summed[:, 0], *[summed[:, 1 + 3 * i : 4 + 3 * i] for i in range(6)]
+            ),
             self.r2_strategy,
+        )
+
+    def evaluate_decimal(self, momenta, scales_squared, *, model_values):
+        """Single-order adapter; summing distinct physical sectors is explicit."""
+        self.bare.require_single_order("single-sector model virtual adapter")
+        result = self.evaluate_ordered_decimal(
+            momenta, scales_squared, model_values=model_values
+        )
+        return ModelVirtualResult(
+            result.born[:, 0],
+            *[
+                getattr(result, name)[:, 0]
+                for name in (
+                    "virtual",
+                    "bare",
+                    "uv",
+                    "r2",
+                    "uv_local",
+                    "uv_external_fields",
+                )
+            ],
+            result.statuses,
+            result.arithmetic,
+            result.precision,
+            result.reduction_engine,
+            result.coefficient_engine,
+            result.color_accuracy,
+            result.born_color_degree,
+            result.virtual_color_degree,
+            result.r2_strategy,
         )
 
 

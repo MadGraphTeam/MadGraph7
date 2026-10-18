@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Structural order axes and precise results for internal bare assembly."""
+"""Structural order axes and precise results for internal virtual assembly."""
 
 from __future__ import annotations
 
@@ -52,40 +52,8 @@ class SummedBareValues:
     rational: Any = None
 
 
-@dataclass(frozen=True, slots=True)
-class OrderedBareProcessResult:
-    """Batch first, then squared order, then epsilon and decimal complex pair.
-
-    Status columns correspond to ``channels`` entries (virtual sector, family).
-    Structurally generated zero sectors remain on both order axes. Sums are
-    computed in the selected native carrier before decimal transport.
-    """
-
-    born: Any
-    virtual: Any
-    orders: PhysicalOrderLayout
-    channels: tuple[tuple[int, int], ...]
-    statuses: Any
-    arithmetic: str
-    precision: int | None
-    reduction_engine: str
-    coefficient_engine: str
-    _summed: SummedBareValues = field(repr=False)
-    rational: Any = None
-    epsilon_powers: tuple[int, ...] = (0, -1, -2)
-    convention: str = "MadLoop-Cepsilon-bare-four-dimensional-no-R2-no-UV"
-
-    def __post_init__(self):
-        for values in (
-            self.born,
-            self.virtual,
-            self.rational,
-            self._summed.born,
-            self._summed.virtual,
-            self._summed.rational,
-        ):
-            if values is not None:
-                values.setflags(write=False)
+class _OrderedResultAccessors:
+    __slots__ = ()
 
     @property
     def born_orders(self):
@@ -125,3 +93,96 @@ class OrderedBareProcessResult:
 
     def sum_orders(self):
         return self._summed
+
+
+@dataclass(frozen=True, slots=True)
+class OrderedBareProcessResult(_OrderedResultAccessors):
+    """Batch first, then squared order, then epsilon and decimal complex pair.
+
+    Status columns correspond to ``channels`` entries (virtual sector, family).
+    Structurally generated zero sectors remain on both order axes. Sums are
+    computed in the selected native carrier before decimal transport.
+    """
+
+    born: Any
+    virtual: Any
+    orders: PhysicalOrderLayout
+    channels: tuple[tuple[int, int], ...]
+    statuses: Any
+    arithmetic: str
+    precision: int | None
+    reduction_engine: str
+    coefficient_engine: str
+    _summed: SummedBareValues = field(repr=False)
+    rational: Any = None
+    epsilon_powers: tuple[int, ...] = (0, -1, -2)
+    convention: str = "MadLoop-Cepsilon-bare-four-dimensional-no-R2-no-UV"
+
+    def __post_init__(self):
+        for values in (
+            self.born,
+            self.virtual,
+            self.rational,
+            self._summed.born,
+            self._summed.virtual,
+            self._summed.rational,
+        ):
+            if values is not None:
+                values.setflags(write=False)
+
+
+@dataclass(frozen=True, slots=True)
+class SummedModelValues:
+    born: Any
+    virtual: Any
+    bare: Any
+    uv: Any
+    r2: Any
+    uv_local: Any
+    uv_external_fields: Any
+
+
+@dataclass(frozen=True, slots=True)
+class OrderedModelVirtualResult(_OrderedResultAccessors):
+    """Model completion with batch/order/epsilon/decimal-pair component axes.
+
+    All virtual components share the same structural order catalogue. ``channels``
+    and ``statuses`` describe bare reductions; a failed CT or assembly stage raises
+    before a result is exposed. This internal boundary does not certify arbitrary
+    model completeness or provide per-lane rescue.
+    """
+
+    born: Any
+    virtual: Any
+    bare: Any
+    uv: Any
+    r2: Any
+    uv_local: Any
+    uv_external_fields: Any
+    orders: PhysicalOrderLayout
+    channels: tuple[tuple[int, int], ...]
+    statuses: Any
+    arithmetic: str
+    precision: int | None
+    reduction_engine: str
+    coefficient_engine: str
+    color_accuracy: str
+    born_color_degree: int | None
+    virtual_color_degree: int | None
+    _summed: SummedModelValues = field(repr=False)
+    r2_strategy: str = "model"
+    epsilon_powers: tuple[int, ...] = (0, -1, -2)
+    convention: str = "MadLoop-Cepsilon-virtual-assembled"
+
+    def __post_init__(self):
+        for record in (self, self._summed):
+            for name in (
+                "born",
+                "virtual",
+                "bare",
+                "uv",
+                "r2",
+                "uv_local",
+                "uv_external_fields",
+            ):
+                getattr(record, name).setflags(write=False)

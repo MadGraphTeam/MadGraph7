@@ -178,14 +178,20 @@ def test_order_axes_born_and_universal_double_poles(
             for i, order in enumerate(orders):
                 powers = dict(order)
                 factor = 2 ** powers.get("QCD", 0) * 3 ** powers.get("QED", 0)
+                # A cancelled component can acquire working-precision roundoff
+                # when the rescaled evaluator reassociates sums. Use the sector
+                # norm for those zeros; the structural Born zero is exact above.
+                norm = max(
+                    abs(Decimal(value) * factor) for value in original[1, i].flat
+                )
                 for old, new in zip(
                     original[1, i].flat, changed[0, i].flat, strict=True
                 ):
                     expected = Decimal(old) * factor
-                    assert (
-                        abs(Decimal(new) - expected)
-                        < max(abs(expected), Decimal("1e-40")) * tolerance
-                    )
+                    if norm == 0:
+                        assert Decimal(new) == 0
+                    else:
+                        assert abs(Decimal(new) - expected) < norm * tolerance
         for values, summed in (
             (result.born, result.sum_orders().born),
             (result.virtual, result.sum_orders().virtual),
@@ -314,8 +320,10 @@ def test_unextended_completions_reject_multiple_orders_upfront(setup, native):
     from pyamplicol.loops.physical_counterterms import NativeModelVirtualProgram
 
     program = _program(setup, native, reduction_engine="fast")
-    with pytest.raises(NotImplementedError, match="model counterterm assembly"):
-        NativeModelVirtualProgram(program, (), source_bindings=())
+    with pytest.raises(NotImplementedError, match="formal or direct model"):
+        NativeModelVirtualProgram(
+            program, (), source_bindings=(), formal_nc=S("order_test::Nc")
+        )
     with pytest.raises(NotImplementedError, match="formal physical color"):
         project_physical_color(program, S("order_test::Nc"), [], "full")
     with pytest.raises(NotImplementedError, match="multi-order dimensional"):

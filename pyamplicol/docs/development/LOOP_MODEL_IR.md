@@ -504,14 +504,65 @@ Born-source filters independently check both contributions to virtual 42.
 These reference comparisons are binary64 controls; the precision checks use
 the exact Born, infrared and coupling-scaling identities separately.
 
-The multi-order boundary is four-dimensional bare interference. Counterterm,
-formal-colour and direct-dimensional completion reject explicitly until their
-sector-aware extensions are validated. Existing single-sector adapters remain
-unchanged and remove the order axes only after checking that both Born and
-virtual catalogues have exactly one entry.
+The bare boundary remains four-dimensional interference. Full-colour model-rule
+completion uses the ordered extension below; multi-order formal-colour and
+direct-dimensional completion still reject explicitly. Single-sector adapters
+remove the order axes only after checking that both Born and virtual catalogues
+have exactly one entry.
 For the existing single-sector dimensional diagnostic, ordered `virtual` still
 contains N4 alone and `rational` contains the separate direct remainder; the
 convention explicitly labels both channels without claiming UV completion.
+
+## Ordered model-rule completion
+
+`NativeModelVirtualProgram.evaluate_ordered_decimal` assembles local UV, model
+R2 and external-field insertions on the bare program's exact squared-order
+catalogue. A local CT keeps its absolute amplitude order and native graph
+identity. Its source correction must be selected, and a matching loop witness
+must occur among the bare program's admitted graph IDs. The source-defined
+`UVtree` class retains its explicit correction-order eligibility without a loop
+witness; other unmatched insertions cannot acquire that exemption. Matching
+loop multiplicity is never applied to the already generated CT tree again.
+
+For each sector, a local insertion interferes only with Born terminals whose
+`(Born order, CT amplitude order)` occurs in that sector's explicit pair list.
+External-field terms keep the exact right-hand Born graph, external leg and
+source loop-group alternative. Their amplitude order includes the source field
+correction; left-hand Born terms use the same pair mask. The source field
+coefficient already contains the required half-Z factor. All complex
+contractions precede the real part, and all scalars, currents, sector sums and
+component sums execute in the selected native arithmetic carrier. A scalar or
+current is evaluated once per batch and shared across sectors.
+
+`OrderedModelVirtualResult` retains `born[point, Born order, 2]` and six
+virtual-valued arrays on `[point, virtual order, epsilon, 2]`: the complete
+`virtual`, `bare`, total `uv`, `r2`, `uv_local` and `uv_external_fields` components
+(the Born array has its own order axis). Epsilon powers remain `(0,-1,-2)`.
+Selectors and explicit `sum_orders()` follow the bare result conventions;
+all component sums are computed natively before decimal serialization. Arrays
+are read-only. `channels`/`statuses` describe bare reductions; nonfinite CT or
+final assembly values raise before exposing the result, rather than claiming
+successful per-lane rescue.
+
+The first complete multi-order control is QCD correction to mixed gluon/photon
+Born `u ubar -> d dbar`, using exact `loop_sm` model rules and calibrated native
+quark/gluon and quark/photon bases. It retains 16 loop graphs, Born sectors
+40/22/04 and virtual sectors 60/42/24. An independent MadLoop export retaining
+all compatible UV/R2 interactions and particle counterterms checks full, bare,
+local UV, R2 and field components at three points. Separately filtered Born
+sources check both origins of sector 42: B20/L22 is zero by colour orthogonality
+for this QCD-only selection, while B02/L40 is nonzero. These are distinct from
+the joint QCD/QED bare catalogue above.
+
+All three arithmetic modes additionally check the exact photon-Born sector
+against the two-current massless form factor under separate point scales and
+couplings with digits beyond binary64. A mixed heavy-quark Born control checks
+source external-field factors against their exact on-shell formula and isolates
+the photon graph's field insertions, proving that they cannot renormalize the
+QCD Born ket. This is component evidence, not an independent complete mixed-top
+reference. The complete mixed massless reference remains a binary64 comparison.
+Joint QCD/QED model completion, multi-order formal colour/direct R2, general
+model completeness preflight and public result integration remain open.
 
 ### Exact source scalar frontend
 
