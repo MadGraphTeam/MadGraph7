@@ -147,7 +147,9 @@ def momentum_component_library(graph: GraphIR, loops: tuple, momenta: tuple):
     from symbolica.community import hepkit as h
     from symbolica.community import tensor as t
 
-    library = t.TensorLibrary.hep_lib_atom()
+    from .tensor_components import physical_tensor_library
+
+    library = physical_tensor_library()
     for edge in graph.native.edges:
         signature = edge.momentum_signature()
         if len(signature.loops) != len(loops):
