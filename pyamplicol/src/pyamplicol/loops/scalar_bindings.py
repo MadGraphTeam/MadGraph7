@@ -64,6 +64,9 @@ class ScalarBindingPlan:
     fixed_parameters: Mapping[str, tuple[str, str]]
     anonymous_definitions: tuple[tuple[str, Mapping[str, Any]], ...] = ()
     _prepared: Any = field(default=None, init=False, repr=False, compare=False)
+    _prepare_lock: Any = field(
+        default_factory=Lock, init=False, repr=False, compare=False
+    )
 
     def evaluator_bytes(self):
         return self.program.library.evaluator(
@@ -73,9 +76,11 @@ class ScalarBindingPlan:
     @property
     def prepared(self):
         if self._prepared is None:
-            object.__setattr__(
-                self, "_prepared", PreparedScalarBindings.from_plan(self)
-            )
+            with self._prepare_lock:
+                if self._prepared is None:
+                    object.__setattr__(
+                        self, "_prepared", PreparedScalarBindings.from_plan(self)
+                    )
         return self._prepared
 
 

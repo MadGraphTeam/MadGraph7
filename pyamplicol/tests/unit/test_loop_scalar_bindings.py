@@ -490,3 +490,44 @@ def test_retained_scalar_owner_and_scale_view_need_no_source_producer(
     assert {failure.point_id for failure in failures} == {31, 8}
     empty = scales.take_rows([])
     assert view.evaluate_native(empty).rows == 0
+
+
+def test_retained_scalar_identity_has_one_concurrent_publication(source, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError
+    from threading import Event
+
+    from pyamplicol.loops.scalar_bindings import PreparedScalarBindings
+
+    plan = prepare_scalar_bindings(source, (("safe", 0),))
+    construction_started, second_started, release = Event(), Event(), Event()
+    records = []
+
+    def paused_construction(cls, original):
+        assert original is plan
+        record = object()
+        records.append(record)
+        if len(records) == 1:
+            construction_started.set()
+            assert release.wait(5)
+        return record
+
+    monkeypatch.setattr(
+        PreparedScalarBindings, "from_plan", classmethod(paused_construction)
+    )
+
+    def second_reader():
+        second_started.set()
+        return plan.prepared
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(lambda: plan.prepared)
+        assert construction_started.wait(5)
+        second = pool.submit(second_reader)
+        assert second_started.wait(5)
+        try:
+            with pytest.raises(TimeoutError):
+                second.result(timeout=0.1)
+        finally:
+            release.set()
+        assert first.result(timeout=5) is second.result(timeout=5) is plan.prepared
+    assert records == [plan.prepared]
