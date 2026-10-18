@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-pub const LOOP_RUNTIME_MEMBER: &str = "schedule/loop-runtime-v2.json";
+pub const LOOP_RUNTIME_MEMBER: &str = "schedule/loop-runtime-v3.json";
 type Order = Vec<(String, u32)>;
 
 macro_rules! record {
@@ -41,14 +41,50 @@ record!(Family {
     exact_state: String, mass_state: String, projector_state: String,
     numerators: [String; 3], rational_numerators: [String; 3]
 });
-record!(Counterterm { kind: String, schedule: usize, coefficient_state: String, input_columns: Vec<usize> });
+record!(ScalarOwner {
+    external_names: Vec<String>, external_types: Vec<String>,
+    outputs: Vec<(String, i32)>, fixed_parameters: Vec<(String, [String; 2])>,
+    values_state: String, defaults_state: Option<String>, guards_state: Option<String>
+});
+record!(ScalarScaleView {
+    outputs: Vec<(String, i32)>, scale_parameter: String, scale_index: usize,
+    scale_state: String, values_state: String
+});
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ModelBinding {
+    Legacy,
+    Source {
+        owner: ScalarOwner,
+        ordinary_scale: Option<ScalarScaleView>,
+        counterterm_scale: ScalarScaleView,
+        model_output_indices: Vec<usize>,
+        initial_overrides: BTreeMap<String, [String; 2]>,
+    },
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ScalarBinding {
+    Evaluator { state: String },
+    SourceColumns { columns: Vec<usize> },
+}
+impl ScalarBinding {
+    pub fn legacy_state(&self) -> Option<&str> {
+        match self {
+            Self::Evaluator { state } => Some(state),
+            Self::SourceColumns { .. } => None,
+        }
+    }
+}
+record!(Counterterm { kind: String, schedule: usize, scalar: ScalarBinding, input_columns: Vec<usize> });
 record!(LoopRuntimePlan {
     schema: u32, r2_strategy: String, dimensional_numerators: bool,
     external_pdgs: Vec<i32>, state_legs: Vec<StateLeg>, helicities: Vec<Vec<i32>>, initial_average: u64,
-    model_inputs: Vec<String>, model_count: usize, bound_positions: BTreeMap<String, usize>,
+    model_inputs: Vec<String>, model_count: usize, model_binding: ModelBinding,
+    bound_positions: BTreeMap<String, usize>,
     order_layout: OrderLayout, schedules: Vec<Schedule>, born: ScheduleGroup, loops: ScheduleGroup,
     families: Vec<Family>, bare_evaluators: BTreeMap<String, String>,
-    currents: Vec<Counterterm>, fields: Vec<String>, model_evaluators: BTreeMap<String, String>
+    currents: Vec<Counterterm>, fields: Vec<ScalarBinding>, model_evaluators: BTreeMap<String, String>
 });
 
 /// Keeps authenticated immutable payload ownership independent of any evaluator workspace.
@@ -115,6 +151,94 @@ fn order(value: &Order) -> bool {
     value.iter().all(|(n, p)| !n.is_empty() && *p > 0) && value.windows(2).all(|w| w[0].0 < w[1].0)
 }
 
+fn scalar_outputs(outputs: &[(String, i32)]) -> bool {
+    !outputs.is_empty() && unique(outputs) && outputs.iter().all(|(name, _)| !name.is_empty())
+}
+
+fn decimal_pair(value: &[String; 2], real: bool) -> RusticolResult<()> {
+    use crate::source_scalar::decimal_rational;
+    decimal_rational(&value[0]).map_err(invalid)?;
+    let imaginary = decimal_rational(&value[1]).map_err(invalid)?;
+    require(
+        !real || imaginary == symbolica::domains::rational::Rational::from(0),
+        "real source input has an imaginary component",
+    )
+}
+
+impl ScalarOwner {
+    fn validate(
+        &self,
+        shape: &mut impl FnMut(&str, usize, usize) -> RusticolResult<()>,
+    ) -> RusticolResult<()> {
+        let inputs = self.external_names.len();
+        require(
+            unique(&self.external_names)
+                && self.external_names.iter().all(|name| !name.is_empty())
+                && self.external_types.len() == inputs
+                && self
+                    .external_types
+                    .iter()
+                    .all(|kind| matches!(kind.as_str(), "real" | "complex"))
+                && scalar_outputs(&self.outputs),
+            "invalid source scalar names/types/outputs",
+        )?;
+        let fixed_names = self
+            .fixed_parameters
+            .iter()
+            .map(|(name, _)| name)
+            .collect::<Vec<_>>();
+        require(
+            unique(&fixed_names)
+                && fixed_names
+                    .iter()
+                    .all(|name| !name.is_empty() && !self.external_names.contains(name)),
+            "source fixed/adjustable parameter names overlap or repeat",
+        )?;
+        for (_, value) in &self.fixed_parameters {
+            decimal_pair(value, false)?;
+        }
+        shape(&self.values_state, inputs, product(2, self.outputs.len())?)?;
+        match (&self.defaults_state, inputs) {
+            (None, 0) => (),
+            (Some(state), count) if count > 0 => shape(state, 0, product(2, count)?)?,
+            _ => return Err(invalid("source default program/input shape differs")),
+        }
+        let real = self
+            .external_types
+            .iter()
+            .filter(|kind| *kind == "real")
+            .count();
+        match (&self.guards_state, real) {
+            (None, 0) => (),
+            (Some(state), count) if count > 0 => shape(state, inputs, product(2, count)?)?,
+            _ => return Err(invalid("source type-guard program/input shape differs")),
+        }
+        Ok(())
+    }
+}
+
+impl ScalarScaleView {
+    fn validate(
+        &self,
+        owner: &ScalarOwner,
+        shape: &mut impl FnMut(&str, usize, usize) -> RusticolResult<()>,
+    ) -> RusticolResult<()> {
+        require(
+            self.scale_index < owner.external_names.len()
+                && owner.external_names[self.scale_index] == self.scale_parameter
+                && owner.external_types[self.scale_index] == "real"
+                && scalar_outputs(&self.outputs),
+            "invalid source scale selection",
+        )?;
+        shape(&self.scale_state, 1, 4)?;
+        shape(
+            &self.values_state,
+            owner.external_names.len(),
+            product(2, self.outputs.len())?,
+        )
+    }
+}
+
 fn pair_order(left: &Order, right: &Order, squared: &Order) -> bool {
     let mut powers = BTreeMap::<&str, u32>::new();
     for (name, power) in left.iter().chain(right) {
@@ -138,7 +262,7 @@ pub fn load_loop_runtime_pacbin(path: impl AsRef<Path>) -> RusticolResult<Loaded
     let bytes = reader.member_bytes(LOOP_RUNTIME_MEMBER)?;
     let plan: LoopRuntimePlan =
         serde_json::from_slice(bytes).map_err(|e| invalid(e.to_string()))?;
-    require(plan.schema == 2, "unsupported schema")?;
+    require(plan.schema == 3, "unsupported schema")?;
     require(
         (plan.r2_strategy == "model" && !plan.dimensional_numerators)
             || (plan.r2_strategy == "direct" && plan.dimensional_numerators),
@@ -374,14 +498,71 @@ impl LoopRuntimePlan {
                 .ok_or_else(|| invalid(format!("missing evaluator {name}")))
         };
         require(
-            self.bare_evaluators.len() == 5 && self.model_evaluators.len() == 3,
-            "unexpected assembly evaluator keys",
+            self.model_evaluators.len() == 3,
+            "unexpected model evaluator keys",
         )?;
-        shape(
-            &lookup(&self.bare_evaluators, "model_evaluator")?,
-            self.model_inputs.len(),
-            self.model_count,
-        )?;
+        let source_width = match &self.model_binding {
+            ModelBinding::Legacy => {
+                require(
+                    self.bare_evaluators.len() == 5,
+                    "unexpected legacy evaluator keys",
+                )?;
+                shape(
+                    &lookup(&self.bare_evaluators, "model_evaluator")?,
+                    self.model_inputs.len(),
+                    self.model_count,
+                )?;
+                None
+            }
+            ModelBinding::Source {
+                owner,
+                ordinary_scale,
+                counterterm_scale,
+                model_output_indices,
+                initial_overrides,
+            } => {
+                require(
+                    self.r2_strategy == "model" && !self.dimensional_numerators,
+                    "source dimensional/direct execution is not certified",
+                )?;
+                require(
+                    self.bare_evaluators.len() == 4
+                        && !self.bare_evaluators.contains_key("model_evaluator"),
+                    "source scalar owner cannot mix legacy evaluator bindings",
+                )?;
+                owner.validate(&mut shape)?;
+                require(
+                    // Source model_inputs are qualified display labels only.
+                    // The owner alone binds names/order; model_output_indices
+                    // selects its checked values for the physical schedules.
+                    self.model_inputs.len() == owner.external_names.len()
+                        && model_output_indices.len() == self.model_count
+                        && model_output_indices.iter().all(|&index| {
+                            index < owner.outputs.len() && owner.outputs[index].1 == 0
+                        }),
+                    "source model output/input selection differs",
+                )?;
+                for (name, value) in initial_overrides {
+                    let index = owner
+                        .external_names
+                        .iter()
+                        .position(|external| external == name)
+                        .ok_or_else(|| invalid("source override is not an adjustable parameter"))?;
+                    decimal_pair(value, owner.external_types[index] == "real")?;
+                }
+                if let Some(view) = ordinary_scale {
+                    view.validate(owner, &mut shape)?;
+                    require(
+                        view.outputs == owner.outputs
+                            && view.values_state == owner.values_state
+                            && view.scale_index == counterterm_scale.scale_index,
+                        "ordinary source scale view differs from owner outputs",
+                    )?;
+                }
+                counterterm_scale.validate(owner, &mut shape)?;
+                Some(counterterm_scale.outputs.len())
+            }
+        };
         shape(
             &lookup(&self.bare_evaluators, "born_projector")?,
             product(h, born_width)?,
@@ -451,6 +632,38 @@ impl LoopRuntimePlan {
             integral_width,
             product(3, v)?,
         )?;
+        let mut scalar_width = |binding: &ScalarBinding| -> RusticolResult<usize> {
+            match binding {
+                ScalarBinding::Evaluator { state } => {
+                    require(
+                        source_width.is_none(),
+                        "source scalar columns cannot mix legacy evaluators",
+                    )?;
+                    let &(_, outputs) = sizes
+                        .get(state)
+                        .ok_or_else(|| invalid("missing CT scalar evaluator"))?;
+                    require(
+                        outputs > 0 && outputs % 2 == 0,
+                        "CT scalar value/diagnostic pairing differs",
+                    )?;
+                    shape(
+                        state,
+                        sum([self.model_inputs.len(), 1].into_iter())?,
+                        outputs,
+                    )?;
+                    Ok(outputs / 2)
+                }
+                ScalarBinding::SourceColumns { columns } => {
+                    let width = source_width
+                        .ok_or_else(|| invalid("source columns have no scalar owner"))?;
+                    require(
+                        !columns.is_empty() && indices(columns, width),
+                        "source scalar column out of range",
+                    )?;
+                    Ok(columns.len())
+                }
+            }
+        };
         let mut amplitude_width = born_width;
         for current in &self.currents {
             require(
@@ -462,30 +675,23 @@ impl LoopRuntimePlan {
                 current.schedule < self.schedules.len(),
                 "CT schedule out of range",
             )?;
-            let &(inputs, outputs) = sizes
-                .get(&current.coefficient_state)
-                .ok_or_else(|| invalid("missing CT scalar evaluator"))?;
+            let coefficients = scalar_width(&current.scalar)?;
             require(
-                outputs % 2 == 0,
-                "CT scalar value/diagnostic pairing differs",
-            )?;
-            shape(
-                &current.coefficient_state,
-                self.model_inputs.len() + 1,
-                outputs,
-            )?;
-            require(
-                inputs == self.model_inputs.len() + 1
-                    && current.input_columns.len()
-                        == self.schedules[current.schedule].parameter_count
-                    && indices(&current.input_columns, bound_width + outputs / 2),
+                current.input_columns.len() == self.schedules[current.schedule].parameter_count
+                    && indices(
+                        &current.input_columns,
+                        sum([bound_width, coefficients].into_iter())?,
+                    ),
                 "CT binding columns differ",
             )?;
             amplitude_width =
                 sum([amplitude_width, schedule_widths[current.schedule]].into_iter())?;
         }
         for field in &self.fields {
-            shape(field, self.model_inputs.len() + 1, 2)?;
+            require(
+                scalar_width(field)? == 1,
+                "external field scalar width differs",
+            )?;
             amplitude_width += 1;
         }
         shape(
