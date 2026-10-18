@@ -508,6 +508,68 @@ struct PolynomialPlan {
 
 #[pymethods]
 impl PolynomialPlan {
+    /// Enable optional fast-engine/master-provider wall clocks, resetting counts.
+    /// Ordinary calls leave profiling disabled and execute no timing callbacks.
+    fn set_profiling(&mut self, enabled: bool) -> PyResult<()> {
+        match &mut self.plan {
+            Plans::Fast(plan) => {
+                plan.set_profiling(enabled);
+                Ok(())
+            }
+            _ => Err(error(
+                "profiling currently requires fast or fast-tensor engine",
+            )),
+        }
+    }
+
+    /// Read and reset instrumented totals across all active epsilon sectors.
+    /// Engine-exclusive time excludes delegated masters and numerator callbacks.
+    /// Numerator preparation occurs outside the engine and is reported separately.
+    fn take_profile(&mut self) -> PyResult<std::collections::BTreeMap<String, f64>> {
+        let profile = match &mut self.plan {
+            Plans::Fast(plan) => plan.take_profile(),
+            _ => {
+                return Err(error(
+                    "profiling currently requires fast or fast-tensor engine",
+                ));
+            }
+        };
+        Ok([
+            ("engine_seconds", profile.engine_time.as_secs_f64()),
+            ("masters_seconds", profile.masters_time.as_secs_f64()),
+            (
+                "numerator_callback_seconds",
+                profile.numerator_callback_time.as_secs_f64(),
+            ),
+            (
+                "numerator_preparation_seconds",
+                profile.numerator_preparation_time.as_secs_f64(),
+            ),
+            (
+                "engine_excluding_masters_seconds",
+                profile
+                    .engine_time
+                    .saturating_sub(profile.masters_time)
+                    .as_secs_f64(),
+            ),
+            (
+                "reduction_exclusive_seconds",
+                profile
+                    .engine_time
+                    .saturating_sub(profile.masters_time + profile.numerator_callback_time)
+                    .as_secs_f64(),
+            ),
+            ("engine_calls", profile.engine_calls as f64),
+            ("master_calls", profile.master_calls as f64),
+            ("master_rows", profile.master_rows as f64),
+            ("numerator_calls", profile.numerator_calls as f64),
+            ("numerator_rows", profile.numerator_rows as f64),
+        ]
+        .into_iter()
+        .map(|(key, value)| (key.to_owned(), value))
+        .collect())
+    }
+
     #[new]
     #[pyo3(signature = (propagators, epsilon_sectors, parameters, arithmetic="double", precision=None, engine="generic"))]
     fn new(

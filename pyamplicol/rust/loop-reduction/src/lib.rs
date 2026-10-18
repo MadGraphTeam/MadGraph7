@@ -11,11 +11,14 @@
 #![forbid(unsafe_code)]
 
 use std::ops::Add;
+use std::time::{Duration, Instant};
 
 use ninjars::fast::GenericNumerator;
 use ninjars::fast::MuTensorNumerator;
 pub use ninjars::fast::{C64, FastInput, FastStatus};
-use ninjars::fast::{FastAmplitude, FastNumerator, FastOptions, FastResult};
+use ninjars::fast::{
+    CMom, FastAmplitude, FastMaster, FastMasters, FastNumerator, FastOptions, FastResult,
+};
 use ninjars::{Amplitude, Numerator, Real, Result};
 pub use ninjars::{
     AmplitudeInput, Complex, EvaluationStatus, FourMomentum, SamplingScaleProvider,
@@ -68,6 +71,140 @@ pub struct Lane<T, S> {
     pub id: u64,
     pub status: S,
     pub value: Option<Laurent<T>>,
+}
+
+/// Optional wall-clock measurements at the existing fast-engine/provider seam.
+/// Engine time includes numerator callbacks; masters time includes only the
+/// delegated native provider. Counts include failed calls and actual batch rows.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FastProfile {
+    pub engine_time: Duration,
+    pub masters_time: Duration,
+    pub numerator_callback_time: Duration,
+    pub numerator_preparation_time: Duration,
+    pub engine_calls: u64,
+    pub master_calls: u64,
+    pub master_rows: u64,
+    pub numerator_calls: u64,
+    pub numerator_rows: u64,
+}
+
+impl FastProfile {
+    pub fn merge(&mut self, other: Self) {
+        self.engine_time += other.engine_time;
+        self.masters_time += other.masters_time;
+        self.numerator_callback_time += other.numerator_callback_time;
+        self.numerator_preparation_time += other.numerator_preparation_time;
+        self.engine_calls += other.engine_calls;
+        self.master_calls += other.master_calls;
+        self.master_rows += other.master_rows;
+        self.numerator_calls += other.numerator_calls;
+        self.numerator_rows += other.numerator_rows;
+    }
+}
+
+struct ProfiledNumerator<'a, N> {
+    inner: &'a mut N,
+    profile: &'a mut FastProfile,
+}
+
+impl<N: FastNumerator> ProfiledNumerator<'_, N> {
+    fn record(&mut self, started: Instant, rows: usize) {
+        self.profile.numerator_callback_time += started.elapsed();
+        self.profile.numerator_calls += 1;
+        self.profile.numerator_rows += rows as u64;
+    }
+}
+
+impl<N: FastNumerator> FastNumerator for ProfiledNumerator<'_, N> {
+    fn rank(&self) -> usize {
+        self.inner.rank()
+    }
+    fn evaluate(
+        &mut self,
+        cut: &[usize],
+        lanes: &[usize],
+        q: &[CMom],
+        mu_squared: &[C64],
+        out: &mut [C64],
+    ) -> Result<()> {
+        let started = Instant::now();
+        let result = self.inner.evaluate(cut, lanes, q, mu_squared, out);
+        self.record(started, lanes.len());
+        result
+    }
+    fn mu_expansion(
+        &mut self,
+        cut: &[usize],
+        lanes: &[usize],
+        v0: &[CMom],
+        v1: Option<&[CMom]>,
+        out: &mut [C64],
+    ) -> Result<()> {
+        let started = Instant::now();
+        let result = self.inner.mu_expansion(cut, lanes, v0, v1, out);
+        self.record(started, lanes.len());
+        result
+    }
+    fn t3_expansion(
+        &mut self,
+        cut: &[usize],
+        lanes: &[usize],
+        a: &[CMom],
+        e3: &[CMom],
+        e4: &[CMom],
+        param: &[C64],
+        mindeg: usize,
+        out: &mut [C64],
+    ) -> Result<()> {
+        let started = Instant::now();
+        let result = self
+            .inner
+            .t3_expansion(cut, lanes, a, e3, e4, param, mindeg, out);
+        self.record(started, lanes.len());
+        result
+    }
+    fn t2_expansion(
+        &mut self,
+        cut: &[usize],
+        lanes: &[usize],
+        a0: &[CMom],
+        a1: &[CMom],
+        e3: &[CMom],
+        e4: &[CMom],
+        param: &[[C64; 3]],
+        mindeg: usize,
+        out: &mut [C64],
+    ) -> Result<()> {
+        let started = Instant::now();
+        let result = self
+            .inner
+            .t2_expansion(cut, lanes, a0, a1, e3, e4, param, mindeg, out);
+        self.record(started, lanes.len());
+        result
+    }
+}
+
+struct ProfiledMasters<'a> {
+    inner: &'a mut OneLoopNativeMasters,
+    profile: &'a mut FastProfile,
+}
+
+impl FastMasters for ProfiledMasters<'_> {
+    fn evaluate(
+        &mut self,
+        family: FastMaster,
+        args: &[C64],
+        output: &mut [[C64; 3]],
+        statuses: &mut [bool],
+    ) -> Result<()> {
+        let started = Instant::now();
+        let result = self.inner.evaluate(family, args, output, statuses);
+        self.profile.masters_time += started.elapsed();
+        self.profile.master_calls += 1;
+        self.profile.master_rows += statuses.len() as u64;
+        result
+    }
 }
 
 fn check_lanes(ids: &[u64], lanes: usize) -> Result<()> {
@@ -187,6 +324,8 @@ pub struct FastReducer<N: FastNumerator> {
     masters: OneLoopNativeMasters,
     values: Vec<FastResult>,
     statuses: Vec<FastStatus>,
+    profiling: bool,
+    profile: FastProfile,
 }
 
 impl<N: FastNumerator> FastReducer<N> {
@@ -202,6 +341,8 @@ impl<N: FastNumerator> FastReducer<N> {
             masters: OneLoopNativeMasters::new()?,
             values: Vec::new(),
             statuses: Vec::new(),
+            profiling: false,
+            profile: FastProfile::default(),
         })
     }
 
@@ -209,6 +350,16 @@ impl<N: FastNumerator> FastReducer<N> {
     /// `GenericNumerator::inner_mut()` to bind explicit-μ² polynomial parameters.
     pub fn numerator_mut(&mut self) -> &mut N {
         &mut self.numerator
+    }
+
+    /// Profiling is explicit and resets earlier measurements on every toggle.
+    pub fn set_profiling(&mut self, enabled: bool) {
+        self.profiling = enabled;
+        self.profile = FastProfile::default();
+    }
+
+    pub fn take_profile(&mut self) -> FastProfile {
+        std::mem::take(&mut self.profile)
     }
 
     pub fn evaluate(
@@ -219,13 +370,35 @@ impl<N: FastNumerator> FastReducer<N> {
         check_lanes(ids, input.lanes)?;
         self.values.resize(input.lanes, FastResult::default());
         self.statuses.resize(input.lanes, FastStatus::NotEvaluated);
-        self.amplitude.evaluate(
-            &input,
-            &mut self.numerator,
-            &mut self.masters,
-            &mut self.values,
-            &mut self.statuses,
-        )?;
+        if self.profiling {
+            let mut numerator_profile = FastProfile::default();
+            let started = Instant::now();
+            let result = self.amplitude.evaluate(
+                &input,
+                &mut ProfiledNumerator {
+                    inner: &mut self.numerator,
+                    profile: &mut numerator_profile,
+                },
+                &mut ProfiledMasters {
+                    inner: &mut self.masters,
+                    profile: &mut self.profile,
+                },
+                &mut self.values,
+                &mut self.statuses,
+            );
+            self.profile.engine_time += started.elapsed();
+            self.profile.engine_calls += 1;
+            self.profile.merge(numerator_profile);
+            result?;
+        } else {
+            self.amplitude.evaluate(
+                &input,
+                &mut self.numerator,
+                &mut self.masters,
+                &mut self.values,
+                &mut self.statuses,
+            )?;
+        }
         Ok(ids
             .iter()
             .enumerate()
@@ -247,6 +420,12 @@ pub struct FastPolynomialReducer {
     reducer: FastReducer<GenericNumerator<PolynomialNumerator<f64>>>,
 }
 impl FastPolynomialReducer {
+    pub fn set_profiling(&mut self, enabled: bool) {
+        self.reducer.set_profiling(enabled);
+    }
+    pub fn take_profile(&mut self) -> FastProfile {
+        self.reducer.take_profile()
+    }
     pub fn new(
         propagators: usize,
         expression: Atom,
@@ -264,10 +443,16 @@ impl FastPolynomialReducer {
         input: FastInput<'_>,
         parameters: &[Complex<f64>],
     ) -> Result<Vec<Lane<C64, FastStatus>>> {
-        self.reducer
+        let started = self.reducer.profiling.then(Instant::now);
+        let binding = self
+            .reducer
             .numerator_mut()
             .inner_mut()
-            .set_parameter_batch(parameters, input.lanes)?;
+            .set_parameter_batch(parameters, input.lanes);
+        if let Some(started) = started {
+            self.reducer.profile.numerator_preparation_time += started.elapsed();
+        }
+        binding?;
         self.reducer.evaluate(ids, input)
     }
 }
@@ -284,6 +469,12 @@ pub struct FastTensorPolynomialReducer {
 }
 
 impl FastTensorPolynomialReducer {
+    pub fn set_profiling(&mut self, enabled: bool) {
+        self.reducer.set_profiling(enabled);
+    }
+    pub fn take_profile(&mut self) -> FastProfile {
+        self.reducer.take_profile()
+    }
     pub fn new(
         propagators: usize,
         expression: Atom,
@@ -314,27 +505,36 @@ impl FastTensorPolynomialReducer {
         parameters: &[Complex<f64>],
     ) -> Result<Vec<Lane<C64, FastStatus>>> {
         check_lanes(ids, input.lanes)?;
+        let started = self.reducer.profiling.then(Instant::now);
+        let prepared = self.prepare_coefficients(input.lanes, parameters);
+        if let Some(started) = started {
+            self.reducer.profile.numerator_preparation_time += started.elapsed();
+        }
+        prepared?;
+        self.reducer.evaluate(ids, input)
+    }
+
+    fn prepare_coefficients(&mut self, lanes: usize, parameters: &[Complex<f64>]) -> Result<()> {
         let error = |e: ninjars_graph::CoefficientError| ninjars::Error::Symbolic(e.to_string());
         self.heads
-            .resize(input.lanes * self.layout.head_count(), Complex::new(0., 0.));
+            .resize(lanes * self.layout.head_count(), Complex::new(0., 0.));
         self.evaluator
-            .evaluate_batch(parameters, &mut self.heads, input.lanes)
+            .evaluate_batch(parameters, &mut self.heads, lanes)
             .map_err(error)?;
         self.native_heads.clear();
         self.native_heads
             .extend(self.heads.iter().map(|z| C64::new(z.re, z.im)));
         let numerator = self.reducer.numerator_mut();
-        numerator.set_lanes(input.lanes);
+        numerator.set_lanes(lanes);
         // scatter writes every occupied and zero slot on every call. Resizing
         // upstream storage alone would retain coefficients from an older batch.
         self.layout
             .scatter(
                 &self.native_heads,
                 numerator.coefficients_mut(),
-                input.lanes,
+                lanes,
                 &C64::ZERO,
             )
-            .map_err(error)?;
-        self.reducer.evaluate(ids, input)
+            .map_err(error)
     }
 }

@@ -178,6 +178,30 @@ model/kinematic algebra and exact input evaluation; subtracting already-rounded
 shift vectors and passing that result does not establish exact invariants.
 `ReductionBatch.statuses` covers every input row; `.values` is available when
 all lanes succeed, while `.successful_values()` retains only successful IDs.
+
+Fast-engine timing is optional: `PolynomialPlan.set_profiling(True)` enables
+native wall clocks, and `take_profile()` returns and resets accumulated totals
+over the active epsilon sectors. Both `fast` and `fast-tensor` are supported;
+generic arithmetic explicitly rejects this instrumentation. Profiling is off
+by default, and that execution branch calls no clocks or timing wrappers.
+Toggling the setting also resets previous totals. Delegating wrappers preserve
+the original numerator, scalar-master results and errors, including failed
+calls; no cache or reduction algorithm is added.
+
+The raw seconds are `engine_seconds`, `masters_seconds`,
+`numerator_callback_seconds`, and `numerator_preparation_seconds`. The first
+includes the next two; preparation (parameter binding or dense coefficient-head
+evaluation/scatter) occurs before the engine. `reduction_exclusive_seconds`
+subtracts both masters and numerator callbacks from engine time, whereas
+`engine_excluding_masters_seconds` still includes callbacks. Master time covers
+the native oneloopmaster provider and its adapter, not arbitrary-precision or
+external-library providers. Counts report engine calls, master calls/rows and
+numerator calls/rows; rows count actual callback batch rows, not unique physical
+points. A pure loop-numerator timing must add physical coefficient-DAG time to
+callback and preparation time. Born currents, UV/R2 effective rules,
+postprocessing and Python/native transport are separate work. Instrumentation
+overhead remains in these wall-clock samples, so uninstrumented complete-call
+measurements must be reported separately from this diagnostic breakdown.
 `CoefficientEvaluator.evaluate_batch` and `massless_spinors_batch` share these
 buffers, allowing couplings, wavefunctions and final contractions to stay native.
 `CoefficientPlan(..., engine="jit")` optionally compiles the same saved exact

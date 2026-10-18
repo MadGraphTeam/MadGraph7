@@ -2,7 +2,7 @@
 
 use super::*;
 use rusticol_loop_reduction::{
-    C64, FastInput, FastPolynomialReducer, FastStatus, FastTensorPolynomialReducer,
+    C64, FastInput, FastPolynomialReducer, FastProfile, FastStatus, FastTensorPolynomialReducer,
 };
 
 enum FastPolynomial {
@@ -10,6 +10,18 @@ enum FastPolynomial {
     Tensor(FastTensorPolynomialReducer),
 }
 impl FastPolynomial {
+    fn set_profiling(&mut self, enabled: bool) {
+        match self {
+            Self::Callback(plan) => plan.set_profiling(enabled),
+            Self::Tensor(plan) => plan.set_profiling(enabled),
+        }
+    }
+    fn take_profile(&mut self) -> FastProfile {
+        match self {
+            Self::Callback(plan) => plan.take_profile(),
+            Self::Tensor(plan) => plan.take_profile(),
+        }
+    }
     fn evaluate(
         &mut self,
         ids: &[u64],
@@ -30,6 +42,18 @@ pub(super) struct FastReductions {
     pub parameter_count: usize,
 }
 impl FastReductions {
+    pub fn set_profiling(&mut self, enabled: bool) {
+        for sector in &mut self.sectors {
+            sector.set_profiling(enabled);
+        }
+    }
+    pub fn take_profile(&mut self) -> FastProfile {
+        let mut profile = FastProfile::default();
+        for sector in &mut self.sectors {
+            profile.merge(sector.take_profile());
+        }
+        profile
+    }
     pub fn new(
         expressions: &[String; 3],
         parameters: &[String],
