@@ -41,6 +41,7 @@ RELEASE_ARTIFACTS = ROOT / ".artifacts" / "development-release"
 TRASH = ROOT / ".trash"
 
 sys.path.insert(0, str(ROOT / "build_backend"))
+from candidate_wheel import ENVIRONMENT, existing_community_wheel  # noqa: E402
 from python_lock import load_python_runtime_lock  # noqa: E402
 
 _WORKSPACE_CRATES = frozenset(
@@ -1201,13 +1202,18 @@ def _build_candidate_dependency_wheels(
 
 
 def _install_published_dependencies(
-    runner: Runner, *, loader_wheel: Path | None
+    runner: Runner, *, loader_wheel: Path | None, symbolica_wheel: Path | None = None
 ) -> None:
     with PYPROJECT.open("rb") as stream:
         requirements = tomllib.load(stream)["project"]["dependencies"]
     loader_arguments = (
         [str(loader_wheel.expanduser().resolve())] if loader_wheel else []
     )
+    if symbolica_wheel is not None:
+        requirements = [
+            str(symbolica_wheel) if item.startswith("symbolica==") else item
+            for item in requirements
+        ]
     python = _venv_python()
     environment = _venv_environment()
     runner.run(
@@ -1217,7 +1223,11 @@ def _install_published_dependencies(
     # Historical candidate builds report the same version as the released wheel.
     # Replace both published packages (or the explicit loader override) after
     # resolving dependencies once, including same-version source candidates.
-    symbolica = next(item for item in requirements if item.startswith("symbolica=="))
+    symbolica = (
+        str(symbolica_wheel)
+        if symbolica_wheel
+        else next(item for item in requirements if item.startswith("symbolica=="))
+    )
     loader = next(
         item for item in requirements if item.startswith("ufo-model-loader==")
     )
@@ -1253,7 +1263,9 @@ def _install_project_wheel(runner: Runner, directory: Path) -> None:
         )
 
 
-def _build_project_wheel(runner: Runner, *, mode: str) -> None:
+def _build_project_wheel(
+    runner: Runner, *, mode: str, symbolica_wheel: Path | None = None
+) -> None:
     python = _venv_python()
     environment = _venv_environment()
     project_wheels = ARTIFACTS if mode == "candidate" else RELEASE_ARTIFACTS
@@ -1264,6 +1276,8 @@ def _build_project_wheel(runner: Runner, *, mode: str) -> None:
         environment,
         PYAMPLICOL_BUILD_MODE=mode,
     )
+    if symbolica_wheel is not None:
+        build_environment[ENVIRONMENT] = str(symbolica_wheel)
     if not runner.dry_run:
         _archive_candidate_wheels(project_wheels, "pyamplicol")
     runner.run(
@@ -1372,6 +1386,11 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help="explicit local ufo-model-loader wheel for dependency development",
     )
+    parser.add_argument(
+        "--symbolica-wheel",
+        type=Path,
+        help="reuse a full Community wheel with --candidate and checked-in Cargo pins",
+    )
     parser.add_argument("--reset", action="store_true")
     parser.add_argument("--update", action="store_true")
     parser.add_argument(
@@ -1416,6 +1435,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if mode not in {"candidate", "release"}:
         parser.error("PYAMPLICOL_BUILD_MODE must be 'candidate' or 'release'")
+    if args.symbolica_wheel is not None:
+        if mode != "candidate":
+            parser.error("--symbolica-wheel requires --candidate")
+        if args.update or args.with_legacy_amplicol or args.with_reference_fft:
+            parser.error("existing-wheel candidate does not manage source checkouts")
+        wheel = existing_community_wheel(ROOT, args.symbolica_wheel)
+        runner = Runner(dry_run=args.dry_run)
+        if not args.dry_run and not args.no_build:
+            _require_tools()
+        _ensure_venv(runner, with_fft_profiling=False, install_runtime=False)
+        if not args.no_build:
+            _install_published_dependencies(
+                runner, loader_wheel=args.loader_wheel, symbolica_wheel=wheel
+            )
+            if not args.dependencies_only:
+                if args.wheel_directory is None:
+                    _build_project_wheel(runner, mode=mode, symbolica_wheel=wheel)
+                else:
+                    _install_project_wheel(runner, args.wheel_directory.resolve())
+        print(f"Locked-core candidate environment ready at {VENV}")
+        return 0
     if mode == "candidate" and args.loader_wheel is not None:
         parser.error("--loader-wheel belongs to the published-dependency lane")
     payload = _lock()

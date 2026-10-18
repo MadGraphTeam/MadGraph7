@@ -22,6 +22,7 @@ from tempfile import TemporaryDirectory
 from typing import Any, TypeVar
 
 import maturin  # type: ignore[import-untyped]
+from candidate_wheel import existing_community_wheel
 from native_build_identity import load_native_build_contract
 from native_build_identity import (
     native_build_inputs_digest as _native_build_inputs_digest,
@@ -495,6 +496,11 @@ def _check_dependencies(mode: str) -> None:
     ]
     if mode == "candidate":
         command.append("--candidate")
+    wheel = existing_community_wheel(ROOT)
+    if wheel is not None:
+        if mode != "candidate":
+            raise RuntimeError("existing Community wheel requires candidate mode")
+        command.extend(("--symbolica-wheel", str(wheel)))
     subprocess.run(
         command,
         cwd=ROOT,
@@ -1005,20 +1011,23 @@ def _mark_candidate(
     *,
     native_build_inputs_sha256: str,
 ) -> None:
-    if not (ROOT / _CONTRIBUTOR_LOCK).is_file():
-        raise RuntimeError("candidate build has no contributor dependency contract")
-    check_contributor_lock_consistency(ROOT)
-    candidate_lock, candidate_config, _installer_state = _candidate_inputs()
+    wheel = existing_community_wheel(ROOT)
+    if wheel is None:
+        if not (ROOT / _CONTRIBUTOR_LOCK).is_file():
+            raise RuntimeError("candidate build has no contributor dependency contract")
+        check_contributor_lock_consistency(ROOT)
+        candidate_lock, candidate_config, _installer_state = _candidate_inputs()
     if re.fullmatch(r"[0-9a-f]{64}", native_build_inputs_sha256) is None:
         raise RuntimeError("candidate build has an invalid native source identity")
     candidate_fingerprint = native_build_inputs_sha256[:12]
     cargo_version = f"{base_version}-dev.0+candidate.{candidate_fingerprint}"
     python_version = cargo_version.replace("-dev.", ".dev")
-    shutil.copy2(candidate_lock, overlay / "Cargo.lock")
-    overlay_config = overlay / ".cargo" / "config.toml"
-    overlay_config.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(candidate_config, overlay_config)
-    _rewrite_candidate_dependency_requirements(overlay)
+    if wheel is None:
+        shutil.copy2(candidate_lock, overlay / "Cargo.lock")
+        overlay_config = overlay / ".cargo" / "config.toml"
+        overlay_config.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(candidate_config, overlay_config)
+        _rewrite_candidate_dependency_requirements(overlay)
     cargo = overlay / "Cargo.toml"
     text = cargo.read_text(encoding="utf-8")
     updated, count = re.subn(
@@ -1161,9 +1170,7 @@ def _generated_report_status_only(status: bytes) -> bool:
         or not all(len(record) >= 4 and record[2:3] == b" " for record in records[:-1])
     ):
         return False
-    entries = tuple(
-        (record[:2], os.fsdecode(record[3:])) for record in records[:-1]
-    )
+    entries = tuple((record[:2], os.fsdecode(record[3:])) for record in records[:-1])
     paths = tuple(path for _state, path in entries)
     classifier_path = Path("tools/performance_report/source_identity.py")
     if classifier_path.as_posix() in paths:
@@ -1229,9 +1236,7 @@ def _untracked_profiling_campaign_roots(
             continue
         markers.setdefault(parts[:-1], set()).add(parts[-1])
     required = {"report-workspace.json", "steer_performance_campaign.py"}
-    tracked_parts = tuple(
-        PurePosixPath(path.as_posix()).parts for path in tracked
-    )
+    tracked_parts = tuple(PurePosixPath(path.as_posix()).parts for path in tracked)
     return {
         root
         for root, names in markers.items()
@@ -1409,7 +1414,7 @@ def _stage_cargo_inputs(
         canonical_package_version(overlay),
         native_build_inputs_sha256=native_build_inputs_sha256,
     )
-    if not config.is_file():
+    if existing_community_wheel(ROOT) is None and not config.is_file():
         raise RuntimeError("candidate build overlay has no Cargo patch configuration")
 
 
@@ -1788,6 +1793,14 @@ def _from_overlay(
                 "PYAMPLICOL_BUILD_OVERLAY": str(overlay),
                 "RUSTUP_TOOLCHAIN": _pinned_rustup_toolchain(),
             }
+            if (
+                existing_community_wheel(ROOT) is not None
+                and "CARGO_HOME" in os.environ
+            ):
+                # Reuse Cargo's ordinary cache for this explicit development
+                # build. --locked still owns resolution; cache location does
+                # not change the core or the existing native identity.
+                environment["CARGO_HOME"] = os.environ["CARGO_HOME"]
             build_info_path = overlay / "src" / "pyamplicol" / "_build_info.json"
             if build_info_path.is_file():
                 try:

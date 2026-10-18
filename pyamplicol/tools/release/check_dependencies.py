@@ -756,7 +756,7 @@ def _candidate_issues(release_lock: dict[str, Any]) -> list[GateIssue]:
     return [*issues, *_candidate_config_issues(path_overrides)]
 
 
-def check(*, candidate: bool) -> list[GateIssue]:
+def check(*, candidate: bool, symbolica_wheel: Path | None = None) -> list[GateIssue]:
     try:
         lock = _load_lock()
     except (OSError, ValueError, tomllib.TOMLDecodeError) as error:
@@ -765,7 +765,24 @@ def check(*, candidate: bool) -> list[GateIssue]:
         *_release_contract_issues(lock),
         *_toolchain_issues(lock),
     ]
-    if candidate:
+    if symbolica_wheel is not None:
+        if not candidate:
+            return [
+                *issues,
+                GateIssue(
+                    "candidate-wheel-mode", "--symbolica-wheel requires --candidate"
+                ),
+            ]
+        sys.path.insert(0, str(ROOT / "build_backend"))
+        from candidate_wheel import existing_community_wheel
+
+        try:
+            existing_community_wheel(ROOT, symbolica_wheel)
+        except (OSError, ValueError, RuntimeError) as error:
+            issues.append(GateIssue("candidate-wheel-input", str(error)))
+        # The ordinary Cargo --locked build is authoritative for source and
+        # version resolution, including explicit checked-in Git patches.
+    elif candidate:
         issues.extend(_candidate_issues(lock))
     else:
         issues.extend(_release_cargo_lock_issues(lock))
@@ -779,13 +796,14 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="validate source-checkout candidate inputs as non-publishable",
     )
+    parser.add_argument("--symbolica-wheel", type=Path)
     parser.add_argument("--json", action="store_true", help="emit JSON")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    issues = check(candidate=args.candidate)
+    issues = check(candidate=args.candidate, symbolica_wheel=args.symbolica_wheel)
     payload = {
         "mode": "candidate" if args.candidate else "release",
         "ready": not issues,
