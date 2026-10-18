@@ -7,9 +7,10 @@ it must not be interpreted as an epsilon-zero coefficient before substitution.
 Expressions remain UFO strings. No series algebra or numerical evaluation is
 performed here.
 
-Direct literal value arguments retain their source lexemes through a scoped
-constructor observer. Computed or dynamically reassigned values remain
-uncertified. No general Python evaluation or expression algebra is implemented
+Direct literal value arguments and compositions of certified source strings
+retain their source lexemes through a scoped constructor observer. Numeric
+computations or dynamically reassigned values remain uncertified. No general
+Python evaluation or expression algebra is implemented
 here, and source preservation does not certify arbitrary-precision physics.
 """
 
@@ -20,7 +21,7 @@ import importlib
 import math
 import sys
 import tokenize
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from decimal import Decimal
@@ -60,7 +61,10 @@ def _runtime_exact(value: object) -> bool:
 
 
 def _literal_expression(
-    node: ast.expr, text: str, runtime: object
+    node: ast.expr,
+    text: str,
+    runtime: object,
+    string_reference: Callable[[ast.Subscript], str] | None = None,
 ) -> dict[str, object]:
     """Retain literal spelling; literal_eval is only a runtime-binding check."""
     if isinstance(node, ast.Dict):
@@ -75,13 +79,30 @@ def _literal_expression(
             seen.add(power)
             if power not in runtime:
                 raise ValueError("Laurent dictionary changed during construction")
-            item = _literal_expression(coefficient, text, runtime[power])
+            item = _literal_expression(
+                coefficient, text, runtime[power], string_reference
+            )
             if item["kind"] != "expression":
                 raise ValueError("nested Laurent values are unsupported")
             terms.append([power, item["expression"]])
         if seen != set(runtime):
             raise ValueError("Laurent dictionary changed during construction")
         return {"kind": "laurent", "terms": terms}
+    if string_reference is not None and isinstance(node, (ast.BinOp, ast.Subscript)):
+
+        def source_string(part: ast.expr) -> str:
+            if isinstance(part, ast.Constant) and type(part.value) is str:
+                return part.value
+            if isinstance(part, ast.BinOp) and isinstance(part.op, ast.Add):
+                return source_string(part.left) + source_string(part.right)
+            if isinstance(part, ast.Subscript):
+                return string_reference(part)
+            raise ValueError("computed value is not a certified string composition")
+
+        expression = source_string(node)
+        if type(runtime) is not str or expression != runtime:
+            raise ValueError("source string does not match the constructed value")
+        return {"kind": "expression", "expression": expression}
     literal = node
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
         literal = node.operand
@@ -117,6 +138,7 @@ class _ValueObservation:
     expression: dict[str, object] | None
     source: dict[str, object]
     error: str | None
+    dependencies: tuple[object, ...]
 
 
 def _has_value_write(statement: ast.AST) -> bool:
@@ -242,6 +264,7 @@ class _ValueSourceObserver:
             "line": caller.f_lineno,
         }
         error = None
+        dependencies: list[object] = []
         try:
             if caller.f_code.co_name != "<module>" or len(candidates) != 1:
                 raise ValueError("constructor is not a direct module declaration")
@@ -279,9 +302,45 @@ class _ValueSourceObserver:
             if argument is None:
                 raise ValueError("value argument source is unavailable")
             source["argument"] = argument
-            expression = _literal_expression(
-                ast.parse(argument, mode="eval").body, argument, value
-            )
+
+            def string_reference(part: ast.Subscript) -> str:
+                if not (
+                    isinstance(part.value, ast.Attribute)
+                    and part.value.attr == "value"
+                    and isinstance(part.value.value, ast.Name)
+                ):
+                    raise ValueError("source string requires Name.value[integer]")
+                power = ast.literal_eval(part.slice)
+                if type(power) is not int:
+                    raise ValueError("source string requires an integer Laurent power")
+                referenced = caller.f_globals.get(part.value.value.id)
+                exact, evidence = self.value(referenced)
+                if exact is None or exact["kind"] != "laurent":
+                    raise ValueError(
+                        "referenced string declaration is not certified: "
+                        + str(evidence.get("reason", "requires a Laurent dictionary"))
+                    )
+                terms = dict(exact["terms"])
+                stored = getattr(referenced, "value", None)
+                if (
+                    power not in terms
+                    or not isinstance(stored, Mapping)
+                    or type(stored.get(power)) is not str
+                    or stored[power] != terms[power]
+                ):
+                    raise ValueError(
+                        "referenced Laurent coefficient is not a source string"
+                    )
+                dependencies.append(referenced)
+                return terms[power]
+
+            parsed = ast.parse(argument, mode="eval").body
+            expression = _literal_expression(parsed, argument, value, string_reference)
+            if any(
+                isinstance(part, (ast.BinOp, ast.Subscript))
+                for part in ast.walk(parsed)
+            ):
+                source["kind"] = "source-string-composition"
         except (TypeError, ValueError) as exception:
             error = str(exception)
         self.observations[id(instance)] = _ValueObservation(
@@ -293,6 +352,7 @@ class _ValueSourceObserver:
             expression,
             source,
             error,
+            tuple(dependencies),
         )
 
     def value(
@@ -329,11 +389,19 @@ class _ValueSourceObserver:
             )
         ):
             reason = "constructed value was changed or overridden"
+        if reason is None:
+            for dependency in observation.dependencies:
+                exact, evidence = self.value(dependency)
+                if exact is None:
+                    reason = "referenced declaration is no longer exact: " + str(
+                        evidence.get("reason", "unknown source")
+                    )
+                    break
         if reason is not None:
             return None, {
+                **observation.source,
                 "kind": "unsupported",
                 "exact": False,
-                **observation.source,
                 "reason": reason,
             }
         return observation.expression, {
@@ -574,8 +642,9 @@ def capture_raw_loop_model(
     ``value_overrides`` targets ``(collection, record_id)`` and accepts exact
     strings, integers, Decimal and Fraction values, including Laurent maps.
     Overrides change only the raw sidecar, never the imported tree objects.
-    Values assembled by Python computation, including string concatenation,
-    remain uncertified unless the caller supplies an explicit exact override.
+    String literals may be concatenated with previously certified
+    Name.value[integer] strings. Other computed values remain uncertified unless
+    the caller supplies an explicit exact override.
     """
     objects = {
         key: _objects(module, registry) for key, registry in _COLLECTIONS.items()

@@ -419,6 +419,88 @@ def test_constructor_cannot_silently_replace_literal_value(tmp_path: Path) -> No
         model.exact_value("parameters", 0)
 
 
+def test_composed_counterterm_strings_preserve_source_and_laurent_orders(
+    tmp_path: Path,
+) -> None:
+    digits = "0." + "1234567890" * 6
+    source = _write_literal_ufo(
+        tmp_path / "composed_ct",
+        f"a = CTParameter(name='a', value={{-1: '{digits}*g', 0: 'log(m)'}})\n"
+        "b = CTParameter(name='b', value={-1: '(' + a.value[-1] + ')/2', "
+        "0: 'x+' + a.value[0]})\n"
+        "c = CTParameter(name='c', value={-1: b.value[-1], 0: b.value[0] + '+y'})\n"
+        "d = Coupling(name='d', value='g*(' + c.value[-1] + ')')\n",
+    )
+    model = load_raw_loop_model(source)
+    assert model.exact_value("counterterm_parameters", 1)["terms"] == (
+        (-1, f"({digits}*g)/2"),
+        (0, "x+log(m)"),
+    )
+    assert model.exact_value("counterterm_parameters", 2)["terms"] == (
+        (-1, f"({digits}*g)/2"),
+        (0, "x+log(m)+y"),
+    )
+    assert model.exact_value("couplings", 0)["expression"] == f"g*(({digits}*g)/2)"
+    assert model.collections["couplings"][0]["fields"]["value_source"]["kind"] == (
+        "source-string-composition"
+    )
+    assert model.capabilities["numeric_literal_source_preserved"] is True
+    assert RawLoopModel.from_dict(json.loads(json.dumps(model.to_dict()))) == model
+
+
+@pytest.mark.parametrize(
+    "declarations, reason",
+    [
+        (
+            "a = CTParameter(name='a', value={-1: str(0.123456789012345678901)})\n"
+            "b = Coupling(name='b', value='g*' + a.value[-1])\n",
+            "referenced string declaration is not certified",
+        ),
+        (
+            "a = CTParameter(name='a', value={-1: '0.123456789012345678901'})\n"
+            "b = Coupling(name='b', value='g*' + a.value[-1])\n"
+            "a = CTParameter(name='replacement', value={-1: '2'})\n",
+            "referenced declaration is no longer exact",
+        ),
+        (
+            "a = CTParameter(name='a', value={-1: '0.123456789012345678901'})\n"
+            "b = Coupling(name='b', value='g*' + a.value[-1])\n"
+            "saved = a.value\nsaved[-1] = '2'\n",
+            "referenced declaration is no longer exact",
+        ),
+        (
+            "a = CTParameter(name='a', value={1: 'g'})\n"
+            "b = Coupling(name='b', value=a.value[True])\n",
+            "integer Laurent power",
+        ),
+        (
+            "a = CTParameter(name='a', value={-1: 'g'})\n"
+            "index = -1\nb = Coupling(name='b', value=a.value[index])\n",
+            "malformed node",
+        ),
+        (
+            "a = CTParameter(name='a', value={-1: 0.123456789012345678901})\n"
+            "b = Coupling(name='b', value=a.value[-1])\n",
+            "not a source string",
+        ),
+        (
+            "b = Coupling(name='b', value='g*' + str(0.123456789012345678901))\n",
+            "not a certified string composition",
+        ),
+    ],
+)
+def test_composed_strings_reject_uncertified_or_changed_dependencies(
+    tmp_path: Path, declarations: str, reason: str
+) -> None:
+    source = _write_literal_ufo(tmp_path / "unproven_composition", declarations)
+    model = load_raw_loop_model(source)
+    assert model.collections["couplings"][0]["fields"]["value_source"]["kind"] == (
+        "unsupported"
+    )
+    with pytest.raises(ValueError, match=reason):
+        model.exact_value("couplings", 0)
+
+
 def test_explicit_exact_overrides_do_not_modify_imported_tree_values(
     tmp_path: Path,
 ) -> None:
@@ -588,4 +670,11 @@ def test_local_full_ew_duplicate_vertex_names_are_preserved() -> None:
     assert len(model.collections["counterterm_parameters"]) == 105
     assert len(model.collections["counterterm_vertices"]) == 499
     assert model.capabilities["perturbative_orders"] == ("QCD", "QED")
+    # Released CT expressions include forty literal-string compositions and
+    # previously declared Laurent coefficient reads. No numeric reconstruction
+    # from the imported Python value is needed for these declarations.
+    for collection in ("parameters", "counterterm_parameters", "couplings"):
+        for record in model.collections[collection]:
+            model.exact_value(collection, record["id"])
+    assert model.capabilities["numeric_literal_source_preserved"] is True
     assert RawLoopModel.from_dict(json.loads(json.dumps(model.to_dict()))) == model
