@@ -106,6 +106,7 @@ class _FamilyProgram:
     exact_evaluator: Any
     masses: Any
     mass_parameters: tuple[Any, ...]
+    mass_columns: tuple[int, ...]
     projector: Any
     reducer: Any
     rational_reducer: Any = None
@@ -212,6 +213,7 @@ class NativeBareProcessProgram:
         self.model_inputs = model_inputs
         self.scale_squared_symbol = S("loop_physical_process::mu_r2")
         self.model_names = tuple(sorted(model_expressions))
+        self.model_positions = {name: i for i, name in enumerate(self.model_names)}
         self.model_evaluator = backend.CoefficientEvaluator(
             _saved(
                 [model_expressions[name] for name in self.model_names], model_inputs
@@ -239,6 +241,21 @@ class NativeBareProcessProgram:
         if len(self.momenta) != len(state_kinds):
             raise ValueError("physical state count differs from native process")
         self.external_states = representative.external_states
+        legs = len(state_kinds)
+        self.bound_positions = {
+            p.get_name(): i for i, p in enumerate(self.momentum_parameters)
+        }
+        self.bound_positions.update(
+            {
+                symbol.get_name(): 4 * legs + 4 * leg + component
+                for leg, symbols in self.external_states
+                for component, symbol in enumerate(symbols)
+            }
+        )
+        self.bound_positions.update(
+            {name: 8 * legs + i for i, name in enumerate(self.model_names)}
+        )
+        self.bound_columns = 8 * legs + len(self.model_names)
         variables = representative.dag.momentum_variables
         self.born_recurrences = tuple(
             build_color_tree_recurrence(
@@ -323,6 +340,14 @@ class NativeBareProcessProgram:
             for recurrence, finals in zip(
                 self.recurrences, self.loop_finals, strict=True
             )
+        )
+        self.born_input_columns = tuple(
+            tuple(self.bound_positions[p.get_name()] for p in executor.parameters)
+            for executor in self.born_executors
+        )
+        self.loop_input_columns = tuple(
+            tuple(self.bound_positions[p.get_name()] for p in executor.parameters)
+            for executor in self.loop_executors
         )
         if dimensional_numerators:
             from .direct_kernels import closed_reduction_powers
@@ -413,6 +438,7 @@ class NativeBareProcessProgram:
                         _saved(plan.masses_squared, mass_parameters), **self.options
                     ),
                     mass_parameters,
+                    tuple(self.model_positions[p.get_name()] for p in mass_parameters),
                     self._compile_family_projection(indices, powers),
                     backend.PolynomialPlan(
                         plan.propagators,
@@ -612,35 +638,18 @@ class NativeBareProcessProgram:
         bound = batch_type.concat_columns(
             [lanes, states, model.take_rows([0] * rows, row_ids=lane_ids)]
         )
-        positions = {p.get_name(): i for i, p in enumerate(self.momentum_parameters)}
-        positions.update(
-            {
-                symbol.get_name(): 4 * legs + 4 * leg + component
-                for leg, symbols in self.external_states
-                for component, symbol in enumerate(symbols)
-            }
-        )
-        positions.update(
-            {name: 8 * legs + i for i, name in enumerate(self.model_names)}
-        )
-
-        def execute(executor, dag):
-            return executor.evaluate_batch(
-                bound.take_columns([positions[p.get_name()] for p in dag.parameters])
-            )
-
         born = batch_type.concat_columns(
             [
-                execute(executor, dag)
-                for executor, dag in zip(
-                    self.born_executors, self.born_dags, strict=True
+                executor.evaluate_batch(bound.take_columns(columns))
+                for executor, columns in zip(
+                    self.born_executors, self.born_input_columns, strict=True
                 )
             ]
         )
         currents = [
-            execute(executor, recurrence.dag)
-            for executor, recurrence in zip(
-                self.loop_executors, self.recurrences, strict=True
+            executor.evaluate_batch(bound.take_columns(columns))
+            for executor, columns in zip(
+                self.loop_executors, self.loop_input_columns, strict=True
             )
         ]
         born_squared = self.born_projector.evaluate_batch(
@@ -648,7 +657,6 @@ class NativeBareProcessProgram:
         )
         require_finite_batch(born_squared, "Born projection")
         scales = native(scales, size, 1)
-        model_positions = {name: i for i, name in enumerate(self.model_names)}
         integrated, rational_integrated, statuses = [], [], []
         for family in self.families:
             inputs = batch_type.concat_columns(
@@ -666,9 +674,7 @@ class NativeBareProcessProgram:
                 bindings.take_columns(list(range(4 * n, 4 * n + n * n))),
             )
             masses = family.masses.evaluate_batch(
-                model.take_columns(
-                    [model_positions[p.get_name()] for p in family.mass_parameters]
-                )
+                model.take_columns(family.mass_columns)
             ).take_rows([0] * size, row_ids=point_ids)
             reduced = family.reducer.evaluate_batch(
                 shifts, masses, scales, coefficients, s_matrix=matrix
@@ -720,7 +726,7 @@ class NativeBareProcessProgram:
                 point_ids,
                 lane_ids,
                 bound,
-                positions,
+                dict(self.bound_positions),
                 model_arguments,
                 scales,
             ),

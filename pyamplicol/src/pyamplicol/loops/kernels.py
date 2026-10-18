@@ -264,13 +264,17 @@ class NativeCoefficientDAG:
         if backend is None:
             import _loop_reduction as backend
         self.dag, self.backend = dag, backend
+        self.parameters = dag.parameters
         self.native_options = {"arithmetic": arithmetic, "precision": precision}
         self.output_nodes = (
             tuple(range(len(dag.nodes))) if output_nodes is None else output_nodes
         )
         if any(i < 0 or i >= len(dag.nodes) for i in self.output_nodes):
             raise ValueError("output nodes must refer to existing coefficient kernels")
-        positions = {parameter: i for i, parameter in enumerate(dag.parameters)}
+        self.output_widths = tuple(
+            len(dag.nodes[index].output_labels) for index in self.output_nodes
+        )
+        positions = {parameter: i for i, parameter in enumerate(self.parameters)}
         width = len(positions)
         node_slots, input_slots = [], []
         for node in dag.nodes:
@@ -302,7 +306,7 @@ class NativeCoefficientDAG:
         import numpy as np
 
         values = np.asarray(values, dtype=object)
-        if values.ndim != 3 or values.shape[1:] != (len(self.dag.parameters), 2):
+        if values.ndim != 3 or values.shape[1:] != (len(self.parameters), 2):
             raise ValueError(
                 "expected (batch, parameter, real/imaginary) decimal input"
             )
@@ -312,14 +316,11 @@ class NativeCoefficientDAG:
         native = self.backend.NativeBatch.from_decimal(
             values.reshape(-1, 2).tolist(),
             rows,
-            len(self.dag.parameters),
+            len(self.parameters),
             **self.native_options,
         )
         evaluated = self.evaluate_batch(native)
         packed = np.asarray(evaluated.to_decimal(), dtype=object).reshape(
             rows, evaluated.columns, 2
         )
-        widths = [
-            len(self.dag.nodes[index].output_labels) for index in self.output_nodes
-        ]
-        return tuple(np.split(packed, np.cumsum(widths)[:-1], axis=1))
+        return tuple(np.split(packed, np.cumsum(self.output_widths)[:-1], axis=1))

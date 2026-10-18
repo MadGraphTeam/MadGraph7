@@ -53,6 +53,7 @@ class _CountertermCurrent:
     color_weights: tuple[Any, ...]
     coefficient_expressions: tuple[Any, ...]
     term_count: int
+    input_columns: tuple[int, ...]
 
 
 @dataclass(slots=True)
@@ -215,6 +216,16 @@ class NativeModelVirtualProgram:
                     require_exact_numbers(expression)
                 if all(expression == 0 for expression in expressions):
                     continue
+                coefficient_names = tuple(
+                    symbol.get_name() for symbol, _ in substitutions
+                )
+                positions = dict(bare.bound_positions)
+                positions.update(
+                    {
+                        name: bare.bound_columns + i
+                        for i, name in enumerate(coefficient_names)
+                    }
+                )
                 self.currents.append(
                     _CountertermCurrent(
                         insertion,
@@ -222,10 +233,11 @@ class NativeModelVirtualProgram:
                         dag,
                         executor,
                         None,
-                        tuple(symbol.get_name() for symbol, _ in substitutions),
+                        coefficient_names,
                         weights,
                         tuple(expressions),
                         len(recurrence.terms),
+                        tuple(positions[p.get_name()] for p in executor.parameters),
                     )
                 )
         self.external_fields = tuple(external_fields)
@@ -394,17 +406,8 @@ class NativeModelVirtualProgram:
                 row_ids=batch.lane_ids,
             )
             combined = backend.NativeBatch.concat_columns([batch.bound, coefficients])
-            positions = dict(batch.positions)
-            positions.update(
-                {
-                    name: batch.bound.columns + i
-                    for i, name in enumerate(current.coefficient_names)
-                }
-            )
             amplitude = current.executor.evaluate_batch(
-                combined.take_columns(
-                    [positions[p.get_name()] for p in current.dag.parameters]
-                )
+                combined.take_columns(current.input_columns)
             )
             require_finite_batch(
                 amplitude,
