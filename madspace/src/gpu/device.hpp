@@ -47,6 +47,7 @@ public:
     void tensor_cpu(const Tensor& source, Tensor& target) const override;
     DevicePtr device_ptr() const override { return this; }
     DeviceType device_type() const override { return gpu_device_type; }
+    int device_index() const override { return _index; }
     void activate() const override { check_error(gpuSetDevice(_index)); }
     void adam_step(
         const Tensor& gradient,

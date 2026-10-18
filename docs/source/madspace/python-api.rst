@@ -40,9 +40,11 @@ Builders that assemble compute-graph functions for channel weights, energy scale
 .. toctree::
    :maxdepth: 1
 
+   python/BufferUnweighter
    python/CachedPdf
    python/CachedScale
    python/ChannelWeightNetwork
+   python/CustomFunction
    python/CutItem
    python/Cuts
    python/DifferentialCrossSection
@@ -77,6 +79,7 @@ Supporting types shared by the mappings: topologies, cuts, observables and densi
    :maxdepth: 1
 
    python/AlphaSGrid
+   python/CustomPdf
    python/Decay
    python/Diagram
    python/LineRef
@@ -177,3 +180,7 @@ Lower-level helpers and containers.
 
    python/NamedTypes
    python/NamedValues
+   python/PythonFunction
+   python/get_stream
+   python/set_stream
+   python/stream

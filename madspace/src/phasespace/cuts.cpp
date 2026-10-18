@@ -7,18 +7,42 @@
 
 using namespace madspace;
 
-Cuts::Cuts(const std::vector<CutItem>& cut_data) :
+namespace {
+
+void check_custom_cut(const std::optional<CustomFunction>& custom_cut) {
+    if (custom_cut &&
+        (custom_cut->type() != CustomFunction::cut || custom_cut->dynamic_pdg_ids())) {
+        throw std::invalid_argument(
+            "custom cut must be of type cut, with a single PDG-id option"
+        );
+    }
+}
+
+} // namespace
+
+Cuts::Cuts(
+    const std::vector<CutItem>& cut_data,
+    const std::optional<CustomFunction>& custom_cut
+) :
     FunctionGenerator(
         "Cuts", cut_data.at(0).observable.arg_types(), {{"mask", batch_float}}
     ),
-    _cut_data(cut_data) {}
+    _cut_data(cut_data),
+    _custom_cut(custom_cut) {
+    check_custom_cut(custom_cut);
+}
 
-Cuts::Cuts(std::size_t particle_count) :
+Cuts::Cuts(
+    std::size_t particle_count, const std::optional<CustomFunction>& custom_cut
+) :
     FunctionGenerator(
         "Cuts",
         {{"momenta", batch_four_vec_array(particle_count)}},
         {{"mask", batch_float}}
-    ) {}
+    ),
+    _custom_cut(custom_cut) {
+    check_custom_cut(custom_cut);
+}
 
 NamedVector<Value>
 Cuts::build_function_impl(FunctionBuilder& fb, const NamedVector<Value>& args) const {
@@ -35,6 +59,9 @@ Cuts::build_function_impl(FunctionBuilder& fb, const NamedVector<Value>& args) c
         } else {
             weights.push_back(fb.cut_any(obs, item.min, item.max));
         }
+    }
+    if (_custom_cut) {
+        weights.push_back(_custom_cut->build_function(fb, {args.at(0)}).at(0));
     }
     return {{"mask", fb.product(weights)}};
 }
@@ -168,9 +195,8 @@ PairList delta_r_pairs(const Observable& o) {
 
 } // namespace
 
-std::vector<std::vector<double>> Cuts::pairwise_min(
-    const std::function<PairList(const Observable&)>& pairs
-) const {
+std::vector<std::vector<double>>
+Cuts::pairwise_min(const std::function<PairList(const Observable&)>& pairs) const {
     std::size_t n = arg_types().at(0).shape.at(0) - 2;
     std::vector<std::vector<double>> out(n, std::vector<double>(n, 0.));
     for (auto& item : _cut_data) {

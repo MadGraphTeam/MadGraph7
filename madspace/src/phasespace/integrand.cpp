@@ -42,7 +42,7 @@ Integrand::Integrand(
     const AdaptiveDiscrete& discrete_sym,
     const AdaptiveDiscrete& discrete_flavor,
     const nested_vector2<me_int_t>& pid_options,
-    const std::optional<PdfGrid>& pdf_grid,
+    const PdfSource& pdf_grid,
     const std::optional<RunningCoupling>& running_coupling,
     const std::optional<EnergyScale>& energy_scale,
     const std::optional<PropagatorChannelWeights>& prop_chan_weights,
@@ -64,6 +64,7 @@ Integrand::Integrand(
     const std::vector<std::size_t>& flavor_subproc_indices,
     const std::vector<std::size_t>& flavor_per_subproc_remap,
     std::size_t compressed_channel_weight_count,
+    const std::optional<CustomFunction>& custom_bias,
     const std::optional<PdfGrid>& pdf_grid2
 ) :
     FunctionGenerator(
@@ -119,7 +120,8 @@ Integrand::Integrand(
                 if (flav_count > 1 &&
                     !std::holds_alternative<std::monostate>(discrete_flavor)) {
                     ret_types.push_back("discrete_flavor_index", batch_int);
-                    if (pdf_grid && energy_scale) {
+                    if (!std::holds_alternative<std::monostate>(pdf_grid) &&
+                        energy_scale) {
                         ret_types.push_back("pdf_prior", batch_float_array(flav_count));
                     }
                 }
@@ -149,6 +151,10 @@ Integrand::Integrand(
                     if (diff_xs_first.has_pdf(0) || diff_xs_first.has_pdf(1)) {
                         ret_types.push_back("partial_weight_product", batch_float);
                     }
+                }
+                // before "random": the outputs after it feed the discrete histograms
+                if (custom_bias) {
+                    ret_types.push_back("bias", batch_float);
                 }
                 ret_types.push_back("random", batch_float_array(mapping.random_dim()));
                 if (mapping.channel_count() > 1 &&
@@ -200,8 +206,9 @@ Integrand::Integrand(
     ),
     _flavor_per_subproc_remap(
         flavor_per_subproc_remap.begin(), flavor_per_subproc_remap.end()
-    ) {
-    if (pdf_grid) {
+    ),
+    _custom_bias(custom_bias) {
+    if (!std::holds_alternative<std::monostate>(pdf_grid)) {
         for (std::size_t i = 0; i < 2; ++i) {
             std::set<int> pids;
             for (auto& option : pid_options) {
@@ -212,21 +219,46 @@ Integrand::Integrand(
                     std::distance(pids.begin(), pids.find(option.at(i)))
                 );
             }
-            bool own_grid = i == 1 && pdf_grid2;
-            _pdfs.at(i) = PartonDensity(
-                own_grid ? pdf_grid2.value() : pdf_grid.value(),
-                {pids.begin(), pids.end()},
-                false,
-                own_grid ? pdf2_prefix : ""
-            );
-            if (pdf_grid2) {
-                _pdfs_swapped.at(i) = PartonDensity(
-                    own_grid ? pdf_grid.value() : pdf_grid2.value(),
-                    {pids.begin(), pids.end()},
+            std::vector<int> pid_vec(pids.begin(), pids.end());
+            if (auto grid = std::get_if<PdfGrid>(&pdf_grid)) {
+                bool own_grid = i == 1 && pdf_grid2;
+                _pdfs.at(i) = PartonDensity(
+                    own_grid ? pdf_grid2.value() : *grid,
+                    pid_vec,
                     false,
-                    own_grid ? "" : pdf2_prefix
+                    own_grid ? pdf2_prefix : ""
                 );
+                if (pdf_grid2) {
+                    _pdfs_swapped.at(i) = PartonDensity(
+                        own_grid ? *grid : pdf_grid2.value(),
+                        pid_vec,
+                        false,
+                        own_grid ? "" : pdf2_prefix
+                    );
+                }
+            } else {
+                if (pdf_grid2) {
+                    throw std::invalid_argument(
+                        "pdf_grid2 cannot be combined with a custom PDF"
+                    );
+                }
+                auto& custom_pdf = std::get<CustomPdf>(pdf_grid);
+                int beam = static_cast<int>(i);
+                _pdfs.at(i) = PartonDensity(custom_pdf, pid_vec, beam);
+                // the custom PDF may differ per beam, so mirrored events need
+                // the other beam's density
+                _pdfs_swapped.at(i) = PartonDensity(custom_pdf, pid_vec, 1 - beam);
             }
+        }
+    }
+    if (custom_bias) {
+        if (custom_bias->type() != CustomFunction::bias) {
+            throw std::invalid_argument("custom bias must be of type bias");
+        }
+        if (custom_bias->dynamic_pdg_ids() != (pid_options.size() > 1)) {
+            throw std::invalid_argument(
+                "the PDG-id options of the custom bias must match pid_options"
+            );
         }
     }
 
@@ -793,6 +825,17 @@ NamedVector<Value> Integrand::build_common_part(
         diff_xs_acc = fb.mul(diff_xs_acc, fb.gather(flavor_id, _flavor_factors));
     }
     ValueVec weights_after_cuts{args.at("weight_after_cuts"), diff_xs_acc};
+    // the bias enters the weight seen by the adaptation and the unweighting,
+    // the event generator divides it out again
+    Value bias_acc;
+    if (_custom_bias) {
+        ValueVec bias_args{momenta_acc};
+        if (_custom_bias->dynamic_pdg_ids()) {
+            bias_args.push_back(flavor_id);
+        }
+        bias_acc = _custom_bias->build_function(fb, bias_args).at(0);
+        weights_after_cuts.push_back(bias_acc);
+    }
     ValueVec extra_weights_after_cuts;
     if (args.index_map().contains("extra_weight_after_cuts")) {
         extra_weights_after_cuts.push_back(args.at("extra_weight_after_cuts"));
@@ -975,6 +1018,11 @@ NamedVector<Value> Integrand::build_common_part(
                     scatter_or_drop(zeros_float, fb.product(pdf_vals))
                 );
             }
+        }
+        if (bias_acc) {
+            outputs.push_back(
+                "bias", scatter_or_drop(fb.full({1., batch_size_val}), bias_acc)
+            );
         }
         outputs.push_back("random", optional_cut(args.at("r")));
         if (has_permutations &&
