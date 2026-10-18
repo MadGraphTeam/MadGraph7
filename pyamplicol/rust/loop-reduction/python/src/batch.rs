@@ -4,6 +4,7 @@
 
 use super::*;
 use std::sync::Arc;
+use symbolica::evaluate::{BatchEvaluator, JITCompilationSettings, JITCompiledEvaluator};
 
 #[derive(Clone)]
 pub(super) enum Data {
@@ -274,22 +275,61 @@ impl NativeBatch {
     }
 }
 
-struct Node<T: Carrier> {
-    evaluator: BatchExpressionEvaluator<Complex<T>>,
+trait ScheduledKernel<T: Carrier> {
+    fn evaluate(
+        &mut self,
+        parameters: &[Complex<T>],
+        output: &mut [Complex<T>],
+        rows: usize,
+    ) -> Result<(), String>;
+}
+impl<T: Carrier> ScheduledKernel<T> for BatchExpressionEvaluator<Complex<T>>
+where
+    Complex<T>: Real + EvaluationDomain,
+{
+    fn evaluate(
+        &mut self,
+        parameters: &[Complex<T>],
+        output: &mut [Complex<T>],
+        rows: usize,
+    ) -> Result<(), String> {
+        self.evaluate_batch(parameters, output, rows)
+            .map_err(|failure| failure.to_string())
+    }
+}
+impl ScheduledKernel<f64> for JITCompiledEvaluator<Complex<f64>> {
+    fn evaluate(
+        &mut self,
+        parameters: &[Complex<f64>],
+        output: &mut [Complex<f64>],
+        rows: usize,
+    ) -> Result<(), String> {
+        // The dependency's batch trait divides by rows, so empty batches must
+        // be handled before entering its matrix evaluator.
+        if rows == 0 {
+            return Ok(());
+        }
+        BatchEvaluator::evaluate_batch(self, rows, parameters, output)
+    }
+}
+
+struct Node<T: Carrier, E> {
+    evaluator: E,
     inputs: Vec<usize>,
     output_offset: usize,
+    output_count: usize,
     gathered: Vec<Complex<T>>,
     output: Vec<Complex<T>>,
 }
-struct Schedule<T: Carrier> {
-    nodes: Vec<Node<T>>,
+struct Schedule<T: Carrier, E = BatchExpressionEvaluator<Complex<T>>> {
+    nodes: Vec<Node<T, E>>,
     inputs: usize,
     width: usize,
     outputs: Vec<usize>,
     arena: Vec<Complex<T>>,
     zero: Complex<T>,
 }
-impl<T: BatchCarrier> Schedule<T>
+impl<T: BatchCarrier, E: ScheduledKernel<T>> Schedule<T, E>
 where
     Complex<T>: Real + EvaluationDomain,
 {
@@ -299,6 +339,7 @@ where
         inputs: usize,
         outputs: Vec<usize>,
         prototype: T,
+        create: impl Fn(ExpressionEvaluator<Complex<Rational>>, &T) -> PyResult<E>,
     ) -> PyResult<Self> {
         if states.len() != input_slots.len() {
             return Err(error(
@@ -307,7 +348,7 @@ where
         }
         let mut nodes = Vec::with_capacity(states.len());
         let mut width = inputs;
-        for (state, slots) in states.iter().zip(input_slots) {
+        for (index, (state, slots)) in states.iter().zip(input_slots).enumerate() {
             let exact = exact_state(state)?;
             if exact.get_input_len() != slots.len() || slots.iter().any(|&i| i >= width) {
                 return Err(error(
@@ -315,13 +356,16 @@ where
                 ));
             }
             let output_offset = width;
+            let output_count = exact.get_output_len();
             width = width
-                .checked_add(exact.get_output_len())
+                .checked_add(output_count)
                 .ok_or_else(|| error("coefficient arena dimensions overflow"))?;
             nodes.push(Node {
-                evaluator: batch_evaluator(exact, &prototype),
+                evaluator: create(exact, &prototype)
+                    .map_err(|failure| error(format!("coefficient node {index}: {failure}")))?,
                 inputs: slots.clone(),
                 output_offset,
+                output_count,
                 gathered: Vec::new(),
                 output: Vec::new(),
             });
@@ -356,7 +400,7 @@ where
             let count = node.inputs.len();
             node.gathered
                 .resize(shape(input.rows, count)?, self.zero.clone());
-            let output_count = node.evaluator.get_output_len();
+            let output_count = node.output_count;
             node.output
                 .resize(shape(input.rows, output_count)?, self.zero.clone());
             for row in 0..input.rows {
@@ -366,7 +410,7 @@ where
                 }
             }
             node.evaluator
-                .evaluate_batch(&node.gathered, &mut node.output, input.rows)
+                .evaluate(&node.gathered, &mut node.output, input.rows)
                 .map_err(error)?;
             for row in 0..input.rows {
                 self.arena[row * self.width + node.output_offset
@@ -387,6 +431,7 @@ where
 
 enum Schedules {
     Double(Schedule<f64>),
+    Jit(Schedule<f64, JITCompiledEvaluator<Complex<f64>>>),
     DoubleDouble(Schedule<DoubleFloat>),
     Arbitrary(Schedule<Float>),
 }
@@ -395,11 +440,13 @@ pub(super) struct CoefficientPlan {
     schedule: Schedules,
     #[pyo3(get)]
     precision_bits: u32,
+    #[pyo3(get)]
+    engine: String,
 }
 #[pymethods]
 impl CoefficientPlan {
     #[new]
-    #[pyo3(signature = (states, input_slots, input_count, output_slots, arithmetic="double", precision=None))]
+    #[pyo3(signature = (states, input_slots, input_count, output_slots, arithmetic="double", precision=None, engine="interpreted"))]
     fn new(
         states: Vec<Vec<u8>>,
         input_slots: Vec<Vec<usize>>,
@@ -407,15 +454,41 @@ impl CoefficientPlan {
         output_slots: Vec<usize>,
         arithmetic: &str,
         precision: Option<u32>,
+        engine: &str,
     ) -> PyResult<Self> {
         let (mode, bits) = arithmetic_mode(arithmetic, precision)?;
+        if !matches!(engine, "interpreted" | "jit") {
+            return Err(error("coefficient engine must be interpreted or jit"));
+        }
+        if engine == "jit" && !matches!(mode, Arithmetic::Double) {
+            return Err(error("coefficient JIT requires double arithmetic"));
+        }
         let schedule = match mode {
+            Arithmetic::Double if engine == "jit" => Schedules::Jit(Schedule::new(
+                &states,
+                &input_slots,
+                input_count,
+                output_slots,
+                0_f64,
+                |exact, _| {
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        exact.jit_compile::<Complex<f64>>(
+                            JITCompilationSettings::default()
+                                .with_option("use_threads", "false")
+                                .with_option("use_simd", "true"),
+                        )
+                    }))
+                    .map_err(|_| error("dependency JIT compiler panicked on this kernel or host"))?
+                    .map_err(|failure| error(format!("dependency JIT unavailable: {failure}")))
+                },
+            )?),
             Arithmetic::Double => Schedules::Double(Schedule::new(
                 &states,
                 &input_slots,
                 input_count,
                 output_slots,
                 0_f64,
+                |exact, prototype| Ok(batch_evaluator(exact, prototype)),
             )?),
             Arithmetic::DoubleDouble => Schedules::DoubleDouble(Schedule::new(
                 &states,
@@ -423,6 +496,7 @@ impl CoefficientPlan {
                 input_count,
                 output_slots,
                 DoubleFloat::from(0.0),
+                |exact, prototype| Ok(batch_evaluator(exact, prototype)),
             )?),
             Arithmetic::Arbitrary => Schedules::Arbitrary(Schedule::new(
                 &states,
@@ -430,11 +504,13 @@ impl CoefficientPlan {
                 input_count,
                 output_slots,
                 Float::with_val(bits, 0),
+                |exact, prototype| Ok(batch_evaluator(exact, prototype)),
             )?),
         };
         Ok(Self {
             schedule,
             precision_bits: bits,
+            engine: engine.into(),
         })
     }
     fn evaluate_batch(&mut self, py: Python<'_>, input: &NativeBatch) -> PyResult<NativeBatch> {
@@ -443,6 +519,7 @@ impl CoefficientPlan {
         }
         py.detach(|| match (&mut self.schedule, &input.data) {
             (Schedules::Double(s), Data::Double(v)) => s.evaluate(v, input),
+            (Schedules::Jit(s), Data::Double(v)) => s.evaluate(v, input),
             (Schedules::DoubleDouble(s), Data::DoubleDouble(v)) => s.evaluate(v, input),
             (Schedules::Arbitrary(s), Data::Arbitrary(v)) => s.evaluate(v, input),
             _ => Err(error("batch arithmetic or precision differs")),

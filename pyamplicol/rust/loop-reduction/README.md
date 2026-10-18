@@ -122,6 +122,16 @@ shift vectors and passing that result does not establish exact invariants.
 all lanes succeed, while `.successful_values()` retains only successful IDs.
 `CoefficientEvaluator.evaluate_batch` and `massless_spinors_batch` share these
 buffers, allowing couplings, wavefunctions and final contractions to stay native.
+`CoefficientPlan(..., engine="jit")` optionally compiles the same saved exact
+node evaluators using Symbolica's existing complex SymJIT backend and native
+matrix evaluation. Internal threading is disabled and dependency SIMD dispatch
+is enabled where supported by the host and kernel. It requires double arithmetic; DoubleFloat and arbitrary
+precision retain the default `engine="interpreted"`. JIT construction failures
+identify the node and propagate an explicit error, without silently changing
+the engine. The original evaluator bytes and slot maps remain the kernel
+identity; this adds no persistent cache or artifact format. Empty batches are
+handled before the dependency matrix API. Constant-only nodes and changing
+batch tails are checked against the interpreter.
 For four or more propagators the generic consumer invokes NinjaRS's existing
 `SymbolicaSamplingScales` once per batch and supplies its auxiliary scales to
 each active epsilon sector. These are distinct from the renormalization scale
