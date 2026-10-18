@@ -964,20 +964,32 @@ dimensional providers remain gated pending their separate certificates.
 Dirac/scalar bases `ProjM(2,1)`, `ProjP(2,1)`, their sum and difference, and
 `Identity(2,1)`, with ordered spins `(2,2,1)`. The reproducible
 `tools/loop_reference/dirac_scalar_oracle.py` compares these actual Gmu source
-bases and the two chiral Higgs CT aliases with unmodified standalone ALOHA.
+bases and the two chiral Higgs CT aliases with unmodified standalone ALOHA
+as raw source matrices, without establishing the physical directed-current frame.
 Its 812 comparisons cover the full bispinor component basis, both complex
 off-shell endpoint orders, local open-current components, massive/massless
 physical u/v states and complex scalar currents; maximum scaled error was
 `4.45e-16`. The report retains all 357 matching source basis keys, while scalar
 couplings and colour factors remain outside the local Lorentz certificate.
 
-These particular native scalar/chiral matrices are symmetric under exchanging
-their two bispinor slots, so both raw and explicitly mapped local tensors agree
-with the reference. This supplies no additional endpoint phase or general
-transpose rule. Propagators, dimensional gamma5, complete UV/R2/field terms and
-new physical process admission remain separate gates. The source physical
-factory still admits only its existing FFV domain; a local FFS classifier alone
-does not enable complete scalar or charged-current electroweak processes.
+These diagonal matrices are symmetric under endpoint exchange: the previous
+endpoint-only mapping passed all those raw `_0` controls while failing directed
+charged-scalar currents. The physical FFS boundary additionally exchanges the
+native `projm` and `projp` heads, exactly as the established tree tensor compiler
+does for UFO `ProjM` and `ProjP`. The dependency performs simultaneous typed
+replacements; scalar coefficients, momenta, FFV factors and propagators are
+unchanged. The pseudoscalar difference changes sign and the scalar sum/identity
+remain unchanged.
+
+`tools/loop_reference/dirac_current_oracle.py` compares actual source graph
+factors with unmodified ALOHA FFS/Dirac-propagator/chiral-FFV chains, both charge
+flows, arbitrary complex components and momenta, and separate massive scalar
+currents: 580 comparisons passed with maximum error `1.12e-16`. Unlike a
+helicity-summed or diagonal vertex check, the chiral chains
+fail without the projector mapping. The source and crossed HELAS current
+orders are recorded separately; off-shell output labels do not identify the
+next vertex's F1/F2 input position. Complete process and dimensional-gamma5
+admission remain separate gates.
 
 The real-mass full-Gmu `e- e+ -> m- m+` control retains all electroweak species:
 two Born graphs, 98 loop graphs and 32 reduction families with the official

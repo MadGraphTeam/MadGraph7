@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: 0BSD
 """Explicit source vertex endpoints, separate from propagator conventions.
 
-The standard UFO Dirac FFV source slots and the physical HELAS current slots
-have opposite endpoint order. This adapter uses dependency-owned typed index
-renaming on a localized vertex. It does not transpose gamma matrices, change
-momenta, or apply a dimensional gamma5 prescription. Physical callers still
-have to establish the source tensor's conformance domain.
+The standard UFO Dirac source slots and physical HELAS current slots have
+opposite endpoint order. Scalar Dirac currents additionally exchange the native
+chiral projectors, as in the existing tree compiler. Both operations act on
+localized dependency tensors; propagators and momenta retain their own frame.
+Physical callers must establish the source tensor's conformance domain. This
+four-dimensional boundary is not a dimensional gamma5 prescription.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ def validate_vertex_spinor_frame(frame):
 
 
 def native_physical_vertex(graph, vertex_id, lorentz):
-    """Swap only the two local Dirac endpoint Slot keys in the native frame."""
+    """Translate certified local Dirac vertices into the physical current frame."""
     from symbolica.community import hepkit as h
     from symbolica.community import tensor as t
 
@@ -45,6 +46,28 @@ def native_physical_vertex(graph, vertex_id, lorentz):
     result = lorentz.rename_indices(
         {slots[0]: slots[1].index, slots[1]: slots[0].index}
     )
+    edge_spins = {edge.id: edge.spin for edge in graph.edges}
+    spins = sorted(
+        edge_spins[edge]
+        for _half, vertex, edge, _flow in graph.half_edges
+        if vertex == vertex_id
+    )
+    if spins == [1, 2, 2]:
+        # Whole-vertex endpoint exchange suffices for the admitted FFV bases.
+        # A diagonal FFS source matrix cannot detect the additional physical
+        # current convention: UFO ProjM/ProjP become native projp/projm. This is
+        # the same mapping as models.tensors._LorentzContext, independently
+        # checked on directed FFS -> propagator -> chiral FFV ALOHA currents.
+        # Simultaneous native replacements retain all scalar coefficients and
+        # leave the propagator (including its mass term) untouched.
+        from symbolica import Replacement, S
+
+        left, right = S("loop_vertex_frame::left_", "loop_vertex_frame::right_")
+        minus = t.TensorExpression.projm(4)(left, right).to_expression()
+        plus = t.TensorExpression.projp(4)(left, right).to_expression()
+        result = result.replace_multiple(
+            [Replacement(minus, plus), Replacement(plus, minus)]
+        )
     if set(result.axes) != set(axes):
         raise ValueError("source endpoint mapping changed the native external frame")
     return result
@@ -94,3 +117,8 @@ def certified_ffs_source(structure):
         (structure.structure - wrap_indices(parse_exact_ufo(source))).expand() == 0
         for source in sources
     )
+
+
+def certified_source_dirac_frame(structure):
+    """Locally checked four-dimensional Dirac vertices, with exact source ports."""
+    return certified_ffv_source(structure) or certified_ffs_source(structure)
