@@ -24,6 +24,8 @@ pub mod loop_runtime;
 mod metadata;
 pub mod pacbin;
 pub mod recurrence;
+#[cfg(feature = "symbolica-runtime")]
+pub mod source_scalar;
 
 pub use artifact::{
     ArtifactKind, ArtifactManifest, ArtifactProcess, ArtifactSelection, Payload, PayloadRole,

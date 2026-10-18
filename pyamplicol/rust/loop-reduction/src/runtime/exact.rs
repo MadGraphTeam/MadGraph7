@@ -3,57 +3,11 @@
 //! Exact decimal ingress and dependency-owned rational polynomial evaluation.
 
 use super::*;
+use symbolica::{domains::float::FloatField, evaluate::Instruction};
 use symbolica::{domains::rational::Rational, evaluate::ExpressionEvaluator};
-use symbolica::{
-    domains::{float::FloatField, integer::Integer},
-    evaluate::Instruction,
-};
 
 pub fn decimal_rational(value: &str) -> ExecutionResult<Rational> {
-    // Lexical decimal conversion only. Integer powers, products and rational
-    // normalization all use Numerica, without a floating intermediate.
-    let (negative, value) = if let Some(value) = value.strip_prefix('-') {
-        (true, value)
-    } else {
-        (false, value.strip_prefix('+').unwrap_or(value))
-    };
-    let mut exponent_parts = value.split(['e', 'E']);
-    let mantissa = exponent_parts.next().unwrap_or_default();
-    let exponent = exponent_parts
-        .next()
-        .map(|e| e.parse::<i64>().map_err(error))
-        .transpose()?
-        .unwrap_or(0);
-    if exponent_parts.next().is_some() {
-        return Err(error("expected a finite decimal literal"));
-    }
-    let mut decimal_parts = mantissa.split('.');
-    let whole = decimal_parts.next().unwrap_or_default();
-    let fractional = decimal_parts.next().unwrap_or_default();
-    if decimal_parts.next().is_some()
-        || (whole.is_empty() && fractional.is_empty())
-        || !whole
-            .bytes()
-            .chain(fractional.bytes())
-            .all(|c| c.is_ascii_digit())
-    {
-        return Err(error("expected a finite decimal literal"));
-    }
-    let digits = format!("{whole}{fractional}");
-    let mut numerator = digits.parse::<Integer>().map_err(error)?;
-    if negative {
-        numerator = -numerator;
-    }
-    let decimal_places = i64::try_from(fractional.len()).map_err(error)?;
-    let exponent = exponent
-        .checked_sub(decimal_places)
-        .ok_or_else(|| error("decimal exponent overflows"))?;
-    let scale = Integer::from(10).pow(exponent.unsigned_abs());
-    Ok(if exponent < 0 {
-        Rational::from((numerator, scale))
-    } else {
-        Rational::from(numerator * scale)
-    })
+    rusticol_core::source_scalar::decimal_rational(value).map_err(error)
 }
 
 pub struct ExactPolynomialEvaluator {
