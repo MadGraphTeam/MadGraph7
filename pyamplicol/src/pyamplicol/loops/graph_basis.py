@@ -26,6 +26,7 @@ from .recurrence import (
     attach_external_spin_components,
     momentum_component_library,
 )
+from .vertex_frames import native_physical_vertex, validate_vertex_spinor_frame
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +44,7 @@ class ColorGraphRecurrence:
     tree_denominators: tuple[Any, ...] = field(default=(), repr=False, compare=False)
     tree_denominators_included: bool = False
     kernel_provider: Any = field(default=None, repr=False, compare=False)
+    vertex_spinor_frame: str | None = None
     stage: str = field(default="bare-color-coefficient-prototype", init=False)
     external_state_convention: str = field(
         default="independent-spin-components-source-projector-not-applied", init=False
@@ -91,7 +93,7 @@ def _symbols(graph, variables=None, momenta=None):
     return q, momenta
 
 
-def _prepare_locals(graph, library, provider=None):
+def _prepare_locals(graph, library, provider=None, vertex_spinor_frame=None):
     from symbolica.community import hepkit as h
 
     factors, local = [], {}
@@ -102,6 +104,15 @@ def _prepare_locals(graph, library, provider=None):
         for item in items:
             original = item.numerator_expression()
             terms = split_local_color_terms(original)
+            if kind == "vertex" and vertex_spinor_frame == "native-physical":
+                terms = tuple(
+                    LocalColorTerm(
+                        native_physical_vertex(graph, item.id, term.lorentz),
+                        term.color,
+                        term.source,
+                    )
+                    for term in terms
+                )
             if not terms:
                 raise NotImplementedError(
                     "identically zero local graph rules require graph pruning"
@@ -280,18 +291,21 @@ def routed_edge_denominator(edge, library):
 
 
 def build_color_tree_recurrence(
-    graph: GraphIR, *, variables=None, momenta=None
+    graph: GraphIR, *, variables=None, momenta=None, vertex_spinor_frame=None
 ) -> ColorGraphRecurrence:
     """Prepare every Born/CT colour alternative, including tree denominators."""
     if graph.loop_count != 0:
         raise ValueError("a tree recurrence requires a zero-loop graph")
+    validate_vertex_spinor_frame(vertex_spinor_frame)
     if graph.native.numerator_prefactor_expression() != 1:
         raise NotImplementedError(
             "custom numerator prefactors need explicit local lowering"
         )
     q, momenta = _symbols(graph, variables, momenta)
     library = momentum_component_library(graph, (), momenta)
-    local, factors, states = _prepare_locals(graph, library)
+    local, factors, states = _prepare_locals(
+        graph, library, vertex_spinor_frame=vertex_spinor_frame
+    )
     builder = ColorTermDAG(CoefficientDAG(q))
     root = graph.vertices[0].id
     currents = _tree_currents(
@@ -299,7 +313,13 @@ def build_color_tree_recurrence(
     )
     current = _global_factor(graph, builder, currents[root], library)
     return ColorGraphRecurrence(
-        graph, current, factors, momenta, states, tree_denominators_included=True
+        graph,
+        current,
+        factors,
+        momenta,
+        states,
+        tree_denominators_included=True,
+        vertex_spinor_frame=vertex_spinor_frame,
     )
 
 
@@ -309,6 +329,7 @@ def build_color_loop_recurrence(
     cut_edge: int | None = None,
     routing: str = "graph",
     kernel_provider=None,
+    vertex_spinor_frame=None,
 ) -> ColorGraphRecurrence:
     """Prepare local alternatives along the native cut cycle and its trees.
 
@@ -324,6 +345,9 @@ def build_color_loop_recurrence(
 
     if routing not in {"graph", "family"}:
         raise ValueError("routing must be graph or family")
+    validate_vertex_spinor_frame(vertex_spinor_frame)
+    if kernel_provider is not None and vertex_spinor_frame == "native-physical":
+        raise NotImplementedError("dimensional source vertex frames are not certified")
     if graph.loop_count != 1:
         raise ValueError("an open-loop recurrence requires exactly one loop")
     if graph.native.numerator_prefactor_expression() != 1:
@@ -381,7 +405,9 @@ def build_color_loop_recurrence(
         else kernel_provider.bind(graph, loop_components, q)
     )
     library = momentum_component_library(graph, (loop_components,), momenta)
-    local, factors, states = _prepare_locals(graph, library, provider)
+    local, factors, states = _prepare_locals(
+        graph, library, provider, vertex_spinor_frame
+    )
     dag = CoefficientDAG(
         q,
         extra_variables=() if provider is None else tuple(provider.extra_variables),
@@ -445,4 +471,5 @@ def build_color_loop_recurrence(
         routing,
         tree_denominators,
         kernel_provider=provider,
+        vertex_spinor_frame=vertex_spinor_frame,
     )

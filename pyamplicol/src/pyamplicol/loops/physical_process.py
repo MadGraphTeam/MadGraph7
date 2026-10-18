@@ -73,6 +73,7 @@ class NativePhysicalBatch:
     positions: dict[str, int]
     model_arguments: Any
     scales_squared: Any
+    model_snapshot: Any = None
 
 
 @dataclass(slots=True)
@@ -176,7 +177,9 @@ class NativeBareProcessProgram:
     """Reusable graph/family assembly, with global exact model input formulas.
 
     ``model_expressions`` maps native model symbol names to exact expressions
-    in ``model_inputs``. Numerical values bind once per call, never per event.
+    in ``model_inputs``. Alternatively ``model_state`` supplies checked native
+    source outputs from one immutable snapshot. A source scale view evaluates
+    those outputs at each point's mu_r2; other model inputs remain global.
     The caller must supply on-shell momenta with the declared model masses;
     native wavefunctions use those four-vectors without repairing their shell.
     ``dimensional_numerators`` requires a provider for every selected loop. Its
@@ -190,8 +193,12 @@ class NativeBareProcessProgram:
         *,
         state_kinds: tuple[str, ...],
         initial_average: Any,
-        model_expressions: dict[str, Any],
-        model_inputs: tuple[Any, ...],
+        model_expressions: dict[str, Any] | None = None,
+        model_inputs: tuple[Any, ...] = (),
+        model_state: Any = None,
+        model_output_indices: dict[str, int] | None = None,
+        model_scale_view: Any = None,
+        vertex_spinor_frame: str | None = None,
         arithmetic: str = "double",
         precision: int | None = None,
         reduction_engine: str = "generic",
@@ -219,6 +226,45 @@ class NativeBareProcessProgram:
                 "physical control requires Dirac or vector states"
             )
         require_exact_numbers(initial_average)
+        self.model_state = model_state
+        self.vertex_spinor_frame = vertex_spinor_frame
+        self.model_scale_view = model_scale_view
+        if model_scale_view is not None and (
+            model_state is None
+            or model_scale_view.global_state is not model_state
+            or model_scale_view.plan is not model_state.plan
+        ):
+            raise ValueError(
+                "ordinary scale view must share the source model state plan"
+            )
+        if model_state is not None:
+            if model_expressions is not None or model_inputs:
+                raise ValueError("source model state replaces legacy model formulas")
+            if model_state.backend is not backend or model_state.options != {
+                "arithmetic": arithmetic,
+                "precision": precision,
+            }:
+                raise ValueError("source model state backend or arithmetic differs")
+            if not model_output_indices:
+                raise ValueError("source model outputs require native symbol bindings")
+            if any(
+                not isinstance(name, str)
+                or type(index) is not int
+                or not 0 <= index < len(model_state.plan.outputs)
+                for name, index in model_output_indices.items()
+            ):
+                raise ValueError("invalid source model output binding")
+            model_inputs = model_state.plan.input_symbols
+            model_expressions = {
+                name: model_state.plan.expressions[index].value
+                for name, index in model_output_indices.items()
+            }
+        elif model_output_indices is not None:
+            raise ValueError("source model output bindings require their owner state")
+        elif model_expressions is None:
+            raise ValueError(
+                "exact model formulas or a source model state are required"
+            )
         self.model_expressions = MappingProxyType(dict(model_expressions))
         for expression in self.model_expressions.values():
             require_exact_numbers(expression)
@@ -268,12 +314,21 @@ class NativeBareProcessProgram:
         self.scale_squared_symbol = S("loop_physical_process::mu_r2")
         self.model_names = tuple(sorted(self.model_expressions))
         self.model_positions = {name: i for i, name in enumerate(self.model_names)}
-        self.model_evaluator = backend.CoefficientEvaluator(
-            _saved(
-                [self.model_expressions[name] for name in self.model_names],
-                model_inputs,
-            ),
-            **self.options,
+        self.model_output_indices = (
+            tuple(model_output_indices[name] for name in self.model_names)
+            if model_state is not None
+            else ()
+        )
+        self.model_evaluator = (
+            backend.CoefficientEvaluator(
+                _saved(
+                    [self.model_expressions[name] for name in self.model_names],
+                    model_inputs,
+                ),
+                **self.options,
+            )
+            if model_state is None
+            else None
         )
         if dimensional_numerators:
             from .direct_kernels import dimensional_kernels
@@ -285,6 +340,7 @@ class NativeBareProcessProgram:
                 kernel_provider=dimensional_kernels(graph)
                 if dimensional_numerators
                 else None,
+                vertex_spinor_frame=vertex_spinor_frame,
             )
             for graph in self.loop_graphs
         )
@@ -314,7 +370,10 @@ class NativeBareProcessProgram:
         variables = representative.dag.momentum_variables
         self.born_recurrences = tuple(
             build_color_tree_recurrence(
-                graph, variables=variables, momenta=self.momenta
+                graph,
+                variables=variables,
+                momenta=self.momenta,
+                vertex_spinor_frame=vertex_spinor_frame,
             )
             for graph in process.born
         )
@@ -720,7 +779,7 @@ class NativeBareProcessProgram:
             )
         self._color_metrics_revision = getattr(self, "_color_metrics_revision", 0) + 1
 
-    def evaluate_decimal(self, momenta, scales_squared, *, model_values):
+    def evaluate_decimal(self, momenta, scales_squared, *, model_values=None):
         result = self.evaluate_native(
             momenta, scales_squared, model_values=model_values
         )
@@ -754,14 +813,14 @@ class NativeBareProcessProgram:
                 "order; use ordered bare evaluation for multiple sectors"
             )
 
-    def evaluate_native(self, momenta, scales_squared, *, model_values):
+    def evaluate_native(self, momenta, scales_squared, *, model_values=None):
         """Single-sector adapter with an explicit check before removing order axes."""
         self.require_single_order("single-sector physical adapter")
         return self.evaluate_ordered_native(
             momenta, scales_squared, model_values=model_values
         )
 
-    def evaluate_ordered_decimal(self, momenta, scales_squared, *, model_values):
+    def evaluate_ordered_decimal(self, momenta, scales_squared, *, model_values=None):
         result = self.evaluate_ordered_native(
             momenta, scales_squared, model_values=model_values
         )
@@ -798,7 +857,7 @@ class NativeBareProcessProgram:
             else "MadLoop-Cepsilon-bare-four-dimensional-no-R2-no-UV",
         )
 
-    def prepare_currents_native(self, momenta, scales_squared, *, model_values):
+    def prepare_currents_native(self, momenta, scales_squared, *, model_values=None):
         """Bind one physical batch and evaluate its Born and loop currents once."""
         momenta, scales = (
             np.asarray(momenta, dtype=object),
@@ -808,11 +867,22 @@ class NativeBareProcessProgram:
         if momenta.ndim != 3 or momenta.shape[1:] != (legs, 4):
             raise ValueError("expected (batch, leg, four components) momenta")
         size, rows = len(momenta), len(momenta) * helicities
-        if scales.shape != (size,) or len(model_values) != len(self.model_inputs):
-            raise ValueError("physical scale or global model input shape differs")
+        if scales.shape != (size,):
+            raise ValueError("physical scale shape differs")
+        snapshot = None
+        if self.model_state is None:
+            if model_values is None or len(model_values) != len(self.model_inputs):
+                raise ValueError("global model input shape differs")
+            decimal_model_values = model_values
+        else:
+            if model_values is not None:
+                raise ValueError(
+                    "update the source model state through its named inputs"
+                )
+            decimal_model_values = ()
         if any(
             not isinstance(value, str)
-            for value in [*momenta.flat, *scales.flat, *model_values]
+            for value in [*momenta.flat, *scales.flat, *decimal_model_values]
         ):
             raise TypeError("physical precise inputs must be decimal strings")
         batch_type = self.backend.NativeBatch
@@ -839,10 +909,27 @@ class NativeBareProcessProgram:
             np.tile(np.asarray(self.helicities), (size, 1)).reshape(-1).tolist(),
             list(self.state_kinds) * rows,
         ).reshape_rows(rows, 4 * legs, lane_ids)
-        model_arguments = native(model_values, 1, len(model_values))
-        model = self.model_evaluator.evaluate_batch(model_arguments)
+        scales = native(scales, size, 1)
+        if self.model_state is None:
+            model_arguments = native(model_values, 1, len(model_values))
+            model = self.model_evaluator.evaluate_batch(model_arguments)
+            require_finite_batch(model, "global model formulas")
+        else:
+            snapshot = self.model_state.snapshot()
+            model_arguments = snapshot.arguments
+            selected = (
+                self.model_scale_view.evaluate_native(scales, snapshot=snapshot)
+                if self.model_scale_view is not None
+                else snapshot.values
+            )
+            model = selected.take_columns(self.model_output_indices)
+        model_rows = (
+            np.repeat(np.arange(size), helicities).tolist()
+            if self.model_scale_view is not None
+            else [0] * rows
+        )
         bound = batch_type.concat_columns(
-            [lanes, states, model.take_rows([0] * rows, row_ids=lane_ids)]
+            [lanes, states, model.take_rows(model_rows, row_ids=lane_ids)]
         )
         born = batch_type.concat_columns(
             _evaluate_coefficient_groups(
@@ -855,7 +942,6 @@ class NativeBareProcessProgram:
         currents = _evaluate_coefficient_groups(
             bound, self.loop_executors, self.loop_input_columns, self.loop_sharing
         )
-        scales = native(scales, size, 1)
         return NativeBareCurrents(
             NativePhysicalBatch(
                 size,
@@ -866,6 +952,7 @@ class NativeBareProcessProgram:
                 dict(self.bound_positions),
                 model_arguments,
                 scales,
+                snapshot,
             ),
             born,
             tuple(currents),
@@ -874,7 +961,7 @@ class NativeBareProcessProgram:
         )
 
     def family_kinematics_native(self, currents, family):
-        """Exact ingress invariants once per point, plus one global mass row."""
+        """Exact ingress invariants and global or source scale-dependent masses."""
         bindings = family.exact_evaluator.evaluate_decimal(
             currents.momenta_pairs, currents.batch.size, **self.options
         )
@@ -897,7 +984,7 @@ class NativeBareProcessProgram:
             currents.batch.point_ids,
         )
 
-    def evaluate_ordered_native(self, momenta, scales_squared, *, model_values):
+    def evaluate_ordered_native(self, momenta, scales_squared, *, model_values=None):
         """Original decimal input enters exact kinematics and native arithmetic."""
         currents = self.prepare_currents_native(
             momenta, scales_squared, model_values=model_values
@@ -931,7 +1018,10 @@ class NativeBareProcessProgram:
             shifts, masses, matrix = self.family_kinematics_native(currents, family)
             shifts = shifts.take_rows(point_rows, row_ids=row_ids)
             matrix = matrix.take_rows(point_rows, row_ids=row_ids)
-            masses = masses.take_rows([0] * (size * channel_count), row_ids=row_ids)
+            masses = masses.take_rows(
+                point_rows if masses.rows == size else [0] * (size * channel_count),
+                row_ids=row_ids,
+            )
             channel_scales = scales.take_rows(point_rows, row_ids=row_ids)
             reduced = family.reducer.evaluate_batch(
                 shifts, masses, channel_scales, coefficients, s_matrix=matrix

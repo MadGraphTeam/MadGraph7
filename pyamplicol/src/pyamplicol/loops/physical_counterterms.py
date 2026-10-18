@@ -129,6 +129,12 @@ class NativeModelVirtualProgram:
     ):
         from symbolica import E, Replacement, S
 
+        if getattr(bare, "vertex_spinor_frame", None) is not None:
+            raise NotImplementedError(
+                "source counterterms require a matching certified vertex frame "
+                "and source scalar snapshot binding"
+            )
+
         from pyamplicol.config.models import ColorAccuracy
 
         from .color_bilinears import SUNColorSpace, external_color_tensor

@@ -857,3 +857,45 @@ complex inputs beyond binary64 are covered in all three arithmetic modes.
 This source-preparation boundary alone does not certify a physical spin-
 correlated loop result. Complete physical contractions and source-dependent
 Ward checks are a separate integration step.
+## Source-owned bare electroweak control
+
+`physical_source.source_bare_program` connects a `StructuralCovariantModel` to
+the existing native process/family evaluator. Selected ordinary couplings and
+mass aliases are evaluated by the source `ScalarProgram`, including active
+diagnostics, directly into typed native buffers. One immutable global parameter
+snapshot is retained on the physical batch. A `NativeScaleBindings` view applies
+each point's `mu_r2` to all selected ordinary source outputs, including masses if
+they depend on the source scale. Other parameters remain global and named
+updates are atomic; fixed structural parameters cannot be changed at runtime.
+
+Standard UFO Dirac vertex endpoints require an explicit physical frame. The
+adapter acts only on the two external bispinor `Slot` keys of each localized
+vertex, before external states attach. Dependency `rename_indices` performs a
+simultaneous swap without interning; the original free-axis set is checked.
+Lorentz indices, scalar momentum arguments, contracted dummies, propagators,
+source records and the native structural model remain unchanged. The recurrence
+records `vertex_spinor_frame="native-physical"`; existing builtin programs keep
+their original frame and instructions. Saved adapted kernels also determine
+schedule-sharing identity.
+
+The current physical source gate admits the independently tested FFV1/2/4/6
+bases and FFV3/5 as their exact chiral linear combinations. Independent ALOHA
+checks cover 904 component/current choices, both endpoint orders, massive and
+massless physical spinors, and complex off-shell currents. Typed-map tests also
+reuse the same label in Lorentz and scalar momentum positions to ensure those
+positions do not move. This convention adapter does not define general gamma5
+algebra, Majorana or four-fermion rules. Active epsilon structures and source
+dimensional providers remain gated pending their separate certificates.
+
+The real-mass full-Gmu `e- e+ -> m- m+` control retains all electroweak species:
+two Born graphs, 98 loop graphs and 32 reduction families with the official
+massless-lepton/zero-Yukawa restrictions. It matches the independent MadLoop N4
+bare component at three phase-space points in double, DoubleFloat and arbitrary
+precision. The high-precision tests additionally check the universal double
+pole and exact global Gf rebinding with input bits beyond binary64; they do not
+claim an independent 80-digit reference for the full finite part. Empty batches,
+point-dependent ordinary scale bindings and retained snapshots are covered.
+UV/model-R2, complete source correlations, arbitrary source tensor coverage and
+complex-mass certification are separate remaining work. Until the source CT
+frame and paired snapshot binding are connected, composition with the legacy
+model-counterterm assembler rejects explicitly.
