@@ -127,7 +127,7 @@ def _ffs_only(bare, model):
     "arithmetic,precision,tolerance,bit",
     [
         ("double", None, "2e-11", 0),
-        ("double-double", None, "2e-25", 80),
+        ("double-double", None, "2e-25", 70),
         ("arbitrary", 80, "2e-62", 180),
     ],
 )
@@ -212,13 +212,9 @@ def test_massive_muon_source_components_and_isolated_ffs(
             Decimal(rebound.born[0, 0]) / Decimal(result.born[0, 0]) - factor**2
         ) < Decimal(tolerance)
         for name in reference["components"]:
-            assert (
-                abs(
-                    Decimal(getattr(rebound, name)[0, 0, 0])
-                    / Decimal(getattr(result, name)[0, 0, 0])
-                    - factor**3
-                )
-                < Decimal(tolerance) * 100
-            )
+            before = Decimal(getattr(result, name)[0, 0, 0])
+            after = Decimal(getattr(rebound, name)[0, 0, 0])
+            assert after != before
+            assert abs(after / before - factor**3) < Decimal(tolerance) * 100
     empty = program.evaluate_decimal(points[:0], [])
     assert empty.born.shape == (0, 2) and empty.virtual.shape == (0, 3, 2)
