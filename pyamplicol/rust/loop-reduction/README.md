@@ -365,7 +365,7 @@ values.
 The source rescue control uses the complete real-mass Gmu charged-lepton process
 with custom IDs, one ordinary scale and one exact finite `mu_r2=1e400`.
 Double/DoubleFloat reject the latter lane; 70- and 100-digit evaluations agree
-across every component and satisfy the final double output bound. A concurrent
+across every component and satisfy the final double output bound. A mid-call
 source Gf update after capture changes the next call but cannot change any
 attempt of the current call. A separate actual `G_UVt` source CT exercises finite
 `mu_r2=1e-320`: its logarithm argument overflows in double/DoubleFloat, so the
