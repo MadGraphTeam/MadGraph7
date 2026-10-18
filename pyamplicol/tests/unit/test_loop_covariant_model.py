@@ -399,3 +399,61 @@ def test_fixed_gmu_masses_preserve_native_graph_family_denominators(gmu):
     assert len(process.born) == 2
     assert len(process.loops) == 98
     assert all(graph.family is not None for graph in process.loops)
+
+
+def test_request_pruning_keeps_full_species_facts_but_not_exact_zero_vertices(source):
+    from pyamplicol.loops.request_scope import prepare_loop_request_scope
+
+    with (source / "object_library.py").open("a") as stream:
+        stream.write("""
+all_couplings=[]
+all_lorentz=[]
+all_vertices=[]
+all_orders=[]
+class Coupling:
+ def __init__(self,name,value,order):
+  self.name=name;self.value=value;self.order=order;all_couplings.append(self)
+class Lorentz:
+ def __init__(self,name,spins,structure):
+  self.name=name;self.spins=spins;self.structure=structure;all_lorentz.append(self)
+class Vertex:
+ def __init__(self,name,particles,color,lorentz,couplings):
+  self.name=name;self.particles=particles;self.color=color;self.lorentz=lorentz;self.couplings=couplings;all_vertices.append(self)
+class CouplingOrder:
+ def __init__(self,name,expansion_order,hierarchy):
+  self.name=name;self.expansion_order=expansion_order;self.hierarchy=hierarchy;all_orders.append(self)
+""")
+    with (source / "parameters.py").open("a") as stream:
+        stream.write("A=Parameter(name='A',nature='external',type='real',value=0.0)\n")
+    (
+        source / "interactions.py"
+    ).write_text("""from .object_library import Coupling, Lorentz, Vertex, CouplingOrder
+from . import particles as P
+QCD=CouplingOrder('QCD',99,1)
+QED=CouplingOrder('QED',99,2)
+C1=Coupling(name='C1',value='1',order={'QCD':1})
+C2=Coupling(name='C2',value='A',order={'QED':1})
+C3=Coupling(name='C3',value='1',order={'QED':7})
+L=Lorentz('SSS',[1,1,1],'1')
+V1=Vertex('V1',[P.s,P.s,P.s],['1'],[L],{(0,0):C1})
+V2=Vertex('V2',[P.s,P.s,P.t],['1'],[L],{(0,0):C2})
+V3=Vertex('V3',[P.s,P.s,P.s],['1'],[L],{(0,0):C3})
+""")
+    with (source / "__init__.py").open("a") as stream:
+        stream.write(
+            "from . import interactions\nfrom .object_library import all_couplings, all_lorentz, all_vertices, all_orders\n"
+        )
+    raw = load_raw_loop_model(source, restriction="full")
+    scope = prepare_loop_request_scope(
+        raw,
+        born_order_bounds={"QCD": 2, "QED": 0},
+        loop_order_bounds={"QCD": 4, "QED": 0},
+    )
+    structure = build_covariant_structure(
+        raw, request_scope=scope, fixed_parameters={"A": "0"}
+    )
+    assert [rule.name for rule in structure.native.vertex_rules] == ["V1"]
+    # V3 is order-pruned but still proves the full-model QED species fact.
+    assert structure.perturbative_species_orders[100] == frozenset({"QCD", "QED"})
+    # V2 is exactly zero under the fixed source input, so it supplies no fact.
+    assert 101 not in structure.perturbative_species_orders

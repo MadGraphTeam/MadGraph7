@@ -159,14 +159,45 @@ def _species_orders(
     # names: a mixed photon-gluon-squark vertex does not charge the photon under
     # QCD. Use the full ordinary model, as MadLoop does, not only this process's
     # vertex allow-list.
+    return _species_orders_from_rules(
+        (
+            tuple(
+                abs(model.particle(particle).pdg_code) for particle in rule.particles
+            ),
+            rule_orders[rule.name],
+        )
+        for rule in model.vertex_rules
+    )
+
+
+def _species_orders_from_rules(rules):
+    """Shared classification of complete ordinary species/order records."""
     names: dict[int, set[str]] = {}
-    for rule in model.vertex_rules:
-        order = rule_orders[rule.name]
+    for particles, order in rules:
         if len(order) == 1:
-            for particle in rule.particles:
-                pdg = abs(model.particle(particle).pdg_code)
+            for pdg in particles:
                 names.setdefault(pdg, set()).add(order[0][0])
     return {pdg: frozenset(orders) for pdg, orders in names.items()}
+
+
+def _validated_species_orders(model, facts):
+    import json
+
+    if not isinstance(facts, Mapping):
+        raise TypeError("perturbative species facts must be a mapping")
+    particles = {abs(p.pdg_code) for p in model.particles}
+    orders = {order["name"] for order in json.loads(model.to_json())["orders"]}
+    result = {}
+    for pdg, names in facts.items():
+        if type(pdg) is not int or pdg <= 0 or pdg not in particles:
+            raise ValueError("perturbative species facts name an unknown positive PDG")
+        if isinstance(names, (str, bytes)):
+            raise TypeError("perturbative species orders require a collection")
+        names = frozenset(names)
+        if not names <= orders:
+            raise ValueError("perturbative species facts name an undeclared order")
+        result[pdg] = names
+    return result
 
 
 def _summed_orders(orders: Iterable[CouplingOrders]) -> CouplingOrders:
@@ -370,6 +401,7 @@ def build_loop_process(
     born_order_bounds: Mapping[str, int | tuple[int, int | None]] | None = None,
     loop_order_bounds: Mapping[str, int | tuple[int, int | None]] | None = None,
     ordinary_model: Any = None,
+    perturbative_species_orders: Mapping[int, frozenset[str]] | None = None,
 ) -> LoopProcessIR:
     """Generate a small native graph catalogue with explicit physical filters.
 
@@ -381,16 +413,23 @@ def build_loop_process(
     loop-generation dispatcher. For a model augmented with counterterm rules,
     supply its original ``ordinary_model``: perturbative species membership is
     defined by ordinary interactions, never by effective counterterm vertices.
-    Species identities are signed PDG codes shared by the two models.
+    Species identities are signed PDG codes shared by the two models. A source
+    compiler that prunes impossible local orders must supply the validated full
+    ordinary species facts through ``perturbative_species_orders``; request
+    pruning must not change correction eligibility.
     """
     names = tuple(sorted(set(selected_corrections)))
     if not names or any(perturbative_orders.get(name, 0) < 1 for name in names):
         raise ValueError("requested corrections require declared NLO model support")
     rule_orders = _rule_orders(process.model)
     species_model = process.model if ordinary_model is None else ordinary_model
-    species_orders = _species_orders(
-        species_model,
-        rule_orders if ordinary_model is None else _rule_orders(ordinary_model),
+    species_orders = (
+        _species_orders(
+            species_model,
+            rule_orders if ordinary_model is None else _rule_orders(ordinary_model),
+        )
+        if perturbative_species_orders is None
+        else _validated_species_orders(process.model, perturbative_species_orders)
     )
     propagator_denominators = _propagator_denominators(process.model)
     options = dict(

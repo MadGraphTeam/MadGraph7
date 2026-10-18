@@ -94,6 +94,29 @@ references, per-point scales and retained model snapshots in all three carriers.
 Public loop generation remains guarded until portable plan integration and
 selected-model capability checks are complete.
 
+`prepare_loop_request_scope` may exclude a source basis before native tensor
+lowering only when an explicitly bounded coupling power proves it cannot occur.
+Every source coupling first requires declared nonnegative integer order data.
+Ordinary rules use the conservative coordinatewise union of Born/loop upper
+bounds; CT rules use loop upper bounds. Missing or unbounded coordinates do not
+exclude anything, and lower bounds cannot prune local factors. Original basis
+keys, including CT loop-group indices, and each exceeded-bound witness remain
+available in the scope. The full raw source and scalar program remain intact.
+
+Scoped structural lowering retains the same raw object, and a source physical
+call must use the bounds that prepared it. Species perturbative-order facts
+come from the full ordinary source catalogue after exact-zero pruning and
+before request pruning. The graph builder validates these facts against native
+species/order declarations and uses its existing joint-correction eligibility
+formula; removed vertices cannot erase eligibility metadata. Scoped local CT coverage requires
+exact equality with every admitted source CT key and no unavailable entries.
+This covers local bases only: particle field counterterms, graph-derived
+correction eligibility, tensor conformance, selected Born/loop pairings and the
+physical scheme remain separate required checks. Unscoped callers retain the
+complete-source catalogue guard. The real `loop_sm` pure-QCD graph control uses
+this proof to exclude an unrelated QED scalar basis with an inconsistent source
+spin signature; the unscoped model still rejects it.
+
 ## Local colour alternatives
 
 `loops.color_terms.split_local_color_terms` expands one native local factor and

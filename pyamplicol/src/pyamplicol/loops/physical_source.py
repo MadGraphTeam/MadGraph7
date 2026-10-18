@@ -64,6 +64,8 @@ def source_bare_program(
 
     if structure.scalars.library.raw is not structure.raw:
         raise ValueError("source structure and scalar owner differ")
+    if structure.request_scope is not None:
+        structure.request_scope.require_bounds(born_order_bounds, loop_order_bounds)
     if options.get("dimensional_numerators", False):
         raise NotImplementedError("dimensional source vertex frames are not certified")
     if "vertex_spinor_frame" in options:
@@ -97,6 +99,7 @@ def source_bare_program(
         if prepared_counterterms is None
         else prepared_counterterms.process(incoming, outgoing),
         ordinary_model=structure.native,
+        perturbative_species_orders=structure.perturbative_species_orders,
         selected_corrections=selected_corrections,
         perturbative_orders=perturbative,
         born_order_bounds=born_order_bounds,
@@ -200,7 +203,10 @@ def source_model_program(structure, prepared, incoming, outgoing, **options):
     from .physical_counterterms import NativeModelVirtualProgram
     from .wavefunction import match_external_field_counterterms
 
-    if not prepared.source_entries_complete or prepared.unavailable_entries:
+    scope = getattr(structure, "request_scope", None)
+    if scope is not None:
+        scope.require_local_counterterms(prepared)
+    elif not prepared.source_entries_complete or prepared.unavailable_entries:
         raise ValueError(
             "source model assembly requires the complete source CT collection "
             "and all its species; prepare counterterms without an entry subset "

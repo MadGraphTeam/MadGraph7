@@ -22,6 +22,8 @@ class StructuralCovariantModel:
     required_bindings: tuple[str, ...]
     diagnostics: tuple[Any, ...]
     fixed_parameters: Any
+    request_scope: Any = None
+    perturbative_species_orders: Any = None
 
     def scalar_bindings(self, outputs):
         """Prepare numerical bindings with this structure's exact fixed values."""
@@ -200,6 +202,7 @@ def build_covariant_structure(
     covariant_multiplets: Any = None,
     compatibility: str | None = None,
     fixed_parameters: Any = None,
+    request_scope: Any = None,
 ) -> StructuralCovariantModel:
     """Preserve raw species/tree vertices through existing public ModelJSON APIs.
 
@@ -214,6 +217,8 @@ def build_covariant_structure(
     from ufo_model_loader.model import Propagator, SerializableParticle
     from ufo_model_loader.symbolica_processing import wrap_indices
 
+    if request_scope is not None:
+        request_scope.require_raw(raw)
     if 1 not in raw.metadata.get("gauge", ()):
         raise ValueError("source model does not declare Feynman gauge")
     if raw.collections["propagators"]:
@@ -367,6 +372,31 @@ def build_covariant_structure(
                 }
             ),
         )
+    species_orders = None
+    if request_scope is not None:
+        from .graphs import _species_orders_from_rules
+        from .orders import canonical_order
+
+        complete_rules = []
+        for record in raw.collections["vertices"]:
+            orders = {
+                canonical_order(tuple(coupling["fields"]["order"]["entries"]))
+                for _key, reference in record["fields"]["couplings"]["entries"]
+                for coupling in (_reference(raw, reference, "couplings"),)
+                if coupling["name"] not in zero_couplings
+            }
+            if not orders:
+                continue
+            if len(orders) != 1:
+                raise NotImplementedError(
+                    "source ordinary vertices require homogeneous coupling orders"
+                )
+            pdgs = tuple(
+                abs(_reference(raw, reference, "particles")["fields"]["pdg_code"])
+                for reference in record["fields"]["particles"]
+            )
+            complete_rules.append((pdgs, next(iter(orders))))
+        species_orders = MappingProxyType(_species_orders_from_rules(complete_rules))
     _validate_pairs(payload["particles"])
     # The currently installed Community classifier recognizes a literal exact
     # zero, but does not resolve source parameter aliases. Use the same scalar
@@ -422,6 +452,22 @@ def build_covariant_structure(
     used_couplings, lorentz_names = set(), {}
     for record in raw.collections["vertices"]:
         fields = record["fields"]
+        active = []
+        for key, reference in fields["couplings"]["entries"]:
+            color, tensor = key["items"]
+            if (
+                request_scope is not None
+                and ("vertices", record["id"], color, tensor, None)
+                not in request_scope.admitted_keys
+            ):
+                continue
+            coupling = _reference(raw, reference, "couplings")
+            if coupling["name"] not in zero_couplings:
+                active.append((color, tensor, coupling))
+        if not active:
+            continue
+        color_indices = sorted({color for color, _tensor, _coupling in active})
+        tensor_indices = sorted({tensor for _color, tensor, _coupling in active})
         source_particles = [
             _reference(raw, ref, "particles") for ref in fields["particles"]
         ]
@@ -431,7 +477,8 @@ def build_covariant_structure(
                 "four-fermion vertices are outside the current loop domain"
             )
         lorentz = []
-        for ref in fields["lorentz"]:
+        for tensor_index in tensor_indices:
+            ref = fields["lorentz"][tensor_index]
             source = _reference(raw, ref, "lorentz_structures")
             key = (source["id"], spins)
             if key not in lorentz_names:
@@ -451,12 +498,10 @@ def build_covariant_structure(
                     )
                 )
             lorentz.append(lorentz_names[key])
-        couplings = [[None] * len(lorentz) for _ in fields["color"]]
-        for key, ref in fields["couplings"]["entries"]:
-            color, tensor = key["items"]
-            coupling = _reference(raw, ref, "couplings")
-            if coupling["name"] in zero_couplings:
-                continue
+        couplings = [[None] * len(lorentz) for _ in color_indices]
+        for source_color, source_tensor, coupling in active:
+            color = color_indices.index(source_color)
+            tensor = tensor_indices.index(source_tensor)
             if couplings[color][tensor] is not None:
                 raise ValueError("duplicate source colour/Lorentz coupling slot")
             couplings[color][tensor] = coupling["name"]
@@ -471,7 +516,7 @@ def build_covariant_structure(
                     prepare_color_expression(
                         source, [p["fields"]["color"] for p in source_particles]
                     ).to_canonical_string()
-                    for source in fields["color"]
+                    for source in (fields["color"][index] for index in color_indices)
                 ],
                 lorentz_structures=lorentz,
                 couplings=couplings,
@@ -498,5 +543,12 @@ def build_covariant_structure(
         }
     native = hep.Model.from_json(json.dumps(payload))
     return StructuralCovariantModel(
-        raw, program, native, tuple(required), diagnostics, fixed
+        raw,
+        program,
+        native,
+        tuple(required),
+        diagnostics,
+        fixed,
+        request_scope,
+        species_orders,
     )
