@@ -331,20 +331,26 @@ impl ScheduledKernel<f64> for JITCompiledEvaluator<Complex<f64>> {
     }
 }
 
-struct Node<T: Carrier, E> {
+// Loop coefficient rows carry the full local tensor/polynomial arena. A
+// 16-row tile reduced memory and runtime in the complete gg control relative
+// to 64/128 rows; the constructor retains an explicit diagnostic override.
+const DEFAULT_COEFFICIENT_TILE_ROWS: usize = 16;
+
+struct Node<E> {
     evaluator: E,
     inputs: Vec<usize>,
     output_offset: usize,
     output_count: usize,
-    gathered: Vec<Complex<T>>,
-    output: Vec<Complex<T>>,
 }
 struct Schedule<T: Carrier, E = BatchExpressionEvaluator<Complex<T>>> {
-    nodes: Vec<Node<T, E>>,
+    nodes: Vec<Node<E>>,
     inputs: usize,
     width: usize,
     outputs: Vec<usize>,
     arena: Vec<Complex<T>>,
+    gathered: Vec<Complex<T>>,
+    output: Vec<Complex<T>>,
+    tile_rows: usize,
     zero: Complex<T>,
 }
 impl<T: BatchCarrier, E: ScheduledKernel<T>> Schedule<T, E>
@@ -357,6 +363,7 @@ where
         inputs: usize,
         outputs: Vec<usize>,
         prototype: T,
+        tile_rows: usize,
         create: impl Fn(ExpressionEvaluator<Complex<Rational>>, &T) -> PyResult<E>,
     ) -> PyResult<Self> {
         if states.len() != input_slots.len() {
@@ -384,8 +391,6 @@ where
                 inputs: slots.clone(),
                 output_offset,
                 output_count,
-                gathered: Vec::new(),
-                output: Vec::new(),
             });
         }
         if outputs.iter().any(|&i| i >= width) {
@@ -397,6 +402,9 @@ where
             width,
             outputs,
             arena: Vec::new(),
+            gathered: Vec::new(),
+            output: Vec::new(),
+            tile_rows,
             zero: Complex::new(prototype.zero(), prototype.zero()),
         })
     }
@@ -408,41 +416,79 @@ where
         if input.columns != self.inputs {
             return Err(error("coefficient schedule input dimensions differ"));
         }
-        self.arena
-            .resize(shape(input.rows, self.width)?, self.zero.clone());
-        for row in 0..input.rows {
-            self.arena[row * self.width..row * self.width + self.inputs]
-                .clone_from_slice(&parameters[row * self.inputs..(row + 1) * self.inputs]);
-        }
-        for node in &mut self.nodes {
-            let count = node.inputs.len();
-            node.gathered
-                .resize(shape(input.rows, count)?, self.zero.clone());
-            let output_count = node.output_count;
-            node.output
-                .resize(shape(input.rows, output_count)?, self.zero.clone());
-            for row in 0..input.rows {
-                for (column, &slot) in node.inputs.iter().enumerate() {
-                    node.gathered[row * count + column]
-                        .clone_from(&self.arena[row * self.width + slot]);
+        let mut values = Vec::with_capacity(shape(input.rows, self.outputs.len())?);
+        // Rows are independent evaluator lanes. Bound both our arena and the
+        // dependency evaluators' internal batch buffers without changing their
+        // arithmetic, instruction order or the public batch/identity contract.
+        for start in (0..input.rows).step_by(self.tile_rows) {
+            let rows = (input.rows - start).min(self.tile_rows);
+            let arena_len = shape(rows, self.width)?;
+            if self.arena.len() < arena_len {
+                self.arena.resize(arena_len, self.zero.clone());
+            }
+            for row in 0..rows {
+                self.arena[row * self.width..row * self.width + self.inputs].clone_from_slice(
+                    &parameters[(start + row) * self.inputs..(start + row + 1) * self.inputs],
+                );
+            }
+            for node in &mut self.nodes {
+                let count = node.inputs.len();
+                let output_count = node.output_count;
+                // Existing evaluators overwrite all active output entries.
+                // These scratch buffers can therefore be reused by successive
+                // nodes, including nodes with different shapes and constants.
+                let gathered_len = shape(rows, count)?;
+                let output_len = shape(rows, output_count)?;
+                // Keep inactive entries alive so arbitrary-precision storage
+                // survives smaller nodes and the final partial tile.
+                if self.gathered.len() < gathered_len {
+                    self.gathered.resize(gathered_len, self.zero.clone());
+                }
+                if self.output.len() < output_len {
+                    self.output.resize(output_len, self.zero.clone());
+                }
+                for row in 0..rows {
+                    for (column, &slot) in node.inputs.iter().enumerate() {
+                        self.gathered[row * count + column]
+                            .clone_from(&self.arena[row * self.width + slot]);
+                    }
+                }
+                node.evaluator
+                    .evaluate(
+                        &self.gathered[..gathered_len],
+                        &mut self.output[..output_len],
+                        rows,
+                    )
+                    .map_err(error)?;
+                for row in 0..rows {
+                    self.arena[row * self.width + node.output_offset
+                        ..row * self.width + node.output_offset + output_count]
+                        .clone_from_slice(
+                            &self.output[row * output_count..(row + 1) * output_count],
+                        );
                 }
             }
-            node.evaluator
-                .evaluate(&node.gathered, &mut node.output, input.rows)
-                .map_err(error)?;
-            for row in 0..input.rows {
-                self.arena[row * self.width + node.output_offset
-                    ..row * self.width + node.output_offset + output_count]
-                    .clone_from_slice(&node.output[row * output_count..(row + 1) * output_count]);
+            for row in 0..rows {
+                values.extend(
+                    self.outputs
+                        .iter()
+                        .map(|&slot| self.arena[row * self.width + slot].clone()),
+                );
             }
         }
-        take(
-            &self.arena,
-            self.width,
-            &(0..input.rows).collect::<Vec<_>>(),
-            &self.outputs,
+        NativeBatch::typed(
+            values,
             input.ids.clone(),
+            self.outputs.len(),
             input.precision_bits,
+        )
+    }
+
+    fn workspace_capacity(&self) -> (usize, usize, usize) {
+        (
+            self.arena.capacity(),
+            self.gathered.capacity(),
+            self.output.capacity(),
         )
     }
 }
@@ -460,11 +506,13 @@ pub(super) struct CoefficientPlan {
     precision_bits: u32,
     #[pyo3(get)]
     engine: String,
+    #[pyo3(get)]
+    tile_rows: usize,
 }
 #[pymethods]
 impl CoefficientPlan {
     #[new]
-    #[pyo3(signature = (states, input_slots, input_count, output_slots, arithmetic="double", precision=None, engine="interpreted"))]
+    #[pyo3(signature = (states, input_slots, input_count, output_slots, arithmetic="double", precision=None, engine="interpreted", tile_rows=None))]
     fn new(
         states: Vec<Vec<u8>>,
         input_slots: Vec<Vec<usize>>,
@@ -473,7 +521,12 @@ impl CoefficientPlan {
         arithmetic: &str,
         precision: Option<u32>,
         engine: &str,
+        tile_rows: Option<usize>,
     ) -> PyResult<Self> {
+        let tile_rows = tile_rows.unwrap_or(DEFAULT_COEFFICIENT_TILE_ROWS);
+        if tile_rows == 0 {
+            return Err(error("coefficient tile size must be positive"));
+        }
         let (mode, bits) = arithmetic_mode(arithmetic, precision)?;
         if !matches!(engine, "interpreted" | "jit") {
             return Err(error("coefficient engine must be interpreted or jit"));
@@ -488,6 +541,7 @@ impl CoefficientPlan {
                 input_count,
                 output_slots,
                 0_f64,
+                tile_rows,
                 |exact, _| {
                     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         exact.jit_compile::<Complex<f64>>(
@@ -506,6 +560,7 @@ impl CoefficientPlan {
                 input_count,
                 output_slots,
                 0_f64,
+                tile_rows,
                 |exact, prototype| Ok(batch_evaluator(exact, prototype)),
             )?),
             Arithmetic::DoubleDouble => Schedules::DoubleDouble(Schedule::new(
@@ -514,6 +569,7 @@ impl CoefficientPlan {
                 input_count,
                 output_slots,
                 DoubleFloat::from(0.0),
+                tile_rows,
                 |exact, prototype| Ok(batch_evaluator(exact, prototype)),
             )?),
             Arithmetic::Arbitrary => Schedules::Arbitrary(Schedule::new(
@@ -522,6 +578,7 @@ impl CoefficientPlan {
                 input_count,
                 output_slots,
                 Float::with_val(bits, 0),
+                tile_rows,
                 |exact, prototype| Ok(batch_evaluator(exact, prototype)),
             )?),
         };
@@ -529,6 +586,7 @@ impl CoefficientPlan {
             schedule,
             precision_bits: bits,
             engine: engine.into(),
+            tile_rows,
         })
     }
     fn evaluate_batch(&mut self, py: Python<'_>, input: &NativeBatch) -> PyResult<NativeBatch> {
@@ -542,6 +600,18 @@ impl CoefficientPlan {
             (Schedules::Arbitrary(s), Data::Arbitrary(v)) => s.evaluate(v, input),
             _ => Err(error("batch arithmetic or precision differs")),
         })
+    }
+
+    /// Retained schedule elements (arena, gathered inputs, node outputs).
+    /// This diagnostic excludes evaluator-owned workspace and returned batches.
+    #[getter]
+    fn workspace_capacity(&self) -> (usize, usize, usize) {
+        match &self.schedule {
+            Schedules::Double(s) => s.workspace_capacity(),
+            Schedules::Jit(s) => s.workspace_capacity(),
+            Schedules::DoubleDouble(s) => s.workspace_capacity(),
+            Schedules::Arbitrary(s) => s.workspace_capacity(),
+        }
     }
 }
 
