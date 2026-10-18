@@ -565,3 +565,26 @@ binding the explicit adjoint dimension, following ordinary projector expansion.
 No private Gram formula is introduced. These are cold generation helpers;
 numerical loop correlations, spin sources, mappings and FFT integration remain
 separate work packages.
+
+## Exact global scalar bindings
+
+`prepare_scalar_bindings` resolves selected parameter/coupling Laurent outputs
+with the source-scoped scalar frontend. External parameters remain independent
+symbols; internal values and diagnostics are substituted together through the
+source syntax so an inactive conditional dependency stays inactive. A supplied
+`ScalarProgram` must belong to the same immutable raw source instance.
+
+`NativeScalarBindings` computes exact source defaults and selected derived
+values in double, DoubleFloat or arbitrary precision. Overrides accept decimal
+strings and complex decimal pairs. They never enter a binary64 parameter map.
+Real-type input validation rejects even imaginary strings below binary64 range.
+Defaults are used only for parameters without overrides. Updates validate every
+selected value and active diagnostic before atomically replacing state; failed
+updates preserve the previous values, overrides and revision. Returned values
+are independent native one-row batches suitable for native event broadcasting.
+
+This is a global scalar-state consumer, not a production EW runtime. Per-point
+renormalization-scale bindings and scale-dependent UV coefficients still need
+their separate physical execution stage. No coupling running or scheme choices
+are inferred here. Exact cold output expressions can also prove structural
+zero mass aliases without evaluating adjustable external defaults.

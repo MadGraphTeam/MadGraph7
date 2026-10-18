@@ -63,6 +63,7 @@ class ScalarFunctionLibrary:
     def __init__(self, raw: Any):
         from symbolica import E, FunctionDefinition, S
 
+        self.raw = raw
         self.zero, self.one, self.imaginary = E("0"), E("1"), E("1i")
         self.choose = S("symbolica::if")
         self.predicates = {
@@ -406,6 +407,25 @@ class ScalarFunctionLibrary:
 
         return lower(ast.parse(source, mode="eval").body)
 
+    def lower_value(self, value, *, bindings=None) -> ScalarExpression:
+        """Lower an exact raw scalar/Laurent declaration with scoped bindings."""
+        from .model_expressions import epsilon_symbol
+
+        if value["kind"] == "expression":
+            return self.lower(value["expression"], locals=bindings)
+        if value["kind"] != "laurent":
+            raise ValueError("unknown raw UFO scalar value representation")
+        terms = [
+            (power, self.lower(text, locals=bindings)) for power, text in value["terms"]
+        ]
+        return ScalarExpression(
+            sum(
+                (part.value * epsilon_symbol() ** power for power, part in terms),
+                self.zero,
+            ),
+            sum((part.diagnostic for _, part in terms), self.zero),
+        )
+
     def evaluator(
         self, expressions: tuple[ScalarExpression, ...], parameters: tuple[Any, ...]
     ):
@@ -462,20 +482,6 @@ def lower_scalar_program(raw: Any) -> ScalarProgram:
     epsilon = epsilon_symbol()
     declarations, by_symbol, ct_symbols = {}, {}, set()
 
-    def lower_value(value, bindings=None):
-        if value["kind"] == "expression":
-            return library.lower(value["expression"], locals=bindings)
-        if value["kind"] != "laurent":
-            raise ValueError("unknown raw UFO scalar value representation")
-        terms = [
-            (power, library.lower(text, locals=bindings))
-            for power, text in value["terms"]
-        ]
-        return ScalarExpression(
-            sum((part.value * epsilon**power for power, part in terms), library.zero),
-            sum((part.diagnostic for _, part in terms), library.zero),
-        )
-
     for collection in ("parameters", "counterterm_parameters", "couplings"):
         for record in raw.collections[collection]:
             symbol = S(f"UFO::{record['name']}")
@@ -483,7 +489,7 @@ def lower_scalar_program(raw: Any) -> ScalarProgram:
                 raise ValueError(f"ambiguous UFO scalar name {record['name']!r}")
             key = (collection, record["id"])
             source = raw.exact_value(*key)
-            lowered = lower_value(source)
+            lowered = library.lower_value(source)
             declarations[key] = (record, source, lowered)
             by_symbol[symbol] = key
             if (
@@ -508,7 +514,9 @@ def lower_scalar_program(raw: Any) -> ScalarProgram:
             for dep in dependencies[symbol]
             if dep in ct_dependent
         }
-        expression = lower_value(source, bindings) if bindings else original
+        expression = (
+            library.lower_value(source, bindings=bindings) if bindings else original
+        )
         if bindings:
             ct_dependent.add(symbol)
         # Native opaque calls must not hide epsilon dependence from series.
