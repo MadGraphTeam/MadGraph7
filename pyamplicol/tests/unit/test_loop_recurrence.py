@@ -223,7 +223,7 @@ def test_native_exact_polynomial_kernel_and_precise_storage(native):
     first = dag.add("seed", scalar)
     second = dag.add(
         "update",
-        tensor.TensorExpression(q[1] + symbolica.E("1") * 1j).to_tensor(),
+        tensor.TensorExpression(q[1] + symbolica.E("1i")).to_tensor(),
         (first,),
     )
     assert dag.nodes[second].rank == 2
@@ -267,3 +267,15 @@ def test_family_affine_shift_is_applied_before_coefficient_extraction(native, gr
             == -recurrence.dag.variables[axis] + recurrence.momentum_parameters[0][axis]
         )
     _check_oracle(recurrence, native)
+
+
+def test_coefficient_kernel_rejects_rounded_literal_before_serialization(native):
+    symbolica, _, tensor = native
+    q = tuple(symbolica.S(f"loop_float_test::q{i}") for i in range(4))
+    dag = CoefficientDAG(q)
+    for value in [0.1, 1j]:
+        with pytest.raises(ValueError, match="floating numeric atoms"):
+            dag.add(
+                "rounded",
+                tensor.TensorExpression(symbolica.Expression.num(value)).to_tensor(),
+            )

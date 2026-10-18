@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from math import prod
 from typing import Any
 
+from .exact import require_exact_numbers
+
 
 @dataclass(frozen=True, slots=True)
 class CoefficientLabel:
@@ -69,6 +71,9 @@ class CoefficientDAG:
             )
         if any(i < 0 or i >= len(self.nodes) for i in dependencies):
             raise ValueError("dependencies must refer to preceding coefficient kernels")
+        factor = factor.to_dense()
+        for component in range(len(factor)):
+            require_exact_numbers(factor[component])
         network = factor
         input_symbols = []
         input_labels = []
@@ -185,4 +190,61 @@ class CoefficientDAG:
                 else np.empty((len(values), 0), dtype=complex)
             )
             outputs.append(node.evaluator.evaluate_complex(inputs))
+        return tuple(outputs)
+
+
+class NativeCoefficientDAG:
+    """Execute saved local instructions in native batches at one fixed precision.
+
+    Decimal complex pairs are transport only. Every arithmetic operation is in
+    the shared core's binary64, DoubleFloat or arbitrary-precision carrier.
+    """
+
+    def __init__(
+        self,
+        dag: CoefficientDAG,
+        *,
+        arithmetic: str = "double",
+        precision: int | None = None,
+        backend: Any = None,
+    ):
+        if backend is None:
+            import _loop_reduction as backend
+        self.dag = dag
+        self.precision = precision
+        self.arithmetic = arithmetic
+        self.evaluators = tuple(
+            backend.CoefficientEvaluator(
+                node.evaluator_bytes(), arithmetic=arithmetic, precision=precision
+            )
+            for node in dag.nodes
+        )
+
+    def evaluate_decimal(self, values: Any) -> tuple[Any, ...]:
+        import numpy as np
+
+        values = np.asarray(values, dtype=object)
+        if values.ndim != 3 or values.shape[1:] != (len(self.dag.parameters), 2):
+            raise ValueError(
+                "expected (batch, parameter, real/imaginary) decimal input"
+            )
+        if any(not isinstance(value, str) for value in values.flat):
+            raise TypeError("native precise input components must be decimal strings")
+        rows = values.shape[0]
+        positions = {parameter: i for i, parameter in enumerate(self.dag.parameters)}
+        outputs = []
+        for node, evaluator in zip(self.dag.nodes, self.evaluators, strict=True):
+            columns = [values[:, [positions[p]], :] for p in node.parameters]
+            columns.extend(outputs[dependency] for dependency in node.dependencies)
+            inputs = (
+                np.concatenate(columns, axis=1)
+                if columns
+                else np.empty((rows, 0, 2), dtype=object)
+            )
+            result = evaluator.evaluate_decimal(inputs.reshape(-1, 2).tolist(), rows)
+            outputs.append(
+                np.asarray(result, dtype=object).reshape(
+                    rows, len(node.output_labels), 2
+                )
+            )
         return tuple(outputs)

@@ -111,7 +111,6 @@ def build_open_loop_recurrence(
     native graph projector is retained on ``graph.native`` and is not applied.
     """
     from symbolica import E, Replacement, S
-    from symbolica.community import hepkit as h
     from symbolica.community import tensor as t
 
     if routing not in {"graph", "family"}:
@@ -175,30 +174,7 @@ def build_open_loop_recurrence(
             )
             for axis in range(4)
         )
-    library = t.TensorLibrary.hep_lib_atom()
-    for edge in edges.values():
-        signature = edge.momentum_signature()
-        if len(signature.loops) != 1:
-            raise ValueError("native routing must have one loop basis vector")
-        components = [
-            signature.loops[0] * loop_components[axis]
-            + sum(
-                (
-                    coefficient * momenta[leg][axis]
-                    for leg, coefficient in enumerate(signature.external)
-                ),
-                E("0"),
-            )
-            for axis in range(4)
-        ]
-        library.register(
-            t.Tensor.dense(
-                t.TensorName(h.Symbols.edge_momentum().get_name())(
-                    edge.id, t.Representation.mink(4)
-                ),
-                components,
-            )
-        )
+    library = momentum_component_library(graph, (loop_components,), momenta)
     factors = []
     local = {}
     color = E("1")
@@ -214,28 +190,7 @@ def build_open_loop_recurrence(
             )
             local[kind, item.id] = lorentz
             color *= color_factor
-    external_states = []
-    for edge in graph.native.external_edges:
-        half = next(half for half in graph.native.half_edges if half.edge.id == edge.id)
-        vertex = half.vertex
-        label = h.Symbols.half_edge()(half.id, 1)
-        axes = tuple(
-            slot.dual() for slot in local["vertex", vertex].axes if slot.index == label
-        )
-        if not axes:
-            continue
-        from math import prod
-
-        count = prod(int(slot.representation.dimension) for slot in axes)
-        components = tuple(
-            S(f"loop_recurrence::state{edge.external_index}_{i}") for i in range(count)
-        )
-        name = t.TensorName(f"loop_recurrence::state{edge.external_index}")
-        library.register(
-            t.Tensor.dense(name(*(slot.representation for slot in axes)), components)
-        )
-        local["vertex", vertex] *= name(*axes)
-        external_states.append((edge.external_index, components))
+    external_states = attach_external_spin_components(graph, local, library)
     dag = CoefficientDAG(q)
     forest = graph.native.filter(edge=lambda edge: edge.id not in graph.loop_edges)
     segments = {}
@@ -320,3 +275,73 @@ def build_open_loop_recurrence(
         tuple(sorted(external_states)),
         graph,
     )
+
+
+def momentum_component_library(graph: GraphIR, loops: tuple, momenta: tuple):
+    """Register exact routed edge components in the dependency tensor library."""
+    from symbolica import E
+    from symbolica.community import hepkit as h
+    from symbolica.community import tensor as t
+
+    library = t.TensorLibrary.hep_lib_atom()
+    for edge in graph.native.edges:
+        signature = edge.momentum_signature()
+        if len(signature.loops) != len(loops):
+            raise ValueError("loop component vectors do not match the native basis")
+        components = [
+            sum(
+                (
+                    c * vector[axis]
+                    for c, vector in zip(signature.loops, loops, strict=True)
+                ),
+                E("0"),
+            )
+            + sum(
+                (
+                    c * vector[axis]
+                    for c, vector in zip(signature.external, momenta, strict=True)
+                ),
+                E("0"),
+            )
+            for axis in range(4)
+        ]
+        library.register(
+            t.Tensor.dense(
+                t.TensorName(h.Symbols.edge_momentum().get_name())(
+                    edge.id, t.Representation.mink(4)
+                ),
+                components,
+            )
+        )
+    return library
+
+
+def attach_external_spin_components(graph: GraphIR, local: dict, library: Any):
+    """Attach exact independent spin inputs in native half-edge slot order."""
+    from symbolica import S
+    from symbolica.community import hepkit as h
+    from symbolica.community import tensor as t
+
+    external_states = []
+    for edge in graph.native.external_edges:
+        half = next(half for half in graph.native.half_edges if half.edge.id == edge.id)
+        vertex = half.vertex
+        label = h.Symbols.half_edge()(half.id, 1)
+        axes = tuple(
+            slot.dual() for slot in local["vertex", vertex].axes if slot.index == label
+        )
+        if not axes:
+            continue
+        from math import prod
+
+        count = prod(int(slot.representation.dimension) for slot in axes)
+        components = tuple(
+            S(f"loop_recurrence::state{edge.external_index}_{i}") for i in range(count)
+        )
+        name = t.TensorName(f"loop_recurrence::state{edge.external_index}")
+        library.register(
+            t.Tensor.dense(name(*(slot.representation for slot in axes)), components)
+        )
+        local["vertex", vertex] *= name(*axes)
+        external_states.append((edge.external_index, components))
+    return tuple(external_states)
