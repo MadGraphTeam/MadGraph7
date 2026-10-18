@@ -130,8 +130,19 @@ the box contains nonzero mu-four terms. Local odd factors are checked before
 closure, since the complete trace can already be even and hide a wrong common
 routing sign. The construction accepts longer certified chains within the
 reducer's domain; this graph-derived test set currently covers lengths two to
-four. Native reduction of these graph-derived controls is a separate integration
-check, beyond the already passing stripped-triangle test above.
+four.
+
+The bubble and box are also reduced through the native local coefficient DAG
+and NinjaRS in double, DoubleFloat and 80-digit arbitrary arithmetic. An
+independently compiled full-D-trace polynomial supplies the coefficient oracle;
+both feed the same reducer, so this checks the graph-to-reducer boundary rather
+than supplying an independent master-integral oracle. Real and complex fermion
+masses, canonical family ordering, exact S matrices, original lane IDs and
+batch sizes 1, 5, 0, 33, 1 are covered. All pole coefficients vanish for these
+positive-mu rational numerators and their nonzero finite parts agree. These
+checks use NinjaRS 5f35b07 and oneloopmaster 264a6ce; the separate analytic scalar
+anchors and physical Born-interference controls retain their own validation
+responsibilities.
 
 This provider remains an internal graph-numerator prototype. It does not certify
 physical axial vertices, open fermion chains, internal D-vector/ghost states or

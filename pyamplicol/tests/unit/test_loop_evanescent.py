@@ -166,8 +166,7 @@ def test_native_family_reversal_changes_odd_extra_slash_too(recurrences, size):
     for key, extra in original.kernel_provider._extra.items():
         assert extra.to_expression() != 0
         assert (
-            family.kernel_provider._extra[key].to_expression()
-            + extra.to_expression()
+            family.kernel_provider._extra[key].to_expression() + extra.to_expression()
         ).expand() == 0
 
 
@@ -206,3 +205,156 @@ def test_provider_rejects_unproven_cycle_species_and_chiral_templates(
         )
     with pytest.raises(NotImplementedError, match="unit sign"):
         ClosedVectorlikeFermionKernels().bind(graph, tuple(2 * x for x in q), q)
+
+
+@pytest.fixture(scope="module")
+def native_controls(recurrences):
+    from symbolica import E, Expression, Replacement, S
+
+    result = {}
+    mass, coupling = S("graph_native_mass", "graph_native_coupling")
+    for size in (2, 4):
+        recurrence = recurrences[size, 1]
+        bindings = sample_bindings(recurrence)
+        for symbol in recurrence.dag.parameters:
+            name = symbol.get_name().split("::")[-1]
+            if name == "MT":
+                bindings[symbol] = mass
+            elif name in ("GC_10", "GC_11"):
+                bindings[symbol] *= coupling
+        columns = closed_even_columns(recurrence, rational_only=True)
+        labels = [
+            recurrence.dag.nodes[recurrence.final_node].output_labels[i]
+            for i in columns
+        ]
+        oracle = graph_full_dimension_numerator(recurrence, bindings)
+        oracle_coefficients = {}
+        for monomial, coefficient in oracle.coefficient_list(*recurrence.dag.variables):
+            [(powers, _)] = monomial.to_polynomial(
+                vars=recurrence.dag.variables
+            ).coefficient_list(recurrence.dag.variables)
+            oracle_coefficients[tuple(powers)] = coefficient
+
+        def saved(values, parameters):
+            return Expression.evaluator_multiple(
+                values, parameters, n_cores=1, jit_compile=False
+            ).save()
+
+        kinematics = build_loop_kinematics(recurrence, family_order=True)
+        substitutions = [Replacement(k, v) for k, v in bindings.items()]
+        names = [f"c{i}" for i in range(len(labels))]
+        terms = []
+        for name, label in zip(names, labels, strict=True):
+            factors = [name]
+            factors.extend(
+                f"q{component}^{power}"
+                for component, power in enumerate(label.powers[:4])
+                if power
+            )
+            factors.append(f"mu2^{label.powers[4] // 2}")
+            terms.append("*".join(factors))
+        result[size] = (
+            recurrence,
+            columns,
+            names,
+            "+".join(terms),
+            saved([bindings[p] for p in recurrence.dag.parameters], [mass, coupling]),
+            saved(
+                [oracle_coefficients.get(label.powers, E("0")) for label in labels],
+                [mass, coupling],
+            ),
+            saved(
+                [
+                    x.replace_multiple(substitutions)
+                    for x in kinematics.exact_input_expressions
+                ],
+                [],
+            ),
+            saved(
+                [x.replace_multiple(substitutions) for x in kinematics.masses_squared],
+                [mass, coupling],
+            ),
+        )
+    return result
+
+
+@pytest.mark.parametrize("size", (2, 4))
+@pytest.mark.parametrize(
+    "arithmetic,precision,tolerance",
+    [
+        ("double", None, "2e-9"),
+        ("double-double", None, "2e-25"),
+        ("arbitrary", 80, "2e-68"),
+    ],
+)
+def test_graph_local_r2_native_reduction_matches_full_trace(
+    native_controls, size, arithmetic, precision, tolerance
+):
+    from decimal import Decimal, localcontext
+
+    from pyamplicol.loops.kernels import NativeCoefficientDAG
+
+    backend = pytest.importorskip("_loop_reduction")
+    recurrence, columns, names, polynomial, inputs, oracle, kinematics, masses = (
+        native_controls[size]
+    )
+    options = {"arithmetic": arithmetic, "precision": precision}
+    program = NativeCoefficientDAG(
+        recurrence.dag, output_nodes=(recurrence.final_node,), **options
+    )
+    binding = backend.CoefficientEvaluator(inputs, **options)
+    expected_coefficients = backend.CoefficientEvaluator(oracle, **options)
+    mass_binding = backend.CoefficientEvaluator(masses, **options)
+    exact_kinematics = backend.ExactPolynomialEvaluator(kinematics)
+    reducer = backend.PolynomialPlan(size, [polynomial, "0", "0"], names, **options)
+    with localcontext() as context:
+        context.prec = 130
+        coupling = str(
+            1 + Decimal(2) ** -(80 if arithmetic == "double-double" else 180)
+        )
+        for rows in (1, 5, 0, 33, 1):
+            ids = [101 + 9 * i for i in range(rows)]
+            source = backend.NativeBatch.from_decimal(
+                [
+                    pair
+                    for i in range(rows)
+                    for pair in [["2", "-0.1" if i % 2 else "0"], [coupling, "0"]]
+                ],
+                rows,
+                2,
+                row_ids=ids,
+                **options,
+            )
+            actual = program.evaluate_batch(
+                binding.evaluate_batch(source)
+            ).take_columns(list(columns))
+            expected = expected_coefficients.evaluate_batch(source)
+            invariant = exact_kinematics.evaluate_decimal(
+                [], rows, arithmetic, precision, ids
+            )
+            shifts = invariant.take_columns(list(range(4 * size)))
+            matrix = invariant.take_columns(
+                list(range(4 * size, 4 * size + size * size))
+            )
+            masses_squared = mass_binding.evaluate_batch(source)
+            scales = backend.NativeBatch.from_decimal(
+                [["1", "0"]] * rows, rows, 1, row_ids=ids, **options
+            )
+            outputs = [
+                reducer.evaluate_batch(
+                    shifts, masses_squared, scales, coefficients, matrix
+                )
+                for coefficients in (actual, expected)
+            ]
+            for output in outputs:
+                assert output.statuses == [(identity, "success") for identity in ids]
+                assert output.values.row_ids == ids
+            values = [output.values.to_decimal() for output in outputs]
+            for index, (left, right) in enumerate(zip(*values, strict=True)):
+                for a, b in zip(left, right, strict=True):
+                    a, b = Decimal(a), Decimal(b)
+                    assert abs(a - b) < Decimal(tolerance) * max(1, abs(b))
+                    if index % 3:
+                        assert abs(a) < Decimal(tolerance)
+            if rows:
+                assert any(abs(Decimal(x)) > Decimal("1e-3") for x in values[0][0])
