@@ -255,3 +255,206 @@ def test_standalone_formal_projection_cannot_lose_its_scope_in_a_view(
     assert bare.born_color_degree is not None
     with pytest.raises(NotImplementedError, match="unprojected"):
         bare.rebind(arithmetic="double-double")
+
+
+@pytest.fixture(scope="module")
+def direct_control():
+    symbolica = pytest.importorskip("symbolica")
+    pytest.importorskip("_loop_reduction")
+    source_path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
+    reference_path = os.environ.get("PYAMPLICOL_GG_COMPONENT_REFERENCE")
+    if not symbolica.is_licensed() or not source_path or not reference_path:
+        pytest.skip("licensed loop_sm and independent gg component reference required")
+    from pyamplicol.loops.model import build_loop_model
+    from pyamplicol.loops.physical_counterterms import (
+        NativeModelVirtualProgram,
+        gluon_scattering_model_virtual_program,
+    )
+    from pyamplicol.models.loop_import import load_raw_loop_model
+
+    source = build_loop_model(load_raw_loop_model(source_path))
+    direct = gluon_scattering_model_virtual_program(
+        source, r2_strategy="direct", reduction_engine="fast", coefficient_engine="jit"
+    )
+    # Independently compiled effective R2 trees: the model wrapper never reads
+    # the dimensional remainder. Both wrappers share the original N4 numerator.
+    model = NativeModelVirtualProgram(
+        direct.bare,
+        direct.matched_insertions,
+        source_bindings=direct.source_bindings,
+        external_fields=direct.external_fields,
+    )
+    root = Path(__file__).resolve().parents[2] / "tools/loop_reference"
+    points = np.asarray(
+        json.loads((root / "gluon_scattering_qcd.json").read_text())["points"],
+        dtype=str,
+    )
+    return direct, model, points, json.loads(Path(reference_path).read_text())
+
+
+def test_direct_views_reuse_dimensional_instructions_and_fixed_strategy(
+    direct_control, monkeypatch
+):
+    from pyamplicol.loops import direct_kernels, physical_counterterms, physical_process
+    from pyamplicol.loops.stability import ArithmeticSpec, NativeModelStabilityProgram
+
+    program, model, points, reference = direct_control
+    prepared, model_prepared = program.prepared, model.prepared
+    assert prepared.bare is model_prepared.bare
+    assert any(f.rational_numerators != ("0", "0", "0") for f in prepared.bare.families)
+    assert any(f.rational_numerators[1] != "0" for f in prepared.bare.families)
+    baseline = program.evaluate_ordered_native(
+        points[:2], ["1000000"] * 2, model_values=["0.118", "173"]
+    )
+    baseline_values = tuple(value.to_decimal() for value in batches(baseline))
+    for name, key in (
+        ("virtual", "full"),
+        ("bare", "bare"),
+        ("uv", "uv"),
+        ("r2", "r2"),
+        ("uv_local", "uv_vertex"),
+        ("uv_external_fields", "wf"),
+    ):
+        np.testing.assert_allclose(
+            np.asarray(getattr(baseline, name).to_decimal(), dtype=float)[:, 0].reshape(
+                2, 3
+            ),
+            [
+                [row[key][pole] for pole in ("finite", "single_pole", "double_pole")]
+                for row in reference["rows"][:2]
+            ],
+            rtol=5e-11,
+            atol=1e-10,
+        )
+    wrapper = NativeModelStabilityProgram(
+        program,
+        [ArithmeticSpec("double-double"), ArithmeticSpec("arbitrary", 50)],
+        relative_tolerance="1e-8",
+        absolute_tolerance="1e-10",
+    )
+    forbid_cold_work(monkeypatch)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("direct view repeated cold physics preparation")
+
+    for owner, name in (
+        (physical_process.NativeBareProcessProgram, "__init__"),
+        (physical_counterterms.NativeModelVirtualProgram, "__init__"),
+        (physical_process, "_reduction_numerators"),
+        (direct_kernels, "dimensional_kernels"),
+        (direct_kernels, "closed_reduction_powers"),
+    ):
+        monkeypatch.setattr(owner, name, forbidden)
+    for arithmetic, precision, engine, bits, tolerance in (
+        ("double", None, "fast", None, "1e-10"),
+        ("double-double", None, "generic", 80, "1e-27"),
+        ("arbitrary", 50, "generic", 140, "1e-45"),
+    ):
+        view = (
+            program.rebind(arithmetic=arithmetic, reduction_engine=engine)
+            if arithmetic == "double"
+            else wrapper._view(ArithmeticSpec(arithmetic, precision))
+        )
+        assert view.prepared is prepared
+        assert view.r2_strategy == "direct" and view.bare.dimensional_numerators
+        assert all(item.rule.kind != "R2" for item in view.insertions)
+        assert all(current.insertion.rule.kind != "R2" for current in view.currents)
+        assert view.bare.loop_reduction_powers == program.bare.loop_reduction_powers
+        assert view.bare.loop_executors[0].plan.workspace_capacity == (0, 0, 0)
+        for old, new in zip(program.bare.families, view.bare.families, strict=True):
+            assert new.reducer is not old.reducer
+            if old.rational_reducer is not None:
+                assert new.rational_reducer is not old.rational_reducer
+                assert new.rational_reducer is not None
+        actual = view.evaluate_ordered_partial_native(
+            points[:2],
+            ["1000000"] * 2,
+            model_values=["0.118", "173"],
+            point_ids=[71, 9],
+        )
+        assert actual.r2_strategy == "direct"
+        assert actual.requested_point_ids == (71, 9) and not actual.failures
+        assert all(value.row_ids == [71, 9] for value in batches(actual))
+        for value, expected in zip(batches(actual), batches(baseline), strict=True):
+            assert all(
+                ok
+                for _, ok in value.take_rows(
+                    list(range(value.rows)), expected.row_ids
+                ).agreement_rows(expected, "1e-8", "1e-9")
+            )
+        if arithmetic == "arbitrary":
+            # No new loop/CT graph generation: bind the independent effective
+            # R2 instructions in the same true arithmetic as the direct result.
+            oracle = model_prepared.bind(
+                backend=view.bare.backend, arithmetic=arithmetic, precision=precision
+            )
+            assert oracle.r2_strategy == "model"
+            assert any(c.insertion.rule.kind == "R2" for c in oracle.currents)
+            source_result = oracle.evaluate_ordered_native(
+                points[:2], ["1000000"] * 2, model_values=["0.118", "173"]
+            )
+            for value, expected in zip(
+                batches(actual), batches(source_result), strict=True
+            ):
+                assert all(
+                    ok
+                    for _, ok in value.take_rows(
+                        list(range(value.rows)), expected.row_ids
+                    ).agreement_rows(expected, "3e-40", "1e-38")
+                )
+        saved = tuple(value.to_decimal() for value in batches(actual))
+        changed = view.evaluate_ordered_native(
+            points[:1], ["700000"], model_values=["0.12", "190"]
+        )
+        assert (
+            changed.virtual.to_decimal() != actual.virtual.take_rows([0]).to_decimal()
+        )
+        empty = view.evaluate_ordered_partial_native(
+            points[:0], [], model_values=["0.118", "173"], point_ids=[]
+        )
+        assert empty.r2_strategy == "direct" and empty.virtual.rows == 0
+        restored = view.evaluate_ordered_partial_native(
+            points[:2],
+            ["1000000"] * 2,
+            model_values=["0.118", "173"],
+            point_ids=[71, 9],
+        )
+        assert tuple(value.to_decimal() for value in batches(restored)) == saved
+        if bits is not None:
+            with localcontext() as context:
+                context.prec = 100
+                alpha = Decimal("0.118") + Decimal(2) ** -bits
+                shifted = view.evaluate_ordered_native(
+                    points[:1], ["1000000"], model_values=[str(alpha), "173"]
+                )
+                a = Decimal(actual.virtual.to_decimal()[2][0])
+                b = Decimal(shifted.virtual.to_decimal()[2][0])
+                assert a != b
+                assert abs(b - a * (alpha / Decimal("0.118")) ** 3) < abs(a) * Decimal(
+                    tolerance
+                )
+        assert tuple(value.to_decimal() for value in batches(actual)) == saved
+    assert tuple(value.to_decimal() for value in batches(baseline)) == baseline_values
+
+
+def test_direct_retained_scope_rejects_incomplete_or_mixed_completion(direct_control):
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.prepared_process import (
+        PreparedBareProcess,
+        PreparedModelProcess,
+    )
+
+    program, model, _, _ = direct_control
+    for override in ({"model_state": object()}, {"_formal_color_projected": True}):
+        copy = SimpleNamespace(**(vars(program.bare) | override))
+        with pytest.raises(NotImplementedError, match="unprojected"):
+            PreparedBareProcess.from_program(copy)
+    bare = SimpleNamespace(**(vars(program.bare) | {"dimensional_numerators": False}))
+    incomplete = SimpleNamespace(**(vars(program) | {"bare": bare}))
+    with pytest.raises(ValueError, match="dimensional"):
+        PreparedModelProcess.from_program(incomplete)
+    for key, value in (("insertions", model.insertions), ("currents", model.currents)):
+        mixed = SimpleNamespace(**(vars(program) | {key: value}))
+        with pytest.raises(ValueError, match="model R2"):
+            PreparedModelProcess.from_program(mixed)

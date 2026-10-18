@@ -128,11 +128,7 @@ class NativeModelStabilityProgram:
             empty.agreement_rows(empty, relative_tolerance, absolute_tolerance)
 
     def _view(self, spec, source_snapshot=None):
-        if (
-            spec not in self._views
-            and self.program.bare.model_state is None
-            and not self.dimensional_numerators
-        ):
+        if spec not in self._views and self.program.bare.model_state is None:
             self._views[spec] = self.program.rebind(
                 **spec.options,
                 reduction_engine="generic",

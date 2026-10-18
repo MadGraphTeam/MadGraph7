@@ -1226,8 +1226,8 @@ the producer graph or repeating expression optimization and evaluator saving.
 Existing schedule identities and exact model-binding sharing proofs are retained.
 
 `PreparedBareProcess` and `PreparedModelProcess` extend this boundary to the
-complete ordinary full-colour, model-rule controls with legacy exact model
-formulas. They retain family routing/kinematic instructions, scalar coefficient
+complete full-colour controls with legacy exact model formulas, including the
+certified internal direct-R2 gluon control. They retain family routing/kinematic instructions, scalar coefficient
 and contraction programs, CT/field current instructions, exact weights and order
 maps. `rebind` creates independent native evaluators, reducers and kernel caches;
 no event buffers or numerical model values are copied from another arithmetic.
@@ -1243,8 +1243,18 @@ colour overlap and instruction saving while rebinding complete DY/four-quark
 views, compare all output components in all three carriers, and exercise exact
 input changes beyond binary64, independent buffers and empty batches.
 
+Direct records preserve the same dimensional coefficient DAGs, closed
+epsilon/μ² labels, separate N4 and rational family reducers, and UV/field
+completion. Their canonical `direct` strategy is retained in every result;
+model-R2 insertions and currents cannot enter a direct record. The optional
+stability wrapper reuses this plan while keeping the captured strategy fixed.
+Focused gg tests forbid cold work during rebinding, compare independent source
+R2 trees and MadLoop components, and check original point IDs, changed exact
+couplings/scales, empty batches and the lifetime of previous output buffers.
+This does not extend the certified dimensional-kernel or physical process domain.
+
 These are internal in-memory records. Existing producer graph references remain
 available for diagnostics; they are neither serialized nor used to regenerate
-physics during rebinding. No public artifact format is introduced. Source-owned,
-direct-R2 and formal-colour retained views require separate integration; their
+physics during rebinding. No public artifact format is introduced. Source-owned
+and formal-colour retained views require separate integration; their
 existing numerical paths remain unchanged.

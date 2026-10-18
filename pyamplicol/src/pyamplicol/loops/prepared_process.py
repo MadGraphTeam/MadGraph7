@@ -151,7 +151,6 @@ class PreparedBareProcess:
     def from_program(cls, program):
         if (
             program.model_state is not None
-            or program.dimensional_numerators
             or getattr(program, "_formal_color_projected", False)
             or getattr(program, "color_accuracy", "full") != "full"
             or getattr(program, "born_color_degree", None) is not None
@@ -159,7 +158,7 @@ class PreparedBareProcess:
         ):
             raise NotImplementedError(
                 "retained process views currently require unprojected "
-                "ordinary legacy model bindings"
+                "legacy model bindings"
             )
         return cls(
             _metadata(program, _BARE_METADATA),
@@ -290,14 +289,21 @@ class PreparedModelProcess:
     @classmethod
     def from_program(cls, program):
         if (
-            program.r2_strategy != "model"
+            program.r2_strategy not in {"model", "direct"}
             or program.color_projection is not None
             or program.source_scale_view is not None
         ):
             raise NotImplementedError(
                 "retained model views currently require full-colour "
-                "model-R2 legacy bindings"
+                "model or direct-R2 legacy bindings"
             )
+        if program.r2_strategy == "direct":
+            if not program.bare.dimensional_numerators:
+                raise ValueError("retained direct R2 requires dimensional numerators")
+            if any(item.rule.kind == "R2" for item in program.insertions) or any(
+                current.insertion.rule.kind == "R2" for current in program.currents
+            ):
+                raise ValueError("retained direct R2 cannot include model R2 currents")
         return cls(
             program.bare.prepared,
             _metadata(
