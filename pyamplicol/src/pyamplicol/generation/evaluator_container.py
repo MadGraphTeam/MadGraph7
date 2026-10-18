@@ -66,6 +66,7 @@ class PacbinMemberKind(IntEnum):
     RECURRENCE_COLOR_PROJECTION_CERTIFICATE = 8
     ON_THE_FLY_PROCESS_SEED = 9
     COLOR_CONTRACTION = 10
+    LOOP_RUNTIME_PLAN = 11
 
 
 @dataclass(frozen=True, slots=True)

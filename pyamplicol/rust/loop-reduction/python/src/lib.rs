@@ -8,6 +8,7 @@ use std::fmt::LowerExp;
 mod batch;
 mod exact;
 mod fast;
+mod portable;
 mod predicates;
 mod stability;
 mod states;
@@ -750,6 +751,7 @@ fn massless_spinors_decimal(
 #[pymodule]
 fn _loop_reduction(module: &Bound<'_, PyModule>) -> PyResult<()> {
     predicates::register();
+    portable::register(module)?;
     batch::register(module)?;
     exact::register(module)?;
     states::register(module)?;

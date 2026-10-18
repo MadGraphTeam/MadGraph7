@@ -19,6 +19,8 @@ mod eager_runtime;
 mod eager_tables;
 mod engine;
 mod error;
+#[cfg(feature = "symbolica-runtime")]
+pub mod loop_runtime;
 mod metadata;
 pub mod pacbin;
 pub mod recurrence;
