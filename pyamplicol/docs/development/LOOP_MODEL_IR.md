@@ -639,3 +639,47 @@ renormalization-scale bindings and scale-dependent UV coefficients still need
 their separate physical execution stage. No coupling running or scheme choices
 are inferred here. Exact cold output expressions can also prove structural
 zero mass aliases without evaluating adjustable external defaults.
+
+## Structural covariant source model
+
+`build_covariant_structure` prepares a public native `ModelJSON` model from the
+lossless raw species and ordinary vertices, independently of the restricted
+tree importer. It preserves exact source charges, directed ghosts, ordered
+species and every colour/Lorentz coupling slot. Numeric parameter and coupling
+caches remain empty. Adjustable external masses keep independent symbols even
+when their source default is zero. The shared scalar binding preparation resolves
+mass aliases exactly before native mass classification; the installed Community
+classifier alone recognizes literal zero but does not resolve a `ZERO` alias.
+An unresolved active diagnostic cannot certify a structural zero.
+
+Massive and massless vectors use the dependency's public custom-propagator
+interface with the covariant numerator `-i Metric(1,2)`. The ordinary loader's
+massive-vector numerator contains the longitudinal Proca term even with its
+`Feynman` argument, so that argument is insufficient for this catalogue.
+Scalars, Dirac fermions and directed ghosts use its existing propagator builder.
+Optional explicit covariant cut multiplets pass through native model validation;
+the Gmu control includes the neutral and both charged vector/Goldstone/ghost
+quartets. This does not identify ghosts merely by taking opposite PDG signs.
+
+The source observer retains `Particle.charge` arithmetic before Python rounding,
+including `2/3`, and certifies antiparticle negation from the actual observed
+`anti()` declaration. Raw runtime charge metadata remains available. Structural
+preparation independently checks conjugate species, mass, width, colour, electric
+charge, ghost/lepton numbers and Goldstone/propagating flags.
+
+The explicit `gmu_particle_anti` compatibility profile recognizes the demonstrated
+old positional `Particle.anti()` call against its actual constructor signature
+and complete charged-Goldstone metadata. It restores only the derived G−
+Goldstone flag, retaining raw `False`, derived `True` and the reason in adapter
+diagnostics. No source file or antiparticle counterterm is changed. Unknown
+metadata mismatches fail. The full Gmu structural control contains 43 particles,
+163 ordinary vertices, 132 used coupling definitions and 22 local Lorentz spin
+signatures; it requires 37 independent external bindings.
+
+This is a bounded structural and kernel-preparation interface. Unspecified gauge,
+custom propagators, unapplied restriction cards, Majorana or four-fermion rules,
+nonpropagating auxiliary species and uncertified chiral hypercharge conventions
+are rejected. The object retains the exact scalar program but does not bridge
+the existing counterterm `LoopModelIR`, certify complex-mass parameter
+transformations, support unstable external particles, or enable physical EW
+generation. Those require separate source tensor and complete-process checks.
