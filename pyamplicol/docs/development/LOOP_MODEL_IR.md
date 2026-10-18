@@ -544,3 +544,24 @@ derivatives. Ordinary parameter definitions remain separate for exact binding by
 a future EW assembler. The existing QCD lowering/physical path is unchanged, and
 successful source preparation does not enable EW process generation or certify
 EW counterterm completeness, complex-mass conventions or numerical physics.
+
+## Directed native colour weights
+
+`loops.color_connections` adapts the existing typed `ColorConnection` histories
+to native tensor expressions. It inserts dependency generators and structure
+constants with physical `Tr(Ta Tb)=delta(ab)/2`, all-outgoing quark/antiquark
+signs and adjoint orientation. It supports emissions from emitted legs and
+gluon-to-quark-pair splitting without a kinematic splitting factor. Initial
+colour ports use integer leg labels; dummy scoping, index contraction, adjoints
+and SU(N) invariants belong to the tensor dependency.
+
+`directed_color_bilinears` returns independent rectangular Born-loop and
+loop-Born matrices. The latter is the adjoint of the Born-loop matrix for
+**swapped histories**; directed interference need not equal twice the real part
+of its first cross term. Existing exact tree contractions independently check
+these weights, including a complex non-Hermitian control. `SUNColorSpace` now
+retries the dependency's recognized quartic invariant substitution after
+binding the explicit adjoint dimension, following ordinary projector expansion.
+No private Gram formula is introduced. These are cold generation helpers;
+numerical loop correlations, spin sources, mappings and FFT integration remain
+separate work packages.

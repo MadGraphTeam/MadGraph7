@@ -107,6 +107,7 @@ class SUNColorSpace:
             raise NotImplementedError(
                 "formal color overlap retained uncontracted ports"
             )
+
         # Named representation invariants implement the declared SU(N) family.
         # All trace/Fierz/index operations above belong to the dependency.
         def bind_invariants(value):
@@ -138,6 +139,24 @@ class SUNColorSpace:
                         "formal color overlap retained uncontracted ports"
                     )
                 result = bind_invariants(overlap)
+        if set(result.get_all_symbols()) - {self.nc}:
+            # Quartic Gram invariants can require the explicit relation
+            # dA = Nc**2 - 1. Only after ordinary tensor reduction/expansion,
+            # let the dependency substitute its recognized SU(N) invariants.
+            # A remaining indexed tensor may not admit a composite dimension;
+            # it remains unsupported rather than being coerced to a scalar.
+            try:
+                bound = t.TensorExpression(result)
+            except ValueError:
+                pass
+            else:
+                result = bind_invariants(
+                    bound.simplify_algebra(
+                        gamma=False,
+                        color=True,
+                        color_substitute_cof_dimension_invariants=True,
+                    )
+                )
         if set(result.get_all_symbols()) - {self.nc}:
             raise NotImplementedError(
                 "formal color overlap retained unsupported tensors or scalar symbols"
