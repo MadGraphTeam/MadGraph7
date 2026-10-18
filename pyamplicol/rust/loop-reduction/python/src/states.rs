@@ -67,17 +67,22 @@ fn evaluate<T: BatchCarrier + KinematicScalar>(
     specifications: &[(Helicity, WavefunctionKind)],
     columns: usize,
 ) -> PyResult<NativeBatch> {
-    let mut output = Vec::with_capacity(input.rows * columns);
+    let mut output = Vec::with_capacity(input.rows() * columns);
     for (row, (p, &(helicity, kind))) in values.chunks_exact(4).zip(specifications).enumerate() {
         let lane_error = |failure| {
             error(format!(
                 "external state lane {} (row {row}): {failure}",
-                input.ids[row]
+                input.ids()[row]
             ))
         };
         output.extend(state_components(p, helicity, kind).map_err(lane_error)?);
     }
-    NativeBatch::typed(output, input.ids.clone(), columns, input.precision_bits)
+    NativeBatch::typed(
+        output,
+        input.ids().to_vec(),
+        columns,
+        input.precision_bits(),
+    )
 }
 
 type PartialStates = (NativeBatch, Vec<(u64, String)>);
@@ -88,12 +93,12 @@ fn evaluate_partial<T: BatchCarrier + KinematicScalar>(
     specifications: &[(Helicity, WavefunctionKind)],
     columns: usize,
 ) -> PyResult<PartialStates> {
-    let mut output = Vec::with_capacity(input.rows * columns);
-    let mut ids = Vec::with_capacity(input.rows);
-    let mut statuses = Vec::with_capacity(input.rows);
+    let mut output = Vec::with_capacity(input.rows() * columns);
+    let mut ids = Vec::with_capacity(input.rows());
+    let mut statuses = Vec::with_capacity(input.rows());
     for (p, (&id, &(helicity, kind))) in values
         .chunks_exact(4)
-        .zip(input.ids.iter().zip(specifications))
+        .zip(input.ids().iter().zip(specifications))
     {
         match state_components(p, helicity, kind) {
             Ok(components) => {
@@ -105,7 +110,7 @@ fn evaluate_partial<T: BatchCarrier + KinematicScalar>(
         }
     }
     Ok((
-        NativeBatch::typed(output, ids, columns, input.precision_bits)?,
+        NativeBatch::typed(output, ids, columns, input.precision_bits())?,
         statuses,
     ))
 }
@@ -117,12 +122,12 @@ fn on_shell<T: BatchCarrier + KinematicScalar>(
     specifications: &[(Helicity, WavefunctionKind)],
     columns: usize,
 ) -> PyResult<(NativeBatch, NativeBatch)> {
-    let mut momenta = Vec::with_capacity(input.rows * 4);
+    let mut momenta = Vec::with_capacity(input.rows() * 4);
     for (row, (p, mass)) in spatial.chunks_exact(3).zip(masses).enumerate() {
         if !p.iter().all(real_finite) || !real_finite(mass) || mass.re < mass.re.zero() {
             return Err(error(format!(
                 "on-shell construction lane {} (row {row}) requires finite real spatial momentum and nonnegative real mass",
-                input.ids[row]
+                input.ids()[row]
             )));
         }
         let momentum = ThreeMomentum::from(std::array::from_fn::<_, 3, _>(|i| p[i].re.clone()))
@@ -135,7 +140,7 @@ fn on_shell<T: BatchCarrier + KinematicScalar>(
     }
     let states = evaluate(&momenta, input, specifications, columns)?;
     Ok((
-        NativeBatch::typed(momenta, input.ids.clone(), 4, input.precision_bits)?,
+        NativeBatch::typed(momenta, input.ids().to_vec(), 4, input.precision_bits())?,
         states,
     ))
 }
@@ -149,11 +154,12 @@ fn wavefunctions_batch(
     kinds: Vec<String>,
     components: Option<usize>,
 ) -> PyResult<NativeBatch> {
-    if momenta.columns != 4 {
+    if momenta.columns() != 4 {
         return Err(error("external states require four momentum columns"));
     }
-    let (specifications, columns) = specifications(momenta.rows, &helicities, &kinds, components)?;
-    py.detach(|| match &momenta.data {
+    let (specifications, columns) =
+        specifications(momenta.rows(), &helicities, &kinds, components)?;
+    py.detach(|| match momenta.data() {
         Data::Double(v) => evaluate(v, momenta, &specifications, columns),
         Data::DoubleDouble(v) => evaluate(v, momenta, &specifications, columns),
         Data::Arbitrary(v) => evaluate(v, momenta, &specifications, columns),
@@ -170,10 +176,11 @@ fn wavefunctions_partial_batch(
     kinds: Vec<String>,
     components: Option<usize>,
 ) -> PyResult<PartialStates> {
-    if momenta.columns != 4 {
+    if momenta.columns() != 4 {
         return Err(error("external states require four momentum columns"));
     }
-    let (specifications, columns) = specifications(momenta.rows, &helicities, &kinds, components)?;
+    let (specifications, columns) =
+        specifications(momenta.rows(), &helicities, &kinds, components)?;
     if specifications.iter().any(|(helicity, kind)| {
         (kind.is_spinor() && helicity.is_zero())
             || (*kind == WavefunctionKind::Scalar && !helicity.is_zero())
@@ -182,7 +189,7 @@ fn wavefunctions_partial_batch(
             "external state kind does not admit the requested helicity",
         ));
     }
-    py.detach(|| match &momenta.data {
+    py.detach(|| match momenta.data() {
         Data::Double(v) => evaluate_partial(v, momenta, &specifications, columns),
         Data::DoubleDouble(v) => evaluate_partial(v, momenta, &specifications, columns),
         Data::Arbitrary(v) => evaluate_partial(v, momenta, &specifications, columns),
@@ -200,14 +207,14 @@ fn on_shell_wavefunctions_batch(
     components: Option<usize>,
 ) -> PyResult<(NativeBatch, NativeBatch)> {
     spatial_momenta.same_rows(masses)?;
-    if spatial_momenta.columns != 3 || masses.columns != 1 {
+    if spatial_momenta.columns() != 3 || masses.columns() != 1 {
         return Err(error(
             "on-shell construction requires three spatial columns and one mass column",
         ));
     }
     let (specifications, columns) =
-        specifications(spatial_momenta.rows, &helicities, &kinds, components)?;
-    py.detach(|| match (&spatial_momenta.data, &masses.data) {
+        specifications(spatial_momenta.rows(), &helicities, &kinds, components)?;
+    py.detach(|| match (spatial_momenta.data(), masses.data()) {
         (Data::Double(p), Data::Double(m)) => {
             on_shell(p, m, spatial_momenta, &specifications, columns)
         }

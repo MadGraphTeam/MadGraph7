@@ -1,56 +1,23 @@
 // SPDX-License-Identifier: 0BSD
 
-//! Typed immutable batch buffers and a validated native coefficient schedule.
-
+//! Python ownership and argument conversion for shared native batches.
 use super::*;
+use rusticol_loop_reduction::runtime::Batch;
+pub(super) use rusticol_loop_reduction::runtime::{BatchCarrier, Data};
 use std::collections::HashMap;
-use std::sync::Arc;
 use symbolica::evaluate::{BatchEvaluator, JITCompilationSettings, JITCompiledEvaluator};
-
-#[derive(Clone)]
-pub(super) enum Data {
-    Double(Arc<Vec<Complex<f64>>>),
-    DoubleDouble(Arc<Vec<Complex<DoubleFloat>>>),
-    Arbitrary(Arc<Vec<Complex<Float>>>),
-}
-
-pub(super) trait BatchCarrier: Carrier {
-    fn data(values: Vec<Complex<Self>>) -> Data;
-}
-impl BatchCarrier for f64 {
-    fn data(values: Vec<Complex<Self>>) -> Data {
-        Data::Double(Arc::new(values))
-    }
-}
-impl BatchCarrier for DoubleFloat {
-    fn data(values: Vec<Complex<Self>>) -> Data {
-        Data::DoubleDouble(Arc::new(values))
-    }
-}
-impl BatchCarrier for Float {
-    fn data(values: Vec<Complex<Self>>) -> Data {
-        Data::Arbitrary(Arc::new(values))
-    }
-}
-
 fn shape(rows: usize, columns: usize) -> PyResult<usize> {
-    rows.checked_mul(columns)
-        .ok_or_else(|| error("batch dimensions overflow"))
+    runtime::shape(rows, columns).map_err(error)
 }
-
 #[derive(Clone)]
 #[pyclass(skip_from_py_object)]
-pub(super) struct NativeBatch {
-    pub data: Data,
-    pub ids: Vec<u64>,
-    #[pyo3(get)]
-    pub rows: usize,
-    #[pyo3(get)]
-    pub columns: usize,
-    #[pyo3(get)]
-    pub precision_bits: u32,
+pub(super) struct NativeBatch(pub Batch);
+impl std::ops::Deref for NativeBatch {
+    type Target = Batch;
+    fn deref(&self) -> &Batch {
+        &self.0
+    }
 }
-
 impl NativeBatch {
     pub fn typed<T: BatchCarrier>(
         values: Vec<Complex<T>>,
@@ -58,72 +25,17 @@ impl NativeBatch {
         columns: usize,
         bits: u32,
     ) -> PyResult<Self> {
-        if values.len() != shape(ids.len(), columns)? {
-            return Err(error("batch values do not match dimensions"));
-        }
-        Ok(Self {
-            data: T::data(values),
-            rows: ids.len(),
-            ids,
-            columns,
-            precision_bits: bits,
-        })
+        Batch::typed(values, ids, columns, bits)
+            .map(Self)
+            .map_err(error)
     }
     pub fn compatible(&self, other: &Self) -> PyResult<()> {
-        if self.precision_bits != other.precision_bits
-            || std::mem::discriminant(&self.data) != std::mem::discriminant(&other.data)
-        {
-            return Err(error("batch arithmetic or precision differs"));
-        }
-        Ok(())
+        self.0.compatible(&other.0).map_err(error)
     }
     pub fn same_rows(&self, other: &Self) -> PyResult<()> {
-        self.compatible(other)?;
-        if self.ids != other.ids {
-            return Err(error("batch row identities differ"));
-        }
-        Ok(())
+        self.0.same_rows(&other.0).map_err(error)
     }
 }
-
-fn parse_values<T: Carrier>(values: &[DecimalComplex], bits: u32) -> PyResult<Vec<Complex<T>>> {
-    values.iter().map(|v| parse_complex(v, bits)).collect()
-}
-fn decimals<T: Carrier>(values: &[Complex<T>], bits: u32) -> Vec<DecimalComplex> {
-    values
-        .iter()
-        .cloned()
-        .map(|v| decimal_complex(v, bits))
-        .collect()
-}
-fn nonfinite<T: Carrier>(values: &[Complex<T>], columns: usize, ids: &[u64]) -> Vec<u64> {
-    ids.iter()
-        .enumerate()
-        .filter_map(|(row, &id)| {
-            values[row * columns..(row + 1) * columns]
-                .iter()
-                .any(|value| !value.re.is_finite() || !value.im.is_finite())
-                .then_some(id)
-        })
-        .collect()
-}
-fn take<T: BatchCarrier>(
-    values: &[Complex<T>],
-    source_columns: usize,
-    rows: &[usize],
-    columns: &[usize],
-    ids: Vec<u64>,
-    bits: u32,
-) -> PyResult<NativeBatch> {
-    let mut out = Vec::with_capacity(shape(rows.len(), columns.len())?);
-    for row in rows {
-        for column in columns {
-            out.push(values[row * source_columns + column].clone());
-        }
-    }
-    NativeBatch::typed(out, ids, columns.len(), bits)
-}
-
 #[pymethods]
 impl NativeBatch {
     #[staticmethod]
@@ -136,161 +48,50 @@ impl NativeBatch {
         precision: Option<u32>,
         row_ids: Option<Vec<u64>>,
     ) -> PyResult<Self> {
-        let (mode, bits) = arithmetic_mode(arithmetic, precision)?;
-        if values.len() != shape(rows, columns)? {
-            return Err(error("batch values do not match dimensions"));
-        }
-        let ids = row_ids.unwrap_or_else(|| (0..rows as u64).collect());
-        if ids.len() != rows {
-            return Err(error("batch row identities do not match dimensions"));
-        }
-        match mode {
-            Arithmetic::Double => {
-                Self::typed(parse_values::<f64>(&values, bits)?, ids, columns, bits)
-            }
-            Arithmetic::DoubleDouble => Self::typed(
-                parse_values::<DoubleFloat>(&values, bits)?,
-                ids,
-                columns,
-                bits,
-            ),
-            Arithmetic::Arbitrary => {
-                Self::typed(parse_values::<Float>(&values, bits)?, ids, columns, bits)
-            }
-        }
+        Batch::from_decimal(values, rows, columns, arithmetic, precision, row_ids)
+            .map(Self)
+            .map_err(error)
+    }
+    #[getter(rows)]
+    fn get_rows(&self) -> usize {
+        self.0.rows()
+    }
+    #[getter(columns)]
+    fn get_columns(&self) -> usize {
+        self.0.columns()
+    }
+    #[getter(precision_bits)]
+    fn get_precision_bits(&self) -> u32 {
+        self.0.precision_bits()
     }
     #[getter]
     fn row_ids(&self) -> Vec<u64> {
-        self.ids.clone()
+        self.0.row_ids()
     }
     fn to_decimal(&self, py: Python<'_>) -> Vec<DecimalComplex> {
-        py.detach(|| match &self.data {
-            Data::Double(v) => decimals(v, self.precision_bits),
-            Data::DoubleDouble(v) => decimals(v, self.precision_bits),
-            Data::Arbitrary(v) => decimals(v, self.precision_bits),
-        })
+        py.detach(|| self.0.to_decimal())
     }
     fn nonfinite_rows(&self, py: Python<'_>) -> Vec<u64> {
-        py.detach(|| match &self.data {
-            Data::Double(v) => nonfinite(v, self.columns, &self.ids),
-            Data::DoubleDouble(v) => nonfinite(v, self.columns, &self.ids),
-            Data::Arbitrary(v) => nonfinite(v, self.columns, &self.ids),
-        })
+        py.detach(|| self.0.nonfinite_rows())
     }
     #[pyo3(signature = (indices, row_ids=None))]
     fn take_rows(&self, indices: Vec<usize>, row_ids: Option<Vec<u64>>) -> PyResult<Self> {
-        if indices.iter().any(|&i| i >= self.rows) {
-            return Err(error("batch row index out of range"));
-        }
-        let ids = row_ids.unwrap_or_else(|| indices.iter().map(|&i| self.ids[i]).collect());
-        if ids.len() != indices.len() {
-            return Err(error("batch row identities do not match dimensions"));
-        }
-        let columns: Vec<_> = (0..self.columns).collect();
-        match &self.data {
-            Data::Double(v) => take(
-                v,
-                self.columns,
-                &indices,
-                &columns,
-                ids,
-                self.precision_bits,
-            ),
-            Data::DoubleDouble(v) => take(
-                v,
-                self.columns,
-                &indices,
-                &columns,
-                ids,
-                self.precision_bits,
-            ),
-            Data::Arbitrary(v) => take(
-                v,
-                self.columns,
-                &indices,
-                &columns,
-                ids,
-                self.precision_bits,
-            ),
-        }
+        self.0.take_rows(indices, row_ids).map(Self).map_err(error)
     }
     fn take_columns(&self, indices: Vec<usize>) -> PyResult<Self> {
-        if indices.iter().any(|&i| i >= self.columns) {
-            return Err(error("batch column index out of range"));
-        }
-        let rows: Vec<_> = (0..self.rows).collect();
-        match &self.data {
-            Data::Double(v) => take(
-                v,
-                self.columns,
-                &rows,
-                &indices,
-                self.ids.clone(),
-                self.precision_bits,
-            ),
-            Data::DoubleDouble(v) => take(
-                v,
-                self.columns,
-                &rows,
-                &indices,
-                self.ids.clone(),
-                self.precision_bits,
-            ),
-            Data::Arbitrary(v) => take(
-                v,
-                self.columns,
-                &rows,
-                &indices,
-                self.ids.clone(),
-                self.precision_bits,
-            ),
-        }
+        self.0.take_columns(indices).map(Self).map_err(error)
     }
     fn reshape_rows(&self, rows: usize, columns: usize, row_ids: Vec<u64>) -> PyResult<Self> {
-        if shape(rows, columns)? != shape(self.rows, self.columns)? || row_ids.len() != rows {
-            return Err(error("reshape dimensions or row identities differ"));
-        }
-        Ok(Self {
-            data: self.data.clone(),
-            ids: row_ids,
-            rows,
-            columns,
-            precision_bits: self.precision_bits,
-        })
+        self.0
+            .reshape_rows(rows, columns, row_ids)
+            .map(Self)
+            .map_err(error)
     }
     #[staticmethod]
     fn concat_columns(batches: Vec<PyRef<'_, NativeBatch>>) -> PyResult<Self> {
-        let first = batches
-            .first()
-            .ok_or_else(|| error("concatenation needs at least one batch"))?;
-        for batch in &batches {
-            first.same_rows(batch)?;
-        }
-        let columns = batches.iter().try_fold(0_usize, |n, b| {
-            n.checked_add(b.columns)
-                .ok_or_else(|| error("batch dimensions overflow"))
-        })?;
-        macro_rules! concat {
-            ($variant:ident) => {{
-                let mut values = Vec::with_capacity(shape(first.rows, columns)?);
-                for row in 0..first.rows {
-                    for batch in &batches {
-                        let Data::$variant(source) = &batch.data else {
-                            unreachable!()
-                        };
-                        values.extend_from_slice(
-                            &source[row * batch.columns..(row + 1) * batch.columns],
-                        );
-                    }
-                }
-                Self::typed(values, first.ids.clone(), columns, first.precision_bits)
-            }};
-        }
-        match &first.data {
-            Data::Double(_) => concat!(Double),
-            Data::DoubleDouble(_) => concat!(DoubleDouble),
-            Data::Arbitrary(_) => concat!(Arbitrary),
-        }
+        Batch::concat_columns(&batches.iter().map(|b| &b.0).collect::<Vec<_>>())
+            .map(Self)
+            .map_err(error)
     }
 }
 
@@ -462,15 +263,15 @@ where
         parameters: &[Complex<T>],
         input: &NativeBatch,
     ) -> PyResult<NativeBatch> {
-        if input.columns != self.inputs {
+        if input.columns() != self.inputs {
             return Err(error("coefficient schedule input dimensions differ"));
         }
-        let mut values = Vec::with_capacity(shape(input.rows, self.outputs.len())?);
+        let mut values = Vec::with_capacity(shape(input.rows(), self.outputs.len())?);
         // Rows are independent evaluator lanes. Bound both our arena and the
         // dependency evaluators' internal batch buffers without changing their
         // arithmetic, instruction order or the public batch/identity contract.
-        for start in (0..input.rows).step_by(self.tile_rows) {
-            let rows = (input.rows - start).min(self.tile_rows);
+        for start in (0..input.rows()).step_by(self.tile_rows) {
+            let rows = (input.rows() - start).min(self.tile_rows);
             let arena_len = shape(rows, self.width)?;
             if self.arena.len() < arena_len {
                 self.arena.resize(arena_len, self.zero.clone());
@@ -527,9 +328,9 @@ where
         }
         NativeBatch::typed(
             values,
-            input.ids.clone(),
+            input.ids().to_vec(),
             self.outputs.len(),
-            input.precision_bits,
+            input.precision_bits(),
         )
     }
 
@@ -784,10 +585,10 @@ impl CoefficientPlan {
         })
     }
     fn evaluate_batch(&mut self, py: Python<'_>, input: &NativeBatch) -> PyResult<NativeBatch> {
-        if self.precision_bits != input.precision_bits {
+        if self.precision_bits != input.precision_bits() {
             return Err(error("batch arithmetic or precision differs"));
         }
-        py.detach(|| match (&mut self.schedule, &input.data) {
+        py.detach(|| match (&mut self.schedule, input.data()) {
             (Schedules::Double(s), Data::Double(v)) => s.evaluate(v, input),
             (Schedules::Jit(s), Data::Double(v)) => s.evaluate(v, input),
             (Schedules::DoubleDouble(s), Data::DoubleDouble(v)) => s.evaluate(v, input),
@@ -820,7 +621,7 @@ struct ReductionBatch {
 impl ReductionBatch {
     #[getter]
     fn values(&self) -> PyResult<NativeBatch> {
-        if self.statuses.len() != self.values.rows {
+        if self.statuses.len() != self.values.rows() {
             return Err(error(
                 "reduction contains failed lanes; inspect statuses and successful_values",
             ));
@@ -848,8 +649,8 @@ where
         .chunks_exact(4)
         .map(|p| FourMomentum::from([p[0].clone(), p[1].clone(), p[2].clone(), p[3].clone()]))
         .collect();
-    let lanes = plan.evaluate_native(&input.ids, &shifts, masses, scales, parameters, matrix)?;
-    reduced_batch(lanes, input.precision_bits)
+    let lanes = plan.evaluate_native(input.ids(), &shifts, masses, scales, parameters, matrix)?;
+    reduced_batch(lanes, input.precision_bits())
 }
 fn reduced_batch<T: BatchCarrier>(
     lanes: Vec<Lane<Complex<T>, String>>,
@@ -889,17 +690,17 @@ impl PolynomialPlan {
         if let Some(matrix) = s_matrix {
             parameters.same_rows(matrix)?;
         }
-        if parameters.precision_bits != self.precision_bits {
+        if parameters.precision_bits() != self.precision_bits {
             return Err(error("batch arithmetic or precision differs"));
         }
         macro_rules! run {
             ($plan:expr, $variant:ident) => {{
                 let p = $plan;
-                if shifts.columns != p.propagators * 4
-                    || masses_squared.columns != p.propagators
-                    || scales_squared.columns != 1
-                    || parameters.columns != p.parameter_count
-                    || s_matrix.is_some_and(|s| s.columns != p.propagators * p.propagators)
+                if shifts.columns() != p.propagators * 4
+                    || masses_squared.columns() != p.propagators
+                    || scales_squared.columns() != 1
+                    || parameters.columns() != p.parameter_count
+                    || s_matrix.is_some_and(|s| s.columns() != p.propagators * p.propagators)
                 {
                     return Err(error("reduction batch dimensions differ"));
                 }
@@ -909,16 +710,16 @@ impl PolynomialPlan {
                     Data::$variant(scales),
                     Data::$variant(values),
                 ) = (
-                    &shifts.data,
-                    &masses_squared.data,
-                    &scales_squared.data,
-                    &parameters.data,
+                    shifts.data(),
+                    masses_squared.data(),
+                    scales_squared.data(),
+                    parameters.data(),
                 )
                 else {
                     return Err(error("batch arithmetic or precision differs"));
                 };
                 let matrix = s_matrix.map(|s| {
-                    let Data::$variant(v) = &s.data else {
+                    let Data::$variant(v) = s.data() else {
                         unreachable!()
                     };
                     v.as_slice()
@@ -928,24 +729,24 @@ impl PolynomialPlan {
         }
         py.detach(|| match &mut self.plan {
             Plans::Fast(p) => {
-                if shifts.columns != p.propagators * 4
-                    || masses_squared.columns != p.propagators
-                    || scales_squared.columns != 1
-                    || parameters.columns != p.parameter_count
-                    || s_matrix.is_some_and(|s| s.columns != p.propagators * p.propagators)
+                if shifts.columns() != p.propagators * 4
+                    || masses_squared.columns() != p.propagators
+                    || scales_squared.columns() != 1
+                    || parameters.columns() != p.parameter_count
+                    || s_matrix.is_some_and(|s| s.columns() != p.propagators * p.propagators)
                 {
                     return Err(error("reduction batch dimensions differ"));
                 }
                 let (Data::Double(s), Data::Double(m), Data::Double(r), Data::Double(c)) = (
-                    &shifts.data,
-                    &masses_squared.data,
-                    &scales_squared.data,
-                    &parameters.data,
+                    shifts.data(),
+                    masses_squared.data(),
+                    scales_squared.data(),
+                    parameters.data(),
                 ) else {
                     return Err(error("batch arithmetic or precision differs"));
                 };
                 let matrix = s_matrix.map(|s| {
-                    let Data::Double(v) = &s.data else {
+                    let Data::Double(v) = s.data() else {
                         unreachable!()
                     };
                     v.as_slice()
@@ -955,7 +756,7 @@ impl PolynomialPlan {
                     .map(|v| FourMomentum::from([v[0], v[1], v[2], v[3]]))
                     .collect();
                 reduced_batch(
-                    p.evaluate_native(&parameters.ids, &shifts, m, r, c, matrix)?,
+                    p.evaluate_native(parameters.ids(), &shifts, m, r, c, matrix)?,
                     53,
                 )
             }
@@ -972,7 +773,7 @@ fn spinor_buffer<T: BatchCarrier>(
     helicities: &[i32],
     kinds: &[String],
 ) -> PyResult<NativeBatch> {
-    if input.columns != 4 || input.rows != helicities.len() || input.rows != kinds.len() {
+    if input.columns() != 4 || input.rows() != helicities.len() || input.rows() != kinds.len() {
         return Err(error("massless state batch dimensions differ"));
     }
     let antiquarks = kinds
@@ -1002,9 +803,9 @@ fn spinor_buffer<T: BatchCarrier>(
     let states = physical_spinors(&momenta, helicities, kinds, &antiquarks)?;
     NativeBatch::typed(
         states.into_iter().flatten().collect(),
-        input.ids.clone(),
+        input.ids().to_vec(),
         4,
-        input.precision_bits,
+        input.precision_bits(),
     )
 }
 
@@ -1015,7 +816,7 @@ fn massless_spinors_batch(
     helicities: Vec<i32>,
     kinds: Vec<String>,
 ) -> PyResult<NativeBatch> {
-    py.detach(|| match &momenta.data {
+    py.detach(|| match momenta.data() {
         Data::Double(v) => spinor_buffer(v, momenta, &helicities, &kinds),
         Data::DoubleDouble(v) => spinor_buffer(v, momenta, &helicities, &kinds),
         Data::Arbitrary(v) => spinor_buffer(v, momenta, &helicities, &kinds),

@@ -69,6 +69,13 @@ Loaded views explicitly reject producer-dependent colour mutation, producer
 metadata access, retained-producer preparation and partial/rescue evaluation.
 Ordinary complete evaluation and fresh arithmetic rebinding remain available.
 
+Typed buffer storage, arithmetic selection, decimal conversion, gathers,
+concatenation and regrouping now live in the non-Python
+`rusticol_loop_reduction::runtime` module. The Python `NativeBatch` owns that
+same Rust value and delegates these operations. This is the first extraction
+step toward native coordination; the complete process coordinator still runs
+in Python, and no SDK loop entry point is activated by this move.
+
 NinjaRS currently exposes no public serialization/rebinding interface for its
 private generic Laurent expansion plan. Loading therefore constructs a fresh
 `PolynomialPlan` from retained exact numerator strings and ordered coefficient

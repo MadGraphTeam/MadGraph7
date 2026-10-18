@@ -10,6 +10,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod runtime;
+
 use std::ops::Add;
 use std::time::{Duration, Instant};
 

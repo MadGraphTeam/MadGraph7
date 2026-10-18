@@ -3,8 +3,6 @@
 //! Experimental native consumer, separate until NinjaRS is self-contained.
 //! Results are raw integrals, never Born/loop interference observables.
 
-use std::fmt::LowerExp;
-
 mod batch;
 mod exact;
 mod fast;
@@ -17,9 +15,8 @@ use fast::FastReductions;
 
 use pyo3::{exceptions::PyValueError, prelude::*};
 use rusticol_loop_reduction::{
-    AmplitudeInput, Complex, EvaluationStatus, FourMomentum, Lane, Laurent, NativeFloat,
-    PolynomialReducer, SamplingScaleProvider, SamplingScaleSource, SamplingScaleStatus,
-    SymbolicaSamplingScales,
+    AmplitudeInput, Complex, EvaluationStatus, FourMomentum, Lane, Laurent, PolynomialReducer,
+    SamplingScaleProvider, SamplingScaleSource, SamplingScaleStatus, SymbolicaSamplingScales,
 };
 use symbolica::{
     atom::Atom,
@@ -28,7 +25,9 @@ use symbolica::{
     evaluate::{BatchExpressionEvaluator, EvaluationDomain, ExpressionEvaluator},
 };
 
-type DecimalComplex = [String; 2];
+use rusticol_loop_reduction::runtime::{
+    self, Arithmetic, Carrier, DecimalComplex, decimal_complex,
+};
 type DecimalMomentum = [DecimalComplex; 4];
 type RawLane = (u64, String, Option<[DecimalComplex; 3]>);
 
@@ -36,70 +35,11 @@ fn error(value: impl std::fmt::Display) -> PyErr {
     PyValueError::new_err(value.to_string())
 }
 
-trait Carrier: NativeFloat + LowerExp + From<f64> {
-    fn parse_decimal(value: &str, bits: u32) -> Result<Self, String>;
-}
-
-impl Carrier for f64 {
-    fn parse_decimal(value: &str, _: u32) -> Result<Self, String> {
-        value.parse::<f64>().map_err(|e| e.to_string())
-    }
-}
-
-impl Carrier for DoubleFloat {
-    fn parse_decimal(value: &str, _: u32) -> Result<Self, String> {
-        Float::parse(value, Some(106)).map(|f| f.to_double_float())
-    }
-}
-
-impl Carrier for Float {
-    fn parse_decimal(value: &str, bits: u32) -> Result<Self, String> {
-        Float::parse(value, Some(bits))
-    }
-}
-
-fn parse_complex<T: Carrier>(value: &DecimalComplex, bits: u32) -> PyResult<Complex<T>> {
-    Ok(Complex::new(
-        T::parse_decimal(&value[0], bits).map_err(error)?,
-        T::parse_decimal(&value[1], bits).map_err(error)?,
-    ))
-}
-
-fn decimal_complex<T: Carrier>(value: Complex<T>, bits: u32) -> DecimalComplex {
-    // Default Symbolica Display intentionally drops some bits. Explicit output
-    // digits allow each carrier to round-trip through the private Python seam.
-    let digits = (f64::from(bits) * std::f64::consts::LOG10_2).ceil() as usize + 2;
-    [
-        format!("{:.digits$e}", value.re),
-        format!("{:.digits$e}", value.im),
-    ]
-}
-
-#[derive(Clone, Copy)]
-enum Arithmetic {
-    Double,
-    DoubleDouble,
-    Arbitrary,
-}
-
 fn arithmetic_mode(arithmetic: &str, precision: Option<u32>) -> PyResult<(Arithmetic, u32)> {
-    match (arithmetic, precision) {
-        ("double", None) => Ok((Arithmetic::Double, 53)),
-        ("double-double", None) => Ok((Arithmetic::DoubleDouble, 106)),
-        ("arbitrary", Some(digits)) if digits > 0 => Ok((
-            Arithmetic::Arbitrary,
-            Float::decimal_digits_to_bits(f64::from(digits)).map_err(error)?,
-        )),
-        ("arbitrary", _) => Err(error(
-            "arbitrary arithmetic requires a positive decimal precision",
-        )),
-        ("double" | "double-double", Some(_)) => {
-            Err(error("precision applies only to arbitrary arithmetic"))
-        }
-        _ => Err(error(
-            "arithmetic must be double, double-double, or arbitrary",
-        )),
-    }
+    runtime::arithmetic_mode(arithmetic, precision).map_err(error)
+}
+fn parse_complex<T: Carrier>(value: &DecimalComplex, bits: u32) -> PyResult<Complex<T>> {
+    runtime::parse_complex(value, bits).map_err(error)
 }
 
 fn exact_state(bytes: &[u8]) -> PyResult<ExpressionEvaluator<Complex<Rational>>> {
@@ -208,7 +148,7 @@ impl CoefficientEvaluator {
     }
 
     fn evaluate_batch(&mut self, py: Python<'_>, input: &NativeBatch) -> PyResult<NativeBatch> {
-        if self.precision_bits != input.precision_bits {
+        if self.precision_bits != input.precision_bits() {
             return Err(error("batch arithmetic or precision differs"));
         }
         fn run<T: BatchCarrier>(
@@ -219,22 +159,22 @@ impl CoefficientEvaluator {
         where
             Complex<T>: Real + EvaluationDomain,
         {
-            if input.columns != evaluator.get_input_len() {
+            if input.columns() != evaluator.get_input_len() {
                 return Err(error("coefficient input dimensions differ"));
             }
-            let zero = T::parse_decimal("0", input.precision_bits).map_err(error)?;
+            let zero = T::parse_decimal("0", input.precision_bits()).map_err(error)?;
             let count = evaluator.get_output_len();
             let size = input
-                .rows
+                .rows()
                 .checked_mul(count)
                 .ok_or_else(|| error("batch dimensions overflow"))?;
             let mut output = vec![Complex::new(zero.clone(), zero); size];
             evaluator
-                .evaluate_batch(values, &mut output, input.rows)
+                .evaluate_batch(values, &mut output, input.rows())
                 .map_err(error)?;
-            NativeBatch::typed(output, input.ids.clone(), count, input.precision_bits)
+            NativeBatch::typed(output, input.ids().to_vec(), count, input.precision_bits())
         }
-        py.detach(|| match (&mut self.evaluator, &input.data) {
+        py.detach(|| match (&mut self.evaluator, input.data()) {
             (Coefficients::Double(e), Data::Double(v)) => run(e, v, input),
             (Coefficients::DoubleDouble(e), Data::DoubleDouble(v)) => run(e, v, input),
             (Coefficients::Arbitrary(e), Data::Arbitrary(v)) => run(e, v, input),

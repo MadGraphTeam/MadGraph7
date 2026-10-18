@@ -19,7 +19,7 @@ fn floats(input: &NativeBatch, bits: u32) -> Vec<Complex<Float>> {
         value.set_precision(bits);
         value
     }
-    match &input.data {
+    match input.data() {
         Data::Double(values) => values
             .iter()
             .map(|x| Complex::new(Float::with_val(bits, x.re), Float::with_val(bits, x.im)))
@@ -50,7 +50,7 @@ fn rationals(input: &NativeBatch) -> Vec<Option<Rational>> {
         let value = value.into_inner();
         Some(Rational::try_from(value.hi()).ok()? + Rational::try_from(value.lo()).ok()?)
     }
-    match &input.data {
+    match input.data() {
         Data::Double(values) => values
             .iter()
             .flat_map(|x| [Rational::try_from(x.re).ok(), Rational::try_from(x.im).ok()])
@@ -79,9 +79,9 @@ impl NativeBatch {
         precision: Option<u32>,
     ) -> PyResult<Self> {
         let (mode, bits) = arithmetic_mode(arithmetic, precision)?;
-        if bits == self.precision_bits
+        if bits == self.precision_bits()
             && matches!(
-                (mode, &self.data),
+                (mode, self.data()),
                 (Arithmetic::Double, Data::Double(_))
                     | (Arithmetic::DoubleDouble, Data::DoubleDouble(_))
                     | (Arithmetic::Arbitrary, Data::Arbitrary(_))
@@ -91,7 +91,7 @@ impl NativeBatch {
         }
         py.detach(|| match mode {
             Arithmetic::Double => {
-                let values = match &self.data {
+                let values = match self.data() {
                     Data::Double(v) => v.as_ref().clone(),
                     Data::DoubleDouble(v) => v
                         .iter()
@@ -102,10 +102,10 @@ impl NativeBatch {
                         .map(|x| Complex::new(x.re.to_f64(), x.im.to_f64()))
                         .collect(),
                 };
-                Self::typed(values, self.ids.clone(), self.columns, bits)
+                Self::typed(values, self.ids().to_vec(), self.columns(), bits)
             }
             Arithmetic::DoubleDouble => {
-                let values = match &self.data {
+                let values = match self.data() {
                     Data::Double(v) => v
                         .iter()
                         .map(|x| Complex::new(DoubleFloat::from(x.re), DoubleFloat::from(x.im)))
@@ -116,11 +116,14 @@ impl NativeBatch {
                         .map(|x| Complex::new(x.re.to_double_float(), x.im.to_double_float()))
                         .collect(),
                 };
-                Self::typed(values, self.ids.clone(), self.columns, bits)
+                Self::typed(values, self.ids().to_vec(), self.columns(), bits)
             }
-            Arithmetic::Arbitrary => {
-                Self::typed(floats(self, bits), self.ids.clone(), self.columns, bits)
-            }
+            Arithmetic::Arbitrary => Self::typed(
+                floats(self, bits),
+                self.ids().to_vec(),
+                self.columns(),
+                bits,
+            ),
         })
     }
 
@@ -134,7 +137,7 @@ impl NativeBatch {
         relative_tolerance: &str,
         absolute_tolerance: &str,
     ) -> PyResult<Vec<(u64, bool)>> {
-        if self.ids != other.ids || self.columns != other.columns {
+        if self.ids() != other.ids() || self.columns() != other.columns() {
             return Err(error(
                 "agreement requires identical row identities and columns",
             ));
@@ -150,7 +153,7 @@ impl NativeBatch {
             ));
         }
         let width = self
-            .columns
+            .columns()
             .checked_mul(2)
             .ok_or_else(|| error("comparison column count overflows"))?;
         py.detach(|| {
@@ -159,7 +162,7 @@ impl NativeBatch {
             let left = rationals(self);
             let right = rationals(other);
             Ok(self
-                .ids
+                .ids()
                 .iter()
                 .enumerate()
                 .map(|(row, &id)| {
@@ -199,10 +202,10 @@ impl NativeBatch {
         let mut locations = HashMap::new();
         for (group, batch) in batches.iter().enumerate() {
             first.compatible(batch)?;
-            if first.columns != batch.columns {
+            if first.columns() != batch.columns() {
                 return Err(error("row merge column counts differ"));
             }
-            for (row, &id) in batch.ids.iter().enumerate() {
+            for (row, &id) in batch.ids().iter().enumerate() {
                 if !expected.contains(&id) || locations.insert(id, (group, row)).is_some() {
                     return Err(error("merged row identities are duplicated or foreign"));
                 }
@@ -213,9 +216,9 @@ impl NativeBatch {
             .filter(|id| locations.contains_key(id))
             .collect();
         // Own the cheap Arc-backed clones before releasing the GIL.
-        let sources: Vec<_> = batches.iter().map(|batch| batch.data.clone()).collect();
-        let columns = first.columns;
-        let bits = first.precision_bits;
+        let sources: Vec<_> = batches.iter().map(|batch| batch.data().clone()).collect();
+        let columns = first.columns();
+        let bits = first.precision_bits();
         py.detach(|| {
             macro_rules! merge {
                 ($variant:ident) => {{
