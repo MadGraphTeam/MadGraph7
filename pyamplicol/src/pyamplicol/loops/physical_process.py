@@ -46,6 +46,7 @@ class BareProcessResult:
     color_accuracy: str = "full"
     born_color_degree: int | None = None
     virtual_color_degree: int | None = None
+    rational: Any = None
     convention: str = "MadLoop-Cepsilon-bare-four-dimensional-no-R2-no-UV"
 
 
@@ -70,6 +71,7 @@ class NativeBareEvaluation:
     born: Any
     virtual: Any
     statuses: tuple[tuple[tuple[int, str], ...], ...]
+    rational: Any = None
 
 
 def _external_color(graph, expression):
@@ -106,6 +108,35 @@ class _FamilyProgram:
     mass_parameters: tuple[Any, ...]
     projector: Any
     reducer: Any
+    rational_reducer: Any = None
+
+
+def _reduction_numerators(powers, names, *, rational=False):
+    """Translate closed (q[4], mu2, epsilon) labels to reducer sectors.
+
+    Epsilon does not contribute to tensor rank. The caller has already applied
+    its provider's closed-trace parity projection; open currents never enter
+    this boundary. N4 and its dimensional remainder are disjoint selectors.
+    """
+    sectors = [[], [], []]
+    for name, power in zip(names, powers, strict=True):
+        if len(power) != 6 or any(type(p) is not int or p < 0 for p in power):
+            raise ValueError("expected nonnegative q[4], mu2, epsilon powers")
+        *momentum, mu2, epsilon = power
+        if epsilon > 2:
+            raise NotImplementedError("numerator epsilon power exceeds two")
+        if bool(mu2 or epsilon) != rational:
+            continue
+        factors = [name]
+        factors.extend(
+            f"{variable}^{exponent}"
+            for variable, exponent in zip(
+                ("q0", "q1", "q2", "q3", "mu2"), (*momentum, mu2), strict=True
+            )
+            if exponent
+        )
+        sectors[epsilon].append("*".join(factors))
+    return ["+".join(sector) or "0" for sector in sectors]
 
 
 class NativeBareProcessProgram:
@@ -115,6 +146,9 @@ class NativeBareProcessProgram:
     in ``model_inputs``. Numerical values bind once per call, never per event.
     The caller must supply on-shell momenta with the declared model masses;
     native wavefunctions use those four-vectors without repairing their shell.
+    ``dimensional_numerators`` requires a provider for every selected loop. Its
+    closed DAG supplies both N4 and the auxiliary remainder, which are reduced
+    independently for diagnostics; no integrated-amplitude subtraction occurs.
     """
 
     def __init__(
@@ -129,6 +163,7 @@ class NativeBareProcessProgram:
         precision: int | None = None,
         reduction_engine: str = "generic",
         coefficient_engine: str = "interpreted",
+        dimensional_numerators: bool = False,
         backend: Any = None,
     ):
         if backend is None:
@@ -172,6 +207,7 @@ class NativeBareProcessProgram:
         self.helicities = tuple(product((-1, 1), repeat=len(state_kinds)))
         self.arithmetic, self.precision = arithmetic, precision
         self.reduction_engine = reduction_engine
+        self.dimensional_numerators = dimensional_numerators
         self.options = {"arithmetic": arithmetic, "precision": precision}
         self.model_inputs = model_inputs
         self.scale_squared_symbol = S("loop_physical_process::mu_r2")
@@ -182,8 +218,17 @@ class NativeBareProcessProgram:
             ),
             **self.options,
         )
+        if dimensional_numerators:
+            from .direct_kernels import dimensional_kernels
+
         self.recurrences = tuple(
-            build_color_loop_recurrence(graph, routing="family")
+            build_color_loop_recurrence(
+                graph,
+                routing="family",
+                kernel_provider=dimensional_kernels(graph)
+                if dimensional_numerators
+                else None,
+            )
             for graph in self.loop_graphs
         )
         if not self.recurrences:
@@ -194,7 +239,7 @@ class NativeBareProcessProgram:
         if len(self.momenta) != len(state_kinds):
             raise ValueError("physical state count differs from native process")
         self.external_states = representative.external_states
-        variables = representative.dag.variables
+        variables = representative.dag.momentum_variables
         self.born_recurrences = tuple(
             build_color_tree_recurrence(
                 graph, variables=variables, momenta=self.momenta
@@ -279,6 +324,23 @@ class NativeBareProcessProgram:
                 self.recurrences, self.loop_finals, strict=True
             )
         )
+        if dimensional_numerators:
+            from .direct_kernels import closed_reduction_powers
+
+        self.loop_reduction_powers = tuple(
+            tuple(
+                closed_reduction_powers(recurrence, node=node)
+                if dimensional_numerators
+                else tuple(
+                    (*label.powers, 0, 0)
+                    for label in recurrence.dag.nodes[node].output_labels
+                )
+                for node in finals
+            )
+            for recurrence, finals in zip(
+                self.recurrences, self.loop_finals, strict=True
+            )
+        )
         self.coefficient_engine = self.born_executors[0].coefficient_engine
         self.born_metric = tuple(
             tuple(
@@ -315,33 +377,21 @@ class NativeBareProcessProgram:
                 raise ValueError(
                     "native family graphs have different physical denominator bindings"
                 )
-            labels = {
-                i: tuple(
-                    label
-                    for node in self.loop_finals[i]
-                    for label in self.recurrences[i].dag.nodes[node].output_labels
-                )
-                for i in indices
-            }
             powers = tuple(
-                sorted({label.powers for group in labels.values() for label in group})
+                sorted(
+                    {
+                        power
+                        for i in indices
+                        for term in self.loop_reduction_powers[i]
+                        for power in term
+                        if power is not None
+                    }
+                )
             )
-            if max(map(sum, powers)) > plan.propagators + 1:
+            if max(sum(p[:4]) + 2 * p[4] for p in powers) > plan.propagators + 1:
                 raise NotImplementedError("numerator rank exceeds the reducer domain")
             names = [f"c{i}" for i in range(len(powers))]
-            numerator = "+".join(
-                "*".join(
-                    [
-                        name,
-                        *(
-                            f"q{axis}^{power}"
-                            for axis, power in enumerate(exponents)
-                            if power
-                        ),
-                    ]
-                )
-                for name, exponents in zip(names, powers, strict=True)
-            )
+            rational_numerators = _reduction_numerators(powers, names, rational=True)
             mass_parameters = tuple(
                 sorted(
                     {
@@ -366,11 +416,20 @@ class NativeBareProcessProgram:
                     self._compile_family_projection(indices, powers),
                     backend.PolynomialPlan(
                         plan.propagators,
-                        [numerator, "0", "0"],
+                        _reduction_numerators(powers, names),
                         names,
                         engine=reduction_engine,
                         **self.options,
                     ),
+                    backend.PolynomialPlan(
+                        plan.propagators,
+                        rational_numerators,
+                        names,
+                        engine=reduction_engine,
+                        **self.options,
+                    )
+                    if rational_numerators != ["0", "0", "0"]
+                    else None,
                 )
             )
         poles = [
@@ -387,6 +446,9 @@ class NativeBareProcessProgram:
                 [p for row in poles for p in row],
             ),
             **self.options,
+        )
+        self.zero_poles = backend.CoefficientEvaluator(
+            _saved([E("0")] * 3, []), **self.options
         )
 
     def _born_symbols(self):
@@ -424,15 +486,16 @@ class NativeBareProcessProgram:
         for helicity, born in enumerate(self._born_symbols()):
             parameters.extend(born)
             for index in indices:
-                for local_term, node in enumerate(self.loop_finals[index]):
-                    labels = self.recurrences[index].dag.nodes[node].output_labels
+                for local_term, labels in enumerate(self.loop_reduction_powers[index]):
                     term_index = self.loop_term_offsets[index] + local_term
-                    for column, label in enumerate(labels):
+                    for column, power in enumerate(labels):
                         coefficient = S(
                             f"loop_physical_process::coefficient{helicity}_{index}_{local_term}_{column}"
                         )
                         parameters.append(coefficient)
-                        projected[label.powers] += sum(
+                        if power is None:
+                            continue
+                        projected[power] += sum(
                             (
                                 value.conj()
                                 * self.loop_metric[b][term_index]
@@ -496,6 +559,11 @@ class NativeBareProcessProgram:
             getattr(self, "color_accuracy", "full"),
             getattr(self, "born_color_degree", None),
             getattr(self, "virtual_color_degree", None),
+            None
+            if result.rational is None
+            else np.asarray(result.rational.to_decimal(), dtype=object).reshape(
+                result.batch.size, 3, 2
+            ),
         )
 
     def evaluate_native(self, momenta, scales_squared, *, model_values):
@@ -581,7 +649,7 @@ class NativeBareProcessProgram:
         require_finite_batch(born_squared, "Born projection")
         scales = native(scales, size, 1)
         model_positions = {name: i for i, name in enumerate(self.model_names)}
-        integrated, statuses = [], []
+        integrated, rational_integrated, statuses = [], [], []
         for family in self.families:
             inputs = batch_type.concat_columns(
                 [born, *(currents[i] for i in family.graph_indices)]
@@ -617,8 +685,34 @@ class NativeBareProcessProgram:
                 )
             integrated.append(reduced.values)
             statuses.append(tuple(reduced.statuses))
+            if self.dimensional_numerators:
+                if family.rational_reducer is None:
+                    rational_integrated.append(
+                        self.zero_poles.evaluate_batch(scales.take_columns([]))
+                    )
+                else:
+                    rational = family.rational_reducer.evaluate_batch(
+                        shifts, masses, scales, coefficients, s_matrix=matrix
+                    )
+                    failures = [
+                        (point, family.index, status)
+                        for point, status in rational.statuses
+                        if status != "success"
+                    ]
+                    if failures:
+                        raise ArithmeticError(
+                            "native dimensional remainder reduction failed "
+                            f"(point, family, status): {failures}"
+                        )
+                    rational_integrated.append(rational.values)
         virtual = self.postprocess.evaluate_batch(batch_type.concat_columns(integrated))
         require_finite_batch(virtual, "bare virtual assembly")
+        rational = None
+        if self.dimensional_numerators:
+            rational = self.postprocess.evaluate_batch(
+                batch_type.concat_columns(rational_integrated)
+            )
+            require_finite_batch(rational, "direct rational assembly")
         return NativeBareEvaluation(
             NativePhysicalBatch(
                 size,
@@ -634,6 +728,7 @@ class NativeBareProcessProgram:
             born_squared,
             virtual,
             tuple(tuple(family[point] for family in statuses) for point in range(size)),
+            rational,
         )
 
 

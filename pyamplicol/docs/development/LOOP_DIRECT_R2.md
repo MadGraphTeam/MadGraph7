@@ -2,10 +2,11 @@
 
 `tools/loop_reference/local_r2_oracle.py` is an executable local-kernel oracle.
 It does not enable the public direct-R2 strategy, certify a complete physical
-process, or add loop-induced observables. Model-rule completion remains the
-available physical path. A future direct selection must cover every contributing
-graph in the requested process; this experiment does not justify mixing direct
-and model-rule completion graph by graph.
+process, or add loop-induced observables. The bounded physical gluon control
+below separately exercises complete model and direct strategies. Public direct
+dispatch remains disabled. A direct selection must cover every contributing
+graph; these experiments do not justify mixing direct and model completion
+graph by graph.
 
 ## Reused local state
 
@@ -281,3 +282,42 @@ This kernel coverage does not itself enable public direct generation. Complete
 Born interference, model-R2 agreement in the same HV convention, exclusive
 process-wide completion, precision and performance remain responsibilities of
 the physical assembler and its independent controls.
+
+## Complete physical gluon diagnostic
+
+`gluon_scattering_model_virtual_program(..., r2_strategy="direct")` is an
+internal full-SU(3) control in the same HV convention as its source-model path.
+Every selected loop uses its dimensional provider; an unsupported graph fails
+construction. One closed coefficient DAG per graph retains the common
+`(q[4],mu,epsilon)` frame. Born and exact denominator kinematics use only its
+four physical momentum variables.
+
+The native family projector applies complex Born weights and sums compatible
+helicities and graph terms before reduction. Its canonical columns are
+`(q[4],mu2,epsilon)`. The auxiliary-free columns form N4; positive auxiliary
+columns form the dimensional remainder. Epsilon has zero tensor-rank weight
+and selects one of the reducer's three epsilon sectors. The diagnostic reduces
+N4 and the remainder separately from the shared native coefficient buffer,
+never by subtracting integrated amplitudes. It exposes the resulting bare and
+R2 components separately. A future complete-only schedule may combine their
+sectors in a single reduction without changing the numerator construction.
+
+Direct selection excludes every model R2 insertion. Source local UV and
+external-field half-Z factors are retained unchanged, including per-point
+renormalization scales and the six-internal-flavour/five-renormalized-flavour
+convention. The selection is fixed for the complete call. Model selection
+continues to use the ordinary four-dimensional program and source R2 trees.
+
+The physical regression checks all three reference points against independently
+instrumented MadLoop bare, R2, local UV, external-field and complete values.
+It also compares the direct remainder with independently evaluated exact source
+R2 trees in double, DoubleFloat and 50-digit arbitrary arithmetic. The complete
+remainder's poles are checked after summing all families; individual family
+poles are not discarded. Native empty batches and failure guards remain in
+place. Reference finite-amplitude comparisons themselves remain binary64
+controls; the same-carrier R2 comparison is a separate precision check.
+
+These controls do not enable public direct eligibility, general chiral or
+massive-gauge continuation, projected multi-term colour, or a performance
+selection policy. Reduction failures in either channel still raise for the
+diagnostic batch; per-channel lane status and rescue integration remain open.

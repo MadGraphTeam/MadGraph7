@@ -38,7 +38,8 @@ class ModelVirtualResult:
     color_accuracy: str
     born_color_degree: int | None
     virtual_color_degree: int | None
-    convention: str = "MadLoop-Cepsilon-model-counterterms-assembled"
+    r2_strategy: str = "model"
+    convention: str = "MadLoop-Cepsilon-virtual-assembled"
 
 
 @dataclass(slots=True)
@@ -83,7 +84,9 @@ class NativeModelVirtualProgram:
     program's global model inputs and ``bare.scale_squared_symbol``. The latter
     binds each point's renormalization scale; model inputs remain global.
     No normalized binary64 model values are read. Unknown source parameters
-    fail during evaluator construction.
+    fail during evaluator construction. Internal ``direct`` selection excludes
+    every model R2 insertion and consumes the bare program's closed dimensional
+    remainder; local UV and external-field terms retain the source convention.
     """
 
     def __init__(
@@ -95,6 +98,7 @@ class NativeModelVirtualProgram:
         external_fields=(),
         formal_nc=None,
         color_accuracy="full",
+        r2_strategy="model",
     ):
         from symbolica import E, Replacement, S
 
@@ -104,6 +108,13 @@ class NativeModelVirtualProgram:
         from .physical_color import project_physical_color
 
         self.bare = bare
+        if r2_strategy not in {"model", "direct"}:
+            raise ValueError("internal R2 strategy must be model or direct")
+        if r2_strategy == "direct" and not bare.dimensional_numerators:
+            raise ValueError("direct R2 requires complete dimensional numerators")
+        if r2_strategy == "direct" and formal_nc is not None:
+            raise NotImplementedError("direct projected color is not certified")
+        self.r2_strategy = r2_strategy
         self.color_accuracy = ColorAccuracy(color_accuracy).value
         self.color_projection = None
         if getattr(bare, "_model_color_metrics_bound", False) and (
@@ -130,7 +141,12 @@ class NativeModelVirtualProgram:
             replacements.append(Replacement(source, target))
         allowed = {pair.loop for pair in bare.process.orders.sectors[0].pairs}
         self.currents = []
-        self.insertions = tuple(insertions)
+        self.matched_insertions = tuple(insertions)
+        self.insertions = tuple(
+            insertion
+            for insertion in self.matched_insertions
+            if r2_strategy == "model" or insertion.rule.kind != "R2"
+        )
         for insertion in self.insertions:
             if not insertion.rule.has_validated_tensor_basis:
                 raise NotImplementedError(
@@ -418,6 +434,16 @@ class NativeModelVirtualProgram:
             )
         )
         require_finite_batch(counterterms, "counterterm projection")
+        if self.r2_strategy == "direct":
+            if native.rational is None:
+                raise ValueError("dimensional numerator evaluation omitted R2")
+            counterterms = backend.NativeBatch.concat_columns(
+                [
+                    counterterms.take_columns([0, 1, 2]),
+                    native.rational,
+                    counterterms.take_columns([6, 7, 8]),
+                ]
+            )
         assembled = self.assemble.evaluate_batch(
             backend.NativeBatch.concat_columns([native.virtual, counterterms])
         )
@@ -452,6 +478,7 @@ class NativeModelVirtualProgram:
             None
             if self.color_projection is None
             else self.color_projection.virtual_degree,
+            self.r2_strategy,
         )
 
 
@@ -570,7 +597,12 @@ def top_pair_model_virtual_program(source, **options):
 def gluon_scattering_model_virtual_program(
     source, *, color_accuracy="full", formal_color=False, **options
 ):
-    """Fixed-SU(3) gg -> gg using the controlled source gluon UV/R2 bases."""
+    """Fixed-SU(3) gg -> gg with source UV and model or bounded direct R2.
+
+    The direct diagnostic covers the selected vectorlike fermion, massless
+    gauge and ghost cycles in the same HV convention. It does not enable
+    production direct eligibility or a general model continuation.
+    """
     if formal_color or color_accuracy != "full":
         raise NotImplementedError(
             "gluon model counterterms lack a certified SU(Nc) continuation"
@@ -596,6 +628,7 @@ def _qcd_model_virtual_program(
     color_accuracy="full",
     formal_color=False,
     gluon_only=False,
+    r2_strategy="model",
     **options,
 ):
     from symbolica import E, S
@@ -611,6 +644,10 @@ def _qcd_model_virtual_program(
     from .wavefunction import match_external_field_counterterms
 
     model = h.Model.qcd_qed()
+    if r2_strategy not in {"model", "direct"}:
+        raise ValueError("internal R2 strategy must be model or direct")
+    if r2_strategy == "direct" and not gluon_only:
+        raise NotImplementedError("direct physical control currently requires gg -> gg")
     incoming = ("g", "g") if gluon_only else ("u", "u~")
     gluon_final = tuple(outgoing) == ("g", "g")
     if gluon_only:
@@ -726,6 +763,7 @@ def _qcd_model_virtual_program(
         initial_average=E(average),
         model_expressions=expressions,
         model_inputs=(alpha_s, top_mass),
+        dimensional_numerators=r2_strategy == "direct",
         **options,
     )
     substitutions = [
@@ -755,4 +793,5 @@ def _qcd_model_virtual_program(
         external_fields=fields.insertions,
         formal_nc=nc,
         color_accuracy=color_accuracy,
+        r2_strategy=r2_strategy,
     )
