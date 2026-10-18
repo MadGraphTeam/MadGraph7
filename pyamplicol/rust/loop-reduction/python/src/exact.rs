@@ -89,6 +89,54 @@ fn convert<T: BatchCarrier>(
 }
 
 #[pymethods]
+impl NativeBatch {
+    /// Parse finite decimal literals exactly, then convert once to the carrier.
+    #[staticmethod]
+    #[pyo3(signature = (values, rows, columns, arithmetic="double", precision=None, row_ids=None))]
+    fn from_exact_decimal(
+        py: Python<'_>,
+        values: Vec<DecimalComplex>,
+        rows: usize,
+        columns: usize,
+        arithmetic: &str,
+        precision: Option<u32>,
+        row_ids: Option<Vec<u64>>,
+    ) -> PyResult<Self> {
+        let (mode, bits) = arithmetic_mode(arithmetic, precision)?;
+        let expected = rows
+            .checked_mul(columns)
+            .ok_or_else(|| error("exact batch dimensions overflow"))?;
+        if values.len() != expected {
+            return Err(error("exact batch values do not match dimensions"));
+        }
+        let ids = row_ids.unwrap_or_else(|| (0..rows as u64).collect());
+        if ids.len() != rows {
+            return Err(error("exact batch row identities do not match dimensions"));
+        }
+        py.detach(|| {
+            let exact = values
+                .iter()
+                .map(|value| {
+                    Ok(Complex::new(
+                        decimal_rational(&value[0])?,
+                        decimal_rational(&value[1])?,
+                    ))
+                })
+                .collect::<PyResult<Vec<_>>>()?;
+            match mode {
+                Arithmetic::Double => convert(&exact, 0_f64, ids, columns, bits),
+                Arithmetic::DoubleDouble => {
+                    convert(&exact, DoubleFloat::from(0.0), ids, columns, bits)
+                }
+                Arithmetic::Arbitrary => {
+                    convert(&exact, Float::with_val(bits, 0), ids, columns, bits)
+                }
+            }
+        })
+    }
+}
+
+#[pymethods]
 impl ExactPolynomialEvaluator {
     #[new]
     fn new(state: &[u8]) -> PyResult<Self> {

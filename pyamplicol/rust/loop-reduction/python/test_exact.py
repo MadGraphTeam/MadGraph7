@@ -149,3 +149,58 @@ def test_exact_constant_batches_and_shape_rejection():
         evaluator.evaluate_decimal([["0", "0"]], 1)
     with pytest.raises(ValueError):
         evaluator.evaluate_decimal([], 1, row_ids=[])
+
+
+@pytest.mark.parametrize(
+    "arithmetic,precision",
+    [("double", None), ("double-double", None), ("arbitrary", 90)],
+)
+def test_exact_batch_ingress_distinguishes_finite_overflow_and_invalid_original(
+    arithmetic, precision
+):
+    from _loop_reduction import NativeBatch
+
+    options = dict(arithmetic=arithmetic, precision=precision)
+    values = [["+.125e+2", "-2.5E-3"], ["1e400", "0"]]
+    batch = NativeBatch.from_exact_decimal(values, 2, 1, row_ids=[93, 7], **options)
+    assert batch.row_ids == [93, 7]
+    assert batch.nonfinite_rows() == ([] if arithmetic == "arbitrary" else [7])
+    regular = batch.take_rows([0]).to_decimal()[0]
+    assert Decimal(regular[0]) == Decimal("12.5")
+    assert abs(Decimal(regular[1]) + Decimal("0.0025")) < Decimal("1e-18")
+    if arithmetic == "arbitrary":
+        with localcontext() as context:
+            context.prec = 120
+            assert abs(
+                Decimal(batch.to_decimal()[1][0]) / Decimal("1e400") - 1
+            ) < Decimal("1e-88")
+    for bad in ("NaN", "inf", "-Infinity", "1e", "1e2e3", ".", " 1"):
+        with pytest.raises(ValueError):
+            NativeBatch.from_exact_decimal([[bad, "0"]], 1, 1, **options)
+    # The ordinary diagnostic constructor remains permissive for nonfinite buffers.
+    assert NativeBatch.from_decimal(
+        [["NaN", "0"]], 1, 1, **options
+    ).nonfinite_rows() == [0]
+    empty = NativeBatch.from_exact_decimal([], 0, 4, row_ids=[], **options)
+    assert empty.rows == 0 and empty.columns == 4 and empty.row_ids == []
+    with pytest.raises(ValueError, match="dimensions"):
+        NativeBatch.from_exact_decimal(values, 1, 1, **options)
+    with pytest.raises(ValueError, match="identities"):
+        NativeBatch.from_exact_decimal(values, 2, 1, row_ids=[7], **options)
+
+
+def test_exact_batch_ingress_retains_original_bits_in_precise_carriers():
+    from _loop_reduction import NativeBatch
+
+    with localcontext() as context:
+        context.prec = 200
+        for arithmetic, precision, bit, tolerance in [
+            ("double-double", None, 90, Decimal("1e-32")),
+            ("arbitrary", 90, 240, Decimal("1e-90")),
+        ]:
+            value = Decimal(1) + Decimal(2) ** -bit
+            batch = NativeBatch.from_exact_decimal(
+                [[str(value), "0"]], 1, 1, arithmetic=arithmetic, precision=precision
+            )
+            actual = Decimal(batch.to_decimal()[0][0])
+            assert actual != 1 and abs(actual - value) < tolerance
