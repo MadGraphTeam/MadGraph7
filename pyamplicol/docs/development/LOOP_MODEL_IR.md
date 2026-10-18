@@ -175,3 +175,16 @@ The report records source hashes and 102 comparisons. This local check does not
 validate CT scalar values, a whole process, chiral tensors or arbitrary-precision
 physics. It supplies a separate primitive control rather than extrapolating the
 ordinary FFV convention bridge to new structures.
+
+An independently controlled new primitive may be supplied explicitly through
+`CountertermPrimitiveValidation` and `prepare_counterterm_model`'s
+`primitive_validations` argument. The immutable record binds the exact source
+basis key, colour/Lorentz expressions, ordered PDGs/spins/colour representations
+and named conformance control. Preparation rejects stale expressions, wrong ports,
+missing entries, duplicate evidence and empty provenance. It retains the original
+tensor and exact scalar; it cannot authorize another basis entry by name alone.
+`CountertermRule.has_validated_tensor_basis` requires every entry to have either
+an ordinary correspondence or this independent primitive evidence. The record
+does not run a comparison, validate scalar renormalization or set whole-model
+validation flags. Supplying it is an explicit assertion that the named local
+control has already been performed for precisely these structures and ports.

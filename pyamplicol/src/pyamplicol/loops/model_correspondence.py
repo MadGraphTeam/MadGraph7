@@ -39,6 +39,80 @@ class CountertermBasisCorrespondence:
 
 
 @dataclass(frozen=True, slots=True)
+class CountertermPrimitiveValidation:
+    """Caller-supplied evidence scope for a tested source local tensor.
+
+    This record never changes its tensor. It binds an independent conformance
+    control to exact source expressions and ordered particle representations;
+    its label is provenance, not an execution of that control or a scheme proof.
+    Scalar coefficients and other basis entries acquire no validation from it.
+    """
+
+    source_key: tuple[Any, ...]
+    color: str
+    lorentz: str
+    particle_pdgs: tuple[int, ...]
+    particle_spins: tuple[int, ...]
+    particle_colors: tuple[int, ...]
+    conformance_control: str
+
+    def __post_init__(self):
+        for name in (
+            "source_key",
+            "particle_pdgs",
+            "particle_spins",
+            "particle_colors",
+        ):
+            object.__setattr__(self, name, tuple(getattr(self, name)))
+        if (
+            not isinstance(self.conformance_control, str)
+            or not self.conformance_control.strip()
+        ):
+            raise ValueError("primitive validation requires conformance provenance")
+
+
+def validate_counterterm_primitives(
+    source: LoopModelIR,
+    validations: Iterable[CountertermPrimitiveValidation],
+) -> dict[tuple[Any, ...], CountertermPrimitiveValidation]:
+    """Reject stale or overly broad local-tensor evidence before model loading."""
+    entries = {entry.key: entry for entry in source.kernels if entry.kind != "tree"}
+    result = {}
+    for validation in validations:
+        if validation.source_key in result:
+            raise ValueError("duplicate source counterterm primitive validation")
+        entry = entries.get(validation.source_key)
+        if entry is None:
+            raise ValueError(
+                "primitive validation must bind a source counterterm entry"
+            )
+        particles = [
+            source.raw.collections["particles"][i]["fields"] for i in entry.particle_ids
+        ]
+        for name, field_name in (
+            ("particle_pdgs", "pdg_code"),
+            ("particle_spins", "spin"),
+            ("particle_colors", "color"),
+        ):
+            values = getattr(validation, name)
+            if any(
+                isinstance(value, bool) or not isinstance(value, int)
+                for value in values
+            ) or values != tuple(p[field_name] for p in particles):
+                raise ValueError("primitive validation ordered particle ports differ")
+        for name in ("color", "lorentz"):
+            if (
+                parse_exact_ufo(getattr(validation, name))
+                - parse_exact_ufo(getattr(entry, name))
+            ).expand() != 0:
+                raise ValueError(
+                    f"primitive validation source {name} expression differs"
+                )
+        result[entry.key] = validation
+    return result
+
+
+@dataclass(frozen=True, slots=True)
 class _OrdinaryBasis:
     source: KernelBasisEntry
     representative: OrdinaryBasisRepresentative

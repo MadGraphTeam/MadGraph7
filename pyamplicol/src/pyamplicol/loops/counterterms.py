@@ -35,8 +35,10 @@ from .model import KernelBasisEntry, LoopModelIR
 from .model_color import prepare_color_expression
 from .model_correspondence import (
     CountertermBasisCorrespondence,
+    CountertermPrimitiveValidation,
     OrdinaryBasisCatalogue,
     OrdinaryBasisRepresentative,
+    validate_counterterm_primitives,
 )
 from .model_expressions import parse_exact_ufo
 
@@ -58,11 +60,28 @@ class CountertermRule:
     couplings: tuple[tuple[str, KernelBasisEntry], ...]
     coupling_symbols: tuple[Any, ...] = field(default=(), repr=False)
     basis_correspondences: tuple[CountertermBasisCorrespondence | None, ...] = ()
+    primitive_validations: tuple[CountertermPrimitiveValidation | None, ...] = ()
 
     @property
     def has_ordinary_basis_correspondence(self) -> bool:
         return bool(self.basis_correspondences) and all(
             item is not None for item in self.basis_correspondences
+        )
+
+    @property
+    def has_validated_tensor_basis(self) -> bool:
+        """Every basis has explicit ordinary or independent local conformance."""
+        return (
+            len(self.entries)
+            == len(self.basis_correspondences)
+            == len(self.primitive_validations)
+            and bool(self.entries)
+            and all(
+                ordinary is not None or primitive is not None
+                for ordinary, primitive in zip(
+                    self.basis_correspondences, self.primitive_validations, strict=True
+                )
+            )
         )
 
 
@@ -122,6 +141,7 @@ def prepare_counterterm_model(
     *,
     entries: Iterable[KernelBasisEntry] | None = None,
     ordinary_basis_representatives: Iterable[OrdinaryBasisRepresentative] = (),
+    primitive_validations: Iterable[CountertermPrimitiveValidation] = (),
 ) -> PreparedCountertermModel:
     """Append homogeneous, tagged CT rules through native model interchange.
 
@@ -137,6 +157,7 @@ def prepare_counterterm_model(
     representatives = OrdinaryBasisCatalogue(
         source, ordinary_model, ordinary_basis_representatives
     )
+    primitive_evidence = validate_counterterm_primitives(source, primitive_validations)
     for collection in ("orders", "couplings", "lorentz_structures", "vertex_rules"):
         if any(item["name"].startswith(_PREFIX) for item in payload[collection]):
             raise ValueError("ordinary model uses the reserved counterterm namespace")
@@ -274,6 +295,9 @@ def prepare_counterterm_model(
             fields.get("perturbation_type"),
             tuple(aliases),
             basis_correspondences=correspondences,
+            primitive_validations=tuple(
+                primitive_evidence.get(entry.key) for entry in members
+            ),
         )
     native_model = hep.Model.from_json(json.dumps(payload))
     rules = {

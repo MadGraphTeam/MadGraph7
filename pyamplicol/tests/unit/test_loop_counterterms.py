@@ -15,7 +15,10 @@ from pyamplicol.loops.counterterms import (
 )
 from pyamplicol.loops.graphs import build_loop_process
 from pyamplicol.loops.model import build_loop_model
-from pyamplicol.loops.model_correspondence import OrdinaryBasisRepresentative
+from pyamplicol.loops.model_correspondence import (
+    CountertermPrimitiveValidation,
+    OrdinaryBasisRepresentative,
+)
 from pyamplicol.loops.model_expressions import parse_exact_ufo
 from pyamplicol.models.loop_import import capture_raw_loop_model, load_raw_loop_model
 
@@ -111,6 +114,49 @@ def test_prepared_counterterm_trace_is_native_tensor_not_scalar(hep):
     assert tensor.rank == 4  # two Lorentz and two adjoint ports
     assert "UFO::Tr" not in tensor.to_canonical_string()
     assert rule.entries[0].color == "Tr(1,2)"
+
+
+def test_primitive_validation_binds_only_exact_local_source_and_ports(hep):
+    specification = dict(particles=(21, 21), lorentz="Metric(1,2)", color="Tr(1,2)")
+    source, ordinary = _source(hep, [specification, specification])
+    entry = source.kernels[0]
+    evidence = CountertermPrimitiveValidation(
+        entry.key,
+        "Tr(1,2)",
+        "Metric(1,2)",
+        (21, 21),
+        (3, 3),
+        (8, 8),
+        "local-gluon-two-point-aloha-control",
+    )
+    prepared = prepare_counterterm_model(
+        source, ordinary, primitive_validations=[evidence]
+    )
+    first, second = prepared.rules.values()
+    assert (
+        first.has_validated_tensor_basis and not first.has_ordinary_basis_correspondence
+    )
+    assert not second.has_validated_tensor_basis
+    assert first.primitive_validations == (evidence,)
+    assert first.entries[0] is entry
+    assert first.entries[0].coupling.value.expression == entry.coupling.value.expression
+    assert not prepared.tensor_convention_validated
+    for changed in (
+        replace(evidence, color="2*Tr(1,2)"),
+        replace(evidence, lorentz="P(1,1)*P(2,1)"),
+        replace(evidence, particle_pdgs=(22, 22)),
+        replace(evidence, particle_spins=(1, 1)),
+        replace(evidence, particle_colors=(1, 1)),
+        replace(evidence, source_key=("counterterm_vertices", 900, 0, 0, 0)),
+    ):
+        with pytest.raises(ValueError, match="primitive validation"):
+            prepare_counterterm_model(source, ordinary, primitive_validations=[changed])
+    with pytest.raises(ValueError, match="duplicate"):
+        prepare_counterterm_model(
+            source, ordinary, primitive_validations=[evidence, evidence]
+        )
+    with pytest.raises(ValueError, match="provenance"):
+        replace(evidence, conformance_control=" ")
 
 
 def test_drell_yan_local_order_exact_coefficients_and_alternative_multiplicity(hep):
