@@ -375,3 +375,118 @@ def test_fixed_parameters_preserve_active_diagnostics_and_reject_wrong_types(sou
     ):
         with pytest.raises(error, match=message):
             prepare_scalar_bindings(source, (("safe", 0),), fixed_parameters=values)
+
+
+@pytest.mark.parametrize(
+    "arithmetic,precision,bit,tolerance",
+    [
+        ("double", None, 0, "3e-15"),
+        ("double-double", None, 70, "3e-30"),
+        ("arbitrary", 90, 240, "1e-80"),
+    ],
+)
+def test_retained_scalar_owner_and_scale_view_need_no_source_producer(
+    source, monkeypatch, arithmetic, precision, bit, tolerance
+):
+    from dataclasses import fields, is_dataclass, replace
+
+    from pyamplicol.loops.scalar_bindings import NativeScaleBindings, ScalarBindingPlan
+    from pyamplicol.loops.scalar_frontend import ScalarFunctionLibrary
+
+    backend = pytest.importorskip("_loop_reduction")
+    plan = prepare_scalar_bindings(
+        source, (("safe", 0),), fixed_parameters={"high": "1"}
+    )
+    original = NativeScalarBindings(plan)
+    selected = prepare_scalar_bindings(
+        source,
+        (("field", 0), ("field", -1)),
+        program=plan.program,
+        fixed_parameters={"high": "1"},
+        anonymous_definitions={
+            "field": {
+                "kind": "laurent",
+                "terms": [(0, "z*z if x <= 3 else bad"), (-1, "x/3")],
+            }
+        },
+    )
+    scale_record = NativeScaleBindings(original, selected, scale_parameter="x").prepared
+    record = original.prepared
+    assert record is plan.prepared and scale_record.owner is record
+
+    def plain(value):
+        if is_dataclass(value):
+            return all(plain(getattr(value, field.name)) for field in fields(value))
+        if isinstance(value, tuple):
+            return all(map(plain, value))
+        return value is None or type(value) in (str, bytes, int)
+
+    assert plain(record) and plain(scale_record)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("retained scalar binding called the source producer")
+
+    for name in ("lower", "lower_value", "evaluator"):
+        monkeypatch.setattr(ScalarFunctionLibrary, name, forbidden)
+    monkeypatch.setattr(ScalarBindingPlan, "evaluator_bytes", forbidden)
+    with localcontext() as context:
+        context.prec = 300
+        exact_z = str(Decimal(2) + (Decimal(2) ** -bit if bit else 0))
+        original.update({"z": exact_z})
+        snapshot = original.snapshot()
+        owner = record.bind(arithmetic=arithmetic, precision=precision)
+        assert owner.plan is None
+        recovered = owner.reconstruct_snapshot(original, snapshot)
+        view = scale_record.bind(owner)
+        assert view.plan is None
+        scales = backend.NativeBatch.from_decimal(
+            [("4", "0"), ("9", "0")],
+            2,
+            1,
+            arithmetic=arithmetic,
+            precision=precision,
+            row_ids=[19, 2],
+        )
+        values = view.evaluate_native(scales, snapshot=recovered)
+        assert values.row_ids == [19, 2]
+        target = Decimal(exact_z) ** 2
+        for position in (0, 2):
+            actual = Decimal(values.to_decimal()[position][0])
+            assert abs(actual - target) < Decimal(tolerance)
+            if bit:
+                assert actual != 4
+        assert Decimal(values.to_decimal()[3][0]) == 1
+    # Defaults are evaluated afresh, not copied from the lower-precision owner.
+    with localcontext() as context:
+        context.prec = 110
+        default = view.evaluate_native(scales).to_decimal()
+        assert abs(
+            Decimal(default[0][0]) - (Decimal(1) / 9 - Decimal(1) / 49)
+        ) < Decimal(tolerance)
+    previous = owner.snapshot()
+    with pytest.raises(ArithmeticError, match="active diagnostics"):
+        owner.update({"x": "-1"})
+    assert owner.snapshot() is previous
+    with pytest.raises(ValueError, match="fixed during generation"):
+        owner.update({"high": "2"})
+    with pytest.raises(ValueError, match="imaginary part"):
+        owner.update({"x": ("1", "1e-1000")})
+    with pytest.raises(ValueError, match="different global state"):
+        view.evaluate_native(scales, snapshot=snapshot)
+    with pytest.raises(ValueError, match="identical prepared scalar owner"):
+        scale_record.bind(
+            replace(record).bind(arithmetic=arithmetic, precision=precision)
+        )
+    invalid = backend.NativeBatch.from_decimal(
+        [("-1", "0"), ("16", "0"), ("4", "0")],
+        3,
+        1,
+        arithmetic=arithmetic,
+        precision=precision,
+        row_ids=[31, 8, 11],
+    )
+    compact, failures = view.evaluate_partial_native(invalid)
+    assert compact.row_ids == [11]
+    assert {failure.point_id for failure in failures} == {31, 8}
+    empty = scales.take_rows([])
+    assert view.evaluate_native(empty).rows == 0

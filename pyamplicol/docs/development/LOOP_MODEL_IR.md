@@ -814,6 +814,19 @@ original-ID numerical failures; it filters scale and active-diagnostic failures
 before their values enter later evaluators. Metadata/carrier errors still raise,
 including for empty batches. The ordinary method retains its raising behavior.
 
+`ScalarBindingPlan.prepared` retains a `PreparedScalarBindings` record: exact
+saved paired value/default/type-guard programs, ordered external names/types,
+selected Laurent output labels and exact fixed values. A scale view's
+`PreparedScaleBindings` retains its selected paired program and scale-check
+program with a reference to that same owner record. These frozen records contain
+no raw source, helper library, symbolic producer or numerical buffer. Binding
+them in a new carrier reconstructs fresh native evaluators; defaults and captured
+decimal overrides are evaluated directly in that carrier. Scale bindings require
+the identical prepared owner, while snapshots still belong to one mutable native
+state. Tests forbid source lowering/evaluator saving during all-three-carrier
+rebinding and exercise anonymous field outputs, active diagnostics, fixed/type
+guards, beyond-binary64 updates, sparse original IDs and empty batches.
+
 These are scalar-state consumers, not a production EW runtime. Their bounded
 physical UV integration is described below. No coupling running or scheme choices
 are inferred here. Exact cold output expressions can also

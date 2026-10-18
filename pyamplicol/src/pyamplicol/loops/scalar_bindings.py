@@ -63,11 +63,100 @@ class ScalarBindingPlan:
     expressions: tuple[ScalarExpression, ...]
     fixed_parameters: Mapping[str, tuple[str, str]]
     anonymous_definitions: tuple[tuple[str, Mapping[str, Any]], ...] = ()
+    _prepared: Any = field(default=None, init=False, repr=False, compare=False)
 
     def evaluator_bytes(self):
         return self.program.library.evaluator(
             self.expressions, self.input_symbols
         ).save()
+
+    @property
+    def prepared(self):
+        if self._prepared is None:
+            object.__setattr__(
+                self, "_prepared", PreparedScalarBindings.from_plan(self)
+            )
+        return self._prepared
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedScalarBindings:
+    """Exact scalar instructions and plain metadata, without a source producer.
+
+    A record can be shared by independently mutable native owners. Values,
+    defaults and real-input guards are all paired saved dependency programs;
+    no numerical buffers, scalar library or raw UFO are retained here.
+    """
+
+    external_names: tuple[str, ...]
+    external_types: tuple[str, ...]
+    outputs: tuple[tuple[str, int], ...]
+    fixed_parameters: tuple[tuple[str, tuple[str, str]], ...]
+    values_state: bytes
+    defaults_state: bytes | None
+    guards_state: bytes | None
+
+    @classmethod
+    def from_plan(cls, plan):
+        library = plan.program.library
+        guards = tuple(
+            library.lower("1 / (1 if z.imag == 0 else 0)", locals={"z": symbol})
+            for kind, symbol in zip(
+                plan.external_types, plan.input_symbols, strict=True
+            )
+            if kind == "real"
+        )
+        return cls(
+            plan.external_names,
+            plan.external_types,
+            plan.outputs,
+            tuple(plan.fixed_parameters.items()),
+            plan.evaluator_bytes(),
+            library.evaluator(plan.defaults, ()).save() if plan.defaults else None,
+            library.evaluator(guards, plan.input_symbols).save() if guards else None,
+        )
+
+    def bind(
+        self, *, arithmetic="double", precision=None, backend=None, parameters=None
+    ):
+        return NativeScalarBindings(
+            self,
+            arithmetic=arithmetic,
+            precision=precision,
+            backend=backend,
+            parameters=parameters,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedScaleBindings:
+    """One selected-output view of a shared prepared scalar owner."""
+
+    owner: PreparedScalarBindings
+    outputs: tuple[tuple[str, int], ...]
+    scale_parameter: str
+    scale_index: int
+    scale_state: bytes
+    values_state: bytes
+
+    def bind(self, global_state):
+        if not isinstance(global_state, NativeScalarBindings):
+            raise TypeError("scale bindings require a NativeScalarBindings owner")
+        if global_state.prepared is not self.owner:
+            raise ValueError(
+                "scale bindings require the identical prepared scalar owner"
+            )
+        view = NativeScaleBindings.__new__(NativeScaleBindings)
+        view.global_state, view.plan, view.prepared = global_state, None, self
+        view.scale_parameter, view._scale_index = self.scale_parameter, self.scale_index
+        view.backend = global_state.backend
+        view._scale = view.backend.CoefficientEvaluator(
+            self.scale_state, **global_state.options
+        )
+        view._evaluator = view.backend.CoefficientEvaluator(
+            self.values_state, **global_state.options
+        )
+        return view
 
 
 def prepare_scalar_bindings(
@@ -264,7 +353,7 @@ class NativeScalarBindings:
 
     def __init__(
         self,
-        plan: ScalarBindingPlan,
+        plan: ScalarBindingPlan | PreparedScalarBindings,
         *,
         arithmetic="double",
         precision=None,
@@ -274,37 +363,27 @@ class NativeScalarBindings:
         if backend is None:
             import _loop_reduction as backend
 
-        self.plan, self.backend = plan, backend
+        if not isinstance(plan, (ScalarBindingPlan, PreparedScalarBindings)):
+            raise TypeError("scalar bindings require a scalar plan or prepared record")
+        self.plan = plan if isinstance(plan, ScalarBindingPlan) else None
+        self.prepared = plan.prepared if self.plan is not None else plan
+        self.backend = backend
         self.options = MappingProxyType(
             {"arithmetic": arithmetic, "precision": precision}
         )
         self._update_lock = Lock()
         self._identity = object()
         self._evaluator = backend.CoefficientEvaluator(
-            plan.evaluator_bytes(), **self.options
+            self.prepared.values_state, **self.options
         )
         self._defaults = (
-            backend.CoefficientEvaluator(
-                plan.program.library.evaluator(plan.defaults, ()).save(), **self.options
-            )
-            if plan.defaults
+            backend.CoefficientEvaluator(self.prepared.defaults_state, **self.options)
+            if self.prepared.defaults_state is not None
             else None
         )
-        library = plan.program.library
-        # A real-typed input must have exactly zero imaginary part. Keep the
-        # guard in the selected native carrier, including tiny AP components.
-        guards = tuple(
-            library.lower("1 / (1 if z.imag == 0 else 0)", locals={"z": symbol})
-            for kind, symbol in zip(
-                plan.external_types, plan.input_symbols, strict=True
-            )
-            if kind == "real"
-        )
         self._guards = (
-            backend.CoefficientEvaluator(
-                library.evaluator(guards, plan.input_symbols).save(), **self.options
-            )
-            if guards
+            backend.CoefficientEvaluator(self.prepared.guards_state, **self.options)
+            if self.prepared.guards_state is not None
             else None
         )
         overrides = self._normalize({} if parameters is None else parameters)
@@ -333,7 +412,7 @@ class NativeScalarBindings:
         The identical cold plan is required; rounded source buffers are unused.
         """
         source.require_snapshot(snapshot)
-        if self.plan is not source.plan:
+        if self.prepared is not source.prepared:
             raise ValueError("snapshot reconstruction requires the identical plan")
         with self._update_lock:
             arguments, values = self._evaluate(snapshot.overrides)
@@ -352,23 +431,23 @@ class NativeScalarBindings:
     @property
     def inputs(self):
         return self._state.arguments.take_columns(
-            list(range(len(self.plan.external_names)))
+            list(range(len(self.prepared.external_names)))
         )
 
     @property
     def values(self):
-        return self._state.values.take_columns(list(range(len(self.plan.outputs))))
+        return self._state.values.take_columns(list(range(len(self.prepared.outputs))))
 
     def _normalize(self, changes):
         if isinstance(changes, Mapping):
-            fixed = changes.keys() & self.plan.fixed_parameters.keys()
+            fixed = changes.keys() & dict(self.prepared.fixed_parameters).keys()
             if fixed:
                 raise ValueError(
                     "parameters fixed during generation cannot be updated: "
                     f"{sorted(fixed)}"
                 )
         return _normalize_parameter_values(
-            changes, self.plan.external_names, self.plan.external_types
+            changes, self.prepared.external_names, self.prepared.external_types
         )
 
     def _evaluate(self, overrides):
@@ -379,7 +458,7 @@ class NativeScalarBindings:
         else:
             missing = [
                 index
-                for index, name in enumerate(self.plan.external_names)
+                for index, name in enumerate(self.prepared.external_names)
                 if name not in overrides
             ]
             default = self._defaults.evaluate_batch(empty) if missing else None
@@ -395,7 +474,7 @@ class NativeScalarBindings:
                     "model external defaults and diagnostics",
                 )
             columns = []
-            for index, name in enumerate(self.plan.external_names):
+            for index, name in enumerate(self.prepared.external_names):
                 columns.append(
                     batch.from_decimal([overrides[name]], 1, 1, **self.options)
                     if name in overrides
@@ -410,7 +489,7 @@ class NativeScalarBindings:
         computed = self._evaluator.evaluate_batch(arguments)
         require_finite_batch(computed, "model scalar values and active diagnostics")
         return arguments, computed.take_columns(
-            list(range(0, 2 * len(self.plan.outputs), 2))
+            list(range(0, 2 * len(self.prepared.outputs), 2))
         )
 
     def update(self, changes: Mapping[str, str | tuple[str, str]]):
@@ -427,7 +506,7 @@ class NativeScalarBindings:
                 previous.revision + 1,
                 self._identity,
             )
-            return values.take_columns(list(range(len(self.plan.outputs))))
+            return values.take_columns(list(range(len(self.prepared.outputs))))
 
 
 class NativeScaleBindings:
@@ -452,6 +531,8 @@ class NativeScaleBindings:
         if not isinstance(global_state, NativeScalarBindings):
             raise TypeError("scale bindings require a NativeScalarBindings owner")
         owner = global_state.plan
+        if owner is None:
+            raise ValueError("a retained scalar owner requires prepared scale bindings")
         plan = owner if plan is None else plan
         if plan.program is not owner.program:
             raise ValueError("scale plan must share the identical ScalarProgram owner")
@@ -481,11 +562,21 @@ class NativeScaleBindings:
             ),
             library.lower("cmath.sqrt(s)", locals={"s": scale}),
         )
+        self.prepared = PreparedScaleBindings(
+            global_state.prepared,
+            plan.outputs,
+            scale_parameter,
+            index,
+            library.evaluator(scale_outputs, (scale,)).save(),
+            global_state.prepared.values_state
+            if plan is owner
+            else plan.evaluator_bytes(),
+        )
         self._scale = self.backend.CoefficientEvaluator(
-            library.evaluator(scale_outputs, (scale,)).save(), **global_state.options
+            self.prepared.scale_state, **global_state.options
         )
         self._evaluator = self.backend.CoefficientEvaluator(
-            plan.evaluator_bytes(), **global_state.options
+            self.prepared.values_state, **global_state.options
         )
 
     def evaluate_native(self, mu_r2, *, snapshot: NativeScalarSnapshot | None = None):
@@ -533,7 +624,7 @@ class NativeScaleBindings:
             scales.take_columns([2])
             if index == self._scale_index
             else arguments.take_columns([index])
-            for index in range(len(self.plan.external_names))
+            for index in range(len(self.prepared.owner.external_names))
         ]
         computed = checked(
             self._evaluator.evaluate_batch(
@@ -541,4 +632,4 @@ class NativeScaleBindings:
             ),
             "scale-dependent scalar values and active diagnostics",
         )
-        return computed.take_columns(list(range(0, 2 * len(self.plan.outputs), 2)))
+        return computed.take_columns(list(range(0, 2 * len(self.prepared.outputs), 2)))
