@@ -11,6 +11,7 @@ from _loop_reduction import (
     massless_spinors_batch,
     on_shell_wavefunctions_batch,
     wavefunctions_batch,
+    wavefunctions_partial_batch,
 )
 from symbolica import E, Expression, S
 from symbolica.community import tensor
@@ -225,3 +226,89 @@ def test_external_state_domains_shapes_scalars_and_preserved_four_momenta():
             [1],
             ["u"],
         )
+
+
+@pytest.mark.parametrize("mode,precision,tolerance", MODES)
+def test_partial_states_omit_failures_and_preserve_original_lanes(
+    mode, precision, tolerance
+):
+    rows = [(5, 0, 0, 3), (4, 0, 0, 0), (13, 3, 4, 12), ("inf", 0, 0, 0)]
+    helicities, kinds, ids = (
+        [0, 0, 1, 1],
+        ["epsilon", "epsilon", "u", "u"],
+        [91, 3, 47, 8],
+    )
+    for count in (4, 1, 3, 0, 4):
+        momenta = real_batch(rows[:count], mode, precision, ids[:count])
+        values, statuses = wavefunctions_partial_batch(
+            momenta, helicities[:count], kinds[:count]
+        )
+        good = [i for i in (0, 2) if i < count]
+        assert values.row_ids == [ids[i] for i in good]
+        assert values.precision_bits == momenta.precision_bits
+        assert values.nonfinite_rows() == []
+        assert [row for row, _ in statuses] == ids[:count]
+        assert [status == "success" for _, status in statuses] == [
+            i in good for i in range(count)
+        ]
+        expected = wavefunctions_batch(
+            momenta.take_rows(good),
+            [helicities[i] for i in good],
+            [kinds[i] for i in good],
+        )
+        assert values.to_decimal() == expected.to_decimal()
+        if count > 1:
+            assert "longitudinal" in statuses[1][1]
+            with pytest.raises(ValueError, match=r"lane 3.*longitudinal"):
+                wavefunctions_batch(momenta, helicities[:count], kinds[:count])
+    failed, statuses = wavefunctions_partial_batch(
+        real_batch([rows[1]], mode, precision, [3]), [0], ["epsilon"]
+    )
+    assert failed.rows == 0 and failed.columns == 4 and failed.row_ids == []
+    assert len(statuses) == 1 and statuses[0][0] == 3
+
+
+def test_partial_states_retry_original_input_in_wider_exponent_domain():
+    rows = [(5, 0, 0, 3), ("5e200", 0, 0, "3e200"), ("5e400", 0, 0, "3e400")]
+    for mode in ("double", "double-double"):
+        values, statuses = wavefunctions_partial_batch(
+            real_batch(rows, mode, None, [7, 19, 28]), [0] * 3, ["epsilon"] * 3
+        )
+        assert values.row_ids == [7]
+        assert statuses[0] == (7, "success")
+        # The middle input is finite in both fixed carriers; the dependency's
+        # wavefunction constructor detects nonfinite intermediate components.
+        assert statuses[1][0] == 19 and statuses[1][1] != "success"
+        assert statuses[2][0] == 28 and statuses[2][1] != "success"
+    # Reparse the original decimal inputs; promoting an overflowed buffer cannot
+    # recover these finite momenta or their exact longitudinal polarization.
+    values, statuses = wavefunctions_partial_batch(
+        real_batch(rows, "arbitrary", 80, [7, 19, 28]), [0] * 3, ["epsilon"] * 3
+    )
+    assert statuses == [(7, "success"), (19, "success"), (28, "success")]
+    assert values.row_ids == [7, 19, 28] and values.nonfinite_rows() == []
+    with localcontext() as context:
+        context.prec = 90
+        for row in range(3):
+            for pair, expected in zip(
+                values.to_decimal()[row * 4 : (row + 1) * 4],
+                ("0.75", "0", "0", "1.25"),
+                strict=True,
+            ):
+                assert abs(Decimal(pair[0]) - Decimal(expected)) < Decimal("1e-75")
+                assert Decimal(pair[1]) == 0
+
+
+def test_partial_states_metadata_errors_are_not_rescue_candidates():
+    batch = real_batch([[5, 0, 0, 3]], "double", None, [17])
+    for helicity, kind in [(0, "u"), (1, "scalar"), (2, "epsilon"), (1, "unknown")]:
+        with pytest.raises(ValueError):
+            wavefunctions_partial_batch(batch, [helicity], [kind])
+    with pytest.raises(ValueError, match="metadata dimensions"):
+        wavefunctions_partial_batch(batch, [], [])
+    with pytest.raises(ValueError, match="component count"):
+        wavefunctions_partial_batch(batch, [1], ["u"], components=1)
+    empty, statuses = wavefunctions_partial_batch(
+        real_batch([], "double", None), [], [], components=1
+    )
+    assert empty.rows == 0 and empty.columns == 1 and statuses == []

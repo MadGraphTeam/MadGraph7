@@ -142,6 +142,17 @@ Tests verify the calibrated massless convention, massive spin sums using
 dependency gamma matrices, vector transversality/completeness, and mass bits
 beyond binary64. Numerical execution is a native block of dependency routines.
 
+`wavefunctions_partial_batch` uses the same dependency operation and returns
+`(successful_native_rows, statuses)`, with a status for every original row ID.
+Numerical state failures, including input or intermediate carrier overflow, have
+no placeholder values. Invalid shapes, kinds and helicity metadata still raise.
+FeynKit's checked wavefunction constructor rejects nonfinite components; this
+adapter retains that existing guarantee. The ordinary raising interface is
+unchanged. Process-level compaction must remove every helicity/leg row belonging
+to a failed point before constructing currents. Recovery must reparse original
+inputs in the rescue arithmetic; promoting an overflowed buffer cannot recover
+them. This primitive does not establish numerical accuracy or enable rescue.
+
 `NativeBatch` keeps immutable typed values with explicit row IDs. It supports
 column selection/concatenation, row compaction/broadcasting, and row regrouping;
 new IDs must be explicit when broadcasting or regrouping. Concatenation and

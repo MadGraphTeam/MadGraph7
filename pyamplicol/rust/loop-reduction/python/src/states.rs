@@ -47,6 +47,20 @@ fn real_finite<T: Carrier>(value: &Complex<T>) -> bool {
     value.im.is_fully_zero() && value.re.is_finite()
 }
 
+fn state_components<T: BatchCarrier + KinematicScalar>(
+    p: &[Complex<T>],
+    helicity: Helicity,
+    kind: WavefunctionKind,
+) -> Result<Vec<Complex<T>>, String> {
+    if !p.iter().all(real_finite) {
+        return Err("momenta must be finite and real".into());
+    }
+    PhysicalMomentum::from(std::array::from_fn::<_, 4, _>(|i| p[i].re.clone()))
+        .wavefunction(kind, helicity)
+        .map(|wavefunction| wavefunction.into_components())
+        .map_err(|failure| failure.to_string())
+}
+
 fn evaluate<T: BatchCarrier + KinematicScalar>(
     values: &[Complex<T>],
     input: &NativeBatch,
@@ -61,16 +75,39 @@ fn evaluate<T: BatchCarrier + KinematicScalar>(
                 input.ids[row]
             ))
         };
-        if !p.iter().all(real_finite) {
-            return Err(lane_error("momenta must be finite and real".to_string()));
-        }
-        let momentum = PhysicalMomentum::from(std::array::from_fn::<_, 4, _>(|i| p[i].re.clone()));
-        let wavefunction = momentum
-            .wavefunction(kind, helicity)
-            .map_err(|failure| lane_error(failure.to_string()))?;
-        output.extend(wavefunction.into_components());
+        output.extend(state_components(p, helicity, kind).map_err(lane_error)?);
     }
     NativeBatch::typed(output, input.ids.clone(), columns, input.precision_bits)
+}
+
+type PartialStates = (NativeBatch, Vec<(u64, String)>);
+
+fn evaluate_partial<T: BatchCarrier + KinematicScalar>(
+    values: &[Complex<T>],
+    input: &NativeBatch,
+    specifications: &[(Helicity, WavefunctionKind)],
+    columns: usize,
+) -> PyResult<PartialStates> {
+    let mut output = Vec::with_capacity(input.rows * columns);
+    let mut ids = Vec::with_capacity(input.rows);
+    let mut statuses = Vec::with_capacity(input.rows);
+    for (p, (&id, &(helicity, kind))) in values
+        .chunks_exact(4)
+        .zip(input.ids.iter().zip(specifications))
+    {
+        match state_components(p, helicity, kind) {
+            Ok(components) => {
+                output.extend(components);
+                ids.push(id);
+                statuses.push((id, "success".into()));
+            }
+            Err(failure) => statuses.push((id, failure)),
+        }
+    }
+    Ok((
+        NativeBatch::typed(output, ids, columns, input.precision_bits)?,
+        statuses,
+    ))
 }
 
 fn on_shell<T: BatchCarrier + KinematicScalar>(
@@ -123,6 +160,35 @@ fn wavefunctions_batch(
     })
 }
 
+/// Numerical failures remain sparse native rows; malformed metadata still raises.
+#[pyfunction]
+#[pyo3(signature = (momenta, helicities, kinds, components=None))]
+fn wavefunctions_partial_batch(
+    py: Python<'_>,
+    momenta: &NativeBatch,
+    helicities: Vec<i32>,
+    kinds: Vec<String>,
+    components: Option<usize>,
+) -> PyResult<PartialStates> {
+    if momenta.columns != 4 {
+        return Err(error("external states require four momentum columns"));
+    }
+    let (specifications, columns) = specifications(momenta.rows, &helicities, &kinds, components)?;
+    if specifications.iter().any(|(helicity, kind)| {
+        (kind.is_spinor() && helicity.is_zero())
+            || (*kind == WavefunctionKind::Scalar && !helicity.is_zero())
+    }) {
+        return Err(error(
+            "external state kind does not admit the requested helicity",
+        ));
+    }
+    py.detach(|| match &momenta.data {
+        Data::Double(v) => evaluate_partial(v, momenta, &specifications, columns),
+        Data::DoubleDouble(v) => evaluate_partial(v, momenta, &specifications, columns),
+        Data::Arbitrary(v) => evaluate_partial(v, momenta, &specifications, columns),
+    })
+}
+
 #[pyfunction]
 #[pyo3(signature = (spatial_momenta, masses, helicities, kinds, components=None))]
 fn on_shell_wavefunctions_batch(
@@ -157,6 +223,7 @@ fn on_shell_wavefunctions_batch(
 
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(wavefunctions_batch, module)?)?;
+    module.add_function(wrap_pyfunction!(wavefunctions_partial_batch, module)?)?;
     module.add_function(wrap_pyfunction!(on_shell_wavefunctions_batch, module)?)?;
     Ok(())
 }
