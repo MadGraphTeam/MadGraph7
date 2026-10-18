@@ -2069,6 +2069,27 @@ class Model(PhysicsObject):
             name = name[1:]
         return name in self.cache_running_coupling
 
+    def get_scale_dependent_parameters(self):
+        """Names of the parameters whose value changes with the event scale:
+        alpha_s and every parameter evolved by the RGE of running.py. A coupling
+        depending on one of them has to be evaluated event by event."""
+
+        n_running = len(self['running_elements'])
+        cache = getattr(self, 'cache_scale_dependent_parameters', None)
+        if cache is None or cache[0] != n_running:
+            names = set(['aS'])
+            for element in self['running_elements']:
+                for param_list in element.run_objects:
+                    names.update(param.name for param in param_list)
+            cache = self.cache_scale_dependent_parameters = (n_running, names)
+        return cache[1]
+
+    def depends_on_scale(self, dependence):
+        """True if a coupling with this dependence key (the tuple of the names
+        of the external parameters it depends on) varies with the event scale."""
+
+        names = self.get_scale_dependent_parameters()
+        return any(name in names for name in dependence)
 
 
     def check_majoranas(self):

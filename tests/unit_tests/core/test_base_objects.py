@@ -1157,6 +1157,7 @@ class ModelTestRunning(unittest.TestCase):
         import madgraph.interface.master_interface as Cmd
         cmd = Cmd.MasterCmd() 
         cmd.do_import('model %s/tests/input_files/SMEFTatNLO_running/' % madgraph.MG5DIR)
+        self.cmd = cmd
         self.model = cmd._curr_model
         
     def test_get_running(self):
@@ -1188,6 +1189,49 @@ class ModelTestRunning(unittest.TestCase):
         self.assertEqual(len(out[0]),2)
         self.assertEqual(len(out[1]),17)
         self.assertNotIn(out[0].pop(), out[1])
+
+    def test_depends_on_scale(self):
+        """A coupling depending on a parameter evolved by the RGE varies with
+        the event scale, exactly like one depending on aS: the madevent
+        writer must index it by event, whatever its other dependences."""
+
+        model = self.model
+        names = model.get_scale_dependent_parameters()
+        self.assertIn('aS', names)
+        self.assertIn('cQq81', names)
+        self.assertIn('cQt8', names)
+        self.assertNotIn('Gf', names)
+
+        self.assertTrue(model.depends_on_scale(('aS',)))
+        self.assertTrue(model.depends_on_scale(('Gf', 'cQq81')))
+        self.assertTrue(model.depends_on_scale(('cQt8',)))
+        self.assertFalse(model.depends_on_scale(('Gf',)))
+        self.assertFalse(model.depends_on_scale(()))
+
+        # the model of a process without running has only aS
+        plain = base_objects.Model()
+        self.assertEqual(plain.get_scale_dependent_parameters(), set(['aS']))
+        self.assertFalse(plain.depends_on_scale(('Gf',)))
+
+    def test_running_coupling_indexed_by_event(self):
+        """The helas calls of a coupling depending on a running Wilson
+        coefficient but not on aS carry the event index, as the arrays of
+        coupl.inc do; without it the madevent matrix element mixes scalar
+        and array couplings and does not compile."""
+
+        import madgraph.core.helas_objects as helas_objects
+        self.cmd.do_generate('u u~ > t t~ NP=2 NP^2==2 QCD=2 QED=0')
+        me = helas_objects.HelasMatrixElement(self.cmd._curr_amps[0], gen_color=False)
+        coupling_dep = self.model.get('coupling_dep')
+        checked = 0
+        for amp in me.get_all_amplitudes():
+            call = amp.get_helas_call_dict()
+            dependence = coupling_dep[call['coup0'].lstrip('-')]
+            self.assertEqual(call['vec0'], '(ivec)' if self.model.depends_on_scale(dependence) else '')
+            if 'aS' not in dependence and self.model.depends_on_scale(dependence):
+                checked += 1
+        # the four-fermion vertices have no aS in their coupling
+        self.assertTrue(checked)
 
 
 #===============================================================================
