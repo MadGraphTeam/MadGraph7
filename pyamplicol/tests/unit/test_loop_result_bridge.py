@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: 0BSD
 """Native output transport, including sparse failed rows and exact carriers."""
 
-from dataclasses import replace
-from decimal import Decimal, localcontext
 import json
 import os
+from dataclasses import replace
+from decimal import Decimal, localcontext
 from pathlib import Path
 
 import pytest
@@ -15,12 +15,11 @@ from pyamplicol.loops.physical_orders import BornSquaredSector, PhysicalOrderLay
 from pyamplicol.loops.result_bridge import stable_model_evaluation
 from pyamplicol.loops.stability import (
     ArithmeticSpec,
-    NativeStableModelResult,
     NativeStabilityDiagnostic,
+    NativeStableModelResult,
     NumericalVerificationError,
 )
 from pyamplicol.loops.strategy import R2Selection
-
 
 Q2, Q4 = (("QCD", 2),), (("QCD", 4),)
 E2 = (("QED", 2),)
@@ -33,9 +32,10 @@ ORDERS = PhysicalOrderLayout(
     ("QCD",),
 )
 R2 = R2Selection(R2Strategy.AUTO, R2Strategy.MODEL, "only eligible branch")
+DEFAULT_SPEC = ArithmeticSpec("double")
 
 
-def packet(spec=ArithmeticSpec("double")):
+def packet(spec=DEFAULT_SPEC):
     backend = pytest.importorskip("_loop_reduction")
 
     # Successful rows are deliberately ordered differently from the request.
@@ -207,9 +207,9 @@ def test_complete_physical_drell_yan_result_uses_same_output_boundary():
     if not symbolica.is_licensed() or not path:
         pytest.skip("licensed Symbolica and loop_sm reference required")
     from pyamplicol.loops.model import build_loop_model
-    from pyamplicol.models.loop_import import load_raw_loop_model
     from pyamplicol.loops.physical_counterterms import drell_yan_model_virtual_program
     from pyamplicol.loops.stability import NativeModelStabilityProgram
+    from pyamplicol.models.loop_import import load_raw_loop_model
 
     source = build_loop_model(load_raw_loop_model(path))
     model = drell_yan_model_virtual_program(source, arithmetic="double-double")
