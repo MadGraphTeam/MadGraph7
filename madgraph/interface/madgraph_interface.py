@@ -7917,6 +7917,47 @@ This implies that with decay chains:
                 continue
         return False
 
+    def get_rge_parameters_used(self):
+        """Parameters evolved by the RGE of the model (running.py, aS excluded)
+        on which a coupling of the generated diagrams depends."""
+
+        model = self._curr_model
+        if not model or not model.get('running_elements'):
+            return set()
+        couplings = set()
+        for amp in self._curr_amps or []:
+            try:
+                amps = amp.get_amplitudes() if hasattr(amp, 'get_amplitudes') else [amp]
+                for one_amp in amps:
+                    for diag in one_amp.get('diagrams'):
+                        for vertex in diag.get('vertices'):
+                            if not vertex.get('id'):
+                                continue
+                            inter = model.get_interaction(vertex.get('id'))
+                            couplings.update(inter.get('couplings').values())
+            except Exception:
+                # unknown amplitude layout (loop, NLO...): assume the worst
+                couplings.update(c.name for coups in model.get('couplings').values()
+                                 for c in coups)
+        return model.get_rge_parameters_used(couplings)
+
+    def warn_rge_not_supported(self):
+        """The RGE of running.py is only implemented in the madevent and
+        aMC@NLO Fortran code: say loudly that the other outputs keep the
+        running parameters at their param_card value."""
+
+        used = self.get_rge_parameters_used()
+        if not used:
+            return
+        logger.warning(
+            "The model evolves some parameters with the scale (running.py), "
+            "and the process depends on %s. 'output %s' does NOT implement this "
+            "running: these parameters keep the value given in the param_card "
+            "(at the scale Q= of their block) for every event, whatever "
+            "fixed_extra_scale / mue_ref_fixed / mue_over_ref say. Only alpha_s "
+            "runs. Use 'output madevent' to include the running."
+            % (', '.join(sorted(used)), self._export_format))
+
     def has_fock_state(self, args):
         """True if one of the process tokens names a Fock state or a bound-state
         label (which expands into Fock states)."""
@@ -12286,6 +12327,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             raise self.InvalidCmd("Bound states (onia) can only be written out "
                     "with 'output %s', not with 'output %s'."
                     % ("' or 'output ".join(self._onia_formats), self._export_format))
+
+        if self._export_format not in self._v4_export_formats + ['aloha']:
+            self.warn_rge_not_supported()
 
         noclean = '-noclean' in args
         force = '-f' in args
