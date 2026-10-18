@@ -5,13 +5,16 @@ Numerica and Graphica from the tested
 [`e679e8c` integration fork](https://github.com/ValentinHirschi/symbolica/commit/e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8),
 and SymJIT 2.27.3. These pins are recorded by Cargo. This is a source integration,
 with Rust 1.96 or newer required; it is not a completed release dependency set.
-The Python/Community source build and NinjaRS packaging remain integration gates.
+The published Python/Community distribution is pinned to 3.0.2 (kernel 3.0.1),
+whose saved evaluators are tested against this core in all three arithmetic
+modes. NinjaRS packaging remains an integration gate.
 SymJIT now writes storage v4, which additionally stores the compiler argument
 capacity. Current producers and consumers require v4; the checked-in v3 prepared
 model and self-test payloads must be regenerated with the rebuilt native runtime.
 Changing only their metadata would not update the binary format.
-The release lock and release installation workflow described below still record
-the preceding published dependency set and must be reconciled before publication.
+The release lock records the actual dependency versions, but the source patches
+still fail the published-crate gate. Publication requires an upstream release
+containing the integration fixes; this branch is not yet publishable.
 
 pyAmpliCol defaults to published runtime dependencies and release-mode native
 builds. Historical pinned-source candidate machinery is retained, but its

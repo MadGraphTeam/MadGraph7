@@ -323,6 +323,8 @@ def _cargo_manifest_pin_issues(lock: dict[str, Any]) -> list[GateIssue]:
     symbolica_version = f"={symbolica['rust_version']}"
     for table in (root_dependencies, core_dependencies):
         entry = table.get("symbolica") if isinstance(table, dict) else None
+        if isinstance(entry, dict) and entry.get("workspace") is True:
+            entry = root_dependencies.get("symbolica")
         if not isinstance(entry, dict) or entry.get("version") != symbolica_version:
             issues.append(
                 GateIssue(
@@ -341,6 +343,8 @@ def _cargo_manifest_pin_issues(lock: dict[str, Any]) -> list[GateIssue]:
     symjit_entry = (
         core_dependencies.get("symjit") if isinstance(core_dependencies, dict) else None
     )
+    if isinstance(symjit_entry, dict) and symjit_entry.get("workspace") is True:
+        symjit_entry = root_dependencies.get("symjit")
     if (
         not isinstance(symjit_entry, dict)
         or symjit_entry.get("version") != f"={symjit['version']}"

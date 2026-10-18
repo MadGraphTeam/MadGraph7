@@ -78,7 +78,7 @@ def test_release_contract_is_lean_exact_and_schema_8() -> None:
         "rust_version",
         "serialization_abi",
     }
-    assert lock["symjit"] == {"version": "2.26.4"}
+    assert lock["symjit"] == {"version": "2.27.3"}
     assert set(lock["ufo_model_loader"]) == {
         "python_distribution",
         "required_version",
@@ -91,6 +91,22 @@ def test_release_cargo_lock_accepts_registry_crates_including_symjit(
     assert (
         published_cargo._release_cargo_lock_issues(published_cargo._load_lock()) == []
     )
+
+
+def test_release_core_may_inherit_exact_workspace_dependency_pins(published_cargo):
+    module = published_cargo
+    lock = module._load_lock()
+    root = module.ROOT / "Cargo.toml"
+    root.write_text(
+        root.read_text() + f'symjit = {{ version = "={lock["symjit"]["version"]}" }}\n'
+    )
+    core = module.ROOT / "rust/crates/rusticol-core/Cargo.toml"
+    core.write_text(
+        "[dependencies]\nsymbolica.workspace = true\nsymjit.workspace = true\n"
+    )
+    assert module._cargo_manifest_pin_issues(lock) == []
+    root.write_text(root.read_text().replace(f"={lock['symjit']['version']}", "=0.0.0"))
+    assert module._cargo_manifest_pin_issues(lock)
 
 
 def test_release_toolchain_and_manylinux_image_are_exactly_pinned() -> None:
