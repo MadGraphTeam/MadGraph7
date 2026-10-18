@@ -69,3 +69,28 @@ def certified_ffv_source(structure):
         (structure.structure - wrap_indices(parse_exact_ufo(source))).expand() == 0
         for source in sources
     )
+
+
+def certified_ffs_source(structure):
+    """Locally checked four-dimensional Dirac/scalar source bases.
+
+    This identifies the exact local source expressions, including Yukawa and
+    Goldstone chiral bases. It does not certify their scalar couplings, an
+    internal propagator, a complete source process or a dimensional prescription.
+    Physical source dispatch keeps its separate process-admission gate.
+    """
+    from ufo_model_loader.symbolica_processing import wrap_indices
+
+    from .model_expressions import parse_exact_ufo
+
+    sources = (
+        "ProjM(2,1)",
+        "ProjM(2,1)-ProjP(2,1)",
+        "ProjP(2,1)",
+        "ProjM(2,1)+ProjP(2,1)",
+        "Identity(2,1)",
+    )
+    return tuple(structure.spins) == (2, 2, 1) and any(
+        (structure.structure - wrap_indices(parse_exact_ufo(source))).expand() == 0
+        for source in sources
+    )

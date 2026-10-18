@@ -951,6 +951,25 @@ positions do not move. This convention adapter does not define general gamma5
 algebra, Majorana or four-fermion rules. Active epsilon structures and source
 dimensional providers remain gated pending their separate certificates.
 
+`certified_ffs_source` separately identifies the five exact four-dimensional
+Dirac/scalar bases `ProjM(2,1)`, `ProjP(2,1)`, their sum and difference, and
+`Identity(2,1)`, with ordered spins `(2,2,1)`. The reproducible
+`tools/loop_reference/dirac_scalar_oracle.py` compares these actual Gmu source
+bases and the two chiral Higgs CT aliases with unmodified standalone ALOHA.
+Its 812 comparisons cover the full bispinor component basis, both complex
+off-shell endpoint orders, local open-current components, massive/massless
+physical u/v states and complex scalar currents; maximum scaled error was
+`4.45e-16`. The report retains all 357 matching source basis keys, while scalar
+couplings and colour factors remain outside the local Lorentz certificate.
+
+These particular native scalar/chiral matrices are symmetric under exchanging
+their two bispinor slots, so both raw and explicitly mapped local tensors agree
+with the reference. This supplies no additional endpoint phase or general
+transpose rule. Propagators, dimensional gamma5, complete UV/R2/field terms and
+new physical process admission remain separate gates. The source physical
+factory still admits only its existing FFV domain; a local FFS classifier alone
+does not enable complete scalar or charged-current electroweak processes.
+
 The real-mass full-Gmu `e- e+ -> m- m+` control retains all electroweak species:
 two Born graphs, 98 loop graphs and 32 reduction families with the official
 massless-lepton/zero-Yukawa restrictions. It matches the independent MadLoop N4
