@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 """Native model-CT tree assembly over a shared physical Born evaluation.
 
-Only source bases with explicit ordinary-kernel correspondence are admitted by
-this initial path. CT scalar coefficients come from the model's exact Laurent
+Only source bases with explicit ordinary-kernel correspondence or independently
+validated local tensors are admitted. CT scalars come from exact model Laurent
 series. This boundary does not certify external wavefunction completion or a
 general model's renormalization scheme.
 """
@@ -70,9 +70,10 @@ class NativeModelVirtualProgram:
         self.currents = []
         self.insertions = tuple(insertions)
         for insertion in self.insertions:
-            if not insertion.rule.has_ordinary_basis_correspondence:
+            if not insertion.rule.has_validated_tensor_basis:
                 raise NotImplementedError(
-                    "counterterm lacks a calibrated tensor correspondence"
+                    "counterterm lacks a calibrated tensor correspondence "
+                    "or validated primitive"
                 )
             if insertion.graph.order not in allowed:
                 raise ValueError(
@@ -322,6 +323,112 @@ def drell_yan_model_virtual_program(source, **options):
         model_inputs=(alpha_s, inverse_alpha),
         **options,
     )
+    return NativeModelVirtualProgram(
+        bare, matched.insertions, source_bindings=substitutions
+    )
+
+
+def distinct_flavour_model_virtual_program(source, **options):
+    """Six-flavour massless u ubar -> d dbar with source UV/R2 rules.
+
+    The calibrated vector-current bases and independently checked gluon
+    two-point primitives bound this control. Global model inputs are alpha_s
+    and top mass; bottom/charm masses are zero. Scale remains per point.
+    """
+    from symbolica import E, S
+    from symbolica.community import hepkit as h
+
+    from .counterterms import match_counterterms, prepare_counterterm_model
+    from .graphs import build_loop_process
+    from .model_correspondence import (
+        CountertermPrimitiveValidation,
+        OrdinaryBasisRepresentative,
+    )
+    from .physical_process import NativeBareProcessProgram
+
+    model = h.Model.qcd_qed()
+    representatives, validations = [], []
+    # Exact expressions tested against the independent ALOHA component oracle.
+    gluon_lorentz = {"P(-1,1)*P(-1,1)*Metric(1,2)", "P(1,1)*P(2,1)", "Metric(1,2)"}
+    for entry in source.kernels:
+        particles = [
+            source.raw.collections["particles"][i]["fields"] for i in entry.particle_ids
+        ]
+        pdgs = tuple(p["pdg_code"] for p in particles)
+        if entry.kind == "tree" and pdgs in ((-1, 1, 21), (-2, 2, 21)):
+            representatives.append(
+                OrdinaryBasisRepresentative(
+                    entry.key,
+                    "V_74" if pdgs[0] == -1 else "V_135",
+                    0,
+                    0,
+                    "native-qcd-qed-vector-current-control",
+                )
+            )
+        if (
+            entry.kind != "tree"
+            and pdgs == (21, 21)
+            and entry.color == "Tr(1,2)"
+            and entry.lorentz in gluon_lorentz
+        ):
+            validations.append(
+                CountertermPrimitiveValidation(
+                    entry.key,
+                    entry.color,
+                    entry.lorentz,
+                    (21, 21),
+                    (3, 3),
+                    (8, 8),
+                    "local-gluon-two-point-aloha-control",
+                )
+            )
+    prepared = prepare_counterterm_model(
+        source,
+        model,
+        ordinary_basis_representatives=representatives,
+        primitive_validations=validations,
+    )
+    process = build_loop_process(
+        prepared.process(["u", "u~"], ["d", "d~"]),
+        ordinary_model=model,
+        selected_corrections=["QCD"],
+        perturbative_orders={"QCD": 1},
+        born_order_bounds={"QCD": 2, "QED": 0},
+        loop_order_bounds={"QCD": 4, "QED": 0},
+    )
+    matched = match_counterterms(
+        prepared,
+        prepared.process(["u", "u~"], ["d", "d~"], counterterms=True),
+        process,
+        selected_corrections=["QCD"],
+    )
+    alpha_s, top_mass = S("loop_model_input::alpha_s", "loop_model_input::top_mass")
+    strong = (4 * E("pi") * alpha_s) ** E("1/2")
+    expressions = {"UFO::MB": E("0"), "UFO::MC": E("0"), "UFO::MT": top_mass}
+    for name in ("GC_10", "GC_11", "GC_12"):
+        coupling = model.coupling(name)
+        expressions[coupling.symbol.get_name()] = coupling.expression.replace(
+            S("UFO::G"), strong
+        )
+    bare = NativeBareProcessProgram(
+        process,
+        state_kinds=("u", "v_bar", "u_bar", "v"),
+        initial_average=E("36"),
+        model_expressions=expressions,
+        model_inputs=(alpha_s, top_mass),
+        **options,
+    )
+    substitutions = [
+        (S("UFO::G"), strong),
+        (S("UFO::MT"), top_mass),
+        (S("UFO::MB"), E("0")),
+        (S("UFO::MC"), E("0")),
+        (S("UFO::Ncol"), E("3")),
+        (S("UFO::CA"), E("3")),
+        (S("UFO::TF"), E("1/2")),
+        (S("UFO::lhv"), E("1")),
+        (S("UFO::MU_R"), bare.scale_squared_symbol ** E("1/2")),
+    ]
     return NativeModelVirtualProgram(
         bare, matched.insertions, source_bindings=substitutions
     )

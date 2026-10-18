@@ -14,6 +14,7 @@ import pytest
 
 from pyamplicol.loops.physical_counterterms import (
     NativeModelVirtualProgram,
+    distinct_flavour_model_virtual_program,
     drell_yan_model_virtual_program,
 )
 
@@ -193,6 +194,119 @@ def test_singular_counterterm_reports_original_point_before_result(source, point
         program.evaluate_decimal(
             points[:2], ["1000000", "4000000"], model_values=["0.118", "132.507"]
         )
+
+
+def _uudd_born_uv(point, scale, alpha_s="0.118", mass="173"):
+    from symbolica import E, Expression
+
+    from pyamplicol.loops.model_expressions import parse_exact_ufo
+
+    p = [[parse_exact_ufo(value) for value in leg] for leg in point]
+
+    def square(vector):
+        return vector[0] ** 2 - sum((v**2 for v in vector[1:]), E("0"))
+
+    s, t, u = [
+        square([a + sign * b for a, b in zip(p[0], p[leg], strict=True)])
+        for leg, sign in ((1, 1), (2, -1), (3, -1))
+    ]
+    alpha = parse_exact_ufo(alpha_s)
+    born = E("4/9") * (4 * E("pi") * alpha) ** 2 * (t * t + u * u) / s**2
+    # Six active internal quark species give beta0=7 in the bare UV pole;
+    # the model's finite top decoupling term implements five-flavour alpha_s.
+    finite = (
+        born
+        * alpha
+        / (3 * E("pi"))
+        * (parse_exact_ufo(scale) / parse_exact_ufo(mass) ** 2).log()
+    )
+    single = -7 * born * alpha / (2 * E("pi"))
+    evaluator = Expression.evaluator_multiple(
+        [born, finite, single], [], n_cores=1, jit_compile=False
+    )
+    return [
+        value.to_decimal_tuple()[0]
+        for value in evaluator.evaluate_complex_with_prec([], 110)
+    ]
+
+
+@pytest.mark.parametrize(
+    "arithmetic,precision,engine,coefficient_engine,tolerance",
+    [
+        ("double", None, "fast", "jit", Decimal("3e-11")),
+        ("double", None, "generic", "interpreted", Decimal("3e-11")),
+        ("double-double", None, "generic", "interpreted", Decimal("3e-27")),
+        ("arbitrary", 60, "generic", "interpreted", Decimal("3e-53")),
+    ],
+)
+def test_complete_uudd_components_precisions_and_scale_binding(
+    source, arithmetic, precision, engine, coefficient_engine, tolerance
+):
+    fixture = Path(__file__).resolve().parents[2] / "tools/loop_reference/uudd_qcd.json"
+    points = np.asarray(json.loads(fixture.read_text())["points"], dtype=str)
+    program = distinct_flavour_model_virtual_program(
+        source,
+        arithmetic=arithmetic,
+        precision=precision,
+        reduction_engine=engine,
+        coefficient_engine=coefficient_engine,
+    )
+    assert len(program.insertions) == 23 and len(program.currents) == 25
+    assert all(
+        insertion.rule.has_validated_tensor_basis for insertion in program.insertions
+    )
+    result = program.evaluate_decimal(
+        points, ["1000000"] * 3, model_values=["0.118", "173"]
+    )
+    reference_path = os.environ.get("PYAMPLICOL_UUDD_COMPONENT_REFERENCE")
+    if reference_path:
+        reference = json.loads(Path(reference_path).read_text())
+        for index, row in enumerate(reference["rows"]):
+            for name, key in (
+                ("bare", "bare"),
+                ("uv", "uv"),
+                ("r2", "r2"),
+                ("virtual", "full"),
+            ):
+                np.testing.assert_allclose(
+                    getattr(result, name)[index, :, 0].astype(float),
+                    [
+                        row[key][pole]
+                        for pole in ("finite", "single_pole", "double_pole")
+                    ],
+                    rtol=4e-11,
+                    atol=1e-14,
+                )
+    # Exact Born/UV controls provide precision evidence independently of the
+    # binary64 complete reference, whose digits cannot certify MP finite terms.
+    scales = ["900000", "2100000"]
+    rebound = program.evaluate_decimal(
+        points[1:], scales, model_values=["0.100000000000000000000000001", "190"]
+    )
+    with localcontext() as context:
+        context.prec = 120
+        for index, (point, scale) in enumerate(zip(points[1:], scales, strict=True)):
+            expected = _uudd_born_uv(
+                point, scale, "0.100000000000000000000000001", "190"
+            )
+            for actual, target in zip(
+                [
+                    rebound.born[index, 0],
+                    rebound.uv[index, 0, 0],
+                    rebound.uv[index, 1, 0],
+                ],
+                expected,
+                strict=True,
+            ):
+                assert abs(Decimal(actual) - target) < abs(target) * tolerance
+            assert all(Decimal(value) == 0 for value in rebound.r2[index, 1:].flat)
+            assert all(Decimal(value) == 0 for value in rebound.uv[index, 2:].flat)
+    if arithmetic == "double" and engine == "fast":
+        # The same compiled native conditional safely selects reglog(0)=0.
+        massless = program.evaluate_decimal(
+            points[:1], ["1000000"], model_values=["0.118", "0"]
+        )
+        assert Decimal(massless.uv[0, 0, 0]) == 0
 
 
 @pytest.mark.parametrize(
