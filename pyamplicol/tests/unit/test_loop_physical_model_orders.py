@@ -610,3 +610,32 @@ def test_external_fields_keep_right_born_graph_and_left_pair_mask(control):
     np.testing.assert_array_equal(
         filtered.uv_external_fields[:, index], result.uv_external_fields[:, index]
     )
+
+
+def test_optional_native_verification_retains_every_completed_order(control, catalogue):
+    from pyamplicol.loops.stability import ArithmeticSpec, NativeModelStabilityProgram
+
+    model = _program(control, catalogue)
+    program = NativeModelStabilityProgram(
+        model,
+        [ArithmeticSpec("double-double"), ArithmeticSpec("arbitrary", 70)],
+        relative_tolerance="1e-9",
+        absolute_tolerance="1e-14",
+    )
+    result = program.evaluate_native(
+        _points()[:1],
+        ["1000000"],
+        model_values=["0.118", "132.507", "173"],
+        point_ids=[55],
+        verify=True,
+    )
+    assert result.orders == model.bare.order_layout
+    assert result.channels == model.bare.order_channels
+    assert len(result.orders.born) > 1 and len(result.orders.virtual) > 1
+    assert result.born.columns == len(result.orders.born)
+    assert all(
+        value.columns == 3 * len(result.orders.virtual) and value.row_ids == [55]
+        for value in result.component_batches
+    )
+    assert result.diagnostics[0].status == "success"
+    assert result.diagnostics[0].accuracy == "empirical-cross-precision-agreement"

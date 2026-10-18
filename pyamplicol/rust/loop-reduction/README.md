@@ -288,3 +288,32 @@ certified for partial evaluation. The new path does not establish accuracy,
 choose a rescue precision, or perform additional precision evaluations. Genuine
 singular Born/CT and later-family `DegenerateGram` controls validate failure
 isolation in binary64, DoubleFloat and arbitrary precision.
+
+`NativeModelStabilityProgram` is an internal optional view over one such complete
+model program. Its `evaluate_native(..., verify=False)` performs one native
+attempt and retains Ninja failure diagnostics with accuracy explicitly not
+established. `verify=True` compiles higher arithmetic views lazily from the same
+cold graph/model/CT definitions and reevaluates the copied original decimal
+momenta, scales and global model tuple. Verification compares every real and
+imaginary part of every Born order, all three poles in all six virtual component
+sets, and their totals. A requested-precision result agreeing with the first
+higher evaluation is retained. A failed or disagreeing result requires two
+successful higher evaluations to agree before rescue; only pending points
+continue. Previous successful results remain in their original carriers during
+comparison, including sparse DoubleFloat low words.
+
+A rescued value is converted directly to the requested output carrier and must
+still pass the configured bound against the higher result. Unattainable output
+tolerances therefore remain failures. Diagnostics distinguish evaluation and
+output arithmetic, retain original point IDs and reduction failures, and call
+this evidence `empirical-cross-precision-agreement`. It is not an independent
+reducer or physics accuracy certificate. Unrecovered points raise by default;
+`allow_partial=True` explicitly exposes sparse successful buffers and failure
+metadata. Verification is never enabled by an ordinary evaluation call.
+
+A bounded near-forward uudd control exercises an actual rescue: binary64 and
+DoubleFloat report a degenerate Gram cut, while 70- and 100-digit evaluations
+agree and satisfy the requested binary64 output bound. This tests the recovery
+mechanism, not general near-singular numerical reliability. A cheap production
+stability policy, source snapshot reconstruction, correlated/direct/formal
+coverage and benchmark-matched verification cost remain separate work.

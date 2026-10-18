@@ -101,6 +101,23 @@ class NativeBareCurrents:
     momenta_pairs: Any
 
 
+def _physical_point_ids(momenta, scales, legs, point_ids):
+    """Validate the original batch before any optional compact gather."""
+    if momenta.ndim != 3 or momenta.shape[1:] != (legs, 4):
+        raise ValueError("expected (batch, leg, four components) momenta")
+    size = len(momenta)
+    if scales.shape != (size,):
+        raise ValueError("physical scale shape differs")
+    point_ids = list(range(size)) if point_ids is None else list(point_ids)
+    if (
+        len(point_ids) != size
+        or any(type(point) is not int or point < 0 for point in point_ids)
+        or len(set(point_ids)) != size
+    ):
+        raise ValueError("physical point IDs must be distinct nonnegative integers")
+    return point_ids
+
+
 def _evaluate_coefficient_groups(bound, executors, columns, groups):
     """Execute exact representatives and retain every original graph position."""
     outputs = {
@@ -879,11 +896,8 @@ class NativeBareProcessProgram:
         )
         helicity_states = self.helicities if helicities is None else helicities
         legs, helicities = len(self.state_kinds), len(helicity_states)
-        if momenta.ndim != 3 or momenta.shape[1:] != (legs, 4):
-            raise ValueError("expected (batch, leg, four components) momenta")
+        point_ids = _physical_point_ids(momenta, scales, legs, point_ids)
         size, rows = len(momenta), len(momenta) * helicities
-        if scales.shape != (size,):
-            raise ValueError("physical scale shape differs")
         snapshot = None
         if self.model_state is None:
             if model_values is None or len(model_values) != len(self.model_inputs):
@@ -913,13 +927,6 @@ class NativeBareProcessProgram:
                 pairs(values), nrows, columns, row_ids=row_ids, **self.options
             )
 
-        point_ids = list(range(size)) if point_ids is None else list(point_ids)
-        if (
-            len(point_ids) != size
-            or any(type(point) is not int or point < 0 for point in point_ids)
-            or len(set(point_ids)) != size
-        ):
-            raise ValueError("physical point IDs must be distinct nonnegative integers")
         lane_ids = [
             point * helicities + h for point in point_ids for h in range(helicities)
         ]
