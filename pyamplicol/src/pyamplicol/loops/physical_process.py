@@ -675,6 +675,11 @@ class NativeBareProcessProgram:
             precision=precision,
             reduction_engine=reduction_engine,
             coefficient_engine=coefficient_engine,
+            parameters=(
+                self.model_state.snapshot().overrides
+                if self.model_state is not None
+                else None
+            ),
         )
 
     def _born_symbols(self, *, helicities=None):

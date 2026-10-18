@@ -13,6 +13,11 @@ from types import MappingProxyType
 from typing import Any
 
 from .kernels import NativeCoefficientDAG, PreparedCoefficientDAG
+from .scalar_bindings import (
+    NativeScalarBindings,
+    PreparedScalarBindings,
+    PreparedScaleBindings,
+)
 
 
 def _metadata(owner, names):
@@ -146,11 +151,21 @@ class PreparedBareProcess:
     families: tuple[PreparedFamily, ...]
     evaluator_states: tuple[tuple[str, bytes], ...]
     color_metrics_revision: int
+    source_scalars: PreparedScalarBindings | None
+    source_scale: PreparedScaleBindings | None
+    source_producer_plan: Any
+    source_scale_producer_plan: Any
 
     @classmethod
     def from_program(cls, program):
         if (
-            program.model_state is not None
+            (
+                program.model_state is not None
+                and (
+                    not isinstance(program.model_state, NativeScalarBindings)
+                    or program.dimensional_numerators
+                )
+            )
             or getattr(program, "_formal_color_projected", False)
             or getattr(program, "color_accuracy", "full") != "full"
             or getattr(program, "born_color_degree", None) is not None
@@ -158,7 +173,12 @@ class PreparedBareProcess:
         ):
             raise NotImplementedError(
                 "retained process views currently require unprojected "
-                "legacy model bindings"
+                "legacy bindings or four-dimensional source bindings"
+            )
+        owner, scale = program.model_state, program.model_scale_view
+        if scale is not None and (owner is None or scale.global_state is not owner):
+            raise ValueError(
+                "retained ordinary scale view has a different scalar owner"
             )
         return cls(
             _metadata(program, _BARE_METADATA),
@@ -170,6 +190,10 @@ class PreparedBareProcess:
             ),
             tuple(program._evaluator_states.items()),
             getattr(program, "_color_metrics_revision", 0),
+            owner.prepared if owner is not None else None,
+            scale.prepared if scale is not None else None,
+            owner.plan if owner is not None else None,
+            scale.plan if scale is not None else None,
         )
 
     def bind(
@@ -180,10 +204,13 @@ class PreparedBareProcess:
         precision=None,
         reduction_engine="generic",
         coefficient_engine="interpreted",
+        parameters=None,
     ):
         from .color_bilinears import PhysicalColorSpace
         from .physical_process import NativeBareProcessProgram
 
+        if self.source_scalars is None and parameters is not None:
+            raise ValueError("retained source parameters require a source scalar owner")
         view = NativeBareProcessProgram.__new__(NativeBareProcessProgram)
         for name, value in self.metadata:
             setattr(view, name, value)
@@ -214,7 +241,6 @@ class PreparedBareProcess:
         ]
         view._evaluator_states = dict(self.evaluator_states)
         for name in (
-            "model_evaluator",
             "born_projector",
             "postprocess",
             "zero_poles",
@@ -227,7 +253,26 @@ class PreparedBareProcess:
                     view._evaluator_states[name], **view.options
                 ),
             )
-        view.model_state = view.model_scale_view = None
+        if self.source_scalars is None:
+            view.model_state = view.model_scale_view = None
+            view.model_evaluator = backend.CoefficientEvaluator(
+                view._evaluator_states["model_evaluator"], **view.options
+            )
+        else:
+            view.model_evaluator = None
+            view.model_state = self.source_scalars.bind(
+                backend=backend, parameters=parameters, **view.options
+            )
+            view.model_scale_view = (
+                self.source_scale.bind(view.model_state)
+                if self.source_scale is not None
+                else None
+            )
+            # Optional producer metadata preserves inspection/capability checks.
+            # Neither numerical binding nor evaluation reads these objects.
+            view.model_state.plan = self.source_producer_plan
+            if view.model_scale_view is not None:
+                view.model_scale_view.plan = self.source_scale_producer_plan
         view.color_space = PhysicalColorSpace()
         view._color_metrics_revision = self.color_metrics_revision
         view._prepared_process = self
@@ -238,7 +283,7 @@ class PreparedBareProcess:
 class PreparedCountertermCurrent:
     metadata: tuple[tuple[str, Any], ...]
     instructions: PreparedCoefficientDAG | None
-    coefficient_state: bytes
+    coefficient_state: bytes | None
 
     @classmethod
     def from_current(cls, current):
@@ -261,8 +306,10 @@ class PreparedCountertermCurrent:
 
         metadata = dict(self.metadata)
         metadata["coefficient_state"] = self.coefficient_state
-        metadata["coefficient_evaluator"] = bare.backend.CoefficientEvaluator(
-            self.coefficient_state, **bare.options
+        metadata["coefficient_evaluator"] = (
+            bare.backend.CoefficientEvaluator(self.coefficient_state, **bare.options)
+            if self.coefficient_state is not None
+            else None
         )
         if self.instructions is None:
             return _ExternalFieldCurrent(**metadata)
@@ -285,17 +332,18 @@ class PreparedModelProcess:
     currents: tuple[PreparedCountertermCurrent, ...]
     fields: tuple[PreparedCountertermCurrent, ...]
     evaluator_states: tuple[tuple[str, bytes], ...]
+    source_scale: PreparedScaleBindings | None
+    source_scale_producer_plan: Any
 
     @classmethod
     def from_program(cls, program):
         if (
             program.r2_strategy not in {"model", "direct"}
             or program.color_projection is not None
-            or program.source_scale_view is not None
         ):
             raise NotImplementedError(
                 "retained model views currently require full-colour "
-                "model or direct-R2 legacy bindings"
+                "model or direct-R2 bindings"
             )
         if program.r2_strategy == "direct":
             if not program.bare.dimensional_numerators:
@@ -304,8 +352,17 @@ class PreparedModelProcess:
                 current.insertion.rule.kind == "R2" for current in program.currents
             ):
                 raise ValueError("retained direct R2 cannot include model R2 currents")
+        scale = program.source_scale_view
+        bare = program.bare.prepared
+        if scale is not None and (
+            scale.global_state is not program.bare.model_state
+            or scale.prepared.owner is not bare.source_scalars
+        ):
+            raise ValueError(
+                "retained counterterm scale view has a different scalar owner"
+            )
         return cls(
-            program.bare.prepared,
+            bare,
             _metadata(
                 program,
                 (
@@ -322,6 +379,8 @@ class PreparedModelProcess:
             tuple(map(PreparedCountertermCurrent.from_current, program.currents)),
             tuple(map(PreparedCountertermCurrent.from_current, program.field_currents)),
             tuple(program._evaluator_states.items()),
+            scale.prepared if scale is not None else None,
+            scale.plan if scale is not None else None,
         )
 
     def bind(self, *, backend, **options):
@@ -343,7 +402,13 @@ class PreparedModelProcess:
             setattr(
                 view, name, backend.CoefficientEvaluator(state, **view.bare.options)
             )
-        view.source_scale_view = None
+        view.source_scale_view = (
+            self.source_scale.bind(view.bare.model_state)
+            if self.source_scale is not None
+            else None
+        )
+        if view.source_scale_view is not None:
+            view.source_scale_view.plan = self.source_scale_producer_plan
         view.bare._model_color_metrics_bound = True
         view.bare._formal_color_projected = False
         view._prepared_model = self

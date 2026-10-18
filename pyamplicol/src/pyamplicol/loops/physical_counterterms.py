@@ -724,6 +724,11 @@ class NativeModelVirtualProgram:
             precision=precision,
             reduction_engine=reduction_engine,
             coefficient_engine=coefficient_engine,
+            parameters=(
+                self.bare.model_state.snapshot().overrides
+                if self.bare.model_state is not None
+                else None
+            ),
         )
 
     def evaluate_counterterm_currents_native(

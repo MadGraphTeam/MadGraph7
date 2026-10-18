@@ -1339,8 +1339,9 @@ the producer graph or repeating expression optimization and evaluator saving.
 Existing schedule identities and exact model-binding sharing proofs are retained.
 
 `PreparedBareProcess` and `PreparedModelProcess` extend this boundary to the
-complete full-colour controls with legacy exact model formulas, including the
-certified internal direct-R2 gluon control. They retain family routing/kinematic instructions, scalar coefficient
+complete full-colour controls with legacy exact model formulas or paired source
+scalar bindings, including the certified internal direct-R2 gluon control in
+the legacy path. They retain family routing/kinematic instructions, scalar coefficient
 and contraction programs, CT/field current instructions, exact weights and order
 maps. `rebind` creates independent native evaluators, reducers and kernel caches;
 no event buffers or numerical model values are copied from another arithmetic.
@@ -1366,8 +1367,29 @@ R2 trees and MadLoop components, and check original point IDs, changed exact
 couplings/scales, empty batches and the lifetime of previous output buffers.
 This does not extend the certified dimensional-kernel or physical process domain.
 
+Source records retain one `PreparedScalarBindings` owner and its ordinary and CT
+`PreparedScaleBindings` views. Local CT coefficients and anonymous particle-field
+columns use their original selected-output maps; they are not converted to
+independent legacy formulas. The source bare/model facade's `rebind` captures
+one immutable exact override map, reconstructs defaults and overrides in the
+new carrier, and connects both scale views to that fresh owner. Later updates
+are independent of the original state. Passing `parameters=` directly to a
+prepared source record selects a new global state; omitting it selects exact
+source defaults. Legacy records reject that source-only argument.
+
+Tests generate each source QCD control once, then prohibit scalar lowering,
+recurrence preparation, colour contractions and evaluator saving while binding
+double, DoubleFloat and arbitrary precision. Independent MadLoop N4/UV/R2/full
+components and the gluon field split check the selected columns. Exact Born/UV
+and field relations, changed scales, retained snapshots, empty batches and
+original decimal input bits check native state flow. Reference comparisons
+remain limited by the independent binary64 provider values.
+
 These are internal in-memory records. Existing producer graph references remain
 available for diagnostics; they are neither serialized nor used to regenerate
-physics during rebinding. No public artifact format is introduced. Source-owned
-and formal-colour retained views require separate integration; their
-existing numerical paths remain unchanged.
+physics during rebinding. Optional source plan references likewise support
+existing inspection/capability checks; ordinary binding and evaluation work
+without those references. Source-owned PACBIN output remains explicitly rejected
+until its descriptor integration. Formal-colour retained views, source direct-R2
+and new source partial/rescue domains remain separate work; this checkpoint does
+not widen those capability gates.

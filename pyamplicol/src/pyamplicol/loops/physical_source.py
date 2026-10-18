@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from .graphs import build_loop_process
@@ -28,6 +28,15 @@ class NativeSourceBareProgram:
     state: NativeScalarBindings
     bare: NativeBareProcessProgram
     external_request: LoopExternalRequest
+
+    @property
+    def prepared(self):
+        return self.bare.prepared
+
+    def rebind(self, **options):
+        """Re-evaluate one captured exact global state in a fresh carrier."""
+        bare = self.bare.rebind(**options)
+        return replace(self, state=bare.model_state, bare=bare)
 
     def update_parameters(self, changes):
         return self.state.update(changes)
@@ -181,6 +190,18 @@ class NativeSourceModelProgram:
     source_bare: NativeSourceBareProgram
     virtual: Any
     matched: Any
+
+    @property
+    def prepared(self):
+        return self.virtual.prepared
+
+    def rebind(self, **options):
+        """Reuse complete instructions and one captured parameter revision."""
+        virtual = self.virtual.rebind(**options)
+        source_bare = replace(
+            self.source_bare, state=virtual.bare.model_state, bare=virtual.bare
+        )
+        return replace(self, source_bare=source_bare, virtual=virtual)
 
     def update_parameters(self, changes):
         return self.source_bare.update_parameters(changes)

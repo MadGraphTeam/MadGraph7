@@ -421,3 +421,196 @@ def test_source_particle_fields_complete_all_arithmetic(
     assert empty.virtual.shape == (0, 3, 2)
     with pytest.raises(NotImplementedError, match="partial source"):
         model.evaluate_ordered_partial_native(points[:1], ["1000000"])
+
+
+@pytest.mark.parametrize("gluons", [False, True], ids=["uudd", "gg-fields"])
+def test_complete_source_retained_views_without_producer_work(
+    prepared, monkeypatch, tmp_path, gluons
+):
+    from pyamplicol.loops import (
+        physical_counterterms,
+        physical_process,
+        physical_source,
+    )
+    from pyamplicol.loops.color_bilinears import PhysicalColorSpace
+    from pyamplicol.loops.kernels import CoefficientKernel, PreparedCoefficientDAG
+    from pyamplicol.loops.kinematics import LoopKinematicPlan
+    from pyamplicol.loops.portable import write_loop_pacbin
+    from pyamplicol.loops.scalar_bindings import ScalarBindingPlan
+    from pyamplicol.loops.scalar_frontend import ScalarFunctionLibrary
+
+    path = os.environ.get(
+        "PYAMPLICOL_GG_COMPONENT_REFERENCE"
+        if gluons
+        else "PYAMPLICOL_UUDD_COMPONENT_REFERENCE"
+    )
+    if not path:
+        pytest.skip("set independent component reference paths")
+    reference = json.loads(Path(path).read_text())
+    fixture = (
+        Path(__file__).resolve().parents[2]
+        / "tools/loop_reference"
+        / ("gluon_scattering_qcd.json" if gluons else "uudd_qcd.json")
+    )
+    points = np.asarray(json.loads(fixture.read_text())["points"], dtype=str)
+    program = prepared.compile(
+        (21, 21) if gluons else (2, -2),
+        (21, 21) if gluons else (1, -1),
+        selected_corrections=["QCD"],
+        parameters={"aS": "0.118", "MT": "173", "MU_R": "1000"},
+        reduction_engine="fast",
+        coefficient_engine="jit",
+    )
+    record = program.prepared
+    assert record.source_scale.owner is record.bare.source_scalars
+    assert record.bare.source_scale.owner is record.bare.source_scalars
+    assert all(
+        current.coefficient_state is None
+        for current in (*record.currents, *record.fields)
+    )
+    assert bool(record.fields) == gluons
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.prepared_process import (
+        PreparedBareProcess,
+        PreparedModelProcess,
+    )
+
+    for override in (
+        {"dimensional_numerators": True},
+        {"_formal_color_projected": True},
+    ):
+        altered = SimpleNamespace(**(vars(program.virtual.bare) | override))
+        with pytest.raises(NotImplementedError, match="unprojected"):
+            PreparedBareProcess.from_program(altered)
+    other_owner = record.bare.source_scalars.bind()
+    other_scale = record.source_scale.bind(other_owner)
+    altered = SimpleNamespace(
+        **(vars(program.virtual) | {"source_scale_view": other_scale})
+    )
+    with pytest.raises(ValueError, match="different scalar owner"):
+        PreparedModelProcess.from_program(altered)
+    baseline = program.evaluate_decimal(points, ["1000000"] * 3)
+    saved = baseline.virtual.copy()
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("source arithmetic rebind repeated producer work")
+
+    for owner, name in (
+        (physical_source, "source_bare_program"),
+        (physical_source, "source_model_program"),
+        (physical_process, "build_color_loop_recurrence"),
+        (physical_process, "build_color_tree_recurrence"),
+        (physical_process, "build_loop_kinematics"),
+        (physical_counterterms, "build_color_tree_recurrence"),
+        (physical_counterterms, "_saved"),
+        (physical_counterterms, "_saved_scalar_pairs"),
+        (physical_process, "_saved"),
+        (PhysicalColorSpace, "overlap"),
+        (PreparedCoefficientDAG, "from_dag"),
+        (CoefficientKernel, "evaluator_bytes"),
+        (LoopKinematicPlan, "evaluator_bytes"),
+        (ScalarBindingPlan, "evaluator_bytes"),
+        (ScalarFunctionLibrary, "lower"),
+        (ScalarFunctionLibrary, "lower_value"),
+        (ScalarFunctionLibrary, "evaluator"),
+    ):
+        monkeypatch.setattr(owner, name, forbidden)
+    with pytest.raises(NotImplementedError, match="source-owned scalar"):
+        write_loop_pacbin(program.virtual, tmp_path / "source.pacbin")
+    assert not (tmp_path / "source.pacbin").exists()
+    for arithmetic, precision, tolerance in (
+        ("double", None, "3e-11"),
+        ("double-double", None, "3e-25"),
+        ("arbitrary", 60, "3e-50"),
+    ):
+        view = program.rebind(
+            arithmetic=arithmetic,
+            precision=precision,
+            reduction_engine="fast" if arithmetic == "double" else "generic",
+            coefficient_engine="jit" if arithmetic == "double" else "interpreted",
+        )
+        state, bare, model = view.source_bare.state, view.source_bare.bare, view.virtual
+        assert view.prepared is record and bare.prepared is record.bare
+        assert state is bare.model_state is model.source_scale_view.global_state
+        assert bare.model_scale_view.global_state is state
+        assert state is not program.source_bare.state
+        assert bare.families[0].reducer is not program.virtual.bare.families[0].reducer
+        assert state.overrides == program.source_bare.state.overrides
+        # Ordinary execution does not require optional producer inspection refs.
+        state.plan = bare.model_scale_view.plan = model.source_scale_view.plan = None
+        actual = view.evaluate_decimal(points, ["1000000"] * 3)
+        pairs = [("bare", "bare"), ("uv", "uv"), ("r2", "r2"), ("virtual", "full")]
+        if gluons:
+            pairs += [("uv_local", "uv_vertex"), ("uv_external_fields", "wf")]
+        for index, row in enumerate(reference["rows"]):
+            for name, key in pairs:
+                np.testing.assert_allclose(
+                    getattr(actual, name)[index, :, 0].astype(float),
+                    [row[key][p] for p in ("finite", "single_pole", "double_pole")],
+                    rtol=5e-11,
+                    atol=1e-10 if gluons else 1e-14,
+                )
+        batch = bare.prepare_currents_native(points[:1], ["900000"]).batch
+        retained = tuple(
+            value.to_decimal()
+            for value in model.evaluate_counterterm_currents_native(batch)
+        )
+        alpha, mass, scale = "0.100000000000000000000000001", "190", "2100000"
+        view.update_parameters({"aS": alpha, "MT": mass})
+        assert (
+            tuple(
+                value.to_decimal()
+                for value in model.evaluate_counterterm_currents_native(batch)
+            )
+            == retained
+        )
+        changed = view.evaluate_decimal(points[:1], [scale])
+        if not gluons:
+            targets = _exact_born_uv(points[0], scale, alpha, mass)
+            observed = [changed.born[0, 0], changed.uv[0, 0, 0], changed.uv[0, 1, 0]]
+        else:
+            from symbolica import E, Expression
+
+            from pyamplicol.loops.model_expressions import parse_exact_ufo as parse
+
+            # Independent field half-Z relation; exact source input strings enter
+            # both the analytic control and saved native scalar view.
+            ratio = parse(alpha) / (3 * E("pi"))
+            expected = Expression.evaluator_multiple(
+                [-2 * ratio * (parse(scale) / parse(mass) ** 2).log(), -2 * ratio],
+                [],
+                n_cores=1,
+                jit_compile=False,
+            ).evaluate_complex_with_prec([], 100)
+            with localcontext() as context:
+                context.prec = 110
+                targets = [
+                    Decimal(changed.born[0, 0]) * x.to_decimal_tuple()[0]
+                    for x in expected
+                ]
+            observed = [
+                changed.uv_external_fields[0, 0, 0],
+                changed.uv_external_fields[0, 1, 0],
+            ]
+        with localcontext() as context:
+            context.prec = 110
+            for value, target in zip(observed, targets, strict=True):
+                assert abs(Decimal(value) - target) < abs(target) * Decimal(tolerance)
+        assert view.evaluate_decimal(points[:0], []).virtual.shape == (0, 3, 2)
+        assert program.source_bare.state.overrides["aS"] == ("0.118", "0")
+    np.testing.assert_array_equal(baseline.virtual, saved)
+    # Facade rebind captures exact overrides once, including bits absent from its
+    # original double scalar buffers. The bare facade follows the same contract.
+    program.update_parameters({"aS": alpha, "MT": mass})
+    bare_view = program.source_bare.rebind(arithmetic="arbitrary", precision=60)
+    assert bare_view.state.overrides["aS"] == (alpha, "0")
+    assert bare_view.state.prepared is record.bare.source_scalars
+    if not gluons:
+        rebound = bare_view.evaluate_decimal(points[:1], [scale])
+        with localcontext() as context:
+            context.prec = 110
+            expected = _exact_born_uv(points[0], scale, alpha, mass)[0]
+            assert abs(Decimal(rebound.born[0, 0]) - expected) < abs(
+                expected
+            ) * Decimal("3e-53")

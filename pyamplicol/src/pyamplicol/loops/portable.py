@@ -33,6 +33,10 @@ _BARE_EVALUATORS = (
 
 def write_loop_pacbin(program, destination):
     """Lower one checked retained control into plain execution data and bytecode."""
+    if program.bare.model_state is not None:
+        raise NotImplementedError(
+            "source-owned scalar records require portable integration"
+        )
     prepared = program.prepared  # Existing scope/strategy checks remain authoritative.
     bare = program.bare
     payloads, payload_ids, schedules, schedule_ids = {}, {}, [], {}
