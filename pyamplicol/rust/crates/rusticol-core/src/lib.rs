@@ -27,6 +27,8 @@ mod metadata;
 pub mod pacbin;
 pub mod recurrence;
 #[cfg(feature = "symbolica-runtime")]
+pub mod source_bindings;
+#[cfg(feature = "symbolica-runtime")]
 pub mod source_scalar;
 
 pub use artifact::{

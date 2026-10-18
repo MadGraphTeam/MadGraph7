@@ -170,3 +170,24 @@ implemented in this same coordinator. Correlations, formal colour, partial
 results/rescue and public artifact/SDK dispatch are not admitted by this entry
 point. Any failed reduction or nonfinite assembled component raises; successful
 reducer statuses alone do not establish numerical accuracy.
+
+The additive `rusticol_core::source_bindings` helper binds the validated source
+scalar record over this same numerical backend. `SourceOwner` publishes immutable
+snapshots containing native arguments/selected values, original exact overrides
+and a revision. Checked updates serialize only the owner's evaluator workspace;
+all value, active diagnostic and real-input checks finish before one publication.
+Failed updates retain the prior snapshot. Initial overrides overlay the artifact's
+captured values, and later updates overlay the current exact override map.
+
+`SourceScale` owns separate ordinary or counterterm evaluator scratch and requires
+an explicit snapshot from its owner. It validates positive real per-point
+`mu_r2`, applies the saved scale substitution, preserves row IDs and checks paired
+diagnostics before selecting values. A retained snapshot stays valid after later
+global updates; a snapshot from another owner is rejected, including at a
+coordinator's optional early `require_snapshot` check. No source definitions or
+Python objects are consulted by these operations. The focused standalone Rust
+test `source_scalar_owner` uses the existing source gg PACBIN to exercise all
+three carriers, exact parameter bits, old snapshots, scale branches, failed
+updates and concurrent publication. This helper is a prerequisite for native
+source coordination; it does not by itself remove the coordinator capability
+guard described above.
