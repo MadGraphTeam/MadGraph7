@@ -1393,3 +1393,16 @@ without those references. Source-owned PACBIN output remains explicitly rejected
 until its descriptor integration. Formal-colour retained views, source direct-R2
 and new source partial/rescue domains remain separate work; this checkpoint does
 not widen those capability gates.
+
+### Explicit loop_sm scalar declaration compatibility
+
+The supplied MadGraph 3.7 `loop_sm` vertex `V_1001` lists four `G0` fields but
+references `SSS1`, whose scalar spin signature has three entries. Its tensor is
+the exact constant one, as is the existing four-slot `SSSS1` declaration.
+`prepare_loop_sm_scalar_declarations` explicitly selects that existing reference
+in a derived immutable source view. The original raw object is retained, the
+choice is recorded in its ordinary source metadata, and no coefficient, particle,
+restriction or other vertex changes. The helper requires this precise source
+shape and rejects changed tensors, species or arity. Generic structural spin
+signature validation remains strict. This enables request preparation with
+neutral-current QED orders; it does not certify a six-leg process or new CT bases.
