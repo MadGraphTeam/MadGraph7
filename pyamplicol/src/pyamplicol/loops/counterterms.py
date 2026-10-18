@@ -380,12 +380,13 @@ class AttachedCurrent:
     identity: str
 
 
-def _rooted_current_key(current, physical_external_indices):
+def _rooted_current_key(current, physical_external_indices, symmetric_slots=None):
     """Canonicalize native current metadata with public Symbolica.Graph.
 
     Only the excision-created boundary loses its artificial incoming/outgoing
     state. Physical labels/states, interaction slots and particle flow survive.
-    Port nodes retain each native interaction slot under canonical relabeling.
+    Port nodes retain each native interaction slot, except for full Bose
+    permutation classes proved on that complete model vertex.
     """
     from symbolica import Graph, S
 
@@ -397,6 +398,8 @@ def _rooted_current_key(current, physical_external_indices):
         "loop_current::particle",
     )
     payload = json.loads(current.to_json())
+    names = {vertex.id: vertex.interaction for vertex in current.vertices}
+    symmetric_slots = symmetric_slots or {}
     graph = Graph()
     vertices = {
         index: graph.add_node(vertex_color(vertex["interaction"]))
@@ -415,7 +418,10 @@ def _rooted_current_key(current, physical_external_indices):
                     raise NotImplementedError(
                         "native current has an unassigned interaction slot"
                     )
-                port = graph.add_node(port_color(slot))
+                labels = symmetric_slots.get(names[vertex])
+                port = graph.add_node(
+                    port_color(slot if labels is None else labels[slot])
+                )
                 graph.add_edge(vertices[vertex], port)
             elif edge.external_index in physical_external_indices:
                 port = graph.add_node(
@@ -437,13 +443,13 @@ def _rooted_current_key(current, physical_external_indices):
 
 
 def attached_currents(
-    diagram: Any, region_vertices: Iterable[int]
+    diagram: Any, region_vertices: Iterable[int], *, symmetric_slots=None
 ) -> tuple[AttachedCurrent, ...]:
     """Native canonical identities for currents incident to a collapsed region.
 
     Direct external legs use their physical leg identity. Composite tree currents
     use native connected-components/excision and Symbolica graph canonicalization,
-    preserving external labels, interaction slots and particle identities.
+    preserving external labels, unproved interaction slots and particle identities.
     """
     region = frozenset(region_vertices)
     if not region or not region <= {v.id for v in diagram.vertices}:
@@ -486,6 +492,7 @@ def attached_currents(
                 _rooted_current_key(
                     current,
                     {edge.external_index for edge in diagram.external_edges},
+                    symmetric_slots,
                 ),
             )
         )
@@ -619,6 +626,16 @@ def match_counterterms(
         prepared.ordinary_model, _rule_orders(prepared.ordinary_model)
     )
     denominators = _propagator_denominators(prepared.native)
+    from .vertex_symmetry import symmetric_boson_slots
+
+    symmetric_slots = symmetric_boson_slots(
+        prepared.native,
+        {
+            vertex.interaction
+            for graph in loops.loops
+            for vertex in graph.native.vertices
+        },
+    )
     witnesses = defaultdict(list)
     fingerprints = {_fingerprint(g.native) for g in (*loops.born, *loops.loops)}
     for graph in loops.loops:
@@ -627,7 +644,10 @@ def match_counterterms(
         local_order = _summed_orders(
             v.order for v in graph.vertices if v.id in vertices
         )
-        key = (attached_currents(graph.native, vertices), local_order)
+        key = (
+            attached_currents(graph.native, vertices, symmetric_slots=symmetric_slots),
+            local_order,
+        )
         witnesses[key].append(graph)
     insertions, unmatched = [], []
     for diagram in sorted(result.diagrams, key=lambda item: item.id):
@@ -657,7 +677,9 @@ def match_counterterms(
                 for v in snapshot.vertices
             ),
         )
-        currents = attached_currents(diagram, (site.id,))
+        currents = attached_currents(
+            diagram, (site.id,), symmetric_slots=symmetric_slots
+        )
         matches = witnesses.get((currents, rule.order), ())
         count = len(insertions)
         for index, alternative in enumerate(rule.alternatives):
