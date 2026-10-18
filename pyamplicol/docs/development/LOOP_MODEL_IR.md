@@ -117,6 +117,27 @@ complete-source catalogue guard. The real `loop_sm` pure-QCD graph control uses
 this proof to exclude an unrelated QED scalar basis with an inconsistent source
 spin signature; the unscoped model still rejects it.
 
+`loops.compiler.prepare_loop_request_model` connects these boundaries without
+process-name dispatch. It consumes either an existing `CompiledModel` raw UFO
+sidecar or an explicit `RawLoopModel`; normalized binary64 parameter defaults
+are not used. The returned preparation retains its compiled owner, original and
+restricted declarations, scope, native structural model, one paired scalar
+program and the selected complete local CT catalogue. Its `compile` method
+resolves physical external identities and forwards exact request bounds to the
+existing native complete engine.
+
+The source catalogue reuses the exact-key local neutral-lepton, fundamental
+FFV and gluon tensor certificates. Unknown bases stay present and reject if
+matched by the requested process. It does not replace source coefficients,
+infer an absent UV scheme, or certify formal-Nc continuation of fixed-SU(3)
+four-gluon R2 rules. The source-QCD four-quark control agrees separately in bare,
+UV, R2 and total Laurent coefficients with independent MadLoop components in
+double, double-double and AP60. Exact analytic Born/UV controls test source
+parameter updates beyond binary64 and per-point scale binding. The same facade
+also exercises the complete neutral Gmu source. Source external-field binding
+is a separate next boundary; the existing explicit rejection remains. Public
+generation and portable source-plan admission are unchanged.
+
 ## Local colour alternatives
 
 `loops.color_terms.split_local_color_terms` expands one native local factor and
