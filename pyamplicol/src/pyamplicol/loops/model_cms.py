@@ -80,17 +80,24 @@ def _set_value(record, value, operation):
     }
 
 
-def prepare_gmu_complex_mass_declarations(raw: RawLoopModel) -> CMSModelDeclarations:
+def prepare_gmu_complex_mass_declarations(
+    raw: RawLoopModel, *, reglog_convention: str = "source"
+) -> CMSModelDeclarations:
     """Continue the external-mass Gmu source without changing its original data.
 
     Real external masses and widths remain independent inputs. Pole masses are
     shared by every species using the corresponding mass, including covariant
     multiplet partners. Yukawa inputs become internal mass aliases. The source's
-    Gfbar, recms and branch-log definitions are retained, with CMSParam enabled.
-    No renormalization expressions are generated or inferred here.
+    Gfbar and recms definitions are retained, with CMSParam enabled. The default
+    preserves the bound source reglog too. Explicit ``ufo-standard`` selects the
+    reserved principal-log convention used by UFO 2.0 and MadGraph's exporter,
+    only for the recognized Gmu helper bodies. Its discrepancy with the original
+    source is retained in diagnostics. No other logarithm or CT formula changes.
     """
     from .covariant_model import _repair
 
+    if reglog_convention not in {"source", "ufo-standard"}:
+        raise ValueError("reglog_convention must be source or ufo-standard")
     if "complex_mass_derivation" in raw.metadata:
         raise ValueError("complex-mass declarations are already derived")
     if tuple(raw.metadata.get("gauge", ())) != (1,) or raw.collections["propagators"]:
@@ -158,6 +165,47 @@ def prepare_gmu_complex_mass_declarations(raw: RawLoopModel) -> CMSModelDeclarat
         collections["particles"][diagnostic["particle_id"]]["fields"][
             diagnostic["field"]
         ] = diagnostic["derived"]
+
+    if reglog_convention == "ufo-standard":
+        helper_id = raw.metadata["function_bindings"]["reglog"]
+        helper = collections["functions"][helper_id]
+        fields = helper["fields"]
+        principal = "(0.0 if z==0.0 else cmath.log(z))"
+        continued = (
+            "(0.0 if z.imag==0.0 and z.real==0.0 else "
+            "(cmath.log(z)-2*math.pi*1j if "
+            "(z.real<0.0 and z.imag>0.0) else cmath.log(z)))"
+        )
+        if (
+            helper["name"] != "reglog"
+            or fields.get("arguments") not in ("z", ["z"])
+            or not fields.get("expression_source", {}).get("exact", False)
+            or _source_tokens(fields["expr"])
+            not in {_source_tokens(principal), _source_tokens(continued)}
+        ):
+            raise NotImplementedError(
+                "source reglog differs from the recognized Gmu helper profile"
+            )
+        diagnostic = {
+            "profile": "gmu-ufo-standard-reglog",
+            "function_id": helper_id,
+            "function": "reglog",
+            "raw": fields["expr"],
+            "derived": principal,
+            "reason": (
+                "explicit UFO 2.0 reserved principal-log convention; legacy "
+                "source overwrites reglog with reglogm semantics, whereas "
+                "MadGraph emits its reserved principal implementation"
+            ),
+        }
+        fields["expr"] = principal
+        fields["expression_source"] = {
+            "kind": "derived-complex-mass-declaration",
+            "exact": True,
+            "operation": "select-ufo-standard-reglog",
+            "declaration": [helper_id, "reglog"],
+        }
+        diagnostics = (*diagnostics, MappingProxyType(diagnostic))
 
     tied = {}
     for record in parameters:
@@ -243,6 +291,7 @@ def prepare_gmu_complex_mass_declarations(raw: RawLoopModel) -> CMSModelDeclarat
         "mass_aliases": aliases,
         "mass_widths": mass_widths,
         "tied_yukawas": tied,
+        "reglog_convention": reglog_convention,
         "diagnostics": [dict(diagnostic) for diagnostic in diagnostics],
         "physical_certification": False,
     }

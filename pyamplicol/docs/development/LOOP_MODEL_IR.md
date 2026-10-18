@@ -1118,6 +1118,36 @@ only UV finite terms differ. An isolated scalar comparison locates the shift in
 offset. This is a source/export semantic difference, not a fitted amplitude
 correction.
 
+The declaration helper now accepts an explicit
+`reglog_convention="ufo-standard"` compatibility choice. Its default remains
+`"source"`. The selected convention is recorded in the existing declaration
+metadata; diagnostics retain the original bound helper and its replacement,
+and the original raw model remains unchanged. Only the recognized Gmu helper
+bodies are accepted. `reglogp`, `reglogm`, other helpers and all CT formulas stay
+unchanged. The generic UFO importer continues to preserve source semantics.
+
+This choice follows the [UFO 2.0 definition, section 5.2](https://arxiv.org/pdf/2304.09883):
+`reglog` denotes the principal logarithm; `reglogp` and `reglogm` explicitly
+select shifted sheets. The actual MadGraph 3.7 exporter reserves these names,
+skips their supplied helper bodies, and emits that convention. The legacy Gmu
+source instead overwrites `reglog` with `reglogm` semantics. In the finite
+`eCoup_DGmua0_UV_EW` expression, four of 56 `reglog` call sites already have
+upper-left arguments at zero widths:
+`-0.5+1.83351678i`, `-0.5+0.72646643i`,
+`-0.06046135+0.99817054i` and `-0.64287724+0.93405746i`.
+They are away from the cut at the real-mass anchor. Applying the legacy blanket
+shift changes the complex charge CT by `-0.102935557513438i`; this does not vanish
+as the widths approach zero. Its purely imaginary zero-width value was hidden
+by real Born interference. The principal result
+`0.03251413826093476+0.01510486664807422i` agrees with an independently compiled
+Recola real-point `Delta r/2` scalar. The focused native test checks this complex
+anchor, a small-width limit, the finite-width MadLoop scalar, all four local
+helper shifts, and original-source preservation in double, DoubleFloat and
+arbitrary precision. The binary64 reference accuracy is not a high-precision
+certificate. The argument tracing diagnostic applies the declared principal
+boundary `arg(z) in (-pi, pi]`, including MadGraph's explicit signed-zero
+normalization, rather than Python's negative-zero `-pi` boundary.
+
 The source-semantic physical control uses a copied reference helper object with
 only REGLOG/MP_REGLOG changed to the exact bound UFO body. All original model
 rules, scalar definitions and exporter files remain untouched. The compact
@@ -1134,10 +1164,33 @@ UFO data or process generation. The AP80 zero-width physical test is a strict
 expected failure; its required validation remains open. No mass rounding, tiny
 term pruning or integral correction is applied. Finite-width tests pass in all
 three carriers and also check exact Gf updates beyond binary64.
-The physical finite CMS branch/renormalization prescription remains unresolved:
-an independent Recola comparison agrees on Born and poles but differs in the
-finite part. These controls certify implementation of the supplied source
-semantics, and do not enable a physical CMS capability flag.
+The independent Recola comparison requires the same Laurent normalization as
+the QCD harness: `finite_Cepsilon = finite_Recola + pi^2/6 * double_pole`.
+The original CMS diagnostic omitted this conversion. Applying it exactly once
+to preserved raw provider coefficients makes N4, R2 and every pole agree with
+the unmodified MadLoop export. A finite UV difference remains. Independently
+dumped finite values of `delta Z_AZ`, `delta Z_ZZ`, `delta M_Z^2`, `delta s_w`
+and `Delta r/2`, replayed through unchanged generated MadLoop couplings, explain
+that entire residual at all four continuum/resonance points (largest absolute
+UV difference after replay `4.8e-14`). This replay is a convention diagnostic,
+not a production correction.
+
+The installed Recola model evaluates relevant self-energies at real momentum
+squares and includes the pole-to-real expansion terms. Its width dependence
+differs from the source's direct complex-pole expressions. Such higher-order
+differences from a real-momentum CMS expansion are discussed in
+[the Recola2/REPT1L paper, section 5](https://arxiv.org/pdf/1705.06053).
+The observed finite-width difference must remain an explicit model convention;
+it is separate from both the legacy `reglog` incompatibility and the AP80 master
+failure. These bounded controls do not enable a physical CMS capability flag.
+
+Reproducible workspace evidence is retained in
+`reference/runs/electroweak-mumu-cms-laurent-comparison.json`,
+`electroweak-mumu-cms-uv-scalar-replay.json`,
+`electroweak-mumu-cms-uv-width-comparison.json`, and
+`electroweak-mumu-cms-reglog-arguments.json`. The corresponding scripts preserve
+the original provider outputs and source model; no branch is fitted to an
+interference result and no integral implementation is modified.
 
 The separate `neutral_scalar_vector_counterterm_validations` helper binds exact
 source keys for the neutral `G0-A/Z` two-point structures `P(2,1)` and `P(2,2)`.
