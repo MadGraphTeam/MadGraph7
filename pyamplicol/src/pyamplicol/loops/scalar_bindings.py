@@ -19,6 +19,36 @@ from .model_expressions import LaurentExpression
 from .scalar_frontend import ScalarExpression, ScalarProgram, lower_scalar_program
 
 
+def _normalize_parameter_values(changes, names, types):
+    if not isinstance(changes, Mapping):
+        raise TypeError("external updates must be a parameter mapping")
+    result = {}
+    for name, value in changes.items():
+        if name not in names:
+            raise ValueError(f"unknown external parameter {name!r}")
+        if isinstance(value, str):
+            value = (value, "0")
+        elif isinstance(value, (tuple, list)):
+            value = tuple(value)
+        if (
+            not isinstance(value, tuple)
+            or len(value) != 2
+            or any(not isinstance(component, str) for component in value)
+        ):
+            raise TypeError("external values require decimal strings or complex pairs")
+        try:
+            exact = tuple(Decimal(component) for component in value)
+        except InvalidOperation as error:
+            raise ValueError("external values must be decimal numbers") from error
+        if not all(component.is_finite() for component in exact):
+            raise ValueError("external values must be finite")
+        index = names.index(name)
+        if types[index] == "real" and not exact[1].is_zero():
+            raise ValueError(f"real external parameter {name!r} has an imaginary part")
+        result[name] = value
+    return result
+
+
 @dataclass(frozen=True, slots=True)
 class ScalarBindingPlan:
     """Carrier-independent selected scalar outputs and exact external defaults."""
@@ -30,6 +60,7 @@ class ScalarBindingPlan:
     defaults: tuple[ScalarExpression, ...]
     outputs: tuple[tuple[str, int], ...]
     expressions: tuple[ScalarExpression, ...]
+    fixed_parameters: Mapping[str, tuple[str, str]]
 
     def evaluator_bytes(self):
         return self.program.library.evaluator(
@@ -42,6 +73,7 @@ def prepare_scalar_bindings(
     outputs: Sequence[tuple[str, int]],
     *,
     program: ScalarProgram | None = None,
+    fixed_parameters: Mapping[str, str | tuple[str, str]] | None = None,
 ) -> ScalarBindingPlan:
     """Resolve required definitions using source syntax and dependency algebra.
 
@@ -49,6 +81,8 @@ def prepare_scalar_bindings(
     diagnostics in the same active branches as their values. Adding dependency
     diagnostics unconditionally would incorrectly activate bypassed conditions.
     Ordinary external parameters are the only independently settable inputs.
+    Explicit fixed parameters are exact generation constants, excluded from the
+    runtime input map. The raw model and its source scalar program stay unchanged.
     """
     from symbolica import S
 
@@ -71,15 +105,25 @@ def prepare_scalar_bindings(
             raise ValueError(f"unknown scalar output {name!r}")
         if type(power) is not int:
             raise TypeError("scalar output epsilon powers must be integers")
-    external = tuple(
+    all_external = tuple(
         record
         for record in raw.collections["parameters"]
         if record["fields"].get("nature") == "external"
     )
+    all_names = tuple(record["name"] for record in all_external)
+    all_types = tuple(record["fields"].get("type") for record in all_external)
+    if any(kind not in {"real", "complex"} for kind in all_types):
+        raise ValueError("external parameter type must be real or complex")
+    fixed = _normalize_parameter_values(
+        {} if fixed_parameters is None else fixed_parameters, all_names, all_types
+    )
+    fixed_values = {
+        name: library.lower(f"complex({Decimal(real)},{Decimal(imaginary)})")
+        for name, (real, imaginary) in fixed.items()
+    }
+    external = tuple(record for record in all_external if record["name"] not in fixed)
     external_names = tuple(record["name"] for record in external)
     types = tuple(record["fields"].get("type") for record in external)
-    if any(kind not in {"real", "complex"} for kind in types):
-        raise ValueError("external parameter type must be real or complex")
     symbols = tuple(S(f"loop_model_input::{name}") for name in external_names)
     inputs = dict(zip(external_names, symbols, strict=True))
     by_symbol = {S(f"UFO::{name}"): name for name in records}
@@ -93,7 +137,7 @@ def prepare_scalar_bindings(
             original.diagnostic.get_all_symbols()
         )
         dependencies[name] = {by_symbol[symbol] for symbol in used & by_symbol.keys()}
-        if name in inputs and dependencies[name]:
+        if name in all_names and dependencies[name]:
             raise ValueError(
                 "external parameter defaults must be independent constants"
             )
@@ -106,6 +150,9 @@ def prepare_scalar_bindings(
     resolved = {}
     for name in ordered:
         if name not in needed:
+            continue
+        if name in fixed_values:
+            resolved[name] = fixed_values[name]
             continue
         if name in inputs:
             resolved[name] = ScalarExpression(inputs[name], library.zero)
@@ -129,7 +176,14 @@ def prepare_scalar_bindings(
         for record in external
     )
     return ScalarBindingPlan(
-        program, external_names, types, symbols, defaults, outputs, expressions
+        program,
+        external_names,
+        types,
+        symbols,
+        defaults,
+        outputs,
+        expressions,
+        MappingProxyType(fixed),
     )
 
 
@@ -197,37 +251,16 @@ class NativeScalarBindings:
         return self._values.take_columns(list(range(len(self.plan.outputs))))
 
     def _normalize(self, changes):
-        if not isinstance(changes, Mapping):
-            raise TypeError("external updates must be a parameter mapping")
-        result = {}
-        for name, value in changes.items():
-            if name not in self.plan.external_names:
-                raise ValueError(f"unknown external parameter {name!r}")
-            if isinstance(value, str):
-                value = (value, "0")
-            elif isinstance(value, (tuple, list)):
-                value = tuple(value)
-            if (
-                not isinstance(value, tuple)
-                or len(value) != 2
-                or any(not isinstance(component, str) for component in value)
-            ):
-                raise TypeError(
-                    "external values require decimal strings or complex pairs"
-                )
-            try:
-                exact = tuple(Decimal(component) for component in value)
-            except InvalidOperation as error:
-                raise ValueError("external values must be decimal numbers") from error
-            if not all(component.is_finite() for component in exact):
-                raise ValueError("external values must be finite")
-            index = self.plan.external_names.index(name)
-            if self.plan.external_types[index] == "real" and not exact[1].is_zero():
+        if isinstance(changes, Mapping):
+            fixed = changes.keys() & self.plan.fixed_parameters.keys()
+            if fixed:
                 raise ValueError(
-                    f"real external parameter {name!r} has an imaginary part"
+                    "parameters fixed during generation cannot be updated: "
+                    f"{sorted(fixed)}"
                 )
-            result[name] = value
-        return result
+        return _normalize_parameter_values(
+            changes, self.plan.external_names, self.plan.external_types
+        )
 
     def _evaluate(self, overrides):
         batch = self.backend.NativeBatch

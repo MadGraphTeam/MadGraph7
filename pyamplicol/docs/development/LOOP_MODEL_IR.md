@@ -683,3 +683,26 @@ are rejected. The object retains the exact scalar program but does not bridge
 the existing counterterm `LoopModelIR`, certify complex-mass parameter
 transformations, support unstable external particles, or enable physical EW
 generation. Those require separate source tensor and complete-process checks.
+
+## Explicit fixed source parameters
+
+`prepare_scalar_bindings` and `build_covariant_structure` accept
+`fixed_parameters` as decimal strings or exact decimal complex pairs. These
+are constants selected during generation, separate from adjustable runtime
+parameters. The source model and scalar program remain unchanged. Fixed values
+are inserted before dependency resolution and native mass classification;
+`1e-1000` remains structurally nonzero, while an explicit zero can classify a
+massless particle. Runtime updates to a fixed name fail atomically.
+
+The covariant structure exposes `scalar_bindings(outputs)` to carry the same
+fixed map into numerical evaluation. Ordinary source coupling slots disappear
+only when both the resolved value and its active diagnostic are exactly zero;
+a vertex disappears only when all its slots do. This removes zero Yukawa
+vertices without using numerical defaults or discarding invalid active branches.
+All remaining couplings retain their source definitions. Fixed kinematic masses
+and independent Yukawa inputs must be specified separately.
+
+This is an explicit specialization interface. It does not parse restriction
+cards, infer ties between equal parameters, or certify EW counterterm completion.
+Unapplied source restriction cards continue to reject. Model preparation must
+pass the same fixed bindings to its subsequent physical consumers.

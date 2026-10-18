@@ -147,6 +147,10 @@ class ScalarFunctionLibrary:
             for name, (_record_id, _args, body) in selected.items()
         }
         definitions, bodies, by_record = [], {}, {}
+        # An identically zero helper diagnostic needs no opaque call. Record
+        # this exact proof in dependency order so callers can retain structural
+        # zeros without evaluating any model parameter or predicate numerically.
+        self._zero_diagnostic_heads = set()
         for name in TopologicalSorter(dependencies).static_order():
             record_id, arguments, body = selected[name]
             if record_id in by_record:
@@ -160,6 +164,8 @@ class ScalarFunctionLibrary:
                 body, locals=dict(zip(arguments, parameters, strict=True)), closed=True
             )
             value, diagnostic, _ = self.helpers[name]
+            if lowered.diagnostic == self.zero:
+                self._zero_diagnostic_heads.add(diagnostic)
             definitions.extend(
                 (
                     FunctionDefinition(
@@ -171,6 +177,7 @@ class ScalarFunctionLibrary:
                 )
             )
             bodies[name] = by_record[record_id] = lowered
+        self._zero_diagnostic_heads = frozenset(self._zero_diagnostic_heads)
         self.function_definitions = tuple(definitions)
         self.helper_bodies = MappingProxyType(bodies)
         self.helpers = MappingProxyType(self.helpers)
@@ -370,7 +377,13 @@ class ScalarFunctionLibrary:
                     if len(parts) != len(arguments):
                         raise ValueError(f"helper {name!r} argument count differs")
                     return ScalarExpression(
-                        value_head(*values), diagnostic + diagnostic_head(*values)
+                        value_head(*values),
+                        diagnostic
+                        + (
+                            zero
+                            if diagnostic_head in self._zero_diagnostic_heads
+                            else diagnostic_head(*values)
+                        ),
                     )
                 if not qualified and name == "complex" and len(parts) in {1, 2}:
                     return ScalarExpression(

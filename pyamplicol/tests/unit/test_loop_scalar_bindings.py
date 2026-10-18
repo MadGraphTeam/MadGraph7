@@ -212,3 +212,74 @@ def test_explicit_override_bypasses_invalid_default_and_program_identity(source)
         prepare_scalar_bindings(
             source, (("x", 0),), program=lower_scalar_program(changed)
         )
+
+
+@pytest.mark.parametrize(
+    "arithmetic,precision,tolerance",
+    [
+        ("double", None, "2e-15"),
+        ("double-double", None, "2e-30"),
+        ("arbitrary", 90, "1e-80"),
+    ],
+)
+def test_fixed_parameters_preserve_exact_laurent_values_and_are_not_adjustable(
+    source, arithmetic, precision, tolerance
+):
+    pytest.importorskip("_loop_reduction")
+    original = source.to_dict()
+    with localcontext() as context:
+        context.prec = 300
+        tiny = str(Decimal(1) + Decimal(2) ** -90)
+        high = str(Decimal(1) + Decimal(2) ** -240)
+    fixed = {"x": "00.0", "z": ("3", "4"), "tiny": tiny, "high": high}
+    outputs = (
+        ("B", -2),
+        ("B", -1),
+        ("B", 0),
+        ("tiny_difference", 0),
+        ("high_difference", 0),
+    )
+    plan = prepare_scalar_bindings(source, outputs, fixed_parameters=fixed)
+    assert plan.external_names == () and plan.input_symbols == ()
+    assert plan.fixed_parameters["z"] == ("3", "4")
+    runtime = NativeScalarBindings(plan, arithmetic=arithmetic, precision=precision)
+    values = runtime.values.to_decimal()
+    assert tuple(map(Decimal, values[0])) == (0, 0)
+    assert tuple(map(Decimal, values[1])) == (0, 0)
+    assert tuple(map(Decimal, values[2])) == (-7, 24)
+    with localcontext() as context:
+        context.prec = 110
+        # Fixed constants are simplified exactly before execution, so these
+        # differences survive even double. No source/card default is rounded first.
+        for row, exponent in ((3, 90), (4, 240)):
+            expected = Decimal(2) ** -exponent
+            assert abs(Decimal(values[row][0]) - expected) < expected * Decimal(
+                tolerance
+            )
+    with pytest.raises(ValueError, match="fixed during generation"):
+        runtime.update({"x": "1"})
+    assert runtime.revision == 0 and runtime.values.to_decimal() == values
+    fixed["x"] = "5"
+    assert plan.fixed_parameters["x"] == ("00.0", "0")
+    with pytest.raises(TypeError):
+        plan.fixed_parameters["x"] = ("2", "0")
+    assert source.to_dict() == original
+
+
+def test_fixed_parameters_preserve_active_diagnostics_and_reject_wrong_types(source):
+    pytest.importorskip("_loop_reduction")
+    safe = prepare_scalar_bindings(source, (("safe", 0),), fixed_parameters={"x": "1"})
+    NativeScalarBindings(safe)  # Invalid ordering of complex z is inactive.
+    active = prepare_scalar_bindings(
+        source, (("safe", 0),), fixed_parameters={"x": "-1"}
+    )
+    with pytest.raises(ArithmeticError, match="active diagnostics"):
+        NativeScalarBindings(active)
+    for values, error, message in (
+        ({"x": ("1", "1e-1000")}, ValueError, "imaginary part"),
+        ({"x": "nan"}, ValueError, "finite"),
+        ({"x": 0.1}, TypeError, "decimal strings"),
+        ({"y": "0"}, ValueError, "unknown external"),
+    ):
+        with pytest.raises(error, match=message):
+            prepare_scalar_bindings(source, (("safe", 0),), fixed_parameters=values)

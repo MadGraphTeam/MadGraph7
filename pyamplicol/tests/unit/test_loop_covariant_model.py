@@ -261,3 +261,74 @@ def test_unknown_gmu_mismatch_and_extra_quantum_mismatch_reject(gmu):
         build_covariant_structure(
             RawLoopModel.from_dict(changed), compatibility="gmu_particle_anti"
         )
+
+
+def test_fixed_masses_are_structural_and_shared_with_numeric_bindings(source):
+    from decimal import Decimal
+
+    from pyamplicol.loops.scalar_bindings import NativeScalarBindings
+
+    pytest.importorskip("_loop_reduction")
+    raw = load_raw_loop_model(source, restriction="full")
+    original = raw.to_dict()
+    fixed = build_covariant_structure(raw, fixed_parameters={"M": "0"})
+    adjustable = build_covariant_structure(raw)
+    tiny = build_covariant_structure(raw, fixed_parameters={"M": "1e-1000"})
+    assert fixed.native.particle("s").is_massless
+    assert fixed.native.particle("v").is_massless
+    assert not adjustable.native.particle("s").is_massless
+    assert not tiny.native.particle("s").is_massless
+    assert fixed.required_bindings == ()
+    assert fixed.fixed_parameters == {"M": ("0", "0")}
+    assert fixed.scalars.library.raw is raw and raw.to_dict() == original
+    plan = fixed.scalar_bindings((("M", 0), ("Zalias", 0)))
+    runtime = NativeScalarBindings(plan)
+    assert all(Decimal(x) == 0 for pair in runtime.values.to_decimal() for x in pair)
+    with pytest.raises(ValueError, match="fixed during generation"):
+        runtime.update({"M": "1"})
+    assert all(
+        p["value"] is None for p in json.loads(fixed.native.to_json())["parameters"]
+    )
+
+
+def test_fixed_lepton_masses_and_yukawas_remove_exactly_zero_source_vertices(gmu):
+    fixed = build_covariant_structure(
+        gmu.raw,
+        scalars=gmu.scalars,
+        compatibility="gmu_particle_anti",
+        fixed_parameters={"Me": "0", "MM": "0", "yme": "0", "ymm": "0"},
+    )
+    assert fixed.native.particle_by_pdg(11).is_massless
+    assert fixed.native.particle_by_pdg(13).is_massless
+    assert not gmu.native.particle_by_pdg(11).is_massless
+    assert len(fixed.required_bindings) == 33
+    original = json.loads(gmu.native.to_json())
+    specialized = json.loads(fixed.native.to_json())
+    zero = set(fixed.diagnostics[1]["couplings"])
+    assert zero
+    remaining = {vertex["name"]: vertex for vertex in specialized["vertex_rules"]}
+    removed = []
+    for vertex in original["vertex_rules"]:
+        slots = [
+            coupling
+            for row in vertex["couplings"]
+            for coupling in row
+            if coupling is not None
+        ]
+        if all(coupling in zero for coupling in slots):
+            assert vertex["name"] not in remaining
+            removed.append(vertex)
+        else:
+            actual = remaining[vertex["name"]]
+            assert actual["couplings"] == [
+                [None if coupling in zero else coupling for coupling in row]
+                for row in vertex["couplings"]
+            ]
+    # Physical control: Higgs Yukawa vertices disappear only with their explicit
+    # Yukawa inputs fixed as well as the kinematic lepton masses.
+    assert {tuple(vertex["particles"]) for vertex in removed} >= {
+        ("e+", "e-", "H"),
+        ("m+", "m-", "H"),
+    }
+    assert all(p["value"] is None for p in specialized["parameters"])
+    assert {coupling["name"] for coupling in specialized["couplings"]}.isdisjoint(zero)

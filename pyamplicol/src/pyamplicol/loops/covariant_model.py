@@ -21,6 +21,16 @@ class StructuralCovariantModel:
     native: Any
     required_bindings: tuple[str, ...]
     diagnostics: tuple[Any, ...]
+    fixed_parameters: Any
+
+    def scalar_bindings(self, outputs):
+        """Prepare numerical bindings with this structure's exact fixed values."""
+        return prepare_scalar_bindings(
+            self.raw,
+            outputs,
+            program=self.scalars,
+            fixed_parameters=self.fixed_parameters,
+        )
 
 
 def _flag(fields, name):
@@ -189,6 +199,7 @@ def build_covariant_structure(
     scalars: ScalarProgram | None = None,
     covariant_multiplets: Any = None,
     compatibility: str | None = None,
+    fixed_parameters: Any = None,
 ) -> StructuralCovariantModel:
     """Preserve raw species/tree vertices through existing public ModelJSON APIs.
 
@@ -216,6 +227,38 @@ def build_covariant_structure(
     program = scalars if scalars is not None else lower_scalar_program(raw)
     if program.library.raw is not raw:
         raise ValueError("scalar program belongs to another raw model")
+    mass_names = tuple(
+        dict.fromkeys(
+            _reference(raw, record["fields"]["mass"], "parameters")["name"]
+            for record in raw.collections["particles"]
+        )
+    )
+    # Resolve mass aliases with adjustable externals still independent. Explicit
+    # generation constants are shared with subsequent numerical scalar bindings.
+    fixed_names = tuple(fixed_parameters) if fixed_parameters is not None else ()
+    coupling_names = (
+        tuple(
+            dict.fromkeys(
+                _reference(raw, ref, "couplings")["name"]
+                for record in raw.collections["vertices"]
+                for _key, ref in record["fields"]["couplings"]["entries"]
+            )
+        )
+        if fixed_names
+        else ()
+    )
+    names = tuple(dict.fromkeys((*mass_names, *fixed_names, *coupling_names)))
+    if names:
+        specialization = prepare_scalar_bindings(
+            raw,
+            [(name, 0) for name in names],
+            program=program,
+            fixed_parameters=fixed_parameters,
+        )
+        resolved = dict(zip(names, specialization.expressions, strict=True))
+        fixed = specialization.fixed_parameters
+    else:
+        resolved, fixed = {}, MappingProxyType({})
     payload = {
         key: []
         for key in (
@@ -246,8 +289,13 @@ def build_covariant_structure(
         if record["name"] == "ZERO" and expression != 0:
             raise ValueError("reserved ZERO parameter is not exactly zero")
         if fields["nature"] == "external":
-            required.append(record["name"])
-            expression = S(f"pyamplicol_structural::required_parameter_{record['id']}")
+            if record["name"] in fixed:
+                expression = resolved[record["name"]].value
+            else:
+                required.append(record["name"])
+                expression = S(
+                    f"pyamplicol_structural::required_parameter_{record['id']}"
+                )
         elif fields["nature"] != "internal":
             raise ValueError("unknown source parameter nature")
         payload["parameters"].append(
@@ -300,20 +348,28 @@ def build_covariant_structure(
             )
         payload["particles"].append(vars(SerializableParticle(**particle)))
     diagnostics = _repair(raw, payload["particles"], compatibility)
+    zero_couplings = tuple(
+        name
+        for name in coupling_names
+        if resolved[name].value == 0 and resolved[name].diagnostic == 0
+    )
+    if zero_couplings:
+        diagnostics += (
+            MappingProxyType(
+                {
+                    "kind": "fixed-parameter-zero-couplings",
+                    "couplings": zero_couplings,
+                }
+            ),
+        )
     _validate_pairs(payload["particles"])
     # The currently installed Community classifier recognizes a literal exact
     # zero, but does not resolve source parameter aliases. Use the same scalar
     # binding preparation as numerical consumers, leaving externals independent.
-    mass_names = tuple(dict.fromkeys(p["mass"] for p in payload["particles"]))
-    if mass_names:
-        masses = prepare_scalar_bindings(
-            raw, [(name, 0) for name in mass_names], program=program
-        )
-        resolved_masses = dict(zip(mass_names, masses.expressions, strict=True))
-    else:
-        resolved_masses = {}
     for parameter in payload["parameters"]:
-        expression = resolved_masses.get(parameter["name"])
+        expression = (
+            resolved.get(parameter["name"]) if parameter["name"] in mass_names else None
+        )
         if expression is None:
             continue
         if expression.value == 0 and expression.diagnostic != 0:
@@ -384,10 +440,14 @@ def build_covariant_structure(
         for key, ref in fields["couplings"]["entries"]:
             color, tensor = key["items"]
             coupling = _reference(raw, ref, "couplings")
+            if coupling["name"] in zero_couplings:
+                continue
             if couplings[color][tensor] is not None:
                 raise ValueError("duplicate source colour/Lorentz coupling slot")
             couplings[color][tensor] = coupling["name"]
             used_couplings.add(coupling["id"])
+        if all(coupling is None for row in couplings for coupling in row):
+            continue
         payload["vertex_rules"].append(
             dict(
                 name=record["name"],
@@ -422,4 +482,6 @@ def build_covariant_structure(
             str(pdg): list(partners) for pdg, partners in covariant_multiplets.items()
         }
     native = hep.Model.from_json(json.dumps(payload))
-    return StructuralCovariantModel(raw, program, native, tuple(required), diagnostics)
+    return StructuralCovariantModel(
+        raw, program, native, tuple(required), diagnostics, fixed
+    )
