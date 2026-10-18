@@ -48,7 +48,7 @@ _COLLECTIONS = {
 }
 
 _VALUE_COLLECTIONS = {"parameters", "counterterm_parameters", "couplings"}
-_VALUE_TYPES = {"Parameter", "CTParameter", "Coupling", "Function"}
+_VALUE_TYPES = {"Parameter", "CTParameter", "Coupling", "Function", "Particle"}
 
 
 def _runtime_exact(value: object) -> bool:
@@ -146,7 +146,7 @@ def _has_value_write(statement: ast.AST) -> bool:
     for node in ast.walk(statement):
         if (
             isinstance(node, ast.Attribute)
-            and node.attr in {"value", "expression", "expr"}
+            and node.attr in {"value", "expression", "expr", "charge"}
             and isinstance(node.ctx, (ast.Store, ast.Del))
         ):
             return True
@@ -155,7 +155,7 @@ def _has_value_write(statement: ast.AST) -> bool:
             and isinstance(node.ctx, (ast.Store, ast.Del))
             and any(
                 isinstance(part, ast.Attribute)
-                and part.attr in {"value", "expression", "expr", "__dict__"}
+                and part.attr in {"value", "expression", "expr", "charge", "__dict__"}
                 for part in ast.walk(node)
             )
         ):
@@ -171,7 +171,7 @@ def _has_value_write(statement: ast.AST) -> bool:
             if (
                 isinstance(node.func, ast.Attribute)
                 and isinstance(node.func.value, ast.Attribute)
-                and node.func.value.attr in {"value", "expression", "expr"}
+                and node.func.value.attr in {"value", "expression", "expr", "charge"}
             ):
                 return True
     return False
@@ -239,6 +239,8 @@ class _ValueSourceObserver:
                     self.dynamic_writes = True
 
     def observe(self, frame: FrameType, event: str, _argument: object) -> None:
+        if event == "return" and frame.f_code.co_name == "anti":
+            self._observe_antiparticle_charge(frame, _argument)
         if event != "call":
             return
         if (
@@ -256,7 +258,9 @@ class _ValueSourceObserver:
         caller = frame.f_back
         if caller is None or caller.f_code.co_filename not in self.files:
             return
-        attribute = "expression" if type(instance).__name__ == "Function" else "value"
+        attribute = {"Function": "expression", "Particle": "charge"}.get(
+            type(instance).__name__, "value"
+        )
         value = frame.f_locals.get(attribute)
         lines, declarations = self.files[caller.f_code.co_filename]
         candidates = declarations.get(caller.f_lineno, [])
@@ -338,8 +342,42 @@ class _ValueSourceObserver:
                 return terms[power]
 
             parsed = ast.parse(argument, mode="eval").body
-            expression = _literal_expression(parsed, argument, value, string_reference)
-            if any(
+            if attribute == "charge" and isinstance(parsed, (ast.BinOp, ast.UnaryOp)):
+                allowed = (
+                    ast.Expression,
+                    ast.BinOp,
+                    ast.UnaryOp,
+                    ast.Constant,
+                    ast.Add,
+                    ast.Sub,
+                    ast.Mult,
+                    ast.Div,
+                    ast.Pow,
+                    ast.UAdd,
+                    ast.USub,
+                )
+                if any(
+                    not isinstance(item, allowed) for item in ast.walk(parsed)
+                ) or any(
+                    isinstance(item, ast.Constant)
+                    and (
+                        isinstance(item.value, bool)
+                        or not isinstance(item.value, (int, float))
+                    )
+                    for item in ast.walk(parsed)
+                ):
+                    raise ValueError(
+                        "charge requires literal numeric source arithmetic"
+                    )
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    raise ValueError("charge arithmetic did not produce a real number")
+                expression = {"kind": "expression", "expression": argument}
+                source["kind"] = "source-numeric-arithmetic"
+            else:
+                expression = _literal_expression(
+                    parsed, argument, value, string_reference
+                )
+            if attribute != "charge" and any(
                 isinstance(part, (ast.BinOp, ast.Subscript))
                 for part in ast.walk(parsed)
             ):
@@ -357,6 +395,111 @@ class _ValueSourceObserver:
             error,
             tuple(dependencies),
             "expr" if type(instance).__name__ == "Function" else attribute,
+        )
+
+    def _observe_antiparticle_charge(self, frame: FrameType, instance: object) -> None:
+        """Certify only a direct, recognized source anti() charge binding."""
+        original = frame.f_locals.get("self")
+        caller = frame.f_back
+        if (
+            type(original).__name__ != "Particle"
+            or type(instance) is not type(original)
+            or getattr(type(original).anti, "__code__", None) is not frame.f_code
+            or caller is None
+            or caller.f_code.co_name != "<module>"
+            or caller.f_code.co_filename not in self.files
+            or frame.f_code.co_filename not in self.files
+        ):
+            return
+        _lines, declarations = self.files[caller.f_code.co_filename]
+        candidates = declarations.get(caller.f_lineno, [])
+        if len(candidates) != 1:
+            return
+        declaration = candidates[0]
+        targets = (
+            declaration.targets
+            if isinstance(declaration, ast.Assign)
+            else [declaration.target]
+        )
+        call = declaration.value
+        if (
+            len(targets) != 1
+            or not isinstance(targets[0], ast.Name)
+            or not isinstance(call, ast.Call)
+            or call.args
+            or call.keywords
+            or not isinstance(call.func, ast.Attribute)
+            or call.func.attr != "anti"
+            or not isinstance(call.func.value, ast.Name)
+            or caller.f_globals.get(call.func.value.id) is not original
+        ):
+            return
+        method_lines, _ = self.files[frame.f_code.co_filename]
+        tree = ast.parse("".join(method_lines))
+        methods = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "anti"
+            and node.lineno == frame.f_code.co_firstlineno
+        ]
+        if len(methods) != 1:
+            return
+        returns = [
+            node.value for node in ast.walk(methods[0]) if isinstance(node, ast.Return)
+        ]
+        if len(returns) != 1 or not isinstance(returns[0], ast.Call):
+            return
+        constructor = returns[0]
+        # The common UFO Particle signature places charge at positional index 9.
+        init = type(original).__init__.__code__
+        if init.co_varnames[:11][-1] != "charge" or len(constructor.args) < 10:
+            return
+        charge = constructor.args[9]
+        if (
+            not isinstance(constructor.func, ast.Name)
+            or frame.f_globals.get(constructor.func.id) is not type(original)
+            or not isinstance(charge, ast.UnaryOp)
+            or not isinstance(charge.op, ast.USub)
+            or not isinstance(charge.operand, ast.Attribute)
+            or charge.operand.attr != "charge"
+            or not isinstance(charge.operand.value, ast.Name)
+            or charge.operand.value.id != "self"
+        ):
+            return
+        exact, _ = self.value(original)
+        if exact is None or exact["kind"] != "expression":
+            return
+        if (
+            instance.name != original.antiname
+            or instance.antiname != original.name
+            or instance.pdg_code != -original.pdg_code
+            or instance.spin != original.spin
+            or instance.mass is not original.mass
+            or instance.width is not original.width
+            or instance.charge != -original.charge
+        ):
+            return
+        self.observations[id(instance)] = _ValueObservation(
+            instance,
+            caller.f_globals,
+            targets[0].id,
+            instance.charge,
+            None,
+            {"kind": "expression", "expression": f"-({exact['expression']})"},
+            {
+                "kind": "source-antiparticle-charge",
+                "file": Path(caller.f_code.co_filename).name,
+                "line": caller.f_lineno,
+                "original_binding": call.func.value.id,
+                "anti_constructor": {
+                    "parameters": list(init.co_varnames[1 : init.co_argcount]),
+                    "arguments": [ast.unparse(arg) for arg in constructor.args],
+                },
+            },
+            None,
+            (original,),
+            "charge",
         )
 
     def value(
@@ -379,7 +522,15 @@ class _ValueSourceObserver:
         ):
             reason = "declaration no longer binds the imported object"
         elif reason is None and (
-            runtime is not observation.argument
+            (
+                runtime is not observation.argument
+                and not (
+                    observation.attribute == "charge"
+                    and type(observation.argument) is int
+                    and type(runtime) is float
+                    and runtime == observation.argument
+                )
+            )
             or (
                 observation.terms is not None
                 and (
@@ -711,6 +862,28 @@ def capture_raw_loop_model(
                 for key, item in vars(value).items()
                 if key != "value" or collection not in _VALUE_COLLECTIONS
             }
+            if collection == "particles":
+                if observer is not None:
+                    exact_charge, charge_source = observer.value(value)
+                elif isinstance(
+                    getattr(value, "charge", None), (int, Fraction)
+                ) and not isinstance(value.charge, bool):
+                    exact_charge = {
+                        "kind": "expression",
+                        "expression": str(value.charge),
+                    }
+                    charge_source = {"kind": "runtime-exact", "exact": True}
+                else:
+                    exact_charge, charge_source = (
+                        None,
+                        {
+                            "kind": "unsupported",
+                            "exact": False,
+                            "reason": "particle charge source was not observed",
+                        },
+                    )
+                fields["charge_exact"] = exact_charge
+                fields["charge_source"] = charge_source
             if collection == "functions":
                 if observer is not None:
                     _body, fields["expression_source"] = observer.value(value)
