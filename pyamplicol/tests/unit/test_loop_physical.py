@@ -241,3 +241,30 @@ def test_complex_born_weight_survives_until_after_timelike_reduction(native, poi
         native.NativeBatch.concat_columns([projected.take_columns([0]), wrong.values])
     ).to_decimal()
     assert abs(float(weighted[1][0]) - float(wrong_result[1][0])) > 1e-10
+
+
+@pytest.mark.parametrize(
+    "schedule,failed_lane", [("born-weighted", 1), ("per-helicity-oracle", 17)]
+)
+def test_failed_reduction_reports_original_point_and_lane_without_reading_values(
+    native, points, schedule, failed_lane
+):
+    program = DrellYanBareProgram(backend=native, reduction_schedule=schedule)
+
+    class FailedReduction:
+        @property
+        def values(self):
+            raise AssertionError("failed result values must never be requested")
+
+    class FailingReducer:
+        def evaluate_batch(self, shifts, masses, scales, coefficients):
+            result = FailedReduction()
+            result.statuses = [
+                (identifier, "non-finite" if identifier == failed_lane else "success")
+                for identifier in coefficients.row_ids
+            ]
+            return result
+
+    program.reducer = FailingReducer()
+    with pytest.raises(ArithmeticError, match=rf"\(1, {failed_lane}, 'non-finite'\)"):
+        program.evaluate_decimal(points, ["1000000"] * len(points))

@@ -389,11 +389,18 @@ class DrellYanBareProgram:
         shifts = self.shifts.evaluate_batch(reduction_momenta)
         masses = from_real(["0"] * (reduction_rows * 3), reduction_rows, 3)
         reduction = self.reducer.evaluate_batch(shifts, masses, scales, coefficients)
-        if reduction.values is None:
+        failures = [
+            (lane // statuses_per_point, lane, status)
+            for lane, status in reduction.statuses
+            if status != "success"
+        ]
+        if failures:
             raise ArithmeticError(
-                "native Drell--Yan reduction failed; no physical result returned"
+                "native Drell--Yan reduction failed (point, lane, status): "
+                f"{failures}; no physical result returned"
             )
-        combined = batch_type.concat_columns([born, reduction.values])
+        poles = reduction.values
+        combined = batch_type.concat_columns([born, poles])
         if self.reduction_schedule == "born-weighted":
             result = self.weighted_postprocess.evaluate_batch(combined)
         else:
