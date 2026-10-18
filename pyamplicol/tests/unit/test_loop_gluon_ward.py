@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -111,6 +112,14 @@ def test_complete_gluon_loop_ket_ward_cancels_rational_remainder(
     from pyamplicol.models.loop_import import load_raw_loop_model
 
     source = build_loop_model(load_raw_loop_model(source_path))
+    if r2_strategy == "direct":
+        # No effective rational kernels are available to this generated branch.
+        # The lossless raw sidecar remains source evidence; only retained kernel
+        # entries participate in counterterm preparation and matching.
+        source = replace(
+            source,
+            kernels=tuple(entry for entry in source.kernels if entry.kind != "R2"),
+        )
     program = gluon_scattering_model_virtual_program(
         source,
         arithmetic="double",
@@ -118,6 +127,8 @@ def test_complete_gluon_loop_ket_ward_cancels_rational_remainder(
         coefficient_engine="jit",
         r2_strategy=r2_strategy,
     )
+    if r2_strategy == "direct":
+        assert all(i.rule.kind != "R2" for i in program.matched_insertions)
     fixture = (
         Path(__file__).resolve().parents[2]
         / "tools/loop_reference/gluon_scattering_qcd.json"
