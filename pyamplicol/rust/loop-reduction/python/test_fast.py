@@ -157,8 +157,8 @@ def test_dense_tensor_rejects_rank_and_nonpolynomial_without_truncation():
             PolynomialPlan(4, [expression, "0", "0"], [], engine="fast-tensor")
     with pytest.raises(ValueError, match="polynomial"):
         PolynomialPlan(4, ["1/q0", "0", "0"], [], engine="fast-tensor")
-    with pytest.raises(ValueError, match="six propagators"):
-        PolynomialPlan(7, ["1", "0", "0"], [], engine="fast-tensor")
+    with pytest.raises(ValueError, match="propagator"):
+        PolynomialPlan(0, ["1", "0", "0"], [], engine="fast-tensor")
 
 
 def test_dense_head_overflow_is_explicit_and_next_batch_rebinds():

@@ -33,7 +33,7 @@ application's ordinary checkout buildable while upstream packaging is pending.
 Its Symbolica version is aligned with the application's shared core.
 The implementation workspace uses:
 
-- NinjaRS `b5b93be7f2b9dffa0978a91dfeeadeefec5d0736`.
+- NinjaRS `e4c16a7a4ef3a05268939ccdb66b7bc3dadcd6d3`.
 - Symbolica `e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8`, the owner's integration
   revision published on `https://github.com/ValentinHirschi/symbolica`.
 - FeynKit `474478a7a80bc9f9f21bead0e1cde6acbcffbe93`, the owner's patched
@@ -51,14 +51,12 @@ cargo test --locked --test anchors -- --test-threads=1
 
 Supply a valid `SYMBOLICA_LICENSE` in the process environment when needed;
 never persist it in this crate. Cargo's lockfile covers registry dependencies.
-The upstream sources are read-only to this consumer. NinjaRS revision b5b93be
-still limits the generic integrated coordinator to six propagators and rank
-n+1. Its separate binary64 fast engine supports higher multiplicity; that does
-not extend double-double or arbitrary-precision coverage. The native Python
-consumer retains a common six-propagator domain across its arithmetic modes.
-The latest owner update adds an explicit-μ² dense tensor numerator and optional
-graph-level FDH preparation. Scalar-master and generic coordinator behavior are
-unchanged from 5f35b07. This consumer uses the scheme-independent polynomial
+The upstream sources are read-only to this consumer. NinjaRS revision e4c16a7
+removes the generic coordinator's former six-propagator limit in every carrier;
+rank remains bounded by n+1. The native Python consumer no longer imposes the
+obsolete six-propagator cap on the fast engines. The preceding owner update
+added an explicit-μ² dense tensor numerator and optional graph-level FDH
+preparation. This consumer uses the scheme-independent polynomial
 container; it does not invoke the owner's global FDH numerator transformation.
 The ordinary lockfile includes the owner's `ninjars-graph` coefficient/layout
 dependency and its existing FeynKit graph.
@@ -73,9 +71,13 @@ most excess error comes from a nearly coincident-root triangle master
 Consequently this adapter's `success` means that upstream computation
 completed, not that an accuracy target was established. Independent numerator
 reconstruction checks, cross-precision comparisons and a validated rescue policy
-remain required for process-level accuracy certification. The generic
-six-propagator bound is enforced at `crates/ninjars/src/amplitude.rs:108-113`;
-our direct Rust boundary tests retain it for all three scalar carriers.
+remain required for process-level accuracy certification. The owner's
+new higher-multiplicity tests in `crates/ninjars-symbolica/tests/any_n.rs` compare
+seven/eight propagators through rank n+1. Their DD/AP reduction-only comparisons
+deliberately use smooth stand-in masters, because the owner records
+DoubleFloat/interpreted-Float D0 branch differences from OneLOop for some real
+masses. Removing the coordinator limit is
+not universal scalar-master accuracy certification.
 
 The analytic tests exercise A0 with real and complex squared masses, massless
 B0, the divergent massless C0, μ² C0, and a four-dimensional q² numerator
@@ -84,6 +86,34 @@ all three arithmetic carriers, parameter rebinding, compact and empty batches,
 retained input bits beyond binary64, replacement semantics, failed lanes,
 and epsilon-sector ordering. They establish only these anchors, not the full
 scalar-integral domain or process-level correctness.
+
+The separately invoked `python/integration_any_n.py` anchor has seven distinct
+propagators and an explicit-μ² weighted-rank-eight numerator. Four denominator
+factors cancel exactly to the analytic divergent massless C0; the numerical
+reduction still uses the full seven-propagator input and actual scalar masters.
+It checks changing scales, coefficients, lane IDs and empty/compact batches;
+it does not certify non-cancelling box contributions or their analytic branches:
+
+```sh
+PYTHONPATH="$PYLOOP_WORKSPACE/builds/loop-python-module" \
+  python -m pytest python/integration_any_n.py -q
+```
+
+This is deliberately outside default test collection. Its dense polynomial has
+501 monomials, compared with 60 in the owner's sparse rank-eight `any_n.rs`
+fixture. In one development run, the generic binary64 test, including plan
+construction, first-use setup and all batch checks, took 620 seconds; the dense
+fast-tensor check took 0.11 seconds. The DoubleFloat and 80-digit generic tests
+both passed in a combined 1,313 seconds, with absolute Laurent-entry tolerances
+of 1e-22 and 1e-60 respectively. The owner's
+`generic_scaling.rs` distinguishes reduction-kernel setup from the polynomial
+adapter's steep first-use Laurent-expansion preparation. We have not sampled
+the active native stack to assign the complete elapsed time between these
+stages. The generic adapter exposes no public prepared-expansion export or
+cross-carrier rebind: `exact_evaluator` and `exact_expansion` are crate-private,
+and its expansion cache is private. Retained physical instructions therefore
+still rebuild this dependency-owned setup in each fresh generic carrier. The
+consumer does not duplicate the owner's polynomial or truncated-jet algebra.
 
 `cargo test --locked --test diphoton_fixture` connects the independent Community
 dimensional-algebra fixture in `tools/loop_reference/diphoton_r2.json` to the
@@ -272,8 +302,8 @@ dependency, so its normal builds do not require the `upstream` symlink.
 
 ## Remaining gates
 
-- The generic upstream coordinator accepts at most six propagators; selected
-  seven-propagator high-multiplicity cases need owner support and validation.
+- Higher-multiplicity physical controls and complex-master accuracy still need
+  process-level validation despite the generic coordinator's new any-n support.
 - Rank is limited to n+1 by NinjaRS. No numerator term may be truncated to fit.
 - The binary64 native master provider fixes its on-shell snapping threshold
   at 1e-9. The generic constructor requires an explicit threshold policy;
@@ -283,7 +313,8 @@ dependency, so its normal builds do not require the `upstream` symlink.
   The AP80 real-mass box reproducer in
   `tools/loop_reference/reproduce_cms_zero_box.py` still selects opposite
   imaginary branches for numerically equal sqrt-square and reparsed masses
-  at b5b93be. This consumer does not normalize precision metadata or substitute
+  at b5b93be; e4c16a7 does not modify the scalar master provider. This consumer
+  does not normalize precision metadata or substitute
   a scalar integral to hide that unresolved owner issue.
 - Native batching is established by the called interfaces, but end-to-end
   throughput, SIMD coverage and the MadLoop/Recola/OpenLoops performance

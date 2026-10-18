@@ -222,8 +222,8 @@ fn check_lanes(ids: &[u64], lanes: usize) -> Result<()> {
 /// arbitrary precision `Float` coefficient carriers. Numerical batches stay in
 /// NinjaRS/Symbolica from parameter binding through scalar masters.
 ///
-/// The upstream generic coordinator currently supports n ≤ 6 and rank ≤ n+1.
-/// μ² has rank weight two. Unsupported topologies are rejected upstream.
+/// The upstream generic coordinator supports any n ≥ 1 and rank ≤ n+1.
+/// μ² has rank weight two. Invalid or repeated topologies are rejected upstream.
 pub struct PolynomialReducer<T: NativeFloat>
 where
     Complex<T>: Real + EvaluationDomain,

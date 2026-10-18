@@ -309,23 +309,23 @@ fn epsilon_sector_convolution_preserves_pole_order() {
 #[test]
 fn unsupported_topologies_and_parameter_shapes_are_rejected() {
     assert!(matches!(
-        PolynomialReducer::new(7, parse!("1"), variables(), vec![], 0_f64, None),
-        Err(ninjars::Error::Unsupported(_))
+        PolynomialReducer::new(0, parse!("1"), variables(), vec![], 0_f64, None),
+        Err(ninjars::Error::NoPropagators)
     ));
     assert!(matches!(
         PolynomialReducer::new(
-            7,
+            0,
             parse!("1"),
             variables(),
             vec![],
             DoubleFloat::default(),
             None
         ),
-        Err(ninjars::Error::Unsupported(_))
+        Err(ninjars::Error::NoPropagators)
     ));
     assert!(matches!(
-        PolynomialReducer::new(7, parse!("1"), variables(), vec![], Float::new(256), None),
-        Err(ninjars::Error::Unsupported(_))
+        PolynomialReducer::new(0, parse!("1"), variables(), vec![], Float::new(256), None),
+        Err(ninjars::Error::NoPropagators)
     ));
     assert!(matches!(
         PolynomialReducer::new(1, parse!("mu2^2"), variables(), vec![], 0_f64, None),

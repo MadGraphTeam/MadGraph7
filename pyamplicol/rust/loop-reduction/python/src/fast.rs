@@ -60,10 +60,6 @@ impl FastReductions {
         n: usize,
         tensor: bool,
     ) -> PyResult<Self> {
-        // Keep this consumer within the common all-precision n<=6 domain.
-        if n > 6 {
-            return Err(error("current consumer supports at most six propagators"));
-        }
         let parse =
             |text: &str| Atom::parse(text, "pyamplicol_loop", Default::default()).map_err(error);
         let variables = [

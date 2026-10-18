@@ -107,8 +107,8 @@ def test_invalid_shapes_serialization_and_precision_fail_at_boundary():
     assert evaluator.evaluate_f64([[2, 0], [4, 1]], 2) == [[1, 0], [3, 1]]
     with pytest.raises(ValueError):
         evaluator.evaluate_decimal([], 2)
-    with pytest.raises(ValueError, match="at most six"):
-        PolynomialPlan(7, ["1", "0", "0"], [])
+    with pytest.raises(ValueError, match="propagator"):
+        PolynomialPlan(0, ["1", "0", "0"], [])
     plan = PolynomialPlan(1, ["c", "0", "0"], ["c"])
     with pytest.raises(ValueError):
         plan.evaluate_decimal([10], [[["0", "0"]] * 4], [["1", "0"]], [["1", "0"]], [])
