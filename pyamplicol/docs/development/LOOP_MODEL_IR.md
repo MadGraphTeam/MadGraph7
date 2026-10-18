@@ -738,3 +738,46 @@ This is an explicit specialization interface. It does not parse restriction
 cards, infer ties between equal parameters, or certify EW counterterm completion.
 Unapplied source restriction cards continue to reject. Model preparation must
 pass the same fixed bindings to its subsequent physical consumers.
+
+## Directed bare numerical diagnostics
+
+`NativeDirectedBareProgram(bare, histories)` evaluates a list of ordered
+`(bra, ket)` colour connections on an unmodified full-colour bare program.
+`directed_color_legs` exposes the actual native amplitude ports with zero-based
+physical momentum-leg labels. Their signed representations include the native
+crossing convention and must not be inferred from physical particle names.
+The dependency constructs the ordered rectangular colour weights. Each matrix
+is evaluated at exact Nc=3 with the original physical averaging factor.
+
+Physical states, global model values and each exact representative Born/loop
+coefficient schedule execute once per batch, independently of the number of
+requested histories. One family kinematic preparation is broadcast over all
+active directions and squared-order sectors. Native reduction lanes have the
+stable identity `point * (directions * sectors) + direction * sectors + sector`,
+where directions `2*h` and `2*h+1` denote history `h` and its swap. Status columns
+carry `(direction, sector, family)` metadata and retain those original lane IDs.
+
+Both complex Born-weighted numerators use the same Feynman prescription. After
+reduction and multiplication by `i/(16*pi**2)`, assembly adds the forward value
+to the conjugate of the swapped value. Conjugating an unintegrated numerator
+does not provide the second term. The result retains complex directed Born
+contractions and both separate cross terms; it does not apply `2 Re` to a
+non-Hermitian kernel. Decimal arrays have axes `point, history, squared order`
+and, for virtual values, `(finite, single pole, double pole)`, followed by the
+real/imaginary pair. Native buffers carry all intermediate arithmetic.
+
+Actual `u ubar -> d dbar` controls in double, DoubleFloat and arbitrary precision
+check identity histories, physical Casimirs, colour-charge conservation, swapped
+conjugation and a non-Hermitian history with a nonzero absorptive finite part.
+Instrumentation checks that histories do not repeat current or kinematic work.
+A mixed-order control retains all three Born and four virtual squared-order
+sectors, with exact complex coupling factors used to test a genuinely complex
+Born contraction. This scalar-binding diagnostic is not an SM parameter claim.
+Empty, changing and tail batches retain point/direction/sector identities.
+
+This interface contains N4 only: no UV, model/direct R2, external-field, spin,
+mapping or public correlated-completeness claim follows. Dimensional programs,
+model-bound programs and changed colour metrics reject explicitly. Attachment
+locks ordinary metric mutation; later model binding is detected before directed
+evaluation. Dependency reduction success retains its existing accuracy semantics
+and does not establish an independent rescue or accuracy certificate.

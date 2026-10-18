@@ -85,6 +85,17 @@ class NativeBareEvaluation:
     rational: Any = None
 
 
+@dataclass(slots=True)
+class NativeBareCurrents:
+    """One native physical batch shared by every bare contraction direction."""
+
+    batch: NativePhysicalBatch
+    born: Any
+    loops: tuple[Any, ...]
+    model: Any
+    momenta_pairs: Any
+
+
 def _evaluate_coefficient_groups(bound, executors, columns, groups):
     """Execute exact representatives and retain every original graph position."""
     outputs = {
@@ -587,13 +598,16 @@ class NativeBareProcessProgram:
         ]
 
     def _compile_born_projection(self):
+        self.born_projector = self._make_born_projector((self.born_metric,))
+
+    def _make_born_projector(self, metrics):
         from symbolica import E
 
         symbols = self._born_symbols()
         values = [
             sum(
                 (
-                    left.conj() * right * self.born_metric[i][j]
+                    left.conj() * right * metric[i][j]
                     for row in symbols
                     for i, left in enumerate(row)
                     for j, right in enumerate(row)
@@ -602,17 +616,24 @@ class NativeBareProcessProgram:
                 ),
                 E("0"),
             )
+            for metric in metrics
             for sector in self.order_layout.born
         ]
-        self.born_projector = self.backend.CoefficientEvaluator(
+        return self.backend.CoefficientEvaluator(
             _saved(values, [value for row in symbols for value in row]), **self.options
         )
 
-    def _compile_family_projection(self, indices, powers, sector_indices):
+    def _compile_family_projection(
+        self, indices, powers, sector_indices, *, metrics=None
+    ):
         from symbolica import E, S
 
+        metrics = (self.loop_metric,) if metrics is None else metrics
         projected = {
-            (sector, power): E("0") for sector in sector_indices for power in powers
+            (direction, sector, power): E("0")
+            for direction in range(len(metrics))
+            for sector in sector_indices
+            for power in powers
         }
         pairs = {
             sector: {
@@ -634,25 +655,27 @@ class NativeBareProcessProgram:
                         parameters.append(coefficient)
                         if power is None:
                             continue
-                        for sector in sector_indices:
-                            projected[sector, power] += sum(
-                                (
-                                    value.conj()
-                                    * self.loop_metric[b][term_index]
-                                    * coefficient
-                                    for b, value in enumerate(born)
-                                    if (
-                                        self.born_term_orders[b],
-                                        self.loop_graphs[index].order,
-                                    )
-                                    in pairs[sector]
-                                ),
-                                E("0"),
-                            )
+                        for direction, metric in enumerate(metrics):
+                            for sector in sector_indices:
+                                projected[direction, sector, power] += sum(
+                                    (
+                                        value.conj()
+                                        * metric[b][term_index]
+                                        * coefficient
+                                        for b, value in enumerate(born)
+                                        if (
+                                            self.born_term_orders[b],
+                                            self.loop_graphs[index].order,
+                                        )
+                                        in pairs[sector]
+                                    ),
+                                    E("0"),
+                                )
         return self.backend.CoefficientEvaluator(
             _saved(
                 [
-                    projected[sector, power]
+                    projected[direction, sector, power]
+                    for direction in range(len(metrics))
                     for sector in sector_indices
                     for power in powers
                 ],
@@ -671,6 +694,10 @@ class NativeBareProcessProgram:
             raise ValueError(
                 "bare color metrics are already bound to a model program; "
                 "construct a fresh bare program before changing color projection"
+            )
+        if getattr(self, "_directed_color_metrics_bound", False):
+            raise ValueError(
+                "bare color metrics are already bound to a directed program"
             )
         if (
             len(born_metric) != len(self.born_colors)
@@ -691,6 +718,7 @@ class NativeBareProcessProgram:
             family.projector = self._compile_family_projection(
                 family.graph_indices, family.powers, family.sector_indices
             )
+        self._color_metrics_revision = getattr(self, "_color_metrics_revision", 0) + 1
 
     def evaluate_decimal(self, momenta, scales_squared, *, model_values):
         result = self.evaluate_native(
@@ -770,8 +798,8 @@ class NativeBareProcessProgram:
             else "MadLoop-Cepsilon-bare-four-dimensional-no-R2-no-UV",
         )
 
-    def evaluate_ordered_native(self, momenta, scales_squared, *, model_values):
-        """Original decimal input enters exact kinematics and native arithmetic."""
+    def prepare_currents_native(self, momenta, scales_squared, *, model_values):
+        """Bind one physical batch and evaluate its Born and loop currents once."""
         momenta, scales = (
             np.asarray(momenta, dtype=object),
             np.asarray(scales_squared, dtype=object),
@@ -827,18 +855,65 @@ class NativeBareProcessProgram:
         currents = _evaluate_coefficient_groups(
             bound, self.loop_executors, self.loop_input_columns, self.loop_sharing
         )
+        scales = native(scales, size, 1)
+        return NativeBareCurrents(
+            NativePhysicalBatch(
+                size,
+                rows,
+                point_ids,
+                lane_ids,
+                bound,
+                dict(self.bound_positions),
+                model_arguments,
+                scales,
+            ),
+            born,
+            tuple(currents),
+            model,
+            momenta_pairs,
+        )
+
+    def family_kinematics_native(self, currents, family):
+        """Exact ingress invariants once per point, plus one global mass row."""
+        bindings = family.exact_evaluator.evaluate_decimal(
+            currents.momenta_pairs, currents.batch.size, **self.options
+        )
+        n = family.kinematics.propagators
+        return (
+            bindings.take_columns(list(range(4 * n))),
+            family.masses.evaluate_batch(
+                currents.model.take_columns(family.mass_columns)
+            ),
+            bindings.take_columns(list(range(4 * n, 4 * n + n * n))),
+        )
+
+    def family_projection_arguments(self, currents, family):
+        inputs = self.backend.NativeBatch.concat_columns(
+            [currents.born, *(currents.loops[i] for i in family.graph_indices)]
+        )
+        return inputs.reshape_rows(
+            currents.batch.size,
+            len(self.helicities) * inputs.columns,
+            currents.batch.point_ids,
+        )
+
+    def evaluate_ordered_native(self, momenta, scales_squared, *, model_values):
+        """Original decimal input enters exact kinematics and native arithmetic."""
+        currents = self.prepare_currents_native(
+            momenta, scales_squared, model_values=model_values
+        )
+        batch_type = self.backend.NativeBatch
+        size, point_ids = currents.batch.size, currents.batch.point_ids
+        helicities, born = len(self.helicities), currents.born
+        scales = currents.batch.scales_squared
         born_squared = self.born_projector.evaluate_batch(
             born.reshape_rows(size, helicities * born.columns, point_ids)
         )
         require_finite_batch(born_squared, "Born projection")
-        scales = native(scales, size, 1)
         integrated, rational_integrated, statuses = [], [], []
         for family in self.families:
-            inputs = batch_type.concat_columns(
-                [born, *(currents[i] for i in family.graph_indices)]
-            )
             coefficients = family.projector.evaluate_batch(
-                inputs.reshape_rows(size, helicities * inputs.columns, point_ids)
+                self.family_projection_arguments(currents, family)
             )
             channel_count = len(family.sector_indices)
             row_ids = (
@@ -853,17 +928,10 @@ class NativeBareProcessProgram:
             coefficients = coefficients.reshape_rows(
                 size * channel_count, len(family.powers), row_ids
             )
-            bindings = family.exact_evaluator.evaluate_decimal(
-                momenta_pairs, size, **self.options
-            ).take_rows(point_rows, row_ids=row_ids)
-            n = family.kinematics.propagators
-            shifts, matrix = (
-                bindings.take_columns(list(range(4 * n))),
-                bindings.take_columns(list(range(4 * n, 4 * n + n * n))),
-            )
-            masses = family.masses.evaluate_batch(
-                model.take_columns(family.mass_columns)
-            ).take_rows([0] * (size * channel_count), row_ids=row_ids)
+            shifts, masses, matrix = self.family_kinematics_native(currents, family)
+            shifts = shifts.take_rows(point_rows, row_ids=row_ids)
+            matrix = matrix.take_rows(point_rows, row_ids=row_ids)
+            masses = masses.take_rows([0] * (size * channel_count), row_ids=row_ids)
             channel_scales = scales.take_rows(point_rows, row_ids=row_ids)
             reduced = family.reducer.evaluate_batch(
                 shifts, masses, channel_scales, coefficients, s_matrix=matrix
@@ -923,16 +991,7 @@ class NativeBareProcessProgram:
             )
             require_finite_batch(rational, "direct rational assembly")
         return NativeBareEvaluation(
-            NativePhysicalBatch(
-                size,
-                rows,
-                point_ids,
-                lane_ids,
-                bound,
-                dict(self.bound_positions),
-                model_arguments,
-                scales,
-            ),
+            currents.batch,
             born,
             born_squared,
             virtual,
