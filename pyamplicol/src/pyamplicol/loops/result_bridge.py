@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Output-only transport from the native model-rule verification boundary.
+"""Output-only transport from the native complete virtual verification boundary.
 
 Evaluation, reduction and sums have already run in native batches. This adapter
 restores the requested point order and formats each returned coefficient once;
@@ -23,7 +23,7 @@ def stable_model_evaluation(
     r2: R2Selection,
     allow_partial: bool = False,
 ) -> VirtualEvaluation:
-    """Format ordinary model-R2 results without losing orders or precision.
+    """Format ordinary virtual results without losing orders or precision.
 
     The output point axis follows ``result.requested_point_ids``, including
     ``None`` for failed points only when explicitly requested. The native
@@ -32,9 +32,13 @@ def stable_model_evaluation(
     not admit additional physical processes or enable public loop generation.
     """
     if not isinstance(result, NativeStableModelResult):
-        raise TypeError("expected a complete native model-rule verification result")
-    if not isinstance(r2, R2Selection) or r2.effective != R2Strategy.MODEL:
-        raise ValueError("native model-rule results require the model R2 strategy")
+        raise TypeError("expected a complete native virtual verification result")
+    if (
+        not isinstance(r2, R2Selection)
+        or r2.effective not in {R2Strategy.MODEL, R2Strategy.DIRECT}
+        or r2.effective != result.r2_strategy
+    ):
+        raise ValueError("R2 selection does not match the executed native strategy")
     requested, present = result.requested_point_ids, result.point_ids
     if len(set(requested)) != len(requested) or len(set(present)) != len(present):
         raise ValueError("native result has duplicate point identities")

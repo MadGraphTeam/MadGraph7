@@ -85,7 +85,8 @@ def packet(spec=DEFAULT_SPEC):
         virtual,
         ORDERS,
         (),
-        diagnostics,
+        r2_strategy="model",
+        diagnostics=diagnostics,
     )
 
 
@@ -165,11 +166,25 @@ def test_native_carrier_and_row_metadata_must_match_the_result():
             r2=R2,
             allow_partial=True,
         )
-    with pytest.raises(ValueError, match="model R2"):
+    with pytest.raises(ValueError, match="executed native strategy"):
         stable_model_evaluation(
             native,
             r2=replace(R2, effective=R2Strategy.DIRECT),
             allow_partial=True,
+        )
+
+
+def test_direct_output_keeps_executed_strategy_and_rejects_relabeling():
+    native = replace(packet(), r2_strategy="direct")
+    direct = replace(R2, effective=R2Strategy.DIRECT)
+    output = stable_model_evaluation(native, r2=direct, allow_partial=True)
+    assert output.r2 is direct
+    assert output.single_pole == ((-8, -11), None, (-2, -5))
+    with pytest.raises(ValueError, match="executed native strategy"):
+        stable_model_evaluation(native, r2=R2, allow_partial=True)
+    with pytest.raises(ValueError, match="executed native strategy"):
+        stable_model_evaluation(
+            replace(native, r2_strategy="auto"), r2=direct, allow_partial=True
         )
 
 
