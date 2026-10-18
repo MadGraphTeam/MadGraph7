@@ -242,3 +242,70 @@ def test_original_layout_is_validated_before_any_retry_gather(source):
         program.evaluate_native(
             data[:, :, :3], ["1000000"] * 2, model_values=["0.118", "132.507"]
         )
+
+
+@pytest.mark.parametrize("arithmetic", ["double", "double-double"])
+def test_partial_preparation_isolates_finite_original_state_overflow(
+    source, arithmetic
+):
+    from pyamplicol.loops.numerical_lanes import LaneFailures
+
+    model = drell_yan_model_virtual_program(source, arithmetic=arithmetic)
+    ordinary = points("drell_yan_qcd.json")[:1]
+    huge = np.asarray(
+        [
+            ["5e400", "0", "0", "5e400"],
+            ["5e400", "0", "0", "-5e400"],
+            ["5e400", "0", "0", "5e400"],
+            ["5e400", "0", "0", "-5e400"],
+        ]
+    )
+    mixed = np.stack([ordinary[0], huge])
+    result = model.evaluate_ordered_partial_native(
+        mixed, ["1000000"] * 2, model_values=["0.118", "132.507"], point_ids=[7, 91]
+    )
+    assert result.requested_point_ids == (7, 91) and result.batch.point_ids == [7]
+    assert {failure.point_id for failure in result.failures} == {91}
+    assert all(
+        failure.stage == "external state preparation" for failure in result.failures
+    )
+    assert result.totals.nonfinite_rows() == []
+    with pytest.raises(ValueError, match="external state lane"):
+        model.evaluate_ordered_native(
+            mixed, ["1000000"] * 2, model_values=["0.118", "132.507"]
+        )
+    empty = model.evaluate_ordered_partial_native(
+        mixed[1:], ["1000000"], model_values=["0.118", "132.507"], point_ids=[91]
+    )
+    assert empty.batch.point_ids == [] and empty.totals.rows == 0
+    # A malformed original scale is validated even if its state would be evicted.
+    with pytest.raises(ValueError, match="finite decimal"):
+        model.evaluate_ordered_partial_native(
+            mixed,
+            ["1000000", "NaN"],
+            model_values=["0.118", "132.507"],
+            point_ids=[7, 91],
+        )
+    invalid = mixed.copy()
+    invalid[1, 0, 0] = "NaN"
+    with pytest.raises(ValueError, match="finite decimal"):
+        model.evaluate_ordered_partial_native(
+            invalid, ["1000000"] * 2, model_values=["0.118", "132.507"]
+        )
+    if arithmetic == "double":
+        # Original decimal inputs recover finite native states/currents in AP.
+        # This assertion deliberately makes no full reduction accuracy claim.
+        precise = drell_yan_model_virtual_program(
+            source, arithmetic="arbitrary", precision=80
+        )
+        failures = LaneFailures()
+        currents = precise.bare.prepare_currents_native(
+            mixed,
+            ["1000000"] * 2,
+            model_values=["0.118", "132.507"],
+            point_ids=[7, 91],
+            _failures=failures,
+        )
+        assert failures.entries == [] and currents.batch.point_ids == [7, 91]
+        assert currents.born.nonfinite_rows() == []
+        assert all(value.nonfinite_rows() == [] for value in currents.loops)

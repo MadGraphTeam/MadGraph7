@@ -888,6 +888,7 @@ class NativeBareProcessProgram:
         helicities=None,
         spin_sources=None,
         point_ids=None,
+        _failures=None,
     ):
         """Bind one physical batch and evaluate its Born and loop currents once."""
         momenta, scales = (
@@ -923,7 +924,12 @@ class NativeBareProcessProgram:
             ).tolist()
 
         def native(values, nrows, columns, row_ids=None):
-            return batch_type.from_decimal(
+            constructor = (
+                batch_type.from_decimal
+                if _failures is None
+                else batch_type.from_exact_decimal
+            )
+            return constructor(
                 pairs(values), nrows, columns, row_ids=row_ids, **self.options
             )
 
@@ -935,11 +941,55 @@ class NativeBareProcessProgram:
         lanes = physical.take_rows(
             np.repeat(np.arange(size), helicities).tolist(), row_ids=lane_ids
         )
-        states = self.backend.wavefunctions_batch(
-            lanes.reshape_rows(rows * legs, 4, list(range(rows * legs))),
-            np.tile(np.asarray(helicity_states), (size, 1)).reshape(-1).tolist(),
-            list(self.state_kinds) * rows,
-        ).reshape_rows(rows, 4 * legs, lane_ids)
+        state_ids = [lane * legs + leg for lane in lane_ids for leg in range(legs)]
+        state_inputs = lanes.reshape_rows(rows * legs, 4, state_ids)
+        state_helicities = (
+            np.tile(np.asarray(helicity_states), (size, 1)).reshape(-1).tolist()
+        )
+        state_kinds = list(self.state_kinds) * rows
+        native_scales = None
+        if _failures is None:
+            states = self.backend.wavefunctions_batch(
+                state_inputs, state_helicities, state_kinds
+            )
+        else:
+            # Validate all original scale literals before dropping any point.
+            native_scales = native(scales, size, 1, row_ids=point_ids)
+            _failures.require_finite(native_scales, "renormalization scale ingress")
+            states, state_statuses = self.backend.wavefunctions_partial_batch(
+                state_inputs, state_helicities, state_kinds
+            )
+            for state_id, status in state_statuses:
+                if status != "success":
+                    _failures.record(
+                        state_id // (helicities * legs),
+                        "external state preparation",
+                        status,
+                    )
+            indices = _failures.successful_indices(point_ids)
+            if len(indices) != size:
+                lane_rows = [
+                    point * helicities + h
+                    for point in indices
+                    for h in range(helicities)
+                ]
+                point_ids = [point_ids[point] for point in indices]
+                lane_ids = [lane_ids[lane] for lane in lane_rows]
+                size, rows = len(indices), len(lane_rows)
+                momenta_pairs = pairs(momenta[indices])
+                lanes = lanes.take_rows(lane_rows)
+                native_scales = native_scales.take_rows(indices)
+                positions = {
+                    state_id: row for row, state_id in enumerate(states.row_ids)
+                }
+                states = states.take_rows(
+                    [
+                        positions[lane * legs + leg]
+                        for lane in lane_ids
+                        for leg in range(legs)
+                    ]
+                )
+        states = states.reshape_rows(rows, 4 * legs, lane_ids)
         if spin_sources:
             from .spin_sources import replace_vector_sources
 
@@ -951,7 +1001,11 @@ class NativeBareProcessProgram:
                 state_kinds=self.state_kinds,
                 backend=self.backend,
             )
-        scales = native(scales, size, 1, row_ids=point_ids)
+        scales = (
+            native(scales, size, 1, row_ids=point_ids)
+            if native_scales is None
+            else native_scales
+        )
         if self.model_state is None:
             model_arguments = native(model_values, 1, len(model_values))
             model = self.model_evaluator.evaluate_batch(model_arguments)
@@ -1042,10 +1096,20 @@ class NativeBareProcessProgram:
         from .numerical_lanes import LaneFailures, require_partial_domain
 
         require_partial_domain(self)
-        currents = self.prepare_currents_native(
-            momenta, scales_squared, model_values=model_values, point_ids=point_ids
+        requested_ids = (
+            tuple(range(len(momenta))) if point_ids is None else tuple(point_ids)
         )
-        return self._evaluate_currents_native(currents, LaneFailures())
+        failures = LaneFailures()
+        currents = self.prepare_currents_native(
+            momenta,
+            scales_squared,
+            model_values=model_values,
+            point_ids=requested_ids,
+            _failures=failures,
+        )
+        result = self._evaluate_currents_native(currents, failures)
+        result.requested_point_ids = requested_ids
+        return result
 
     def evaluate_ordered_native(self, momenta, scales_squared, *, model_values=None):
         """Original decimal input enters exact kinematics and native arithmetic."""

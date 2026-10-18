@@ -87,8 +87,8 @@ class NativeModelStabilityProgram:
     Each call copies its original decimal inputs once. No rounded intermediate is
     used to reconstruct a higher-precision physical evaluation. Source-owned,
     direct-R2, projected-colour and correlated views remain outside this boundary.
-    State-preparation exceptions still propagate until native partial-state
-    ingress is connected; they are never guessed to be per-point failures.
+    Malformed original inputs and global model formula errors still propagate.
+    Numerical external-state failures retain sparse original point identities.
     """
 
     def __init__(

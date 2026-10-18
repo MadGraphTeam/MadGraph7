@@ -279,15 +279,20 @@ order or family evicts the whole point, including already integrated families;
 missing values are never replaced by zeros. The ordinary evaluation methods
 still raise on a numerical failure.
 
-This partial boundary begins after shared wavefunction/global-model preparation.
-A state-construction error, including carrier overflow of an otherwise finite
-exact input, can still abort that preparation for the whole batch. Such an error
-is not silently reclassified as per-point failure. Source-owned model snapshots,
+This partial boundary includes native external-state preparation. Its strict
+`NativeBatch.from_exact_decimal` ingress reuses the existing exact rational parser
+and carrier conversion: malformed or nonfinite original literals raise before
+conversion, while finite originals overflowing a carrier remain distinguishable
+numerical failures. Original scale literals are checked before point eviction.
+Native state statuses compact whole physical points before coefficient DAGs;
+original decimal inputs remain available for wider-precision retries. Global
+model formula errors still raise for the batch. Source-owned model snapshots,
 formal-colour views, direct R2 and spin/directed observable views are not yet
-certified for partial evaluation. The new path does not establish accuracy,
-choose a rescue precision, or perform additional precision evaluations. Genuine
-singular Born/CT and later-family `DegenerateGram` controls validate failure
-isolation in binary64, DoubleFloat and arbitrary precision.
+certified for partial evaluation. The partial method itself neither establishes
+accuracy nor chooses a rescue precision. Genuine singular Born/CT and later-family
+`DegenerateGram` controls validate failure isolation in all three carriers;
+finite original state overflow is isolated in binary64/DoubleFloat and finite
+state/current preparation is recovered from those originals in arbitrary precision.
 
 `NativeModelStabilityProgram` is an internal optional view over one such complete
 model program. Its `evaluate_native(..., verify=False)` performs one native
