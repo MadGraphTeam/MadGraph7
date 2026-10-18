@@ -97,6 +97,12 @@ if TYPE_CHECKING:
         group_processes,
         load,
     )
+    from .api.virtual_results import (
+        LaurentCoefficients,
+        ResolvedVirtualEvaluation,
+        VirtualEvaluation,
+        VirtualLaneDiagnostic,
+    )
     from .config import (
         BenchmarkConfig,
         ColorConfig,
@@ -154,6 +160,7 @@ __all__ = [
     "GenerationResult",
     "Generator",
     "HelicityConfiguration",
+    "LaurentCoefficients",
     "LoopConfig",
     "ModelCompilationIssue",
     "ModelCompilationPhase",
@@ -169,9 +176,12 @@ __all__ = [
     "R2Strategy",
     "ReductionGroup",
     "ResolvedEvaluation",
+    "ResolvedVirtualEvaluation",
     "RunConfig",
     "Runtime",
     "SplitGluon",
+    "VirtualEvaluation",
+    "VirtualLaneDiagnostic",
     "WarmUpResult",
     "__version__",
     "benchmark",
@@ -243,7 +253,14 @@ _CONFIG_EXPORTS = (
     "R2Strategy",
     "RunConfig",
 )
+_VIRTUAL_RESULT_EXPORTS = (
+    "LaurentCoefficients",
+    "ResolvedVirtualEvaluation",
+    "VirtualEvaluation",
+    "VirtualLaneDiagnostic",
+)
 _PUBLIC_EXPORTS = {
+    **{name: (".api.virtual_results", name) for name in _VIRTUAL_RESULT_EXPORTS},
     **{
         name: (".correlators", name)
         for name in (

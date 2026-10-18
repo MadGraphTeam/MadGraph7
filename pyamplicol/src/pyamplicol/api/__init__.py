@@ -71,6 +71,12 @@ if TYPE_CHECKING:
         install_backend_factories,
         load,
     )
+    from .virtual_results import (
+        LaurentCoefficients,
+        ResolvedVirtualEvaluation,
+        VirtualEvaluation,
+        VirtualLaneDiagnostic,
+    )
 
 __all__ = [
     "ArtifactError",
@@ -102,6 +108,7 @@ __all__ = [
     "GeneratorBackend",
     "GeneratorFactory",
     "HelicityConfiguration",
+    "LaurentCoefficients",
     "ModelCompilationIssue",
     "ModelCompilationPhase",
     "ModelError",
@@ -118,9 +125,12 @@ __all__ = [
     "PyAmpliColError",
     "ReductionGroup",
     "ResolvedEvaluation",
+    "ResolvedVirtualEvaluation",
     "Runtime",
     "RuntimeBackend",
     "RuntimeLoader",
+    "VirtualEvaluation",
+    "VirtualLaneDiagnostic",
     "WarmUpResult",
     "benchmark",
     "generate",
@@ -194,7 +204,14 @@ _SERVICE_EXPORTS = (
     "install_backend_factories",
     "load",
 )
+_VIRTUAL_RESULT_EXPORTS = (
+    "LaurentCoefficients",
+    "ResolvedVirtualEvaluation",
+    "VirtualEvaluation",
+    "VirtualLaneDiagnostic",
+)
 _PUBLIC_EXPORTS = {
+    **{name: (".virtual_results", name) for name in _VIRTUAL_RESULT_EXPORTS},
     **{name: (".errors", name) for name in _ERROR_EXPORTS},
     **{name: (".protocols", name) for name in _PROTOCOL_EXPORTS},
     **{name: (".models", name) for name in _MODEL_EXPORTS},
