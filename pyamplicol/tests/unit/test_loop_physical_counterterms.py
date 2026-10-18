@@ -594,6 +594,7 @@ def test_partial_native_points_keep_ids_and_all_components(source, points, optio
     [{}, {"arithmetic": "double-double"}, {"arithmetic": "arbitrary", "precision": 60}],
 )
 def test_partial_real_reducer_failure_evicts_prior_families(source, options):
+    """Separate unsupported physical routing from native sparse transport."""
     fixture = Path(__file__).resolve().parents[2] / "tools/loop_reference/uudd_qcd.json"
     good = np.asarray(json.loads(fixture.read_text())["points"], dtype=str)
     forward = np.asarray(
@@ -609,7 +610,58 @@ def test_partial_real_reducer_failure_evicts_prior_families(source, options):
     baseline = program.evaluate_ordered_native(
         good[:2], ["1000000"] * 2, model_values=values
     )
-    mixed = np.stack([good[0], forward, good[1]])
+    # Exact-forward physical routing now creates equal denominators. The owner
+    # rejects this domain before returning lane statuses; it is not rescuable.
+    with pytest.raises(ValueError, match="raised or repeated loop propagators"):
+        program.evaluate_ordered_partial_native(
+            np.stack([good[0], forward, good[1]]),
+            ["1000000"] * 3,
+            model_values=values,
+            point_ids=[8, 400, 2],
+        )
+
+    # Test the sparse transport boundary with distinct, deliberately collinear
+    # shifts at a later box. This is not the physical forward amplitude. The
+    # unmodified native reducer supplies the numerical failure and all values.
+    family = next(f for f in program.bare.families[1:] if f.kinematics.propagators == 4)
+    assert family.index > program.bare.families[0].index
+    original = family.reducer
+
+    class DegenerateOneLane:
+        point_id = 400
+
+        def evaluate_batch(self, shifts, masses, scales, coefficients, *, s_matrix):
+            good_rows = [
+                index
+                for index, row in enumerate(shifts.row_ids)
+                if row != self.point_id
+            ]
+            bad_ids = [row for row in shifts.row_ids if row == self.point_id]
+
+            def replace_lane(batch, entries):
+                replacement = program.bare.backend.NativeBatch.from_decimal(
+                    [(str(value), "0") for value in entries] * len(bad_ids),
+                    len(bad_ids),
+                    batch.columns,
+                    row_ids=bad_ids,
+                    **program.bare.options,
+                )
+                return program.bare.backend.NativeBatch.merge_rows(
+                    batch.row_ids, [batch.take_rows(good_rows), replacement]
+                )
+
+            return original.evaluate_batch(
+                replace_lane(shifts, [0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0]),
+                masses,
+                scales,
+                coefficients,
+                s_matrix=replace_lane(
+                    s_matrix, [0, 1, 4, 9, 1, 0, 1, 4, 4, 1, 0, 1, 9, 4, 1, 0]
+                ),
+            )
+
+    broken = family.reducer = DegenerateOneLane()
+    mixed = np.stack([good[0], good[0], good[1]])
     result = program.evaluate_ordered_partial_native(
         mixed, ["1000000"] * 3, model_values=values, point_ids=[8, 400, 2]
     )
@@ -631,8 +683,10 @@ def test_partial_real_reducer_failure_evicts_prior_families(source, options):
         assert actual.agreement_rows(
             expected.take_rows([0, 1], row_ids=[8, 2]), "1e-13", "1e-100"
         ) == [(8, True), (2, True)]
+    broken.point_id = 1  # Ordinary evaluation assigns contiguous point IDs.
     with pytest.raises(ArithmeticError, match="DegenerateGram"):
         program.evaluate_ordered_native(mixed, ["1000000"] * 3, model_values=values)
+    broken.point_id = 400
     # A later changing-size call cannot retain omitted values from the failed batch.
     repeat = program.evaluate_ordered_partial_native(
         good[1:2], ["1000000"], model_values=values, point_ids=[2]
@@ -641,6 +695,7 @@ def test_partial_real_reducer_failure_evicts_prior_families(source, options):
     assert repeat.totals.agreement_rows(
         result.totals.take_rows([1]), "1e-13", "1e-100"
     ) == [(2, True)]
+    family.reducer = original
 
 
 def test_exact_family_guards_keep_original_ids_after_compaction(source, points):
