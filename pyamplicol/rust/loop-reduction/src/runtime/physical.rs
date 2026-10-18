@@ -101,8 +101,17 @@ impl LoopBackend for PhysicalBackend {
         columns: usize,
         ids: Vec<u64>,
     ) -> RusticolResult<Arc<Batch>> {
+        self.ingress_complex(&pairs(values), rows, columns, ids)
+    }
+    fn ingress_complex(
+        &self,
+        values: &[[String; 2]],
+        rows: usize,
+        columns: usize,
+        ids: Vec<u64>,
+    ) -> RusticolResult<Arc<Batch>> {
         Batch::from_exact_decimal(
-            pairs(values),
+            values.to_vec(),
             rows,
             columns,
             &self.arithmetic,
@@ -177,6 +186,12 @@ impl LoopBackend for PhysicalBackend {
             Arc::new(result.values().map_err(runtime_error)?),
             result.statuses().to_vec(),
         ))
+    }
+    fn rows(batch: &Arc<Batch>) -> usize {
+        batch.rows()
+    }
+    fn row_ids(batch: &Arc<Batch>) -> &[u64] {
+        batch.ids()
     }
     fn columns(batch: &Arc<Batch>) -> usize {
         batch.columns()

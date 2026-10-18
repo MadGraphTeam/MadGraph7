@@ -40,6 +40,14 @@ pub trait LoopBackend {
         columns: usize,
         ids: Vec<u64>,
     ) -> RusticolResult<Self::Batch>;
+    /// Exact complex source parameters use the same dependency-owned ingress.
+    fn ingress_complex(
+        &self,
+        values: &[[String; 2]],
+        rows: usize,
+        columns: usize,
+        ids: Vec<u64>,
+    ) -> RusticolResult<Self::Batch>;
     fn exact(
         &self,
         evaluator: &mut Self::ExactEvaluator,
@@ -66,6 +74,8 @@ pub trait LoopBackend {
         coefficients: &Self::Batch,
         matrix: &Self::Batch,
     ) -> RusticolResult<(Self::Batch, Vec<(u64, String)>)>;
+    fn rows(batch: &Self::Batch) -> usize;
+    fn row_ids(batch: &Self::Batch) -> &[u64];
     fn columns(batch: &Self::Batch) -> usize;
     fn select(batch: &Self::Batch, columns: Vec<usize>) -> RusticolResult<Self::Batch>;
     fn gather(batch: &Self::Batch, rows: Vec<usize>, ids: Vec<u64>) -> RusticolResult<Self::Batch>;
