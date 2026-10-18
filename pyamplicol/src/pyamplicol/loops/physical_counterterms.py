@@ -251,6 +251,7 @@ class NativeModelVirtualProgram:
             from ufo_model_loader.symbolica_processing import wrap_indices
 
             from .model_expressions import parse_exact_ufo
+            from .model_neutral_qcd import certified_neutral_qcd_basis
             from .scalar_bindings import NativeScaleBindings, prepare_scalar_bindings
             from .vertex_frames import certified_source_dirac_frame
 
@@ -262,7 +263,10 @@ class NativeModelVirtualProgram:
                         for index in entry.particle_ids
                     )
                     expression = wrap_indices(parse_exact_ufo(entry.lorentz))
-                    if S("UFO::Epsilon") in expression.get_all_symbols():
+                    if (
+                        S("UFO::Epsilon") in expression.get_all_symbols()
+                        and not certified_neutral_qcd_basis(entry, raw)
+                    ):
                         raise NotImplementedError(
                             "source CT epsilon tensors are not certified"
                         )

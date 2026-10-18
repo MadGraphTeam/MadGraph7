@@ -21,7 +21,8 @@ from .model_gluons import (
     _ORDINARY_LORENTZ,
     _TWO_POINT,
 )
-from .vertex_frames import certified_ffv_source
+from .model_neutral_qcd import neutral_qcd_counterterm_validations
+from .vertex_frames import certified_fermion_slash_source, certified_ffv_source
 
 
 def certified_source_counterterm_bases(source):
@@ -36,7 +37,10 @@ def certified_source_counterterm_bases(source):
 
     validations = {
         item.source_key: item
-        for item in massive_neutral_lepton_counterterm_validations(source)
+        for item in (
+            *massive_neutral_lepton_counterterm_validations(source),
+            *neutral_qcd_counterterm_validations(source),
+        )
     }
     parsed = {}
 
@@ -76,6 +80,20 @@ def certified_source_counterterm_bases(source):
             )
         ):
             control = "source-FFV-physical-frame-and-fundamental-color-control"
+        elif (
+            entry.kind == "R2"
+            and spins == (2, 2)
+            and pdgs[0] == -pdgs[1]
+            and pdgs[1] in range(1, 7)
+            and colors == (-3, 3)
+            and any_equal(entry.color, ("Identity(1,2)",))
+            and certified_fermion_slash_source(
+                SimpleNamespace(
+                    spins=spins, structure=wrap_indices(expression(entry.lorentz))
+                )
+            )
+        ):
+            control = "local-fermion-two-point-source-aloha-control"
         elif (
             all(pdg == 21 for pdg in pdgs)
             and spins == (3,) * len(pdgs)

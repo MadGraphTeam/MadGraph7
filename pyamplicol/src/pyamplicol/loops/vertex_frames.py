@@ -121,4 +121,28 @@ def certified_ffs_source(structure):
 
 def certified_source_dirac_frame(structure):
     """Locally checked four-dimensional Dirac vertices, with exact source ports."""
-    return certified_ffv_source(structure) or certified_ffs_source(structure)
+    return (
+        certified_ffv_source(structure)
+        or certified_ffs_source(structure)
+        or certified_fermion_slash_source(structure)
+    )
+
+
+def certified_fermion_slash_source(structure):
+    """The tested source two-point slash, with its original momentum leg.
+
+    Typed endpoint exchange gives exactly the momentum contraction of the
+    calibrated vector current. No mass, chiral or other two-point tensor is
+    inferred from that identity, and momentum references do not move.
+    """
+    from ufo_model_loader.symbolica_processing import wrap_indices
+
+    from .model_expressions import parse_exact_ufo
+
+    return (
+        tuple(structure.spins) == (2, 2)
+        and (
+            structure.structure - wrap_indices(parse_exact_ufo("P(-1,1)*Gamma(-1,2,1)"))
+        ).expand()
+        == 0
+    )

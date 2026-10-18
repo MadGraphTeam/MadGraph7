@@ -1406,3 +1406,23 @@ restriction or other vertex changes. The helper requires this precise source
 shape and rejects changed tensors, species or arity. Generic structural spin
 signature validation remains strict. This enables request preparation with
 neutral-current QED orders; it does not certify a six-leg process or new CT bases.
+
+### Neutral-current QCD local counterterms
+
+`neutral_gauge_oracle.py` compares the source `R2_GGZ`, `R2_GGGVa` and
+`R2_GGVV` Lorentz tensors to freshly generated, unchanged ALOHA routines with
+off-shell real/complex momenta, every basis current and arbitrary complex
+currents. The native path uses the installed UFO phase and the existing exact
+four-dimensional epsilon component library. Independent MadGraph colour
+contractions compare the actual adjoint/singlet ports, including non-real
+overlaps with ordered generator traces. The 1,158 Lorentz and 25 colour controls
+bind only the exact `Tr × epsilon-momentum`, `f × epsilon`, and `d × metric-sum`
+source products in `model_neutral_qcd.py`. They provide neither a dimensional
+gamma-five prescription nor an anomaly, UV-scheme or full-process certificate.
+
+The source quark two-point slash retains its original momentum leg. The typed
+endpoint adapter gives exactly the explicit native representative previously
+checked by `fermion_two_point_oracle.py`: contraction of the calibrated vector
+current with that momentum. Other two-point mass, chiral, reversed-endpoint or
+momentum-leg tensors remain outside this admission. Scalar source coefficients,
+loop groups, matching and all process-level cancellations are independent gates.
