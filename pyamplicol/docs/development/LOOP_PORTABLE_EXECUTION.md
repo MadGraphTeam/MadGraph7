@@ -64,8 +64,7 @@ share one captured event-batch snapshot and the per-point renormalization scale.
 The existing callback registry and exact decimal parser now live in the shared
 core decoder, with the runtime delegating to that one implementation.
 
-The native
-reader checks that direct selection is dimensional, uses the certified QCD
+The native reader checks that direct selection is dimensional, uses the certified QCD
 four-gluon state layout and QCD4/QCD6 Born/virtual sectors, and contains no
 effective R2 currents. Coefficient labels
 retain weighted rank `q_degree + 2*mu2_degree` and epsilon degree at most two.
