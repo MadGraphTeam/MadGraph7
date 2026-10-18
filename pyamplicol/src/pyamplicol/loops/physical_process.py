@@ -1,0 +1,484 @@
+# SPDX-License-Identifier: 0BSD
+"""Internal native bare-process assembly over verified graph families.
+
+This first physical process boundary supports massless external Dirac states,
+one Born order and one virtual squared-order sector. Local currents, exact SU(3)
+bilinears and native family maps determine every numerator. UV/R2 completion,
+formal-Nc projection and public process dispatch remain separate boundaries.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from itertools import product
+from typing import Any
+
+import numpy as np
+
+from .exact import require_exact_numbers
+from .graphs import build_loop_process
+from .kernels import NativeCoefficientDAG
+from .kinematics import build_loop_kinematics
+from .physical import _born_dag, _denominator, _saved
+from .recurrence import build_open_loop_recurrence, momentum_component_library
+
+
+@dataclass(frozen=True, slots=True)
+class BareProcessResult:
+    """Batch-first decimal pairs; poles ordered finite, single, double."""
+
+    born: Any
+    virtual: Any
+    statuses: tuple[tuple[tuple[int, str], ...], ...]
+    family_indices: tuple[int, ...]
+    arithmetic: str
+    precision: int | None
+    reduction_engine: str
+    convention: str = "MadLoop-Cepsilon-bare-four-dimensional-no-R2-no-UV"
+
+
+def _external_color(graph, expression):
+    """Identify color ports by physical leg before comparing distinct graphs."""
+    from symbolica.community import hepkit as h
+
+    replacements = {}
+    indices = {axis.index for axis in expression.axes}
+    for edge in graph.native.external_edges:
+        half = next(half for half in graph.native.half_edges if half.edge.id == edge.id)
+        label = h.Symbols.half_edge()(half.id, 1)
+        if label in indices:
+            replacements[label] = f"physical_color_leg_{edge.external_index}"
+    return expression.rename_indices(replacements).to_tensor().to_dense()
+
+
+def _color_bilinear(left, right, average):
+    from symbolica import E
+
+    if set(left.axes) != set(right.axes):
+        raise ValueError("physical Born/loop color ports disagree")
+    right = right.permute_axes([right.axes.index(axis) for axis in left.axes])
+    return sum((left[i].conj() * right[i] for i in range(len(left))), E("0")) / average
+
+
+@dataclass(slots=True)
+class _FamilyProgram:
+    index: int
+    graph_indices: tuple[int, ...]
+    powers: tuple[tuple[int, ...], ...]
+    kinematics: Any
+    exact_evaluator: Any
+    masses: Any
+    mass_parameters: tuple[Any, ...]
+    projector: Any
+    reducer: Any
+
+
+class NativeBareProcessProgram:
+    """Reusable graph/family assembly, with global exact model input formulas.
+
+    ``model_expressions`` maps native model symbol names to exact expressions
+    in ``model_inputs``. Numerical values bind once per call, never per event.
+    """
+
+    def __init__(
+        self,
+        process,
+        *,
+        state_kinds: tuple[str, ...],
+        initial_average: Any,
+        model_expressions: dict[str, Any],
+        model_inputs: tuple[Any, ...],
+        arithmetic: str = "double",
+        precision: int | None = None,
+        reduction_engine: str = "generic",
+        backend: Any = None,
+    ):
+        if backend is None:
+            import _loop_reduction as backend
+        from symbolica import E, S
+        from symbolica.community import tensor as t
+
+        if len(process.orders.born_orders) != 1 or len(process.orders.sectors) != 1:
+            raise NotImplementedError("physical control requires one Born/order sector")
+        if any(kind not in {"u", "v", "u_bar", "v_bar"} for kind in state_kinds):
+            raise NotImplementedError("physical control requires external Dirac states")
+        require_exact_numbers(initial_average)
+        for expression in model_expressions.values():
+            require_exact_numbers(expression)
+        selected_loop_orders = {pair.loop for pair in process.orders.sectors[0].pairs}
+        self.loop_graphs = tuple(
+            graph for graph in process.loops if graph.order in selected_loop_orders
+        )
+        self.process, self.backend = process, backend
+        self.state_kinds = state_kinds
+        self.helicities = tuple(product((-1, 1), repeat=len(state_kinds)))
+        self.arithmetic, self.precision = arithmetic, precision
+        self.reduction_engine = reduction_engine
+        self.options = {"arithmetic": arithmetic, "precision": precision}
+        self.model_inputs = model_inputs
+        self.model_names = tuple(sorted(model_expressions))
+        self.model_evaluator = backend.CoefficientEvaluator(
+            _saved(
+                [model_expressions[name] for name in self.model_names], model_inputs
+            ),
+            **self.options,
+        )
+        self.recurrences = tuple(
+            build_open_loop_recurrence(graph, routing="family")
+            for graph in self.loop_graphs
+        )
+        if not self.recurrences:
+            raise ValueError("physical process has no selected loop graphs")
+        representative = self.recurrences[0]
+        self.momenta = representative.momentum_parameters
+        self.momentum_parameters = tuple(x for vector in self.momenta for x in vector)
+        if len(self.momenta) != len(state_kinds):
+            raise ValueError("physical state count differs from native process")
+        self.external_states = representative.external_states
+        variables = representative.dag.variables
+        self.born_dags, born_colors = [], []
+        for graph in process.born:
+            dag, color = _born_dag(graph, variables, self.momenta)
+            self.born_dags.append(dag)
+            born_colors.append(_external_color(graph, color))
+        self.loop_finals, loop_colors = [], []
+        for recurrence in self.recurrences:
+            if recurrence.momentum_parameters != self.momenta:
+                raise ValueError("native graph external momentum frames differ")
+            library = momentum_component_library(
+                recurrence.graph, (recurrence.loop_components,), self.momenta
+            )
+            bridge = E("1")
+            for edge in recurrence.graph.native.internal_edges:
+                if edge.id not in recurrence.graph.loop_edges:
+                    denominator = _denominator(edge, library)
+                    if any(denominator.contains(q) for q in variables):
+                        raise ValueError(
+                            "tree bridge denominator depends on loop momentum"
+                        )
+                    bridge /= denominator
+            self.loop_finals.append(
+                recurrence.dag.add(
+                    "physical-tree-denominators",
+                    t.TensorExpression(bridge).to_tensor(library),
+                    (recurrence.final_node,),
+                )
+            )
+            loop_colors.append(
+                _external_color(recurrence.graph, recurrence.color_expression)
+            )
+        self.born_executors = tuple(
+            NativeCoefficientDAG(
+                dag, output_nodes=(len(dag.nodes) - 1,), backend=backend, **self.options
+            )
+            for dag in self.born_dags
+        )
+        self.loop_executors = tuple(
+            NativeCoefficientDAG(
+                r.dag, output_nodes=(final,), backend=backend, **self.options
+            )
+            for r, final in zip(self.recurrences, self.loop_finals, strict=True)
+        )
+        self.born_metric = tuple(
+            tuple(
+                _color_bilinear(left, right, initial_average) for right in born_colors
+            )
+            for left in born_colors
+        )
+        self.loop_metric = tuple(
+            tuple(
+                _color_bilinear(left, right, initial_average) for right in loop_colors
+            )
+            for left in born_colors
+        )
+        born_symbols = [
+            [
+                S(f"loop_physical_process::born{helicity}_{i}")
+                for i in range(len(born_colors))
+            ]
+            for helicity in range(len(self.helicities))
+        ]
+        born_sum = sum(
+            (
+                left.conj() * right * self.born_metric[i][j]
+                for row in born_symbols
+                for i, left in enumerate(row)
+                for j, right in enumerate(row)
+            ),
+            E("0"),
+        )
+        self.born_projector = backend.CoefficientEvaluator(
+            _saved([born_sum], [value for row in born_symbols for value in row]),
+            **self.options,
+        )
+        self.families = []
+        for family in process.families:
+            indices = tuple(
+                i
+                for i, graph in enumerate(self.loop_graphs)
+                if graph.family.family_index == family.index
+            )
+            if not indices:
+                continue
+            plans = [
+                build_loop_kinematics(self.recurrences[i], family_order=True)
+                for i in indices
+            ]
+            plan = plans[0]
+            if any(
+                (p.shifts, p.masses_squared, p.s_matrix)
+                != (plan.shifts, plan.masses_squared, plan.s_matrix)
+                for p in plans[1:]
+            ):
+                raise ValueError(
+                    "native family graphs have different physical denominator bindings"
+                )
+            labels = {
+                i: self.recurrences[i].dag.nodes[self.loop_finals[i]].output_labels
+                for i in indices
+            }
+            powers = tuple(
+                sorted({label.powers for group in labels.values() for label in group})
+            )
+            if max(map(sum, powers)) > plan.propagators + 1:
+                raise NotImplementedError("numerator rank exceeds the reducer domain")
+            projected, parameters = {power: E("0") for power in powers}, []
+            for helicity, born in enumerate(born_symbols):
+                parameters.extend(born)
+                for index in indices:
+                    for column, label in enumerate(labels[index]):
+                        coefficient = S(
+                            f"loop_physical_process::coefficient{helicity}_{index}_{column}"
+                        )
+                        parameters.append(coefficient)
+                        projected[label.powers] += sum(
+                            (
+                                value.conj() * self.loop_metric[b][index] * coefficient
+                                for b, value in enumerate(born)
+                            ),
+                            E("0"),
+                        )
+            names = [f"c{i}" for i in range(len(powers))]
+            numerator = "+".join(
+                "*".join(
+                    [
+                        name,
+                        *(
+                            f"q{axis}^{power}"
+                            for axis, power in enumerate(exponents)
+                            if power
+                        ),
+                    ]
+                )
+                for name, exponents in zip(names, powers, strict=True)
+            )
+            mass_parameters = tuple(
+                sorted(
+                    {
+                        symbol
+                        for mass in plan.masses_squared
+                        for symbol in mass.get_all_symbols(False)
+                    },
+                    key=lambda s: s.to_canonical_string(),
+                )
+            )
+            self.families.append(
+                _FamilyProgram(
+                    family.index,
+                    indices,
+                    powers,
+                    plan,
+                    backend.ExactPolynomialEvaluator(plan.evaluator_bytes()),
+                    backend.CoefficientEvaluator(
+                        _saved(plan.masses_squared, mass_parameters), **self.options
+                    ),
+                    mass_parameters,
+                    backend.CoefficientEvaluator(
+                        _saved([projected[p] for p in powers], parameters),
+                        **self.options,
+                    ),
+                    backend.PolynomialPlan(
+                        plan.propagators,
+                        [numerator, "0", "0"],
+                        names,
+                        engine=reduction_engine,
+                        **self.options,
+                    ),
+                )
+            )
+        poles = [
+            [S(f"loop_physical_process::family{i}_pole{p}") for p in range(3)]
+            for i in range(len(self.families))
+        ]
+        values = [
+            E("1i") * sum((row[p] for row in poles), E("0")) / (16 * E("pi") ** 2)
+            for p in range(3)
+        ]
+        self.postprocess = backend.CoefficientEvaluator(
+            _saved(
+                [value + value.conj() for value in values],
+                [p for row in poles for p in row],
+            ),
+            **self.options,
+        )
+
+    def evaluate_decimal(self, momenta, scales_squared, *, model_values):
+        """Original decimal input enters exact kinematics and native arithmetic."""
+        momenta, scales = (
+            np.asarray(momenta, dtype=object),
+            np.asarray(scales_squared, dtype=object),
+        )
+        legs, helicities = len(self.state_kinds), len(self.helicities)
+        if momenta.ndim != 3 or momenta.shape[1:] != (legs, 4):
+            raise ValueError("expected (batch, leg, four components) momenta")
+        size, rows = len(momenta), len(momenta) * helicities
+        if scales.shape != (size,) or len(model_values) != len(self.model_inputs):
+            raise ValueError("physical scale or global model input shape differs")
+        if any(
+            not isinstance(value, str)
+            for value in [*momenta.flat, *scales.flat, *model_values]
+        ):
+            raise TypeError("physical precise inputs must be decimal strings")
+        batch_type = self.backend.NativeBatch
+
+        def pairs(values):
+            values = np.asarray(values, dtype=object).reshape(-1)
+            return np.stack(
+                [values, np.full(len(values), "0", dtype=object)], axis=1
+            ).tolist()
+
+        def native(values, nrows, columns):
+            return batch_type.from_decimal(
+                pairs(values), nrows, columns, **self.options
+            )
+
+        point_ids, lane_ids = list(range(size)), list(range(rows))
+        momenta_pairs = pairs(momenta)
+        physical = native(momenta, size, 4 * legs)
+        lanes = physical.take_rows(
+            np.repeat(np.arange(size), helicities).tolist(), row_ids=lane_ids
+        )
+        states = self.backend.massless_spinors_batch(
+            lanes.reshape_rows(rows * legs, 4, list(range(rows * legs))),
+            np.tile(np.asarray(self.helicities), (size, 1)).reshape(-1).tolist(),
+            list(self.state_kinds) * rows,
+        ).reshape_rows(rows, 4 * legs, lane_ids)
+        model = self.model_evaluator.evaluate_batch(
+            native(model_values, 1, len(model_values))
+        )
+        bound = batch_type.concat_columns(
+            [lanes, states, model.take_rows([0] * rows, row_ids=lane_ids)]
+        )
+        positions = {p.get_name(): i for i, p in enumerate(self.momentum_parameters)}
+        positions.update(
+            {
+                symbol.get_name(): 4 * legs + 4 * leg + component
+                for leg, symbols in self.external_states
+                for component, symbol in enumerate(symbols)
+            }
+        )
+        positions.update(
+            {name: 8 * legs + i for i, name in enumerate(self.model_names)}
+        )
+
+        def execute(executor, dag):
+            return executor.evaluate_batch(
+                bound.take_columns([positions[p.get_name()] for p in dag.parameters])
+            )
+
+        born = batch_type.concat_columns(
+            [
+                execute(executor, dag)
+                for executor, dag in zip(
+                    self.born_executors, self.born_dags, strict=True
+                )
+            ]
+        )
+        currents = [
+            execute(executor, recurrence.dag)
+            for executor, recurrence in zip(
+                self.loop_executors, self.recurrences, strict=True
+            )
+        ]
+        born_squared = self.born_projector.evaluate_batch(
+            born.reshape_rows(size, helicities * born.columns, point_ids)
+        )
+        scales = native(scales, size, 1)
+        model_positions = {name: i for i, name in enumerate(self.model_names)}
+        integrated, statuses = [], []
+        for family in self.families:
+            inputs = batch_type.concat_columns(
+                [born, *(currents[i] for i in family.graph_indices)]
+            )
+            coefficients = family.projector.evaluate_batch(
+                inputs.reshape_rows(size, helicities * inputs.columns, point_ids)
+            )
+            bindings = family.exact_evaluator.evaluate_decimal(
+                momenta_pairs, size, **self.options
+            )
+            n = family.kinematics.propagators
+            shifts, matrix = (
+                bindings.take_columns(list(range(4 * n))),
+                bindings.take_columns(list(range(4 * n, 4 * n + n * n))),
+            )
+            masses = family.masses.evaluate_batch(
+                model.take_columns(
+                    [model_positions[p.get_name()] for p in family.mass_parameters]
+                )
+            ).take_rows([0] * size, row_ids=point_ids)
+            reduced = family.reducer.evaluate_batch(
+                shifts, masses, scales, coefficients, s_matrix=matrix
+            )
+            failures = [
+                (point, family.index, status)
+                for point, status in reduced.statuses
+                if status != "success"
+            ]
+            if failures:
+                raise ArithmeticError(
+                    "native process reduction failed (point, family, status): "
+                    f"{failures}"
+                )
+            integrated.append(reduced.values)
+            statuses.append(tuple(reduced.statuses))
+        virtual = self.postprocess.evaluate_batch(batch_type.concat_columns(integrated))
+        return BareProcessResult(
+            np.asarray(born_squared.to_decimal(), dtype=object).reshape(size, 2),
+            np.asarray(virtual.to_decimal(), dtype=object).reshape(size, 3, 2),
+            tuple(tuple(family[point] for family in statuses) for point in range(size)),
+            tuple(f.index for f in self.families),
+            self.arithmetic,
+            self.precision,
+            self.reduction_engine,
+        )
+
+
+def distinct_flavour_qcd_program(**options):
+    """Native six-flavour u ubar -> d dbar control; model values are alpha_s, mt."""
+    from symbolica import E, S
+    from symbolica.community import hepkit as h
+
+    model = h.Model.qcd_qed()
+    process = build_loop_process(
+        model.process(["u", "u~"], ["d", "d~"]),
+        selected_corrections=["QCD"],
+        perturbative_orders={"QCD": 1},
+        born_order_bounds={"QCD": 2, "QED": 0},
+        loop_order_bounds={"QCD": 4, "QED": 0},
+    )
+    alpha_s, top_mass = S("loop_model_input::alpha_s", "loop_model_input::top_mass")
+    strong = (4 * E("pi") * alpha_s) ** E("1/2")
+    expressions = {"UFO::MB": E("0"), "UFO::MC": E("0"), "UFO::MT": top_mass}
+    for name in ("GC_10", "GC_11", "GC_12"):
+        coupling = model.coupling(name)
+        expressions[coupling.symbol.get_name()] = coupling.expression.replace(
+            S("UFO::G"), strong
+        )
+    return NativeBareProcessProgram(
+        process,
+        state_kinds=("u", "v_bar", "u_bar", "v"),
+        initial_average=E("36"),
+        model_expressions=expressions,
+        model_inputs=(alpha_s, top_mass),
+        **options,
+    )
