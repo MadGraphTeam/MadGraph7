@@ -179,6 +179,15 @@ shift vectors and passing that result does not establish exact invariants.
 `ReductionBatch.statuses` covers every input row; `.values` is available when
 all lanes succeed, while `.successful_values()` retains only successful IDs.
 
+The Python producer can retain a frozen `PreparedCoefficientDAG`: its separate
+`CoefficientInstructions` contains dependency bytecode and integer slot maps,
+while exact symbols, polynomial labels and domain metadata retain the existing
+sharing identity. `NativeCoefficientDAG.rebind(...)` uses this representation to
+create a fresh native workspace in another arithmetic without revisiting the
+producer DAG, optimizing expressions or saving instructions again. Numeric
+buffers and evaluator workspaces are independent between views. This is an
+internal in-memory boundary, not an artifact format or Python graph persistence.
+
 Fast-engine timing is optional: `PolynomialPlan.set_profiling(True)` enables
 native wall clocks, and `take_profile()` returns and resets accumulated totals
 over the active epsilon sectors. Both `fast` and `fast-tensor` are supported;

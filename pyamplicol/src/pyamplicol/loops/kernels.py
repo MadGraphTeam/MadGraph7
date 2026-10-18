@@ -244,6 +244,95 @@ def require_finite_batch(values: Any, stage: str, *, rows_per_point: int = 1) ->
         raise ArithmeticError(f"nonfinite {stage} (point, lane): {locations}")
 
 
+@dataclass(frozen=True, slots=True)
+class CoefficientInstructions:
+    """Dependency bytecode and integer arena layout, independent of arithmetic."""
+
+    states: tuple[bytes, ...]
+    input_slots: tuple[tuple[int, ...], ...]
+    parameter_count: int
+    output_slots: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedCoefficientDAG:
+    """Retained instructions plus exact producer-side binding/domain metadata.
+
+    The instruction payload contains no graph or evaluator objects. Parameter
+    symbols and polynomial labels preserve the existing exact sharing proof;
+    they are separate from the native arena descriptor and numerical workspace.
+    This internal record introduces no artifact persistence format.
+    """
+
+    instructions: CoefficientInstructions
+    parameters: tuple[Any, ...]
+    output_nodes: tuple[int, ...]
+    output_widths: tuple[int, ...]
+    output_metadata: tuple[Any, ...]
+    variables: tuple[Any, ...]
+    variable_weights: tuple[int, ...]
+    domain: tuple[Any, ...]
+
+    @classmethod
+    def from_dag(cls, dag: CoefficientDAG, *, output_nodes=None):
+        parameters = dag.parameters
+        output_nodes = (
+            tuple(range(len(dag.nodes)))
+            if output_nodes is None
+            else tuple(output_nodes)
+        )
+        if any(i < 0 or i >= len(dag.nodes) for i in output_nodes):
+            raise ValueError("output nodes must refer to existing coefficient kernels")
+        output_widths = tuple(
+            len(dag.nodes[index].output_labels) for index in output_nodes
+        )
+        positions = {parameter: i for i, parameter in enumerate(parameters)}
+        width = len(positions)
+        node_slots, input_slots = [], []
+        for node in dag.nodes:
+            slots = [positions[p] for p in node.parameters]
+            slots.extend(
+                slot
+                for dependency in node.dependencies
+                for slot in node_slots[dependency]
+            )
+            input_slots.append(tuple(slots))
+            node_slots.append(tuple(range(width, width + len(node.output_labels))))
+            width += len(node.output_labels)
+        return cls(
+            CoefficientInstructions(
+                tuple(node.evaluator_bytes() for node in dag.nodes),
+                tuple(input_slots),
+                len(positions),
+                tuple(slot for index in output_nodes for slot in node_slots[index]),
+            ),
+            parameters,
+            output_nodes,
+            output_widths,
+            tuple(
+                (dag.nodes[index].shape, dag.nodes[index].output_labels)
+                for index in output_nodes
+            ),
+            dag.variables,
+            dag.variable_weights,
+            (dag.domain, dag.epsilon_power, dag.mu2_power, dag.direct_r2_certified),
+        )
+
+    @property
+    def identity(self):
+        instructions = self.instructions
+        return (
+            instructions.states,
+            instructions.input_slots,
+            instructions.parameter_count,
+            instructions.output_slots,
+            self.output_metadata,
+            self.variables,
+            self.variable_weights,
+            self.domain,
+        )
+
+
 class NativeCoefficientDAG:
     """One native schedule over saved local instructions at a fixed precision.
 
@@ -254,7 +343,7 @@ class NativeCoefficientDAG:
 
     def __init__(
         self,
-        dag: CoefficientDAG,
+        dag: CoefficientDAG | PreparedCoefficientDAG,
         *,
         arithmetic: str = "double",
         precision: int | None = None,
@@ -265,40 +354,27 @@ class NativeCoefficientDAG:
     ):
         if backend is None:
             import _loop_reduction as backend
-        self.dag, self.backend = dag, backend
-        self.parameters = dag.parameters
-        self.native_options = {"arithmetic": arithmetic, "precision": precision}
-        self.output_nodes = (
-            tuple(range(len(dag.nodes))) if output_nodes is None else output_nodes
-        )
-        if any(i < 0 or i >= len(dag.nodes) for i in self.output_nodes):
-            raise ValueError("output nodes must refer to existing coefficient kernels")
-        self.output_widths = tuple(
-            len(dag.nodes[index].output_labels) for index in self.output_nodes
-        )
-        positions = {parameter: i for i, parameter in enumerate(self.parameters)}
-        width = len(positions)
-        node_slots, input_slots = [], []
-        for node in dag.nodes:
-            slots = [positions[p] for p in node.parameters]
-            slots.extend(
-                slot
-                for dependency in node.dependencies
-                for slot in node_slots[dependency]
+        self.backend = backend
+        if isinstance(dag, PreparedCoefficientDAG):
+            if output_nodes is not None:
+                raise ValueError("prepared coefficient outputs are already selected")
+            self.dag, self.prepared = None, dag
+        else:
+            self.dag = dag  # Producer metadata only; evaluation never reads it.
+            self.prepared = PreparedCoefficientDAG.from_dag(
+                dag, output_nodes=output_nodes
             )
-            input_slots.append(slots)
-            node_slots.append(list(range(width, width + len(node.output_labels))))
-            width += len(node.output_labels)
-        states = tuple(node.evaluator_bytes() for node in dag.nodes)
-        output_slots = tuple(
-            slot for index in self.output_nodes for slot in node_slots[index]
-        )
+        self.parameters = self.prepared.parameters
+        self.native_options = {"arithmetic": arithmetic, "precision": precision}
+        self.output_nodes = self.prepared.output_nodes
+        self.output_widths = self.prepared.output_widths
+        instructions = self.prepared.instructions
         cache_options = {} if kernel_cache is None else {"kernel_cache": kernel_cache}
         self.plan = backend.CoefficientPlan(
-            states,
-            input_slots,
-            len(positions),
-            output_slots,
+            instructions.states,
+            instructions.input_slots,
+            instructions.parameter_count,
+            instructions.output_slots,
             engine=coefficient_engine,
             **self.native_options,
             **cache_options,
@@ -308,20 +384,28 @@ class NativeCoefficientDAG:
         # results. Freeze the packed layout and domain, keeping graph metadata
         # separate. Later mutations of a source DAG cannot alter this key.
         self.schedule_identity = (
-            states,
-            tuple(tuple(slots) for slots in input_slots),
-            len(positions),
-            output_slots,
-            tuple(
-                (dag.nodes[index].shape, dag.nodes[index].output_labels)
-                for index in self.output_nodes
-            ),
-            dag.variables,
-            dag.variable_weights,
-            (dag.domain, dag.epsilon_power, dag.mu2_power, dag.direct_r2_certified),
+            *self.prepared.identity,
             arithmetic,
             self.plan.precision_bits,
             self.coefficient_engine,
+        )
+
+    def rebind(
+        self,
+        *,
+        arithmetic: str,
+        precision: int | None = None,
+        coefficient_engine: str = "interpreted",
+        kernel_cache: Any = None,
+    ) -> NativeCoefficientDAG:
+        """Create a fresh native workspace from retained exact instructions."""
+        return NativeCoefficientDAG(
+            self.prepared,
+            backend=self.backend,
+            arithmetic=arithmetic,
+            precision=precision,
+            coefficient_engine=coefficient_engine,
+            kernel_cache=kernel_cache,
         )
 
     def sharing_key(self, model_bindings: Mapping[str, Any]) -> tuple[Any, ...]:
