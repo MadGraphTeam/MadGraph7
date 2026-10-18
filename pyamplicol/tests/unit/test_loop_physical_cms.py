@@ -224,8 +224,18 @@ def standard_source():
     return _prepare_cms_source("ufo-standard")
 
 
-@pytest.mark.parametrize("case", CASES[:2])
-def test_standard_cms_complete_components_across_width_updates(standard_source, case):
+@pytest.mark.parametrize(
+    "case,modes",
+    [
+        pytest.param(CASES[0], ("finite", "small", "zero"), id="double"),
+        pytest.param(CASES[1], ("finite", "small", "zero"), id="double-double"),
+        # The zero-width AP80 gate remains the separate strict xfail above.
+        pytest.param(CASES[2], ("finite", "small"), id="arbitrary80"),
+    ],
+)
+def test_standard_cms_complete_components_across_width_updates(
+    standard_source, case, modes
+):
     reference = json.loads(
         (
             Path(__file__).resolve().parents[1]
@@ -245,7 +255,7 @@ def test_standard_cms_complete_components_across_width_updates(standard_source, 
     results = {}
     # One program per carrier, with the same original global width inputs
     # rebound at runtime; no graph regeneration or scalar formula replacement.
-    for mode in ("finite", "small", "zero"):
+    for mode in modes:
         expected = reference[mode]
         program.update_parameters(expected["widths"])
         points = np.asarray(expected["points"], dtype=str)

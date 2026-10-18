@@ -1156,8 +1156,11 @@ four widths scaled by `0.001`, and three zero-width points. Each carrier reuses
 one program and updates the original width inputs; graphs and scalar formulas
 are not regenerated. The small-width reference calls the unchanged full and
 independently filtered CT binaries. The source-semantic fixture remains a
-separate control. These binary64 provider comparisons validate the declared
-convention in the bounded domain; they do not close the AP80 master gate below.
+separate control. The finite and small positive-width complete checks also pass
+in the arbitrary-precision carrier at 80 decimal digits. These binary64 provider
+comparisons validate the declared convention in the bounded domain; they do not
+establish 80-digit reference accuracy or close the AP80 zero-width master gate
+below, whose strict expected-failure test is retained separately.
 
 The source-semantic physical control uses a copied reference helper object with
 only REGLOG/MP_REGLOG changed to the exact bound UFO body. All original model
