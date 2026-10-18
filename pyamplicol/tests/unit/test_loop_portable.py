@@ -620,3 +620,148 @@ def test_jit_projector_binding_retains_portable_ordered_physics(
     assert views[0].bare._evaluator_states == original.bare._evaluator_states
     with pytest.raises(ValueError, match="requires double"):
         original.rebind(arithmetic="arbitrary", precision=80, projector_engine="jit")
+
+
+@pytest.mark.parametrize(
+    "arithmetic,precision,engine,tolerance",
+    [
+        ("double", None, "fast", "1e-13"),
+        ("double-double", None, "generic", "1e-28"),
+        ("arbitrary", 80, "generic", "1e-68"),
+    ],
+)
+def test_shared_core_complete_coordinator(
+    portable_control, monkeypatch, arithmetic, precision, engine, tolerance
+):
+    """One Rust call executes the same saved plan, with no Python event stages."""
+    backend = pytest.importorskip("_loop_reduction")
+    from pyamplicol.loops.portable import PortableLoopPlan
+
+    _, path, points = portable_control
+    options = dict(
+        arithmetic=arithmetic,
+        precision=precision,
+        coefficient_engine="interpreted",
+        reduction_engine=engine,
+    )
+    _forbid_producer(monkeypatch)
+    oracle = PortableLoopPlan.open(path).bind(**options)
+    native = backend.NativeLoopProgram(str(path), **options)
+    expected = oracle.evaluate_ordered_native(
+        points, ["1000000"] * 3, model_values=["0.118", "173"], point_ids=[91, 4, 70]
+    )
+    result = native.evaluate(
+        points.tolist(), ["1000000"] * 3, ["0.118", "173"], point_ids=[91, 4, 70]
+    )
+    assert result.r2_strategy == native.r2_strategy == "model"
+    assert result.point_ids == [91, 4, 70]
+    assert result.statuses == [list(row) for row in expected.statuses]
+    assert native.precision_bits == result.born.precision_bits
+    for actual, reference in zip(_batches(result), _batches(expected), strict=True):
+        assert all(
+            ok for _, ok in actual.agreement_rows(reference, tolerance, tolerance)
+        )
+    retained = [value.to_decimal() for value in _batches(result)]
+    rebound = native.rebind(**options)
+    changed = rebound.evaluate(points[:1].tolist(), ["700000"], ["0.12", "190"])
+    assert (
+        changed.component_batches[0].to_decimal()
+        != result.component_batches[0].take_rows([0]).to_decimal()
+    )
+    assert rebound.evaluate([], [], ["0.118", "173"]).born.rows == 0
+    again = native.evaluate(
+        points.tolist(), ["1000000"] * 3, ["0.118", "173"], point_ids=[91, 4, 70]
+    )
+    for actual, reference in zip(_batches(again), _batches(result), strict=True):
+        assert all(
+            ok for _, ok in actual.agreement_rows(reference, tolerance, tolerance)
+        )
+    assert [value.to_decimal() for value in _batches(result)] == retained
+    if arithmetic == "arbitrary":
+        with localcontext() as context:
+            context.prec = 120
+            alpha = str(Decimal("0.118") * (1 + Decimal(2) ** -180))
+        changed = native.evaluate(points[:1].tolist(), ["1000000"], [alpha, "173"])
+        expected = oracle.evaluate_ordered_native(
+            points[:1], ["1000000"], model_values=[alpha, "173"]
+        )
+        assert (
+            changed.component_batches[0].to_decimal()
+            != result.component_batches[0].take_rows([0]).to_decimal()
+        )
+        for actual, reference in zip(
+            _batches(changed), _batches(expected), strict=True
+        ):
+            assert all(
+                ok for _, ok in actual.agreement_rows(reference, "1e-70", "1e-70")
+            )
+    if arithmetic == "double":
+        for momenta, scales, ids in (
+            (points.tolist(), ["1"] * 3, [1]),
+            (points.tolist(), ["1"] * 4, [1, 2, 3]),
+            (points.tolist(), ["1"] * 3, [1, 1, 3]),
+            (points.tolist(), ["1"] * 3, [2**64 - 1, 2, 3]),
+        ):
+            with pytest.raises(ValueError, match=r"identit|shape|overflow"):
+                native.evaluate(momenta, scales, ["0.118", "173"], point_ids=ids)
+        with pytest.raises(ValueError, match=r"nonfinite|finite|decimal"):
+            native.evaluate(points[:1].tolist(), ["nan"], ["0.118", "173"])
+        # A failed call cannot expose old buffers or poison the next valid call.
+        assert (
+            native.evaluate(
+                points[:1].tolist(), ["1000000"], ["0.118", "173"]
+            ).born.rows
+            == 1
+        )
+
+
+def test_shared_core_direct_and_nonzero_fields(extended_control, monkeypatch):
+    """The same native sequence carries Delta sectors and nonzero LSZ terms."""
+    backend = pytest.importorskip("_loop_reduction")
+    from pyamplicol.loops.portable import PortableLoopPlan
+
+    original, path, points = extended_control
+    direct = original.r2_strategy == "direct"
+    _forbid_producer(monkeypatch)
+    saved = PortableLoopPlan.open(path)
+    native = None
+    for arithmetic, precision, engine, tolerance in (
+        ("double", None, "fast", "2e-11"),
+        ("double-double", None, "generic", "1e-25"),
+        ("arbitrary", 60, "generic", "1e-48"),
+    ):
+        options = dict(
+            arithmetic=arithmetic, precision=precision, reduction_engine=engine
+        )
+        oracle = saved.bind(**options)
+        native = (
+            backend.NativeLoopProgram(str(path), **options)
+            if native is None
+            else native.rebind(**options)
+        )
+        expected = oracle.evaluate_ordered_native(
+            points[:1], ["1000000"], model_values=["0.118", "173"], point_ids=[63]
+        )
+        actual = native.evaluate(
+            points[:1].tolist(), ["1000000"], ["0.118", "173"], point_ids=[63]
+        )
+        assert actual.r2_strategy == ("direct" if direct else "model")
+        assert actual.point_ids == [63]
+        assert actual.statuses == [list(expected.statuses[0])]
+        for value, reference in zip(_batches(actual), _batches(expected), strict=True):
+            assert all(
+                ok for _, ok in value.agreement_rows(reference, tolerance, tolerance)
+            )
+        # Both controls have nonzero field terms; direct also keeps an explicit
+        # nonzero dimensional remainder distinct from the N4 result.
+        assert any(
+            Decimal(pair[0]) != 0 for pair in actual.component_batches[5].to_decimal()
+        )
+        if direct:
+            assert any(
+                Decimal(pair[0]) != 0
+                for pair in actual.component_batches[3].to_decimal()
+            )
+        retained = [value.to_decimal() for value in _batches(actual)]
+        assert native.evaluate([], [], ["0.118", "173"]).born.rows == 0
+        assert [value.to_decimal() for value in _batches(actual)] == retained

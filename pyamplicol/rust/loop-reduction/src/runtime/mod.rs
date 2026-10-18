@@ -10,6 +10,7 @@ mod batch;
 mod coefficients;
 mod exact;
 mod fast;
+pub mod physical;
 mod predicates;
 mod reduction;
 mod schedule;

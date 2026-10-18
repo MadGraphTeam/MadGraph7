@@ -459,3 +459,28 @@ fixture now encounters this guard with the current producer/reducer snapshot;
 it does not establish lane-local failure handling for repeated propagators.
 Distinct collinear box shifts exercise actual degenerate-Gram/unstable statuses
 in all three carriers without duplicate denominators.
+
+### Complete shared-core execution (internal)
+
+The validated loop PACBIN descriptor can now bind
+`rusticol_core::loop_execution::LoopExecutor` with
+`runtime::physical::PhysicalBackend`. The core owns the complete ordinary batch
+schedule; this crate supplies the existing numerical primitives. It preserves
+all Born/order columns, finite/single/double poles, UV, R2, local UV and external
+field components, and the executed R2 strategy. No PyO3 or Python callback is
+needed by the standalone executor. The experimental Python `NativeLoopProgram`
+wraps that same core executor; public artifact and SDK dispatch remain separate.
+
+The current native admission is legacy full-colour model-R2 and the certified
+four-gluon direct-R2 descriptor. Source-owned scalar coordination, correlations,
+formal colour and partial/rescue execution remain explicit capability boundaries.
+Family projectors use the interpreter; coefficient JIT is separately selectable
+for double. Numerical success is not an independent accuracy certificate.
+
+The explicit generated-fixture test `runtime_physical` runs a complete uudd
+artifact in all three carriers and verifies the existing reducer-construction
+boundary. Set `PYAMPLICOL_NATIVE_UUDD_PACBIN` to a current generated uudd container
+and run that test with `--ignored`. The coordinator stores the sizable reducer
+workspaces behind `Box`, so construction and execution pass the ordinary 2 MiB
+Rust test-worker stack; no enlarged-stack setting is needed. Returned native
+blocks remain immutable after later calls and arithmetic rebinding.

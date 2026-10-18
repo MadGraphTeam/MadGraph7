@@ -86,8 +86,8 @@ mutable evaluator scratch or result buffers.
 
 The experimental Python binding is a thin owner of the core descriptor. The
 Python numerical coordinator currently invokes the existing native operations;
-there is no reverse dependency from the shared core to PyO3. Moving that
-coordinator into the core is a later step required for standalone SDK execution.
+there is no reverse dependency from the shared core to PyO3. The additive shared native coordinator below now covers the legacy descriptor;
+source-owned coordination and public SDK dispatch remain separate steps.
 Loaded views explicitly reject producer-dependent colour mutation, producer
 metadata access, retained-producer preparation and partial/rescue evaluation.
 Ordinary complete evaluation and fresh arithmetic rebinding remain available.
@@ -102,9 +102,8 @@ The Python classes own these same Rust values and delegate their operations.
 The existing dependency interpreter/JIT and cold-template cache have one
 implementation. Fixed scalar callbacks register at shared decoding, so native
 callers restore the same saved instructions without importing the Python
-consumer. These are extraction steps toward native coordination; the complete
-process coordinator still runs in Python, and no SDK loop entry point is
-activated by this move.
+consumer. The legacy complete native coordinator below reuses these operations; source
+coordination still runs in Python, and no public SDK loop entry point is activated.
 
 Family projectors retain the same saved bilinear instructions and packed
 input/output order under both numerical bindings. The default
@@ -143,3 +142,31 @@ malformed scalar descriptors and loading in a fresh process with source producer
 disabled. Independent component checks use the existing binary64 MadLoop capture;
 roundtrip agreement itself is a transport/control-flow check, not a new physics
 or arbitrary-precision accuracy certificate.
+
+## Shared native coordinator
+
+`rusticol_core::loop_execution::LoopExecutor` owns the complete ordinary execution
+sequence over one validated descriptor. Its narrow numerical backend is implemented
+in `rusticol_loop_reduction::runtime::physical` using the same saved evaluators,
+native coefficient plans, exact kinematics, FeynKit wavefunctions and NinjaRS
+facades as the Python consumer. The core has no dependency on PyO3 or NinjaRS.
+
+The experimental `_loop_reduction.NativeLoopProgram(path, ...)` binds this
+coordinator; `evaluate(momenta, scales_squared, model_values, point_ids=...)` runs
+the entire batch in Rust. `rebind(...)` shares the immutable validated descriptor
+and constructs fresh arithmetic workspaces. Whole-schedule aliases share immutable
+native output blocks. Returned Born values, all six component batches and order
+sums retain their requested carrier and original point identities; each sector
+keeps finite, single-pole and double-pole columns. The result records the executed
+R2 strategy. No finite-only coercion or second normalization is applied.
+Family projectors use the existing interpreter in this initial native entry
+point; the separate Python opt-in projector JIT is not exposed here.
+
+This native coordinator initially admits only legacy full-colour model-rule
+programs and the certified direct four-gluon descriptor. Source-owned scalar
+records raise an explicit capability error before workspace construction. The
+Python source-record consumer remains separate until its scalar ownership is
+implemented in this same coordinator. Correlations, formal colour, partial
+results/rescue and public artifact/SDK dispatch are not admitted by this entry
+point. Any failed reduction or nonfinite assembled component raises; successful
+reducer statuses alone do not establish numerical accuracy.

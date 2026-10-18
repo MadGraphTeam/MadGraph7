@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: 0BSD
 
 //! Experimental native consumer, separate until NinjaRS is self-contained.
-//! Results are raw integrals, never Born/loop interference observables.
+//! Raw reduction primitives return integrals; NativeLoopProgram wraps the shared
+//! complete Born/loop-interference coordinator for validated internal plans.
 
 mod batch;
 mod exact;
+mod physical;
 mod portable;
 mod stability;
 mod states;
@@ -229,6 +231,7 @@ fn massless_spinors_decimal(
 fn _loop_reduction(module: &Bound<'_, PyModule>) -> PyResult<()> {
     runtime::register_scalar_primitives();
     portable::register(module)?;
+    physical::register(module)?;
     batch::register(module)?;
     exact::register(module)?;
     states::register(module)?;
