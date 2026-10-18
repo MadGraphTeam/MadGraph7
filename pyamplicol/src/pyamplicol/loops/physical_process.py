@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from itertools import product
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -25,7 +26,12 @@ from .graph_basis import (
     routed_edge_denominator,
 )
 from .graphs import build_loop_process
-from .kernels import NativeCoefficientDAG, require_finite_batch
+from .kernels import (
+    CoefficientSharingGroups,
+    NativeCoefficientDAG,
+    coefficient_sharing_groups,
+    require_finite_batch,
+)
 from .kinematics import build_loop_kinematics
 from .physical import _saved
 from .recurrence import momentum_component_library
@@ -72,6 +78,15 @@ class NativeBareEvaluation:
     virtual: Any
     statuses: tuple[tuple[tuple[int, str], ...], ...]
     rational: Any = None
+
+
+def _evaluate_coefficient_groups(bound, executors, columns, groups):
+    """Execute exact representatives and retain every original graph position."""
+    outputs = {
+        index: executors[index].evaluate_batch(bound.take_columns(columns[index]))
+        for index in groups.representatives
+    }
+    return [outputs[index] for index in groups.representative_for]
 
 
 def _external_color(graph, expression):
@@ -165,6 +180,8 @@ class NativeBareProcessProgram:
         reduction_engine: str = "generic",
         coefficient_engine: str = "interpreted",
         dimensional_numerators: bool = False,
+        cache_coefficient_kernels: bool = True,
+        share_coefficient_schedules: bool = True,
         backend: Any = None,
     ):
         if backend is None:
@@ -182,7 +199,8 @@ class NativeBareProcessProgram:
                 "physical control requires Dirac or vector states"
             )
         require_exact_numbers(initial_average)
-        for expression in model_expressions.values():
+        self.model_expressions = MappingProxyType(dict(model_expressions))
+        for expression in self.model_expressions.values():
             require_exact_numbers(expression)
         selected_loop_orders = {pair.loop for pair in process.orders.sectors[0].pairs}
         self.loop_graphs = tuple(
@@ -210,13 +228,21 @@ class NativeBareProcessProgram:
         self.reduction_engine = reduction_engine
         self.dimensional_numerators = dimensional_numerators
         self.options = {"arithmetic": arithmetic, "precision": precision}
+        self.cache_coefficient_kernels = cache_coefficient_kernels
+        self.share_coefficient_schedules = share_coefficient_schedules
+        self.coefficient_kernel_cache = (
+            backend.CoefficientKernelCache(engine=coefficient_engine, **self.options)
+            if cache_coefficient_kernels
+            else None
+        )
         self.model_inputs = model_inputs
         self.scale_squared_symbol = S("loop_physical_process::mu_r2")
-        self.model_names = tuple(sorted(model_expressions))
+        self.model_names = tuple(sorted(self.model_expressions))
         self.model_positions = {name: i for i, name in enumerate(self.model_names)}
         self.model_evaluator = backend.CoefficientEvaluator(
             _saved(
-                [model_expressions[name] for name in self.model_names], model_inputs
+                [self.model_expressions[name] for name in self.model_names],
+                model_inputs,
             ),
             **self.options,
         )
@@ -325,6 +351,7 @@ class NativeBareProcessProgram:
                 output_nodes=item.final_nodes,
                 backend=backend,
                 coefficient_engine=coefficient_engine,
+                kernel_cache=self.coefficient_kernel_cache,
                 **self.options,
             )
             for item in self.born_recurrences
@@ -335,12 +362,22 @@ class NativeBareProcessProgram:
                 output_nodes=finals,
                 backend=backend,
                 coefficient_engine=coefficient_engine,
+                kernel_cache=self.coefficient_kernel_cache,
                 **self.options,
             )
             for recurrence, finals in zip(
                 self.recurrences, self.loop_finals, strict=True
             )
         )
+        groups = tuple(
+            coefficient_sharing_groups(executors, model_bindings=self.model_expressions)
+            if share_coefficient_schedules
+            else CoefficientSharingGroups(
+                tuple(range(len(executors))), tuple(range(len(executors)))
+            )
+            for executors in (self.born_executors, self.loop_executors)
+        )
+        self.born_sharing, self.loop_sharing = groups
         self.born_input_columns = tuple(
             tuple(self.bound_positions[p.get_name()] for p in executor.parameters)
             for executor in self.born_executors
@@ -639,19 +676,16 @@ class NativeBareProcessProgram:
             [lanes, states, model.take_rows([0] * rows, row_ids=lane_ids)]
         )
         born = batch_type.concat_columns(
-            [
-                executor.evaluate_batch(bound.take_columns(columns))
-                for executor, columns in zip(
-                    self.born_executors, self.born_input_columns, strict=True
-                )
-            ]
-        )
-        currents = [
-            executor.evaluate_batch(bound.take_columns(columns))
-            for executor, columns in zip(
-                self.loop_executors, self.loop_input_columns, strict=True
+            _evaluate_coefficient_groups(
+                bound,
+                self.born_executors,
+                self.born_input_columns,
+                self.born_sharing,
             )
-        ]
+        )
+        currents = _evaluate_coefficient_groups(
+            bound, self.loop_executors, self.loop_input_columns, self.loop_sharing
+        )
         born_squared = self.born_projector.evaluate_batch(
             born.reshape_rows(size, helicities * born.columns, point_ids)
         )

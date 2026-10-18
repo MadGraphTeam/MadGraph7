@@ -195,6 +195,7 @@ class NativeModelVirtualProgram:
                 output_nodes=recurrence.final_nodes,
                 backend=backend,
                 coefficient_engine=bare.coefficient_engine,
+                kernel_cache=bare.coefficient_kernel_cache,
                 **options,
             )
             for power in (0, -1, -2):

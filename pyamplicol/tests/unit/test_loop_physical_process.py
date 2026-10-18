@@ -187,6 +187,47 @@ def test_native_jit_coefficients_match_multi_family_interpreter(native, points):
         )
 
 
+def test_exact_coefficient_reuse_preserves_graphs_and_model_rebinding(native, points):
+    programs = [
+        distinct_flavour_qcd_program(
+            backend=native,
+            reduction_engine="fast",
+            coefficient_engine="jit",
+            cache_coefficient_kernels=cache,
+            share_coefficient_schedules=share,
+        )
+        for cache, share in ((False, False), (True, False), (True, True))
+    ]
+    unshared, cached, shared = programs
+    assert unshared.coefficient_kernel_cache is None
+    assert cached.coefficient_kernel_cache.entries > 0
+    assert cached.coefficient_kernel_cache.hits > 0
+    assert len(unshared.loop_sharing.representatives) == len(unshared.loop_graphs)
+    assert len(cached.loop_sharing.representatives) == len(cached.loop_graphs)
+    assert len(shared.loop_sharing.representatives) < len(shared.loop_graphs)
+    assert len(shared.loop_sharing.representative_for) == len(shared.loop_graphs)
+    assert tuple(graph.id for graph in shared.loop_graphs) == tuple(
+        graph.id for graph in unshared.loop_graphs
+    )
+    assert [family.graph_indices for family in shared.families] == [
+        family.graph_indices for family in unshared.families
+    ]
+    for selected, scales, values in (
+        (points, ["1000000"] * len(points), ["0.118", "173"]),
+        (points[1:2], ["900000"], ["0.1", "190"]),
+        (points[:0], [], ["0.118", "173"]),
+        (points, ["1000000"] * len(points), ["0.118", "173"]),
+    ):
+        results = [
+            program.evaluate_decimal(selected, scales, model_values=values)
+            for program in programs
+        ]
+        for result in results[1:]:
+            np.testing.assert_array_equal(result.born, results[0].born)
+            np.testing.assert_array_equal(result.virtual, results[0].virtual)
+            assert result.statuses == results[0].statuses
+
+
 def test_high_precision_convergence_and_original_momentum_bits(native, points):
     # Convergence is an arithmetic control, not an independent 80-digit finite
     # reference. Born and the universal double pole have exact controls above.
@@ -251,6 +292,11 @@ def test_same_process_assembler_reproduces_drell_yan_oracle(native, points):
         backend=native,
         reduction_engine="fast",
     )
+    snapshot = dict(expressions)
+    expressions.clear()
+    assert dict(generic.model_expressions) == snapshot
+    with pytest.raises(TypeError):
+        generic.model_expressions[next(iter(snapshot))] = E("0")
     actual = generic.evaluate_decimal(
         points, ["1000000"] * 3, model_values=["0.118", "132.507"]
     )

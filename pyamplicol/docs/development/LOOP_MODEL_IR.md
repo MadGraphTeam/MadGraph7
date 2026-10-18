@@ -333,12 +333,26 @@ identities and empty batches. These preparation/kernel checks do not use
 physical vector states; the process controls below supply that separate check.
 
 `NativeBareProcessProgram` now consumes the colour-term recurrence directly.
-One native executor per graph returns its ordered terminal coefficients; the
+Each graph retains a native executor with ordered terminal coefficients; the
 Born and loop colour matrices are indexed by terms, while exact kinematics and
 denominator families remain indexed by graphs. Born weighting and coherent
 helicity sums still happen on complex coefficients before one reduction per
 family and point. Tree recurrences already contain their bridge denominators;
 loop attachments receive those factors once before execution.
+
+The process owns a native coefficient-kernel cache shared by Born, loop and
+local CT executors. Equal saved instruction programs reuse cold compiled kernels
+with independent mutable scratch. Born and loop schedules may also share their
+outputs within one call, but only when ordered instructions, input/output slots,
+polynomial labels, auxiliary domain, arithmetic and exact symbolic input
+bindings agree. The bindings come from the same immutable model-definition
+snapshot compiled into the model evaluator. No sampled parameter values enter
+the proof. Every graph keeps its original position, colour, signs and family
+mapping. `cache_coefficient_kernels=False` and
+`share_coefficient_schedules=False` retain the uncached, unshared diagnostic path;
+both switches default to true. Cache statistics and frozen representative maps
+are available on the internal program. Numerical outputs are never retained
+between evaluation calls.
 
 The internal `gluon_scattering_qcd_program` uses actual native massless vector
 states, six quark flavours with a global top mass, and the explicit overall
