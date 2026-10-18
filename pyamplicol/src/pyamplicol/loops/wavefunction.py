@@ -107,6 +107,7 @@ class ExternalFieldRule:
     coefficient: LaurentExpression
     diagnostic: Any = field(default=None, repr=False)
     scalar_program: Any = field(default=None, repr=False)
+    source_terms: tuple[tuple[int, str], ...] | None = field(default=None, repr=False)
 
     def coefficient_expression(self, power: int) -> ScalarExpression:
         from symbolica import E
@@ -205,6 +206,12 @@ def prepare_external_field_rules(source: LoopModelIR) -> tuple[ExternalFieldRule
                     coefficient,
                     diagnostic,
                     source.scalar_program,
+                    tuple(
+                        (power, str(coefficient))
+                        for power, coefficient in _entries(
+                            value, "external-field Laurent value"
+                        )
+                    ),
                 )
             )
     return tuple(rules)

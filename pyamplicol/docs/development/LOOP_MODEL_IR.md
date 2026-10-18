@@ -134,8 +134,8 @@ four-gluon R2 rules. The source-QCD four-quark control agrees separately in bare
 UV, R2 and total Laurent coefficients with independent MadLoop components in
 double, double-double and AP60. Exact analytic Born/UV controls test source
 parameter updates beyond binary64 and per-point scale binding. The same facade
-also exercises the complete neutral Gmu source. Source external-field binding
-is a separate next boundary; the existing explicit rejection remains. Public
+also exercises the complete neutral Gmu source. Source particle-field factors
+use the same paired owner and scale binding, as described below. Public
 generation and portable source-plan admission are unchanged.
 
 ## Local colour alternatives
@@ -1150,9 +1150,26 @@ outputs and their active diagnostics per point with the **captured bare-call
 snapshot**, including the source MU_R substitution. No Python event loop, scalar
 decimal roundtrip, helper-body inlining or second global parameter state is
 introduced. Local CT currents then share the physical states and Born weights
-and enter the existing sector-aware UV/R2 contraction. Source particle-field
-insertions currently reject explicitly until their anonymous source expressions
-have an equivalent paired binding; the tested Gmu process has none.
+and enter the existing sector-aware UV/R2 contraction.
+
+Source particle-field insertions retain their original exact Laurent strings.
+`prepare_scalar_bindings(..., anonymous_definitions=...)` resolves these terminal
+expressions through the same source declaration graph and helper library.
+Anonymous definitions cannot shadow source declarations, reference one another,
+or accept rounded numerical literals. Values and active diagnostics preserve
+their conditional branches. Their syntax is retained immutably in the plan;
+the original raw model and its scalar program are unchanged.
+
+Local CT aliases and field factors share one scale view. Its paired outputs are
+checked before any value-only column selection or helicity broadcast. The
+existing exact Born graph identity, field loop group and amplitude-order pair
+masks are unchanged, and no extra half-Z or loop measure is introduced. Source
+gluon scattering exercises all 48 field insertion records and compares bare,
+local UV, fields, total UV, R2 and full results separately against MadLoop. Its
+double, double-double and AP60 controls also test exact heavy-quark field and
+decoupling identities after global parameter/per-point scale changes, retained
+snapshots and empty batches. Source-field selective rescue and portable loading
+remain explicitly outside the supported internal boundary.
 
 For full real-mass Gmu `e- e+ -> m- m+`, 59 matched CT insertion graphs produce
 75 retained Laurent currents. Independent MadLoop controls compare N4 bare, UV,

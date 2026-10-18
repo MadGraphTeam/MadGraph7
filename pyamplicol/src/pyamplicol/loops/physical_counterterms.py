@@ -105,6 +105,7 @@ class _ExternalFieldCurrent:
     coefficient_diagnostic: Any = None
     scalar_program: Any = None
     coefficient_state: bytes | None = None
+    source_scalar_column: int | None = None
 
 
 def _saved_scalar_pairs(values, diagnostics, parameters, program):
@@ -214,6 +215,7 @@ class NativeModelVirtualProgram:
         )
         self.source_scale_view = None
         source_positions = {}
+        source_field_names = {}
         source_state = getattr(bare, "model_state", None)
         if getattr(bare, "vertex_spinor_frame", None) is not None:
             if (
@@ -234,9 +236,15 @@ class NativeModelVirtualProgram:
                 raise NotImplementedError(
                     "source counterterms require model R2 and owned scalar bindings"
                 )
-            if external_fields:
+            if any(
+                getattr(getattr(item, "rule", None), "scalar_program", None)
+                is not source_state.plan.program
+                or getattr(getattr(item, "rule", None), "source_terms", None) is None
+                for item in external_fields
+            ):
                 raise NotImplementedError(
-                    "source external fields require a paired anonymous scalar binding"
+                    "source external fields require an owned paired "
+                    "anonymous scalar binding"
                 )
             from types import SimpleNamespace
 
@@ -265,6 +273,27 @@ class NativeModelVirtualProgram:
                             "source CT fermion tensor lacks physical frame conformance"
                         )
 
+            anonymous = {}
+            for item in external_fields:
+                key = (
+                    item.rule.particle_id,
+                    item.rule.correction,
+                    item.rule.loop_group_index,
+                )
+                if key not in source_field_names:
+                    name = f"loop_particle_field_{len(source_field_names)}"
+                    source_field_names[key] = name
+                    anonymous[name] = {
+                        "kind": "laurent",
+                        "terms": item.rule.source_terms,
+                    }
+                elif (
+                    anonymous[source_field_names[key]]["terms"]
+                    != item.rule.source_terms
+                ):
+                    raise ValueError(
+                        "source external-field identity has conflicting definitions"
+                    )
             outputs = tuple(
                 sorted(
                     {
@@ -273,6 +302,7 @@ class NativeModelVirtualProgram:
                         for _, entry in item.rule.couplings
                         for power in (0, -1, -2)
                     }
+                    | {(name, power) for name in anonymous for power in (0, -1, -2)}
                 )
             )
             plan = prepare_scalar_bindings(
@@ -280,6 +310,7 @@ class NativeModelVirtualProgram:
                 outputs,
                 program=source_state.plan.program,
                 fixed_parameters=source_state.plan.fixed_parameters,
+                anonymous_definitions=anonymous,
             )
             self.source_scale_view = NativeScaleBindings(source_state, plan)
             source_positions = {output: index for index, output in enumerate(outputs)}
@@ -458,7 +489,17 @@ class NativeModelVirtualProgram:
                 )
             _require_laurent_domain(insertion.rule.coefficient, "external field")
             for power in (0, -1, -2):
-                scalar = insertion.coefficient_expression(power)
+                source_column = None
+                if self.source_scale_view is not None:
+                    key = (
+                        insertion.rule.particle_id,
+                        insertion.rule.correction,
+                        insertion.rule.loop_group_index,
+                    )
+                    source_column = source_positions[source_field_names[key], power]
+                    scalar = self.source_scale_view.plan.expressions[source_column]
+                else:
+                    scalar = insertion.coefficient_expression(power)
                 value = scalar.value.replace_multiple(replacements)
                 diagnostic = scalar.diagnostic.replace_multiple(replacements)
                 weights = tuple(
@@ -499,6 +540,7 @@ class NativeModelVirtualProgram:
                             degree,
                             diagnostic,
                             insertion.rule.scalar_program,
+                            source_scalar_column=source_column,
                         )
                     )
         if space is not None:
@@ -531,6 +573,8 @@ class NativeModelVirtualProgram:
                 **options,
             )
         for current in self.field_currents:
+            if self.source_scale_view is not None:
+                continue
             current.coefficient_state = _saved_scalar_pairs(
                 [current.coefficient_expression],
                 [current.coefficient_diagnostic],
@@ -739,14 +783,19 @@ class NativeModelVirtualProgram:
             )
             amplitudes.append(amplitude)
         for current in self.field_currents:
-            coefficients = current.coefficient_evaluator.evaluate_batch(
-                coefficient_inputs
-            )
-            guard(
-                coefficients,
-                "external-field scalar coefficients and active diagnostics",
-            )
-            coefficients = coefficients.take_columns([0])
+            if source_values is None:
+                coefficients = current.coefficient_evaluator.evaluate_batch(
+                    coefficient_inputs
+                )
+                guard(
+                    coefficients,
+                    "external-field scalar coefficients and active diagnostics",
+                )
+                coefficients = coefficients.take_columns([0])
+            else:
+                coefficients = source_values.take_columns(
+                    [current.source_scalar_column]
+                )
             amplitudes.append(
                 coefficients.take_rows(
                     np.repeat(np.arange(batch.size), helicities).tolist(),

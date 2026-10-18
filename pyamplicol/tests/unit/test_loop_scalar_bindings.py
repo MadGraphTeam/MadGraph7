@@ -138,6 +138,98 @@ def test_failed_update_is_atomic_and_inactive_dependency_stays_inactive(source):
         runtime.update({"y": "1"})
 
 
+@pytest.mark.parametrize(
+    "arithmetic,precision,tolerance",
+    [
+        ("double", None, "3e-15"),
+        ("double-double", None, "3e-30"),
+        ("arbitrary", 90, "1e-80"),
+    ],
+)
+def test_anonymous_source_fields_preserve_branches_owner_and_snapshot(
+    source, arithmetic, precision, tolerance
+):
+    backend = pytest.importorskip("_loop_reduction")
+    from pyamplicol.loops.scalar_bindings import NativeScaleBindings
+
+    owner_plan = prepare_scalar_bindings(source, (("safe", 0),))
+    owner = NativeScalarBindings(owner_plan, arithmetic=arithmetic, precision=precision)
+    definitions = {
+        "field": {"kind": "laurent", "terms": [(0, "B"), (-1, "x/3")]},
+        "branch": {"kind": "expression", "expression": "bad if x > 3 else safe"},
+    }
+    plan = prepare_scalar_bindings(
+        source,
+        (("field", -2), ("field", -1), ("field", 0), ("branch", 0)),
+        program=owner_plan.program,
+        anonymous_definitions=definitions,
+    )
+    view = NativeScaleBindings(owner, plan, scale_parameter="x")
+    snapshot = owner.snapshot()
+    scales = backend.NativeBatch.from_decimal(
+        [("4", "0")], 1, 1, arithmetic=arithmetic, precision=precision, row_ids=[17]
+    )
+    values = view.evaluate_native(scales, snapshot=snapshot)
+    assert values.row_ids == [17]
+    old = values.to_decimal()
+    with localcontext() as context:
+        context.prec = 110
+        expected = [
+            (Decimal(4), Decimal(0)),
+            (Decimal(2), Decimal(4) / 7),
+            (Decimal(1) / 9 - Decimal(1) / 49, Decimal(2) / 21),
+        ]
+        for actual, target in zip(old[:3], expected, strict=True):
+            for component, reference in zip(actual, target, strict=True):
+                assert abs(Decimal(component) - reference) < Decimal(tolerance)
+    # The inactive bad ordering on a complex source parameter must not fire.
+    for actual, expected in zip(old[3], owner.values.to_decimal()[0], strict=True):
+        assert abs(Decimal(actual) - Decimal(expected)) < Decimal(tolerance)
+    definitions["branch"]["expression"] = "999"  # retained syntax is immutable
+    assert dict(plan.anonymous_definitions)["branch"]["expression"] != "999"
+    with localcontext() as context:
+        context.prec = 110
+        bit = {"double": 0, "double-double": 70, "arbitrary": 240}[arithmetic]
+        changed_z = Decimal(2) + (Decimal(2) ** -bit if bit else 0)
+        owner.update({"z": str(changed_z)})
+        changed = view.evaluate_native(scales).to_decimal()
+        assert abs(Decimal(changed[2][0]) - changed_z**2) < Decimal(tolerance)
+        if bit:
+            assert Decimal(changed[2][0]) != Decimal(4)
+    assert view.evaluate_native(scales, snapshot=snapshot).to_decimal() == old
+    assert view.evaluate_native(scales).to_decimal() != old
+    bad_scales = backend.NativeBatch.from_decimal(
+        [("16", "0")], 1, 1, arithmetic=arithmetic, precision=precision, row_ids=[4]
+    )
+    with pytest.raises(ArithmeticError, match=r"active diagnostics.*4"):
+        view.evaluate_native(bad_scales, snapshot=snapshot)
+    # A current real z makes the same branch admissible without recompilation.
+    assert view.evaluate_native(bad_scales).row_ids == [4]
+
+
+@pytest.mark.parametrize(
+    "definitions,match",
+    [
+        ({"x": {"kind": "expression", "expression": "3"}}, "distinct from source"),
+        ({"field": {"kind": "expression", "expression": "field+1"}}, "terminal"),
+        (
+            {
+                "field": {"kind": "expression", "expression": "other"},
+                "other": {"kind": "expression", "expression": "1"},
+            },
+            "terminal",
+        ),
+        ({"field": {"kind": "laurent", "terms": [(0, "1"), (0, "2")]}}, "unique"),
+        ({"field": {"kind": "laurent", "terms": [(0, 0.1)]}}, "exact strings"),
+    ],
+)
+def test_anonymous_source_definition_restrictions(source, definitions, match):
+    with pytest.raises(ValueError, match=match):
+        prepare_scalar_bindings(
+            source, (("field", 0),), anonymous_definitions=definitions
+        )
+
+
 def test_no_external_parameters_and_selector_validation(tmp_path):
     pytest.importorskip("_loop_reduction")
     path = tmp_path / "constant_source"

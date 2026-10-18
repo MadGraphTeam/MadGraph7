@@ -62,6 +62,7 @@ class ScalarBindingPlan:
     outputs: tuple[tuple[str, int], ...]
     expressions: tuple[ScalarExpression, ...]
     fixed_parameters: Mapping[str, tuple[str, str]]
+    anonymous_definitions: tuple[tuple[str, Mapping[str, Any]], ...] = ()
 
     def evaluator_bytes(self):
         return self.program.library.evaluator(
@@ -75,6 +76,7 @@ def prepare_scalar_bindings(
     *,
     program: ScalarProgram | None = None,
     fixed_parameters: Mapping[str, str | tuple[str, str]] | None = None,
+    anonymous_definitions: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> ScalarBindingPlan:
     """Resolve required definitions using source syntax and dependency algebra.
 
@@ -84,8 +86,15 @@ def prepare_scalar_bindings(
     Ordinary external parameters are the only independently settable inputs.
     Explicit fixed parameters are exact generation constants, excluded from the
     runtime input map. The raw model and its source scalar program stay unchanged.
+
+    Anonymous definitions are terminal exact source expressions, such as a
+    particle's field factor. They may reference ordinary source declarations,
+    but cannot override them or introduce another dependency graph. Their
+    original syntax is lowered with the same paired bindings and helper owner.
     """
     from symbolica import S
+
+    from .scalar_frontend import require_laurent_scalar
 
     program = lower_scalar_program(raw) if program is None else program
     library = program.library
@@ -98,11 +107,48 @@ def prepare_scalar_bindings(
     }
     if len(records) != len(program.definitions):
         raise ValueError("scalar program and source declarations differ")
+    if anonymous_definitions is not None and not isinstance(
+        anonymous_definitions, Mapping
+    ):
+        raise TypeError("anonymous scalar definitions require a mapping")
+    anonymous = {}
+    for name, source in (anonymous_definitions or {}).items():
+        if not isinstance(name, str) or not name.isidentifier() or name in records:
+            raise ValueError(
+                "anonymous scalar names must be distinct from source declarations"
+            )
+        if not isinstance(source, Mapping):
+            raise TypeError("anonymous scalar definitions require exact source syntax")
+        if source.get("kind") == "expression" and set(source) == {"kind", "expression"}:
+            if not isinstance(source["expression"], str):
+                raise TypeError("anonymous scalar expressions require exact strings")
+            normalized = dict(source)
+        elif source.get("kind") == "laurent" and set(source) == {"kind", "terms"}:
+            terms = tuple(tuple(term) for term in source["terms"])
+            if any(
+                len(term) != 2
+                or type(term[0]) is not int
+                or not isinstance(term[1], str)
+                for term in terms
+            ) or len({term[0] for term in terms}) != len(terms):
+                raise ValueError(
+                    "anonymous Laurent terms require unique integer powers "
+                    "and exact strings"
+                )
+            normalized = {"kind": "laurent", "terms": terms}
+        else:
+            raise ValueError("unsupported anonymous scalar source representation")
+        anonymous[name] = MappingProxyType(normalized)
+    sources = {
+        name: raw.exact_value(collection, record["id"])
+        for name, (collection, record) in records.items()
+    }
+    sources.update(anonymous)
     outputs = tuple(tuple(output) for output in outputs)
     if not outputs or len(set(outputs)) != len(outputs):
         raise ValueError("scalar outputs must be nonempty and distinct")
     for name, power in outputs:
-        if name not in records:
+        if name not in sources:
             raise ValueError(f"unknown scalar output {name!r}")
         if type(power) is not int:
             raise TypeError("scalar output epsilon powers must be integers")
@@ -127,16 +173,21 @@ def prepare_scalar_bindings(
     types = tuple(record["fields"].get("type") for record in external)
     symbols = tuple(S(f"loop_model_input::{name}") for name in external_names)
     inputs = dict(zip(external_names, symbols, strict=True))
-    by_symbol = {S(f"UFO::{name}"): name for name in records}
+    by_symbol = {S(f"UFO::{name}"): name for name in sources}
+    anonymous_symbols = {S(f"UFO::{name}") for name in anonymous}
     dependencies = {}
-    for name, (collection, record) in records.items():
-        definition = program.definitions[collection, record["id"]]
-        if definition.name != name:
-            raise ValueError("scalar program record identity differs")
-        original = library.lower_value(raw.exact_value(collection, record["id"]))
+    for name, source in sources.items():
+        if name in records:
+            collection, record = records[name]
+            definition = program.definitions[collection, record["id"]]
+            if definition.name != name:
+                raise ValueError("scalar program record identity differs")
+        original = library.lower_value(source)
         used = set(original.value.get_all_symbols()) | set(
             original.diagnostic.get_all_symbols()
         )
+        if used & anonymous_symbols:
+            raise ValueError("anonymous scalar definitions must be terminal outputs")
         dependencies[name] = {by_symbol[symbol] for symbol in used & by_symbol.keys()}
         if name in all_names and dependencies[name]:
             raise ValueError(
@@ -158,13 +209,14 @@ def prepare_scalar_bindings(
         if name in inputs:
             resolved[name] = ScalarExpression(inputs[name], library.zero)
             continue
-        collection, record = records[name]
         resolved[name] = library.lower_value(
-            raw.exact_value(collection, record["id"]),
+            sources[name],
             bindings={
                 dependency: resolved[dependency] for dependency in dependencies[name]
             },
         )
+        if name in anonymous:
+            require_laurent_scalar(resolved[name])
     expressions = tuple(
         ScalarExpression(
             LaurentExpression(resolved[name].value).coefficient(power),
@@ -185,6 +237,7 @@ def prepare_scalar_bindings(
         outputs,
         expressions,
         MappingProxyType(fixed),
+        tuple(anonymous.items()),
     )
 
 

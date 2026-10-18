@@ -293,3 +293,131 @@ def test_same_compiler_handles_complete_neutral_source():
             rtol=5e-11,
             atol=1e-17,
         )
+
+
+@pytest.mark.parametrize(
+    "arithmetic,precision,tolerance",
+    [
+        ("double", None, "3e-11"),
+        ("double-double", None, "3e-25"),
+        ("arbitrary", 60, "3e-50"),
+    ],
+)
+def test_source_particle_fields_complete_all_arithmetic(
+    prepared, arithmetic, precision, tolerance
+):
+    reference_path = os.environ.get("PYAMPLICOL_GG_COMPONENT_REFERENCE")
+    if not reference_path:
+        pytest.skip("set PYAMPLICOL_GG_COMPONENT_REFERENCE to the MadLoop capture")
+    from symbolica import E, Expression
+
+    from pyamplicol.loops.model_expressions import parse_exact_ufo as parse
+
+    reference = json.loads(Path(reference_path).read_text())
+    fixture = (
+        Path(__file__).resolve().parents[2]
+        / "tools/loop_reference/gluon_scattering_qcd.json"
+    )
+    points = np.asarray(json.loads(fixture.read_text())["points"], dtype=str)
+    program = prepared.compile(
+        (21, 21),
+        (21, 21),
+        selected_corrections=["QCD"],
+        parameters={"aS": "0.118", "MT": "173", "MU_R": "1000"},
+        arithmetic=arithmetic,
+        precision=precision,
+        reduction_engine="fast" if arithmetic == "double" else "generic",
+        coefficient_engine="jit" if arithmetic == "double" else "interpreted",
+    )
+    model, bare = program.virtual, program.source_bare.bare
+    assert program.source_bare.external_request.initial_average == 512
+    assert len(bare.loop_graphs) == 186 and len(model.external_fields) == 48
+    assert len(model.insertions) == 119
+    assert len(model.source_scale_view.plan.anonymous_definitions) == 3
+    assert model.source_scale_view.global_state is program.source_bare.state
+    assert all(
+        c.coefficient_evaluator is None and c.source_scalar_column is not None
+        for c in model.field_currents
+    )
+    result = program.evaluate_decimal(points, ["1000000"] * 3)
+    for index, row in enumerate(reference["rows"]):
+        for name, key in (
+            ("bare", "bare"),
+            ("uv", "uv"),
+            ("r2", "r2"),
+            ("virtual", "full"),
+            ("uv_local", "uv_vertex"),
+            ("uv_external_fields", "wf"),
+        ):
+            np.testing.assert_allclose(
+                getattr(result, name)[index, :, 0].astype(float),
+                [row[key][p] for p in ("finite", "single_pole", "double_pole")],
+                rtol=5e-11,
+                atol=1e-10,
+            )
+    # Field factors must use the same captured owner revision as the Born ket.
+    batch = bare.prepare_currents_native(points[:1], ["900000"]).batch
+    old = [
+        value.to_decimal()
+        for value in model.evaluate_counterterm_currents_native(batch)
+    ]
+    alpha, mass, scale = (
+        "0.100000000000000000000000001",
+        "190.000000000000000000000001",
+        "2100000",
+    )
+    program.update_parameters({"aS": alpha, "MT": mass})
+    assert old == [
+        value.to_decimal()
+        for value in model.evaluate_counterterm_currents_native(batch)
+    ]
+    rebound = program.evaluate_decimal(points[:1], [scale])
+    # Independent heavy-quark field/decoupling ratios in the same declared
+    # scheme. Native dependency algebra supplies the high-precision constants.
+    p = [[parse(value) for value in leg] for leg in points[0]]
+
+    def square(v):
+        return v[0] ** 2 - sum((x * x for x in v[1:]), E("0"))
+
+    s, t, u = [
+        square([a + sign * b for a, b in zip(p[0], p[leg], strict=True)])
+        for leg, sign in ((1, 1), (2, -1), (3, -1))
+    ]
+    coupling = parse(alpha)
+    born = (
+        E("9/4")
+        * (4 * E("pi") * coupling) ** 2
+        * (3 - t * u / s**2 - u * s / t**2 - s * t / u**2)
+    )
+    finite = coupling / (3 * E("pi")) * (parse(scale) / parse(mass) ** 2).log()
+    targets = Expression.evaluator_multiple(
+        [
+            born,
+            born * finite,
+            -7 * born * coupling / (2 * E("pi")),
+            -2 * born * finite,
+            -2 * born * coupling / (3 * E("pi")),
+        ],
+        [],
+        n_cores=1,
+        jit_compile=False,
+    ).evaluate_complex_with_prec([], 110)
+    actual = [
+        rebound.born[0],
+        rebound.uv_local[0, 0],
+        rebound.uv_local[0, 1],
+        rebound.uv_external_fields[0, 0],
+        rebound.uv_external_fields[0, 1],
+    ]
+    with localcontext() as context:
+        context.prec = 120
+        for value, target in zip(actual, targets, strict=True):
+            expected = target.to_decimal_tuple()[0]
+            assert abs(Decimal(value[0]) - expected) < abs(expected) * Decimal(
+                tolerance
+            )
+            assert abs(Decimal(value[1])) < abs(expected) * Decimal(tolerance)
+    empty = program.evaluate_decimal(points[:0], [])
+    assert empty.virtual.shape == (0, 3, 2)
+    with pytest.raises(NotImplementedError, match="partial source"):
+        model.evaluate_ordered_partial_native(points[:1], ["1000000"])
