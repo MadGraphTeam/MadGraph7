@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: 0BSD
 """Internal native bare-process assembly over verified graph families.
 
-This first physical process boundary supports massless external Dirac states,
+This first physical process boundary supports on-shell external Dirac states,
 one Born order and one virtual squared-order sector. Local currents, exact SU(3)
 bilinears and native family maps determine every numerator. UV/R2 completion,
 formal-Nc projection and public process dispatch remain separate boundaries.
+Supplied momenta must satisfy the model's external masses. This internal control
+preserves them; a general tolerance and mass-consistency gate is not yet provided.
 """
 
 from __future__ import annotations
@@ -102,6 +104,8 @@ class NativeBareProcessProgram:
 
     ``model_expressions`` maps native model symbol names to exact expressions
     in ``model_inputs``. Numerical values bind once per call, never per event.
+    The caller must supply on-shell momenta with the declared model masses;
+    native wavefunctions use those four-vectors without repairing their shell.
     """
 
     def __init__(
@@ -135,6 +139,13 @@ class NativeBareProcessProgram:
             graph for graph in process.loops if graph.order in selected_loop_orders
         )
         self.process, self.backend = process, backend
+        self.external_masses = tuple(
+            edge.particle.mass
+            for edge in sorted(
+                process.born[0].native.external_edges,
+                key=lambda edge: edge.external_index,
+            )
+        )
         self.initial_average = initial_average
         self.state_kinds = state_kinds
         self.helicities = tuple(product((-1, 1), repeat=len(state_kinds)))
@@ -414,7 +425,7 @@ class NativeBareProcessProgram:
         lanes = physical.take_rows(
             np.repeat(np.arange(size), helicities).tolist(), row_ids=lane_ids
         )
-        states = self.backend.massless_spinors_batch(
+        states = self.backend.wavefunctions_batch(
             lanes.reshape_rows(rows * legs, 4, list(range(rows * legs))),
             np.tile(np.asarray(self.helicities), (size, 1)).reshape(-1).tolist(),
             list(self.state_kinds) * rows,
@@ -519,12 +530,25 @@ class NativeBareProcessProgram:
 
 def distinct_flavour_qcd_program(**options):
     """Native six-flavour u ubar -> d dbar control; model values are alpha_s, mt."""
+    return _qcd_fermion_program(("d", "d~"), **options)
+
+
+def top_pair_qcd_program(**options):
+    """Native u ubar -> t tbar bare control; inputs are alpha_s and top mass.
+
+    All supplied four-vectors must already be on shell for that mass. Controlled
+    decimal fixtures prove this exactly; no general input tolerance is implied.
+    """
+    return _qcd_fermion_program(("t", "t~"), **options)
+
+
+def _qcd_fermion_program(outgoing, **options):
     from symbolica import E, S
     from symbolica.community import hepkit as h
 
     model = h.Model.qcd_qed()
     process = build_loop_process(
-        model.process(["u", "u~"], ["d", "d~"]),
+        model.process(["u", "u~"], outgoing),
         selected_corrections=["QCD"],
         perturbative_orders={"QCD": 1},
         born_order_bounds={"QCD": 2, "QED": 0},

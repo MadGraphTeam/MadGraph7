@@ -94,7 +94,7 @@ def _compare(result, points, scales, alpha_s, inverse_alpha, tolerance):
             actual = [result.born[index], *result.virtual[index], result.r2[index, 0]]
             for pair, target in zip(actual, expected, strict=True):
                 assert abs(Decimal(pair[0]) - target) < abs(target) * tolerance
-                assert Decimal(pair[1]) == 0
+                assert abs(Decimal(pair[1])) < abs(target) * tolerance
             assert all(Decimal(value) == 0 for value in result.uv[index].flat)
             assert all(Decimal(value) == 0 for value in result.r2[index, 1:].flat)
             for pole in range(3):

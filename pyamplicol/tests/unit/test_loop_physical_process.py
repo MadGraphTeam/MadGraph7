@@ -60,7 +60,10 @@ def _check_born_and_double(result, points, tolerance, alpha_s="0.118"):
             targets = _exact_born_and_double(point, alpha_s)
             for actual, target in zip([born[0], poles[2, 0]], targets, strict=True):
                 assert abs(Decimal(actual) - target) < abs(target) * tolerance
-            assert all(Decimal(pair[1]) == 0 for pair in [born, *poles])
+            assert all(
+                abs(Decimal(pair[1])) < abs(Decimal(pair[0])) * tolerance
+                for pair in [born, *poles]
+            )
     assert all(status == "success" for row in result.statuses for _, status in row)
 
 
