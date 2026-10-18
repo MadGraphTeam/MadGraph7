@@ -1148,6 +1148,17 @@ certificate. The argument tracing diagnostic applies the declared principal
 boundary `arg(z) in (-pi, pi]`, including MadGraph's explicit signed-zero
 normalization, rather than Python's negative-zero `-pi` boundary.
 
+The explicit `ufo-standard` view also passes the complete physical pipeline
+against the original, unmodified MadLoop export in double and DoubleFloat.
+The persistent component control checks Born, N4 bare, UV, R2 and the total at
+four finite-width continuum/resonance points, three continuum points with all
+four widths scaled by `0.001`, and three zero-width points. Each carrier reuses
+one program and updates the original width inputs; graphs and scalar formulas
+are not regenerated. The small-width reference calls the unchanged full and
+independently filtered CT binaries. The source-semantic fixture remains a
+separate control. These binary64 provider comparisons validate the declared
+convention in the bounded domain; they do not close the AP80 master gate below.
+
 The source-semantic physical control uses a copied reference helper object with
 only REGLOG/MP_REGLOG changed to the exact bound UFO body. All original model
 rules, scalar definitions and exporter files remain untouched. The compact

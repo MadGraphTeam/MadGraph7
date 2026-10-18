@@ -12,8 +12,7 @@ import numpy as np
 import pytest
 
 
-@pytest.fixture(scope="module")
-def cms_source():
+def _prepare_cms_source(reglog_convention="source"):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("source graph generation requires licensed Symbolica")
@@ -31,7 +30,8 @@ def cms_source():
     from pyamplicol.models.loop_import import load_raw_loop_model
 
     view = prepare_gmu_complex_mass_declarations(
-        load_raw_loop_model(path, restriction="full")
+        load_raw_loop_model(path, restriction="full"),
+        reglog_convention=reglog_convention,
     )
     zeros = (
         "aEW0M1",
@@ -68,6 +68,11 @@ def cms_source():
     return view, structure, prepared
 
 
+@pytest.fixture(scope="module")
+def cms_source():
+    return _prepare_cms_source()
+
+
 CASES = (
     ("double", None, 0, "2e-11"),
     ("double-double", None, 80, "5e-25"),
@@ -75,22 +80,16 @@ CASES = (
 )
 
 
-@pytest.fixture(scope="module")
-def cms_program(cms_source, request):
+def _prepare_cms_program(cms_source, case, reference):
     from symbolica import E
 
     from pyamplicol.loops.physical_source import source_model_program
 
-    arithmetic, precision, bit, tolerance = request.param
+    arithmetic, precision, bit, tolerance = case
     view, structure, prepared = cms_source
     assert not view.derived.metadata["complex_mass_derivation"][
         "physical_certification"
     ]
-    reference = json.loads(
-        (
-            Path(__file__).resolve().parents[1] / "fixtures/loop/cms-source-gmu.json"
-        ).read_text()
-    )
     program = source_model_program(
         structure,
         prepared,
@@ -120,6 +119,16 @@ def cms_program(cms_source, request):
         coefficient_engine="jit" if arithmetic == "double" else "interpreted",
     )
     return view, structure, program, reference, bit, tolerance
+
+
+@pytest.fixture(scope="module")
+def cms_program(cms_source, request):
+    reference = json.loads(
+        (
+            Path(__file__).resolve().parents[1] / "fixtures/loop/cms-source-gmu.json"
+        ).read_text()
+    )
+    return _prepare_cms_program(cms_source, request.param, reference)
 
 
 def _compare(result, expected):
@@ -208,3 +217,65 @@ def test_source_semantic_cms_zero_width(cms_program):
     points = np.asarray(reference["zero"]["points"], dtype=str)
     zero = program.evaluate_decimal(points, ["1000000"] * len(points))
     _compare(zero, reference["zero"])
+
+
+@pytest.fixture(scope="module")
+def standard_source():
+    return _prepare_cms_source("ufo-standard")
+
+
+@pytest.mark.parametrize("case", CASES[:2])
+def test_standard_cms_complete_components_across_width_updates(standard_source, case):
+    reference = json.loads(
+        (
+            Path(__file__).resolve().parents[1]
+            / "fixtures/loop/cms-ufo-standard-gmu.json"
+        ).read_text()
+    )
+    view, _structure, program, _reference, _bit, _tolerance = _prepare_cms_program(
+        standard_source, case, reference
+    )
+    assert (
+        view.derived.metadata["complex_mass_derivation"]["reglog_convention"]
+        == "ufo-standard"
+    )
+    assert not view.derived.metadata["complex_mass_derivation"][
+        "physical_certification"
+    ]
+    results = {}
+    # One program per carrier, with the same original global width inputs
+    # rebound at runtime; no graph regeneration or scalar formula replacement.
+    for mode in ("finite", "small", "zero"):
+        expected = reference[mode]
+        program.update_parameters(expected["widths"])
+        points = np.asarray(expected["points"], dtype=str)
+        result = program.evaluate_decimal(points, ["1000000"] * len(points))
+        _compare(result, expected)
+        np.testing.assert_allclose(
+            result.virtual[:, :, 0].astype(float),
+            result.bare[:, :, 0].astype(float)
+            + result.uv[:, :, 0].astype(float)
+            + result.r2[:, :, 0].astype(float),
+            rtol=1e-13,
+            atol=1e-14,
+        )
+        results[mode] = {
+            "born": result.born.tolist(),
+            **{
+                name: getattr(result, field).tolist()
+                for name, field in (
+                    ("bare", "bare"),
+                    ("uv", "uv"),
+                    ("r2", "r2"),
+                    ("full", "virtual"),
+                )
+            },
+        }
+    # Keep optional numerical evidence outside the checkout. The assertions
+    # above do not depend on this diagnostic report being requested.
+    if directory := os.environ.get("PYAMPLICOL_CMS_CONTROL_OUTPUT"):
+        target = Path(directory)
+        target.mkdir(parents=True, exist_ok=True)
+        (target / f"standard-{case[0]}.json").write_text(
+            json.dumps(results, indent=2) + "\n"
+        )
