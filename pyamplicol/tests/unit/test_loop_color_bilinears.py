@@ -110,6 +110,33 @@ def test_crossed_symmetric_trace_products_use_native_projector_expansion(algebra
     assert (space.overlap(left, s.E("2i") * right) - s.E("2i") * value).together() == 0
 
 
+def test_closed_quartic_network_signed_canonicalization_and_complex_factors(algebra):
+    s, t = algebra
+    nc = s.S("quartic_color_network_test::Nc", is_real=True)
+    space = SUNColorSpace(nc)
+    a, b, c, d, e, f, g, h = s.S(*(f"quartic_test::{x}" for x in "abcdefgh"))
+    ports = s.S(*(f"quartic_test::fund{i}" for i in range(7)))
+    generator = t.TensorExpression.color_t(8, 3)
+    structure = t.TensorExpression.color_f(8)
+    network = s.E("1i") * structure(b, e, h) * structure(f, c, d) * structure(h, c, g)
+    for index, label in enumerate((a, b, d, g, a, e, f)):
+        network *= generator(label, ports[index], ports[(index + 1) % 7])
+    assert not network.axes
+    # Independent exact SU(3) matrix contraction, without colour identities or
+    # signed canonicalization, fixes the full network's sign and normalization.
+    component = network.to_tensor(t.TensorLibrary.hep_lib_atom())[0]
+    assert component == s.E("-7/4")
+    unit = t.TensorExpression(s.E("1"))
+    expected = -(nc**2 - 1) * (nc**2 - 2) / 32
+    value = space.overlap(unit, network)
+    assert (value - expected).together() == 0
+    assert value.replace(nc, 3) == component
+    left, right = s.E("2+3i"), s.E("4-5i")
+    weighted = space.overlap(left * unit, right * network)
+    assert (weighted - left.conj() * right * expected).together() == 0
+    assert space.overlap(right * network, left * unit) == weighted.conj()
+
+
 @pytest.mark.parametrize(
     "incoming,outgoing,born_count",
     [

@@ -98,7 +98,8 @@ class SUNColorSpace:
         ket = self.lift(right).wrap_indices(
             S("loop_color_bilinear::ket"), dummies_only=True
         )
-        overlap = (bra * ket).simplify_algebra(
+        original = bra * ket
+        overlap = original.simplify_algebra(
             gamma=False,
             color=True,
             color_substitute_cof_dimension_invariants=True,
@@ -145,6 +146,48 @@ class SUNColorSpace:
             # let the dependency substitute its recognized SU(N) invariants.
             # A remaining indexed tensor may not admit a composite dimension;
             # it remains unsupported rather than being coerced to a scalar.
+            try:
+                bound = t.TensorExpression(result)
+            except ValueError:
+                pass
+            else:
+                result = bind_invariants(
+                    bound.simplify_algebra(
+                        gamma=False,
+                        color=True,
+                        color_substitute_cof_dimension_invariants=True,
+                    )
+                )
+        if set(result.get_all_symbols()) - {self.nc}:
+            # Closed higher-rank invariant networks can contain signed-zero
+            # terms hidden inside compact traces and products of sums. Keep
+            # their formal invariants until the dependency has exposed and
+            # canonized those terms. The ordinary fast paths above are unchanged.
+            canonical = (
+                original.simplify_algebra(
+                    gamma=False,
+                    color=True,
+                    color_substitute_cof_dimension_invariants=False,
+                )
+                .contract()
+                .expand_projectors()
+                .undo_trace()
+                .undo_chain()
+                .expand()
+                .canonize()
+                .simplify_algebra(
+                    gamma=False,
+                    color=True,
+                    color_substitute_cof_dimension_invariants=True,
+                )
+            )
+            if canonical.axes:
+                raise NotImplementedError(
+                    "formal color overlap retained uncontracted ports"
+                )
+            result = bind_invariants(canonical)
+            # Apply the dimension relation only to closed scalar invariants;
+            # indexed representations require their original symbolic labels.
             try:
                 bound = t.TensorExpression(result)
             except ValueError:
