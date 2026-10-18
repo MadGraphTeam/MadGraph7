@@ -277,3 +277,41 @@ denominators and the bubble symmetry factor. Separate multiple-output native
 batch checks cover double, DoubleFloat and 70-digit arithmetic with retained row
 identities and empty batches. These are preparation/kernel checks; external
 physical vector states and full gluon virtual assembly remain separate gates.
+
+## Physical fixed-Nf colour controls
+
+The internal DY, distinct-flavour four-quark and massive top-pair factories
+accept `color_accuracy="full"`, `"lc"` or `"nlc"`. Their default full-colour
+path remains the explicit SU(3) component oracle; `formal_color=True` selects
+the independent formal full-colour calculation. This initial projected CT
+assembly requires one Born graph and one admitted squared-order sector.
+It does not certify arbitrary models, multiple Born colour currents, or the
+four-gluon effective rules' general-Nc continuation.
+
+`physical_color` contracts semantic native colour tensors with `SUNColorSpace`.
+Source `Ncol`, `CA`, `CF` and `TF` are bound explicitly to their exact SU(Nc)
+expressions. Numeric constants are never guessed to be Casimirs. Each CT row
+contains its scalar colour dependence and its Born/tensor overlap. All bare,
+local UV, R2 and external-field rows share one structural maximum degree across
+the finite and both pole outputs, before numerical model values or helicities
+are evaluated. Born squared has its own maximum degree. Projection retains
+degree P for LC and every degree at least P-2 for NLC, with Nf fixed. Nc=3 and the
+physical initial-state average are applied only after projection. Result
+metadata records both degrees.
+
+The four-quark Born degree is 2 and its virtual degree is 3: the leading Born
+colour factor is proportional to Nc^2-1, while the virtual CF factor adds one
+power. Fixed-Nf quark-loop and heavy-quark decoupling terms can have degree 2,
+so NLC retains this odd suppression as well as degree 1. For DY the respective
+degrees are 1 and 2. Exact scalar algebra combines terms within each row;
+kinematically distinct currents remain distinct without a proven identity.
+
+Native `if` branches with Nc-independent conditions are collected separately
+with the dependency's Laurent coefficient operation and recombined with the
+same runtime condition for every coefficient. This retains the model's zero-
+and nonzero-mass branches without fixing a numerical mass during generation.
+Nc-dependent conditions and opaque functional Nc dependence fail explicitly.
+The saved native evaluators run these branches in double, DoubleFloat and
+arbitrary precision. Formal projection owns the bare program's weight
+evaluators; another model wrapper cannot mutate or reuse a projected bare
+program. Construct a fresh bare program for each projection.

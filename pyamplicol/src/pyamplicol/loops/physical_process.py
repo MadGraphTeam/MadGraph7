@@ -17,6 +17,7 @@ from typing import Any
 
 import numpy as np
 
+from .color_bilinears import external_color_tensor
 from .exact import require_exact_numbers
 from .graphs import build_loop_process
 from .kernels import NativeCoefficientDAG, require_finite_batch
@@ -37,6 +38,9 @@ class BareProcessResult:
     precision: int | None
     reduction_engine: str
     coefficient_engine: str
+    color_accuracy: str = "full"
+    born_color_degree: int | None = None
+    virtual_color_degree: int | None = None
     convention: str = "MadLoop-Cepsilon-bare-four-dimensional-no-R2-no-UV"
 
 
@@ -175,11 +179,14 @@ class NativeBareProcessProgram:
         self.external_states = representative.external_states
         variables = representative.dag.variables
         self.born_dags, born_colors = [], []
+        self.born_color_tensors = []
         for graph in process.born:
             dag, color = _born_dag(graph, variables, self.momenta)
             self.born_dags.append(dag)
+            self.born_color_tensors.append(external_color_tensor(graph, color))
             born_colors.append(_external_color(graph, color))
         self.loop_finals, loop_colors = [], []
+        self.loop_color_tensors = []
         self.born_colors = tuple(born_colors)
         for recurrence in self.recurrences:
             if recurrence.momentum_parameters != self.momenta:
@@ -205,6 +212,9 @@ class NativeBareProcessProgram:
             )
             loop_colors.append(
                 _external_color(recurrence.graph, recurrence.color_expression)
+            )
+            self.loop_color_tensors.append(
+                external_color_tensor(recurrence.graph, recurrence.color_expression)
             )
         self.born_executors = tuple(
             NativeCoefficientDAG(
@@ -239,26 +249,7 @@ class NativeBareProcessProgram:
             )
             for left in born_colors
         )
-        born_symbols = [
-            [
-                S(f"loop_physical_process::born{helicity}_{i}")
-                for i in range(len(born_colors))
-            ]
-            for helicity in range(len(self.helicities))
-        ]
-        born_sum = sum(
-            (
-                left.conj() * right * self.born_metric[i][j]
-                for row in born_symbols
-                for i, left in enumerate(row)
-                for j, right in enumerate(row)
-            ),
-            E("0"),
-        )
-        self.born_projector = backend.CoefficientEvaluator(
-            _saved([born_sum], [value for row in born_symbols for value in row]),
-            **self.options,
-        )
+        self._compile_born_projection()
         self.families = []
         for family in process.families:
             indices = tuple(
@@ -290,22 +281,6 @@ class NativeBareProcessProgram:
             )
             if max(map(sum, powers)) > plan.propagators + 1:
                 raise NotImplementedError("numerator rank exceeds the reducer domain")
-            projected, parameters = {power: E("0") for power in powers}, []
-            for helicity, born in enumerate(born_symbols):
-                parameters.extend(born)
-                for index in indices:
-                    for column, label in enumerate(labels[index]):
-                        coefficient = S(
-                            f"loop_physical_process::coefficient{helicity}_{index}_{column}"
-                        )
-                        parameters.append(coefficient)
-                        projected[label.powers] += sum(
-                            (
-                                value.conj() * self.loop_metric[b][index] * coefficient
-                                for b, value in enumerate(born)
-                            ),
-                            E("0"),
-                        )
             names = [f"c{i}" for i in range(len(powers))]
             numerator = "+".join(
                 "*".join(
@@ -341,10 +316,7 @@ class NativeBareProcessProgram:
                         _saved(plan.masses_squared, mass_parameters), **self.options
                     ),
                     mass_parameters,
-                    backend.CoefficientEvaluator(
-                        _saved([projected[p] for p in powers], parameters),
-                        **self.options,
-                    ),
+                    self._compile_family_projection(indices, powers),
                     backend.PolynomialPlan(
                         plan.propagators,
                         [numerator, "0", "0"],
@@ -370,6 +342,93 @@ class NativeBareProcessProgram:
             **self.options,
         )
 
+    def _born_symbols(self):
+        from symbolica import S
+
+        return [
+            [
+                S(f"loop_physical_process::born{helicity}_{i}")
+                for i in range(len(self.born_dags))
+            ]
+            for helicity in range(len(self.helicities))
+        ]
+
+    def _compile_born_projection(self):
+        from symbolica import E
+
+        symbols = self._born_symbols()
+        value = sum(
+            (
+                left.conj() * right * self.born_metric[i][j]
+                for row in symbols
+                for i, left in enumerate(row)
+                for j, right in enumerate(row)
+            ),
+            E("0"),
+        )
+        self.born_projector = self.backend.CoefficientEvaluator(
+            _saved([value], [value for row in symbols for value in row]), **self.options
+        )
+
+    def _compile_family_projection(self, indices, powers):
+        from symbolica import E, S
+
+        projected, parameters = {power: E("0") for power in powers}, []
+        for helicity, born in enumerate(self._born_symbols()):
+            parameters.extend(born)
+            for index in indices:
+                labels = (
+                    self.recurrences[index]
+                    .dag.nodes[self.loop_finals[index]]
+                    .output_labels
+                )
+                for column, label in enumerate(labels):
+                    coefficient = S(
+                        f"loop_physical_process::coefficient{helicity}_{index}_{column}"
+                    )
+                    parameters.append(coefficient)
+                    projected[label.powers] += sum(
+                        (
+                            value.conj() * self.loop_metric[b][index] * coefficient
+                            for b, value in enumerate(born)
+                        ),
+                        E("0"),
+                    )
+        return self.backend.CoefficientEvaluator(
+            _saved([projected[p] for p in powers], parameters), **self.options
+        )
+
+    def set_color_metrics(self, born_metric, loop_metric):
+        """Recompile only physical weight evaluators after a shared projection.
+
+        The supplied matrices include averaging and are ready for arithmetic;
+        graph currents, model evaluators, kinematics and reducers are retained.
+        """
+        if getattr(self, "_model_color_metrics_bound", False):
+            raise ValueError(
+                "bare color metrics are already bound to a model program; "
+                "construct a fresh bare program before changing color projection"
+            )
+        if (
+            len(born_metric) != len(self.born_dags)
+            or any(len(row) != len(self.born_dags) for row in born_metric)
+            or len(loop_metric) != len(self.born_dags)
+            or any(len(row) != len(self.recurrences) for row in loop_metric)
+        ):
+            raise ValueError("physical color metric dimensions differ")
+        for row in (*born_metric, *loop_metric):
+            for value in row:
+                require_exact_numbers(value)
+        self.born_metric, self.loop_metric = (
+            tuple(map(tuple, born_metric)),
+            tuple(map(tuple, loop_metric)),
+        )
+        self._compile_born_projection()
+        for family in self.families:
+            family.projector = self._compile_family_projection(
+                family.graph_indices, family.powers
+            )
+
     def evaluate_decimal(self, momenta, scales_squared, *, model_values):
         result = self.evaluate_native(
             momenta, scales_squared, model_values=model_values
@@ -387,6 +446,9 @@ class NativeBareProcessProgram:
             self.precision,
             self.reduction_engine,
             self.coefficient_engine,
+            getattr(self, "color_accuracy", "full"),
+            getattr(self, "born_color_degree", None),
+            getattr(self, "virtual_color_degree", None),
         )
 
     def evaluate_native(self, momenta, scales_squared, *, model_values):

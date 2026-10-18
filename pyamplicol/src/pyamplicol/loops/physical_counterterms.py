@@ -34,6 +34,9 @@ class ModelVirtualResult:
     precision: int | None
     reduction_engine: str
     coefficient_engine: str
+    color_accuracy: str
+    born_color_degree: int | None
+    virtual_color_degree: int | None
     convention: str = "MadLoop-Cepsilon-model-counterterms-assembled"
 
 
@@ -46,6 +49,7 @@ class _CountertermCurrent:
     coefficient_evaluator: Any
     coefficient_names: tuple[str, ...]
     color_weights: tuple[Any, ...]
+    coefficient_expressions: tuple[Any, ...]
 
 
 @dataclass(slots=True)
@@ -54,6 +58,8 @@ class _ExternalFieldCurrent:
     epsilon_power: int
     born_index: int
     coefficient_evaluator: Any
+    coefficient_expression: Any
+    color_weights: tuple[Any, ...]
 
 
 def _require_laurent_domain(value, context):
@@ -78,10 +84,42 @@ class NativeModelVirtualProgram:
     fail during evaluator construction.
     """
 
-    def __init__(self, bare, insertions, *, source_bindings, external_fields=()):
+    def __init__(
+        self,
+        bare,
+        insertions,
+        *,
+        source_bindings,
+        external_fields=(),
+        formal_nc=None,
+        color_accuracy="full",
+    ):
         from symbolica import E, Replacement, S
 
+        from pyamplicol.config.models import ColorAccuracy
+
+        from .color_bilinears import SUNColorSpace, external_color_tensor
+        from .physical_color import project_physical_color
+
         self.bare = bare
+        self.color_accuracy = ColorAccuracy(color_accuracy).value
+        self.color_projection = None
+        if getattr(bare, "_model_color_metrics_bound", False) and (
+            formal_nc is not None or getattr(bare, "_formal_color_projected", False)
+        ):
+            raise ValueError(
+                "bare color metrics are already bound to a model program; "
+                "construct a fresh bare program for each formal color projection"
+            )
+        if formal_nc is None and self.color_accuracy != "full":
+            raise ValueError(
+                "projected model colors require an explicit SU(Nc) continuation"
+            )
+        if formal_nc is not None and len(bare.born_dags) != 1:
+            raise NotImplementedError(
+                "projected model CT assembly currently requires one Born graph"
+            )
+        space = None if formal_nc is None else SUNColorSpace(formal_nc)
         self.source_bindings = tuple(source_bindings)
         backend, options = bare.backend, bare.options
         replacements = []
@@ -108,11 +146,19 @@ class NativeModelVirtualProgram:
             dag, color = _born_dag(
                 insertion.graph, bare.recurrences[0].dag.variables, bare.momenta
             )
+            semantic_color = external_color_tensor(insertion.graph, color)
             color = _external_color(insertion.graph, color)
             weights = tuple(
                 _color_bilinear(born, color, bare.initial_average)
                 for born in bare.born_colors
             )
+            formal_weight = (
+                None
+                if space is None
+                else space.overlap(bare.born_color_tensors[0], semantic_color)
+            )
+            if space is not None:
+                weights = (1 / bare.initial_average,)
             executor = NativeCoefficientDAG(
                 dag,
                 output_nodes=(len(dag.nodes) - 1,),
@@ -125,6 +171,8 @@ class NativeModelVirtualProgram:
                 expressions = [
                     value.replace_multiple(replacements) for _, value in substitutions
                 ]
+                if space is not None:
+                    expressions = [formal_weight * value for value in expressions]
                 for expression in expressions:
                     require_exact_numbers(expression)
                 if all(expression == 0 for expression in expressions):
@@ -135,15 +183,10 @@ class NativeModelVirtualProgram:
                         power,
                         dag,
                         executor,
-                        backend.CoefficientEvaluator(
-                            _saved(
-                                expressions,
-                                (*bare.model_inputs, bare.scale_squared_symbol),
-                            ),
-                            **options,
-                        ),
+                        None,
                         tuple(symbol.get_name() for symbol, _ in substitutions),
                         weights,
+                        tuple(expressions),
                     )
                 )
         self.external_fields = tuple(external_fields)
@@ -157,6 +200,14 @@ class NativeModelVirtualProgram:
             _require_laurent_domain(insertion.rule.coefficient, "external field")
             for power in (0, -1, -2):
                 value = insertion.coefficient(power).replace_multiple(replacements)
+                weights = tuple(
+                    row[born_indices[insertion.born.id]] for row in bare.born_metric
+                )
+                if space is not None:
+                    value *= space.overlap(
+                        bare.born_color_tensors[0], bare.born_color_tensors[0]
+                    )
+                    weights = (1 / bare.initial_average,)
                 require_exact_numbers(value)
                 if value == 0:
                     continue
@@ -165,14 +216,46 @@ class NativeModelVirtualProgram:
                         insertion,
                         power,
                         born_indices[insertion.born.id],
-                        backend.CoefficientEvaluator(
-                            _saved(
-                                [value], (*bare.model_inputs, bare.scale_squared_symbol)
-                            ),
-                            **options,
-                        ),
+                        None,
+                        value,
+                        weights,
                     )
                 )
+        if space is not None:
+            rows = [
+                [value]
+                for current in self.currents
+                for value in current.coefficient_expressions
+            ]
+            rows.extend(
+                [current.coefficient_expression] for current in self.field_currents
+            )
+            self.color_projection = project_physical_color(
+                bare, formal_nc, rows, self.color_accuracy
+            )
+            values = iter(self.color_projection.additional_rows)
+            for current in self.currents:
+                current.coefficient_expressions = tuple(
+                    next(values) for _ in current.coefficient_expressions
+                )
+            for current in self.field_currents:
+                current.coefficient_expression = next(values)
+        for current in self.currents:
+            current.coefficient_evaluator = backend.CoefficientEvaluator(
+                _saved(
+                    current.coefficient_expressions,
+                    (*bare.model_inputs, bare.scale_squared_symbol),
+                ),
+                **options,
+            )
+        for current in self.field_currents:
+            current.coefficient_evaluator = backend.CoefficientEvaluator(
+                _saved(
+                    [current.coefficient_expression],
+                    (*bare.model_inputs, bare.scale_squared_symbol),
+                ),
+                **options,
+            )
         parameters, ultraviolet, rational, fields = (
             [],
             [E("0")] * 3,
@@ -210,9 +293,7 @@ class NativeModelVirtualProgram:
                 amplitude = factor * born[current.born_index]
                 value = sum(
                     (
-                        left.conj()
-                        * bare.born_metric[i][current.born_index]
-                        * amplitude
+                        left.conj() * current.color_weights[i] * amplitude
                         for i, left in enumerate(born)
                     ),
                     E("0"),
@@ -235,6 +316,10 @@ class NativeModelVirtualProgram:
             ),
             **options,
         )
+        # Dense wrappers can share immutable full-color metrics. A formal
+        # projection must own its metrics, since its CT weights use the same P.
+        bare._model_color_metrics_bound = True
+        bare._formal_color_projected = space is not None
 
     def evaluate_decimal(self, momenta, scales_squared, *, model_values):
         native = self.bare.evaluate_native(
@@ -327,10 +412,19 @@ class NativeModelVirtualProgram:
             self.bare.precision,
             self.bare.reduction_engine,
             self.bare.coefficient_engine,
+            self.color_accuracy,
+            None
+            if self.color_projection is None
+            else self.color_projection.born_degree,
+            None
+            if self.color_projection is None
+            else self.color_projection.virtual_degree,
         )
 
 
-def drell_yan_model_virtual_program(source, **options):
+def drell_yan_model_virtual_program(
+    source, *, color_accuracy="full", formal_color=False, **options
+):
     """Photon-only massless QCD DY control using the source model's R2 rule.
 
     Its exact source-vector basis is tied explicitly to the native ordinary
@@ -387,6 +481,11 @@ def drell_yan_model_virtual_program(source, **options):
     alpha_s, inverse_alpha = S(
         "loop_model_input::alpha_s", "loop_model_input::inverse_alpha"
     )
+    nc = (
+        S("loop_physical_color::Nc", is_real=True)
+        if formal_color or color_accuracy != "full"
+        else None
+    )
     strong, electromagnetic = (
         (4 * E("pi") * alpha_s) ** E("1/2"),
         (4 * E("pi") / inverse_alpha) ** E("1/2"),
@@ -394,7 +493,7 @@ def drell_yan_model_virtual_program(source, **options):
     substitutions = [
         (S("UFO::G"), strong),
         (S("UFO::ee"), electromagnetic),
-        (S("UFO::Ncol"), E("3")),
+        (S("UFO::Ncol"), E("3") if nc is None else nc),
         (S("UFO::lhv"), E("1")),
     ]
     expressions = {}
@@ -412,7 +511,11 @@ def drell_yan_model_virtual_program(source, **options):
         **options,
     )
     return NativeModelVirtualProgram(
-        bare, matched.insertions, source_bindings=substitutions
+        bare,
+        matched.insertions,
+        source_bindings=substitutions,
+        formal_nc=nc,
+        color_accuracy=color_accuracy,
     )
 
 
@@ -431,7 +534,9 @@ def top_pair_model_virtual_program(source, **options):
     return _qcd_model_virtual_program(source, ("t", "t~"), **options)
 
 
-def _qcd_model_virtual_program(source, outgoing, **options):
+def _qcd_model_virtual_program(
+    source, outgoing, *, color_accuracy="full", formal_color=False, **options
+):
     from symbolica import E, S
     from symbolica.community import hepkit as h
 
@@ -506,6 +611,11 @@ def _qcd_model_virtual_program(source, outgoing, **options):
         selected_corrections=["QCD"],
     )
     alpha_s, top_mass = S("loop_model_input::alpha_s", "loop_model_input::top_mass")
+    nc = (
+        S("loop_physical_color::Nc", is_real=True)
+        if formal_color or color_accuracy != "full"
+        else None
+    )
     strong = (4 * E("pi") * alpha_s) ** E("1/2")
     expressions = {"UFO::MB": E("0"), "UFO::MC": E("0"), "UFO::MT": top_mass}
     for name in ("GC_10", "GC_11", "GC_12"):
@@ -526,9 +636,9 @@ def _qcd_model_virtual_program(source, outgoing, **options):
         (S("UFO::MT"), top_mass),
         (S("UFO::MB"), E("0")),
         (S("UFO::MC"), E("0")),
-        (S("UFO::Ncol"), E("3")),
-        (S("UFO::CA"), E("3")),
-        (S("UFO::CF"), E("4/3")),
+        (S("UFO::Ncol"), E("3") if nc is None else nc),
+        (S("UFO::CA"), E("3") if nc is None else nc),
+        (S("UFO::CF"), E("4/3") if nc is None else (nc**2 - 1) / (2 * nc)),
         (S("UFO::TF"), E("1/2")),
         (S("UFO::lhv"), E("1")),
         (S("UFO::MU_R"), bare.scale_squared_symbol ** E("1/2")),
@@ -546,4 +656,6 @@ def _qcd_model_virtual_program(source, outgoing, **options):
         matched.insertions,
         source_bindings=substitutions,
         external_fields=fields.insertions,
+        formal_nc=nc,
+        color_accuracy=color_accuracy,
     )
