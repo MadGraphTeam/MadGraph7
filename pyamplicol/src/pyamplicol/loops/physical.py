@@ -35,6 +35,7 @@ class DrellYanBareResult:
     statuses: tuple[tuple[str, ...], ...]
     arithmetic: str
     precision: int | None
+    reduction_schedule: str
     convention: str = "MadLoop-Cepsilon-bare-four-dimensional-no-R2-no-UV"
 
 
@@ -118,7 +119,6 @@ def _saved(expressions, parameters):
 class DrellYanBareProgram:
     """Reusable internal physical control; every numerical batch stays native."""
 
-    reduction_schedule = "per-helicity-oracle"
     helicities = tuple(product((-1, 1), repeat=4))
     state_kinds = ("u", "v_bar", "u_bar", "v")
 
@@ -128,6 +128,7 @@ class DrellYanBareProgram:
         arithmetic: str = "double",
         precision: int | None = None,
         backend: Any = None,
+        reduction_schedule: str = "born-weighted",
     ):
         if backend is None:
             import _loop_reduction as backend
@@ -135,6 +136,9 @@ class DrellYanBareProgram:
         from symbolica.community import hepkit as h
         from symbolica.community import tensor as t
 
+        if reduction_schedule not in {"born-weighted", "per-helicity-oracle"}:
+            raise ValueError("unknown Drell--Yan reduction schedule")
+        self.reduction_schedule = reduction_schedule
         self.backend, self.arithmetic, self.precision = backend, arithmetic, precision
         self.native_options = {"arithmetic": arithmetic, "precision": precision}
         self.process = build_loop_process(
@@ -158,10 +162,16 @@ class DrellYanBareProgram:
             (self.loop.final_node,),
         )
         self.born_executor = NativeCoefficientDAG(
-            self.born_dag, backend=backend, **self.native_options
+            self.born_dag,
+            backend=backend,
+            output_nodes=(len(self.born_dag.nodes) - 1,),
+            **self.native_options,
         )
         self.loop_executor = NativeCoefficientDAG(
-            self.loop.dag, backend=backend, **self.native_options
+            self.loop.dag,
+            backend=backend,
+            output_nodes=(self.loop_final,),
+            **self.native_options,
         )
         # Exact component contractions establish this explicit-Nc=3 control.
         born_color = born_color.to_tensor().to_dense()
@@ -247,9 +257,19 @@ class DrellYanBareProgram:
         self.reducer = backend.PolynomialPlan(
             3, [numerator, "0", "0"], coefficient_names, **self.native_options
         )
+        # This projection is complex-linear in the loop coefficients. Taking a
+        # real part here would discard absorptive contributions after integration.
+        projection_parameters, weighted = [], [E("0")] * len(labels)
         post_parameters, born_sum, virtual = [], E("0"), [E("0")] * 3
         for helicity in range(len(self.helicities)):
             born = S(f"loop_physical::born{helicity}")
+            coefficients = [
+                S(f"loop_physical::coefficient{helicity}_{i}")
+                for i in range(len(labels))
+            ]
+            projection_parameters.extend([born, *coefficients])
+            for i, coefficient in enumerate(coefficients):
+                weighted[i] += self.interference_weight * born.conj() * coefficient
             poles = [S(f"loop_physical::loop{helicity}_{pole}") for pole in range(3)]
             post_parameters.extend([born, *poles])
             born_sum += self.born_weight * born.conj() * born
@@ -262,9 +282,28 @@ class DrellYanBareProgram:
                     / (16 * E("pi") ** 2)
                 )
                 virtual[pole] += value + value.conj()
-        self.postprocess = backend.CoefficientEvaluator(
+        self.project_born = backend.CoefficientEvaluator(
+            _saved([born_sum, *weighted], projection_parameters), **self.native_options
+        )
+        self.oracle_postprocess = backend.CoefficientEvaluator(
             _saved([born_sum, *virtual], post_parameters), **self.native_options
         )
+        projected_born, *projected_poles = S(
+            "loop_physical::born_sum",
+            "loop_physical::finite",
+            "loop_physical::single",
+            "loop_physical::double",
+        )
+        integrated = [E("1i") * pole / (16 * E("pi") ** 2) for pole in projected_poles]
+        self.weighted_postprocess = backend.CoefficientEvaluator(
+            _saved(
+                [projected_born, *(value + value.conj() for value in integrated)],
+                [projected_born, *projected_poles],
+            ),
+            **self.native_options,
+        )
+        # A future CT tree supplies a separate native complex amplitude buffer;
+        # it must use the Born/color bilinear but not this loop-measure factor.
 
     def evaluate_decimal(
         self,
@@ -289,78 +328,91 @@ class DrellYanBareProgram:
             raise TypeError("physical precise inputs must be decimal strings")
         helicities = len(self.helicities)
         rows = size * helicities
-        lane_momenta = np.repeat(momenta, helicities, axis=0)
-        spinors = self.backend.massless_spinors_decimal(
-            lane_momenta.reshape(-1, 4).tolist(),
+        point_ids, lane_ids = list(range(size)), list(range(rows))
+        batch_type = self.backend.NativeBatch
+
+        def from_real(values, batch_rows, columns):
+            values = np.asarray(values, dtype=object).reshape(-1)
+            pairs = np.stack([values, np.full(len(values), "0", dtype=object)], axis=1)
+            return batch_type.from_decimal(
+                pairs.tolist(), batch_rows, columns, **self.native_options
+            )
+
+        point_momenta = from_real(momenta, size, 16)
+        lane_momenta = point_momenta.take_rows(
+            np.repeat(np.arange(size), helicities).tolist(), row_ids=lane_ids
+        )
+        states = self.backend.massless_spinors_batch(
+            lane_momenta.reshape_rows(rows * 4, 4, list(range(rows * 4))),
             np.tile(np.asarray(self.helicities), (size, 1)).reshape(-1).tolist(),
             list(self.state_kinds) * rows,
-            **self.native_options,
-        )
-        states = np.asarray(spinors, dtype=object).reshape(rows, 4, 4, 2)
-        couplings = np.asarray(
-            self.couplings.evaluate_decimal([[alpha_s, "0"], [inverse_alpha, "0"]], 1),
-            dtype=object,
-        )
-        bindings = {
-            name: np.broadcast_to(value, (rows, 2))
-            for name, value in zip(self.coupling_names, couplings, strict=True)
+        ).reshape_rows(rows, 16, lane_ids)
+        couplings = self.couplings.evaluate_batch(
+            from_real([alpha_s, inverse_alpha], 1, 2)
+        ).take_rows([0] * rows, row_ids=lane_ids)
+        bound = batch_type.concat_columns([lane_momenta, states, couplings])
+        positions = {
+            parameter.get_name(): i
+            for i, parameter in enumerate(self.momentum_parameters)
         }
-        momentum_values = np.stack(
-            [lane_momenta.reshape(rows, 16), np.full((rows, 16), "0", dtype=object)],
-            axis=2,
-        )
-        bindings.update(
+        positions.update(
             {
-                parameter.get_name(): momentum_values[:, i, :]
-                for i, parameter in enumerate(self.momentum_parameters)
-            }
-        )
-        bindings.update(
-            {
-                symbol.get_name(): states[:, leg, component, :]
+                symbol.get_name(): 16 + 4 * leg + component
                 for leg, symbols in self.loop.external_states
                 for component, symbol in enumerate(symbols)
             }
         )
+        positions.update({name: 32 + i for i, name in enumerate(self.coupling_names)})
 
         def inputs(dag):
-            return np.stack([bindings[p.get_name()] for p in dag.parameters], axis=1)
+            return bound.take_columns([positions[p.get_name()] for p in dag.parameters])
 
-        born = self.born_executor.evaluate_decimal(inputs(self.born_dag))[-1][:, 0, :]
-        coefficients = self.loop_executor.evaluate_decimal(inputs(self.loop.dag))[
-            self.loop_final
-        ]
-        shifts = self.shifts.evaluate_decimal(
-            momentum_values.reshape(-1, 2).tolist(), rows
-        )
-        scales = np.repeat(scales, helicities)
-        reduction = self.reducer.evaluate_decimal(
-            list(range(rows)),
-            np.asarray(shifts, dtype=object).reshape(rows * 3, 4, 2).tolist(),
-            [["0", "0"]] * (rows * 3),
-            np.stack([scales, np.full(rows, "0", dtype=object)], axis=1).tolist(),
-            coefficients.reshape(-1, 2).tolist(),
-        )
-        if any(
-            status != "success" or values is None for _, status, values in reduction
-        ):
+        born = self.born_executor.evaluate_batch(inputs(self.born_dag))
+        coefficients = self.loop_executor.evaluate_batch(inputs(self.loop.dag))
+        scales = from_real(scales, size, 1)
+        if self.reduction_schedule == "born-weighted":
+            projected = self.project_born.evaluate_batch(
+                batch_type.concat_columns([born, coefficients]).reshape_rows(
+                    size, helicities * (1 + coefficients.columns), point_ids
+                )
+            )
+            born = projected.take_columns([0])
+            coefficients = projected.take_columns(list(range(1, projected.columns)))
+            reduction_momenta, reduction_rows = point_momenta, size
+            statuses_per_point = 1
+        else:
+            reduction_momenta, reduction_rows = lane_momenta, rows
+            scales = scales.take_rows(
+                np.repeat(np.arange(size), helicities).tolist(), row_ids=lane_ids
+            )
+            statuses_per_point = helicities
+        shifts = self.shifts.evaluate_batch(reduction_momenta)
+        masses = from_real(["0"] * (reduction_rows * 3), reduction_rows, 3)
+        reduction = self.reducer.evaluate_batch(shifts, masses, scales, coefficients)
+        if reduction.values is None:
             raise ArithmeticError(
                 "native Drell--Yan reduction failed; no physical result returned"
             )
-        poles = np.asarray(
-            [values for _, _, values in reduction], dtype=object
-        ).reshape(rows, 3, 2)
-        combined = np.concatenate([born[:, None, :], poles], axis=1).reshape(
-            size, helicities * 4, 2
-        )
-        result = np.asarray(
-            self.postprocess.evaluate_decimal(combined.reshape(-1, 2).tolist(), size),
-            dtype=object,
-        ).reshape(size, 4, 2)
+        combined = batch_type.concat_columns([born, reduction.values])
+        if self.reduction_schedule == "born-weighted":
+            result = self.weighted_postprocess.evaluate_batch(combined)
+        else:
+            result = self.oracle_postprocess.evaluate_batch(
+                combined.reshape_rows(size, helicities * 4, point_ids)
+            )
+        result = np.asarray(result.to_decimal(), dtype=object).reshape(size, 4, 2)
         statuses = tuple(
-            tuple(status for _, status, _ in reduction[start : start + helicities])
-            for start in range(0, rows, helicities)
+            tuple(
+                status
+                for _, status in reduction.statuses[start : start + statuses_per_point]
+            )
+            for start in range(0, reduction_rows, statuses_per_point)
         )
         return DrellYanBareResult(
-            result[:, 0], result[:, 1:], statuses, self.arithmetic, self.precision
+            result[:, 0],
+            result[:, 1:],
+            statuses,
+            self.arithmetic,
+            self.precision,
+            self.reduction_schedule,
         )

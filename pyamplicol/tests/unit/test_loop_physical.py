@@ -94,7 +94,24 @@ def test_native_physical_born_and_bare_loop_all_precisions(
     assert str(program.born_weight) == "1/12"
     assert str(program.interference_weight) == "1/9"
     scales = ["1000000", "2000000", "700000"]
-    _compare(program.evaluate_decimal(points, scales), points, scales, tolerance)
+    weighted = program.evaluate_decimal(points, scales)
+    assert weighted.reduction_schedule == "born-weighted"
+    assert [len(row) for row in weighted.statuses] == [1] * len(points)
+    _compare(weighted, points, scales, tolerance)
+    oracle = DrellYanBareProgram(
+        backend=native,
+        arithmetic=arithmetic,
+        precision=precision,
+        reduction_schedule="per-helicity-oracle",
+    ).evaluate_decimal(points, scales)
+    assert [len(row) for row in oracle.statuses] == [16] * len(points)
+    _compare(oracle, points, scales, tolerance)
+    with localcontext() as context:
+        context.prec = 110
+        for before, after in zip(
+            weighted.virtual.flat, oracle.virtual.flat, strict=True
+        ):
+            assert abs(Decimal(before) - Decimal(after)) < tolerance
     # Rebind couplings and scale on the same native plans, then shrink and empty.
     subset = points[[2]]
     _compare(
@@ -159,3 +176,68 @@ def test_bare_result_against_actual_independent_madloop(native, points):
         np.testing.assert_allclose(
             actual.virtual[index, :, 0].astype(float), expected, rtol=5e-12, atol=1e-16
         )
+
+
+def test_complex_born_weight_survives_until_after_timelike_reduction(native, points):
+    """A complex Born phase probes the absorptive term lost by premature Re."""
+    program = DrellYanBareProgram(backend=native)
+    labels = program.loop.dag.nodes[program.loop_final].output_labels
+    component = next(
+        i for i, label in enumerate(labels) if label.powers == (2, 0, 0, 0)
+    )
+    ncoeff = len(labels)
+    # One synthetic helicity is sufficient to expose phase-sensitive interference.
+    inputs = np.full((16, 1 + ncoeff, 2), "0", dtype=object)
+    inputs[0, 0] = ["1", "1"]
+    inputs[0, component + 1] = ["2", "3"]
+    projected = program.project_born.evaluate_batch(
+        native.NativeBatch.from_decimal(
+            inputs.reshape(-1, 2).tolist(), 1, 16 * (1 + ncoeff)
+        )
+    )
+    coefficient = projected.to_decimal()[component + 1]
+    assert float(coefficient[0]) == pytest.approx(5 / 9)
+    assert float(coefficient[1]) == pytest.approx(1 / 9)
+    momenta = native.NativeBatch.from_decimal(
+        [[value, "0"] for value in points[0].flat], 1, 16
+    )
+    shifts = program.shifts.evaluate_batch(momenta)
+    masses = native.NativeBatch.from_decimal([["0", "0"]] * 3, 1, 3)
+    scales = native.NativeBatch.from_decimal([["1000000", "0"]], 1, 1)
+    coefficients = projected.take_columns(list(range(1, ncoeff + 1)))
+    reduced = program.reducer.evaluate_batch(shifts, masses, scales, coefficients)
+    assert reduced.values is not None
+    weighted = program.weighted_postprocess.evaluate_batch(
+        native.NativeBatch.concat_columns([projected.take_columns([0]), reduced.values])
+    ).to_decimal()
+    # The late-contraction oracle integrates the original complex numerator.
+    original = native.NativeBatch.from_decimal(
+        inputs[:, 1:].reshape(-1, 2).tolist(), 16, ncoeff
+    )
+    ids = list(range(16))
+    oracle_reduced = program.reducer.evaluate_batch(
+        shifts.take_rows([0] * 16, row_ids=ids),
+        masses.take_rows([0] * 16, row_ids=ids),
+        scales.take_rows([0] * 16, row_ids=ids),
+        original,
+    )
+    assert oracle_reduced.values is not None
+    born = native.NativeBatch.from_decimal(inputs[:, 0].tolist(), 16, 1)
+    oracle = program.oracle_postprocess.evaluate_batch(
+        native.NativeBatch.concat_columns([born, oracle_reduced.values]).reshape_rows(
+            1, 64, [0]
+        )
+    ).to_decimal()
+    np.testing.assert_allclose(
+        np.asarray(weighted, float), np.asarray(oracle, float), rtol=1e-12, atol=1e-17
+    )
+    # Deliberately project to Re before integration: the physical answer changes.
+    premature = [[real, "0"] for real, _ in coefficients.to_decimal()]
+    wrong = program.reducer.evaluate_batch(
+        shifts, masses, scales, native.NativeBatch.from_decimal(premature, 1, ncoeff)
+    )
+    assert wrong.values is not None
+    wrong_result = program.weighted_postprocess.evaluate_batch(
+        native.NativeBatch.concat_columns([projected.take_columns([0]), wrong.values])
+    ).to_decimal()
+    assert abs(float(weighted[1][0]) - float(wrong_result[1][0])) > 1e-10

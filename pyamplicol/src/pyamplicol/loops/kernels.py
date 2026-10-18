@@ -4,8 +4,9 @@
 Symbolica owns tensor contractions, polynomial algebra and evaluator storage.
 Each instruction sees placeholders for its input currents, never their expanded
 expressions. The saved evaluator is the shared-core boundary for native bulk
-binary64, DoubleFloat and arbitrary-precision execution. Only the binary64 bulk
-oracle is executed here; Python's precise evaluator API is single-point.
+binary64, DoubleFloat and arbitrary-precision execution. The native scheduler
+executes all nodes without serializing intermediate values; the binary64
+dependency evaluator remains an independent oracle.
 """
 
 from __future__ import annotations
@@ -194,10 +195,11 @@ class CoefficientDAG:
 
 
 class NativeCoefficientDAG:
-    """Execute saved local instructions in native batches at one fixed precision.
+    """One native schedule over saved local instructions at a fixed precision.
 
-    Decimal complex pairs are transport only. Every arithmetic operation is in
-    the shared core's binary64, DoubleFloat or arbitrary-precision carrier.
+    The arena is global inputs followed by each node's ordered output slots.
+    No current is expanded symbolically and no numerical intermediate crosses
+    Python. ``output_nodes`` optionally restricts the returned packed columns.
     """
 
     def __init__(
@@ -207,20 +209,44 @@ class NativeCoefficientDAG:
         arithmetic: str = "double",
         precision: int | None = None,
         backend: Any = None,
+        output_nodes: tuple[int, ...] | None = None,
     ):
         if backend is None:
             import _loop_reduction as backend
-        self.dag = dag
-        self.precision = precision
-        self.arithmetic = arithmetic
-        self.evaluators = tuple(
-            backend.CoefficientEvaluator(
-                node.evaluator_bytes(), arithmetic=arithmetic, precision=precision
+        self.dag, self.backend = dag, backend
+        self.native_options = {"arithmetic": arithmetic, "precision": precision}
+        self.output_nodes = (
+            tuple(range(len(dag.nodes))) if output_nodes is None else output_nodes
+        )
+        if any(i < 0 or i >= len(dag.nodes) for i in self.output_nodes):
+            raise ValueError("output nodes must refer to existing coefficient kernels")
+        positions = {parameter: i for i, parameter in enumerate(dag.parameters)}
+        width = len(positions)
+        node_slots, input_slots = [], []
+        for node in dag.nodes:
+            slots = [positions[p] for p in node.parameters]
+            slots.extend(
+                slot
+                for dependency in node.dependencies
+                for slot in node_slots[dependency]
             )
-            for node in dag.nodes
+            input_slots.append(slots)
+            node_slots.append(list(range(width, width + len(node.output_labels))))
+            width += len(node.output_labels)
+        self.plan = backend.CoefficientPlan(
+            [node.evaluator_bytes() for node in dag.nodes],
+            input_slots,
+            len(positions),
+            [slot for index in self.output_nodes for slot in node_slots[index]],
+            **self.native_options,
         )
 
+    def evaluate_batch(self, values: Any) -> Any:
+        """Return one typed native buffer; rows and their identities are retained."""
+        return self.plan.evaluate_batch(values)
+
     def evaluate_decimal(self, values: Any) -> tuple[Any, ...]:
+        """Decimal boundary convenience; only inputs and selected outputs convert."""
         import numpy as np
 
         values = np.asarray(values, dtype=object)
@@ -230,21 +256,18 @@ class NativeCoefficientDAG:
             )
         if any(not isinstance(value, str) for value in values.flat):
             raise TypeError("native precise input components must be decimal strings")
-        rows = values.shape[0]
-        positions = {parameter: i for i, parameter in enumerate(self.dag.parameters)}
-        outputs = []
-        for node, evaluator in zip(self.dag.nodes, self.evaluators, strict=True):
-            columns = [values[:, [positions[p]], :] for p in node.parameters]
-            columns.extend(outputs[dependency] for dependency in node.dependencies)
-            inputs = (
-                np.concatenate(columns, axis=1)
-                if columns
-                else np.empty((rows, 0, 2), dtype=object)
-            )
-            result = evaluator.evaluate_decimal(inputs.reshape(-1, 2).tolist(), rows)
-            outputs.append(
-                np.asarray(result, dtype=object).reshape(
-                    rows, len(node.output_labels), 2
-                )
-            )
-        return tuple(outputs)
+        rows = len(values)
+        native = self.backend.NativeBatch.from_decimal(
+            values.reshape(-1, 2).tolist(),
+            rows,
+            len(self.dag.parameters),
+            **self.native_options,
+        )
+        evaluated = self.evaluate_batch(native)
+        packed = np.asarray(evaluated.to_decimal(), dtype=object).reshape(
+            rows, evaluated.columns, 2
+        )
+        widths = [
+            len(self.dag.nodes[index].output_labels) for index in self.output_nodes
+        ]
+        return tuple(np.split(packed, np.cumsum(widths)[:-1], axis=1))
