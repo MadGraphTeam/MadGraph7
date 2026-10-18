@@ -500,6 +500,34 @@ def test_complete_result_against_actual_madloop_and_uncalibrated_basis_rejected(
         NativeModelVirtualProgram(program.bare, [uncertified], source_bindings=[])
 
 
+def test_native_physical_color_weights_match_small_dense_oracle(source):
+    """Both bare and local CT production weights avoid dense color states."""
+    from symbolica import E
+
+    program = distinct_flavour_model_virtual_program(source)
+    bare = program.bare
+
+    def dense_overlap(left, right):
+        left, right = left.to_tensor().to_dense(), right.to_tensor().to_dense()
+        right = right.permute_axes([right.axes.index(axis) for axis in left.axes])
+        return (
+            sum((left[i].conj() * right[i] for i in range(len(left))), E("0"))
+            / bare.initial_average
+        )
+
+    for tensors, weights in (
+        (bare.born_color_tensors, bare.born_metric),
+        (bare.loop_color_tensors, bare.loop_metric),
+        *(
+            (current.color_tensors, current.color_weights)
+            for current in program.currents
+        ),
+    ):
+        for born, row in zip(bare.born_color_tensors, weights, strict=True):
+            for tensor, weight in zip(tensors, row, strict=True):
+                assert weight == dense_overlap(born, tensor)
+
+
 @pytest.mark.parametrize(
     "options",
     [{}, {"arithmetic": "double-double"}, {"arithmetic": "arbitrary", "precision": 60}],

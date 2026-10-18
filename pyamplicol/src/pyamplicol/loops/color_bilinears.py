@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Dependency-backed rectangular color overlaps with formal SU(Nc) dimensions.
+"""Dependency-backed rectangular physical and formal SU(Nc) color overlaps.
 
 These cold-path helpers preserve native tensors before component evaluation.
 They provide neither a model's dimensional-continuation certificate nor a
@@ -29,6 +29,87 @@ def external_color_tensor(graph: Any, expression: Any) -> Any:
     if set(labels) != indices:
         raise ValueError("color tensor has free ports not assigned to external legs")
     return expression.rename_indices(labels)
+
+
+@dataclass(frozen=True, slots=True)
+class PhysicalColorSpace:
+    """Exact overlaps at the tensors' declared physical color dimensions.
+
+    No dimension is lifted and no scalar coefficient is reinterpreted as a
+    Casimir. The dependency supplies trace, projector, Fierz and SU(N) invariant
+    reduction. A cold process plan owns this cache; numerical model states and
+    event values never enter its keys or values.
+    """
+
+    _overlaps: dict[tuple[Any, Any], Any] = field(
+        default_factory=dict, init=False, repr=False
+    )
+
+    def overlap(self, left: Any, right: Any) -> Any:
+        """Return exact left† right, without averaging or formal continuation."""
+        from symbolica import E, S
+
+        if left.to_expression() == 0 or right.to_expression() == 0:
+            return E("0")
+        if set(left.axes) != set(right.axes):
+            raise ValueError("Born and loop color ports differ")
+        key = (left.to_expression(), right.to_expression())
+        if key not in self._overlaps:
+            require_exact_numbers(key[0])
+            require_exact_numbers(key[1])
+            bra = left.wrap_indices(
+                S("physical_color_bilinear::bra"), dummies_only=True
+            ).dirac_adjoint(preserve_indices=True)
+            ket = right.wrap_indices(
+                S("physical_color_bilinear::ket"), dummies_only=True
+            )
+            settings = dict(
+                gamma=False,
+                color=True,
+                color_substitute_cof_dimension_invariants=True,
+            )
+            original = bra * ket
+            overlap = original.simplify_algebra(**settings)
+            result = overlap.to_expression().together()
+            if result.get_all_symbols():
+                expanded = overlap.expand_projectors()
+                if expanded.to_expression() != overlap.to_expression():
+                    overlap = expanded.simplify_algebra(**settings)
+                    result = overlap.to_expression().together()
+            if result.get_all_symbols():
+                # Closed invariant networks can hide signed-zero terms inside
+                # compact traces. This is the dependency-owned residual route
+                # also used for formal overlaps, with physical dimensions kept.
+                overlap = (
+                    original.simplify_algebra(
+                        gamma=False,
+                        color=True,
+                        color_substitute_cof_dimension_invariants=False,
+                    )
+                    .contract()
+                    .expand_projectors()
+                    .undo_trace()
+                    .undo_chain()
+                    .expand()
+                    .canonize()
+                    .simplify_algebra(**settings)
+                )
+                result = overlap.to_expression().together()
+            if overlap.axes or result.get_all_symbols():
+                raise NotImplementedError(
+                    "physical color overlap retained unsupported tensors "
+                    "or scalar symbols"
+                )
+            require_exact_numbers(result)
+            self._overlaps[key] = result
+        return self._overlaps[key]
+
+    def rectangular(
+        self, born: Sequence[Any], loop: Sequence[Any]
+    ) -> tuple[tuple[Any, ...], ...]:
+        return tuple(
+            tuple(self.overlap(left, right) for right in loop) for left in born
+        )
 
 
 @dataclass(frozen=True, slots=True)

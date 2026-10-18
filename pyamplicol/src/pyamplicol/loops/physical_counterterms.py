@@ -19,7 +19,6 @@ from .graph_basis import build_color_tree_recurrence
 from .kernels import NativeCoefficientDAG, require_finite_batch
 from .physical import _saved
 from .physical_orders import OrderedModelVirtualResult, SummedModelValues
-from .physical_process import _color_bilinear, _external_color
 from .scalar_frontend import ScalarExpression
 
 
@@ -331,16 +330,11 @@ class NativeModelVirtualProgram:
                 for term in recurrence.terms
             )
             if space is None:
-                colors = tuple(
-                    _external_color(insertion.graph, term.color)
-                    for term in recurrence.terms
-                )
                 weights = tuple(
-                    tuple(
-                        _color_bilinear(born, color, bare.initial_average)
-                        for color in colors
+                    tuple(value / bare.initial_average for value in row)
+                    for row in bare.color_space.rectangular(
+                        bare.born_color_tensors, color_tensors
                     )
-                    for born in bare.born_colors
                 )
             else:
                 weights = space.rectangular(

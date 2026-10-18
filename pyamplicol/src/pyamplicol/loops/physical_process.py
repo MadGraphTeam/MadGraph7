@@ -17,7 +17,7 @@ from typing import Any
 
 import numpy as np
 
-from .color_bilinears import external_color_tensor
+from .color_bilinears import PhysicalColorSpace, external_color_tensor
 from .exact import require_exact_numbers
 from .graph_basis import (
     build_color_loop_recurrence,
@@ -125,29 +125,6 @@ def _evaluate_coefficient_groups(bound, executors, columns, groups):
         for index in groups.representatives
     }
     return [outputs[index] for index in groups.representative_for]
-
-
-def _external_color(graph, expression):
-    """Identify color ports by physical leg before comparing distinct graphs."""
-    from symbolica.community import hepkit as h
-
-    replacements = {}
-    indices = {axis.index for axis in expression.axes}
-    for edge in graph.native.external_edges:
-        half = next(half for half in graph.native.half_edges if half.edge.id == edge.id)
-        label = h.Symbols.half_edge()(half.id, 1)
-        if label in indices:
-            replacements[label] = f"physical_color_leg_{edge.external_index}"
-    return expression.rename_indices(replacements).to_tensor().to_dense()
-
-
-def _color_bilinear(left, right, average):
-    from symbolica import E
-
-    if set(left.axes) != set(right.axes):
-        raise ValueError("physical Born/loop color ports disagree")
-    right = right.permute_axes([right.axes.index(axis) for axis in left.axes])
-    return sum((left[i].conj() * right[i] for i in range(len(left))), E("0")) / average
 
 
 @dataclass(slots=True)
@@ -413,13 +390,8 @@ class NativeBareProcessProgram:
             for item in self.born_recurrences
             for term in item.terms
         )
-        born_colors = tuple(
-            _external_color(item.graph, term.color)
-            for item in self.born_recurrences
-            for term in item.terms
-        )
-        self.born_colors = born_colors
-        self.loop_finals, loop_colors, self.loop_term_offsets = [], [], []
+        self.born_colors = self.born_color_tensors
+        self.loop_finals, self.loop_term_offsets = [], []
         self.loop_color_tensors = []
         for recurrence in self.recurrences:
             self.state_layout.state_positions(recurrence.external_states)
@@ -436,7 +408,7 @@ class NativeBareProcessProgram:
                 if any(denominator.contains(q) for q in variables):
                     raise ValueError("tree bridge denominator depends on loop momentum")
                 bridge /= denominator
-            self.loop_term_offsets.append(len(loop_colors))
+            self.loop_term_offsets.append(len(self.loop_color_tensors))
             self.loop_finals.append(
                 tuple(
                     recurrence.dag.add(
@@ -448,10 +420,10 @@ class NativeBareProcessProgram:
                 )
             )
             for term in recurrence.terms:
-                loop_colors.append(_external_color(recurrence.graph, term.color))
                 self.loop_color_tensors.append(
                     external_color_tensor(recurrence.graph, term.color)
                 )
+        self.loop_color_tensors = tuple(self.loop_color_tensors)
         self.born_executors = tuple(
             NativeCoefficientDAG(
                 item.dag,
@@ -514,17 +486,18 @@ class NativeBareProcessProgram:
             )
         )
         self.coefficient_engine = self.born_executors[0].coefficient_engine
+        self.color_space = PhysicalColorSpace()
         self.born_metric = tuple(
-            tuple(
-                _color_bilinear(left, right, initial_average) for right in born_colors
+            tuple(value / initial_average for value in row)
+            for row in self.color_space.rectangular(
+                self.born_color_tensors, self.born_color_tensors
             )
-            for left in born_colors
         )
         self.loop_metric = tuple(
-            tuple(
-                _color_bilinear(left, right, initial_average) for right in loop_colors
+            tuple(value / initial_average for value in row)
+            for row in self.color_space.rectangular(
+                self.born_color_tensors, self.loop_color_tensors
             )
-            for left in born_colors
         )
         self._compile_born_projection()
         self.families = []

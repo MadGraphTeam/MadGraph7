@@ -229,12 +229,26 @@ physics. Full native physical assembly is a separate integration check.
 
 The internal DY, distinct-flavour four-quark and massive top-pair factories
 accept `color_accuracy="full"`, `"lc"` or `"nlc"`. Their default full-colour
-path remains the explicit SU(3) component oracle; `formal_color=True` selects
-the independent formal full-colour calculation. The direct-R2 gluon factory
-also supports these projections with six Born colour terms and rectangular
-Born/CT matrices. One admitted squared-order sector is still required. These
+path uses `PhysicalColorSpace` to contract the original native SU(3) tensors;
+`formal_color=True` selects the separate formal full-colour calculation. The
+direct-R2 gluon factory also supports these projections with six Born colour
+terms and rectangular Born/CT matrices. One admitted squared-order sector is
+still required. These
 controls do not certify arbitrary models or the four-gluon effective model
 R2 rules' general-Nc continuation.
+
+The physical path uses the dependency's adjoint, dummy-index scoping, trace,
+Fierz, projector and dimension-invariant operations. It never materializes
+the external colour component grid. Born/loop and Born/CT matrices retain
+exact complex entries; averaging is applied once after contraction. Physical
+representation dimensions and literal scalar coefficients stay unchanged,
+so fixed-SU(3) effective rules need no general-Nc continuation certificate.
+Dense component contraction is retained only in small independent test oracles.
+One cold process owns a cache of exact native tensor-expression pairs;
+model values and event buffers never enter it. Open-tensor canonicalization
+is not required for cache correctness. An unresolved closed network uses the
+same dependency trace/chain expansion and canonicalization sequence as the
+formal helper, and unknown residual tensors are rejected.
 
 `physical_color` contracts semantic native colour tensors with `SUNColorSpace`.
 Source `Ncol`, `CA`, `CF` and `TF` are bound explicitly to their exact SU(Nc)

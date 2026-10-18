@@ -5,7 +5,11 @@ from itertools import product
 
 import pytest
 
-from pyamplicol.loops.color_bilinears import SUNColorSpace, external_color_tensor
+from pyamplicol.loops.color_bilinears import (
+    PhysicalColorSpace,
+    SUNColorSpace,
+    external_color_tensor,
+)
 
 
 @pytest.fixture(scope="module")
@@ -20,6 +24,50 @@ def _dense_overlap(left, right):
     left, right = left.to_tensor().to_dense(), right.to_tensor().to_dense()
     right = right.permute_axes([right.axes.index(axis) for axis in left.axes])
     return sum(left[i].conj() * right[i] for i in range(len(left)))
+
+
+def test_physical_overlap_exact_complex_entries_and_native_dummy_scoping(algebra):
+    s, t = algebra
+    space = PhysicalColorSpace()
+    generator = t.TensorExpression.color_t(8, 3)
+    left = generator("a", "i", "k") * generator("b", "k", "j")
+    right = generator("b", "i", "k") * generator("a", "k", "j")
+    matrix = space.rectangular([left, right], [left, right, s.E("3i") * right])
+    for i, j in product(range(2), range(3)):
+        assert matrix[i][j] == _dense_overlap(
+            (left, right)[i], (left, right, s.E("3i") * right)[j]
+        )
+    assert matrix[0][1] == s.E("-2/3")
+    assert matrix[0][2] == s.E("-2i")
+    relabeled = generator("a", "i", "x") * generator("b", "x", "j")
+    assert space.overlap(relabeled, right) == matrix[0][1]
+    # The literal coefficient stays three; no model invariant is inferred.
+    assert space.overlap(left, 3 * right) == s.E("-2")
+    with pytest.raises(ValueError, match="ports differ"):
+        space.overlap(left, right.rename_indices({"a": "other"}))
+    foreign = t.TensorName("unresolved_physical_color")(t.Representation.coad(8))
+    with pytest.raises(NotImplementedError, match="unsupported"):
+        space.overlap(foreign("a"), foreign("a"))
+    assert space.overlap(left, t.TensorExpression(s.E("0"))) == 0
+
+
+def test_physical_symmetric_trace_quartic_matches_dense_without_lifting(algebra):
+    s, t = algebra
+    generator = t.TensorExpression.color_t(8, 3)
+
+    def symmetric(a, b, c):
+        return 4 * t.trace(
+            t.Representation.cof(3),
+            t.FactorProjector.symmetric(
+                *(generator(label, t.AUTO, t.AUTO) for label in (a, b, c))
+            ),
+        )
+
+    left = symmetric("a", "c", "x") * symmetric("b", "d", "x")
+    right = symmetric("a", "d", "x") * symmetric("b", "c", "x")
+    space = PhysicalColorSpace()
+    assert space.overlap(left, right) == s.E("-20/3") == _dense_overlap(left, right)
+    assert space.overlap(left, s.E("2i") * right) == s.E("-40i/3")
 
 
 def test_rectangular_complex_weights_dummy_scoping_and_semantic_dimensions(algebra):
@@ -127,6 +175,11 @@ def test_closed_quartic_network_signed_canonicalization_and_complex_factors(alge
     component = network.to_tensor(t.TensorLibrary.hep_lib_atom())[0]
     assert component == s.E("-7/4")
     unit = t.TensorExpression(s.E("1"))
+    physical = PhysicalColorSpace()
+    assert physical.overlap(unit, network) == component
+    assert physical.overlap(s.E("2+3i") * unit, s.E("4-5i") * network) == (
+        s.E("2+3i").conj() * s.E("4-5i") * component
+    )
     expected = -(nc**2 - 1) * (nc**2 - 2) / 32
     value = space.overlap(unit, network)
     assert (value - expected).together() == 0
