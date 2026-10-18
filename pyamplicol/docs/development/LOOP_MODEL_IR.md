@@ -1003,3 +1003,34 @@ identities beyond binary64 and zero-width updates without regeneration. The
 declaration view itself carries no physical CMS certificate; complete bare,
 UV/R2 and total component comparisons and the zero-width physical continuation
 are separate gates.
+
+The bounded full-process CMS comparison exposed a concrete reference semantic
+boundary. The active Gmu UFO `reglog` subtracts `2*pi*i` when its argument has
+negative real and positive imaginary parts. MadGraph 3.7's exporter reserves
+that function name and emits principal `LOG` instead of the source helper body.
+Born, N4 bare, R2 and every pole agree with the unmodified optimized CMS export;
+only UV finite terms differ. An isolated scalar comparison locates the shift in
+`eCoup_DGmua0_UV_EW`: four times the real difference predicts the entire UV/Born
+offset. This is a source/export semantic difference, not a fitted amplitude
+correction.
+
+The source-semantic physical control uses a copied reference helper object with
+only REGLOG/MP_REGLOG changed to the exact bound UFO body. All original model
+rules, scalar definitions and exporter files remain untouched. The compact
+fixture labels this distinction and compares bare/UV/R2/total separately at a
+continuum point and three points around the Z pole. Zero-width continuation
+uses the original unmodified CMS reference and passes in double and DoubleFloat.
+At 80 decimal digits, two real-mass box families expose a separate dependency
+branch failure: masses produced by `sqrt(M²)` then squaring and numerically equal
+reparsed masses give opposite scalar-box imaginary parts. A native Rust probe
+confirms exact mass-value equality with positive zero signs, but component
+precision changes from `(267,266)` to `(266,266)` bits. The constant-numerator
+probe in `tools/loop_reference/reproduce_cms_zero_box.py` reproduces this without
+UFO data or process generation. The AP80 zero-width physical test is a strict
+expected failure; its required validation remains open. No mass rounding, tiny
+term pruning or integral correction is applied. Finite-width tests pass in all
+three carriers and also check exact Gf updates beyond binary64.
+The physical finite CMS branch/renormalization prescription remains unresolved:
+an independent Recola comparison agrees on Born and poles but differs in the
+finite part. These controls certify implementation of the supplied source
+semantics, and do not enable a physical CMS capability flag.
