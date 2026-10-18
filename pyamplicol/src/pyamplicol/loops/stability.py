@@ -128,6 +128,16 @@ class NativeModelStabilityProgram:
             empty.agreement_rows(empty, relative_tolerance, absolute_tolerance)
 
     def _view(self, spec, source_snapshot=None):
+        if (
+            spec not in self._views
+            and self.program.bare.model_state is None
+            and not self.dimensional_numerators
+        ):
+            self._views[spec] = self.program.rebind(
+                **spec.options,
+                reduction_engine="generic",
+                coefficient_engine="interpreted",
+            )
         if spec not in self._views:
             from .physical_counterterms import NativeModelVirtualProgram
             from .physical_process import NativeBareProcessProgram

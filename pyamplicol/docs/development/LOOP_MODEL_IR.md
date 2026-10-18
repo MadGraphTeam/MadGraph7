@@ -1202,3 +1202,35 @@ multiplies the local vector contraction. The helper is separate from process
 admission and does not certify scalar coefficients, mixing insertion phases or
 the UV scheme. Its exact ordered-port/source-expression guard rejects charged
 partners, reordered slots and untested linear combinations.
+
+### Retained instructions and arithmetic views
+
+`PreparedCoefficientDAG` separates exact saved dependency instructions and
+integer slot maps from producer binding/domain metadata. Rebinding it creates a
+fresh native coefficient arena and carrier-specific evaluators without reading
+the producer graph or repeating expression optimization and evaluator saving.
+Existing schedule identities and exact model-binding sharing proofs are retained.
+
+`PreparedBareProcess` and `PreparedModelProcess` extend this boundary to the
+complete ordinary full-colour, model-rule controls with legacy exact model
+formulas. They retain family routing/kinematic instructions, scalar coefficient
+and contraction programs, CT/field current instructions, exact weights and order
+maps. `rebind` creates independent native evaluators, reducers and kernel caches;
+no event buffers or numerical model values are copied from another arithmetic.
+The optional stability wrapper uses this path for those controls. The reducer
+still constructs its own precision-specific polynomial workspace from the
+retained expressions through its existing API.
+
+Changing a bare colour metric replaces its saved projection instructions and
+invalidates its cached prepared record. Previously retained records preserve
+their original weights. An attached complete model still prevents metric changes
+that would desynchronize its counterterms. Tests forbid recurrence generation,
+colour overlap and instruction saving while rebinding complete DY/four-quark
+views, compare all output components in all three carriers, and exercise exact
+input changes beyond binary64, independent buffers and empty batches.
+
+These are internal in-memory records. Existing producer graph references remain
+available for diagnostics; they are neither serialized nor used to regenerate
+physics during rebinding. No public artifact format is introduced. Source-owned,
+direct-R2 and formal-colour retained views require separate integration; their
+existing numerical paths remain unchanged.

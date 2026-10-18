@@ -90,6 +90,7 @@ class _CountertermCurrent:
     scalar_program: Any = None
     color_tensors: tuple[Any, ...] = ()
     source_scalar_columns: tuple[int, ...] = ()
+    coefficient_state: bytes | None = None
 
 
 @dataclass(slots=True)
@@ -103,6 +104,7 @@ class _ExternalFieldCurrent:
     color_grade: int | None = None
     coefficient_diagnostic: Any = None
     scalar_program: Any = None
+    coefficient_state: bytes | None = None
 
 
 def _saved_scalar_pairs(values, diagnostics, parameters, program):
@@ -167,6 +169,8 @@ class NativeModelVirtualProgram:
         if formal_nc is not None or r2_strategy == "direct":
             bare.require_single_order("formal or direct model counterterm assembly")
         self.bare = bare
+        self._evaluator_states = {}
+        self._prepared_model = None
         if r2_strategy not in {"model", "direct"}:
             raise ValueError("internal R2 strategy must be model or direct")
         if r2_strategy == "direct" and not bare.dimensional_numerators:
@@ -516,23 +520,25 @@ class NativeModelVirtualProgram:
         for current in self.currents:
             if self.source_scale_view is not None:
                 continue
+            current.coefficient_state = _saved_scalar_pairs(
+                current.coefficient_expressions,
+                current.coefficient_diagnostics,
+                (*bare.model_inputs, bare.scale_squared_symbol),
+                current.scalar_program,
+            )
             current.coefficient_evaluator = backend.CoefficientEvaluator(
-                _saved_scalar_pairs(
-                    current.coefficient_expressions,
-                    current.coefficient_diagnostics,
-                    (*bare.model_inputs, bare.scale_squared_symbol),
-                    current.scalar_program,
-                ),
+                current.coefficient_state,
                 **options,
             )
         for current in self.field_currents:
+            current.coefficient_state = _saved_scalar_pairs(
+                [current.coefficient_expression],
+                [current.coefficient_diagnostic],
+                (*bare.model_inputs, bare.scale_squared_symbol),
+                current.scalar_program,
+            )
             current.coefficient_evaluator = backend.CoefficientEvaluator(
-                _saved_scalar_pairs(
-                    [current.coefficient_expression],
-                    [current.coefficient_diagnostic],
-                    (*bare.model_inputs, bare.scale_squared_symbol),
-                    current.scalar_program,
-                ),
+                current.coefficient_state,
                 **options,
             )
         width = 3 * len(sectors)
@@ -598,11 +604,12 @@ class NativeModelVirtualProgram:
                         E("0"),
                     )
                     fields[3 * sector - current.epsilon_power] += value + value.conj()
-        self.projector = backend.CoefficientEvaluator(
-            _saved([*ultraviolet, *rational, *fields], parameters), **options
+        self.projector = self._record_evaluator(
+            "projector", _saved([*ultraviolet, *rational, *fields], parameters)
         )
         poles = [S(f"loop_counterterm::pole{i}") for i in range(4 * width)]
-        self.assemble = backend.CoefficientEvaluator(
+        self.assemble = self._record_evaluator(
+            "assemble",
             _saved(
                 [
                     *[
@@ -613,14 +620,14 @@ class NativeModelVirtualProgram:
                 ],
                 poles,
             ),
-            **options,
         )
         # Sum every returned component in the selected carrier, before strings.
         born_count = len(bare.order_layout.born)
         sum_parameters = [
             S(f"loop_counterterm::sum{i}") for i in range(born_count + 6 * width)
         ]
-        self.sum_order_values = backend.CoefficientEvaluator(
+        self.sum_order_values = self._record_evaluator(
+            "sum_order_values",
             _saved(
                 [
                     sum(sum_parameters[:born_count], E("0")),
@@ -640,12 +647,40 @@ class NativeModelVirtualProgram:
                 ],
                 sum_parameters,
             ),
-            **options,
         )
         # Dense wrappers can share immutable full-color metrics. A formal
         # projection must own its metrics, since its CT weights use the same P.
         bare._model_color_metrics_bound = True
         bare._formal_color_projected = space is not None
+
+    def _record_evaluator(self, name, state):
+        self._evaluator_states[name] = state
+        return self.bare.backend.CoefficientEvaluator(state, **self.bare.options)
+
+    @property
+    def prepared(self):
+        from .prepared_process import PreparedModelProcess
+
+        if self._prepared_model is None:
+            self._prepared_model = PreparedModelProcess.from_program(self)
+        return self._prepared_model
+
+    def rebind(
+        self,
+        *,
+        arithmetic,
+        precision=None,
+        reduction_engine="generic",
+        coefficient_engine="interpreted",
+    ):
+        """Create a fresh complete numerical view without preparing physics again."""
+        return self.prepared.bind(
+            backend=self.bare.backend,
+            arithmetic=arithmetic,
+            precision=precision,
+            reduction_engine=reduction_engine,
+            coefficient_engine=coefficient_engine,
+        )
 
     def evaluate_counterterm_currents_native(
         self, batch, *, _failures=None, _source_values=None

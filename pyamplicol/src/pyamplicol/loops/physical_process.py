@@ -141,6 +141,7 @@ class _FamilyProgram:
     projector: Any
     reducer: Any
     rational_reducer: Any = None
+    exact_state: bytes = b""
 
 
 def _reduction_numerators(powers, names, *, rational=False):
@@ -212,6 +213,8 @@ class NativeBareProcessProgram:
         from symbolica.community import tensor as t
 
         self.order_layout = PhysicalOrderLayout.from_plan(process.orders)
+        self._evaluator_states = {}
+        self._prepared_process = None
         if dimensional_numerators and not self.order_layout.is_single:
             raise NotImplementedError(
                 "multi-order dimensional assembly is not certified"
@@ -308,12 +311,12 @@ class NativeBareProcessProgram:
             else ()
         )
         self.model_evaluator = (
-            backend.CoefficientEvaluator(
+            self._record_evaluator(
+                "model_evaluator",
                 _saved(
                     [self.model_expressions[name] for name in self.model_names],
                     model_inputs,
                 ),
-                **self.options,
             )
             if model_state is None
             else None
@@ -556,6 +559,7 @@ class NativeBareProcessProgram:
                     key=lambda s: s.to_canonical_string(),
                 )
             )
+            exact_state = plan.evaluator_bytes()
             self.families.append(
                 _FamilyProgram(
                     family.index,
@@ -563,13 +567,19 @@ class NativeBareProcessProgram:
                     sector_indices,
                     powers,
                     plan,
-                    backend.ExactPolynomialEvaluator(plan.evaluator_bytes()),
-                    backend.CoefficientEvaluator(
-                        _saved(plan.masses_squared, mass_parameters), **self.options
+                    backend.ExactPolynomialEvaluator(exact_state),
+                    self._record_evaluator(
+                        f"family{family.index}_masses",
+                        _saved(plan.masses_squared, mass_parameters),
                     ),
                     mass_parameters,
                     tuple(self.model_positions[p.get_name()] for p in mass_parameters),
-                    self._compile_family_projection(indices, powers, sector_indices),
+                    self._compile_family_projection(
+                        indices,
+                        powers,
+                        sector_indices,
+                        _record_name=f"family{family.index}_projector",
+                    ),
                     backend.PolynomialPlan(
                         plan.propagators,
                         _reduction_numerators(powers, names),
@@ -586,6 +596,7 @@ class NativeBareProcessProgram:
                     )
                     if rational_numerators != ["0", "0", "0"]
                     else None,
+                    exact_state,
                 )
             )
         self.order_channels = tuple(
@@ -610,16 +621,14 @@ class NativeBareProcessProgram:
             for sector in range(len(self.order_layout.virtual))
             for p in range(3)
         ]
-        self.postprocess = backend.CoefficientEvaluator(
+        self.postprocess = self._record_evaluator(
+            "postprocess",
             _saved(
                 [value + value.conj() for value in values],
                 [p for row in poles.values() for p in row],
             ),
-            **self.options,
         )
-        self.zero_poles = backend.CoefficientEvaluator(
-            _saved([E("0")] * 3, []), **self.options
-        )
+        self.zero_poles = self._record_evaluator("zero_poles", _saved([E("0")] * 3, []))
         born_orders = [
             S(f"loop_physical_process::born_order{i}")
             for i in range(len(self.order_layout.born))
@@ -628,13 +637,44 @@ class NativeBareProcessProgram:
             [S(f"loop_physical_process::virtual_order{i}_pole{p}") for p in range(3)]
             for i in range(len(self.order_layout.virtual))
         ]
-        self.sum_order_values = backend.CoefficientEvaluator(
+        self.sum_order_values = self._record_evaluator(
+            "sum_order_values",
             _saved(
                 [sum(born_orders, E("0"))]
                 + [sum((row[p] for row in virtual_orders), E("0")) for p in range(3)],
                 [*born_orders, *(p for row in virtual_orders for p in row)],
             ),
-            **self.options,
+        )
+
+    def _record_evaluator(self, name, state):
+        """Keep exact dependency instructions beside their native workspace."""
+        if name is not None:
+            self._evaluator_states[name] = state
+        return self.backend.CoefficientEvaluator(state, **self.options)
+
+    @property
+    def prepared(self):
+        from .prepared_process import PreparedBareProcess
+
+        if self._prepared_process is None:
+            self._prepared_process = PreparedBareProcess.from_program(self)
+        return self._prepared_process
+
+    def rebind(
+        self,
+        *,
+        arithmetic,
+        precision=None,
+        reduction_engine="generic",
+        coefficient_engine="interpreted",
+    ):
+        """Bind retained cold instructions to fresh numerical workspaces."""
+        return self.prepared.bind(
+            backend=self.backend,
+            arithmetic=arithmetic,
+            precision=precision,
+            reduction_engine=reduction_engine,
+            coefficient_engine=coefficient_engine,
         )
 
     def _born_symbols(self, *, helicities=None):
@@ -650,9 +690,11 @@ class NativeBareProcessProgram:
         ]
 
     def _compile_born_projection(self):
-        self.born_projector = self._make_born_projector((self.born_metric,))
+        self.born_projector = self._make_born_projector(
+            (self.born_metric,), _record_name="born_projector"
+        )
 
-    def _make_born_projector(self, metrics, *, helicities=None):
+    def _make_born_projector(self, metrics, *, helicities=None, _record_name=None):
         from symbolica import E
 
         symbols = self._born_symbols(helicities=helicities)
@@ -671,12 +713,19 @@ class NativeBareProcessProgram:
             for metric in metrics
             for sector in self.order_layout.born
         ]
-        return self.backend.CoefficientEvaluator(
-            _saved(values, [value for row in symbols for value in row]), **self.options
+        return self._record_evaluator(
+            _record_name, _saved(values, [value for row in symbols for value in row])
         )
 
     def _compile_family_projection(
-        self, indices, powers, sector_indices, *, metrics=None, helicities=None
+        self,
+        indices,
+        powers,
+        sector_indices,
+        *,
+        metrics=None,
+        helicities=None,
+        _record_name=None,
     ):
         from symbolica import E, S
 
@@ -723,7 +772,8 @@ class NativeBareProcessProgram:
                                     ),
                                     E("0"),
                                 )
-        return self.backend.CoefficientEvaluator(
+        return self._record_evaluator(
+            _record_name,
             _saved(
                 [
                     projected[direction, sector, power]
@@ -733,7 +783,6 @@ class NativeBareProcessProgram:
                 ],
                 parameters,
             ),
-            **self.options,
         )
 
     def set_color_metrics(self, born_metric, loop_metric):
@@ -768,9 +817,13 @@ class NativeBareProcessProgram:
         self._compile_born_projection()
         for family in self.families:
             family.projector = self._compile_family_projection(
-                family.graph_indices, family.powers, family.sector_indices
+                family.graph_indices,
+                family.powers,
+                family.sector_indices,
+                _record_name=f"family{family.index}_projector",
             )
         self._color_metrics_revision = getattr(self, "_color_metrics_revision", 0) + 1
+        self._prepared_process = None
 
     def evaluate_decimal(self, momenta, scales_squared, *, model_values=None):
         result = self.evaluate_native(
