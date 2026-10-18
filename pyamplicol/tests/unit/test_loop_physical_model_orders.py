@@ -27,8 +27,8 @@ def control():
     if not path:
         pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
     from symbolica import E, S
-    from symbolica.community import hepkit as h
 
+    from pyamplicol.loops.control_models import qcd_qed_control_model
     from pyamplicol.loops.counterterms import (
         match_counterterms,
         prepare_counterterm_model,
@@ -43,7 +43,7 @@ def control():
     from pyamplicol.models.loop_import import load_raw_loop_model
 
     source = build_loop_model(load_raw_loop_model(path))
-    model = h.Model.qcd_qed()
+    model = qcd_qed_control_model()
     representatives, validations = [], []
     native_rules = {
         (-1, 1, 21): "V_74",

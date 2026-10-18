@@ -1314,9 +1314,10 @@ def quark_gluon_qcd_program(**options):
 
 def _qcd_process_program(incoming, outgoing, state_kinds, average, **options):
     from symbolica import E, S
-    from symbolica.community import hepkit as h
 
-    model = h.Model.qcd_qed()
+    from .control_models import qcd_qed_control_model
+
+    model = qcd_qed_control_model()
     process = build_loop_process(
         model.process(incoming, outgoing),
         selected_corrections=["QCD"],

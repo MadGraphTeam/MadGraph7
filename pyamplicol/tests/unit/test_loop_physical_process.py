@@ -269,13 +269,13 @@ def test_high_precision_convergence_and_original_momentum_bits(native, points):
 
 def test_same_process_assembler_reproduces_drell_yan_oracle(native, points):
     from symbolica import E, S
-    from symbolica.community import hepkit as h
 
+    from pyamplicol.loops.control_models import qcd_qed_control_model
     from pyamplicol.loops.graphs import build_loop_process
     from pyamplicol.loops.physical import DrellYanBareProgram
     from pyamplicol.loops.physical_process import NativeBareProcessProgram
 
-    model = h.Model.qcd_qed()
+    model = qcd_qed_control_model()
     process = build_loop_process(
         model.process(["u", "u~"], ["e-", "e+"]),
         selected_corrections=["QCD"],

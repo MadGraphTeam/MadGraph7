@@ -370,12 +370,12 @@ def test_shared_currents_identity_casimir_conservation_and_complex_directions(
 
 def _mixed_program(native, **options):
     from symbolica import E, S
-    from symbolica.community import hepkit as hep
 
+    from pyamplicol.loops.control_models import qcd_qed_control_model
     from pyamplicol.loops.graphs import build_loop_process
     from pyamplicol.loops.physical_process import NativeBareProcessProgram
 
-    model = hep.Model.qcd_qed()
+    model = qcd_qed_control_model()
     process = build_loop_process(
         model.process(["u", "u~"], ["d", "d~"]),
         selected_corrections=["QCD", "QED"],

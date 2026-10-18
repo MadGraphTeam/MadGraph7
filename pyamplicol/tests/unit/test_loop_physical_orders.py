@@ -28,9 +28,10 @@ def native():
 @pytest.fixture(scope="module")
 def setup(native):
     from symbolica import E, S
-    from symbolica.community import hepkit as h
 
-    model = h.Model.qcd_qed()
+    from pyamplicol.loops.control_models import qcd_qed_control_model
+
+    model = qcd_qed_control_model()
     process = build_loop_process(
         model.process(["u", "u~"], ["d", "d~"]),
         selected_corrections=["QCD", "QED"],

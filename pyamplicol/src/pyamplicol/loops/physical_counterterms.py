@@ -891,14 +891,14 @@ def drell_yan_model_virtual_program(
     representative calibrated by the physical Drell--Yan control.
     """
     from symbolica import E, S
-    from symbolica.community import hepkit as h
 
+    from .control_models import qcd_qed_control_model
     from .counterterms import match_counterterms, prepare_counterterm_model
     from .graphs import build_loop_process
     from .model_correspondence import OrdinaryBasisRepresentative
     from .physical_process import NativeBareProcessProgram
 
-    model = h.Model.qcd_qed()
+    model = qcd_qed_control_model()
     ordinary = [
         entry
         for entry in source.kernels
@@ -1041,8 +1041,8 @@ def _qcd_model_virtual_program(
     **options,
 ):
     from symbolica import E, S
-    from symbolica.community import hepkit as h
 
+    from .control_models import qcd_qed_control_model
     from .counterterms import match_counterterms, prepare_counterterm_model
     from .graphs import build_loop_process
     from .model_correspondence import (
@@ -1052,7 +1052,7 @@ def _qcd_model_virtual_program(
     from .physical_process import NativeBareProcessProgram
     from .wavefunction import match_external_field_counterterms
 
-    model = h.Model.qcd_qed()
+    model = qcd_qed_control_model()
     if r2_strategy not in {"model", "direct"}:
         raise ValueError("internal R2 strategy must be model or direct")
     if r2_strategy == "direct" and not gluon_only:

@@ -137,8 +137,9 @@ class DrellYanBareProgram:
         if backend is None:
             import _loop_reduction as backend
         from symbolica import E, S
-        from symbolica.community import hepkit as h
         from symbolica.community import tensor as t
+
+        from .control_models import qcd_qed_control_model
 
         if reduction_schedule not in {"born-weighted", "per-helicity-oracle"}:
             raise ValueError("unknown Drell--Yan reduction schedule")
@@ -147,7 +148,7 @@ class DrellYanBareProgram:
         self.backend, self.arithmetic, self.precision = backend, arithmetic, precision
         self.native_options = {"arithmetic": arithmetic, "precision": precision}
         self.process = build_loop_process(
-            h.Model.qcd_qed().process(["u", "u~"], ["e-", "e+"]),
+            qcd_qed_control_model().process(["u", "u~"], ["e-", "e+"]),
             selected_corrections=["QCD"],
             perturbative_orders={"QCD": 1},
         )
