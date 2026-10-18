@@ -98,7 +98,12 @@ def test_first_party_source_has_explicit_0bsd_spdx_identifier() -> None:
                 continue
             # This authoritative third-party ABI header retains MadGraph's
             # license; do not relicense it or exempt the first-party adapter.
-            if path == ROOT / "src/pyamplicol/assets/api_templates/umami/umami.h":
+            if path in {
+                ROOT / "src/pyamplicol/assets/api_templates/umami/umami.h",
+                ROOT
+                / "src/pyamplicol/assets/selftest"
+                / "portable-64le/artifact/API/umami/umami.h",
+            }:
                 continue
             header = "\n".join(path.read_text(encoding="utf-8").splitlines()[:5])
             if "SPDX-License-Identifier: 0BSD" not in header:
