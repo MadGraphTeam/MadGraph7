@@ -33,12 +33,12 @@ application's ordinary checkout buildable while upstream packaging is pending.
 Its Symbolica version is aligned with the application's shared core.
 The implementation workspace uses:
 
-- NinjaRS `606d94a8cc12360f2c535a2f5f718d83f165645f`.
+- NinjaRS `5f35b071bda8b10df0bd40db20f31c3bd75bcecc`.
 - Symbolica `e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8`, the owner's integration
   revision published on `https://github.com/ValentinHirschi/symbolica`.
 - FeynKit `474478a7a80bc9f9f21bead0e1cde6acbcffbe93`, the owner's patched
   dependency revision recorded by NinjaRS (not asserted merged upstream).
-- oneloopmaster `d10eaa073aab3acc68feab9b04866532241c1443`.
+- oneloopmaster `264a6ced74e3c7a5de000b93dddf1330826cd3e9`.
 
 From this crate's directory, using the shared workspace environment:
 
@@ -51,7 +51,28 @@ cargo test --locked --test anchors -- --test-threads=1
 
 Supply a valid `SYMBOLICA_LICENSE` in the process environment when needed;
 never persist it in this crate. Cargo's lockfile covers registry dependencies.
-The upstream sources are read-only to this consumer.
+The upstream sources are read-only to this consumer. NinjaRS revision 5f35b07
+still limits the generic integrated coordinator to six propagators and rank
+n+1. Its separate binary64 fast engine supports higher multiplicity; that does
+not extend double-double or arbitrary-precision coverage. The native Python
+consumer retains a common six-propagator domain across its arithmetic modes.
+The latest owner update changes scalar-master branches and limiting cases,
+with no reduction callback API change. Registry dependency versions are
+unchanged, so the existing Cargo lockfile remains valid.
+
+The owner's final report is narrower than a universal accuracy guarantee.
+At revision 5f35b07, `docs/benchmark/sections.typ:99-123` records two
+ill-conditioned synthetic lanes whose native stability checks report success:
+`syn-gghhh-ggHHH-n5-r5` has a finite-part error of about 3.4e-4, while
+`syn-n6-r6` loses about 24% after cancellation by roughly 1e12. In the latter,
+most excess error comes from a nearly coincident-root triangle master
+(`sections.typ:113-120`); high-precision reduction supplied the reference.
+Consequently this adapter's `success` means that upstream computation
+completed, not that an accuracy target was established. Independent numerator
+reconstruction checks, cross-precision comparisons and a validated rescue policy
+remain required for process-level accuracy certification. The generic
+six-propagator bound is enforced at `crates/ninjars/src/amplitude.rs:108-113`;
+our direct Rust boundary tests retain it for all three scalar carriers.
 
 The analytic tests exercise A0 with real and complex squared masses, massless
 B0, the divergent massless C0, μ² C0, and a four-dimensional q² numerator
@@ -80,6 +101,8 @@ inside Rust. Both release the Python GIL during batch evaluation.
 cargo build --locked -p rusticol-loop-python
 mkdir -p "$PYLOOP_WORKSPACE/builds/loop-python-module"
 cp "$CARGO_TARGET_DIR/debug/lib_loop_reduction.so" \
+  "$PYLOOP_WORKSPACE/builds/loop-python-module/_loop_reduction.so.new"
+mv "$PYLOOP_WORKSPACE/builds/loop-python-module/_loop_reduction.so.new" \
   "$PYLOOP_WORKSPACE/builds/loop-python-module/_loop_reduction.so"
 PYTHONPATH="$PYLOOP_WORKSPACE/builds/loop-python-module" \
   python -m pytest python -q

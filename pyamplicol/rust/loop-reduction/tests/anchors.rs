@@ -313,6 +313,21 @@ fn unsupported_topologies_and_parameter_shapes_are_rejected() {
         Err(ninjars::Error::Unsupported(_))
     ));
     assert!(matches!(
+        PolynomialReducer::new(
+            7,
+            parse!("1"),
+            variables(),
+            vec![],
+            DoubleFloat::default(),
+            None
+        ),
+        Err(ninjars::Error::Unsupported(_))
+    ));
+    assert!(matches!(
+        PolynomialReducer::new(7, parse!("1"), variables(), vec![], Float::new(256), None),
+        Err(ninjars::Error::Unsupported(_))
+    ));
+    assert!(matches!(
         PolynomialReducer::new(1, parse!("mu2^2"), variables(), vec![], 0_f64, None),
         Err(ninjars::Error::Rank {
             rank: 4,
