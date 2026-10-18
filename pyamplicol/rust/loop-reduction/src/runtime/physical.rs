@@ -16,6 +16,7 @@ fn pairs(values: &[String]) -> Vec<DecimalComplex> {
         .collect()
 }
 
+#[derive(Clone)]
 pub struct PhysicalBackend {
     arithmetic: String,
     precision: Option<u32>,

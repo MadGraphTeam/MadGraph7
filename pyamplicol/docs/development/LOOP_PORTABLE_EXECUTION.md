@@ -84,10 +84,10 @@ Repeated schedules may share one workspace only within a single bound view,
 where the existing coordinator invokes them sequentially. Views do not share
 mutable evaluator scratch or result buffers.
 
-The experimental Python binding is a thin owner of the core descriptor. The
-Python numerical coordinator currently invokes the existing native operations;
-there is no reverse dependency from the shared core to PyO3. The additive shared native coordinator below now covers the legacy descriptor;
-source-owned coordination and public SDK dispatch remain separate steps.
+The experimental Python binding is a thin owner of the core descriptor. Both
+the existing Python coordinator and the shared native coordinator below invoke
+the same numerical operations. There is no reverse dependency from the shared
+core to PyO3. Public SDK dispatch remains a separate step.
 Loaded views explicitly reject producer-dependent colour mutation, producer
 metadata access, retained-producer preparation and partial/rescue evaluation.
 Ordinary complete evaluation and fresh arithmetic rebinding remain available.
@@ -102,8 +102,8 @@ The Python classes own these same Rust values and delegate their operations.
 The existing dependency interpreter/JIT and cold-template cache have one
 implementation. Fixed scalar callbacks register at shared decoding, so native
 callers restore the same saved instructions without importing the Python
-consumer. The legacy complete native coordinator below reuses these operations; source
-coordination still runs in Python, and no public SDK loop entry point is activated.
+consumer. The complete native coordinator below reuses these operations for
+legacy and source-owned bindings; no public SDK loop entry point is activated.
 
 Family projectors retain the same saved bilinear instructions and packed
 input/output order under both numerical bindings. The default
@@ -162,11 +162,8 @@ R2 strategy. No finite-only coercion or second normalization is applied.
 Family projectors use the existing interpreter in this initial native entry
 point; the separate Python opt-in projector JIT is not exposed here.
 
-This native coordinator initially admits only legacy full-colour model-rule
-programs and the certified direct four-gluon descriptor. Source-owned scalar
-records raise an explicit capability error before workspace construction. The
-Python source-record consumer remains separate until its scalar ownership is
-implemented in this same coordinator. Correlations, formal colour, partial
+This native coordinator admits full-colour legacy/source model-rule programs
+and the certified legacy direct four-gluon descriptor. Correlations, formal colour, partial
 results/rescue and public artifact/SDK dispatch are not admitted by this entry
 point. Any failed reduction or nonfinite assembled component raises; successful
 reducer statuses alone do not establish numerical accuracy.
@@ -188,6 +185,19 @@ coordinator's optional early `require_snapshot` check. No source definitions or
 Python objects are consulted by these operations. The focused standalone Rust
 test `source_scalar_owner` uses the existing source gg PACBIN to exercise all
 three carriers, exact parameter bits, old snapshots, scale branches, failed
-updates and concurrent publication. This helper is a prerequisite for native
-source coordination; it does not by itself remove the coordinator capability
-guard described above.
+updates and concurrent publication.
+
+Source-owned `NativeLoopProgram` bindings accept exact complex pairs through
+`parameters={name: [real, imaginary]}` and expose a separate `source_state`
+handle for atomic updates. They reject positional `model_values`. Each ordinary
+evaluation captures one snapshot before numerical work; ordinary coefficients,
+pointwise masses, local UV/R2 rules and external fields all use that snapshot.
+The result reports its `source_revision`. The internal `snapshot=` execution
+argument supports retained-state checks and rejects foreign owners before any
+lane is evaluated, including empty calls. Rebinding copies the captured exact
+override strings into a fresh owner and workspaces, never rounded native values.
+`test_loop_native_source.py` compares complete source gg outputs and nonzero
+external fields against the saved-plan Python consumer in all three carriers,
+including point IDs, distinct scales, exact parameter changes and retained output
+lifetimes. `PYAMPLICOL_NATIVE_SOURCE_PACBIN` can select an already generated
+ordinary source gg fixture for these integration checks.

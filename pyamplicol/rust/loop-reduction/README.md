@@ -471,9 +471,12 @@ field components, and the executed R2 strategy. No PyO3 or Python callback is
 needed by the standalone executor. The experimental Python `NativeLoopProgram`
 wraps that same core executor; public artifact and SDK dispatch remain separate.
 
-The current native admission is legacy full-colour model-R2 and the certified
-four-gluon direct-R2 descriptor. Source-owned scalar coordination, correlations,
-formal colour and partial/rescue execution remain explicit capability boundaries.
+The current native admission is full-colour legacy/source model-R2 and the
+certified legacy four-gluon direct-R2 descriptor. Source owners publish checked
+immutable snapshots; each evaluation shares one revision across ordinary
+coefficients, pointwise masses, local CTs and fields. Named exact updates and
+fresh-carrier rebinds use original override strings. Correlations, formal colour
+and partial/rescue execution remain explicit capability boundaries.
 Family projectors use the interpreter; coefficient JIT is separately selectable
 for double. Numerical success is not an independent accuracy certificate.
 

@@ -4,7 +4,8 @@
 //! of the numerical reduction implementation. Only validated runtime plans enter
 //! this boundary. Native success is not an accuracy certificate.
 
-use crate::loop_runtime::{LoadedLoopRuntime, ModelBinding, ScheduleGroup};
+use crate::loop_runtime::{LoadedLoopRuntime, ModelBinding, ScalarBinding, ScheduleGroup};
+use crate::source_bindings::{SourceOverrides, SourceOwner, SourceScale, SourceSnapshot};
 use crate::{RusticolError, RusticolResult};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -112,6 +113,7 @@ pub struct CompleteLoopResult<T> {
     pub totals: T,
     pub statuses: Vec<Vec<(u64, String)>>,
     pub r2_strategy: String,
+    pub source_revision: Option<u64>,
 }
 
 struct FamilyWorkspace<B: LoopBackend> {
@@ -120,6 +122,12 @@ struct FamilyWorkspace<B: LoopBackend> {
     projector: B::Evaluator,
     reducer: B::Reducer,
     rational: Option<B::Reducer>,
+}
+
+struct SourceWorkspace<B: LoopBackend> {
+    owner: Arc<SourceOwner<B>>,
+    ordinary: Option<SourceScale<B>>,
+    counterterms: SourceScale<B>,
 }
 
 /// Fresh mutable arithmetic workspaces over one immutable, validated descriptor.
@@ -131,8 +139,9 @@ pub struct LoopExecutor<B: LoopBackend> {
     families: Vec<FamilyWorkspace<B>>,
     bare: BTreeMap<String, B::Evaluator>,
     model: BTreeMap<String, B::Evaluator>,
-    counterterms: Vec<B::Evaluator>,
-    fields: Vec<B::Evaluator>,
+    counterterms: Vec<Option<B::Evaluator>>,
+    fields: Vec<Option<B::Evaluator>>,
+    source: Option<SourceWorkspace<B>>,
 }
 
 fn invalid(message: &str) -> RusticolError {
@@ -151,13 +160,38 @@ fn lane_id(point: u64, width: usize, offset: usize) -> RusticolResult<u64> {
 
 impl<B: LoopBackend> LoopExecutor<B> {
     pub fn new(loaded: Arc<LoadedLoopRuntime>, backend: B) -> RusticolResult<Self> {
+        Self::with_parameters(loaded, backend, None)
+    }
+    pub fn with_parameters(
+        loaded: Arc<LoadedLoopRuntime>,
+        backend: B,
+        parameters: Option<&SourceOverrides>,
+    ) -> RusticolResult<Self> {
         let plan = loaded.plan();
-        if !matches!(plan.model_binding, ModelBinding::Legacy) {
-            return Err(RusticolError::unsupported_runtime_capability(
-                "native source loop coordination",
-                "source scalar ownership is not admitted yet",
-            ));
-        }
+        let source = match &plan.model_binding {
+            ModelBinding::Legacy => {
+                if parameters.is_some() {
+                    return Err(invalid("named parameters require a source model owner"));
+                }
+                None
+            }
+            ModelBinding::Source { .. } => {
+                if plan.r2_strategy != "model" {
+                    return Err(RusticolError::unsupported_runtime_capability(
+                        "native source direct R2",
+                        "source coordination currently requires model R2",
+                    ));
+                }
+                let owner = Arc::new(SourceOwner::new(loaded.clone(), &backend, parameters)?);
+                let ordinary = SourceScale::ordinary(&owner, &backend)?;
+                let counterterms = SourceScale::counterterms(&owner, &backend)?;
+                Some(SourceWorkspace {
+                    owner,
+                    ordinary,
+                    counterterms,
+                })
+            }
+        };
         let eval = |name: &str| backend.evaluator(loaded.evaluator_state(name)?);
         let schedules = plan
             .schedules
@@ -211,16 +245,15 @@ impl<B: LoopBackend> LoopExecutor<B> {
             .iter()
             .map(|(key, name)| Ok((key.clone(), eval(name)?)))
             .collect::<RusticolResult<_>>()?;
-        // The loader has already excluded source columns in a legacy binding.
         let counterterms = plan
             .currents
             .iter()
-            .map(|item| eval(item.scalar.legacy_state().expect("validated legacy scalar")))
+            .map(|item| item.scalar.legacy_state().map(&eval).transpose())
             .collect::<RusticolResult<_>>()?;
         let fields = plan
             .fields
             .iter()
-            .map(|item| eval(item.legacy_state().expect("validated legacy field")))
+            .map(|item| item.legacy_state().map(&eval).transpose())
             .collect::<RusticolResult<_>>()?;
         Ok(Self {
             loaded,
@@ -231,13 +264,43 @@ impl<B: LoopBackend> LoopExecutor<B> {
             model,
             counterterms,
             fields,
+            source,
         })
     }
     pub fn loaded(&self) -> &Arc<LoadedLoopRuntime> {
         &self.loaded
     }
 
+    pub fn source_owner(&self) -> Option<&Arc<SourceOwner<B>>> {
+        self.source.as_ref().map(|source| &source.owner)
+    }
+    pub fn backend(&self) -> &B {
+        &self.backend
+    }
     pub fn evaluate(&mut self, input: LoopInputs) -> RusticolResult<CompleteLoopResult<B::Batch>> {
+        self.evaluate_with_snapshot(input, None)
+    }
+    /// Explicit snapshots are an internal retained-execution facility. Ordinary
+    /// calls capture one current revision before any state or current evaluation.
+    pub fn evaluate_with_snapshot(
+        &mut self,
+        input: LoopInputs,
+        snapshot: Option<Arc<SourceSnapshot<B::Batch>>>,
+    ) -> RusticolResult<CompleteLoopResult<B::Batch>> {
+        let snapshot = match (&self.source, snapshot) {
+            (Some(source), Some(snapshot)) => {
+                source.owner.require_snapshot(&snapshot)?;
+                Some(snapshot)
+            }
+            (Some(source), None) => Some(source.owner.snapshot()?),
+            (None, Some(_)) => return Err(invalid("a source snapshot requires its source owner")),
+            (None, None) => None,
+        };
+        if snapshot.is_some() && !input.model_values.is_empty() {
+            return Err(invalid(
+                "source model parameters require named owner updates, not positional model_values",
+            ));
+        }
         let plan = self.loaded.plan();
         let points = input.point_ids.len();
         let legs = plan.state_legs.len();
@@ -246,7 +309,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
         let momentum_width = count(legs, 4)?;
         if input.momenta.len() != count(points, momentum_width)?
             || input.scales_squared.len() != points
-            || input.model_values.len() != plan.model_inputs.len()
+            || (snapshot.is_none() && input.model_values.len() != plan.model_inputs.len())
             || input.point_ids.iter().collect::<BTreeSet<_>>().len() != points
         {
             return Err(invalid(
@@ -272,15 +335,42 @@ impl<B: LoopBackend> LoopExecutor<B> {
             self.backend
                 .ingress(&input.scales_squared, points, 1, input.point_ids.clone())?;
         let states = prepare_states::<B>(&lanes, &ids, plan)?;
-        let model_arguments =
-            self.backend
-                .ingress(&input.model_values, 1, input.model_values.len(), vec![0])?;
-        let model = eval::<B>(&mut self.bare, "model_evaluator", &model_arguments)?;
-        B::require_finite(&model, "global model formulas", 1)?;
+        let (model_arguments, model, pointwise_model) = if let Some(snapshot) = &snapshot {
+            let source = self.source.as_mut().expect("captured source owner");
+            let ModelBinding::Source {
+                model_output_indices,
+                ..
+            } = &plan.model_binding
+            else {
+                unreachable!("validated source binding")
+            };
+            let selected = if let Some(view) = &mut source.ordinary {
+                view.evaluate(snapshot, &scales)?
+            } else {
+                snapshot.values().clone()
+            };
+            (
+                snapshot.arguments().clone(),
+                B::select(&selected, model_output_indices.clone())?,
+                source.ordinary.is_some(),
+            )
+        } else {
+            let arguments =
+                self.backend
+                    .ingress(&input.model_values, 1, input.model_values.len(), vec![0])?;
+            let model = eval::<B>(&mut self.bare, "model_evaluator", &arguments)?;
+            B::require_finite(&model, "global model formulas", 1)?;
+            (arguments, model, false)
+        };
+        let model_rows = if pointwise_model {
+            point_rows.clone()
+        } else {
+            vec![0; rows]
+        };
         let bound = B::concat(&[
             &lanes,
             &states,
-            &B::gather(&model, vec![0; rows], ids.clone())?,
+            &B::gather(&model, model_rows, ids.clone())?,
         ])?;
         let born_outputs = evaluate_group::<B>(&mut self.schedules, &plan.born, &bound)?;
         let born_amplitudes = B::concat(&born_outputs.iter().collect::<Vec<_>>())?;
@@ -342,7 +432,12 @@ impl<B: LoopBackend> LoopExecutor<B> {
             )?;
             let shifts = B::gather(&shifts, gather.clone(), reduction_ids.clone())?;
             let matrix = B::gather(&matrix, gather.clone(), reduction_ids.clone())?;
-            let masses = B::gather(&masses, vec![0; channel_rows], reduction_ids.clone())?;
+            let mass_rows = if pointwise_model {
+                gather.clone()
+            } else {
+                vec![0; channel_rows]
+            };
+            let masses = B::gather(&masses, mass_rows, reduction_ids.clone())?;
             let channel_scales = B::gather(&scales, gather, reduction_ids)?;
             let (values, status) = B::reduce(
                 &mut workspace.reducer,
@@ -413,21 +508,33 @@ impl<B: LoopBackend> LoopExecutor<B> {
         } else {
             None
         };
-        let coefficient_inputs = B::concat(&[
-            &B::gather(&model_arguments, vec![0; points], input.point_ids.clone())?,
-            &scales,
-        ])?;
+        let source_values = if let Some(snapshot) = &snapshot {
+            Some(
+                self.source
+                    .as_mut()
+                    .expect("captured source owner")
+                    .counterterms
+                    .evaluate(snapshot, &scales)?,
+            )
+        } else {
+            None
+        };
+        let coefficient_inputs = if source_values.is_none() {
+            Some(B::concat(&[
+                &B::gather(&model_arguments, vec![0; points], input.point_ids.clone())?,
+                &scales,
+            ])?)
+        } else {
+            None
+        };
         let mut amplitudes = vec![born_amplitudes];
         for (current, evaluator) in plan.currents.iter().zip(&mut self.counterterms) {
-            let coefficients = B::evaluate(evaluator, &coefficient_inputs)?;
-            B::require_finite(
-                &coefficients,
+            let coefficients = scalar_values::<B>(
+                &current.scalar,
+                evaluator.as_mut(),
+                coefficient_inputs.as_ref(),
+                source_values.as_ref(),
                 "counterterm scalar coefficients and active diagnostics",
-                1,
-            )?;
-            let coefficients = B::select(
-                &coefficients,
-                (0..B::columns(&coefficients)).step_by(2).collect(),
             )?;
             let coefficients = B::gather(&coefficients, point_rows.clone(), ids.clone())?;
             let combined = B::concat(&[&bound, &coefficients])?;
@@ -438,14 +545,14 @@ impl<B: LoopBackend> LoopExecutor<B> {
             B::require_finite(&amplitude, "counterterm current", helicities)?;
             amplitudes.push(amplitude);
         }
-        for evaluator in &mut self.fields {
-            let coefficients = B::evaluate(evaluator, &coefficient_inputs)?;
-            B::require_finite(
-                &coefficients,
+        for (field, evaluator) in plan.fields.iter().zip(&mut self.fields) {
+            let value = scalar_values::<B>(
+                field,
+                evaluator.as_mut(),
+                coefficient_inputs.as_ref(),
+                source_values.as_ref(),
                 "external-field scalar coefficients and active diagnostics",
-                1,
             )?;
-            let value = B::select(&coefficients, vec![0])?;
             amplitudes.push(B::gather(&value, point_rows.clone(), ids.clone())?);
         }
         let projected = B::concat(&amplitudes.iter().collect::<Vec<_>>())?;
@@ -490,7 +597,31 @@ impl<B: LoopBackend> LoopExecutor<B> {
             totals,
             statuses,
             r2_strategy: plan.r2_strategy.clone(),
+            source_revision: snapshot.as_ref().map(|value| value.revision()),
         })
+    }
+}
+
+fn scalar_values<B: LoopBackend>(
+    binding: &ScalarBinding,
+    evaluator: Option<&mut B::Evaluator>,
+    arguments: Option<&B::Batch>,
+    source: Option<&B::Batch>,
+    stage: &str,
+) -> RusticolResult<B::Batch> {
+    match binding {
+        ScalarBinding::Evaluator { .. } => {
+            let values = B::evaluate(
+                evaluator.expect("validated scalar evaluator"),
+                arguments.expect("legacy scalar inputs"),
+            )?;
+            B::require_finite(&values, stage, 1)?;
+            B::select(&values, (0..B::columns(&values)).step_by(2).collect())
+        }
+        ScalarBinding::SourceColumns { columns } => B::select(
+            source.expect("checked source scale outputs"),
+            columns.clone(),
+        ),
     }
 }
 
