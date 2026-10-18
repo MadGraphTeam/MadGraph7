@@ -384,3 +384,33 @@ parameters and point-specific scales in each arithmetic carrier. Full finite
 physics comparisons remain binary64 reference checks. The control supports
 full SU(3); projected multi-term CT assembly and the active R2 quartic model's
 SU(Nc) continuation remain explicitly unsupported.
+
+## Quark/gluon counterterm tensor catalogue
+
+`prepare_qcd_counterterm_basis(source, native, quark_pdgs=(2,))` combines the
+controlled gauge catalogue with explicitly selected massless up/down vector
+currents. Exact source and native tensor, coupling and ordered species checks
+protect the existing vector-current calibration. Unknown QCD quark structures
+fail; a general chiral or massive-quark tensor catalogue is not implied.
+
+The new source primitive is `R2_QQ_1=P(-1,1)*Gamma(-1,2,1)` with fundamental
+colour identity. Its local oracle compares all ordered spinor components at
+real and complex off-shell momenta against generated ALOHA: 34 checks. Another
+48 exact component identities at generic symbolic momentum establish its relation to the source ordinary
+FFV contracted with the first-leg momentum and the corresponding calibrated
+native FFV contraction. The latter gives `P(-1,1)*Gamma(-1,1,2)` in the bundled
+model convention. This is a bounded derivation, not an inferred universal
+spinor transpose. A separate `CountertermTensorRepresentative` preserves exact
+source evidence while selecting that explicit native expression at model
+preparation. Scalar coefficients and process insertion phase/routing remain
+separate controls; the helper does not set a whole-process validation flag.
+
+For `u ubar -> gg`, matching gives three Born graphs, 45 loop graphs and 63
+local counterterm insertions: 35 quark/gluon UV vertices, five quark/gluon R2
+vertices, seven each cubic-gluon UV, cubic-gluon R2 and gluon two-point R2, and
+two quark two-point R2 insertions. There is no source QCD qqgg contact or new
+external ghost tensor. The independent field stream contains 18 source records
+(three Born graphs, two gluon legs and the three c/b/t groups). With massless
+charm/bottom only six top-group records remain active. MadLoop's different
+69 local HELAS amplitudes count includes separate tensor/Laurent structures;
+it is not a counterterm graph count.

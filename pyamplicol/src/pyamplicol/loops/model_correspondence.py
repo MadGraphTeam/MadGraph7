@@ -71,6 +71,30 @@ class CountertermPrimitiveValidation:
             raise ValueError("primitive validation requires conformance provenance")
 
 
+@dataclass(frozen=True, slots=True)
+class CountertermTensorRepresentative:
+    """Explicit native Lorentz representative of a controlled source primitive.
+
+    The source evidence remains unchanged. This separate record authorizes one
+    exact replacement in the supplied native model's convention; it is not a
+    universal spinor transpose. The caller must establish the local relation
+    and separately validate its process insertion, routing and scalar phase.
+    """
+
+    source_validation: CountertermPrimitiveValidation
+    native_lorentz: str
+    calibration: str
+
+    def __post_init__(self):
+        if not isinstance(self.calibration, str) or not self.calibration.strip():
+            raise ValueError("tensor representative requires calibration provenance")
+        if not isinstance(self.native_lorentz, str) or not self.native_lorentz.strip():
+            raise ValueError(
+                "tensor representative requires a native Lorentz expression"
+            )
+        require_exact_numbers(parse_exact_ufo(self.native_lorentz))
+
+
 def validate_counterterm_primitives(
     source: LoopModelIR,
     validations: Iterable[CountertermPrimitiveValidation],
