@@ -144,3 +144,116 @@ def test_gluon_bare_batch_color_terms_and_ward_identity(
             assert all(abs(Decimal(x)) < scale * tolerance for x in value)
     empty = program.evaluate_decimal(points[:0], [], model_values=[alpha_s, "173"])
     assert empty.virtual.shape == (0, 3, 2) and empty.statuses == ()
+
+
+@pytest.mark.parametrize(
+    "arithmetic,precision,reducer,coefficients,tolerance",
+    [
+        ("double", None, "fast", "jit", Decimal("3e-11")),
+        ("double-double", None, "generic", "interpreted", Decimal("3e-27")),
+        ("arbitrary", 50, "generic", "interpreted", Decimal("3e-45")),
+    ],
+)
+def test_gluon_model_components_and_per_point_uv_scales(
+    arithmetic, precision, reducer, coefficients, tolerance
+):
+    symbolica = pytest.importorskip("symbolica")
+    if not symbolica.is_licensed():
+        pytest.skip("native gluon control requires licensed Symbolica")
+    pytest.importorskip("_loop_reduction")
+    source_path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
+    if not source_path:
+        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+    from symbolica import E, Expression
+
+    from pyamplicol.loops.model import build_loop_model
+    from pyamplicol.loops.model_expressions import parse_exact_ufo
+    from pyamplicol.loops.physical_counterterms import (
+        gluon_scattering_model_virtual_program,
+    )
+    from pyamplicol.models.loop_import import load_raw_loop_model
+
+    source = build_loop_model(load_raw_loop_model(source_path))
+    fixture = (
+        Path(__file__).resolve().parents[2]
+        / "tools/loop_reference/gluon_scattering_qcd.json"
+    )
+    points = np.asarray(
+        json.loads(fixture.read_text(), parse_int=str, parse_float=str)["points"],
+        dtype=str,
+    )
+    program = gluon_scattering_model_virtual_program(
+        source,
+        arithmetic=arithmetic,
+        precision=precision,
+        reduction_engine=reducer,
+        coefficient_engine=coefficients,
+    )
+    assert len(program.insertions) == 119 and len(program.external_fields) == 48
+    assert any(current.term_count > 1 for current in program.currents)
+    assert any(len(current.born_indices) == 3 for current in program.field_currents)
+    result = program.evaluate_decimal(
+        points, ["1000000"] * len(points), model_values=["0.118", "173"]
+    )
+    path = os.environ.get("PYAMPLICOL_GG_COMPONENT_REFERENCE")
+    if path:
+        reference = json.loads(Path(path).read_text())
+        for name, key in (
+            ("bare", "bare"),
+            ("uv", "uv"),
+            ("r2", "r2"),
+            ("virtual", "full"),
+            ("uv_local", "uv_vertex"),
+            ("uv_external_fields", "wf"),
+        ):
+            np.testing.assert_allclose(
+                getattr(result, name)[:, :, 0].astype(float),
+                [
+                    [
+                        row[key][pole]
+                        for pole in ("finite", "single_pole", "double_pole")
+                    ]
+                    for row in reference["rows"]
+                ],
+                rtol=5e-11,
+                atol=1e-10,
+            )
+
+    # Independent heavy-quark decoupling/field formulae, evaluated beyond the
+    # reference's binary64 precision. Model parameters remain global; muR is
+    # distinct per lane, and its original decimal digits reach the evaluator.
+    alpha = "0.100000000000000000000000001"
+    mass = "190.000000000000000000000001"
+    scales = ["900000.000000000000000000001", "2100000"]
+    rebound = program.evaluate_decimal(points[1:], scales, model_values=[alpha, mass])
+    with localcontext() as context:
+        context.prec = 120
+        for index, (point, scale) in enumerate(zip(points[1:], scales, strict=True)):
+            born = _expected(point, alpha)[0]
+            coupling = parse_exact_ufo(alpha)
+            logarithm = (parse_exact_ufo(scale) / parse_exact_ufo(mass) ** 2).log()
+            local_finite = coupling / (3 * E("pi")) * logarithm
+            ratios = [
+                local_finite,
+                -7 * coupling / (2 * E("pi")),
+                -2 * local_finite,
+                -2 * coupling / (3 * E("pi")),
+            ]
+            targets = Expression.evaluator_multiple(
+                ratios, [], n_cores=1, jit_compile=False
+            ).evaluate_complex_with_prec([], 110)
+            actual = [
+                rebound.uv_local[index, 0],
+                rebound.uv_local[index, 1],
+                rebound.uv_external_fields[index, 0],
+                rebound.uv_external_fields[index, 1],
+            ]
+            for pair, target in zip(actual, targets, strict=True):
+                value = born * target.to_decimal_tuple()[0]
+                assert abs(Decimal(pair[0]) - value) < abs(value) * tolerance
+                assert abs(Decimal(pair[1])) < abs(value) * tolerance
+    assert all(status == "success" for row in rebound.statuses for _, status in row)
+    empty = program.evaluate_decimal(points[:0], [], model_values=[alpha, mass])
+    assert empty.virtual.shape == (0, 3, 2) and empty.statuses == ()
+    with pytest.raises(NotImplementedError, match="SU\\(Nc\\) continuation"):
+        gluon_scattering_model_virtual_program(source, color_accuracy="lc")

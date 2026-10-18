@@ -15,8 +15,9 @@ from typing import Any
 import numpy as np
 
 from .exact import require_exact_numbers
+from .graph_basis import build_color_tree_recurrence
 from .kernels import NativeCoefficientDAG, require_finite_batch
-from .physical import _born_dag, _saved
+from .physical import _saved
 from .physical_process import _color_bilinear, _external_color
 
 
@@ -50,13 +51,14 @@ class _CountertermCurrent:
     coefficient_names: tuple[str, ...]
     color_weights: tuple[Any, ...]
     coefficient_expressions: tuple[Any, ...]
+    term_count: int
 
 
 @dataclass(slots=True)
 class _ExternalFieldCurrent:
     insertion: Any
     epsilon_power: int
-    born_index: int
+    born_indices: tuple[int, ...]
     coefficient_evaluator: Any
     coefficient_expression: Any
     color_weights: tuple[Any, ...]
@@ -119,10 +121,6 @@ class NativeModelVirtualProgram:
             raise NotImplementedError(
                 "projected model CT assembly currently requires one Born color term"
             )
-        if len(bare.born_colors) != len(bare.born_dags):
-            raise NotImplementedError(
-                "multicolor Born/CT assembly requires explicit term binding"
-            )
         space = None if formal_nc is None else SUNColorSpace(formal_nc)
         self.source_bindings = tuple(source_bindings)
         backend, options = bare.backend, bare.options
@@ -147,25 +145,45 @@ class NativeModelVirtualProgram:
                 _require_laurent_domain(
                     entry.coupling.value, f"counterterm {entry.vertex_name}"
                 )
-            dag, color = _born_dag(
-                insertion.graph, bare.recurrences[0].dag.variables, bare.momenta
+            recurrence = build_color_tree_recurrence(
+                insertion.graph,
+                variables=bare.recurrences[0].dag.momentum_variables,
+                momenta=bare.momenta,
             )
-            semantic_color = external_color_tensor(insertion.graph, color)
-            color = _external_color(insertion.graph, color)
+            dag = recurrence.dag
+            if any(
+                len(dag.nodes[term.node].output_labels) != 1
+                or any(dag.nodes[term.node].output_labels[0].powers)
+                for term in recurrence.terms
+            ):
+                raise ValueError("CT color term must have one scalar coefficient")
+            colors = tuple(
+                _external_color(insertion.graph, term.color)
+                for term in recurrence.terms
+            )
             weights = tuple(
-                _color_bilinear(born, color, bare.initial_average)
+                tuple(
+                    _color_bilinear(born, color, bare.initial_average)
+                    for color in colors
+                )
                 for born in bare.born_colors
             )
-            formal_weight = (
-                None
-                if space is None
-                else space.overlap(bare.born_color_tensors[0], semantic_color)
-            )
+            formal_weight = None
             if space is not None:
-                weights = (1 / bare.initial_average,)
+                if len(recurrence.terms) != 1:
+                    raise NotImplementedError(
+                        "projected CT assembly requires one CT color term"
+                    )
+                semantic_color = external_color_tensor(
+                    insertion.graph, recurrence.terms[0].color
+                )
+                formal_weight = space.overlap(
+                    bare.born_color_tensors[0], semantic_color
+                )
+                weights = ((1 / bare.initial_average,),)
             executor = NativeCoefficientDAG(
                 dag,
-                output_nodes=(len(dag.nodes) - 1,),
+                output_nodes=recurrence.final_nodes,
                 backend=backend,
                 coefficient_engine=bare.coefficient_engine,
                 **options,
@@ -191,11 +209,19 @@ class NativeModelVirtualProgram:
                         tuple(symbol.get_name() for symbol, _ in substitutions),
                         weights,
                         tuple(expressions),
+                        len(recurrence.terms),
                     )
                 )
         self.external_fields = tuple(external_fields)
         self.field_currents = []
-        born_indices = {graph.id: i for i, graph in enumerate(bare.process.born)}
+        born_indices = {
+            graph.id: tuple(
+                term
+                for term, source in enumerate(bare.born_term_graphs)
+                if source == index
+            )
+            for index, graph in enumerate(bare.process.born)
+        }
         for insertion in self.external_fields:
             if insertion.order not in allowed or insertion.born.id not in born_indices:
                 raise ValueError(
@@ -205,13 +231,14 @@ class NativeModelVirtualProgram:
             for power in (0, -1, -2):
                 value = insertion.coefficient(power).replace_multiple(replacements)
                 weights = tuple(
-                    row[born_indices[insertion.born.id]] for row in bare.born_metric
+                    tuple(row[index] for index in born_indices[insertion.born.id])
+                    for row in bare.born_metric
                 )
                 if space is not None:
                     value *= space.overlap(
                         bare.born_color_tensors[0], bare.born_color_tensors[0]
                     )
-                    weights = (1 / bare.initial_average,)
+                    weights = ((1 / bare.initial_average,),)
                 require_exact_numbers(value)
                 if value == 0:
                     continue
@@ -269,20 +296,22 @@ class NativeModelVirtualProgram:
         for helicity in range(len(bare.helicities)):
             born = [
                 S(f"loop_counterterm::born{helicity}_{i}")
-                for i in range(len(bare.born_dags))
+                for i in range(len(bare.born_colors))
             ]
             parameters.extend(born)
             for index, current in enumerate(self.currents):
-                amplitude = S(f"loop_counterterm::amplitude{helicity}_{index}")
-                parameters.append(amplitude)
-                # CT Feynman rules already contain their loop factors. Unlike
-                # a reduced bare numerator, this tree gets no i/(16*pi^2).
+                amplitudes = [
+                    S(f"loop_counterterm::amplitude{helicity}_{index}_{term}")
+                    for term in range(current.term_count)
+                ]
+                parameters.extend(amplitudes)
+                # Source rules include their own loop factor. Each colour term
+                # interferes with every Born term before taking the real part.
                 value = sum(
                     (
                         left.conj() * weight * amplitude
-                        for left, weight in zip(
-                            born, current.color_weights, strict=True
-                        )
+                        for left, row in zip(born, current.color_weights, strict=True)
+                        for weight, amplitude in zip(row, amplitudes, strict=True)
                     ),
                     E("0"),
                 )
@@ -294,11 +323,11 @@ class NativeModelVirtualProgram:
                 factor = S(f"loop_counterterm::field{helicity}_{index}")
                 parameters.append(factor)
                 # The model's particle factor already includes delta-Z/2.
-                amplitude = factor * born[current.born_index]
                 value = sum(
                     (
-                        left.conj() * current.color_weights[i] * amplitude
-                        for i, left in enumerate(born)
+                        left.conj() * weight * factor * born[right]
+                        for left, row in zip(born, current.color_weights, strict=True)
+                        for right, weight in zip(current.born_indices, row, strict=True)
                     ),
                     E("0"),
                 )
@@ -538,8 +567,25 @@ def top_pair_model_virtual_program(source, **options):
     return _qcd_model_virtual_program(source, ("t", "t~"), **options)
 
 
+def gluon_scattering_model_virtual_program(
+    source, *, color_accuracy="full", formal_color=False, **options
+):
+    """Fixed-SU(3) gg -> gg using the controlled source gluon UV/R2 bases."""
+    if formal_color or color_accuracy != "full":
+        raise NotImplementedError(
+            "gluon model counterterms lack a certified SU(Nc) continuation"
+        )
+    return _qcd_model_virtual_program(source, ("g", "g"), gluon_only=True, **options)
+
+
 def _qcd_model_virtual_program(
-    source, outgoing, *, color_accuracy="full", formal_color=False, **options
+    source,
+    outgoing,
+    *,
+    color_accuracy="full",
+    formal_color=False,
+    gluon_only=False,
+    **options,
 ):
     from symbolica import E, S
     from symbolica.community import hepkit as h
@@ -554,54 +600,68 @@ def _qcd_model_virtual_program(
     from .wavefunction import match_external_field_counterterms
 
     model = h.Model.qcd_qed()
-    representatives, validations = [], []
-    # Exact expressions tested against the independent ALOHA component oracle.
-    gluon_lorentz = {"P(-1,1)*P(-1,1)*Metric(1,2)", "P(1,1)*P(2,1)", "Metric(1,2)"}
-    for entry in source.kernels:
-        particles = [
-            source.raw.collections["particles"][i]["fields"] for i in entry.particle_ids
-        ]
-        pdgs = tuple(p["pdg_code"] for p in particles)
-        ordinary_rules = {
-            (-1, 1, 21): "V_74",
-            (-2, 2, 21): "V_135",
-            (-6, 6, 21): "V_137",
-        }
-        if entry.kind == "tree" and pdgs in ordinary_rules:
-            representatives.append(
-                OrdinaryBasisRepresentative(
-                    entry.key,
-                    ordinary_rules[pdgs],
-                    0,
-                    0,
-                    "native-qcd-qed-vector-current-control",
+    incoming = ("g", "g") if gluon_only else ("u", "u~")
+    if gluon_only:
+        from .model_gluons import prepare_gluon_counterterm_basis
+
+        basis = prepare_gluon_counterterm_basis(source, model)
+        prepared = prepare_counterterm_model(
+            source,
+            model,
+            entries=basis.entries,
+            ordinary_basis_representatives=basis.ordinary_representatives,
+            primitive_validations=basis.primitive_validations,
+        )
+    else:
+        representatives, validations = [], []
+        # Exact expressions tested against the independent ALOHA component oracle.
+        gluon_lorentz = {"P(-1,1)*P(-1,1)*Metric(1,2)", "P(1,1)*P(2,1)", "Metric(1,2)"}
+        for entry in source.kernels:
+            particles = [
+                source.raw.collections["particles"][i]["fields"]
+                for i in entry.particle_ids
+            ]
+            pdgs = tuple(p["pdg_code"] for p in particles)
+            ordinary_rules = {
+                (-1, 1, 21): "V_74",
+                (-2, 2, 21): "V_135",
+                (-6, 6, 21): "V_137",
+            }
+            if entry.kind == "tree" and pdgs in ordinary_rules:
+                representatives.append(
+                    OrdinaryBasisRepresentative(
+                        entry.key,
+                        ordinary_rules[pdgs],
+                        0,
+                        0,
+                        "native-qcd-qed-vector-current-control",
+                    )
                 )
-            )
-        if (
-            entry.kind != "tree"
-            and pdgs == (21, 21)
-            and entry.color == "Tr(1,2)"
-            and entry.lorentz in gluon_lorentz
-        ):
-            validations.append(
-                CountertermPrimitiveValidation(
-                    entry.key,
-                    entry.color,
-                    entry.lorentz,
-                    (21, 21),
-                    (3, 3),
-                    (8, 8),
-                    "local-gluon-two-point-aloha-control",
+            if (
+                entry.kind != "tree"
+                and pdgs == (21, 21)
+                and entry.color == "Tr(1,2)"
+                and entry.lorentz in gluon_lorentz
+            ):
+                validations.append(
+                    CountertermPrimitiveValidation(
+                        entry.key,
+                        entry.color,
+                        entry.lorentz,
+                        (21, 21),
+                        (3, 3),
+                        (8, 8),
+                        "local-gluon-two-point-aloha-control",
+                    )
                 )
-            )
-    prepared = prepare_counterterm_model(
-        source,
-        model,
-        ordinary_basis_representatives=representatives,
-        primitive_validations=validations,
-    )
+        prepared = prepare_counterterm_model(
+            source,
+            model,
+            ordinary_basis_representatives=representatives,
+            primitive_validations=validations,
+        )
     process = build_loop_process(
-        prepared.process(["u", "u~"], outgoing),
+        prepared.process(incoming, outgoing),
         ordinary_model=model,
         selected_corrections=["QCD"],
         perturbative_orders={"QCD": 1},
@@ -610,7 +670,7 @@ def _qcd_model_virtual_program(
     )
     matched = match_counterterms(
         prepared,
-        prepared.process(["u", "u~"], outgoing, counterterms=True),
+        prepared.process(incoming, outgoing, counterterms=True),
         process,
         selected_corrections=["QCD"],
     )
@@ -629,8 +689,10 @@ def _qcd_model_virtual_program(
         )
     bare = NativeBareProcessProgram(
         process,
-        state_kinds=("u", "v_bar", "u_bar", "v"),
-        initial_average=E("36"),
+        state_kinds=("epsilon", "epsilon", "epsilon_bar", "epsilon_bar")
+        if gluon_only
+        else ("u", "v_bar", "u_bar", "v"),
+        initial_average=E("512" if gluon_only else "36"),
         model_expressions=expressions,
         model_inputs=(alpha_s, top_mass),
         **options,

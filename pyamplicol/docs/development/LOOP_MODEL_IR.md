@@ -225,6 +225,45 @@ reference Born values and binary64 comparison, so it validates field scalar
 normalization and multiplicity, not a full amplitude or arbitrary-precision
 physics. Full native physical assembly is a separate integration check.
 
+## Physical fixed-Nf colour controls
+
+The internal DY, distinct-flavour four-quark and massive top-pair factories
+accept `color_accuracy="full"`, `"lc"` or `"nlc"`. Their default full-colour
+path remains the explicit SU(3) component oracle; `formal_color=True` selects
+the independent formal full-colour calculation. This initial projected CT
+assembly requires one Born colour term, one colour term per CT graph, and one
+admitted squared-order sector.
+It does not certify arbitrary models, multiple Born colour currents, or the
+four-gluon effective rules' general-Nc continuation.
+
+`physical_color` contracts semantic native colour tensors with `SUNColorSpace`.
+Source `Ncol`, `CA`, `CF` and `TF` are bound explicitly to their exact SU(Nc)
+expressions. Numeric constants are never guessed to be Casimirs. Each CT row
+contains its scalar colour dependence and its Born/tensor overlap. All bare,
+local UV, R2 and external-field rows share one structural maximum degree across
+the finite and both pole outputs, before numerical model values or helicities
+are evaluated. Born squared has its own maximum degree. Projection retains
+degree P for LC and every degree at least P-2 for NLC, with Nf fixed. Nc=3 and the
+physical initial-state average are applied only after projection. Result
+metadata records both degrees.
+
+The four-quark Born degree is 2 and its virtual degree is 3: the leading Born
+colour factor is proportional to Nc^2-1, while the virtual CF factor adds one
+power. Fixed-Nf quark-loop and heavy-quark decoupling terms can have degree 2,
+so NLC retains this odd suppression as well as degree 1. For DY the respective
+degrees are 1 and 2. Exact scalar algebra combines terms within each row;
+kinematically distinct currents remain distinct without a proven identity.
+
+Native `if` branches with Nc-independent conditions are collected separately
+with the dependency's Laurent coefficient operation and recombined with the
+same runtime condition for every coefficient. This retains the model's zero-
+and nonzero-mass branches without fixing a numerical mass during generation.
+Nc-dependent conditions and opaque functional Nc dependence fail explicitly.
+The saved native evaluators run these branches in double, DoubleFloat and
+arbitrary precision. Formal projection owns the bare program's weight
+evaluators; another model wrapper cannot mutate or reuse a projected bare
+program. Construct a fresh bare program for each projection.
+
 ## Four-gluon primitive and multicolour assembly boundary
 
 The independent `four_gluon_oracle.py` control covers the active `V_R2RGA` rule:
@@ -275,46 +314,26 @@ term recurrence for all four gluon Born graphs and representative one-/two-quart
 bubbles and one-quartic triangles. They cover every cut, family routing, bridge
 denominators and the bubble symmetry factor. Separate multiple-output native
 batch checks cover double, DoubleFloat and 70-digit arithmetic with retained row
-identities and empty batches. These are preparation/kernel checks; external
-physical vector states and full gluon virtual assembly remain separate gates.
+identities and empty batches. These preparation/kernel checks do not use
+physical vector states; the process controls below supply that separate check.
 
-## Physical fixed-Nf colour controls
+`NativeBareProcessProgram` now consumes the colour-term recurrence directly.
+One native executor per graph returns its ordered terminal coefficients; the
+Born and loop colour matrices are indexed by terms, while exact kinematics and
+denominator families remain indexed by graphs. Born weighting and coherent
+helicity sums still happen on complex coefficients before one reduction per
+family and point. Tree recurrences already contain their bridge denominators;
+loop attachments receive those factors once before execution.
 
-The internal DY, distinct-flavour four-quark and massive top-pair factories
-accept `color_accuracy="full"`, `"lc"` or `"nlc"`. Their default full-colour
-path remains the explicit SU(3) component oracle; `formal_color=True` selects
-the independent formal full-colour calculation. This initial projected CT
-assembly requires one Born graph and one admitted squared-order sector.
-It does not certify arbitrary models, multiple Born colour currents, or the
-four-gluon effective rules' general-Nc continuation.
+The internal `gluon_scattering_qcd_program` uses actual native massless vector
+states, six quark flavours with a global top mass, and the explicit overall
+normalization 1/512 (initial spin/colour averaging and the identical final-state
+factor 1/2). It retains four Born graphs with six colour terms and 186 loop
+graphs with 258 terms in 52 families. This is a full-SU(3) bare control; gluon
+UV/R2 completion and multi-term formal projection remain separate boundaries.
+General vector states with nonzero mass are rejected until their helicity and
+input consistency contract is implemented.
 
-`physical_color` contracts semantic native colour tensors with `SUNColorSpace`.
-Source `Ncol`, `CA`, `CF` and `TF` are bound explicitly to their exact SU(Nc)
-expressions. Numeric constants are never guessed to be Casimirs. Each CT row
-contains its scalar colour dependence and its Born/tensor overlap. All bare,
-local UV, R2 and external-field rows share one structural maximum degree across
-the finite and both pole outputs, before numerical model values or helicities
-are evaluated. Born squared has its own maximum degree. Projection retains
-degree P for LC and every degree at least P-2 for NLC, with Nf fixed. Nc=3 and the
-physical initial-state average are applied only after projection. Result
-metadata records both degrees.
-
-The four-quark Born degree is 2 and its virtual degree is 3: the leading Born
-colour factor is proportional to Nc^2-1, while the virtual CF factor adds one
-power. Fixed-Nf quark-loop and heavy-quark decoupling terms can have degree 2,
-so NLC retains this odd suppression as well as degree 1. For DY the respective
-degrees are 1 and 2. Exact scalar algebra combines terms within each row;
-kinematically distinct currents remain distinct without a proven identity.
-
-Native `if` branches with Nc-independent conditions are collected separately
-with the dependency's Laurent coefficient operation and recombined with the
-same runtime condition for every coefficient. This retains the model's zero-
-and nonzero-mass branches without fixing a numerical mass during generation.
-Nc-dependent conditions and opaque functional Nc dependence fail explicitly.
-The saved native evaluators run these branches in double, DoubleFloat and
-arbitrary precision. Formal projection owns the bare program's weight
-evaluators; another model wrapper cannot mutate or reuse a projected bare
-program. Construct a fresh bare program for each projection.
 
 ## Pure-gluon source basis controls
 
@@ -346,21 +365,22 @@ is active. MadLoop groups the four identical leg factors into `4*UVWFCT_G_2`
 for each of its six Born colour/Lorentz amplitudes and two Laurent sectors.
 The generic field-factor oracle verifies the same factor against the isolated
 reference field contribution at three points, using the independent Born values.
-## Physical multicolour bare gauge control
 
-`NativeBareProcessProgram` now consumes the colour-term recurrence directly.
-One native executor per graph returns its ordered terminal coefficients; the
-Born and loop colour matrices are indexed by terms, while exact kinematics and
-denominator families remain indexed by graphs. Born weighting and coherent
-helicity sums still happen on complex coefficients before one reduction per
-family and point. Tree recurrences already contain their bridge denominators;
-loop attachments receive those factors once before execution.
+`NativeModelVirtualProgram` now preserves those alternatives through physical
+assembly. A local CT graph has one native multi-output coefficient program;
+its rectangular Born-term by CT-term matrix is contracted coherently. A field
+record multiplies every coefficient term of its referenced Born graph, rather
+than interpreting a graph index as a single amplitude column. These factors
+share the already computed native external states and Born values. Source CT
+rules retain their own loop factors and field half-Z convention.
 
-The internal `gluon_scattering_qcd_program` uses actual native massless vector
-states, six quark flavours with a global top mass, and the explicit overall
-normalization 1/512 (initial spin/colour averaging and the identical final-state
-factor 1/2). It retains four Born graphs with six colour terms and 186 loop
-graphs with 258 terms in 52 families. This is a full-SU(3) bare control; gluon
-UV/R2 completion and multi-term formal projection remain separate boundaries.
-General vector states with nonzero mass are rejected until their helicity and
-input consistency contract is implemented.
+`gluon_scattering_model_virtual_program` combines the bare gluon program with
+119 matched source insertions (126 active Laurent currents) and 48 field
+records (32 active coefficients when bottom/charm are massless). It returns
+separate bare, local UV, external-field UV, total UV, R2 and total virtual values.
+The independently instrumented MadLoop reference checks all of these components;
+exact heavy-quark decoupling and field formulas check original decimal global
+parameters and point-specific scales in each arithmetic carrier. Full finite
+physics comparisons remain binary64 reference checks. The control supports
+full SU(3); projected multi-term CT assembly and the active R2 quartic model's
+SU(Nc) continuation remain explicitly unsupported.
