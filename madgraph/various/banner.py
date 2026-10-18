@@ -51,7 +51,7 @@ else:
     import madgraph.various.misc as misc
     import madgraph.iolibs.file_writers as file_writers
     import madgraph.iolibs.files as files 
-    import models.check_param_card as param_card_reader
+    import madgraph.models.check_param_card as param_card_reader
     from madgraph import MG5DIR, MadGraph5Error, InvalidCmd
 
 
@@ -7892,7 +7892,7 @@ class RunCardMG7(RunCard):
         if 'parameter_dict' in model and model['parameter_dict']:
             return complex(model['parameter_dict'][name])
 
-        import models.model_reader as model_reader
+        import madgraph.models.model_reader as model_reader
         namespace = dict(vars(model_reader))
         namespace['ZERO'] = 0.
         for param in model['parameters'][('external',)]:

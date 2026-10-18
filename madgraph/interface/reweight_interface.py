@@ -44,8 +44,8 @@ import madgraph.various.cluster as cluster
 import madgraph.fks.fks_common as fks_common
 import madgraph.core.diagram_generation as diagram_generation
 
-import models.import_ufo as import_ufo
-import models.check_param_card as check_param_card 
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.check_param_card as check_param_card 
 #import MadSpin.decay as madspin
 
 

@@ -35,7 +35,7 @@ import madspace as ms
 # madspace is imported; stop its install directory from shadowing the caller's
 # yaml/packaging/... for the rest of what is now MG5's own session.
 _drop_install_path()
-from models.check_param_card import ParamCard
+from madgraph.models.check_param_card import ParamCard
 from madgraph.iolibs.template_files.mg7 import hwu_output
 from madgraph.iolibs.template_files.mg7 import plots
 from madgraph.iolibs.template_files.mg7 import systematics_summary
@@ -4209,7 +4209,7 @@ def _add_time_of_flight(lhe_path, threshold, param_card_path, log):
         import madgraph.various.lhe_parser as lhe_parser
     except ImportError:
         import internal.lhe_parser as lhe_parser
-    from models import check_param_card as param_card_mod
+    from madgraph.models import check_param_card as param_card_mod
     from madgraph.various import misc as _misc
     import madgraph.iolibs.files as files
 
@@ -4401,7 +4401,7 @@ def _proc_characteristic(me_dir=None) -> dict:
 
 def load_process_model(me_dir=None):
     """Import the UFO model this process was generated with, as
-    :func:`models.import_ufo.import_model` builds it -- the object every
+    :func:`madgraph.models.import_ufo.import_model` builds it -- the object every
     model-level consumer of the param_card expects (see
     :meth:`MG7Cmd.get_model`). None when the process recorded no model, or when
     that model no longer imports.
@@ -4414,7 +4414,7 @@ def load_process_model(me_dir=None):
     cms = _proc_characteristic(me_dir).get('complex_mass_scheme', False)
     key = (ref, bool(cms))
     if key not in _model_cache:
-        import models.import_ufo as import_ufo
+        import madgraph.models.import_ufo as import_ufo
         try:
             with misc.MuteLogger(['madgraph.model'], [50]):
                 _model_cache[key] = import_ufo.import_model(
@@ -4533,7 +4533,7 @@ def detect_param_scan(param_card_path):
     else None."""
     if not os.path.exists(param_card_path):
         return None
-    from models import check_param_card as param_card_mod
+    from madgraph.models import check_param_card as param_card_mod
     it = param_card_mod.ParamCardIterator(param_card_path)
     for block in it.order:
         for param in block:
@@ -4552,7 +4552,7 @@ def run_scan(iterator, card_path, switch=None) -> None:
     with open(os.path.join("Cards", "run_card.toml"), "rb") as f:
         run_name = tomllib.load(f).get("run", {}).get("run_name", "run")
 
-    from models import check_param_card as param_card_mod
+    from madgraph.models import check_param_card as param_card_mod
     is_param_scan = isinstance(iterator, param_card_mod.ParamCardIterator)
 
     backup = card_path + ".scan_bak"

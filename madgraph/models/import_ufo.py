@@ -45,8 +45,8 @@ import aloha.create_aloha as create_aloha
 import aloha.aloha_fct as aloha_fct
 import aloha.aloha_object as aloha_object
 import aloha.aloha_lib as aloha_lib
-import models as ufomodels
-import models.model_reader as model_reader
+import madgraph.models as ufomodels
+import madgraph.models.model_reader as model_reader
 logger = logging.getLogger('madgraph.model')
 logger_mod = logging.getLogger('madgraph.model')
 # Importing a model prints hundreds of lines of details at debug level: what
