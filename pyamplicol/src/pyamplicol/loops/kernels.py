@@ -11,6 +11,7 @@ dependency evaluator remains an independent oracle.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from math import prod
 from typing import Any
@@ -260,6 +261,7 @@ class NativeCoefficientDAG:
         backend: Any = None,
         output_nodes: tuple[int, ...] | None = None,
         coefficient_engine: str = "interpreted",
+        kernel_cache: Any = None,
     ):
         if backend is None:
             import _loop_reduction as backend
@@ -287,15 +289,55 @@ class NativeCoefficientDAG:
             input_slots.append(slots)
             node_slots.append(list(range(width, width + len(node.output_labels))))
             width += len(node.output_labels)
+        states = tuple(node.evaluator_bytes() for node in dag.nodes)
+        output_slots = tuple(
+            slot for index in self.output_nodes for slot in node_slots[index]
+        )
+        cache_options = {} if kernel_cache is None else {"kernel_cache": kernel_cache}
         self.plan = backend.CoefficientPlan(
-            [node.evaluator_bytes() for node in dag.nodes],
+            states,
             input_slots,
             len(positions),
-            [slot for index in self.output_nodes for slot in node_slots[index]],
+            output_slots,
             engine=coefficient_engine,
             **self.native_options,
+            **cache_options,
         )
         self.coefficient_engine = self.plan.engine
+        # Positional dependency bytecode includes exact constants and ordered
+        # results. Freeze the packed layout and domain, keeping graph metadata
+        # separate. Later mutations of a source DAG cannot alter this key.
+        self.schedule_identity = (
+            states,
+            tuple(tuple(slots) for slots in input_slots),
+            len(positions),
+            output_slots,
+            tuple(
+                (dag.nodes[index].shape, dag.nodes[index].output_labels)
+                for index in self.output_nodes
+            ),
+            dag.variables,
+            dag.variable_weights,
+            (dag.domain, dag.epsilon_power, dag.mu2_power, dag.direct_r2_certified),
+            arithmetic,
+            self.plan.precision_bits,
+            self.coefficient_engine,
+        )
+
+    def sharing_key(self, model_bindings: Mapping[str, Any]) -> tuple[Any, ...]:
+        """Prove equal inputs from fixed exact symbolic model definitions.
+
+        Bindings are the native-name expressions used by the model evaluator.
+        Unbound momentum/state parameters retain their complete identities.
+        No sampled value, flavour multiplicity or graph equivalence is inferred.
+        """
+        bindings = tuple(
+            model_bindings.get(parameter.get_name(), parameter)
+            for parameter in self.parameters
+        )
+        for binding in bindings:
+            require_exact_numbers(binding)
+        return self.schedule_identity, bindings
 
     def evaluate_batch(self, values: Any) -> Any:
         """Return one typed native buffer; rows and their identities are retained."""
@@ -324,3 +366,30 @@ class NativeCoefficientDAG:
             rows, evaluated.columns, 2
         )
         return tuple(np.split(packed, np.cumsum(self.output_widths)[:-1], axis=1))
+
+
+@dataclass(frozen=True, slots=True)
+class CoefficientSharingGroups:
+    """Execution representatives with every original graph position retained."""
+
+    representatives: tuple[int, ...]
+    representative_for: tuple[int, ...]
+
+
+def coefficient_sharing_groups(
+    executors: Sequence[NativeCoefficientDAG], *, model_bindings: Mapping[str, Any]
+) -> CoefficientSharingGroups:
+    """Group exact schedules for output reuse within one evaluation call.
+
+    Every graph retains its colour, multiplicity, polynomial-label and reduction
+    metadata. This helper never reads or retains numerical event values.
+    """
+    representatives, representative_for, seen = [], [], {}
+    for index, executor in enumerate(executors):
+        key = executor.sharing_key(model_bindings)
+        representative = seen.get(key)
+        if representative is None:
+            representative = seen[key] = index
+            representatives.append(index)
+        representative_for.append(representative)
+    return CoefficientSharingGroups(tuple(representatives), tuple(representative_for))

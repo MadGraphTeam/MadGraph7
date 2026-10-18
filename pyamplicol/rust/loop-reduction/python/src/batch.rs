@@ -3,6 +3,7 @@
 //! Typed immutable batch buffers and a validated native coefficient schedule.
 
 use super::*;
+use std::collections::HashMap;
 use std::sync::Arc;
 use symbolica::evaluate::{BatchEvaluator, JITCompilationSettings, JITCompiledEvaluator};
 
@@ -336,6 +337,54 @@ impl ScheduledKernel<f64> for JITCompiledEvaluator<Complex<f64>> {
 // to 64/128 rows; the constructor retains an explicit diagnostic override.
 const DEFAULT_COEFFICIENT_TILE_ROWS: usize = 16;
 
+#[derive(Clone)]
+struct KernelTemplate<E> {
+    evaluator: E,
+    inputs: usize,
+    outputs: usize,
+}
+
+struct KernelCache<E> {
+    templates: HashMap<Vec<u8>, KernelTemplate<E>>,
+    hits: usize,
+}
+
+impl<E> Default for KernelCache<E> {
+    fn default() -> Self {
+        Self {
+            templates: HashMap::new(),
+            hits: 0,
+        }
+    }
+}
+
+fn kernel_template<T, E: Clone>(
+    state: &[u8],
+    prototype: &T,
+    mut cache: Option<&mut KernelCache<E>>,
+    create: impl FnOnce(ExpressionEvaluator<Complex<Rational>>, &T) -> PyResult<E>,
+) -> PyResult<KernelTemplate<E>> {
+    if let Some(cache) = cache.as_deref_mut() {
+        if let Some(template) = cache.templates.get(state) {
+            let template = template.clone();
+            // Never evaluate the cached template: dependency Clone gives each
+            // schedule independent mutable workspace and shared immutable code.
+            cache.hits += 1;
+            return Ok(template);
+        }
+    }
+    let exact = exact_state(state)?;
+    let template = KernelTemplate {
+        inputs: exact.get_input_len(),
+        outputs: exact.get_output_len(),
+        evaluator: create(exact, prototype)?,
+    };
+    if let Some(cache) = cache {
+        cache.templates.insert(state.to_vec(), template.clone());
+    }
+    Ok(template)
+}
+
 struct Node<E> {
     evaluator: E,
     inputs: Vec<usize>,
@@ -364,7 +413,7 @@ where
         outputs: Vec<usize>,
         prototype: T,
         tile_rows: usize,
-        create: impl Fn(ExpressionEvaluator<Complex<Rational>>, &T) -> PyResult<E>,
+        mut create: impl FnMut(&[u8], &T) -> PyResult<KernelTemplate<E>>,
     ) -> PyResult<Self> {
         if states.len() != input_slots.len() {
             return Err(error(
@@ -374,20 +423,20 @@ where
         let mut nodes = Vec::with_capacity(states.len());
         let mut width = inputs;
         for (index, (state, slots)) in states.iter().zip(input_slots).enumerate() {
-            let exact = exact_state(state)?;
-            if exact.get_input_len() != slots.len() || slots.iter().any(|&i| i >= width) {
+            let template = create(state, &prototype)
+                .map_err(|failure| error(format!("coefficient node {index}: {failure}")))?;
+            if template.inputs != slots.len() || slots.iter().any(|&i| i >= width) {
                 return Err(error(
                     "coefficient schedule input map has wrong shape or a forward reference",
                 ));
             }
             let output_offset = width;
-            let output_count = exact.get_output_len();
+            let output_count = template.outputs;
             width = width
                 .checked_add(output_count)
                 .ok_or_else(|| error("coefficient arena dimensions overflow"))?;
             nodes.push(Node {
-                evaluator: create(exact, &prototype)
-                    .map_err(|failure| error(format!("coefficient node {index}: {failure}")))?,
+                evaluator: template.evaluator,
                 inputs: slots.clone(),
                 output_offset,
                 output_count,
@@ -493,6 +542,82 @@ where
     }
 }
 
+enum KernelCaches {
+    Double(KernelCache<BatchExpressionEvaluator<Complex<f64>>>),
+    Jit(KernelCache<JITCompiledEvaluator<Complex<f64>>>),
+    DoubleDouble(KernelCache<BatchExpressionEvaluator<Complex<DoubleFloat>>>),
+    Arbitrary(KernelCache<BatchExpressionEvaluator<Complex<Float>>>),
+}
+
+/// Process-scoped cold evaluator templates; no event values are cached.
+#[pyclass]
+struct CoefficientKernelCache {
+    templates: KernelCaches,
+    #[pyo3(get)]
+    arithmetic: String,
+    #[pyo3(get)]
+    precision_bits: u32,
+    #[pyo3(get)]
+    engine: String,
+}
+
+#[pymethods]
+impl CoefficientKernelCache {
+    #[new]
+    #[pyo3(signature = (arithmetic="double", precision=None, engine="interpreted"))]
+    fn new(arithmetic: &str, precision: Option<u32>, engine: &str) -> PyResult<Self> {
+        let (mode, bits) = arithmetic_mode(arithmetic, precision)?;
+        if !matches!(engine, "interpreted" | "jit") {
+            return Err(error("coefficient engine must be interpreted or jit"));
+        }
+        if engine == "jit" && !matches!(mode, Arithmetic::Double) {
+            return Err(error("coefficient JIT requires double arithmetic"));
+        }
+        let templates = match mode {
+            Arithmetic::Double if engine == "jit" => KernelCaches::Jit(KernelCache::default()),
+            Arithmetic::Double => KernelCaches::Double(KernelCache::default()),
+            Arithmetic::DoubleDouble => KernelCaches::DoubleDouble(KernelCache::default()),
+            Arithmetic::Arbitrary => KernelCaches::Arbitrary(KernelCache::default()),
+        };
+        Ok(Self {
+            templates,
+            arithmetic: arithmetic.into(),
+            precision_bits: bits,
+            engine: engine.into(),
+        })
+    }
+
+    #[getter]
+    fn entries(&self) -> usize {
+        match &self.templates {
+            KernelCaches::Double(c) => c.templates.len(),
+            KernelCaches::Jit(c) => c.templates.len(),
+            KernelCaches::DoubleDouble(c) => c.templates.len(),
+            KernelCaches::Arbitrary(c) => c.templates.len(),
+        }
+    }
+
+    #[getter]
+    fn hits(&self) -> usize {
+        match &self.templates {
+            KernelCaches::Double(c) => c.hits,
+            KernelCaches::Jit(c) => c.hits,
+            KernelCaches::DoubleDouble(c) => c.hits,
+            KernelCaches::Arbitrary(c) => c.hits,
+        }
+    }
+
+    /// Settings are fixed by this adapter and part of the cache's identity.
+    #[getter]
+    fn settings(&self) -> &'static str {
+        if self.engine == "jit" {
+            "use_threads=false;use_simd=true"
+        } else {
+            "dependency-batch-interpreter"
+        }
+    }
+}
+
 enum Schedules {
     Double(Schedule<f64>),
     Jit(Schedule<f64, JITCompiledEvaluator<Complex<f64>>>),
@@ -512,7 +637,7 @@ pub(super) struct CoefficientPlan {
 #[pymethods]
 impl CoefficientPlan {
     #[new]
-    #[pyo3(signature = (states, input_slots, input_count, output_slots, arithmetic="double", precision=None, engine="interpreted", tile_rows=None))]
+    #[pyo3(signature = (states, input_slots, input_count, output_slots, arithmetic="double", precision=None, engine="interpreted", tile_rows=None, kernel_cache=None))]
     fn new(
         states: Vec<Vec<u8>>,
         input_slots: Vec<Vec<usize>>,
@@ -522,6 +647,7 @@ impl CoefficientPlan {
         precision: Option<u32>,
         engine: &str,
         tile_rows: Option<usize>,
+        mut kernel_cache: Option<PyRefMut<'_, CoefficientKernelCache>>,
     ) -> PyResult<Self> {
         let tile_rows = tile_rows.unwrap_or(DEFAULT_COEFFICIENT_TILE_ROWS);
         if tile_rows == 0 {
@@ -534,53 +660,121 @@ impl CoefficientPlan {
         if engine == "jit" && !matches!(mode, Arithmetic::Double) {
             return Err(error("coefficient JIT requires double arithmetic"));
         }
+        if let Some(cache) = &kernel_cache {
+            if cache.arithmetic != arithmetic
+                || cache.precision_bits != bits
+                || cache.engine != engine
+            {
+                return Err(error(
+                    "coefficient kernel cache arithmetic, precision or engine differs",
+                ));
+            }
+        }
+        let cache = kernel_cache
+            .as_deref_mut()
+            .map(|cache| &mut cache.templates);
         let schedule = match mode {
-            Arithmetic::Double if engine == "jit" => Schedules::Jit(Schedule::new(
-                &states,
-                &input_slots,
-                input_count,
-                output_slots,
-                0_f64,
-                tile_rows,
-                |exact, _| {
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        exact.jit_compile::<Complex<f64>>(
-                            JITCompilationSettings::default()
-                                .with_option("use_threads", "false")
-                                .with_option("use_simd", "true"),
+            Arithmetic::Double if engine == "jit" => {
+                let mut cache = match cache {
+                    Some(KernelCaches::Jit(cache)) => Some(cache),
+                    None => None,
+                    _ => unreachable!("validated kernel cache arithmetic and engine"),
+                };
+                Schedules::Jit(Schedule::new(
+                    &states,
+                    &input_slots,
+                    input_count,
+                    output_slots,
+                    0_f64,
+                    tile_rows,
+                    |state, prototype| {
+                        kernel_template(state, prototype, cache.as_deref_mut(), |exact, _| {
+                            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                exact.jit_compile::<Complex<f64>>(
+                                    JITCompilationSettings::default()
+                                        .with_option("use_threads", "false")
+                                        .with_option("use_simd", "true"),
+                                )
+                            }))
+                            .map_err(|_| {
+                                error("dependency JIT compiler panicked on this kernel or host")
+                            })?
+                            .map_err(|failure| {
+                                error(format!("dependency JIT unavailable: {failure}"))
+                            })
+                        })
+                    },
+                )?)
+            }
+            Arithmetic::Double => {
+                let mut cache = match cache {
+                    Some(KernelCaches::Double(cache)) => Some(cache),
+                    None => None,
+                    _ => unreachable!("validated kernel cache arithmetic and engine"),
+                };
+                Schedules::Double(Schedule::new(
+                    &states,
+                    &input_slots,
+                    input_count,
+                    output_slots,
+                    0_f64,
+                    tile_rows,
+                    |state, prototype| {
+                        kernel_template(
+                            state,
+                            prototype,
+                            cache.as_deref_mut(),
+                            |exact, prototype| Ok(batch_evaluator(exact, prototype)),
                         )
-                    }))
-                    .map_err(|_| error("dependency JIT compiler panicked on this kernel or host"))?
-                    .map_err(|failure| error(format!("dependency JIT unavailable: {failure}")))
-                },
-            )?),
-            Arithmetic::Double => Schedules::Double(Schedule::new(
-                &states,
-                &input_slots,
-                input_count,
-                output_slots,
-                0_f64,
-                tile_rows,
-                |exact, prototype| Ok(batch_evaluator(exact, prototype)),
-            )?),
-            Arithmetic::DoubleDouble => Schedules::DoubleDouble(Schedule::new(
-                &states,
-                &input_slots,
-                input_count,
-                output_slots,
-                DoubleFloat::from(0.0),
-                tile_rows,
-                |exact, prototype| Ok(batch_evaluator(exact, prototype)),
-            )?),
-            Arithmetic::Arbitrary => Schedules::Arbitrary(Schedule::new(
-                &states,
-                &input_slots,
-                input_count,
-                output_slots,
-                Float::with_val(bits, 0),
-                tile_rows,
-                |exact, prototype| Ok(batch_evaluator(exact, prototype)),
-            )?),
+                    },
+                )?)
+            }
+            Arithmetic::DoubleDouble => {
+                let mut cache = match cache {
+                    Some(KernelCaches::DoubleDouble(cache)) => Some(cache),
+                    None => None,
+                    _ => unreachable!("validated kernel cache arithmetic and engine"),
+                };
+                Schedules::DoubleDouble(Schedule::new(
+                    &states,
+                    &input_slots,
+                    input_count,
+                    output_slots,
+                    DoubleFloat::from(0.0),
+                    tile_rows,
+                    |state, prototype| {
+                        kernel_template(
+                            state,
+                            prototype,
+                            cache.as_deref_mut(),
+                            |exact, prototype| Ok(batch_evaluator(exact, prototype)),
+                        )
+                    },
+                )?)
+            }
+            Arithmetic::Arbitrary => {
+                let mut cache = match cache {
+                    Some(KernelCaches::Arbitrary(cache)) => Some(cache),
+                    None => None,
+                    _ => unreachable!("validated kernel cache arithmetic and engine"),
+                };
+                Schedules::Arbitrary(Schedule::new(
+                    &states,
+                    &input_slots,
+                    input_count,
+                    output_slots,
+                    Float::with_val(bits, 0),
+                    tile_rows,
+                    |state, prototype| {
+                        kernel_template(
+                            state,
+                            prototype,
+                            cache.as_deref_mut(),
+                            |exact, prototype| Ok(batch_evaluator(exact, prototype)),
+                        )
+                    },
+                )?)
+            }
         };
         Ok(Self {
             schedule,
@@ -831,6 +1025,7 @@ fn massless_spinors_batch(
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<NativeBatch>()?;
     module.add_class::<CoefficientPlan>()?;
+    module.add_class::<CoefficientKernelCache>()?;
     module.add_class::<ReductionBatch>()?;
     module.add_function(wrap_pyfunction!(massless_spinors_batch, module)?)?;
     Ok(())
