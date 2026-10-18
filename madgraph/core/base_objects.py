@@ -2091,6 +2091,25 @@ class Model(PhysicsObject):
         names = self.get_scale_dependent_parameters()
         return any(name in names for name in dependence)
 
+    def get_running_blocks(self):
+        """Names (as in running.py) of the param_card blocks for which a
+        reference scale mdl__<block>__scale is needed: the blocks holding at
+        least one external parameter evolved by the RGE. A restriction can
+        remove every parameter of a block while running.py still lists them;
+        such a block is absent from the param_card and is not requested."""
+
+        # model parameters carry the mdl_ prefix: identify them by lha entry
+        external = set((p.lhablock.lower(), tuple(p.lhacode))
+                       for p in self['parameters'].get(('external',), []))
+        blocks = set()
+        for element in self['running_elements']:
+            for param_list in element.run_objects:
+                for param in param_list:
+                    if param.lhablock.upper() != 'SMINPUTS' and \
+                       (param.lhablock.lower(), tuple(param.lhacode)) in external:
+                        blocks.add(param.lhablock)
+        return blocks
+
 
     def check_majoranas(self):
         """Return True if there is fermion flow violation, False otherwise"""

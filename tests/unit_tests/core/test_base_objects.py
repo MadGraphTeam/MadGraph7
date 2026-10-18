@@ -1213,6 +1213,23 @@ class ModelTestRunning(unittest.TestCase):
         self.assertEqual(plain.get_scale_dependent_parameters(), set(['aS']))
         self.assertFalse(plain.depends_on_scale(('Gf',)))
 
+    def test_get_running_blocks(self):
+        """Only the blocks still holding an external parameter evolved by the
+        RGE need a reference scale: a restriction removing every parameter of
+        a block must not make the param_card ask for its scale."""
+
+        model = copy.copy(self.model)
+        self.assertEqual(model.get_running_blocks(), set(['DIM64F']))
+
+        # emulate a restriction which removes the whole dim64f block
+        model['parameters'] = dict(model['parameters'])
+        model['parameters'][('external',)] = [p for p in
+                         model['parameters'][('external',)]
+                         if p.lhablock.lower() != 'dim64f']
+        self.assertEqual(model.get_running_blocks(), set())
+        # the model itself is untouched
+        self.assertEqual(self.model.get_running_blocks(), set(['DIM64F']))
+
     def test_running_coupling_indexed_by_event(self):
         """The helas calls of a coupling depending on a running Wilson
         coefficient but not on aS carry the event index, as the arrays of
