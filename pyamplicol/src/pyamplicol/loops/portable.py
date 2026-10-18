@@ -21,6 +21,12 @@ from pyamplicol.generation.evaluator_container import (
     write_pacbin_atomic,
 )
 
+from .family_projectors import (
+    bind_family_projector,
+    family_projector_shape,
+    validate_projector_engine,
+)
+
 _PLAN_MEMBER = "schedule/loop-runtime-v2.json"
 _BARE_EVALUATORS = (
     "model_evaluator",
@@ -181,6 +187,7 @@ class PortableLoopPlan:
         precision=None,
         reduction_engine="generic",
         coefficient_engine="interpreted",
+        projector_engine="interpreted",
     ):
         from .kernels import CoefficientSharingGroups
         from .orders import BornLoopPair, VirtualOrderSector
@@ -236,17 +243,20 @@ class PortableLoopPlan:
                 precision=None,
                 reduction_engine="generic",
                 coefficient_engine="interpreted",
+                projector_engine="interpreted",
             ):
                 return self._portable_plan.bind(
                     arithmetic=arithmetic,
                     precision=precision,
                     reduction_engine=reduction_engine,
                     coefficient_engine=coefficient_engine,
+                    projector_engine=projector_engine,
                 )
 
         bare, model = Bare.__new__(Bare), Model.__new__(Model)
         bare.backend, bare.options = backend, options
         bare.arithmetic, bare.precision = arithmetic, precision
+        bare.projector_engine = validate_projector_engine(projector_engine, arithmetic)
         bare.reduction_engine, bare.coefficient_engine = (
             reduction_engine,
             coefficient_engine,
@@ -323,8 +333,23 @@ class PortableLoopPlan:
 
         for name, reference in data["bare_evaluators"].items():
             setattr(bare, name, evaluator(reference))
+        born_widths = tuple(
+            len(data["schedules"][i]["output_slots"]) for i in data["born"]["schedules"]
+        )
+        loop_widths = tuple(
+            len(data["schedules"][i]["output_slots"])
+            for i in data["loops"]["schedules"]
+        )
         bare.families = []
         for item in data["families"]:
+            shape = family_projector_shape(
+                len(bare.helicities),
+                born_widths,
+                loop_widths,
+                item["graph_indices"],
+                len(item["sector_indices"]),
+                len(item["powers"]),
+            )
             bare.families.append(
                 SimpleNamespace(
                     index=item["index"],
@@ -337,7 +362,13 @@ class PortableLoopPlan:
                     ),
                     masses=evaluator(item["mass_state"]),
                     mass_columns=tuple(item["mass_columns"]),
-                    projector=evaluator(item["projector_state"]),
+                    projector=bind_family_projector(
+                        state(item["projector_state"]),
+                        *shape,
+                        backend=backend,
+                        options=options,
+                        engine=projector_engine,
+                    ),
                     reducer=backend.PolynomialPlan(
                         item["propagators"],
                         item["numerators"],

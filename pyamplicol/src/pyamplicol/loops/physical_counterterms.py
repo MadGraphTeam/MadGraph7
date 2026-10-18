@@ -716,6 +716,7 @@ class NativeModelVirtualProgram:
         precision=None,
         reduction_engine="generic",
         coefficient_engine="interpreted",
+        projector_engine="interpreted",
     ):
         """Create a fresh complete numerical view without preparing physics again."""
         return self.prepared.bind(
@@ -724,6 +725,7 @@ class NativeModelVirtualProgram:
             precision=precision,
             reduction_engine=reduction_engine,
             coefficient_engine=coefficient_engine,
+            projector_engine=projector_engine,
             parameters=(
                 self.bare.model_state.snapshot().overrides
                 if self.bare.model_state is not None

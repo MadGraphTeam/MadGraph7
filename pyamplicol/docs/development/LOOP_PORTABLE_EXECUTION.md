@@ -83,6 +83,19 @@ consumer. These are extraction steps toward native coordination; the complete
 process coordinator still runs in Python, and no SDK loop entry point is
 activated by this move.
 
+Family projectors retain the same saved bilinear instructions and packed
+input/output order under both numerical bindings. The default
+`projector_engine="interpreted"` keeps the native batch interpreter in every
+carrier. An explicit `projector_engine="jit"` binds each saved family projector
+as one node in the existing tiled `CoefficientPlan`; this option requires
+`arithmetic="double"`. It is independent of `coefficient_engine`, and is accepted
+at initial construction, retained rebinding and portable binding. DoubleFloat
+and arbitrary precision keep the interpreter; requesting projector JIT for
+those carriers raises an error. This changes neither the bilinear algebra nor
+the PACBIN format, and introduces no arena sharing or dual-Born factorization.
+Every bound view owns fresh evaluator scratch. Engine selection is a binding
+choice and is not an accuracy certificate.
+
 NinjaRS currently exposes no public serialization/rebinding interface for its
 private generic Laurent expansion plan. Loading therefore constructs a fresh
 `PolynomialPlan` from retained exact numerator strings and ordered coefficient

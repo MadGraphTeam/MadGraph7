@@ -543,3 +543,80 @@ def test_native_direct_metadata_rejects_mixed_or_uncertified_sectors(
         _rewrite(source, path, mutate)
         with pytest.raises(ValueError, match=message):
             PortableLoopPlan.open(path)
+
+
+def test_jit_projector_binding_retains_portable_ordered_physics(
+    portable_control, monkeypatch
+):
+    """Only numerical binding changes; saved physical projector bytes remain exact."""
+    from pyamplicol.loops.portable import PortableLoopPlan
+
+    original, path, points = portable_control
+    baseline = original.evaluate_ordered_native(
+        points, ["1000000"] * 3, model_values=["0.118", "173"]
+    )
+    retained = original.prepared
+    _forbid_producer(monkeypatch)
+    options = dict(
+        arithmetic="double",
+        reduction_engine="fast",
+        coefficient_engine="jit",
+        projector_engine="jit",
+    )
+    views = (original.rebind(**options), PortableLoopPlan.open(path).bind(**options))
+    assert original.bare.projector_engine == "interpreted"
+    for view in views:
+        assert view.bare.projector_engine == "jit"
+        assert all(
+            family.projector.engine == "jit" and family.projector.tile_rows == 16
+            for family in view.bare.families
+        )
+        result = view.evaluate_ordered_native(
+            points, ["1000000"] * 3, model_values=["0.118", "173"]
+        )
+        for actual, expected in zip(_batches(result), _batches(baseline), strict=True):
+            assert all(
+                ok for _, ok in actual.agreement_rows(expected, "5e-10", "1e-10")
+            )
+        reference = [batch.to_decimal() for batch in _batches(result)]
+        tail = points[np.arange(17) % 3]
+        ids = [401 + 11 * i for i in range(17)] if view is views[1] else list(range(17))
+        point_options = {"point_ids": ids} if view is views[1] else {}
+        changed = view.evaluate_ordered_native(
+            tail, ["700000"] * 17, model_values=["0.12", "190"], **point_options
+        )
+        expected = original.evaluate_ordered_native(
+            tail, ["700000"] * 17, model_values=["0.12", "190"]
+        )
+        assert changed.batch.point_ids == ids
+        assert changed.statuses == tuple(
+            tuple((ids[row], status) for row, status in group)
+            for group in expected.statuses
+        )
+        for actual, expected_batch in zip(
+            _batches(changed), _batches(expected), strict=True
+        ):
+            assert all(
+                ok
+                for _, ok in actual.agreement_rows(
+                    expected_batch.take_rows(
+                        list(range(expected_batch.rows)), actual.row_ids
+                    ),
+                    "5e-10",
+                    "1e-10",
+                )
+            )
+        assert (
+            view.evaluate_ordered_native(
+                points[:0], [], model_values=["0.118", "173"]
+            ).born.rows
+            == 0
+        )
+        assert [batch.to_decimal() for batch in _batches(result)] == reference
+    assert views[0].prepared is retained
+    assert (
+        views[0].bare.families[0].projector is not views[1].bare.families[0].projector
+    )
+    assert views[0].bare._evaluator_states == original.bare._evaluator_states
+    with pytest.raises(ValueError, match="requires double"):
+        original.rebind(arithmetic="arbitrary", precision=80, projector_engine="jit")

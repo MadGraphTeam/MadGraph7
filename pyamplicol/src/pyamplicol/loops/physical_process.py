@@ -19,6 +19,7 @@ import numpy as np
 
 from .color_bilinears import PhysicalColorSpace, external_color_tensor
 from .exact import require_exact_numbers
+from .family_projectors import bind_family_projector, validate_projector_engine
 from .graph_basis import (
     build_color_loop_recurrence,
     build_color_tree_recurrence,
@@ -202,6 +203,7 @@ class NativeBareProcessProgram:
         precision: int | None = None,
         reduction_engine: str = "generic",
         coefficient_engine: str = "interpreted",
+        projector_engine: str = "interpreted",
         dimensional_numerators: bool = False,
         cache_coefficient_kernels: bool = True,
         share_coefficient_schedules: bool = True,
@@ -212,6 +214,7 @@ class NativeBareProcessProgram:
         from symbolica import E, S
         from symbolica.community import tensor as t
 
+        self.projector_engine = validate_projector_engine(projector_engine, arithmetic)
         self.order_layout = PhysicalOrderLayout.from_plan(process.orders)
         self._evaluator_states = {}
         self._prepared_process = None
@@ -667,6 +670,7 @@ class NativeBareProcessProgram:
         precision=None,
         reduction_engine="generic",
         coefficient_engine="interpreted",
+        projector_engine="interpreted",
     ):
         """Bind retained cold instructions to fresh numerical workspaces."""
         return self.prepared.bind(
@@ -675,6 +679,7 @@ class NativeBareProcessProgram:
             precision=precision,
             reduction_engine=reduction_engine,
             coefficient_engine=coefficient_engine,
+            projector_engine=projector_engine,
             parameters=(
                 self.model_state.snapshot().overrides
                 if self.model_state is not None
@@ -777,17 +782,22 @@ class NativeBareProcessProgram:
                                     ),
                                     E("0"),
                                 )
-        return self._record_evaluator(
-            _record_name,
-            _saved(
-                [
-                    projected[direction, sector, power]
-                    for direction in range(len(metrics))
-                    for sector in sector_indices
-                    for power in powers
-                ],
-                parameters,
-            ),
+        outputs = [
+            projected[direction, sector, power]
+            for direction in range(len(metrics))
+            for sector in sector_indices
+            for power in powers
+        ]
+        state = _saved(outputs, parameters)
+        if _record_name is not None:
+            self._evaluator_states[_record_name] = state
+        return bind_family_projector(
+            state,
+            len(parameters),
+            len(outputs),
+            backend=self.backend,
+            options=self.options,
+            engine=self.projector_engine,
         )
 
     def set_color_metrics(self, born_metric, loop_metric):

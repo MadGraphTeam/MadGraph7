@@ -12,6 +12,11 @@ from dataclasses import dataclass, fields
 from types import MappingProxyType
 from typing import Any
 
+from .family_projectors import (
+    bind_family_projector,
+    family_projector_shape,
+    validate_projector_engine,
+)
 from .kernels import NativeCoefficientDAG, PreparedCoefficientDAG
 from .scalar_bindings import (
     NativeScalarBindings,
@@ -67,7 +72,9 @@ class PreparedFamily:
             tuple(_reduction_numerators(family.powers, names, rational=True)),
         )
 
-    def bind(self, backend, options, reduction_engine):
+    def bind(
+        self, backend, options, reduction_engine, *, projector_shape, projector_engine
+    ):
         from .physical_process import _FamilyProgram
 
         metadata = dict(self.metadata)
@@ -86,7 +93,13 @@ class PreparedFamily:
             **metadata,
             exact_evaluator=backend.ExactPolynomialEvaluator(self.exact_state),
             masses=backend.CoefficientEvaluator(self.mass_state, **options),
-            projector=backend.CoefficientEvaluator(self.projector_state, **options),
+            projector=bind_family_projector(
+                self.projector_state,
+                *projector_shape,
+                backend=backend,
+                options=options,
+                engine=projector_engine,
+            ),
             reducer=reducer(self.numerators),
             rational_reducer=(
                 reducer(self.rational_numerators)
@@ -204,6 +217,7 @@ class PreparedBareProcess:
         precision=None,
         reduction_engine="generic",
         coefficient_engine="interpreted",
+        projector_engine="interpreted",
         parameters=None,
     ):
         from .color_bilinears import PhysicalColorSpace
@@ -218,6 +232,7 @@ class PreparedBareProcess:
         view.arithmetic, view.precision = arithmetic, precision
         view.options = dict(arithmetic=arithmetic, precision=precision)
         view.reduction_engine = reduction_engine
+        view.projector_engine = validate_projector_engine(projector_engine, arithmetic)
         view.coefficient_kernel_cache = (
             backend.CoefficientKernelCache(engine=coefficient_engine, **view.options)
             if view.cache_coefficient_kernels
@@ -236,9 +251,28 @@ class PreparedBareProcess:
         view.born_executors = tuple(map(bind, self.born))
         view.loop_executors = tuple(map(bind, self.loops))
         view.coefficient_engine = view.born_executors[0].coefficient_engine
-        view.families = [
-            f.bind(backend, view.options, reduction_engine) for f in self.families
-        ]
+        born_widths = tuple(len(item.instructions.output_slots) for item in self.born)
+        loop_widths = tuple(len(item.instructions.output_slots) for item in self.loops)
+        view.families = []
+        for family in self.families:
+            metadata = dict(family.metadata)
+            shape = family_projector_shape(
+                len(view.helicities),
+                born_widths,
+                loop_widths,
+                metadata["graph_indices"],
+                len(metadata["sector_indices"]),
+                len(metadata["powers"]),
+            )
+            view.families.append(
+                family.bind(
+                    backend,
+                    view.options,
+                    reduction_engine,
+                    projector_shape=shape,
+                    projector_engine=projector_engine,
+                )
+            )
         view._evaluator_states = dict(self.evaluator_states)
         for name in (
             "born_projector",

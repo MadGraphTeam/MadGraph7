@@ -367,3 +367,41 @@ def test_reselected_plan_preserves_graph_eligibility_not_only_absolute_order(
         item.id for item in contributions
     }
     assert sum(graph.order == _order(2, 2) for graph in program.loop_graphs) == 2
+
+
+def test_jit_family_projection_preserves_mixed_squared_order_axes(setup, native):
+    jit = _program(
+        setup,
+        native,
+        reduction_engine="fast",
+        coefficient_engine="jit",
+        projector_engine="jit",
+    )
+    interpreted = jit.rebind(
+        arithmetic="double",
+        reduction_engine="fast",
+        coefficient_engine="jit",
+        projector_engine="interpreted",
+    )
+    points = setup[3]
+    options = dict(model_values=["0.118", "132.507", "173"], point_ids=[47, 2, 104])
+    reference = interpreted._evaluate_currents_native(
+        interpreted.prepare_currents_native(
+            points, ["1000000", "490000", "2250000"], **options
+        )
+    )
+    result = jit._evaluate_currents_native(
+        jit.prepare_currents_native(points, ["1000000", "490000", "2250000"], **options)
+    )
+    assert jit.order_layout == interpreted.order_layout
+    assert jit.order_channels == interpreted.order_channels
+    assert result.born.columns == 3 and result.virtual.columns == 12
+    assert result.batch.point_ids == [47, 2, 104]
+    assert result.statuses == reference.statuses
+    for actual, expected in (
+        (result.born, reference.born),
+        (result.virtual, reference.virtual),
+    ):
+        assert all(ok for _, ok in actual.agreement_rows(expected, "5e-10", "1e-10"))
+    assert jit.projector_engine == "jit"
+    assert all(family.projector.engine == "jit" for family in jit.families)
