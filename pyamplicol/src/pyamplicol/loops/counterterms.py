@@ -32,6 +32,11 @@ from .graphs import (
     _summed_orders,
 )
 from .model import KernelBasisEntry, LoopModelIR
+from .model_correspondence import (
+    CountertermBasisCorrespondence,
+    OrdinaryBasisCatalogue,
+    OrdinaryBasisRepresentative,
+)
 from .model_expressions import parse_exact_ufo
 
 _TAG = "PYAMPLICOL_CT_INSERTION"
@@ -51,6 +56,13 @@ class CountertermRule:
     # stay in the model; consumers select epsilon sectors after substitution.
     couplings: tuple[tuple[str, KernelBasisEntry], ...]
     coupling_symbols: tuple[Any, ...] = field(default=(), repr=False)
+    basis_correspondences: tuple[CountertermBasisCorrespondence | None, ...] = ()
+
+    @property
+    def has_ordinary_basis_correspondence(self) -> bool:
+        return bool(self.basis_correspondences) and all(
+            item is not None for item in self.basis_correspondences
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +120,7 @@ def prepare_counterterm_model(
     ordinary_model: Any,
     *,
     entries: Iterable[KernelBasisEntry] | None = None,
+    ordinary_basis_representatives: Iterable[OrdinaryBasisRepresentative] = (),
 ) -> PreparedCountertermModel:
     """Append homogeneous, tagged CT rules through native model interchange.
 
@@ -120,6 +133,9 @@ def prepare_counterterm_model(
     from ufo_model_loader.symbolica_processing import wrap_indices
 
     payload = json.loads(ordinary_model.to_json())
+    representatives = OrdinaryBasisCatalogue(
+        source, ordinary_model, ordinary_basis_representatives
+    )
     for collection in ("orders", "couplings", "lorentz_structures", "vertex_rules"):
         if any(item["name"].startswith(_PREFIX) for item in payload[collection]):
             raise ValueError("ordinary model uses the reserved counterterm namespace")
@@ -168,6 +184,29 @@ def prepare_counterterm_model(
         )
         matrix = [[None for _ in lorentz] for _ in colors]
         aliases = []
+        correspondences = tuple(representatives.counterterm(entry) for entry in members)
+        local_colors, local_lorentz = {}, {}
+        for entry, correspondence in zip(members, correspondences, strict=True):
+            color = (
+                correspondence.color
+                if correspondence
+                else parse_exact_ufo(entry.color).to_canonical_string()
+            )
+            lorentz_value = (
+                correspondence.lorentz
+                if correspondence
+                else wrap_indices(parse_exact_ufo(entry.lorentz)).to_canonical_string()
+            )
+            for mapping, index, value in (
+                (local_colors, entry.color_index, color),
+                (local_lorentz, entry.lorentz_index, lorentz_value),
+            ):
+                if index in mapping and mapping[index] != value:
+                    raise ValueError(
+                        "inconsistent ordinary representatives for a shared "
+                        "CT component"
+                    )
+                mapping[index] = value
         for index, entry in enumerate(members):
             alias = f"{name}_C{index}"
             matrix[colors.index(entry.color_index)][
@@ -198,9 +237,7 @@ def prepare_counterterm_model(
                 {
                     "name": tensor_name,
                     "spins": spins,
-                    "structure": wrap_indices(
-                        parse_exact_ufo(entry.lorentz)
-                    ).to_canonical_string(),
+                    "structure": local_lorentz[index],
                 }
             )
             lorentz_names.append(tensor_name)
@@ -208,12 +245,7 @@ def prepare_counterterm_model(
             {
                 "name": name,
                 "particles": [species[pdg]["name"] for pdg in particle_pdgs],
-                "color_structures": [
-                    parse_exact_ufo(
-                        next(e.color for e in members if e.color_index == i)
-                    ).to_canonical_string()
-                    for i in colors
-                ],
+                "color_structures": [local_colors[i] for i in colors],
                 "lorentz_structures": lorentz_names,
                 "couplings": matrix,
             }
@@ -241,6 +273,7 @@ def prepare_counterterm_model(
             alternatives,
             fields.get("perturbation_type"),
             tuple(aliases),
+            basis_correspondences=correspondences,
         )
     native_model = hep.Model.from_json(json.dumps(payload))
     rules = {

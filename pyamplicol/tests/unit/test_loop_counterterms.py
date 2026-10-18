@@ -15,6 +15,7 @@ from pyamplicol.loops.counterterms import (
 )
 from pyamplicol.loops.graphs import build_loop_process
 from pyamplicol.loops.model import build_loop_model
+from pyamplicol.loops.model_correspondence import OrdinaryBasisRepresentative
 from pyamplicol.loops.model_expressions import parse_exact_ufo
 from pyamplicol.models.loop_import import capture_raw_loop_model, load_raw_loop_model
 
@@ -35,6 +36,7 @@ def _source(hep, specifications, native=None):
     module.all_particles = [SimpleNamespace(**p) for p in payload["particles"]]
     species = {p.pdg_code: p for p in module.all_particles}
     module.all_lorentz, module.all_couplings, module.all_CTvertices = [], [], []
+    module.all_vertices = []
     for index, spec in enumerate(specifications):
         particles = [species[pdg] for pdg in spec.get("particles", (-2, 2, 22))]
         lorentz = SimpleNamespace(
@@ -65,7 +67,11 @@ def _source(hep, specifications, native=None):
             vertex.perturbation_type = spec["perturbation_type"]
         module.all_lorentz.append(lorentz)
         module.all_couplings.append(coupling)
-        module.all_CTvertices.append(vertex)
+        if spec.get("kind") == "tree":
+            vertex.couplings = {(0, 0): coupling}
+            module.all_vertices.append(vertex)
+        else:
+            module.all_CTvertices.append(vertex)
     return build_loop_model(capture_raw_loop_model(module)), native
 
 
@@ -342,3 +348,122 @@ def test_real_loop_sm_drell_yan_selects_model_r2_without_uv(hep):
     assert insertion.rule.entries[0].coupling.name == "R2_UUA"
     assert insertion.rule.kind == "R2"
     assert len(prepared.rules) == 74 and prepared.unavailable_entries
+
+
+def _correspondence_source(hep):
+    return _source(
+        hep,
+        [
+            {
+                "kind": "tree",
+                "order": {"QED": 1},
+                "value": "2*complex(0,1)*ee/3",
+                "lorentz": "Gamma(3,2,1)",
+            },
+            {"lorentz": "Gamma(3,2,1)"},
+            {"lorentz": "2*Gamma(3,2,1)"},
+        ],
+    )
+
+
+def test_explicit_ordinary_correspondence_requires_exact_source_basis_identity(hep):
+    source, ordinary = _correspondence_source(hep)
+    tree = next(entry for entry in source.kernels if entry.kind == "tree")
+    representative = OrdinaryBasisRepresentative(
+        tree.key, "V_132", 0, 0, "native-qcd-qed-vector-current-control"
+    )
+    prepared = prepare_counterterm_model(
+        source, ordinary, ordinary_basis_representatives=[representative]
+    )
+    _, ct = _catalogue(prepared)
+    matched = next(i for i in ct.insertions if i.rule.entries[0].vertex_name == "CT1")
+    unmatched = next(i for i in ct.insertions if i.rule.entries[0].vertex_name == "CT2")
+    assert matched.rule.has_ordinary_basis_correspondence
+    assert not unmatched.rule.has_ordinary_basis_correspondence
+    assert matched.rule.basis_correspondences[0].representative == representative
+    assert matched.rule.entries[0].lorentz == "Gamma(3,2,1)"
+    assert (
+        matched.rule.basis_correspondences[0].lorentz
+        == "Gamma(idx(1,3),idx(1,1),idx(1,2))"
+    )
+    assert matched.coefficient_substitutions(0)[0][1] == parse_exact_ufo("b")
+    # Bind both ordinary and CT through the native Feynman-rule interface in
+    # identical local ports. Their geometric tensors agree with couplings removed.
+    tensors = []
+    for name, alias in (
+        ("V_132", ordinary.coupling("GC_2").symbol),
+        (matched.rule.name, matched.rule.coupling_symbols[0]),
+    ):
+        graph = hep.FeynmanDiagram.from_dot(
+            prepared.native,
+            f'''digraph {{
+          ext [style=invis]; v [int_id="{name}"];
+          ext -> v [particle="u~"]; ext -> v [particle="u"]; ext -> v [particle="a"];
+        }}''',
+        ).apply_feynman_rules()
+        tensors.append(
+            graph.vertices[0].numerator_expression().to_expression().replace(alias, 1)
+        )
+    assert (tensors[0] - tensors[1]).expand() == 0
+    assert not prepared.tensor_convention_validated
+
+
+def test_ordinary_correspondence_rejects_wrong_ports_scalar_or_missing_provenance(hep):
+    source, ordinary = _correspondence_source(hep)
+    tree = next(entry for entry in source.kernels if entry.kind == "tree")
+    good = OrdinaryBasisRepresentative(
+        tree.key, "V_132", 0, 0, "vector-current-control"
+    )
+    for bad, message in (
+        (replace(good, native_rule="V_71"), "ordered particle ports"),
+        (replace(good, color_index=1), "basis slot"),
+        (replace(good, calibration=""), "calibration provenance"),
+        (replace(good, source_key=source.counterterms("R2")[0].key), "source ordinary"),
+    ):
+        with pytest.raises(ValueError, match=message):
+            prepare_counterterm_model(
+                source, ordinary, ordinary_basis_representatives=[bad]
+            )
+    payload = json.loads(ordinary.to_json())
+    next(c for c in payload["couplings"] if c["name"] == "GC_2")["expression"] = "1/7"
+    with pytest.raises(ValueError, match="exact coupling expression"):
+        prepare_counterterm_model(
+            source,
+            hep.Model.from_json(json.dumps(payload)),
+            ordinary_basis_representatives=[good],
+        )
+    payload = json.loads(ordinary.to_json())
+    tensor = next(
+        item for item in payload["lorentz_structures"] if item["name"] == "FFV1"
+    )
+    tensor["structure"] = "0.1*(" + tensor["structure"] + ")"
+    with pytest.raises(ValueError, match="floating numeric atoms"):
+        prepare_counterterm_model(
+            source,
+            hep.Model.from_json(json.dumps(payload)),
+            ordinary_basis_representatives=[good],
+        )
+
+
+def test_real_loop_sm_drell_yan_source_basis_correspondence(hep):
+    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
+    if path is None:
+        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to MadLoop loop_sm")
+    source = build_loop_model(load_raw_loop_model(path))
+    tree = next(
+        e
+        for e in source.kernels
+        if e.kind == "tree" and e.particle_names == ("u~", "u", "A")
+    )
+    representative = OrdinaryBasisRepresentative(
+        tree.key, "V_132", 0, 0, "native-qcd-qed-vector-current-control"
+    )
+    prepared = prepare_counterterm_model(
+        source, hep.Model.qcd_qed(), ordinary_basis_representatives=[representative]
+    )
+    _, ct = _catalogue(prepared)
+    assert len(ct.insertions) == 1
+    insertion = ct.insertions[0]
+    assert insertion.rule.has_ordinary_basis_correspondence
+    assert insertion.rule.entries[0].coupling.name == "R2_UUA"
+    assert insertion.rule.basis_correspondences[0].representative.source_key == tree.key

@@ -131,3 +131,21 @@ standard loop UFO. Matching graphs does not validate that convention, supply
 external-leg wavefunction CTs, certify a renormalization scheme, or certify
 formal-Nc continuation. Missing species of a restricted ordinary model remain
 explicitly recorded as unavailable basis entries.
+
+`OrdinaryBasisRepresentative` provides a narrow, explicit convention bridge.
+Its source ordinary basis key, native rule and colour/Lorentz slot identify the
+representative; its required calibration label records the caller's prior
+physical control. Preparation checks identical ordered signed PDGs, spins and
+colour representations, exact ordinary scalar and coupling order, and exact
+colour structure. A CT can reuse that representative only when its source
+Lorentz and colour expressions equal the source ordinary basis exactly. The
+counterterm's Laurent coefficient is retained. Native model symbols are used
+for substitutions, and approximate numeric atoms in representatives are rejected.
+
+This does not infer any Lorentz convention from names or transpose a gamma
+matrix. The first explicit mapping is the source `u~ u A` vector current to
+the bundled native `V_132` basis `(0,0)`. Each CT rule records its proven source
+identity and whether all entries have a representative. Unmatched structures
+remain uncalibrated; chiral, Sigma and new two/four-point structures acquire no
+certificate from this mapping. A calibration label alone is not a physical
+validation result, and the whole-model convention flag remains false.
