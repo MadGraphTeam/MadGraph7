@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 """Internal native bare-process assembly over verified graph families.
 
-This physical control supports on-shell Dirac and massless vector states,
-one Born order and one virtual squared-order sector. Local currents, exact SU(3)
+This physical control supports on-shell Dirac and massless vector states.
+Local currents, explicit perturbative-order pairs, exact SU(3)
 bilinears and native family maps determine every numerator. UV/R2 completion,
 formal-Nc projection and public process dispatch remain separate boundaries.
 Supplied momenta must satisfy the model's external masses. This internal control
@@ -34,6 +34,11 @@ from .kernels import (
 )
 from .kinematics import build_loop_kinematics
 from .physical import _saved
+from .physical_orders import (
+    OrderedBareProcessResult,
+    PhysicalOrderLayout,
+    SummedBareValues,
+)
 from .recurrence import momentum_component_library
 
 
@@ -116,6 +121,7 @@ def _color_bilinear(left, right, average):
 class _FamilyProgram:
     index: int
     graph_indices: tuple[int, ...]
+    sector_indices: tuple[int, ...]
     powers: tuple[tuple[int, ...], ...]
     kinematics: Any
     exact_evaluator: Any
@@ -189,8 +195,11 @@ class NativeBareProcessProgram:
         from symbolica import E, S
         from symbolica.community import tensor as t
 
-        if len(process.orders.born_orders) != 1 or len(process.orders.sectors) != 1:
-            raise NotImplementedError("physical control requires one Born/order sector")
+        self.order_layout = PhysicalOrderLayout.from_plan(process.orders)
+        if dimensional_numerators and not self.order_layout.is_single:
+            raise NotImplementedError(
+                "multi-order dimensional assembly is not certified"
+            )
         if any(
             kind not in {"u", "v", "u_bar", "v_bar", "epsilon", "epsilon_bar"}
             for kind in state_kinds
@@ -202,9 +211,18 @@ class NativeBareProcessProgram:
         self.model_expressions = MappingProxyType(dict(model_expressions))
         for expression in self.model_expressions.values():
             require_exact_numbers(expression)
-        selected_loop_orders = {pair.loop for pair in process.orders.sectors[0].pairs}
+        selected_loop_orders = {
+            pair.loop for sector in process.orders.sectors for pair in sector.pairs
+        }
+        selected_loop_ids = {
+            contribution.id
+            for contribution in process.orders.contributions
+            if contribution.kind == "loop"
+        }
         self.loop_graphs = tuple(
-            graph for graph in process.loops if graph.order in selected_loop_orders
+            graph
+            for graph in process.loops
+            if graph.id in selected_loop_ids and graph.order in selected_loop_orders
         )
         self.process, self.backend = process, backend
         self.external_masses = tuple(
@@ -356,6 +374,9 @@ class NativeBareProcessProgram:
             )
             for item in self.born_recurrences
         )
+        self.born_term_orders = tuple(
+            item.graph.order for item in self.born_recurrences for _ in item.terms
+        )
         self.loop_executors = tuple(
             NativeCoefficientDAG(
                 recurrence.dag,
@@ -426,6 +447,15 @@ class NativeBareProcessProgram:
             )
             if not indices:
                 continue
+            sector_indices = tuple(
+                sector_index
+                for sector_index, sector in enumerate(self.order_layout.virtual)
+                if any(
+                    self.loop_graphs[index].order == pair.loop
+                    for index in indices
+                    for pair in sector.pairs
+                )
+            )
             plans = [
                 build_loop_kinematics(self.recurrences[i], family_order=True)
                 for i in indices
@@ -468,6 +498,7 @@ class NativeBareProcessProgram:
                 _FamilyProgram(
                     family.index,
                     indices,
+                    sector_indices,
                     powers,
                     plan,
                     backend.ExactPolynomialEvaluator(plan.evaluator_bytes()),
@@ -476,7 +507,7 @@ class NativeBareProcessProgram:
                     ),
                     mass_parameters,
                     tuple(self.model_positions[p.get_name()] for p in mass_parameters),
-                    self._compile_family_projection(indices, powers),
+                    self._compile_family_projection(indices, powers, sector_indices),
                     backend.PolynomialPlan(
                         plan.propagators,
                         _reduction_numerators(powers, names),
@@ -495,23 +526,53 @@ class NativeBareProcessProgram:
                     else None,
                 )
             )
-        poles = [
-            [S(f"loop_physical_process::family{i}_pole{p}") for p in range(3)]
-            for i in range(len(self.families))
-        ]
+        self.order_channels = tuple(
+            (sector, family.index)
+            for family in self.families
+            for sector in family.sector_indices
+        )
+        poles = {
+            (sector, family): [
+                S(f"loop_physical_process::family{family}_order{sector}_pole{p}")
+                for p in range(3)
+            ]
+            for sector, family in self.order_channels
+        }
         values = [
-            E("1i") * sum((row[p] for row in poles), E("0")) / (16 * E("pi") ** 2)
+            E("1i")
+            * sum(
+                (row[p] for (order, _), row in poles.items() if order == sector),
+                E("0"),
+            )
+            / (16 * E("pi") ** 2)
+            for sector in range(len(self.order_layout.virtual))
             for p in range(3)
         ]
         self.postprocess = backend.CoefficientEvaluator(
             _saved(
                 [value + value.conj() for value in values],
-                [p for row in poles for p in row],
+                [p for row in poles.values() for p in row],
             ),
             **self.options,
         )
         self.zero_poles = backend.CoefficientEvaluator(
             _saved([E("0")] * 3, []), **self.options
+        )
+        born_orders = [
+            S(f"loop_physical_process::born_order{i}")
+            for i in range(len(self.order_layout.born))
+        ]
+        virtual_orders = [
+            [S(f"loop_physical_process::virtual_order{i}_pole{p}") for p in range(3)]
+            for i in range(len(self.order_layout.virtual))
+        ]
+        self.sum_order_values = backend.CoefficientEvaluator(
+            _saved(
+                [sum(born_orders, E("0"))]
+                + [sum((row[p] for row in virtual_orders), E("0")) for p in range(3)],
+                [*born_orders, *(p for row in virtual_orders for p in row)],
+            ),
+            **self.options,
         )
 
     def _born_symbols(self):
@@ -529,23 +590,38 @@ class NativeBareProcessProgram:
         from symbolica import E
 
         symbols = self._born_symbols()
-        value = sum(
-            (
-                left.conj() * right * self.born_metric[i][j]
-                for row in symbols
-                for i, left in enumerate(row)
-                for j, right in enumerate(row)
-            ),
-            E("0"),
-        )
+        values = [
+            sum(
+                (
+                    left.conj() * right * self.born_metric[i][j]
+                    for row in symbols
+                    for i, left in enumerate(row)
+                    for j, right in enumerate(row)
+                    if (self.born_term_orders[i], self.born_term_orders[j])
+                    in sector.pairs
+                ),
+                E("0"),
+            )
+            for sector in self.order_layout.born
+        ]
         self.born_projector = self.backend.CoefficientEvaluator(
-            _saved([value], [value for row in symbols for value in row]), **self.options
+            _saved(values, [value for row in symbols for value in row]), **self.options
         )
 
-    def _compile_family_projection(self, indices, powers):
+    def _compile_family_projection(self, indices, powers, sector_indices):
         from symbolica import E, S
 
-        projected, parameters = {power: E("0") for power in powers}, []
+        projected = {
+            (sector, power): E("0") for sector in sector_indices for power in powers
+        }
+        pairs = {
+            sector: {
+                (pair.born, pair.loop)
+                for pair in self.order_layout.virtual[sector].pairs
+            }
+            for sector in sector_indices
+        }
+        parameters = []
         for helicity, born in enumerate(self._born_symbols()):
             parameters.extend(born)
             for index in indices:
@@ -558,17 +634,31 @@ class NativeBareProcessProgram:
                         parameters.append(coefficient)
                         if power is None:
                             continue
-                        projected[power] += sum(
-                            (
-                                value.conj()
-                                * self.loop_metric[b][term_index]
-                                * coefficient
-                                for b, value in enumerate(born)
-                            ),
-                            E("0"),
-                        )
+                        for sector in sector_indices:
+                            projected[sector, power] += sum(
+                                (
+                                    value.conj()
+                                    * self.loop_metric[b][term_index]
+                                    * coefficient
+                                    for b, value in enumerate(born)
+                                    if (
+                                        self.born_term_orders[b],
+                                        self.loop_graphs[index].order,
+                                    )
+                                    in pairs[sector]
+                                ),
+                                E("0"),
+                            )
         return self.backend.CoefficientEvaluator(
-            _saved([projected[p] for p in powers], parameters), **self.options
+            _saved(
+                [
+                    projected[sector, power]
+                    for sector in sector_indices
+                    for power in powers
+                ],
+                parameters,
+            ),
+            **self.options,
         )
 
     def set_color_metrics(self, born_metric, loop_metric):
@@ -599,7 +689,7 @@ class NativeBareProcessProgram:
         self._compile_born_projection()
         for family in self.families:
             family.projector = self._compile_family_projection(
-                family.graph_indices, family.powers
+                family.graph_indices, family.powers, family.sector_indices
             )
 
     def evaluate_decimal(self, momenta, scales_squared, *, model_values):
@@ -629,7 +719,58 @@ class NativeBareProcessProgram:
             ),
         )
 
+    def require_single_order(self, context):
+        if not self.order_layout.is_single:
+            raise NotImplementedError(
+                f"{context} requires one Born squared order and one virtual squared "
+                "order; use ordered bare evaluation for multiple sectors"
+            )
+
     def evaluate_native(self, momenta, scales_squared, *, model_values):
+        """Single-sector adapter with an explicit check before removing order axes."""
+        self.require_single_order("single-sector physical adapter")
+        return self.evaluate_ordered_native(
+            momenta, scales_squared, model_values=model_values
+        )
+
+    def evaluate_ordered_decimal(self, momenta, scales_squared, *, model_values):
+        result = self.evaluate_ordered_native(
+            momenta, scales_squared, model_values=model_values
+        )
+        size = result.batch.size
+
+        def values(batch, *shape):
+            return np.asarray(batch.to_decimal(), dtype=object).reshape(size, *shape, 2)
+
+        totals = self.sum_order_values.evaluate_batch(
+            self.backend.NativeBatch.concat_columns([result.born, result.virtual])
+        )
+        require_finite_batch(totals, "sum over perturbative orders")
+        summed = values(totals, 4)
+        rational = None
+        summed_rational = None
+        if result.rational is not None:
+            rational = values(result.rational, len(self.order_layout.virtual), 3)
+            # Dimensional assembly currently has one explicit sector.
+            summed_rational = rational[:, 0]
+        return OrderedBareProcessResult(
+            values(result.born, len(self.order_layout.born)),
+            values(result.virtual, len(self.order_layout.virtual), 3),
+            self.order_layout,
+            self.order_channels,
+            result.statuses,
+            self.arithmetic,
+            self.precision,
+            self.reduction_engine,
+            self.coefficient_engine,
+            SummedBareValues(summed[:, 0], summed[:, 1:], summed_rational),
+            rational,
+            convention="MadLoop-Cepsilon-separated-N4-and-direct-R2-no-UV"
+            if self.dimensional_numerators
+            else "MadLoop-Cepsilon-bare-four-dimensional-no-R2-no-UV",
+        )
+
+    def evaluate_ordered_native(self, momenta, scales_squared, *, model_values):
         """Original decimal input enters exact kinematics and native arithmetic."""
         momenta, scales = (
             np.asarray(momenta, dtype=object),
@@ -699,9 +840,22 @@ class NativeBareProcessProgram:
             coefficients = family.projector.evaluate_batch(
                 inputs.reshape_rows(size, helicities * inputs.columns, point_ids)
             )
+            channel_count = len(family.sector_indices)
+            row_ids = (
+                (
+                    np.arange(size)[:, None] * len(self.order_layout.virtual)
+                    + np.asarray(family.sector_indices)[None, :]
+                )
+                .reshape(-1)
+                .tolist()
+            )
+            point_rows = np.repeat(np.arange(size), channel_count).tolist()
+            coefficients = coefficients.reshape_rows(
+                size * channel_count, len(family.powers), row_ids
+            )
             bindings = family.exact_evaluator.evaluate_decimal(
                 momenta_pairs, size, **self.options
-            )
+            ).take_rows(point_rows, row_ids=row_ids)
             n = family.kinematics.propagators
             shifts, matrix = (
                 bindings.take_columns(list(range(4 * n))),
@@ -709,22 +863,35 @@ class NativeBareProcessProgram:
             )
             masses = family.masses.evaluate_batch(
                 model.take_columns(family.mass_columns)
-            ).take_rows([0] * size, row_ids=point_ids)
+            ).take_rows([0] * (size * channel_count), row_ids=row_ids)
+            channel_scales = scales.take_rows(point_rows, row_ids=row_ids)
             reduced = family.reducer.evaluate_batch(
-                shifts, masses, scales, coefficients, s_matrix=matrix
+                shifts, masses, channel_scales, coefficients, s_matrix=matrix
             )
             failures = [
-                (point, family.index, status)
-                for point, status in reduced.statuses
+                (*divmod(row, len(self.order_layout.virtual)), family.index, status)
+                for row, status in reduced.statuses
                 if status != "success"
             ]
             if failures:
                 raise ArithmeticError(
-                    "native process reduction failed (point, family, status): "
+                    "native process reduction failed (point, order, family, status): "
                     f"{failures}"
                 )
-            integrated.append(reduced.values)
-            statuses.append(tuple(reduced.statuses))
+            integrated.append(
+                reduced.values.reshape_rows(size, channel_count * 3, point_ids)
+            )
+            status_by_row = dict(reduced.statuses)
+            statuses.extend(
+                tuple(
+                    (
+                        point,
+                        status_by_row[point * len(self.order_layout.virtual) + sector],
+                    )
+                    for point in range(size)
+                )
+                for sector in family.sector_indices
+            )
             if self.dimensional_numerators:
                 if family.rational_reducer is None:
                     rational_integrated.append(
@@ -732,7 +899,7 @@ class NativeBareProcessProgram:
                     )
                 else:
                     rational = family.rational_reducer.evaluate_batch(
-                        shifts, masses, scales, coefficients, s_matrix=matrix
+                        shifts, masses, channel_scales, coefficients, s_matrix=matrix
                     )
                     failures = [
                         (point, family.index, status)
@@ -744,7 +911,9 @@ class NativeBareProcessProgram:
                             "native dimensional remainder reduction failed "
                             f"(point, family, status): {failures}"
                         )
-                    rational_integrated.append(rational.values)
+                    rational_integrated.append(
+                        rational.values.reshape_rows(size, channel_count * 3, point_ids)
+                    )
         virtual = self.postprocess.evaluate_batch(batch_type.concat_columns(integrated))
         require_finite_batch(virtual, "bare virtual assembly")
         rational = None

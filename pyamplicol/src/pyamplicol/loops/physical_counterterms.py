@@ -110,6 +110,7 @@ class NativeModelVirtualProgram:
         from .color_bilinears import SUNColorSpace, external_color_tensor
         from .physical_color import project_physical_color, split_color_grades
 
+        bare.require_single_order("model counterterm assembly")
         self.bare = bare
         if r2_strategy not in {"model", "direct"}:
             raise ValueError("internal R2 strategy must be model or direct")

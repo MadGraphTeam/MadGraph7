@@ -351,7 +351,7 @@ the proof. Every graph keeps its original position, colour, signs and family
 mapping. `cache_coefficient_kernels=False` and
 `share_coefficient_schedules=False` retain the uncached, unshared diagnostic path;
 both switches default to true. Cache statistics and frozen representative maps
-are available on the internal program. Numerical outputs are never retained
+are available on the internal program. Numerical outputs are never reused
 between evaluation calls.
 
 The internal `gluon_scattering_qcd_program` uses actual native massless vector
@@ -461,3 +461,54 @@ them separately prevents that cancellation from hiding a scale-binding error.
 Reference finite-amplitude agreement remains a binary64 check. This control
 still selects one Born coupling order and one virtual squared-order sector;
 projected multiple-colour-term CT assembly is unsupported.
+
+## Ordered bare interference
+
+`NativeBareProcessProgram.evaluate_ordered_native` and
+`evaluate_ordered_decimal` retain every structural squared-order sector from
+the generated catalogue. Born and loop currents are still evaluated once per
+exact shared schedule. Each Born terminal has its graph's absolute amplitude
+order; a family projector includes a Born/loop term only when its exact pair
+occurs in the corresponding `LoopOrderPlan` sector. Joint correction eligibility
+remains a graph-construction decision and is never reconstructed from an order
+difference. Execution also retains the plan's exact contribution IDs, so a
+singleton correction selection cannot inherit same-order mixed graphs from a
+larger joint catalogue.
+
+The native projector produces complex coefficients indexed by sector and
+monomial. Reduction batches pack point and active sector into lanes, with the
+reversible ID `point * number_of_virtual_sectors + sector`. One exact family
+kinematic evaluation is broadcast to those lanes. Real parts are taken only
+after integration. Status columns retain explicit `(sector, family)` metadata;
+failures identify the original point, sector and family.
+
+`OrderedBareProcessResult` has decimal complex-pair arrays with shapes
+`born[point, born_squared_order, 2]` and
+`virtual[point, virtual_squared_order, epsilon, 2]`. Epsilon powers are
+`(0, -1, -2)`. Canonical order metadata includes all contributing amplitude
+pairs and selected correction names. `born_order` and `virtual_order` reject
+absent selectors. `sum_orders()` is explicit and uses sums evaluated in the
+native arithmetic carrier before decimal transport. Result arrays are read-only.
+Structurally generated sectors remain present even when an exact colour
+identity makes their value zero.
+
+The mixed QCD/QED distinct-flavour four-quark control has Born sectors 40, 22,
+04 and virtual sectors 60, 42, 24, 06, where digits denote fundamental QCD and
+QED coupling powers. Born 22 vanishes by colour. Virtual 42 contains both
+B20/L22 and B02/L40, whose separate nonzero contributions are tested before
+summing. Independent Born and universal double-pole formulas, coupling rescaling,
+explicit order sums and empty/rebound batches cover all three arithmetic modes.
+An independent MadLoop export with no counterterm amplitudes checks every Born
+and virtual sector at three points, including all Laurent coefficients. Separate
+Born-source filters independently check both contributions to virtual 42.
+These reference comparisons are binary64 controls; the precision checks use
+the exact Born, infrared and coupling-scaling identities separately.
+
+The multi-order boundary is four-dimensional bare interference. Counterterm,
+formal-colour and direct-dimensional completion reject explicitly until their
+sector-aware extensions are validated. Existing single-sector adapters remain
+unchanged and remove the order axes only after checking that both Born and
+virtual catalogues have exactly one entry.
+For the existing single-sector dimensional diagnostic, ordered `virtual` still
+contains N4 alone and `rational` contains the separate direct remainder; the
+convention explicitly labels both channels without claiming UV completion.

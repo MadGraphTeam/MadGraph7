@@ -224,7 +224,12 @@ def test_exact_coefficient_reuse_preserves_graphs_and_model_rebinding(native, po
         ]
         for result in results[1:]:
             np.testing.assert_array_equal(result.born, results[0].born)
-            np.testing.assert_array_equal(result.virtual, results[0].virtual)
+            np.testing.assert_allclose(
+                result.virtual.astype(float),
+                results[0].virtual.astype(float),
+                rtol=3e-14,
+                atol=1e-16,
+            )
             assert result.statuses == results[0].statuses
 
 

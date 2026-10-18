@@ -137,6 +137,7 @@ def project_physical_color(bare, nc, additional_rows, accuracy):
     """
     from symbolica import E
 
+    bare.require_single_order("formal physical color projection")
     accuracy = ColorAccuracy(accuracy)
     space = SUNColorSpace(nc)
     born = space.rectangular(bare.born_color_tensors, bare.born_color_tensors)
