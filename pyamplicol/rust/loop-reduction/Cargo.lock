@@ -2090,6 +2090,7 @@ dependencies = [
 name = "rusticol-loop-python"
 version = "0.1.0"
 dependencies = [
+ "feynkit-kinematics",
  "pyo3",
  "rusticol-core",
  "rusticol-loop-reduction",

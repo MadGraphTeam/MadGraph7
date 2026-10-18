@@ -101,6 +101,24 @@ wavefunctions. Its rows contain positive on-shell physical momenta, helicities
 Chiral adjoints map the existing core states to these names. Execution is one
 native bulk call, with no claim of hardware SIMD for these scalar routines.
 
+`wavefunctions_batch(momenta, helicities, kinds)` calls the pinned FeynKit
+precision-generic wavefunction API for real four-momenta. It supports `u`,
+`u_bar`, `v`, `v_bar`, `epsilon`, `epsilon_bar`, and `scalar`. It preserves the
+supplied momentum; FeynKit infers mass from its energy and spatial components.
+The caller must separately validate consistency with a declared model mass.
+`on_shell_wavefunctions_batch(spatial_momenta, masses, helicities, kinds)` is
+an explicit construction interface using FeynKit's existing on-shell operation;
+it returns both the resulting four-momenta and states. Masses are real and
+nonnegative. Both calls preserve row IDs and all three arithmetic carriers.
+Scalar rows have one component and vector/spinor rows have four; a batch must
+have a common width. Optional `components` validates this width, including empty
+scalar batches (the empty default is four). Fermion rest states are supported;
+longitudinal vectors at rest remain an explicit dependency-domain error. No
+unstable external particle or complex external mass prescription is implied.
+Tests verify the calibrated massless convention, massive spin sums using
+dependency gamma matrices, vector transversality/completeness, and mass bits
+beyond binary64. Numerical execution is a native block of dependency routines.
+
 `NativeBatch` keeps immutable typed values with explicit row IDs. It supports
 column selection/concatenation, row compaction/broadcasting, and row regrouping;
 new IDs must be explicit when broadcasting or regrouping. Concatenation and
