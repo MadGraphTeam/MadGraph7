@@ -15,12 +15,13 @@ use std::ops::Add;
 use ninjars::fast::{
     C64, FastAmplitude, FastInput, FastNumerator, FastOptions, FastResult, FastStatus,
 };
-use ninjars::{Amplitude, AmplitudeInput, Complex, EvaluationStatus, Numerator, Real, Result};
+use ninjars::{Amplitude, Numerator, Real, Result};
+pub use ninjars::{AmplitudeInput, Complex, EvaluationStatus, FourMomentum};
 use ninjars_symbolica::{
     OneLoopNativeMasters, PolynomialNumerator, SymbolicaAmplitudeKernels, SymbolicaCuts,
     SymbolicaHighCuts, SymbolicaMasters,
 };
-use oneloop::NativeFloat;
+pub use oneloop::NativeFloat;
 use symbolica::{atom::Atom, evaluate::EvaluationDomain};
 
 /// Named coefficients avoid confusing Ninja's finite-first convention with

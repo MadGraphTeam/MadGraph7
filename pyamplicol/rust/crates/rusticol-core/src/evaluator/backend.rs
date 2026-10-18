@@ -2624,6 +2624,14 @@ fn load_evaluator_state_bytes(
 }
 
 #[cfg(feature = "symbolica-runtime")]
+pub(crate) fn decode_exact_evaluator_state(
+    bytes: &[u8],
+) -> RusticolResult<ExpressionEvaluator<Complex<Rational>>> {
+    load_evaluator_state_bytes(bytes, "Python Evaluator.save()")
+        .map(|(_, evaluator, _)| evaluator)
+}
+
+#[cfg(feature = "symbolica-runtime")]
 fn ensure_evaluator_state_consumed(
     display_name: &str,
     encoded_len: usize,

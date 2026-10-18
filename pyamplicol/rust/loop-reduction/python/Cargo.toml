@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+
+[package]
+name = "rusticol-loop-python"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "0BSD"
+publish = false
+
+[lib]
+name = "_loop_reduction"
+crate-type = ["cdylib"]
+test = false
+doctest = false
+
+[dependencies]
+pyo3 = { version = "0.29", features = ["extension-module", "abi3-py311"] }
+rusticol-core = { path = "../../crates/rusticol-core", features = ["symbolica-runtime", "python-generation-bridge"] }
+rusticol-loop-reduction = { path = ".." }
+symbolica = { version = "=3.0.1", default-features = false, features = ["integer-gmp", "float-mpfr"] }

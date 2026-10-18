@@ -96,6 +96,19 @@ pub mod __private {
     };
     use crate::recurrence::{PreparedDirectExecutorCatalog, SemanticDigest};
 
+    /// Decode the exact coefficients of a Python `Evaluator.save()` payload.
+    /// Reuses the production decoder and its complete-input validation.
+    #[cfg(feature = "symbolica-runtime")]
+    pub fn decode_exact_evaluator_state(
+        bytes: &[u8],
+    ) -> RusticolResult<
+        symbolica::evaluate::ExpressionEvaluator<
+            symbolica::domains::float::Complex<symbolica::domains::rational::Rational>,
+        >,
+    > {
+        crate::engine::decode_exact_evaluator_state(bytes)
+    }
+
     /// Unstable cold-path bridge for the private PyO3 artifact generator.
     #[doc(hidden)]
     pub fn compile_symbolica_program_to_plane_application_bytes(

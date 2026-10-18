@@ -28,8 +28,9 @@ diagnostic is already included in the finite coefficient.
 ## Dependency setup and checks
 
 The ignored `upstream` symlink points to a NinjaRS checkout with its own
-dependency references populated. This temporary standalone layout avoids
-mixing the application's older Symbolica version with the reduction stack.
+dependency references populated. This temporary standalone layout keeps the
+application's ordinary checkout buildable while upstream packaging is pending.
+Its Symbolica version is aligned with the application's shared core.
 The implementation workspace uses:
 
 - NinjaRS `89156ddfa7d4f08f27386d53c0fd985d56ec321d`.
@@ -65,6 +66,39 @@ dimensional-algebra fixture in `tools/loop_reference/diphoton_r2.json` to the
 reducer. It preserves rational inputs and verifies the evanescent remainder in
 all three arithmetic modes, including changing batch sizes and epsilon-sector
 assembly. This internal fixture does not enable loop-induced production.
+
+## Experimental native Python consumer
+
+The `python` member builds `_loop_reduction`, a developer-only PyO3 extension.
+It links the real shared core and reuses its production `Evaluator.save()`
+decoder. `CoefficientEvaluator` maps exact coefficients to the chosen carrier
+and calls Symbolica's instruction-batched evaluator. `PolynomialPlan` reduces
+three explicit numerator epsilon sectors and combines their Laurent values
+inside Rust. Both release the Python GIL during batch evaluation.
+
+```sh
+cargo build --locked -p rusticol-loop-python
+mkdir -p "$PYLOOP_WORKSPACE/builds/loop-python-module"
+cp "$CARGO_TARGET_DIR/debug/lib_loop_reduction.so" \
+  "$PYLOOP_WORKSPACE/builds/loop-python-module/_loop_reduction.so"
+PYTHONPATH="$PYLOOP_WORKSPACE/builds/loop-python-module" \
+  python -m pytest python/test_consumer.py -q
+```
+
+Precision 16 uses binary64, precision 32 uses true 106-bit DoubleFloat, and
+higher requested decimal precision uses an MPFR-backed Float. Decimal input
+pairs avoid binary64 conversion; explicitly sized decimal output retains enough
+digits to round-trip each carrier. Buffers are flattened lane-major complex
+pairs, with four pairs per momentum and one original ID per lane. The three
+returned entries are **finite, single pole, double pole** in raw integral
+normalization. Failed lanes carry `None` instead of numerical values.
+
+This is a native batch conformance boundary, not a public virtual-amplitude
+API or a completed fast evaluation pipeline. Production coefficient-DAG
+scheduling, buffer reuse across Python boundaries, physical normalization,
+precision rescue, and the binary64 fast reduction path remain integration work.
+The main workspace excludes this experimental workspace and has no NinjaRS path
+dependency, so its normal builds do not require the `upstream` symlink.
 
 ## Remaining gates
 
