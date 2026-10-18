@@ -95,6 +95,17 @@ fn decimals<T: Carrier>(values: &[Complex<T>], bits: u32) -> Vec<DecimalComplex>
         .map(|v| decimal_complex(v, bits))
         .collect()
 }
+fn nonfinite<T: Carrier>(values: &[Complex<T>], columns: usize, ids: &[u64]) -> Vec<u64> {
+    ids.iter()
+        .enumerate()
+        .filter_map(|(row, &id)| {
+            values[row * columns..(row + 1) * columns]
+                .iter()
+                .any(|value| !value.re.is_finite() || !value.im.is_finite())
+                .then_some(id)
+        })
+        .collect()
+}
 fn take<T: BatchCarrier>(
     values: &[Complex<T>],
     source_columns: usize,
@@ -156,6 +167,13 @@ impl NativeBatch {
             Data::Double(v) => decimals(v, self.precision_bits),
             Data::DoubleDouble(v) => decimals(v, self.precision_bits),
             Data::Arbitrary(v) => decimals(v, self.precision_bits),
+        })
+    }
+    fn nonfinite_rows(&self, py: Python<'_>) -> Vec<u64> {
+        py.detach(|| match &self.data {
+            Data::Double(v) => nonfinite(v, self.columns, &self.ids),
+            Data::DoubleDouble(v) => nonfinite(v, self.columns, &self.ids),
+            Data::Arbitrary(v) => nonfinite(v, self.columns, &self.ids),
         })
     }
     #[pyo3(signature = (indices, row_ids=None))]

@@ -124,6 +124,9 @@ column selection/concatenation, row compaction/broadcasting, and row regrouping;
 new IDs must be explicit when broadcasting or regrouping. Concatenation and
 reduction reject mismatched IDs, carriers, or working precision. Decimal strings
 are needed only at external ingress/egress, not between numerical stages.
+`nonfinite_rows()` checks both components directly in the native carrier and
+returns original row IDs, allowing physical assembly to reject nonfinite Born,
+counterterm or contraction values without decimal conversion.
 
 `CoefficientPlan` consumes saved local evaluators and integer input slot maps.
 Its arena is `[global parameters | node 0 outputs | node 1 outputs | ...]`;
