@@ -5,30 +5,22 @@
 
 mod batch;
 mod exact;
-mod fast;
 mod portable;
 mod stability;
 mod states;
 use batch::{Data, NativeBatch};
-use fast::FastReductions;
 
 use pyo3::{exceptions::PyValueError, prelude::*};
-use rusticol_loop_reduction::{
-    AmplitudeInput, Complex, EvaluationStatus, FourMomentum, Lane, Laurent, PolynomialReducer,
-    SamplingScaleProvider, SamplingScaleSource, SamplingScaleStatus, SymbolicaSamplingScales,
-};
+use rusticol_loop_reduction::Complex;
 use symbolica::{
-    atom::Atom,
-    domains::float::{DoubleFloat, Float, Real},
+    domains::float::{DoubleFloat, Float},
     domains::rational::Rational,
-    evaluate::EvaluationDomain,
 };
 
+use runtime::{DecimalMomentum, RawLane};
 use rusticol_loop_reduction::runtime::{
     self, Arithmetic, Carrier, DecimalComplex, decimal_complex,
 };
-type DecimalMomentum = [DecimalComplex; 4];
-type RawLane = (u64, String, Option<[DecimalComplex; 3]>);
 
 fn error(value: impl std::fmt::Display) -> PyErr {
     PyValueError::new_err(value.to_string())
@@ -37,10 +29,6 @@ fn error(value: impl std::fmt::Display) -> PyErr {
 fn arithmetic_mode(arithmetic: &str, precision: Option<u32>) -> PyResult<(Arithmetic, u32)> {
     runtime::arithmetic_mode(arithmetic, precision).map_err(error)
 }
-fn parse_complex<T: Carrier>(value: &DecimalComplex, bits: u32) -> PyResult<Complex<T>> {
-    runtime::parse_complex(value, bits).map_err(error)
-}
-
 /// Python ownership of the shared native saved evaluator.
 #[pyclass]
 struct CoefficientEvaluator(runtime::CoefficientEvaluator);
@@ -82,306 +70,11 @@ impl CoefficientEvaluator {
     }
 }
 
-struct Reductions<T: Carrier>
-where
-    Complex<T>: Real + EvaluationDomain,
-{
-    sectors: [PolynomialReducer<T>; 3],
-    active: [bool; 3],
-    zero: Complex<T>,
-    propagators: usize,
-    parameter_count: usize,
-    sampling: Option<SymbolicaSamplingScales<T>>,
-    sampling_values: Vec<Complex<T>>,
-    sampling_statuses: Vec<SamplingScaleStatus>,
-}
-
-impl<T: Carrier> Reductions<T>
-where
-    Complex<T>: Real + EvaluationDomain,
-{
-    fn new(
-        expressions: &[String; 3],
-        parameters: &[String],
-        n: usize,
-        prototype: T,
-    ) -> PyResult<Self> {
-        let parse =
-            |text: &str| Atom::parse(text, "pyamplicol_loop", Default::default()).map_err(error);
-        let variables = [
-            parse("q0")?,
-            parse("q1")?,
-            parse("q2")?,
-            parse("q3")?,
-            parse("mu2")?,
-        ];
-        let parameters = parameters
-            .iter()
-            .map(|p| parse(p))
-            .collect::<PyResult<Vec<_>>>()?;
-        let mut sectors = Vec::with_capacity(3);
-        let mut active = [false; 3];
-        for (index, expression) in expressions.iter().enumerate() {
-            let expression = parse(expression)?;
-            active[index] = !expression.is_zero();
-            sectors.push(
-                PolynomialReducer::new(
-                    n,
-                    expression,
-                    variables.clone(),
-                    parameters.clone(),
-                    prototype.clone(),
-                    None,
-                )
-                .map_err(error)?,
-            );
-        }
-        // Still execute one zero sector for authoritative input validation.
-        if !active.iter().any(|value| *value) {
-            active[0] = true;
-        }
-        Ok(Self {
-            active,
-            zero: Complex::new(prototype.zero(), prototype.zero()),
-            sectors: sectors.try_into().ok().unwrap(),
-            propagators: n,
-            parameter_count: parameters.len(),
-            sampling: if n >= 4 {
-                Some(SymbolicaSamplingScales::new(n, prototype).map_err(error)?)
-            } else {
-                None
-            },
-            sampling_values: Vec::new(),
-            sampling_statuses: Vec::new(),
-        })
-    }
-
-    fn evaluate(
-        &mut self,
-        ids: &[u64],
-        shifts: &[DecimalMomentum],
-        masses: &[DecimalComplex],
-        scales: &[DecimalComplex],
-        parameters: &[DecimalComplex],
-        bits: u32,
-    ) -> PyResult<Vec<RawLane>> {
-        let parse_all = |values: &[DecimalComplex]| {
-            values
-                .iter()
-                .map(|v| parse_complex::<T>(v, bits))
-                .collect::<PyResult<Vec<_>>>()
-        };
-        let shifts = shifts
-            .iter()
-            .map(|p| {
-                Ok(FourMomentum::from([
-                    parse_complex::<T>(&p[0], bits)?,
-                    parse_complex::<T>(&p[1], bits)?,
-                    parse_complex::<T>(&p[2], bits)?,
-                    parse_complex::<T>(&p[3], bits)?,
-                ]))
-            })
-            .collect::<PyResult<Vec<_>>>()?;
-        let masses = parse_all(masses)?;
-        let scales = parse_all(scales)?;
-        let parameters = parse_all(parameters)?;
-        Ok(self
-            .evaluate_native(ids, &shifts, &masses, &scales, &parameters, None)?
-            .into_iter()
-            .map(|lane| {
-                (
-                    lane.id,
-                    lane.status,
-                    lane.value.map(|value| {
-                        [
-                            decimal_complex(value.finite, bits),
-                            decimal_complex(value.single_pole, bits),
-                            decimal_complex(value.double_pole, bits),
-                        ]
-                    }),
-                )
-            })
-            .collect())
-    }
-
-    fn evaluate_native(
-        &mut self,
-        ids: &[u64],
-        shifts: &[FourMomentum<Complex<T>>],
-        masses: &[Complex<T>],
-        scales: &[Complex<T>],
-        parameters: &[Complex<T>],
-        s_matrix: Option<&[Complex<T>]>,
-    ) -> PyResult<Vec<Lane<Complex<T>, String>>> {
-        if let Some(sampling) = &mut self.sampling {
-            self.sampling_values.resize(ids.len(), self.zero.clone());
-            self.sampling_values.fill(self.zero.clone());
-            self.sampling_statuses.resize(
-                ids.len(),
-                SamplingScaleStatus::Selected(SamplingScaleSource::UnitFallback),
-            );
-            sampling
-                .evaluate_batch(
-                    shifts,
-                    masses,
-                    ids.len(),
-                    &mut self.sampling_values,
-                    &mut self.sampling_statuses,
-                )
-                .map_err(error)?;
-        }
-        let mut results = Vec::with_capacity(3);
-        for (index, sector) in self.sectors.iter_mut().enumerate() {
-            if !self.active[index] {
-                results.push(
-                    ids.iter()
-                        .map(|&id| Lane {
-                            id,
-                            status: EvaluationStatus::Success,
-                            value: Some(Laurent::from([
-                                self.zero.clone(),
-                                self.zero.clone(),
-                                self.zero.clone(),
-                            ])),
-                        })
-                        .collect(),
-                );
-                continue;
-            }
-            results.push(
-                sector
-                    .evaluate(
-                        ids,
-                        AmplitudeInput {
-                            shifts,
-                            masses_squared: masses,
-                            scales_squared: scales,
-                            sampling_scales: &self.sampling_values,
-                            s_matrix,
-                        },
-                        parameters,
-                    )
-                    .map_err(error)?,
-            );
-        }
-        let mut sectors = results.into_iter();
-        let zero = sectors.next().unwrap();
-        let one = sectors.next().unwrap();
-        let two = sectors.next().unwrap();
-        Ok(zero
-            .into_iter()
-            .zip(one)
-            .zip(two)
-            .enumerate()
-            .map(|(row, ((zero, one), two))| {
-                if let Some(SamplingScaleStatus::InvalidInput(failure)) =
-                    self.sampling_statuses.get(row)
-                {
-                    return Lane {
-                        id: zero.id,
-                        status: format!("sampling scale: {failure:?}"),
-                        value: None,
-                    };
-                }
-                let status = [zero.status, one.status, two.status]
-                    .iter()
-                    .enumerate()
-                    .find(|(_, status)| **status != EvaluationStatus::Success)
-                    .map(|(sector, status)| format!("epsilon sector {sector}: {status:?}"));
-                let value = match (zero.value, one.value, two.value) {
-                    (Some(a), Some(b), Some(c)) => Some(Laurent::epsilon_sectors(a, b, c)),
-                    _ => None,
-                };
-                Lane {
-                    id: zero.id,
-                    status: status.unwrap_or_else(|| "success".into()),
-                    value,
-                }
-            })
-            .collect())
-    }
-}
-
-enum Plans {
-    Double(Reductions<f64>),
-    Fast(FastReductions),
-    DoubleDouble(Reductions<DoubleFloat>),
-    Arbitrary(Reductions<Float>),
-}
-
-/// Native polynomial numerator reduction with explicit epsilon sectors.
-/// The output is raw [finite, single pole, double pole], without model factors.
+/// Python ownership of native polynomial reduction and epsilon convolution.
 #[pyclass]
-struct PolynomialPlan {
-    plan: Plans,
-    #[pyo3(get)]
-    precision_bits: u32,
-}
-
+struct PolynomialPlan(runtime::PolynomialPlan);
 #[pymethods]
 impl PolynomialPlan {
-    /// Enable optional fast-engine/master-provider wall clocks, resetting counts.
-    /// Ordinary calls leave profiling disabled and execute no timing callbacks.
-    fn set_profiling(&mut self, enabled: bool) -> PyResult<()> {
-        match &mut self.plan {
-            Plans::Fast(plan) => {
-                plan.set_profiling(enabled);
-                Ok(())
-            }
-            _ => Err(error(
-                "profiling currently requires fast or fast-tensor engine",
-            )),
-        }
-    }
-
-    /// Read and reset instrumented totals across all active epsilon sectors.
-    /// Engine-exclusive time excludes delegated masters and numerator callbacks.
-    /// Numerator preparation occurs outside the engine and is reported separately.
-    fn take_profile(&mut self) -> PyResult<std::collections::BTreeMap<String, f64>> {
-        let profile = match &mut self.plan {
-            Plans::Fast(plan) => plan.take_profile(),
-            _ => {
-                return Err(error(
-                    "profiling currently requires fast or fast-tensor engine",
-                ));
-            }
-        };
-        Ok([
-            ("engine_seconds", profile.engine_time.as_secs_f64()),
-            ("masters_seconds", profile.masters_time.as_secs_f64()),
-            (
-                "numerator_callback_seconds",
-                profile.numerator_callback_time.as_secs_f64(),
-            ),
-            (
-                "numerator_preparation_seconds",
-                profile.numerator_preparation_time.as_secs_f64(),
-            ),
-            (
-                "engine_excluding_masters_seconds",
-                profile
-                    .engine_time
-                    .saturating_sub(profile.masters_time)
-                    .as_secs_f64(),
-            ),
-            (
-                "reduction_exclusive_seconds",
-                profile
-                    .engine_time
-                    .saturating_sub(profile.masters_time + profile.numerator_callback_time)
-                    .as_secs_f64(),
-            ),
-            ("engine_calls", profile.engine_calls as f64),
-            ("master_calls", profile.master_calls as f64),
-            ("master_rows", profile.master_rows as f64),
-            ("numerator_calls", profile.numerator_calls as f64),
-            ("numerator_rows", profile.numerator_rows as f64),
-        ]
-        .into_iter()
-        .map(|(key, value)| (key.to_owned(), value))
-        .collect())
-    }
-
     #[new]
     #[pyo3(signature = (propagators, epsilon_sectors, parameters, arithmetic="double", precision=None, engine="generic"))]
     fn new(
@@ -392,52 +85,27 @@ impl PolynomialPlan {
         precision: Option<u32>,
         engine: &str,
     ) -> PyResult<Self> {
-        let (arithmetic, bits) = arithmetic_mode(arithmetic, precision)?;
-        if !matches!(engine, "generic" | "fast" | "fast-tensor") {
-            return Err(error("engine must be generic, fast or fast-tensor"));
-        }
-        if engine != "generic" {
-            if !matches!(arithmetic, Arithmetic::Double) {
-                return Err(error("fast engine supports only double arithmetic"));
-            }
-            return Ok(Self {
-                plan: Plans::Fast(FastReductions::new(
-                    &epsilon_sectors,
-                    &parameters,
-                    propagators,
-                    engine == "fast-tensor",
-                )?),
-                precision_bits: bits,
-            });
-        }
-        let plan = match arithmetic {
-            Arithmetic::Double => Plans::Double(Reductions::new(
-                &epsilon_sectors,
-                &parameters,
-                propagators,
-                0_f64,
-            )?),
-            Arithmetic::DoubleDouble => Plans::DoubleDouble(Reductions::new(
-                &epsilon_sectors,
-                &parameters,
-                propagators,
-                DoubleFloat::from(0.0),
-            )?),
-            Arithmetic::Arbitrary => Plans::Arbitrary(Reductions::new(
-                &epsilon_sectors,
-                &parameters,
-                propagators,
-                Float::with_val(bits, 0),
-            )?),
-        };
-        Ok(Self {
-            plan,
-            precision_bits: bits,
-        })
+        runtime::PolynomialPlan::new(
+            propagators,
+            epsilon_sectors,
+            parameters,
+            arithmetic,
+            precision,
+            engine,
+        )
+        .map(Self)
+        .map_err(error)
     }
-
-    /// Every buffer is lane-major. The caller's original lane IDs survive
-    /// compaction and resizing; failed lanes return None, never stale values.
+    #[getter]
+    fn precision_bits(&self) -> u32 {
+        self.0.precision_bits()
+    }
+    fn set_profiling(&mut self, enabled: bool) -> PyResult<()> {
+        self.0.set_profiling(enabled).map_err(error)
+    }
+    fn take_profile(&mut self) -> PyResult<std::collections::BTreeMap<String, f64>> {
+        self.0.take_profile().map_err(error)
+    }
     fn evaluate_decimal(
         &mut self,
         py: Python<'_>,
@@ -447,35 +115,33 @@ impl PolynomialPlan {
         scales_squared: Vec<DecimalComplex>,
         parameters: Vec<DecimalComplex>,
     ) -> PyResult<Vec<RawLane>> {
-        py.detach(|| match &mut self.plan {
-            Plans::Fast(p) => {
-                p.evaluate_decimal(&ids, &shifts, &masses_squared, &scales_squared, &parameters)
-            }
-            Plans::Double(p) => p.evaluate(
-                &ids,
-                &shifts,
-                &masses_squared,
-                &scales_squared,
-                &parameters,
-                self.precision_bits,
-            ),
-            Plans::DoubleDouble(p) => p.evaluate(
-                &ids,
-                &shifts,
-                &masses_squared,
-                &scales_squared,
-                &parameters,
-                self.precision_bits,
-            ),
-            Plans::Arbitrary(p) => p.evaluate(
-                &ids,
-                &shifts,
-                &masses_squared,
-                &scales_squared,
-                &parameters,
-                self.precision_bits,
-            ),
+        py.detach(|| {
+            self.0
+                .evaluate_decimal(ids, shifts, masses_squared, scales_squared, parameters)
         })
+        .map_err(error)
+    }
+    #[pyo3(signature = (shifts, masses_squared, scales_squared, parameters, s_matrix=None))]
+    fn evaluate_batch(
+        &mut self,
+        py: Python<'_>,
+        shifts: &NativeBatch,
+        masses_squared: &NativeBatch,
+        scales_squared: &NativeBatch,
+        parameters: &NativeBatch,
+        s_matrix: Option<&NativeBatch>,
+    ) -> PyResult<batch::ReductionBatch> {
+        py.detach(|| {
+            self.0.evaluate_batch(
+                &shifts.0,
+                &masses_squared.0,
+                &scales_squared.0,
+                &parameters.0,
+                s_matrix.map(|b| &b.0),
+            )
+        })
+        .map(batch::ReductionBatch)
+        .map_err(error)
     }
 }
 

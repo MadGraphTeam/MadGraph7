@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: 0BSD
 
 use super::*;
-use rusticol_loop_reduction::{
+use crate::{
     C64, FastInput, FastPolynomialReducer, FastProfile, FastStatus, FastTensorPolynomialReducer,
 };
+use crate::{FourMomentum, Lane, Laurent};
+use symbolica::atom::Atom;
 
 enum FastPolynomial {
     Callback(FastPolynomialReducer),
@@ -27,7 +29,7 @@ impl FastPolynomial {
         ids: &[u64],
         input: FastInput<'_>,
         parameters: &[Complex<f64>],
-    ) -> PyResult<Vec<Lane<C64, FastStatus>>> {
+    ) -> ExecutionResult<Vec<Lane<C64, FastStatus>>> {
         match self {
             Self::Callback(plan) => plan.evaluate(ids, input, parameters).map_err(error),
             Self::Tensor(plan) => plan.evaluate(ids, input, parameters).map_err(error),
@@ -59,7 +61,7 @@ impl FastReductions {
         parameters: &[String],
         n: usize,
         tensor: bool,
-    ) -> PyResult<Self> {
+    ) -> ExecutionResult<Self> {
         let parse =
             |text: &str| Atom::parse(text, "pyamplicol_loop", Default::default()).map_err(error);
         let variables = [
@@ -72,7 +74,7 @@ impl FastReductions {
         let parameters = parameters
             .iter()
             .map(|p| parse(p))
-            .collect::<PyResult<Vec<_>>>()?;
+            .collect::<ExecutionResult<Vec<_>>>()?;
         let mut active = [false; 3];
         let mut sectors = Vec::with_capacity(3);
         for (index, expression) in expressions.iter().enumerate() {
@@ -118,7 +120,7 @@ impl FastReductions {
         scales: &[Complex<f64>],
         parameters: &[Complex<f64>],
         s_matrix: Option<&[Complex<f64>]>,
-    ) -> PyResult<Vec<Lane<Complex<f64>, String>>> {
+    ) -> ExecutionResult<Vec<Lane<Complex<f64>, String>>> {
         let real = |value: &Complex<f64>| {
             if value.im != 0. {
                 return Err(error(
@@ -133,11 +135,14 @@ impl FastReductions {
                 let v = p.components();
                 Ok([real(v[0])?, real(v[1])?, real(v[2])?, real(v[3])?])
             })
-            .collect::<PyResult<Vec<_>>>()?;
+            .collect::<ExecutionResult<Vec<_>>>()?;
         let masses: Vec<_> = masses.iter().map(|z| C64::new(z.re, z.im)).collect();
-        let scales = scales.iter().map(real).collect::<PyResult<Vec<_>>>()?;
+        let scales = scales
+            .iter()
+            .map(real)
+            .collect::<ExecutionResult<Vec<_>>>()?;
         let matrix = s_matrix
-            .map(|s| s.iter().map(real).collect::<PyResult<Vec<_>>>())
+            .map(|s| s.iter().map(real).collect::<ExecutionResult<Vec<_>>>())
             .transpose()?;
         let input = FastInput {
             lanes: ids.len(),
@@ -204,12 +209,12 @@ impl FastReductions {
         masses: &[DecimalComplex],
         scales: &[DecimalComplex],
         parameters: &[DecimalComplex],
-    ) -> PyResult<Vec<RawLane>> {
+    ) -> ExecutionResult<Vec<RawLane>> {
         let parse_all = |values: &[DecimalComplex]| {
             values
                 .iter()
                 .map(|z| parse_complex::<f64>(z, 53))
-                .collect::<PyResult<Vec<_>>>()
+                .collect::<ExecutionResult<Vec<_>>>()
         };
         let shifts = shifts
             .iter()
@@ -221,7 +226,7 @@ impl FastReductions {
                     parse_complex::<f64>(&p[3], 53)?,
                 ]))
             })
-            .collect::<PyResult<Vec<_>>>()?;
+            .collect::<ExecutionResult<Vec<_>>>()?;
         Ok(self
             .evaluate_native(
                 ids,

@@ -4,9 +4,6 @@
 use super::*;
 use rusticol_loop_reduction::runtime::Batch;
 pub(super) use rusticol_loop_reduction::runtime::{BatchCarrier, Data};
-fn shape(rows: usize, columns: usize) -> PyResult<usize> {
-    runtime::shape(rows, columns).map_err(error)
-}
 #[derive(Clone)]
 #[pyclass(skip_from_py_object)]
 pub(super) struct NativeBatch(pub Batch);
@@ -29,9 +26,6 @@ impl NativeBatch {
     }
     pub fn compatible(&self, other: &Self) -> PyResult<()> {
         self.0.compatible(&other.0).map_err(error)
-    }
-    pub fn same_rows(&self, other: &Self) -> PyResult<()> {
-        self.0.same_rows(&other.0).map_err(error)
     }
 }
 #[pymethods]
@@ -185,160 +179,21 @@ impl CoefficientPlan {
     }
 }
 
-/// All-lane diagnostics plus compact successful values; failed numbers stay hidden.
+/// Python ownership of all-lane diagnostics and compact successful values.
 #[pyclass]
-struct ReductionBatch {
-    values: NativeBatch,
-    #[pyo3(get)]
-    statuses: Vec<(u64, String)>,
-}
+pub(super) struct ReductionBatch(pub runtime::ReductionBatch);
 #[pymethods]
 impl ReductionBatch {
     #[getter]
+    fn statuses(&self) -> Vec<(u64, String)> {
+        self.0.statuses().to_vec()
+    }
+    #[getter]
     fn values(&self) -> PyResult<NativeBatch> {
-        if self.statuses.len() != self.values.rows() {
-            return Err(error(
-                "reduction contains failed lanes; inspect statuses and successful_values",
-            ));
-        }
-        Ok(self.values.clone())
+        self.0.values().map(NativeBatch).map_err(error)
     }
     fn successful_values(&self) -> NativeBatch {
-        self.values.clone()
-    }
-}
-
-fn reduce<T: BatchCarrier>(
-    plan: &mut Reductions<T>,
-    shifts: &[Complex<T>],
-    masses: &[Complex<T>],
-    scales: &[Complex<T>],
-    parameters: &[Complex<T>],
-    matrix: Option<&[Complex<T>]>,
-    input: &NativeBatch,
-) -> PyResult<ReductionBatch>
-where
-    Complex<T>: Real + EvaluationDomain,
-{
-    let shifts: Vec<_> = shifts
-        .chunks_exact(4)
-        .map(|p| FourMomentum::from([p[0].clone(), p[1].clone(), p[2].clone(), p[3].clone()]))
-        .collect();
-    let lanes = plan.evaluate_native(input.ids(), &shifts, masses, scales, parameters, matrix)?;
-    reduced_batch(lanes, input.precision_bits())
-}
-fn reduced_batch<T: BatchCarrier>(
-    lanes: Vec<Lane<Complex<T>, String>>,
-    bits: u32,
-) -> PyResult<ReductionBatch> {
-    let mut values = Vec::with_capacity(shape(lanes.len(), 3)?);
-    let mut ids = Vec::with_capacity(lanes.len());
-    let mut statuses = Vec::with_capacity(lanes.len());
-    for lane in lanes {
-        statuses.push((lane.id, lane.status));
-        if let Some(value) = lane.value {
-            ids.push(lane.id);
-            values.extend([value.finite, value.single_pole, value.double_pole]);
-        }
-    }
-    Ok(ReductionBatch {
-        values: NativeBatch::typed(values, ids, 3, bits)?,
-        statuses,
-    })
-}
-
-#[pymethods]
-impl PolynomialPlan {
-    #[pyo3(signature = (shifts, masses_squared, scales_squared, parameters, s_matrix=None))]
-    fn evaluate_batch(
-        &mut self,
-        py: Python<'_>,
-        shifts: &NativeBatch,
-        masses_squared: &NativeBatch,
-        scales_squared: &NativeBatch,
-        parameters: &NativeBatch,
-        s_matrix: Option<&NativeBatch>,
-    ) -> PyResult<ReductionBatch> {
-        for batch in [shifts, masses_squared, scales_squared] {
-            parameters.same_rows(batch)?;
-        }
-        if let Some(matrix) = s_matrix {
-            parameters.same_rows(matrix)?;
-        }
-        if parameters.precision_bits() != self.precision_bits {
-            return Err(error("batch arithmetic or precision differs"));
-        }
-        macro_rules! run {
-            ($plan:expr, $variant:ident) => {{
-                let p = $plan;
-                if shifts.columns() != p.propagators * 4
-                    || masses_squared.columns() != p.propagators
-                    || scales_squared.columns() != 1
-                    || parameters.columns() != p.parameter_count
-                    || s_matrix.is_some_and(|s| s.columns() != p.propagators * p.propagators)
-                {
-                    return Err(error("reduction batch dimensions differ"));
-                }
-                let (
-                    Data::$variant(shifts),
-                    Data::$variant(masses),
-                    Data::$variant(scales),
-                    Data::$variant(values),
-                ) = (
-                    shifts.data(),
-                    masses_squared.data(),
-                    scales_squared.data(),
-                    parameters.data(),
-                )
-                else {
-                    return Err(error("batch arithmetic or precision differs"));
-                };
-                let matrix = s_matrix.map(|s| {
-                    let Data::$variant(v) = s.data() else {
-                        unreachable!()
-                    };
-                    v.as_slice()
-                });
-                reduce(p, shifts, masses, scales, values, matrix, parameters)
-            }};
-        }
-        py.detach(|| match &mut self.plan {
-            Plans::Fast(p) => {
-                if shifts.columns() != p.propagators * 4
-                    || masses_squared.columns() != p.propagators
-                    || scales_squared.columns() != 1
-                    || parameters.columns() != p.parameter_count
-                    || s_matrix.is_some_and(|s| s.columns() != p.propagators * p.propagators)
-                {
-                    return Err(error("reduction batch dimensions differ"));
-                }
-                let (Data::Double(s), Data::Double(m), Data::Double(r), Data::Double(c)) = (
-                    shifts.data(),
-                    masses_squared.data(),
-                    scales_squared.data(),
-                    parameters.data(),
-                ) else {
-                    return Err(error("batch arithmetic or precision differs"));
-                };
-                let matrix = s_matrix.map(|s| {
-                    let Data::Double(v) = s.data() else {
-                        unreachable!()
-                    };
-                    v.as_slice()
-                });
-                let shifts: Vec<_> = s
-                    .chunks_exact(4)
-                    .map(|v| FourMomentum::from([v[0], v[1], v[2], v[3]]))
-                    .collect();
-                reduced_batch(
-                    p.evaluate_native(parameters.ids(), &shifts, m, r, c, matrix)?,
-                    53,
-                )
-            }
-            Plans::Double(p) => run!(p, Double),
-            Plans::DoubleDouble(p) => run!(p, DoubleDouble),
-            Plans::Arbitrary(p) => run!(p, Arbitrary),
-        })
+        NativeBatch(self.0.successful_values())
     }
 }
 
