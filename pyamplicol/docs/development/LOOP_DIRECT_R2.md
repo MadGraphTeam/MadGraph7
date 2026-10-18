@@ -150,3 +150,84 @@ whole-process direct completion, and does not mix direct and effective-rule
 completion within a process. Tree attachments retain the supported physical
 four-dimensional source rules. Source-template checks do not by themselves prove
 all possible model conventions or gauge sectors.
+
+## Massless Yang--Mills and ghost state experiment
+
+`DimensionalYangMillsKernels` supplies a second bounded graph provider. It
+continues the source covariant metric propagators and momentum/metric cubic
+and quartic vertices using dependency tensors. The accepted graph has one pure
+massless vector or ghost cycle and physical massless-vector tree attachments.
+Longitudinal propagator additions, higher-derivative vertices, massive particles,
+mixed spin cycles and unexpected source ports are rejected. These are algebraic
+source-template checks, not a claim of gauge invariance for an arbitrary model.
+
+The local state has six explicit coordinates: four physical directions, the
+common extra loop-momentum direction, and one transverse spectator. Every source
+momentum has fifth component `a_i * routing_sign * mu` and zero sixth component;
+physical external states and tree momenta have both extra components zero.
+The source rule itself is promoted with `with_lorentz_dimension(6)`, so all
+physical/extra transitions and their metric signs come from the dependency.
+Odd-mu transitions survive every open current. A negative control that projects
+each local rule to even mu loses nonzero closed even terms.
+
+The native rank-one spectator projector is normalized by its own Minkowski
+norm. Exactly one chosen cycle propagator receives `(D-6)*P_s`, at
+`D=4-2*epsilon`. Its six-state metric trace is therefore D, and the spectator
+weight is `D-5 = -1-2*epsilon`. Dependency component contractions show that
+physical/aligned states do not mix with the spectator, that distinct spectator
+states do not mix, and that their diagonal transitions agree. These checks
+include arbitrary symbolic physical attachments and each local colour term of
+an actual quartic QCD source vertex; they compare six and seven component
+libraries. The accepted metric/momentum templates have no further transverse
+structure. Changing the weighted edge and the cut independently preserves the
+closed numerator. Independently generated unweighted five- and six-dimensional
+recurrences also satisfy `N(D) = N5 + (D-5)*(N6-N5)` on the tested graphs.
+
+Actual vector bubble/triangle and ghost bubble/triangle graphs with off-shell
+tree attachments agree exactly with an independent raw-source D-dimensional
+contraction before physical materialization. The vector results retain nonzero
+mu-dependent and explicit epsilon terms. The ghost cycles retain the native
+source statistics/global factors and agree with their four-dimensional
+numerators: a physical attachment has no extra component for its ghost momentum
+vertex to contract. This does not omit their ordinary four-dimensional bare
+contribution or its denominator-induced rational terms.
+
+For this domain, the epsilon-free, mu-free closure equals the original
+four-dimensional source numerator. `rational_sector_columns` selects the
+remaining closed even-mu and epsilon columns. The vector bubble and triangle
+then pass through the native coefficient scheduler, exact S-matrix binding,
+NinjaRS numerator sectors and Laurent convolution in double, DoubleFloat and
+80-digit arbitrary arithmetic. An independently compiled full-D polynomial
+provides the coefficient oracle; both use the same reduction library. Native
+batch sizes 1, 5, 0, 33, 1 preserve row identity, and coupling differences below
+binary64 resolution remain visible in the reduced result. All three Laurent
+coefficients are compared. These checks do not introduce a second reducer or a
+process-level model-R2 comparison.
+
+The dependency inventory for this construction was checked at three surfaces:
+
+- Source: `crates/spynso3/src/structure.rs` exposes `Representation::mink` with
+  signature `(+,-,...,-)`; `expression.rs::with_lorentz_dimension` promotes
+  source index spaces before contraction. `crates/spenso/src/network/library/`
+  supplies dimension-dependent metrics and native tensor materialization.
+- Public Python API/documentation: `Representation.mink`,
+  `TensorExpression.with_lorentz_dimension`, `TensorLibrary` signatures,
+  `Tensor.dense`, `Tensor.dot` and component access support the entire local
+  construction. The projector's norm and all contractions use these APIs.
+- Existing regressions/examples: `fixed_basis_products_reject_unproven_or_incompatible_components`
+  and the adjacent larger-space metric checks in
+  `crates/spenso/src/network/library/symbolic.rs`, plus
+  `crates/feynkit-py/tests/installed_metric_factory.py` and
+  `installed_dimensional_spin_sums.py`, establish arbitrary-dimension metric
+  behavior and symbolic-dimensional traces. No dedicated physical/evanescent
+  local gauge-cycle constructor was found in these source/API/example searches;
+  the prototype composes the existing metric, projector and routing operations.
+
+Process-wide direct completion remains disabled. The new integrated graph
+certificate covers cubic vector/ghost bubbles and triangles; quartic rules have
+local block checks, not yet full graph/process reduction checks. Massive gauge
+and Goldstone sectors, physical chiral vertices, open fermion chains and mixed
+spin cycles remain outside this provider. Full model-R2 agreement in the same
+HV convention, complete graph coverage and the process performance gates remain
+separate requirements. No universal scheme-conversion formula is inferred, and
+no dependency source was modified.
