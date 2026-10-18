@@ -78,7 +78,7 @@ run() {
     # (errexit does not reach into the $(run ...) of the callers: check by hand)
     python3 "$HERE/set_run_card.py" "$1/Cards/run_card.toml" \
         run.device="[\"$2\"]" run.seed=$SEED run.run_name="\"$3\"" \
-        generation.events=$NEVENTS beam.pdf="\"$PDF_SET\"" \
+        generation.events=$NEVENTS beam.pdf1="\"$PDF_SET\"" beam.pdf2="\"$PDF_SET\"" \
         systematics.enable=false gridpack.save_gridpack=$4 > "$3.log" 2>&1 \
         || { echo 99; return; }
     local ret=0
