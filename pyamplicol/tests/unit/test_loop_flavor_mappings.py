@@ -1,0 +1,386 @@
+# SPDX-License-Identifier: 0BSD
+"""Exact source-plan symmetries; numeric defaults never prove a relation."""
+
+import json
+import os
+from collections import Counter
+from dataclasses import replace
+from fractions import Fraction
+from types import ModuleType
+from types import SimpleNamespace as Record
+
+import pytest
+
+from pyamplicol.loops.flavor_mappings import RetainedFlavorPlan, prove_flavor_relabeling
+
+SWAP = {1: 3, 3: 1, -1: -3, -3: -1}
+
+
+def _plan(*, change=None, fixed=None, yukawa=False):
+    pytest.importorskip("symbolica")
+    from pyamplicol.loops.counterterms import prepare_counterterm_model
+    from pyamplicol.loops.covariant_model import build_covariant_structure
+    from pyamplicol.loops.model import build_loop_model
+    from pyamplicol.models.loop_import import capture_raw_loop_model
+
+    module = ModuleType("flavor_symmetry_fixture")
+    module.gauge = [1]
+    parameters = {}
+    for name, nature, value in (
+        ("ZERO", "internal", "0"),
+        ("g", "external", "1"),
+        ("MD", "external", "0"),
+        ("MS", "external", "0"),
+        ("yd", "external", "0"),
+        ("ys", "external", "0"),
+        ("MU_R", "external", "1000"),
+    ):
+        parameters[name] = Record(name=name, nature=nature, type="real", value=value)
+    module.all_parameters = list(parameters.values())
+    module.all_orders = [
+        Record(name="QCD", expansion_order=99, hierarchy=1, perturbative_expansion=1),
+        Record(name="QED", expansion_order=99, hierarchy=2, perturbative_expansion=1),
+    ]
+    particles = {}
+    for pdg, name, antiname, spin, color, charge in (
+        (1, "d", "d~", 2, 3, Fraction(-1, 3)),
+        (-1, "d~", "d", 2, -3, Fraction(1, 3)),
+        (3, "s", "s~", 2, 3, Fraction(-1, 3)),
+        (-3, "s~", "s", 2, -3, Fraction(1, 3)),
+        (21, "g", "g", 3, 8, 0),
+        (25, "h", "h", 1, 1, 0),
+    ):
+        particles[name] = Record(
+            name=name,
+            antiname=antiname,
+            pdg_code=pdg,
+            spin=spin,
+            color=color,
+            charge=charge,
+            mass=parameters["ZERO"],
+            width=parameters["ZERO"],
+            texname=name,
+            antitexname=antiname,
+        )
+    module.all_particles = list(particles.values())
+    for name, pdg in (("d", 1), ("s", 3)):
+        particles[name].loop_particles = [[[pdg, 21], [pdg, 21]]]
+        particles[name].counterterm = {(1, 0, 0): {-1: "g**2", 0: "g**2/2"}}
+    ffv = Record(name="FFV", spins=[2, 2, 3], structure="Gamma(3,2,1)")
+    ffs = Record(name="FFS", spins=[2, 2, 1], structure="Identity(2,1)")
+    module.all_lorentz = [ffv, ffs]
+    couplings = {}
+    for name, value, order in (
+        ("G", "complex(0,1)*g", {"QCD": 1}),
+        ("YD", "yd", {"QED": 1}),
+        ("YS", "ys", {"QED": 1}),
+        ("RD", "complex(0,1)*g**3", {"QCD": 3}),
+        ("RS", "complex(0,1)*g**3", {"QCD": 3}),
+        ("UD", {-1: "g**3", 0: "g**3/2", 2: "g**3/7"}, {"QCD": 3}),
+        ("US", {-1: "g**3", 0: "g**3/2", 2: "g**3/7"}, {"QCD": 3}),
+    ):
+        couplings[name] = Record(name=name, value=value, order=order)
+    module.all_couplings = list(couplings.values())
+    module.all_vertices = []
+    module.all_CTvertices = []
+    for name, suffix in (("d", "D"), ("s", "S")):
+        legs = [particles[name + "~"], particles[name], particles["g"]]
+        module.all_vertices.append(
+            Record(
+                name="V" + suffix,
+                particles=legs,
+                color=["T(3,2,1)"],
+                lorentz=[ffv],
+                couplings={(0, 0): couplings["G"]},
+            )
+        )
+        module.all_vertices.append(
+            Record(
+                name="Y" + suffix,
+                particles=[*legs[:2], particles["h"]],
+                color=["Identity(1,2)"],
+                lorentz=[ffs],
+                couplings={(0, 0): couplings["Y" + suffix]},
+            )
+        )
+        for kind, prefix in (("R2", "R"), ("UVtree", "U")):
+            module.all_CTvertices.append(
+                Record(
+                    name=prefix + suffix,
+                    type=kind,
+                    particles=legs,
+                    color=["T(3,2,1)"],
+                    lorentz=[ffv],
+                    couplings={(0, 0, 0): couplings[prefix + suffix]},
+                    loop_particles=[[[particles[name]], [particles[name]]]]
+                    if kind == "R2"
+                    else [],
+                )
+            )
+    if change == "masses":
+        for name, mass in (("d", "MD"), ("s", "MS")):
+            particles[name].mass = particles[name + "~"].mass = parameters[mass]
+    elif change == "charge":
+        particles["s"].charge, particles["s~"].charge = Fraction(2, 3), Fraction(-2, 3)
+    elif change == "uv-log":
+        couplings["UD"].value[0] = "g**3*cmath.log(MD+MU_R)"
+        couplings["US"].value[0] = "g**3*cmath.log(MS+MU_R)"
+    elif change == "positive-epsilon":
+        couplings["US"].value[2] = "g**3/8"
+    elif change == "loop-multiplicity":
+        module.all_CTvertices[2].loop_particles[0].pop()
+    elif change == "field":
+        particles["s"].counterterm[(1, 0, 0)][0] = "g**2/3"
+    raw = capture_raw_loop_model(module)
+    structure = build_covariant_structure(raw, fixed_parameters=fixed)
+    source = build_loop_model(raw, scalar_program=structure.scalars)
+    prepared = prepare_counterterm_model(source, structure.native)
+    names = ("VD", "VS", "YD", "YS") if yukawa else ("VD", "VS")
+    return RetainedFlavorPlan(structure, prepared, names, ("QCD",))
+
+
+def test_exact_retained_plan_preserves_full_laurent_groups_and_source_owners():
+    plan = _plan()
+    original = plan.structure.raw.to_dict()
+    proof = prove_flavor_relabeling(plan, SWAP)
+    assert proof.plan is plan
+    assert proof.species == tuple(sorted(SWAP.items()))
+    assert (
+        proof.ordinary_rule_count,
+        proof.counterterm_rule_count,
+        proof.external_field_rule_count,
+    ) == (2, 4, 2)
+    assert not proof.external_transport_validated and not proof.direct_r2_validated
+    assert plan.structure.raw.to_dict() == original
+
+
+@pytest.mark.parametrize(
+    "change,match",
+    [
+        ("masses", "mass, width"),
+        ("charge", "charge"),
+        ("uv-log", "UV/R2"),
+        ("positive-epsilon", "Laurent"),
+        ("loop-multiplicity", "loop groups"),
+        ("field", "external-field"),
+    ],
+)
+def test_source_changes_cannot_be_hidden_by_equal_defaults(change, match):
+    with pytest.raises(ValueError, match=match):
+        prove_flavor_relabeling(_plan(change=change), SWAP)
+
+
+def test_yukawas_are_independent_until_fixed_by_existing_scalar_plan():
+    with pytest.raises(ValueError, match="ordinary tensors or couplings"):
+        prove_flavor_relabeling(_plan(yukawa=True), SWAP)
+    # Keep a nonzero Yukawa so the native structure retains both local rules.
+    proof = prove_flavor_relabeling(
+        _plan(yukawa=True, fixed={"yd": "0.5", "ys": "0.5"}), SWAP
+    )
+    assert proof.ordinary_rule_count == 4
+
+
+def test_only_explicit_generation_constants_tie_mass_aliases():
+    plan = _plan(change="masses", fixed={"MD": "0", "MS": "0"})
+    assert prove_flavor_relabeling(plan, SWAP).species
+    assert plan.structure.fixed_parameters == {"MD": ("0", "0"), "MS": ("0", "0")}
+
+
+def test_permutation_source_ownership_and_unproved_domains_reject():
+    plan = _plan()
+    for mapping in ({1: 3}, {1: 3, 3: 1}, {1: 100}):
+        with pytest.raises(ValueError):
+            prove_flavor_relabeling(plan, mapping)
+    with pytest.raises(NotImplementedError, match="charge conjugation"):
+        prove_flavor_relabeling(plan, SWAP, charge_conjugated=True)
+    with pytest.raises(NotImplementedError, match="model R2"):
+        prove_flavor_relabeling(plan, SWAP, r2_strategy="direct")
+    with pytest.raises(ValueError, match="source/scalar owner"):
+        replace(plan, structure=_plan().structure)
+
+
+@pytest.mark.parametrize(
+    "kind", ["ordinary", "counterterm", "prepared-ordinary", "propagator", "coupling"]
+)
+def test_actual_prepared_native_overrides_cannot_hide_behind_equal_source(kind):
+    from symbolica.community import hepkit as hep
+
+    from pyamplicol.loops.counterterms import prepare_counterterm_model
+
+    plan = _plan()
+    native = (
+        plan.counterterms.native
+        if kind in ("counterterm", "prepared-ordinary")
+        else plan.structure.native
+    )
+    payload = json.loads(native.to_json())
+    if kind in ("ordinary", "counterterm", "prepared-ordinary"):
+        rule_name = (
+            next(
+                rule.name
+                for rule in plan.counterterms.rules.values()
+                if 3 in rule.particle_pdgs
+            )
+            if kind == "counterterm"
+            else "VS"
+        )
+        rule = next(
+            rule for rule in payload["vertex_rules"] if rule["name"] == rule_name
+        )
+        old = next(
+            item
+            for item in payload["lorentz_structures"]
+            if item["name"] == rule["lorentz_structures"][0]
+        )
+        # Independent local override, retaining the original source catalogue.
+        new = dict(
+            old, name="ASYMMETRIC_LOCAL", structure="2*(" + old["structure"] + ")"
+        )
+        payload["lorentz_structures"].append(new)
+        rule["lorentz_structures"][0] = new["name"]
+    elif kind == "propagator":
+        prop = next(item for item in payload["propagators"] if item["particle"] == "s")
+        prop["numerator"] = "2*(" + prop["numerator"] + ")"
+    else:
+        coupling = next(item for item in payload["couplings"] if item["name"] == "G")
+        coupling["expression"] = "2*(" + coupling["expression"] + ")"
+    changed = hep.Model.from_json(json.dumps(payload))
+    if kind in ("counterterm", "prepared-ordinary"):
+        prepared = replace(plan.counterterms, native=changed)
+        changed_plan = replace(plan, counterterms=prepared)
+    else:
+        structure = replace(plan.structure, native=changed)
+        prepared = prepare_counterterm_model(plan.counterterms.source, changed)
+        changed_plan = replace(plan, structure=structure, counterterms=prepared)
+    with pytest.raises(ValueError, match=r"native|UV/R2"):
+        prove_flavor_relabeling(changed_plan, SWAP)
+
+
+def test_retained_gmu_qcd_plan_and_independently_generated_down_strange_members():
+    s = pytest.importorskip("symbolica")
+    path = os.environ.get("PYAMPLICOL_EW_UFO_REFERENCE")
+    if not path or not s.is_licensed():
+        pytest.skip(
+            "set PYAMPLICOL_EW_UFO_REFERENCE and license for native Gmu control"
+        )
+    from pyamplicol.loops.counterterms import (
+        match_counterterms,
+        prepare_counterterm_model,
+    )
+    from pyamplicol.loops.covariant_model import build_covariant_structure
+    from pyamplicol.loops.graphs import build_loop_process
+    from pyamplicol.loops.model import build_loop_model
+    from pyamplicol.loops.wavefunction import match_external_field_counterterms
+    from pyamplicol.models.loop_import import load_raw_loop_model
+
+    # These are retained generation constants, never inferred from defaults.
+    zeros = (
+        "aEW0M1",
+        "MD",
+        "MU",
+        "MS",
+        "MC",
+        "MB",
+        "Me",
+        "MM",
+        "MTA",
+        "lamWS",
+        "AWS",
+        "rhoWS",
+        "etaWS",
+        "ymdo",
+        "ymup",
+        "yms",
+        "ymc",
+        "ymb",
+        "yme",
+        "ymm",
+        "ymtau",
+    )
+    ones = ("epsUV", "epsIR", "LogSwitch", "GfRedefinitionChoice")
+    raw = load_raw_loop_model(path, restriction="full")
+    structure = build_covariant_structure(
+        raw,
+        compatibility="gmu_particle_anti",
+        fixed_parameters={**dict.fromkeys(zeros, "0"), **dict.fromkeys(ones, "1")},
+        covariant_multiplets={
+            23: [23, 250, 9000002, -9000002],
+            24: [24, 251, 9000003, -9000004],
+            -24: [-24, -251, 9000004, -9000003],
+        },
+    )
+    source = build_loop_model(raw, scalar_program=structure.scalars)
+    # Retain every zero-QED ordinary/CT rule before any process generation.
+    ordinary = tuple(
+        rule.name
+        for rule in structure.native.vertex_rules
+        if all(
+            dict(structure.native.coupling(name).orders).get("QED", 0) == 0
+            for row in rule.couplings
+            for name in row
+            if name
+        )
+    )
+    entries = tuple(
+        entry
+        for entry in source.kernels
+        if entry.kind != "tree" and dict(entry.order).get("QED", 0) == 0
+    )
+    prepared = prepare_counterterm_model(source, structure.native, entries=entries)
+    plan = RetainedFlavorPlan(structure, prepared, ordinary, ("QCD",))
+    proof = prove_flavor_relabeling(plan, SWAP)
+    assert (
+        proof.ordinary_rule_count,
+        proof.counterterm_rule_count,
+        proof.external_field_rule_count,
+    ) == (9, 105, 10)
+    catalogues = []
+    for flavor, pdg in (("d", 1), ("s", 3)):
+        outgoing = (flavor, flavor + "~")
+        loops = build_loop_process(
+            prepared.process(("u", "u~"), outgoing, vertex_allow=ordinary),
+            ordinary_model=structure.native,
+            selected_corrections=("QCD",),
+            perturbative_orders={"QCD": 1, "QED": 1},
+            born_order_bounds={"QCD": 2, "QED": 0},
+            loop_order_bounds={"QCD": 4, "QED": 0},
+        )
+        ct = match_counterterms(
+            prepared,
+            prepared.process(
+                ("u", "u~"), outgoing, vertex_allow=ordinary, counterterms=True
+            ),
+            loops,
+            selected_corrections=("QCD",),
+            order_bounds={"QCD": 4, "QED": 0},
+        )
+        fields = match_external_field_counterterms(
+            source,
+            loops,
+            selected_corrections=("QCD",),
+            allowed_amplitude_orders={(("QCD", 4),)},
+        )
+        assert {
+            abs(edge.pdg)
+            for edge in loops.born[0].edges
+            if edge.external_index is not None
+        } == {2, pdg}
+        catalogues.append((loops, ct, fields))
+    left, right = catalogues
+    assert len(left[0].born) == len(right[0].born) == 1
+    assert len(left[0].loops) == len(right[0].loops) == 14
+    assert len(left[0].families) == len(right[0].families) == 6
+    assert len(left[1].insertions) == len(right[1].insertions) == 23
+    assert len(left[2].insertions) == len(right[2].insertions) == 4
+    assert left[0] is not right[0]
+    assert Counter(
+        (item.rule.kind, item.graph.order, len(item.witness_loop_ids))
+        for item in left[1].insertions
+    ) == Counter(
+        (item.rule.kind, item.graph.order, len(item.witness_loop_ids))
+        for item in right[1].insertions
+    )
+    assert Counter(item.rule.kind for item in left[1].insertions) == {
+        "UVloop": 14,
+        "R2": 9,
+    }
