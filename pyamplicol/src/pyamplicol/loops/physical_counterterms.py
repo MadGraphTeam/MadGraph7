@@ -54,6 +54,7 @@ class _CountertermCurrent:
     coefficient_expressions: tuple[Any, ...]
     term_count: int
     input_columns: tuple[int, ...]
+    color_grade: int | None = None
 
 
 @dataclass(slots=True)
@@ -64,6 +65,7 @@ class _ExternalFieldCurrent:
     coefficient_evaluator: Any
     coefficient_expression: Any
     color_weights: tuple[Any, ...]
+    color_grade: int | None = None
 
 
 def _require_laurent_domain(value, context):
@@ -106,15 +108,13 @@ class NativeModelVirtualProgram:
         from pyamplicol.config.models import ColorAccuracy
 
         from .color_bilinears import SUNColorSpace, external_color_tensor
-        from .physical_color import project_physical_color
+        from .physical_color import project_physical_color, split_color_grades
 
         self.bare = bare
         if r2_strategy not in {"model", "direct"}:
             raise ValueError("internal R2 strategy must be model or direct")
         if r2_strategy == "direct" and not bare.dimensional_numerators:
             raise ValueError("direct R2 requires complete dimensional numerators")
-        if r2_strategy == "direct" and formal_nc is not None:
-            raise NotImplementedError("direct projected color is not certified")
         self.r2_strategy = r2_strategy
         self.color_accuracy = ColorAccuracy(color_accuracy).value
         self.color_projection = None
@@ -128,10 +128,6 @@ class NativeModelVirtualProgram:
         if formal_nc is None and self.color_accuracy != "full":
             raise ValueError(
                 "projected model colors require an explicit SU(Nc) continuation"
-            )
-        if formal_nc is not None and len(bare.born_colors) != 1:
-            raise NotImplementedError(
-                "projected model CT assembly currently requires one Born color term"
             )
         space = None if formal_nc is None else SUNColorSpace(formal_nc)
         self.source_bindings = tuple(source_bindings)
@@ -174,30 +170,26 @@ class NativeModelVirtualProgram:
                 for term in recurrence.terms
             ):
                 raise ValueError("CT color term must have one scalar coefficient")
-            colors = tuple(
-                _external_color(insertion.graph, term.color)
-                for term in recurrence.terms
-            )
-            weights = tuple(
-                tuple(
-                    _color_bilinear(born, color, bare.initial_average)
-                    for color in colors
+            if space is None:
+                colors = tuple(
+                    _external_color(insertion.graph, term.color)
+                    for term in recurrence.terms
                 )
-                for born in bare.born_colors
-            )
-            formal_weight = None
-            if space is not None:
-                if len(recurrence.terms) != 1:
-                    raise NotImplementedError(
-                        "projected CT assembly requires one CT color term"
+                weights = tuple(
+                    tuple(
+                        _color_bilinear(born, color, bare.initial_average)
+                        for color in colors
                     )
-                semantic_color = external_color_tensor(
-                    insertion.graph, recurrence.terms[0].color
+                    for born in bare.born_colors
                 )
-                formal_weight = space.overlap(
-                    bare.born_color_tensors[0], semantic_color
+            else:
+                weights = space.rectangular(
+                    bare.born_color_tensors,
+                    tuple(
+                        external_color_tensor(insertion.graph, term.color)
+                        for term in recurrence.terms
+                    ),
                 )
-                weights = ((1 / bare.initial_average,),)
             executor = NativeCoefficientDAG(
                 dag,
                 output_nodes=recurrence.final_nodes,
@@ -210,8 +202,6 @@ class NativeModelVirtualProgram:
                 expressions = [
                     value.replace_multiple(replacements) for _, value in substitutions
                 ]
-                if space is not None:
-                    expressions = [formal_weight * value for value in expressions]
                 for expression in expressions:
                     require_exact_numbers(expression)
                 if all(expression == 0 for expression in expressions):
@@ -226,20 +216,41 @@ class NativeModelVirtualProgram:
                         for i, name in enumerate(coefficient_names)
                     }
                 )
-                self.currents.append(
-                    _CountertermCurrent(
-                        insertion,
-                        power,
-                        dag,
-                        executor,
-                        None,
-                        coefficient_names,
-                        weights,
-                        tuple(expressions),
-                        len(recurrence.terms),
-                        tuple(positions[p.get_name()] for p in executor.parameters),
-                    )
+                grades = (
+                    ((None, tuple(expressions)),)
+                    if space is None
+                    else split_color_grades(expressions, formal_nc)
                 )
+                if (
+                    space is not None
+                    and len(recurrence.terms) > 1
+                    and (len(grades) != 1 or any(value == 0 for value in grades[0][1]))
+                ):
+                    raise NotImplementedError(
+                        "mixed-grade multi-term counterterms require an exact "
+                        "coupling-to-term incidence proof"
+                    )
+                for degree, coefficients in grades:
+                    self.currents.append(
+                        _CountertermCurrent(
+                            insertion,
+                            power,
+                            dag,
+                            executor,
+                            None,
+                            coefficient_names,
+                            weights
+                            if degree is None
+                            else tuple(
+                                tuple(formal_nc**degree * value for value in row)
+                                for row in weights
+                            ),
+                            coefficients,
+                            len(recurrence.terms),
+                            tuple(positions[p.get_name()] for p in executor.parameters),
+                            degree,
+                        )
+                    )
         self.external_fields = tuple(external_fields)
         self.field_currents = []
         born_indices = {
@@ -263,42 +274,54 @@ class NativeModelVirtualProgram:
                     for row in bare.born_metric
                 )
                 if space is not None:
-                    value *= space.overlap(
-                        bare.born_color_tensors[0], bare.born_color_tensors[0]
+                    weights = space.rectangular(
+                        bare.born_color_tensors,
+                        tuple(
+                            bare.born_color_tensors[index]
+                            for index in born_indices[insertion.born.id]
+                        ),
                     )
-                    weights = ((1 / bare.initial_average,),)
                 require_exact_numbers(value)
                 if value == 0:
                     continue
-                self.field_currents.append(
-                    _ExternalFieldCurrent(
-                        insertion,
-                        power,
-                        born_indices[insertion.born.id],
-                        None,
-                        value,
-                        weights,
-                    )
+                grades = (
+                    ((None, (value,)),)
+                    if space is None
+                    else split_color_grades((value,), formal_nc)
                 )
+                for degree, (coefficient,) in grades:
+                    self.field_currents.append(
+                        _ExternalFieldCurrent(
+                            insertion,
+                            power,
+                            born_indices[insertion.born.id],
+                            None,
+                            coefficient,
+                            weights
+                            if degree is None
+                            else tuple(
+                                tuple(formal_nc**degree * item for item in row)
+                                for row in weights
+                            ),
+                            degree,
+                        )
+                    )
         if space is not None:
             rows = [
                 [value]
-                for current in self.currents
-                for value in current.coefficient_expressions
+                for current in (*self.currents, *self.field_currents)
+                for row in current.color_weights
+                for value in row
             ]
-            rows.extend(
-                [current.coefficient_expression] for current in self.field_currents
-            )
             self.color_projection = project_physical_color(
                 bare, formal_nc, rows, self.color_accuracy
             )
             values = iter(self.color_projection.additional_rows)
-            for current in self.currents:
-                current.coefficient_expressions = tuple(
-                    next(values) for _ in current.coefficient_expressions
+            for current in (*self.currents, *self.field_currents):
+                current.color_weights = tuple(
+                    tuple(next(values) / bare.initial_average for _ in row)
+                    for row in current.color_weights
                 )
-            for current in self.field_currents:
-                current.coefficient_expression = next(values)
         for current in self.currents:
             current.coefficient_evaluator = backend.CoefficientEvaluator(
                 _saved(
@@ -598,19 +621,28 @@ def top_pair_model_virtual_program(source, **options):
 
 
 def gluon_scattering_model_virtual_program(
-    source, *, color_accuracy="full", formal_color=False, **options
+    source, *, color_accuracy="full", formal_color=False, r2_strategy="model", **options
 ):
-    """Fixed-SU(3) gg -> gg with source UV and model or bounded direct R2.
+    """Bounded gg -> gg with source UV and model or direct R2.
 
     The direct diagnostic covers the selected vectorlike fermion, massless
     gauge and ghost cycles in the same HV convention. It does not enable
-    production direct eligibility or a general model continuation.
+    production direct eligibility or a general model continuation. Formal
+    full/LC/NLC colour is supported with direct R2 and the controlled UV grades.
     """
-    if formal_color or color_accuracy != "full":
+    if (formal_color or color_accuracy != "full") and r2_strategy != "direct":
         raise NotImplementedError(
             "gluon model counterterms lack a certified SU(Nc) continuation"
         )
-    return _qcd_model_virtual_program(source, ("g", "g"), gluon_only=True, **options)
+    return _qcd_model_virtual_program(
+        source,
+        ("g", "g"),
+        gluon_only=True,
+        color_accuracy=color_accuracy,
+        formal_color=formal_color,
+        r2_strategy=r2_strategy,
+        **options,
+    )
 
 
 def quark_gluon_model_virtual_program(

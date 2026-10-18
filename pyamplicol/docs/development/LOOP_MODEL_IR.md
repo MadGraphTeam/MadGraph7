@@ -230,17 +230,21 @@ physics. Full native physical assembly is a separate integration check.
 The internal DY, distinct-flavour four-quark and massive top-pair factories
 accept `color_accuracy="full"`, `"lc"` or `"nlc"`. Their default full-colour
 path remains the explicit SU(3) component oracle; `formal_color=True` selects
-the independent formal full-colour calculation. This initial projected CT
-assembly requires one Born colour term, one colour term per CT graph, and one
-admitted squared-order sector.
-It does not certify arbitrary models, multiple Born colour currents, or the
-four-gluon effective rules' general-Nc continuation.
+the independent formal full-colour calculation. The direct-R2 gluon factory
+also supports these projections with six Born colour terms and rectangular
+Born/CT matrices. One admitted squared-order sector is still required. These
+controls do not certify arbitrary models or the four-gluon effective model
+R2 rules' general-Nc continuation.
 
 `physical_color` contracts semantic native colour tensors with `SUNColorSpace`.
 Source `Ncol`, `CA`, `CF` and `TF` are bound explicitly to their exact SU(Nc)
-expressions. Numeric constants are never guessed to be Casimirs. Each CT row
-contains its scalar colour dependence and its Born/tensor overlap. All bare,
-local UV, R2 and external-field rows share one structural maximum degree across
+expressions. Numeric constants are never guessed to be Casimirs. Each CT alias
+coefficient is first split into exact Nc grades. The shared native CT executor
+evaluates the colour-free aliases for each grade, while projection acts on
+Nc^grade times the complete Born-term by CT-term overlap matrix. A single
+projected weight is never absorbed into an alias shared by multiple terms.
+Each field grade uses its corresponding columns of the full Born Gram matrix.
+All bare, local UV, R2 and external-field rows share one structural maximum degree across
 the finite and both pole outputs, before numerical model values or helicities
 are evaluated. Born squared has its own maximum degree. Projection retains
 degree P for LC and every degree at least P-2 for NLC, with Nf fixed. Nc=3 and the
@@ -253,6 +257,17 @@ power. Fixed-Nf quark-loop and heavy-quark decoupling terms can have degree 2,
 so NLC retains this odd suppression as well as degree 1. For DY the respective
 degrees are 1 and 2. Exact scalar algebra combines terms within each row;
 kinematically distinct currents remain distinct without a proven identity.
+The gluon Born degree is 4 and its virtual degree is 5. Closed-quark rows have
+degrees 4 and 2; gauge/ghost rows have degrees 5 and 3. Source gauge UV factors
+carry explicit CA (grade 1), while quark UV and external fields carry TF
+(grade 0). Consequently the heavy-quark degree-4 terms vanish at LC and survive
+NLC, which keeps every degree at least 3. The full, LC and NLC double poles
+are checked against the four-adjoint universal factor.
+
+Multiple grades remain supported for single-colour-term currents, including
+the existing CF controls. A multi-term CT currently requires one uniform
+nonzero grade across its aliases. Other grade-to-term patterns are rejected until an
+exact incidence proof identifies inactive terms before choosing the common P.
 
 Native `if` branches with Nc-independent conditions are collected separately
 with the dependency's Laurent coefficient operation and recombined with the
@@ -329,8 +344,8 @@ The internal `gluon_scattering_qcd_program` uses actual native massless vector
 states, six quark flavours with a global top mass, and the explicit overall
 normalization 1/512 (initial spin/colour averaging and the identical final-state
 factor 1/2). It retains four Born graphs with six colour terms and 186 loop
-graphs with 258 terms in 52 families. This is a full-SU(3) bare control; gluon
-UV/R2 completion and multi-term formal projection remain separate boundaries.
+graphs with 258 terms in 52 families. This factory is the full-SU(3) bare
+control; the model/direct wrappers supply UV/R2 completion and formal projection.
 General vector states with nonzero mass are rejected until their helicity and
 input consistency contract is implemented.
 
@@ -382,8 +397,9 @@ The independently instrumented MadLoop reference checks all of these components;
 exact heavy-quark decoupling and field formulas check original decimal global
 parameters and point-specific scales in each arithmetic carrier. Full finite
 physics comparisons remain binary64 reference checks. The control supports
-full SU(3); projected multi-term CT assembly and the active R2 quartic model's
-SU(Nc) continuation remain explicitly unsupported.
+full SU(3) with model R2. The direct-R2 branch supports the bounded formal
+projection described above; the active R2 quartic model's SU(Nc) continuation
+remains explicitly unsupported.
 
 ## Quark/gluon counterterm tensor catalogue
 

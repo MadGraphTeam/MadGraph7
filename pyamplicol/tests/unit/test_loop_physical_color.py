@@ -264,3 +264,95 @@ def test_top_field_color_is_projected_with_all_virtual_sectors(
     _close(nlc.uv_external_fields, full.uv_external_fields, tolerance, Decimal(63) / 64)
     assert all(Decimal(value) == 0 for value in lc.uv_local[:, 0].flat)
     _close(nlc.uv_local[:, 0], full.uv_local[:, 0], tolerance, Decimal(9) / 8)
+
+
+@pytest.mark.parametrize(
+    "arithmetic,precision,reducer,coefficients,tolerance",
+    [
+        ("double", None, "fast", "jit", Decimal("3e-10")),
+        ("double-double", None, "generic", "interpreted", Decimal("3e-24")),
+        ("arbitrary", 50, "generic", "interpreted", Decimal("3e-40")),
+    ],
+)
+def test_gluon_direct_rectangular_projection_and_fixed_nf(
+    source, arithmetic, precision, reducer, coefficients, tolerance
+):
+    from symbolica import E, Expression
+
+    from pyamplicol.loops.physical_counterterms import (
+        gluon_scattering_model_virtual_program,
+    )
+
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "tools/loop_reference/gluon_scattering_qcd.json"
+    )
+    points = np.asarray(
+        json.loads(path.read_text(), parse_int=str, parse_float=str)["points"],
+        dtype=str,
+    )
+    results = {}
+    for accuracy in ("full", "lc", "nlc"):
+        program = gluon_scattering_model_virtual_program(
+            source,
+            r2_strategy="direct",
+            formal_color=True,
+            color_accuracy=accuracy,
+            arithmetic=arithmetic,
+            precision=precision,
+            reduction_engine=reducer,
+            coefficient_engine=coefficients,
+        )
+        assert len(program.bare.born_colors) == 6
+        assert any(current.term_count == 3 for current in program.currents)
+        assert {current.color_grade for current in program.currents} == {0, 1}
+        assert {current.color_grade for current in program.field_currents} == {0}
+        results[accuracy] = program.evaluate_decimal(
+            points, ["1000000"] * len(points), model_values=["0.118", "173"]
+        )
+    full, lc, nlc = (results[key] for key in ("full", "lc", "nlc"))
+    assert all(
+        (result.born_color_degree, result.virtual_color_degree) == (4, 5)
+        for result in results.values()
+    )
+    _close(lc.born, full.born, tolerance, (9, 8))
+    _close(nlc.born, full.born, tolerance)
+    # The four external adjoints give -4*CA*alpha_s/(2*pi). Born has
+    # Nc^4-Nc^2; its virtual double pole has Nc^5-Nc^3, with one common P=5.
+    ratio = (
+        Expression.evaluator_multiple(
+            [-6 * E("59/500") / E("pi")], [], n_cores=1, jit_compile=False
+        )
+        .evaluate_complex_with_prec([], 110)[0]
+        .to_decimal_tuple()[0]
+    )
+    for result in results.values():
+        _close(result.virtual[:, 2], result.born, tolerance, ratio)
+    _close(lc.virtual[:, 2], full.virtual[:, 2], tolerance, (9, 8))
+    _close(nlc.virtual[:, 2], full.virtual[:, 2], tolerance)
+    # Fixed-Nf quark UV/fields carry Nc^4 and Nc^2. The odd suppression Nc^4
+    # survives NLC(P-2=3), while LC drops it; source TF is never scaled as Nc.
+    assert all(Decimal(value) == 0 for value in lc.uv_local[:, 0].flat)
+    assert all(Decimal(value) == 0 for value in lc.uv_external_fields.flat)
+    _close(nlc.uv_local[:, 0], full.uv_local[:, 0], tolerance, (9, 8))
+    _close(nlc.uv_external_fields, full.uv_external_fields, tolerance, (9, 8))
+    reference_path = os.environ.get("PYAMPLICOL_GG_COMPONENT_REFERENCE")
+    if reference_path:
+        reference = json.loads(Path(reference_path).read_text())
+        for name, key in (
+            ("bare", "bare"),
+            ("r2", "r2"),
+            ("uv", "uv"),
+            ("uv_local", "uv_vertex"),
+            ("uv_external_fields", "wf"),
+            ("virtual", "full"),
+        ):
+            np.testing.assert_allclose(
+                getattr(full, name)[:, :, 0].astype(float),
+                [
+                    [row[key][p] for p in ("finite", "single_pole", "double_pole")]
+                    for row in reference["rows"]
+                ],
+                rtol=5e-11,
+                atol=1e-10,
+            )

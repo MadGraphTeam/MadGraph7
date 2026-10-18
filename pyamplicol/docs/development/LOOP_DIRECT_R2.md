@@ -317,7 +317,13 @@ poles are not discarded. Native empty batches and failure guards remain in
 place. Reference finite-amplitude comparisons themselves remain binary64
 controls; the same-carrier R2 comparison is a separate precision check.
 
+The bounded direct gluon factory also accepts formal full/LC/NLC colour. Its
+UV scalar grades and rectangular overlaps are projected together, with one
+virtual degree P=5 across N4, the remainder, local UV and external fields; Born
+uses P=4. This does not infer a continuation of the excluded model R2 quartic
+rules. Other mixed-grade multi-term CTs require a separate incidence proof.
+
 These controls do not enable public direct eligibility, general chiral or
-massive-gauge continuation, projected multi-term colour, or a performance
-selection policy. Reduction failures in either channel still raise for the
-diagnostic batch; per-channel lane status and rescue integration remain open.
+massive-gauge continuation, or a performance selection policy. Reduction
+failures in either channel still raise for the diagnostic batch; per-channel
+lane status and rescue integration remain open.
