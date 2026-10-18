@@ -12,6 +12,10 @@ flavor_scheme = 5
 coupling_order_policy = "minimal"
 reference_color_order = []
 selected_color_sector_ids = []
+flavor_blind = false
+consider_charge_conjugation = true
+only_unit_multiplier = false
+analyze_process_groups = "none"
 
 [process.multiparticles]
 
@@ -19,11 +23,14 @@ selected_color_sector_ids = []
 
 [process.selected_source_helicities]
 
+[loop]
+r2_strategy = "auto"
+
 [color]
 accuracy = "lc"
 contraction = "direct"
 lc_flow_layout = "topology-replay"
-fft_basis = "adjoint"
+fft_basis = "trace"
 
 [generation]
 output = "."
@@ -56,7 +63,7 @@ output_chunk_size = 512
 
 [evaluator.optimization]
 horner_iterations = 10
-cores = "auto"
+cores = 8
 max_horner_variables = 1000
 max_common_pair_cache_entries = 5000000
 max_common_pair_distance = 1000
@@ -64,7 +71,7 @@ collect_factors = "auto"
 
 [evaluator.jit]
 optimization_level = 2
-compress = "auto"
+compress = true
 
 [evaluator.cpp]
 optimization = "O3"

@@ -9,9 +9,10 @@ The published Python/Community distribution is pinned to 3.0.2 (kernel 3.0.1),
 whose saved evaluators are tested against this core in all three arithmetic
 modes. NinjaRS packaging remains an integration gate.
 SymJIT now writes storage v4, which additionally stores the compiler argument
-capacity. Current producers and consumers require v4; the checked-in v3 prepared
-model and self-test payloads must be regenerated with the rebuilt native runtime.
-Changing only their metadata would not update the binary format.
+capacity. Current producers and consumers require v4; the checked-in prepared
+model and self-test payloads were regenerated with the rebuilt native runtime.
+Older v3 payloads require regeneration, since relabeling metadata does not
+update the binary format.
 The release lock records the actual dependency versions, but the source patches
 still fail the published-crate gate. Publication requires an upstream release
 containing the integration fixes; this branch is not yet publishable.

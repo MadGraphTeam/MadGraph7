@@ -278,7 +278,7 @@ def test_source_selftest_fixture_is_one_portable_64bit_template() -> None:
     assert expected["compatible_targets"] == list(module.COMPATIBLE_TARGETS)
     assert expected["serialization"] == {
         "endianness": "little",
-        "kind": "symjit-application-mir-v3",
+        "kind": "symjit-application-mir-v4",
         "load_behavior": "recompile-mir-for-loading-host",
         "source_optimization_level": 2,
         "word_size_bits": 64,

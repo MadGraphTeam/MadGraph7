@@ -218,7 +218,7 @@ _TEX_BUILD_SUFFIXES = (
     ".synctex.gz",
     ".toc",
 )
-# SymJIT Application v3 stores the program and MIR, then recompiles it in
+# SymJIT Application v4 stores the program and MIR, then recompiles it in
 # Application::load. Its wire format uses native usize fields, so this template
 # is shared only by the release's 64-bit little-endian targets.
 _PORTABLE_SELFTEST_TEMPLATE = "portable-64le"
@@ -895,7 +895,7 @@ def _stage_selftest_fixture(overlay: Path, target: str) -> None:
         or expected.get("serialization")
         != {
             "endianness": "little",
-            "kind": "symjit-application-mir-v3",
+            "kind": "symjit-application-mir-v4",
             "load_behavior": "recompile-mir-for-loading-host",
             "source_optimization_level": 2,
             "word_size_bits": 64,

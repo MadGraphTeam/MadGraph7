@@ -54,7 +54,7 @@
   "schema_version": 1,
   "serialization": {
     "endianness": "little",
-    "kind": "symjit-application-mir-v3",
+    "kind": "symjit-application-mir-v4",
     "load_behavior": "recompile-mir-for-loading-host",
     "source_optimization_level": 2,
     "word_size_bits": 64

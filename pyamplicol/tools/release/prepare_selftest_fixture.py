@@ -1098,7 +1098,7 @@ def prepare(source: Path, destination: Path | None = None) -> Path:
             "compatible_targets": list(COMPATIBLE_TARGETS),
             "source_generation_target": source_target,
             "serialization": {
-                "kind": "symjit-application-mir-v3",
+                "kind": "symjit-application-mir-v4",
                 "endianness": "little",
                 "word_size_bits": 64,
                 "load_behavior": "recompile-mir-for-loading-host",
