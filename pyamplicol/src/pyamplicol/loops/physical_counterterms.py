@@ -115,9 +115,13 @@ class NativeModelVirtualProgram:
             raise ValueError(
                 "projected model colors require an explicit SU(Nc) continuation"
             )
-        if formal_nc is not None and len(bare.born_dags) != 1:
+        if formal_nc is not None and len(bare.born_colors) != 1:
             raise NotImplementedError(
-                "projected model CT assembly currently requires one Born graph"
+                "projected model CT assembly currently requires one Born color term"
+            )
+        if len(bare.born_colors) != len(bare.born_dags):
+            raise NotImplementedError(
+                "multicolor Born/CT assembly requires explicit term binding"
             )
         space = None if formal_nc is None else SUNColorSpace(formal_nc)
         self.source_bindings = tuple(source_bindings)

@@ -346,3 +346,21 @@ is active. MadLoop groups the four identical leg factors into `4*UVWFCT_G_2`
 for each of its six Born colour/Lorentz amplitudes and two Laurent sectors.
 The generic field-factor oracle verifies the same factor against the isolated
 reference field contribution at three points, using the independent Born values.
+## Physical multicolour bare gauge control
+
+`NativeBareProcessProgram` now consumes the colour-term recurrence directly.
+One native executor per graph returns its ordered terminal coefficients; the
+Born and loop colour matrices are indexed by terms, while exact kinematics and
+denominator families remain indexed by graphs. Born weighting and coherent
+helicity sums still happen on complex coefficients before one reduction per
+family and point. Tree recurrences already contain their bridge denominators;
+loop attachments receive those factors once before execution.
+
+The internal `gluon_scattering_qcd_program` uses actual native massless vector
+states, six quark flavours with a global top mass, and the explicit overall
+normalization 1/512 (initial spin/colour averaging and the identical final-state
+factor 1/2). It retains four Born graphs with six colour terms and 186 loop
+graphs with 258 terms in 52 families. This is a full-SU(3) bare control; gluon
+UV/R2 completion and multi-term formal projection remain separate boundaries.
+General vector states with nonzero mass are rejected until their helicity and
+input consistency contract is implemented.

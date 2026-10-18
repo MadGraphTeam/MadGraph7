@@ -116,8 +116,8 @@ def project_physical_color(bare, nc, additional_rows, accuracy):
     )
     projected_born = born_plan.project(accuracy)
     projected_virtual = virtual_plan.project(accuracy)
-    width = len(bare.born_dags)
-    loops = len(bare.recurrences)
+    width = len(bare.born_colors)
+    loops = len(bare.loop_color_tensors)
 
     def averaged(values):
         return tuple(value.replace(nc, 3) / bare.initial_average for value in values)

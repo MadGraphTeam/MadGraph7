@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 """Internal native bare-process assembly over verified graph families.
 
-This first physical process boundary supports on-shell external Dirac states,
+This physical control supports on-shell Dirac and massless vector states,
 one Born order and one virtual squared-order sector. Local currents, exact SU(3)
 bilinears and native family maps determine every numerator. UV/R2 completion,
 formal-Nc projection and public process dispatch remain separate boundaries.
@@ -19,11 +19,16 @@ import numpy as np
 
 from .color_bilinears import external_color_tensor
 from .exact import require_exact_numbers
+from .graph_basis import (
+    build_color_loop_recurrence,
+    build_color_tree_recurrence,
+    routed_edge_denominator,
+)
 from .graphs import build_loop_process
 from .kernels import NativeCoefficientDAG, require_finite_batch
 from .kinematics import build_loop_kinematics
-from .physical import _born_dag, _denominator, _saved
-from .recurrence import build_open_loop_recurrence, momentum_component_library
+from .physical import _saved
+from .recurrence import momentum_component_library
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,8 +138,13 @@ class NativeBareProcessProgram:
 
         if len(process.orders.born_orders) != 1 or len(process.orders.sectors) != 1:
             raise NotImplementedError("physical control requires one Born/order sector")
-        if any(kind not in {"u", "v", "u_bar", "v_bar"} for kind in state_kinds):
-            raise NotImplementedError("physical control requires external Dirac states")
+        if any(
+            kind not in {"u", "v", "u_bar", "v_bar", "epsilon", "epsilon_bar"}
+            for kind in state_kinds
+        ):
+            raise NotImplementedError(
+                "physical control requires Dirac or vector states"
+            )
         require_exact_numbers(initial_average)
         for expression in model_expressions.values():
             require_exact_numbers(expression)
@@ -150,6 +160,13 @@ class NativeBareProcessProgram:
                 key=lambda edge: edge.external_index,
             )
         )
+        if any(
+            kind in {"epsilon", "epsilon_bar"} and mass != 0
+            for kind, mass in zip(state_kinds, self.external_masses, strict=True)
+        ):
+            raise NotImplementedError(
+                "physical vector control currently requires massless states"
+            )
         self.initial_average = initial_average
         self.state_kinds = state_kinds
         self.helicities = tuple(product((-1, 1), repeat=len(state_kinds)))
@@ -166,7 +183,7 @@ class NativeBareProcessProgram:
             **self.options,
         )
         self.recurrences = tuple(
-            build_open_loop_recurrence(graph, routing="family")
+            build_color_loop_recurrence(graph, routing="family")
             for graph in self.loop_graphs
         )
         if not self.recurrences:
@@ -178,16 +195,38 @@ class NativeBareProcessProgram:
             raise ValueError("physical state count differs from native process")
         self.external_states = representative.external_states
         variables = representative.dag.variables
-        self.born_dags, born_colors = [], []
-        self.born_color_tensors = []
-        for graph in process.born:
-            dag, color = _born_dag(graph, variables, self.momenta)
-            self.born_dags.append(dag)
-            self.born_color_tensors.append(external_color_tensor(graph, color))
-            born_colors.append(_external_color(graph, color))
-        self.loop_finals, loop_colors = [], []
+        self.born_recurrences = tuple(
+            build_color_tree_recurrence(
+                graph, variables=variables, momenta=self.momenta
+            )
+            for graph in process.born
+        )
+        self.born_dags = tuple(item.dag for item in self.born_recurrences)
+        self.born_term_graphs = tuple(
+            graph_index
+            for graph_index, item in enumerate(self.born_recurrences)
+            for _ in item.terms
+        )
+        for item in self.born_recurrences:
+            if any(
+                len(item.dag.nodes[term.node].output_labels) != 1
+                or any(item.dag.nodes[term.node].output_labels[0].powers)
+                for term in item.terms
+            ):
+                raise ValueError("Born color term must have one scalar coefficient")
+        self.born_color_tensors = tuple(
+            external_color_tensor(item.graph, term.color)
+            for item in self.born_recurrences
+            for term in item.terms
+        )
+        born_colors = tuple(
+            _external_color(item.graph, term.color)
+            for item in self.born_recurrences
+            for term in item.terms
+        )
+        self.born_colors = born_colors
+        self.loop_finals, loop_colors, self.loop_term_offsets = [], [], []
         self.loop_color_tensors = []
-        self.born_colors = tuple(born_colors)
         for recurrence in self.recurrences:
             if recurrence.momentum_parameters != self.momenta:
                 raise ValueError("native graph external momentum frames differ")
@@ -196,45 +235,49 @@ class NativeBareProcessProgram:
             )
             bridge = E("1")
             for edge in recurrence.graph.native.internal_edges:
-                if edge.id not in recurrence.graph.loop_edges:
-                    denominator = _denominator(edge, library)
-                    if any(denominator.contains(q) for q in variables):
-                        raise ValueError(
-                            "tree bridge denominator depends on loop momentum"
-                        )
-                    bridge /= denominator
+                if edge.id in recurrence.graph.loop_edges:
+                    continue
+                denominator = routed_edge_denominator(edge, library)
+                if any(denominator.contains(q) for q in variables):
+                    raise ValueError("tree bridge denominator depends on loop momentum")
+                bridge /= denominator
+            self.loop_term_offsets.append(len(loop_colors))
             self.loop_finals.append(
-                recurrence.dag.add(
-                    "physical-tree-denominators",
-                    t.TensorExpression(bridge).to_tensor(library),
-                    (recurrence.final_node,),
+                tuple(
+                    recurrence.dag.add(
+                        "physical-tree-denominators",
+                        t.TensorExpression(bridge).to_tensor(library),
+                        (term.node,),
+                    )
+                    for term in recurrence.terms
                 )
             )
-            loop_colors.append(
-                _external_color(recurrence.graph, recurrence.color_expression)
-            )
-            self.loop_color_tensors.append(
-                external_color_tensor(recurrence.graph, recurrence.color_expression)
-            )
+            for term in recurrence.terms:
+                loop_colors.append(_external_color(recurrence.graph, term.color))
+                self.loop_color_tensors.append(
+                    external_color_tensor(recurrence.graph, term.color)
+                )
         self.born_executors = tuple(
             NativeCoefficientDAG(
-                dag,
-                output_nodes=(len(dag.nodes) - 1,),
+                item.dag,
+                output_nodes=item.final_nodes,
                 backend=backend,
                 coefficient_engine=coefficient_engine,
                 **self.options,
             )
-            for dag in self.born_dags
+            for item in self.born_recurrences
         )
         self.loop_executors = tuple(
             NativeCoefficientDAG(
-                r.dag,
-                output_nodes=(final,),
+                recurrence.dag,
+                output_nodes=finals,
                 backend=backend,
                 coefficient_engine=coefficient_engine,
                 **self.options,
             )
-            for r, final in zip(self.recurrences, self.loop_finals, strict=True)
+            for recurrence, finals in zip(
+                self.recurrences, self.loop_finals, strict=True
+            )
         )
         self.coefficient_engine = self.born_executors[0].coefficient_engine
         self.born_metric = tuple(
@@ -273,7 +316,11 @@ class NativeBareProcessProgram:
                     "native family graphs have different physical denominator bindings"
                 )
             labels = {
-                i: self.recurrences[i].dag.nodes[self.loop_finals[i]].output_labels
+                i: tuple(
+                    label
+                    for node in self.loop_finals[i]
+                    for label in self.recurrences[i].dag.nodes[node].output_labels
+                )
                 for i in indices
             }
             powers = tuple(
@@ -348,7 +395,7 @@ class NativeBareProcessProgram:
         return [
             [
                 S(f"loop_physical_process::born{helicity}_{i}")
-                for i in range(len(self.born_dags))
+                for i in range(len(self.born_colors))
             ]
             for helicity in range(len(self.helicities))
         ]
@@ -377,23 +424,23 @@ class NativeBareProcessProgram:
         for helicity, born in enumerate(self._born_symbols()):
             parameters.extend(born)
             for index in indices:
-                labels = (
-                    self.recurrences[index]
-                    .dag.nodes[self.loop_finals[index]]
-                    .output_labels
-                )
-                for column, label in enumerate(labels):
-                    coefficient = S(
-                        f"loop_physical_process::coefficient{helicity}_{index}_{column}"
-                    )
-                    parameters.append(coefficient)
-                    projected[label.powers] += sum(
-                        (
-                            value.conj() * self.loop_metric[b][index] * coefficient
-                            for b, value in enumerate(born)
-                        ),
-                        E("0"),
-                    )
+                for local_term, node in enumerate(self.loop_finals[index]):
+                    labels = self.recurrences[index].dag.nodes[node].output_labels
+                    term_index = self.loop_term_offsets[index] + local_term
+                    for column, label in enumerate(labels):
+                        coefficient = S(
+                            f"loop_physical_process::coefficient{helicity}_{index}_{local_term}_{column}"
+                        )
+                        parameters.append(coefficient)
+                        projected[label.powers] += sum(
+                            (
+                                value.conj()
+                                * self.loop_metric[b][term_index]
+                                * coefficient
+                                for b, value in enumerate(born)
+                            ),
+                            E("0"),
+                        )
         return self.backend.CoefficientEvaluator(
             _saved([projected[p] for p in powers], parameters), **self.options
         )
@@ -410,10 +457,10 @@ class NativeBareProcessProgram:
                 "construct a fresh bare program before changing color projection"
             )
         if (
-            len(born_metric) != len(self.born_dags)
-            or any(len(row) != len(self.born_dags) for row in born_metric)
-            or len(loop_metric) != len(self.born_dags)
-            or any(len(row) != len(self.recurrences) for row in loop_metric)
+            len(born_metric) != len(self.born_colors)
+            or any(len(row) != len(self.born_colors) for row in born_metric)
+            or len(loop_metric) != len(self.born_colors)
+            or any(len(row) != len(self.loop_color_tensors) for row in loop_metric)
         ):
             raise ValueError("physical color metric dimensions differ")
         for row in (*born_metric, *loop_metric):
@@ -605,12 +652,29 @@ def top_pair_qcd_program(**options):
 
 
 def _qcd_fermion_program(outgoing, **options):
+    return _qcd_process_program(
+        ("u", "u~"), outgoing, ("u", "v_bar", "u_bar", "v"), 36, **options
+    )
+
+
+def gluon_scattering_qcd_program(**options):
+    """Native gg -> gg control, including the identical-final-state factor 1/2."""
+    return _qcd_process_program(
+        ("g", "g"),
+        ("g", "g"),
+        ("epsilon", "epsilon", "epsilon_bar", "epsilon_bar"),
+        512,
+        **options,
+    )
+
+
+def _qcd_process_program(incoming, outgoing, state_kinds, average, **options):
     from symbolica import E, S
     from symbolica.community import hepkit as h
 
     model = h.Model.qcd_qed()
     process = build_loop_process(
-        model.process(["u", "u~"], outgoing),
+        model.process(incoming, outgoing),
         selected_corrections=["QCD"],
         perturbative_orders={"QCD": 1},
         born_order_bounds={"QCD": 2, "QED": 0},
@@ -626,8 +690,8 @@ def _qcd_fermion_program(outgoing, **options):
         )
     return NativeBareProcessProgram(
         process,
-        state_kinds=("u", "v_bar", "u_bar", "v"),
-        initial_average=E("36"),
+        state_kinds=state_kinds,
+        initial_average=E(str(average)),
         model_expressions=expressions,
         model_inputs=(alpha_s, top_mass),
         **options,
