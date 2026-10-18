@@ -264,6 +264,30 @@ class NativeScalarBindings:
         """Read arguments, values and revision together without copying carriers."""
         return self._state
 
+    def require_snapshot(self, snapshot):
+        """Check ownership before a consumer drops or evaluates any point."""
+        if (
+            not isinstance(snapshot, NativeScalarSnapshot)
+            or snapshot._owner is not self._identity
+        ):
+            raise ValueError("scale snapshot belongs to a different global state")
+        return snapshot
+
+    def reconstruct_snapshot(self, source, snapshot):
+        """Re-evaluate captured exact overrides/defaults in this owner's carrier.
+
+        This creates a detached snapshot and never publishes a global update.
+        The identical cold plan is required; rounded source buffers are unused.
+        """
+        source.require_snapshot(snapshot)
+        if self.plan is not source.plan:
+            raise ValueError("snapshot reconstruction requires the identical plan")
+        with self._update_lock:
+            arguments, values = self._evaluate(snapshot.overrides)
+        return NativeScalarSnapshot(
+            arguments, values, snapshot.overrides, snapshot.revision, self._identity
+        )
+
     @property
     def revision(self):
         return self._state.revision
@@ -413,23 +437,44 @@ class NativeScaleBindings:
 
     def evaluate_native(self, mu_r2, *, snapshot: NativeScalarSnapshot | None = None):
         """Return checked source values in scale-lane order, entirely natively."""
-        snapshot = self.global_state.snapshot() if snapshot is None else snapshot
-        if (
-            not isinstance(snapshot, NativeScalarSnapshot)
-            or snapshot._owner is not self.global_state._identity
-        ):
-            raise ValueError("scale snapshot belongs to a different global state")
+        return self._evaluate_native(mu_r2, snapshot=snapshot)
+
+    def evaluate_partial_native(self, mu_r2, *, snapshot=None):
+        """Return sparse source values and original-ID numerical failures.
+
+        Nonfinite scale/active diagnostic lanes are removed before their values
+        can enter the next native evaluator. Metadata errors still raise.
+        """
+        from .numerical_lanes import LaneFailures
+
+        failures = LaneFailures()
+        values = self._evaluate_native(mu_r2, snapshot=snapshot, failures=failures)
+        return values, tuple(failures.entries)
+
+    def _evaluate_native(self, mu_r2, *, snapshot=None, failures=None):
+        snapshot = self.global_state.require_snapshot(
+            self.global_state.snapshot() if snapshot is None else snapshot
+        )
         if not isinstance(mu_r2, self.backend.NativeBatch):
             raise TypeError("scales require a NativeBatch")
         if mu_r2.columns != 1:
             raise ValueError("scales require one mu_r2 column")
-        require_finite_batch(mu_r2, "renormalization scales")
-        # The native evaluator checks both carrier and precision, including
-        # empty batches and arbitrary precision whose bits match double/DD.
-        scales = self._scale.evaluate_batch(mu_r2)
-        require_finite_batch(scales, "positive real renormalization scales")
+
+        def checked(values, stage):
+            if failures is None:
+                require_finite_batch(values, stage)
+                return values
+            failures.require_finite(values, stage)
+            return values.take_rows(failures.successful_indices(values.row_ids))
+
+        mu_r2 = checked(mu_r2, "renormalization scales")
+        # Evaluating even an empty batch checks both carrier and precision.
+        scales = checked(
+            self._scale.evaluate_batch(mu_r2),
+            "positive real renormalization scales",
+        )
         arguments = snapshot.arguments.take_rows(
-            [0] * mu_r2.rows, row_ids=mu_r2.row_ids
+            [0] * scales.rows, row_ids=scales.row_ids
         )
         columns = [
             scales.take_columns([2])
@@ -437,10 +482,10 @@ class NativeScaleBindings:
             else arguments.take_columns([index])
             for index in range(len(self.plan.external_names))
         ]
-        computed = self._evaluator.evaluate_batch(
-            self.backend.NativeBatch.concat_columns(columns)
-        )
-        require_finite_batch(
-            computed, "scale-dependent scalar values and active diagnostics"
+        computed = checked(
+            self._evaluator.evaluate_batch(
+                self.backend.NativeBatch.concat_columns(columns)
+            ),
+            "scale-dependent scalar values and active diagnostics",
         )
         return computed.take_columns(list(range(0, 2 * len(self.plan.outputs), 2)))

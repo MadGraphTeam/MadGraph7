@@ -311,3 +311,76 @@ def test_gmu_source_counterterm_scale_logarithms():
                 finite = Decimal(values[2 * index + 1][0])
                 expected = (Decimal(scale) / mass**2).ln() / eps_uv
                 assert abs(finite / pole - expected) < Decimal(tolerance)
+
+
+@pytest.mark.parametrize("arithmetic,precision,_tolerance", MODES)
+def test_partial_scale_view_filters_active_diagnostics_with_original_ids(
+    source, arithmetic, precision, _tolerance
+):
+    backend = pytest.importorskip("_loop_reduction")
+    options = {"arithmetic": arithmetic, "precision": precision}
+    plan = prepare_scalar_bindings(source, (("safe", 0), ("A", 0)))
+    state = NativeScalarBindings(plan, **options)
+    view = NativeScaleBindings(state)
+    scales = backend.NativeBatch.from_exact_decimal(
+        [("4", "0"), (".25", "0"), ("0", "0"), ("9", "0")],
+        4,
+        1,
+        row_ids=[17, 61, 83, 99],
+        **options,
+    )
+    values, failures = view.evaluate_partial_native(scales)
+    assert values.row_ids == [17, 99]
+    assert {failure.point_id for failure in failures} == {61, 83}
+    assert any("active diagnostics" in failure.stage for failure in failures)
+    expected = view.evaluate_native(scales.take_rows([0, 3]))
+    assert values.to_decimal() == expected.to_decimal()
+    empty, failures = view.evaluate_partial_native(scales.take_rows([]))
+    assert empty.row_ids == [] and not failures
+    failed, failures = view.evaluate_partial_native(scales.take_rows([1, 2]))
+    assert failed.rows == 0 and len(failures) == 2
+    foreign = NativeScalarBindings(plan, **options)
+    with pytest.raises(ValueError, match="different global state"):
+        view.evaluate_partial_native(scales.take_rows([]), snapshot=foreign.snapshot())
+    wrong = backend.NativeBatch.from_decimal(
+        [], 0, 1, arithmetic="arbitrary", precision=40
+    )
+    with pytest.raises(ValueError):
+        view.evaluate_partial_native(wrong)
+
+
+def test_reconstructed_snapshot_uses_exact_defaults_and_retained_overrides(source):
+    backend = pytest.importorskip("_loop_reduction")
+    plan = prepare_scalar_bindings(source, (("z", 0), ("x", 0), ("A", 0)))
+    with localcontext() as context:
+        context.prec = 120
+        original_x = str(Decimal(2) + Decimal(2) ** -240)
+    source_state = NativeScalarBindings(plan, parameters={"x": original_x})
+    original = source_state.snapshot()
+    higher = NativeScalarBindings(plan, arithmetic="arbitrary", precision=90)
+    unchanged_higher = higher.snapshot()
+    source_state.update({"x": "7", "z": ("3", "4")})
+    reconstructed = higher.reconstruct_snapshot(source_state, original)
+    expected = NativeScalarBindings(
+        plan, arithmetic="arbitrary", precision=90, parameters={"x": original_x}
+    )
+    assert higher.snapshot() is unchanged_higher
+    assert reconstructed.revision == original.revision == 0
+    assert reconstructed.values.to_decimal() == expected.values.to_decimal()
+    # Exact source default 1/3 + 2i/7 and the retained low input bits are
+    # reconstructed; widening the primary double values cannot reproduce them.
+    assert not all(
+        good
+        for _id, good in reconstructed.values.agreement_rows(
+            original.values, "1e-85", "1e-85"
+        )
+    )
+    scales = backend.NativeBatch.from_decimal(
+        [("4", "0")], 1, 1, arithmetic="arbitrary", precision=90
+    )
+    NativeScaleBindings(higher).evaluate_native(scales, snapshot=reconstructed)
+    with pytest.raises(ValueError, match="different global state"):
+        higher.reconstruct_snapshot(source_state, higher.snapshot())
+    other = NativeScalarBindings(prepare_scalar_bindings(source, (("z", 0),)))
+    with pytest.raises(ValueError, match="identical plan"):
+        higher.reconstruct_snapshot(other, other.snapshot())
