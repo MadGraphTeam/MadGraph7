@@ -280,6 +280,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../first_steps.html">First steps</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../run_card.html">Run card</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../custom_functions.html">Custom functions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../gridpacks.html">Gridpacks</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../madevent_to_mg7.html">Coming from MadEvent</a></li>
 </ul>
@@ -323,6 +324,7 @@
 <li class="toctree-l2"><a class="reference internal" href="CachedPdf.html">CachedPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="CachedScale.html">CachedScale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CustomFunction.html">CustomFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="CutItem.html">CutItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Cuts.html">Cuts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DifferentialCrossSection.html">DifferentialCrossSection</a></li>
@@ -348,6 +350,7 @@
 <li class="toctree-l2"><a class="reference internal" href="Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CustomPdf.html">CustomPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Decay.html">Decay</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Diagram.html">Diagram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="LineRef.html">LineRef</a></li>
@@ -421,6 +424,7 @@
 <li class="toctree-l2"><a class="reference internal" href="set_simd_vector_size.html">set_simd_vector_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="NamedTypes.html">NamedTypes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="NamedValues.html">NamedValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="PythonFunction.html">PythonFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="get_stream.html">get_stream</a></li>
 <li class="toctree-l2"><a class="reference internal" href="set_stream.html">set_stream</a></li>
 <li class="toctree-l2"><a class="reference internal" href="stream.html">stream</a></li>
@@ -448,6 +452,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/BatchSampler.html">BatchSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/BufferUnweighter.html">BufferUnweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/CustomFunction.html">CustomFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Cuts.html">Cuts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/DiscreteHistogram.html">DiscreteHistogram</a></li>
@@ -475,6 +480,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/CustomPdf.html">CustomPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Diagram.html">Diagram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/PdfGrid.html">PdfGrid</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Propagator.html">Propagator</a></li>
@@ -543,6 +549,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/TensorView.html">TensorView</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ThreadPool.html">ThreadPool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ThreadResource.html">ThreadResource</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/UmamiFunctions.html">UmamiFunctions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/UnalignedRef.html">UnalignedRef</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Variation.html">Variation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
@@ -606,10 +613,10 @@
 <h1>PartonDensity<a class="headerlink" href="#partondensity" title="Link to this heading">¶</a></h1>
 <dl class="py class">
 <dt class="sig sig-object py" id="madspace.PartonDensity">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">PartonDensity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.PartonDensity" title="madspace._madspace_py.PartonDensity"><span class="pre">madspace._madspace_py.PartonDensity</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">grid</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="PdfGrid.html#madspace.PdfGrid" title="madspace._madspace_py.PdfGrid"><span class="pre">madspace._madspace_py.PdfGrid</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">pids</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">SupportsInt</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dynamic_pid</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prefix</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#madspace.PartonDensity" title="Link to this definition">¶</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">PartonDensity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#madspace.PartonDensity" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="FunctionGenerator.html#madspace.FunctionGenerator" title="madspace._madspace_py.FunctionGenerator"><code class="xref py py-class docutils literal notranslate"><span class="pre">FunctionGenerator</span></code></a></p>
 <p>Parton-density interpolation as a compute-graph function.</p>
-<p>Interpolates a PdfGrid at the sampled <span class="math notranslate nohighlight">\((x, q)\)</span>, returning <span class="math notranslate nohighlight">\(x f(x, q)\)</span> for the requested flavours; the numerical output agrees with LHAPDF to double precision [1] (Sec. 3.2.3 of [2]).</p>
+<p>Interpolates a PdfGrid at the sampled <span class="math notranslate nohighlight">\((x, q)\)</span>, returning <span class="math notranslate nohighlight">\(x f(x, q)\)</span> for the requested flavours; the numerical output agrees with LHAPDF to double precision [1] (Sec. 3.2.3 of [2]). With a CustomPdf, the user-supplied library is called once per requested flavour instead.</p>
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension.</p>
 <p><strong>Arguments</strong></p>
 <ul class="simple">
@@ -627,6 +634,10 @@
 precision era”, <a class="reference external" href="https://arxiv.org/abs/1412.7420">https://arxiv.org/abs/1412.7420</a></p></li>
 <li><p>[2] T. Heimel, O. Mattelaer, R. Winterhalder, “MadSpace”, <a class="reference external" href="https://arxiv.org/abs/2602.06895">https://arxiv.org/abs/2602.06895</a> (Sec. 3.2.3)</p></li>
 </ul>
+<p>Overloaded function.</p>
+<ol class="arabic simple">
+<li><p>__init__(self: madspace._madspace_py.PartonDensity, grid: madspace._madspace_py.PdfGrid, pids: collections.abc.Sequence[typing.SupportsInt], dynamic_pid: bool = False, prefix: str = ‘’) -&gt; None</p></li>
+</ol>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -634,6 +645,19 @@ precision era”, <a class="reference external" href="https://arxiv.org/abs/1412
 <li><p><strong>pids</strong> – PDG ids of the flavours to return.</p></li>
 <li><p><strong>dynamic_pid</strong> – If true, a single flavour selected per event by the <code class="docutils literal notranslate"><span class="pre">flavor_index</span></code> argument is returned.</p></li>
 <li><p><strong>prefix</strong> – Prefix for the grid global names.</p></li>
+</ul>
+</dd>
+</dl>
+<ol class="arabic simple" start="2">
+<li><p>__init__(self: madspace._madspace_py.PartonDensity, custom_pdf: madspace._madspace_py.CustomPdf, pids: collections.abc.Sequence[typing.SupportsInt], beam_index: typing.SupportsInt, dynamic_pid: bool = False) -&gt; None</p></li>
+</ol>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>custom_pdf</strong> – The user-supplied parton density.</p></li>
+<li><p><strong>pids</strong> – PDG ids of the flavours to return.</p></li>
+<li><p><strong>beam_index</strong> – Index of the beam (0 or 1), passed to the library.</p></li>
+<li><p><strong>dynamic_pid</strong> – If true, a single flavour selected per event by the <code class="docutils literal notranslate"><span class="pre">flavor_index</span></code> argument is returned.</p></li>
 </ul>
 </dd>
 </dl>

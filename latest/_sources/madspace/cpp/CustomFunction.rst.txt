@@ -1,0 +1,6 @@
+CustomFunction
+==============
+
+.. doxygenclass:: madspace::CustomFunction
+   :members:
+   :undoc-members:

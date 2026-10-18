@@ -280,6 +280,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../first_steps.html">First steps</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../run_card.html">Run card</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../custom_functions.html">Custom functions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../gridpacks.html">Gridpacks</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../madevent_to_mg7.html">Coming from MadEvent</a></li>
 </ul>
@@ -323,6 +324,7 @@
 <li class="toctree-l2"><a class="reference internal" href="CachedPdf.html">CachedPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="CachedScale.html">CachedScale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CustomFunction.html">CustomFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="CutItem.html">CutItem</a></li>
 <li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Cuts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DifferentialCrossSection.html">DifferentialCrossSection</a></li>
@@ -348,6 +350,7 @@
 <li class="toctree-l2"><a class="reference internal" href="Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CustomPdf.html">CustomPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Decay.html">Decay</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Diagram.html">Diagram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="LineRef.html">LineRef</a></li>
@@ -421,6 +424,7 @@
 <li class="toctree-l2"><a class="reference internal" href="set_simd_vector_size.html">set_simd_vector_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="NamedTypes.html">NamedTypes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="NamedValues.html">NamedValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="PythonFunction.html">PythonFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="get_stream.html">get_stream</a></li>
 <li class="toctree-l2"><a class="reference internal" href="set_stream.html">set_stream</a></li>
 <li class="toctree-l2"><a class="reference internal" href="stream.html">stream</a></li>
@@ -448,6 +452,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/BatchSampler.html">BatchSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/BufferUnweighter.html">BufferUnweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/CustomFunction.html">CustomFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Cuts.html">Cuts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/DiscreteHistogram.html">DiscreteHistogram</a></li>
@@ -475,6 +480,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/CustomPdf.html">CustomPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Diagram.html">Diagram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/PdfGrid.html">PdfGrid</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Propagator.html">Propagator</a></li>
@@ -543,6 +549,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/TensorView.html">TensorView</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ThreadPool.html">ThreadPool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ThreadResource.html">ThreadResource</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/UmamiFunctions.html">UmamiFunctions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/UnalignedRef.html">UnalignedRef</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Variation.html">Variation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
@@ -609,7 +616,7 @@
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">Cuts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#madspace.Cuts" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="FunctionGenerator.html#madspace.FunctionGenerator" title="madspace._madspace_py.FunctionGenerator"><code class="xref py py-class docutils literal notranslate"><span class="pre">FunctionGenerator</span></code></a></p>
 <p>Fiducial phase-space cuts, as a compute-graph acceptance mask.</p>
-<p>Builds a per-event <code class="docutils literal notranslate"><span class="pre">mask</span></code> (1 for events passing every cut, 0 otherwise) from a list of cut items [1]. Each item evaluates one Observable for its particle selection and requires the result to lie in <code class="docutils literal notranslate"><span class="pre">[min,</span> <span class="pre">max]</span></code>. When the selection yields several values, CutMode decides whether all or any of them must pass. See Sec. 3.2.4 of [1].</p>
+<p>Builds a per-event <code class="docutils literal notranslate"><span class="pre">mask</span></code> (1 for events passing every cut, 0 otherwise) from a list of cut items [1]. Each item evaluates one Observable for its particle selection and requires the result to lie in <code class="docutils literal notranslate"><span class="pre">[min,</span> <span class="pre">max]</span></code>. When the selection yields several values, CutMode decides whether all or any of them must pass. See Sec. 3.2.4 of [1]. An optional CustomFunction of type CustomFunction::cut multiplies its value into the mask.</p>
 <p>The accessors re-expose the active lower bounds in the layout the phase-space mappings consume. <code class="docutils literal notranslate"><span class="pre">pt_min()</span></code> and <code class="docutils literal notranslate"><span class="pre">eta_max()</span></code> are indexed by outgoing particle, with index 0 the first outgoing particle and the two beams excluded. <code class="docutils literal notranslate"><span class="pre">m_inv_min()</span></code> and <code class="docutils literal notranslate"><span class="pre">dr_min()</span></code> are symmetric <code class="docutils literal notranslate"><span class="pre">n_out</span> <span class="pre">*</span> <span class="pre">n_out</span></code> matrices indexed by outgoing-particle pair. A bound of <code class="docutils literal notranslate"><span class="pre">0</span></code>, or infinity for <code class="docutils literal notranslate"><span class="pre">eta_max()</span></code>, means the cut is inactive. Only bounds that every selected object must satisfy are reported: an ordered selection (a rank, not a particle) or a CutMode::any cut over several objects stays a filter.</p>
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension. <code class="docutils literal notranslate"><span class="pre">n_particles</span></code> counts the incoming and outgoing particles.</p>
 <p><strong>Arguments</strong></p>
@@ -626,20 +633,26 @@
 </ul>
 <p>Overloaded function.</p>
 <ol class="arabic simple">
-<li><p>__init__(self: madspace._madspace_py.Cuts, cut_data: collections.abc.Sequence[madspace._madspace_py.CutItem]) -&gt; None</p></li>
+<li><p>__init__(self: madspace._madspace_py.Cuts, cut_data: collections.abc.Sequence[madspace._madspace_py.CutItem], custom_cut: madspace._madspace_py.CustomFunction | None = None) -&gt; None</p></li>
 </ol>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>cut_data</strong> – The cut items to apply.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cut_data</strong> – The cut items to apply.</p></li>
+<li><p><strong>custom_cut</strong> – Optional user-supplied cut function.</p></li>
+</ul>
 </dd>
 </dl>
 <ol class="arabic simple" start="2">
-<li><p>__init__(self: madspace._madspace_py.Cuts, particle_count: typing.SupportsInt) -&gt; None</p></li>
+<li><p>__init__(self: madspace._madspace_py.Cuts, particle_count: typing.SupportsInt, custom_cut: madspace._madspace_py.CustomFunction | None = None) -&gt; None</p></li>
 </ol>
-<p>Build a pass-through mask with no cuts.</p>
+<p>Build a mask with no cut items.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>particle_count</strong> – Number of external particles.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>particle_count</strong> – Number of external particles.</p></li>
+<li><p><strong>custom_cut</strong> – Optional user-supplied cut function.</p></li>
+</ul>
 </dd>
 </dl>
 <dl class="py class">

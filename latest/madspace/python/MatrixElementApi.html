@@ -280,6 +280,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../first_steps.html">First steps</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../run_card.html">Run card</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../custom_functions.html">Custom functions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../gridpacks.html">Gridpacks</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../madevent_to_mg7.html">Coming from MadEvent</a></li>
 </ul>
@@ -323,6 +324,7 @@
 <li class="toctree-l2"><a class="reference internal" href="CachedPdf.html">CachedPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="CachedScale.html">CachedScale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CustomFunction.html">CustomFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="CutItem.html">CutItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Cuts.html">Cuts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DifferentialCrossSection.html">DifferentialCrossSection</a></li>
@@ -348,6 +350,7 @@
 <li class="toctree-l2"><a class="reference internal" href="Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CustomPdf.html">CustomPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Decay.html">Decay</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Diagram.html">Diagram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="LineRef.html">LineRef</a></li>
@@ -421,6 +424,7 @@
 <li class="toctree-l2"><a class="reference internal" href="set_simd_vector_size.html">set_simd_vector_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="NamedTypes.html">NamedTypes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="NamedValues.html">NamedValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="PythonFunction.html">PythonFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="get_stream.html">get_stream</a></li>
 <li class="toctree-l2"><a class="reference internal" href="set_stream.html">set_stream</a></li>
 <li class="toctree-l2"><a class="reference internal" href="stream.html">stream</a></li>
@@ -448,6 +452,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/BatchSampler.html">BatchSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/BufferUnweighter.html">BufferUnweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/CustomFunction.html">CustomFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Cuts.html">Cuts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/DiscreteHistogram.html">DiscreteHistogram</a></li>
@@ -475,6 +480,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/CustomPdf.html">CustomPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Diagram.html">Diagram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/PdfGrid.html">PdfGrid</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Propagator.html">Propagator</a></li>
@@ -543,6 +549,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/TensorView.html">TensorView</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ThreadPool.html">ThreadPool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ThreadResource.html">ThreadResource</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/UmamiFunctions.html">UmamiFunctions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/UnalignedRef.html">UnalignedRef</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Variation.html">Variation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
@@ -609,12 +616,18 @@
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">MatrixElementApi</span></span><a class="headerlink" href="#madspace.MatrixElementApi" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">pybind11_object</span></code></p>
 <p>Loaded UMAMI shared library for one matrix element.</p>
-<p>UMAMI (Unified MAtrix eleMent Interface) is madspace’s uniform way of calling matrix-element code, currently the cudacpp plugin [1]; see MatrixElement for the compute-graph function built on top of it. A <code class="docutils literal notranslate"><span class="pre">MatrixElementApi</span></code> dynamically loads the library, resolves its exported UMAMI entry points, and exposes the metadata queries and the raw call. Obtained from Context::load_matrix_element, never constructed directly.</p>
+<p>UMAMI (Unified MAtrix eleMent Interface) is madspace’s uniform way of calling matrix-element code, currently the cudacpp plugin [1]; see MatrixElement for the compute-graph function built on top of it. A <code class="docutils literal notranslate"><span class="pre">MatrixElementApi</span></code> dynamically loads the library, resolves its exported UMAMI entry points, and exposes the metadata queries and the raw call. Obtained from Context::load_matrix_element, or from Context::add_matrix_element for entry points given as UmamiFunctions, never constructed directly.</p>
 <p><strong>References</strong></p>
 <ul class="simple">
 <li><p>[1] S. Hageböck et al., “Data-parallel leading-order event generation in
 <a class="reference external" href="mailto:MadGraph5_aMC&#37;&#52;&#48;NLO">MadGraph5_aMC<span>&#64;</span>NLO</a>”, <a class="reference external" href="https://arxiv.org/abs/2507.21039">https://arxiv.org/abs/2507.21039</a></p></li>
 </ul>
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.MatrixElementApi.device_type">
+<span class="sig-name descname"><span class="pre">device_type</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.MatrixElementApi" title="madspace._madspace_py.MatrixElementApi"><span class="pre">madspace._madspace_py.MatrixElementApi</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#madspace.MatrixElementApi.device_type" title="Link to this definition">¶</a></dt>
+<dd><p>Device the library was built for: <code class="docutils literal notranslate"><span class="pre">cpu</span></code>, <code class="docutils literal notranslate"><span class="pre">cuda</span></code> or <code class="docutils literal notranslate"><span class="pre">hip</span></code>.</p>
+</dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="madspace.MatrixElementApi.diagram_count">
 <span class="sig-name descname"><span class="pre">diagram_count</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.MatrixElementApi" title="madspace._madspace_py.MatrixElementApi"><span class="pre">madspace._madspace_py.MatrixElementApi</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="DataType.html#madspace.DataType.int" title="madspace.DataType.int"><span class="pre">int</span></a></span></span><a class="headerlink" href="#madspace.MatrixElementApi.diagram_count" title="Link to this definition">¶</a></dt>
@@ -700,6 +713,7 @@
             <ul>
 <li><a class="reference internal" href="#">MatrixElementApi</a><ul>
 <li><a class="reference internal" href="#madspace.MatrixElementApi"><code class="docutils literal notranslate"><span class="pre">MatrixElementApi</span></code></a><ul>
+<li><a class="reference internal" href="#madspace.MatrixElementApi.device_type"><code class="docutils literal notranslate"><span class="pre">MatrixElementApi.device_type()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElementApi.diagram_count"><code class="docutils literal notranslate"><span class="pre">MatrixElementApi.diagram_count()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElementApi.helicity_count"><code class="docutils literal notranslate"><span class="pre">MatrixElementApi.helicity_count()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElementApi.index"><code class="docutils literal notranslate"><span class="pre">MatrixElementApi.index()</span></code></a></li>

@@ -1,0 +1,6 @@
+UmamiFunctions
+==============
+
+.. doxygenstruct:: madspace::UmamiFunctions
+   :members:
+   :undoc-members:

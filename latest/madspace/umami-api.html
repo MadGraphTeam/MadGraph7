@@ -280,6 +280,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../first_steps.html">First steps</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../run_card.html">Run card</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../custom_functions.html">Custom functions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gridpacks.html">Gridpacks</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../madevent_to_mg7.html">Coming from MadEvent</a></li>
 </ul>
@@ -323,6 +324,7 @@
 <li class="toctree-l2"><a class="reference internal" href="python/CachedPdf.html">CachedPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/CachedScale.html">CachedScale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/CustomFunction.html">CustomFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/CutItem.html">CutItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/Cuts.html">Cuts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
@@ -348,6 +350,7 @@
 <li class="toctree-l2"><a class="reference internal" href="python/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/CustomPdf.html">CustomPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/Decay.html">Decay</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/Diagram.html">Diagram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/LineRef.html">LineRef</a></li>
@@ -421,6 +424,7 @@
 <li class="toctree-l2"><a class="reference internal" href="python/set_simd_vector_size.html">set_simd_vector_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/NamedTypes.html">NamedTypes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/NamedValues.html">NamedValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/PythonFunction.html">PythonFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/get_stream.html">get_stream</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/set_stream.html">set_stream</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/stream.html">stream</a></li>
@@ -448,6 +452,7 @@
 <li class="toctree-l2"><a class="reference internal" href="cpp/BatchSampler.html">BatchSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/BufferUnweighter.html">BufferUnweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/CustomFunction.html">CustomFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/Cuts.html">Cuts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/DiscreteHistogram.html">DiscreteHistogram</a></li>
@@ -475,6 +480,7 @@
 <li class="toctree-l2"><a class="reference internal" href="cpp/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/CustomPdf.html">CustomPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/Diagram.html">Diagram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/PdfGrid.html">PdfGrid</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/Propagator.html">Propagator</a></li>
@@ -543,6 +549,7 @@
 <li class="toctree-l2"><a class="reference internal" href="cpp/TensorView.html">TensorView</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/ThreadPool.html">ThreadPool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/ThreadResource.html">ThreadResource</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/UmamiFunctions.html">UmamiFunctions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/UnalignedRef.html">UnalignedRef</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/Variation.html">Variation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
@@ -819,6 +826,43 @@
 <dd><p>externally selected channel index, type: <code class="docutils literal notranslate"><span class="pre">unsigned</span> <span class="pre">int</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
 </dd></dl>
 
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13UmamiInputKey23UMAMI_IN_PARTICLE_COUNTE">
+<span id="_CPPv3N13UmamiInputKey23UMAMI_IN_PARTICLE_COUNTE"></span><span id="_CPPv2N13UmamiInputKey23UMAMI_IN_PARTICLE_COUNTE"></span><span class="target" id="umami_8h_1a152a2f1151a0b85727f70a08ada03483abbbe598dbb0d9a5890a613ac29556b61"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_IN_PARTICLE_COUNT</span></span></span><a class="headerlink" href="#_CPPv4N13UmamiInputKey23UMAMI_IN_PARTICLE_COUNTE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>number of external legs, type: <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13UmamiInputKey16UMAMI_IN_PDG_IDSE">
+<span id="_CPPv3N13UmamiInputKey16UMAMI_IN_PDG_IDSE"></span><span id="_CPPv2N13UmamiInputKey16UMAMI_IN_PDG_IDSE"></span><span class="target" id="umami_8h_1a152a2f1151a0b85727f70a08ada03483aaa1a321e73867cf90678e027dce06b3d"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_IN_PDG_IDS</span></span></span><a class="headerlink" href="#_CPPv4N13UmamiInputKey16UMAMI_IN_PDG_IDSE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>PDG ids of the external legs, type: <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">(particle</span> <span class="pre">count)</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13UmamiInputKey26UMAMI_IN_MOMENTUM_FRACTIONE">
+<span id="_CPPv3N13UmamiInputKey26UMAMI_IN_MOMENTUM_FRACTIONE"></span><span id="_CPPv2N13UmamiInputKey26UMAMI_IN_MOMENTUM_FRACTIONE"></span><span class="target" id="umami_8h_1a152a2f1151a0b85727f70a08ada03483a298df012e7970924a2ecab0510fc1aa5"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_IN_MOMENTUM_FRACTION</span></span></span><a class="headerlink" href="#_CPPv4N13UmamiInputKey26UMAMI_IN_MOMENTUM_FRACTIONE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>momentum fraction of an incoming parton, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13UmamiInputKey14UMAMI_IN_SCALEE">
+<span id="_CPPv3N13UmamiInputKey14UMAMI_IN_SCALEE"></span><span id="_CPPv2N13UmamiInputKey14UMAMI_IN_SCALEE"></span><span class="target" id="umami_8h_1a152a2f1151a0b85727f70a08ada03483a1a4a85fd00f936a29bab6a00eecfd52f"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_IN_SCALE</span></span></span><a class="headerlink" href="#_CPPv4N13UmamiInputKey14UMAMI_IN_SCALEE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>energy scale, e.g. </p>
+<p>the factorization scale, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13UmamiInputKey15UMAMI_IN_PDG_IDE">
+<span id="_CPPv3N13UmamiInputKey15UMAMI_IN_PDG_IDE"></span><span id="_CPPv2N13UmamiInputKey15UMAMI_IN_PDG_IDE"></span><span class="target" id="umami_8h_1a152a2f1151a0b85727f70a08ada03483adf2db3b2adc5a3a22f2d8526a25897dc"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_IN_PDG_ID</span></span></span><a class="headerlink" href="#_CPPv4N13UmamiInputKey15UMAMI_IN_PDG_IDE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>PDG id of a single parton, type: <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13UmamiInputKey19UMAMI_IN_BEAM_INDEXE">
+<span id="_CPPv3N13UmamiInputKey19UMAMI_IN_BEAM_INDEXE"></span><span id="_CPPv2N13UmamiInputKey19UMAMI_IN_BEAM_INDEXE"></span><span class="target" id="umami_8h_1a152a2f1151a0b85727f70a08ada03483a741887e43e7a51db20f87e5f3b65375f"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_IN_BEAM_INDEX</span></span></span><a class="headerlink" href="#_CPPv4N13UmamiInputKey19UMAMI_IN_BEAM_INDEXE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>index of the beam (0 or 1), type: <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="cpp enum">
@@ -834,7 +878,7 @@
 <dl class="cpp enumerator">
 <dt class="sig sig-object cpp" id="_CPPv4N14UmamiOutputKey22UMAMI_OUT_DIAGRAM_AMP2E">
 <span id="_CPPv3N14UmamiOutputKey22UMAMI_OUT_DIAGRAM_AMP2E"></span><span id="_CPPv2N14UmamiOutputKey22UMAMI_OUT_DIAGRAM_AMP2E"></span><span class="target" id="umami_8h_1a269d8f99c0177eb25f972a785af5de09a316fd3aacc84b6a738f2d72d9e5fbf08"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_OUT_DIAGRAM_AMP2</span></span></span><a class="headerlink" href="#_CPPv4N14UmamiOutputKey22UMAMI_OUT_DIAGRAM_AMP2E" title="Link to this definition">¶</a><br /></dt>
-<dd><p>selected color index, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">(diagram</span> <span class="pre">count)</span></code></p>
+<dd><p>squared amplitudes of the diagrams, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">(diagram</span> <span class="pre">count)</span></code></p>
 </dd></dl>
 
 <dl class="cpp enumerator">
@@ -860,6 +904,42 @@
 <span id="_CPPv3N14UmamiOutputKey20UMAMI_OUT_GPU_STREAME"></span><span id="_CPPv2N14UmamiOutputKey20UMAMI_OUT_GPU_STREAME"></span><span class="target" id="umami_8h_1a269d8f99c0177eb25f972a785af5de09a3a618584a08e8529ef7002ecdef736a4"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_OUT_GPU_STREAM</span></span></span><a class="headerlink" href="#_CPPv4N14UmamiOutputKey20UMAMI_OUT_GPU_STREAME" title="Link to this definition">¶</a><br /></dt>
 <dd><p>CUDA or HIP stream for asynchronous execution. </p>
 <p>Listed as an output as it is a mutable pointer </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14UmamiOutputKey13UMAMI_OUT_CUTE">
+<span id="_CPPv3N14UmamiOutputKey13UMAMI_OUT_CUTE"></span><span id="_CPPv2N14UmamiOutputKey13UMAMI_OUT_CUTE"></span><span class="target" id="umami_8h_1a269d8f99c0177eb25f972a785af5de09a46ea83474c1c28a7ade032528f6e5e48"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_OUT_CUT</span></span></span><a class="headerlink" href="#_CPPv4N14UmamiOutputKey13UMAMI_OUT_CUTE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>value of a custom cut, 0 rejects the event, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14UmamiOutputKey19UMAMI_OUT_REN_SCALEE">
+<span id="_CPPv3N14UmamiOutputKey19UMAMI_OUT_REN_SCALEE"></span><span id="_CPPv2N14UmamiOutputKey19UMAMI_OUT_REN_SCALEE"></span><span class="target" id="umami_8h_1a269d8f99c0177eb25f972a785af5de09a37b6a3e6eb49f400fd0e8c921870296a"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_OUT_REN_SCALE</span></span></span><a class="headerlink" href="#_CPPv4N14UmamiOutputKey19UMAMI_OUT_REN_SCALEE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>custom renormalization scale, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14UmamiOutputKey22UMAMI_OUT_FACT_SCALE_1E">
+<span id="_CPPv3N14UmamiOutputKey22UMAMI_OUT_FACT_SCALE_1E"></span><span id="_CPPv2N14UmamiOutputKey22UMAMI_OUT_FACT_SCALE_1E"></span><span class="target" id="umami_8h_1a269d8f99c0177eb25f972a785af5de09a58ea13e07bd6dbd9eec3898eb256ae2e"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_OUT_FACT_SCALE_1</span></span></span><a class="headerlink" href="#_CPPv4N14UmamiOutputKey22UMAMI_OUT_FACT_SCALE_1E" title="Link to this definition">¶</a><br /></dt>
+<dd><p>custom factorization scale of the first incoming particle, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14UmamiOutputKey22UMAMI_OUT_FACT_SCALE_2E">
+<span id="_CPPv3N14UmamiOutputKey22UMAMI_OUT_FACT_SCALE_2E"></span><span id="_CPPv2N14UmamiOutputKey22UMAMI_OUT_FACT_SCALE_2E"></span><span class="target" id="umami_8h_1a269d8f99c0177eb25f972a785af5de09a6dc0872878c560e110b79f3f676e16a3"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_OUT_FACT_SCALE_2</span></span></span><a class="headerlink" href="#_CPPv4N14UmamiOutputKey22UMAMI_OUT_FACT_SCALE_2E" title="Link to this definition">¶</a><br /></dt>
+<dd><p>custom factorization scale of the second incoming particle, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14UmamiOutputKey13UMAMI_OUT_PDFE">
+<span id="_CPPv3N14UmamiOutputKey13UMAMI_OUT_PDFE"></span><span id="_CPPv2N14UmamiOutputKey13UMAMI_OUT_PDFE"></span><span class="target" id="umami_8h_1a269d8f99c0177eb25f972a785af5de09aab6c3be0323b72f3d0a7df1d655d6e56"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_OUT_PDF</span></span></span><a class="headerlink" href="#_CPPv4N14UmamiOutputKey13UMAMI_OUT_PDFE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>value x f(x, Q) of a custom parton density, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14UmamiOutputKey14UMAMI_OUT_BIASE">
+<span id="_CPPv3N14UmamiOutputKey14UMAMI_OUT_BIASE"></span><span id="_CPPv2N14UmamiOutputKey14UMAMI_OUT_BIASE"></span><span class="target" id="umami_8h_1a269d8f99c0177eb25f972a785af5de09a5a48e62262302e6727f217b0615d7261"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_OUT_BIAS</span></span></span><a class="headerlink" href="#_CPPv4N14UmamiOutputKey14UMAMI_OUT_BIASE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>value of a custom event bias, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
 </dd></dl>
 
 </dd></dl>
@@ -1131,6 +1211,12 @@
 <li><a class="reference internal" href="#_CPPv4N13UmamiInputKey23UMAMI_IN_HELICITY_INDEXE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_HELICITY_INDEX</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N13UmamiInputKey22UMAMI_IN_DIAGRAM_INDEXE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_DIAGRAM_INDEX</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N13UmamiInputKey22UMAMI_IN_CHANNEL_INDEXE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_CHANNEL_INDEX</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N13UmamiInputKey23UMAMI_IN_PARTICLE_COUNTE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_PARTICLE_COUNT</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N13UmamiInputKey16UMAMI_IN_PDG_IDSE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_PDG_IDS</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N13UmamiInputKey26UMAMI_IN_MOMENTUM_FRACTIONE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_MOMENTUM_FRACTION</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N13UmamiInputKey14UMAMI_IN_SCALEE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_SCALE</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N13UmamiInputKey15UMAMI_IN_PDG_IDE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_PDG_ID</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N13UmamiInputKey19UMAMI_IN_BEAM_INDEXE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_BEAM_INDEX</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#_CPPv414UmamiOutputKey"><code class="docutils literal notranslate"><span class="pre">UmamiOutputKey</span></code></a><ul>
@@ -1140,6 +1226,12 @@
 <li><a class="reference internal" href="#_CPPv4N14UmamiOutputKey24UMAMI_OUT_HELICITY_INDEXE"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUT_HELICITY_INDEX</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N14UmamiOutputKey23UMAMI_OUT_DIAGRAM_INDEXE"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUT_DIAGRAM_INDEX</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N14UmamiOutputKey20UMAMI_OUT_GPU_STREAME"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUT_GPU_STREAM</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N14UmamiOutputKey13UMAMI_OUT_CUTE"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUT_CUT</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N14UmamiOutputKey19UMAMI_OUT_REN_SCALEE"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUT_REN_SCALE</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N14UmamiOutputKey22UMAMI_OUT_FACT_SCALE_1E"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUT_FACT_SCALE_1</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N14UmamiOutputKey22UMAMI_OUT_FACT_SCALE_2E"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUT_FACT_SCALE_2</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N14UmamiOutputKey13UMAMI_OUT_PDFE"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUT_PDF</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N14UmamiOutputKey14UMAMI_OUT_BIASE"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUT_BIAS</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#_CPPv414umami_get_meta12UmamiMetaKeyPv"><code class="docutils literal notranslate"><span class="pre">umami_get_meta()</span></code></a></li>

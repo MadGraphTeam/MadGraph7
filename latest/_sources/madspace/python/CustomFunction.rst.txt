@@ -1,0 +1,7 @@
+CustomFunction
+==============
+
+.. autoclass:: madspace.CustomFunction
+   :members:
+   :undoc-members:
+   :show-inheritance:

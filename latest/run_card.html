@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Gridpacks" href="gridpacks.html"><link rel="prev" title="First steps" href="first_steps.html">
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="Custom functions" href="custom_functions.html"><link rel="prev" title="First steps" href="first_steps.html">
         <link rel="canonical" href="https://docs.madgraph.org/latest/run_card.html">
         <link rel="prefetch" href="_static/logo-light.png" as="image">
         <link rel="prefetch" href="_static/logo-dark.png" as="image">
@@ -280,6 +280,7 @@
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="first_steps.html">First steps</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Run card</a></li>
+<li class="toctree-l1"><a class="reference internal" href="custom_functions.html">Custom functions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="gridpacks.html">Gridpacks</a></li>
 <li class="toctree-l1"><a class="reference internal" href="madevent_to_mg7.html">Coming from MadEvent</a></li>
 </ul>
@@ -323,6 +324,7 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/CachedPdf.html">CachedPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/CachedScale.html">CachedScale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/CustomFunction.html">CustomFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/CutItem.html">CutItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/Cuts.html">Cuts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
@@ -348,6 +350,7 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/CustomPdf.html">CustomPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/Decay.html">Decay</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/Diagram.html">Diagram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/LineRef.html">LineRef</a></li>
@@ -421,6 +424,7 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/set_simd_vector_size.html">set_simd_vector_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/NamedTypes.html">NamedTypes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/NamedValues.html">NamedValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/PythonFunction.html">PythonFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/get_stream.html">get_stream</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/set_stream.html">set_stream</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/stream.html">stream</a></li>
@@ -448,6 +452,7 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/BatchSampler.html">BatchSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/BufferUnweighter.html">BufferUnweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/CustomFunction.html">CustomFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Cuts.html">Cuts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/DiscreteHistogram.html">DiscreteHistogram</a></li>
@@ -475,6 +480,7 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/CustomPdf.html">CustomPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Diagram.html">Diagram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/PdfGrid.html">PdfGrid</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Propagator.html">Propagator</a></li>
@@ -543,6 +549,7 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/TensorView.html">TensorView</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ThreadPool.html">ThreadPool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ThreadResource.html">ThreadResource</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/UmamiFunctions.html">UmamiFunctions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/UnalignedRef.html">UnalignedRef</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Variation.html">Variation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
@@ -885,6 +892,29 @@ equal ones.</p>
 </dd>
 </dl>
 </section>
+<section id="custom-functions">
+<h2>[custom_functions]<a class="headerlink" href="#custom-functions" title="Link to this heading">¶</a></h2>
+<p>User-written functions, created with <code class="docutils literal notranslate"><span class="pre">bin/init_custom_func</span></code>. Each one is a shared
+library (<code class="docutils literal notranslate"><span class="pre">.so</span></code>) or a Python file (<code class="docutils literal notranslate"><span class="pre">.py</span></code>). Paths are relative to the process directory.
+An empty string disables the function. See <a class="reference internal" href="custom_functions.html"><span class="doc">Custom functions</span></a> for details.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">cut</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code>)</dt><dd><p>Custom cut, for example <code class="docutils literal notranslate"><span class="pre">&quot;lib/custom_cut.so&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;custom_cut/custom_cut.py&quot;</span></code>. It
+is applied on top of the <code class="docutils literal notranslate"><span class="pre">[cuts]</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">scale</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code>)</dt><dd><p>Custom renormalization and factorization scales. They replace
+<code class="docutils literal notranslate"><span class="pre">dynamical_scale_choice</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">pdf</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code>)</dt><dd><p>Custom parton density. It replaces the PDF set, but <span class="math notranslate nohighlight">\(\alpha_s\)</span> still comes from
+<code class="docutils literal notranslate"><span class="pre">[beam]</span> <span class="pre">pdf</span></code>. The systematics are disabled.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">bias</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code>)</dt><dd><p>Custom event bias. Events are generated with the weight times the bias and written with
+the weight divided by the bias.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">&lt;function&gt;_parameters.&lt;name&gt;</span></code></dt><dd><p>A parameter of a custom function, for example <code class="docutils literal notranslate"><span class="pre">cut_parameters.pt_min</span> <span class="pre">=</span> <span class="pre">30.0</span></code>. It replaces
+the default value declared by the function. See <a class="reference internal" href="custom_functions.html#custom-function-parameters"><span class="std std-ref">Parameters</span></a>.</p>
+</dd>
+</dl>
+</section>
 <section id="multiparticles">
 <span id="run-card-multiparticles"></span><h2>[multiparticles]<a class="headerlink" href="#multiparticles" title="Link to this heading">¶</a></h2>
 <p>Named groups of particles, given as lists of PDG ids. The names are used in the cuts and
@@ -1096,12 +1126,12 @@ function. The activations are <code class="docutils literal notranslate"><span c
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="gridpacks.html">
+          <a class="next-page" href="custom_functions.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Gridpacks</div>
+                <div class="title">Custom functions</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -1156,6 +1186,7 @@ function. The activations are <code class="docutils literal notranslate"><span c
 <li><a class="reference internal" href="#postprocessing">[postprocessing]</a></li>
 <li><a class="reference internal" href="#vegas">[vegas]</a></li>
 <li><a class="reference internal" href="#phasespace">[phasespace]</a></li>
+<li><a class="reference internal" href="#custom-functions">[custom_functions]</a></li>
 <li><a class="reference internal" href="#multiparticles">[multiparticles]</a></li>
 <li><a class="reference internal" href="#cuts">[cuts]</a></li>
 <li><a class="reference internal" href="#histograms">[histograms]</a></li>

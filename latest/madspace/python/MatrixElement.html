@@ -280,6 +280,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../first_steps.html">First steps</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../run_card.html">Run card</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../custom_functions.html">Custom functions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../gridpacks.html">Gridpacks</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../madevent_to_mg7.html">Coming from MadEvent</a></li>
 </ul>
@@ -323,6 +324,7 @@
 <li class="toctree-l2"><a class="reference internal" href="CachedPdf.html">CachedPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="CachedScale.html">CachedScale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CustomFunction.html">CustomFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="CutItem.html">CutItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Cuts.html">Cuts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DifferentialCrossSection.html">DifferentialCrossSection</a></li>
@@ -348,6 +350,7 @@
 <li class="toctree-l2"><a class="reference internal" href="Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CustomPdf.html">CustomPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Decay.html">Decay</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Diagram.html">Diagram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="LineRef.html">LineRef</a></li>
@@ -421,6 +424,7 @@
 <li class="toctree-l2"><a class="reference internal" href="set_simd_vector_size.html">set_simd_vector_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="NamedTypes.html">NamedTypes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="NamedValues.html">NamedValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="PythonFunction.html">PythonFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="get_stream.html">get_stream</a></li>
 <li class="toctree-l2"><a class="reference internal" href="set_stream.html">set_stream</a></li>
 <li class="toctree-l2"><a class="reference internal" href="stream.html">stream</a></li>
@@ -448,6 +452,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/BatchSampler.html">BatchSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/BufferUnweighter.html">BufferUnweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/CustomFunction.html">CustomFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Cuts.html">Cuts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/DiscreteHistogram.html">DiscreteHistogram</a></li>
@@ -475,6 +480,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/CustomPdf.html">CustomPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Diagram.html">Diagram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/PdfGrid.html">PdfGrid</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Propagator.html">Propagator</a></li>
@@ -543,6 +549,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/TensorView.html">TensorView</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ThreadPool.html">ThreadPool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ThreadResource.html">ThreadResource</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/UmamiFunctions.html">UmamiFunctions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/UnalignedRef.html">UnalignedRef</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Variation.html">Variation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
@@ -677,6 +684,12 @@
 <p>helicity_in</p>
 <p>diagram_in</p>
 <p>channel_in</p>
+<p>particle_count_in</p>
+<p>pdg_ids_in</p>
+<p>momentum_fraction_in</p>
+<p>scale_in</p>
+<p>pdg_id_in</p>
+<p>beam_index_in</p>
 </div></blockquote>
 <p>Overloaded function.</p>
 <ol class="arabic simple">
@@ -686,6 +699,11 @@
 <dl class="py attribute">
 <dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementInput.alpha_s_in">
 <span class="sig-name descname"><span class="pre">alpha_s_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.alpha_s_in:</span> <span class="pre">1&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementInput.alpha_s_in" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementInput.beam_index_in">
+<span class="sig-name descname"><span class="pre">beam_index_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.beam_index_in:</span> <span class="pre">14&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementInput.beam_index_in" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -713,9 +731,29 @@
 <span class="sig-name descname"><span class="pre">momenta_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.momenta_in:</span> <span class="pre">0&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementInput.momenta_in" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementInput.momentum_fraction_in">
+<span class="sig-name descname"><span class="pre">momentum_fraction_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.momentum_fraction_in:</span> <span class="pre">11&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementInput.momentum_fraction_in" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
 <dl class="py property">
 <dt class="sig sig-object py">
 <span class="sig-name descname"><span class="pre">MatrixElement.MatrixElementInput.name</span> <span class="pre">-&gt;</span> <span class="pre">str</span></span></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementInput.particle_count_in">
+<span class="sig-name descname"><span class="pre">particle_count_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.particle_count_in:</span> <span class="pre">9&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementInput.particle_count_in" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementInput.pdg_id_in">
+<span class="sig-name descname"><span class="pre">pdg_id_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.pdg_id_in:</span> <span class="pre">13&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementInput.pdg_id_in" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementInput.pdg_ids_in">
+<span class="sig-name descname"><span class="pre">pdg_ids_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.pdg_ids_in:</span> <span class="pre">10&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementInput.pdg_ids_in" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -731,6 +769,11 @@
 <dl class="py attribute">
 <dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementInput.random_helicity_in">
 <span class="sig-name descname"><span class="pre">random_helicity_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.random_helicity_in:</span> <span class="pre">4&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementInput.random_helicity_in" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementInput.scale_in">
+<span class="sig-name descname"><span class="pre">scale_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.scale_in:</span> <span class="pre">12&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementInput.scale_in" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py property">
@@ -751,6 +794,12 @@
 <p>color_index_out</p>
 <p>helicity_index_out</p>
 <p>diagram_index_out</p>
+<p>cut_out</p>
+<p>ren_scale_out</p>
+<p>fact_scale1_out</p>
+<p>fact_scale2_out</p>
+<p>pdf_out</p>
+<p>bias_out</p>
 </div></blockquote>
 <p>Overloaded function.</p>
 <ol class="arabic simple">
@@ -758,8 +807,18 @@
 <li><p>__init__(self: madspace._madspace_py.MatrixElement.MatrixElementOutput, name: str) -&gt; None</p></li>
 </ol>
 <dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementOutput.bias_out">
+<span class="sig-name descname"><span class="pre">bias_out</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementOutput.bias_out:</span> <span class="pre">10&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementOutput.bias_out" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
 <dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementOutput.color_index_out">
 <span class="sig-name descname"><span class="pre">color_index_out</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementOutput.color_index_out:</span> <span class="pre">2&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementOutput.color_index_out" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementOutput.cut_out">
+<span class="sig-name descname"><span class="pre">cut_out</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementOutput.cut_out:</span> <span class="pre">5&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementOutput.cut_out" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -770,6 +829,16 @@
 <dl class="py attribute">
 <dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementOutput.diagram_index_out">
 <span class="sig-name descname"><span class="pre">diagram_index_out</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementOutput.diagram_index_out:</span> <span class="pre">4&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementOutput.diagram_index_out" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementOutput.fact_scale1_out">
+<span class="sig-name descname"><span class="pre">fact_scale1_out</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementOutput.fact_scale1_out:</span> <span class="pre">7&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementOutput.fact_scale1_out" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementOutput.fact_scale2_out">
+<span class="sig-name descname"><span class="pre">fact_scale2_out</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementOutput.fact_scale2_out:</span> <span class="pre">8&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementOutput.fact_scale2_out" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -787,6 +856,16 @@
 <span class="sig-name descname"><span class="pre">MatrixElement.MatrixElementOutput.name</span> <span class="pre">-&gt;</span> <span class="pre">str</span></span></dt>
 <dd></dd></dl>
 
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementOutput.pdf_out">
+<span class="sig-name descname"><span class="pre">pdf_out</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementOutput.pdf_out:</span> <span class="pre">9&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementOutput.pdf_out" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementOutput.ren_scale_out">
+<span class="sig-name descname"><span class="pre">ren_scale_out</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementOutput.ren_scale_out:</span> <span class="pre">6&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementOutput.ren_scale_out" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementOutput.value">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">value</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementOutput.value" title="Link to this definition">¶</a></dt>
@@ -800,6 +879,16 @@
 <dd></dd></dl>
 
 <dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.beam_index_in">
+<span class="sig-name descname"><span class="pre">beam_index_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.beam_index_in:</span> <span class="pre">14&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.beam_index_in" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.bias_out">
+<span class="sig-name descname"><span class="pre">bias_out</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementOutput.bias_out:</span> <span class="pre">10&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.bias_out" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
 <dt class="sig sig-object py" id="madspace.MatrixElement.channel_in">
 <span class="sig-name descname"><span class="pre">channel_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.channel_in:</span> <span class="pre">7&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.channel_in" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -807,6 +896,11 @@
 <dl class="py attribute">
 <dt class="sig sig-object py" id="madspace.MatrixElement.color_index_out">
 <span class="sig-name descname"><span class="pre">color_index_out</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementOutput.color_index_out:</span> <span class="pre">2&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.color_index_out" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.cut_out">
+<span class="sig-name descname"><span class="pre">cut_out</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementOutput.cut_out:</span> <span class="pre">5&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.cut_out" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -835,6 +929,16 @@
 <span class="sig-name descname"><span class="pre">external_inputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.MatrixElement" title="madspace._madspace_py.MatrixElement"><span class="pre">madspace._madspace_py.MatrixElement</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput" title="madspace._madspace_py.MatrixElement.MatrixElementInput"><span class="pre">madspace._madspace_py.MatrixElement.MatrixElementInput</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#madspace.MatrixElement.external_inputs" title="Link to this definition">¶</a></dt>
 <dd><p>The inputs that must be supplied by the caller (excludes the ones drawn internally when <code class="docutils literal notranslate"><span class="pre">sample_random_inputs</span></code> is set).</p>
 </dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.fact_scale1_out">
+<span class="sig-name descname"><span class="pre">fact_scale1_out</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementOutput.fact_scale1_out:</span> <span class="pre">7&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.fact_scale1_out" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.fact_scale2_out">
+<span class="sig-name descname"><span class="pre">fact_scale2_out</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementOutput.fact_scale2_out:</span> <span class="pre">8&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.fact_scale2_out" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="madspace.MatrixElement.flavor_in">
@@ -879,6 +983,11 @@
 <span class="sig-name descname"><span class="pre">momenta_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.momenta_in:</span> <span class="pre">0&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.momenta_in" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.momentum_fraction_in">
+<span class="sig-name descname"><span class="pre">momentum_fraction_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.momentum_fraction_in:</span> <span class="pre">11&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.momentum_fraction_in" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="madspace.MatrixElement.outputs">
 <span class="sig-name descname"><span class="pre">outputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.MatrixElement" title="madspace._madspace_py.MatrixElement"><span class="pre">madspace._madspace_py.MatrixElement</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput" title="madspace._madspace_py.MatrixElement.MatrixElementOutput"><span class="pre">madspace._madspace_py.MatrixElement.MatrixElementOutput</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#madspace.MatrixElement.outputs" title="Link to this definition">¶</a></dt>
@@ -890,6 +999,26 @@
 <span class="sig-name descname"><span class="pre">particle_count</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.MatrixElement" title="madspace._madspace_py.MatrixElement"><span class="pre">madspace._madspace_py.MatrixElement</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="DataType.html#madspace.DataType.int" title="madspace.DataType.int"><span class="pre">int</span></a></span></span><a class="headerlink" href="#madspace.MatrixElement.particle_count" title="Link to this definition">¶</a></dt>
 <dd><p>Number of external particles.</p>
 </dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.particle_count_in">
+<span class="sig-name descname"><span class="pre">particle_count_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.particle_count_in:</span> <span class="pre">9&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.particle_count_in" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.pdf_out">
+<span class="sig-name descname"><span class="pre">pdf_out</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementOutput.pdf_out:</span> <span class="pre">9&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.pdf_out" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.pdg_id_in">
+<span class="sig-name descname"><span class="pre">pdg_id_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.pdg_id_in:</span> <span class="pre">13&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.pdg_id_in" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.pdg_ids_in">
+<span class="sig-name descname"><span class="pre">pdg_ids_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.pdg_ids_in:</span> <span class="pre">10&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.pdg_ids_in" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="madspace.MatrixElement.random_color_in">
@@ -911,6 +1040,16 @@
 <span class="sig-name descname"><span class="pre">reference_mask</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.MatrixElement" title="madspace._madspace_py.MatrixElement"><span class="pre">madspace._madspace_py.MatrixElement</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="DataType.html#madspace.DataType.int" title="madspace.DataType.int"><span class="pre">int</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#madspace.MatrixElement.reference_mask" title="Link to this definition">¶</a></dt>
 <dd><p>Per-particle 0/1 selector of the incoming particles, whose rest frame the me_frame boost starts from; empty when no boost is applied or when it is already the frame me_frame asks for.</p>
 </dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.ren_scale_out">
+<span class="sig-name descname"><span class="pre">ren_scale_out</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementOutput.ren_scale_out:</span> <span class="pre">6&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.ren_scale_out" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.scale_in">
+<span class="sig-name descname"><span class="pre">scale_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.scale_in:</span> <span class="pre">12&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.scale_in" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
 
 </dd></dl>
 
@@ -975,34 +1114,51 @@
 <li><a class="reference internal" href="#madspace.MatrixElement"><code class="docutils literal notranslate"><span class="pre">MatrixElement</span></code></a><ul>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput</span></code></a><ul>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.alpha_s_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.alpha_s_in</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.beam_index_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.beam_index_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.channel_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.channel_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.diagram_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.diagram_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.flavor_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.flavor_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.helicity_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.helicity_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.momenta_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.momenta_in</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.momentum_fraction_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.momentum_fraction_in</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.particle_count_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.particle_count_in</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.pdg_id_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.pdg_id_in</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.pdg_ids_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.pdg_ids_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.random_color_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.random_color_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.random_diagram_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.random_diagram_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.random_helicity_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.random_helicity_in</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.scale_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.scale_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.value"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.value</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput</span></code></a><ul>
+<li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput.bias_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput.bias_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput.color_index_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput.color_index_out</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput.cut_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput.cut_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput.diagram_amp2_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput.diagram_amp2_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput.diagram_index_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput.diagram_index_out</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput.fact_scale1_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput.fact_scale1_out</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput.fact_scale2_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput.fact_scale2_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput.helicity_index_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput.helicity_index_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput.matrix_element_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput.matrix_element_out</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput.pdf_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput.pdf_out</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput.ren_scale_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput.ren_scale_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput.value"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput.value</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#madspace.MatrixElement.alpha_s_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.alpha_s_in</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.beam_index_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.beam_index_in</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.bias_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.bias_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.channel_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.channel_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.color_index_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.color_index_out</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.cut_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.cut_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.diagram_amp2_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.diagram_amp2_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.diagram_count"><code class="docutils literal notranslate"><span class="pre">MatrixElement.diagram_count()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.diagram_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.diagram_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.diagram_index_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.diagram_index_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.external_inputs"><code class="docutils literal notranslate"><span class="pre">MatrixElement.external_inputs()</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.fact_scale1_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.fact_scale1_out</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.fact_scale2_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.fact_scale2_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.flavor_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.flavor_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.frame_mask"><code class="docutils literal notranslate"><span class="pre">MatrixElement.frame_mask()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.helicity_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.helicity_in</span></code></a></li>
@@ -1011,12 +1167,19 @@
 <li><a class="reference internal" href="#madspace.MatrixElement.matrix_element_index"><code class="docutils literal notranslate"><span class="pre">MatrixElement.matrix_element_index()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.matrix_element_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.matrix_element_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.momenta_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.momenta_in</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.momentum_fraction_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.momentum_fraction_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.outputs"><code class="docutils literal notranslate"><span class="pre">MatrixElement.outputs()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.particle_count"><code class="docutils literal notranslate"><span class="pre">MatrixElement.particle_count()</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.particle_count_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.particle_count_in</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.pdf_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.pdf_out</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.pdg_id_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.pdg_id_in</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.pdg_ids_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.pdg_ids_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.random_color_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.random_color_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.random_diagram_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.random_diagram_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.random_helicity_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.random_helicity_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.reference_mask"><code class="docutils literal notranslate"><span class="pre">MatrixElement.reference_mask()</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.ren_scale_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.ren_scale_out</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.scale_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.scale_in</span></code></a></li>
 </ul>
 </li>
 </ul>

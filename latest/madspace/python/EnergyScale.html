@@ -280,6 +280,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../first_steps.html">First steps</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../run_card.html">Run card</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../custom_functions.html">Custom functions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../gridpacks.html">Gridpacks</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../madevent_to_mg7.html">Coming from MadEvent</a></li>
 </ul>
@@ -323,6 +324,7 @@
 <li class="toctree-l2"><a class="reference internal" href="CachedPdf.html">CachedPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="CachedScale.html">CachedScale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CustomFunction.html">CustomFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="CutItem.html">CutItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Cuts.html">Cuts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DifferentialCrossSection.html">DifferentialCrossSection</a></li>
@@ -348,6 +350,7 @@
 <li class="toctree-l2"><a class="reference internal" href="Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CustomPdf.html">CustomPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Decay.html">Decay</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Diagram.html">Diagram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="LineRef.html">LineRef</a></li>
@@ -421,6 +424,7 @@
 <li class="toctree-l2"><a class="reference internal" href="set_simd_vector_size.html">set_simd_vector_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="NamedTypes.html">NamedTypes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="NamedValues.html">NamedValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="PythonFunction.html">PythonFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="get_stream.html">get_stream</a></li>
 <li class="toctree-l2"><a class="reference internal" href="set_stream.html">set_stream</a></li>
 <li class="toctree-l2"><a class="reference internal" href="stream.html">stream</a></li>
@@ -448,6 +452,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/BatchSampler.html">BatchSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/BufferUnweighter.html">BufferUnweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/CustomFunction.html">CustomFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Cuts.html">Cuts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/DiscreteHistogram.html">DiscreteHistogram</a></li>
@@ -475,6 +480,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/CustomPdf.html">CustomPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Diagram.html">Diagram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/PdfGrid.html">PdfGrid</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Propagator.html">Propagator</a></li>
@@ -543,6 +549,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/TensorView.html">TensorView</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ThreadPool.html">ThreadPool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ThreadResource.html">ThreadResource</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/UmamiFunctions.html">UmamiFunctions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/UnalignedRef.html">UnalignedRef</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Variation.html">Variation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
@@ -619,7 +626,7 @@
 <div class="math notranslate nohighlight">
 \[\mu = H_\mathrm{T} = \sum_i \sqrt{m_i^2 + p_{\mathrm{T},i}^2},\]</div>
 </div>
-<p>with DynamicalScaleType selecting <span class="math notranslate nohighlight">\(E_\mathrm{T}\)</span> (<code class="docutils literal notranslate"><span class="pre">transverse_energy</span></code>), <span class="math notranslate nohighlight">\(H_\mathrm{T}\)</span> (<code class="docutils literal notranslate"><span class="pre">transverse_mass</span></code>), <span class="math notranslate nohighlight">\(H_\mathrm{T}/2\)</span> (<code class="docutils literal notranslate"><span class="pre">half_transverse_mass</span></code>) or <span class="math notranslate nohighlight">\(\sqrt{\hat s}\)</span> (<code class="docutils literal notranslate"><span class="pre">partonic_energy</span></code>). The dynamical scale is multiplied by <code class="docutils literal notranslate"><span class="pre">scale_factor</span></code>, e.g. <span class="math notranslate nohighlight">\(H_\mathrm{T}/4\)</span> is <code class="docutils literal notranslate"><span class="pre">half_transverse_mass</span></code> with <code class="docutils literal notranslate"><span class="pre">scale_factor</span> <span class="pre">=</span> <span class="pre">0.5</span></code>.</p>
+<p>with DynamicalScaleType selecting <span class="math notranslate nohighlight">\(E_\mathrm{T}\)</span> (<code class="docutils literal notranslate"><span class="pre">transverse_energy</span></code>), <span class="math notranslate nohighlight">\(H_\mathrm{T}\)</span> (<code class="docutils literal notranslate"><span class="pre">transverse_mass</span></code>), <span class="math notranslate nohighlight">\(H_\mathrm{T}/2\)</span> (<code class="docutils literal notranslate"><span class="pre">half_transverse_mass</span></code>) or <span class="math notranslate nohighlight">\(\sqrt{\hat s}\)</span> (<code class="docutils literal notranslate"><span class="pre">partonic_energy</span></code>). The dynamical scale is multiplied by <code class="docutils literal notranslate"><span class="pre">scale_factor</span></code>, e.g. <span class="math notranslate nohighlight">\(H_\mathrm{T}/4\)</span> is <code class="docutils literal notranslate"><span class="pre">half_transverse_mass</span></code> with <code class="docutils literal notranslate"><span class="pre">scale_factor</span> <span class="pre">=</span> <span class="pre">0.5</span></code>. A CustomFunction of type CustomFunction::scale replaces the dynamical choice, like <code class="docutils literal notranslate"><span class="pre">user_dynamical_scale</span></code> in MadGraph5.</p>
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension.</p>
 <p><strong>Arguments</strong></p>
 <ul class="simple">
@@ -672,7 +679,7 @@ processes”, <a class="reference external" href="https://arxiv.org/abs/1507.000
 </dd>
 </dl>
 <ol class="arabic simple" start="4">
-<li><p>__init__(self: madspace._madspace_py.EnergyScale, particle_count: typing.SupportsInt, dynamical_scale_type: madspace._madspace_py.EnergyScale.DynamicalScaleType, ren_scale_fixed: bool, fact_scale_fixed: bool, ren_scale: typing.SupportsFloat, fact_scale1: typing.SupportsFloat, fact_scale2: typing.SupportsFloat, scale_factor: typing.SupportsFloat = 1.0) -&gt; None</p></li>
+<li><p>__init__(self: madspace._madspace_py.EnergyScale, particle_count: typing.SupportsInt, dynamical_scale_type: madspace._madspace_py.EnergyScale.DynamicalScaleType, ren_scale_fixed: bool, fact_scale_fixed: bool, ren_scale: typing.SupportsFloat, fact_scale1: typing.SupportsFloat, fact_scale2: typing.SupportsFloat, scale_factor: typing.SupportsFloat = 1.0, custom_scale: madspace._madspace_py.CustomFunction | None = None) -&gt; None</p></li>
 </ol>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -685,6 +692,7 @@ processes”, <a class="reference external" href="https://arxiv.org/abs/1507.000
 <li><p><strong>fact_scale1</strong> – Fixed factorization scale for the first beam.</p></li>
 <li><p><strong>fact_scale2</strong> – Fixed factorization scale for the second beam.</p></li>
 <li><p><strong>scale_factor</strong> – Factor on the dynamical scale; fixed scales are left alone.</p></li>
+<li><p><strong>custom_scale</strong> – Optional user-supplied function that replaces the dynamical scale choice.</p></li>
 </ul>
 </dd>
 </dl>

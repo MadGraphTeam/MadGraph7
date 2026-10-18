@@ -280,6 +280,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../first_steps.html">First steps</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../run_card.html">Run card</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../custom_functions.html">Custom functions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../gridpacks.html">Gridpacks</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../madevent_to_mg7.html">Coming from MadEvent</a></li>
 </ul>
@@ -323,6 +324,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/CachedPdf.html">CachedPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/CachedScale.html">CachedScale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/CustomFunction.html">CustomFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/CutItem.html">CutItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/Cuts.html">Cuts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
@@ -348,6 +350,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/CustomPdf.html">CustomPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/Decay.html">Decay</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/Diagram.html">Diagram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/LineRef.html">LineRef</a></li>
@@ -421,6 +424,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/set_simd_vector_size.html">set_simd_vector_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/NamedTypes.html">NamedTypes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/NamedValues.html">NamedValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/PythonFunction.html">PythonFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/get_stream.html">get_stream</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/set_stream.html">set_stream</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/stream.html">stream</a></li>
@@ -448,6 +452,7 @@
 <li class="toctree-l2"><a class="reference internal" href="BatchSampler.html">BatchSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="BufferUnweighter.html">BufferUnweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CustomFunction.html">CustomFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Cuts.html">Cuts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DifferentialCrossSection.html">DifferentialCrossSection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DiscreteHistogram.html">DiscreteHistogram</a></li>
@@ -475,6 +480,7 @@
 <li class="toctree-l2"><a class="reference internal" href="Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="CustomPdf.html">CustomPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Diagram.html">Diagram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="PdfGrid.html">PdfGrid</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Propagator.html">Propagator</a></li>
@@ -543,6 +549,7 @@
 <li class="toctree-l2"><a class="reference internal" href="TensorView.html">TensorView</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ThreadPool.html">ThreadPool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ThreadResource.html">ThreadResource</a></li>
+<li class="toctree-l2"><a class="reference internal" href="UmamiFunctions.html">UmamiFunctions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="UnalignedRef.html">UnalignedRef</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Variation.html">Variation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="VegasGridOptimizer.html">VegasGridOptimizer</a></li>
@@ -691,6 +698,42 @@
 <dd><p>Fixed diagram. </p>
 </dd></dl>
 
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace13MatrixElement18MatrixElementInput17particle_count_inE">
+<span id="_CPPv3N8madspace13MatrixElement18MatrixElementInput17particle_count_inE"></span><span id="_CPPv2N8madspace13MatrixElement18MatrixElementInput17particle_count_inE"></span><span class="target" id="classmadspace_1_1MatrixElement_1a383e369f334dd2429019369abf737f68ab0fa18c419cb8920f379c3ac4a8c8e29"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">particle_count_in</span></span></span><a class="headerlink" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput17particle_count_inE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Number of external particles (custom functions). </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace13MatrixElement18MatrixElementInput10pdg_ids_inE">
+<span id="_CPPv3N8madspace13MatrixElement18MatrixElementInput10pdg_ids_inE"></span><span id="_CPPv2N8madspace13MatrixElement18MatrixElementInput10pdg_ids_inE"></span><span class="target" id="classmadspace_1_1MatrixElement_1a383e369f334dd2429019369abf737f68a41862fac1c2f5e4525e6854c6aabdc23"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">pdg_ids_in</span></span></span><a class="headerlink" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput10pdg_ids_inE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>PDG ids of the external particles. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace13MatrixElement18MatrixElementInput20momentum_fraction_inE">
+<span id="_CPPv3N8madspace13MatrixElement18MatrixElementInput20momentum_fraction_inE"></span><span id="_CPPv2N8madspace13MatrixElement18MatrixElementInput20momentum_fraction_inE"></span><span class="target" id="classmadspace_1_1MatrixElement_1a383e369f334dd2429019369abf737f68a72264dc3dea59a6a969722b09e7b2355"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">momentum_fraction_in</span></span></span><a class="headerlink" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput20momentum_fraction_inE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Momentum fraction of an incoming parton. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace13MatrixElement18MatrixElementInput8scale_inE">
+<span id="_CPPv3N8madspace13MatrixElement18MatrixElementInput8scale_inE"></span><span id="_CPPv2N8madspace13MatrixElement18MatrixElementInput8scale_inE"></span><span class="target" id="classmadspace_1_1MatrixElement_1a383e369f334dd2429019369abf737f68ac1c5c7867dde2a28a1d69f2a131ac9ee"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">scale_in</span></span></span><a class="headerlink" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput8scale_inE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Energy scale, e.g. the factorization scale. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace13MatrixElement18MatrixElementInput9pdg_id_inE">
+<span id="_CPPv3N8madspace13MatrixElement18MatrixElementInput9pdg_id_inE"></span><span id="_CPPv2N8madspace13MatrixElement18MatrixElementInput9pdg_id_inE"></span><span class="target" id="classmadspace_1_1MatrixElement_1a383e369f334dd2429019369abf737f68add3643c3030d13cb9ede520b25d313b7"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">pdg_id_in</span></span></span><a class="headerlink" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput9pdg_id_inE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>PDG id of a single parton. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace13MatrixElement18MatrixElementInput13beam_index_inE">
+<span id="_CPPv3N8madspace13MatrixElement18MatrixElementInput13beam_index_inE"></span><span id="_CPPv2N8madspace13MatrixElement18MatrixElementInput13beam_index_inE"></span><span class="target" id="classmadspace_1_1MatrixElement_1a383e369f334dd2429019369abf737f68a7e0ce2542763ae02dd182fe67dd47e5e"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">beam_index_in</span></span></span><a class="headerlink" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput13beam_index_inE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Index of the beam (0 or 1). </p>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="cpp enum">
@@ -726,6 +769,42 @@
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace13MatrixElement19MatrixElementOutput17diagram_index_outE">
 <span id="_CPPv3N8madspace13MatrixElement19MatrixElementOutput17diagram_index_outE"></span><span id="_CPPv2N8madspace13MatrixElement19MatrixElementOutput17diagram_index_outE"></span><span class="target" id="classmadspace_1_1MatrixElement_1a3913a404d7d03ab559847b18c978ab37a99e9e96f75921a1b7ad8e1f8fde1c7ff"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">diagram_index_out</span></span></span><a class="headerlink" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput17diagram_index_outE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Sampled diagram. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace13MatrixElement19MatrixElementOutput7cut_outE">
+<span id="_CPPv3N8madspace13MatrixElement19MatrixElementOutput7cut_outE"></span><span id="_CPPv2N8madspace13MatrixElement19MatrixElementOutput7cut_outE"></span><span class="target" id="classmadspace_1_1MatrixElement_1a3913a404d7d03ab559847b18c978ab37a6f271063c11d2effe01fccee5037132d"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">cut_out</span></span></span><a class="headerlink" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput7cut_outE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Custom cut value, 0 rejects the event. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace13MatrixElement19MatrixElementOutput13ren_scale_outE">
+<span id="_CPPv3N8madspace13MatrixElement19MatrixElementOutput13ren_scale_outE"></span><span id="_CPPv2N8madspace13MatrixElement19MatrixElementOutput13ren_scale_outE"></span><span class="target" id="classmadspace_1_1MatrixElement_1a3913a404d7d03ab559847b18c978ab37a82f05f4462ba4be6c554502771492717"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ren_scale_out</span></span></span><a class="headerlink" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput13ren_scale_outE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Custom renormalization scale. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace13MatrixElement19MatrixElementOutput15fact_scale1_outE">
+<span id="_CPPv3N8madspace13MatrixElement19MatrixElementOutput15fact_scale1_outE"></span><span id="_CPPv2N8madspace13MatrixElement19MatrixElementOutput15fact_scale1_outE"></span><span class="target" id="classmadspace_1_1MatrixElement_1a3913a404d7d03ab559847b18c978ab37a33041547c781a55b226922320718a77d"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">fact_scale1_out</span></span></span><a class="headerlink" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput15fact_scale1_outE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Custom factorization scale, first incoming. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace13MatrixElement19MatrixElementOutput15fact_scale2_outE">
+<span id="_CPPv3N8madspace13MatrixElement19MatrixElementOutput15fact_scale2_outE"></span><span id="_CPPv2N8madspace13MatrixElement19MatrixElementOutput15fact_scale2_outE"></span><span class="target" id="classmadspace_1_1MatrixElement_1a3913a404d7d03ab559847b18c978ab37a63fa9b87a7ca1c9ee03cde4bd81ba5be"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">fact_scale2_out</span></span></span><a class="headerlink" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput15fact_scale2_outE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Custom factorization scale, second incoming. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace13MatrixElement19MatrixElementOutput7pdf_outE">
+<span id="_CPPv3N8madspace13MatrixElement19MatrixElementOutput7pdf_outE"></span><span id="_CPPv2N8madspace13MatrixElement19MatrixElementOutput7pdf_outE"></span><span class="target" id="classmadspace_1_1MatrixElement_1a3913a404d7d03ab559847b18c978ab37af1cfaef703a66d43c2ef126667ed4b38"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">pdf_out</span></span></span><a class="headerlink" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput7pdf_outE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Custom parton density x f(x, Q). </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace13MatrixElement19MatrixElementOutput8bias_outE">
+<span id="_CPPv3N8madspace13MatrixElement19MatrixElementOutput8bias_outE"></span><span id="_CPPv2N8madspace13MatrixElement19MatrixElementOutput8bias_outE"></span><span class="target" id="classmadspace_1_1MatrixElement_1a3913a404d7d03ab559847b18c978ab37af0235b0a2419543e35e14a610d46deb7"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">bias_out</span></span></span><a class="headerlink" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput8bias_outE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Custom event bias. </p>
 </dd></dl>
 
 </dd></dl>
@@ -888,6 +967,12 @@
 <li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput11helicity_inE"><code class="docutils literal notranslate"><span class="pre">helicity_in</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput10channel_inE"><code class="docutils literal notranslate"><span class="pre">channel_in</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput10diagram_inE"><code class="docutils literal notranslate"><span class="pre">diagram_in</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput17particle_count_inE"><code class="docutils literal notranslate"><span class="pre">particle_count_in</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput10pdg_ids_inE"><code class="docutils literal notranslate"><span class="pre">pdg_ids_in</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput20momentum_fraction_inE"><code class="docutils literal notranslate"><span class="pre">momentum_fraction_in</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput8scale_inE"><code class="docutils literal notranslate"><span class="pre">scale_in</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput9pdg_id_inE"><code class="docutils literal notranslate"><span class="pre">pdg_id_in</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput13beam_index_inE"><code class="docutils literal notranslate"><span class="pre">beam_index_in</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutputE"><code class="docutils literal notranslate"><span class="pre">MatrixElementOutput</span></code></a><ul>
@@ -896,6 +981,12 @@
 <li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput15color_index_outE"><code class="docutils literal notranslate"><span class="pre">color_index_out</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput18helicity_index_outE"><code class="docutils literal notranslate"><span class="pre">helicity_index_out</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput17diagram_index_outE"><code class="docutils literal notranslate"><span class="pre">diagram_index_out</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput7cut_outE"><code class="docutils literal notranslate"><span class="pre">cut_out</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput13ren_scale_outE"><code class="docutils literal notranslate"><span class="pre">ren_scale_out</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput15fact_scale1_outE"><code class="docutils literal notranslate"><span class="pre">fact_scale1_out</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput15fact_scale2_outE"><code class="docutils literal notranslate"><span class="pre">fact_scale2_out</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput7pdf_outE"><code class="docutils literal notranslate"><span class="pre">pdf_out</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput8bias_outE"><code class="docutils literal notranslate"><span class="pre">bias_out</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement13MatrixElementENSt6size_tENSt6size_tERKNSt6vectorI18MatrixElementInputEERKNSt6vectorI19MatrixElementOutputEENSt6size_tEbRKNSt6vectorI8me_int_tEENSt6size_tE"><code class="docutils literal notranslate"><span class="pre">MatrixElement()</span></code></a></li>
