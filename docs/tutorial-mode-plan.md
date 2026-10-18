@@ -300,7 +300,7 @@ route — the checker passes it and says so.
   change with the model).
 * *Card and result exercises* — the answer is not a command at all but an edit
   to `param_card.dat` / `run_card.toml`, or a number in a run's output. The
-  checker reads the card back (`models/check_param_card.py` parses it already)
+  checker reads the card back (`madgraph/models/check_param_card.py` parses it already)
   or reads the scan summary. Exercise 9 below is the motivating case, and it is
   the one that pushes the `check` callable to be "inspect whatever state you
   need", not "inspect `self._curr_amps`".
@@ -651,7 +651,7 @@ fails. A first set, deliberately ordered so each one has exactly one new idea:
 
    *The task.* Scan the top mass over, say, `scan:[150, 160, 170, 180, 190]` in
    the `param_card` (the syntax is parsed at
-   `models/check_param_card.py:967-988`), and run it twice: once for
+   `madgraph/models/check_param_card.py:967-988`), and run it twice: once for
    `p p > t t~` and once for the decayed `p p > t t~, t > w+ b`. Then form the
    ratio of the two cross sections point by point.
 

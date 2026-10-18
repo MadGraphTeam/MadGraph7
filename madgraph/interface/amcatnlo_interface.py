@@ -59,7 +59,7 @@ import madgraph.core.helas_objects as helas_objects
 import madgraph.various.cluster as cluster
 import madgraph.various.misc as misc
 import madgraph.various.banner as banner_mod
-import models.model_reader as model_reader
+import madgraph.models.model_reader as model_reader
 #usefull shortcut
 pjoin = os.path.join
 

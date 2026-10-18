@@ -478,7 +478,7 @@ class ParamCard(dict):
         if restrict_rule:
             _, modify = restrict_rule.check_param_card(self, modify=True, log=loglevel)
         
-        import models.model_reader as model_reader
+        import madgraph.models.model_reader as model_reader
         import madgraph.core.base_objects as base_objects
         if not isinstance(model, model_reader.ModelReader):
             model = model_reader.ModelReader(model)

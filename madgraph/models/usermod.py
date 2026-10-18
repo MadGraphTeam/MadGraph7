@@ -28,9 +28,9 @@ import sys
 import madgraph.core.base_objects as base_objects
 import madgraph.iolibs.files as files
 import madgraph.various.misc as misc
-import models as ufomodels
-import models.import_ufo as import_ufo
-import models.check_param_card as check_param_card
+import madgraph.models as ufomodels
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.check_param_card as check_param_card
 from madgraph import MG5DIR
 pjoin =os.path.join
 logger = logging.getLogger('madgraph.model')

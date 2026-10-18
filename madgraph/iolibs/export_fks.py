@@ -52,8 +52,8 @@ import madgraph.various.shower_card as shower_mod
 
 import aloha.create_aloha as create_aloha
 
-import models.write_param_card as write_param_card
-import models.check_param_card as check_param_card
+import madgraph.models.write_param_card as write_param_card
+import madgraph.models.check_param_card as check_param_card
 from madgraph import MadGraph5Error, MG5DIR, InvalidCmd
 from madgraph.iolibs.files import cp, ln, mv
 pjoin = os.path.join
@@ -325,7 +325,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
           pjoin('iolibs','files.py'),
           pjoin('iolibs','save_load_object.py'),
           pjoin('iolibs','file_writers.py'),
-          pjoin('..','models','check_param_card.py'),
+          pjoin('models','check_param_card.py'),
           pjoin('__init__.py')
         ]
         cp(_file_path+'/interface/.mg5_logging.conf', 

@@ -31,7 +31,7 @@ def main():
         shutil.rmtree(stage_pkg)
     (stage_pkg / "lib").mkdir(parents=True)
 
-    for name in ("__init__.py", "_madspace_py_loader.py"):
+    for name in ("__init__.py", "_madspace_py_loader.py", "python_function.py"):
         shutil.copy2(args.package_dir / name, stage_pkg / name)
     shutil.copy2(args.module, stage_pkg / args.module.name)
     shutil.copy2(args.lib, stage_pkg / "lib" / args.lib.name)

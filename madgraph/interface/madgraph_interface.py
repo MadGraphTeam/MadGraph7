@@ -98,12 +98,12 @@ import madgraph.various.cluster as cluster
 
 import madgraph.fks.fks_tag as fks_tag
 
-import models as ufomodels
-import models.import_ufo as import_ufo
-import models.write_param_card as param_writer
-import models.check_param_card as check_param_card
-import models.model_reader as model_reader
-import models.build_restriction_lib as build_restrict_lib
+import madgraph.models as ufomodels
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.write_param_card as param_writer
+import madgraph.models.check_param_card as check_param_card
+import madgraph.models.model_reader as model_reader
+import madgraph.models.build_restriction_lib as build_restrict_lib
 
 import aloha.aloha_fct as aloha_fct
 import aloha.create_aloha as create_aloha
@@ -4424,7 +4424,7 @@ This implies that with decay chains:
                     return
         
         #Need to do the work!!!        
-        import models.usermod as usermod
+        import madgraph.models.usermod as usermod
         try:
             base_model = copy.deepcopy(usermod.UFOModel(self._curr_model.get('modelpath')))
         except Exception:
@@ -4461,8 +4461,8 @@ This implies that with decay chains:
             add model sm_onia --fock_states_only
         A Fock state is only kept if its constituents exist in the current model."""
 
-        import models.import_ufo as import_ufo
-        import models.import_boundstates as ufo_boundstates
+        import madgraph.models.import_ufo as import_ufo
+        import madgraph.models.import_boundstates as ufo_boundstates
 
         if os.path.isdir(model_name):
             path = model_name
@@ -8211,7 +8211,7 @@ This implies that with decay chains:
     def add_default_fockstates(self):
         """Load the Fock states shipped by the current model (its boundstates.py),
         replacing any Fock state of a previously imported model."""
-        import models.import_boundstates as ufo_boundstates
+        import madgraph.models.import_boundstates as ufo_boundstates
         self._fockstates = ufo_boundstates.get_boundstates_ufo(self._curr_model)
 
         return self._fockstates
@@ -10950,7 +10950,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         and/or couplings are the one asked by the user. Return the path of the
         new model."""
 
-        import models.usermod as usermod
+        import madgraph.models.usermod as usermod
 
         if not name:
             default = '%s_customized' % os.path.basename(model_path.rstrip('/'))

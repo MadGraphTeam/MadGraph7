@@ -26,7 +26,7 @@ import madgraph.core.color_algebra as color
 import madgraph.core.color_amp as color_amp
 import madgraph.core.diagram_generation as diagram_generation
 import madgraph.core.helas_objects as helas_objects
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 import tests.unit_tests as unittest
 
 

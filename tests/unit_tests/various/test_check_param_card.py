@@ -27,10 +27,10 @@ _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0]
 
 import madgraph.core.base_objects as base_objects
 
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 
 sys.path.append('%s/../../Template/bin/internal' % _file_path)
-import models.check_param_card as writter
+import madgraph.models.check_param_card as writter
 
 
 class TestBlock(unittest.TestCase):

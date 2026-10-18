@@ -43,6 +43,13 @@ save_gridpack = %(gridpack.save_gridpack)s
 include_source = %(gridpack.include_source)s
 include_madspace = %(gridpack.include_madspace)s
 include_madspace_source = %(gridpack.include_madspace_source)s
+compress = %(gridpack.compress)s
+# end of a run creating a gridpack; options: regular, minimal (no events), fix_max_weight (no events)
+run_mode = %(gridpack.run_mode)s
+# temporary npy files; "" uses the output directory, "auto" a new temporary directory
+temp_output_dir = %(gridpack.temp_output_dir)s
+# output files; "" creates a new run folder in Events
+output_dir = %(gridpack.output_dir)s
 
 [beam]
 # beam 1 moves along +z; events and eta cuts are in this lab frame
@@ -117,6 +124,17 @@ invariant_power = %(phasespace.invariant_power)s
 bw_cutoff = %(phasespace.bw_cutoff)s
 cut_decays = %(phasespace.cut_decays)s # apply the [cuts] to decay products of on-shell particles
 adaptive_symmetry_sampling = %(phasespace.adaptive_symmetry_sampling)s
+
+[custom_functions]
+# functions created with bin/init_custom_func: a .so library, e.g. "lib/custom_cut.so",
+# or a Python file, e.g. "custom_cut/custom_cut.py"
+# paths are relative to the process directory; "" disables the function
+cut = %(custom_functions.cut)s
+scale = %(custom_functions.scale)s # replaces dynamical_scale_choice
+pdf = %(custom_functions.pdf)s # replaces the PDF set, alpha_s still comes from [beam] pdf
+bias = %(custom_functions.bias)s # events are generated with |w| b and written with w / b
+# parameters declared by a function, e.g. cut_parameters.pt_min = 30.0
+$custom_function_parameters
 
 [multiparticles]
 $multiparticles

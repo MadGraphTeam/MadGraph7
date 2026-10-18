@@ -73,6 +73,15 @@ public:
     /// Generate unweighted events until every channel reaches its target
     /// count.
     void generate();
+    /// Run only the VEGAS and channel-weight optimization of every channel
+    /// that still needs it, until all are optimized. No events are kept.
+    void optimize();
+    /// Like @ref generate, but every channel with a nonzero cross section runs
+    /// until it has `freeze_max_weight_after` unweighted events, regardless of
+    /// its share of the cross section, so that its maximum weight is final
+    /// (see @ref ChannelEventGenerator::max_weight). The events are not meant
+    /// to be combined.
+    void fix_max_weights();
     /**
      * Combine every channel's generated events into a single unweighted
      * `.npy` file.
@@ -183,6 +192,13 @@ private:
     // grow after it looked done, un-finishing it and triggering another round).
     // Salted by this counter so repeated calls don't replay the same stream.
     std::size_t _unweight_call_index = 0;
+
+    // What a run of the generate loop does; see run_generate().
+    enum class GenerateMode { events, optimize_only, fix_max_weights };
+    void run_generate(GenerateMode mode);
+    // Channels with an optimizer, and how many of them are optimized.
+    std::pair<std::size_t, std::size_t> optimized_channel_count() const;
+    GenerateMode _generate_mode = GenerateMode::events;
 
     // Scheduling context for the running survey()/generate() call, read by
     // start_jobs() to derive job seeds.

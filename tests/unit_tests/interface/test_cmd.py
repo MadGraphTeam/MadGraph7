@@ -233,7 +233,7 @@ class TestValidCmd(unittest.TestCase):
 
         self.assertEqual(cmd._curr_model.get('name'), 'sm')
 
-        import models as ufomodels
+        import madgraph.models as ufomodels
         ufomodel = ufomodels.load_model(cmd._curr_model.get('name'))
         for key in target:
             try:

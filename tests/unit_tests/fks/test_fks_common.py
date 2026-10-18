@@ -32,7 +32,7 @@ import madgraph.core.color_amp as color_amp
 import madgraph.core.diagram_generation as diagram_generation
 import madgraph.core.helas_objects as helas_objects
 import madgraph.various.misc as misc
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 import copy
 import array
 import fractions

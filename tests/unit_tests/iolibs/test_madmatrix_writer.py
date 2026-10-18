@@ -133,7 +133,7 @@ class TestExternalWavefunctionCalls(unittest.TestCase):
         import madgraph.core.base_objects as base_objects
         import madgraph.core.diagram_generation as diagram_generation
         import madgraph.core.helas_objects as helas_objects
-        import models.import_ufo as import_ufo
+        import madgraph.models.import_ufo as import_ufo
         from madmatrix import model_handling
 
         model = import_ufo.import_model('sm')

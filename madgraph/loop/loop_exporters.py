@@ -52,13 +52,13 @@ import madgraph.various.progressbar as pbar
 import madgraph.various.q_polynomial as q_polynomial
 import madgraph.core.color_amp as color_amp
 import madgraph.iolibs.helas_call_writers as helas_call_writers
-import models.check_param_card as check_param_card
+import madgraph.models.check_param_card as check_param_card
 from madgraph.loop.loop_base_objects import LoopDiagram
 from madgraph.loop.MadLoopBannerStyles import MadLoopBannerStyles
 pjoin = os.path.join
 
 import aloha.create_aloha as create_aloha
-import models.write_param_card as param_writer
+import madgraph.models.write_param_card as param_writer
 from madgraph import MadGraph5Error, MG5DIR, InvalidCmd
 from madgraph.iolibs.files import cp, ln, mv
 pjoin = os.path.join
