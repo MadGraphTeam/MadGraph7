@@ -36,6 +36,7 @@ class DrellYanBareResult:
     arithmetic: str
     precision: int | None
     reduction_schedule: str
+    reduction_engine: str
     convention: str = "MadLoop-Cepsilon-bare-four-dimensional-no-R2-no-UV"
 
 
@@ -129,6 +130,7 @@ class DrellYanBareProgram:
         precision: int | None = None,
         backend: Any = None,
         reduction_schedule: str = "born-weighted",
+        reduction_engine: str = "generic",
     ):
         if backend is None:
             import _loop_reduction as backend
@@ -139,6 +141,7 @@ class DrellYanBareProgram:
         if reduction_schedule not in {"born-weighted", "per-helicity-oracle"}:
             raise ValueError("unknown Drell--Yan reduction schedule")
         self.reduction_schedule = reduction_schedule
+        self.reduction_engine = reduction_engine
         self.backend, self.arithmetic, self.precision = backend, arithmetic, precision
         self.native_options = {"arithmetic": arithmetic, "precision": precision}
         self.process = build_loop_process(
@@ -255,7 +258,11 @@ class DrellYanBareProgram:
             for name, label in zip(coefficient_names, labels, strict=True)
         )
         self.reducer = backend.PolynomialPlan(
-            3, [numerator, "0", "0"], coefficient_names, **self.native_options
+            3,
+            [numerator, "0", "0"],
+            coefficient_names,
+            engine=reduction_engine,
+            **self.native_options,
         )
         # This projection is complex-linear in the loop coefficients. Taking a
         # real part here would discard absorptive contributions after integration.
@@ -422,4 +429,5 @@ class DrellYanBareProgram:
             self.arithmetic,
             self.precision,
             self.reduction_schedule,
+            self.reduction_engine,
         )

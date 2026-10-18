@@ -268,3 +268,18 @@ def test_failed_reduction_reports_original_point_and_lane_without_reading_values
     program.reducer = FailingReducer()
     with pytest.raises(ArithmeticError, match=rf"\(1, {failed_lane}, 'non-finite'\)"):
         program.evaluate_decimal(points, ["1000000"] * len(points))
+
+
+def test_binary64_fast_reduction_matches_physical_control(native, points):
+    program = DrellYanBareProgram(backend=native, reduction_engine="fast")
+    scales = ["1000000", "2000000", "700000"]
+    result = program.evaluate_decimal(points, scales)
+    assert result.reduction_engine == "fast"
+    _compare(result, points, scales, Decimal("2e-11"))
+    _compare(
+        program.evaluate_decimal(points[1:2], ["900000"], alpha_s="0.1"),
+        points[1:2],
+        ["900000"],
+        Decimal("2e-11"),
+        alpha_s="0.1",
+    )
