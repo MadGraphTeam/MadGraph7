@@ -9,8 +9,8 @@ mod batch;
 mod exact;
 mod fast;
 mod predicates;
-mod states;
 mod stability;
+mod states;
 use batch::{BatchCarrier, Data, NativeBatch};
 use fast::FastReductions;
 
@@ -519,10 +519,10 @@ impl PolynomialPlan {
         engine: &str,
     ) -> PyResult<Self> {
         let (arithmetic, bits) = arithmetic_mode(arithmetic, precision)?;
-        if engine != "generic" && engine != "fast" {
-            return Err(error("engine must be generic or fast"));
+        if !matches!(engine, "generic" | "fast" | "fast-tensor") {
+            return Err(error("engine must be generic, fast or fast-tensor"));
         }
-        if engine == "fast" {
+        if engine != "generic" {
             if !matches!(arithmetic, Arithmetic::Double) {
                 return Err(error("fast engine supports only double arithmetic"));
             }
@@ -531,6 +531,7 @@ impl PolynomialPlan {
                     &epsilon_sectors,
                     &parameters,
                     propagators,
+                    engine == "fast-tensor",
                 )?),
                 precision_bits: bits,
             });

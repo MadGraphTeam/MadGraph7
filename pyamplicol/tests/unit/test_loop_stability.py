@@ -39,6 +39,17 @@ def points(name):
     return np.asarray(json.loads(path.read_text())["points"], dtype=str)
 
 
+def test_dense_head_whole_batch_error_excludes_partial_rescue(source):
+    model = drell_yan_model_virtual_program(source, reduction_engine="fast-tensor")
+    with pytest.raises(NotImplementedError, match="coefficient-head"):
+        NativeModelStabilityProgram(
+            model,
+            [ArithmeticSpec("double-double"), ArithmeticSpec("arbitrary", 70)],
+            relative_tolerance="1e-10",
+            absolute_tolerance="1e-30",
+        )
+
+
 @pytest.mark.parametrize(
     "requested,higher,rtol",
     [

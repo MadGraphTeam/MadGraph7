@@ -13,6 +13,7 @@
 use std::ops::Add;
 
 use ninjars::fast::GenericNumerator;
+use ninjars::fast::MuTensorNumerator;
 pub use ninjars::fast::{C64, FastInput, FastStatus};
 use ninjars::fast::{FastAmplitude, FastNumerator, FastOptions, FastResult};
 use ninjars::{Amplitude, Numerator, Real, Result};
@@ -20,6 +21,7 @@ pub use ninjars::{
     AmplitudeInput, Complex, EvaluationStatus, FourMomentum, SamplingScaleProvider,
     SamplingScaleSource, SamplingScaleStatus,
 };
+use ninjars_graph::{CoefficientEvaluator, PolynomialCoefficientPlan, TensorCoefficientPlan};
 pub use ninjars_symbolica::SymbolicaSamplingScales;
 use ninjars_symbolica::{
     OneLoopNativeMasters, PolynomialNumerator, SymbolicaAmplitudeKernels, SymbolicaCuts,
@@ -189,8 +191,13 @@ pub struct FastReducer<N: FastNumerator> {
 
 impl<N: FastNumerator> FastReducer<N> {
     pub fn new(propagators: usize, numerator: N) -> Result<Self> {
+        let amplitude = FastAmplitude::new(propagators, numerator.rank(), FastOptions::default())?;
+        Self::with_amplitude(numerator, amplitude)
+    }
+
+    fn with_amplitude(numerator: N, amplitude: FastAmplitude) -> Result<Self> {
         Ok(Self {
-            amplitude: FastAmplitude::new(propagators, numerator.rank(), FastOptions::default())?,
+            amplitude,
             numerator,
             masters: OneLoopNativeMasters::new()?,
             values: Vec::new(),
@@ -261,6 +268,73 @@ impl FastPolynomialReducer {
             .numerator_mut()
             .inner_mut()
             .set_parameter_batch(parameters, input.lanes)?;
+        self.reducer.evaluate(ids, input)
+    }
+}
+
+/// Binary64 dense μ² numerator using only upstream coefficient preparation,
+/// tensor ordering/scatter and truncated-jet expansion operations. This is a
+/// polynomial representation; it does not select a dimensional scheme or add R2.
+pub struct FastTensorPolynomialReducer {
+    reducer: FastReducer<MuTensorNumerator>,
+    evaluator: CoefficientEvaluator<f64>,
+    layout: TensorCoefficientPlan,
+    heads: Vec<Complex<f64>>,
+    native_heads: Vec<C64>,
+}
+
+impl FastTensorPolynomialReducer {
+    pub fn new(
+        propagators: usize,
+        expression: Atom,
+        variables: [Atom; 5],
+        parameters: Vec<Atom>,
+    ) -> Result<Self> {
+        let error = |e: ninjars_graph::CoefficientError| ninjars::Error::Symbolic(e.to_string());
+        let plan =
+            PolynomialCoefficientPlan::new(expression, variables, parameters).map_err(error)?;
+        // Reject unsupported rank/topology through the owner before allocating
+        // a dense tensor layout, whose size grows quickly with rank.
+        let amplitude = FastAmplitude::new(propagators, plan.rank(), FastOptions::default())?;
+        let layout = TensorCoefficientPlan::with_mu_squared(&plan, None).map_err(error)?;
+        let numerator = MuTensorNumerator::new(layout.rank(), layout.mu_powers(), 0)?;
+        Ok(Self {
+            reducer: FastReducer::with_amplitude(numerator, amplitude)?,
+            evaluator: plan.compile(0_f64).map_err(error)?,
+            layout,
+            heads: Vec::new(),
+            native_heads: Vec::new(),
+        })
+    }
+
+    pub fn evaluate(
+        &mut self,
+        ids: &[u64],
+        input: FastInput<'_>,
+        parameters: &[Complex<f64>],
+    ) -> Result<Vec<Lane<C64, FastStatus>>> {
+        check_lanes(ids, input.lanes)?;
+        let error = |e: ninjars_graph::CoefficientError| ninjars::Error::Symbolic(e.to_string());
+        self.heads
+            .resize(input.lanes * self.layout.head_count(), Complex::new(0., 0.));
+        self.evaluator
+            .evaluate_batch(parameters, &mut self.heads, input.lanes)
+            .map_err(error)?;
+        self.native_heads.clear();
+        self.native_heads
+            .extend(self.heads.iter().map(|z| C64::new(z.re, z.im)));
+        let numerator = self.reducer.numerator_mut();
+        numerator.set_lanes(input.lanes);
+        // scatter writes every occupied and zero slot on every call. Resizing
+        // upstream storage alone would retain coefficients from an older batch.
+        self.layout
+            .scatter(
+                &self.native_heads,
+                numerator.coefficients_mut(),
+                input.lanes,
+                &C64::ZERO,
+            )
+            .map_err(error)?;
         self.reducer.evaluate(ids, input)
     }
 }

@@ -317,6 +317,16 @@ poles are not discarded. Native empty batches and failure guards remain in
 place. Reference finite-amplitude comparisons themselves remain binary64
 controls; the same-carrier R2 comparison is a separate precision check.
 
+The binary64 diagnostic also accepts `reduction_engine="fast-tensor"` using
+NinjaRS b5b93be's dense μ² numerator. Owner coefficient/layout APIs feed each
+existing HV epsilon sector without a scheme transformation. The complete
+gluon component and independent source-R2 controls also pass with this option.
+The original `fast` callback remains available; a sparse rank-five box timing
+did not show a speedup, so no automatic selection or performance claim follows.
+DoubleFloat/arbitrary arithmetic retain the generic reducer. Nonfinite dense
+coefficient-head errors remain batch errors and exclude this engine from the
+optional partial/rescue view.
+
 The bounded direct gluon factory also accepts formal full/LC/NLC colour. Its
 UV scalar grades and rectangular overlaps are projected together, with one
 virtual degree P=5 across N4, the remainder, local UV and external fields; Born

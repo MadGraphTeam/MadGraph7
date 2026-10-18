@@ -1,16 +1,41 @@
 // SPDX-License-Identifier: 0BSD
 
 use super::*;
-use rusticol_loop_reduction::{C64, FastInput, FastPolynomialReducer, FastStatus};
+use rusticol_loop_reduction::{
+    C64, FastInput, FastPolynomialReducer, FastStatus, FastTensorPolynomialReducer,
+};
+
+enum FastPolynomial {
+    Callback(FastPolynomialReducer),
+    Tensor(FastTensorPolynomialReducer),
+}
+impl FastPolynomial {
+    fn evaluate(
+        &mut self,
+        ids: &[u64],
+        input: FastInput<'_>,
+        parameters: &[Complex<f64>],
+    ) -> PyResult<Vec<Lane<C64, FastStatus>>> {
+        match self {
+            Self::Callback(plan) => plan.evaluate(ids, input, parameters).map_err(error),
+            Self::Tensor(plan) => plan.evaluate(ids, input, parameters).map_err(error),
+        }
+    }
+}
 
 pub(super) struct FastReductions {
-    sectors: [FastPolynomialReducer; 3],
+    sectors: [FastPolynomial; 3],
     active: [bool; 3],
     pub propagators: usize,
     pub parameter_count: usize,
 }
 impl FastReductions {
-    pub fn new(expressions: &[String; 3], parameters: &[String], n: usize) -> PyResult<Self> {
+    pub fn new(
+        expressions: &[String; 3],
+        parameters: &[String],
+        n: usize,
+        tensor: bool,
+    ) -> PyResult<Self> {
         // Keep this consumer within the common all-precision n<=6 domain.
         if n > 6 {
             return Err(error("current consumer supports at most six propagators"));
@@ -33,10 +58,27 @@ impl FastReductions {
         for (index, expression) in expressions.iter().enumerate() {
             let expression = parse(expression)?;
             active[index] = !expression.is_zero();
-            sectors.push(
-                FastPolynomialReducer::new(n, expression, variables.clone(), parameters.clone())
+            sectors.push(if tensor {
+                FastPolynomial::Tensor(
+                    FastTensorPolynomialReducer::new(
+                        n,
+                        expression,
+                        variables.clone(),
+                        parameters.clone(),
+                    )
                     .map_err(error)?,
-            );
+                )
+            } else {
+                FastPolynomial::Callback(
+                    FastPolynomialReducer::new(
+                        n,
+                        expression,
+                        variables.clone(),
+                        parameters.clone(),
+                    )
+                    .map_err(error)?,
+                )
+            });
         }
         if !active.iter().any(|value| *value) {
             active[0] = true;
@@ -87,7 +129,7 @@ impl FastReductions {
         let mut results = Vec::with_capacity(3);
         for (index, sector) in self.sectors.iter_mut().enumerate() {
             if self.active[index] {
-                results.push(sector.evaluate(ids, input, parameters).map_err(error)?);
+                results.push(sector.evaluate(ids, input, parameters)?);
             } else {
                 results.push(
                     ids.iter()

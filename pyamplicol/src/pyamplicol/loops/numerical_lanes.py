@@ -75,6 +75,10 @@ def select_bare_currents(currents, indices):
 
 
 def require_partial_domain(bare):
+    if bare.reduction_engine == "fast-tensor":
+        raise NotImplementedError(
+            "partial fast-tensor coefficient-head evaluation is not certified"
+        )
     if (
         bare.model_state is not None
         or bare.dimensional_numerators

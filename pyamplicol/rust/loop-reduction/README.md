@@ -33,7 +33,7 @@ application's ordinary checkout buildable while upstream packaging is pending.
 Its Symbolica version is aligned with the application's shared core.
 The implementation workspace uses:
 
-- NinjaRS `5f35b071bda8b10df0bd40db20f31c3bd75bcecc`.
+- NinjaRS `b5b93be7f2b9dffa0978a91dfeeadeefec5d0736`.
 - Symbolica `e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8`, the owner's integration
   revision published on `https://github.com/ValentinHirschi/symbolica`.
 - FeynKit `474478a7a80bc9f9f21bead0e1cde6acbcffbe93`, the owner's patched
@@ -51,14 +51,17 @@ cargo test --locked --test anchors -- --test-threads=1
 
 Supply a valid `SYMBOLICA_LICENSE` in the process environment when needed;
 never persist it in this crate. Cargo's lockfile covers registry dependencies.
-The upstream sources are read-only to this consumer. NinjaRS revision 5f35b07
+The upstream sources are read-only to this consumer. NinjaRS revision b5b93be
 still limits the generic integrated coordinator to six propagators and rank
 n+1. Its separate binary64 fast engine supports higher multiplicity; that does
 not extend double-double or arbitrary-precision coverage. The native Python
 consumer retains a common six-propagator domain across its arithmetic modes.
-The latest owner update changes scalar-master branches and limiting cases,
-with no reduction callback API change. Registry dependency versions are
-unchanged, so the existing Cargo lockfile remains valid.
+The latest owner update adds an explicit-μ² dense tensor numerator and optional
+graph-level FDH preparation. Scalar-master and generic coordinator behavior are
+unchanged from 5f35b07. This consumer uses the scheme-independent polynomial
+container; it does not invoke the owner's global FDH numerator transformation.
+The ordinary lockfile includes the owner's `ninjars-graph` coefficient/layout
+dependency and its existing FeynKit graph.
 
 The owner's final report is narrower than a universal accuracy guarantee.
 At revision 5f35b07, `docs/benchmark/sections.typ:99-123` records two
@@ -218,6 +221,19 @@ shifts/scales/invariant matrices, and the same complex squared masses supported
 by the upstream fast input contract. Its fixed 1e-9 master threshold is distinct
 from the default generic route's exact-zero policy; the fast route is opt-in.
 Throughput tuning and physical performance gates remain open.
+`engine="fast-tensor"` is an additive binary64 alternative using the same fast
+coordinator/master provider. The owner's `PolynomialCoefficientPlan` evaluates
+coefficient heads in a native batch, `TensorCoefficientPlan` scatters every
+occupied and zero slot, and `MuTensorNumerator` evaluates the weighted μ² blocks
+and all cut expansions. Work buffers are retained across calls. No polynomial
+or tensor ordering is reimplemented here. Three explicit epsilon sectors still
+use the existing Laurent convolution; this engine does not supply a scheme
+conversion or R2 rules. Unsupported rank/layout is an error, with no truncation
+or implicit fallback. The callback engine remains the explicit baseline.
+The dependency coefficient-head evaluator rejects nonfinite input/output for
+the whole batch; this engine has no new partial coefficient-evaluation API and
+is not certified for the optional rescue wrapper. Upstream reduction failures
+still retain original lane IDs and hide their numerical values.
 The main workspace excludes this experimental workspace and has no NinjaRS path
 dependency, so its normal builds do not require the `upstream` symlink.
 
@@ -231,6 +247,11 @@ dependency, so its normal builds do not require the `upstream` symlink.
   `None` disables snapping. These policies can differ for small invariants.
 - Broad B0/C0/D0 analytic continuation, threshold and complex-mass validation
   remain upstream readiness gates. Passing A0 and μ² C0 is insufficient.
+  The AP80 real-mass box reproducer in
+  `tools/loop_reference/reproduce_cms_zero_box.py` still selects opposite
+  imaginary branches for numerically equal sqrt-square and reparsed masses
+  at b5b93be. This consumer does not normalize precision metadata or substitute
+  a scalar integral to hide that unresolved owner issue.
 - Native batching is established by the called interfaces, but end-to-end
   throughput, SIMD coverage and the MadLoop/Recola/OpenLoops performance
   targets require physical process benchmarks after integration.

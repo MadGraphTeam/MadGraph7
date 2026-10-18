@@ -36,6 +36,7 @@ def test_closed_sector_layout_keeps_epsilon_and_mu2_distinct():
     "arithmetic,precision,reducer,coefficients,pole_tolerance",
     [
         ("double", None, "fast", "jit", Decimal("3e-10")),
+        ("double", None, "fast-tensor", "jit", Decimal("3e-10")),
         ("double-double", None, "generic", "interpreted", Decimal("3e-23")),
         ("arbitrary", 50, "generic", "interpreted", Decimal("3e-40")),
     ],

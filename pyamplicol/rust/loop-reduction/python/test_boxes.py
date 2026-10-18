@@ -8,17 +8,20 @@ from _loop_reduction import NativeBatch, PolynomialPlan
 
 
 @pytest.mark.parametrize(
-    "arithmetic,precision,tolerance,tiny_power",
+    "arithmetic,precision,tolerance,tiny_power,engine",
     [
-        ("double", None, "1e-10", 20),
-        ("double-double", None, "1e-27", 80),
-        ("arbitrary", 80, "1e-70", 180),
+        ("double", None, "1e-10", 20, "generic"),
+        ("double", None, "1e-10", 20, "fast-tensor"),
+        ("double-double", None, "1e-27", 80, "generic"),
+        ("arbitrary", 80, "1e-70", 180, "generic"),
     ],
 )
 def test_mu4_box_automatic_sampling_three_precisions(
-    arithmetic, precision, tolerance, tiny_power
+    arithmetic, precision, tolerance, tiny_power, engine
 ):
-    reducer = PolynomialPlan(4, ["c*mu2^2", "0", "0"], ["c"], arithmetic, precision)
+    reducer = PolynomialPlan(
+        4, ["c*mu2^2", "0", "0"], ["c"], arithmetic, precision, engine
+    )
 
     def batch(values, rows, columns, ids):
         return NativeBatch.from_decimal(
