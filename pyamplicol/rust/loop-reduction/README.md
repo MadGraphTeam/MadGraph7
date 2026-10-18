@@ -33,7 +33,7 @@ application's ordinary checkout buildable while upstream packaging is pending.
 Its Symbolica version is aligned with the application's shared core.
 The implementation workspace uses:
 
-- NinjaRS `89156ddfa7d4f08f27386d53c0fd985d56ec321d`.
+- NinjaRS `606d94a8cc12360f2c535a2f5f718d83f165645f`.
 - Symbolica `e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8`, the owner's integration
   revision published on `https://github.com/ValentinHirschi/symbolica`.
 - FeynKit `474478a7a80bc9f9f21bead0e1cde6acbcffbe93`, the owner's patched
