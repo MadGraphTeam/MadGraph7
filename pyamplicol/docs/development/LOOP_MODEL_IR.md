@@ -855,8 +855,49 @@ entrypoint uses the tree parser before native ingress. Empty batches and exact
 complex inputs beyond binary64 are covered in all three arithmetic modes.
 
 This source-preparation boundary alone does not certify a physical spin-
-correlated loop result. Complete physical contractions and source-dependent
-Ward checks are a separate integration step.
+correlated loop result. The bounded complete-QCD execution below supplies its
+separate physical checks.
+
+## Complete QCD source-vector execution
+
+`spin_sources.NativeSpinSourceProgram` composes declared joint gluon source
+classes with `NativeDirectedModelProgram`. Source labels remain one-based;
+directed colour histories retain their existing zero-based native physical
+ports. Each class has an immutable spectator-helicity layout. The bare
+program's ordinary helicities and initial spin/colour average are unchanged.
+An omitted or empty source map selects the ordinary complete observable.
+
+Literal native source columns replace the chosen external states before any
+Born, loop, local UV/R2 or external-field current executes. Those currents are
+shared by the forward and swapped colour contractions. Effective rules retain
+their source normalization; the two reduced loop terms retain their existing
+complex prescription and are combined only after integration. No source
+component is projected, normalized or conjugated at ingress. Native batches
+carry the actual helicity count and source class, so a precomputed current batch
+from a different class rejects even when its row count is identical. Results
+retain complex pairs and their point/history/order/pole axes, and add the
+selected `spin_legs` tuple.
+
+The complete `u u~ -> g g` control covers one or both outgoing gluon sources in
+double, DoubleFloat and arbitrary precision. Summing two orthonormal transverse
+linear sources reproduces the ordinary helicity sum, including all effective
+components and the original averaging. Complex rescaling, joint-source
+rescaling, input bits beyond binary64, empty batches and stable reduction lane
+IDs are checked. A source shift `v -> v + kappa*p` preserves the complete
+complex observable with a nonzero Born amplitude, testing the loop Ward
+identity without a trivially vanishing Born projection. Identity, adjoint
+Casimir and single-emission colour-pair contractions compose with these checks;
+individual integrated cross terms retain nonzero absorptive parts.
+
+Some two-emission histories for this process currently reach an unresolved
+Community projector/chain materialization error during exact colour
+construction. They fail before evaluation; the bounded source tests do not
+certify those histories. The separate non-Hermitian complete `u u~ -> d d~`
+and top-pair controls retain their previous coverage. Incoming-gluon numerical
+source checks, other vector species, source-model electroweak completion,
+flavour mappings, formal-colour/FFT source projections and public dispatch
+remain separate work. Reduction success retains the existing accuracy
+semantics and does not establish a new precision-rescue certificate.
 ## Source-owned bare electroweak control
 
 `physical_source.source_bare_program` connects a `StructuralCovariantModel` to

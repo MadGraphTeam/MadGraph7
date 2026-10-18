@@ -154,6 +154,58 @@ class NativeSpinSourcePlan:
         return self.prepare_native(native, point_ids)
 
 
+class NativeSpinSourceProgram:
+    """Complete QCD model-rule views with literal gluon and directed colour sources.
+
+    A joint class compiles an immutable spectator-helicity layout. The underlying
+    model's ordinary helicities and initial-state average remain unchanged. The
+    same supplied vectors enter Born, loop, local CT and external-field currents.
+    This is an internal validated-control bridge, not public process dispatch.
+    """
+
+    def __init__(self, model, histories, *, spin_correlations):
+        from .physical_model_correlations import NativeDirectedModelProgram
+
+        self.model, self.bare = model, model.bare
+        self.sources = NativeSpinSourcePlan(self.bare, spin_correlations)
+        self.histories = tuple(histories)
+        self._views = {(): NativeDirectedModelProgram(model, self.histories)}
+
+    def _view(self, vectors):
+        from .physical_model_correlations import NativeDirectedModelProgram
+
+        layout = self.sources.layout(vectors)
+        if layout.legs not in self._views:
+            self._views[layout.legs] = NativeDirectedModelProgram(
+                self.model, self.histories, spin_layout=layout
+            )
+        return self._views[layout.legs]
+
+    def evaluate_native(
+        self, momenta, scales_squared, *, model_values, spin_vectors=None
+    ):
+        vectors = self.sources.prepare_native(spin_vectors, range(len(momenta)))
+        view = self._view(vectors)
+        return view.evaluate_native(
+            momenta,
+            scales_squared,
+            model_values=model_values,
+            spin_sources=vectors,
+        )
+
+    def evaluate_decimal(
+        self, momenta, scales_squared, *, model_values, spin_vectors=None
+    ):
+        vectors = self.sources.prepare_decimal(spin_vectors, range(len(momenta)))
+        view = self._view(vectors)
+        return view.evaluate_decimal(
+            momenta,
+            scales_squared,
+            model_values=model_values,
+            spin_sources=vectors,
+        )
+
+
 def replace_vector_sources(
     states, sources, *, point_rows, lane_ids, state_kinds, backend
 ):

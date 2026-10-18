@@ -538,6 +538,7 @@ class NativeModelVirtualProgram:
         can reuse each current without repeating numerical preparation.
         """
         backend = self.bare.backend
+        helicities = batch.helicity_count
         coefficient_inputs = backend.NativeBatch.concat_columns(
             [
                 batch.model_arguments.take_rows(
@@ -556,7 +557,7 @@ class NativeModelVirtualProgram:
             )
             coefficients = coefficients.take_columns(range(0, coefficients.columns, 2))
             coefficients = coefficients.take_rows(
-                np.repeat(np.arange(batch.size), len(self.bare.helicities)).tolist(),
+                np.repeat(np.arange(batch.size), helicities).tolist(),
                 row_ids=batch.lane_ids,
             )
             combined = backend.NativeBatch.concat_columns([batch.bound, coefficients])
@@ -566,7 +567,7 @@ class NativeModelVirtualProgram:
             require_finite_batch(
                 amplitude,
                 "counterterm current",
-                rows_per_point=len(self.bare.helicities),
+                rows_per_point=helicities,
             )
             amplitudes.append(amplitude)
         for current in self.field_currents:
@@ -580,9 +581,7 @@ class NativeModelVirtualProgram:
             coefficients = coefficients.take_columns([0])
             amplitudes.append(
                 coefficients.take_rows(
-                    np.repeat(
-                        np.arange(batch.size), len(self.bare.helicities)
-                    ).tolist(),
+                    np.repeat(np.arange(batch.size), helicities).tolist(),
                     row_ids=batch.lane_ids,
                 )
             )

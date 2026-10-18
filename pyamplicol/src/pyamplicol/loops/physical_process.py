@@ -73,7 +73,9 @@ class NativePhysicalBatch:
     positions: dict[str, int]
     model_arguments: Any
     scales_squared: Any
+    helicity_count: int
     model_snapshot: Any = None
+    spin_legs: tuple[int, ...] = ()
 
 
 @dataclass(slots=True)
@@ -645,24 +647,25 @@ class NativeBareProcessProgram:
             **self.options,
         )
 
-    def _born_symbols(self):
+    def _born_symbols(self, *, helicities=None):
         from symbolica import S
 
+        helicities = self.helicities if helicities is None else helicities
         return [
             [
                 S(f"loop_physical_process::born{helicity}_{i}")
                 for i in range(len(self.born_colors))
             ]
-            for helicity in range(len(self.helicities))
+            for helicity in range(len(helicities))
         ]
 
     def _compile_born_projection(self):
         self.born_projector = self._make_born_projector((self.born_metric,))
 
-    def _make_born_projector(self, metrics):
+    def _make_born_projector(self, metrics, *, helicities=None):
         from symbolica import E
 
-        symbols = self._born_symbols()
+        symbols = self._born_symbols(helicities=helicities)
         values = [
             sum(
                 (
@@ -683,7 +686,7 @@ class NativeBareProcessProgram:
         )
 
     def _compile_family_projection(
-        self, indices, powers, sector_indices, *, metrics=None
+        self, indices, powers, sector_indices, *, metrics=None, helicities=None
     ):
         from symbolica import E, S
 
@@ -702,7 +705,7 @@ class NativeBareProcessProgram:
             for sector in sector_indices
         }
         parameters = []
-        for helicity, born in enumerate(self._born_symbols()):
+        for helicity, born in enumerate(self._born_symbols(helicities=helicities)):
             parameters.extend(born)
             for index in indices:
                 for local_term, labels in enumerate(self.loop_reduction_powers[index]):
@@ -857,13 +860,22 @@ class NativeBareProcessProgram:
             else "MadLoop-Cepsilon-bare-four-dimensional-no-R2-no-UV",
         )
 
-    def prepare_currents_native(self, momenta, scales_squared, *, model_values=None):
+    def prepare_currents_native(
+        self,
+        momenta,
+        scales_squared,
+        *,
+        model_values=None,
+        helicities=None,
+        spin_sources=None,
+    ):
         """Bind one physical batch and evaluate its Born and loop currents once."""
         momenta, scales = (
             np.asarray(momenta, dtype=object),
             np.asarray(scales_squared, dtype=object),
         )
-        legs, helicities = len(self.state_kinds), len(self.helicities)
+        helicity_states = self.helicities if helicities is None else helicities
+        legs, helicities = len(self.state_kinds), len(helicity_states)
         if momenta.ndim != 3 or momenta.shape[1:] != (legs, 4):
             raise ValueError("expected (batch, leg, four components) momenta")
         size, rows = len(momenta), len(momenta) * helicities
@@ -906,9 +918,20 @@ class NativeBareProcessProgram:
         )
         states = self.backend.wavefunctions_batch(
             lanes.reshape_rows(rows * legs, 4, list(range(rows * legs))),
-            np.tile(np.asarray(self.helicities), (size, 1)).reshape(-1).tolist(),
+            np.tile(np.asarray(helicity_states), (size, 1)).reshape(-1).tolist(),
             list(self.state_kinds) * rows,
         ).reshape_rows(rows, 4 * legs, lane_ids)
+        if spin_sources:
+            from .spin_sources import replace_vector_sources
+
+            states = replace_vector_sources(
+                states,
+                spin_sources,
+                point_rows=np.repeat(np.arange(size), helicities).tolist(),
+                lane_ids=lane_ids,
+                state_kinds=self.state_kinds,
+                backend=self.backend,
+            )
         scales = native(scales, size, 1)
         if self.model_state is None:
             model_arguments = native(model_values, 1, len(model_values))
@@ -952,7 +975,9 @@ class NativeBareProcessProgram:
                 dict(self.bound_positions),
                 model_arguments,
                 scales,
+                helicities,
                 snapshot,
+                tuple(sorted(spin_sources or {})),
             ),
             born,
             tuple(currents),
@@ -980,7 +1005,7 @@ class NativeBareProcessProgram:
         )
         return inputs.reshape_rows(
             currents.batch.size,
-            len(self.helicities) * inputs.columns,
+            currents.batch.helicity_count * inputs.columns,
             currents.batch.point_ids,
         )
 

@@ -23,6 +23,38 @@ def bare(request):
     )
 
 
+def test_native_compact_views_reject_different_source_classes(bare):
+    import numpy as np
+
+    from pyamplicol.color.connections import ColorConnection
+    from pyamplicol.loops.physical_correlations import (
+        NativeDirectedBareProgram,
+        directed_color_legs,
+    )
+
+    plan = NativeSpinSourcePlan(bare, ((3,), (4,)))
+    identity = ColorConnection(directed_color_legs(bare))
+    left = NativeDirectedBareProgram(
+        bare, ((identity, identity),), spin_layout=plan.layouts[(3,)]
+    )
+    right = NativeDirectedBareProgram(
+        bare, ((identity, identity),), spin_layout=plan.layouts[(4,)]
+    )
+    empty = np.empty((0, 4, 4), dtype=object)
+    currents = left._prepare_currents_native(
+        empty,
+        [],
+        model_values=["0.118", "173"],
+        spin_sources=plan.prepare_decimal({3: [0, 1, 0, 0]}, []),
+    )
+    result = left.evaluate_currents_native(currents)
+    assert result.virtual.rows == 0
+    assert result.batch.helicity_count == 8 and result.batch.spin_legs == (3,)
+    with pytest.raises(ValueError, match="different helicity/source layout"):
+        right.evaluate_currents_native(currents)
+    assert len(bare.helicities) == 16
+
+
 def test_native_literal_components_joint_layout_and_original_bits(bare):
     plan = NativeSpinSourcePlan(bare, ((3,), (3, 4)))
     assert plan.source_ir.crossing.phase == (1, 0)

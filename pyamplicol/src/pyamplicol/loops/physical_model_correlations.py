@@ -54,10 +54,10 @@ class NativeDirectedModelProgram(NativeDirectedBareProgram):
     Their forward term and conjugated swapped term use separate colour kernels
     and exact Born/loop pair masks. External fields keep the source delta-Z/2
     and the insertion's specific Born graph. No source-model completeness beyond
-    the admitted QCD control, precision rescue, spin or flavour mapping is added.
+    the admitted QCD control, precision rescue or flavour mapping is added.
     """
 
-    def __init__(self, model, histories):
+    def __init__(self, model, histories, *, spin_layout=None):
         from symbolica import E, S
 
         from .physical_counterterms import NativeModelVirtualProgram
@@ -67,7 +67,7 @@ class NativeDirectedModelProgram(NativeDirectedBareProgram):
         self.model = model
         self._current_ids = tuple(id(current) for current in model.currents)
         self._field_ids = tuple(id(current) for current in model.field_currents)
-        super().__init__(model.bare, histories)
+        super().__init__(model.bare, histories, spin_layout=spin_layout)
         bare = self.bare
         _, born_colors, _ = _physical_color_ports(bare)
         nc = S("loop_directed_model::Nc", is_real=True)
@@ -120,7 +120,7 @@ class NativeDirectedModelProgram(NativeDirectedBareProgram):
         # Components are local UV, R2, external fields; each retains two terms.
         cross_terms = [[E("0")] * width for _ in range(6)]
         parameters = []
-        for helicity in range(len(bare.helicities)):
+        for helicity in range(len(self.helicities)):
             born = tuple(
                 S(f"loop_directed_model::born_{helicity}_{index}")
                 for index in range(len(born_colors))
@@ -248,10 +248,15 @@ class NativeDirectedModelProgram(NativeDirectedBareProgram):
             )
         self._check_metric_scope()
 
-    def evaluate_native(self, momenta, scales_squared, *, model_values):
+    def evaluate_native(
+        self, momenta, scales_squared, *, model_values, spin_sources=None
+    ):
         self._check_scope()
-        currents = self.bare.prepare_currents_native(
-            momenta, scales_squared, model_values=model_values
+        currents = self._prepare_currents_native(
+            momenta,
+            scales_squared,
+            model_values=model_values,
+            spin_sources=spin_sources,
         )
         reduced = super().evaluate_currents_native(currents)
         batch, backend = currents.batch, self.bare.backend
@@ -259,7 +264,7 @@ class NativeDirectedModelProgram(NativeDirectedBareProgram):
         inputs = backend.NativeBatch.concat_columns([currents.born, *amplitudes])
         counterterms = self.counterterm_projector.evaluate_batch(
             inputs.reshape_rows(
-                batch.size, len(self.bare.helicities) * inputs.columns, batch.point_ids
+                batch.size, len(self.helicities) * inputs.columns, batch.point_ids
             )
         )
         require_finite_batch(counterterms, "directed counterterm cross terms")
@@ -287,9 +292,14 @@ class NativeDirectedModelProgram(NativeDirectedBareProgram):
             uv_external_fields=values[4],
         )
 
-    def evaluate_decimal(self, momenta, scales_squared, *, model_values):
+    def evaluate_decimal(
+        self, momenta, scales_squared, *, model_values, spin_sources=None
+    ):
         result = self.evaluate_native(
-            momenta, scales_squared, model_values=model_values
+            momenta,
+            scales_squared,
+            model_values=model_values,
+            spin_sources=spin_sources,
         )
         size, histories = result.batch.size, len(self.histories)
 
@@ -321,4 +331,5 @@ class NativeDirectedModelProgram(NativeDirectedBareProgram):
             statuses=result.statuses,
             arithmetic=self.bare.arithmetic,
             precision=self.bare.precision,
+            spin_legs=() if self.spin_layout is None else self.spin_layout.legs,
         )

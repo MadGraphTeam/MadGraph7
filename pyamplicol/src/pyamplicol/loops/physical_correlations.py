@@ -113,6 +113,7 @@ class DirectedBareResult:
     precision: int | None
     epsilon_powers: tuple[int, ...] = (0, -1, -2)
     convention: str = "MadLoop-Cepsilon-directed-bare-N4-no-UV-no-R2"
+    spin_legs: tuple[int, ...] = ()
 
     def __post_init__(self):
         for values in (self.born, self.virtual, self.first, self.second):
@@ -142,10 +143,17 @@ class NativeDirectedBareProgram:
     ordered history and are never coerced to a real number.
     """
 
-    def __init__(self, bare, histories):
+    def __init__(self, bare, histories, *, spin_layout=None):
         from symbolica import E, S
 
         self.bare = bare
+        self.spin_layout = spin_layout
+        self.helicities = (
+            bare.helicities if spin_layout is None else spin_layout.helicities
+        )
+        self._helicity_options = (
+            {} if spin_layout is None else {"helicities": self.helicities}
+        )
         self._check_scope()
         self._metrics = (bare.born_metric, bare.loop_metric)
         histories = tuple(tuple(pair) for pair in histories)
@@ -195,13 +203,16 @@ class NativeDirectedBareProgram:
                     ),
                 )
             )
-        self.born_projector = bare._make_born_projector(born_metrics)
+        self.born_projector = bare._make_born_projector(
+            born_metrics, **self._helicity_options
+        )
         self.projectors = tuple(
             bare._compile_family_projection(
                 family.graph_indices,
                 family.powers,
                 family.sector_indices,
                 metrics=loop_metrics,
+                **self._helicity_options,
             )
             for family in bare.families
         )
@@ -273,11 +284,28 @@ class NativeDirectedBareProgram:
         ):
             raise ValueError("bare colour metrics changed after directed preparation")
 
-    def evaluate_native(self, momenta, scales_squared, *, model_values):
+    def _prepare_currents_native(
+        self, momenta, scales_squared, *, model_values, spin_sources=None
+    ):
+        options = self._helicity_options
+        expected = () if self.spin_layout is None else self.spin_layout.legs
+        if tuple(sorted(spin_sources or {})) != expected:
+            raise ValueError("spin sources differ from the compiled joint layout")
+        if spin_sources:
+            options = {**options, "spin_sources": spin_sources}
+        return self.bare.prepare_currents_native(
+            momenta, scales_squared, model_values=model_values, **options
+        )
+
+    def evaluate_native(
+        self, momenta, scales_squared, *, model_values, spin_sources=None
+    ):
         self._check_scope()
-        bare = self.bare
-        currents = bare.prepare_currents_native(
-            momenta, scales_squared, model_values=model_values
+        currents = self._prepare_currents_native(
+            momenta,
+            scales_squared,
+            model_values=model_values,
+            spin_sources=spin_sources,
         )
         return self.evaluate_currents_native(currents)
 
@@ -285,12 +313,19 @@ class NativeDirectedBareProgram:
         """Contract already prepared currents without repeating state work."""
         self._check_scope()
         bare = self.bare
+        if (
+            currents.batch.helicity_count != len(self.helicities)
+            or currents.batch.rows != currents.batch.size * len(self.helicities)
+            or currents.batch.spin_legs
+            != (() if self.spin_layout is None else self.spin_layout.legs)
+        ):
+            raise ValueError("physical currents use a different helicity/source layout")
         batch = bare.backend.NativeBatch
         size, point_ids = currents.batch.size, currents.batch.point_ids
         order_count = len(bare.order_layout.virtual)
         born = self.born_projector.evaluate_batch(
             currents.born.reshape_rows(
-                size, len(bare.helicities) * currents.born.columns, point_ids
+                size, len(self.helicities) * currents.born.columns, point_ids
             )
         )
         require_finite_batch(born, "directed Born contraction")
@@ -371,9 +406,14 @@ class NativeDirectedBareProgram:
             ),
         )
 
-    def evaluate_decimal(self, momenta, scales_squared, *, model_values):
+    def evaluate_decimal(
+        self, momenta, scales_squared, *, model_values, spin_sources=None
+    ):
         native = self.evaluate_native(
-            momenta, scales_squared, model_values=model_values
+            momenta,
+            scales_squared,
+            model_values=model_values,
+            spin_sources=spin_sources,
         )
         size, history_count = native.batch.size, len(self.histories)
 
@@ -394,4 +434,5 @@ class NativeDirectedBareProgram:
             native.statuses,
             self.bare.arithmetic,
             self.bare.precision,
+            spin_legs=() if self.spin_layout is None else self.spin_layout.legs,
         )
