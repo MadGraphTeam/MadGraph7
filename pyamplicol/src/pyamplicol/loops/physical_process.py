@@ -37,6 +37,28 @@ class BareProcessResult:
     convention: str = "MadLoop-Cepsilon-bare-four-dimensional-no-R2-no-UV"
 
 
+@dataclass(slots=True)
+class NativePhysicalBatch:
+    """Shared physical states and global model inputs for bare/CT assembly."""
+
+    size: int
+    rows: int
+    point_ids: list[int]
+    lane_ids: list[int]
+    bound: Any
+    positions: dict[str, int]
+    model_arguments: Any
+
+
+@dataclass(slots=True)
+class NativeBareEvaluation:
+    batch: NativePhysicalBatch
+    born_amplitudes: Any
+    born: Any
+    virtual: Any
+    statuses: tuple[tuple[tuple[int, str], ...], ...]
+
+
 def _external_color(graph, expression):
     """Identify color ports by physical leg before comparing distinct graphs."""
     from symbolica.community import hepkit as h
@@ -110,6 +132,7 @@ class NativeBareProcessProgram:
             graph for graph in process.loops if graph.order in selected_loop_orders
         )
         self.process, self.backend = process, backend
+        self.initial_average = initial_average
         self.state_kinds = state_kinds
         self.helicities = tuple(product((-1, 1), repeat=len(state_kinds)))
         self.arithmetic, self.precision = arithmetic, precision
@@ -142,6 +165,7 @@ class NativeBareProcessProgram:
             self.born_dags.append(dag)
             born_colors.append(_external_color(graph, color))
         self.loop_finals, loop_colors = [], []
+        self.born_colors = tuple(born_colors)
         for recurrence in self.recurrences:
             if recurrence.momentum_parameters != self.momenta:
                 raise ValueError("native graph external momentum frames differ")
@@ -323,6 +347,24 @@ class NativeBareProcessProgram:
         )
 
     def evaluate_decimal(self, momenta, scales_squared, *, model_values):
+        result = self.evaluate_native(
+            momenta, scales_squared, model_values=model_values
+        )
+        return BareProcessResult(
+            np.asarray(result.born.to_decimal(), dtype=object).reshape(
+                result.batch.size, 2
+            ),
+            np.asarray(result.virtual.to_decimal(), dtype=object).reshape(
+                result.batch.size, 3, 2
+            ),
+            result.statuses,
+            tuple(f.index for f in self.families),
+            self.arithmetic,
+            self.precision,
+            self.reduction_engine,
+        )
+
+    def evaluate_native(self, momenta, scales_squared, *, model_values):
         """Original decimal input enters exact kinematics and native arithmetic."""
         momenta, scales = (
             np.asarray(momenta, dtype=object),
@@ -363,9 +405,8 @@ class NativeBareProcessProgram:
             np.tile(np.asarray(self.helicities), (size, 1)).reshape(-1).tolist(),
             list(self.state_kinds) * rows,
         ).reshape_rows(rows, 4 * legs, lane_ids)
-        model = self.model_evaluator.evaluate_batch(
-            native(model_values, 1, len(model_values))
-        )
+        model_arguments = native(model_values, 1, len(model_values))
+        model = self.model_evaluator.evaluate_batch(model_arguments)
         bound = batch_type.concat_columns(
             [lanes, states, model.take_rows([0] * rows, row_ids=lane_ids)]
         )
@@ -442,14 +483,14 @@ class NativeBareProcessProgram:
             integrated.append(reduced.values)
             statuses.append(tuple(reduced.statuses))
         virtual = self.postprocess.evaluate_batch(batch_type.concat_columns(integrated))
-        return BareProcessResult(
-            np.asarray(born_squared.to_decimal(), dtype=object).reshape(size, 2),
-            np.asarray(virtual.to_decimal(), dtype=object).reshape(size, 3, 2),
+        return NativeBareEvaluation(
+            NativePhysicalBatch(
+                size, rows, point_ids, lane_ids, bound, positions, model_arguments
+            ),
+            born,
+            born_squared,
+            virtual,
             tuple(tuple(family[point] for family in statuses) for point in range(size)),
-            tuple(f.index for f in self.families),
-            self.arithmetic,
-            self.precision,
-            self.reduction_engine,
         )
 
 
