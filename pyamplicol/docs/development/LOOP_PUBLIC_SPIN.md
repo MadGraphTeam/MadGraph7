@@ -127,12 +127,46 @@ The ordered-history checks are internal reconstruction and homogeneity controls;
 the independent provider comparisons select the identity colour history.
 
 This certifies the exercised stable W± QCD cases. It does not certify
-Z axial closed-loop sums, electroweak corrections, complex external masses or
-massive-vector LC/NLC composition. Recola only supplies an independent oracle for
+Z axial closed-loop sums, electroweak corrections or complex external masses.
+The narrower declared-colour composition below is a separate control. Recola only supplies an independent oracle for
 the physical three-state subspace. Arbitrary nontransverse source behavior is
 checked by literal recurrence transport and exact homogeneity. These tests are
 not generation/runtime measurements. Driver and convention details are in
 `tools/loop_reference/MASSIVE_VECTOR_SOURCES.md`.
+
+## Declared-colour stable W+ composition
+
+The explicit source-colour example now includes the actual sixteen additional
+ordinary/UV/R2 keys selected by `u d~ -> W+ g` QCD. They preserve the source's
+fundamental `Identity`/`T` tensors, named Nc-dependent invariants, loop-particle
+groups, mass logarithms and existing `lhv=1` tie. Removing either the selected
+charged tree entry or its R2 entry fails the existing declaration gate. No
+process-specific compiler exception or scalar/tensor algebra was added.
+
+One fresh owner in the corrected complete Community environment establishes the
+same common leading degrees, Born 2 and virtual 3, across the bare loop and all
+UV/R2/field rows. The exact 322-row control includes 60 rows at the odd suppressed
+power: LC removes them and NLC retains them. Full projection reconstructs every
+unchanged complete component in double, DoubleFloat and AP70, using a
+component-local Laurent norm for cancellations rather than division by Born.
+The complete full-colour result retains the prior independent MadLoop control;
+LC/NLC are checked by formal coefficient projection, not a finite-Nc provider.
+
+Saved LC/NLC identity-source artifacts reconstruct the complete answer from the
+three W states and the six joint W/gluon states in all three arithmetic modes.
+They retain exact source and parameter changes, original opaque IDs, empty/tail
+batches, both interference terms and literal complex-vector homogeneity. Normal
+public artifact publication preserves ordinary LC signed Born anchors and NLC
+contracted output; source-correlated LC/NLC output is contracted. All-carrier
+resolved totals and saved public AP60/AP80 subset rescue use the existing APIs.
+These controls add no generation or runtime timing measurement.
+
+This coverage is outgoing stable W+ QCD with identity histories. The separate
+W− source entries, incoming massive projected control, nonidentity formal-colour
+histories, EW corrections and complex masses remain open. The corrected typed
+open-port Community package is required for this exercised preparation; existing
+ordinary package dependency adoption is tracked separately. Unrelated original
+full-colour owners and their numerical snapshots remain untouched.
 
 ## Projected identity histories
 
