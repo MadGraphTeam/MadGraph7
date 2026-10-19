@@ -3305,6 +3305,10 @@ class GenerationBackend:
         *,
         model: ModelSource | CompiledModel | None = None,
     ) -> GenerationPlan:
+        if self._loop_execution_enabled:
+            from .loop_service import plan_loop_generation
+
+            return plan_loop_generation(self, processes, model=model)
         source = model or self._configured_model_source()
         task_id = "generation-plan"
         if self._progress is not None:
@@ -3413,6 +3417,12 @@ class GenerationBackend:
     ) -> GenerationResult:
         if mode not in ("error", "append", "replace"):
             raise ValueError("generation mode must be 'error', 'append', or 'replace'")
+        if self._loop_execution_enabled:
+            from .loop_service import generate_loop_artifact
+
+            return generate_loop_artifact(
+                self, processes, output, model=model, mode=mode
+            )
         write_mode = cast(Literal["error", "append", "replace"], mode)
         reporter = GenerationPhaseReporter(self._progress)
         run_config = self._run_config
@@ -7492,14 +7502,6 @@ class GenerationBackend:
     def _validate_recurrence_request(self) -> None:
         """Keep recurrence-family requests out of compiled/eager lanes."""
 
-        if (
-            self._run_config is not None
-            and self._run_config.process.loop_coupling_orders is not None
-        ):
-            raise GenerationError(
-                "loop_recurrence generation is under construction: the complete "
-                "numerator, reduction and UV/R2 pipeline is not available yet"
-            )
         if self._on_the_fly_execution_enabled and self._color_accuracy not in {
             "lc",
             "nlc",
@@ -7518,6 +7520,13 @@ class GenerationBackend:
                 "recurrence execution supports LC, NLC, and full color; "
                 f"got color.accuracy={self._color_accuracy!r}"
             )
+
+    @property
+    def _loop_execution_enabled(self) -> bool:
+        return (
+            self._run_config is not None
+            and self._run_config.process.loop_coupling_orders is not None
+        )
 
     @property
     def _all_flow_union_enabled(self) -> bool:
