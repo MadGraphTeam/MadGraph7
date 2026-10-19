@@ -145,10 +145,8 @@ def test_complete_model_components_share_currents_and_keep_complex_histories(
                 "1e-3"
             )
     for point, row in enumerate(result.statuses):
-        for (lane, status), (direction, sector, _family) in zip(
-            row, result.channels, strict=True
-        ):
-            assert lane == point * directed.directions + direction + sector
+        for (lane, status), _channel in zip(row, result.channels, strict=True):
+            assert lane == point
             assert status == "success"
     empty = directed.evaluate_decimal(momenta[:0], [], model_values=["0.118", "173"])
     assert empty.virtual.shape == (0, 7, 1, 3, 2) and empty.statuses == ()
@@ -350,10 +348,8 @@ def test_shared_currents_identity_casimir_conservation_and_complex_directions(
     assert not result.virtual.flags.writeable
     for point, row in enumerate(result.statuses):
         assert len(row) == len(result.channels)
-        for (lane, status), (direction, sector, _family) in zip(
-            row, result.channels, strict=True
-        ):
-            assert lane == point * directed.directions + direction + sector
+        for (lane, status), _channel in zip(row, result.channels, strict=True):
+            assert lane == point
             assert status == "success"
     rebound = directed.evaluate_decimal(
         points[1:2],
@@ -443,10 +439,8 @@ def test_multiple_squared_orders_complex_born_and_lane_identity(
         mixed = _decimals(result.born_order((("QCD", 2), ("QED", 2))))
         assert abs(mixed[0, 2, 1]) > Decimal("1e-4")
     for point, row in enumerate(result.statuses):
-        for (lane, status), (direction, sector, _family) in zip(
-            row, result.channels, strict=True
-        ):
-            assert lane == point * directed.directions * 4 + direction * 4 + sector
+        for (lane, status), _channel in zip(row, result.channels, strict=True):
+            assert lane == point
             assert status == "success"
     with pytest.raises(ValueError, match="absent"):
         result.virtual_order((("QCD", 99),))
@@ -463,7 +457,7 @@ def test_tail_batches_and_scope_mutation_guards(native, points):
         batch[:3], ["1000000"] * 3, model_values=["0.118", "173"]
     )
     _close(_decimals(result.virtual[:3]), _decimals(short.virtual), Decimal("3e-11"))
-    assert result.statuses[-1][0][0] == 32
+    assert result.statuses[-1][0][0] == 16
     with pytest.raises(ValueError, match="directed program"):
         bare.set_color_metrics(bare.born_metric, bare.loop_metric)
     bare._model_color_metrics_bound = True

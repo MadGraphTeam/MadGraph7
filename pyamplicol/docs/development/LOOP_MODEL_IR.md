@@ -1686,3 +1686,35 @@ These remain internal prepared-model interfaces. Public LC still requires its
 signed Born-component observable contract, and a generic model needs declared,
 validated continuation for every selected ordinary, UV, rational and field
 structure before projection is available.
+
+### Retained directed projectors on a source owner
+
+`PreparedDirectedBare` and `PreparedDirectedModel` retain immutable dependency
+instruction bytes for the directed Born contraction, each denominator family,
+local UV/R2 and external-field terms, and final complex assembly. They refer to
+existing retained bare/model plans. Binding a different arithmetic carrier uses
+those bytes and the original source scalar/current owner; it does not regenerate
+colour algebra, diagrams or counterterm currents. A different plan is rejected.
+`NativeDirectedModelProgram` accepts a `NativeSourceModelProgram` through its
+existing `.virtual` owner.
+
+The two Born–loop terms remain separate through complex reduction. Only then is
+the swapped second term conjugated. Local rules retain their individual order
+pairings; external fields retain the corresponding Born-graph mask and delta-Z/2
+factor. Ordinary real-result projection is not applied to directed histories.
+The complete Python control wrapper uses dense internal helicity/reduction rows
+and reports original physical point IDs separately from the direction/order/
+family catalogue, including IDs at the native integer boundary. This is not a
+partial-batch scheduler or precision-rescue implementation.
+Early state/current exceptions and some finite-value guards still expose the
+legacy dense row context; typed original-ID failures at every stage belong to
+the subsequent native correlated scheduler.
+
+The actual source `u u~ > d d~ [QCD]` control covers identity, a colour Casimir,
+complex swapped histories, all UV/R2 components, two exact on-shell points and
+scales, all three arithmetic carriers, and below-binary64 parameter changes.
+Independent analytic Born/UV expressions supplement transport checks against the
+ordinary source projection; sharing currents is not independent physics
+validation. Source-directed artifact serialization, native/public correlation
+scheduling, spin-source transport/compaction, correlated LC/NLC and flavour
+mappings remain subsequent work. Existing internal spin controls remain separate.

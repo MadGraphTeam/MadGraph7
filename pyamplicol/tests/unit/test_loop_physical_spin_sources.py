@@ -192,7 +192,5 @@ def test_complete_joint_sources_polarization_sum_complex_scaling_and_ward(
         with pytest.raises(ValueError, match="different helicity/source layout"):
             program._views[(3,)].evaluate_currents_native(full_empty)
         for i, row in enumerate(joint.statuses):
-            for (lane, status), (direction, sector, _) in zip(
-                row, joint.channels, strict=True
-            ):
-                assert lane == i * 8 + direction + sector and status == "success"
+            for (lane, status), _channel in zip(row, joint.channels, strict=True):
+                assert lane == i and status == "success"

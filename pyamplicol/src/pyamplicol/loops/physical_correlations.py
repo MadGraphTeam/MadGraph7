@@ -8,18 +8,15 @@ or spin-correlated virtual observables and are not a public process dispatcher.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import numpy as np
 
 from pyamplicol.color.connections import ColorConnection, ColorLeg
 
-from .color_bilinears import SUNColorSpace
-from .color_connections import directed_color_bilinears
 from .kernels import require_finite_batch
 from .orders import canonical_order
-from .physical import _saved
 
 
 def _physical_color_ports(bare):
@@ -99,7 +96,11 @@ class NativeDirectedBareEvaluation:
 
 @dataclass(frozen=True, slots=True)
 class DirectedBareResult:
-    """Decimal complex pairs on point, history, order, optional pole axes."""
+    """Decimal complex pairs on point, history, order, optional pole axes.
+
+    Status entries contain original physical point IDs. Their parallel channel
+    catalogue supplies direction, order and family; IDs never encode those axes.
+    """
 
     born: Any
     virtual: Any
@@ -143,9 +144,8 @@ class NativeDirectedBareProgram:
     ordered history and are never coerced to a real number.
     """
 
-    def __init__(self, bare, histories, *, spin_layout=None):
-        from symbolica import E, S
-
+    def __init__(self, bare, histories, *, spin_layout=None, _prepared=None):
+        histories = tuple(tuple(pair) for pair in histories)
         self.bare = bare
         self.spin_layout = spin_layout
         self.helicities = (
@@ -156,106 +156,28 @@ class NativeDirectedBareProgram:
         )
         self._check_scope()
         self._metrics = (bare.born_metric, bare.loop_metric)
-        histories = tuple(tuple(pair) for pair in histories)
-        if not histories or any(
-            len(pair) != 2 or any(not isinstance(x, ColorConnection) for x in pair)
-            for pair in histories
+        from .prepared_correlations import PreparedDirectedBare, prepare_directed_bare
+
+        prepared = _prepared or prepare_directed_bare(
+            bare, histories, spin_layout=spin_layout
+        )
+        if not isinstance(prepared, PreparedDirectedBare):
+            raise TypeError("expected immutable directed bare preparation")
+        prepared.require_owner(bare)
+        if (
+            prepared.histories != tuple(tuple(pair) for pair in histories)
+            or prepared.spin_layout != spin_layout
         ):
-            raise ValueError("expected nonempty ordered colour-history pairs")
-        self.histories = histories
-        self.color_legs, born, loop = _physical_color_ports(bare)
-        if any(
-            connection.initial_legs != self.color_legs
-            for pair in histories
-            for connection in pair
-        ):
-            raise ValueError(
-                "history legs differ from the native physical colour ports"
-            )
-        nc = S("loop_directed_physical::Nc", is_real=True)
-        space = SUNColorSpace(nc)
-
-        def fixed(matrix):
-            return tuple(
-                tuple(
-                    (value.replace(nc, 3) / bare.initial_average).together()
-                    for value in row
-                )
-                for row in matrix
-            )
-
-        born_metrics, loop_metrics = [], []
-        for bra, ket in histories:
-            kernels = directed_color_bilinears(space, born, loop, bra, ket)
-            born_metrics.append(
-                fixed(directed_color_bilinears(space, born, born, bra, ket).born_loop)
-            )
-            loop_metrics.extend(
-                (
-                    fixed(kernels.born_loop),
-                    fixed(
-                        tuple(
-                            tuple(
-                                kernels.loop_born[j][i].conj() for j in range(len(loop))
-                            )
-                            for i in range(len(born))
-                        )
-                    ),
-                )
-            )
-        self.born_projector = bare._make_born_projector(
-            born_metrics, **self._helicity_options
+            raise ValueError("directed history/source layout differs from preparation")
+        self.prepared = prepared
+        self.histories, self.color_legs = prepared.histories, prepared.color_legs
+        self.born_projector = bare.backend.CoefficientEvaluator(
+            prepared.born_state, **bare.options
         )
-        self.projectors = tuple(
-            bare._compile_family_projection(
-                family.graph_indices,
-                family.powers,
-                family.sector_indices,
-                metrics=loop_metrics,
-                **self._helicity_options,
-            )
-            for family in bare.families
-        )
-        self.directions = 2 * len(histories)
-        self.channels = tuple(
-            (direction, sector, family.index)
-            for family in bare.families
-            for direction in range(self.directions)
-            for sector in family.sector_indices
-        )
-        poles = {
-            channel: tuple(
-                S(f"loop_directed_physical::pole_{index}_{pole}") for pole in range(3)
-            )
-            for index, channel in enumerate(self.channels)
-        }
-        first, second = [], []
-        for history in range(len(histories)):
-            for sector in range(len(bare.order_layout.virtual)):
-                for pole in range(3):
-
-                    def amplitude(direction, sector=sector, pole=pole):
-                        return (
-                            E("1i")
-                            * sum(
-                                (
-                                    values[pole]
-                                    for (d, s, _), values in poles.items()
-                                    if d == direction and s == sector
-                                ),
-                                E("0"),
-                            )
-                            / (16 * E("pi") ** 2)
-                        )
-
-                    first.append(amplitude(2 * history))
-                    second.append(amplitude(2 * history + 1).conj())
+        self.projectors = tuple(family.bind(bare) for family in prepared.families)
+        self.directions, self.channels = 2 * len(self.histories), prepared.channels
         self.postprocess = bare.backend.CoefficientEvaluator(
-            _saved(
-                [a + b for a, b in zip(first, second, strict=True)] + first + second,
-                [value for values in poles.values() for value in values],
-            ),
-            **bare.options,
+            prepared.postprocess_state, **bare.options
         )
         # A model wrapper may not later reinterpret these weights as complete CT
         # metrics; ordinary colour mutation would also invalidate the attachment.
@@ -285,7 +207,13 @@ class NativeDirectedBareProgram:
             raise ValueError("bare colour metrics changed after directed preparation")
 
     def _prepare_currents_native(
-        self, momenta, scales_squared, *, model_values, spin_sources=None
+        self,
+        momenta,
+        scales_squared,
+        *,
+        model_values=None,
+        spin_sources=None,
+        point_ids=None,
     ):
         options = self._helicity_options
         expected = () if self.spin_layout is None else self.spin_layout.legs
@@ -293,12 +221,40 @@ class NativeDirectedBareProgram:
             raise ValueError("spin sources differ from the compiled joint layout")
         if spin_sources:
             options = {**options, "spin_sources": spin_sources}
-        return self.bare.prepare_currents_native(
-            momenta, scales_squared, model_values=model_values, **options
+        from .physical_process import _physical_point_ids
+
+        original_ids = _physical_point_ids(
+            np.asarray(momenta, dtype=object),
+            np.asarray(scales_squared, dtype=object),
+            len(self.bare.state_kinds),
+            point_ids,
         )
+        currents = self.bare.prepare_currents_native(
+            momenta,
+            scales_squared,
+            model_values=model_values,
+            **options,
+        )
+        # The control current preparer uses point*H helicity IDs. Keep those
+        # internal rows dense, independently of large/sparse user identifiers.
+        # This is a complete-batch wrapper, not a partial/rescue scheduler.
+        currents.batch = replace(
+            currents.batch,
+            point_ids=original_ids,
+            scales_squared=currents.batch.scales_squared.take_rows(
+                list(range(currents.batch.size)), row_ids=original_ids
+            ),
+        )
+        return currents
 
     def evaluate_native(
-        self, momenta, scales_squared, *, model_values, spin_sources=None
+        self,
+        momenta,
+        scales_squared,
+        *,
+        model_values=None,
+        spin_sources=None,
+        point_ids=None,
     ):
         self._check_scope()
         currents = self._prepare_currents_native(
@@ -306,6 +262,7 @@ class NativeDirectedBareProgram:
             scales_squared,
             model_values=model_values,
             spin_sources=spin_sources,
+            point_ids=point_ids,
         )
         return self.evaluate_currents_native(currents)
 
@@ -337,11 +294,7 @@ class NativeDirectedBareProgram:
                 for sector in family.sector_indices
             )
             count = len(channels)
-            row_ids = [
-                point * self.directions * order_count + direction * order_count + sector
-                for point in range(size)
-                for direction, sector in channels
-            ]
+            row_ids = list(range(size * count))
             point_rows = np.repeat(np.arange(size), count).tolist()
             coefficients = projector.evaluate_batch(
                 bare.family_projection_arguments(currents, family)
@@ -359,9 +312,8 @@ class NativeDirectedBareProgram:
             )
             failures = [
                 (
-                    row // (self.directions * order_count),
-                    (row // order_count) % self.directions,
-                    row % order_count,
+                    point_ids[row // count],
+                    *channels[row % count],
                     family.index,
                     status,
                 )
@@ -379,18 +331,12 @@ class NativeDirectedBareProgram:
             statuses.extend(
                 tuple(
                     (
-                        point * self.directions * order_count
-                        + direction * order_count
-                        + sector,
-                        by_id[
-                            point * self.directions * order_count
-                            + direction * order_count
-                            + sector
-                        ],
+                        point,
+                        by_id[position * count + channel],
                     )
-                    for point in range(size)
+                    for position, point in enumerate(point_ids)
                 )
-                for direction, sector in channels
+                for channel in range(count)
             )
         result = self.postprocess.evaluate_batch(batch.concat_columns(integrated))
         require_finite_batch(result, "directed bare cross terms")
@@ -407,13 +353,20 @@ class NativeDirectedBareProgram:
         )
 
     def evaluate_decimal(
-        self, momenta, scales_squared, *, model_values, spin_sources=None
+        self,
+        momenta,
+        scales_squared,
+        *,
+        model_values=None,
+        spin_sources=None,
+        point_ids=None,
     ):
         native = self.evaluate_native(
             momenta,
             scales_squared,
             model_values=model_values,
             spin_sources=spin_sources,
+            point_ids=point_ids,
         )
         size, history_count = native.batch.size, len(self.histories)
 

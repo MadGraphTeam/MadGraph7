@@ -726,6 +726,14 @@ class NativeBareProcessProgram:
     def _make_born_projector(
         self, metrics, *, helicities=None, real_result=False, _record_name=None
     ):
+        return self._record_evaluator(
+            _record_name,
+            self._born_projection_state(
+                metrics, helicities=helicities, real_result=real_result
+            ),
+        )
+
+    def _born_projection_state(self, metrics, *, helicities=None, real_result=False):
         """Build an ordered bilinear, keeping directed operators complex.
 
         Ordinary Hermitian Born observables explicitly request real output;
@@ -751,9 +759,7 @@ class NativeBareProcessProgram:
         ]
         if real_result:
             values = [real_scalar_part(value) for value in values]
-        return self._record_evaluator(
-            _record_name, _saved(values, [value for row in symbols for value in row])
-        )
+        return _saved(values, [value for row in symbols for value in row])
 
     def _compile_family_projection(
         self,
@@ -765,6 +771,24 @@ class NativeBareProcessProgram:
         helicities=None,
         _record_name=None,
     ):
+        state, inputs, outputs = self._family_projection_state(
+            indices, powers, sector_indices, metrics=metrics, helicities=helicities
+        )
+        if _record_name is not None:
+            self._evaluator_states[_record_name] = state
+        return bind_family_projector(
+            state,
+            inputs,
+            outputs,
+            backend=self.backend,
+            options=self.options,
+            engine=self.projector_engine,
+        )
+
+    def _family_projection_state(
+        self, indices, powers, sector_indices, *, metrics=None, helicities=None
+    ):
+        """Prepare exact projection bytes and widths without a numerical workspace."""
         from symbolica import E, S
 
         metrics = (self.loop_metric,) if metrics is None else metrics
@@ -816,17 +840,7 @@ class NativeBareProcessProgram:
             for sector in sector_indices
             for power in powers
         ]
-        state = _saved(outputs, parameters)
-        if _record_name is not None:
-            self._evaluator_states[_record_name] = state
-        return bind_family_projector(
-            state,
-            len(parameters),
-            len(outputs),
-            backend=self.backend,
-            options=self.options,
-            engine=self.projector_engine,
-        )
+        return _saved(outputs, parameters), len(parameters), len(outputs)
 
     def set_color_metrics(self, born_metric, loop_metric):
         """Recompile only physical weight evaluators after a shared projection.

@@ -8,16 +8,11 @@ from typing import Any
 
 import numpy as np
 
-from .color_bilinears import SUNColorSpace
-from .color_connections import directed_color_bilinears
 from .kernels import require_finite_batch
-from .physical import _saved
 from .physical_correlations import (
     DirectedBareResult,
     NativeDirectedBareEvaluation,
     NativeDirectedBareProgram,
-    _physical_color_ports,
-    _rename_physical_color_tensors,
 )
 
 
@@ -57,172 +52,37 @@ class NativeDirectedModelProgram(NativeDirectedBareProgram):
     the admitted QCD control, precision rescue or flavour mapping is added.
     """
 
-    def __init__(self, model, histories, *, spin_layout=None):
-        from symbolica import E, S
-
+    def __init__(self, model, histories, *, spin_layout=None, _prepared=None):
         from .physical_counterterms import NativeModelVirtualProgram
+        from .physical_source import NativeSourceModelProgram
+        from .prepared_correlations import PreparedDirectedModel, prepare_directed_model
 
+        if isinstance(model, NativeSourceModelProgram):
+            model = model.virtual
         if not isinstance(model, NativeModelVirtualProgram):
-            raise TypeError("directed completion requires a NativeModelVirtualProgram")
+            raise TypeError("directed completion requires a physical model program")
+        if _prepared is not None and not isinstance(_prepared, PreparedDirectedModel):
+            raise TypeError("expected immutable directed model preparation")
+        if _prepared is not None:
+            _prepared.require_owner(model)
         self.model = model
         self._current_ids = tuple(id(current) for current in model.currents)
         self._field_ids = tuple(id(current) for current in model.field_currents)
-        super().__init__(model.bare, histories, spin_layout=spin_layout)
-        bare = self.bare
-        _, born_colors, _ = _physical_color_ports(bare)
-        nc = S("loop_directed_model::Nc", is_real=True)
-        space = SUNColorSpace(nc)
-        color_cache = {}
-
-        def matrices(colors, key):
-            if key not in color_cache:
-                values = []
-                for bra, ket in self.histories:
-                    kernels = directed_color_bilinears(
-                        space, born_colors, colors, bra, ket
-                    )
-                    forward = kernels.born_loop
-                    swapped = tuple(
-                        tuple(
-                            kernels.loop_born[j][i].conj() for j in range(len(colors))
-                        )
-                        for i in range(len(born_colors))
-                    )
-                    values.extend(
-                        tuple(
-                            tuple(
-                                (entry.replace(nc, 3) / bare.initial_average).together()
-                                for entry in row
-                            )
-                            for row in matrix
-                        )
-                        for matrix in (forward, swapped)
-                    )
-                color_cache[key] = tuple(values)
-            return color_cache[key]
-
-        current_weights = tuple(
-            matrices(
-                _rename_physical_color_tensors(current.color_tensors),
-                ("ct", id(current.color_tensors)),
-            )
-            for current in model.currents
+        super().__init__(
+            model.bare,
+            histories,
+            spin_layout=spin_layout,
+            _prepared=None if _prepared is None else _prepared.bare,
         )
-        field_weights = tuple(
-            matrices(
-                tuple(born_colors[index] for index in current.born_indices),
-                ("field", current.born_indices),
-            )
-            for current in model.field_currents
+        prepared = _prepared or prepare_directed_model(model, self.prepared)
+        prepared.require_owner(model)
+        self.prepared = prepared
+        self.counterterm_projector = self.bare.backend.CoefficientEvaluator(
+            prepared.counterterm_state, **self.bare.options
         )
-        sectors = len(bare.order_layout.virtual)
-        width = len(self.histories) * sectors * 3
-        # Components are local UV, R2, external fields; each retains two terms.
-        cross_terms = [[E("0")] * width for _ in range(6)]
-        parameters = []
-        for helicity in range(len(self.helicities)):
-            born = tuple(
-                S(f"loop_directed_model::born_{helicity}_{index}")
-                for index in range(len(born_colors))
-            )
-            parameters.extend(born)
-            for index, (current, weights) in enumerate(
-                zip(model.currents, current_weights, strict=True)
-            ):
-                amplitudes = tuple(
-                    S(f"loop_directed_model::ct_{helicity}_{index}_{term}")
-                    for term in range(current.term_count)
-                )
-                parameters.extend(amplitudes)
-                component = 1 if current.insertion.rule.kind == "R2" else 0
-                self._accumulate(
-                    cross_terms,
-                    component,
-                    born,
-                    amplitudes,
-                    weights,
-                    current.insertion.graph.order,
-                    current.epsilon_power,
-                    sectors,
-                )
-            for index, (current, weights) in enumerate(
-                zip(model.field_currents, field_weights, strict=True)
-            ):
-                factor = S(f"loop_directed_model::field_{helicity}_{index}")
-                parameters.append(factor)
-                amplitudes = tuple(
-                    factor * born[right] for right in current.born_indices
-                )
-                self._accumulate(
-                    cross_terms,
-                    2,
-                    born,
-                    amplitudes,
-                    weights,
-                    current.insertion.order,
-                    current.epsilon_power,
-                    sectors,
-                )
-        self.counterterm_projector = bare.backend.CoefficientEvaluator(
-            _saved([value for row in cross_terms for value in row], parameters),
-            **bare.options,
+        self.assemble_model = self.bare.backend.CoefficientEvaluator(
+            prepared.assembly_state, **self.bare.options
         )
-        # Input rows are bare first/second then the six effective-rule blocks.
-        inputs = tuple(S(f"loop_directed_model::sum_{i}") for i in range(8 * width))
-        first = [
-            sum((inputs[k * width + i] for k in (0, 2, 4, 6)), E("0"))
-            for i in range(width)
-        ]
-        second = [
-            sum((inputs[k * width + i] for k in (1, 3, 5, 7)), E("0"))
-            for i in range(width)
-        ]
-        local, rational, field = (
-            [inputs[k * width + i] + inputs[(k + 1) * width + i] for i in range(width)]
-            for k in (2, 4, 6)
-        )
-        self.assemble_model = bare.backend.CoefficientEvaluator(
-            _saved(
-                [
-                    *[a + b for a, b in zip(first, second, strict=True)],
-                    *[a + b for a, b in zip(local, field, strict=True)],
-                    *rational,
-                    *local,
-                    *field,
-                    *first,
-                    *second,
-                ],
-                inputs,
-            ),
-            **bare.options,
-        )
-
-    def _accumulate(
-        self, outputs, component, born, amplitudes, weights, order, power, sectors
-    ):
-        from symbolica import E
-
-        for history in range(len(self.histories)):
-            for sector, pairs in enumerate(self.model.sector_pairs):
-                for direction in (0, 1):
-                    value = sum(
-                        (
-                            left.conj() * weight * amplitude
-                            for left, left_order, row in zip(
-                                born,
-                                self.bare.born_term_orders,
-                                weights[2 * history + direction],
-                                strict=True,
-                            )
-                            if (left_order, order) in pairs
-                            for weight, amplitude in zip(row, amplitudes, strict=True)
-                        ),
-                        E("0"),
-                    )
-                    index = 3 * (history * sectors + sector) - power
-                    outputs[2 * component + direction][index] += (
-                        value if direction == 0 else value.conj()
-                    )
 
     def _check_scope(self):
         model = self.model
@@ -249,7 +109,13 @@ class NativeDirectedModelProgram(NativeDirectedBareProgram):
         self._check_metric_scope()
 
     def evaluate_native(
-        self, momenta, scales_squared, *, model_values, spin_sources=None
+        self,
+        momenta,
+        scales_squared,
+        *,
+        model_values=None,
+        spin_sources=None,
+        point_ids=None,
     ):
         self._check_scope()
         currents = self._prepare_currents_native(
@@ -257,6 +123,7 @@ class NativeDirectedModelProgram(NativeDirectedBareProgram):
             scales_squared,
             model_values=model_values,
             spin_sources=spin_sources,
+            point_ids=point_ids,
         )
         reduced = super().evaluate_currents_native(currents)
         batch, backend = currents.batch, self.bare.backend
@@ -293,13 +160,20 @@ class NativeDirectedModelProgram(NativeDirectedBareProgram):
         )
 
     def evaluate_decimal(
-        self, momenta, scales_squared, *, model_values, spin_sources=None
+        self,
+        momenta,
+        scales_squared,
+        *,
+        model_values=None,
+        spin_sources=None,
+        point_ids=None,
     ):
         result = self.evaluate_native(
             momenta,
             scales_squared,
             model_values=model_values,
             spin_sources=spin_sources,
+            point_ids=point_ids,
         )
         size, histories = result.batch.size, len(self.histories)
 
