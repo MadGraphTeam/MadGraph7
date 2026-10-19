@@ -41,6 +41,7 @@ from .physical_orders import (
 )
 from .physical_states import ExternalStateLayout
 from .recurrence import momentum_component_library
+from .scalar_frontend import real_scalar_part
 
 
 @dataclass(frozen=True, slots=True)
@@ -627,7 +628,7 @@ class NativeBareProcessProgram:
         self.postprocess = self._record_evaluator(
             "postprocess",
             _saved(
-                [value + value.conj() for value in values],
+                [2 * real_scalar_part(value) for value in values],
                 [p for row in poles.values() for p in row],
             ),
         )
@@ -701,10 +702,17 @@ class NativeBareProcessProgram:
 
     def _compile_born_projection(self):
         self.born_projector = self._make_born_projector(
-            (self.born_metric,), _record_name="born_projector"
+            (self.born_metric,), real_result=True, _record_name="born_projector"
         )
 
-    def _make_born_projector(self, metrics, *, helicities=None, _record_name=None):
+    def _make_born_projector(
+        self, metrics, *, helicities=None, real_result=False, _record_name=None
+    ):
+        """Build an ordered bilinear, keeping directed operators complex.
+
+        Ordinary Hermitian Born observables explicitly request real output;
+        non-Hermitian correlation metrics must retain the complex default.
+        """
         from symbolica import E
 
         symbols = self._born_symbols(helicities=helicities)
@@ -723,6 +731,8 @@ class NativeBareProcessProgram:
             for metric in metrics
             for sector in self.order_layout.born
         ]
+        if real_result:
+            values = [real_scalar_part(value) for value in values]
         return self._record_evaluator(
             _record_name, _saved(values, [value for row in symbols for value in row])
         )

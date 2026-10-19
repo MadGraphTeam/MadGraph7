@@ -19,7 +19,7 @@ from .graph_basis import build_color_tree_recurrence
 from .kernels import NativeCoefficientDAG, require_finite_batch
 from .physical import _saved
 from .physical_orders import OrderedModelVirtualResult, SummedModelValues
-from .scalar_frontend import ScalarExpression
+from .scalar_frontend import ScalarExpression, real_scalar_part
 
 
 @dataclass(frozen=True, slots=True)
@@ -708,7 +708,14 @@ class NativeModelVirtualProgram:
                     )
                     fields[3 * sector - current.epsilon_power] += value + value.conj()
         return self._record_evaluator(
-            _record_name, _saved([*ultraviolet, *rational, *fields], parameters)
+            _record_name,
+            _saved(
+                [
+                    real_scalar_part(value)
+                    for value in (*ultraviolet, *rational, *fields)
+                ],
+                parameters,
+            ),
         )
 
     def _record_evaluator(self, name, state):
