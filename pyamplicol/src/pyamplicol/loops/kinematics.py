@@ -34,6 +34,9 @@ class LoopKinematicPlan:
     shifts: tuple[tuple[Any, ...], ...]
     masses_squared: tuple[Any, ...]
     s_matrix: tuple[Any, ...]
+    kinematic_context: str = "raw"
+    mass_expressions: tuple[Any, ...] = ()
+    on_shell_bindings: tuple[tuple[int, int], ...] = ()
 
     @property
     def propagators(self) -> int:
@@ -58,7 +61,11 @@ class LoopKinematicPlan:
 
 
 def build_loop_kinematics(
-    recurrence: Any, *, family_order: bool = False
+    recurrence: Any,
+    *,
+    family_order: bool = False,
+    physical: bool = False,
+    model_expressions: Any = None,
 ) -> LoopKinematicPlan:
     """Bind the same graph/family loop variable used by a numerator recurrence.
 
@@ -76,6 +83,7 @@ def build_loop_kinematics(
         raise ValueError("kinematic binding requires one four-component loop momentum")
     library = momentum_component_library(graph, (recurrence.loop_components,), momenta)
     shifts, masses, edge_ids, denominators = [], [], [], set()
+    shift_signatures = []
     zero_loop = [Replacement(variable, E("0")) for variable in variables]
     edges = [
         edge for edge in graph.native.internal_edges if edge.id in graph.loop_edges
@@ -122,6 +130,9 @@ def build_loop_kinematics(
         edge_ids.append(edge.id)
         shifts.append(shift)
         masses.append(mass)
+        signature = edge.momentum_signature()
+        sign = 1 if direction == E("1") else -1
+        shift_signatures.append(tuple(sign * c for c in signature.external))
 
     if len(edge_ids) != len(graph.loop_edges):
         raise ValueError("kinematic binding did not cover the native cycle")
@@ -135,6 +146,52 @@ def build_loop_kinematics(
                 [a - b for a, b in zip(left, right, strict=True)],
             )
             matrix.append(difference.dot(difference).to_tensor()[0].expand())
+    mass_expressions, on_shell = list(masses), []
+    if physical:
+        # Dependency-provided routing signatures include the eliminated external
+        # momentum. Match these exact identities, never sampled component values.
+        external = {}
+        for edge in graph.native.external_edges:
+            signature = edge.momentum_signature()
+            if any(signature.loops):
+                raise ValueError("external momentum unexpectedly depends on the loop")
+            key = tuple(signature.external)
+            if not any(key):
+                raise ValueError("external momentum has an empty routing signature")
+            for signed in (key, tuple(-c for c in key)):
+                mass = edge.particle.mass**2
+                if signed in external and external[signed] != mass:
+                    raise ValueError("external routing identifies incompatible masses")
+                external[signed] = mass
+        from symbolica import S
+
+        replacements = [
+            Replacement(S(name), value)
+            for name, value in (model_expressions or {}).items()
+        ]
+
+        def normalized(value):
+            return value.replace_multiple(replacements).expand()
+
+        normalized_masses = [normalized(mass) for mass in mass_expressions]
+        n = len(shifts)
+        for i, left in enumerate(shift_signatures):
+            for j, right in enumerate(shift_signatures):
+                if i == j:
+                    continue
+                key = tuple(a - b for a, b in zip(left, right, strict=True))
+                mass = external.get(key)
+                if mass is None:
+                    continue
+                require_exact_numbers(mass)
+                identity = normalized(mass)
+                if identity in normalized_masses:
+                    column = normalized_masses.index(identity)
+                else:
+                    column = len(mass_expressions)
+                    mass_expressions.append(mass)
+                    normalized_masses.append(identity)
+                on_shell.append((i * n + j, column))
     return LoopKinematicPlan(
         graph.id,
         recurrence.routing,
@@ -144,4 +201,7 @@ def build_loop_kinematics(
         tuple(shifts),
         tuple(masses),
         tuple(matrix),
+        "physical" if physical else "raw",
+        tuple(mass_expressions),
+        tuple(on_shell),
     )

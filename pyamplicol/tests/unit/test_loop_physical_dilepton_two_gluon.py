@@ -123,16 +123,14 @@ def test_complete_source_six_leg_poles_and_exact_coupling(
     assert dict(bare.order_layout.born[0].order) == {"QCD": 4, "QED": 4}
     assert dict(bare.order_layout.virtual[0].order) == {"QCD": 6, "QED": 4}
     scales = [str(int(value) ** 2) for value in fixture["mu_r"]]
-    if arithmetic == "double":
-        rounded = program.evaluate_decimal(
-            np.asarray(fixture["points"], dtype=str), scales
-        )
-        assert all(status == "success" for row in rounded.statuses for _, status in row)
-        _check_reference(rounded, fixture["rows"])
-    # Rounded RAMBO points expose an unresolved cross-carrier on-shell policy:
-    # tiny nonzero invariants can select different scalar-integral IR branches.
-    # These precision checks certify exact on-shell inputs only; they do not
-    # close the rounded-input/rescue requirement by narrowing the fixture.
+    rounded = program.evaluate_decimal(
+        np.asarray(fixture["points"], dtype=str), scales
+    )
+    assert all(status == "success" for row in rounded.statuses for _, status in row)
+    _check_reference(rounded, fixture["rows"])
+    # Process-declared external shells bind structurally to exact model masses.
+    # The original rounded RAMBO inputs now exercise the same physical branch
+    # in every carrier; exact controls continue to test precision-sensitive poles.
     points = np.asarray(fixture["precision_points"], dtype=str)
     for point in points:
         vectors = [[E(value) for value in leg] for leg in point]

@@ -165,6 +165,11 @@ def write_loop_pacbin(program, destination, *, resolved=False):
             }
             | {
                 "propagators": metadata["kinematics"].propagators,
+                "kinematics": {
+                    "context": metadata["kinematics"].kinematic_context,
+                    "mass_output_count": len(metadata["kinematics"].mass_expressions),
+                    "on_shell": metadata["kinematics"].on_shell_bindings,
+                },
                 "exact_state": state(family.exact_state),
                 "mass_state": state(family.mass_state),
                 "projector_state": state(family.projector_state),
@@ -483,7 +488,15 @@ class PortableLoopPlan:
                     graph_indices=tuple(item["graph_indices"]),
                     sector_indices=tuple(item["sector_indices"]),
                     powers=tuple(map(tuple, item["powers"])),
-                    kinematics=SimpleNamespace(propagators=item["propagators"]),
+                    kinematics=SimpleNamespace(
+                        propagators=item["propagators"],
+                        on_shell_bindings=tuple(
+                            map(
+                                tuple,
+                                (item.get("kinematics") or {}).get("on_shell", []),
+                            )
+                        ),
+                    ),
                     exact_evaluator=backend.ExactPolynomialEvaluator(
                         state(item["exact_state"])
                     ),

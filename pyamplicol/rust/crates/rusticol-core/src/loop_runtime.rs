@@ -35,11 +35,15 @@ record!(VirtualSector { order: Order, pairs: Vec<VirtualPair> });
 record!(OrderLayout { born: Vec<BornSector>, r#virtual: Vec<VirtualSector>, correction_names: Vec<String> });
 record!(Schedule { states: Vec<String>, input_slots: Vec<Vec<usize>>, parameter_count: usize, output_slots: Vec<usize> });
 record!(ScheduleGroup { schedules: Vec<usize>, input_columns: Vec<Vec<usize>>, representatives: Vec<usize>, representative_for: Vec<usize> });
+record!(FamilyKinematics {
+    context: String, mass_output_count: usize, on_shell: Vec<[usize; 2]>
+});
 record!(Family {
     index: usize, graph_indices: Vec<usize>, sector_indices: Vec<usize>,
     powers: Vec<[u32; 6]>, propagators: usize, mass_columns: Vec<usize>,
     exact_state: String, mass_state: String, projector_state: String,
-    numerators: [String; 3], rational_numerators: [String; 3]
+    numerators: [String; 3], rational_numerators: [String; 3],
+    kinematics: Option<FamilyKinematics>
 });
 record!(ScalarOwner {
     external_names: Vec<String>, external_types: Vec<String>,
@@ -633,7 +637,36 @@ impl LoopRuntimePlan {
                 product(4, legs)?,
                 sum([product(4, n)?, product(n, n)?].into_iter())?,
             )?;
-            shape(&family.mass_state, family.mass_columns.len(), n)?;
+            let mass_outputs = if let Some(kinematics) = &family.kinematics {
+                require(
+                    matches!(kinematics.context.as_str(), "raw" | "physical")
+                        && kinematics.mass_output_count >= n,
+                    "invalid family kinematic context/mass output count",
+                )?;
+                require(
+                    kinematics.context == "physical" || kinematics.on_shell.is_empty(),
+                    "raw kinematics contains physical on-shell assignments",
+                )?;
+                let mut assignments = BTreeMap::new();
+                for &[entry, mass] in &kinematics.on_shell {
+                    require(
+                        entry < product(n, n)? && entry / n != entry % n
+                            && mass < kinematics.mass_output_count
+                            && assignments.insert(entry, mass).is_none(),
+                        "invalid/duplicate on-shell matrix assignment",
+                    )?;
+                }
+                require(
+                    assignments.iter().all(|(&entry, mass)| {
+                        assignments.get(&((entry % n) * n + entry / n)) == Some(mass)
+                    }),
+                    "on-shell matrix assignments are not symmetric",
+                )?;
+                kinematics.mass_output_count
+            } else {
+                n
+            };
+            shape(&family.mass_state, family.mass_columns.len(), mass_outputs)?;
             let loops = sum(family.graph_indices.iter().map(|&i| loop_widths[i]))?;
             shape(
                 &family.projector_state,

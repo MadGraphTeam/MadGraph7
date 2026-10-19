@@ -526,13 +526,30 @@ class NativeBareProcessProgram:
                 )
             )
             plans = [
-                build_loop_kinematics(self.recurrences[i], family_order=True)
+                build_loop_kinematics(
+                    self.recurrences[i],
+                    family_order=True,
+                    physical=True,
+                    model_expressions=self.model_expressions,
+                )
                 for i in indices
             ]
             plan = plans[0]
             if any(
-                (p.shifts, p.masses_squared, p.s_matrix)
-                != (plan.shifts, plan.masses_squared, plan.s_matrix)
+                (
+                    p.shifts,
+                    p.masses_squared,
+                    p.s_matrix,
+                    p.mass_expressions,
+                    p.on_shell_bindings,
+                )
+                != (
+                    plan.shifts,
+                    plan.masses_squared,
+                    plan.s_matrix,
+                    plan.mass_expressions,
+                    plan.on_shell_bindings,
+                )
                 for p in plans[1:]
             ):
                 raise ValueError(
@@ -557,7 +574,7 @@ class NativeBareProcessProgram:
                 sorted(
                     {
                         symbol
-                        for mass in plan.masses_squared
+                        for mass in plan.mass_expressions
                         for symbol in mass.get_all_symbols(False)
                     },
                     key=lambda s: s.to_canonical_string(),
@@ -574,7 +591,7 @@ class NativeBareProcessProgram:
                     backend.ExactPolynomialEvaluator(exact_state),
                     self._record_evaluator(
                         f"family{family.index}_masses",
-                        _saved(plan.masses_squared, mass_parameters),
+                        _saved(plan.mass_expressions, mass_parameters),
                     ),
                     mass_parameters,
                     tuple(self.model_positions[p.get_name()] for p in mass_parameters),
@@ -1134,12 +1151,28 @@ class NativeBareProcessProgram:
             **self.options,
         )
         n = family.kinematics.propagators
+        masses = family.masses.evaluate_batch(
+            currents.model.take_columns(family.mass_columns)
+        )
+        matrix = bindings.take_columns(list(range(4 * n, 4 * n + n * n)))
+        assignments = family.kinematics.on_shell_bindings
+        if assignments:
+            point_masses = masses.take_rows(
+                list(range(currents.batch.size))
+                if masses.rows == currents.batch.size
+                else [0] * currents.batch.size,
+                currents.batch.point_ids,
+            )
+            columns = list(range(n * n))
+            for entry, column in assignments:
+                columns[entry] = n * n + column
+            matrix = self.backend.NativeBatch.concat_columns(
+                [matrix, point_masses]
+            ).take_columns(columns)
         return (
             bindings.take_columns(list(range(4 * n))),
-            family.masses.evaluate_batch(
-                currents.model.take_columns(family.mass_columns)
-            ),
-            bindings.take_columns(list(range(4 * n, 4 * n + n * n))),
+            masses.take_columns(list(range(n))),
+            matrix,
         )
 
     def family_projection_arguments(self, currents, family):

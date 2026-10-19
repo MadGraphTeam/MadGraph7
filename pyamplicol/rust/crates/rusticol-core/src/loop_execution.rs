@@ -498,11 +498,29 @@ impl<B: LoopBackend> LoopExecutor<B> {
             )?;
             let n = family.propagators;
             let shifts = B::select(&exact, (0..4 * n).collect())?;
-            let matrix = B::select(&exact, (4 * n..4 * n + n * n).collect())?;
+            let mut matrix = B::select(&exact, (4 * n..4 * n + n * n).collect())?;
             let masses = B::evaluate(
                 &mut workspace.masses,
                 &B::select(&model, family.mass_columns.clone())?,
             )?;
+            if let Some(kinematics) = &family.kinematics {
+                if !kinematics.on_shell.is_empty() {
+                    let mass_rows = if pointwise_model {
+                        (0..points).collect()
+                    } else {
+                        vec![0; points]
+                    };
+                    let point_masses = B::gather(
+                        &masses, mass_rows, input.point_ids.clone(),
+                    )?;
+                    let mut columns: Vec<_> = (0..n * n).collect();
+                    for &[entry, mass] in &kinematics.on_shell {
+                        columns[entry] = n * n + mass;
+                    }
+                    matrix = B::select(&B::concat(&[&matrix, &point_masses])?, columns)?;
+                }
+            }
+            let masses = B::select(&masses, (0..n).collect())?;
             let channels = family.sector_indices.len();
             let channel_rows = count(projection_points, channels)?;
             let mut reduction_ids = Vec::with_capacity(channel_rows);
