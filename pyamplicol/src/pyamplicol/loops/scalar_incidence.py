@@ -172,7 +172,16 @@ def scalar_grade_term_mask(dag, output_nodes, aliases, coefficients):
     for index in range(len(dag.nodes) - 1, -1, -1):
         if index in required:
             required.update(dag.nodes[index].dependencies)
+    occupied = {
+        symbol
+        for expression in (
+            *coefficients,
+            *(value for index in required for value in dag.nodes[index].expressions),
+        )
+        for symbol in expression.get_all_symbols(True)
+    }
     references, canonical, reference_symbols = {}, {}, set()
+    next_reference = 0
     for index, node in enumerate(dag.nodes):
         if index not in required:
             continue
@@ -196,9 +205,13 @@ def scalar_grade_term_mask(dag, output_nodes, aliases, coefficients):
                 reference = expression
             else:
                 if expression not in canonical:
-                    canonical[expression] = S(
-                        f"loop_grade_incidence::current_{len(canonical)}"
-                    )
+                    while True:
+                        reference = S(f"loop_grade_incidence::current_{next_reference}")
+                        next_reference += 1
+                        if reference not in occupied:
+                            break
+                    occupied.add(reference)
+                    canonical[expression] = reference
                     reference_symbols.add(canonical[expression])
                 reference = canonical[expression]
             outputs.append(reference)

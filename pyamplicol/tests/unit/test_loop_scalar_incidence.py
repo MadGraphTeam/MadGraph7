@@ -163,3 +163,36 @@ def test_equal_local_components_share_reference_for_downstream_cancellation(prim
         False,
     )
     assert scalar_grade_term_mask(dag, (output,), (g1, g2), (E("1"), E("2"))) == (True,)
+
+
+@pytest.mark.parametrize("kind", ["complex_constants", "reference_collision"])
+def test_local_grade_references_preserve_constants_and_input_identity(primitives, kind):
+    from symbolica import AtomType, E, S
+    from symbolica.community import tensor as t
+
+    dag, (g1, g2), _ = primitives
+    slot = t.Representation.mink(4)(S("incidence_test::mu"))
+    if kind == "complex_constants":
+        assert E("1i").get_type() == E("1+1i").get_type() == AtomType.Num
+        components, covector = (g1, g2), (E("1"), E("1+1i") / E("1i"))
+        coefficients, expected = (E("1+1i"), E("1i")), False
+    else:
+        x = S("loop_grade_incidence::current_0")
+        components, covector = (g1 * (x + 1), g1 * x), (E("1"), E("1"))
+        coefficients, expected = (E("1"), E("1")), True
+    vector = dag.add(
+        "phase-related components",
+        t.Tensor.dense(
+            t.TensorName("incidence_test::vector")(slot), [*components, E("0"), E("0")]
+        ),
+    )
+    output = dag.add(
+        "constant local contraction",
+        t.Tensor.dense(
+            t.TensorName("incidence_test::projector")(slot.dual()),
+            [*covector, E("0"), E("0")],
+        ),
+        (vector,),
+    )
+    scalar_alias_incidence(dag, (output,), (g1, g2))
+    assert scalar_grade_term_mask(dag, (output,), (g1, g2), coefficients) == (expected,)
