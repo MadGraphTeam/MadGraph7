@@ -206,7 +206,7 @@ pub fn load_loop_artifact(
             && (metadata.color_accuracy != "lc"
                 || (metadata.resolved && plan.born_color_components.is_some()))
             && metadata.scheme_status == "declared-not-certified"
-            && !metadata.correlations
+            && metadata.correlations == plan.directed_projection.is_some()
             && metadata.resolved == plan.helicity_projection.is_some()
             && !metadata.partial_results,
         "unsupported contribution, convention or feature declaration",

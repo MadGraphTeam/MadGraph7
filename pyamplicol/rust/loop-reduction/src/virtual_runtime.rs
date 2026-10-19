@@ -7,10 +7,10 @@
 use crate::runtime::{Batch, physical::PhysicalBackend};
 use crate::verification::{
     ArithmeticSpec, VerificationPolicy, VerificationWorkspace, VerifiedLoopResult,
-    evaluate_verified,
+    evaluate_observable_verified,
 };
 use rusticol_core::loop_artifact::{LoadedLoopArtifact, LoopExecutionMetadata, open_loop_artifact};
-use rusticol_core::loop_execution::{CompleteLoopResult, LoopExecutor, LoopInputs};
+use rusticol_core::loop_execution::{CompleteLoopResult, LoopExecutor, LoopInputs, LoopObservable};
 use rusticol_core::source_bindings::{SourceOverrides, SourceOwner};
 use rusticol_core::{RusticolError, RusticolResult};
 use std::{path::Path, sync::Arc};
@@ -174,14 +174,14 @@ impl VirtualRuntime {
         inputs: LoopInputs,
         r2_strategy: Option<&str>,
     ) -> RusticolResult<CompleteLoopResult<Arc<Batch>>> {
-        self.evaluate_mode(inputs, r2_strategy, false, false)
+        self.evaluate_mode(inputs, r2_strategy, LoopObservable::Inclusive, false)
     }
     pub fn evaluate_resolved(
         &mut self,
         inputs: LoopInputs,
         r2_strategy: Option<&str>,
     ) -> RusticolResult<CompleteLoopResult<Arc<Batch>>> {
-        self.evaluate_mode(inputs, r2_strategy, true, false)
+        self.evaluate_mode(inputs, r2_strategy, LoopObservable::Resolved, false)
     }
     /// Successful complete points plus typed reduction-channel failures.
     pub fn evaluate_partial(
@@ -190,7 +190,21 @@ impl VirtualRuntime {
         r2_strategy: Option<&str>,
         resolved: bool,
     ) -> RusticolResult<CompleteLoopResult<Arc<Batch>>> {
-        self.evaluate_mode(inputs, r2_strategy, resolved, true)
+        self.evaluate_mode(
+            inputs,
+            r2_strategy,
+            LoopObservable::from_resolved(resolved),
+            true,
+        )
+    }
+    /// All saved ordered colour histories, preserving both complex cross terms.
+    pub fn evaluate_directed(
+        &mut self,
+        inputs: LoopInputs,
+        r2_strategy: Option<&str>,
+        partial: bool,
+    ) -> RusticolResult<CompleteLoopResult<Arc<Batch>>> {
+        self.evaluate_mode(inputs, r2_strategy, LoopObservable::Directed, partial)
     }
     pub fn evaluate_verified(
         &mut self,
@@ -199,6 +213,40 @@ impl VirtualRuntime {
         resolved: bool,
         policy: &VerificationPolicy,
     ) -> RusticolResult<VerifiedLoopResult> {
+        self.evaluate_verified_mode(
+            inputs,
+            r2_strategy,
+            LoopObservable::from_resolved(resolved),
+            policy,
+        )
+    }
+    pub fn evaluate_directed_verified(
+        &mut self,
+        inputs: LoopInputs,
+        r2_strategy: Option<&str>,
+        policy: &VerificationPolicy,
+    ) -> RusticolResult<VerifiedLoopResult> {
+        self.evaluate_verified_mode(inputs, r2_strategy, LoopObservable::Directed, policy)
+    }
+
+    fn require_observable(&self, observable: LoopObservable) -> RusticolResult<()> {
+        if observable == LoopObservable::Directed && !self.metadata().correlations {
+            return Err(RusticolError::unsupported_runtime_capability(
+                "directed colour correlations",
+                "this artifact has no declared directed projection kernels",
+            ));
+        }
+        Ok(())
+    }
+
+    fn evaluate_verified_mode(
+        &mut self,
+        inputs: LoopInputs,
+        r2_strategy: Option<&str>,
+        observable: LoopObservable,
+        policy: &VerificationPolicy,
+    ) -> RusticolResult<VerifiedLoopResult> {
+        self.require_observable(observable)?;
         strategy(r2_strategy.unwrap_or(&self.requested_strategy))?;
         if self.executor.is_none() {
             self.executor = Some(LoopExecutor::with_source_owner(
@@ -206,7 +254,7 @@ impl VirtualRuntime {
                 self.backend.clone(),
             )?);
         }
-        evaluate_verified(
+        evaluate_observable_verified(
             self.executor.as_mut().expect("workspace bound"),
             &mut self.verification,
             inputs,
@@ -215,7 +263,7 @@ impl VirtualRuntime {
                 precision: self.precision,
             },
             policy,
-            resolved,
+            observable,
         )
     }
 
@@ -223,9 +271,10 @@ impl VirtualRuntime {
         &mut self,
         inputs: LoopInputs,
         r2_strategy: Option<&str>,
-        resolved: bool,
+        observable: LoopObservable,
         partial: bool,
     ) -> RusticolResult<CompleteLoopResult<Arc<Batch>>> {
+        self.require_observable(observable)?;
         strategy(r2_strategy.unwrap_or(&self.requested_strategy))?;
         if !inputs.model_values.is_empty() {
             return Err(RusticolError::invalid_argument(
@@ -240,11 +289,9 @@ impl VirtualRuntime {
         }
         let executor = self.executor.as_mut().expect("workspaces bound");
         if partial {
-            executor.evaluate_partial_with_snapshot(inputs, None, resolved)
-        } else if resolved {
-            executor.evaluate_resolved(inputs)
+            executor.evaluate_observable_partial_with_snapshot(inputs, None, observable)
         } else {
-            executor.evaluate(inputs)
+            executor.evaluate_observable_with_snapshot(inputs, None, observable)
         }
     }
 }

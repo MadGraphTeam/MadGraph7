@@ -72,16 +72,20 @@ class LoopExecutionMetadata:
             or self.scheme_status != "declared-not-certified"
         ):
             raise ValueError("unsupported loop contribution or convention declaration")
-        if type(self.resolved) is not bool:
-            raise TypeError("loop resolved capability must be a boolean")
-        if any(
-            value is not False for value in (self.correlations, self.partial_results)
-        ):
+        if type(self.resolved) is not bool or type(self.correlations) is not bool:
+            raise TypeError("loop resolved/correlation capabilities must be booleans")
+        if self.partial_results is not False:
+            raise ValueError("loop artifact public partial results are unavailable")
+        if self.correlations and (self.color_accuracy != "full" or self.resolved):
             raise ValueError(
-                "loop artifact correlations/partial results are unavailable"
+                "directed loop artifacts require full colour and inclusive projection"
             )
 
     def validate_plan(self, plan):
+        if self.correlations != (plan.get("directed_projection") is not None):
+            raise ValueError(
+                "loop artifact correlation capability differs from the validated plan"
+            )
         projection = plan.get("color_projection")
         accuracy = "full" if projection is None else projection["accuracy"]
         if self.color_accuracy != accuracy:
@@ -146,9 +150,7 @@ def loop_process_payloads(process: LoopProcessArtifact, staged_plan: Path):
 
     backend = load_loop_native()
 
-    plan = json.loads(
-        backend.PortableLoopPlan(str(staged_plan)).metadata_json()
-    )
+    plan = json.loads(backend.PortableLoopPlan(str(staged_plan)).metadata_json())
     process.metadata.validate_plan(plan)
     if list(process.external_pdgs) != plan["external_pdgs"]:
         raise ValueError(

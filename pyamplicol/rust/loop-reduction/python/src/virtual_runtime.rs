@@ -6,7 +6,9 @@ use crate::{
 };
 use pyo3::{create_exception, exceptions::PyValueError, prelude::*};
 use rusticol_core::{
-    RusticolError, RusticolErrorKind, loop_execution::LoopInputs, source_bindings::SourceOverrides,
+    RusticolError, RusticolErrorKind,
+    loop_execution::{LoopInputs, LoopObservable},
+    source_bindings::SourceOverrides,
 };
 use rusticol_loop_reduction::verification::{
     ArithmeticSpec, VerificationPolicy, VerifiedLoopResult,
@@ -191,6 +193,143 @@ impl NativeVirtualRuntime {
         resolved: bool,
         verify_successful: bool,
     ) -> PyResult<NativeVerifiedLoopResult> {
+        self.verified_mode(
+            py,
+            momenta,
+            scales_squared,
+            higher,
+            relative_tolerance,
+            absolute_tolerance,
+            point_ids,
+            r2_strategy,
+            LoopObservable::from_resolved(resolved),
+            verify_successful,
+        )
+    }
+
+    #[pyo3(signature=(momenta, scales_squared, higher, relative_tolerance, absolute_tolerance, *, point_ids=None, r2_strategy=None, verify_successful=false))]
+    fn evaluate_directed_verified(
+        &mut self,
+        py: Python<'_>,
+        momenta: Vec<Vec<[String; 4]>>,
+        scales_squared: Vec<String>,
+        higher: Vec<(String, Option<u32>)>,
+        relative_tolerance: String,
+        absolute_tolerance: String,
+        point_ids: Option<Vec<u64>>,
+        r2_strategy: Option<&str>,
+        verify_successful: bool,
+    ) -> PyResult<NativeVerifiedLoopResult> {
+        self.verified_mode(
+            py,
+            momenta,
+            scales_squared,
+            higher,
+            relative_tolerance,
+            absolute_tolerance,
+            point_ids,
+            r2_strategy,
+            LoopObservable::Directed,
+            verify_successful,
+        )
+    }
+
+    #[pyo3(signature=(momenta, scales_squared, *, point_ids=None, r2_strategy=None))]
+    fn evaluate(
+        &mut self,
+        py: Python<'_>,
+        momenta: Vec<Vec<[String; 4]>>,
+        scales_squared: Vec<String>,
+        point_ids: Option<Vec<u64>>,
+        r2_strategy: Option<&str>,
+    ) -> PyResult<NativeCompleteLoopResult> {
+        self.evaluate_mode(
+            py,
+            momenta,
+            scales_squared,
+            point_ids,
+            r2_strategy,
+            LoopObservable::Inclusive,
+            false,
+        )
+    }
+
+    #[pyo3(signature=(momenta, scales_squared, *, point_ids=None, r2_strategy=None))]
+    fn evaluate_resolved(
+        &mut self,
+        py: Python<'_>,
+        momenta: Vec<Vec<[String; 4]>>,
+        scales_squared: Vec<String>,
+        point_ids: Option<Vec<u64>>,
+        r2_strategy: Option<&str>,
+    ) -> PyResult<NativeCompleteLoopResult> {
+        self.evaluate_mode(
+            py,
+            momenta,
+            scales_squared,
+            point_ids,
+            r2_strategy,
+            LoopObservable::Resolved,
+            false,
+        )
+    }
+
+    #[pyo3(signature=(momenta, scales_squared, *, point_ids=None, r2_strategy=None, resolved=false))]
+    fn evaluate_partial(
+        &mut self,
+        py: Python<'_>,
+        momenta: Vec<Vec<[String; 4]>>,
+        scales_squared: Vec<String>,
+        point_ids: Option<Vec<u64>>,
+        r2_strategy: Option<&str>,
+        resolved: bool,
+    ) -> PyResult<NativeCompleteLoopResult> {
+        self.evaluate_mode(
+            py,
+            momenta,
+            scales_squared,
+            point_ids,
+            r2_strategy,
+            LoopObservable::from_resolved(resolved),
+            true,
+        )
+    }
+    #[pyo3(signature=(momenta, scales_squared, *, point_ids=None, r2_strategy=None, partial=false))]
+    fn evaluate_directed(
+        &mut self,
+        py: Python<'_>,
+        momenta: Vec<Vec<[String; 4]>>,
+        scales_squared: Vec<String>,
+        point_ids: Option<Vec<u64>>,
+        r2_strategy: Option<&str>,
+        partial: bool,
+    ) -> PyResult<NativeCompleteLoopResult> {
+        self.evaluate_mode(
+            py,
+            momenta,
+            scales_squared,
+            point_ids,
+            r2_strategy,
+            LoopObservable::Directed,
+            partial,
+        )
+    }
+}
+
+impl NativeVirtualRuntime {
+    fn verified_mode(
+        &mut self,
+        py: Python<'_>,
+        momenta: Vec<Vec<[String; 4]>>,
+        scales_squared: Vec<String>,
+        higher: Vec<(String, Option<u32>)>,
+        relative_tolerance: String,
+        absolute_tolerance: String,
+        point_ids: Option<Vec<u64>>,
+        r2_strategy: Option<&str>,
+        observable: LoopObservable,
+        verify_successful: bool,
+    ) -> PyResult<NativeVerifiedLoopResult> {
         if momenta.iter().any(|p| p.len() != self.0.external_count()) {
             return Err(error("physical momentum leg shape differs"));
         }
@@ -212,76 +351,22 @@ impl NativeVirtualRuntime {
         );
         let value = py
             .detach(|| {
-                self.0
-                    .evaluate_verified(inputs, r2_strategy, resolved, &policy)
+                if observable == LoopObservable::Directed {
+                    self.0
+                        .evaluate_directed_verified(inputs, r2_strategy, &policy)
+                } else {
+                    self.0.evaluate_verified(
+                        inputs,
+                        r2_strategy,
+                        observable == LoopObservable::Resolved,
+                        &policy,
+                    )
+                }
             })
             .map_err(native_error)?;
         NativeVerifiedLoopResult::bind(py, value)
     }
 
-    #[pyo3(signature=(momenta, scales_squared, *, point_ids=None, r2_strategy=None))]
-    fn evaluate(
-        &mut self,
-        py: Python<'_>,
-        momenta: Vec<Vec<[String; 4]>>,
-        scales_squared: Vec<String>,
-        point_ids: Option<Vec<u64>>,
-        r2_strategy: Option<&str>,
-    ) -> PyResult<NativeCompleteLoopResult> {
-        self.evaluate_mode(
-            py,
-            momenta,
-            scales_squared,
-            point_ids,
-            r2_strategy,
-            false,
-            false,
-        )
-    }
-
-    #[pyo3(signature=(momenta, scales_squared, *, point_ids=None, r2_strategy=None))]
-    fn evaluate_resolved(
-        &mut self,
-        py: Python<'_>,
-        momenta: Vec<Vec<[String; 4]>>,
-        scales_squared: Vec<String>,
-        point_ids: Option<Vec<u64>>,
-        r2_strategy: Option<&str>,
-    ) -> PyResult<NativeCompleteLoopResult> {
-        self.evaluate_mode(
-            py,
-            momenta,
-            scales_squared,
-            point_ids,
-            r2_strategy,
-            true,
-            false,
-        )
-    }
-
-    #[pyo3(signature=(momenta, scales_squared, *, point_ids=None, r2_strategy=None, resolved=false))]
-    fn evaluate_partial(
-        &mut self,
-        py: Python<'_>,
-        momenta: Vec<Vec<[String; 4]>>,
-        scales_squared: Vec<String>,
-        point_ids: Option<Vec<u64>>,
-        r2_strategy: Option<&str>,
-        resolved: bool,
-    ) -> PyResult<NativeCompleteLoopResult> {
-        self.evaluate_mode(
-            py,
-            momenta,
-            scales_squared,
-            point_ids,
-            r2_strategy,
-            resolved,
-            true,
-        )
-    }
-}
-
-impl NativeVirtualRuntime {
     fn evaluate_mode(
         &mut self,
         py: Python<'_>,
@@ -289,7 +374,7 @@ impl NativeVirtualRuntime {
         scales_squared: Vec<String>,
         point_ids: Option<Vec<u64>>,
         r2_strategy: Option<&str>,
-        resolved: bool,
+        observable: LoopObservable,
         partial: bool,
     ) -> PyResult<NativeCompleteLoopResult> {
         if momenta
@@ -309,9 +394,12 @@ impl NativeVirtualRuntime {
             model_values: Vec::new(),
         };
         py.detach(|| {
-            if partial {
-                self.0.evaluate_partial(input, r2_strategy, resolved)
-            } else if resolved {
+            if observable == LoopObservable::Directed {
+                self.0.evaluate_directed(input, r2_strategy, partial)
+            } else if partial {
+                self.0
+                    .evaluate_partial(input, r2_strategy, observable == LoopObservable::Resolved)
+            } else if observable == LoopObservable::Resolved {
                 self.0.evaluate_resolved(input, r2_strategy)
             } else {
                 self.0.evaluate(input, r2_strategy)
