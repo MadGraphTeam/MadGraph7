@@ -1,6 +1,6 @@
 # Public virtual spin sources
 
-The existing correlated API accepts declared singleton or joint massless-gluon
+The existing correlated API accepts declared singleton or joint photon/gluon
 source classes for full-colour QCD, with complete model-rule R2 and UV. Generation
 uses `CorrelatorConfig(spin_correlations=((3,), (4,), (3, 4)))`; the labels are the
 same one-based physical external legs used by tree correlations. The saved plan
@@ -31,6 +31,16 @@ A failed setter leaves previous defaults intact; `clear()` releases numerical
 workspaces and preserves them. Empty event batches accept empty per-event vector
 lists without losing their joint class identity.
 
+The actual compiled model supplies each vector's `SourceIR`. Preparation checks
+it against the physical port, identity, representation and structurally massless
+two-state domain. Tree-adapter binary64 mass defaults do not decide loop mass
+classification or enter its exact scalar owner. Raw internal producers supply
+explicit contracts. The immutable source class retains its bare-plan owner,
+contracts and compiled phases; the writer consumes these rather than rebuilding
+a built-in gluon convention. Saved loading reuses the existing typed SourceIR
+parser and checks the physical identity, orientation and states. Earlier internal
+spin payloads require regeneration; no silent schema migration is applied.
+
 The source phase and spectator-helicity projection are compiled once. Every call
 replaces the selected external columns before the shared Born, loop, UV and R2
 currents. The original incoming average is retained and replaced legs are counted
@@ -56,3 +66,22 @@ ordinary result. Recola is a binary64 reference; agreement does not establish
 70 independent digits or non-Hermitian multi-emission imaginary histories. The
 separate internal source controls exercise complex histories, exact changes below
 binary64 resolution and AP60/AP80 subset replay.
+
+The photon extension adds fresh public `u u~ -> a g` and crossed `u a -> u g`
+artifacts with photon, gluon and joint classes. Complete ordinary and singleton
+Born/Laurent coefficients agree with Recola in double, DoubleFloat and AP70.
+Joint polarization sums, literal complex source changes below binary64
+resolution, clear/empty/tail batches, and AP60/AP80 subset rescue also pass.
+Malformed saved source identities/states are rejected. A safe-Rust client loads
+the fresh photon artifact and checks source scaling, rejection and result
+ownership against the actual newly built SDK.
+
+Recola's spin API projects through physical helicities. Its independent photon
+controls therefore use transverse complex vectors; they do not certify arbitrary
+nontransverse source extension. That literal contract is checked through the
+source-versus-saved recurrence comparison and exact homogeneity/replay, with no
+implicit projection or conjugation. The reference uses `aEWM1=132.50698`, while
+the supplied source default is `132.507`; the runtime binds the matched exact
+value. Reference data, driver and conventions are in
+`tools/loop_reference/PHOTON_SOURCES.md`. No new performance measurement or massive
+vector/EW-source certification is implied.
