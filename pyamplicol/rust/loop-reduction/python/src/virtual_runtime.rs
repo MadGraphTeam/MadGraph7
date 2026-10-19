@@ -8,7 +8,45 @@ use pyo3::{create_exception, exceptions::PyValueError, prelude::*};
 use rusticol_core::{
     RusticolError, RusticolErrorKind, loop_execution::LoopInputs, source_bindings::SourceOverrides,
 };
+use rusticol_loop_reduction::verification::{
+    ArithmeticSpec, VerificationPolicy, VerifiedLoopResult,
+};
 use rusticol_loop_reduction::virtual_runtime::VirtualRuntime;
+
+#[pyclass(frozen)]
+pub(super) struct NativeVerifiedLoopResult {
+    #[pyo3(get)]
+    result: Py<NativeCompleteLoopResult>,
+    #[pyo3(get)]
+    diagnostics_json: String,
+}
+impl NativeVerifiedLoopResult {
+    pub(super) fn bind(py: Python<'_>, value: VerifiedLoopResult) -> PyResult<Self> {
+        Ok(Self {
+            diagnostics_json: value.diagnostics_json().map_err(error)?,
+            result: Py::new(py, NativeCompleteLoopResult(value.result))?,
+        })
+    }
+}
+pub(super) fn verification_policy(
+    higher: Vec<(String, Option<u32>)>,
+    relative: String,
+    absolute: String,
+    verify_successful: bool,
+) -> VerificationPolicy {
+    VerificationPolicy {
+        higher: higher
+            .into_iter()
+            .map(|(arithmetic, precision)| ArithmeticSpec {
+                arithmetic,
+                precision,
+            })
+            .collect(),
+        relative_tolerance: relative,
+        absolute_tolerance: absolute,
+        verify_successful,
+    }
+}
 
 create_exception!(_loop_reduction, VirtualArtifactError, PyValueError);
 create_exception!(_loop_reduction, VirtualCompatibilityError, PyValueError);
@@ -139,6 +177,48 @@ impl NativeVirtualRuntime {
         .map_err(native_error)
     }
 
+    #[pyo3(signature=(momenta, scales_squared, higher, relative_tolerance, absolute_tolerance, *, point_ids=None, r2_strategy=None, resolved=false, verify_successful=false))]
+    fn evaluate_verified(
+        &mut self,
+        py: Python<'_>,
+        momenta: Vec<Vec<[String; 4]>>,
+        scales_squared: Vec<String>,
+        higher: Vec<(String, Option<u32>)>,
+        relative_tolerance: String,
+        absolute_tolerance: String,
+        point_ids: Option<Vec<u64>>,
+        r2_strategy: Option<&str>,
+        resolved: bool,
+        verify_successful: bool,
+    ) -> PyResult<NativeVerifiedLoopResult> {
+        if momenta.iter().any(|p| p.len() != self.0.external_count()) {
+            return Err(error("physical momentum leg shape differs"));
+        }
+        let ids = point_ids.unwrap_or_else(|| (0..momenta.len() as u64).collect());
+        if ids.len() != momenta.len() {
+            return Err(error("physical point identity count differs"));
+        }
+        let inputs = LoopInputs {
+            momenta: momenta.into_iter().flatten().flatten().collect(),
+            scales_squared,
+            point_ids: ids,
+            model_values: vec![],
+        };
+        let policy = verification_policy(
+            higher,
+            relative_tolerance,
+            absolute_tolerance,
+            verify_successful,
+        );
+        let value = py
+            .detach(|| {
+                self.0
+                    .evaluate_verified(inputs, r2_strategy, resolved, &policy)
+            })
+            .map_err(native_error)?;
+        NativeVerifiedLoopResult::bind(py, value)
+    }
+
     #[pyo3(signature=(momenta, scales_squared, *, point_ids=None, r2_strategy=None))]
     fn evaluate(
         &mut self,
@@ -244,6 +324,7 @@ impl NativeVirtualRuntime {
 
 pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<NativeVirtualRuntime>()?;
+    module.add_class::<NativeVerifiedLoopResult>()?;
     module.add(
         "VirtualArtifactError",
         module.py().get_type::<VirtualArtifactError>(),

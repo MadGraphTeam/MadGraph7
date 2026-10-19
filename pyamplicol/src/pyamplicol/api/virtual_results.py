@@ -73,6 +73,78 @@ class VirtualFailureDiagnostic:
 
 
 @dataclass(frozen=True, slots=True)
+class VirtualArithmeticSpec:
+    """Explicit carrier; decimal precision applies only to arbitrary arithmetic."""
+
+    arithmetic: Literal["double", "double-double", "arbitrary"]
+    precision: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.arithmetic not in {"double", "double-double", "arbitrary"}:
+            raise ValueError("unknown virtual arithmetic")
+        if self.arithmetic == "arbitrary":
+            if type(self.precision) is not int or self.precision <= 0:
+                raise ValueError(
+                    "arbitrary arithmetic requires positive decimal precision"
+                )
+        elif self.precision is not None:
+            raise ValueError("precision applies only to arbitrary arithmetic")
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualStabilityPolicy:
+    """Opt-in native verification/rescue with exact decimal agreement bounds.
+
+    The native boundary checks strictly increasing actual carrier bit precision.
+    Rescue requires two successful levels and verified output conversion.
+    """
+
+    higher: tuple[VirtualArithmeticSpec, ...]
+    relative_tolerance: str
+    absolute_tolerance: str
+    verify_successful: bool = False
+
+    def __post_init__(self) -> None:
+        levels = tuple(self.higher)
+        if not levels or any(not isinstance(x, VirtualArithmeticSpec) for x in levels):
+            raise ValueError("higher requires explicit arithmetic specifications")
+        object.__setattr__(self, "higher", levels)
+        for value in (self.relative_tolerance, self.absolute_tolerance):
+            if not isinstance(value, str):
+                raise TypeError("agreement tolerances must be decimal strings")
+            number = Decimal(value)
+            if not number.is_finite() or number < 0:
+                raise ValueError("agreement tolerances must be finite and nonnegative")
+        if Decimal(self.relative_tolerance) == Decimal(self.absolute_tolerance) == 0:
+            raise ValueError("agreement tolerances cannot both be zero")
+        if type(self.verify_successful) is not bool:
+            raise TypeError("verify_successful must be a boolean")
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualVerificationAttempt:
+    arithmetic: VirtualArithmeticSpec
+    precision_bits: int
+    numerical_success: bool
+    compared_precision_bits: int | None = None
+    agreement: bool | None = None
+    conversion_agreement: bool | None = None
+    failures: tuple[VirtualFailureDiagnostic, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualVerificationDiagnostic:
+    """Empirical numerical agreement, not independent physics certification."""
+
+    point_id: int
+    status: Literal["success", "rescued", "failed", "accuracy-not-established"]
+    accuracy_established: bool
+    agreeing_bits: tuple[int, int] | None
+    attempts: tuple[VirtualVerificationAttempt, ...]
+    detail: str
+
+
+@dataclass(frozen=True, slots=True)
 class VirtualLaneDiagnostic:
     """Accuracy is explicit; a finite output is not an accuracy certificate."""
 
@@ -81,6 +153,7 @@ class VirtualLaneDiagnostic:
     precision_bits: int
     accuracy_established: bool
     detail: str = ""
+    verification: VirtualVerificationDiagnostic | None = None
 
     def __post_init__(self) -> None:
         if self.status not in {"success", "rescued", "unsupported", "failed"}:

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from pyamplicol.config.errors import ConfigurationError, PyAmpliColError
 
 if TYPE_CHECKING:
-    from .virtual_results import VirtualFailureDiagnostic
+    from .virtual_results import VirtualFailureDiagnostic, VirtualVerificationDiagnostic
 
 
 class ModelError(PyAmpliColError):
@@ -29,10 +29,15 @@ class EvaluationError(PyAmpliColError):
     """Runtime loading, selection, or evaluation failed."""
 
     def __init__(
-        self, message: str, *, failures: tuple[VirtualFailureDiagnostic, ...] = ()
+        self,
+        message: str,
+        *,
+        failures: tuple[VirtualFailureDiagnostic, ...] = (),
+        verification: tuple[VirtualVerificationDiagnostic, ...] = (),
     ) -> None:
         super().__init__(message)
         self.failures = failures
+        self.verification = verification
 
 
 class DependencyError(PyAmpliColError):

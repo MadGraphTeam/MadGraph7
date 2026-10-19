@@ -15,8 +15,9 @@ local UV and R2 currents. The direct control is `g g -> g g`: all three N4 and
 dimensional-remainder epsilon sectors survive persistence, with UV currents and
 external fields retained and model R2 excluded. Source-owned model-R2 plans retain
 one scalar owner and ordinary/CT scale views, including anonymous external-field
-coefficients. Source dimensional/direct, formal colour projection, correlations
-and rescue remain outside this boundary.
+coefficients. Source dimensional/direct, formal colour projection and correlations remain
+outside this boundary. Source-owned precision verification/rescue is explicit
+and uses the native coordinator described below.
 
 ## Persisted data
 
@@ -164,7 +165,8 @@ point; the separate Python opt-in projector JIT is not exposed here.
 
 This native coordinator admits full-colour legacy/source model-rule programs
 and the certified legacy direct four-gluon descriptor. Correlations, formal colour,
-automatic rescue and standalone SDK dispatch remain separate work. The default
+standalone SDK dispatch remain separate work. Explicit source-owned precision
+verification and rescue are described below. The default
 entry points raise on failed reductions or nonfinite assembled components;
 successful reducer statuses alone do not establish numerical accuracy.
 
@@ -252,7 +254,7 @@ Their `EvaluationError.failures` tuple contains immutable
 `VirtualFailureDiagnostic` records for native numerical failures; point IDs in
 this facade are the original input row indices. Successful public result shapes
 and all coupling/Laurent axes are unchanged. There is no public partial-result
-policy or hidden precision retry in this slice.
+policy. Precision retry is explicit through the policy below.
 
 The same boundary includes external-state preparation, per-point scale-dependent
 scalar evaluation, nonfinite currents, family projections/kinematics and final
@@ -275,8 +277,7 @@ Global source-owner construction and parameter updates retain whole-handle
 checks. They can reject a numerically overflowing lower-carrier scalar even
 when its exact model expression is valid; this is distinct from a malformed
 model. Recovery from a failed global binding is not supplied by this boundary.
-Precision retries and empirical agreement certification remain separate work;
-finite output and successful reducer status alone do not certify accuracy.
+Finite output and successful reducer status alone do not certify accuracy.
 
 The focused saved-source test uses exactly on-shell near-forward gluon
 scattering where the generic reducer reports a degenerate Gram determinant,
@@ -291,3 +292,67 @@ current. They compare the surviving output with a separate run and ensure the
 late replay retains earlier failure records. An injected resolved Born
 projection also checks all-failed point/helicity diagnostics. These injected
 controls test execution transport, not physics accuracy.
+
+
+## Explicit cross-precision verification and rescue
+
+`Runtime.evaluate` and `evaluate_resolved`, including their precision-specific
+wrappers, accept an optional `VirtualStabilityPolicy`. Omitting it performs no
+extra precision evaluations. For example:
+
+```python
+from pyamplicol import VirtualArithmeticSpec, VirtualStabilityPolicy
+
+policy = VirtualStabilityPolicy(
+    higher=(VirtualArithmeticSpec("arbitrary", 60),
+            VirtualArithmeticSpec("arbitrary", 80)),
+    relative_tolerance="1e-8",
+    absolute_tolerance="1e-20",
+    verify_successful=False,
+)
+result = runtime.evaluate(points, mu_r2=scales, stability=policy)
+```
+
+The native coordinator validates actual increasing precision bits: double has
+53 bits, DoubleFloat 106, and arbitrary precision uses the dependency's actual
+requested-bit conversion. A numerically lower arbitrary setting cannot follow
+DoubleFloat just because its enum is different. Tolerances are exact finite,
+nonnegative decimal strings, not both zero. There is no hidden policy or
+per-event Python retry loop.
+
+With `verify_successful=False`, initially successful points are returned
+unchanged and explicitly remain accuracy-unestablished. Only failed points
+enter the higher-carrier batches. With `True`, successful points also enter
+verification; agreement with a higher evaluation preserves the original result.
+When the primary failed or disagreed, rescue requires two successful increasing
+precision evaluations that agree. Failed intermediate attempts do not erase a
+previous successful candidate. Comparison includes all Born values, every
+physical/local component, order and Laurent coefficient, and every requested
+resolved helicity. It uses the shared native `Batch.agreement_rows` rule on
+both real and imaginary parts:
+`abs(a-b) <= atol + rtol*max(abs(a),abs(b))`.
+
+A rescued output is converted to the caller's requested carrier only after
+agreement. The converted result must satisfy the same bound against the
+accepted higher value; a bound that cannot be represented by the requested
+output precision leaves the point unresolved. The requested carrier and R2
+strategy never change implicitly. Agreement is empirical numerical evidence,
+not an independent physics proof or an estimated number of reliable digits.
+
+One immutable source snapshot is captured at call entry. Each higher owner
+re-evaluates that snapshot's exact overrides and saved default/formula
+programs, without merging previous retry state or publishing a parameter
+update. Native retries select original decimal momentum/scale rows; they never
+promote the rounded primary buffers. Higher workspaces are cached by explicit
+carrier/precision and cleared by `clear`, while source parameter state remains.
+The existing whole-handle global-binding limitation still applies: source-owner
+construction must succeed, and a lower-carrier overflow during construction or
+parameter update is not automatically rescued.
+
+Each public lane can carry a `VirtualVerificationDiagnostic` with original
+point ID, attempted carriers/bits, numerical failures, comparison precision,
+agreement and conversion outcomes. Accepted rescue histories retain earlier
+failures without making the completed call fail. Unresolved points populate
+`EvaluationError.failures` and `EvaluationError.verification`; successful
+numerical attempts without accepted agreement are distinguished as
+`accuracy-not-established`. No unavailable values are filled with zeros or NaNs.

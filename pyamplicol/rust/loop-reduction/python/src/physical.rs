@@ -15,6 +15,8 @@ struct NativeLoopProgram {
     executor: LoopExecutor<PhysicalBackend>,
     bits: u32,
     arithmetic: String,
+    precision: Option<u32>,
+    verification: rusticol_loop_reduction::verification::VerificationWorkspace,
 }
 impl NativeLoopProgram {
     fn bind(
@@ -34,6 +36,8 @@ impl NativeLoopProgram {
             executor,
             bits,
             arithmetic: arithmetic.into(),
+            precision,
+            verification: Default::default(),
         })
     }
 }
@@ -118,6 +122,60 @@ impl NativeLoopProgram {
             backend: self.executor.backend().clone(),
         })
     }
+    #[pyo3(signature=(momenta, scales_squared, higher, relative_tolerance, absolute_tolerance, *, point_ids=None, resolved=false, verify_successful=false))]
+    fn evaluate_verified(
+        &mut self,
+        py: Python<'_>,
+        momenta: Vec<Vec<[String; 4]>>,
+        scales_squared: Vec<String>,
+        higher: Vec<(String, Option<u32>)>,
+        relative_tolerance: String,
+        absolute_tolerance: String,
+        point_ids: Option<Vec<u64>>,
+        resolved: bool,
+        verify_successful: bool,
+    ) -> PyResult<crate::virtual_runtime::NativeVerifiedLoopResult> {
+        if momenta
+            .iter()
+            .any(|p| p.len() != self.executor.loaded().plan().state_legs.len())
+        {
+            return Err(error("physical momentum leg shape differs"));
+        }
+        let ids = point_ids.unwrap_or_else(|| (0..momenta.len() as u64).collect());
+        if ids.len() != momenta.len() {
+            return Err(error("physical point identity count differs"));
+        }
+        let inputs = LoopInputs {
+            momenta: momenta.into_iter().flatten().flatten().collect(),
+            scales_squared,
+            point_ids: ids,
+            model_values: vec![],
+        };
+        let policy = crate::virtual_runtime::verification_policy(
+            higher,
+            relative_tolerance,
+            absolute_tolerance,
+            verify_successful,
+        );
+        let spec = rusticol_loop_reduction::verification::ArithmeticSpec {
+            arithmetic: self.arithmetic.clone(),
+            precision: self.precision,
+        };
+        let value = py
+            .detach(|| {
+                rusticol_loop_reduction::verification::evaluate_verified(
+                    &mut self.executor,
+                    &mut self.verification,
+                    inputs,
+                    &spec,
+                    &policy,
+                    resolved,
+                )
+            })
+            .map_err(error)?;
+        crate::virtual_runtime::NativeVerifiedLoopResult::bind(py, value)
+    }
+
     #[pyo3(signature=(momenta, scales_squared, model_values=None, point_ids=None, snapshot=None, *, resolved=false, partial=false))]
     fn evaluate(
         &mut self,

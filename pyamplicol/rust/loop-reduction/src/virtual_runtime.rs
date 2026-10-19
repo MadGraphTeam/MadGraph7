@@ -5,6 +5,10 @@
 //! NinjaRS backend. No Python interpreter or generation code is involved.
 
 use crate::runtime::{Batch, physical::PhysicalBackend};
+use crate::verification::{
+    ArithmeticSpec, VerificationPolicy, VerificationWorkspace, VerifiedLoopResult,
+    evaluate_verified,
+};
 use rusticol_core::loop_artifact::{LoadedLoopArtifact, LoopExecutionMetadata, open_loop_artifact};
 use rusticol_core::loop_execution::{CompleteLoopResult, LoopExecutor, LoopInputs};
 use rusticol_core::source_bindings::{SourceOverrides, SourceOwner};
@@ -19,6 +23,7 @@ pub struct VirtualRuntime {
     arithmetic: String,
     precision: Option<u32>,
     requested_strategy: String,
+    verification: VerificationWorkspace,
 }
 
 fn strategy(requested: &str) -> RusticolResult<()> {
@@ -81,6 +86,7 @@ impl VirtualRuntime {
             arithmetic: arithmetic.into(),
             precision,
             requested_strategy: r2_strategy.into(),
+            verification: VerificationWorkspace::default(),
         })
     }
 
@@ -140,6 +146,7 @@ impl VirtualRuntime {
     /// result buffers remain valid. The next call binds fresh native workspaces.
     pub fn clear(&mut self) {
         self.executor = None;
+        self.verification.clear();
     }
 
     pub fn rebind(
@@ -185,6 +192,33 @@ impl VirtualRuntime {
     ) -> RusticolResult<CompleteLoopResult<Arc<Batch>>> {
         self.evaluate_mode(inputs, r2_strategy, resolved, true)
     }
+    pub fn evaluate_verified(
+        &mut self,
+        inputs: LoopInputs,
+        r2_strategy: Option<&str>,
+        resolved: bool,
+        policy: &VerificationPolicy,
+    ) -> RusticolResult<VerifiedLoopResult> {
+        strategy(r2_strategy.unwrap_or(&self.requested_strategy))?;
+        if self.executor.is_none() {
+            self.executor = Some(LoopExecutor::with_source_owner(
+                self.owner.clone(),
+                self.backend.clone(),
+            )?);
+        }
+        evaluate_verified(
+            self.executor.as_mut().expect("workspace bound"),
+            &mut self.verification,
+            inputs,
+            &ArithmeticSpec {
+                arithmetic: self.arithmetic.clone(),
+                precision: self.precision,
+            },
+            policy,
+            resolved,
+        )
+    }
+
     fn evaluate_mode(
         &mut self,
         inputs: LoopInputs,

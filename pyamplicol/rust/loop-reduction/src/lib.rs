@@ -12,6 +12,7 @@
 
 pub mod runtime;
 pub mod virtual_runtime;
+pub mod verification;
 
 use std::ops::Add;
 use std::time::{Duration, Instant};

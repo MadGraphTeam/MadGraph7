@@ -165,7 +165,7 @@ pub struct CompleteLoopResult<T> {
 
 /// A scheduled numerical channel failure; source identities never come from
 /// parsing a reducer exception. Failed numerical values are not exposed.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct LoopLaneFailure {
     pub point_id: u64,
     pub helicity: Option<usize>,

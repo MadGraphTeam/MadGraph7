@@ -34,13 +34,39 @@ from pyamplicol.api.results import (
 from pyamplicol.api.virtual_results import (
     LaurentCoefficients,
     ResolvedVirtualEvaluation,
+    VirtualArithmeticSpec,
     VirtualEvaluation,
     VirtualFailureDiagnostic,
     VirtualLaneDiagnostic,
+    VirtualStabilityPolicy,
+    VirtualVerificationAttempt,
+    VirtualVerificationDiagnostic,
 )
 from pyamplicol.config import R2Strategy
 from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector, canonical_order
 from pyamplicol.loops.strategy import R2Selection
+
+
+def _verification_diagnostic(value: dict[str, Any]) -> VirtualVerificationDiagnostic:
+    return VirtualVerificationDiagnostic(
+        point_id=value["point_id"],
+        status=value["status"],
+        accuracy_established=value["accuracy_established"],
+        agreeing_bits=tuple(value["agreeing_bits"]) if value["agreeing_bits"] else None,
+        attempts=tuple(
+            VirtualVerificationAttempt(
+                VirtualArithmeticSpec(**attempt["arithmetic"]),
+                attempt["precision_bits"],
+                attempt["numerical_success"],
+                attempt["compared_precision_bits"],
+                attempt["agreement"],
+                attempt["conversion_agreement"],
+                tuple(VirtualFailureDiagnostic(**item) for item in attempt["failures"]),
+            )
+            for attempt in value["attempts"]
+        ),
+        detail=value["detail"],
+    )
 
 
 def _number(value: object, description: str) -> str:
@@ -181,6 +207,7 @@ class VirtualRuntimeBackend:
         arithmetic: str | None = None,
         precision: int | None = None,
         r2_strategy: str | None = None,
+        stability: VirtualStabilityPolicy | None = None,
     ) -> None:
         if precision is not None and (
             isinstance(precision, bool)
@@ -326,7 +353,11 @@ class VirtualRuntimeBackend:
                         "retained native source evaluator; not materialized as metadata"
                     ),
                     "scale_input": "explicit positive mu_r2, scalar or per point",
-                    "rescue_available": False,
+                    "rescue_available": True,
+                    "rescue_policy": "explicit higher-precision agreement",
+                    "rescue_limitation": (
+                        "source-global binding must succeed in the requested carrier"
+                    ),
                     "accuracy_established": False,
                 }
             )
@@ -341,6 +372,7 @@ class VirtualRuntimeBackend:
         arithmetic: str | None = None,
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: str | None = None,
+        stability: VirtualStabilityPolicy | None = None,
     ) -> VirtualEvaluation:
         return cast(
             VirtualEvaluation,
@@ -352,6 +384,7 @@ class VirtualRuntimeBackend:
                 arithmetic=arithmetic,
                 mu_r2=mu_r2,
                 r2_strategy=r2_strategy,
+                stability=stability,
                 resolved=False,
             ),
         )
@@ -366,6 +399,7 @@ class VirtualRuntimeBackend:
         arithmetic: str | None = None,
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: str | None = None,
+        stability: VirtualStabilityPolicy | None = None,
         resolved: bool,
     ) -> VirtualEvaluation | ResolvedVirtualEvaluation:
         if resolved and not self._metadata["physics"].get("resolved", False):
@@ -408,14 +442,38 @@ class VirtualRuntimeBackend:
                     r2_strategy=requested.value,
                 )
                 self._native = candidate
-            result = _invoke(
-                self._module,
-                self._native.evaluate_partial,
-                points,
-                scales,
-                r2_strategy=requested.value,
-                resolved=resolved,
-            )
+            verification: tuple[VirtualVerificationDiagnostic, ...] = ()
+            if stability is None:
+                result = _invoke(
+                    self._module,
+                    self._native.evaluate_partial,
+                    points,
+                    scales,
+                    r2_strategy=requested.value,
+                    resolved=resolved,
+                )
+            else:
+                if not isinstance(stability, VirtualStabilityPolicy):
+                    raise TypeError("stability requires a VirtualStabilityPolicy")
+                verified = _invoke(
+                    self._module,
+                    self._native.evaluate_verified,
+                    points,
+                    scales,
+                    [(x.arithmetic, x.precision) for x in stability.higher],
+                    stability.relative_tolerance,
+                    stability.absolute_tolerance,
+                    r2_strategy=requested.value,
+                    resolved=resolved,
+                    verify_successful=stability.verify_successful,
+                )
+                result = verified.result
+                verification = tuple(
+                    _verification_diagnostic(x)
+                    for x in json.loads(verified.diagnostics_json)
+                )
+                if tuple(x.point_id for x in verification) != tuple(range(len(points))):
+                    raise EvaluationError("native verification identities differ")
             failures = tuple(
                 VirtualFailureDiagnostic(
                     item.point_id,
@@ -436,6 +494,7 @@ class VirtualRuntimeBackend:
                     "inspect error.failures for stage, helicity, "
                     "order and family details",
                     failures=failures,
+                    verification=verification,
                 )
             helicity_count = len(self._metadata["plan"]["helicities"])
             count = len(points) * (helicity_count if resolved else 1)
@@ -476,14 +535,18 @@ class VirtualRuntimeBackend:
             )
             diagnostics = tuple(
                 VirtualLaneDiagnostic(
-                    "success",
+                    cast(Literal["success", "rescued"], verification[i].status)
+                    if verification
+                    else "success",
                     cast(Literal["double", "double-double", "arbitrary"], arithmetic),
                     self._native.precision_bits,
-                    False,
-                    "reduction succeeded; automatic accuracy estimation and rescue "
-                    "are not yet available",
+                    verification[i].accuracy_established if verification else False,
+                    verification[i].detail
+                    if verification
+                    else "successful initial evaluation; accuracy not established",
+                    verification[i] if verification else None,
                 )
-                for _ in points
+                for i in range(len(points))
             )
             selection = R2Selection(
                 requested,

@@ -39,7 +39,10 @@ from pyamplicol import (
     ResolvedVirtualEvaluation,
     RunConfig,
     Runtime,
+    VirtualArithmeticSpec,
     VirtualEvaluation,
+    VirtualStabilityPolicy,
+    VirtualVerificationDiagnostic,
     WarmUpResult,
     benchmark,
     generate,
@@ -326,3 +329,31 @@ def exercise_protocols(
         runtime.evaluate_resolved(MOMENTA),
         ResolvedEvaluation | ResolvedVirtualEvaluation,
     )
+
+
+def exercise_virtual_stability(runtime: Runtime) -> None:
+    policy = VirtualStabilityPolicy(
+        (
+            VirtualArithmeticSpec("arbitrary", 70),
+            VirtualArithmeticSpec("arbitrary", 90),
+        ),
+        "1e-8",
+        "1e-30",
+    )
+    value = runtime.evaluate(MOMENTA, mu_r2="1000000", stability=policy)
+    if isinstance(value, VirtualEvaluation):
+        assert_type(
+            value.diagnostics[0].verification, VirtualVerificationDiagnostic | None
+        )
+    resolved = runtime.evaluate_resolved_with_prec(
+        MOMENTA,
+        40,
+        arithmetic="arbitrary",
+        mu_r2="1000000",
+        stability=policy,
+    )
+    if isinstance(resolved, ResolvedVirtualEvaluation):
+        assert_type(
+            resolved.total().diagnostics[0].verification,
+            VirtualVerificationDiagnostic | None,
+        )

@@ -74,9 +74,13 @@ if TYPE_CHECKING:
     from .virtual_results import (
         LaurentCoefficients,
         ResolvedVirtualEvaluation,
+        VirtualArithmeticSpec,
         VirtualEvaluation,
         VirtualFailureDiagnostic,
         VirtualLaneDiagnostic,
+        VirtualStabilityPolicy,
+        VirtualVerificationAttempt,
+        VirtualVerificationDiagnostic,
     )
 
 __all__ = [
@@ -130,9 +134,13 @@ __all__ = [
     "Runtime",
     "RuntimeBackend",
     "RuntimeLoader",
+    "VirtualArithmeticSpec",
     "VirtualEvaluation",
     "VirtualFailureDiagnostic",
     "VirtualLaneDiagnostic",
+    "VirtualStabilityPolicy",
+    "VirtualVerificationAttempt",
+    "VirtualVerificationDiagnostic",
     "WarmUpResult",
     "benchmark",
     "generate",
@@ -212,6 +220,10 @@ _VIRTUAL_RESULT_EXPORTS = (
     "VirtualEvaluation",
     "VirtualFailureDiagnostic",
     "VirtualLaneDiagnostic",
+    "VirtualArithmeticSpec",
+    "VirtualStabilityPolicy",
+    "VirtualVerificationAttempt",
+    "VirtualVerificationDiagnostic",
 )
 _PUBLIC_EXPORTS = {
     **{name: (".virtual_results", name) for name in _VIRTUAL_RESULT_EXPORTS},

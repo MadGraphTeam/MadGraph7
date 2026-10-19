@@ -50,7 +50,11 @@ from .results import (
     ResolvedEvaluation,
     WarmUpResult,
 )
-from .virtual_results import ResolvedVirtualEvaluation, VirtualEvaluation
+from .virtual_results import (
+    ResolvedVirtualEvaluation,
+    VirtualEvaluation,
+    VirtualStabilityPolicy,
+)
 
 _generator_factory: GeneratorFactory | None = None
 _runtime_loader: RuntimeLoader | None = None
@@ -562,6 +566,7 @@ class Runtime:
         arithmetic: Literal["double", "double-double", "arbitrary"] | None = None,
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
+        stability: VirtualStabilityPolicy | None = None,
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         """Return tree values or a typed Born-loop interference result.
 
@@ -575,7 +580,8 @@ class Runtime:
         evaluator state. Explicit ``arithmetic`` selects double, DoubleFloat or
         arbitrary precision. Virtual runtimes retain their loaded arithmetic
         and R2 defaults when omitted, and accept scalar or per-point positive
-        ``mu_r2``; exact inputs are forwarded unchanged.
+        ``mu_r2``; exact inputs are forwarded unchanged. An explicit ``stability``
+        policy enables native verification/subset rescue; omission adds no retries.
         """
 
         helicity_ids = _selector_ids(
@@ -610,7 +616,7 @@ class Runtime:
             else precision
         )
         contribution = self.contribution_kind
-        options = self._evaluation_options(arithmetic, mu_r2, r2_strategy)
+        options = self._evaluation_options(arithmetic, mu_r2, r2_strategy, stability)
         self._require_evaluation_options(self._backend.evaluate, options)
         if point_helicity_ids is None and point_color_ids is None:
             values = self._backend.evaluate(
@@ -659,6 +665,7 @@ class Runtime:
         arithmetic: str | None,
         mu_r2: ScalarInput | Sequence[ScalarInput] | None,
         r2_strategy: R2Strategy | str | None,
+        stability: VirtualStabilityPolicy | None = None,
     ) -> dict[str, object]:
         """Forward explicit options without changing old backend call signatures."""
         options: dict[str, object] = {}
@@ -670,10 +677,16 @@ class Runtime:
             options["mu_r2"] = mu_r2
         if r2_strategy is not None:
             options["r2_strategy"] = R2Strategy(r2_strategy).value
+        if stability is not None:
+            if not isinstance(stability, VirtualStabilityPolicy):
+                raise TypeError("stability requires a VirtualStabilityPolicy")
+            options["stability"] = stability
         if self.contribution_kind != "virtual" and (
-            mu_r2 is not None or r2_strategy is not None
+            mu_r2 is not None or r2_strategy is not None or stability is not None
         ):
-            raise CompatibilityError("mu_r2 and r2_strategy require a virtual runtime")
+            raise CompatibilityError(
+                "mu_r2, r2_strategy and stability require a virtual runtime"
+            )
         return options
 
     @staticmethod
@@ -768,6 +781,7 @@ class Runtime:
         arithmetic: Literal["double", "double-double", "arbitrary"] | None = None,
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
+        stability: VirtualStabilityPolicy | None = None,
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         return self.evaluate(
             momenta,
@@ -777,6 +791,7 @@ class Runtime:
             arithmetic=arithmetic,
             mu_r2=mu_r2,
             r2_strategy=r2_strategy,
+            stability=stability,
         )
 
     def evaluate_resolved(
@@ -789,6 +804,7 @@ class Runtime:
         arithmetic: Literal["double", "double-double", "arbitrary"] | None = None,
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
+        stability: VirtualStabilityPolicy | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         """Return physical values resolved by helicity and color component.
 
@@ -807,7 +823,7 @@ class Runtime:
             else precision
         )
         contribution = self.contribution_kind
-        options = self._evaluation_options(arithmetic, mu_r2, r2_strategy)
+        options = self._evaluation_options(arithmetic, mu_r2, r2_strategy, stability)
         self._require_evaluation_options(self._backend.evaluate_resolved, options)
         result = self._backend.evaluate_resolved(
             momenta,
@@ -847,6 +863,7 @@ class Runtime:
         arithmetic: Literal["double", "double-double", "arbitrary"] | None = None,
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
+        stability: VirtualStabilityPolicy | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         return self.evaluate_resolved(
             momenta,
@@ -856,6 +873,7 @@ class Runtime:
             arithmetic=arithmetic,
             mu_r2=mu_r2,
             r2_strategy=r2_strategy,
+            stability=stability,
         )
 
     def _diagnostic_project_onshell(

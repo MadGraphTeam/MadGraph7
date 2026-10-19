@@ -63,7 +63,7 @@ class RuntimeBackend(Protocol):
     :class:`pyamplicol.Runtime` fails closed when either identity is requested
     but unavailable.
 
-    Virtual arithmetic, scale and strategy keywords are additive capabilities
+    Virtual arithmetic, scale, strategy and stability keywords are additive capabilities
     checked by the facade, so existing tree backends need not accept them.
     """
 

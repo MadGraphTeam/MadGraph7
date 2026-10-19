@@ -100,9 +100,13 @@ if TYPE_CHECKING:
     from .api.virtual_results import (
         LaurentCoefficients,
         ResolvedVirtualEvaluation,
+        VirtualArithmeticSpec,
         VirtualEvaluation,
         VirtualFailureDiagnostic,
         VirtualLaneDiagnostic,
+        VirtualStabilityPolicy,
+        VirtualVerificationAttempt,
+        VirtualVerificationDiagnostic,
     )
     from .config import (
         BenchmarkConfig,
@@ -181,9 +185,13 @@ __all__ = [
     "RunConfig",
     "Runtime",
     "SplitGluon",
+    "VirtualArithmeticSpec",
     "VirtualEvaluation",
     "VirtualFailureDiagnostic",
     "VirtualLaneDiagnostic",
+    "VirtualStabilityPolicy",
+    "VirtualVerificationAttempt",
+    "VirtualVerificationDiagnostic",
     "WarmUpResult",
     "__version__",
     "benchmark",
@@ -261,6 +269,10 @@ _VIRTUAL_RESULT_EXPORTS = (
     "VirtualEvaluation",
     "VirtualFailureDiagnostic",
     "VirtualLaneDiagnostic",
+    "VirtualArithmeticSpec",
+    "VirtualStabilityPolicy",
+    "VirtualVerificationAttempt",
+    "VirtualVerificationDiagnostic",
 )
 _PUBLIC_EXPORTS = {
     **{name: (".api.virtual_results", name) for name in _VIRTUAL_RESULT_EXPORTS},

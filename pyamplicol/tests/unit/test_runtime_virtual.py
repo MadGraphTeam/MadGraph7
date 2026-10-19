@@ -180,7 +180,8 @@ def test_saved_source_artifact_public_all_arithmetic(
     assert metadata["parameter_overrides"]["aS"] == [alpha, "0"]
     assert metadata["arithmetic"] == arithmetic
     assert metadata["scheme_status"] == "declared-not-certified"
-    assert metadata["rescue_available"] is False
+    assert metadata["rescue_available"] is True
+    assert metadata["rescue_policy"] == "explicit higher-precision agreement"
     empty = runtime.evaluate([], arithmetic=arithmetic, precision=precision, mu_r2=[])
     assert empty.shape == (0, 1, 3)
     assert empty.born_shape == (0, 1)

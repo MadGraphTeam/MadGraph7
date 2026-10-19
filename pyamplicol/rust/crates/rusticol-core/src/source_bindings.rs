@@ -227,6 +227,35 @@ impl<B: LoopBackend> SourceOwner<B> {
         Ok(())
     }
 
+    /// Re-evaluate a captured exact declaration in this owner's arithmetic.
+    /// This does not merge with or publish the target owner's mutable state.
+    pub fn reconstruct_snapshot(
+        &self,
+        backend: &B,
+        original_owner: &Self,
+        original: &SourceSnapshot<B::Batch>,
+    ) -> RusticolResult<Arc<SourceSnapshot<B::Batch>>> {
+        original_owner.require_snapshot(original)?;
+        if !Arc::ptr_eq(&self.loaded, &original_owner.loaded) {
+            return Err(invalid(
+                "snapshot reconstruction requires the same saved program",
+            ));
+        }
+        let mut workspace = self
+            .workspace
+            .lock()
+            .map_err(|_| invalid("source scalar reconstruction lock poisoned"))?;
+        let (arguments, values) =
+            workspace.evaluate(source_record(&self.loaded)?, backend, original.overrides())?;
+        Ok(Arc::new(SourceSnapshot {
+            arguments,
+            values,
+            overrides: original.overrides.clone(),
+            revision: original.revision,
+            identity: self.identity.clone(),
+        }))
+    }
+
     /// Merge with one current exact revision, then publish all fields together.
     pub fn update(
         &self,

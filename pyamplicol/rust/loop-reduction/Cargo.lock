@@ -2249,6 +2249,7 @@ dependencies = [
  "ninjars-symbolica",
  "oneloop",
  "rusticol-core",
+ "serde",
  "serde_json",
  "symbolica",
 ]
