@@ -155,6 +155,7 @@ _BARE_METADATA = (
     "loop_reduction_powers",
     "born_metric",
     "loop_metric",
+    "formal_color_metrics",
     "order_channels",
     "weight_plan",
 )

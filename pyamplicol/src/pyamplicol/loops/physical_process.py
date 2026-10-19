@@ -500,6 +500,7 @@ class NativeBareProcessProgram:
         )
         self.coefficient_engine = self.born_executors[0].coefficient_engine
         self.color_space = PhysicalColorSpace()
+        self.formal_color_metrics = None
         self.born_metric = tuple(
             tuple(value / initial_average for value in row)
             for row in self.color_space.rectangular(
@@ -910,10 +911,13 @@ class NativeBareProcessProgram:
         for row in (*born_metric, *loop_metric):
             for value in row:
                 require_exact_numbers(value)
+        revision = getattr(self, "_color_metrics_revision", 0) + 1
         self.born_metric, self.loop_metric = (
             tuple(map(tuple, born_metric)),
             tuple(map(tuple, loop_metric)),
         )
+        # An unproved replacement cannot inherit a previous formal certificate.
+        self.formal_color_metrics = None
         self._compile_born_projection()
         self._compile_dual_born_weights()
         for family in self.families:
@@ -926,7 +930,7 @@ class NativeBareProcessProgram:
                 family.sector_indices,
                 _record_name=f"family{family.index}_projector",
             )
-        self._color_metrics_revision = getattr(self, "_color_metrics_revision", 0) + 1
+        self._color_metrics_revision = revision
         self._prepared_process = None
 
     def evaluate_decimal(self, momenta, scales_squared, *, model_values=None):

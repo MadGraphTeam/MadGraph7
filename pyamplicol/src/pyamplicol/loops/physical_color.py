@@ -18,6 +18,99 @@ from .color_bilinears import SUNColorSpace
 from .color_projection import prepare_color_projection
 
 
+def _color_order_domains(bare):
+    return (
+        tuple(bare.born_term_orders),
+        tuple(
+            graph.order
+            for graph, terms in zip(bare.loop_graphs, bare.loop_finals, strict=True)
+            for _ in terms
+        ),
+        tuple(tuple(sector.pairs) for sector in bare.order_layout.born),
+        tuple(
+            tuple((pair.born, pair.loop) for pair in sector.pairs)
+            for sector in bare.order_layout.virtual
+        ),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class FormalColorMetrics:
+    """Exact projected rectangles owned by one physical metric revision.
+
+    This record is made at the existing common-degree projection boundary.
+    It retains the pre-substitution expressions; it never infers them from
+    execution weights at Nc=3. External normalization is applied only by bound().
+    """
+
+    nc: Any
+    accuracy: str
+    revision: int
+    initial_average: Any
+    born_orders: tuple
+    loop_orders: tuple
+    born_pairs: tuple
+    virtual_pairs: tuple
+    born_degrees: tuple[int | None, ...]
+    virtual_degrees: tuple[int | None, ...]
+    born: tuple[tuple[Any, ...], ...]
+    loop: tuple[tuple[Any, ...], ...]
+    born_tensors: tuple[Any, ...]
+    loop_tensors: tuple[Any, ...]
+
+    def bound(self):
+        return tuple(
+            tuple(
+                tuple(value.replace(self.nc, 3) / self.initial_average for value in row)
+                for row in matrix
+            )
+            for matrix in (self.born, self.loop)
+        )
+
+    def require_binding(self, bare, born, loop):
+        """Check the actual columns, order domains and declared normalization."""
+        domains = (
+            self.born_orders,
+            self.loop_orders,
+            self.born_pairs,
+            self.virtual_pairs,
+        )
+        if domains != _color_order_domains(bare):
+            raise ValueError("formal colour columns or order sectors differ from owner")
+        for retained, actual in (
+            (self.born_tensors, bare.born_color_tensors),
+            (self.loop_tensors, bare.loop_color_tensors),
+        ):
+            if len(retained) != len(actual) or any(
+                left is not right for left, right in zip(retained, actual, strict=True)
+            ):
+                raise ValueError("formal colour tensor columns differ from owner")
+        if self.initial_average != bare.initial_average:
+            raise ValueError("formal colour normalization differs from owner")
+        for formal, numerical in zip(self.bound(), (born, loop), strict=True):
+            if len(formal) != len(numerical) or any(
+                len(left) != len(right)
+                or any(
+                    (a - b).together() != 0 for a, b in zip(left, right, strict=True)
+                )
+                for left, right in zip(formal, numerical, strict=True)
+            ):
+                raise ValueError(
+                    "formal colour projection differs from execution weights"
+                )
+
+    def require_owner(self, bare):
+        if (
+            getattr(bare, "formal_color_metrics", None) is not self
+            or self.revision != getattr(bare, "_color_metrics_revision", 0)
+            or self.accuracy != getattr(bare, "color_accuracy", "full")
+            or self.born_degrees != tuple(getattr(bare, "born_color_degrees", ()))
+            or self.virtual_degrees != tuple(getattr(bare, "virtual_color_degrees", ()))
+        ):
+            raise ValueError("formal colour metrics have a different projection owner")
+        self.require_binding(bare, bare.born_metric, bare.loop_metric)
+
+
 @dataclass(frozen=True, slots=True)
 class PhysicalColorProjection:
     accuracy: str
@@ -26,6 +119,7 @@ class PhysicalColorProjection:
     additional_rows: tuple[Any, ...]
     born_degrees: tuple[int | None, ...] = ()
     virtual_degrees: tuple[int | None, ...] = ()
+    formal_metrics: FormalColorMetrics | None = None
 
 
 def color_projection_metadata(bare):
@@ -74,6 +168,7 @@ def restore_color_projection(bare, metadata):
             (),
             bare.born_color_degrees,
             bare.virtual_color_degrees,
+            getattr(bare, "formal_color_metrics", None),
         )
     )
 
@@ -270,16 +365,26 @@ def project_physical_color(
     width = len(bare.born_colors)
     loops = len(bare.loop_color_tensors)
 
-    def averaged(values):
-        return tuple(value.replace(nc, 3) / bare.initial_average for value in values)
-
-    bare.set_color_metrics(
-        [averaged(projected_born[i * width : (i + 1) * width]) for i in range(width)],
-        [
-            averaged(projected_virtual[i * loops : (i + 1) * loops])
-            for i in range(width)
-        ],
+    formal = FormalColorMetrics(
+        nc,
+        accuracy.value,
+        getattr(bare, "_color_metrics_revision", 0) + 1,
+        bare.initial_average,
+        *_color_order_domains(bare),
+        born_degrees,
+        virtual_degrees,
+        tuple(tuple(projected_born[i * width : (i + 1) * width]) for i in range(width)),
+        tuple(
+            tuple(projected_virtual[i * loops : (i + 1) * loops]) for i in range(width)
+        ),
+        tuple(bare.born_color_tensors),
+        tuple(bare.loop_color_tensors),
     )
+    bare.set_color_metrics(*formal.bound())
+    # Only this actual symbolic projection can install formal data. The public
+    # numerical replacement boundary never accepts a record whose authority
+    # could otherwise be inferred merely from equality after Nc=3 binding.
+    bare.formal_color_metrics = formal
     bare.color_accuracy = accuracy.value
     bare.born_color_degrees = born_degrees
     bare.virtual_color_degrees = virtual_degrees
@@ -295,4 +400,5 @@ def project_physical_color(
         tuple(value.replace(nc, 3) for value in projected_virtual[len(loop_rows) :]),
         born_degrees,
         virtual_degrees,
+        formal,
     )

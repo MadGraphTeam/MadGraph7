@@ -160,7 +160,44 @@ An actual declared-model gluon LC owner additionally passes its six signed Born
 components and 16 helicities through weighted and original saved native schedules
 in all three carriers, with empty/singleton/tail rows and inclusive reconstruction.
 
-This establishes the shared scheduling seam. Actual process certificate
-attachment, rectangular Fourier execution and truthful public policy selection
-remain subsequent work; the presence of a dual-weight descriptor does not imply
-that an FFT was performed.
+This establishes the shared scheduling seam. Rectangular Fourier execution and
+truthful public policy selection remain subsequent work; the presence of a
+dual-weight descriptor does not imply that an FFT was performed.
+
+## Formal metric ownership and actual process certificates
+
+The existing common-degree colour projection now retains its exact Born and
+Born–loop matrices before substituting Nc=3 or applying external averaging.
+One immutable `FormalColorMetrics` record owns the actual tensor columns,
+absolute orders, allowed pairings, Born/virtual sector degrees, accuracy and
+metric revision. The virtual degree is still selected jointly with UV, model R2
+and external-field terms. Prepared Python views retain this same record; it is
+not another artifact manifest or a reconstruction from numerical colour values.
+
+Only `project_physical_color` attaches the record it actually computes. Ordinary
+`set_color_metrics` always clears formal ownership and cannot accept a supplied
+record, even if that record would have identical values at Nc=3. Certification
+checks tensor identity, order domains, normalization, degree and revision before
+reuse. An arbitrary added factor proportional to Nc−3 cannot acquire a proof
+through the numerical replacement boundary.
+
+`prepare_certified_dual_born_weights` is an internal cold factory for ordinary
+and signed resolved banks. It takes explicit physical adjoint labels, masks the
+retained symbolic rectangle by actual orders and components, and invokes the
+existing dependency-backed tensor certificate. Independent Born/loop aliases,
+all original columns and both residual cross directions survive. Family routing
+does not enter the certificate. Binding Nc=3 and averaging happens afterward;
+the saved exact evaluator remains identical to the direct weight schedule.
+Directed inserted operators need their own formal bank and are not inferred
+from this ordinary rectangle.
+
+Full/LC/NLC controls verify exact reconstruction, mixed orders, complex entries,
+aliases, component masks and owner invalidation. A retained physical gluon LC
+producer supplies an actual order-two action on six Born and 258 loop columns:
+two regular Born orbits, 45 regular loop orbits, 90 ordinary kernels and 1,062
+residual alias pairs. Its six component banks reconstruct exactly as well.
+The producer predates retention, so this single probe rebuilds symbolic SUN
+matrices from its actual tensors using its already-proved common degree P=5;
+the Nc=3 comparison is only a binding consistency check. No production path
+attempts to recover missing formal data. This is a cold feature certificate,
+not a native Fourier execution or speed result.

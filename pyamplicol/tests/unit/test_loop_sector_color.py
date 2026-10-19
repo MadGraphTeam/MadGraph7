@@ -54,6 +54,8 @@ def _fixture(monkeypatch):
 
     def set_metrics(born_metric, loop_metric):
         bare.born_metric, bare.loop_metric = born_metric, loop_metric
+        bare.formal_color_metrics = None
+        bare._color_metrics_revision = getattr(bare, "_color_metrics_revision", 0) + 1
 
     bare.set_color_metrics = set_metrics
     monkeypatch.setattr(
@@ -103,6 +105,9 @@ def test_ct_poles_share_one_degree_only_within_their_squared_order(
         == expected[1]
     )
     assert projection.additional_rows == tuple(E(str(value)) for value in expected[2])
+    assert projection.formal_metrics is bare.formal_color_metrics
+    projection.formal_metrics.require_owner(bare)
+    assert projection.formal_metrics.virtual_degrees == (5, 4, 1)
 
 
 def test_additional_multi_order_rows_require_actual_pair_identity(monkeypatch):
