@@ -40,7 +40,7 @@ a,b,c=[inputs[names.index(name)] for name in ('aS','MT','MU_R')]
 if sys.argv[4]=='guards':
     from types import SimpleNamespace
     from pyamplicol.loops.scalar_frontend import ScalarExpression,ScalarFunctionLibrary
-    library=ScalarFunctionLibrary(SimpleNamespace(collections={'functions':[]},metadata={}))
+    library=ScalarFunctionLibrary(SimpleNamespace(name='source_binding_stress',collections={'functions':[]},metadata={}))
     guards=[library.lower('1 / (1 if z.imag == 0 else 0)',locals={'z':symbol})
             for kind,symbol in zip(types,inputs,strict=True) if kind=='real']
     ratio=((a+800).exp()+(b+801).exp())/(c+802).exp()
