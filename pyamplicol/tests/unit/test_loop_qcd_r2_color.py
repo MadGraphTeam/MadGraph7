@@ -257,3 +257,133 @@ def test_symbolic_conformance_preserves_active_source_diagnostic(source, replace
     # The record retains the guard; it does not make value-only ingress legal.
     with pytest.raises(NotImplementedError, match="paired scalar value and diagnostic"):
         actual.source_entries[0].scalar_value(0)
+    from symbolica.community import hepkit as h
+
+    from pyamplicol.loops.counterterms import (
+        CountertermInsertion,
+        prepare_counterterm_model,
+    )
+
+    prepared = prepare_counterterm_model(
+        owner,
+        h.Model.qcd_qed(),
+        entries=actual.source_entries,
+        whole_rule_continuations=[actual],
+        vertex_spinor_frame="ufo",
+    )
+    bound = next(iter(prepared.rules.values()))
+    insertion = CountertermInsertion(None, bound, 0, 0, ())
+    assert insertion.source_coefficient_expressions(0)[0][1].diagnostic == diagnostic
+    assert all(
+        value.diagnostic == diagnostic
+        for _, value in insertion.coefficient_expressions(0)
+    )
+    with pytest.raises(NotImplementedError, match="paired scalar value and diagnostic"):
+        insertion.coefficient_substitutions(0)
+
+
+def test_prepared_whole_rule_preserves_source_and_native_tensor(source, replacements):
+    from symbolica import E
+    from symbolica.community import hepkit as h
+
+    from pyamplicol.loops.counterterms import (
+        CountertermInsertion,
+        prepare_counterterm_model,
+    )
+
+    model, _ = source
+    entries = tuple(e for rule in replacements for e in rule.source_entries)
+    ordinary = h.Model.qcd_qed()
+    prepared = prepare_counterterm_model(
+        model,
+        ordinary,
+        entries=entries,
+        whole_rule_continuations=replacements,
+        vertex_spinor_frame="ufo",
+    )
+    assert len(prepared.rules) == 2
+    for rule, continuation in zip(prepared.rules.values(), replacements, strict=True):
+        assert rule.whole_rule_continuation is continuation
+        assert rule.entries == continuation.source_entries
+        assert tuple(entry for _, entry in rule.couplings) == rule.entries
+        assert rule.order == continuation.source_entries[0].order
+        assert len(rule.alternatives) == len(continuation.loop_particles)
+        assert rule.has_validated_tensor_basis
+        assert not rule.has_ordinary_basis_correspondence
+        assert len(rule.native_coefficients) == len(continuation.terms)
+        assert rule.active_coupling_symbols == rule.native_coupling_symbols
+        assert set(rule.active_coupling_symbols).isdisjoint(rule.coupling_symbols)
+        # Relocalize the complete declared tensor through the real native model
+        # and compare before any numerical substitution or on-shell projection.
+        names = next(
+            vertex["particles"]
+            for vertex in json.loads(prepared.native.to_json())["vertex_rules"]
+            if vertex["name"] == rule.name
+        )
+        dot = f'digraph local {{ ext [style=invis]; v [int_id="{rule.name}"]; '
+        dot += " ".join(f'ext -> v [particle="{name}"];' for name in names) + " }"
+        diagram = h.FeynmanDiagram.from_dot(prepared.native, dot).apply_feynman_rules()
+        actual = diagram.vertices[0].numerator_expression().to_expression()
+        insertion = CountertermInsertion(None, rule, 0, 0, ())
+        for symbol, value in insertion.coefficient_expressions(0):
+            assert value.diagnostic == 0
+            actual = actual.replace(symbol, value.value)
+        expected = E("0")
+        for term in continuation.terms:
+            local = (term.kernel.color * term.kernel.lorentz).to_expression()
+            for old, new in zip(
+                term.kernel.leg_half_edges, diagram.half_edges, strict=True
+            ):
+                local = local.replace(
+                    h.Symbols.half_edge()(old, 1),
+                    h.Symbols.half_edge()(new.id, 1),
+                )
+            expected += term.coefficient * local
+        assert (actual - expected).expand() == 0
+        assert all(
+            value.value == 0 for _, value in insertion.coefficient_expressions(-1)
+        )
+        assert len(insertion.source_coefficient_expressions(0)) == len(rule.entries)
+        assert tuple(
+            value for _, value in insertion.coefficient_substitutions(0)
+        ) == tuple(term.coefficient for term in continuation.terms)
+
+
+def test_prepared_whole_rule_rejects_partial_mismatched_and_unused_groups(
+    source, replacements
+):
+    from symbolica.community import hepkit as h
+
+    from pyamplicol.loops.counterterms import prepare_counterterm_model
+
+    model, _ = source
+    ordinary = h.Model.qcd_qed()
+    continuation = replacements[0]
+    with pytest.raises(ValueError, match="partial group"):
+        prepare_counterterm_model(
+            model,
+            ordinary,
+            entries=continuation.source_entries[:-1],
+            whole_rule_continuations=[continuation],
+        )
+    with pytest.raises(ValueError, match="complete source group"):
+        prepare_counterterm_model(
+            model,
+            ordinary,
+            whole_rule_continuations=[
+                replace(continuation, source_entries=continuation.source_entries[:-1])
+            ],
+        )
+    with pytest.raises(ValueError, match="not selected"):
+        prepare_counterterm_model(
+            model,
+            ordinary,
+            entries=[],
+            whole_rule_continuations=[continuation],
+        )
+    with pytest.raises(ValueError, match="duplicate whole-rule"):
+        prepare_counterterm_model(
+            model,
+            ordinary,
+            whole_rule_continuations=[continuation, continuation],
+        )

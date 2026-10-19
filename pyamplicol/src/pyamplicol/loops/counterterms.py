@@ -42,6 +42,7 @@ from .model_correspondence import (
     validate_counterterm_primitives,
 )
 from .model_expressions import parse_exact_ufo
+from .qcd_r2_color import QCDR2Continuation
 
 _TAG = "PYAMPLICOL_CT_INSERTION"
 _PREFIX = "PYAMPLICOL_CT_"
@@ -65,6 +66,20 @@ class CountertermRule:
     primitive_validations: tuple[CountertermPrimitiveValidation | None, ...] = ()
     tensor_representatives: tuple[CountertermTensorRepresentative | None, ...] = ()
     vertex_spinor_frame: str | None = None
+    # A checked whole group is a separate native representation. Its original
+    # entries, aliases and local evidence remain available for source diagnostics
+    # and perturbative matching; no entrywise correspondence is implied.
+    whole_rule_continuation: QCDR2Continuation | None = None
+    native_coefficients: tuple[tuple[str, Any], ...] = ()
+    native_coupling_symbols: tuple[Any, ...] = field(default=(), repr=False)
+
+    @property
+    def active_coupling_symbols(self) -> tuple[Any, ...]:
+        return (
+            self.native_coupling_symbols
+            if self.whole_rule_continuation is not None
+            else self.coupling_symbols
+        )
 
     @property
     def has_ordinary_basis_correspondence(self) -> bool:
@@ -75,6 +90,8 @@ class CountertermRule:
     @property
     def has_validated_tensor_basis(self) -> bool:
         """Every basis has explicit ordinary or independent local conformance."""
+        if self.whole_rule_continuation is not None:
+            return True
         return (
             len(self.entries)
             == len(self.basis_correspondences)
@@ -149,6 +166,7 @@ def prepare_counterterm_model(
     ordinary_basis_representatives: Iterable[OrdinaryBasisRepresentative] = (),
     primitive_validations: Iterable[CountertermPrimitiveValidation] = (),
     tensor_representatives: Iterable[CountertermTensorRepresentative] = (),
+    whole_rule_continuations: Iterable[QCDR2Continuation] = (),
     vertex_spinor_frame: str | None = None,
 ) -> PreparedCountertermModel:
     """Append homogeneous, tagged CT rules through native model interchange.
@@ -156,6 +174,10 @@ def prepare_counterterm_model(
     No parameter is evaluated and no source tensor is silently transposed. An
     explicit tensor representative preserves its exact source evidence and
     replaces only that entry's native Lorentz tensor. The
+    checked whole-rule continuation instead supplies the complete native tensor
+    for one source loop group. Original entries and their aliases stay intact;
+    replacement coefficients are exposed separately. This certifies local tensor
+    conformance, not the physical scheme of the complete process. The
     native model retains exact Laurent coupling expressions. Missing external
     species are recorded explicitly for a deliberately restricted tree model;
     this does not certify the omitted sector or the model's physical scheme.
@@ -167,6 +189,27 @@ def prepare_counterterm_model(
         raise ValueError("stored source counterterm frame must be ufo")
     ordinary_basis_representatives = tuple(ordinary_basis_representatives)
     tensor_representatives = tuple(tensor_representatives)
+    continuations = {}
+    for continuation in whole_rule_continuations:
+        if not isinstance(continuation, QCDR2Continuation):
+            raise TypeError("whole-rule continuation must be a checked QCD R2 rule")
+        if not continuation.source_entries or not continuation.terms:
+            raise ValueError("whole-rule continuation must contain its complete group")
+        if continuation.key in continuations:
+            raise ValueError("duplicate whole-rule continuation")
+        original = tuple(
+            entry
+            for entry in source.kernels
+            if (entry.collection, entry.vertex_id, entry.loop_group_index, entry.order)
+            == continuation.key
+        )
+        if len(original) != len(continuation.source_entries) or {
+            id(entry) for entry in original
+        } != {id(entry) for entry in continuation.source_entries}:
+            raise ValueError(
+                "whole-rule continuation requires its complete source group"
+            )
+        continuations[continuation.key] = continuation
     if vertex_spinor_frame == "ufo" and (
         ordinary_basis_representatives or tensor_representatives
     ):
@@ -224,8 +267,25 @@ def prepare_counterterm_model(
         groups[entry.vertex_id, entry.loop_group_index, entry.order].append(entry)
 
     rules = {}
+    used_continuations = set()
     for number, members in enumerate(groups.values()):
         first = members[0]
+        continuation_key = (
+            first.collection,
+            first.vertex_id,
+            first.loop_group_index,
+            first.order,
+        )
+        continuation = continuations.get(continuation_key)
+        if continuation is not None:
+            if len(members) != len(continuation.source_entries) or any(
+                not any(entry is item for item in members)
+                for entry in continuation.source_entries
+            ):
+                raise ValueError(
+                    "whole-rule continuation cannot replace a partial group"
+                )
+            used_continuations.add(continuation_key)
         name = f"{_PREFIX}V{number}"
         colors = sorted({entry.color_index for entry in members})
         lorentz = sorted({entry.lorentz_index for entry in members})
@@ -235,10 +295,17 @@ def prepare_counterterm_model(
         )
         matrix = [[None for _ in lorentz] for _ in colors]
         aliases = []
+        native_coefficients = []
         correspondences = tuple(representatives.counterterm(entry) for entry in members)
         local_colors, local_lorentz = {}, {}
         for entry, correspondence in zip(members, correspondences, strict=True):
             tensor_representative = tensor_evidence.get(entry.key)
+            if continuation is not None and (
+                correspondence is not None or tensor_representative is not None
+            ):
+                raise ValueError(
+                    "whole-rule continuation conflicts with entry representatives"
+                )
             if correspondence is not None and tensor_representative is not None:
                 raise ValueError(
                     "counterterm has conflicting ordinary and tensor representatives"
@@ -305,6 +372,50 @@ def prepare_counterterm_model(
                 }
             )
             lorentz_names.append(tensor_name)
+        if continuation is not None:
+            # These local four-vector kernels have no spinor orientation. Their
+            # declared ports are relabelled through HepKit's existing UFO index
+            # boundary; the dependency owns all tensor algebra and localization.
+            if any(species[pdg]["spin"] != 3 for pdg in particle_pdgs):
+                raise ValueError("QCD R2 whole-rule continuation requires vector ports")
+            local_colors = {}
+            lorentz_names = []
+            count = len(continuation.terms)
+            matrix = [[None for _ in range(count)] for _ in range(count)]
+            colors = list(range(count))
+            for index, term in enumerate(continuation.terms):
+                if term.kernel.particle_names != first.particle_names or len(
+                    term.kernel.leg_half_edges
+                ) != len(particle_pdgs):
+                    raise ValueError("whole-rule continuation ordered ports differ")
+                color = term.kernel.color.to_expression()
+                lorentz_value = term.kernel.lorentz.to_expression()
+                for leg, half in enumerate(term.kernel.leg_half_edges, 1):
+                    port = hep.Symbols.half_edge()(half, 1)
+                    local = hep.Symbols.ufo_index()(1, leg)
+                    color = color.replace(port, local)
+                    lorentz_value = lorentz_value.replace(port, local)
+                alias = f"{name}_R{index}"
+                native_coefficients.append((alias, term.coefficient))
+                payload["couplings"].append(
+                    {
+                        "name": alias,
+                        "expression": term.coefficient.to_canonical_string(),
+                        "orders": [list(order) for order in first.order] + [[_TAG, 1]],
+                        "value": None,
+                    }
+                )
+                tensor_name = f"{name}_RL{index}"
+                payload["lorentz_structures"].append(
+                    {
+                        "name": tensor_name,
+                        "spins": [species[pdg]["spin"] for pdg in particle_pdgs],
+                        "structure": lorentz_value.to_canonical_string(),
+                    }
+                )
+                lorentz_names.append(tensor_name)
+                local_colors[index] = color.to_canonical_string()
+                matrix[index][index] = alias
         payload["vertex_rules"].append(
             {
                 "name": name,
@@ -346,6 +457,12 @@ def prepare_counterterm_model(
                 tensor_evidence.get(entry.key) for entry in members
             ),
             vertex_spinor_frame=vertex_spinor_frame,
+            whole_rule_continuation=continuation,
+            native_coefficients=tuple(native_coefficients),
+        )
+    if used_continuations != continuations.keys():
+        raise ValueError(
+            "whole-rule continuation was not selected in the prepared model"
         )
     native_model = hep.Model.from_json(json.dumps(payload))
     rules = {
@@ -353,6 +470,10 @@ def prepare_counterterm_model(
             rule,
             coupling_symbols=tuple(
                 native_model.coupling(alias).symbol for alias, _ in rule.couplings
+            ),
+            native_coupling_symbols=tuple(
+                native_model.coupling(alias).symbol
+                for alias, _ in rule.native_coefficients
             ),
         )
         for name, rule in rules.items()
@@ -511,6 +632,38 @@ class CountertermInsertion:
 
     def coefficient_expressions(self, epsilon_power: int):
         """Native aliases paired with exact values and active diagnostics."""
+        if self.rule.whole_rule_continuation is not None:
+            from symbolica import E
+
+            from .scalar_frontend import ScalarExpression
+
+            # Source diagnostics are still mandatory even when a checked tensor
+            # replaces the source values. The scalar frontend's diagnostic
+            # composition is additive; zero is the successful value.
+            diagnostic = sum(
+                (
+                    value.diagnostic
+                    for _, value in self.source_coefficient_expressions(epsilon_power)
+                ),
+                E("0"),
+            )
+            return tuple(
+                (
+                    symbol,
+                    ScalarExpression(
+                        value if epsilon_power == 0 else E("0"), diagnostic
+                    ),
+                )
+                for symbol, (_, value) in zip(
+                    self.rule.native_coupling_symbols,
+                    self.rule.native_coefficients,
+                    strict=True,
+                )
+            )
+        return self.source_coefficient_expressions(epsilon_power)
+
+    def source_coefficient_expressions(self, epsilon_power: int):
+        """Original source aliases, values and diagnostics, including replaced rules."""
         return tuple(
             (symbol, entry.scalar_expression(epsilon_power))
             for symbol, (_, entry) in zip(
