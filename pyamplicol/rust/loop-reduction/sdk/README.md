@@ -1,9 +1,9 @@
 # Standalone virtual SDK (source delivery)
 
-This additive Rust/C interface calls the same `VirtualRuntime` used by the Python
+These additive Rust/C/C++/Fortran interfaces call the same `VirtualRuntime` used by the Python
 facade. It reads ordinary verified process artifacts and needs no Python process,
 model importer, graph generator or alternate reducer. The existing tree SDK is
-unchanged. Both interfaces return physical Born–loop interference, all generated
+unchanged. All interfaces return physical Born–loop interference, all generated
 squared coupling orders, and finite/single/double poles. Loop amplitudes squared
 and loop-induced production remain unsupported.
 
@@ -74,3 +74,63 @@ Run the opt-in debug controls with `RUST_MIN_STACK=16777216`: the Rust test
 harness's default 2 MiB thread stack is smaller than these dependency-backed
 debug evaluators need. The standalone C controls pass on the ordinary process
 stack. This test configuration is not a process-size or multiplicity limit.
+
+C++17 callers include `include/rusticol_virtual.hpp` and use the move-only
+`rusticol::VirtualRuntime` and `VirtualEvaluation` classes. Function errors throw
+`VirtualError`; per-point numerical failures remain statuses in a successfully
+returned result. Each evaluation makes one C bulk call. Result copies to standard
+vectors retain the C axis order, and result ownership survives runtime moves,
+`clear()` and destruction. Exact parameter and verification JSON pass unchanged.
+For example, from this directory:
+
+```sh
+c++ -std=c++17 examples/client.cpp -Iinclude /path/to/librusticol_loop_sdk.a \
+  -ldl -lpthread -lm -o client-cpp
+./client-cpp /path/to/resolved-gg-source-artifact gg
+```
+
+Fortran callers compile `fortran/rusticol_virtual.f90` and `use rusticol_virtual`.
+The tested compiler is gfortran with Fortran 2018 mode. A `virtual_runtime` owns a
+reference-counted C handle: assignment shares it, and finalization or `close()`
+releases that reference. Copies therefore share parameter updates and workspace
+clears and must not be called concurrently. Direct, array, self, containing-type
+assignment and function-result lifetimes have native controls. The allocatable
+arrays in `virtual_evaluation` have independent value ownership, including after
+runtime destruction. `load()` replaces only its own reference after a successful
+open; a failed open preserves the existing handle.
+
+Fortran momentum arrays have shape `(4, external_leg, point)`. Returned arrays
+reverse the C axis order without numerical reordering:
+
+| Array | Fortran dimensions |
+|---|---|
+| `born` | `(colour, helicity, order, successful_point)` |
+| `virtual_values` | `(epsilon, colour, helicity, order, successful_point)` |
+| `statuses`, `requested_ids` | `(requested_point)` |
+| `successful_ids` | `(successful_point)` |
+
+Inclusive evaluation retains singleton colour/helicity axes. Epsilon indices
+1, 2, 3 mean finite, single pole, double pole. `mu_r2` takes a rank-one array of
+length one or the number of points. Empty momentum and scale arrays are valid.
+An optional `ierr` returns function status; when omitted, a function error stops
+with its diagnostic. `evaluate(..., error_message=text)` supplies accurate local
+shape or native error text, while `virtual_last_error()` exposes the last C
+error. A failed function leaves output numerical arrays unallocated. A completed
+partial batch allocates only successful numerical rows and retains all statuses.
+Fortran `integer(c_int64_t)` IDs transport the C uint64 bit patterns; normal
+nonnegative Fortran IDs have the same numeric interpretation in both languages.
+
+```sh
+gfortran -std=f2018 -c fortran/rusticol_virtual.f90
+gfortran -std=f2018 examples/client.f90 rusticol_virtual.o \
+  /path/to/librusticol_loop_sdk.a -ldl -lpthread -lm -o client-fortran
+./client-fortran /path/to/resolved-gg-source-artifact gg
+```
+
+Both wrapper clients additionally accept the retained full-CKM source fixture
+with process `uudd`. Their three-order inclusive values check the committed
+MadLoop control, and each order's resolved helicity sum reconstructs all poles.
+Both exercise sparse IDs, real numerical failures with compact rows, explicit
+DoubleFloat verification, empty batches, exact parameter JSON and result
+lifetimes. They call no Python interpreter. These wrappers are source delivery;
+this does not yet add them to ordinary wheel/SDK release bundles.
