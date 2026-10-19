@@ -62,13 +62,13 @@ transform checks.
 
 ## Loop integration still required
 
-Raw Born amplitudes and loop coefficients already meet in `loop_execution.rs`
-before the family projector. The current producer embeds
-`conjugate(B) * G * numerator_coefficient` separately into each family's Symbolica
-instructions. The next scheduling change must compute a shared bank of dual
-Born weights once per point, Born order, helicity/source and operator, then feed
-those weights to family coefficient assembly. Denominator families need not
-form complete colour orbits; colour maps and family/routing maps stay separate.
+Raw Born amplitudes and loop coefficients meet in `loop_execution.rs` before
+the family projector. The shared exact dual-Born schedule described below now
+computes a bank once per point, Born order, helicity/source and operator, then
+feeds its selected columns to family coefficient assembly. The original
+`conjugate(B) * G * numerator_coefficient` projector remains an independent
+baseline. Denominator families need not form complete colour orbits; colour
+maps and family/routing maps stay separate.
 
 Cold preparation must certify actual loop tensor relabellings using dependency
 canonicalization and exact overlap operations. Existing tree DDM, colour-sector
@@ -126,3 +126,38 @@ superposition produces noncentral kernels through the existing formal full/LC/NL
 projector. An independent explicit SU3 component sum fixes a complex
 overlap, and a corrupted typed canonicalization is rejected. These are cold
 mathematical controls, not public loop FFT or scheduling acceptance.
+
+## Shared exact dual-Born schedule
+
+`loops/dual_weights.py` prepares a single exact map from Born current columns to
+complex dual weights for each native point/helicity or source row. Columns retain
+the direction, virtual squared-order sector and original loop colour term. Every
+allowed term remains present even when its ordinary metric happens to vanish.
+Different directions, source classes and resolved Born-component masks own
+separate banks; no Hermitian shortcut combines the two directed terms.
+
+Families select explicit columns from this bank and combine them with their
+existing routed numerator coefficients. Colour domains therefore remain
+independent of denominator families. Neither amplitudes nor physical terms are
+erased by aliasing. UV, model R2 and external-field projectors remain unchanged.
+
+Prepared views retain only dependency evaluator bytes and column identities.
+Double, DoubleFloat and arbitrary precision execute the same instructions in
+their selected carrier. Weights are recomputed for each call and compacted with
+their original point/source rows; no event-value cache survives parameter updates
+or rescue. The optional `exact-dual-born-v1` descriptor lives in the existing
+PACBIN payload. Native validation checks state shape, key uniqueness and domain,
+term graph ownership, and every complete ordered family selection.
+
+The unchanged original bilinear projector and its descriptor-free native
+schedule remain the independent baseline. Focused tests compare mixed orders,
+complex directed and masked component banks, zero columns, independent family
+maps, changing batches and all three carriers. A retained source photon process
+also compares every complete component and both integrated directed terms for
+ordinary, singleton and joint sources. The saved/native checks cover transport,
+weight-stage lane failures and separate higher-precision subset rescue.
+
+This establishes the shared scheduling seam. Actual process certificate
+attachment, rectangular Fourier execution and truthful public policy selection
+remain subsequent work; the presence of a dual-weight descriptor does not imply
+that an FFT was performed.

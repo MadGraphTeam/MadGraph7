@@ -83,6 +83,40 @@ def test_saved_weighted_and_original_complete_observables(
 
 
 @pytest.mark.parametrize(
+    "arithmetic,precision,engine,tolerance",
+    [
+        ("double", None, "fast", "3e-10"),
+        ("double-double", None, "generic", "3e-25"),
+        ("arbitrary", 70, "generic", "3e-55"),
+    ],
+)
+def test_python_portable_binding_uses_saved_weight_schedule(
+    weight_artifacts, monkeypatch, arithmetic, precision, engine, tolerance
+):
+    from pyamplicol.loops.portable import PortableLoopPlan
+
+    from .test_loop_portable import _forbid_producer
+
+    native, root, points = weight_artifacts
+    _forbid_producer(monkeypatch)
+    options = dict(arithmetic=arithmetic, precision=precision, reduction_engine=engine)
+    results = []
+    for name in ("photon-weighted.pacbin", "photon-original.pacbin"):
+        view = PortableLoopPlan.open(root / name, backend=native).bind(**options)
+        results.append(
+            view.evaluate_ordered_native(points[:1], ["1000000"], point_ids=[91])
+        )
+    left, right = results
+    assert left.batch.point_ids == right.batch.point_ids == [91]
+    for a, b in zip(
+        (left.born, *left.component_batches, left.totals),
+        (right.born, *right.component_batches, right.totals),
+        strict=True,
+    ):
+        assert all(ok for _, ok in a.agreement_rows(b, tolerance, tolerance))
+
+
+@pytest.mark.parametrize(
     "mutate,message",
     [
         (lambda w: w.update(kind="unknown"), "unsupported dual Born"),
