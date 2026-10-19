@@ -800,17 +800,35 @@ class NativeModelVirtualProgram:
         bare._model_color_metrics_bound = True
         bare._formal_color_projected = space is not None
 
-    def _make_projector(self, helicities=None, *, _record_name="projector"):
-        """Compile the same complete interference for the requested helicity axis."""
+    def _make_projector(
+        self, helicities=None, *, color_components=None, _record_name="projector"
+    ):
+        """Compile ordinary interference, optionally partitioning Born bra rows.
+
+        Colour weights already contain the common complete-sector projection.
+        Anchor masking changes neither that degree nor the coherent currents.
+        Outputs are component-major, then UV/R2/field, order and epsilon.
+        """
         from symbolica import E, S
 
         bare = self.bare
         width = 3 * len(self.sector_pairs)
+        if color_components is None:
+            members = (frozenset(range(len(bare.born_colors))),)
+        else:
+            from .color_components import BornColorComponents
+
+            if not isinstance(color_components, BornColorComponents):
+                raise TypeError(
+                    "counterterm colour components require a Born partition"
+                )
+            color_components.require_width(len(bare.born_colors))
+            members = tuple(map(frozenset, color_components.members))
         parameters, ultraviolet, rational, fields = (
             [],
-            [E("0")] * width,
-            [E("0")] * width,
-            [E("0")] * width,
+            [[E("0")] * width for _ in members],
+            [[E("0")] * width for _ in members],
+            [[E("0")] * width for _ in members],
         )
         for helicity in range(
             len(bare.helicities) if helicities is None else len(helicities)
@@ -831,51 +849,67 @@ class NativeModelVirtualProgram:
                 target = (
                     rational if current.insertion.rule.kind == "R2" else ultraviolet
                 )
-                for sector, pairs in enumerate(self.sector_pairs):
-                    value = sum(
-                        (
-                            left.conj() * weight * amplitude
-                            for left, order, row in zip(
-                                born,
-                                bare.born_term_orders,
-                                current.color_weights,
-                                strict=True,
-                            )
-                            if (order, current.insertion.graph.order) in pairs
-                            for weight, amplitude in zip(row, amplitudes, strict=True)
-                        ),
-                        E("0"),
-                    )
-                    target[3 * sector - current.epsilon_power] += value + value.conj()
+                for component, anchors in enumerate(members):
+                    for sector, pairs in enumerate(self.sector_pairs):
+                        value = sum(
+                            (
+                                left.conj() * weight * amplitude
+                                for column, (left, order, row) in enumerate(
+                                    zip(
+                                        born,
+                                        bare.born_term_orders,
+                                        current.color_weights,
+                                        strict=True,
+                                    )
+                                )
+                                if column in anchors
+                                and (order, current.insertion.graph.order) in pairs
+                                for weight, amplitude in zip(
+                                    row, amplitudes, strict=True
+                                )
+                            ),
+                            E("0"),
+                        )
+                        target[component][3 * sector - current.epsilon_power] += (
+                            value + value.conj()
+                        )
             for index, current in enumerate(self.field_currents):
                 factor = S(f"loop_counterterm::field{helicity}_{index}")
                 parameters.append(factor)
                 # The source includes delta-Z/2. Right-hand terms belong to
                 # the insertion's exact Born graph; only the left order is masked.
-                for sector, pairs in enumerate(self.sector_pairs):
-                    value = sum(
-                        (
-                            left.conj() * weight * factor * born[right]
-                            for left, order, row in zip(
-                                born,
-                                bare.born_term_orders,
-                                current.color_weights,
-                                strict=True,
-                            )
-                            if (order, current.insertion.order) in pairs
-                            for right, weight in zip(
-                                current.born_indices, row, strict=True
-                            )
-                        ),
-                        E("0"),
-                    )
-                    fields[3 * sector - current.epsilon_power] += value + value.conj()
+                for component, anchors in enumerate(members):
+                    for sector, pairs in enumerate(self.sector_pairs):
+                        value = sum(
+                            (
+                                left.conj() * weight * factor * born[right]
+                                for column, (left, order, row) in enumerate(
+                                    zip(
+                                        born,
+                                        bare.born_term_orders,
+                                        current.color_weights,
+                                        strict=True,
+                                    )
+                                )
+                                if column in anchors
+                                and (order, current.insertion.order) in pairs
+                                for right, weight in zip(
+                                    current.born_indices, row, strict=True
+                                )
+                            ),
+                            E("0"),
+                        )
+                        fields[component][3 * sector - current.epsilon_power] += (
+                            value + value.conj()
+                        )
         return self._record_evaluator(
             _record_name,
             _saved(
                 [
                     real_scalar_part(value)
-                    for value in (*ultraviolet, *rational, *fields)
+                    for component in range(len(members))
+                    for group in (ultraviolet, rational, fields)
+                    for value in group[component]
                 ],
                 parameters,
             ),

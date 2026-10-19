@@ -398,6 +398,7 @@ class NativeBareProcessProgram:
             for term in item.terms
         )
         self.born_colors = self.born_color_tensors
+        self.born_color_components = None
         self.loop_finals, self.loop_term_offsets = [], []
         self.loop_color_tensors = []
         for recurrence in self.recurrences:

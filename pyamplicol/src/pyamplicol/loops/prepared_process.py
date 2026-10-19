@@ -141,6 +141,7 @@ _BARE_METADATA = (
     "born_term_graphs",
     "born_color_tensors",
     "born_colors",
+    "born_color_components",
     "loop_finals",
     "loop_term_offsets",
     "loop_color_tensors",
