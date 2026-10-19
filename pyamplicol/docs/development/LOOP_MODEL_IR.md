@@ -1605,3 +1605,47 @@ original scalar diagnostics and species multiplicities. It must enforce HV,
 including any adjustable source scheme parameter, and combine all sector
 contributions before colour projection. Local Nc=3 agreement alone is not
 broader model, UV or scheme certification.
+
+### Source-owned continuation and coefficient grades
+
+`SourceColorContinuation` is explicit prepared-model data: the actual source
+model, formal Nc, exact parameter identities, declared source kernel and
+particle-field keys, and the existing complete scheme declaration. It does not
+infer colour semantics from a model name or numerical constants. Missing
+continuation for a selected kernel/field names that exact key and fails the
+projection request. Whole rules whose numerical SU(3) coefficients do not define
+their continuation still need independently checked replacements.
+
+The generic `source_model_program` accepts this internal continuation. Before
+projecting, it checks every selected ordinary scalar output, including derived
+masses and couplings, for exact Nc independence across the full external
+parameter space. Nontrivial ordinary scalar colour dependence is currently an
+explicit unsupported feature; it cannot pass by matching default numbers.
+Original conditional diagnostics remain attached to the exact source formulas.
+
+Model UV/R2 and external-field coefficients then use one shared source owner
+with a graded `NativeScaleBindings` view. Each current's alias columns select
+its exact degree and epsilon coefficient. The existing local incidence and
+zero-propagation proof controls its colour weights; zero field coefficients
+cannot raise a sector's leading degree. The original diagnostic accompanies
+every grade. Saved plans retain these ordinary exact scalar/evaluator states
+and source column maps, so numerical evaluation uses the same batched shared
+core and precision rebinding path as full colour.
+
+Source Drell–Yan controls check the complete model-rule result in all three
+carriers and through saved plans. The independent fundamental colour factor
+predicts LC/full = 9/8 for every virtual component and NLC = full. The tests
+also vary exact inputs and per-point scales and reject a missing selected rule.
+These controls supply explicit model data and exclude the fixed-SU3 four-gluon
+R2 rule; they are not a universal loop_sm continuation certificate or public
+LC/NLC activation. Public resolved LC must still supply its signed
+Born-component observable contract.
+
+An unrestricted-CKM source `u u~ > d d~` control additionally preserves all three
+Born and virtual squared orders and matches the independent MadLoop finite and
+pole values after formal-full projection. Its correction selection remains QCD,
+not joint QCD+QED. A source `u u~ > g g` control covers nonzero external-gluon
+field renormalization: the heavy-flavour contribution is absent at LC and
+retained at NLC, and its graded source columns survive PACBIN loading. Vanishing
+Laurent components are compared at Born scale to account for cancellation
+roundoff, without discarding any returned coefficient.

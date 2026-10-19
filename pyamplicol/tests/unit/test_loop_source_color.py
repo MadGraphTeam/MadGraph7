@@ -59,6 +59,7 @@ TF=Parameter(name='TF',nature='internal',type='real',value='1/2')
 guardedCA=Parameter(name='guardedCA',nature='internal',type='real',value='3 if z < 0 else 3')
 safeCA=Parameter(name='safeCA',nature='internal',type='real',value='guardedCA if a < 0 else 3')
 adjustableCA=Parameter(name='adjustableCA',nature='internal',type='real',value='3*a')
+derived_mass=Parameter(name='derived_mass',nature='internal',type='real',value='CA*a')
 bad=Parameter(name='bad',nature='internal',type='real',value='1 if z < 0 else 2')
 safe=Parameter(name='safe',nature='internal',type='real',value='bad if MU_R > 3 else a')
 zero=Parameter(name='zero',nature='internal',type='real',value='0 if z < 0 else 0')
@@ -86,6 +87,72 @@ def prepare(source, outputs, **options):
     return prepare_source_color_scalars(
         source, outputs, nc=nc, parameter_identities=identities(nc), **options
     )
+
+
+def continuation(source):
+    from symbolica import S
+
+    from pyamplicol.loops.model import build_loop_model
+    from pyamplicol.loops.source_color import SourceColorContinuation
+    from pyamplicol.models.loop_declaration import LoopSchemeDeclaration
+
+    nc = S("source_colour_contract::Nc")
+    model = build_loop_model(
+        source, scalar_program=prepare_scalar_bindings(source, (("a", 0),)).program
+    )
+    return SourceColorContinuation(
+        model,
+        nc,
+        identities(nc),
+        frozenset(),
+        frozenset(),
+        LoopSchemeDeclaration(
+            "HV", "4d", "none", "explicit", "real", "none", "synthetic"
+        ),
+    )
+
+
+def test_continuation_checks_all_ordinary_values_and_keeps_diagnostics(source):
+    declared = continuation(source)
+    ordinary = prepare_scalar_bindings(source, (("safe", 0), ("safeCA", 0)))
+    formal = declared.require_ordinary_scalars(ordinary)
+    assert formal.grades == (0,)
+    for actual, expected in zip(
+        formal.formal.expressions, ordinary.expressions, strict=True
+    ):
+        assert actual.diagnostic == expected.diagnostic
+    # A derived mass must not become fixed-Nc3 numerical data before projection.
+    for output in ("derived_mass", "GC"):
+        selected = prepare_scalar_bindings(
+            source, ((output, 0),), program=ordinary.program
+        )
+        with pytest.raises(
+            NotImplementedError, match=f"ordinary scalar.*{output}.*depends on Nc"
+        ):
+            declared.require_ordinary_scalars(selected)
+    with pytest.raises(TypeError):
+        declared.parameter_identities["CA"] = declared.nc + 1
+
+
+def test_continuation_rejects_unowned_or_undeclared_structures(source):
+    from dataclasses import replace
+
+    declared = continuation(source)
+    key = ("counterterm_vertices", 9, 0, 0, 0)
+    with pytest.raises(NotImplementedError, match=r"selected source kernel.*9"):
+        declared.require_kernels((key,))
+    with pytest.raises(NotImplementedError, match=r"particle field.*QCD"):
+        declared.require_fields(((0, "QCD", 0),))
+    with pytest.raises(ValueError, match="no exact source kernel mapping"):
+        declared.require_ordinary_kernels((("unexpected_renamed_rule", ()),), ())
+    with pytest.raises(ValueError, match="do not belong"):
+        replace(declared, kernel_keys=frozenset((key,)))
+    with pytest.raises(TypeError, match="explicit loop scheme"):
+        replace(declared, scheme=None)
+    copied = type(source).from_dict(source.to_dict())
+    other = prepare_scalar_bindings(copied, (("a", 0),))
+    with pytest.raises(ValueError, match="source owners differ"):
+        declared.require_ordinary_scalars(other)
 
 
 def test_exact_grades_keep_laurent_axes_and_owning_program(source):

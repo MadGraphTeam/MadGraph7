@@ -213,7 +213,16 @@ class NativeSourceModelProgram:
         return self.virtual.evaluate_ordered_decimal(momenta, scales_squared)
 
 
-def source_model_program(structure, prepared, incoming, outgoing, **options):
+def source_model_program(
+    structure,
+    prepared,
+    incoming,
+    outgoing,
+    *,
+    source_color=None,
+    color_accuracy="full",
+    **options,
+):
     """Assemble admitted source CT rules with the same physical vertex frame.
 
     The supplied prepared model must retain every relevant source rule and
@@ -232,6 +241,10 @@ def source_model_program(structure, prepared, incoming, outgoing, **options):
             "source model assembly requires the complete source CT collection "
             "and all its species; prepare counterterms without an entry subset "
             "against the full structural model"
+        )
+    if source_color is not None and source_color.model is not prepared.source:
+        raise ValueError(
+            "source colour continuation belongs to a different prepared model"
         )
     source_bare = source_bare_program(
         structure, incoming, outgoing, prepared_counterterms=prepared, **options
@@ -261,5 +274,7 @@ def source_model_program(structure, prepared, incoming, outgoing, **options):
         matched.insertions,
         source_bindings=(),
         external_fields=fields.insertions,
+        source_color=source_color,
+        color_accuracy=color_accuracy,
     )
     return NativeSourceModelProgram(source_bare, virtual, matched)

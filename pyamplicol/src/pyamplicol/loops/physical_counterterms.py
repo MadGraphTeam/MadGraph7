@@ -157,6 +157,7 @@ class NativeModelVirtualProgram:
         source_bindings,
         external_fields=(),
         formal_nc=None,
+        source_color=None,
         color_accuracy="full",
         r2_strategy="model",
     ):
@@ -168,6 +169,16 @@ class NativeModelVirtualProgram:
         from .physical_color import project_physical_color, split_color_grades
         from .scalar_incidence import scalar_alias_incidence, scalar_grade_term_mask
 
+        if source_color is not None:
+            from .source_color import SourceColorContinuation
+
+            if not isinstance(source_color, SourceColorContinuation):
+                raise TypeError(
+                    "source colour requires explicit owned continuation data"
+                )
+            if formal_nc is not None and formal_nc != source_color.nc:
+                raise ValueError("source and requested formal Nc differ")
+            formal_nc = source_color.nc
         if r2_strategy == "direct":
             bare.require_single_order("direct model counterterm assembly")
         self.bare = bare
@@ -217,6 +228,8 @@ class NativeModelVirtualProgram:
         self.source_scale_view = None
         source_positions = {}
         source_field_names = {}
+        source_color_scalars = None
+        source_expressions = None
         source_state = getattr(bare, "model_state", None)
         if getattr(bare, "vertex_spinor_frame", None) is not None:
             if (
@@ -233,7 +246,7 @@ class NativeModelVirtualProgram:
                     "source counterterms require a matching certified vertex frame "
                     "and source scalar snapshot binding"
                 )
-            if self.source_bindings or formal_nc is not None or r2_strategy != "model":
+            if self.source_bindings or r2_strategy != "model":
                 raise NotImplementedError(
                     "source counterterms require model R2 and owned scalar bindings"
                 )
@@ -247,6 +260,40 @@ class NativeModelVirtualProgram:
                     "source external fields require an owned paired "
                     "anonymous scalar binding"
                 )
+            if formal_nc is not None:
+                if source_color is None:
+                    raise NotImplementedError(
+                        "source formal colour requires explicit "
+                        "source-owned continuation"
+                    )
+                if source_color.model.scalar_program is not source_state.plan.program:
+                    raise ValueError("source colour and scalar program owners differ")
+                ordinary_rules = {
+                    (vertex.interaction, vertex.order)
+                    for graph in (*bare.process.born, *bare.loop_graphs)
+                    for vertex in graph.vertices
+                } | {
+                    (vertex.interaction, vertex.order)
+                    for item in self.insertions
+                    for vertex in item.graph.vertices
+                    if vertex.id != item.vertex_id
+                }
+                source_color.require_ordinary_kernels(
+                    ordinary_rules, {name for name, _ in source_state.plan.outputs}
+                )
+                source_color.require_kernels(
+                    entry.key for item in self.insertions for entry in item.rule.entries
+                )
+                source_color.require_fields(
+                    (
+                        item.rule.particle_id,
+                        item.rule.correction,
+                        item.rule.loop_group_index,
+                    )
+                    for item in external_fields
+                )
+                source_color.require_ordinary_scalars(source_state.plan)
+
             from types import SimpleNamespace
 
             from ufo_model_loader.symbolica_processing import wrap_indices
@@ -310,20 +357,31 @@ class NativeModelVirtualProgram:
                     | {(name, power) for name in anonymous for power in (0, -1, -2)}
                 )
             )
-            plan = prepare_scalar_bindings(
-                source_state.plan.program.library.raw,
-                outputs,
+            scalar_options = dict(
                 program=source_state.plan.program,
                 fixed_parameters=source_state.plan.fixed_parameters,
                 anonymous_definitions=anonymous,
             )
+            if source_color is None:
+                plan = prepare_scalar_bindings(raw, outputs, **scalar_options)
+                source_expressions = plan
+            else:
+                source_color_scalars = source_color.scalars(outputs, **scalar_options)
+                plan = source_color_scalars.coefficients
+                source_expressions = source_color_scalars.formal
             self.source_scale_view = NativeScaleBindings(source_state, plan)
             source_positions = {output: index for index, output in enumerate(outputs)}
         elif any(item.rule.vertex_spinor_frame is not None for item in self.insertions):
             raise ValueError("source/native counterterm vertex frames differ")
-        if space is not None and any(
-            insertion.rule.scalar_program is not None
-            for insertion in (*self.insertions, *external_fields)
+        if source_color is not None and source_color_scalars is None:
+            raise ValueError("source colour requires a source-owned model program")
+        if (
+            space is not None
+            and source_color_scalars is None
+            and any(
+                insertion.rule.scalar_program is not None
+                for insertion in (*self.insertions, *external_fields)
+            )
         ):
             raise NotImplementedError(
                 "paired source scalars require a separate formal-colour continuation"
@@ -407,7 +465,7 @@ class NativeModelVirtualProgram:
                         zip(
                             insertion.rule.coupling_symbols,
                             (
-                                self.source_scale_view.plan.expressions[index]
+                                source_expressions.expressions[index]
                                 for index in columns
                             ),
                             strict=True,
@@ -438,12 +496,32 @@ class NativeModelVirtualProgram:
                         for i, name in enumerate(coefficient_names)
                     }
                 )
-                grades = (
-                    ((None, tuple(expressions)),)
-                    if space is None
-                    else split_color_grades(expressions, formal_nc)
-                )
-                for degree, coefficients in grades:
+                if source_color_scalars is None:
+                    grades = (
+                        ((None, tuple(expressions)),)
+                        if space is None
+                        else split_color_grades(expressions, formal_nc)
+                    )
+                    graded_columns = (
+                        (degree, values, columns) for degree, values in grades
+                    )
+                else:
+                    graded_columns = (
+                        (
+                            degree,
+                            tuple(
+                                plan.expressions[indices[index]].value
+                                for index in columns
+                            ),
+                            tuple(indices[index] for index in columns),
+                        )
+                        for degree, indices in zip(
+                            source_color_scalars.grades,
+                            source_color_scalars.columns,
+                            strict=True,
+                        )
+                    )
+                for degree, coefficients, scalar_columns in graded_columns:
                     active_terms = (
                         None
                         if degree is None
@@ -480,7 +558,7 @@ class NativeModelVirtualProgram:
                             diagnostics,
                             insertion.rule.scalar_program,
                             color_tensors,
-                            columns,
+                            scalar_columns,
                         )
                     )
         self.external_fields = tuple(external_fields)
@@ -512,7 +590,7 @@ class NativeModelVirtualProgram:
                         insertion.rule.loop_group_index,
                     )
                     source_column = source_positions[source_field_names[key], power]
-                    scalar = self.source_scale_view.plan.expressions[source_column]
+                    scalar = source_expressions.expressions[source_column]
                 else:
                     scalar = insertion.coefficient_expression(power)
                 value = scalar.value.replace_multiple(replacements)
@@ -533,12 +611,30 @@ class NativeModelVirtualProgram:
                 require_exact_numbers(diagnostic)
                 if value == 0 and diagnostic == 0:
                     continue
-                grades = (
-                    ((None, (value,)),)
-                    if space is None
-                    else split_color_grades((value,), formal_nc)
-                )
-                for degree, (coefficient,) in grades:
+                if source_color_scalars is None:
+                    grades = (
+                        ((None, (value,)),)
+                        if space is None
+                        else split_color_grades((value,), formal_nc)
+                    )
+                    graded_columns = (
+                        (degree, coefficient[0], source_column)
+                        for degree, coefficient in grades
+                    )
+                else:
+                    graded_columns = (
+                        (
+                            degree,
+                            plan.expressions[indices[source_column]].value,
+                            indices[source_column],
+                        )
+                        for degree, indices in zip(
+                            source_color_scalars.grades,
+                            source_color_scalars.columns,
+                            strict=True,
+                        )
+                    )
+                for degree, coefficient, scalar_column in graded_columns:
                     self.field_currents.append(
                         _ExternalFieldCurrent(
                             insertion,
@@ -549,13 +645,18 @@ class NativeModelVirtualProgram:
                             weights
                             if degree is None
                             else tuple(
-                                tuple(formal_nc**degree * item for item in row)
+                                tuple(
+                                    formal_nc**degree * item
+                                    if coefficient != 0
+                                    else E("0")
+                                    for item in row
+                                )
                                 for row in weights
                             ),
                             degree,
                             diagnostic,
                             insertion.rule.scalar_program,
-                            source_scalar_column=source_column,
+                            source_scalar_column=scalar_column,
                         )
                     )
         if space is not None:
