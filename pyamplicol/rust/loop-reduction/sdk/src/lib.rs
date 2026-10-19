@@ -53,7 +53,7 @@ pub struct Shape {
 }
 
 /// Owned result buffers remain valid after clearing or freeing their runtime.
-/// Resolved layout is point/order/helicity/contracted-colour/(epsilon).
+/// Resolved layout is point/order/helicity/colour-component/(epsilon).
 pub struct Evaluation {
     pub requested_point_ids: Vec<u64>,
     pub successful_point_ids: Vec<u64>,
@@ -68,6 +68,7 @@ pub struct Evaluation {
 pub struct Runtime {
     native: VirtualRuntime,
     shape: Shape,
+    color_components: Vec<String>,
 }
 
 impl Runtime {
@@ -85,12 +86,20 @@ impl Runtime {
             born_orders: native.metadata().orders.born.len(),
             virtual_orders: native.metadata().orders.r#virtual.len(),
             helicities: plan.helicities.len(),
-            born_color_components: 1,
-            virtual_color_components: 1,
+            born_color_components: plan.resolved_color_component_count(),
+            virtual_color_components: plan.resolved_color_component_count(),
             epsilon_count: 3,
             resolved_available: u32::from(native.metadata().resolved),
         };
-        Ok(Self { native, shape })
+        let color_components = plan.born_color_components.as_ref().map_or_else(
+            || vec![native.metadata().color_accuracy.clone()],
+            |partition| partition.ids.clone(),
+        );
+        Ok(Self {
+            native,
+            shape,
+            color_components,
+        })
     }
     pub fn shape(&self) -> Shape {
         self.shape
@@ -105,7 +114,10 @@ impl Runtime {
             "arithmetic":["double"], "epsilon_powers":[0,-1,-2],
             "resolved": self.native.metadata().resolved, "correlations":false,
             "color_accuracy":self.native.metadata().color_accuracy,
-            "color_components":["full"],
+            "color_components":self.color_components,
+            "color_component_semantics":if self.native.metadata().color_accuracy == "lc" {
+                "signed canonical Born tensor groups, potentially overcomplete; not sampling probabilities"
+            } else { "contracted colour" },
             "available_r2_strategies": self.native.metadata().available_r2_strategies,
             "r2_strategy":"model", "explicit_verification":true,
             "source_only":true,
@@ -211,29 +223,35 @@ fn pack(
     points: usize,
     orders: usize,
     helicities: usize,
+    colors: usize,
     epsilon: usize,
 ) -> RusticolResult<Vec<f64>> {
     let Data::Double(values) = batch.data() else {
         return Err(invalid("standalone output is not binary64"));
     };
-    if batch.rows() != product(&[points, helicities])?
+    if batch.rows() != product(&[points, helicities, colors])?
         || batch.columns() != product(&[orders, epsilon])?
     {
         return Err(invalid(
             "native output axes differ from the virtual catalogue",
         ));
     }
-    let mut output = Vec::with_capacity(product(&[points, orders, helicities, epsilon])?);
+    let mut output = Vec::with_capacity(product(&[points, orders, helicities, colors, epsilon])?);
     for point in 0..points {
         for order in 0..orders {
             for helicity in 0..helicities {
-                for pole in 0..epsilon {
-                    let value = &values
-                        [((point * helicities + helicity) * orders + order) * epsilon + pole];
-                    if !value.re.is_finite() || value.im != 0.0 {
-                        return Err(invalid("ordinary virtual result is not finite real"));
+                for color in 0..colors {
+                    for pole in 0..epsilon {
+                        let value = &values[(((point * helicities + helicity) * colors + color)
+                            * orders
+                            + order)
+                            * epsilon
+                            + pole];
+                        if !value.re.is_finite() || value.im != 0.0 {
+                            return Err(invalid("ordinary virtual result is not finite real"));
+                        }
+                        output.push(value.re);
                     }
-                    output.push(value.re);
                 }
             }
         }
@@ -250,20 +268,36 @@ impl Evaluation {
     ) -> RusticolResult<Self> {
         let verified: BTreeMap<_, _> = verification.iter().map(|v| (v.point_id, v)).collect();
         let helicities = if resolved { shape.helicities } else { 1 };
-        if helicities == 0 || result.point_ids.len() % helicities != 0 {
+        let born_colors = if resolved {
+            shape.born_color_components
+        } else {
+            1
+        };
+        let virtual_colors = if resolved {
+            shape.virtual_color_components
+        } else {
+            1
+        };
+        let rows_per_point = product(&[helicities, born_colors])?;
+        if born_colors != virtual_colors
+            || rows_per_point == 0
+            || result.point_ids.len() % rows_per_point != 0
+        {
             return Err(invalid("native resolved point identity shape differs"));
         }
         let successful_point_ids = result
             .point_ids
-            .chunks(helicities)
+            .chunks(rows_per_point)
             .map(|chunk| {
-                let point = chunk[0] / helicities as u64;
+                let point = chunk[0] / rows_per_point as u64;
                 if chunk
                     .iter()
                     .enumerate()
-                    .any(|(h, id)| *id != point * helicities as u64 + h as u64)
+                    .any(|(row, id)| *id != point * rows_per_point as u64 + row as u64)
                 {
-                    return Err(invalid("native resolved point/helicity identities differ"));
+                    return Err(invalid(
+                        "native resolved point/helicity/colour identities differ",
+                    ));
                 }
                 Ok(point)
             })
@@ -288,6 +322,7 @@ impl Evaluation {
             successful_point_ids.len(),
             shape.born_orders,
             helicities,
+            born_colors,
             1,
         )?;
         let virtual_values = pack(
@@ -295,6 +330,7 @@ impl Evaluation {
             successful_point_ids.len(),
             shape.virtual_orders,
             helicities,
+            virtual_colors,
             3,
         )?;
         let diagnostics_json = serde_json::to_string(&serde_json::json!({
@@ -345,32 +381,47 @@ mod tests {
     }
 
     #[test]
-    fn packing_keeps_order_helicity_and_epsilon_axes_distinct() {
+    fn packing_keeps_order_helicity_colour_and_epsilon_axes_distinct() {
         use rusticol_loop_reduction::Complex;
-        // Two sparse physical IDs, three helicities, two independent orders.
-        let ids = vec![273, 274, 275, 12, 13, 14];
+        // Two sparse physical IDs, three helicities, two colours and orders.
+        let ids = [91, 4]
+            .into_iter()
+            .flat_map(|p| (0..6).map(move |r| p * 6 + r))
+            .collect();
         let values = (0..2)
             .flat_map(|p| {
                 (0..3).flat_map(move |h| {
-                    (0..2).flat_map(move |o| {
-                        (0..3).map(move |e| {
-                            Complex::new((p * 1000 + o * 100 + h * 10 + e) as f64, 0.)
+                    (0..2).flat_map(move |c| {
+                        (0..2).flat_map(move |o| {
+                            (0..3).map(move |e| {
+                                Complex::new(
+                                    -((p * 10000 + o * 1000 + h * 100 + c * 10 + e + 1) as f64),
+                                    0.,
+                                )
+                            })
                         })
                     })
                 })
             })
             .collect();
         let batch = Batch::typed(values, ids, 6, 53).unwrap();
-        let actual = pack(&batch, 2, 2, 3, 3).unwrap();
+        let actual = pack(&batch, 2, 2, 3, 2, 3).unwrap();
         let expected: Vec<_> = (0..2)
             .flat_map(|p| {
                 (0..2).flat_map(move |o| {
                     (0..3).flat_map(move |h| {
-                        (0..3).map(move |e| (p * 1000 + o * 100 + h * 10 + e) as f64)
+                        (0..2).flat_map(move |c| {
+                            (0..3).map(move |e| {
+                                -((p * 10000 + o * 1000 + h * 100 + c * 10 + e + 1) as f64)
+                            })
+                        })
                     })
                 })
             })
             .collect();
         assert_eq!(actual, expected);
+        assert!(pack(&batch, 2, 2, 3, 1, 3).is_err());
+        let empty = Batch::typed(Vec::<Complex<f64>>::new(), vec![], 6, 53).unwrap();
+        assert!(pack(&empty, 0, 2, 3, 2, 3).unwrap().is_empty());
     }
 }

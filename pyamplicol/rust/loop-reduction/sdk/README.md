@@ -29,14 +29,15 @@ Those system libraries describe this tested host, not a portable release link
 manifest. The dependency archives include their required GMP/MPFR code. A shared
 library client can instead link `-lrusticol_loop_sdk` with its runtime search path.
 
-This source target intentionally remains in the loop consumer workspace. The
-selected validated NinjaRS revision uses local reference paths; the newer
-upstream revision has installable Git dependencies but still requires a coherent
-consumer update and validation before ordinary wheels can include this target. No optional
-path dependency has been added to the ordinary tree workspace. Current build
+This source target currently remains in the loop consumer workspace. Its
+validated dependency set uses installable pinned Git sources. Ordinary wheel
+and SDK bundle integration is still a separate delivery step. No optional
+path dependency has been added to the ordinary tree workspace. The current build
 links the existing Symbolica/NinjaRS/master providers and their normal native
 libraries; it does not link the PyO3 crate. Correlation and mapped-process calls
-remain unavailable, as do public source LC/NLC artifacts at this checkpoint.
+remain unavailable. A prepared, explicitly continued source-colour plan can be
+loaded with LC/NLC metadata; public generation still needs a prepared-model
+ingress for that continuation and remains gated.
 
 `Runtime::evaluate` accepts binary64 inputs and returns binary64 numerical rows.
 It preserves every finite input's exact value for optional higher-precision
@@ -55,8 +56,13 @@ records retain failures and attempt history. Global source-parameter binding
 failures can still precede this subset rescue and remain function errors.
 
 Inclusive output axes are `[point,order,epsilon]`. Resolved output adds helicity
-and a singleton contracted full-colour component before epsilon. Helicity rows
-retain the inclusive initial spin average and sum to the inclusive result.
+and colour-component axes before epsilon. LC components are signed coherent
+interferences anchored to canonical groups of Born tensors, potentially
+overcomplete; NLC/full retain one contracted component. The saved plan supplies
+component IDs and Born-column memberships. Summing helicity and component axes
+reconstructs the inclusive result. Helicity rows retain the inclusive initial spin
+average. Failures and precision rescue operate on whole original physical points,
+including every component and squared order in the agreement check.
 The epsilon axis is always `(0,-1,-2)`, with physical couplings included.
 Catalogue JSON supplies the exact contributing Born/loop order pairs. These
 signed interference values are not probabilities.
@@ -70,6 +76,8 @@ scalar or per-point; it is unrelated to the numerator's extra-dimensional mu².
 
 Focused Rust controls accept `PYAMPLICOL_VIRTUAL_ARTIFACT` for the resolved gg
 fixture and `PYAMPLICOL_VIRTUAL_MIXED_ARTIFACT` for the full-CKM uudd source fixture.
+`PYAMPLICOL_VIRTUAL_LC_ARTIFACT` exercises genuine source LC anchors, including
+analytic gg checks, all component axes and native subset precision rescue.
 Run the opt-in debug controls with `RUST_MIN_STACK=16777216`: the Rust test
 harness's default 2 MiB thread stack is smaller than these dependency-backed
 debug evaluators need. The standalone C controls pass on the ordinary process

@@ -154,6 +154,10 @@ def test_precise_transport_never_passes_through_float_or_ambient_decimal_context
 
 def test_native_carrier_and_row_metadata_must_match_the_result():
     native = packet()
+    assert (
+        stable_model_evaluation(native, r2=R2, allow_partial=True).color_accuracy
+        == "full"
+    )
     # A native AP buffer cannot inherit a binary64 result's output metadata.
     arbitrary = native.born.convert_arithmetic(arithmetic="arbitrary", precision=16)
     with pytest.raises(ValueError, match="arithmetic or precision"):

@@ -2,12 +2,13 @@
 
 # Internal graph-free loop execution
 
-`loops.portable.write_loop_pacbin` lowers a retained, complete full-colour
-source/legacy model-R2 or certified direct-R2 four-gluon program to the existing
+`loops.portable.write_loop_pacbin` lowers a retained, complete source/legacy
+model-R2 or certified direct-R2 four-gluon program to the existing
 `evaluators.pacbin` envelope.
 `PortableLoopPlan.open(...).bind(...)` creates a fresh numerical view in double,
-DoubleFloat or arbitrary precision. This is an internal execution roundtrip;
-public artifact generation/loading and standalone SDK loop dispatch remain gated.
+DoubleFloat or arbitrary precision. The same checked execution plan feeds public
+saved-artifact loading and the standalone virtual SDK; public generation admits
+only its declared supported source-model domains.
 
 The ordinary physical controls are `u u~ -> d d~` and `u u~ -> t t~`.
 The latter retains nonzero external-field contributions, independently of the
@@ -15,9 +16,10 @@ local UV and R2 currents. The direct control is `g g -> g g`: all three N4 and
 dimensional-remainder epsilon sectors survive persistence, with UV currents and
 external fields retained and model R2 excluded. Source-owned model-R2 plans retain
 one scalar owner and ordinary/CT scale views, including anonymous external-field
-coefficients. Source dimensional/direct, formal colour projection and correlations remain
-outside this boundary. Source-owned precision verification/rescue is explicit
-and uses the native coordinator described below.
+coefficients. Explicitly continued full/LC/NLC model-rule colour projections are
+persisted with their structural sector degrees. Source dimensional/direct and
+correlations remain outside this boundary. Source-owned precision
+verification/rescue is explicit and uses the native coordinator described below.
 
 ## Persisted data
 
@@ -163,10 +165,10 @@ R2 strategy. No finite-only coercion or second normalization is applied.
 Family projectors use the existing interpreter in this initial native entry
 point; the separate Python opt-in projector JIT is not exposed here.
 
-This native coordinator admits full-colour legacy/source model-rule programs
-and the certified legacy direct four-gluon descriptor. Correlations, formal colour,
-standalone SDK dispatch remain separate work. Explicit source-owned precision
-verification and rescue are described below. The default
+This native coordinator admits full/LC/NLC legacy/source model-rule programs
+and the certified legacy direct four-gluon descriptor. Correlations remain
+separate work; the standalone virtual SDK uses this coordinator. Explicit
+source-owned precision verification and rescue are described below. The default
 entry points raise on failed reductions or nonfinite assembled components;
 successful reducer statuses alone do not establish numerical accuracy.
 
@@ -211,10 +213,13 @@ through the existing transactional schema-v3 writer. Its execution capability is
 `rusticol.loop-runtime.v3`, with contribution kind `virtual` and execution mode
 `loop_recurrence`. The ordinary physics payload carries the order catalogue,
 Laurent convention and explicit scheme declaration. A declaration is not a new
-physics certification. Source model-rule R2 plus UV, full colour and the three
-arithmetic carriers form the initial admitted boundary; aliases, correlated or
-resolved output, mixed tree/virtual artifacts and direct R2 are rejected there.
-Internal bounded direct controls remain available through their existing API.
+physics certification. Source model-rule R2 plus UV and the three arithmetic
+carriers form the admitted boundary. Full/NLC resolved output has a contracted
+colour component; LC requires saved canonical Born components and resolved
+projection kernels. Aliases, correlations, mixed tree/virtual artifacts and
+direct R2 remain rejected. Public LC/NLC generation still needs explicit
+continuation ingress in prepared models; changing metadata cannot supply it.
+Internal certified direct controls remain available through their existing API.
 
 `rusticol_core::loop_artifact::open_loop_artifact` (or `load_loop_artifact` with an
 already verified artifact) resolves the normal execution-set envelope and opens
@@ -236,14 +241,15 @@ The shared coordinator also provides `evaluate_partial_with_snapshot`, exposed
 by the internal `NativeLoopProgram.evaluate(..., partial=True)` and native
 `VirtualRuntime.evaluate_partial` adapters. It invokes the same execution path
 and keeps a compact set of successful **whole physical points**. If any family,
-coupling sector or resolved helicity fails, every numerical result row for that
-physical point is excluded. A failed channel never contributes a stale buffer,
+coupling sector or resolved helicity/colour component fails, every numerical
+result row for that physical point is excluded. A failed channel never contributes a stale buffer,
 a zero placeholder or a NaN labelled as a successful value.
 
 `requested_point_ids` retains all original physical IDs. The compact `point_ids`
 retains the requested order of successful points; resolved rows retain the
-existing fused point/helicity identity. Each typed failure separately records
-the original physical `point_id`, optional zero-based `helicity`, `order_index`
+fused identity `((point_id * H + helicity) * C + component)`. Each typed failure
+separately records the original physical `point_id`, optional zero-based `helicity`,
+`color_component_index`, `order_index`
 in the virtual sector catalogue, `family_index`, execution `stage` and the
 reducer's opaque `detail`. These identities come from the scheduled channel
 layout, never from parsing reducer error text. Empty and all-failed batches
@@ -328,8 +334,8 @@ When the primary failed or disagreed, rescue requires two successful increasing
 precision evaluations that agree. Failed intermediate attempts do not erase a
 previous successful candidate. Comparison includes all Born values, every
 physical/local component, order and Laurent coefficient, and every requested
-resolved helicity. It uses the shared native `Batch.agreement_rows` rule on
-both real and imaginary parts:
+resolved helicity and colour component. It uses the shared native
+`Batch.agreement_rows` rule on both real and imaginary parts:
 `abs(a-b) <= atol + rtol*max(abs(a),abs(b))`.
 
 A rescued output is converted to the caller's requested carrier only after
@@ -356,3 +362,31 @@ failures without making the completed call fail. Unresolved points populate
 `EvaluationError.failures` and `EvaluationError.verification`; successful
 numerical attempts without accepted agreement are distinguished as
 `accuracy-not-established`. No unavailable values are filled with zeros or NaNs.
+## Signed LC Born components
+
+The plan's optional `born_color_components` record is the sole partition
+catalogue: `kind="canonical-born-tensor-partition"`, deterministic component
+`ids`, and `members` containing coherent Born-column indices. Core validation
+requires every Born column exactly once and checks the expanded projection
+kernel widths. The dependency canonicalizes exact colour tensors with fixed
+external ports; pyAmpliCol does not solve new colour identities. Equal canonical
+tensors share an anchor, so the groups can remain overcomplete.
+
+The common leading colour degree of each complete squared-order sector is
+chosen before anchor masking. Born components are `Re(B_anchor† G B)` and virtual
+components are `2 Re(B_anchor† G_BL L)` after complex loop integration. UV, R2 and
+external-field projections use the same partition. Zero ordinary overlaps remain
+explicit components. These signed contributions are not tree flows or sampling
+probabilities, and do not claim to form a minimal independent colour basis.
+
+Native currents run once on point/helicity rows; only projection outputs expand
+to point/helicity/component rows. The Python and standalone transports reorder
+these into `[point, order, helicity, component, epsilon]`, with the Born epsilon
+axis omitted. All three arithmetic carriers preserve the same layout. The
+immutable `.total()` result sums helicity/component axes and preserves squared
+orders, Laurent coefficients and colour accuracy. Text and JSON output keep
+component identities and signs. Public `ProcessPhysics` exposes virtual anchors
+through `born_anchored_color_components` while tree `color_flows` stay unchanged.
+Native errors and verification histories identify original physical points and
+optional colour components; one failed component removes or rescues the whole
+point using its original exact inputs.

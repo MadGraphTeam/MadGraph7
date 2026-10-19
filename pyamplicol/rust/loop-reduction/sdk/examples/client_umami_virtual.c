@@ -31,6 +31,14 @@ int main(int argc,char **argv) {
     rusticol_virtual_shape_info shape;
     native_check(rusticol_virtual_shape(runtime,&shape));
     assert(shape.external_count==4 && shape.resolved_available && shape.epsilon_count==3);
+    if(shape.virtual_color_components>1) {
+        size_t bytes=0;
+        native_check(rusticol_virtual_capabilities_json(runtime,NULL,0,&bytes));
+        char *capabilities=malloc(bytes); assert(capabilities);
+        native_check(rusticol_virtual_capabilities_json(runtime,capabilities,bytes,&bytes));
+        assert(strstr(capabilities,"signed canonical Born tensor groups"));
+        free(capabilities);
+    }
     assert(pyamplicol_umami_virtual_v1_version()==1);
     const int *supported=NULL; size_t nkeys=0;
     check(pyamplicol_umami_virtual_v1_supported_inputs(&supported,&nkeys)); assert(nkeys==4 && supported[0]==UMAMI_IN_MOMENTA);
@@ -54,8 +62,9 @@ int main(int argc,char **argv) {
     double *inclusive_born=NULL,*inclusive_virtual=NULL;
     for(unsigned resolved=0;resolved<2;resolved++) {
         size_t h=resolved ? shape.helicities : 1;
-        assert(shape.born_color_components==1 && shape.virtual_color_components==1);
-        size_t bw=shape.born_orders*h, vw=shape.virtual_orders*h*3;
+        size_t bc=resolved ? shape.born_color_components : 1;
+        size_t vc=resolved ? shape.virtual_color_components : 1;
+        size_t bw=shape.born_orders*h*bc, vw=shape.virtual_orders*h*vc*3;
         double *born=malloc(stride*bw*sizeof(double)), *virt=malloc(stride*vw*sizeof(double));
         assert(born && virt); fill(born,stride*bw); fill(virt,stride*vw);
         for(size_t i=0;i<stride;i++) statuses[i]=123;
@@ -82,10 +91,10 @@ int main(int argc,char **argv) {
             }
             assert(statuses[event]==RUSTICOL_VIRTUAL_SUCCESS);
             size_t p=event-offset;
-            for(size_t o=0;o<shape.born_orders;o++) for(size_t hel=0;hel<h;hel++)
-                close_value(born[event+stride*(o+shape.born_orders*hel)],reference_born[(p*shape.born_orders+o)*h+hel]);
-            for(size_t o=0;o<shape.virtual_orders;o++) for(size_t hel=0;hel<h;hel++) for(size_t e=0;e<3;e++)
-                close_value(virt[event+stride*(o+shape.virtual_orders*(hel+h*e))],reference_virtual[((p*shape.virtual_orders+o)*h+hel)*3+e]);
+            for(size_t o=0;o<shape.born_orders;o++) for(size_t hel=0;hel<h;hel++) for(size_t c=0;c<bc;c++)
+                close_value(born[event+stride*(o+shape.born_orders*(hel+h*c))],reference_born[((p*shape.born_orders+o)*h+hel)*bc+c]);
+            for(size_t o=0;o<shape.virtual_orders;o++) for(size_t hel=0;hel<h;hel++) for(size_t c=0;c<vc;c++) for(size_t e=0;e<3;e++)
+                close_value(virt[event+stride*(o+shape.virtual_orders*(hel+h*(c+vc*e)))],reference_virtual[(((p*shape.virtual_orders+o)*h+hel)*vc+c)*3+e]);
         }
         if(!resolved) {
             inclusive_born=malloc(count*shape.born_orders*sizeof(double));
@@ -106,11 +115,11 @@ int main(int argc,char **argv) {
         } else {
             for(size_t p=0;p<count;p++) {
                 for(size_t o=0;o<shape.born_orders;o++) {
-                    double sum=0; for(size_t hel=0;hel<h;hel++) sum+=reference_born[(p*shape.born_orders+o)*h+hel];
+                    double sum=0; for(size_t hel=0;hel<h;hel++) for(size_t c=0;c<bc;c++) sum+=reference_born[((p*shape.born_orders+o)*h+hel)*bc+c];
                     close_value(sum,inclusive_born[p*shape.born_orders+o]);
                 }
                 for(size_t o=0;o<shape.virtual_orders;o++) for(size_t e=0;e<3;e++) {
-                    double sum=0; for(size_t hel=0;hel<h;hel++) sum+=reference_virtual[((p*shape.virtual_orders+o)*h+hel)*3+e];
+                    double sum=0; for(size_t hel=0;hel<h;hel++) for(size_t c=0;c<vc;c++) sum+=reference_virtual[(((p*shape.virtual_orders+o)*h+hel)*vc+c)*3+e];
                     close_value(sum,inclusive_virtual[(p*shape.virtual_orders+o)*3+e]);
                 }
             }

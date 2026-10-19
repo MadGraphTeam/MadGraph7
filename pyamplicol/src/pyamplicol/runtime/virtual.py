@@ -25,6 +25,7 @@ from pyamplicol.api.errors import (
 )
 from pyamplicol.api.protocols import ModelParameters, Momenta, ScalarInput
 from pyamplicol.api.results import (
+    BornAnchoredColorComponent,
     ContractedColorComponent,
     ExternalParticle,
     HelicityConfiguration,
@@ -255,6 +256,15 @@ class VirtualRuntimeBackend:
             r2_strategy=self._default_r2.value,
         )
         self._metadata: dict[str, Any] = json.loads(self._native.metadata_json())
+        self._color_accuracy = cast(
+            Literal["lc", "nlc", "full"], self._metadata["physics"]["color_accuracy"]
+        )
+        partition = self._metadata["plan"].get("born_color_components")
+        self._color_ids: tuple[str, ...] = (
+            tuple(partition["ids"])
+            if partition is not None
+            else (self._color_accuracy,)
+        )
         self._muted = bool(mute_warnings)
         self._last_requested = self._default_r2
         orders = self._metadata["physics"]["orders"]
@@ -278,13 +288,19 @@ class VirtualRuntimeBackend:
     @property
     def physics(self) -> ProcessPhysics:
         metadata, plan = self._metadata, self._metadata["plan"]
+        partition = plan.get("born_color_components")
+        kind: Literal["born-anchored-interference", "contracted-color"] = (
+            "born-anchored-interference"
+            if partition is not None
+            else "contracted-color"
+        )
         return ProcessPhysics(
             process_id=metadata["process_id"],
             process=metadata["expression"],
-            color_accuracy="full",
+            color_accuracy=self._color_accuracy,
             helicity_coverage="all",
             color_coverage="all",
-            color_kind="contracted-color",
+            color_kind=kind,
             structural_zero_helicity_count=0,
             external_particles=tuple(
                 ExternalParticle(
@@ -304,10 +320,30 @@ class VirtualRuntimeBackend:
                 for i, h in enumerate(plan["helicities"])
             ),
             color_flows=(),
-            contracted_color_components=(
-                ContractedColorComponent("full", 0, "full colour interference"),
+            contracted_color_components=()
+            if partition is not None
+            else (
+                ContractedColorComponent(
+                    self._color_accuracy,
+                    0,
+                    f"{self._color_accuracy} colour interference",
+                ),
             ),
-            reduction=PhysicsReduction("contracted-color", ()),
+            born_anchored_color_components=()
+            if partition is None
+            else tuple(
+                BornAnchoredColorComponent(
+                    identifier,
+                    index,
+                    tuple(members),
+                    "signed interference anchored to a canonical Born tensor group",
+                )
+                for index, (identifier, members) in enumerate(
+                    zip(partition["ids"], partition["members"], strict=True)
+                )
+            ),
+            contribution_kind="virtual",
+            reduction=PhysicsReduction(kind, ()),
             # Evaluator-derived defaults are not decimal literals in the plan.
             # Do not mislabel rounded/current snapshot values as exact defaults.
             model_parameters=(),
@@ -325,11 +361,18 @@ class VirtualRuntimeBackend:
                     "process": metadata["expression"],
                     **metadata["physics"],
                     "initial_average": metadata["initial_average"],
-                    "resolved_color_components": ["full"]
+                    "resolved_color_components": list(self._color_ids)
                     if metadata["physics"].get("resolved")
                     else [],
                     "resolved_normalization": (
                         "each helicity retains the inclusive incoming spin average"
+                    ),
+                    "resolved_color_semantics": (
+                        "signed, potentially overcomplete canonical Born tensor "
+                        "groups; "
+                        "not sampling probabilities"
+                        if self._color_accuracy == "lc"
+                        else "one contracted colour component"
                     ),
                     "source_revision": self._native.source_revision,
                     "arithmetic": self._native.arithmetic,
@@ -482,6 +525,7 @@ class VirtualRuntimeBackend:
                     item.stage,
                     item.detail,
                     item.external_leg,
+                    item.color_component_index,
                 )
                 for item in result.failures
             )
@@ -491,12 +535,13 @@ class VirtualRuntimeBackend:
                     "unrecovered virtual numerical failures at points "
                     f"{failed_points}; "
                     "inspect error.failures for stage, helicity, "
-                    "order and family details",
+                    "colour component, order and family details",
                     failures=failures,
                     verification=verification,
                 )
             helicity_count = len(self._metadata["plan"]["helicities"])
-            count = len(points) * (helicity_count if resolved else 1)
+            color_count = len(self._color_ids)
+            count = len(points) * (helicity_count * color_count if resolved else 1)
             if (
                 list(result.point_ids) != list(range(count))
                 or result.r2_strategy != "model"
@@ -507,8 +552,9 @@ class VirtualRuntimeBackend:
             failed = [
                 (
                     {
-                        "point": lane // helicity_count,
-                        "helicity": f"h{lane % helicity_count}",
+                        "point": lane // (helicity_count * color_count),
+                        "helicity": f"h{lane // color_count % helicity_count}",
+                        "color_component": self._color_ids[lane % color_count],
                     }
                     if resolved
                     else {"point": lane},
@@ -560,7 +606,12 @@ class VirtualRuntimeBackend:
                         tuple(
                             tuple(
                                 tuple(
-                                    (born[p * helicity_count + h][order],)
+                                    tuple(
+                                        born[
+                                            (p * helicity_count + h) * color_count + c
+                                        ][order]
+                                        for c in range(color_count)
+                                    )
                                     for h in range(helicity_count)
                                 )
                                 for order in range(len(self._born_orders))
@@ -570,7 +621,12 @@ class VirtualRuntimeBackend:
                         tuple(
                             tuple(
                                 tuple(
-                                    (values[p * helicity_count + h][order],)
+                                    tuple(
+                                        values[
+                                            (p * helicity_count + h) * color_count + c
+                                        ][order]
+                                        for c in range(color_count)
+                                    )
                                     for h in range(helicity_count)
                                 )
                                 for order in range(len(self._sectors))
@@ -582,9 +638,9 @@ class VirtualRuntimeBackend:
                         diagnostics,
                         selection,
                         tuple(f"h{i}" for i in range(helicity_count)),
-                        ("full",),
-                        ("full",),
-                        "full",
+                        self._color_ids,
+                        self._color_ids,
+                        self._color_accuracy,
                     )
                 )
             else:
@@ -595,6 +651,7 @@ class VirtualRuntimeBackend:
                     self._sectors,
                     diagnostics,
                     selection,
+                    color_accuracy=self._color_accuracy,
                 )
             self._last_requested = requested
             return output

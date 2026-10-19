@@ -68,7 +68,7 @@ class LoopExecutionMetadata:
             or self.epsilon_convention != EPSILON_CONVENTION
             or self.dimension != "D=4-2*epsilon"
             or self.interference != "2*Re(conj(Born)*loop)"
-            or self.color_accuracy != "full"
+            or self.color_accuracy not in ("lc", "nlc", "full")
             or self.scheme_status != "declared-not-certified"
         ):
             raise ValueError("unsupported loop contribution or convention declaration")
@@ -88,6 +88,14 @@ class LoopExecutionMetadata:
             raise ValueError(
                 "loop artifact colour accuracy differs from the validated plan"
             )
+        partition = plan.get("born_color_components")
+        if self.color_accuracy == "lc":
+            if partition is None or not self.resolved:
+                raise ValueError(
+                    "LC loop artifacts require resolved canonical Born components"
+                )
+        elif partition is not None:
+            raise ValueError("Born colour components require LC loop accuracy")
         if type(self.resolved) is not bool or self.resolved != (
             plan.get("helicity_projection") is not None
         ):
@@ -127,7 +135,8 @@ class LoopProcessArtifact:
             raise TypeError("loop process requires explicit typed execution metadata")
         if self.color_accuracy != self.metadata.color_accuracy or self.aliases:
             raise ValueError(
-                "loop artifacts currently require full colour and no aliases"
+                "loop process colour accuracy must match its metadata; aliases "
+                "are unavailable"
             )
 
 

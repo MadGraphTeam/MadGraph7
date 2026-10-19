@@ -148,4 +148,6 @@ def stable_model_evaluation(
         result.orders.virtual,
         tuple(diagnostics),
         r2,
+        # NativeModelStabilityProgram rejects projected plans before evaluation.
+        color_accuracy="full",
     )

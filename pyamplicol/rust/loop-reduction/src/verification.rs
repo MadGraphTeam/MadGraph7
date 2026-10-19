@@ -116,29 +116,29 @@ fn select(batch: &Batch, ids: &[u64]) -> RusticolResult<Batch> {
         .collect::<RusticolResult<Vec<_>>>()?;
     batch.take_rows(indices, None).map_err(execution)
 }
-fn packet(result: &Complete, helicities: usize) -> RusticolResult<Batch> {
+fn packet(result: &Complete, rows_per_point: usize) -> RusticolResult<Batch> {
     let mut batches = vec![result.born.as_ref()];
     batches.extend(result.components.iter().map(AsRef::as_ref));
     batches.push(result.totals.as_ref());
     let joined = Batch::concat_columns(&batches).map_err(execution)?;
-    if joined.rows() % helicities != 0 {
+    if joined.rows() % rows_per_point != 0 {
         return Err(invalid("incomplete resolved point"));
     }
     let mut ids = Vec::new();
-    for group in joined.ids().chunks(helicities) {
-        let point = group[0] / helicities as u64;
+    for group in joined.ids().chunks(rows_per_point) {
+        let point = group[0] / rows_per_point as u64;
         if group
             .iter()
             .enumerate()
-            .any(|(h, &id)| id != point * helicities as u64 + h as u64)
+            .any(|(h, &id)| id != point * rows_per_point as u64 + h as u64)
         {
-            return Err(invalid("resolved point/helicity ordering differs"));
+            return Err(invalid("resolved point/helicity/colour ordering differs"));
         }
         ids.push(point);
     }
     let columns = joined
         .columns()
-        .checked_mul(helicities)
+        .checked_mul(rows_per_point)
         .ok_or_else(|| invalid("verification dimensions overflow"))?;
     joined
         .reshape_rows(ids.len(), columns, ids)
@@ -148,12 +148,12 @@ fn record(
     diagnostics: &mut HashMap<u64, VerificationDiagnostic>,
     result: &Complete,
     spec: &ArithmeticSpec,
-    helicities: usize,
+    rows_per_point: usize,
 ) -> RusticolResult<()> {
     let successful: HashSet<_> = result
         .point_ids
         .iter()
-        .map(|id| id / helicities as u64)
+        .map(|id| id / rows_per_point as u64)
         .collect();
     for id in &result.requested_point_ids {
         diagnostics
@@ -198,8 +198,8 @@ pub fn evaluate_verified(
         .cloned()
         .ok_or_else(|| invalid("verification requires source-owned exact parameters"))?;
     let snapshot = owner.snapshot()?;
-    let helicities = if resolved {
-        loaded.plan().helicities.len()
+    let rows_per_point = if resolved {
+        loaded.plan().resolved_rows_per_point()?
     } else {
         1
     };
@@ -214,7 +214,7 @@ pub fn evaluate_verified(
         Some(snapshot.clone()),
         resolved,
     )?;
-    let initial = packet(&primary, helicities)?;
+    let initial = packet(&primary, rows_per_point)?;
     let mut diagnostics: HashMap<_, _> = inputs
         .point_ids
         .iter()
@@ -232,7 +232,7 @@ pub fn evaluate_verified(
             )
         })
         .collect();
-    record(&mut diagnostics, &primary, primary_spec, helicities)?;
+    record(&mut diagnostics, &primary, primary_spec, rows_per_point)?;
     let primary_ids: HashSet<_> = initial.ids().iter().copied().collect();
     let mut accepted = Vec::<Batch>::new();
     let mut status_rows = HashMap::new();
@@ -289,8 +289,8 @@ pub fn evaluate_verified(
             Some(reconstructed),
             resolved,
         )?;
-        record(&mut diagnostics, &attempt, spec, helicities)?;
-        let current = packet(&attempt, helicities)?;
+        record(&mut diagnostics, &attempt, spec, rows_per_point)?;
+        let current = packet(&attempt, rows_per_point)?;
         let current_ids: HashSet<_> = current.ids().iter().copied().collect();
         let mut now_accepted = HashSet::new();
         for (prior_level, prior) in &previous {
@@ -376,8 +376,8 @@ pub fn evaluate_verified(
                 d.agreeing_bits = Some([prior.precision_bits(), current.precision_bits()]);
                 d.detail = "empirical cross-precision agreement, including requested-carrier conversion; not an independent physics proof".into();
                 if *prior_level != 0 {
-                    for h in 0..helicities {
-                        let row_id = id * helicities as u64 + h as u64;
+                    for h in 0..rows_per_point {
+                        let row_id = id * rows_per_point as u64 + h as u64;
                         let row = attempt
                             .point_ids
                             .iter()
@@ -423,10 +423,10 @@ pub fn evaluate_verified(
     let ids: Vec<_> = merged
         .ids()
         .iter()
-        .flat_map(|id| (0..helicities).map(move |h| id * helicities as u64 + h as u64))
+        .flat_map(|id| (0..rows_per_point).map(move |h| id * rows_per_point as u64 + h as u64))
         .collect();
     let flat = merged
-        .reshape_rows(ids.len(), merged.columns() / helicities, ids.clone())
+        .reshape_rows(ids.len(), merged.columns() / rows_per_point, ids.clone())
         .map_err(execution)?;
     let widths: Vec<_> = std::iter::once(primary.born.columns())
         .chain(primary.components.iter().map(|b| b.columns()))
@@ -462,6 +462,7 @@ pub fn evaluate_verified(
             order_index: None,
             family_index: None,
             external_leg: None,
+            color_component_index: None,
             stage: "precision verification".into(),
             detail: d.detail.clone(),
         });

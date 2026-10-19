@@ -52,6 +52,7 @@ class VirtualFailureDiagnostic:
     stage: str
     detail: str
     external_leg: int | None = None
+    color_component_index: int | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -60,6 +61,7 @@ class VirtualFailureDiagnostic:
             "order_index",
             "family_index",
             "external_leg",
+            "color_component_index",
         ):
             value = getattr(self, name)
             if value is None and name != "point_id":

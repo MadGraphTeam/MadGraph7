@@ -258,9 +258,10 @@ def test_resolved_failure_names_physical_point_and_helicity(resolved_artifact):
     backend._native = SimpleNamespace(
         arithmetic="double",
         precision=None,
-        evaluate_resolved=lambda *args, **kwargs: SimpleNamespace(
+        evaluate_partial=lambda *args, **kwargs: SimpleNamespace(
             point_ids=list(range(32)),
             r2_strategy="model",
+            failures=[],
             statuses=statuses,
         ),
     )

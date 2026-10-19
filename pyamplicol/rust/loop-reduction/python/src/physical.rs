@@ -233,6 +233,7 @@ pub(super) struct NativeLoopFailure {
     order_index: Option<usize>,
     family_index: Option<usize>,
     external_leg: Option<usize>,
+    color_component_index: Option<usize>,
     stage: String,
     detail: String,
 }
@@ -244,6 +245,7 @@ impl From<&LoopLaneFailure> for NativeLoopFailure {
             order_index: value.order_index,
             family_index: value.family_index,
             external_leg: value.external_leg,
+            color_component_index: value.color_component_index,
             stage: value.stage.clone(),
             detail: value.detail.clone(),
         }

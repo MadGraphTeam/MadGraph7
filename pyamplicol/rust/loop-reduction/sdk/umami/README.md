@@ -42,7 +42,9 @@ column-major convention. For example, inclusive virtual values are addressed by
 The header specifies all layouts. Epsilon indices `0,1,2` mean finite,
 single pole and double pole. Born and virtual catalogue orderings are independent.
 Resolved helicities retain the incoming spin average and sum to the inclusive
-result. Current colour components are contracted signed contributions.
+result. LC colour components are signed Born-anchored interference contributions;
+NLC/full have one contracted component. Shape and catalogue metadata determine
+their counts and identities, never a positive-probability interpretation.
 
 Pass `count`, `stride` and `offset`, with `offset + count <= stride`, plus the
 parallel key/pointer/capacity arrays. Optional options select resolved output,
@@ -111,4 +113,6 @@ padding and failed rows, actual numerical failures, optional/default IDs, scalar
 and per-event scales, explicit DoubleFloat verification, empty batches, invalid
 keys/capacities and overflow rejection. It also accepts the retained `gg` source
 artifact for a separate one-order control. These are correctness tests, not new
-benchmark timings.
+benchmark timings. The same control accepts a saved LC gg plan and checks every
+signed component through the strided layout, inclusive reconstruction and
+whole-point failure/verification statuses.

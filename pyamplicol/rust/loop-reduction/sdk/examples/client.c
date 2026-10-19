@@ -59,8 +59,11 @@ int main(int argc,char **argv) {
   for(size_t point=0;point<3;point++) {
     double b=0,v[3]={0,0,0};
     for(size_t h=0;h<shape.helicities;h++) {
-      b+=rb[point*shape.helicities+h];
-      for(size_t pole=0;pole<3;pole++) v[pole]+=rv[(point*shape.helicities+h)*3+pole];
+      for(size_t c=0;c<shape.born_color_components;c++)
+        b+=rb[(point*shape.helicities+h)*shape.born_color_components+c];
+      for(size_t c=0;c<shape.virtual_color_components;c++)
+        for(size_t pole=0;pole<3;pole++)
+          v[pole]+=rv[((point*shape.helicities+h)*shape.virtual_color_components+c)*3+pole];
     }
     close_value(b,born[point]); for(size_t pole=0;pole<3;pole++) close_value(v[pole],values[point*3+pole]);
   }

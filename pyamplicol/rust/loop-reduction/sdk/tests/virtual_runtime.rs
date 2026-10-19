@@ -24,7 +24,20 @@ fn saved_source_orders_resolved_updates_and_explicit_rescue() {
         eprintln!("set PYAMPLICOL_VIRTUAL_ARTIFACT for native source execution");
         return;
     };
-    let mut runtime = Runtime::open(&path, Some("gg"), None, "model").unwrap();
+    check_saved_gluon_source(&path, false);
+}
+
+#[test]
+fn lc_source_anchors_preserve_statuses_and_subset_rescue() {
+    let Ok(path) = std::env::var("PYAMPLICOL_VIRTUAL_LC_ARTIFACT") else {
+        eprintln!("set PYAMPLICOL_VIRTUAL_LC_ARTIFACT for signed source anchors");
+        return;
+    };
+    check_saved_gluon_source(&path, true);
+}
+
+fn check_saved_gluon_source(path: &str, lc: bool) {
+    let mut runtime = Runtime::open(path, Some("gg"), None, "model").unwrap();
     let shape = runtime.shape();
     assert_eq!(
         (
@@ -50,12 +63,25 @@ fn saved_source_orders_resolved_updates_and_explicit_rescue() {
     let s = 1e6_f64;
     let t = -1e5_f64;
     let u = -9e5_f64;
-    let born = 9. / 4.
+    let born = (if lc { 9. / 8. } else { 1. }) * 9. / 4.
         * (4. * PI * alpha).powi(2)
         * (3. - u * t / (s * s) - u * s / (t * t) - s * t / (u * u));
     close(inclusive.born[0], born);
     close(inclusive.virtual_values[2], -12. * alpha / (2. * PI) * born);
     assert_eq!(inclusive.statuses, [PointStatus::Success]);
+    let components = shape.virtual_color_components;
+    assert_eq!(shape.born_color_components, components);
+    assert!(if lc { components > 1 } else { components == 1 });
+    let capabilities: serde_json::Value =
+        serde_json::from_str(&runtime.capabilities_json().unwrap()).unwrap();
+    assert_eq!(
+        capabilities["color_accuracy"],
+        if lc { "lc" } else { "full" }
+    );
+    assert_eq!(
+        capabilities["color_components"].as_array().unwrap().len(),
+        components
+    );
     let resolved = runtime
         .evaluate(&point(), &[91], &[1e6], true, None, None)
         .unwrap();
@@ -63,7 +89,9 @@ fn saved_source_orders_resolved_updates_and_explicit_rescue() {
     close(resolved.born.iter().sum(), inclusive.born[0]);
     for pole in 0..3 {
         close(
-            (0..16).map(|h| resolved.virtual_values[h * 3 + pole]).sum(),
+            (0..16 * components)
+                .map(|r| resolved.virtual_values[r * 3 + pole])
+                .sum(),
             inclusive.virtual_values[pole],
         );
     }

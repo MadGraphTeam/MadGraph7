@@ -91,7 +91,8 @@ int rusticol_virtual_result_shape(const rusticol_virtual_result *result,
 /* Inclusive layout: [successful_point,order,(epsilon)]. Resolved layout:
  * [successful_point,order,helicity,colour_component,(epsilon)].
  * Epsilon order is finite,single_pole,double_pole = (0,-1,-2).
- * Current colour axis is a singleton contracted full-colour contribution.
+ * LC colour entries are signed Born-anchored interference components; NLC/full
+ * retain one contracted contribution. Query shape and metadata for all axes.
  * Resolved helicities retain the inclusive incoming spin average; their sum
  * reconstructs inclusive results. Physical couplings are included.
  * Short buffers return BUFFER_TOO_SMALL without writing any element.
