@@ -8,7 +8,7 @@ or spin-correlated virtual observables and are not a public process dispatcher.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -245,31 +245,13 @@ class NativeDirectedBareProgram:
             raise ValueError("spin sources differ from the compiled joint layout")
         if spin_sources:
             options = {**options, "spin_sources": spin_sources}
-        from .physical_process import _physical_point_ids
-
-        original_ids = _physical_point_ids(
-            np.asarray(momenta, dtype=object),
-            np.asarray(scales_squared, dtype=object),
-            len(self.bare.state_kinds),
-            point_ids,
-        )
-        currents = self.bare.prepare_currents_native(
+        return self.bare.prepare_currents_native(
             momenta,
             scales_squared,
             model_values=model_values,
+            point_ids=point_ids,
             **options,
         )
-        # The control current preparer uses point*H helicity IDs. Keep those
-        # internal rows dense, independently of large/sparse user identifiers.
-        # This is a complete-batch wrapper, not a partial/rescue scheduler.
-        currents.batch = replace(
-            currents.batch,
-            point_ids=original_ids,
-            scales_squared=currents.batch.scales_squared.take_rows(
-                list(range(currents.batch.size)), row_ids=original_ids
-            ),
-        )
-        return currents
 
     def evaluate_native(
         self,
@@ -312,7 +294,9 @@ class NativeDirectedBareProgram:
         require_finite_batch(born, "directed Born contraction")
         weights = self.dual_born_weights.evaluate_batch(currents.born)
         require_finite_batch(
-            weights, "directed dual Born weights", rows_per_point=len(self.helicities)
+            weights,
+            "directed dual Born weights",
+            row_points=currents.batch.point_by_lane,
         )
         integrated, statuses = [], []
         for family, weight_columns, projector in zip(

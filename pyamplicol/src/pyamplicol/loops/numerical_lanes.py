@@ -30,9 +30,10 @@ class LaneFailures:
         )
         self.point_ids.add(point_id)
 
-    def require_finite(self, values, stage, *, rows_per_point=1):
+    def require_finite(self, values, stage, *, row_points=None):
         for lane in values.nonfinite_rows():
-            self.record(lane // rows_per_point, stage, f"nonfinite native lane {lane}")
+            point = lane if row_points is None else row_points[lane]
+            self.record(point, stage, f"nonfinite native lane {lane}")
 
     def successful_indices(self, point_ids):
         return [i for i, point in enumerate(point_ids) if point not in self.point_ids]

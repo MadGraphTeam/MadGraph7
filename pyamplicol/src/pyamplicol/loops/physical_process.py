@@ -79,6 +79,14 @@ class NativePhysicalBatch:
     model_snapshot: Any = None
     spin_legs: tuple[int, ...] = ()
 
+    @property
+    def point_by_lane(self):
+        """Transient local helicity rows mapped to opaque physical labels."""
+        return {
+            lane: self.point_ids[position // self.helicity_count]
+            for position, lane in enumerate(self.lane_ids)
+        }
+
 
 @dataclass(slots=True)
 class NativeBareEvaluation:
@@ -1081,9 +1089,9 @@ class NativeBareProcessProgram:
                 pairs(values), nrows, columns, row_ids=row_ids, **self.options
             )
 
-        lane_ids = [
-            point * helicities + h for point in point_ids for h in range(helicities)
-        ]
+        # Caller labels are opaque; only local rows participate in packed-state
+        # and reduction indexing. Compaction keeps these local identities stable.
+        lane_ids = list(range(rows))
         momenta_pairs = pairs(momenta)
         physical = native(momenta, size, 4 * legs, row_ids=point_ids)
         lanes = physical.take_rows(
@@ -1116,13 +1124,24 @@ class NativeBareProcessProgram:
             lanes = lanes.take_rows([])
             native_scales = native_scales.take_rows([])
         state_blocks = self.state_layout.prepare_native(
-            self.backend, lanes, helicity_states, partial=_failures is not None
+            self.backend, lanes, helicity_states, partial=True
         )
+        if _failures is None:
+            state_failures = [
+                (point_ids[state_id // (helicities * legs)], state_id, status)
+                for state_id, status in state_blocks.statuses
+                if status != "success"
+            ]
+            if state_failures:
+                raise ValueError(
+                    "external state preparation failed (point, state, status): "
+                    f"{state_failures}"
+                )
         if _failures is not None:
             for state_id, status in state_blocks.statuses:
                 if status != "success":
                     _failures.record(
-                        state_id // (helicities * legs),
+                        point_ids[state_id // (helicities * legs)],
                         "external state preparation",
                         status,
                     )
@@ -1381,10 +1400,9 @@ class NativeBareProcessProgram:
             size, point_ids = currents.batch.size, currents.batch.point_ids
             return tuple(value.take_rows(indices) for value in point_buffers)
 
-        def reduction_values(reduced, family, stage):
-            sectors = len(self.order_layout.virtual)
+        def reduction_values(reduced, family, stage, row_channels):
             bad = [
-                (*divmod(row, sectors), family.index, status)
+                (*row_channels[row], family.index, status)
                 for row, status in reduced.statuses
                 if status != "success"
             ]
@@ -1400,7 +1418,7 @@ class NativeBareProcessProgram:
                 )
             values = reduced.successful_values()
             for row in values.nonfinite_rows():
-                point, order = divmod(row, sectors)
+                point, order = row_channels[row]
                 failures.record(
                     point,
                     stage,
@@ -1415,14 +1433,24 @@ class NativeBareProcessProgram:
             return values.take_rows([positions[row] for row in row_ids])
 
         if failures is not None:
-            guard(currents.born, "Born current", rows_per_point=helicities)
+            guard(
+                currents.born, "Born current", row_points=currents.batch.point_by_lane
+            )
             for index, current in enumerate(currents.loops):
-                guard(current, f"loop current {index}", rows_per_point=helicities)
+                guard(
+                    current,
+                    f"loop current {index}",
+                    row_points=currents.batch.point_by_lane,
+                )
             compact()
         weight_evaluator = getattr(self, "dual_born_weights", None)
         if weight_evaluator is not None:
             dual_weights = weight_evaluator.evaluate_batch(currents.born)
-            guard(dual_weights, "dual Born weights", rows_per_point=helicities)
+            guard(
+                dual_weights,
+                "dual Born weights",
+                row_points=currents.batch.point_by_lane,
+            )
             compact()
         for family in self.families:
             coefficients = family.projector.evaluate_batch(
@@ -1445,11 +1473,13 @@ class NativeBareProcessProgram:
                     require_finite_batch(masses, f"family {family.index} global masses")
                     coefficients, shifts, matrix = compact(coefficients, shifts, matrix)
             channel_count = len(family.sector_indices)
-            row_ids = [
-                point * len(self.order_layout.virtual) + sector
+            row_channels = [
+                (point, sector)
                 for point in point_ids
                 for sector in family.sector_indices
             ]
+            row_ids = list(range(len(row_channels)))
+            channel_rows = {channel: row for row, channel in enumerate(row_channels)}
             point_rows = np.repeat(np.arange(size), channel_count).tolist()
             coefficients = coefficients.reshape_rows(
                 size * channel_count, len(family.powers), row_ids
@@ -1466,7 +1496,7 @@ class NativeBareProcessProgram:
             reduced = family.reducer.evaluate_batch(
                 shifts, masses, channel_scales, coefficients, s_matrix=matrix
             )
-            values = reduction_values(reduced, family, "loop reduction")
+            values = reduction_values(reduced, family, "loop reduction", row_channels)
             rational_values = None
             if self.dimensional_numerators:
                 if family.rational_reducer is None:
@@ -1478,14 +1508,17 @@ class NativeBareProcessProgram:
                         shifts, masses, channel_scales, coefficients, s_matrix=matrix
                     )
                     rational_values = reduction_values(
-                        remainder, family, "dimensional remainder reduction"
+                        remainder,
+                        family,
+                        "dimensional remainder reduction",
+                        row_channels,
                     )
             # N4 and Delta use the same family lanes. Observe both statuses
             # before evicting whole points, including prior integrated families.
             if failures is not None:
                 compact()
                 selected_rows = [
-                    point * len(self.order_layout.virtual) + sector
+                    channel_rows[point, sector]
                     for point in point_ids
                     for sector in family.sector_indices
                 ]
@@ -1503,7 +1536,7 @@ class NativeBareProcessProgram:
                 {
                     point: (
                         point,
-                        status_by_row[point * len(self.order_layout.virtual) + sector],
+                        status_by_row[channel_rows[point, sector]],
                     )
                     for point in point_ids
                 }

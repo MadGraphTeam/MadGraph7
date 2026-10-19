@@ -1452,11 +1452,24 @@ pass. A real FeynKit longitudinal-rest-state failure removes its whole original
 point in every carrier; the surviving point agrees with the unchanged AP80
 ordinary control. No wavefunction formula or new execution path was introduced.
 
-A separate producer ID defect remains open: its arithmetic `point_id * h` lane
-packing can overflow for a valid maximum-u64 caller ID. No smaller ID bound has
-been imposed. The saved native runtime already uses opaque point IDs and is not
-affected; the live producer needs the same separation of physical IDs and dense
-internal lanes.
+Producer physical IDs are opaque labels, including the native maximum-u64
+value. Helicity/state packing and reduction use local row IDs, with transient
+maps back to the caller's point and squared-order sector. Whole-point compaction
+preserves those maps across prior state/current failures and later families;
+source coefficients, completed components and stability replay retain original
+labels. Strict external-state errors use the dependency's structured statuses
+and preserve `ValueError`, without parsing messages or assigning an unproved
+failing point. Invalid metadata and literals remain hard errors.
+
+The retained W control passes all three arithmetic modes with maximum-u64 and
+irregular IDs, exact snapshot updates, complete-result rescue, empty/tail batches
+and permutations. Targeted current, local-CT, field and reduction failures test
+original labels after compaction, including a nonfinite nominally successful
+reduction. Literal singleton/joint sources preserve labels and both directed
+terms across the identity and ordered histories. These source checks cover
+complete evaluation, not broader correlated producer rescue. No artifact format,
+native build, new capacity bound or independent high-precision physics claim is
+added.
 
 ### Explicit loop_sm scalar declaration compatibility
 

@@ -232,15 +232,17 @@ class CoefficientDAG:
         return tuple(outputs)
 
 
-def require_finite_batch(values: Any, stage: str, *, rows_per_point: int = 1) -> None:
+def require_finite_batch(values: Any, stage: str, *, row_points=None) -> None:
     """Fail this diagnostic batch before exposing nonfinite native results.
 
     Only failing row identities cross Python. This is not a rescue policy.
-    Helicity-packed callers declare their grouping to retain original point IDs.
+    Packed callers supply an explicit local-row to original-point mapping.
     """
     failures = values.nonfinite_rows()
     if failures:
-        locations = [(row // rows_per_point, row) for row in failures]
+        locations = [
+            (row if row_points is None else row_points[row], row) for row in failures
+        ]
         raise ArithmeticError(f"nonfinite {stage} (point, lane): {locations}")
 
 

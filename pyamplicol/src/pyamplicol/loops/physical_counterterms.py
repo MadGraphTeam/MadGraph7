@@ -1014,7 +1014,7 @@ class NativeModelVirtualProgram:
             guard(
                 amplitude,
                 "counterterm current",
-                rows_per_point=helicities,
+                row_points=batch.point_by_lane,
             )
             amplitudes.append(amplitude)
         for current in self.field_currents:
