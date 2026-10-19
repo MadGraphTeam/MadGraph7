@@ -113,6 +113,7 @@ def test_exact_flavor_request_keeps_unsupported_compositions_independent(accurac
     from pyamplicol.generation.loop_service import (
         _feature_blockers,
         _flavor_grouping_enabled,
+        _flavor_grouping_outcome,
     )
 
     backend = GenerationBackend(
@@ -128,6 +129,10 @@ def test_exact_flavor_request_keeps_unsupported_compositions_independent(accurac
     assert not _flavor_grouping_enabled(
         backend, CorrelatorConfig(spin_correlations=((1,),))
     )
+    outcome = _flavor_grouping_outcome(backend, None)
+    assert outcome["requested"] and not outcome["reuse_applied"]
+    assert outcome["transport_checked"] == (accuracy == "full")
+    assert outcome["independent_reason"]
 
 
 def test_dry_run_transports_joint_selection_to_one_graph_plan(monkeypatch):

@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: 0BSD
-"""Internal transport for exact species symmetries with unchanged external ports.
+"""Exact species transport and saved admission with unchanged external ports.
 
-This is separate from the species-only proof and from public artifact mappings.
-Admission uses two actual source-generated programs. It does not certify a tree
-profile, a process-group manifest, crossing, resolved colour or spin transport.
+This is separate from the species-only proof. Admission uses two actual
+source-generated programs and never trusts numerical tree profiles or mutable
+process-group records. Crossing, projected colour and spin composition require
+separate proofs.
 """
 
 from __future__ import annotations

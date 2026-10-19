@@ -6,6 +6,7 @@ import os
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -56,6 +57,31 @@ def test_exact_group_basis_is_weaker_than_identity_and_stronger_than_numerical()
     assert item.through(exact).basis == exact.basis
     assert exact.through(item).basis == exact.basis
     assert exact.through(numerical).basis == numerical.basis
+
+
+def test_identical_pdg_requests_remain_independent_without_species_admission():
+    from pyamplicol.generation.loop_service import _group_exact_flavors
+
+    structure = object()
+    program = SimpleNamespace(
+        source_bare=SimpleNamespace(
+            structure=structure,
+            external_request=SimpleNamespace(external_pdgs=(2, -2, 1, -1)),
+        )
+    )
+    context = SimpleNamespace(
+        expanded=tuple(
+            SimpleNamespace(
+                request=SimpleNamespace(name=name, expression="u u~ > d d~")
+            )
+            for name in ("first", "second")
+        )
+    )
+    retained, admissions, representatives, _ = _group_exact_flavors(
+        context, (program, program)
+    )
+    assert retained == [0, 1] and not admissions
+    assert representatives == {"first": "first", "second": "second"}
 
 
 @pytest.fixture(scope="module")
@@ -150,7 +176,13 @@ def test_public_exact_flavor_member_native_resolved_and_directed(
         else None
     )
     Generator(resolve_config(path)).generate(requests, output, correlators=declarations)
-    assert len(load_manifest(output).processes) == 1
+    manifest = load_manifest(output)
+    assert len(manifest.processes) == 1
+    grouping = manifest.extensions["generation"]["concrete_processes"][0]["filters"][
+        "flavor_grouping"
+    ]
+    assert grouping["requested"] and grouping["transport_checked"]
+    assert grouping["reuse_applied"] and grouping["independent_reason"] is None
     programs = captured["programs"]
     assert len(programs) == 2 and programs[0].prepared is not programs[1].prepared
     independent_path = tmp_path / "independent-uuss.pacbin"
@@ -188,6 +220,10 @@ def test_public_exact_flavor_member_native_resolved_and_directed(
         assert metadata["representative_process_id"] == "uudd"
         assert metadata["external_pdgs"] == [2, -2, 3, -3]
         assert metadata["plan"]["external_pdgs"] == [2, -2, 1, -1]
+        original_parameters = mapped.parameter_overrides
+        with pytest.raises(ValueError, match="fixed"):
+            mapped.set_model_parameters({"aS": ["0.12", "0"], "MB": ["1", "0"]})
+        assert mapped.parameter_overrides == original_parameters
         if correlated:
             actual = mapped.evaluate_directed(points, scales, point_ids=ids)
             expected = independent.evaluate_directed(points, scales, point_ids=ids)

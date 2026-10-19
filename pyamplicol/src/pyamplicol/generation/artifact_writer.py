@@ -1001,10 +1001,6 @@ def write_schema_v3_artifact(
                 )
                 if physics.get("metadata", {}).get("scheme") != asdict(scheme):
                     raise ValueError("loop append requires the same declared scheme")
-        if process_groups is not None:
-            raise ValueError(
-                "loop artifact process-group mappings are not admitted yet"
-            )
     existing_bundle = _existing_bundle_path(existing)
     can_emit_bundle = hook is not None or existing_bundle is not None
     effective_config = _effective_config_payload(

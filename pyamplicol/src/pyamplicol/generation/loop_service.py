@@ -399,7 +399,9 @@ def _group_exact_flavors(context, programs):
                 candidate.source_bare.external_request.external_pdgs,
                 program.source_bare.external_request.external_pdgs,
             )
-            if species is None:
+            if not species:
+                # Identical PDG requests are not a species-substitution member;
+                # keep their independently generated ordinary process records.
                 continue
             prepared = context.prepared[index]
             plan = RetainedFlavorPlan(
@@ -459,6 +461,26 @@ def _flavor_grouping_enabled(backend, correlators):
         and backend._run_config.color.accuracy == "full"
         and not (correlators is not None and correlators.spin_correlations)
     )
+
+
+def _flavor_grouping_outcome(backend, correlators, *, reused=False):
+    """Inspection metadata reports reuse separately from the opt-in request."""
+    requested = backend._run_config.process.flavor_blind
+    checked = _flavor_grouping_enabled(backend, correlators)
+    reason = None
+    if requested and not reused:
+        if backend._run_config.color.accuracy != "full":
+            reason = "projected-colour flavour transport is not certified"
+        elif correlators is not None and correlators.spin_correlations:
+            reason = "spin-source flavour transport is not certified"
+        else:
+            reason = "no exact identity-port member was admitted"
+    return {
+        "requested": requested,
+        "transport_checked": checked,
+        "reuse_applied": reused,
+        "independent_reason": reason,
+    }
 
 
 def generate_loop_artifact(
@@ -583,6 +605,9 @@ def generate_loop_artifact(
                                 "born_order_bounds": prepared.scope.born_order_bounds,
                                 "loop_order_bounds": prepared.scope.loop_order_bounds,
                                 "model_declaration": context.declaration.to_dict(),
+                                "flavor_grouping": _flavor_grouping_outcome(
+                                    backend, correlators
+                                ),
                                 **(
                                     {"correlators": correlators.to_json_dict()}
                                     if correlators is not None
@@ -615,6 +640,12 @@ def generate_loop_artifact(
                             replace(
                                 artifact,
                                 metadata=replace(artifact.metadata, resolved=resolved),
+                                generation_filters={
+                                    **artifact.generation_filters,
+                                    "flavor_grouping": _flavor_grouping_outcome(
+                                        backend, correlators, reused=bool(members)
+                                    ),
+                                },
                             )
                         )
                     artifacts = selected
