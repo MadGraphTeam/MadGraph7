@@ -1460,3 +1460,45 @@ helicity reconstruction, original lane identifiers and parameter increments
 below binary64 resolution. The provider comparison remains a binary64 check;
 precision-preserving transport and internal inclusive/resolved agreement do not
 turn its reference values into an arbitrary-precision oracle.
+
+### Exact semantic colour views of source scalars
+
+`prepare_source_color_scalars` prepares a cold symbolic view of an existing
+source scalar program. Callers supply explicit ordinary-parameter identities,
+for example `CA -> Nc` and `CF -> (Nc**2-1)/(2*Nc)`. The preparation checks their
+exact agreement with the original source at `Nc=3`; agreement only at the default
+external parameter values is insufficient. No numeric constant is interpreted
+as a colour invariant. Additional symbols must belong to the source binding
+layout or to the original exact expression.
+
+The identity is substituted before dependent source declarations are expanded.
+Its original active diagnostic remains paired with its value, including mutable
+external-input conditions and inactive branches. Replacing an adjustable
+external parameter is rejected unless it was explicitly fixed at generation;
+ordinary native updates then reject changes to that fixed parameter. This avoids
+silently accepting parameter updates that the colour view would ignore.
+
+`SourceColorScalarPlan` retains the formal paired plan and an ordinary
+`ScalarBindingPlan` containing Nc-independent coefficient outputs. `grades` and
+`columns` map each colour grade back to the original scalar output. The existing
+output epsilon powers are unchanged. Symbolica and the existing colour
+projection helpers perform Laurent collection, including Nc-independent runtime
+conditionals. Nc-dependent diagnostics, unsupported predicates and non-Laurent
+functional dependence fail explicitly. Every coefficient retains its source
+diagnostic, including exactly zero coefficients; an all-zero catalogue has a
+zero grade solely to preserve diagnostic evaluation, not to set a physical
+leading colour degree.
+
+The coefficient plan shares its `ScalarProgram`, external layout, exact defaults
+and fixed-parameter map with the ordinary source owner. `NativeScaleBindings`
+evaluates it using the same atomic global snapshot and native per-point scale
+rows. Saved prepared views retain this behavior in double, DoubleFloat and
+arbitrary precision, without retaining a source producer or a second numerical
+parameter engine.
+
+This boundary does **not** certify a model's general-Nc continuation or enable
+public LC/NLC generation. Physical integration still requires exact scalar-alias
+incidence on local tensor terms, a common structural degree per squared-order
+sector across bare/UV/R2 and all pole coefficients, and a formal continuation of
+every selected effective rule. In particular, the fixed-Nc four-gluon R2 source
+cannot be generalized by substituting its named CA/CF parameters alone.

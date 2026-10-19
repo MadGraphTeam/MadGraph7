@@ -171,6 +171,7 @@ def prepare_scalar_bindings(
     program: ScalarProgram | None = None,
     fixed_parameters: Mapping[str, str | tuple[str, str]] | None = None,
     anonymous_definitions: Mapping[str, Mapping[str, Any]] | None = None,
+    semantic_parameters: Mapping[str, Any] | None = None,
 ) -> ScalarBindingPlan:
     """Resolve required definitions using source syntax and dependency algebra.
 
@@ -185,9 +186,16 @@ def prepare_scalar_bindings(
     particle's field factor. They may reference ordinary source declarations,
     but cannot override them or introduce another dependency graph. Their
     original syntax is lowered with the same paired bindings and helper owner.
+
+    Explicit semantic parameter values are substituted before dependent source
+    declarations are resolved. Their original active diagnostics are retained.
+    These cold symbolic views do not certify the proposed physical identities.
+    Adjustable external parameters cannot be replaced: fix them explicitly so
+    their runtime updates cannot silently become ineffective.
     """
     from symbolica import S
 
+    from .exact import require_exact_numbers
     from .scalar_frontend import require_laurent_scalar
 
     program = lower_scalar_program(raw) if program is None else program
@@ -262,6 +270,19 @@ def prepare_scalar_bindings(
         name: library.lower(f"complex({Decimal(real)},{Decimal(imaginary)})")
         for name, (real, imaginary) in fixed.items()
     }
+    if semantic_parameters is not None and not isinstance(semantic_parameters, Mapping):
+        raise TypeError("semantic parameter identities require a mapping")
+    semantic = dict(semantic_parameters or {})
+    for name, expression in semantic.items():
+        if name not in records or records[name][0] != "parameters":
+            raise ValueError(
+                f"semantic identity requires an ordinary parameter: {name!r}"
+            )
+        require_exact_numbers(expression)
+        if name in all_names and name not in fixed:
+            raise ValueError(
+                f"semantic external parameter {name!r} must be fixed during generation"
+            )
     external = tuple(record for record in all_external if record["name"] not in fixed)
     external_names = tuple(record["name"] for record in external)
     types = tuple(record["fields"].get("type") for record in external)
@@ -298,16 +319,21 @@ def prepare_scalar_bindings(
         if name not in needed:
             continue
         if name in fixed_values:
-            resolved[name] = fixed_values[name]
-            continue
-        if name in inputs:
-            resolved[name] = ScalarExpression(inputs[name], library.zero)
-            continue
-        resolved[name] = library.lower_value(
-            sources[name],
-            bindings={
-                dependency: resolved[dependency] for dependency in dependencies[name]
-            },
+            value = fixed_values[name]
+        elif name in inputs:
+            value = ScalarExpression(inputs[name], library.zero)
+        else:
+            value = library.lower_value(
+                sources[name],
+                bindings={
+                    dependency: resolved[dependency]
+                    for dependency in dependencies[name]
+                },
+            )
+        resolved[name] = (
+            ScalarExpression(semantic[name], value.diagnostic)
+            if name in semantic
+            else value
         )
         if name in anonymous:
             require_laurent_scalar(resolved[name])
