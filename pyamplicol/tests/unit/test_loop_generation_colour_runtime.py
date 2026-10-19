@@ -38,7 +38,11 @@ samples = 2
 
 @pytest.mark.parametrize(
     "process,name,accuracy,components",
-    [("g g > g g", "gg", "lc", 6), ("u u~ > e- e+", "dy", "lc", 1)],
+    [
+        ("g g > g g", "gg", "lc", 6),
+        ("u u~ > e- e+", "dy", "lc", 1),
+        ("g g > g g", "gg_nlc", "nlc", 1),
+    ],
 )
 def test_real_declared_colour_generation_and_saved_components(
     tmp_path, process, name, accuracy, components
@@ -66,7 +70,9 @@ def test_real_declared_colour_generation_and_saved_components(
     assert coverage["color_accuracy"] == accuracy
     assert coverage["source_colour_declared"] is True
     assert coverage["formal_colour_process_coverage_checked"] is False
-    assert coverage["canonical_born_components_checked"] is False
+    assert coverage["canonical_born_components_checked"] is (
+        False if accuracy == "lc" else None
+    )
     assert not output.exists()
 
     request = ProcessSet((ProcessRequest.parse(process, name=name),))
@@ -87,10 +93,15 @@ def test_real_declared_colour_generation_and_saved_components(
     assert resolved.shape == (1, 1, 16, components, 3)
     assert resolved.born_shape == (1, 1, 16, components)
     assert resolved.born_color_ids == resolved.virtual_color_ids
-    assert all(value.startswith("born-") for value in resolved.born_color_ids)
     assert runtime.physics.color_flows == ()
-    assert runtime.physics.reduction.kind == "born-anchored-interference"
-    assert len(runtime.physics.born_anchored_color_components) == components
+    if accuracy == "lc":
+        assert all(value.startswith("born-") for value in resolved.born_color_ids)
+        assert runtime.physics.reduction.kind == "born-anchored-interference"
+        assert len(runtime.physics.born_anchored_color_components) == components
+    else:
+        assert resolved.born_color_ids == ("nlc",)
+        assert runtime.physics.reduction.kind == "contracted-color"
+        assert runtime.physics.born_anchored_color_components == ()
     total = resolved.total()
     assert total.values[0][0] == pytest.approx(inclusive.values[0][0], rel=3e-10)
     assert total.born_values[0] == pytest.approx(inclusive.born_values[0], rel=3e-10)
