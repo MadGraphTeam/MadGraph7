@@ -62,15 +62,13 @@ def _feature_blockers(backend, processes):
             "public loop generation currently requires inclusive helicity "
             "and colour selectors"
         )
-    if (
-        processes.aliases
-        or run.process.flavor_blind
-        or run.process.analyze_process_groups != "none"
-    ):
+    if processes.aliases or run.process.analyze_process_groups != "none":
         reasons.append(
-            "public loop artifacts do not yet publish aliases "
-            "or flavour/process-group mappings"
+            "public loop artifacts do not yet publish permutation aliases "
+            "or numerical process-group analyses"
         )
+    if run.process.flavor_blind and run.color.accuracy != "full":
+        reasons.append("exact loop flavour transport currently requires full colour")
     if run.loop.r2_strategy == "direct":
         reasons.append(
             "public source-model generation currently supports model R2 rules; "
@@ -286,6 +284,8 @@ def _plan_result(backend, processes, blockers, *, context=None, coverage=()):
             "resolved": True,
             "api_bundle": True,
             "process_count": len(coverage),
+            "exact_flavor_grouping_requested": backend._run_config.process.flavor_blind,
+            "flavor_transport_checked": False,
             "processes": tuple(coverage),
             "model_declaration": context.declaration.to_dict() if context else None,
         },
@@ -328,10 +328,6 @@ def _check_correlators(backend, correlators):
 
     if not isinstance(correlators, CorrelatorConfig):
         raise TypeError("correlators must be a CorrelatorConfig")
-    if correlators.spin_correlations:
-        raise GenerationError(
-            "public virtual spin-source generation is not yet supported"
-        )
     if backend._run_config.color.accuracy != "full":
         raise GenerationError("virtual colour histories currently require full colour")
 
@@ -357,7 +353,105 @@ def _prepare_directed(program, declarations):
     prepared = prepare_directed_model(
         program, prepare_directed_bare(program.bare, histories)
     )
-    return prepared, native_requests
+    if not declarations.spin_correlations:
+        return prepared, native_requests, ()
+    from pyamplicol.loops.spin_sources import NativeSpinSourcePlan
+
+    sources = NativeSpinSourcePlan(program.bare, declarations.spin_correlations)
+    spin = tuple(
+        prepare_directed_model(
+            program,
+            prepare_directed_bare(
+                program.bare, histories, spin_layout=sources.layouts[legs]
+            ),
+        )
+        for legs in declarations.spin_correlations
+    )
+    return prepared, native_requests, spin
+
+
+def _group_exact_flavors(context, programs):
+    """Admit exact identity-port relations; keep every unproved member independent."""
+    from pyamplicol.artifacts.process_groups import (
+        grouping_process,
+        initial_process_groups,
+    )
+    from pyamplicol.loops.flavor_mappings import (
+        RetainedFlavorPlan,
+        prove_flavor_relabeling,
+    )
+    from pyamplicol.loops.flavor_transport import (
+        AdmittedFlavorMember,
+        IdentityFlavorTransport,
+        identity_species_candidate,
+    )
+
+    from .process_grouping import GroupingBasis, GroupMember, LegMapping
+
+    retained, admissions, representatives = [], {}, {}
+    for index, (entry, program) in enumerate(
+        zip(context.expanded, programs, strict=True)
+    ):
+        name = entry.request.name
+        for previous in retained:
+            candidate = programs[previous]
+            if candidate.source_bare.structure is not program.source_bare.structure:
+                continue
+            species = identity_species_candidate(
+                candidate.source_bare.external_request.external_pdgs,
+                program.source_bare.external_request.external_pdgs,
+            )
+            if species is None:
+                continue
+            prepared = context.prepared[index]
+            plan = RetainedFlavorPlan(
+                prepared.structure,
+                prepared.counterterms,
+                tuple(rule.name for rule in prepared.structure.native.vertex_rules),
+                context.corrections,
+            )
+            mapping = LegMapping(
+                tuple(range(len(entry.process_ir.legs))), False, "exact-loop-species"
+            )
+            try:
+                symmetry = prove_flavor_relabeling(plan, species)
+                transport = IdentityFlavorTransport.admit(
+                    symmetry, candidate, program, mapping
+                )
+            except (ValueError, NotImplementedError):
+                # Incompatible masses, couplings, schemes or unproved local
+                # structures mean independent generation, never approximate reuse.
+                continue
+            member = GroupMember.identity(
+                replace(
+                    grouping_process(
+                        name,
+                        entry.request.expression,
+                        transport.member_request.external_pdgs,
+                    ),
+                    generated=False,
+                )
+            ).related(mapping, factor=1, basis=GroupingBasis.EXACT_LOOP_FLAVOR)
+            admissions.setdefault(previous, []).append(
+                AdmittedFlavorMember(transport, member)
+            )
+            representatives[name] = context.expanded[previous].request.name
+            break
+        else:
+            retained.append(index)
+            representatives[name] = name
+    groups = initial_process_groups(
+        (
+            context.expanded[index].request.name,
+            context.expanded[index].request.expression,
+            programs[index].source_bare.external_request.external_pdgs,
+        )
+        for index in retained
+    )
+    for index, members in admissions.items():
+        group = groups.groups[context.expanded[index].request.name]
+        group.members.extend(item.member for item in members)
+    return retained, admissions, representatives, groups
 
 
 def generate_loop_artifact(
@@ -395,6 +489,14 @@ def generate_loop_artifact(
         with TemporaryDirectory(prefix="pyamplicol-loop-generation-") as temporary:
             artifacts = []
             validation_values = {}
+            grouping = backend._run_config.process.flavor_blind and not (
+                correlators is not None and correlators.spin_correlations
+            )
+            programs, projections = [], []
+            representatives = {
+                entry.request.name: entry.request.name for entry in context.expanded
+            }
+            process_groups = None
             with reporter.phase(
                 "loop-compile",
                 "Compiling complete loop instructions",
@@ -418,18 +520,23 @@ def generate_loop_artifact(
                         color_accuracy=backend._run_config.color.accuracy,
                     )
                     path = Path(temporary) / f"{entry.request.name}.pacbin"
-                    directed, histories = (
-                        (None, ())
+                    directed, histories, spin_directed = (
+                        (None, (), ())
                         if correlators is None
                         else _prepare_directed(program.virtual, correlators)
                     )
-                    write_loop_pacbin(
-                        program.virtual,
-                        path,
-                        resolved=directed is None,
-                        directed=directed,
-                        directed_histories=histories or None,
-                    )
+                    if grouping:
+                        programs.append(program)
+                        projections.append((directed, histories, spin_directed))
+                    else:
+                        write_loop_pacbin(
+                            program.virtual,
+                            path,
+                            resolved=directed is None,
+                            directed=directed,
+                            directed_histories=histories or None,
+                            spin_directed=spin_directed,
+                        )
                     validation = backend._generation_config.validation
                     point = build_process_validation_point(
                         entry.process_ir,
@@ -445,6 +552,7 @@ def generate_loop_artifact(
                             program.virtual,
                             directed=directed,
                             histories=histories,
+                            spin_directed=spin_directed,
                         )
                     artifacts.append(
                         LoopProcessArtifact(
@@ -479,6 +587,32 @@ def generate_loop_artifact(
                         )
                     )
                     phase.update(index + 1, message=entry.request.name)
+                if grouping:
+                    retained, admissions, representatives, process_groups = (
+                        _group_exact_flavors(context, programs)
+                    )
+                    selected = []
+                    for index in retained:
+                        artifact = artifacts[index]
+                        directed, histories, spin_directed = projections[index]
+                        members = tuple(admissions.get(index, ()))
+                        resolved = artifact.metadata.resolved
+                        write_loop_pacbin(
+                            programs[index].virtual,
+                            artifact.loop_runtime_path,
+                            resolved=resolved,
+                            directed=directed,
+                            directed_histories=histories or None,
+                            spin_directed=spin_directed,
+                            flavor_members=members,
+                        )
+                        selected.append(
+                            replace(
+                                artifact,
+                                metadata=replace(artifact.metadata, resolved=resolved),
+                            )
+                        )
+                    artifacts = selected
             with reporter.phase(
                 "artifact-writing",
                 "Writing and validating virtual artifact"
@@ -493,11 +627,17 @@ def generate_loop_artifact(
                     compiled_model=context.resolved.compiled,
                     configuration=backend._configuration,
                     processes=artifacts,
+                    process_groups=process_groups,
                     timings=reporter.timings,
                     api_bundle_hook=backend._api_bundle_hook,
                     staged_validation=(
                         lambda staged: _validate_artifact(
-                            backend, staged, context, artifacts, validation_values
+                            backend,
+                            staged,
+                            context,
+                            artifacts,
+                            validation_values,
+                            representatives=representatives,
                         )
                     )
                     if backend._generation_config.validation.post_build_validation
@@ -528,10 +668,11 @@ class _ValidationValues:
     born: tuple[complex, ...]
     virtual: tuple[complex, ...]
     directed: tuple = ()
+    spin_directed: tuple = ()
 
 
 def _validation_values(
-    backend, context, entry, program, *, directed=None, histories=()
+    backend, context, entry, program, *, directed=None, histories=(), spin_directed=()
 ):
     validation = backend._generation_config.validation
     points = tuple(
@@ -572,29 +713,39 @@ def _validation_values(
     expected = program.evaluate_ordered_native(momenta, scales)
     directed_values = ()
     if directed is not None:
-        projected = directed.bind(program).evaluate_native(momenta, scales)
-        # Slicing validation buffers only: each producer evaluation above is a
-        # native batch, and the public consumer below evaluates all histories once.
-        widths = (
-            len(program.bare.order_layout.born),
-            len(program.bare.order_layout.virtual) * 3,
+        directed_values = _directed_validation_values(
+            program, directed, histories, momenta, scales
         )
-        columns = (projected.born, projected.virtual)
-        directed_values = tuple(
-            (
-                history.id,
-                *(
-                    tuple(
-                        complex(float(re), float(im))
-                        for re, im in column.take_columns(
-                            range(index * width, (index + 1) * width)
-                        ).to_decimal()
-                    )
-                    for column, width in zip(columns, widths, strict=True)
-                ),
+    spin_values = []
+    if spin_directed:
+        from pyamplicol.loops.spin_sources import NativeSpinSourcePlan
+
+        sources = NativeSpinSourcePlan(
+            program.bare, tuple(item.bare.spin_layout.legs for item in spin_directed)
+        )
+        for item in spin_directed:
+            # Literal generic complex sources test the actual saved class and
+            # both virtual cross terms; no normalization or transversality is
+            # imposed on the user's source API.
+            vectors = {
+                leg: (("1", "0"), (str(leg), "1"), ("-1", "2"), ("2", "-1"))
+                for leg in item.bare.spin_layout.legs
+            }
+            spin_values.append(
+                (
+                    vectors,
+                    _directed_validation_values(
+                        program,
+                        item,
+                        histories,
+                        momenta,
+                        scales,
+                        spin_sources=sources.prepare_decimal(
+                            vectors, range(len(momenta))
+                        ),
+                    ),
+                )
             )
-            for index, history in enumerate(histories)
-        )
     return _ValidationValues(
         momenta,
         tuple(scales),
@@ -603,22 +754,61 @@ def _validation_values(
             complex(float(re), float(im)) for re, im in expected.virtual.to_decimal()
         ),
         directed_values,
+        tuple(spin_values),
     )
 
 
-def _validate_artifact(backend, output, context, artifacts, validation_values):
+def _directed_validation_values(
+    program, directed, histories, momenta, scales, *, spin_sources=None
+):
+    projected = directed.bind(program).evaluate_native(
+        momenta, scales, spin_sources=spin_sources
+    )
+    widths = (
+        len(program.bare.order_layout.born),
+        len(program.bare.order_layout.virtual) * 3,
+    )
+    return tuple(
+        (
+            history.id,
+            *(
+                tuple(
+                    complex(float(re), float(im))
+                    for re, im in column.take_columns(
+                        range(index * width, (index + 1) * width)
+                    ).to_decimal()
+                )
+                for column, width in zip(
+                    (projected.born, projected.virtual), widths, strict=True
+                )
+            ),
+        )
+        for index, history in enumerate(histories)
+    )
+
+
+def _validate_artifact(
+    backend, output, context, artifacts, validation_values, *, representatives=None
+):
     from pyamplicol.api import Runtime
     from pyamplicol.api.virtual_results import VirtualEvaluation
     from pyamplicol.artifacts import load_manifest
 
     manifest = load_manifest(output)
     validation = backend._generation_config.validation
-    for entry, artifact in zip(context.expanded, artifacts, strict=True):
+    artifacts_by_id = {artifact.process_id: artifact for artifact in artifacts}
+    representatives = representatives or {
+        entry.request.name: entry.request.name for entry in context.expanded
+    }
+    for entry in context.expanded:
+        representative = representatives[entry.request.name]
+        artifact = artifacts_by_id[representative]
         runtime = Runtime.load(output, process=entry.request.name)
         if (
             runtime.execution_mode != "loop_recurrence"
             or runtime.artifact_id != manifest.artifact_id
-            or runtime.representative_process_key != entry.request.name
+            or runtime.representative_process_key != representative
+            or runtime.physics.process_id != entry.request.name
         ):
             raise GenerationError(
                 "virtual validation loaded incompatible artifact metadata"
@@ -643,15 +833,23 @@ def _validate_artifact(backend, output, context, artifacts, validation_values):
         _compare_validation_result(
             entry.request.name, result, expected.born, expected.virtual, validation
         )
-        if expected.directed:
+        for vectors, values in (
+            ({}, expected.directed),
+            *expected.spin_directed,
+        ):
+            if not values:
+                continue
             from pyamplicol.correlators import CorrelatedRequest
 
             grouped = runtime.evaluate_correlated_many(
                 expected.momenta,
-                {label: CorrelatedRequest(label) for label, _, _ in expected.directed},
+                {
+                    label: CorrelatedRequest(label, spin_vectors=vectors)
+                    for label, _, _ in values
+                },
                 mu_r2=expected.scales,
             )
-            for label, born, virtual in expected.directed:
+            for label, born, virtual in values:
                 current = grouped[label]
                 if (
                     not current.correlated

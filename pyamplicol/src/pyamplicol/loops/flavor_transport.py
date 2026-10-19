@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from pyamplicol.generation.process_grouping import LegMapping
+from pyamplicol.generation.process_grouping import GroupMember, LegMapping
 
 from .flavor_mappings import FlavorSymmetry
 from .physical_source import NativeSourceModelProgram
@@ -130,6 +130,7 @@ class IdentityFlavorTransport:
             or a.process.orders.born_orders != b.process.orders.born_orders
             or a.process.convention != b.process.convention
             or a.vertex_spinor_frame != b.vertex_spinor_frame
+            or a.helicities != b.helicities
         ):
             raise ValueError("flavour transport changes orders, pairing or conventions")
         return cls(
@@ -222,3 +223,64 @@ class NativeIdentityFlavorProgram:
         return self._directed.evaluate_decimal(
             momenta, scales_squared, point_ids=point_ids
         )
+
+
+@dataclass(frozen=True, slots=True)
+class AdmittedFlavorMember:
+    """An existing public group member backed by an actual source admission."""
+
+    transport: IdentityFlavorTransport = field(repr=False)
+    member: GroupMember
+
+    def __post_init__(self):
+        from pyamplicol.api.requests import ProcessRequest
+
+        request = self.transport.member_request
+        expression = " ".join((*request.incoming, ">", *request.outgoing))
+        ProcessRequest.parse(self.member.expression, name=self.member.process_id)
+        if (
+            self.member.pdgs != request.external_pdgs
+            or self.member.initial_count != len(request.incoming)
+            or self.member.expression != expression
+            or self.member.permutation != self.transport.mapping.permutation
+            or self.member.factor != 1
+            or self.member.conjugated
+            or self.member.generated
+        ):
+            raise ValueError("public flavour member differs from the admitted process")
+
+    def for_program(self, program):
+        if program.prepared is not self.transport.representative_plan:
+            raise ValueError(
+                "flavour admission belongs to another saved representative"
+            )
+        return {
+            "process_id": self.member.process_id,
+            "expression": self.member.expression,
+            "external_pdgs": self.member.pdgs,
+            "species": self.transport.symmetry.species,
+        }
+
+
+def identity_species_candidate(representative, member):
+    """Complete the port-imposed signed substitution as a candidate permutation.
+
+    This is only request bookkeeping: open chains close into cycles and all
+    untouched species stay fixed. Exact local-rule proof still decides whether
+    this candidate is a symmetry. Failure never removes an independent process.
+    """
+    if len(representative) != len(member):
+        return None
+    mapping = {}
+    inverse = {}
+    for source, target in zip(representative, member, strict=True):
+        for a, b in ((source, target), (-source, -target)):
+            if (a in mapping and mapping[a] != b) or (b in inverse and inverse[b] != a):
+                return None
+            mapping[a], inverse[b] = b, a
+    for start in mapping.keys() - inverse.keys():
+        end = mapping[start]
+        while end in mapping:
+            end = mapping[end]
+        mapping[end] = start
+    return {a: b for a, b in mapping.items() if a != b}

@@ -40,6 +40,7 @@ _ZERO_EXPRESSIONS = frozenset({"0", "0.0", "-0", "-0.0", "zero"})
 
 class GroupingBasis(StrEnum):
     IDENTITY = "identity"
+    EXACT_LOOP_FLAVOR = "exact-loop-flavor"
     FLAVOR_BLIND = "flavor-blind"
     NUMERICAL = "numerical"
 
@@ -47,6 +48,7 @@ class GroupingBasis(StrEnum):
 # The least verified link decides the basis of a composed relation.
 _BASIS_STRENGTH = {
     GroupingBasis.IDENTITY: 0,
+    GroupingBasis.EXACT_LOOP_FLAVOR: 0,
     GroupingBasis.NUMERICAL: 1,
     GroupingBasis.FLAVOR_BLIND: 2,
 }

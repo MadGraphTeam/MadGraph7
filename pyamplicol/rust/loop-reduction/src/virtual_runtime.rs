@@ -97,6 +97,7 @@ impl VirtualRuntime {
         serde_json::to_string(&serde_json::json!({
             "artifact_id": self.artifact.artifact_id,
             "process_id": self.process_id(),
+            "representative_process_id": self.artifact.selection.process.id,
             "expression": self.artifact.selection.public_expression,
             "external_pdgs": self.artifact.selection.external_pdgs,
             "initial_average": self.artifact.runtime.plan().initial_average,
@@ -118,7 +119,7 @@ impl VirtualRuntime {
         self.artifact.runtime.plan().state_legs.len()
     }
     pub fn process_id(&self) -> &str {
-        &self.artifact.selection.process.id
+        &self.artifact.selection.requested_id
     }
     pub fn precision_bits(&self) -> u32 {
         self.backend.precision_bits()

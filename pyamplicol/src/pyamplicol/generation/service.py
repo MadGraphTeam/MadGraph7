@@ -4500,7 +4500,7 @@ class GenerationBackend:
                     )
                 )
             phase.update(request_index, message=request.name)
-        if self._flavor_blind:
+        if self._flavor_blind and not self._loop_execution_enabled:
             # Names are assigned above, so process IDs do not depend on the flag.
             table = self._grouping_particle_table(resolved)
             result = _collapse_flavor_blind_classes(

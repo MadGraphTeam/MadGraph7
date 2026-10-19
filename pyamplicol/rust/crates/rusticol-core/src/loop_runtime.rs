@@ -105,6 +105,9 @@ record!(ColorProjection {
 record!(BornColorComponents {
     kind: String, ids: Vec<String>, members: Vec<Vec<usize>>
 });
+record!(AdmittedFlavorMember {
+    process_id: String, expression: String, external_pdgs: Vec<i32>, species: Vec<(i32, i32)>
+});
 record!(LoopRuntimePlan {
     schema: u32, r2_strategy: String, dimensional_numerators: bool,
     external_pdgs: Vec<i32>, state_legs: Vec<StateLeg>, helicities: Vec<Vec<i32>>, initial_average: u64,
@@ -115,7 +118,8 @@ record!(LoopRuntimePlan {
     currents: Vec<Counterterm>, fields: Vec<ScalarBinding>, model_evaluators: BTreeMap<String, String>,
     helicity_projection: Option<HelicityProjection>, color_projection: Option<ColorProjection>,
     born_color_components: Option<BornColorComponents>,
-    directed_projection: Option<DirectedProjection>, spin_projections: Option<Vec<SpinProjection>>
+    directed_projection: Option<DirectedProjection>, spin_projections: Option<Vec<SpinProjection>>,
+    admitted_flavor_members: Option<Vec<AdmittedFlavorMember>>
 });
 
 impl LoopRuntimePlan {
@@ -379,6 +383,43 @@ impl LoopRuntimePlan {
             self.external_pdgs.len() == legs && self.external_pdgs.iter().all(|&pdg| pdg != 0),
             "external particle layout differs",
         )?;
+        if let Some(members) = &self.admitted_flavor_members {
+            require(
+                self.r2_strategy == "model"
+                    && !self.dimensional_numerators
+                    && matches!(self.model_binding, ModelBinding::Source { .. })
+                    && self.color_projection.is_none()
+                    && self.spin_projections.is_none(),
+                "flavour transport requires source-owned full colour and model R2 without spin sources",
+            )?;
+            let mut ids = BTreeSet::new();
+            for member in members {
+                let map: BTreeMap<_, _> = member.species.iter().copied().collect();
+                let targets: BTreeSet<_> = map.values().copied().collect();
+                require(
+                    !member.process_id.trim().is_empty()
+                        && !member.expression.trim().is_empty()
+                        && ids.insert(&member.process_id)
+                        && member.external_pdgs.len() == legs
+                        && map.len() == member.species.len()
+                        && targets == map.keys().copied().collect()
+                        && map.iter().all(|(&a, &b)| {
+                            a != 0
+                                && a != b
+                                && a.signum() == b.signum()
+                                && a.checked_neg()
+                                    .zip(b.checked_neg())
+                                    .is_some_and(|(a, b)| map.get(&a) == Some(&b))
+                        })
+                        && self
+                            .external_pdgs
+                            .iter()
+                            .zip(&member.external_pdgs)
+                            .all(|(a, b)| map.get(a).unwrap_or(a) == b),
+                    "invalid admitted identity-species flavour member",
+                )?;
+            }
+        }
         if self.r2_strategy == "direct" {
             require(
                 self.external_pdgs == [21, 21, 21, 21]

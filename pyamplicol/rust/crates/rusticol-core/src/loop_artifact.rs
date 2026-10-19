@@ -124,10 +124,6 @@ pub fn load_loop_artifact(
         "tree and virtual processes cannot share an artifact yet",
     )?;
     let selection = artifact.select_process(requested_process)?;
-    require(
-        !selection.remaps_public_process(),
-        "loop aliases and process mappings are not available",
-    )?;
     let entries = crate::engine::verified_execution_payloads(artifact)?;
     let (_, path, bytes) = entries
         .into_iter()
@@ -185,6 +181,30 @@ pub fn load_loop_artifact(
         store.source(&execution.runtime_path)?.pacbin()?,
     )?);
     let plan = runtime.plan();
+    if selection.remaps_public_process() {
+        let relation = selection.process_group.as_ref();
+        let member = plan.admitted_flavor_members.as_ref().and_then(|members| {
+            members
+                .iter()
+                .find(|member| member.process_id == selection.requested_id)
+        });
+        require(
+            selection.alias.is_none()
+                && selection
+                    .external_permutation
+                    .iter()
+                    .copied()
+                    .eq(0..plan.state_legs.len())
+                && relation.is_some_and(|r| {
+                    !r.conjugated && r.factor_numerator == 1 && r.factor_denominator == 1
+                })
+                && member.is_some_and(|m| {
+                    m.expression == selection.public_expression
+                        && m.external_pdgs == selection.external_pdgs
+                }),
+            "selected loop group member lacks matching immutable flavour admission",
+        )?;
+    }
     let metadata = &physics.metadata;
     require(
         selection.process.color_accuracy == metadata.color_accuracy

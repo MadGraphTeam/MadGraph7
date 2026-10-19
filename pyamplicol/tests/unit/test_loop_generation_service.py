@@ -82,7 +82,7 @@ def test_virtual_correlators_never_enter_tree_compiled_generation(
     "process_changes,reason",
     [
         ({"selected_source_helicities": {"1": 1}}, "inclusive helicity"),
-        ({"flavor_blind": True}, "flavour/process-group"),
+        ({"analyze_process_groups": "numerical"}, "numerical process-group"),
     ],
 )
 def test_pending_loop_features_are_reported_before_model_work(
@@ -445,7 +445,6 @@ def test_colour_required_constant_cannot_undo_an_actual_restriction_card(
 @pytest.mark.parametrize(
     "sections,declarations,message",
     [
-        ({}, CorrelatorConfig(spin_correlations=((1,),)), "spin-source"),
         ({"color": {"accuracy": "lc"}}, CorrelatorConfig(), "full colour"),
         ({}, object(), "CorrelatorConfig"),
     ],

@@ -47,12 +47,27 @@ def write_loop_pacbin(
     directed=None,
     directed_histories=None,
     spin_directed=(),
+    flavor_members=(),
 ):
     """Lower one checked retained control into plain execution data and bytecode."""
     from .physical_color import color_projection_metadata
 
     bare = program.bare
     spin_directed = tuple(spin_directed)
+    flavor_members = tuple(flavor_members)
+    if flavor_members:
+        from .flavor_transport import AdmittedFlavorMember
+
+        if any(not isinstance(item, AdmittedFlavorMember) for item in flavor_members):
+            raise TypeError("saved flavour members require exact source admission")
+        if spin_directed:
+            raise NotImplementedError(
+                "saved flavour and spin-source composition is not yet certified"
+            )
+        if len({item.member.process_id for item in flavor_members}) != len(
+            flavor_members
+        ):
+            raise ValueError("saved flavour member IDs must be unique")
     if spin_directed and directed is None:
         raise ValueError("saved spin classes require ordinary directed projections")
     if directed_histories is not None and directed is None:
@@ -242,6 +257,10 @@ def write_loop_pacbin(
             name: state(value) for name, value in prepared.evaluator_states
         },
     }
+    if flavor_members:
+        data["admitted_flavor_members"] = [
+            item.for_program(program) for item in flavor_members
+        ]
     projection = color_projection_metadata(bare)
     if projection is not None:
         data["color_projection"] = projection

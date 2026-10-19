@@ -379,6 +379,10 @@ class VirtualRuntimeBackend:
         return cast(str, self._metadata["artifact_id"])
 
     @property
+    def representative_process_key(self) -> str:
+        return cast(str, self._metadata["representative_process_id"])
+
+    @property
     def physics(self) -> ProcessPhysics:
         metadata, plan = self._metadata, self._metadata["plan"]
         partition = plan.get("born_color_components")
@@ -405,7 +409,7 @@ class VirtualRuntimeBackend:
                     momentum_slot=i,
                 )
                 for i, (pdg, leg) in enumerate(
-                    zip(plan["external_pdgs"], plan["state_legs"], strict=True)
+                    zip(metadata["external_pdgs"], plan["state_legs"], strict=True)
                 )
             ),
             helicities=tuple(
