@@ -216,6 +216,13 @@ def test_closed_seven_leg_color_network_exact_components_and_conjugation(algebra
     assert weighted == left.conj() * right * expected
     assert physical.overlap(right * network, left * unit) == weighted.conj()
 
+    # Squared compact traces require fresh internal dummies when opened. The
+    # physical residual path evaluates original native components directly.
+    # The square is deliberately not a modulus square.
+    square = trace("abcde") ** 2
+    assert square.to_tensor(t.TensorLibrary.hep_lib_atom())[0] == s.E("-10/27")
+    assert physical.overlap(unit, square) == s.E("-10/27")
+
 
 @pytest.mark.parametrize(
     "incoming,outgoing,born_count",

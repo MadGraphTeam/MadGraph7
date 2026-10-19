@@ -85,25 +85,6 @@ class PhysicalColorSpace:
                 if expanded.to_expression() != overlap.to_expression():
                     overlap = expanded.simplify_algebra(**settings)
                     result = overlap.to_expression().together()
-            if result.get_all_symbols():
-                # Closed invariant networks can hide signed-zero terms inside
-                # compact traces. This is the dependency-owned residual route
-                # also used for formal overlaps, with physical dimensions kept.
-                overlap = (
-                    original.simplify_algebra(
-                        gamma=False,
-                        color=True,
-                        color_substitute_cof_dimension_invariants=False,
-                    )
-                    .contract()
-                    .expand_projectors()
-                    .undo_trace()
-                    .undo_chain()
-                    .expand()
-                    .canonize()
-                    .simplify_algebra(**settings)
-                )
-                result = overlap.to_expression().together()
             if overlap.axes or result.get_all_symbols():
                 # Algebraic saturation need not reduce every closed invariant
                 # network to a scalar. The dependency's physical representation
