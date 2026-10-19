@@ -402,11 +402,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
     /// owner and revision. Used after clear; arithmetic changes require a new
     /// owner constructed from the retained exact overrides instead.
     pub fn with_source_owner(owner: Arc<SourceOwner<B>>, backend: B) -> RusticolResult<Self> {
-        let snapshot = owner.snapshot()?;
-        let empty = backend.ingress(&[], 1, 0, vec![0])?;
-        // The backend's ordinary concatenation checks the numerical carrier and
-        // precision, so an owner cannot silently cross arithmetic modes.
-        B::concat(&[snapshot.arguments(), &empty])?;
+        owner.require_backend(&backend)?;
         Self::bind(owner.loaded().clone(), backend, Some(owner))
     }
 
@@ -869,6 +865,70 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 );
             }
         }
+        if let Some(failure) = snapshot.as_ref().and_then(|s| s.binding_failure()) {
+            // A global model failure must not conceal invalid original input
+            // syntax. Validate exact literals before reporting numerical lanes.
+            for value in input
+                .momenta
+                .iter()
+                .chain(input.spin_sources.values().flatten().flatten())
+            {
+                crate::source_scalar::decimal_rational(value).map_err(invalid)?;
+            }
+            if points != 0 {
+                return Err(LoopStepError::Numerical(
+                    input
+                        .point_ids
+                        .iter()
+                        .map(|&point_id| LoopLaneFailure {
+                            point_id,
+                            helicity: None,
+                            color_component_index: None,
+                            history_index: None,
+                            direction: None,
+                            order_index: None,
+                            family_index: None,
+                            external_leg: None,
+                            stage: failure.stage.clone(),
+                            detail: "global source realization is nonfinite in this arithmetic"
+                                .into(),
+                        })
+                        .collect(),
+                ));
+            }
+            // No fake successful model values are needed to return correctly
+            // shaped empty output after all original points were rejected.
+            let empty = |columns| self.backend.ingress(&[], 0, columns, vec![]);
+            let width = count(count(3, plan.order_layout.r#virtual.len())?, histories)?;
+            let component = empty(width)?;
+            return Ok(CompleteLoopResult {
+                requested_point_ids: vec![],
+                point_ids: vec![],
+                born: empty(count(plan.order_layout.born.len(), histories)?)?,
+                components: std::array::from_fn(|_| component.clone()),
+                totals: empty(count(
+                    1 + 3 * (6 + if directed { 2 } else { 0 }),
+                    histories,
+                )?)?,
+                statuses: vec![],
+                r2_strategy: plan.r2_strategy.clone(),
+                source_revision: snapshot.as_ref().map(|s| s.revision()),
+                directed: directed.then(|| DirectedCrossTerms {
+                    history_ids: plan
+                        .directed_projection
+                        .as_ref()
+                        .expect("checked directed kernels")
+                        .histories
+                        .iter()
+                        .map(|h| h.id.clone())
+                        .collect(),
+                    spin_legs: source_legs,
+                    first: component.clone(),
+                    second: component,
+                }),
+                failures: vec![],
+            });
+        }
         let requested_point_ids = input.point_ids.clone();
         let mut ids = Vec::with_capacity(rows);
         let mut point_rows = Vec::with_capacity(rows);
@@ -925,7 +985,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 failures.extend(bad);
                 values
             } else {
-                snapshot.values().clone()
+                snapshot.values()?.clone()
             };
             let (counterterms, mut bad) =
                 source.counterterms.evaluate_partial(snapshot, &scales)?;
@@ -934,7 +994,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
             }
             failures.extend(bad);
             (
-                snapshot.arguments().clone(),
+                snapshot.arguments()?.clone(),
                 B::select(&selected, model_output_indices.clone())?,
                 source.ordinary.is_some(),
                 Some(counterterms),

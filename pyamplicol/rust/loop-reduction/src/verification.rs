@@ -6,6 +6,10 @@ use rusticol_core::loop_execution::{
     CompleteLoopResult, DirectedCrossTerms, LoopExecutor, LoopInputs, LoopLaneFailure,
     LoopObservable,
 };
+use rusticol_core::loop_runtime::LoadedLoopRuntime;
+use rusticol_core::source_bindings::{
+    SourceBindingFailure, SourceOverrides, SourceOwner, SourceSnapshot,
+};
 use rusticol_core::{RusticolError, RusticolResult};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -58,6 +62,70 @@ impl VerificationPolicy {
             .agreement_rows(&empty, &self.relative_tolerance, &self.absolute_tolerance)
             .map_err(invalid)?;
         Ok(())
+    }
+}
+
+/// Numerical realizations allowed by the existing handle verification policy.
+/// This is operational binding state, not another policy or accuracy claim.
+#[derive(Clone, Default)]
+pub struct SourceBindingValidation {
+    alternatives: Vec<PhysicalBackend>,
+}
+impl SourceBindingValidation {
+    pub fn new(
+        primary: &ArithmeticSpec,
+        policy: Option<&VerificationPolicy>,
+    ) -> RusticolResult<Self> {
+        let Some(policy) = policy else {
+            return Ok(Self::default());
+        };
+        policy.validate(primary)?;
+        Ok(Self {
+            alternatives: policy
+                .higher
+                .iter()
+                .map(|spec| {
+                    PhysicalBackend::new(&spec.arithmetic, spec.precision, "interpreted", "generic")
+                        .map_err(invalid)
+                })
+                .collect::<RusticolResult<_>>()?,
+        })
+    }
+    fn validate(
+        &self,
+        loaded: &LoadedLoopRuntime,
+        exact: &SourceOverrides,
+        primary_failure: &SourceBindingFailure,
+    ) -> RusticolResult<()> {
+        let mut last = primary_failure.clone();
+        for backend in &self.alternatives {
+            match SourceOwner::validate_exact(loaded, backend, exact)? {
+                None => return Ok(()),
+                Some(failure) => last = failure,
+            }
+        }
+        Err(last.error())
+    }
+    pub fn owner(
+        &self,
+        loaded: Arc<LoadedLoopRuntime>,
+        backend: &PhysicalBackend,
+        parameters: Option<&SourceOverrides>,
+    ) -> RusticolResult<Arc<SourceOwner<PhysicalBackend>>> {
+        SourceOwner::new_with_alternate(loaded.clone(), backend, parameters, |exact, failure| {
+            self.validate(&loaded, exact, failure)
+        })
+        .map(Arc::new)
+    }
+    pub fn update(
+        &self,
+        owner: &SourceOwner<PhysicalBackend>,
+        backend: &PhysicalBackend,
+        changes: &SourceOverrides,
+    ) -> RusticolResult<Arc<SourceSnapshot<Arc<Batch>>>> {
+        owner.update_with_alternate(backend, changes, |exact, failure| {
+            self.validate(owner.loaded(), exact, failure)
+        })
     }
 }
 #[derive(Clone, Debug, Serialize)]
@@ -287,8 +355,11 @@ pub fn evaluate_observable_verified(
             let backend =
                 PhysicalBackend::new(&spec.arithmetic, spec.precision, "interpreted", "generic")
                     .map_err(invalid)?;
-            let target =
-                LoopExecutor::with_parameters(loaded.clone(), backend, Some(snapshot.overrides()))?;
+            // Replay an already admitted immutable declaration. A higher
+            // carrier may still fail numerically; preserve that typed outcome
+            // so its attempt is recorded and later configured levels run.
+            let target_owner = Arc::new(SourceOwner::from_snapshot(&backend, &owner, &snapshot)?);
+            let target = LoopExecutor::with_source_owner(target_owner, backend)?;
             workspace.higher.insert(spec.clone(), target);
         }
         let target = workspace

@@ -50,6 +50,24 @@ pub(super) fn verification_policy(
     }
 }
 
+/// The existing verification policy transported without a second policy schema.
+pub(super) type StabilityInput = (Vec<(String, Option<u32>)>, String, String, bool);
+pub(super) fn input_policy(input: StabilityInput) -> VerificationPolicy {
+    verification_policy(input.0, input.1, input.2, input.3)
+}
+pub(super) fn policy_input(policy: &VerificationPolicy) -> StabilityInput {
+    (
+        policy
+            .higher
+            .iter()
+            .map(|x| (x.arithmetic.clone(), x.precision))
+            .collect(),
+        policy.relative_tolerance.clone(),
+        policy.absolute_tolerance.clone(),
+        policy.verify_successful,
+    )
+}
+
 create_exception!(_loop_reduction, VirtualArtifactError, PyValueError);
 create_exception!(_loop_reduction, VirtualCompatibilityError, PyValueError);
 create_exception!(_loop_reduction, VirtualEvaluationError, PyValueError);
@@ -78,7 +96,7 @@ struct NativeVirtualRuntime(VirtualRuntime);
 #[pymethods]
 impl NativeVirtualRuntime {
     #[new]
-    #[pyo3(signature=(path, *, process=None, arithmetic="double", precision=None, parameters=None, r2_strategy="auto"))]
+    #[pyo3(signature=(path, *, process=None, arithmetic="double", precision=None, parameters=None, r2_strategy="auto", stability=None))]
     fn new(
         py: Python<'_>,
         path: &str,
@@ -87,15 +105,18 @@ impl NativeVirtualRuntime {
         precision: Option<u32>,
         parameters: Option<SourceOverrides>,
         r2_strategy: &str,
+        stability: Option<StabilityInput>,
     ) -> PyResult<Self> {
+        let policy = stability.map(input_policy);
         py.detach(|| {
-            VirtualRuntime::open(
+            VirtualRuntime::open_with_policy(
                 path,
                 process,
                 arithmetic,
                 precision,
                 parameters.as_ref(),
                 r2_strategy,
+                policy.as_ref(),
             )
         })
         .map(Self)
@@ -138,10 +159,15 @@ impl NativeVirtualRuntime {
         self.0.source_revision().map_err(native_error)
     }
     #[getter]
+    fn stability(&self) -> Option<StabilityInput> {
+        self.0.verification_policy().map(policy_input)
+    }
+    #[getter]
     fn source_state(&self) -> NativeSourceState {
         NativeSourceState {
             owner: self.0.source_owner().clone(),
             backend: self.0.backend().clone(),
+            validation: self.0.source_binding_validation().clone(),
         }
     }
     #[getter]
@@ -162,7 +188,7 @@ impl NativeVirtualRuntime {
         py.detach(|| self.0.clear());
     }
 
-    #[pyo3(signature=(*, arithmetic="double", precision=None, parameters=None, r2_strategy=None))]
+    #[pyo3(signature=(*, arithmetic="double", precision=None, parameters=None, r2_strategy=None, stability=None))]
     fn rebind(
         &self,
         py: Python<'_>,
@@ -170,10 +196,17 @@ impl NativeVirtualRuntime {
         precision: Option<u32>,
         parameters: Option<SourceOverrides>,
         r2_strategy: Option<&str>,
+        stability: Option<StabilityInput>,
     ) -> PyResult<Self> {
+        let policy = stability.map(input_policy);
         py.detach(|| {
-            self.0
-                .rebind(arithmetic, precision, parameters.as_ref(), r2_strategy)
+            self.0.rebind_with_policy(
+                arithmetic,
+                precision,
+                parameters.as_ref(),
+                r2_strategy,
+                policy.as_ref(),
+            )
         })
         .map(Self)
         .map_err(native_error)

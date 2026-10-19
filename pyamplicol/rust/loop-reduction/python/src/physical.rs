@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: 0BSD
 //! Experimental complete native execution of validated legacy loop PACBIN plans.
+use crate::virtual_runtime::{StabilityInput, input_policy, policy_input};
 use crate::{batch::NativeBatch, error};
 use pyo3::prelude::*;
 use rusticol_core::loop_execution::{
@@ -8,6 +9,9 @@ use rusticol_core::loop_execution::{
 use rusticol_core::loop_runtime::{LoadedLoopRuntime, load_loop_runtime_pacbin};
 use rusticol_core::source_bindings::{SourceOverrides, SourceOwner, SourceSnapshot};
 use rusticol_loop_reduction::runtime::{Batch, physical::PhysicalBackend};
+use rusticol_loop_reduction::verification::{
+    ArithmeticSpec, SourceBindingValidation, VerificationPolicy,
+};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -43,6 +47,8 @@ struct NativeLoopProgram {
     arithmetic: String,
     precision: Option<u32>,
     verification: rusticol_loop_reduction::verification::VerificationWorkspace,
+    policy: Option<VerificationPolicy>,
+    binding_validation: SourceBindingValidation,
 }
 impl NativeLoopProgram {
     fn bind(
@@ -52,18 +58,44 @@ impl NativeLoopProgram {
         coefficient_engine: &str,
         reduction_engine: &str,
         parameters: Option<&SourceOverrides>,
+        policy: Option<&VerificationPolicy>,
     ) -> PyResult<Self> {
         let backend =
             PhysicalBackend::new(arithmetic, precision, coefficient_engine, reduction_engine)
                 .map_err(error)?;
         let bits = backend.precision_bits();
-        let executor = LoopExecutor::with_parameters(loaded, backend, parameters).map_err(error)?;
+        let binding_validation = SourceBindingValidation::new(
+            &ArithmeticSpec {
+                arithmetic: arithmetic.into(),
+                precision,
+            },
+            policy,
+        )
+        .map_err(error)?;
+        let executor = if matches!(
+            loaded.plan().model_binding,
+            rusticol_core::loop_runtime::ModelBinding::Source { .. }
+        ) {
+            let owner = binding_validation
+                .owner(loaded, &backend, parameters)
+                .map_err(error)?;
+            LoopExecutor::with_source_owner(owner, backend).map_err(error)?
+        } else {
+            if policy.is_some() {
+                return Err(error(
+                    "configured stability requires source-owned exact parameters",
+                ));
+            }
+            LoopExecutor::with_parameters(loaded, backend, parameters).map_err(error)?
+        };
         Ok(Self {
             executor,
             bits,
             arithmetic: arithmetic.into(),
             precision,
             verification: Default::default(),
+            policy: policy.cloned(),
+            binding_validation,
         })
     }
     fn verified_observable(
@@ -132,6 +164,11 @@ impl NativeLoopProgram {
         partial: bool,
         spin_vectors: Option<SpinVectors>,
     ) -> PyResult<NativeCompleteLoopResult> {
+        if self.policy.is_some() {
+            return Err(error(
+                "configured stability requires verified evaluation to preserve rescue diagnostics",
+            ));
+        }
         if self.executor.source_owner().is_some() && model_values.is_some() {
             return Err(error(
                 "source model parameters require named owner updates, not positional model_values",
@@ -169,7 +206,7 @@ impl NativeLoopProgram {
 #[pymethods]
 impl NativeLoopProgram {
     #[new]
-    #[pyo3(signature=(path, arithmetic="double", precision=None, coefficient_engine="interpreted", reduction_engine="generic", parameters=None))]
+    #[pyo3(signature=(path, arithmetic="double", precision=None, coefficient_engine="interpreted", reduction_engine="generic", parameters=None, stability=None))]
     fn new(
         py: Python<'_>,
         path: &str,
@@ -178,7 +215,9 @@ impl NativeLoopProgram {
         coefficient_engine: &str,
         reduction_engine: &str,
         parameters: Option<SourceOverrides>,
+        stability: Option<StabilityInput>,
     ) -> PyResult<Self> {
+        let policy = stability.map(input_policy);
         py.detach(|| {
             Self::bind(
                 Arc::new(load_loop_runtime_pacbin(path).map_err(error)?),
@@ -187,10 +226,11 @@ impl NativeLoopProgram {
                 coefficient_engine,
                 reduction_engine,
                 parameters.as_ref(),
+                policy.as_ref(),
             )
         })
     }
-    #[pyo3(signature=(arithmetic="double", precision=None, coefficient_engine="interpreted", reduction_engine="generic", parameters=None))]
+    #[pyo3(signature=(arithmetic="double", precision=None, coefficient_engine="interpreted", reduction_engine="generic", parameters=None, stability=None))]
     fn rebind(
         &self,
         py: Python<'_>,
@@ -199,7 +239,10 @@ impl NativeLoopProgram {
         coefficient_engine: &str,
         reduction_engine: &str,
         parameters: Option<SourceOverrides>,
+        stability: Option<StabilityInput>,
     ) -> PyResult<Self> {
+        let replacement = stability.map(input_policy);
+        let policy = replacement.as_ref().or(self.policy.as_ref());
         let captured = self
             .executor
             .source_owner()
@@ -222,6 +265,7 @@ impl NativeLoopProgram {
                 coefficient_engine,
                 reduction_engine,
                 overrides.as_ref(),
+                policy,
             )
         })
     }
@@ -241,10 +285,15 @@ impl NativeLoopProgram {
         self.executor.loaded().metadata_json().map_err(error)
     }
     #[getter]
+    fn stability(&self) -> Option<StabilityInput> {
+        self.policy.as_ref().map(policy_input)
+    }
+    #[getter]
     fn source_state(&self) -> Option<NativeSourceState> {
         self.executor.source_owner().map(|owner| NativeSourceState {
             owner: owner.clone(),
             backend: self.executor.backend().clone(),
+            validation: self.binding_validation.clone(),
         })
     }
     #[pyo3(signature=(momenta, scales_squared, higher, relative_tolerance, absolute_tolerance, *, point_ids=None, resolved=false, verify_successful=false))]
@@ -473,6 +522,7 @@ impl NativeCompleteLoopResult {
 pub(super) struct NativeSourceState {
     pub(super) owner: Arc<SourceOwner<PhysicalBackend>>,
     pub(super) backend: PhysicalBackend,
+    pub(super) validation: SourceBindingValidation,
 }
 #[pymethods]
 impl NativeSourceState {
@@ -487,9 +537,12 @@ impl NativeSourceState {
         py: Python<'_>,
         parameters: SourceOverrides,
     ) -> PyResult<NativeSourceSnapshot> {
-        py.detach(|| self.owner.update(&self.backend, &parameters))
-            .map(NativeSourceSnapshot)
-            .map_err(error)
+        py.detach(|| {
+            self.validation
+                .update(&self.owner, &self.backend, &parameters)
+        })
+        .map(NativeSourceSnapshot)
+        .map_err(error)
     }
 }
 #[pyclass(frozen)]
@@ -505,12 +558,24 @@ impl NativeSourceSnapshot {
         self.0.overrides().clone()
     }
     #[getter]
-    fn arguments(&self) -> NativeBatch {
-        NativeBatch(self.0.arguments().as_ref().clone())
+    fn binding_failure_stage(&self) -> Option<String> {
+        self.0
+            .binding_failure()
+            .map(|failure| failure.stage.clone())
     }
     #[getter]
-    fn values(&self) -> NativeBatch {
-        NativeBatch(self.0.values().as_ref().clone())
+    fn arguments(&self) -> PyResult<NativeBatch> {
+        self.0
+            .arguments()
+            .map(|values| NativeBatch(values.as_ref().clone()))
+            .map_err(error)
+    }
+    #[getter]
+    fn values(&self) -> PyResult<NativeBatch> {
+        self.0
+            .values()
+            .map(|values| NativeBatch(values.as_ref().clone()))
+            .map_err(error)
     }
 }
 

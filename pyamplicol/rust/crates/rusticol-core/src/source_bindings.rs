@@ -18,21 +18,59 @@ fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(message)
 }
 
-/// Immutable values and original exact overrides from one atomic owner revision.
-/// Fields are private so a retained snapshot cannot be changed after publication.
-pub struct SourceSnapshot<T> {
+/// An exact source declaration whose numerical realization is unavailable in
+/// one carrier. Structural/schema errors never enter this retryable category.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SourceBindingFailure {
+    pub stage: String,
+}
+impl SourceBindingFailure {
+    pub fn error(&self) -> RusticolError {
+        RusticolError::evaluation(format!("{} has nonfinite numerical values", self.stage))
+    }
+}
+
+struct SourceValues<T> {
     arguments: T,
     values: T,
+}
+
+enum SourceRealization<T> {
+    Ready(SourceValues<T>),
+    Failed(SourceBindingFailure),
+}
+impl<T> SourceRealization<T> {
+    fn values(&self) -> RusticolResult<&SourceValues<T>> {
+        match self {
+            Self::Ready(values) => Ok(values),
+            Self::Failed(failure) => Err(failure.error()),
+        }
+    }
+    fn failure(&self) -> Option<&SourceBindingFailure> {
+        match self {
+            Self::Ready(_) => None,
+            Self::Failed(failure) => Some(failure),
+        }
+    }
+}
+
+/// Immutable original exact overrides and realization from one atomic revision.
+/// Fields are private so a retained snapshot cannot be changed after publication.
+pub struct SourceSnapshot<T> {
+    realization: SourceRealization<T>,
     overrides: SourceOverrides,
     revision: u64,
     identity: Arc<()>,
 }
 impl<T> SourceSnapshot<T> {
-    pub fn arguments(&self) -> &T {
-        &self.arguments
+    pub fn arguments(&self) -> RusticolResult<&T> {
+        Ok(&self.realization.values()?.arguments)
     }
-    pub fn values(&self) -> &T {
-        &self.values
+    pub fn values(&self) -> RusticolResult<&T> {
+        Ok(&self.realization.values()?.values)
+    }
+    pub fn binding_failure(&self) -> Option<&SourceBindingFailure> {
+        self.realization.failure()
     }
     pub fn overrides(&self) -> &SourceOverrides {
         &self.overrides
@@ -54,6 +92,9 @@ struct OwnerWorkspace<B: LoopBackend> {
 pub struct SourceOwner<B: LoopBackend> {
     loaded: Arc<LoadedLoopRuntime>,
     identity: Arc<()>,
+    // A valid empty batch checks arithmetic compatibility even when this
+    // carrier cannot realize the current model. It contains no model values.
+    carrier: B::Batch,
     workspace: Mutex<OwnerWorkspace<B>>,
     current: RwLock<Arc<SourceSnapshot<B::Batch>>>,
 }
@@ -95,13 +136,38 @@ fn checked_overrides(record: &ScalarOwner, changes: &SourceOverrides) -> Rustico
 }
 
 impl<B: LoopBackend> OwnerWorkspace<B> {
+    fn new(loaded: &LoadedLoopRuntime, backend: &B) -> RusticolResult<Self> {
+        let record = source_record(loaded)?;
+        let evaluator = |name: &str| backend.evaluator(loaded.evaluator_state(name)?);
+        Ok(Self {
+            values: evaluator(&record.values_state)?,
+            defaults: record
+                .defaults_state
+                .as_deref()
+                .map(evaluator)
+                .transpose()?,
+            guards: record.guards_state.as_deref().map(evaluator).transpose()?,
+        })
+    }
+
     fn evaluate(
         &mut self,
         record: &ScalarOwner,
         backend: &B,
         overrides: &SourceOverrides,
-    ) -> RusticolResult<(B::Batch, B::Batch)> {
+    ) -> RusticolResult<SourceRealization<B::Batch>> {
         checked_overrides(record, overrides)?;
+        // Opaque evaluator/ingress errors remain hard errors. Only explicit
+        // nonfinite rows are numerical outcomes; no exception text is parsed.
+        macro_rules! finite {
+            ($batch:expr, $stage:expr) => {
+                if !B::nonfinite_rows($batch).is_empty() {
+                    return Ok(SourceRealization::Failed(SourceBindingFailure {
+                        stage: $stage.into(),
+                    }));
+                }
+            };
+        }
         let empty = backend.ingress_complex(&[], 1, 0, vec![0])?;
         let arguments = if let Some(defaults) = &mut self.defaults {
             let missing: Vec<_> = record
@@ -114,14 +180,13 @@ impl<B: LoopBackend> OwnerWorkspace<B> {
                 None
             } else {
                 let value = B::evaluate(defaults, &empty)?;
-                B::require_finite(
+                finite!(
                     &B::select(
                         &value,
                         missing.iter().flat_map(|&i| [2 * i, 2 * i + 1]).collect(),
                     )?,
-                    "model external defaults and diagnostics",
-                    1,
-                )?;
+                    "model external defaults and diagnostics"
+                );
                 Some(value)
             };
             let columns = record
@@ -143,24 +208,44 @@ impl<B: LoopBackend> OwnerWorkspace<B> {
         } else {
             empty
         };
-        B::require_finite(&arguments, "model external inputs", 1)?;
+        finite!(&arguments, "model external inputs");
         if let Some(guards) = &mut self.guards {
-            B::require_finite(
-                &B::evaluate(guards, &arguments)?,
-                "real model input type",
-                1,
-            )?;
+            finite!(&B::evaluate(guards, &arguments)?, "real model input type");
         }
         let values = B::evaluate(&mut self.values, &arguments)?;
-        B::require_finite(&values, "model scalar values and active diagnostics", 1)?;
+        finite!(&values, "model scalar values and active diagnostics");
         let values = B::select(&values, (0..record.outputs.len()).map(|i| 2 * i).collect())?;
-        Ok((arguments, values))
+        Ok(SourceRealization::Ready(SourceValues { arguments, values }))
     }
 }
 
 impl<B: LoopBackend> SourceOwner<B> {
-    pub(crate) fn loaded(&self) -> &Arc<LoadedLoopRuntime> {
+    pub fn loaded(&self) -> &Arc<LoadedLoopRuntime> {
         &self.loaded
+    }
+
+    /// Rebind an already admitted exact snapshot, recording this carrier's
+    /// numerical outcome even when it cannot realize the declaration. Ownership
+    /// is checked before any replay; no later live parameter state is consulted.
+    /// This is for independent evaluation attempts, not parameter admission.
+    pub fn from_snapshot(
+        backend: &B,
+        original_owner: &Self,
+        original: &SourceSnapshot<B::Batch>,
+    ) -> RusticolResult<Self> {
+        original_owner.require_snapshot(original)?;
+        let target = Self::new_with_alternate(
+            original_owner.loaded.clone(),
+            backend,
+            Some(original.overrides()),
+            |_, _| Ok(()),
+        )?;
+        let replay = target.reconstruct_snapshot(backend, original_owner, original)?;
+        *target
+            .current
+            .write()
+            .map_err(|_| invalid("source scalar snapshot lock poisoned"))? = replay;
+        Ok(target)
     }
 
     /// Overlay named parameters on the exact overrides captured in the artifact.
@@ -169,6 +254,21 @@ impl<B: LoopBackend> SourceOwner<B> {
         loaded: Arc<LoadedLoopRuntime>,
         backend: &B,
         parameters: Option<&SourceOverrides>,
+    ) -> RusticolResult<Self> {
+        Self::new_with_alternate(loaded, backend, parameters, |_, failure| {
+            Err(failure.error())
+        })
+    }
+
+    /// Publish an exact declaration only after the primary realization or an
+    /// explicitly configured alternate validates the complete candidate. The
+    /// consumer owns alternate arithmetic; higher values never fill primary
+    /// buffers. Schema errors bypass the alternate entirely.
+    pub fn new_with_alternate(
+        loaded: Arc<LoadedLoopRuntime>,
+        backend: &B,
+        parameters: Option<&SourceOverrides>,
+        alternate: impl FnOnce(&SourceOverrides, &SourceBindingFailure) -> RusticolResult<()>,
     ) -> RusticolResult<Self> {
         let record = source_record(&loaded)?;
         let ModelBinding::Source {
@@ -185,21 +285,15 @@ impl<B: LoopBackend> SourceOwner<B> {
                     .map(|(name, value)| (name.clone(), value.clone())),
             );
         }
-        let evaluator = |name: &str| backend.evaluator(loaded.evaluator_state(name)?);
-        let mut workspace = OwnerWorkspace::<B> {
-            values: evaluator(&record.values_state)?,
-            defaults: record
-                .defaults_state
-                .as_deref()
-                .map(evaluator)
-                .transpose()?,
-            guards: record.guards_state.as_deref().map(evaluator).transpose()?,
-        };
-        let (arguments, values) = workspace.evaluate(record, backend, &overrides)?;
+        let mut workspace = OwnerWorkspace::<B>::new(&loaded, backend)?;
+        let realization = workspace.evaluate(record, backend, &overrides)?;
+        if let Some(failure) = realization.failure() {
+            alternate(&overrides, failure)?;
+        }
+        let carrier = backend.ingress_complex(&[], 1, 0, vec![0])?;
         let identity = Arc::new(());
         let snapshot = SourceSnapshot {
-            arguments,
-            values,
+            realization,
             overrides,
             revision: 0,
             identity: identity.clone(),
@@ -207,9 +301,31 @@ impl<B: LoopBackend> SourceOwner<B> {
         Ok(Self {
             loaded,
             identity,
+            carrier,
             workspace: Mutex::new(workspace),
             current: RwLock::new(Arc::new(snapshot)),
         })
+    }
+
+    /// Validate the complete exact map in another carrier without creating or
+    /// publishing an owner. No artifact defaults are replaced by rounded data.
+    /// A numerical failure is returned as data; schema/executor errors stay hard.
+    pub fn validate_exact(
+        loaded: &LoadedLoopRuntime,
+        backend: &B,
+        overrides: &SourceOverrides,
+    ) -> RusticolResult<Option<SourceBindingFailure>> {
+        let mut workspace = OwnerWorkspace::<B>::new(loaded, backend)?;
+        Ok(workspace
+            .evaluate(source_record(loaded)?, backend, overrides)?
+            .failure()
+            .cloned())
+    }
+
+    pub(crate) fn require_backend(&self, backend: &B) -> RusticolResult<()> {
+        let empty = backend.ingress_complex(&[], 1, 0, vec![0])?;
+        B::concat(&[&self.carrier, &empty])?;
+        Ok(())
     }
 
     pub fn snapshot(&self) -> RusticolResult<Arc<SourceSnapshot<B::Batch>>> {
@@ -245,11 +361,11 @@ impl<B: LoopBackend> SourceOwner<B> {
             .workspace
             .lock()
             .map_err(|_| invalid("source scalar reconstruction lock poisoned"))?;
-        let (arguments, values) =
+        self.require_backend(backend)?;
+        let realization =
             workspace.evaluate(source_record(&self.loaded)?, backend, original.overrides())?;
         Ok(Arc::new(SourceSnapshot {
-            arguments,
-            values,
+            realization,
             overrides: original.overrides.clone(),
             revision: original.revision,
             identity: self.identity.clone(),
@@ -262,6 +378,19 @@ impl<B: LoopBackend> SourceOwner<B> {
         backend: &B,
         changes: &SourceOverrides,
     ) -> RusticolResult<Arc<SourceSnapshot<B::Batch>>> {
+        self.update_with_alternate(backend, changes, |_, failure| Err(failure.error()))
+    }
+
+    /// The alternate sees one complete candidate while this owner's writer is
+    /// serialized. It must not reenter this owner. Any failure leaves the current
+    /// exact revision untouched, including when every configured carrier fails.
+    pub fn update_with_alternate(
+        &self,
+        backend: &B,
+        changes: &SourceOverrides,
+        alternate: impl FnOnce(&SourceOverrides, &SourceBindingFailure) -> RusticolResult<()>,
+    ) -> RusticolResult<Arc<SourceSnapshot<B::Batch>>> {
+        self.require_backend(backend)?;
         let mut workspace = self
             .workspace
             .lock()
@@ -273,15 +402,16 @@ impl<B: LoopBackend> SourceOwner<B> {
                 .iter()
                 .map(|(name, value)| (name.clone(), value.clone())),
         );
-        let (arguments, values) =
-            workspace.evaluate(source_record(&self.loaded)?, backend, &overrides)?;
+        let realization = workspace.evaluate(source_record(&self.loaded)?, backend, &overrides)?;
+        if let Some(failure) = realization.failure() {
+            alternate(&overrides, failure)?;
+        }
         let revision = previous
             .revision
             .checked_add(1)
             .ok_or_else(|| invalid("source scalar revision overflows"))?;
         let candidate = Arc::new(SourceSnapshot {
-            arguments,
-            values,
+            realization,
             overrides,
             revision,
             identity: self.identity.clone(),
@@ -373,7 +503,7 @@ impl<B: LoopBackend> SourceScale<B> {
             &mut failures,
         )?;
         let arguments = B::gather(
-            &snapshot.arguments,
+            snapshot.arguments()?,
             vec![0; B::rows(&scale)],
             B::row_ids(&scale).to_vec(),
         )?;

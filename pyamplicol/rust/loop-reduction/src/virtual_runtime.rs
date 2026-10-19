@@ -6,8 +6,8 @@
 
 use crate::runtime::{Batch, physical::PhysicalBackend};
 use crate::verification::{
-    ArithmeticSpec, VerificationPolicy, VerificationWorkspace, VerifiedLoopResult,
-    evaluate_observable_verified,
+    ArithmeticSpec, SourceBindingValidation, VerificationPolicy, VerificationWorkspace,
+    VerifiedLoopResult, evaluate_observable_verified,
 };
 use rusticol_core::loop_artifact::{LoadedLoopArtifact, LoopExecutionMetadata, open_loop_artifact};
 use rusticol_core::loop_execution::{CompleteLoopResult, LoopExecutor, LoopInputs, LoopObservable};
@@ -24,6 +24,8 @@ pub struct VirtualRuntime {
     precision: Option<u32>,
     requested_strategy: String,
     verification: VerificationWorkspace,
+    policy: Option<VerificationPolicy>,
+    binding_validation: SourceBindingValidation,
 }
 
 fn strategy(requested: &str) -> RusticolResult<()> {
@@ -48,6 +50,28 @@ impl VirtualRuntime {
         parameters: Option<&SourceOverrides>,
         r2_strategy: &str,
     ) -> RusticolResult<Self> {
+        Self::open_with_policy(
+            path,
+            process,
+            arithmetic,
+            precision,
+            parameters,
+            r2_strategy,
+            None,
+        )
+    }
+
+    /// Configure source admission and complete-result verification together.
+    /// Without a policy, model realization retains eager primary validation.
+    pub fn open_with_policy(
+        path: impl AsRef<Path>,
+        process: Option<&str>,
+        arithmetic: &str,
+        precision: Option<u32>,
+        parameters: Option<&SourceOverrides>,
+        r2_strategy: &str,
+        policy: Option<&VerificationPolicy>,
+    ) -> RusticolResult<Self> {
         crate::runtime::register_scalar_primitives();
         Self::bind(
             Arc::new(open_loop_artifact(path, process)?),
@@ -55,6 +79,7 @@ impl VirtualRuntime {
             precision,
             parameters,
             r2_strategy,
+            policy,
         )
     }
 
@@ -64,6 +89,7 @@ impl VirtualRuntime {
         precision: Option<u32>,
         parameters: Option<&SourceOverrides>,
         r2_strategy: &str,
+        policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<Self> {
         strategy(r2_strategy)?;
         let engine = if arithmetic == "double" {
@@ -73,11 +99,15 @@ impl VirtualRuntime {
         };
         let backend = PhysicalBackend::new(arithmetic, precision, "interpreted", engine)
             .map_err(|e| RusticolError::invalid_argument(e.to_string()))?;
-        let executor =
-            LoopExecutor::with_parameters(artifact.runtime.clone(), backend.clone(), parameters)?;
-        let owner = executor.source_owner().cloned().ok_or_else(|| {
-            RusticolError::compatibility("public virtual handles require source-owned parameters")
-        })?;
+        let binding_validation = SourceBindingValidation::new(
+            &ArithmeticSpec {
+                arithmetic: arithmetic.into(),
+                precision,
+            },
+            policy,
+        )?;
+        let owner = binding_validation.owner(artifact.runtime.clone(), &backend, parameters)?;
+        let executor = LoopExecutor::with_source_owner(owner.clone(), backend.clone())?;
         Ok(Self {
             artifact,
             backend,
@@ -87,6 +117,8 @@ impl VirtualRuntime {
             precision,
             requested_strategy: r2_strategy.into(),
             verification: VerificationWorkspace::default(),
+            policy: policy.cloned(),
+            binding_validation,
         })
     }
 
@@ -139,8 +171,17 @@ impl VirtualRuntime {
     pub fn backend(&self) -> &PhysicalBackend {
         &self.backend
     }
+    pub fn verification_policy(&self) -> Option<&VerificationPolicy> {
+        self.policy.as_ref()
+    }
+    pub fn source_binding_validation(&self) -> &SourceBindingValidation {
+        &self.binding_validation
+    }
     pub fn update_parameters(&self, changes: &SourceOverrides) -> RusticolResult<u64> {
-        Ok(self.owner.update(&self.backend, changes)?.revision())
+        Ok(self
+            .binding_validation
+            .update(&self.owner, &self.backend, changes)?
+            .revision())
     }
 
     /// Clear process numerical workspaces; exact parameter state and existing
@@ -157,6 +198,19 @@ impl VirtualRuntime {
         parameters: Option<&SourceOverrides>,
         r2_strategy: Option<&str>,
     ) -> RusticolResult<Self> {
+        self.rebind_with_policy(arithmetic, precision, parameters, r2_strategy, None)
+    }
+
+    /// An omitted replacement inherits the handle policy, checked against the
+    /// new primary arithmetic before any source state is published.
+    pub fn rebind_with_policy(
+        &self,
+        arithmetic: &str,
+        precision: Option<u32>,
+        parameters: Option<&SourceOverrides>,
+        r2_strategy: Option<&str>,
+        policy: Option<&VerificationPolicy>,
+    ) -> RusticolResult<Self> {
         let mut exact = self.parameter_overrides()?;
         if let Some(changes) = parameters {
             exact.extend(changes.clone());
@@ -167,6 +221,7 @@ impl VirtualRuntime {
             precision,
             Some(&exact),
             r2_strategy.unwrap_or(&self.requested_strategy),
+            policy.or(self.policy.as_ref()),
         )
     }
 
@@ -277,6 +332,11 @@ impl VirtualRuntime {
     ) -> RusticolResult<CompleteLoopResult<Arc<Batch>>> {
         self.require_observable(observable)?;
         strategy(r2_strategy.unwrap_or(&self.requested_strategy))?;
+        if self.policy.is_some() {
+            return Err(RusticolError::invalid_argument(
+                "configured stability requires verified evaluation to preserve rescue diagnostics",
+            ));
+        }
         if !inputs.model_values.is_empty() {
             return Err(RusticolError::invalid_argument(
                 "source model parameters require named atomic updates",
