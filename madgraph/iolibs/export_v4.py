@@ -10734,13 +10734,17 @@ class UFO_model_to_mg4(object):
                 for line_run in runs.run_objects:
                     for one_element in line_run:
                         all_elements.add(one_element.name)
-            all_elements.union(set(self.PS_dependent_key))
+            all_elements.update(set(self.PS_dependent_key))
             self.PS_dependent_key = list(all_elements)
             MUE = [p for p in self.model.get('parameters')[('external',)] if p.lhablock.lower() == 'loop' and tuple(p.lhacode) == (2,)]
             
             if MUE:
                 self.MUE = MUE[0]
                 self.PS_dependent_key.append(MUE[0].name)
+                # the keys under which the parameters and couplings are
+                # stored use the name of the UFO model, without the prefix
+                if MUE[0].name.startswith('mdl_'):
+                    self.PS_dependent_key.append(MUE[0].name[4:])
             
             self.scales = self.model.get_running_blocks()
 
@@ -11805,6 +11809,13 @@ C
                             {'args': 'vecid' if (self.vector_size) else '',
                             'args_dep': ' integer vecid' if self.vector_size  else ''}
                          )
+        if self.model['running_elements'] and self.opt['mp']:
+            # coupling used for the evolution of the running parameters in
+            # update_as_param, shared with the multiple precision version
+            fsock.writelines("""
+                            double precision gother_mp
+                            common /to_gother_mp/ gother_mp
+                            """)
 
 
         if self.opt['export_format'] in ['madevent']:
@@ -11840,6 +11851,14 @@ C
         fsock.writelines("""include \'input.inc\'
                             include \'coupl.inc\'
                             READLHA = .false.""")
+        if self.model['running_elements'] and self.MUE:
+            # the parameters depending on the extra scale (muprime**2) are
+            # evaluated in intparam_definition.inc: set the scale before
+            fsock.writelines(""" if (fixed_extra_scale) then
+                                  %s = mue_ref_fixed
+                                 else
+                                  %s = mue_over_ref*model_scale
+                                 endif""" % (self.MUE.name, self.MUE.name))
         fsock.writelines("""    
                             include \'intparam_definition.inc\'\n
                             
@@ -11857,6 +11876,8 @@ C
                 if self.MUE:
                     fsock.writelines(' %s = mue_ref_fixed' % self.MUE.name)
                 fsock.writelines(' Gother = SQRT(4.0D0*PI*ALPHAS(mue_ref_fixed))') 
+                if self.opt['mp']:
+                    fsock.writelines(' gother_mp = Gother')
                 fsock.writelines(' first = .false.') 
                 for i in range(len(running_block)):
                     fsock.writelines(" call C_RUNNING_%s(Gother) ! %s \n" % (i+1,list(running_block[i])))   
@@ -11872,6 +11893,8 @@ C
                 fsock.writelines(' if(mue_over_ref.ne.1d0)then')
                 fsock.writelines('  Gother = SQRT(4.0D0*PI*ALPHAS(mue_over_ref*model_scale))')
                 fsock.writelines(' endif')
+                if self.opt['mp']:
+                    fsock.writelines(' gother_mp = Gother')
                 
                 for i in range(len(running_block)):
                     fsock.writelines(" call C_RUNNING_%s(Gother) ! %s \n" % (i+1,list(running_block[i])))   
@@ -11969,8 +11992,13 @@ C
                             """%self.mp_real_format)
             fsock.writelines("""include \'input.inc\'""")
 
-            fsock.writelines("""include \'coupl.inc\'
-                                include \'actualize_mp_ext_params.inc\'
+            fsock.writelines("""include \'coupl.inc\'""")
+            if self.model['running_elements']:
+                fsock.writelines("""
+                                double precision gother_mp, gother_eff
+                                common /to_gother_mp/ gother_mp
+                                """)
+            fsock.writelines("""include \'actualize_mp_ext_params.inc\'
                                 READLHA = .false.
                                 include \'mp_intparam_definition.inc\'\n
                              """)
@@ -11984,8 +12012,12 @@ C
                 #running_block = self.model.get_running(self.used_running_key) 
                 if running_block:
                     fsock.write_comments('calculate the running parameter')
+                    # same coupling as the double precision version (fixed
+                    # or dynamical extra scale); G if it was not called
+                    fsock.writelines(" gother_eff = gother_mp")
+                    fsock.writelines(" if (gother_eff.le.0d0) gother_eff = G")
                     for i in range(len(running_block)):
-                        fsock.writelines(" call MP_C_RUNNING_%s(G) ! %s \n" % (i+1,list(running_block[i])))   
+                        fsock.writelines(" call MP_C_RUNNING_%s(gother_eff) ! %s \n" % (i+1,list(running_block[i])))   
             
                     
             fsock.write_comments('\ncouplings needed to be evaluated points by points\n')
@@ -12016,7 +12048,7 @@ C
       %(mpinput)s
 
       include '../cuts.inc'
-      include '../vector.inc'
+      %(include_vector)s
       INCLUDE 'coupl.inc'
       double precision GMU
 
@@ -12072,7 +12104,7 @@ C
       PARAMETER  (PI=3.141592653589793D0)
 
       include '../cuts.inc'
-      include '../vector.inc'
+      %(include_vector)s
       INCLUDE 'input.inc'
       %(mpinput)s
       INCLUDE 'coupl.inc'
@@ -12127,7 +12159,7 @@ C
       PARAMETER  (PI=3.141592653589793D0)
 
        include '../cuts.inc'
-       include '../vector.inc'
+       %(include_vector)s
       INCLUDE 'input.inc'
       %(mpinput)s
       INCLUDE 'coupl.inc'
@@ -12313,6 +12345,8 @@ C
                     data['initc0'] += "\n   MAT2(%i,%i) = %s" % (i+1, j+1, towrite)
 
         data['mpinput'] =''
+        # vector.inc only exists in the madevent output (not in aMC@NLO)
+        data['include_vector'] = "include '../vector.inc'" if self.vector_size else ''
         if any(mat1[i][j] for i,j in zip(range(size),range(size))):
             template = self.template_running_gs_gs2
         else:

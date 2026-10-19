@@ -5904,7 +5904,9 @@ template_on = \
 # CONTROL The extra running scale (not QCD)                       *
 #    Such running is NOT include in systematics computation            *
 #***********************************************************************
+ %(fixed_extra_scale)s = fixed_extra_scale ! False means dynamical scale
  %(mue_ref_fixed)s  =  mue_ref_fixed ! scale to use if fixed scale mode
+ %(mue_over_ref)s   =  mue_over_ref  ! ratio to mur if dynamical scale
 """
 running_block_nlo = RunBlock('RUNNING', template_on=template_on, template_off="")
     
@@ -5991,7 +5993,7 @@ class RunCardNLO(RunCard):
         self.add_param('mcatnlo_delta', False)
         self.add_param('fixed_ren_scale', False)
         self.add_param('fixed_fac_scale', False)
-        self.add_param('fixed_extra_scale', True, hidden=True, system=True) # set system since running from Ellis-Sexton scale not implemented
+        self.add_param('fixed_extra_scale', True, hidden=True) # False: the extra (EFT) running scale follows muR event by event
         self.add_param('mur_ref_fixed', 91.118, shortcut={'mz':91.118, 'mw':80.419, 'mt':172.5, 'mh':125.0})                       
         self.add_param('muf1_ref_fixed', -1.0, hidden=True)
         self.add_param('muf_ref_fixed', 91.118, shortcut={'mz':91.118, 'mw':80.419, 'mt':172.5, 'mh':125.0})                       
@@ -6007,7 +6009,7 @@ class RunCardNLO(RunCard):
         self.add_param('muf_over_ref', 1.0)                       
         self.add_param('muf1_over_ref', -1.0, hidden=True)                       
         self.add_param('muf2_over_ref', -1.0, hidden=True)
-        self.add_param('mue_over_ref', 1.0, hidden=True, system=True) # forbid the user to modigy due to incorrect handling of the Ellis-Sexton scale
+        self.add_param('mue_over_ref', 1.0, hidden=True, comment='ratio mu_other/muR for dynamical scale') # the Ellis-Sexton scale must stay equal to muR when this is used
         self.add_param('qes_over_ref', -1.0, hidden=True)
         self.add_param('reweight_scale', [True], fortran_name='lscalevar')
         self.add_param('rw_rscale_down', -1.0, hidden=True)        

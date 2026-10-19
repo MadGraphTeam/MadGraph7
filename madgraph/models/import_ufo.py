@@ -3292,7 +3292,7 @@ class OrganizeModelExpression:
                 for line_run in runs.run_objects:
                     for one_element in line_run:
                         all_elements.add(one_element.name)
-            all_elements.union(self.track_dependant)
+            all_elements.update(self.track_dependant)
             self.track_dependant = list(all_elements)
         
     
