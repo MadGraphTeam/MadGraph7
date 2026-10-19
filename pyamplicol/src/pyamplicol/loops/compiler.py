@@ -49,6 +49,7 @@ class PreparedLoopRequestModel:
                     "compiled source contracts are owned by the compiled model"
                 )
             from pyamplicol.models import CompiledUFOModel
+
             from .request import prepare_loop_external_request
 
             source_model = CompiledUFOModel(self.compiled_model)
