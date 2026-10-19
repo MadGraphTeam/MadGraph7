@@ -43,8 +43,18 @@ def write_loop_pacbin(program, destination, *, resolved=False):
     """Lower one checked retained control into plain execution data and bytecode."""
     from .physical_color import color_projection_metadata
 
-    prepared = program.prepared  # Existing scope/strategy checks remain authoritative.
     bare = program.bare
+    components = None
+    if resolved and getattr(bare, "color_accuracy", "full") == "lc":
+        from .color_components import prepare_born_color_components
+
+        components = bare.born_color_components
+        if components is None:
+            components = prepare_born_color_components(bare.born_color_tensors)
+            bare.born_color_components = components
+            bare._prepared_process = program._prepared_model = None
+        components.require_width(len(bare.born_colors))
+    prepared = program.prepared  # Existing scope/strategy checks remain authoritative.
     payloads, payload_ids, schedules, schedule_ids = {}, {}, [], {}
 
     def state(value):
@@ -187,10 +197,12 @@ def write_loop_pacbin(program, destination, *, resolved=False):
         if program.r2_strategy != "model":
             raise ValueError("resolved projection requires model R2")
         # Only local projection changes: currents are still executed once for
-        # every point/helicity in a single native batch. The colour axis remains
-        # one explicitly contracted component in the declared colour accuracy.
+        # every point/helicity in a single native batch. LC adds signed Born
+        # anchors after that shared work; inclusive and NLC/full keep contraction.
         bare._make_born_projector(
-            (bare.born_metric,),
+            (bare.born_metric,)
+            if components is None
+            else components.mask_bra(bare.born_metric),
             helicities=bare.helicities[:1],
             real_result=True,
             _record_name="helicity_born_projector",
@@ -203,16 +215,25 @@ def write_loop_pacbin(program, destination, *, resolved=False):
                 metadata["graph_indices"],
                 metadata["powers"],
                 metadata["sector_indices"],
+                metrics=None
+                if components is None
+                else components.mask_bra(bare.loop_metric),
                 helicities=bare.helicities[:1],
                 _record_name=name,
             )
             family_projectors.append(state(bare._evaluator_states[name]))
-        program._make_projector(bare.helicities[:1], _record_name="helicity_projector")
+        program._make_projector(
+            bare.helicities[:1],
+            color_components=components,
+            _record_name="helicity_projector",
+        )
         data["helicity_projection"] = {
             "born": state(bare._evaluator_states["helicity_born_projector"]),
             "families": family_projectors,
             "counterterms": state(program._evaluator_states["helicity_projector"]),
         }
+        if components is not None:
+            data["born_color_components"] = components.as_dict()
     for item in prepared.currents:
         data["currents"].append(
             {
@@ -545,6 +566,16 @@ class PortableLoopPlan:
             bare, data.get("color_projection")
         )
         model.color_accuracy = bare.color_accuracy
+        from .color_components import BornColorComponents
+
+        components = data.get("born_color_components")
+        bare.born_color_components = (
+            None
+            if components is None
+            else BornColorComponents(
+                tuple(components["ids"]), tuple(map(tuple, components["members"]))
+            )
+        )
         model.source_scale_view = source_scale
         model.currents = [
             SimpleNamespace(

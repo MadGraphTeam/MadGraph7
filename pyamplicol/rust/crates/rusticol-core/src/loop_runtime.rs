@@ -89,6 +89,9 @@ record!(HelicityProjection {
 record!(ColorProjection {
     accuracy: String, born_degrees: Vec<Option<i64>>, virtual_degrees: Vec<Option<i64>>
 });
+record!(BornColorComponents {
+    kind: String, ids: Vec<String>, members: Vec<Vec<usize>>
+});
 record!(LoopRuntimePlan {
     schema: u32, r2_strategy: String, dimensional_numerators: bool,
     external_pdgs: Vec<i32>, state_legs: Vec<StateLeg>, helicities: Vec<Vec<i32>>, initial_average: u64,
@@ -97,8 +100,22 @@ record!(LoopRuntimePlan {
     order_layout: OrderLayout, schedules: Vec<Schedule>, born: ScheduleGroup, loops: ScheduleGroup,
     families: Vec<Family>, bare_evaluators: BTreeMap<String, String>,
     currents: Vec<Counterterm>, fields: Vec<ScalarBinding>, model_evaluators: BTreeMap<String, String>,
-    helicity_projection: Option<HelicityProjection>, color_projection: Option<ColorProjection>
+    helicity_projection: Option<HelicityProjection>, color_projection: Option<ColorProjection>,
+    born_color_components: Option<BornColorComponents>
 });
+
+impl LoopRuntimePlan {
+    /// Signed Born anchors are emitted only by the resolved LC projection.
+    pub fn resolved_color_component_count(&self) -> usize {
+        self.born_color_components
+            .as_ref()
+            .map_or(1, |p| p.ids.len())
+    }
+
+    pub fn resolved_rows_per_point(&self) -> RusticolResult<usize> {
+        product(self.helicities.len(), self.resolved_color_component_count())
+    }
+}
 
 /// Keeps authenticated immutable payload ownership independent of any evaluator workspace.
 pub struct LoadedLoopRuntime {
@@ -607,12 +624,35 @@ impl LoopRuntimePlan {
             "empty/duplicate family indices",
         )?;
         let mut integral_width = 0;
+        let components = self.resolved_color_component_count();
+        if let Some(partition) = &self.born_color_components {
+            require(
+                partition.kind == "canonical-born-tensor-partition"
+                    && !partition.ids.is_empty()
+                    && partition.ids.iter().all(|id| !id.is_empty())
+                    && unique(&partition.ids)
+                    && partition.members.len() == components
+                    && partition.members.iter().all(|row| !row.is_empty())
+                    && self.helicity_projection.is_some()
+                    && self
+                        .color_projection
+                        .as_ref()
+                        .is_some_and(|p| p.accuracy == "lc"),
+                "invalid signed Born colour component declaration",
+            )?;
+            let mut members: Vec<_> = partition.members.iter().flatten().copied().collect();
+            members.sort_unstable();
+            require(
+                members == (0..born_width).collect::<Vec<_>>(),
+                "Born colour components do not partition every Born column exactly once",
+            )?;
+        }
         if let Some(projection) = &self.helicity_projection {
             require(
                 projection.families.len() == self.families.len(),
                 "helicity family count differs",
             )?;
-            shape(&projection.born, born_width, b)?;
+            shape(&projection.born, born_width, product(components, b)?)?;
         }
         for (family_index, family) in self.families.iter().enumerate() {
             let n = family.propagators;
@@ -692,7 +732,10 @@ impl LoopRuntimePlan {
                 shape(
                     &projection.families[family_index],
                     sum([born_width, loops].into_iter())?,
-                    product(family.sector_indices.len(), family.powers.len())?,
+                    product(
+                        components,
+                        product(family.sector_indices.len(), family.powers.len())?,
+                    )?,
                 )?;
             }
             integral_width =
@@ -775,7 +818,11 @@ impl LoopRuntimePlan {
                 self.r2_strategy == "model",
                 "helicity projection requires model R2",
             )?;
-            shape(&projection.counterterms, amplitude_width, product(9, v)?)?;
+            shape(
+                &projection.counterterms,
+                amplitude_width,
+                product(components, product(9, v)?)?,
+            )?;
         }
         shape(
             &lookup(&self.model_evaluators, "assemble")?,

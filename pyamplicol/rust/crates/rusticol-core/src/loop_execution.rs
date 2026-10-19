@@ -169,6 +169,7 @@ pub struct CompleteLoopResult<T> {
 pub struct LoopLaneFailure {
     pub point_id: u64,
     pub helicity: Option<usize>,
+    pub color_component_index: Option<usize>,
     pub order_index: Option<usize>,
     pub family_index: Option<usize>,
     pub external_leg: Option<usize>,
@@ -208,14 +209,26 @@ fn check_finite<B: LoopBackend>(
     family_index: Option<usize>,
     failures: &mut Vec<LoopLaneFailure>,
 ) -> StepResult<()> {
+    check_component_finite::<B>(values, stage, helicities, None, family_index, failures)
+}
+
+fn check_component_finite<B: LoopBackend>(
+    values: &B::Batch,
+    stage: &str,
+    helicities: Option<usize>,
+    components: Option<usize>,
+    family_index: Option<usize>,
+    failures: &mut Vec<LoopLaneFailure>,
+) -> StepResult<()> {
     let bad = B::nonfinite_rows(values);
     if bad.is_empty() {
         return Ok(());
     }
     for id in bad {
         failures.push(LoopLaneFailure {
-            point_id: helicities.map_or(id, |h| id / h as u64),
-            helicity: helicities.map(|h| (id % h as u64) as usize),
+            point_id: helicities.map_or(id, |h| id / components.unwrap_or(1) as u64 / h as u64),
+            helicity: helicities.map(|h| (id / components.unwrap_or(1) as u64 % h as u64) as usize),
+            color_component_index: components.map(|c| (id % c as u64) as usize),
             external_leg: None,
             order_index: None,
             family_index,
@@ -668,13 +681,26 @@ impl<B: LoopBackend> LoopExecutor<B> {
             .as_ref()
             .map(|values| select_ids::<B>(values, &accepted))
             .transpose()?;
-        let projection_points = if resolved { rows } else { points };
+        let projection_input_points = if resolved { rows } else { points };
         let projection_helicities = if resolved { 1 } else { helicities };
-        let projection_ids = if resolved {
+        let projection_input_ids = if resolved {
             ids.clone()
         } else {
             input.point_ids.clone()
         };
+        let color_components = if resolved {
+            plan.resolved_color_component_count()
+        } else {
+            1
+        };
+        let projection_points = count(projection_input_points, color_components)?;
+        let resolved_rows_per_point = count(helicities, color_components)?;
+        let mut projection_ids = Vec::with_capacity(projection_points);
+        for &id in &projection_input_ids {
+            for component in 0..color_components {
+                projection_ids.push(lane_id(id, color_components, component)?);
+            }
+        }
         let model_rows = if pointwise_model {
             point_rows.clone()
         } else {
@@ -702,9 +728,9 @@ impl<B: LoopBackend> LoopExecutor<B> {
         )?;
         let born_input = B::reshape(
             &born_amplitudes,
-            projection_points,
+            projection_input_points,
             count(projection_helicities, B::columns(&born_amplitudes))?,
-            projection_ids.clone(),
+            projection_input_ids.clone(),
         )?;
         let born = if resolved {
             B::evaluate(
@@ -718,10 +744,17 @@ impl<B: LoopBackend> LoopExecutor<B> {
         } else {
             eval::<B>(&mut self.bare, "born_projector", &born_input)?
         };
-        check_finite::<B>(
+        let born = B::reshape(
+            &born,
+            projection_points,
+            plan.order_layout.born.len(),
+            projection_ids.clone(),
+        )?;
+        check_component_finite::<B>(
             &born,
             "Born projection",
             resolved.then_some(helicities),
+            resolved.then_some(color_components),
             None,
             &mut failures,
         )?;
@@ -735,9 +768,9 @@ impl<B: LoopBackend> LoopExecutor<B> {
             let projection = B::concat(&parts)?;
             let projection = B::reshape(
                 &projection,
-                projection_points,
+                projection_input_points,
                 count(projection_helicities, B::columns(&projection))?,
-                projection_ids.clone(),
+                projection_input_ids.clone(),
             )?;
             let projector = if resolved {
                 workspace
@@ -748,10 +781,17 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 &mut workspace.projector
             };
             let coefficients = B::evaluate(projector, &projection)?;
-            check_finite::<B>(
+            let coefficients = B::reshape(
+                &coefficients,
+                projection_points,
+                count(family.sector_indices.len(), family.powers.len())?,
+                projection_ids.clone(),
+            )?;
+            check_component_finite::<B>(
                 &coefficients,
                 "family numerator projection",
                 resolved.then_some(helicities),
+                resolved.then_some(color_components),
                 Some(family.index),
                 &mut failures,
             )?;
@@ -819,7 +859,11 @@ impl<B: LoopBackend> LoopExecutor<B> {
             for (row, &id) in projection_ids.iter().enumerate() {
                 for &sector in &family.sector_indices {
                     reduction_ids.push(lane_id(id, sector_count, sector)?);
-                    gather.push(if resolved { row / helicities } else { row });
+                    gather.push(if resolved {
+                        row / resolved_rows_per_point
+                    } else {
+                        row
+                    });
                 }
             }
             let coefficients = B::reshape(
@@ -853,6 +897,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 &reduction_ids,
                 &family.sector_indices,
                 helicities,
+                color_components,
                 resolved,
                 family.index,
                 "ordinary numerator reduction",
@@ -895,6 +940,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
                     &reduction_ids,
                     &family.sector_indices,
                     helicities,
+                    color_components,
                     resolved,
                     family.index,
                     "dimensional remainder reduction",
@@ -908,7 +954,13 @@ impl<B: LoopBackend> LoopExecutor<B> {
             .iter()
             .copied()
             .filter(|&id| {
-                !failed_points.contains(&(if resolved { id / helicities as u64 } else { id }))
+                !failed_points.contains(
+                    &(if resolved {
+                        id / resolved_rows_per_point as u64
+                    } else {
+                        id
+                    }),
+                )
             })
             .collect();
         let born = select_ids::<B>(&born, &accepted)?;
@@ -920,10 +972,11 @@ impl<B: LoopBackend> LoopExecutor<B> {
             "postprocess",
             &B::concat(&integrated.iter().collect::<Vec<_>>())?,
         )?;
-        check_finite::<B>(
+        check_component_finite::<B>(
             &virtual_value,
             "bare virtual assembly",
             resolved.then_some(helicities),
+            resolved.then_some(color_components),
             None,
             &mut failures,
         )?;
@@ -933,10 +986,11 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 "postprocess",
                 &B::concat(&rational_integrated.iter().collect::<Vec<_>>())?,
             )?;
-            check_finite::<B>(
+            check_component_finite::<B>(
                 &value,
                 "direct rational assembly",
                 resolved.then_some(helicities),
+                resolved.then_some(color_components),
                 None,
                 &mut failures,
             )?;
@@ -991,9 +1045,9 @@ impl<B: LoopBackend> LoopExecutor<B> {
         let projected = B::concat(&amplitudes.iter().collect::<Vec<_>>())?;
         let projected = B::reshape(
             &projected,
-            projection_points,
+            projection_input_points,
             count(projection_helicities, B::columns(&projected))?,
-            projection_ids.clone(),
+            projection_input_ids.clone(),
         )?;
         let counterterms = if resolved {
             B::evaluate(
@@ -1007,11 +1061,18 @@ impl<B: LoopBackend> LoopExecutor<B> {
         } else {
             eval::<B>(&mut self.model, "projector", &projected)?
         };
+        let counterterms = B::reshape(
+            &counterterms,
+            projection_points,
+            count(9, sector_count)?,
+            projection_ids.clone(),
+        )?;
         let mut counterterms = select_ids::<B>(&counterterms, &accepted)?;
-        check_finite::<B>(
+        check_component_finite::<B>(
             &counterterms,
             "counterterm projection",
             resolved.then_some(helicities),
+            resolved.then_some(color_components),
             None,
             &mut failures,
         )?;
@@ -1028,10 +1089,11 @@ impl<B: LoopBackend> LoopExecutor<B> {
             "assemble",
             &B::concat(&[&virtual_value, &counterterms])?,
         )?;
-        check_finite::<B>(
+        check_component_finite::<B>(
             &assembled,
             "complete virtual assembly",
             resolved.then_some(helicities),
+            resolved.then_some(color_components),
             None,
             &mut failures,
         )?;
@@ -1046,10 +1108,11 @@ impl<B: LoopBackend> LoopExecutor<B> {
         let mut values = vec![&born];
         values.extend(components.iter());
         let totals = eval::<B>(&mut self.model, "sum_order_values", &B::concat(&values)?)?;
-        check_finite::<B>(
+        check_component_finite::<B>(
             &totals,
             "sum over completed perturbative orders",
             resolved.then_some(helicities),
+            resolved.then_some(color_components),
             None,
             &mut failures,
         )?;
@@ -1063,8 +1126,14 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 .into_iter()
                 .zip(&projection_ids)
                 .filter_map(|(status, &id)| {
-                    (!failed_points.contains(&(if resolved { id / helicities as u64 } else { id })))
-                        .then_some(status)
+                    (!failed_points.contains(
+                        &(if resolved {
+                            id / resolved_rows_per_point as u64
+                        } else {
+                            id
+                        }),
+                    ))
+                    .then_some(status)
                 })
                 .collect(),
             r2_strategy: plan.r2_strategy.clone(),
@@ -1086,6 +1155,7 @@ pub(crate) fn finite_rows<B: LoopBackend>(
         failures.push(LoopLaneFailure {
             point_id,
             helicity: None,
+            color_component_index: None,
             order_index: None,
             family_index: None,
             external_leg: None,
@@ -1130,6 +1200,7 @@ fn complete_family_rows<B: LoopBackend>(
     channel_ids: &[u64],
     sectors: &[usize],
     helicities: usize,
+    color_components: usize,
     resolved: bool,
     family: usize,
     stage: &str,
@@ -1168,14 +1239,18 @@ fn complete_family_rows<B: LoopBackend>(
         statuses[row].push((projection_id, detail.clone()));
         if detail != "success" {
             let point_id = if resolved {
-                projection_id / helicities as u64
+                projection_id / color_components as u64 / helicities as u64
             } else {
                 projection_id
             };
             failed.insert(point_id);
             failures.push(LoopLaneFailure {
                 point_id,
-                helicity: resolved.then_some((projection_id % helicities as u64) as usize),
+                helicity: resolved.then_some(
+                    (projection_id / color_components as u64 % helicities as u64) as usize,
+                ),
+                color_component_index: resolved
+                    .then_some((projection_id % color_components as u64) as usize),
                 order_index: Some(sectors[channel % sectors.len()]),
                 family_index: Some(family),
                 external_leg: None,
@@ -1188,7 +1263,11 @@ fn complete_family_rows<B: LoopBackend>(
         .iter()
         .enumerate()
         .filter_map(|(row, &id)| {
-            let point = if resolved { id / helicities as u64 } else { id };
+            let point = if resolved {
+                id / color_components as u64 / helicities as u64
+            } else {
+                id
+            };
             (!failed.contains(&point)).then_some(row)
         })
         .collect();
@@ -1345,6 +1424,7 @@ fn prepare_states<B: LoopBackend>(
             failures.push(LoopLaneFailure {
                 point_id,
                 helicity: Some((id % helicity_count as u64) as usize),
+                color_component_index: None,
                 external_leg: Some((state_id % leg_count as u64) as usize),
                 order_index: None,
                 family_index: None,

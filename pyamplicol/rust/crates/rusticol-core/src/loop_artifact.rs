@@ -153,8 +153,8 @@ pub fn load_loop_artifact(
         "execution and process runtime capabilities disagree",
     )?;
     require(
-        selection.process.color_accuracy == "full" && selection.process.aliases.is_empty(),
-        "only independent full-colour virtual processes are currently admitted",
+        selection.process.aliases.is_empty(),
+        "only independent virtual processes are currently admitted",
     )?;
     let physics_path = &selection.process.physics_path;
     let physics_payload = artifact.payload(physics_path)?;
@@ -187,11 +187,12 @@ pub fn load_loop_artifact(
     let plan = runtime.plan();
     let metadata = &physics.metadata;
     require(
-        metadata.color_accuracy
-            == plan
-                .color_projection
-                .as_ref()
-                .map_or("full", |p| p.accuracy.as_str()),
+        selection.process.color_accuracy == metadata.color_accuracy
+            && metadata.color_accuracy
+                == plan
+                    .color_projection
+                    .as_ref()
+                    .map_or("full", |p| p.accuracy.as_str()),
         "declared colour accuracy differs from the saved projection",
     )?;
     require(
@@ -201,7 +202,9 @@ pub fn load_loop_artifact(
             && metadata.epsilon_convention == EPSILON_CONVENTION
             && metadata.dimension == "D=4-2*epsilon"
             && metadata.interference == "2*Re(conj(Born)*loop)"
-            && metadata.color_accuracy == "full"
+            && matches!(metadata.color_accuracy.as_str(), "full" | "nlc" | "lc")
+            && (metadata.color_accuracy != "lc"
+                || (metadata.resolved && plan.born_color_components.is_some()))
             && metadata.scheme_status == "declared-not-certified"
             && !metadata.correlations
             && metadata.resolved == plan.helicity_projection.is_some()
