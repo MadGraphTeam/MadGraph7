@@ -3,8 +3,8 @@
 
 Consumes the existing compiled-model raw sidecar or an explicit raw model. It
 never selects a hardcoded process, uses binary64 parameter defaults, or creates
-another artifact identity. The public loop service remains guarded until the
-portable complete runtime path is integrated.
+another artifact identity. The public service in generation.loop_service selects
+the published feature scope and writes the portable complete runtime plan.
 """
 
 from __future__ import annotations

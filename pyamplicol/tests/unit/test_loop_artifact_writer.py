@@ -114,7 +114,7 @@ def retained_source_process():
     return source_process(Path(path))
 
 
-def write_artifact(destination, processes, *, mode="error"):
+def write_artifact(destination, processes, *, mode="error", staged_validation=None):
     configuration = _GenerationConfigProvenance.from_config(
         RunConfig(
             action=Action.GENERATE,
@@ -131,6 +131,7 @@ def write_artifact(destination, processes, *, mode="error"):
         configuration=configuration,
         processes=processes,
         timings={"total": 0.0},
+        staged_validation=staged_validation,
     )
 
 
@@ -192,3 +193,93 @@ def test_source_artifact_rejects_metadata_mismatch_transactionally(
         )
     with pytest.raises(ValueError, match="explicitly supplied"):
         replace(retained_source_process.metadata.scheme, gamma5="")
+
+
+def test_failed_staged_validation_preserves_existing_artifact(
+    retained_source_process, tmp_path
+):
+    destination = tmp_path / "transaction"
+    write_artifact(destination, (retained_source_process,))
+    before = {
+        p.relative_to(destination): p.read_bytes()
+        for p in destination.rglob("*")
+        if p.is_file()
+    }
+    seen = []
+
+    def reject(staged):
+        manifest = load_manifest(staged)
+        assert manifest.processes[0]["id"] == "gg"
+        assert staged != destination
+        seen.append(staged)
+        raise ValueError("deliberate saved numerical mismatch")
+
+    with pytest.raises(ValueError, match="deliberate saved numerical mismatch"):
+        write_artifact(
+            destination,
+            (retained_source_process,),
+            mode="replace",
+            staged_validation=reject,
+        )
+    assert len(seen) == 1
+    assert not seen[0].exists()
+    assert {
+        p.relative_to(destination): p.read_bytes()
+        for p in destination.rglob("*")
+        if p.is_file()
+    } == before
+
+
+def test_changed_single_pole_fails_transactional_numerical_validation(
+    retained_source_process, tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+
+    from pyamplicol.api import GenerationError, Runtime
+    from pyamplicol.api.virtual_results import VirtualEvaluation, VirtualLaneDiagnostic
+    from pyamplicol.config import GenerationValidationConfig, R2Strategy
+    from pyamplicol.generation.loop_service import _validate_artifact, _ValidationValues
+    from pyamplicol.loops.strategy import R2Selection
+
+    process = retained_source_process
+    destination = tmp_path / "numerical-transaction"
+    write_artifact(destination, (process,))
+    previous_manifest = (destination / "artifact.json").read_bytes()
+    orders = process.metadata.orders
+    reference = _ValidationValues(
+        ((),), (1.0,), (5.0,) * len(orders.born), (1.0, 2.0, 3.0) * len(orders.virtual)
+    )
+    changed = VirtualEvaluation(
+        (reference.born,),
+        (((1.0, 2.25, 3.0),) * len(orders.virtual),),
+        tuple(sector.order for sector in orders.born),
+        orders.virtual,
+        (VirtualLaneDiagnostic("success", "double", 53, False),),
+        R2Selection(R2Strategy.AUTO, R2Strategy.MODEL, "only complete strategy"),
+    )
+
+    def load(staged, *, process):
+        return SimpleNamespace(
+            execution_mode="loop_recurrence",
+            artifact_id=load_manifest(staged).artifact_id,
+            representative_process_key=process,
+            evaluate=lambda *args, **kwargs: changed,
+        )
+
+    monkeypatch.setattr(Runtime, "load", load)
+    backend = SimpleNamespace(
+        _generation_config=SimpleNamespace(validation=GenerationValidationConfig())
+    )
+    context = SimpleNamespace(
+        expanded=(SimpleNamespace(request=SimpleNamespace(name=process.process_id)),)
+    )
+    with pytest.raises(GenerationError, match="virtual coefficient 1"):
+        write_artifact(
+            destination,
+            (process,),
+            mode="replace",
+            staged_validation=lambda staged: _validate_artifact(
+                backend, staged, context, (process,), {process.process_id: reference}
+            ),
+        )
+    assert (destination / "artifact.json").read_bytes() == previous_manifest

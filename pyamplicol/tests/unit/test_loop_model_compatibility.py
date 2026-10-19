@@ -53,7 +53,9 @@ def test_explicit_scalar_view_passes_strict_full_neutral_scope(raw):
         loop_order_bounds={"QCD": 4, "QED": 2},
         fixed_parameters={"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0"},
     )
-    with pytest.raises(ValueError, match="spin signature differs"):
+    with pytest.raises(
+        ValueError, match=r"V_1001.*SSS1.*spin slots.*particles require"
+    ):
         prepare_loop_request_model(raw, **options)
     view = prepare_loop_sm_scalar_declarations(raw)
     prepared = prepare_loop_request_model(view.derived, **options)

@@ -318,6 +318,19 @@ class Generator:
             raise FileNotFoundError(f"cannot append to missing artifact: {destination}")
         self._resolve_generation_resources()
         if correlators is not None:
+            run = (
+                self._config.effective
+                if isinstance(self._config, ConfigResolution)
+                else self._config
+            )
+            if (
+                isinstance(run, RunConfig)
+                and run.process.loop_coupling_orders is not None
+            ):
+                raise GenerationError(
+                    "virtual correlated generation is not integrated; loop corrections "
+                    "cannot use the tree coherent generation path"
+                )
             from pyamplicol.generation.correlated import generate_correlated
 
             return generate_correlated(

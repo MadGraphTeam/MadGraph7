@@ -484,7 +484,11 @@ def build_covariant_structure(
             if key not in lorentz_names:
                 if tuple(map(abs, source["fields"]["spins"])) != tuple(map(abs, spins)):
                     raise ValueError(
-                        "source Lorentz spin signature differs from species"
+                        f"source vertex {record['name']!r} (ID {record['id']}) "
+                        f"uses Lorentz tensor {source['name']!r} with spin slots "
+                        f"{tuple(source['fields']['spins'])}, but its particles "
+                        f"require {spins}; prepare a corrected model declaration "
+                        "before loop generation"
                     )
                 name = f"source_lorentz_{source['id']}_{len(lorentz_names)}"
                 lorentz_names[key] = name

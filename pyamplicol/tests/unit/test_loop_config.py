@@ -87,7 +87,7 @@ def test_loop_cli_and_toml_have_identical_semantics() -> None:
     assert cli == card
 
 
-def test_unfinished_loop_pipeline_does_not_silently_generate_tree() -> None:
+def test_unsupported_loop_request_does_not_silently_generate_tree(tmp_path) -> None:
     from pyamplicol.api import GenerationError, ProcessRequest, ProcessSet
     from pyamplicol.generation.service import GenerationBackend
 
@@ -97,5 +97,15 @@ def test_unfinished_loop_pipeline_does_not_silently_generate_tree() -> None:
         ),
         None,
     )
-    with pytest.raises(GenerationError, match="loop_recurrence generation"):
-        backend.plan(ProcessSet((ProcessRequest.parse("u u~ > d d~"),)))
+    processes = ProcessSet((ProcessRequest.parse("u u~ > d d~"),))
+    plan = backend.plan(processes)
+    assert plan.estimated_coverage["contribution_kind"] == "virtual"
+    assert any(
+        "color.accuracy='full'" in reason for reason in plan.unsupported_features
+    )
+    assert any(
+        "emit_api_bundle=false" in reason for reason in plan.unsupported_features
+    )
+    with pytest.raises(GenerationError, match="public loop generation"):
+        backend.generate(processes, tmp_path / "unsupported")
+    assert not (tmp_path / "unsupported").exists()

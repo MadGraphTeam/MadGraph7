@@ -960,6 +960,7 @@ def write_schema_v3_artifact(
     progress_callback: Callable[[dict[str, object]], None] | None = None,
     payload_hook: ArtifactPayloadHook | None = None,
     process_groups: ProcessGroupMap | None = None,
+    staged_validation: Callable[[Path], None] | None = None,
 ) -> ArtifactWriteResult:
     if not processes:
         raise ValueError("schema-v3 generation requires at least one concrete process")
@@ -1313,6 +1314,8 @@ def write_schema_v3_artifact(
         )
         staged = load_manifest(builder.root)
         _validate_artifact_references(staged)
+        if staged_validation is not None:
+            staged_validation(builder.root)
         if progress_callback is not None:
             progress_callback(
                 {

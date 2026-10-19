@@ -7,6 +7,7 @@ counterterm and reduction boundaries retain responsibility for physics support.
 
 from __future__ import annotations
 
+import cmath
 import os
 import time
 from collections.abc import Mapping
@@ -89,6 +90,41 @@ def _feature_blockers(backend, processes):
         reasons.append(
             "public loop coefficient generation currently supports "
             "evaluator.backend='jit'"
+        )
+    # These are tree evaluator settings. The loop compiler currently selects
+    # its existing native kernels/schedules and cannot apply these overrides.
+    # Resource cores remain shared and are resolved by the resource policy.
+    defaults = type(run.evaluator)()
+    ignored = []
+    for group, names in (
+        ("jit", ("optimization_level", "compress")),
+        (
+            "optimization",
+            (
+                "horner_iterations",
+                "cpe_iterations",
+                "max_horner_variables",
+                "max_common_pair_cache_entries",
+                "max_common_pair_distance",
+                "collect_factors",
+            ),
+        ),
+        ("recurrence", ("point_tile_size", "workspace_mib")),
+    ):
+        for name in names:
+            actual = getattr(getattr(run.evaluator, group), name)
+            expected = getattr(getattr(defaults, group), name)
+            if (group, name) == ("jit", "compress"):
+                actual = run.evaluator.resolved_jit_compress
+                expected = defaults.resolved_jit_compress
+            if actual != expected:
+                ignored.append(f"evaluator.{group}.{name}")
+    if run.evaluator.output_chunk_size != defaults.output_chunk_size:
+        ignored.append("evaluator.output_chunk_size")
+    if ignored:
+        reasons.append(
+            "public loop generation does not apply nondefault tree evaluator "
+            "tuning: " + ", ".join(ignored) + "; use the existing loop kernel defaults"
         )
     return tuple(reasons)
 
@@ -255,7 +291,7 @@ def generate_loop_artifact(
         raise GenerationError("; ".join(blockers))
     reporter = GenerationPhaseReporter(backend._progress)
     reporter.start_generation(
-        total=4, details={"execution_mode": "loop_recurrence", "backend": "JIT"}
+        total=3, details={"execution_mode": "loop_recurrence", "backend": "JIT"}
     )
     started = time.perf_counter()
     try:
@@ -273,6 +309,7 @@ def generate_loop_artifact(
             )
         with TemporaryDirectory(prefix="pyamplicol-loop-generation-") as temporary:
             artifacts = []
+            validation_values = {}
             with reporter.phase(
                 "loop-compile",
                 "Compiling complete loop instructions",
@@ -297,6 +334,10 @@ def generate_loop_artifact(
                         process_id=entry.request.name,
                         seed=validation.seed + index,
                     )
+                    if validation.post_build_validation and validation.enabled:
+                        validation_values[entry.request.name] = _validation_values(
+                            backend, context, entry, program.virtual
+                        )
                     artifacts.append(
                         LoopProcessArtifact(
                             process_id=entry.request.name,
@@ -322,7 +363,11 @@ def generate_loop_artifact(
                     )
                     phase.update(index + 1, message=entry.request.name)
             with reporter.phase(
-                "artifact-writing", "Writing virtual artifact", total=1
+                "artifact-writing",
+                "Writing and validating virtual artifact"
+                if backend._generation_config.validation.post_build_validation
+                else "Writing virtual artifact",
+                total=1,
             ) as phase:
                 result = backend._write_artifact(
                     Path(output),
@@ -333,14 +378,15 @@ def generate_loop_artifact(
                     processes=artifacts,
                     timings=reporter.timings,
                     api_bundle_hook=backend._api_bundle_hook,
+                    staged_validation=(
+                        lambda staged: _validate_artifact(
+                            backend, staged, context, artifacts, validation_values
+                        )
+                    )
+                    if backend._generation_config.validation.post_build_validation
+                    else None,
                 )
                 phase.update(1, message=str(result.output))
-            with reporter.phase(
-                "validation", "Validating virtual artifact", total=1
-            ) as phase:
-                if backend._generation_config.validation.post_build_validation:
-                    _validate_artifact(backend, result.output, context, artifacts)
-                phase.update(1)
         reporter.timings["total"] = time.perf_counter() - started
     except BaseException as error:
         reporter.finish_generation(success=False, message=str(error))
@@ -356,53 +402,120 @@ def generate_loop_artifact(
     )
 
 
-def _validate_artifact(backend, output, context, artifacts):
+@dataclass(frozen=True)
+class _ValidationValues:
+    """Small binary64 execution checks; never an independent physics oracle."""
+
+    momenta: tuple
+    scales: tuple[str, ...]
+    born: tuple[complex, ...]
+    virtual: tuple[complex, ...]
+
+
+def _validation_values(backend, context, entry, program):
+    validation = backend._generation_config.validation
+    points = tuple(
+        build_process_validation_point(
+            entry.process_ir,
+            context.resolved.model,
+            process_id=entry.request.name,
+            seed=validation.seed + i,
+        )
+        for i in range(validation.samples)
+    )
+    if any(not point.available for point in points):
+        raise GenerationError(
+            "virtual validation momenta unavailable: "
+            + str(next(point.error for point in points if not point.available))
+        )
+    # Positive incoming invariant: an explicit probe scale, never a runtime
+    # default or an inferred renormalization convention.
+    scales = []
+    for point in points:
+        total = [
+            sum(p[mu] for p in point.four_vectors[: len(entry.process_ir.initial_pdgs)])
+            for mu in range(4)
+        ]
+        scale = total[0] ** 2 - sum(component**2 for component in total[1:])
+        if scale <= 0:
+            raise GenerationError(
+                "virtual validation requires a positive incoming invariant"
+            )
+        scales.append(str(scale))
+    # The native source path consumes decimal strings in every carrier. Preserve
+    # the generated binary64 probe values by their round-trip decimal form and
+    # send those same inputs to the staged public runtime.
+    momenta = tuple(
+        tuple(tuple(str(value) for value in leg) for leg in point.four_vectors)
+        for point in points
+    )
+    expected = program.evaluate_ordered_native(momenta, scales)
+    return _ValidationValues(
+        momenta,
+        tuple(scales),
+        tuple(complex(float(re), float(im)) for re, im in expected.born.to_decimal()),
+        tuple(
+            complex(float(re), float(im)) for re, im in expected.virtual.to_decimal()
+        ),
+    )
+
+
+def _validate_artifact(backend, output, context, artifacts, validation_values):
     from pyamplicol.api import Runtime
     from pyamplicol.api.virtual_results import VirtualEvaluation
+    from pyamplicol.artifacts import load_manifest
 
+    manifest = load_manifest(output)
     validation = backend._generation_config.validation
     for entry, artifact in zip(context.expanded, artifacts, strict=True):
         runtime = Runtime.load(output, process=entry.request.name)
-        if runtime.execution_mode != "loop_recurrence":
+        if (
+            runtime.execution_mode != "loop_recurrence"
+            or runtime.artifact_id != manifest.artifact_id
+            or runtime.representative_process_key != entry.request.name
+        ):
             raise GenerationError(
-                "generated artifact selected a non-virtual execution mode"
+                "virtual validation loaded incompatible artifact metadata"
             )
         if not validation.enabled:
             continue
-        points = [
-            build_process_validation_point(
-                entry.process_ir,
-                context.resolved.model,
-                process_id=entry.request.name,
-                seed=validation.seed + i,
-            )
-            for i in range(validation.samples)
-        ]
-        if any(not point.available for point in points):
-            raise GenerationError(
-                "virtual validation momenta unavailable: "
-                + str(next(point.error for point in points if not point.available))
-            )
-        # The probe scale is the positive physical incoming invariant. It is not
-        # a hidden runtime default or a renormalization-scheme declaration.
-        scales = []
-        for point in points:
-            total = [
-                sum(
-                    p[mu]
-                    for p in point.four_vectors[: len(entry.process_ir.initial_pdgs)]
-                )
-                for mu in range(4)
-            ]
-            scales.append(total[0] ** 2 - sum(component**2 for component in total[1:]))
-        result = runtime.evaluate(
-            [point.four_vectors for point in points], mu_r2=scales
-        )
-        if not isinstance(result, VirtualEvaluation) or result.shape != (
-            len(points),
-            len(artifact.metadata.orders.virtual),
-            3,
+        expected = validation_values[entry.request.name]
+        result = runtime.evaluate(expected.momenta, mu_r2=expected.scales)
+        if not isinstance(result, VirtualEvaluation) or (
+            result.shape
+            != (len(expected.momenta), len(artifact.metadata.orders.virtual), 3)
+            or result.born_shape
+            != (len(expected.momenta), len(artifact.metadata.orders.born))
+            or result.sectors != artifact.metadata.orders.virtual
+            or result.born_orders
+            != tuple(sector.order for sector in artifact.metadata.orders.born)
         ):
             raise GenerationError(
                 "virtual validation returned incompatible Laurent/order axes"
             )
+        actual_born = tuple(value for row in result.born_values for value in row)
+        actual_virtual = tuple(
+            value for row in result.values for sector in row for value in sector
+        )
+        for label, actual, reference in (
+            ("Born", actual_born, expected.born),
+            ("virtual", actual_virtual, expected.virtual),
+        ):
+            if len(actual) != len(reference):
+                raise GenerationError(
+                    f"virtual validation returned incompatible {label} axes"
+                )
+            for index, (value, target) in enumerate(
+                zip(actual, reference, strict=True)
+            ):
+                if not cmath.isclose(
+                    complex(value),
+                    target,
+                    rel_tol=validation.relative_tolerance,
+                    abs_tol=validation.absolute_tolerance,
+                ):
+                    raise GenerationError(
+                        f"saved virtual execution differs from source execution for "
+                        f"{entry.request.name!r}, {label} coefficient {index} "
+                        f"(absolute difference {abs(complex(value) - target):.3e})"
+                    )

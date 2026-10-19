@@ -90,6 +90,11 @@ def correlated_configuration(
             "adjoint FFT is not supported for correlated matrix elements; "
             "use the direct colour contraction"
         )
+    if effective.process.loop_coupling_orders is not None:
+        raise GenerationError(
+            "virtual correlated generation is not integrated; loop corrections "
+            "cannot use the tree coherent generation path"
+        )
     result = replace(
         effective,
         color=replace(
