@@ -311,7 +311,7 @@ def _compile_configured_model(
         use_cache=config.model.cache,
         require_supported=require_supported,
     )
-    return cast("_CompiledModelPayload", payload)
+    return payload
 
 
 def _model_inspection_payload(compiled: _CompiledModelPayload) -> dict[str, object]:
@@ -436,38 +436,42 @@ class DefaultCliServices:
             raise ConfigurationError(
                 "virtual evaluation requires --mu-r2 or --mu-r2-file"
             )
-        runtime = _load_process_output(
-            artifact,
-            progress,
-            lambda: Runtime.load(
+
+        def load_runtime() -> Runtime:
+            if virtual:
+                return Runtime.load(
+                    artifact,
+                    process=evaluation.process,
+                    model_parameters=parameters,
+                    arithmetic=evaluation.arithmetic,
+                    precision=evaluation.precision,
+                    r2_strategy=config.loop.r2_strategy,
+                    stability=stability,
+                )
+            return Runtime.load(
                 artifact,
-                process=config.evaluation.process,
+                process=evaluation.process,
                 model_parameters=parameters,
-                **(
-                    {
-                        "arithmetic": evaluation.arithmetic,
-                        "precision": evaluation.precision,
-                        "r2_strategy": config.loop.r2_strategy,
-                        "stability": stability,
-                    }
-                    if virtual
-                    else {}
-                ),
-            ),
-        )
+            )
+
+        runtime = _load_process_output(artifact, progress, load_runtime)
         operation = (
             runtime.evaluate_resolved if evaluation.resolved else runtime.evaluate
         )
+        if virtual:
+            return operation(
+                cast("Momenta", momenta),
+                precision=evaluation.precision,
+                helicities=evaluation.helicity_ids or None,
+                color_flows=evaluation.color_flow_ids or None,
+                mu_r2=scales,
+                on_failure=evaluation.on_failure,
+            )
         return operation(
             cast("Momenta", momenta),
             precision=evaluation.precision,
             helicities=evaluation.helicity_ids or None,
             color_flows=evaluation.color_flow_ids or None,
-            **(
-                {"mu_r2": scales, "on_failure": evaluation.on_failure}
-                if virtual
-                else {}
-            ),
         )
 
     def benchmark(self, config: RunConfig, progress: ProgressSink) -> object:
@@ -509,10 +513,11 @@ class DefaultCliServices:
 
         from pyamplicol.artifacts import inspect_artifact
 
+        artifact = config.evaluation.artifact
         inspection = _load_process_output(
-            config.evaluation.artifact,
+            artifact,
             progress,
-            lambda: inspect_artifact(config.evaluation.artifact),
+            lambda: inspect_artifact(artifact),
         )
         if selector is None:
             return inspection

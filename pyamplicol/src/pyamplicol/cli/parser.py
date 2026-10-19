@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
+from typing import Literal, cast
 
 from pyamplicol.config import (
     ACTIONS,
@@ -964,7 +965,11 @@ def _is_prepared_model_output(value: object) -> bool:
     if value is None or value == argparse.SUPPRESS:
         return False
     try:
-        return str(os.fspath(value)).lower().endswith(".pyamplicol-model")
+        return (
+            str(os.fspath(cast("str | os.PathLike[str]", value)))
+            .lower()
+            .endswith(".pyamplicol-model")
+        )
     except TypeError:
         return False
 
@@ -989,7 +994,10 @@ def _namespace_to_invocation(
             organization=raw.pop("organization", None),
             assume_yes=bool(raw.pop("assume_yes", False)),
             output_format="json" if bool(raw.pop("_json_output", False)) else "human",
-            output_color=str(raw.pop("_output_color", "auto")),
+            output_color=cast(
+                Literal["auto", "always", "never"],
+                str(raw.pop("_output_color", "auto")),
+            ),
         )
     action = Action(action_value) if action_value is not None else None
     if action is Action.MODEL_COMPILE:

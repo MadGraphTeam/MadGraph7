@@ -1012,7 +1012,11 @@ class EvaluationStabilityConfig:
         try:
             for token in self.higher:
                 if token in ("double", "double-double"):
-                    levels.append(VirtualArithmeticSpec(token))
+                    levels.append(
+                        VirtualArithmeticSpec(
+                            "double" if token == "double" else "double-double"
+                        )
+                    )
                 elif re.fullmatch(r"arbitrary:[0-9]+", token):
                     levels.append(VirtualArithmeticSpec("arbitrary", int(token[10:])))
                 else:
