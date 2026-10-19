@@ -43,10 +43,10 @@ license = "MIT"
 
 [ufo_model_loader]
 source_url = "https://github.com/alphal00p/ufo_model_loader.git"
-candidate_revision = "70ddee6b416f8c8b340e0d087646d77095c5d24b"
-latest_verified_published_version = "0.1.8"
-published_revision = "f5a9f8d2eaff76b99629fc3143952ca4f2425d55"
-wheel_sha256 = "b253942f0a356eacd5fd68b104cacf11039c2391a9ee963107f674fad54f01ef"
+candidate_revision = "61e733c77acd7787a402eae43c3c219caca623c0"
+latest_verified_published_version = "1.0.1"
+published_revision = "61e733c77acd7787a402eae43c3c219caca623c0"
+wheel_sha256 = "379a2ed96e2c4db9a753b7f7e5e9801c7837059479e7135b78cc35da5f747dea"
 release_status = "verified"
 license = "MIT"
 

@@ -191,15 +191,15 @@ def test_ufo_loader_distinguishes_required_and_latest_published_versions() -> No
     module = _module()
     payload = module._lock()
     loader = payload["ufo_model_loader"]
-    assert loader["required_version"] == "1.0.0"
-    assert loader["latest_verified_published_version"] == "0.1.8"
-    assert loader["published_revision"] == ("f5a9f8d2eaff76b99629fc3143952ca4f2425d55")
+    assert loader["required_version"] == "1.0.1"
+    assert loader["latest_verified_published_version"] == "1.0.1"
+    assert loader["published_revision"] == ("61e733c77acd7787a402eae43c3c219caca623c0")
     assert loader["wheel_sha256"] == (
-        "b253942f0a356eacd5fd68b104cacf11039c2391a9ee963107f674fad54f01ef"
+        "379a2ed96e2c4db9a753b7f7e5e9801c7837059479e7135b78cc35da5f747dea"
     )
     assert loader["release_status"] == "verified"
     assert loader["source_url"] == "https://github.com/alphal00p/ufo_model_loader.git"
-    assert loader["candidate_revision"] == "70ddee6b416f8c8b340e0d087646d77095c5d24b"
+    assert loader["candidate_revision"] == "61e733c77acd7787a402eae43c3c219caca623c0"
     assert "patches" not in payload
 
 
@@ -1057,7 +1057,8 @@ def test_published_dependencies_resolve_then_replace_same_version_candidates(
 ) -> None:
     module = _module()
     monkeypatch.setattr(module, "VENV", tmp_path / ".venv")
-    wheel = tmp_path / "ufo_model_loader-1.0.0-py3-none-any.whl"
+    loader_version = module._lock()["ufo_model_loader"]["required_version"]
+    wheel = tmp_path / f"ufo_model_loader-{loader_version}-py3-none-any.whl"
     calls: list[list[str]] = []
 
     class FakeRunner:
@@ -1088,8 +1089,8 @@ def test_published_dependencies_resolve_then_replace_same_version_candidates(
         "--force-reinstall",
         "--no-deps",
         "--only-binary=:all:",
-        "symbolica==3.0.0",
-        *(selected or ["ufo-model-loader==1.0.0"]),
+        next(item for item in requirements if item.startswith("symbolica==")),
+        *(selected or [f"ufo-model-loader=={loader_version}"]),
     ]
 
 

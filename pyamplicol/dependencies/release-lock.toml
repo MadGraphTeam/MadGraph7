@@ -80,7 +80,7 @@ version = "1.2.0"
 
 [[python_dependencies]]
 distribution = "ufo-model-loader"
-version = "1.0.0"
+version = "1.0.1"
 
 [symbolica]
 python_distribution = "symbolica"
@@ -94,4 +94,4 @@ version = "2.27.3"
 
 [ufo_model_loader]
 python_distribution = "ufo-model-loader"
-required_version = "1.0.0"
+required_version = "1.0.1"

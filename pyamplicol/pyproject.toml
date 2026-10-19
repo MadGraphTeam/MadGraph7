@@ -56,7 +56,7 @@ dependencies = [
   "six==1.17.0",
   "symbolica==3.0.2",
   "tomli-w==1.2.0",
-  "ufo-model-loader==1.0.0",
+  "ufo-model-loader==1.0.1",
 ]
 
 [project.optional-dependencies]
