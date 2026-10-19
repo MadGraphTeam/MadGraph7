@@ -368,21 +368,44 @@ class Runtime:
         process: str | None = None,
         model_parameters: ModelParameters | None = None,
         mute_warnings: bool = False,
+        arithmetic: str | None = None,
+        precision: int | None = None,
+        r2_strategy: R2Strategy | str | None = None,
     ) -> Runtime:
         """Load one process by stable ID, alias ID, or exact expression.
 
         ``model_parameters`` is applied atomically before the runtime is
         returned. Omit ``process`` only for a single-process artifact or to use
         the artifact's declared default.
+
+        Virtual runtimes accept initial ``arithmetic``, ``precision`` and
+        ``r2_strategy`` defaults. Arithmetic is selected before exact model
+        parameters are evaluated. Omitted evaluation options retain these
+        defaults; tree runtimes select precision at evaluation time instead.
         """
 
         path = Path(os.fspath(artifact)).expanduser().resolve(strict=False)
         parameters = dict(model_parameters) if model_parameters is not None else None
-        backend = _get_runtime_loader()(
+        options: dict[str, object] = {}
+        if arithmetic is not None:
+            options["arithmetic"] = arithmetic
+        if precision is not None:
+            options["precision"] = _validate_precision(precision)
+        if r2_strategy is not None:
+            options["r2_strategy"] = r2_strategy
+        loader = _get_runtime_loader()
+        if options and not _accepts_keyword_arguments(loader, *options):
+            raise CompatibilityError(
+                "runtime loader does not support load-time "
+                + ", ".join(options)
+                + "; install a loader supporting these options"
+            )
+        backend = cast(Callable[..., RuntimeBackend], loader)(
             path,
             process=process,
             model_parameters=parameters,
             mute_warnings=mute_warnings,
+            **options,
         )
         return backend if isinstance(backend, cls) else cls(backend)
 
@@ -522,7 +545,7 @@ class Runtime:
         color_flows: Sequence[str | ColorFlow] | None = None,
         helicity_by_point: Sequence[str | HelicityConfiguration] | None = None,
         color_flow_by_point: Sequence[str | ColorFlow] | None = None,
-        precision: int = 16,
+        precision: int | None = None,
         arithmetic: Literal["double", "double-double", "arbitrary"] | None = None,
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
@@ -533,11 +556,13 @@ class Runtime:
         coefficient or coupling-order sum is selected implicitly.
 
         Selectors accept stable string IDs or the typed objects exposed by
-        :attr:`physics`. Precision 16 uses the native f64 path; larger values
-        use the retained high-precision evaluator state when arithmetic is
-        omitted. Explicit ``arithmetic`` selects double, DoubleFloat or arbitrary
-        precision. Virtual runtimes accept scalar or per-point positive ``mu_r2``
-        and an available ``r2_strategy``; exact inputs are forwarded unchanged.
+        :attr:`physics`. Omitted precision uses the runtime's load-time default,
+        or 16 when the backend has no precision default. Tree precision 16 uses
+        the native f64 path; larger values use the retained high-precision
+        evaluator state. Explicit ``arithmetic`` selects double, DoubleFloat or
+        arbitrary precision. Virtual runtimes retain their loaded arithmetic
+        and R2 defaults when omitted, and accept scalar or per-point positive
+        ``mu_r2``; exact inputs are forwarded unchanged.
         """
 
         helicity_ids = _selector_ids(
@@ -566,7 +591,11 @@ class Runtime:
             raise ValueError(
                 "color_flows and color_flow_by_point are mutually exclusive"
             )
-        precision = _validate_precision(precision)
+        precision = _validate_precision(
+            getattr(self._backend, "default_precision", 16)
+            if precision is None
+            else precision
+        )
         contribution = self.contribution_kind
         options = self._evaluation_options(arithmetic, mu_r2, r2_strategy)
         self._require_evaluation_options(self._backend.evaluate, options)
@@ -743,7 +772,7 @@ class Runtime:
         *,
         helicities: Sequence[str | HelicityConfiguration] | None = None,
         color_flows: Sequence[str | ColorFlow] | None = None,
-        precision: int = 16,
+        precision: int | None = None,
         arithmetic: Literal["double", "double-double", "arbitrary"] | None = None,
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
@@ -755,9 +784,15 @@ class Runtime:
         For tree results, summing the non-point axes reproduces :meth:`evaluate`.
         Virtual results additionally retain squared-order and Laurent axes;
         their ``total()`` sums only the helicity and colour axes.
+        Omitted precision uses the runtime's load-time default, or 16 when the
+        backend has no precision default, as in :meth:`evaluate`.
         """
 
-        precision = _validate_precision(precision)
+        precision = _validate_precision(
+            getattr(self._backend, "default_precision", 16)
+            if precision is None
+            else precision
+        )
         contribution = self.contribution_kind
         options = self._evaluation_options(arithmetic, mu_r2, r2_strategy)
         self._require_evaluation_options(self._backend.evaluate_resolved, options)

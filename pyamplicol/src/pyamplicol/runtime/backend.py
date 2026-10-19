@@ -6,7 +6,7 @@ import inspect
 import json
 import math
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from copy import deepcopy
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
@@ -46,6 +46,7 @@ from pyamplicol.api.results import (
     WarmUpResult,
 )
 from pyamplicol.artifacts import MANIFEST_NAME, ArtifactManifest, load_manifest
+from pyamplicol.config import R2Strategy
 from pyamplicol.reporting import (
     ProgressEnd,
     ProgressSink,
@@ -1754,11 +1755,25 @@ def load_runtime_backend(
     process: str | None = None,
     model_parameters: ModelParameters | None = None,
     mute_warnings: bool = False,
+    arithmetic: str | None = None,
+    precision: int | None = None,
+    r2_strategy: R2Strategy | str | None = None,
 ) -> RuntimeBackend:
-    """Load a schema-v3 artifact without importing the extension during discovery."""
+    """Load a schema-v3 artifact without importing the extension during discovery.
+
+    Virtual arithmetic and precision defaults are applied before exact model
+    parameters are evaluated. Tree runtimes select precision during evaluation.
+    """
 
     path = Path(os.fspath(artifact)).expanduser().resolve(strict=False)
     parameters = dict(model_parameters) if model_parameters is not None else None
+    options: dict[str, object] = {}
+    if arithmetic is not None:
+        options["arithmetic"] = arithmetic
+    if precision is not None:
+        options["precision"] = precision
+    if r2_strategy is not None:
+        options["r2_strategy"] = r2_strategy
     manifest_root = (
         path.parent if path.name == MANIFEST_NAME and path.is_file() else path
     )
@@ -1781,11 +1796,19 @@ def load_runtime_backend(
 
         # This is only a dispatch hint. The virtual native loader authenticates
         # all payloads and resolves the requested process authoritatively.
-        return VirtualRuntimeBackend(
+        return cast(Callable[..., RuntimeBackend], VirtualRuntimeBackend)(
             path,
             process=process,
             model_parameters=parameters,
             mute_warnings=mute_warnings,
+            **options,
+        )
+    if options:
+        raise CompatibilityError(
+            "load-time "
+            + ", ".join(options)
+            + " options are supported only for virtual artifacts; "
+            "select precision when evaluating a tree artifact"
         )
     module = _load_native_module()
     runtime = _invoke(
