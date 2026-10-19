@@ -368,7 +368,7 @@ def _prepare_directed(program, declarations):
     return prepared, native_requests, spin
 
 
-def _group_exact_flavors(context, programs):
+def _group_exact_flavors(context, programs, projections=None):
     """Admit exact identity-port relations; keep every unproved member independent."""
     from pyamplicol.artifacts.process_groups import (
         grouping_process,
@@ -415,8 +415,22 @@ def _group_exact_flavors(context, programs):
             )
             try:
                 symmetry = prove_flavor_relabeling(plan, species)
+                sources = {}
+                if projections is not None:
+                    left, left_histories, left_spin = projections[previous]
+                    right, right_histories, right_spin = projections[index]
+                    if left_histories != right_histories:
+                        raise ValueError(
+                            "flavour transport changes declared history labels"
+                        )
+                    sources = dict(
+                        representative_directed=left,
+                        member_directed=right,
+                        representative_spin=left_spin,
+                        member_spin=right_spin,
+                    )
                 transport = IdentityFlavorTransport.admit(
-                    symmetry, candidate, program, mapping
+                    symmetry, candidate, program, mapping, **sources
                 )
             except (ValueError, NotImplementedError):
                 # Incompatible masses, couplings, schemes or unproved local
@@ -459,7 +473,6 @@ def _flavor_grouping_enabled(backend, correlators):
     return (
         backend._run_config.process.flavor_blind
         and backend._run_config.color.accuracy == "full"
-        and not (correlators is not None and correlators.spin_correlations)
     )
 
 
@@ -471,8 +484,6 @@ def _flavor_grouping_outcome(backend, correlators, *, reused=False):
     if requested and not reused:
         if backend._run_config.color.accuracy != "full":
             reason = "projected-colour flavour transport is not certified"
-        elif correlators is not None and correlators.spin_correlations:
-            reason = "spin-source flavour transport is not certified"
         else:
             reason = "no exact identity-port member was admitted"
     return {
@@ -619,7 +630,7 @@ def generate_loop_artifact(
                     phase.update(index + 1, message=entry.request.name)
                 if grouping:
                     retained, admissions, representatives, process_groups = (
-                        _group_exact_flavors(context, programs)
+                        _group_exact_flavors(context, programs, projections)
                     )
                     selected = []
                     for index in retained:

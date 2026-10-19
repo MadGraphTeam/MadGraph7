@@ -31,6 +31,41 @@ from .ir import (
 )
 
 
+def is_external_model_particle(
+    *,
+    spin: int,
+    ghost_number: int,
+    goldstoneboson: bool,
+    propagating: bool,
+    auxiliary_kind: str | None,
+) -> bool:
+    """The declared external-state eligibility shared by model consumers."""
+    return (
+        spin > 0
+        and ghost_number == 0
+        and not goldstoneboson
+        and propagating
+        and auxiliary_kind is None
+    )
+
+
+def resolve_model_particle_name(
+    name: str, names: Sequence[str], *, model_name: str
+) -> str:
+    """Use the public exact-first, uniquely case-insensitive particle spelling."""
+    if name in names:
+        return name
+    folded = [
+        candidate for candidate in names if candidate.casefold() == name.casefold()
+    ]
+    if len(folded) == 1:
+        return folded[0]
+    if len(folded) > 1:
+        choices = ", ".join(sorted(folded))
+        raise ValueError(f"particle name {name!r} is case-ambiguous: {choices}")
+    raise ValueError(f"particle {name!r} is not an external state in {model_name}")
+
+
 @dataclass(frozen=True)
 class ModelParticleCatalog:
     model_name: str
@@ -56,33 +91,23 @@ class ModelParticleCatalog:
         return tuple(
             particle
             for particle in self.particles
-            if particle.spin > 0
-            and particle.ghost_number == 0
-            and not particle.goldstoneboson
-            and particle.propagating
-            and particle.auxiliary_kind is None
+            if is_external_model_particle(
+                spin=particle.spin,
+                ghost_number=particle.ghost_number,
+                goldstoneboson=particle.goldstoneboson,
+                propagating=particle.propagating,
+                auxiliary_kind=particle.auxiliary_kind,
+            )
         )
 
     def resolve(self, name: str, *, external: bool = True) -> CompiledParticleRecord:
         candidates = self.external_particles if external else self.particles
-        exact = next(
-            (particle for particle in candidates if particle.name == name), None
+        canonical = resolve_model_particle_name(
+            name,
+            tuple(particle.name for particle in candidates),
+            model_name=self.model_name,
         )
-        if exact is not None:
-            return exact
-        folded = [
-            particle
-            for particle in candidates
-            if particle.name.casefold() == name.casefold()
-        ]
-        if len(folded) == 1:
-            return folded[0]
-        if len(folded) > 1:
-            names = ", ".join(sorted(particle.name for particle in folded))
-            raise ValueError(f"particle name {name!r} is case-ambiguous: {names}")
-        raise ValueError(
-            f"particle {name!r} is not an external state in {self.model_name}"
-        )
+        return next(particle for particle in candidates if particle.name == canonical)
 
     def antiparticle(self, particle: CompiledParticleRecord) -> CompiledParticleRecord:
         try:

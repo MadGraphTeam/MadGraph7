@@ -122,10 +122,10 @@ def test_public_exact_flavor_member_native_resolved_and_directed(
     captured = {}
     original = loop_service._group_exact_flavors
 
-    def retain_actual_programs(context, programs):
+    def retain_actual_programs(context, programs, projections=None):
         # Observation only: all actual source construction and proof still run.
         captured["programs"] = tuple(programs)
-        return original(context, programs)
+        return original(context, programs, projections)
 
     monkeypatch.setattr(loop_service, "_group_exact_flavors", retain_actual_programs)
     projected = []

@@ -126,9 +126,9 @@ def test_exact_flavor_request_keeps_unsupported_compositions_independent(accurac
     processes = ProcessSet((ProcessRequest.parse("g g > g g"),))
     assert not _feature_blockers(backend, processes)
     assert _flavor_grouping_enabled(backend, None) == (accuracy == "full")
-    assert not _flavor_grouping_enabled(
+    assert _flavor_grouping_enabled(
         backend, CorrelatorConfig(spin_correlations=((1,),))
-    )
+    ) == (accuracy == "full")
     outcome = _flavor_grouping_outcome(backend, None)
     assert outcome["requested"] and not outcome["reuse_applied"]
     assert outcome["transport_checked"] == (accuracy == "full")
