@@ -149,6 +149,32 @@ class ContractedColorComponent:
 
 
 @dataclass(frozen=True, slots=True)
+class BornAnchoredColorComponent:
+    """Signed component anchored to a canonical group of Born colour tensors.
+
+    These groups may be overcomplete. They are neither positive flow weights
+    nor a claim of a minimal independent colour basis.
+    """
+
+    id: str
+    index: int
+    born_term_indices: tuple[int, ...]
+    description: str
+
+    def __post_init__(self) -> None:
+        if not self.id or not self.description:
+            raise ValueError("Born-anchored colour metadata must not be empty")
+        if type(self.index) is not int or self.index < 0:
+            raise ValueError("Born-anchored colour index must be nonnegative")
+        members = tuple(self.born_term_indices)
+        if not members or any(type(i) is not int or i < 0 for i in members):
+            raise ValueError("Born anchor requires nonnegative Born-term indices")
+        if len(set(members)) != len(members):
+            raise ValueError("Born anchor term indices must be unique")
+        object.__setattr__(self, "born_term_indices", members)
+
+
+@dataclass(frozen=True, slots=True)
 class ModelParameter:
     name: str
     kind: str
@@ -165,7 +191,9 @@ class ModelParameter:
             raise ValueError("model parameter defaults must be finite")
 
 
-ColorComponent: TypeAlias = ColorFlow | ContractedColorComponent
+ColorComponent: TypeAlias = (
+    ColorFlow | ContractedColorComponent | BornAnchoredColorComponent
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,11 +225,15 @@ class ReductionGroup:
 
 @dataclass(frozen=True, slots=True)
 class PhysicsReduction:
-    kind: Literal["lc-diagonal", "contracted-color"]
+    kind: Literal["lc-diagonal", "contracted-color", "born-anchored-interference"]
     groups: tuple[ReductionGroup, ...]
 
     def __post_init__(self) -> None:
-        if self.kind not in ("lc-diagonal", "contracted-color"):
+        if self.kind not in (
+            "lc-diagonal",
+            "contracted-color",
+            "born-anchored-interference",
+        ):
             raise ValueError("unsupported physics reduction kind")
         groups = tuple(self.groups)
         if not all(isinstance(group, ReductionGroup) for group in groups):
@@ -324,9 +356,9 @@ class WarmUpResult:
 class ProcessPhysics:
     """Physical axes, reduction metadata, and selectors for one process.
 
-    LC processes expose physical color flows; NLC/full processes expose one
-    contracted color component. ``selector_capabilities`` states which axes may
-    be restricted without changing the generated artifact.
+    Tree LC processes expose physical colour flows. Virtual LC instead exposes
+    signed Born-anchored components; NLC/full expose one contracted component.
+    ``selector_capabilities`` states which axes can actually be restricted.
     """
 
     process_id: str
@@ -343,6 +375,8 @@ class ProcessPhysics:
     reduction: PhysicsReduction
     model_parameters: tuple[ModelParameter, ...]
     selector_capabilities: tuple[str, ...]
+    contribution_kind: Literal["tree", "virtual"] = "tree"
+    born_anchored_color_components: tuple[BornAnchoredColorComponent, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.process_id or not self.process:
@@ -361,6 +395,7 @@ class ProcessPhysics:
         helicities = tuple(self.helicities)
         color_flows = tuple(self.color_flows)
         contracted = tuple(self.contracted_color_components)
+        anchors = tuple(self.born_anchored_color_components)
         reduction = self.reduction
         parameters = tuple(self.model_parameters)
         selector_capabilities = tuple(self.selector_capabilities)
@@ -369,6 +404,7 @@ class ProcessPhysics:
             ("helicities", helicities, HelicityConfiguration),
             ("color_flows", color_flows, ColorFlow),
             ("contracted_color_components", contracted, ContractedColorComponent),
+            ("born_anchored_color_components", anchors, BornAnchoredColorComponent),
             ("model_parameters", parameters, ModelParameter),
         )
         for name, values, expected_type in expected:
@@ -382,6 +418,7 @@ class ProcessPhysics:
         for name, identifiers in (
             ("helicities", tuple(value.id for value in helicities)),
             ("color_flows", tuple(value.id for value in color_flows)),
+            ("born_anchored_color_components", tuple(value.id for value in anchors)),
             (
                 "contracted_color_components",
                 tuple(value.id for value in contracted),
@@ -392,21 +429,43 @@ class ProcessPhysics:
         parameter_names = tuple(parameter.name for parameter in parameters)
         if len(set(parameter_names)) != len(parameter_names):
             raise ValueError("model parameter names must be unique")
-        if self.color_accuracy == "lc" and not color_flows:
+        if self.contribution_kind not in ("tree", "virtual"):
+            raise ValueError("contribution kind must be tree or virtual")
+        virtual_lc = self.contribution_kind == "virtual" and self.color_accuracy == "lc"
+        if virtual_lc:
+            if not anchors or color_flows or contracted:
+                raise ValueError(
+                    "virtual LC requires signed Born anchors, not colour flows"
+                )
+            if self.color_kind != "born-anchored-interference":
+                raise ValueError("virtual LC colour kind must describe Born anchors")
+        elif anchors:
+            raise ValueError("Born anchors apply only to virtual LC metadata")
+        elif self.color_accuracy == "lc" and not color_flows:
             raise ValueError("LC physics metadata requires physical color flows")
         if self.color_accuracy != "lc" and len(contracted) != 1:
             raise ValueError("NLC/full physics metadata requires one color component")
+        if self.contribution_kind == "virtual" and color_flows:
+            raise ValueError(
+                "virtual colour contributions are not positive colour flows"
+            )
         if not isinstance(reduction, PhysicsReduction):
             raise TypeError("reduction must be PhysicsReduction metadata")
         expected_reduction = (
-            "lc-diagonal" if self.color_accuracy == "lc" else "contracted-color"
+            "born-anchored-interference"
+            if virtual_lc
+            else "lc-diagonal"
+            if self.color_accuracy == "lc"
+            else "contracted-color"
         )
         if reduction.kind != expected_reduction:
             raise ValueError("reduction kind does not match color accuracy")
         physical_helicity_ids = {value.id for value in helicities}
-        physical_color_ids = {value.id for value in color_flows} | {
-            value.id for value in contracted
-        }
+        physical_color_ids = (
+            {value.id for value in color_flows}
+            | {value.id for value in contracted}
+            | {value.id for value in anchors}
+        )
         for group in reduction.groups:
             if not set(group.physical_helicity_ids) <= physical_helicity_ids:
                 raise ValueError("reduction references unknown physical helicities")
@@ -420,6 +479,7 @@ class ProcessPhysics:
         object.__setattr__(self, "helicities", helicities)
         object.__setattr__(self, "color_flows", color_flows)
         object.__setattr__(self, "contracted_color_components", contracted)
+        object.__setattr__(self, "born_anchored_color_components", anchors)
         object.__setattr__(self, "model_parameters", parameters)
         object.__setattr__(self, "selector_capabilities", selector_capabilities)
 
@@ -434,7 +494,9 @@ class ProcessPhysics:
     @property
     def color_ids(self) -> tuple[str, ...]:
         components: tuple[ColorComponent, ...] = (
-            self.color_flows
+            self.born_anchored_color_components
+            if self.contribution_kind == "virtual" and self.color_accuracy == "lc"
+            else self.color_flows
             if self.color_accuracy == "lc"
             else self.contracted_color_components
         )
@@ -990,6 +1052,7 @@ __all__ = [
     "BenchmarkStageTiming",
     "BenchmarkStatistics",
     "BenchmarkTimingBreakdown",
+    "BornAnchoredColorComponent",
     "ColorComponent",
     "ColorFlow",
     "ContractedColorComponent",

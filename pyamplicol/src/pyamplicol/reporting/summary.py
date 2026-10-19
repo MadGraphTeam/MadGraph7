@@ -3158,9 +3158,12 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
         GenerationResult,
         ResolvedEvaluation,
     )
-    from pyamplicol.api.virtual_results import VirtualEvaluation
+    from pyamplicol.api.virtual_results import (
+        ResolvedVirtualEvaluation,
+        VirtualEvaluation,
+    )
 
-    if isinstance(value, VirtualEvaluation):
+    if isinstance(value, (VirtualEvaluation, ResolvedVirtualEvaluation)):
         from .virtual import virtual_evaluation_summary
 
         return virtual_evaluation_summary(value, prettytable=prettytable)

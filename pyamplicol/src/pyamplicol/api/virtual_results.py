@@ -292,6 +292,8 @@ def _common(
     born_dimensions: tuple[int, ...],
     virtual_dimensions: tuple[int, ...],
 ) -> None:
+    if result.color_accuracy not in {"lc", "nlc", "full"}:
+        raise ValueError("unknown colour accuracy")
     if not isinstance(result.correlated, bool):
         raise TypeError("correlated must be a boolean")
     born_orders, sectors = _orders(result.born_orders, result.sectors)
@@ -366,6 +368,7 @@ class VirtualEvaluation:
     diagnostics: tuple[VirtualLaneDiagnostic, ...]
     r2: R2Selection
     correlated: bool = False
+    color_accuracy: Literal["lc", "nlc", "full"] = "full"
 
     def __post_init__(self) -> None:
         _common(self, (len(self.born_orders),), (len(self.sectors), 3))
@@ -594,4 +597,5 @@ class ResolvedVirtualEvaluation:
             self.diagnostics,
             self.r2,
             self.correlated,
+            color_accuracy=self.color_accuracy,
         )
