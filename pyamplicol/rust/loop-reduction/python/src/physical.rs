@@ -153,7 +153,7 @@ impl NativeLoopProgram {
 }
 
 #[pyclass]
-struct NativeCompleteLoopResult(CompleteLoopResult<Arc<Batch>>);
+pub(super) struct NativeCompleteLoopResult(pub(super) CompleteLoopResult<Arc<Batch>>);
 #[pymethods]
 impl NativeCompleteLoopResult {
     #[getter]
@@ -191,9 +191,9 @@ impl NativeCompleteLoopResult {
 }
 /// Separate owner handle: updates do not borrow mutable process workspaces.
 #[pyclass]
-struct NativeSourceState {
-    owner: Arc<SourceOwner<PhysicalBackend>>,
-    backend: PhysicalBackend,
+pub(super) struct NativeSourceState {
+    pub(super) owner: Arc<SourceOwner<PhysicalBackend>>,
+    pub(super) backend: PhysicalBackend,
 }
 #[pymethods]
 impl NativeSourceState {

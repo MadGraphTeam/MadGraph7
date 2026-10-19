@@ -22,8 +22,6 @@ ninjars-graph = { path = "upstream/crates/ninjars-graph" }
 ninjars-symbolica = { path = "upstream/crates/ninjars-symbolica", features = ["native-masters"] }
 oneloop = { path = "upstream/references/oneloopmaster", default-features = false }
 symbolica = { version = "3.0.1", default-features = false, features = ["integer-gmp", "float-mpfr"] }
-
-[dev-dependencies]
 serde_json = "1"
 
 [patch.crates-io]

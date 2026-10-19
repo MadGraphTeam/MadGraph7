@@ -487,3 +487,22 @@ and run that test with `--ignored`. The coordinator stores the sizable reducer
 workspaces behind `Box`, so construction and execution pass the ordinary 2 MiB
 Rust test-worker stack; no enlarged-stack setting is needed. Returned native
 blocks remain immutable after later calls and arithmetic rebinding.
+
+### Verified virtual artifacts
+
+`virtual_runtime::VirtualRuntime::open` loads the ordinary process artifact through
+the shared `VerifiedArtifact` loop lane, then runs the same complete coordinator.
+`_loop_reduction.NativeVirtualRuntime` is its thin Python ownership adapter. This
+additive handle preserves Born/order and all three Laurent columns; it never
+converts a virtual evaluation into a scalar tree result. Exact complex parameter
+updates are atomic, arithmetic rebinds retain the original exact overrides, and
+`clear` drops process workspaces while retaining the global parameter owner and
+its revision. Callers supply positive real `mu_r2` values explicitly.
+
+This initial delivery boundary admits source-owned, full-colour, inclusive
+model-rule R2 artifacts with explicit scheme declarations. Scheme declarations
+are metadata, not a general model certification. Resolved results, correlations,
+mapping transport and partial/rescue dispatch remain unsupported here. The native
+consumer remains a development build until the NinjaRS owner supplies its
+self-contained packaging revision; this adapter does not establish normal wheel
+or standalone SDK installation readiness.

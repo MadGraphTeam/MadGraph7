@@ -159,6 +159,10 @@ impl<B: LoopBackend> OwnerWorkspace<B> {
 }
 
 impl<B: LoopBackend> SourceOwner<B> {
+    pub(crate) fn loaded(&self) -> &Arc<LoadedLoopRuntime> {
+        &self.loaded
+    }
+
     /// Overlay named parameters on the exact overrides captured in the artifact.
     /// The validated descriptor is the only cold declaration/bytecode source.
     pub fn new(

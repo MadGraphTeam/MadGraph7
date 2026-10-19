@@ -167,8 +167,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
         backend: B,
         parameters: Option<&SourceOverrides>,
     ) -> RusticolResult<Self> {
-        let plan = loaded.plan();
-        let source = match &plan.model_binding {
+        let owner = match &loaded.plan().model_binding {
             ModelBinding::Legacy => {
                 if parameters.is_some() {
                     return Err(invalid("named parameters require a source model owner"));
@@ -176,22 +175,47 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 None
             }
             ModelBinding::Source { .. } => {
-                if plan.r2_strategy != "model" {
+                if loaded.plan().r2_strategy != "model" {
                     return Err(RusticolError::unsupported_runtime_capability(
                         "native source direct R2",
                         "source coordination currently requires model R2",
                     ));
                 }
-                let owner = Arc::new(SourceOwner::new(loaded.clone(), &backend, parameters)?);
-                let ordinary = SourceScale::ordinary(&owner, &backend)?;
-                let counterterms = SourceScale::counterterms(&owner, &backend)?;
-                Some(SourceWorkspace {
-                    owner,
-                    ordinary,
-                    counterterms,
-                })
+                Some(Arc::new(SourceOwner::new(loaded.clone(), &backend, parameters)?))
             }
         };
+        Self::bind(loaded, backend, owner)
+    }
+
+    /// Recreate process workspaces while retaining the same global parameter
+    /// owner and revision. Used after clear; arithmetic changes require a new
+    /// owner constructed from the retained exact overrides instead.
+    pub fn with_source_owner(owner: Arc<SourceOwner<B>>, backend: B) -> RusticolResult<Self> {
+        let snapshot = owner.snapshot()?;
+        let empty = backend.ingress(&[], 1, 0, vec![0])?;
+        // The backend's ordinary concatenation checks the numerical carrier and
+        // precision, so an owner cannot silently cross arithmetic modes.
+        B::concat(&[snapshot.arguments(), &empty])?;
+        Self::bind(owner.loaded().clone(), backend, Some(owner))
+    }
+
+    fn bind(
+        loaded: Arc<LoadedLoopRuntime>,
+        backend: B,
+        owner: Option<Arc<SourceOwner<B>>>,
+    ) -> RusticolResult<Self> {
+        let plan = loaded.plan();
+        if owner.is_some() && plan.r2_strategy != "model" {
+            return Err(RusticolError::unsupported_runtime_capability(
+                "native source direct R2",
+                "source coordination currently requires model R2",
+            ));
+        }
+        let source = owner.map(|owner| {
+            let ordinary = SourceScale::ordinary(&owner, &backend)?;
+            let counterterms = SourceScale::counterterms(&owner, &backend)?;
+            Ok::<_, RusticolError>(SourceWorkspace { owner, ordinary, counterterms })
+        }).transpose()?;
         let eval = |name: &str| backend.evaluator(loaded.evaluator_state(name)?);
         let schedules = plan
             .schedules

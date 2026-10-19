@@ -11,6 +11,7 @@
 #![forbid(unsafe_code)]
 
 pub mod runtime;
+pub mod virtual_runtime;
 
 use std::ops::Add;
 use std::time::{Duration, Instant};

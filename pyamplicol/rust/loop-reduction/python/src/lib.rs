@@ -10,6 +10,7 @@ mod physical;
 mod portable;
 mod stability;
 mod states;
+mod virtual_runtime;
 use batch::{Data, NativeBatch};
 
 use pyo3::{exceptions::PyValueError, prelude::*};
@@ -232,6 +233,7 @@ fn _loop_reduction(module: &Bound<'_, PyModule>) -> PyResult<()> {
     runtime::register_scalar_primitives();
     portable::register(module)?;
     physical::register(module)?;
+    virtual_runtime::register(module)?;
     batch::register(module)?;
     exact::register(module)?;
     states::register(module)?;
