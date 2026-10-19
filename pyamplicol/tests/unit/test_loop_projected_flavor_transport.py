@@ -297,11 +297,14 @@ def test_independent_projected_identity_sources_preserve_both_terms(
 
     root, _, native, points = saved_pair
     options = dict(arithmetic=arithmetic, precision=precision, reduction_engine=engine)
-    left, right = (
-        native.NativeLoopProgram(
-            str(root / f"{name}-{accuracy}-owned-spin.pacbin"), **options
-        )
-        for name in ("ddgg", "ssgg")
+    left = native.NativeVirtualRuntime(
+        str(root / f"{accuracy}-spin-mapped-artifact"),
+        process="ssgg",
+        arithmetic=arithmetic,
+        precision=precision,
+    )
+    right = native.NativeLoopProgram(
+        str(root / f"ssgg-{accuracy}-current-spin.pacbin"), **options
     )
     first, second = _vectors()
     for selected in ((), (3,), (4,), (3, 4)):
