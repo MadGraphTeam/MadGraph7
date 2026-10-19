@@ -261,6 +261,7 @@ pub enum RuntimeCapability {
     OnTheFlyRuntimeComplexF64V1,
     OnTheFlyContractedColorV1,
     OnTheFlyLcColorV1,
+    LoopRuntimeV3,
     SymjitApplicationComplexF64V1,
     SymbolicaLegacyJitContainerComplexF64V1,
     SymbolicaCompiledCppComplexF64V1,
@@ -298,6 +299,7 @@ impl RuntimeCapability {
             Self::OnTheFlyRuntimeComplexF64V1 => ON_THE_FLY_RUNTIME_CAPABILITY,
             Self::OnTheFlyContractedColorV1 => ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
             Self::OnTheFlyLcColorV1 => ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+            Self::LoopRuntimeV3 => "rusticol.loop-runtime.v3",
             Self::SymjitApplicationComplexF64V1 => SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
             Self::SymbolicaLegacyJitContainerComplexF64V1 => {
                 SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY
@@ -4877,3 +4879,6 @@ mod recurrence_integration_tests;
 #[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
 #[path = "engine/eager_v3_manifest_tests.rs"]
 mod eager_v3_manifest_tests;
+
+#[cfg(feature = "symbolica-runtime")]
+pub(crate) use artifact_load::verified_execution_payloads;

@@ -109,8 +109,11 @@ EVALUATOR_RUNTIME_CAPABILITIES = frozenset(
         SYMBOLICA_ASM_RUNTIME_CAPABILITY,
     }
 )
+LOOP_RUNTIME_CAPABILITY = "rusticol.loop-runtime.v3"
 KNOWN_EVALUATOR_RUNTIME_CAPABILITIES = EVALUATOR_RUNTIME_CAPABILITIES | frozenset(
     {
+        # Parse/serialize this lane, without admitting it to scalar Runtime.
+        LOOP_RUNTIME_CAPABILITY,
         # Historical eager plan-v2 artifacts remain parseable for inspection
         # and actionable migration errors, but are not executable capabilities.
         EAGER_DAG_F64_RUNTIME_CAPABILITY,

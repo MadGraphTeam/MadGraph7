@@ -22,6 +22,8 @@ mod error;
 #[cfg(feature = "symbolica-runtime")]
 pub mod loop_execution;
 #[cfg(feature = "symbolica-runtime")]
+pub mod loop_artifact;
+#[cfg(feature = "symbolica-runtime")]
 pub mod loop_runtime;
 mod metadata;
 pub mod pacbin;

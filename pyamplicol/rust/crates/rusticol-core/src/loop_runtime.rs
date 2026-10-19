@@ -254,7 +254,12 @@ fn pair_order(left: &Order, right: &Order, squared: &Order) -> bool {
 }
 
 pub fn load_loop_runtime_pacbin(path: impl AsRef<Path>) -> RusticolResult<LoadedLoopRuntime> {
-    let reader = PacbinReader::open(path)?;
+    load_loop_runtime_reader(PacbinReader::open(path)?)
+}
+
+/// Consume a reader whose bytes have already been authenticated by its owner.
+/// Artifact callers retain their checked file handle through reader creation.
+pub fn load_loop_runtime_reader(reader: PacbinReader) -> RusticolResult<LoadedLoopRuntime> {
     require(
         reader.member(LOOP_RUNTIME_MEMBER)?.kind() == PacbinMemberKind::LoopRuntimePlan,
         "wrong plan member kind",

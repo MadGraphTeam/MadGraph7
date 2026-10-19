@@ -618,6 +618,22 @@ impl Drop for TemporaryNativeLibrary {
 }
 
 impl EvaluatorPayloadSource {
+    /// Snapshot a PACBIN through the same confined, checked payload handle.
+    pub(crate) fn pacbin(&self) -> RusticolResult<PacbinReader> {
+        match self {
+            Self::File(path) => PacbinReader::open(path),
+            Self::AuthenticatedFile { root, payload } => {
+                let digest = parse_sha256(&payload.sha256, "runtime PACBIN digest")?;
+                PacbinReader::open_file_with_sha256(
+                    open_checked_payload(root, payload)?, &root.join(&payload.path), &digest,
+                )
+            }
+            Self::Packed { container, logical_path } => {
+                PacbinReader::from_bytes(container.member_bytes(logical_path)?.to_vec())
+            }
+        }
+    }
+
     pub(crate) fn read(&self) -> RusticolResult<Cow<'_, [u8]>> {
         match self {
             Self::File(path) => fs::read(path).map(Cow::Owned).map_err(|error| {
@@ -3625,6 +3641,7 @@ fn validate_runtime_capabilities(
         RuntimeCapability::OnTheFlyRuntimeComplexF64V1,
         RuntimeCapability::OnTheFlyContractedColorV1,
         RuntimeCapability::OnTheFlyLcColorV1,
+        RuntimeCapability::LoopRuntimeV3,
         RuntimeCapability::SymjitApplicationComplexF64V1,
         RuntimeCapability::SymbolicaLegacyJitContainerComplexF64V1,
         RuntimeCapability::SymbolicaCompiledCppComplexF64V1,

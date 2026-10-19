@@ -95,10 +95,12 @@ impl LoadedExecutionManifest {
     }
 }
 
-pub(super) fn load_verified_evaluator(
+/// Resolve the common execution-set envelope once, before lane-specific parsing.
+/// Paths, process IDs and required capabilities are checked against the same
+/// VerifiedArtifact used by every execution lane.
+pub(crate) fn verified_execution_payloads(
     artifact: &VerifiedArtifact,
-    selection: &crate::ArtifactSelection,
-) -> RusticolResult<(LoadedExecutionManifest, PathBuf)> {
+) -> RusticolResult<Vec<(crate::ArtifactProcess, String, Vec<u8>)>> {
     let root_manifest_path = &artifact.manifest().runtime.evaluator_manifest_path;
     if artifact.payload(root_manifest_path)?.role != PayloadRole::EvaluatorManifest {
         return Err(RusticolError::security(format!(
@@ -123,51 +125,19 @@ pub(super) fn load_verified_evaluator(
             header.schema_version, PROCESS_ARTIFACT_SCHEMA_VERSION
         )));
     }
-    if header.kind == "pyamplicol-runtime-execution"
-        || header.kind == "pyamplicol-runtime-eager-execution"
-        || header.kind == RECURRENCE_RUNTIME_KIND
-        || header.kind == ON_THE_FLY_EXECUTION_KIND
-    {
+    if header.kind != "pyamplicol-runtime-execution-set" {
         if artifact.manifest().processes.len() != 1 {
             return Err(RusticolError::integrity(
                 "a direct execution manifest cannot represent multiple outer processes",
             ));
         }
-        let outer = &artifact.manifest().processes[0];
-        let manifest = parse_execution_payload_variant(&bytes, root_manifest_path, outer)?;
-        if manifest.key() != outer.id
-            || manifest.process() != outer.expression
-            || manifest.color_accuracy() != outer.color_accuracy
-            || manifest.external_pdg_order() != outer.external_pdgs
-        {
-            return Err(RusticolError::integrity(format!(
-                "execution manifest {root_manifest_path:?} does not match outer process {:?}",
-                outer.id
-            )));
-        }
+        let outer = artifact.manifest().processes[0].clone();
         validate_capability_list_match(
             &artifact.manifest().runtime.required_runtime_capabilities,
-            manifest.required_runtime_capabilities(),
-            "outer runtime and direct execution manifest",
-        )?;
-        validate_capability_list_match(
             &outer.required_runtime_capabilities,
-            manifest.required_runtime_capabilities(),
-            "outer process and direct execution manifest",
+            "outer runtime and direct process",
         )?;
-        validate_portable_execution_contract(artifact, &manifest)?;
-        let path = artifact.payload_path(root_manifest_path)?;
-        let root = path.parent().ok_or_else(|| {
-            RusticolError::artifact("evaluator manifest has no containing directory")
-        })?;
-        validate_loaded_execution_references(artifact, root, &manifest)?;
-        return Ok((manifest, root.to_path_buf()));
-    }
-    if header.kind != "pyamplicol-runtime-execution-set" {
-        return Err(RusticolError::compatibility(format!(
-            "unsupported internal evaluator manifest kind {:?}",
-            header.kind
-        )));
+        return Ok(vec![(outer, root_manifest_path.clone(), bytes)]);
     }
     let process_set: ExecutionSetManifest = serde_json::from_slice(&bytes).map_err(|error| {
         RusticolError::serialization(format!(
@@ -238,25 +208,34 @@ pub(super) fn load_verified_evaluator(
         ));
     }
 
+    process_set
+        .processes
+        .iter()
+        .map(|entry| {
+            let path = execution_manifest_path(root_manifest_path, &entry.manifest_path)?;
+            let outer = artifact
+                .manifest()
+                .processes
+                .iter()
+                .find(|process| process.id == entry.process_id)
+                .expect("execution-set ids were matched to outer processes");
+            validate_capability_list_match(
+                &outer.required_runtime_capabilities,
+                &entry.required_runtime_capabilities,
+                "outer process and execution-set entry",
+            )?;
+            Ok((outer.clone(), path.clone(), artifact.read_payload(&path)?))
+        })
+        .collect()
+}
+
+pub(super) fn load_verified_evaluator(
+    artifact: &VerifiedArtifact,
+    selection: &crate::ArtifactSelection,
+) -> RusticolResult<(LoadedExecutionManifest, PathBuf)> {
     let mut selected = None;
-    for entry in &process_set.processes {
-        let manifest_path = execution_manifest_path(root_manifest_path, &entry.manifest_path)?;
-        let bytes = artifact.read_payload(&manifest_path)?;
-        let outer = artifact
-            .manifest()
-            .processes
-            .iter()
-            .find(|process| process.id == entry.process_id)
-            .expect("execution-set ids were matched to outer processes");
-        let manifest = parse_execution_payload_variant(&bytes, &manifest_path, outer)?;
-        validate_capability_list_match(
-            &outer.required_runtime_capabilities,
-            &entry.required_runtime_capabilities,
-            &format!(
-                "outer process {:?} and execution-set entry",
-                entry.process_id
-            ),
-        )?;
+    for (outer, manifest_path, bytes) in verified_execution_payloads(artifact)? {
+        let manifest = parse_execution_payload_variant(&bytes, &manifest_path, &outer)?;
         if manifest.key() != outer.id
             || manifest.process() != outer.expression
             || manifest.color_accuracy() != outer.color_accuracy
@@ -268,9 +247,9 @@ pub(super) fn load_verified_evaluator(
             )));
         }
         validate_capability_list_match(
-            &entry.required_runtime_capabilities,
+            &outer.required_runtime_capabilities,
             manifest.required_runtime_capabilities(),
-            &format!("execution-set entry {:?}", entry.process_id),
+            "outer process and execution manifest",
         )?;
         validate_portable_execution_contract(artifact, &manifest)?;
         let path = artifact.payload_path(&manifest_path)?;
@@ -278,7 +257,7 @@ pub(super) fn load_verified_evaluator(
             RusticolError::artifact("evaluator manifest has no containing directory")
         })?;
         validate_loaded_execution_references(artifact, evaluator_root, &manifest)?;
-        if entry.process_id == selection.process.id {
+        if outer.id == selection.process.id {
             selected = Some((manifest, evaluator_root.to_path_buf()));
         }
     }

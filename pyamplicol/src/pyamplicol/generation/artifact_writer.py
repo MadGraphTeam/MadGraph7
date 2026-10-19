@@ -13,7 +13,7 @@ import re
 import time
 import zipfile
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from functools import cache
 from itertools import pairwise
 from pathlib import Path
@@ -56,6 +56,7 @@ from .._internal.versions import (
     EAGER_DIRECT_TABLE_BINDING_ABI,
     EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
     EVALUATOR_RUNTIME_CAPABILITIES,
+    LOOP_RUNTIME_CAPABILITY,
     NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
     ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
@@ -96,6 +97,12 @@ from .contracts import RuntimeExpressionSchema
 from .eager_columnar import EAGER_LOWERING_INPUT_ABI
 from .eager_lowering import EAGER_RUNTIME_KIND
 from .eager_tables import EAGER_KERNEL_ABI, EAGER_RUNTIME_CAPABILITY
+from .loop_artifact import (
+    LOOP_RUNTIME_KIND,
+    LOOP_RUNTIME_PATH,
+    LoopProcessArtifact,
+    loop_process_payloads,
+)
 from .evaluator_container import (
     PacbinIndex,
     PacbinMemberKind,
@@ -387,6 +394,7 @@ ProcessArtifact = (
     | EagerPlanV3ProcessArtifact
     | RecurrenceProcessArtifact
     | OnTheFlyProcessArtifact
+    | LoopProcessArtifact
 )
 
 
@@ -963,6 +971,26 @@ def write_schema_v3_artifact(
     requested_config = _config_payload(configuration.requested)
     effective_config = _config_payload(configuration.effective)
     bundle_requested = _bundle_requested(configuration.effective)
+    has_loop = any(isinstance(process, LoopProcessArtifact) for process in processes)
+    if has_loop and not all(isinstance(process, LoopProcessArtifact) for process in processes):
+        raise ValueError("tree and virtual processes cannot share an artifact yet")
+    if existing is not None:
+        existing_loop = LOOP_RUNTIME_CAPABILITY in existing.runtime["required_runtime_capabilities"]
+        if has_loop != existing_loop:
+            raise ValueError("cannot append tree and virtual processes to the same artifact")
+    if has_loop:
+        scheme = processes[0].metadata.scheme
+        if any(process.metadata.scheme != scheme for process in processes):
+            raise ValueError("loop artifact processes require compatible declared schemes")
+        if existing is not None:
+            for previous in existing.processes:
+                physics = json.loads((existing.root / str(previous["physics_path"])).read_text())
+                if physics.get("metadata", {}).get("scheme") != asdict(scheme):
+                    raise ValueError("loop append requires the same declared scheme")
+        if bundle_requested or process_groups is not None:
+            raise ValueError(
+                "loop artifact API bundles and process-group mappings are not admitted yet"
+            )
     existing_bundle = _existing_bundle_path(existing)
     can_emit_bundle = hook is not None or existing_bundle is not None
     effective_config = _effective_config_payload(
@@ -1179,7 +1207,7 @@ def write_schema_v3_artifact(
                     raise ValueError(
                         f"execution payload for {process_id!r} is not an object"
                     )
-                if execution_payload.get("kind") == ON_THE_FLY_RUNTIME_KIND:
+                if execution_payload.get("kind") in {ON_THE_FLY_RUNTIME_KIND, LOOP_RUNTIME_KIND}:
                     continue
                 proof = build_generation_structural_proof(
                     artifact_root=staged_root,
@@ -1841,7 +1869,16 @@ def _write_process_payloads(
     execution_path = f"{prefix}/execution.json"
     validation_path = f"{prefix}/validation-momenta.json"
     schema: Mapping[str, object]
-    if isinstance(
+    if isinstance(process, LoopProcessArtifact):
+        schema = {}
+        runtime_path = f"{prefix}/{LOOP_RUNTIME_PATH}"
+        evaluator_payloads.add_file(
+            runtime_path, process.loop_runtime_path, process_id=process.process_id
+        )
+        physics, loop_execution = loop_process_payloads(
+            process, builder.staged_path(runtime_path)
+        )
+    elif isinstance(
         process,
         EagerPlanV3ProcessArtifact
         | RecurrenceProcessArtifact
@@ -1882,7 +1919,12 @@ def _write_process_payloads(
         process_id=process.process_id,
         compact=True,
     )
-    if isinstance(process, EagerPlanV3ProcessArtifact):
+    if isinstance(process, LoopProcessArtifact):
+        execution_record = builder.add_json(
+            execution_path, loop_execution, role="evaluator-manifest",
+            process_id=process.process_id, compact=True,
+        )
+    elif isinstance(process, EagerPlanV3ProcessArtifact):
         runtime_path = f"{prefix}/{_EAGER_RUNTIME_CONTAINER_PATH}"
         runtime_record = evaluator_payloads.add_file(
             runtime_path,
@@ -5100,6 +5142,8 @@ def _compiled_execution_runtime_capabilities(
 def _process_runtime_capabilities(
     process: ProcessArtifact,
 ) -> tuple[str, ...]:
+    if isinstance(process, LoopProcessArtifact):
+        return (LOOP_RUNTIME_CAPABILITY,)
     if isinstance(process, OnTheFlyProcessArtifact):
         return _on_the_fly_process_runtime_capabilities(process)
     if isinstance(process, RecurrenceProcessArtifact):
@@ -5251,6 +5295,7 @@ def _required_runtime_capabilities(
             EAGER_PLAN_V3_RUNTIME_CAPABILITY,
             RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
             RECURRENCE_COLOR_RUNTIME_CAPABILITY,
+            LOOP_RUNTIME_CAPABILITY,
         }
     )
     if unknown:
@@ -5286,7 +5331,7 @@ def _extensions(
             ),
             "filters": dict(process.generation_filters),
         }
-        if _is_prepared_kernel_process(process):
+        if _is_prepared_kernel_process(process) or isinstance(process, LoopProcessArtifact):
             record["execution_manifest_sha256"] = execution_manifest_sha256_by_process[
                 process.process_id
             ]
