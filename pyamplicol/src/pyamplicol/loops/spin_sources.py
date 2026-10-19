@@ -51,6 +51,7 @@ class NativeSpinSourcePlan:
             raise ValueError("QCD source contract lacks four vector components")
         self.source_ir = source
         phase_evaluators = {}
+        phase_states = {}
         components = tuple(
             S(f"loop_spin_source::component_{index}") for index in range(4)
         )
@@ -72,11 +73,15 @@ class NativeSpinSourcePlan:
             # SourceIR's exact QCD phase is (1,0); converting its literal
             # metadata does not touch any supplied numerical source component.
             phase = E(str(crossing.phase[0])) + E("1i") * E(str(crossing.phase[1]))
+            phase_states[leg] = _saved(
+                [phase * value for value in components], components
+            )
             phase_evaluators[leg] = bare.backend.CoefficientEvaluator(
-                _saved([phase * value for value in components], components),
+                phase_states[leg],
                 **bare.options,
             )
         self._phase_evaluators = MappingProxyType(phase_evaluators)
+        self.phase_states = MappingProxyType(phase_states)
         layouts = {}
         for legs in ((), *declarations.spin_correlations):
             representatives = {}

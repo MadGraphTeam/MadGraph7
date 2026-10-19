@@ -46,6 +46,7 @@ fn standalone_complete_uudd_three_carriers() {
         eprintln!("evaluating {arithmetic}");
         let output = program
             .evaluate(LoopInputs {
+                spin_sources: Default::default(),
                 momenta: momenta.clone(),
                 scales_squared: vec!["1000000".into()],
                 model_values: vec!["0.118".into(), "173".into()],

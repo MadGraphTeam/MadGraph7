@@ -103,6 +103,10 @@ pub struct LoopInputs {
     pub scales_squared: Vec<String>,
     pub model_values: Vec<String>,
     pub point_ids: Vec<u64>,
+    /// Literal complex vector sources, keyed by one-based physical leg. Each
+    /// value contains four components per physical point; no rounding precedes
+    /// numerical ingress and subset replay keeps these original strings.
+    pub spin_sources: BTreeMap<usize, Vec<[String; 2]>>,
 }
 
 impl LoopInputs {
@@ -113,10 +117,15 @@ impl LoopInputs {
             .enumerate()
             .map(|(row, &id)| (id, row))
             .collect();
+        let source_width = count(self.point_ids.len(), 4)?;
         if positions.len() != self.point_ids.len()
             || ids.iter().collect::<BTreeSet<_>>().len() != ids.len()
             || self.momenta.len() != count(self.point_ids.len(), momentum_width)?
             || self.scales_squared.len() != self.point_ids.len()
+            || self
+                .spin_sources
+                .values()
+                .any(|values| values.len() != source_width)
         {
             return Err(invalid("original exact input layout differs"));
         }
@@ -144,6 +153,18 @@ impl LoopInputs {
                 .collect(),
             model_values: self.model_values.clone(),
             point_ids: ids.to_vec(),
+            spin_sources: self
+                .spin_sources
+                .iter()
+                .map(|(&leg, values)| {
+                    (
+                        leg,
+                        rows.iter()
+                            .flat_map(|&row| values[4 * row..4 * (row + 1)].iter().cloned())
+                            .collect(),
+                    )
+                })
+                .collect(),
         })
     }
 }
@@ -172,6 +193,7 @@ pub struct CompleteLoopResult<T> {
 /// are never summed and the saved labels identify their exact ordered operators.
 pub struct DirectedCrossTerms<T> {
     pub history_ids: Vec<String>,
+    pub spin_legs: Vec<usize>,
     pub first: T,
     pub second: T,
 }
@@ -280,6 +302,7 @@ struct FamilyWorkspace<B: LoopBackend> {
     projector: B::Evaluator,
     helicity_projector: Option<B::Evaluator>,
     directed_projector: Option<B::Evaluator>,
+    spin_projectors: Vec<B::Evaluator>,
     reducer: B::Reducer,
     rational: Option<B::Reducer>,
 }
@@ -303,6 +326,11 @@ struct DirectedWorkspace<B: LoopBackend> {
     sum_order_values: B::Evaluator,
 }
 
+struct SpinWorkspace<B: LoopBackend> {
+    directed: DirectedWorkspace<B>,
+    phases: Vec<B::Evaluator>,
+}
+
 /// Fresh mutable arithmetic workspaces over one immutable, validated descriptor.
 /// No graphs, symbolic optimization, or model reimport occur during binding.
 pub struct LoopExecutor<B: LoopBackend> {
@@ -317,6 +345,7 @@ pub struct LoopExecutor<B: LoopBackend> {
     source: Option<SourceWorkspace<B>>,
     helicity: Option<HelicityWorkspace<B>>,
     directed: Option<DirectedWorkspace<B>>,
+    spin: Vec<SpinWorkspace<B>>,
 }
 
 fn invalid(message: &str) -> RusticolError {
@@ -438,6 +467,12 @@ impl<B: LoopBackend> LoopExecutor<B> {
                         .as_ref()
                         .map(|projection| eval(&projection.families[index]))
                         .transpose()?,
+                    spin_projectors: plan
+                        .spin_projections
+                        .iter()
+                        .flatten()
+                        .map(|projection| eval(&projection.directed.families[index]))
+                        .collect::<RusticolResult<_>>()?,
                     reducer: backend.reducer(
                         item.propagators,
                         item.numerators.clone(),
@@ -485,19 +520,35 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 })
             })
             .transpose()?;
+        let bind_directed = |projection: &crate::loop_runtime::DirectedProjection| {
+            Ok::<_, RusticolError>(DirectedWorkspace {
+                born: eval(&projection.born)?,
+                postprocess: eval(&projection.postprocess)?,
+                counterterms: eval(&projection.counterterms)?,
+                assemble: eval(&projection.assemble)?,
+                sum_order_values: eval(&projection.sum_order_values)?,
+            })
+        };
         let directed = plan
             .directed_projection
             .as_ref()
-            .map(|projection| {
-                Ok::<_, RusticolError>(DirectedWorkspace {
-                    born: eval(&projection.born)?,
-                    postprocess: eval(&projection.postprocess)?,
-                    counterterms: eval(&projection.counterterms)?,
-                    assemble: eval(&projection.assemble)?,
-                    sum_order_values: eval(&projection.sum_order_values)?,
+            .map(&bind_directed)
+            .transpose()?;
+        let spin = plan
+            .spin_projections
+            .iter()
+            .flatten()
+            .map(|class| {
+                Ok(SpinWorkspace {
+                    directed: bind_directed(&class.directed)?,
+                    phases: class
+                        .phases
+                        .iter()
+                        .map(|phase| eval(phase))
+                        .collect::<RusticolResult<_>>()?,
                 })
             })
-            .transpose()?;
+            .collect::<RusticolResult<_>>()?;
         Ok(Self {
             loaded,
             backend,
@@ -510,6 +561,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
             source,
             helicity,
             directed,
+            spin,
         })
     }
     pub fn loaded(&self) -> &Arc<LoadedLoopRuntime> {
@@ -592,6 +644,33 @@ impl<B: LoopBackend> LoopExecutor<B> {
         observable: LoopObservable,
     ) -> RusticolResult<CompleteLoopResult<B::Batch>> {
         let resolved = observable == LoopObservable::Resolved;
+        if !input.spin_sources.is_empty() {
+            if observable != LoopObservable::Directed {
+                return Err(invalid("spin sources require explicit directed evaluation"));
+            }
+            let legs = input.spin_sources.keys().copied().collect::<Vec<_>>();
+            if !self
+                .loaded
+                .plan()
+                .spin_projections
+                .iter()
+                .flatten()
+                .any(|p| p.legs == legs)
+            {
+                return Err(RusticolError::unsupported_runtime_capability(
+                    "joint loop spin source class",
+                    "this exact joint source class has no saved projection kernels",
+                ));
+            }
+            let width = count(input.point_ids.len(), 4)?;
+            if input
+                .spin_sources
+                .values()
+                .any(|values| values.len() != width)
+            {
+                return Err(invalid("spin source rows differ from physical point count"));
+            }
+        }
         if observable == LoopObservable::Directed && self.directed.is_none() {
             return Err(RusticolError::unsupported_runtime_capability(
                 "directed-complex loop evaluation",
@@ -723,6 +802,19 @@ impl<B: LoopBackend> LoopExecutor<B> {
             .into());
         }
         let plan = self.loaded.plan();
+        let source_legs = input.spin_sources.keys().copied().collect::<Vec<_>>();
+        let spin_index = if source_legs.is_empty() {
+            None
+        } else {
+            plan.spin_projections
+                .as_ref()
+                .and_then(|classes| classes.iter().position(|p| p.legs == source_legs))
+        };
+        let helicity_layout = spin_index.map_or(plan.helicities.as_slice(), |index| {
+            plan.spin_projections.as_ref().expect("checked spin class")[index]
+                .helicities
+                .as_slice()
+        });
         let histories = if directed {
             plan.directed_projection
                 .as_ref()
@@ -735,7 +827,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
         let directions = if directed { count(2, histories)? } else { 1 };
         let points = input.point_ids.len();
         let legs = plan.state_legs.len();
-        let helicities = plan.helicities.len();
+        let helicities = helicity_layout.len();
         let rows = count(points, helicities)?;
         let momentum_width = count(legs, 4)?;
         if input.momenta.len() != count(points, momentum_width)?
@@ -773,12 +865,27 @@ impl<B: LoopBackend> LoopExecutor<B> {
             momentum_width,
             input.point_ids.clone(),
         )?;
-        let lanes = B::gather(&physical, point_rows, ids.clone())?;
+        let lanes = B::gather(&physical, point_rows.clone(), ids.clone())?;
         let scales =
             self.backend
                 .ingress(&input.scales_squared, points, 1, input.point_ids.clone())?;
         let mut failures = Vec::new();
-        let states = prepare_states::<B>(&lanes, &ids, plan, &mut failures)?;
+        let mut sources = BTreeMap::new();
+        if let Some(index) = spin_index {
+            for ((&leg, values), phase) in
+                input.spin_sources.iter().zip(&mut self.spin[index].phases)
+            {
+                let values =
+                    self.backend
+                        .ingress_complex(values, points, 4, input.point_ids.clone())?;
+                check_finite::<B>(&values, "spin source ingress", None, None, &mut failures)?;
+                let values = B::evaluate(phase, &values)?;
+                check_finite::<B>(&values, "spin source phase", None, None, &mut failures)?;
+                sources.insert(leg, B::gather(&values, point_rows.clone(), ids.clone())?);
+            }
+        }
+        let states =
+            prepare_states::<B>(&lanes, &ids, plan, helicity_layout, &sources, &mut failures)?;
         let scales = finite_rows::<B>(&scales, "renormalization scales", &mut failures)?;
         let (model_arguments, model, pointwise_model, source_values) = if let Some(snapshot) =
             &snapshot
@@ -902,10 +1009,18 @@ impl<B: LoopBackend> LoopExecutor<B> {
             count(projection_helicities, B::columns(&born_amplitudes))?,
             projection_input_ids.clone(),
         )?;
+        let mut directed_workspace = if directed {
+            Some(if let Some(index) = spin_index {
+                &mut self.spin[index].directed
+            } else {
+                self.directed.as_mut().expect("checked directed kernels")
+            })
+        } else {
+            None
+        };
         let born = if directed {
             B::evaluate(
-                &mut self
-                    .directed
+                &mut directed_workspace
                     .as_mut()
                     .expect("checked directed kernels")
                     .born,
@@ -952,10 +1067,14 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 projection_input_ids.clone(),
             )?;
             let projector = if directed {
-                workspace
-                    .directed_projector
-                    .as_mut()
-                    .expect("checked directed kernel")
+                if let Some(index) = spin_index {
+                    &mut workspace.spin_projectors[index]
+                } else {
+                    workspace
+                        .directed_projector
+                        .as_mut()
+                        .expect("checked directed kernel")
+                }
             } else if resolved {
                 workspace
                     .helicity_projector
@@ -1167,8 +1286,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
         let integrated_input = B::concat(&integrated.iter().collect::<Vec<_>>())?;
         let virtual_value = if directed {
             B::evaluate(
-                &mut self
-                    .directed
+                &mut directed_workspace
                     .as_mut()
                     .expect("checked directed kernels")
                     .postprocess,
@@ -1256,8 +1374,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
         )?;
         let counterterms = if directed {
             B::evaluate(
-                &mut self
-                    .directed
+                &mut directed_workspace
                     .as_mut()
                     .expect("checked directed kernels")
                     .counterterms,
@@ -1304,8 +1421,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
         let assembled = if directed {
             let cross_terms = B::select(&virtual_value, (width..3 * width).collect())?;
             B::evaluate(
-                &mut self
-                    .directed
+                &mut directed_workspace
                     .as_mut()
                     .expect("checked directed kernels")
                     .assemble,
@@ -1337,6 +1453,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
                     B::select(&assembled, (4 * width..5 * width).collect())?,
                 ],
                 Some(DirectedCrossTerms {
+                    spin_legs: source_legs,
                     history_ids: plan
                         .directed_projection
                         .as_ref()
@@ -1367,8 +1484,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
         let totals = if let Some(cross) = &directed_values {
             values.extend([&cross.first, &cross.second]);
             B::evaluate(
-                &mut self
-                    .directed
+                &mut directed_workspace
                     .as_mut()
                     .expect("checked directed kernels")
                     .sum_order_values,
@@ -1641,19 +1757,24 @@ fn prepare_states<B: LoopBackend>(
     lanes: &B::Batch,
     ids: &[u64],
     plan: &crate::loop_runtime::LoopRuntimePlan,
+    helicity_layout: &[Vec<i32>],
+    sources: &BTreeMap<usize, B::Batch>,
     failures: &mut Vec<LoopLaneFailure>,
 ) -> RusticolResult<B::Batch> {
     let mut blocks = Vec::new();
     let mut original_columns = Vec::new();
     let leg_count = plan.state_legs.len();
-    let helicity_count = plan.helicities.len();
+    let helicity_count = helicity_layout.len();
     let mut offset = 0;
     let mut failed_points = BTreeSet::new();
     for components in [1usize, 4] {
         let legs = plan
             .state_legs
             .iter()
-            .filter(|leg| (if leg.kind == "scalar" { 1 } else { 4 }) == components)
+            .filter(|leg| {
+                !sources.contains_key(&(leg.index + 1))
+                    && (if leg.kind == "scalar" { 1 } else { 4 }) == components
+            })
             .collect::<Vec<_>>();
         if legs.is_empty() {
             continue;
@@ -1671,7 +1792,7 @@ fn prepare_states<B: LoopBackend>(
             for leg in &legs {
                 state_ids.push(lane_id(id, leg_count, leg.index)?);
                 kinds.push(leg.kind.clone());
-                helicities.push(plan.helicities[(id % helicity_count as u64) as usize][leg.index]);
+                helicities.push(helicity_layout[(id % helicity_count as u64) as usize][leg.index]);
             }
         }
         let momenta = B::reshape(
@@ -1740,7 +1861,7 @@ fn prepare_states<B: LoopBackend>(
         .copied()
         .filter(|id| !failed_points.contains(&(id / helicity_count as u64)))
         .collect();
-    let blocks = blocks
+    let mut blocks = blocks
         .into_iter()
         .map(|(states, legs, components)| {
             let state_ids = accepted
@@ -1755,6 +1876,14 @@ fn prepare_states<B: LoopBackend>(
             )
         })
         .collect::<RusticolResult<Vec<_>>>()?;
+    for (&label, source) in sources {
+        let leg = &plan.state_legs[label - 1];
+        blocks.push(select_ids::<B>(source, &accepted)?);
+        for component in 0..4 {
+            original_columns.push((leg.offset + component, offset + component));
+        }
+        offset += 4;
+    }
     original_columns.sort_unstable();
     B::select(
         &B::concat(&blocks.iter().collect::<Vec<_>>())?,

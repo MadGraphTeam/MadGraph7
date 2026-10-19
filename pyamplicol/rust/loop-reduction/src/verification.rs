@@ -472,6 +472,7 @@ pub fn evaluate_observable_verified(
         let first = blocks.pop().expect("directed first term");
         DirectedCrossTerms {
             history_ids: metadata.history_ids.clone(),
+            spin_legs: metadata.spin_legs.clone(),
             first,
             second,
         }

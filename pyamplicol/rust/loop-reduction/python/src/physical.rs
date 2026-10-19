@@ -8,7 +8,33 @@ use rusticol_core::loop_execution::{
 use rusticol_core::loop_runtime::{LoadedLoopRuntime, load_loop_runtime_pacbin};
 use rusticol_core::source_bindings::{SourceOverrides, SourceOwner, SourceSnapshot};
 use rusticol_loop_reduction::runtime::{Batch, physical::PhysicalBackend};
+use std::collections::BTreeMap;
 use std::sync::Arc;
+
+type SpinVectors = BTreeMap<usize, Vec<[[String; 2]; 4]>>;
+
+fn spin_inputs(
+    vectors: Option<SpinVectors>,
+    points: usize,
+) -> PyResult<BTreeMap<usize, Vec<[String; 2]>>> {
+    vectors
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(leg, rows)| {
+            if rows.len() != 1 && rows.len() != points {
+                return Err(error(
+                    "spin vectors require one row or one row per physical point",
+                ));
+            }
+            let values = if rows.len() == 1 {
+                (0..points).flat_map(|_| rows[0].iter().cloned()).collect()
+            } else {
+                rows.into_iter().flatten().collect()
+            };
+            Ok((leg, values))
+        })
+        .collect()
+}
 
 #[pyclass]
 struct NativeLoopProgram {
@@ -51,6 +77,7 @@ impl NativeLoopProgram {
         point_ids: Option<Vec<u64>>,
         observable: LoopObservable,
         verify_successful: bool,
+        spin_vectors: Option<SpinVectors>,
     ) -> PyResult<crate::virtual_runtime::NativeVerifiedLoopResult> {
         if momenta
             .iter()
@@ -63,6 +90,7 @@ impl NativeLoopProgram {
             return Err(error("physical point identity count differs"));
         }
         let inputs = LoopInputs {
+            spin_sources: spin_inputs(spin_vectors, momenta.len())?,
             momenta: momenta.into_iter().flatten().flatten().collect(),
             scales_squared,
             point_ids: ids,
@@ -102,6 +130,7 @@ impl NativeLoopProgram {
         snapshot: Option<&NativeSourceSnapshot>,
         observable: LoopObservable,
         partial: bool,
+        spin_vectors: Option<SpinVectors>,
     ) -> PyResult<NativeCompleteLoopResult> {
         if self.executor.source_owner().is_some() && model_values.is_some() {
             return Err(error(
@@ -118,6 +147,7 @@ impl NativeLoopProgram {
             return Err(error("physical point identity count differs"));
         }
         let input = LoopInputs {
+            spin_sources: spin_inputs(spin_vectors, momenta.len())?,
             momenta: momenta.into_iter().flatten().flatten().collect(),
             scales_squared,
             model_values: model_values.unwrap_or_default(),
@@ -240,6 +270,7 @@ impl NativeLoopProgram {
             point_ids,
             LoopObservable::from_resolved(resolved),
             verify_successful,
+            None,
         )
     }
 
@@ -264,9 +295,10 @@ impl NativeLoopProgram {
             snapshot,
             LoopObservable::from_resolved(resolved),
             partial,
+            None,
         )
     }
-    #[pyo3(signature=(momenta, scales_squared, model_values=None, point_ids=None, snapshot=None, *, partial=false))]
+    #[pyo3(signature=(momenta, scales_squared, model_values=None, point_ids=None, snapshot=None, *, partial=false, spin_vectors=None))]
     fn evaluate_directed(
         &mut self,
         py: Python<'_>,
@@ -276,6 +308,7 @@ impl NativeLoopProgram {
         point_ids: Option<Vec<u64>>,
         snapshot: Option<&NativeSourceSnapshot>,
         partial: bool,
+        spin_vectors: Option<SpinVectors>,
     ) -> PyResult<NativeCompleteLoopResult> {
         self.evaluate_observable(
             py,
@@ -286,9 +319,10 @@ impl NativeLoopProgram {
             snapshot,
             LoopObservable::Directed,
             partial,
+            spin_vectors,
         )
     }
-    #[pyo3(signature=(momenta, scales_squared, higher, relative_tolerance, absolute_tolerance, *, point_ids=None, verify_successful=false))]
+    #[pyo3(signature=(momenta, scales_squared, higher, relative_tolerance, absolute_tolerance, *, point_ids=None, verify_successful=false, spin_vectors=None))]
     fn evaluate_directed_verified(
         &mut self,
         py: Python<'_>,
@@ -299,6 +333,7 @@ impl NativeLoopProgram {
         absolute_tolerance: String,
         point_ids: Option<Vec<u64>>,
         verify_successful: bool,
+        spin_vectors: Option<SpinVectors>,
     ) -> PyResult<crate::virtual_runtime::NativeVerifiedLoopResult> {
         self.verified_observable(
             py,
@@ -310,6 +345,7 @@ impl NativeLoopProgram {
             point_ids,
             LoopObservable::Directed,
             verify_successful,
+            spin_vectors,
         )
     }
 }
@@ -354,6 +390,14 @@ impl NativeCompleteLoopResult {
         } else {
             "ordinary-interference"
         }
+    }
+    #[getter]
+    fn spin_legs(&self) -> Vec<usize> {
+        self.0
+            .directed
+            .as_ref()
+            .map(|x| x.spin_legs.clone())
+            .unwrap_or_default()
     }
     #[getter]
     fn history_ids(&self) -> Vec<String> {

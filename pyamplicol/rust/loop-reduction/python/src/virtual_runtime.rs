@@ -338,6 +338,7 @@ impl NativeVirtualRuntime {
             return Err(error("physical point identity count differs"));
         }
         let inputs = LoopInputs {
+            spin_sources: Default::default(),
             momenta: momenta.into_iter().flatten().flatten().collect(),
             scales_squared,
             point_ids: ids,
@@ -388,6 +389,7 @@ impl NativeVirtualRuntime {
             return Err(error("physical point identity count differs"));
         }
         let input = LoopInputs {
+            spin_sources: Default::default(),
             momenta: momenta.into_iter().flatten().flatten().collect(),
             scales_squared,
             point_ids: ids,

@@ -40,12 +40,21 @@ _BARE_EVALUATORS = (
 
 
 def write_loop_pacbin(
-    program, destination, *, resolved=False, directed=None, directed_histories=None
+    program,
+    destination,
+    *,
+    resolved=False,
+    directed=None,
+    directed_histories=None,
+    spin_directed=(),
 ):
     """Lower one checked retained control into plain execution data and bytecode."""
     from .physical_color import color_projection_metadata
 
     bare = program.bare
+    spin_directed = tuple(spin_directed)
+    if spin_directed and directed is None:
+        raise ValueError("saved spin classes require ordinary directed projections")
     if directed_histories is not None and directed is None:
         raise ValueError("directed history declarations require prepared projections")
     if directed is not None:
@@ -86,9 +95,35 @@ def write_loop_pacbin(
         ):
             raise NotImplementedError(
                 "saved directed projections currently require inclusive physical "
-                "helicities, full colour and model R2; spin/resolved/projected-colour "
-                "and direct-R2 transport remain unsupported"
+                "helicities, full colour and model R2; provide spin classes separately "
+                "through spin_directed; resolved/projected-colour and direct-R2 "
+                "transport remain unsupported"
             )
+    if spin_directed:
+        from .spin_sources import NativeSpinSourcePlan
+
+        classes = []
+        for item in spin_directed:
+            if not isinstance(item, PreparedDirectedModel):
+                raise TypeError("spin projection requires prepared model instructions")
+            item.require_owner(program)
+            layout = item.bare.spin_layout
+            if layout is None or not layout.legs:
+                raise ValueError(
+                    "saved spin projection requires a nonempty joint class"
+                )
+            if item.bare.histories != directed.bare.histories:
+                raise ValueError("spin and ordinary directed history columns differ")
+            classes.append(layout.legs)
+        if len(set(classes)) != len(classes):
+            raise ValueError("duplicate saved joint spin class")
+        spin_sources = NativeSpinSourcePlan(bare, classes)
+        for item in spin_directed:
+            if (
+                item.bare.spin_layout
+                != spin_sources.layouts[item.bare.spin_layout.legs]
+            ):
+                raise ValueError("spin projection spectator helicities differ")
     components = None
     if resolved and getattr(bare, "color_accuracy", "full") == "lc":
         from .color_components import prepare_born_color_components
@@ -291,20 +326,36 @@ def write_loop_pacbin(
     if directed is not None:
         from pyamplicol.color.connections import COLOR_CONNECTION_CONVENTION
 
-        data["directed_projection"] = {
-            "kind": "directed-complex",
-            "convention": COLOR_CONNECTION_CONVENTION,
-            "color_legs": [
-                (leg.label, leg.representation) for leg in directed.bare.color_legs
-            ],
-            "histories": [item.to_json_dict() for item in declarations],
-            "born": state(directed.bare.born_state),
-            "families": [state(family.state) for family in directed.bare.families],
-            "postprocess": state(directed.bare.postprocess_state),
-            "counterterms": state(directed.counterterm_state),
-            "assemble": state(directed.assembly_state),
-            "sum_order_values": state(directed.sum_order_state),
-        }
+        def directed_data(value):
+            return {
+                "kind": "directed-complex",
+                "convention": COLOR_CONNECTION_CONVENTION,
+                "color_legs": [
+                    (leg.label, leg.representation) for leg in value.bare.color_legs
+                ],
+                "histories": [item.to_json_dict() for item in declarations],
+                "born": state(value.bare.born_state),
+                "families": [state(family.state) for family in value.bare.families],
+                "postprocess": state(value.bare.postprocess_state),
+                "counterterms": state(value.counterterm_state),
+                "assemble": state(value.assembly_state),
+                "sum_order_values": state(value.sum_order_state),
+            }
+
+        data["directed_projection"] = directed_data(directed)
+        if spin_directed:
+            data["spin_projections"] = [
+                {
+                    "legs": item.bare.spin_layout.legs,
+                    "helicities": item.bare.helicities,
+                    "phases": [
+                        state(spin_sources.phase_states[leg])
+                        for leg in item.bare.spin_layout.legs
+                    ],
+                    "directed": directed_data(item),
+                }
+                for item in spin_directed
+            ]
     members = [
         PacbinMemberSource(
             _PLAN_MEMBER,

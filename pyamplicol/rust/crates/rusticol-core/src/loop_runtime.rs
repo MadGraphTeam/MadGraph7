@@ -94,6 +94,9 @@ record!(DirectedProjection {
     histories: Vec<DirectedHistory>, born: String, families: Vec<String>,
     postprocess: String, counterterms: String, assemble: String, sum_order_values: String
 });
+record!(SpinProjection {
+    legs: Vec<usize>, helicities: Vec<Vec<i32>>, phases: Vec<String>, directed: DirectedProjection
+});
 // Projector instructions already contain this fixed-Nf projection evaluated at Nc=3.
 // Degrees are aligned with the corresponding squared coupling order catalogue.
 record!(ColorProjection {
@@ -112,10 +115,22 @@ record!(LoopRuntimePlan {
     currents: Vec<Counterterm>, fields: Vec<ScalarBinding>, model_evaluators: BTreeMap<String, String>,
     helicity_projection: Option<HelicityProjection>, color_projection: Option<ColorProjection>,
     born_color_components: Option<BornColorComponents>,
-    directed_projection: Option<DirectedProjection>
+    directed_projection: Option<DirectedProjection>, spin_projections: Option<Vec<SpinProjection>>
 });
 
 impl LoopRuntimePlan {
+    pub fn directed_projections(&self) -> impl Iterator<Item = (&DirectedProjection, usize)> {
+        self.directed_projection
+            .iter()
+            .map(|p| (p, self.helicities.len()))
+            .chain(
+                self.spin_projections
+                    .iter()
+                    .flatten()
+                    .map(|p| (&p.directed, p.helicities.len())),
+            )
+    }
+
     /// Signed Born anchors are emitted only by the resolved LC projection.
     pub fn resolved_color_component_count(&self) -> usize {
         self.born_color_components
@@ -547,7 +562,73 @@ impl LoopRuntimePlan {
         let h = self.helicities.len();
         let b = self.order_layout.born.len();
         let v = self.order_layout.r#virtual.len();
-        if let Some(projection) = &self.directed_projection {
+        if let Some(classes) = &self.spin_projections {
+            let ordinary = self
+                .directed_projection
+                .as_ref()
+                .ok_or_else(|| invalid("spin classes require ordinary directed kernels"))?;
+            require(!classes.is_empty(), "empty saved spin class catalogue")?;
+            require(
+                unique(&classes.iter().map(|p| &p.legs).collect::<Vec<_>>()),
+                "duplicate saved joint spin class",
+            )?;
+            for class in classes {
+                require(
+                    !class.legs.is_empty()
+                        && class.legs.windows(2).all(|pair| pair[0] < pair[1])
+                        && class.legs.iter().all(|&leg| {
+                            leg > 0
+                                && leg <= legs
+                                && self.external_pdgs[leg - 1] == 21
+                                && self.state_legs[leg - 1].massless
+                                && matches!(
+                                    self.state_legs[leg - 1].kind.as_str(),
+                                    "epsilon" | "epsilon_bar"
+                                )
+                        }),
+                    "saved spin class requires ordered physical massless gluon ports",
+                )?;
+                let mut seen = BTreeSet::new();
+                let spectators = self
+                    .helicities
+                    .iter()
+                    .filter(|row| {
+                        seen.insert(
+                            row.iter()
+                                .enumerate()
+                                .filter_map(|(leg, &value)| {
+                                    (!class.legs.contains(&(leg + 1))).then_some(value)
+                                })
+                                .collect::<Vec<_>>(),
+                        )
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
+                require(
+                    class.helicities == spectators,
+                    "spin projection spectator helicities differ",
+                )?;
+                require(
+                    class.phases.len() == class.legs.len(),
+                    "spin phase count differs",
+                )?;
+                for phase in &class.phases {
+                    shape(phase, 4, 4)?;
+                }
+                require(
+                    class.directed.color_legs == ordinary.color_legs
+                        && class.directed.histories.len() == ordinary.histories.len()
+                        && class
+                            .directed
+                            .histories
+                            .iter()
+                            .zip(&ordinary.histories)
+                            .all(|(a, b)| a.id == b.id && a.bra == b.bra && a.ket == b.ket),
+                    "spin and ordinary directed history columns differ",
+                )?;
+            }
+        }
+        for (projection, projection_h) in self.directed_projections() {
             require(
                 projection.kind == "directed-complex"
                     && projection.convention == "su3-literal-tau-physical-charge-all-outgoing-v1"
@@ -586,7 +667,7 @@ impl LoopRuntimePlan {
             )?;
             shape(
                 &projection.born,
-                product(h, born_width)?,
+                product(projection_h, born_width)?,
                 product(projection.histories.len(), b)?,
             )?;
         }
@@ -779,10 +860,10 @@ impl LoopRuntimePlan {
                 product(h, sum([born_width, loops].into_iter())?)?,
                 product(family.sector_indices.len(), family.powers.len())?,
             )?;
-            if let Some(projection) = &self.directed_projection {
+            for (projection, projection_h) in self.directed_projections() {
                 shape(
                     &projection.families[family_index],
-                    product(h, sum([born_width, loops].into_iter())?)?,
+                    product(projection_h, sum([born_width, loops].into_iter())?)?,
                     product(
                         product(2, projection.histories.len())?,
                         product(family.sector_indices.len(), family.powers.len())?,
@@ -895,7 +976,7 @@ impl LoopRuntimePlan {
             sum([b, product(18, v)?].into_iter())?,
             19,
         )?;
-        if let Some(projection) = &self.directed_projection {
+        for (projection, projection_h) in self.directed_projections() {
             let histories = projection.histories.len();
             let width = product(histories, product(3, v)?)?;
             shape(
@@ -905,7 +986,7 @@ impl LoopRuntimePlan {
             )?;
             shape(
                 &projection.counterterms,
-                product(h, amplitude_width)?,
+                product(projection_h, amplitude_width)?,
                 product(6, width)?,
             )?;
             shape(&projection.assemble, product(8, width)?, product(7, width)?)?;
