@@ -548,7 +548,7 @@ def test_virtual_facade_rejects_scalar_or_mislabeled_results():
     with pytest.raises(EvaluationError, match="inconsistent contribution"):
         runtime.evaluate([[]])
     backend.contribution_kind = "virtual"
-    with pytest.raises(CompatibilityError, match="virtual correlation"):
+    with pytest.raises(CompatibilityError, match="saved directed correlation"):
         runtime.evaluate_correlated([[]])
 
 

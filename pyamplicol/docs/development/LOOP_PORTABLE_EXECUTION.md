@@ -457,6 +457,56 @@ These are correctness controls, not performance measurements or new physics
 certification. The separate live-producer stability helper retains its existing
 scope pending its own source-binding integration.
 
+## Explicit partial-value returns
+
+All public virtual evaluation methods accept the per-call option
+`on_failure="return"`; the default `"raise"` retains `EvaluationError` and its
+failure/verification payload. The option applies to ordinary, resolved,
+precision-specific, correlated and grouped source requests. It does not change
+the arithmetic, configured verification policy or runtime defaults.
+
+```python
+result = runtime.evaluate_resolved(points, mu_r2=scales, on_failure="return")
+for point, diagnostic in enumerate(result.diagnostics):
+    if diagnostic.valid:
+        coefficients = result.values[point]
+    else:
+        assert result.values[point] is result.born_values[point] is None
+        failures = diagnostic.failures
+```
+
+The existing immutable `VirtualEvaluation` and `ResolvedVirtualEvaluation`
+types retain every original input position. Native execution still returns
+compact complete successes; Python scatters whole-point output blocks without
+an event-evaluation loop. Missing values are `None`, never zero, NaN, a surviving
+helicity subset or an unaccepted last precision attempt. A physical zero remains
+a valid numerical value. Empty input yields empty values/diagnostics; an
+all-failed batch retains its input length and complete order/shape metadata.
+
+Each unavailable lane retains the existing `VirtualFailureDiagnostic` records,
+including original point ID and available helicity, colour component, squared
+order, family, external leg, history and direction. If numerical values were
+obtained without accepted precision agreement, its status is
+`accuracy-not-established`, still invalid with absent values. Successful rescue
+keeps earlier failures in its verification attempts and exposes no unrecovered
+lane failures. Source admission alone cannot turn one high-precision amplitude
+into an accepted result.
+
+Finite/single/double-pole access, `for_order()`, `sum_orders()` and resolved
+`.total()` preserve missing entries and immutable diagnostics. Channel indices
+inside diagnostics retain the original generated-catalogue meaning after output
+selection; they are not silently renumbered. High-precision successful values
+remain Decimal or complex Decimal pairs, including directed outputs.
+
+Grouped requests keep their label order. Histories sharing one source assignment
+share native whole-point validity; distinct assignments can have different
+failure masks. A failing explicit assignment does not alter the retained spin
+setter or prevent other admitted source assignments from returning their values.
+Malformed inputs, invalid scales, unavailable capabilities/histories, corrupted
+ownership/metadata and rejected source updates remain hard errors under either
+option. This Python option does not replace the SDK's existing successful-ID
+and per-request status arrays. CLI policy transport is a separate open gate.
+
 ## Signed LC Born components
 
 The plan's optional `born_color_components` record is the sole partition

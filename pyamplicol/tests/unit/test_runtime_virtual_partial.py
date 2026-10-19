@@ -269,3 +269,32 @@ def test_failure_diagnostics_are_frozen_and_accuracy_status_is_invalid():
     assert asdict(diagnostic)["failures"][0]["point_id"] == 1
     with pytest.raises(ValueError, match="unrecovered"):
         replace(diagnostic, status="success")
+
+
+@pytest.mark.parametrize("arithmetic", ["double-double", "arbitrary"])
+def test_partial_transport_preserves_digits_below_binary64(monkeypatch, arithmetic):
+    backend, native = _transport_backend(monkeypatch, "full")
+    native.arithmetic = backend.default_arithmetic = arithmetic
+    native.precision = 70 if arithmetic == "arbitrary" else None
+    native.precision_bits = 233 if arithmetic == "arbitrary" else 106
+    literal = "1.00000000000000000000000000001"
+    if arithmetic == "arbitrary":
+        literal = "1.00000000000000000000000000000000000000000000000000000000001"
+    complete = native.evaluate_partial
+
+    def precise(*args, **kwargs):
+        result = complete(*args, **kwargs)
+        for batch in [result.born, *result.component_batches]:
+            flat = batch.to_decimal()
+            flat[0] = (literal, "0")
+            batch.to_decimal = lambda flat=flat: flat
+        return result
+
+    native.evaluate_partial = precise
+    _partial(native)
+    result = Runtime(backend).evaluate(
+        [[[1, 0, 0, 1]]] * 2, mu_r2=[1, "1e-400"], on_failure="return"
+    )
+    assert result.values[1] is result.born_values[1] is None
+    assert result.values[0][0].finite == result.born_values[0][0] == Decimal(literal)
+    assert result.values[0][0].finite != Decimal(float(literal))
