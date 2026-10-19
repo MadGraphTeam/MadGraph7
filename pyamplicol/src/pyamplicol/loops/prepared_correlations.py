@@ -203,6 +203,9 @@ def prepare_directed_bare(bare, histories, *, spin_layout=None):
 
 
 def prepare_directed_model(model, prepared):
+    from .physical_model_correlations import require_directed_model_scope
+
+    require_directed_model_scope(model)
     from symbolica import E, S
 
     from .color_bilinears import SUNColorSpace

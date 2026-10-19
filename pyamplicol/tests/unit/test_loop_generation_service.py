@@ -447,11 +447,6 @@ def test_colour_required_constant_cannot_undo_an_actual_restriction_card(
     [
         ({}, CorrelatorConfig(spin_correlations=((1,),)), "spin-source"),
         ({"color": {"accuracy": "lc"}}, CorrelatorConfig(), "full colour"),
-        (
-            {"process": {"loop_coupling_orders": ["QED"]}},
-            CorrelatorConfig(),
-            "QCD corrections",
-        ),
         ({}, object(), "CorrelatorConfig"),
     ],
 )
@@ -489,3 +484,28 @@ def test_virtual_full_physics_summary_retains_saved_history_labels():
     )
     assert text is not None and "T12" in text and "born" in text
     assert "directed interference" in text
+
+
+@pytest.mark.parametrize("corrections", [("QED",), ("QCD", "QED")])
+def test_cold_directed_completion_uses_the_authoritative_producer_scope(corrections):
+    from pyamplicol.loops.physical_model_correlations import (
+        require_directed_model_scope,
+    )
+    from pyamplicol.loops.prepared_correlations import prepare_directed_model
+
+    model = SimpleNamespace(
+        r2_strategy="model",
+        color_accuracy="full",
+        color_projection=None,
+        bare=SimpleNamespace(
+            order_layout=SimpleNamespace(correction_names=corrections)
+        ),
+    )
+    # The cold entry checks before touching the prepared state or tensor algebra,
+    # even when public staged numerical validation is disabled.
+    for operation in (
+        lambda: require_directed_model_scope(model),
+        lambda: prepare_directed_model(model, None),
+    ):
+        with pytest.raises(NotImplementedError, match="EW correlation coverage"):
+            operation()

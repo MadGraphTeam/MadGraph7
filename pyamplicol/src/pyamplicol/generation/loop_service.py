@@ -334,10 +334,6 @@ def _check_correlators(backend, correlators):
         )
     if backend._run_config.color.accuracy != "full":
         raise GenerationError("virtual colour histories currently require full colour")
-    if tuple(backend._run_config.process.loop_coupling_orders) != ("QCD",):
-        raise GenerationError(
-            "virtual colour-history completion currently requires QCD corrections"
-        )
 
 
 def _prepare_directed(program, declarations):

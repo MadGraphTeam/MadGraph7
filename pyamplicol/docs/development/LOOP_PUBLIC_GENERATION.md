@@ -232,8 +232,11 @@ surface. The existing shared CLI restriction also disallows combining
 `--correlators` with `--dry-run`.
 
 The initial public correlated domain is full colour, QCD corrections, model R2
-plus UV and inclusive physical helicities. Spin sources, resolved correlated
-output and LC/NLC correlations fail explicitly. Ordinary evaluation remains
+plus UV and inclusive physical helicities. Cold preparation and the retained
+producer share one completion-scope check, including when staged validation is
+disabled. EW correlation validation is an unmet extension; QCD coverage does not
+imply that EW histories are fundamentally incompatible. Spin sources, resolved
+correlated output and LC/NLC correlations fail explicitly. Ordinary evaluation remains
 available on the same artifact. Transactional validation checks both ordinary
 and every prepared correlated output before publication when enabled; these are
 source-versus-saved execution checks, not independent physics certification.
