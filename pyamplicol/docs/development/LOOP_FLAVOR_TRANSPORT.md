@@ -17,9 +17,10 @@ prepared identities, actual requests and the existing `LegMapping`. Its first
 supported relation is orientation-preserving species substitution with unchanged
 external port order and unit factor. This imposes no bound on the number of legs,
 orders, histories or related members. Nonidentity permutations, charge
-conjugation, projected-colour components and spin-source composition need
-separate transport proofs. Ordinary full-colour resolved helicity axes are
-checked for equality during admission and preserved by identity-port transport.
+conjugation and projected-colour components need separate transport proofs.
+Literal vector sources additionally require the paired source admission below.
+Ordinary full-colour resolved helicity axes are checked for equality during
+admission and preserved by identity-port transport.
 
 `relation.bind(representative, directed=prepared_directed)` creates a member view
 of the representative's existing batched numerical executors. It passes through
@@ -56,16 +57,50 @@ state. Changed species, factors, permutations, conjugation or unadmitted IDs
 cannot obtain representative access by editing `process-groups.json`.
 
 Public process ID, expression and external-particle metadata describe the selected
-member. `representative_process_key` identifies the stored process. Ordinary
+member. Public spelling is retained: the existing exact-first, uniquely
+case-insensitive particle resolver uses the actual source/native external-state
+catalog, so `g` can resolve to the model's `G`. Hidden ghost or Goldstone names
+cannot shadow a physical external state. The entire ordered PDG sequence and
+incoming count must still match the admitted request; ambiguous or incompatible
+aliases retain independent generation. `representative_process_key` identifies the stored process. Ordinary
 resolved and directed histories retain every order, pole and component; the
 member uses the same exact scalar owner and parameter-update guards.
 
 Unproved candidates remain independent. Requests combining flavour grouping with
-LC/NLC or spin sources also retain independent generation and their normal
-evaluation capabilities. The existing generation filters report whether grouping
+LC/NLC retain independent generation and their normal evaluation capabilities.
+Spin requests reuse a representative only after both actual source catalogs pass
+the additional admission. The existing generation filters report whether grouping
 was requested, transport was checked and reuse actually applied, with a reason
 when the process remains independent. A request flag is never a claim of a proved
 mapping. Ordinary group inspection retains each member's actual proof basis.
+
+## Literal vector sources and paired admission
+
+Generation prepares the ordinary directed plan and every declared joint source
+class independently for both processes before considering reuse. Admission
+compares actual prepared owners, ordered colour-history catalogs and port
+representations. Selected source species must stay fixed under the flavour map.
+Actual model-owned SourceIR, crossing-phase evaluator bytes and compact spectator
+helicities must agree. The existing `NativeSpinSourcePlan` factory derives the
+expected phase and spectator catalog once per owner at admission: two equally
+altered dataclasses cannot certify an unrelated phase or helicity layout.
+
+The relation retains both actual class catalogs, with no fixed class or leg count.
+`bind` accepts only an admitted representative class. The PACBIN writer checks
+the exact catalog it saves against that admission; a missing, foreign, duplicated
+or unadmitted class cannot borrow the relation. Native cold validation also
+requires every selected source vector species to remain fixed by the admitted
+map. Existing typed source and process-group validation still applies.
+
+Per-call source rows pass through the same native executor. No second crossing
+phase, conjugation or projection is introduced. Exact sources and model parameters
+retain their separate ownership during rebind, point compaction and rescue.
+
+The exercised source composition is QCD `d d~ -> g g` and `s s~ -> g g`, with
+classes `(3,)`, `(4,)` and `(3,4)` and identity/ordered/swapped histories. The full
+retained QCD proof rejects the tested u/c substitution; photon-order scope rejects
+the tested d/s and u/c substitutions. Such processes remain independently
+generated. A matching default tree value is never a replacement for the proof.
 
 ## Validation and current boundary
 
@@ -93,9 +128,21 @@ member metadata, atomic fixed-parameter rejection and modified group-record
 rejection are checked on the saved artifact. These are correctness controls, not
 runtime performance measurements.
 
-This is a full-colour, model-R2 source-program feature. Spin/mapping composition,
-LC/NLC transport and nonidentity external permutations remain uncertified. Saved
-member selection uses the shared native artifact loader; it introduces no new
+The paired spin-source extension independently generates the 45-loop `d d~ -> g g`
+and `s s~ -> g g` owners. Its ordinary and three source classes pass the same
+component/order/pole comparisons in double, DoubleFloat and ArbPrec70, including
+Casimir and swapped complex ordered histories. Fresh saved/public selection
+preserves exact parameter and source perturbations, arbitrary point IDs, empty
+batches and stored vector defaults through `clear`. An underflowing binary64
+scale in one row is rescued with ArbPrec60/80 while the other rows retain their
+results. A cold artifact changing the selected vector species is rejected.
+A linked safe Rust SDK client checks mapped selection, reversed unequal joint
+source labels, invalid source rejection and result ownership after handles and
+input buffers are dropped. These controls share the fresh artifact; no second
+physics generation or native build is required.
+
+This is a full-colour, model-R2 source-program feature. LC/NLC transport and
+nonidentity external permutations remain uncertified. Saved member selection uses the shared native artifact loader; it introduces no new
 manifest or hash.
 The species proof still explicitly rejects unsupported whole-rule analytic
 continuation and diagnostic-bearing parameter substitutions; these require the

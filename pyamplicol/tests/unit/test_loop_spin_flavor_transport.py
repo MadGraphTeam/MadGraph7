@@ -119,6 +119,11 @@ def test_paired_source_admission_rejects_foreign_classes_histories_phases_and_ow
 
     first = classes[1][0]
     layout = first.bare.spin_layout
+    different_class = next(
+        item.bare.spin_layout
+        for item in classes[1]
+        if len(item.bare.spin_layout.legs) != len(layout.legs)
+    )
     with pytest.raises(ValueError, match="joint source classes"):
         admit(member_spin=classes[1][:-1])
     with pytest.raises(ValueError, match="repeats"):
@@ -136,7 +141,7 @@ def test_paired_source_admission_rejects_foreign_classes_histories_phases_and_ow
         admit(member_spin=(bad, *classes[1][1:]))
     for bad_layout, message in (
         (
-            replace(layout, phase_states=classes[1][-1].bare.spin_layout.phase_states),
+            replace(layout, phase_states=different_class.phase_states),
             "crossing phase",
         ),
         (replace(layout, contracts=()), "model-owned SourceIR"),
