@@ -1599,12 +1599,11 @@ limit. No Nf aggregate or per-entry substitution is inferred, and source/model
 names play no role in conformance. A partial group, incompatible species,
 changed scalar normalization or unsupported scheme fails explicitly.
 
-This preparation does not yet alter process counterterm generation. Integration
-must bind the replacement once per eligible original group while retaining the
-original scalar diagnostics and species multiplicities. It must enforce HV,
-including any adjustable source scheme parameter, and combine all sector
-contributions before colour projection. Local Nc=3 agreement alone is not
-broader model, UV or scheme certification.
+This local preparation alone does not alter process counterterm generation.
+The explicit source binding described below applies the replacement once per
+eligible original group, retains source diagnostics and species multiplicities,
+and enforces HV parameter ties before the common sector colour projection.
+Local Nc=3 agreement alone is not broader model, UV or scheme certification.
 
 ### Source-owned continuation and coefficient grades
 
