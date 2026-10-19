@@ -4,9 +4,10 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from decimal import Decimal
-from typing import Literal, NamedTuple, TypeAlias
+from typing import Literal, NamedTuple, TypeAlias, cast
 
 from pyamplicol.config import R2Strategy
 from pyamplicol.correlators import CorrelatedValue
@@ -26,6 +27,18 @@ class LaurentCoefficients(NamedTuple):
     finite: VirtualScalar
     single_pole: VirtualScalar
     double_pole: VirtualScalar
+
+
+# Axes are explicit even for unavailable lanes, which retain their None entry.
+OrderCoefficients: TypeAlias = tuple[tuple[VirtualScalar, ...] | None, ...]
+VirtualValues: TypeAlias = tuple[tuple[LaurentCoefficients, ...] | None, ...]
+ResolvedCoefficients: TypeAlias = tuple[
+    tuple[tuple[tuple[VirtualScalar, ...], ...], ...] | None, ...
+]
+ResolvedVirtualValues: TypeAlias = tuple[
+    tuple[tuple[tuple[LaurentCoefficients, ...], ...], ...] | None, ...
+]
+_FrozenAxis: TypeAlias = VirtualScalar | tuple["_FrozenAxis", ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,7 +75,7 @@ class VirtualLaneDiagnostic:
         return self.status in {"success", "rescued"}
 
 
-def _scalar(value: VirtualScalar, correlated: bool, arithmetic: str) -> VirtualScalar:
+def _scalar(value: object, correlated: bool, arithmetic: str) -> VirtualScalar:
     if isinstance(value, bool):
         raise TypeError("virtual values must be numerical coefficients")
     if arithmetic != "double" and not isinstance(value, (Decimal, CorrelatedValue)):
@@ -96,8 +109,8 @@ def _freeze_axes(
     dimensions: tuple[int, ...],
     correlated: bool,
     arithmetic: str,
-    laurent=False,
-):
+    laurent: bool = False,
+) -> _FrozenAxis:
     if not dimensions:
         return _scalar(values, correlated, arithmetic)
     if not isinstance(values, (tuple, list)) or len(values) != dimensions[0]:
@@ -106,7 +119,15 @@ def _freeze_axes(
         _freeze_axes(value, dimensions[1:], correlated, arithmetic, laurent)
         for value in values
     )
-    return LaurentCoefficients(*frozen) if laurent and dimensions == (3,) else frozen
+    # The terminal dimension was checked above and every child has passed the
+    # scalar validator; only this validated terminal tuple becomes Laurent data.
+    return (
+        LaurentCoefficients(
+            *cast(tuple[VirtualScalar, VirtualScalar, VirtualScalar], frozen)
+        )
+        if laurent and dimensions == (3,)
+        else frozen
+    )
 
 
 def _sum(values: tuple[VirtualScalar, ...]) -> VirtualScalar:
@@ -117,21 +138,25 @@ def _sum(values: tuple[VirtualScalar, ...]) -> VirtualScalar:
     if any(type(value) is not kind for value in values):
         raise TypeError("cannot sum mixed arithmetic containers within one lane")
     if kind is Decimal:
-        return _exact_decimal_sum(values)
+        return _exact_decimal_sum(cast(tuple[Decimal, ...], values))
     if kind is CorrelatedValue:
+        correlated = cast(tuple[CorrelatedValue, ...], values)
         return CorrelatedValue(
-            _exact_decimal_sum(tuple(value.real for value in values)),
-            _exact_decimal_sum(tuple(value.imag for value in values)),
+            _exact_decimal_sum(tuple(value.real for value in correlated)),
+            _exact_decimal_sum(tuple(value.imag for value in correlated)),
         )
     if kind is complex:
+        complex_values = cast(tuple[complex, ...], values)
         return complex(
-            math.fsum(value.real for value in values),
-            math.fsum(value.imag for value in values),
+            math.fsum(value.real for value in complex_values),
+            math.fsum(value.imag for value in complex_values),
         )
-    return math.fsum(values)
+    return math.fsum(cast(tuple[float, ...], values))
 
 
-def _orders(born_orders, sectors):
+def _orders(
+    born_orders: Sequence[CouplingOrders], sectors: Sequence[VirtualOrderSector]
+) -> tuple[tuple[CouplingOrders, ...], tuple[VirtualOrderSector, ...]]:
     born_orders = tuple(canonical_order(order) for order in born_orders)
     sectors = tuple(sectors)
     if not born_orders or not sectors:
@@ -152,13 +177,17 @@ def _orders(born_orders, sectors):
     )
 
 
-def _scalar_kinds(value: object) -> set[type]:
+def _scalar_kinds(value: object) -> set[type[object]]:
     if isinstance(value, tuple):
         return set().union(*(_scalar_kinds(item) for item in value))
     return {type(value)}
 
 
-def _common(result, born_dimensions, virtual_dimensions):
+def _common(
+    result: VirtualEvaluation | ResolvedVirtualEvaluation,
+    born_dimensions: tuple[int, ...],
+    virtual_dimensions: tuple[int, ...],
+) -> None:
     if not isinstance(result.correlated, bool):
         raise TypeError("correlated must be a boolean")
     born_orders, sectors = _orders(result.born_orders, result.sectors)
@@ -176,7 +205,8 @@ def _common(result, born_dimensions, virtual_dimensions):
         R2Strategy.DIRECT,
     }:
         raise ValueError("virtual results require a resolved R2 strategy")
-    frozen_born, frozen_values = [], []
+    frozen_born: list[_FrozenAxis | None] = []
+    frozen_values: list[_FrozenAxis | None] = []
     for born, virtual, diagnostic in zip(
         result.born_values, result.values, diagnostics, strict=True
     ):
@@ -225,8 +255,8 @@ class VirtualEvaluation:
     couplings and normalization, without division by the Born amplitude.
     """
 
-    born_values: tuple[tuple[VirtualScalar, ...] | None, ...]
-    values: tuple[tuple[LaurentCoefficients, ...] | None, ...]
+    born_values: OrderCoefficients
+    values: VirtualValues
     born_orders: tuple[CouplingOrders, ...]
     sectors: tuple[VirtualOrderSector, ...]
     diagnostics: tuple[VirtualLaneDiagnostic, ...]
@@ -252,9 +282,7 @@ class VirtualEvaluation:
     def valid(self) -> tuple[bool, ...]:
         return tuple(item.valid for item in self.diagnostics)
 
-    def coefficient(
-        self, epsilon_power: int
-    ) -> tuple[tuple[VirtualScalar, ...] | None, ...]:
+    def coefficient(self, epsilon_power: int) -> OrderCoefficients:
         if (
             isinstance(epsilon_power, bool)
             or not isinstance(epsilon_power, int)
@@ -268,15 +296,15 @@ class VirtualEvaluation:
         )
 
     @property
-    def finite(self):
+    def finite(self) -> OrderCoefficients:
         return self.coefficient(0)
 
     @property
-    def single_pole(self):
+    def single_pole(self) -> OrderCoefficients:
         return self.coefficient(-1)
 
     @property
-    def double_pole(self):
+    def double_pole(self) -> OrderCoefficients:
         return self.coefficient(-2)
 
     def for_order(self, order: CouplingOrders) -> VirtualEvaluation:
@@ -318,8 +346,8 @@ class ResolvedVirtualEvaluation:
     signed interference contributions, never sampling probabilities.
     """
 
-    born_values: tuple
-    values: tuple
+    born_values: ResolvedCoefficients
+    values: ResolvedVirtualValues
     born_orders: tuple[CouplingOrders, ...]
     sectors: tuple[VirtualOrderSector, ...]
     diagnostics: tuple[VirtualLaneDiagnostic, ...]
@@ -375,7 +403,7 @@ class ResolvedVirtualEvaluation:
     def valid(self) -> tuple[bool, ...]:
         return tuple(item.valid for item in self.diagnostics)
 
-    def coefficient(self, epsilon_power: int) -> tuple:
+    def coefficient(self, epsilon_power: int) -> ResolvedCoefficients:
         if (
             isinstance(epsilon_power, bool)
             or not isinstance(epsilon_power, int)
@@ -396,15 +424,15 @@ class ResolvedVirtualEvaluation:
         )
 
     @property
-    def finite(self):
+    def finite(self) -> ResolvedCoefficients:
         return self.coefficient(0)
 
     @property
-    def single_pole(self):
+    def single_pole(self) -> ResolvedCoefficients:
         return self.coefficient(-1)
 
     @property
-    def double_pole(self):
+    def double_pole(self) -> ResolvedCoefficients:
         return self.coefficient(-2)
 
     def for_order(self, order: CouplingOrders) -> ResolvedVirtualEvaluation:
