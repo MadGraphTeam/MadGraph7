@@ -50,11 +50,15 @@ def test_saved_weighted_and_original_complete_observables(
         chosen = [points[index % len(points)] for index in range(size)]
         scales = [str(900000 + 10000 * index) for index in range(size)]
         ids = [91, 7, 30, 150, 2][:size]
-        calls = [("evaluate", {}), ("evaluate_resolved", {}), ("evaluate_directed", {})]
+        calls = [
+            ("evaluate", {}),
+            ("evaluate", {"resolved": True}),
+            ("evaluate_directed", {}),
+        ]
         calls.extend(
             (
                 "evaluate_directed",
-                {"spin_sources": {leg: [vector] * size for leg in legs}},
+                {"spin_vectors": {leg: [vector] * size for leg in legs}},
             )
             for legs in ((3,), (3, 4))
         )
@@ -224,3 +228,55 @@ def test_weight_stage_failure_replays_surviving_original_ids(
         strict=True,
     ):
         assert left.to_decimal() == right.to_decimal()
+
+
+def test_saved_weight_bank_recomputes_exact_inputs_during_precision_rescue(
+    weight_artifacts,
+):
+    native, root, points = weight_artifacts
+    runtime = native.NativeLoopProgram(
+        str(root / "photon-weighted-directed.pacbin"), reduction_engine="fast"
+    )
+    ids = [2**64 - 1, 0, 73]
+    vector = [["0.1", "0.2"], ["0.8", "-0.3"], ["0.4", "1"], ["-0.6", "0.5"]]
+    sources = {3: [vector] * 3, 4: [vector] * 3}
+    batch = [points[0], points[1], points[0]]
+    scales = ["1e-400", "900000", "1000000"]
+    verified = runtime.evaluate_directed_verified(
+        batch,
+        scales,
+        [("arbitrary", 60), ("arbitrary", 80)],
+        "1e-8",
+        "1e-9",
+        point_ids=ids,
+        spin_vectors=sources,
+    )
+    assert verified.result.point_ids == ids and not verified.result.failures
+    assert [row["status"] for row in json.loads(verified.diagnostics_json)] == [
+        "rescued",
+        "success",
+        "success",
+    ]
+    exact = runtime.rebind(arithmetic="arbitrary", precision=80).evaluate_directed(
+        batch[:1],
+        scales[:1],
+        point_ids=ids[:1],
+        spin_vectors={leg: rows[:1] for leg, rows in sources.items()},
+    )
+    left = [
+        verified.result.born,
+        *verified.result.component_batches,
+        verified.result.directed_first,
+        verified.result.directed_second,
+    ]
+    right = [
+        exact.born,
+        *exact.component_batches,
+        exact.directed_first,
+        exact.directed_second,
+    ]
+    for actual, expected in zip(left, right, strict=True):
+        assert all(
+            ok
+            for _, ok in actual.take_rows([0]).agreement_rows(expected, "1e-8", "1e-9")
+        )
