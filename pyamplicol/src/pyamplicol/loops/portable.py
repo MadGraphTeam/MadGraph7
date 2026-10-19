@@ -37,6 +37,7 @@ _BARE_EVALUATORS = (
     "zero_poles",
     "sum_order_values",
 )
+_MODEL_EVALUATORS = ("projector", "assemble", "sum_order_values")
 
 
 def write_loop_pacbin(
@@ -270,7 +271,8 @@ def write_loop_pacbin(
         "currents": [],
         "fields": [scalar(item, field=True) for item in prepared.fields],
         "model_evaluators": {
-            name: state(value) for name, value in prepared.evaluator_states
+            name: state(dict(prepared.evaluator_states)[name])
+            for name in _MODEL_EVALUATORS
         },
         "dual_born_weights": dual_weights(
             bare.weight_plan,
