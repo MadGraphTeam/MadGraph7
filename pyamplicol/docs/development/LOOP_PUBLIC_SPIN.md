@@ -134,17 +134,19 @@ checked by literal recurrence transport and exact homogeneity. These tests are
 not generation/runtime measurements. Driver and convention details are in
 `tools/loop_reference/MASSIVE_VECTOR_SOURCES.md`.
 
-## Declared-colour stable W+ composition
+## Declared-colour stable W composition
 
-The explicit source-colour example now includes the actual sixteen additional
-ordinary/UV/R2 keys selected by `u d~ -> W+ g` QCD. They preserve the source's
-fundamental `Identity`/`T` tensors, named Nc-dependent invariants, loop-particle
+The explicit source-colour example includes the actual sixteen additional
+ordinary/UV/R2 keys selected by `u d~ -> W+ g` QCD. Two separately inventoried
+charged tree/R2 entries cover crossed `d W+ -> u g` and outgoing
+`d u~ -> W- g`, retaining the source's conjugated CKM coupling. They preserve
+the source's fundamental `Identity`/`T` tensors, named Nc-dependent invariants, loop-particle
 groups, mass logarithms and existing `lhv=1` tie. Removing either the selected
 charged tree entry or its R2 entry fails the existing declaration gate. No
 process-specific compiler exception or scalar/tensor algebra was added.
 
-One fresh owner in the corrected complete Community environment establishes the
-same common leading degrees, Born 2 and virtual 3, across the bare loop and all
+Actual request owners in the corrected complete Community environment establish
+the same common leading degrees, Born 2 and virtual 3, across the bare loop and all
 UV/R2/field rows. The exact 322-row control includes 60 rows at the odd suppressed
 power: LC removes them and NLC retains them. Full projection reconstructs every
 unchanged complete component in double, DoubleFloat and AP70, using a
@@ -161,10 +163,15 @@ contracted output; source-correlated LC/NLC output is contracted. All-carrier
 resolved totals and saved public AP60/AP80 subset rescue use the existing APIs.
 These controls add no generation or runtime timing measurement.
 
-This coverage is outgoing stable W+ QCD with identity histories. The separate
-W− source entries, incoming massive projected control, nonidentity formal-colour
-histories, EW corrections and complex masses remain open. The corrected typed
-open-port Community package is required for this exercised preparation; existing
+The crossed W+ and outgoing W− controls use their actual incoming/antiparticle
+SourceIR and dependency wavefunctions. Each independently preserves full-colour
+coherent Recola agreement while LC/NLC use the exact formal projection oracle.
+All-carrier three-state/joint-source reconstruction and public subset rescue also
+pass for these two channels, without inferring a phase from the particle's sign.
+
+This covers the exercised stable W± QCD channels with identity histories.
+Nonidentity formal-colour histories, EW corrections and complex masses remain
+open. The corrected typed open-port Community package is required for this exercised preparation; existing
 ordinary package dependency adoption is tracked separately. Unrelated original
 full-colour owners and their numerical snapshots remain untouched.
 

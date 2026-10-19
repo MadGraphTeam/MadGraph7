@@ -112,7 +112,13 @@ def assert_retained_formal_completion(original, projected):
     }
 
 
-def assert_retained_incomplete_declaration_rejected(original, source_color):
+def assert_retained_incomplete_declaration_rejected(
+    original,
+    source_color,
+    *,
+    tree_key=("vertices", 34, 0, 0, None),
+    ct_key=("counterterm_vertices", 27, 0, 0, 0),
+):
     """Deleting an actual selected charged entry fails the existing scope gate."""
     from dataclasses import replace
 
@@ -129,7 +135,6 @@ def assert_retained_incomplete_declaration_rejected(original, source_color):
         for vertex in item.graph.vertices
         if vertex.id != item.vertex_id
     }
-    tree_key = ("vertices", 34, 0, 0, None)
     missing_tree = replace(
         source_color, kernel_keys=source_color.kernel_keys - {tree_key}
     )
@@ -139,7 +144,6 @@ def assert_retained_incomplete_declaration_rejected(original, source_color):
         missing_tree.require_ordinary_kernels(
             ordinary, {name for name, _ in plan.outputs}, scalar_plan=plan
         )
-    ct_key = ("counterterm_vertices", 27, 0, 0, 0)
     missing_ct = replace(source_color, kernel_keys=source_color.kernel_keys - {ct_key})
     with pytest.raises(
         NotImplementedError, match="no declared formal-colour continuation"
@@ -259,7 +263,9 @@ def test_actual_charged_declaration_keys_and_negative_scope(projected_massive):
     )
 
     root, _ = projected_massive
-    compiled = load_compiled_model(root / "loop-sm-w-colour.pyAmplicol-model.json")
+    compiled = load_compiled_model(
+        root / "loop-sm-w-charges-colour.pyAmplicol-model.json"
+    )
     raw = compiled.raw_loop_model
     declaration = resolve_loop_color_declaration(raw)
     stored = LoopColorDeclaration.from_dict(
@@ -272,9 +278,11 @@ def test_actual_charged_declaration_keys_and_negative_scope(projected_massive):
     )
     assert declaration == stored
     # Actual source collection IDs and group labels are part of the explicit
-    # provider input. The conjugate charged entries are deliberately not inferred.
+    # provider input. Both charged entries are independently retained source data.
     expected = {
         ("vertices", 34, 0, 0, None): ("V_31", "Identity(1,2)", "GC_12"),
+        ("vertices", 43, 0, 0, None): ("V_40", "Identity(1,2)", "GC_39"),
+        ("counterterm_vertices", 36, 0, 0, 0): ("V_R2uxdW", "Identity(1,2)", "R2_uxdW"),
         ("counterterm_vertices", 27, 0, 0, 0): ("V_R2dxuW", "Identity(1,2)", "R2_dxuW"),
         ("counterterm_vertices", 2, 0, 0, 0): ("V_R2GDD", "T(3,2,1)", "R2_GQQ"),
         ("counterterm_vertices", 3, 0, 0, 0): ("V_R2GUU", "T(3,2,1)", "R2_GQQ"),
@@ -314,16 +322,6 @@ def test_actual_charged_declaration_keys_and_negative_scope(projected_massive):
         "Ncol": "Nc",
     }
     assert declaration.scheme_parameter_values == {"lhv": "1"}
-    # The source's opposite charged R2 key is absent until separately admitted.
-    opposite = next(
-        record
-        for record in raw.collections["counterterm_vertices"]
-        if record["name"] == "V_R2uxdW"
-    )
-    assert not any(
-        key[0] == "counterterm_vertices" and key[1] == opposite["id"]
-        for key in declaration.kernel_keys
-    )
 
 
 @pytest.mark.parametrize("accuracy", ["lc", "nlc"])
@@ -336,7 +334,7 @@ def test_actual_charged_declaration_keys_and_negative_scope(projected_massive):
     ],
 )
 def test_public_massive_projected_resolved_reconstruction(
-    projected_massive, accuracy, arithmetic, precision, tolerance
+    projected_massive, accuracy, arithmetic, precision, tolerance, direction="outgoing"
 ):
     from pyamplicol import Runtime
 
@@ -344,7 +342,7 @@ def test_public_massive_projected_resolved_reconstruction(
     runtime = Runtime.load(
         root / accuracy / "public-ordinary", arithmetic=arithmetic, precision=precision
     )
-    point = json.loads((root / accuracy / "outgoing-ordinary.json").read_text())[
+    point = json.loads((root / accuracy / f"{direction}-ordinary.json").read_text())[
         "point"
     ]
     inclusive = runtime.evaluate([point], mu_r2="1000000")
@@ -370,7 +368,9 @@ def test_public_massive_projected_resolved_reconstruction(
 
 
 @pytest.mark.parametrize("accuracy", ["lc", "nlc"])
-def test_public_massive_projected_identity_source_rescue(projected_massive, accuracy):
+def test_public_massive_projected_identity_source_rescue(
+    projected_massive, accuracy, direction="outgoing", leg=3
+):
     from pyamplicol import CorrelatedRequest, Runtime
     from pyamplicol.api import VirtualArithmeticSpec, VirtualStabilityPolicy
     from pyamplicol.api.errors import EvaluationError
@@ -379,14 +379,14 @@ def test_public_massive_projected_identity_source_rescue(projected_massive, accu
     runtime = Runtime.load(root / accuracy / "public-spin")
     assert runtime.physics.reduction.kind == "contracted-color"
     assert not runtime.physics.born_anchored_color_components
-    assert runtime.inspect()["spin_correlations"] == ((3,), (4,), (3, 4))
-    point = json.loads((root / accuracy / "outgoing-ordinary.json").read_text())[
+    assert runtime.inspect()["spin_correlations"] == ((leg,), (4,), (leg, 4))
+    point = json.loads((root / accuracy / f"{direction}-ordinary.json").read_text())[
         "point"
     ]
     w = [("2", "3"), ("5", "-7"), ("11", "13"), ("-17", "19")]
     g = [("0", "0"), ("0.8", "0"), ("0", "1"), ("-0.6", "0")]
     points, scales = [point] * 3, ["1000000", "1e-400", "1000000"]
-    request = {"joint": CorrelatedRequest("born", {3: w, 4: g})}
+    request = {"joint": CorrelatedRequest("born", {leg: w, 4: g})}
     with pytest.raises(EvaluationError) as failure:
         runtime.evaluate_correlated_many(points, request, mu_r2=scales)
     assert {item.point_id for item in failure.value.failures} == {1}
@@ -409,7 +409,7 @@ def test_public_massive_projected_identity_source_rescue(projected_massive, accu
         "success",
     ]
     assert rescued.values[0] == rescued.values[2]
-    runtime.set_spin_correlation_vectors({3: w, 4: g})
+    runtime.set_spin_correlation_vectors({leg: w, 4: g})
     first = runtime.evaluate_correlated(points[:1], mu_r2=scales[:1])
     runtime.clear()
     assert (
