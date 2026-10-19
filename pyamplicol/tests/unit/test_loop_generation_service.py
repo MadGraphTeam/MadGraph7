@@ -499,11 +499,6 @@ def test_colour_required_constant_cannot_undo_an_actual_restriction_card(
 @pytest.mark.parametrize(
     "sections,declarations,message",
     [
-        (
-            {"color": {"accuracy": "lc"}},
-            CorrelatorConfig.all_color(through_order=1),
-            "identity histories",
-        ),
         ({}, object(), "CorrelatorConfig"),
     ],
 )
@@ -521,6 +516,13 @@ def test_virtual_correlator_preflight_precedes_model_generation(
             correlators=declarations,
         )
     assert not (tmp_path / "unsupported").exists()
+
+
+def test_projected_complete_family_request_reaches_authoritative_preparation():
+    from pyamplicol.generation.loop_service import _check_correlators
+
+    backend = GenerationBackend(loop_config(color={"accuracy": "lc"}), None)
+    _check_correlators(backend, CorrelatorConfig.all_color(through_order=1))
 
 
 def test_virtual_full_physics_summary_retains_saved_history_labels():

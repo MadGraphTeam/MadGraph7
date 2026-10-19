@@ -86,8 +86,9 @@ Actual LC/NLC/formal-full owner controls cover absent/foreign continuation,
 paired mutable metadata substitution, changed components, typed ports, formal
 records and degrees. Paired identity source catalogues retain the same model
 and source ownership checks. Nonempty colour histories remain rejected for
-this projected transport slice. Public saved-artifact admission is a separate
-integration gate; these cold checks do not enable it by themselves.
+this projected transport slice. Saved-artifact admission applies these checks
+before permitting representative selection, and validates the retained identity
+history restriction again at the native boundary.
 
 ## Saved artifacts and public selection
 
@@ -117,10 +118,15 @@ aliases retain independent generation. `representative_process_key` identifies t
 resolved and directed histories retain every order, pole and component; the
 member uses the same exact scalar owner and parameter-update guards.
 
-Unproved candidates remain independent. Requests combining flavour grouping with
-LC/NLC retain independent generation and their normal evaluation capabilities.
-Spin requests reuse a representative only after both actual source catalogs pass
-the additional admission. The existing generation filters report whether grouping
+Unproved candidates remain independent. LC/NLC and formally continued full-colour
+requests may reuse a representative after the exact projected owner and component
+checks above. Their admitted colour histories are identity histories only. The
+existing canonical LC partition is prepared before capturing any model or source
+plan. If dependency canonicalization is unavailable for an otherwise executable
+correlated request, optional flavour grouping leaves that request independent;
+malformed owner data remains an error. Ordinary resolved LC still requires its
+signed component partition. Spin requests reuse a representative only after both
+actual source catalogs pass the additional admission. The existing generation filters report whether grouping
 was requested, transport was checked and reuse actually applied, with a reason
 when the process remains independent. A request flag is never a claim of a proved
 mapping. Ordinary group inspection retains each member's actual proof basis.
@@ -148,7 +154,9 @@ phase, conjugation or projection is introduced. Exact sources and model paramete
 retain their separate ownership during rebind, point compaction and rescue.
 
 The exercised source composition is QCD `d d~ -> g g` and `s s~ -> g g`, with
-classes `(3,)`, `(4,)` and `(3,4)` and identity/ordered/swapped histories. The full
+classes `(3,)`, `(4,)` and `(3,4)`. Fixed-full-colour owners cover
+identity/ordered/swapped histories; formal LC/NLC/full owners currently admit
+identity histories only. The full
 retained QCD proof rejects the tested u/c substitution; photon-order scope rejects
 the tested d/s and u/c substitutions. Such processes remain independently
 generated. A matching default tree value is never a replacement for the proof.
@@ -192,9 +200,31 @@ source labels, invalid source rejection and result ownership after handles and
 input buffers are dropped. These controls share the fresh artifact; no second
 physics generation or native build is required.
 
-This is a full-colour, model-R2 source-program feature. LC/NLC transport and
-nonidentity external permutations remain uncertified. Saved member selection uses the shared native artifact loader; it introduces no new
-manifest or hash.
+The projected extension independently generates the declared formal `d d~ -> g g`
+and `s s~ -> g g` processes, then constructs checked LC/NLC/full views over each
+member's actual graphs. Their three LC signed axes agree by canonical tensor and
+absolute order even though the raw Born-column memberships differ. Complete
+formal-full coefficients agree with the earlier independently saved fixed-full
+owners after matching the source inputs, including the bottom-mass convention;
+no tolerance or normalization adjustment is used.
+
+The public projected controls exercise ordinary and signed resolved LC/NLC in
+double, DoubleFloat and ArbPrec70, including all components, orders and poles,
+empty/singleton/irregular batches and opaque IDs. Independently saved identity
+source catalogues cover ordinary, both single-vector classes and their joint
+class, with separate first and second interference terms. Public LC/NLC/full
+selection checks member metadata, resolved reconstruction, exact sources and
+`clear`; a single failed binary64 lane is rescued with ArbPrec60/80. Cold changes
+to projected histories are rejected. A linked safe Rust SDK client compares
+mapped and independently saved LC/NLC ordinary/resolved/source values, verifies
+complete buffer lengths and shapes, and retains owned results after `clear`.
+These are correctness controls, not generation or runtime measurements.
+
+The supported transport is model-R2 with UV and external fields, exact species
+substitution and unchanged external ports. Nonidentity external permutations,
+charge conjugation and nonidentity projected colour histories remain uncertified.
+Saved member selection uses the shared native artifact loader; it introduces no
+new manifest or hash.
 The original fixed-full-colour control does not use formal whole-rule or paired
 diagnostic lowering. Those paths are covered by the separately owned formal
 prerequisite above; unsupported dimensional continuations and unproved scheme

@@ -48,8 +48,9 @@ def test_mapped_saved_signed_resolved_against_independent_member(
         batch = [points[1], points[0], points[1]][:size]
         ids, scales = [91, 7, 2**64 - 1][:size], ["900000", "1000000", "900000"][:size]
         for resolved in (False, True):
+            evaluate = mapped.evaluate_resolved if resolved else mapped.evaluate
             _compare(
-                mapped.evaluate(batch, scales, point_ids=ids, resolved=resolved),
+                evaluate(batch, scales, point_ids=ids),
                 reference.evaluate(batch, scales, point_ids=ids, resolved=resolved),
                 tolerance,
                 ids,
