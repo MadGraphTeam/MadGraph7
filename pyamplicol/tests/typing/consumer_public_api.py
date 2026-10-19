@@ -30,6 +30,7 @@ from pyamplicol import (
     GenerationResult,
     Generator,
     HelicityConfiguration,
+    LaurentCoefficients,
     ModelSource,
     ProcessPhysics,
     ProcessRequest,
@@ -134,6 +135,23 @@ def exercise_runtime(artifact: Path) -> None:
     runtime.clear()
     assert_type(BenchmarkRunner(BenchmarkConfig()).run(runtime), BenchmarkResult)
     assert_type(benchmark(runtime, points=MOMENTA), BenchmarkResult)
+
+
+def exercise_virtual_runtime(artifact: Path) -> None:
+    runtime = Runtime.load(artifact, model_parameters={"aS": Decimal("0.118")})
+    result = runtime.evaluate(
+        MOMENTA,
+        arithmetic="arbitrary",
+        precision=70,
+        mu_r2="1000000",
+        r2_strategy="model",
+    )
+    assert_type(result, tuple[complex | Decimal, ...] | VirtualEvaluation)
+    if isinstance(result, VirtualEvaluation):
+        assert_type(result.shape, tuple[int, int, int])
+        assert_type(result.for_order((("QCD", 6),)), VirtualEvaluation)
+        assert_type(result.sum_orders(), tuple[LaurentCoefficients | None, ...])
+        assert_type(result.valid, tuple[bool, ...])
 
 
 def exercise_correlations(artifact: Path, momenta: Momenta) -> None:
