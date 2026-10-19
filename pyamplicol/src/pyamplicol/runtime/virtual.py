@@ -207,7 +207,6 @@ class VirtualRuntimeBackend:
         arithmetic: str | None = None,
         precision: int | None = None,
         r2_strategy: str | None = None,
-        stability: VirtualStabilityPolicy | None = None,
     ) -> None:
         if precision is not None and (
             isinstance(precision, bool)
