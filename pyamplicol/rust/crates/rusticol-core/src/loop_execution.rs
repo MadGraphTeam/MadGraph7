@@ -339,6 +339,12 @@ impl<B: LoopBackend> LoopExecutor<B> {
         owner: Option<Arc<SourceOwner<B>>>,
     ) -> RusticolResult<Self> {
         let plan = loaded.plan();
+        if plan.directed_projection.is_some() {
+            return Err(RusticolError::unsupported_runtime_capability(
+                "directed-complex loop evaluation",
+                "saved directed projections require the native directed scheduler",
+            ));
+        }
         if owner.is_some() && plan.r2_strategy != "model" {
             return Err(RusticolError::unsupported_runtime_capability(
                 "native source direct R2",

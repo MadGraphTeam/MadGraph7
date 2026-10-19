@@ -2,8 +2,8 @@
 """Immutable directed-observable instructions over retained physical currents.
 
 Only dependency evaluator bytes and existing owner/layout references are kept.
-These records do not introduce a current engine, portable artifact format or
-public correlated runtime. Reduction still precedes second-term conjugation.
+The portable writer can reference these same bytes. These records introduce no
+current engine or public correlated runtime. Reduction precedes conjugation.
 """
 
 from __future__ import annotations
@@ -64,6 +64,7 @@ class PreparedDirectedModel:
     bare: PreparedDirectedBare
     counterterm_state: bytes
     assembly_state: bytes
+    sum_order_state: bytes
 
     def require_owner(self, model):
         if model.prepared is not self.plan:
@@ -334,8 +335,49 @@ def prepare_directed_model(model, prepared):
     )
 
     return PreparedDirectedModel(
-        model.prepared, prepared, counterterm_state, assembly_state
+        model.prepared,
+        prepared,
+        counterterm_state,
+        assembly_state,
+        _directed_order_sum_state(len(prepared.histories), bare.order_layout),
     )
+
+
+def _directed_order_sum_state(histories, order_layout):
+    """Sum orders within each history, retaining all complex component values.
+
+    Inputs concatenate Born then full/bare/UV/R2/local/field/first/second blocks;
+    Each block packs history/order/(pole). Outputs pack history/(Born + eight
+    Laurent triples).
+    """
+    from symbolica import E, S
+
+    born, virtual = len(order_layout.born), len(order_layout.virtual)
+    width = histories * virtual * 3
+    inputs = tuple(
+        S(f"loop_directed_model::order_sum_{index}")
+        for index in range(histories * born + 8 * width)
+    )
+    outputs = []
+    for history in range(histories):
+        outputs.append(sum(inputs[history * born : (history + 1) * born], E("0")))
+        outputs.extend(
+            sum(
+                (
+                    inputs[
+                        histories * born
+                        + component * width
+                        + (history * virtual + sector) * 3
+                        + pole
+                    ]
+                    for sector in range(virtual)
+                ),
+                E("0"),
+            )
+            for component in range(8)
+            for pole in range(3)
+        )
+    return _saved(outputs, inputs)
 
 
 def _accumulate_counterterm(

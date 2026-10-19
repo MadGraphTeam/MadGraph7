@@ -23,7 +23,7 @@ from .test_loop_physical_counterterms import _uudd_born_uv
 @pytest.fixture(scope="module")
 def source_directed():
     symbolica = pytest.importorskip("symbolica")
-    pytest.importorskip("_loop_reduction")
+    backend = pytest.importorskip("_loop_reduction")
     path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
     if not path or not symbolica.is_licensed():
         pytest.skip("licensed source generation and loop_sm reference required")
@@ -41,6 +41,7 @@ def source_directed():
         (2, -2),
         (1, -1),
         selected_corrections=["QCD"],
+        backend=backend,
         parameters={"aS": "0.118", "MT": "173", "MU_R": "1000"},
         coefficient_engine="jit",
         reduction_engine="fast",

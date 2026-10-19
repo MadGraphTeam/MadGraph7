@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: 0BSD
 
-//! Graph-free, immutable loop execution data in the existing PACBIN envelope.
-//! This bounded internal loader is not public artifact dispatch or an SDK runner.
+//! Immutable shared native loop execution data in the existing PACBIN envelope.
+//! Public runtimes and SDKs use the same descriptor and evaluator boundary.
 
 use crate::pacbin::{PacbinMemberKind, PacbinReader};
 use crate::{RusticolError, RusticolResult};
@@ -84,6 +84,16 @@ record!(Counterterm { kind: String, schedule: usize, scalar: ScalarBinding, inpu
 record!(HelicityProjection {
     born: String, families: Vec<String>, counterterms: String
 });
+// The existing ColorCorrelator JSON is retained as column metadata. Its
+// operations are compiled into the dependency evaluator states at generation.
+record!(DirectedHistory {
+    id: String, bra: Vec<serde_json::Value>, ket: Vec<serde_json::Value>
+});
+record!(DirectedProjection {
+    kind: String, convention: String, color_legs: Vec<(usize, i32)>,
+    histories: Vec<DirectedHistory>, born: String, families: Vec<String>,
+    postprocess: String, counterterms: String, assemble: String, sum_order_values: String
+});
 // Projector instructions already contain this fixed-Nf projection evaluated at Nc=3.
 // Degrees are aligned with the corresponding squared coupling order catalogue.
 record!(ColorProjection {
@@ -101,7 +111,8 @@ record!(LoopRuntimePlan {
     families: Vec<Family>, bare_evaluators: BTreeMap<String, String>,
     currents: Vec<Counterterm>, fields: Vec<ScalarBinding>, model_evaluators: BTreeMap<String, String>,
     helicity_projection: Option<HelicityProjection>, color_projection: Option<ColorProjection>,
-    born_color_components: Option<BornColorComponents>
+    born_color_components: Option<BornColorComponents>,
+    directed_projection: Option<DirectedProjection>
 });
 
 impl LoopRuntimePlan {
@@ -536,6 +547,49 @@ impl LoopRuntimePlan {
         let h = self.helicities.len();
         let b = self.order_layout.born.len();
         let v = self.order_layout.r#virtual.len();
+        if let Some(projection) = &self.directed_projection {
+            require(
+                projection.kind == "directed-complex"
+                    && projection.convention == "su3-literal-tau-physical-charge-all-outgoing-v1"
+                    && self.r2_strategy == "model"
+                    && self.helicity_projection.is_none()
+                    && self.born_color_components.is_none()
+                    && self
+                        .color_projection
+                        .as_ref()
+                        .is_none_or(|p| p.accuracy == "full"),
+                "unsupported directed projection kind/convention or spin/resolved/colour/R2 domain",
+            )?;
+            require(
+                projection.color_legs.len() == legs
+                    && projection.color_legs.iter().enumerate().all(
+                        |(index, &(label, representation))| {
+                            label == index && matches!(representation, 1 | 3 | -3 | 8)
+                        },
+                    ),
+                "directed colour ports differ from physical leg ordering",
+            )?;
+            require(
+                !projection.histories.is_empty()
+                    && projection.histories.iter().all(|history| {
+                        !history.id.trim().is_empty() && history.bra.len() == history.ket.len()
+                    })
+                    && unique(
+                        &projection
+                            .histories
+                            .iter()
+                            .map(|history| &history.id)
+                            .collect::<Vec<_>>(),
+                    )
+                    && projection.families.len() == self.families.len(),
+                "directed history/family column layout differs",
+            )?;
+            shape(
+                &projection.born,
+                product(h, born_width)?,
+                product(projection.histories.len(), b)?,
+            )?;
+        }
         let lookup = |map: &BTreeMap<String, String>, name: &str| -> RusticolResult<String> {
             map.get(name)
                 .cloned()
@@ -725,6 +779,16 @@ impl LoopRuntimePlan {
                 product(h, sum([born_width, loops].into_iter())?)?,
                 product(family.sector_indices.len(), family.powers.len())?,
             )?;
+            if let Some(projection) = &self.directed_projection {
+                shape(
+                    &projection.families[family_index],
+                    product(h, sum([born_width, loops].into_iter())?)?,
+                    product(
+                        product(2, projection.histories.len())?,
+                        product(family.sector_indices.len(), family.powers.len())?,
+                    )?,
+                )?;
+            }
             if let Some(projection) = &self.helicity_projection {
                 shape(
                     &projection.families[family_index],
@@ -831,6 +895,26 @@ impl LoopRuntimePlan {
             sum([b, product(18, v)?].into_iter())?,
             19,
         )?;
+        if let Some(projection) = &self.directed_projection {
+            let histories = projection.histories.len();
+            let width = product(histories, product(3, v)?)?;
+            shape(
+                &projection.postprocess,
+                product(product(2, histories)?, integral_width)?,
+                product(3, width)?,
+            )?;
+            shape(
+                &projection.counterterms,
+                product(h, amplitude_width)?,
+                product(6, width)?,
+            )?;
+            shape(&projection.assemble, product(8, width)?, product(7, width)?)?;
+            shape(
+                &projection.sum_order_values,
+                product(histories, sum([b, product(24, v)?].into_iter())?)?,
+                product(histories, 25)?,
+            )?;
+        }
         require(used.len() == sizes.len(), "unreferenced evaluator payload")?;
         Ok(())
     }

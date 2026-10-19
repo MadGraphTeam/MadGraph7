@@ -18,8 +18,38 @@ external fields retained and model R2 excluded. Source-owned model-R2 plans reta
 one scalar owner and ordinary/CT scale views, including anonymous external-field
 coefficients. Explicitly continued full/LC/NLC model-rule colour projections are
 persisted with their structural sector degrees. Source dimensional/direct and
-correlations remain outside this boundary. Source-owned precision
+native correlated execution remain outside this boundary. Source-owned precision
 verification/rescue is explicit and uses the native coordinator described below.
+
+### Cold directed projections
+
+An internal writer may attach `directed=PreparedDirectedModel` to the same
+complete model-rule plan. The optional `directed_projection` record declares
+`kind="directed-complex"`, the existing colour convention and zero-based physical
+colour ports. It references the prepared Born, family, post-integration,
+CT/external-field, final-assembly and order-sum evaluator bytes. Current
+schedules, scalar owners, denominator families and order catalogues are shared
+with the ordinary plan; no producer algebra is repeated during loading.
+
+The two complex interference directions remain separate through integration.
+Inputs and outputs pack histories in columns. Order totals sum only the coupling
+order axis within each history, returning Born plus eight Laurent triples per
+history (full, bare, UV, R2, local UV, external fields, first and second term).
+The shared reader derives every evaluator arity from the existing order/current
+layouts. It also checks all referenced evaluator members as for ordinary plans.
+
+`directed_histories` may supply existing `ColorCorrelator` declarations. Their
+unique IDs and exact ordered operations must match the prepared columns, so
+request labels survive serialization. Without declarations, the internal writer
+uses `history-0`, `history-1`, etc.; these are column labels, never point IDs.
+
+This cold format currently requires full colour, model R2 and inclusive physical
+helicities. Spin sources, resolved directed output and LC/NLC directed projection
+remain unimplemented. Old readers reject the unknown optional field; readers
+which know it validate the descriptor, while both ordinary Python binding and
+the ordinary native executor explicitly refuse execution until the native
+directed scheduler is connected. No public correlated capability is enabled by
+the presence of these saved states.
 
 ## Persisted data
 

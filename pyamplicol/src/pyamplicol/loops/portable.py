@@ -39,11 +39,56 @@ _BARE_EVALUATORS = (
 )
 
 
-def write_loop_pacbin(program, destination, *, resolved=False):
+def write_loop_pacbin(
+    program, destination, *, resolved=False, directed=None, directed_histories=None
+):
     """Lower one checked retained control into plain execution data and bytecode."""
     from .physical_color import color_projection_metadata
 
     bare = program.bare
+    if directed_histories is not None and directed is None:
+        raise ValueError("directed history declarations require prepared projections")
+    if directed is not None:
+        from pyamplicol.color.correlator_matrices import ColorCorrelator
+
+        from .prepared_correlations import PreparedDirectedModel
+
+        if not isinstance(directed, PreparedDirectedModel):
+            raise TypeError("directed projection requires prepared model instructions")
+        directed.require_owner(program)
+        declarations = (
+            tuple(
+                ColorCorrelator(f"history-{index}", bra.emissions, ket.emissions)
+                for index, (bra, ket) in enumerate(directed.bare.histories)
+            )
+            if directed_histories is None
+            else tuple(directed_histories)
+        )
+        if (
+            len(declarations) != len(directed.bare.histories)
+            or any(not isinstance(item, ColorCorrelator) for item in declarations)
+            or len({item.id for item in declarations}) != len(declarations)
+            or any(
+                item.bra != bra.emissions or item.ket != ket.emissions
+                for item, (bra, ket) in zip(
+                    declarations, directed.bare.histories, strict=True
+                )
+            )
+        ):
+            raise ValueError(
+                "directed history IDs/operations differ from prepared columns"
+            )
+        if (
+            resolved
+            or directed.bare.spin_layout is not None
+            or program.r2_strategy != "model"
+            or getattr(bare, "color_accuracy", "full") != "full"
+        ):
+            raise NotImplementedError(
+                "saved directed projections currently require inclusive physical "
+                "helicities, full colour and model R2; spin/resolved/projected-colour "
+                "and direct-R2 transport remain unsupported"
+            )
     components = None
     if resolved and getattr(bare, "color_accuracy", "full") == "lc":
         from .color_components import prepare_born_color_components
@@ -243,6 +288,23 @@ def write_loop_pacbin(program, destination, *, resolved=False):
                 "input_columns": dict(item.metadata)["input_columns"],
             }
         )
+    if directed is not None:
+        from pyamplicol.color.connections import COLOR_CONNECTION_CONVENTION
+
+        data["directed_projection"] = {
+            "kind": "directed-complex",
+            "convention": COLOR_CONNECTION_CONVENTION,
+            "color_legs": [
+                (leg.label, leg.representation) for leg in directed.bare.color_legs
+            ],
+            "histories": [item.to_json_dict() for item in declarations],
+            "born": state(directed.bare.born_state),
+            "families": [state(family.state) for family in directed.bare.families],
+            "postprocess": state(directed.bare.postprocess_state),
+            "counterterms": state(directed.counterterm_state),
+            "assemble": state(directed.assembly_state),
+            "sum_order_values": state(directed.sum_order_state),
+        }
     members = [
         PacbinMemberSource(
             _PLAN_MEMBER,
@@ -300,6 +362,11 @@ class PortableLoopPlan:
         from .physical_states import ExternalStateLayout, ExternalStateLeg
 
         data, backend = json.loads(self._native.metadata_json()), self._backend
+        if data.get("directed_projection") is not None:
+            raise NotImplementedError(
+                "saved directed-complex projections require the native directed "
+                "scheduler; ordinary evaluation cannot execute this artifact"
+            )
         options = dict(arithmetic=arithmetic, precision=precision)
         state = self._native.evaluator_state
         binding = data["model_binding"]
