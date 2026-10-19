@@ -723,7 +723,18 @@ PYBIND11_MODULE(_madspace_py, m) {
         m, "TwoToThreeParticleScattering", pydoc::doc("TwoToThreeParticleScattering")
     )
         .def(
-            py::init<double, double, double, double, double, double, bool, bool>(),
+            py::init<
+                double,
+                double,
+                double,
+                double,
+                double,
+                double,
+                bool,
+                bool,
+                bool,
+                bool,
+                bool>(),
             py::arg("t_invariant_power") = 0.,
             py::arg("t_mass") = 0.,
             py::arg("t_width") = 0.,
@@ -732,6 +743,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("s_width") = 0.,
             py::arg("has_cut") = false,
             py::arg("arcsine_s23") = true,
+            py::arg("p12_condition") = false,
+            py::arg("incoming_recoil") = false,
+            py::arg("cut_aware_branch") = false,
             pydoc::doc("TwoToThreeParticleScattering::TwoToThreeParticleScattering")
         )
         .def(
@@ -788,26 +802,51 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("TPropagatorMapping::random_dim")
         );
 
-    py::classh<ColorOrderedMapping, Mapping>(
+    auto color_ordered_mapping = py::classh<ColorOrderedMapping, Mapping>(
         m, "ColorOrderedMapping", pydoc::doc("ColorOrderedMapping")
+    );
+    py::class_<ColorOrderedMapping::Options>(
+        color_ordered_mapping, "Options", pydoc::doc("ColorOrderedMapping::Options")
     )
         .def(
+            py::init([](const std::vector<std::size_t>& color_order,
+                        std::optional<double> chain_invariant_power,
+                        bool cut_aware_branch) {
+                return ColorOrderedMapping::Options{
+                    color_order, chain_invariant_power, cut_aware_branch
+                };
+            }),
+            py::arg("color_order"),
+            py::arg("chain_invariant_power") = std::nullopt,
+            py::arg("cut_aware_branch") = true
+        )
+        .def_readwrite(
+            "color_order",
+            &ColorOrderedMapping::Options::color_order,
+            pydoc::doc("ColorOrderedMapping::Options::color_order")
+        )
+        .def_readwrite(
+            "chain_invariant_power",
+            &ColorOrderedMapping::Options::chain_invariant_power,
+            pydoc::doc("ColorOrderedMapping::Options::chain_invariant_power")
+        )
+        .def_readwrite(
+            "cut_aware_branch",
+            &ColorOrderedMapping::Options::cut_aware_branch,
+            pydoc::doc("ColorOrderedMapping::Options::cut_aware_branch")
+        );
+    color_ordered_mapping
+        .def(
             py::init<
-                std::vector<std::size_t>,
-                double,
-                double,
+                const ColorOrderedMapping::Options&,
                 std::vector<double>,
                 std::vector<std::vector<double>>,
                 std::vector<std::vector<double>>,
-                bool,
                 std::vector<double>>(),
-            py::arg("color_order"),
-            py::arg("t_invariant_power") = 0.8,
-            py::arg("s_invariant_power") = 0.8,
+            py::arg("options"),
             py::arg("pt_min") = std::vector<double>{},
             py::arg("m_inv_min") = std::vector<std::vector<double>>{},
             py::arg("dr_min") = std::vector<std::vector<double>>{},
-            py::arg("arcsine_s23") = true,
             py::arg("y_max") = std::vector<double>{},
             pydoc::doc("ColorOrderedMapping::ColorOrderedMapping")
         )
@@ -1264,9 +1303,10 @@ PYBIND11_MODULE(_madspace_py, m) {
                 PhaseSpaceMapping::TChannelMode,
                 const std::optional<Cuts>&,
                 const nested_vector2<std::size_t>&,
-                const std::optional<std::vector<std::size_t>>&,
+                const std::optional<ColorOrderedMapping::Options>&,
                 double,
-                bool>(),
+                bool,
+                std::optional<double>>(),
             py::arg("topology"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
@@ -1274,9 +1314,10 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("t_channel_mode") = PhaseSpaceMapping::propagator,
             py::arg("cuts") = std::nullopt,
             py::arg("permutations") = nested_vector2<std::size_t>{},
-            py::arg("color_order") = std::nullopt,
+            py::arg("color_ordered") = std::nullopt,
             py::arg("beam_rapidity") = 0.,
             py::arg("mirror_beams") = false,
+            py::arg("s_hat_power") = std::nullopt,
             pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping")
         )
         .def(
@@ -1287,18 +1328,20 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 PhaseSpaceMapping::TChannelMode,
                 std::optional<Cuts>,
-                const std::optional<std::vector<std::size_t>>&,
+                const std::optional<ColorOrderedMapping::Options>&,
                 double,
-                bool>(),
+                bool,
+                std::optional<double>>(),
             py::arg("external_masses"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
             py::arg("invariant_power") = 0.8,
             py::arg("mode") = PhaseSpaceMapping::rambo,
             py::arg("cuts") = std::nullopt,
-            py::arg("color_order") = std::nullopt,
+            py::arg("color_ordered") = std::nullopt,
             py::arg("beam_rapidity") = 0.,
             py::arg("mirror_beams") = false,
+            py::arg("s_hat_power") = std::nullopt,
             pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping#2")
         )
         .def(
