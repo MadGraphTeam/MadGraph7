@@ -1426,3 +1426,37 @@ checked by `fermion_two_point_oracle.py`: contraction of the calibrated vector
 current with that momentum. Other two-point mass, chiral, reversed-endpoint or
 momentum-leg tensors remain outside this admission. Scalar source coefficients,
 loop groups, matching and all process-level cancellations are independent gates.
+
+### Flavour-changing Dirac/vector counterterms
+
+The source FFV admission uses its exact calibrated Lorentz tensor, ordered
+anti-fundamental/fundamental representations and exact `Identity` or `T` colour
+tensor. It does not require equal fermion species or infer endpoint direction
+from PDG signs. Actual particle identities, loop-particle alternatives, coupling
+orders, scalar expressions and Laurent coefficients remain source-owned. No
+mass, Yukawa or CKM parameter is equated by this local admission.
+
+`charged_ffv_oracle.py` generates unchanged ALOHA `FFS4_1` and `FFS4_2` currents
+with unequal masses, independent complex Yukawas and off-shell complex momenta,
+then contracts them with `FFV2_0`. Both charge orientations of the source
+`bbar–t–W-` and `tbar–b–W+` rule match the reference. Raw UFO endpoint slots are
+checked before the existing typed endpoint translation; exchanging the current
+bindings follows that declared frame change. No new gamma or colour algebra is
+introduced. Negative local tests retain rejection of changed colour tensors,
+reversed ports and uncalibrated Lorentz structures.
+
+The independent complete-process control is `u ubar -> d dbar` with unrestricted
+Wolfenstein CKM, mixed QCD/EW Born sectors and **QCD corrections only**. The full
+SM source retains photon, Z and W Born exchange and the charged R2 insertions.
+All three Born squared orders and all three virtual squared orders, including
+both contributing Born–loop pairs at QCD4/QED2, agree with native MadLoop Laurent
+outputs at three exact massless points. The fixture records averaging, physical
+couplings, scales, restrictions and all changed model parameters. This is not a
+validation of jointly selected QCD+QED corrections.
+
+The same saved precision-independent plan is checked through the shared native
+executor in double, DoubleFloat and arbitrary precision, including resolved
+helicity reconstruction, original lane identifiers and parameter increments
+below binary64 resolution. The provider comparison remains a binary64 check;
+precision-preserving transport and internal inclusive/resolved agreement do not
+turn its reference values into an arbitrary-precision oracle.

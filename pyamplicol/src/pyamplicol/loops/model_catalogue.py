@@ -26,7 +26,7 @@ from .vertex_frames import certified_fermion_slash_source, certified_ffv_source
 
 
 def certified_source_counterterm_bases(source):
-    """Return exact-key conformance for the existing neutral and QCD primitives.
+    """Return exact-key conformance for the tested source tensor primitives.
 
     Source FFV tensors retain their UFO frame and use the separately certified
     typed endpoint adapter at physical construction. No bundled-model scalar or
@@ -67,8 +67,10 @@ def certified_source_counterterm_bases(source):
         control = None
         if (
             spins == (2, 2, 3)
-            and pdgs[0] == -pdgs[1]
-            and pdgs[1] > 0
+            # The tested local tensor and Dirac endpoint frame depend on the
+            # ordered representations, not equal flavour or equal masses.
+            # The ordered colour representations supply the endpoint direction;
+            # PDG numbering is not a local tensor convention.
             and (
                 (colors == (-3, 3, 8) and any_equal(entry.color, ("T(3,2,1)",)))
                 or (colors == (-3, 3, 1) and any_equal(entry.color, ("Identity(1,2)",)))
