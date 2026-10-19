@@ -131,7 +131,7 @@ def test_cold_photon_source_contracts_are_authoritative(photon_artifact, tmp_pat
                 lambda d: d["spin_projections"][0]["source_contracts"][0][
                     "identity"
                 ].update(pdg_label=21),
-                "SourceIR",
+                "antiparticle relation",
             ),
             (
                 lambda d: d["spin_projections"][0]["source_contracts"][0][
