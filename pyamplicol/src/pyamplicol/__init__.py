@@ -101,6 +101,7 @@ if TYPE_CHECKING:
         LaurentCoefficients,
         ResolvedVirtualEvaluation,
         VirtualEvaluation,
+        VirtualFailureDiagnostic,
         VirtualLaneDiagnostic,
     )
     from .config import (
@@ -181,6 +182,7 @@ __all__ = [
     "Runtime",
     "SplitGluon",
     "VirtualEvaluation",
+    "VirtualFailureDiagnostic",
     "VirtualLaneDiagnostic",
     "WarmUpResult",
     "__version__",
@@ -257,6 +259,7 @@ _VIRTUAL_RESULT_EXPORTS = (
     "LaurentCoefficients",
     "ResolvedVirtualEvaluation",
     "VirtualEvaluation",
+    "VirtualFailureDiagnostic",
     "VirtualLaneDiagnostic",
 )
 _PUBLIC_EXPORTS = {

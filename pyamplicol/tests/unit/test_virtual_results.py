@@ -8,6 +8,7 @@ from pyamplicol.api.virtual_results import (
     LaurentCoefficients,
     ResolvedVirtualEvaluation,
     VirtualEvaluation,
+    VirtualFailureDiagnostic,
     VirtualLaneDiagnostic,
 )
 from pyamplicol.config import R2Strategy
@@ -179,3 +180,22 @@ def test_invalid_arithmetic_metadata_and_mixed_containers_fail_at_construction()
         VirtualLaneDiagnostic("success", "double-double", 256, True)
     with pytest.raises(TypeError, match="consistent"):
         replace(result(), values=(((Decimal(1),) * 3, (2.0,) * 3),))
+
+
+def test_failure_channels_are_immutable_and_keep_physical_identity():
+    from pyamplicol import EvaluationError
+
+    failure = VirtualFailureDiagnostic(91, 3, 2, 7, "reduction", "provider detail")
+    error = EvaluationError("failed", failures=(failure,))
+    assert error.failures == (failure,) and str(error) == "failed"
+    assert EvaluationError("ordinary failure").failures == ()
+    with pytest.raises(FrozenInstanceError):
+        failure.point_id = 2
+    for field in ("point_id", "helicity", "order_index", "family_index"):
+        with pytest.raises(ValueError):
+            replace(failure, **{field: -1})
+        with pytest.raises(ValueError):
+            replace(failure, **{field: True})
+    with pytest.raises(ValueError):
+        replace(failure, point_id=None)
+    assert replace(failure, helicity=None).helicity is None

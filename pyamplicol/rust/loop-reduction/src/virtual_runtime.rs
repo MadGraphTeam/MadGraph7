@@ -167,20 +167,30 @@ impl VirtualRuntime {
         inputs: LoopInputs,
         r2_strategy: Option<&str>,
     ) -> RusticolResult<CompleteLoopResult<Arc<Batch>>> {
-        self.evaluate_mode(inputs, r2_strategy, false)
+        self.evaluate_mode(inputs, r2_strategy, false, false)
     }
     pub fn evaluate_resolved(
         &mut self,
         inputs: LoopInputs,
         r2_strategy: Option<&str>,
     ) -> RusticolResult<CompleteLoopResult<Arc<Batch>>> {
-        self.evaluate_mode(inputs, r2_strategy, true)
+        self.evaluate_mode(inputs, r2_strategy, true, false)
+    }
+    /// Successful complete points plus typed reduction-channel failures.
+    pub fn evaluate_partial(
+        &mut self,
+        inputs: LoopInputs,
+        r2_strategy: Option<&str>,
+        resolved: bool,
+    ) -> RusticolResult<CompleteLoopResult<Arc<Batch>>> {
+        self.evaluate_mode(inputs, r2_strategy, resolved, true)
     }
     fn evaluate_mode(
         &mut self,
         inputs: LoopInputs,
         r2_strategy: Option<&str>,
         resolved: bool,
+        partial: bool,
     ) -> RusticolResult<CompleteLoopResult<Arc<Batch>>> {
         strategy(r2_strategy.unwrap_or(&self.requested_strategy))?;
         if !inputs.model_values.is_empty() {
@@ -195,7 +205,9 @@ impl VirtualRuntime {
             )?);
         }
         let executor = self.executor.as_mut().expect("workspaces bound");
-        if resolved {
+        if partial {
+            executor.evaluate_partial_with_snapshot(inputs, None, resolved)
+        } else if resolved {
             executor.evaluate_resolved(inputs)
         } else {
             executor.evaluate(inputs)

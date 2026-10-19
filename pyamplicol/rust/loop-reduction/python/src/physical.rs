@@ -2,7 +2,9 @@
 //! Experimental complete native execution of validated legacy loop PACBIN plans.
 use crate::{batch::NativeBatch, error};
 use pyo3::prelude::*;
-use rusticol_core::loop_execution::{CompleteLoopResult, LoopExecutor, LoopInputs};
+use rusticol_core::loop_execution::{
+    CompleteLoopResult, LoopExecutor, LoopInputs, LoopLaneFailure,
+};
 use rusticol_core::loop_runtime::{LoadedLoopRuntime, load_loop_runtime_pacbin};
 use rusticol_core::source_bindings::{SourceOverrides, SourceOwner, SourceSnapshot};
 use rusticol_loop_reduction::runtime::{Batch, physical::PhysicalBackend};
@@ -116,7 +118,7 @@ impl NativeLoopProgram {
             backend: self.executor.backend().clone(),
         })
     }
-    #[pyo3(signature=(momenta, scales_squared, model_values=None, point_ids=None, snapshot=None, *, resolved=false))]
+    #[pyo3(signature=(momenta, scales_squared, model_values=None, point_ids=None, snapshot=None, *, resolved=false, partial=false))]
     fn evaluate(
         &mut self,
         py: Python<'_>,
@@ -126,6 +128,7 @@ impl NativeLoopProgram {
         point_ids: Option<Vec<u64>>,
         snapshot: Option<&NativeSourceSnapshot>,
         resolved: bool,
+        partial: bool,
     ) -> PyResult<NativeCompleteLoopResult> {
         if self.executor.source_owner().is_some() && model_values.is_some() {
             return Err(error(
@@ -147,20 +150,59 @@ impl NativeLoopProgram {
             model_values: model_values.unwrap_or_default(),
             point_ids: ids,
         };
-        py.detach(|| if resolved {
-            self.executor.evaluate_resolved_with_snapshot(input, snapshot)
-        } else {
-            self.executor.evaluate_with_snapshot(input, snapshot)
+        py.detach(|| {
+            if partial {
+                self.executor
+                    .evaluate_partial_with_snapshot(input, snapshot, resolved)
+            } else if resolved {
+                self.executor
+                    .evaluate_resolved_with_snapshot(input, snapshot)
+            } else {
+                self.executor.evaluate_with_snapshot(input, snapshot)
+            }
         })
-            .map(NativeCompleteLoopResult)
-            .map_err(error)
+        .map(NativeCompleteLoopResult)
+        .map_err(error)
     }
 }
 
 #[pyclass]
 pub(super) struct NativeCompleteLoopResult(pub(super) CompleteLoopResult<Arc<Batch>>);
+#[pyclass(frozen, get_all)]
+pub(super) struct NativeLoopFailure {
+    point_id: u64,
+    helicity: Option<usize>,
+    order_index: usize,
+    family_index: usize,
+    stage: String,
+    detail: String,
+}
+impl From<&LoopLaneFailure> for NativeLoopFailure {
+    fn from(value: &LoopLaneFailure) -> Self {
+        Self {
+            point_id: value.point_id,
+            helicity: value.helicity,
+            order_index: value.order_index,
+            family_index: value.family_index,
+            stage: value.stage.clone(),
+            detail: value.detail.clone(),
+        }
+    }
+}
 #[pymethods]
 impl NativeCompleteLoopResult {
+    #[getter]
+    fn requested_point_ids(&self) -> Vec<u64> {
+        self.0.requested_point_ids.clone()
+    }
+    #[getter]
+    fn failures(&self) -> Vec<NativeLoopFailure> {
+        self.0
+            .failures
+            .iter()
+            .map(NativeLoopFailure::from)
+            .collect()
+    }
     #[getter]
     fn point_ids(&self) -> Vec<u64> {
         self.0.point_ids.clone()
@@ -243,6 +285,7 @@ impl NativeSourceSnapshot {
 pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<NativeLoopProgram>()?;
     module.add_class::<NativeCompleteLoopResult>()?;
+    module.add_class::<NativeLoopFailure>()?;
     module.add_class::<NativeSourceState>()?;
     module.add_class::<NativeSourceSnapshot>()
 }

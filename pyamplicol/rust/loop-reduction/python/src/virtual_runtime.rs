@@ -148,7 +148,15 @@ impl NativeVirtualRuntime {
         point_ids: Option<Vec<u64>>,
         r2_strategy: Option<&str>,
     ) -> PyResult<NativeCompleteLoopResult> {
-        self.evaluate_mode(py, momenta, scales_squared, point_ids, r2_strategy, false)
+        self.evaluate_mode(
+            py,
+            momenta,
+            scales_squared,
+            point_ids,
+            r2_strategy,
+            false,
+            false,
+        )
     }
 
     #[pyo3(signature=(momenta, scales_squared, *, point_ids=None, r2_strategy=None))]
@@ -160,7 +168,36 @@ impl NativeVirtualRuntime {
         point_ids: Option<Vec<u64>>,
         r2_strategy: Option<&str>,
     ) -> PyResult<NativeCompleteLoopResult> {
-        self.evaluate_mode(py, momenta, scales_squared, point_ids, r2_strategy, true)
+        self.evaluate_mode(
+            py,
+            momenta,
+            scales_squared,
+            point_ids,
+            r2_strategy,
+            true,
+            false,
+        )
+    }
+
+    #[pyo3(signature=(momenta, scales_squared, *, point_ids=None, r2_strategy=None, resolved=false))]
+    fn evaluate_partial(
+        &mut self,
+        py: Python<'_>,
+        momenta: Vec<Vec<[String; 4]>>,
+        scales_squared: Vec<String>,
+        point_ids: Option<Vec<u64>>,
+        r2_strategy: Option<&str>,
+        resolved: bool,
+    ) -> PyResult<NativeCompleteLoopResult> {
+        self.evaluate_mode(
+            py,
+            momenta,
+            scales_squared,
+            point_ids,
+            r2_strategy,
+            resolved,
+            true,
+        )
     }
 }
 
@@ -173,6 +210,7 @@ impl NativeVirtualRuntime {
         point_ids: Option<Vec<u64>>,
         r2_strategy: Option<&str>,
         resolved: bool,
+        partial: bool,
     ) -> PyResult<NativeCompleteLoopResult> {
         if momenta
             .iter()
@@ -190,13 +228,17 @@ impl NativeVirtualRuntime {
             point_ids: ids,
             model_values: Vec::new(),
         };
-        py.detach(|| if resolved {
-            self.0.evaluate_resolved(input, r2_strategy)
-        } else {
-            self.0.evaluate(input, r2_strategy)
+        py.detach(|| {
+            if partial {
+                self.0.evaluate_partial(input, r2_strategy, resolved)
+            } else if resolved {
+                self.0.evaluate_resolved(input, r2_strategy)
+            } else {
+                self.0.evaluate(input, r2_strategy)
+            }
         })
-            .map(NativeCompleteLoopResult)
-            .map_err(native_error)
+        .map(NativeCompleteLoopResult)
+        .map_err(native_error)
     }
 }
 

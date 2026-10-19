@@ -107,6 +107,7 @@ pub struct LoopInputs {
 /// finite, single pole, double pole. Components are full, bare, UV, R2, local UV,
 /// and external fields. Values remain in their requested native arithmetic.
 pub struct CompleteLoopResult<T> {
+    pub requested_point_ids: Vec<u64>,
     pub point_ids: Vec<u64>,
     pub born: T,
     pub components: [T; 6],
@@ -114,6 +115,32 @@ pub struct CompleteLoopResult<T> {
     pub statuses: Vec<Vec<(u64, String)>>,
     pub r2_strategy: String,
     pub source_revision: Option<u64>,
+    pub failures: Vec<LoopLaneFailure>,
+}
+
+/// A scheduled numerical channel failure; source identities never come from
+/// parsing a reducer exception. Failed numerical values are not exposed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LoopLaneFailure {
+    pub point_id: u64,
+    pub helicity: Option<usize>,
+    pub order_index: usize,
+    pub family_index: usize,
+    pub stage: String,
+    pub detail: String,
+}
+
+impl<T> CompleteLoopResult<T> {
+    fn require_complete(self) -> RusticolResult<Self> {
+        if self.failures.is_empty() {
+            Ok(self)
+        } else {
+            Err(RusticolError::evaluation(format!(
+                "unrecovered loop numerical channels: {:?}",
+                self.failures
+            )))
+        }
+    }
 }
 
 struct FamilyWorkspace<B: LoopBackend> {
@@ -188,7 +215,11 @@ impl<B: LoopBackend> LoopExecutor<B> {
                         "source coordination currently requires model R2",
                     ));
                 }
-                Some(Arc::new(SourceOwner::new(loaded.clone(), &backend, parameters)?))
+                Some(Arc::new(SourceOwner::new(
+                    loaded.clone(),
+                    &backend,
+                    parameters,
+                )?))
             }
         };
         Self::bind(loaded, backend, owner)
@@ -218,11 +249,17 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 "source coordination currently requires model R2",
             ));
         }
-        let source = owner.map(|owner| {
-            let ordinary = SourceScale::ordinary(&owner, &backend)?;
-            let counterterms = SourceScale::counterterms(&owner, &backend)?;
-            Ok::<_, RusticolError>(SourceWorkspace { owner, ordinary, counterterms })
-        }).transpose()?;
+        let source = owner
+            .map(|owner| {
+                let ordinary = SourceScale::ordinary(&owner, &backend)?;
+                let counterterms = SourceScale::counterterms(&owner, &backend)?;
+                Ok::<_, RusticolError>(SourceWorkspace {
+                    owner,
+                    ordinary,
+                    counterterms,
+                })
+            })
+            .transpose()?;
         let eval = |name: &str| backend.evaluator(loaded.evaluator_state(name)?);
         let schedules = plan
             .schedules
@@ -250,7 +287,9 @@ impl<B: LoopBackend> LoopExecutor<B> {
                     exact: backend.exact_evaluator(loaded.evaluator_state(&item.exact_state)?)?,
                     masses: eval(&item.mass_state)?,
                     projector: eval(&item.projector_state)?,
-                    helicity_projector: plan.helicity_projection.as_ref()
+                    helicity_projector: plan
+                        .helicity_projection
+                        .as_ref()
                         .map(|projection| eval(&projection.families[index]))
                         .transpose()?,
                     reducer: backend.reducer(
@@ -290,12 +329,16 @@ impl<B: LoopBackend> LoopExecutor<B> {
             .iter()
             .map(|item| item.legacy_state().map(&eval).transpose())
             .collect::<RusticolResult<_>>()?;
-        let helicity = plan.helicity_projection.as_ref().map(|projection| {
-            Ok::<_, RusticolError>(HelicityWorkspace {
-                born: eval(&projection.born)?,
-                counterterms: eval(&projection.counterterms)?,
+        let helicity = plan
+            .helicity_projection
+            .as_ref()
+            .map(|projection| {
+                Ok::<_, RusticolError>(HelicityWorkspace {
+                    born: eval(&projection.born)?,
+                    counterterms: eval(&projection.counterterms)?,
+                })
             })
-        }).transpose()?;
+            .transpose()?;
         Ok(Self {
             loaded,
             backend,
@@ -329,7 +372,8 @@ impl<B: LoopBackend> LoopExecutor<B> {
         input: LoopInputs,
         snapshot: Option<Arc<SourceSnapshot<B::Batch>>>,
     ) -> RusticolResult<CompleteLoopResult<B::Batch>> {
-        self.evaluate_mode(input, snapshot, false)
+        self.evaluate_mode(input, snapshot, false)?
+            .require_complete()
     }
     /// Retain each helicity as a native projection/reduction row. Currents and
     /// source scalars still execute through the same shared batched schedule.
@@ -344,7 +388,18 @@ impl<B: LoopBackend> LoopExecutor<B> {
         input: LoopInputs,
         snapshot: Option<Arc<SourceSnapshot<B::Batch>>>,
     ) -> RusticolResult<CompleteLoopResult<B::Batch>> {
-        self.evaluate_mode(input, snapshot, true)
+        self.evaluate_mode(input, snapshot, true)?
+            .require_complete()
+    }
+    /// Compact complete physical points and retain typed reduction failures.
+    /// Early state, scale and nonfinite-stage checks retain their strict errors.
+    pub fn evaluate_partial_with_snapshot(
+        &mut self,
+        input: LoopInputs,
+        snapshot: Option<Arc<SourceSnapshot<B::Batch>>>,
+        resolved: bool,
+    ) -> RusticolResult<CompleteLoopResult<B::Batch>> {
+        self.evaluate_mode(input, snapshot, resolved)
     }
     fn evaluate_mode(
         &mut self,
@@ -462,7 +517,11 @@ impl<B: LoopBackend> LoopExecutor<B> {
         )?;
         let born = if resolved {
             B::evaluate(
-                &mut self.helicity.as_mut().expect("checked helicity kernels").born,
+                &mut self
+                    .helicity
+                    .as_mut()
+                    .expect("checked helicity kernels")
+                    .born,
                 &born_input,
             )?
         } else {
@@ -473,6 +532,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
         let mut integrated = Vec::new();
         let mut rational_integrated = Vec::new();
         let mut statuses = vec![Vec::new(); projection_points];
+        let mut failures = Vec::new();
         for (family, workspace) in plan.families.iter().zip(&mut self.families) {
             let mut parts = vec![&born_amplitudes];
             parts.extend(family.graph_indices.iter().map(|&i| &loop_outputs[i]));
@@ -484,7 +544,9 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 projection_ids.clone(),
             )?;
             let projector = if resolved {
-                workspace.helicity_projector.as_mut()
+                workspace
+                    .helicity_projector
+                    .as_mut()
                     .expect("checked helicity kernel")
             } else {
                 &mut workspace.projector
@@ -510,9 +572,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
                     } else {
                         vec![0; points]
                     };
-                    let point_masses = B::gather(
-                        &masses, mass_rows, input.point_ids.clone(),
-                    )?;
+                    let point_masses = B::gather(&masses, mass_rows, input.point_ids.clone())?;
                     let mut columns: Vec<_> = (0..n * n).collect();
                     for &[entry, mass] in &kinematics.on_shell {
                         columns[entry] = n * n + mass;
@@ -545,7 +605,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 vec![0; channel_rows]
             };
             let masses = B::gather(&masses, mass_rows, reduction_ids.clone())?;
-            let channel_scales = B::gather(&scales, gather, reduction_ids)?;
+            let channel_scales = B::gather(&scales, gather, reduction_ids.clone())?;
             let (values, status) = B::reduce(
                 &mut workspace.reducer,
                 &shifts,
@@ -555,19 +615,21 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 &matrix,
             )
             .map_err(|e| RusticolError::evaluation(format!("family {} N4: {e}", family.index)))?;
-            // The ordinary API raises for any failed channel. Successful statuses
-            // retain original point IDs and family/sector ordering.
-            for (row, (_, state)) in status.into_iter().enumerate() {
-                statuses[row / channels].push((projection_ids[row / channels], state));
-            }
-            integrated.push(B::reshape(
-                &values,
-                projection_points,
-                channels * 3,
-                projection_ids.clone(),
+            integrated.push(complete_family_rows::<B>(
+                values,
+                status,
+                &projection_ids,
+                &reduction_ids,
+                &family.sector_indices,
+                helicities,
+                resolved,
+                family.index,
+                "ordinary numerator reduction",
+                &mut failures,
+                &mut statuses,
             )?);
             if plan.dimensional_numerators {
-                let values = if let Some(reducer) = &mut workspace.rational {
+                let (values, status) = if let Some(reducer) = &mut workspace.rational {
                     B::reduce(
                         reducer,
                         &shifts,
@@ -582,35 +644,67 @@ impl<B: LoopBackend> LoopExecutor<B> {
                             family.index
                         ))
                     })?
-                    .0
                 } else {
-                    eval::<B>(
-                        &mut self.bare,
-                        "zero_poles",
-                        &B::select(&channel_scales, vec![])?,
-                    )?
+                    (
+                        eval::<B>(
+                            &mut self.bare,
+                            "zero_poles",
+                            &B::select(&channel_scales, vec![])?,
+                        )?,
+                        reduction_ids
+                            .iter()
+                            .map(|&id| (id, "success".into()))
+                            .collect(),
+                    )
                 };
-                rational_integrated.push(B::reshape(
-                    &values,
-                    projection_points,
-                    channels * 3,
-                    projection_ids.clone(),
+                rational_integrated.push(complete_family_rows::<B>(
+                    values,
+                    status,
+                    &projection_ids,
+                    &reduction_ids,
+                    &family.sector_indices,
+                    helicities,
+                    resolved,
+                    family.index,
+                    "dimensional remainder reduction",
+                    &mut failures,
+                    &mut statuses,
                 )?);
             }
+        }
+        let failed_points: BTreeSet<_> = failures.iter().map(|f| f.point_id).collect();
+        let accepted: Vec<_> = projection_ids
+            .iter()
+            .copied()
+            .filter(|&id| {
+                !failed_points.contains(&(if resolved { id / helicities as u64 } else { id }))
+            })
+            .collect();
+        let born = select_ids::<B>(&born, &accepted)?;
+        for values in integrated.iter_mut().chain(&mut rational_integrated) {
+            *values = select_ids::<B>(values, &accepted)?;
         }
         let virtual_value = eval::<B>(
             &mut self.bare,
             "postprocess",
             &B::concat(&integrated.iter().collect::<Vec<_>>())?,
         )?;
-        B::require_finite(&virtual_value, "bare virtual assembly", projection_rows_per_point)?;
+        B::require_finite(
+            &virtual_value,
+            "bare virtual assembly",
+            projection_rows_per_point,
+        )?;
         let rational = if plan.dimensional_numerators {
             let value = eval::<B>(
                 &mut self.bare,
                 "postprocess",
                 &B::concat(&rational_integrated.iter().collect::<Vec<_>>())?,
             )?;
-            B::require_finite(&value, "direct rational assembly", projection_rows_per_point)?;
+            B::require_finite(
+                &value,
+                "direct rational assembly",
+                projection_rows_per_point,
+            )?;
             Some(value)
         } else {
             None
@@ -669,15 +763,24 @@ impl<B: LoopBackend> LoopExecutor<B> {
             count(projection_helicities, B::columns(&projected))?,
             projection_ids.clone(),
         )?;
-        let mut counterterms = if resolved {
+        let counterterms = if resolved {
             B::evaluate(
-                &mut self.helicity.as_mut().expect("checked helicity kernels").counterterms,
+                &mut self
+                    .helicity
+                    .as_mut()
+                    .expect("checked helicity kernels")
+                    .counterterms,
                 &projected,
             )?
         } else {
             eval::<B>(&mut self.model, "projector", &projected)?
         };
-        B::require_finite(&counterterms, "counterterm projection", projection_rows_per_point)?;
+        let mut counterterms = select_ids::<B>(&counterterms, &accepted)?;
+        B::require_finite(
+            &counterterms,
+            "counterterm projection",
+            projection_rows_per_point,
+        )?;
         let width = 3 * sector_count;
         if let Some(rational) = rational {
             counterterms = B::concat(&[
@@ -691,7 +794,11 @@ impl<B: LoopBackend> LoopExecutor<B> {
             "assemble",
             &B::concat(&[&virtual_value, &counterterms])?,
         )?;
-        B::require_finite(&assembled, "complete virtual assembly", projection_rows_per_point)?;
+        B::require_finite(
+            &assembled,
+            "complete virtual assembly",
+            projection_rows_per_point,
+        )?;
         let components = [
             B::select(&assembled, (0..width).collect())?,
             virtual_value,
@@ -703,17 +810,131 @@ impl<B: LoopBackend> LoopExecutor<B> {
         let mut values = vec![&born];
         values.extend(components.iter());
         let totals = eval::<B>(&mut self.model, "sum_order_values", &B::concat(&values)?)?;
-        B::require_finite(&totals, "sum over completed perturbative orders", projection_rows_per_point)?;
+        B::require_finite(
+            &totals,
+            "sum over completed perturbative orders",
+            projection_rows_per_point,
+        )?;
         Ok(CompleteLoopResult {
-            point_ids: projection_ids,
+            requested_point_ids: input.point_ids,
+            point_ids: accepted,
             born,
             components,
             totals,
-            statuses,
+            statuses: statuses
+                .into_iter()
+                .zip(&projection_ids)
+                .filter_map(|(status, &id)| {
+                    (!failed_points.contains(&(if resolved { id / helicities as u64 } else { id })))
+                        .then_some(status)
+                })
+                .collect(),
             r2_strategy: plan.r2_strategy.clone(),
             source_revision: snapshot.as_ref().map(|value| value.revision()),
+            failures,
         })
     }
+}
+
+fn select_ids<B: LoopBackend>(values: &B::Batch, ids: &[u64]) -> RusticolResult<B::Batch> {
+    let positions: BTreeMap<_, _> = B::row_ids(values)
+        .iter()
+        .enumerate()
+        .map(|(row, &id)| (id, row))
+        .collect();
+    if positions.len() != B::rows(values) {
+        return Err(invalid("native result row identities are duplicated"));
+    }
+    let rows = ids
+        .iter()
+        .map(|id| {
+            positions
+                .get(id)
+                .copied()
+                .ok_or_else(|| invalid("required successful native row is absent"))
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    B::gather(values, rows, ids.to_vec())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn complete_family_rows<B: LoopBackend>(
+    values: B::Batch,
+    channel_statuses: Vec<(u64, String)>,
+    projection_ids: &[u64],
+    channel_ids: &[u64],
+    sectors: &[usize],
+    helicities: usize,
+    resolved: bool,
+    family: usize,
+    stage: &str,
+    failures: &mut Vec<LoopLaneFailure>,
+    statuses: &mut [Vec<(u64, String)>],
+) -> RusticolResult<B::Batch> {
+    if channel_statuses.len() != channel_ids.len()
+        || channel_statuses
+            .iter()
+            .map(|(id, _)| id)
+            .ne(channel_ids.iter())
+        || B::columns(&values) != 3
+    {
+        return Err(invalid("reducer status identities or value columns differ"));
+    }
+    let successful: Vec<_> = channel_statuses
+        .iter()
+        .filter(|(_, state)| state == "success")
+        .map(|(id, _)| *id)
+        .collect();
+    if B::row_ids(&values) != successful {
+        return Err(invalid(
+            "compact reducer values differ from successful statuses",
+        ));
+    }
+    let mut failed = BTreeSet::new();
+    for (channel, (_, detail)) in channel_statuses.into_iter().enumerate() {
+        let row = channel / sectors.len();
+        let projection_id = projection_ids[row];
+        statuses[row].push((projection_id, detail.clone()));
+        if detail != "success" {
+            let point_id = if resolved {
+                projection_id / helicities as u64
+            } else {
+                projection_id
+            };
+            failed.insert(point_id);
+            failures.push(LoopLaneFailure {
+                point_id,
+                helicity: resolved.then_some((projection_id % helicities as u64) as usize),
+                order_index: sectors[channel % sectors.len()],
+                family_index: family,
+                stage: stage.into(),
+                detail,
+            });
+        }
+    }
+    let rows: Vec<_> = projection_ids
+        .iter()
+        .enumerate()
+        .filter_map(|(row, &id)| {
+            let point = if resolved { id / helicities as u64 } else { id };
+            (!failed.contains(&point)).then_some(row)
+        })
+        .collect();
+    let ids: Vec<_> = rows.iter().map(|&row| projection_ids[row]).collect();
+    let channels: Vec<_> = rows
+        .into_iter()
+        .flat_map(|row| {
+            channel_ids[row * sectors.len()..(row + 1) * sectors.len()]
+                .iter()
+                .copied()
+        })
+        .collect();
+    B::reshape(
+        &select_ids::<B>(&values, &channels)?,
+        ids.len(),
+        count(3, sectors.len())?,
+        ids,
+    )
 }
 
 fn scalar_values<B: LoopBackend>(

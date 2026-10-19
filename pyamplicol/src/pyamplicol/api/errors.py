@@ -1,7 +1,12 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pyamplicol.config.errors import ConfigurationError, PyAmpliColError
+
+if TYPE_CHECKING:
+    from .virtual_results import VirtualFailureDiagnostic
 
 
 class ModelError(PyAmpliColError):
@@ -22,6 +27,12 @@ class CompatibilityError(ArtifactError):
 
 class EvaluationError(PyAmpliColError):
     """Runtime loading, selection, or evaluation failed."""
+
+    def __init__(
+        self, message: str, *, failures: tuple[VirtualFailureDiagnostic, ...] = ()
+    ) -> None:
+        super().__init__(message)
+        self.failures = failures
 
 
 class DependencyError(PyAmpliColError):

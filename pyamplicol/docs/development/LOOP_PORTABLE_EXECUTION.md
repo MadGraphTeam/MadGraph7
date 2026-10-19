@@ -163,10 +163,10 @@ Family projectors use the existing interpreter in this initial native entry
 point; the separate Python opt-in projector JIT is not exposed here.
 
 This native coordinator admits full-colour legacy/source model-rule programs
-and the certified legacy direct four-gluon descriptor. Correlations, formal colour, partial
-results/rescue and public artifact/SDK dispatch are not admitted by this entry
-point. Any failed reduction or nonfinite assembled component raises; successful
-reducer statuses alone do not establish numerical accuracy.
+and the certified legacy direct four-gluon descriptor. Correlations, formal colour,
+automatic rescue and standalone SDK dispatch remain separate work. The default
+entry points raise on failed reductions or nonfinite assembled components;
+successful reducer statuses alone do not establish numerical accuracy.
 
 The additive `rusticol_core::source_bindings` helper binds the validated source
 scalar record over this same numerical backend. `SourceOwner` publishes immutable
@@ -227,3 +227,43 @@ its physics generation. `PYAMPLICOL_PUBLIC_SOURCE_ARTIFACT` selects the resultin
 ordinary two-process artifact for standalone Rust checks of metadata rejection,
 process selection, payload replacement and scalar-tree rejection. Public process
 generation and the complete SDK/API surface remain separate integration gates.
+
+## Structured reduction failures
+
+The shared coordinator also provides `evaluate_partial_with_snapshot`, exposed
+by the internal `NativeLoopProgram.evaluate(..., partial=True)` and native
+`VirtualRuntime.evaluate_partial` adapters. It invokes the same execution path
+and keeps a compact set of successful **whole physical points**. If any family,
+coupling sector or resolved helicity fails, every numerical result row for that
+physical point is excluded. A failed channel never contributes a stale buffer,
+a zero placeholder or a NaN labelled as a successful value.
+
+`requested_point_ids` retains all original physical IDs. The compact `point_ids`
+retains the requested order of successful points; resolved rows retain the
+existing fused point/helicity identity. Each typed failure separately records
+the original physical `point_id`, optional zero-based `helicity`, `order_index`
+in the virtual sector catalogue, `family_index`, execution `stage` and the
+reducer's opaque `detail`. These identities come from the scheduled channel
+layout, never from parsing reducer error text. Empty and all-failed batches
+retain their typed Born/component columns.
+
+Public `Runtime.evaluate` and `evaluate_resolved` continue to raise by default.
+Their `EvaluationError.failures` tuple contains immutable
+`VirtualFailureDiagnostic` records for native reduction failures; point IDs in
+this facade are the original input row indices. Successful public result shapes
+and all coupling/Laurent axes are unchanged. There is no public partial-result
+policy or hidden precision retry in this slice.
+
+The partial boundary currently starts at reduction. Parameter, scale,
+wavefunction/current and nonfinite-assembly errors retain strict whole-call
+rejection. Invalid structure and global dependency errors also remain errors.
+Extending those early stages to typed lane outcomes and recomputing only failed
+points from the original exact inputs are separate requirements for rescue.
+Finite output and a successful reducer status still do not certify accuracy.
+
+The focused saved-source test uses exactly on-shell near-forward gluon
+scattering where the generic reducer reports a degenerate Gram determinant,
+with ordinary points on either side. It checks inclusive/resolved compaction,
+sparse original IDs, successful-row agreement, default rejection, all-failed
+and empty buffers, and typed public DoubleFloat errors. The binary64 fast
+engine succeeds on this particular control; that is not treated as a failure.

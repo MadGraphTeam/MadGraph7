@@ -35,6 +35,7 @@ from pyamplicol.api.virtual_results import (
     LaurentCoefficients,
     ResolvedVirtualEvaluation,
     VirtualEvaluation,
+    VirtualFailureDiagnostic,
     VirtualLaneDiagnostic,
 )
 from pyamplicol.config import R2Strategy
@@ -409,11 +410,31 @@ class VirtualRuntimeBackend:
                 self._native = candidate
             result = _invoke(
                 self._module,
-                self._native.evaluate_resolved if resolved else self._native.evaluate,
+                self._native.evaluate_partial,
                 points,
                 scales,
                 r2_strategy=requested.value,
+                resolved=resolved,
             )
+            failures = tuple(
+                VirtualFailureDiagnostic(
+                    item.point_id,
+                    item.helicity,
+                    item.order_index,
+                    item.family_index,
+                    item.stage,
+                    item.detail,
+                )
+                for item in result.failures
+            )
+            if failures:
+                failed_points = sorted({item.point_id for item in failures})
+                raise EvaluationError(
+                    "unrecovered virtual reduction failures at points "
+                    f"{failed_points}; "
+                    "inspect error.failures for helicity, order and family details",
+                    failures=failures,
+                )
             helicity_count = len(self._metadata["plan"]["helicities"])
             count = len(points) * (helicity_count if resolved else 1)
             if (

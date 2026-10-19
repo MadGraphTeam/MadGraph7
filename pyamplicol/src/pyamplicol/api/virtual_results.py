@@ -42,6 +42,30 @@ _FrozenAxis: TypeAlias = VirtualScalar | tuple["_FrozenAxis", ...]
 
 
 @dataclass(frozen=True, slots=True)
+class VirtualFailureDiagnostic:
+    """One failed native numerical channel with original physical identity."""
+
+    point_id: int
+    helicity: int | None
+    order_index: int | None
+    family_index: int | None
+    stage: str
+    detail: str
+
+    def __post_init__(self) -> None:
+        for name in ("point_id", "helicity", "order_index", "family_index"):
+            value = getattr(self, name)
+            if value is None and name != "point_id":
+                continue
+            if type(value) is not int or value < 0:
+                raise ValueError(f"{name} must be a nonnegative integer")
+        if not isinstance(self.stage, str) or not self.stage:
+            raise ValueError("failure stage must be a nonempty string")
+        if not isinstance(self.detail, str):
+            raise TypeError("failure detail must be a string")
+
+
+@dataclass(frozen=True, slots=True)
 class VirtualLaneDiagnostic:
     """Accuracy is explicit; a finite output is not an accuracy certificate."""
 

@@ -75,6 +75,7 @@ if TYPE_CHECKING:
         LaurentCoefficients,
         ResolvedVirtualEvaluation,
         VirtualEvaluation,
+        VirtualFailureDiagnostic,
         VirtualLaneDiagnostic,
     )
 
@@ -130,6 +131,7 @@ __all__ = [
     "RuntimeBackend",
     "RuntimeLoader",
     "VirtualEvaluation",
+    "VirtualFailureDiagnostic",
     "VirtualLaneDiagnostic",
     "WarmUpResult",
     "benchmark",
@@ -208,6 +210,7 @@ _VIRTUAL_RESULT_EXPORTS = (
     "LaurentCoefficients",
     "ResolvedVirtualEvaluation",
     "VirtualEvaluation",
+    "VirtualFailureDiagnostic",
     "VirtualLaneDiagnostic",
 )
 _PUBLIC_EXPORTS = {

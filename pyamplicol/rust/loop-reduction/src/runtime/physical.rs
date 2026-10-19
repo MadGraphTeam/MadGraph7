@@ -173,18 +173,8 @@ impl LoopBackend for PhysicalBackend {
         let result = reducer
             .evaluate_batch(shifts, masses, scales, coefficients, Some(matrix))
             .map_err(runtime_error)?;
-        let failed = result
-            .statuses()
-            .iter()
-            .filter(|(_, status)| status != "success")
-            .collect::<Vec<_>>();
-        if !failed.is_empty() {
-            return Err(RusticolError::evaluation(format!(
-                "loop reduction failed (original channel ID, status): {failed:?}"
-            )));
-        }
         Ok((
-            Arc::new(result.values().map_err(runtime_error)?),
+            Arc::new(result.successful_values()),
             result.statuses().to_vec(),
         ))
     }
@@ -239,10 +229,10 @@ impl LoopBackend for PhysicalBackend {
             .map(|id| id / rows_per_point as u64)
             .collect::<std::collections::BTreeSet<_>>();
         let helicities = if rows_per_point > 1 {
-            let lanes = failed.iter().map(|id| (
-                id / rows_per_point as u64,
-                id % rows_per_point as u64,
-            )).collect::<Vec<_>>();
+            let lanes = failed
+                .iter()
+                .map(|id| (id / rows_per_point as u64, id % rows_per_point as u64))
+                .collect::<Vec<_>>();
             format!("; (point, helicity) {lanes:?}")
         } else {
             String::new()
