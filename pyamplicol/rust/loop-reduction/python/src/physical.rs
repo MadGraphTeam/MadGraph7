@@ -11,9 +11,9 @@ use rusticol_loop_reduction::runtime::{Batch, physical::PhysicalBackend};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-type SpinVectors = BTreeMap<usize, Vec<[[String; 2]; 4]>>;
+pub(crate) type SpinVectors = BTreeMap<usize, Vec<[[String; 2]; 4]>>;
 
-fn spin_inputs(
+pub(crate) fn spin_inputs(
     vectors: Option<SpinVectors>,
     points: usize,
 ) -> PyResult<BTreeMap<usize, Vec<[String; 2]>>> {

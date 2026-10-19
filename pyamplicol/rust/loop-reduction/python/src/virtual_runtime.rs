@@ -2,7 +2,7 @@
 //! Python ownership/conversion only; complete execution is one native call.
 use crate::{
     error,
-    physical::{NativeCompleteLoopResult, NativeSourceState},
+    physical::{NativeCompleteLoopResult, NativeSourceState, SpinVectors, spin_inputs},
 };
 use pyo3::{create_exception, exceptions::PyValueError, prelude::*};
 use rusticol_core::{
@@ -204,10 +204,11 @@ impl NativeVirtualRuntime {
             r2_strategy,
             LoopObservable::from_resolved(resolved),
             verify_successful,
+            None,
         )
     }
 
-    #[pyo3(signature=(momenta, scales_squared, higher, relative_tolerance, absolute_tolerance, *, point_ids=None, r2_strategy=None, verify_successful=false))]
+    #[pyo3(signature=(momenta, scales_squared, higher, relative_tolerance, absolute_tolerance, *, point_ids=None, r2_strategy=None, verify_successful=false, spin_vectors=None))]
     fn evaluate_directed_verified(
         &mut self,
         py: Python<'_>,
@@ -219,6 +220,7 @@ impl NativeVirtualRuntime {
         point_ids: Option<Vec<u64>>,
         r2_strategy: Option<&str>,
         verify_successful: bool,
+        spin_vectors: Option<SpinVectors>,
     ) -> PyResult<NativeVerifiedLoopResult> {
         self.verified_mode(
             py,
@@ -231,6 +233,7 @@ impl NativeVirtualRuntime {
             r2_strategy,
             LoopObservable::Directed,
             verify_successful,
+            spin_vectors,
         )
     }
 
@@ -251,6 +254,7 @@ impl NativeVirtualRuntime {
             r2_strategy,
             LoopObservable::Inclusive,
             false,
+            None,
         )
     }
 
@@ -271,6 +275,7 @@ impl NativeVirtualRuntime {
             r2_strategy,
             LoopObservable::Resolved,
             false,
+            None,
         )
     }
 
@@ -292,9 +297,10 @@ impl NativeVirtualRuntime {
             r2_strategy,
             LoopObservable::from_resolved(resolved),
             true,
+            None,
         )
     }
-    #[pyo3(signature=(momenta, scales_squared, *, point_ids=None, r2_strategy=None, partial=false))]
+    #[pyo3(signature=(momenta, scales_squared, *, point_ids=None, r2_strategy=None, partial=false, spin_vectors=None))]
     fn evaluate_directed(
         &mut self,
         py: Python<'_>,
@@ -303,6 +309,7 @@ impl NativeVirtualRuntime {
         point_ids: Option<Vec<u64>>,
         r2_strategy: Option<&str>,
         partial: bool,
+        spin_vectors: Option<SpinVectors>,
     ) -> PyResult<NativeCompleteLoopResult> {
         self.evaluate_mode(
             py,
@@ -312,6 +319,7 @@ impl NativeVirtualRuntime {
             r2_strategy,
             LoopObservable::Directed,
             partial,
+            spin_vectors,
         )
     }
 }
@@ -329,6 +337,7 @@ impl NativeVirtualRuntime {
         r2_strategy: Option<&str>,
         observable: LoopObservable,
         verify_successful: bool,
+        spin_vectors: Option<SpinVectors>,
     ) -> PyResult<NativeVerifiedLoopResult> {
         if momenta.iter().any(|p| p.len() != self.0.external_count()) {
             return Err(error("physical momentum leg shape differs"));
@@ -338,7 +347,7 @@ impl NativeVirtualRuntime {
             return Err(error("physical point identity count differs"));
         }
         let inputs = LoopInputs {
-            spin_sources: Default::default(),
+            spin_sources: spin_inputs(spin_vectors, momenta.len())?,
             momenta: momenta.into_iter().flatten().flatten().collect(),
             scales_squared,
             point_ids: ids,
@@ -377,6 +386,7 @@ impl NativeVirtualRuntime {
         r2_strategy: Option<&str>,
         observable: LoopObservable,
         partial: bool,
+        spin_vectors: Option<SpinVectors>,
     ) -> PyResult<NativeCompleteLoopResult> {
         if momenta
             .iter()
@@ -389,7 +399,7 @@ impl NativeVirtualRuntime {
             return Err(error("physical point identity count differs"));
         }
         let input = LoopInputs {
-            spin_sources: Default::default(),
+            spin_sources: spin_inputs(spin_vectors, momenta.len())?,
             momenta: momenta.into_iter().flatten().flatten().collect(),
             scales_squared,
             point_ids: ids,
