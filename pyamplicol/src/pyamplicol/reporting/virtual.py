@@ -145,6 +145,11 @@ def virtual_evaluation_summary(
         f"effective={result.r2.effective.value}; "
         f"{result.r2.reason}"
     )
+    if result.correlated:
+        header += (
+            "\nDirected colour correlations retain complex Born "
+            "and Laurent coefficients."
+        )
     if result.color_accuracy == "lc" and resolved:
         header += (
             "\nBorn anchors are signed, potentially overcomplete components; "

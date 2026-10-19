@@ -927,7 +927,26 @@ class Runtime:
         Reads the declared catalogue without loading an amplitude executor.
         Each returned record contains its runtime ID and ordered bra/ket steps.
         """
+        if self.contribution_kind == "virtual":
+            records = self._virtual_correlation_operation(
+                "available_color_correlations"
+            )()
+            if not isinstance(records, tuple) or any(
+                not isinstance(item, _pyamplicol.ColorCorrelator) for item in records
+            ):
+                raise EvaluationError(
+                    "virtual backend returned an invalid correlation catalogue"
+                )
+            return records
         return self._correlator_catalogue().declarations.color_requests
+
+    def _virtual_correlation_operation(self, name: str) -> Callable[..., Any]:
+        operation = getattr(self._backend, name, None)
+        if not callable(operation):
+            raise CompatibilityError(
+                "virtual backend has no saved directed correlation operation"
+            )
+        return cast(Callable[..., Any], operation)
 
     def _correlator_evaluator(self) -> CorrelatorEvaluator:
         evaluator: CorrelatorEvaluator | None = getattr(
@@ -955,6 +974,9 @@ class Runtime:
         represents a complex component without a binary64 conversion.
         This affects the correlated evaluation methods, not :meth:`evaluate`.
         """
+        if self.contribution_kind == "virtual":
+            self._virtual_correlation_operation("set_spin_correlation_vectors")(vectors)
+            return
         self._correlator_evaluator().set_spin_correlation_vectors(vectors)
 
     def evaluate_correlated(
@@ -963,29 +985,57 @@ class Runtime:
         *,
         color_correlation: str = "born",
         helicities: Sequence[str | HelicityConfiguration] | None = None,
-        precision: int = 16,
-        arithmetic: str = "arbitrary",
-    ) -> tuple[_pyamplicol.CorrelatedValue, ...]:
+        precision: int | None = None,
+        arithmetic: str | None = None,
+        mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
+        r2_strategy: R2Strategy | str | None = None,
+        stability: VirtualStabilityPolicy | None = None,
+    ) -> tuple[_pyamplicol.CorrelatedValue, ...] | VirtualEvaluation:
         """Evaluate a generation-time colour ID with the current spin vectors.
 
-        Returns one complex decimal value per point. ``"born"`` selects the
-        Born metric at the declared colour accuracy. All ordinary normalization
-        factors remain in place; a replaced spin leg is counted once in the
-        helicity sum.
+        Tree results contain one complex decimal value per point. Virtual
+        results are correlated :class:`VirtualEvaluation` values retaining
+        every squared order and all three Laurent coefficients; ``mu_r2`` is
+        required. Virtual arithmetic inherits the loaded runtime default.
+        ``"born"`` selects the Born metric at the declared colour accuracy.
+        All ordinary normalization factors remain in place; a replaced spin
+        leg is counted once in the helicity sum.
 
         ``arithmetic="double-double"`` selects genuine DoubleFloat arithmetic
-        (at most 31 output digits); the default uses arbitrary precision.
+        (at most 31 output digits); tree defaults use arbitrary precision.
         Decimal spin inputs (including complex-component pairs) retain their
         digits until conversion into the requested arithmetic.
         """
+        options = self._evaluation_options(arithmetic, mu_r2, r2_strategy, stability)
+        if self.contribution_kind == "virtual":
+            operation = self._virtual_correlation_operation("evaluate_correlated")
+            self._require_evaluation_options(operation, options)
+            value = operation(
+                momenta,
+                color_correlation=color_correlation,
+                helicities=_selector_ids(
+                    helicities, expected_type=HelicityConfiguration, name="helicity"
+                ),
+                precision=_validate_precision(
+                    getattr(self._backend, "default_precision", 16)
+                    if precision is None
+                    else precision
+                ),
+                **options,
+            )
+            if not isinstance(value, VirtualEvaluation) or not value.correlated:
+                raise EvaluationError(
+                    "virtual correlation backend returned an invalid result"
+                )
+            return value
         return self._correlator_evaluator().evaluate(
             momenta,
             color_correlation=color_correlation,
             helicities=_selector_ids(
                 helicities, expected_type=HelicityConfiguration, name="helicity"
             ),
-            precision=_validate_precision(precision),
-            arithmetic=arithmetic,
+            precision=_validate_precision(16 if precision is None else precision),
+            arithmetic="arbitrary" if arithmetic is None else arithmetic,
         )
 
     def evaluate_correlated_many(
@@ -994,9 +1044,15 @@ class Runtime:
         requests: Mapping[str, _pyamplicol.CorrelatedRequest],
         *,
         helicities: Sequence[str | HelicityConfiguration] | None = None,
-        precision: int = 16,
-        arithmetic: str = "arbitrary",
-    ) -> dict[str, tuple[_pyamplicol.CorrelatedValue, ...]]:
+        precision: int | None = None,
+        arithmetic: str | None = None,
+        mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
+        r2_strategy: R2Strategy | str | None = None,
+        stability: VirtualStabilityPolicy | None = None,
+    ) -> (
+        dict[str, tuple[_pyamplicol.CorrelatedValue, ...]]
+        | dict[str, VirtualEvaluation]
+    ):
         """Evaluate labelled colour/spin combinations over a point batch.
 
         Equal spin assignments share amplitudes across colour IDs. Different
@@ -1004,16 +1060,48 @@ class Runtime:
         reuse is local to this call; requests never change the spin setter.
         ``None`` vectors inherit its initial state and ``{}`` selects physical
         helicities. Each result tuple follows the input point order.
+        Virtual requests select declared full-colour histories from one native
+        batch; values retain complex coupling-order and Laurent axes. Spin and
+        resolved-history composition are not available in that saved domain.
         Arithmetic and Decimal spin inputs follow :meth:`evaluate_correlated`.
         """
+        options = self._evaluation_options(arithmetic, mu_r2, r2_strategy, stability)
+        if self.contribution_kind == "virtual":
+            operation = self._virtual_correlation_operation("evaluate_correlated_many")
+            self._require_evaluation_options(operation, options)
+            values = operation(
+                momenta,
+                requests,
+                helicities=_selector_ids(
+                    helicities, expected_type=HelicityConfiguration, name="helicity"
+                ),
+                precision=_validate_precision(
+                    getattr(self._backend, "default_precision", 16)
+                    if precision is None
+                    else precision
+                ),
+                **options,
+            )
+            if (
+                not isinstance(values, dict)
+                or list(values) != list(requests)
+                or any(
+                    not isinstance(value, VirtualEvaluation) or not value.correlated
+                    for value in values.values()
+                )
+            ):
+                raise EvaluationError(
+                    "virtual correlation backend returned invalid grouped results"
+                )
+            return cast(dict[str, VirtualEvaluation], values)
         return self._correlator_evaluator().evaluate_many(
             momenta,
             requests,
             helicities=_selector_ids(
                 helicities, expected_type=HelicityConfiguration, name="helicity"
             ),
-            precision=_validate_precision(precision),
-            arithmetic=arithmetic,
+            precision=_validate_precision(16 if precision is None else precision),
+            arithmetic="arbitrary" if arithmetic is None else arithmetic,
         )
 
     def clear(self) -> None:

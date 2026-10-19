@@ -458,3 +458,33 @@ through `born_anchored_color_components` while tree `color_flows` stay unchanged
 Native errors and verification histories identify original physical points and
 optional colour components; one failed component removes or rescues the whole
 point using its original exact inputs.
+
+### Public saved directed colour histories
+
+`Runtime.load` validates that the artifact's `correlations` capability matches
+its saved directed descriptor. `available_color_correlations()` exposes the
+ordered bra/ket catalogue using existing one-based public leg labels. Native
+nonnegative labels shift by one, while negative auxiliary labels stay unchanged;
+this is a label conversion and applies no charge sign or crossing operation.
+`evaluate_correlated` and
+`evaluate_correlated_many` dispatch to the same native virtual handle; one bulk
+call evaluates the saved histories and Python selects labelled output columns.
+They return `VirtualEvaluation(correlated=True)` with every squared coupling
+order and finite/single-pole/double-pole coefficient. Binary64 values are complex;
+DoubleFloat/arbitrary values use decimal-preserving `CorrelatedValue` pairs.
+Ordinary `evaluate` still selects its ordinary real projection.
+
+The reserved public `born` request selects an explicitly named empty history,
+or the unique saved history with empty bra and ket. Ambiguous unnamed identities
+are not guessed. This derived alias does not add a native history or change its
+column order. Model parameters, `mu_r2`, arithmetic, strategy and optional native
+verification use the ordinary exact-input interfaces. Errors preserve physical
+point identity and available history/direction labels. Verification compares
+both complex cross terms as well as their complete sum.
+
+This initial saved-public domain is full colour, model R2 plus UV and inclusive
+physical helicities. Spin replacement, selected helicities, resolved directed
+outputs, LC/NLC composition, FFT and mapped processes are rejected. Public
+source-generation admission is a subsequent integration step; these saved
+artifact tests do not claim fresh generation or installed-wheel coverage of the
+new directed methods. Tree correlated execution and its defaults are unchanged.

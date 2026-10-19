@@ -308,6 +308,8 @@ def test_native_component_failure_retains_physical_identity(monkeypatch):
             detail="injected transport failure",
             external_leg=None,
             color_component_index=2,
+            history_index=None,
+            direction=None,
         )
     ]
     with pytest.raises(EvaluationError) as caught:

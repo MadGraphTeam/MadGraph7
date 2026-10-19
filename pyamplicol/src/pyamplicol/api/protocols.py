@@ -65,6 +65,8 @@ class RuntimeBackend(Protocol):
 
     Virtual arithmetic, scale, strategy and stability keywords are additive capabilities
     checked by the facade, so existing tree backends need not accept them.
+    Saved virtual colour-history operations are also additive capabilities;
+    they return complex VirtualEvaluation records through grouped native calls.
     """
 
     @property

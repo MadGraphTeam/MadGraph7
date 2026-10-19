@@ -53,6 +53,8 @@ class VirtualFailureDiagnostic:
     detail: str
     external_leg: int | None = None
     color_component_index: int | None = None
+    history_index: int | None = None
+    direction: int | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -62,12 +64,16 @@ class VirtualFailureDiagnostic:
             "family_index",
             "external_leg",
             "color_component_index",
+            "history_index",
+            "direction",
         ):
             value = getattr(self, name)
             if value is None and name != "point_id":
                 continue
             if type(value) is not int or value < 0:
                 raise ValueError(f"{name} must be a nonnegative integer")
+        if self.direction not in (None, 0, 1):
+            raise ValueError("directed failure direction must be 0 or 1")
         if not isinstance(self.stage, str) or not self.stage:
             raise ValueError("failure stage must be a nonempty string")
         if not isinstance(self.detail, str):

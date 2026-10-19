@@ -37,11 +37,19 @@ from pyamplicol.api.virtual_results import (
     VirtualEvaluation,
     VirtualFailureDiagnostic,
     VirtualLaneDiagnostic,
+    VirtualScalar,
     VirtualStabilityPolicy,
     VirtualVerificationAttempt,
     VirtualVerificationDiagnostic,
 )
 from pyamplicol.config import R2Strategy
+from pyamplicol.correlators import (
+    ColorCorrelator,
+    CorrelatedRequest,
+    CorrelatedValue,
+    _emission_from_json,
+)
+from pyamplicol.loops.correlation_labels import public_color_history
 from pyamplicol.loops.native import load_loop_native
 from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector, canonical_order
 from pyamplicol.loops.strategy import R2Selection
@@ -167,8 +175,8 @@ def _invoke(
 
 
 def _rows(
-    batch: Any, count: int, width: int, arithmetic: str
-) -> tuple[tuple[float | Decimal, ...], ...]:
+    batch: Any, count: int, width: int, arithmetic: str, *, correlated: bool = False
+) -> tuple[tuple[VirtualScalar, ...], ...]:
     if (
         batch.rows != count
         or batch.columns != width
@@ -180,12 +188,21 @@ def _rows(
     flat = batch.to_decimal()
     if len(flat) != count * width:
         raise EvaluationError("native virtual output has inconsistent scalar count")
-    values = []
+    values: list[VirtualScalar] = []
     for real, imaginary in flat:
         real, imaginary = Decimal(real), Decimal(imaginary)
-        if not real.is_finite() or not imaginary.is_finite() or imaginary != 0:
-            raise EvaluationError("ordinary virtual output must be finite and real")
-        values.append(float(real) if arithmetic == "double" else real)
+        if not real.is_finite() or not imaginary.is_finite():
+            raise EvaluationError("virtual output must be finite")
+        if correlated:
+            values.append(
+                complex(float(real), float(imaginary))
+                if arithmetic == "double"
+                else CorrelatedValue(real, imaginary)
+            )
+        else:
+            if imaginary != 0:
+                raise EvaluationError("ordinary virtual output must be finite and real")
+            values.append(float(real) if arithmetic == "double" else real)
     return tuple(
         tuple(values[start : start + width]) for start in range(0, len(values), width)
     )
@@ -269,6 +286,94 @@ class VirtualRuntimeBackend:
             for item in orders["virtual"]
         )
 
+    def _saved_color_correlations(self) -> tuple[ColorCorrelator, ...]:
+        descriptor = self._metadata["plan"].get("directed_projection")
+        if descriptor is None:
+            raise CompatibilityError(
+                "this artifact has no saved directed colour histories"
+            )
+        return tuple(
+            ColorCorrelator(
+                item["id"],
+                tuple(_emission_from_json(step) for step in item["bra"]),
+                tuple(_emission_from_json(step) for step in item["ket"]),
+            )
+            for item in descriptor["histories"]
+        )
+
+    def _color_history_aliases(self) -> dict[str, str]:
+        histories = self._saved_color_correlations()
+        aliases = {item.id: item.id for item in histories}
+        born = next((item for item in histories if item.id == "born"), None)
+        if born is not None and (born.bra or born.ket):
+            raise CompatibilityError(
+                "reserved 'born' history must have empty bra and ket"
+            )
+        if born is None:
+            identities = [
+                item.id for item in histories if not item.bra and not item.ket
+            ]
+            if len(identities) == 1:
+                aliases["born"] = identities[0]
+        return aliases
+
+    def available_color_correlations(self) -> tuple[ColorCorrelator, ...]:
+        histories = tuple(map(public_color_history, self._saved_color_correlations()))
+        aliases = self._color_history_aliases()
+        if "born" in aliases and aliases["born"] != "born":
+            return (*histories, ColorCorrelator("born"))
+        return histories
+
+    def set_spin_correlation_vectors(
+        self, vectors: Mapping[int, object] | None
+    ) -> None:
+        self.available_color_correlations()
+        if vectors is not None and not isinstance(vectors, Mapping):
+            raise TypeError("spin vectors must map public leg labels to vectors")
+        if vectors:
+            raise CompatibilityError(
+                "saved virtual directed kernels currently require physical "
+                "helicities; spin sources are unavailable"
+            )
+
+    def evaluate_correlated(
+        self, momenta: Momenta, *, color_correlation: str = "born", **kwargs: Any
+    ) -> VirtualEvaluation:
+        return self.evaluate_correlated_many(
+            momenta, {"selected": CorrelatedRequest(color_correlation)}, **kwargs
+        )["selected"]
+
+    def evaluate_correlated_many(
+        self, momenta: Momenta, requests: Mapping[str, CorrelatedRequest], **kwargs: Any
+    ) -> dict[str, VirtualEvaluation]:
+        aliases = self._color_history_aliases()
+        if not isinstance(requests, Mapping):
+            raise TypeError("correlated requests must be a mapping")
+        selected = dict(requests)
+        for label, request in selected.items():
+            if not isinstance(label, str) or not label:
+                raise ValueError("correlated request labels must be nonempty strings")
+            if not isinstance(request, CorrelatedRequest):
+                raise TypeError("correlated requests require CorrelatedRequest records")
+            if request.color_correlation not in aliases:
+                raise CompatibilityError(
+                    "undeclared virtual colour correlation "
+                    f"{request.color_correlation!r}"
+                )
+            self.set_spin_correlation_vectors(request.spin_vectors)
+        if not selected:
+            return {}
+        # The native operation evaluates every saved history in one shared pass.
+        # Python only selects named output columns; it never contracts amplitudes.
+        result = cast(
+            dict[str, VirtualEvaluation],
+            self._evaluate(momenta, resolved=False, directed=True, **kwargs),
+        )
+        return {
+            label: result[aliases[request.color_correlation]]
+            for label, request in selected.items()
+        }
+
     @property
     def artifact_id(self) -> str:
         return cast(str, self._metadata["artifact_id"])
@@ -349,6 +454,16 @@ class VirtualRuntimeBackend:
                     "process": metadata["expression"],
                     **metadata["physics"],
                     "initial_average": metadata["initial_average"],
+                    "color_correlations": [
+                        item.to_json_dict()
+                        for item in self.available_color_correlations()
+                    ]
+                    if self._metadata["physics"].get("correlations")
+                    else [],
+                    "correlation_semantics": (
+                        "Bdagger K_BL L + Ldagger K_LB B; "
+                        "ordered histories may be complex"
+                    ),
                     "resolved_color_components": list(self._color_ids)
                     if metadata["physics"].get("resolved")
                     else [],
@@ -431,7 +546,11 @@ class VirtualRuntimeBackend:
         r2_strategy: str | None = None,
         stability: VirtualStabilityPolicy | None = None,
         resolved: bool,
-    ) -> VirtualEvaluation | ResolvedVirtualEvaluation:
+        directed: bool = False,
+    ) -> VirtualEvaluation | ResolvedVirtualEvaluation | dict[str, VirtualEvaluation]:
+        histories = self._saved_color_correlations() if directed else ()
+        if directed and resolved:
+            raise CompatibilityError("resolved directed virtual output is unavailable")
         if resolved and not self._metadata["physics"].get("resolved", False):
             raise CompatibilityError(
                 "this artifact has no resolved virtual projection kernels"
@@ -476,25 +595,29 @@ class VirtualRuntimeBackend:
             if stability is None:
                 result = _invoke(
                     self._module,
-                    self._native.evaluate_partial,
+                    self._native.evaluate_directed
+                    if directed
+                    else self._native.evaluate_partial,
                     points,
                     scales,
                     r2_strategy=requested.value,
-                    resolved=resolved,
+                    **({"partial": True} if directed else {"resolved": resolved}),
                 )
             else:
                 if not isinstance(stability, VirtualStabilityPolicy):
                     raise TypeError("stability requires a VirtualStabilityPolicy")
                 verified = _invoke(
                     self._module,
-                    self._native.evaluate_verified,
+                    self._native.evaluate_directed_verified
+                    if directed
+                    else self._native.evaluate_verified,
                     points,
                     scales,
                     [(x.arithmetic, x.precision) for x in stability.higher],
                     stability.relative_tolerance,
                     stability.absolute_tolerance,
                     r2_strategy=requested.value,
-                    resolved=resolved,
+                    **({} if directed else {"resolved": resolved}),
                     verify_successful=stability.verify_successful,
                 )
                 result = verified.result
@@ -514,6 +637,8 @@ class VirtualRuntimeBackend:
                     item.detail,
                     item.external_leg,
                     item.color_component_index,
+                    item.history_index,
+                    item.direction,
                 )
                 for item in result.failures
             )
@@ -555,11 +680,29 @@ class VirtualRuntimeBackend:
                 raise EvaluationError(
                     f"unrecovered virtual reduction failures: {failed}"
                 )
-            born = _rows(result.born, count, len(self._born_orders), arithmetic)
+            if directed and (
+                result.observable_kind != "directed-complex"
+                or result.history_ids != [item.id for item in histories]
+            ):
+                raise EvaluationError("native directed history catalogue differs")
+            history_count = len(histories) if directed else 1
+            born = _rows(
+                result.born,
+                count,
+                history_count * len(self._born_orders),
+                arithmetic,
+                correlated=directed,
+            )
             components = result.component_batches
             if len(components) != 6:
                 raise EvaluationError("native complete virtual result omits components")
-            virtual = _rows(components[0], count, 3 * len(self._sectors), arithmetic)
+            virtual = _rows(
+                components[0],
+                count,
+                history_count * 3 * len(self._sectors),
+                arithmetic,
+                correlated=directed,
+            )
             values = tuple(
                 tuple(
                     LaurentCoefficients(*row[i : i + 3]) for i in range(0, len(row), 3)
@@ -588,6 +731,30 @@ class VirtualRuntimeBackend:
                 if requested is R2Strategy.MODEL
                 else "only complete eligible strategy",
             )
+            if directed:
+                self._last_requested = requested
+                return {
+                    history.id: VirtualEvaluation(
+                        tuple(
+                            row[
+                                j * len(self._born_orders) : (j + 1)
+                                * len(self._born_orders)
+                            ]
+                            for row in born
+                        ),
+                        tuple(
+                            row[j * len(self._sectors) : (j + 1) * len(self._sectors)]
+                            for row in values
+                        ),
+                        self._born_orders,
+                        self._sectors,
+                        diagnostics,
+                        selection,
+                        correlated=True,
+                        color_accuracy=self._color_accuracy,
+                    )
+                    for j, history in enumerate(histories)
+                }
             if resolved:
                 output: VirtualEvaluation | ResolvedVirtualEvaluation = (
                     ResolvedVirtualEvaluation(

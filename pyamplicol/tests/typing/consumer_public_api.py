@@ -181,23 +181,36 @@ def exercise_correlations(artifact: Path, momenta: Momenta) -> None:
     }
     assert_type(requests, dict[str, CorrelatedRequest])
     results = runtime.evaluate_correlated_many(momenta, requests, precision=40)
-    assert_type(results, dict[str, tuple[CorrelatedValue, ...]])
-    assert_type(results["dipole13_spin"][0].real, Decimal)
-    assert_type(results["dipole13_spin"][0].imag, Decimal)
-    assert_type(runtime.evaluate_correlated(momenta), tuple[CorrelatedValue, ...])
+    assert_type(
+        results, dict[str, tuple[CorrelatedValue, ...]] | dict[str, VirtualEvaluation]
+    )
+    tree_result = results["dipole13_spin"]
+    if isinstance(tree_result, tuple):
+        assert_type(tree_result[0].real, Decimal)
+        assert_type(tree_result[0].imag, Decimal)
+    assert_type(
+        runtime.evaluate_correlated(momenta),
+        tuple[CorrelatedValue, ...] | VirtualEvaluation,
+    )
     runtime.set_spin_correlation_vectors(
         {3: (Decimal(0), (Decimal("1.00000000000000000001"), Decimal("1e-25")), 0, 0)}
     )
     assert_type(
         runtime.evaluate_correlated(momenta, arithmetic="double-double", precision=31),
-        tuple[CorrelatedValue, ...],
+        tuple[CorrelatedValue, ...] | VirtualEvaluation,
     )
     assert_type(
         runtime.evaluate_correlated_many(
             momenta, requests, arithmetic="double-double", precision=31
         ),
-        dict[str, tuple[CorrelatedValue, ...]],
+        dict[str, tuple[CorrelatedValue, ...]] | dict[str, VirtualEvaluation],
     )
+    virtual_result = runtime.evaluate_correlated(
+        momenta, mu_r2="1000000", arithmetic="arbitrary", precision=70
+    )
+    if isinstance(virtual_result, VirtualEvaluation):
+        assert_type(virtual_result.correlated, bool)
+        assert_type(virtual_result.shape, tuple[int, int, int])
     runtime.set_spin_correlation_vectors(None)
 
 
