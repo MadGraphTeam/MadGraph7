@@ -67,8 +67,6 @@ def _feature_blockers(backend, processes):
             "public loop artifacts do not yet publish permutation aliases "
             "or numerical process-group analyses"
         )
-    if run.process.flavor_blind and run.color.accuracy != "full":
-        reasons.append("exact loop flavour transport currently requires full colour")
     if run.loop.r2_strategy == "direct":
         reasons.append(
             "public source-model generation currently supports model R2 rules; "
@@ -454,6 +452,15 @@ def _group_exact_flavors(context, programs):
     return retained, admissions, representatives, groups
 
 
+def _flavor_grouping_enabled(backend, correlators):
+    """Unsupported transport composition keeps normal independent generation."""
+    return (
+        backend._run_config.process.flavor_blind
+        and backend._run_config.color.accuracy == "full"
+        and not (correlators is not None and correlators.spin_correlations)
+    )
+
+
 def generate_loop_artifact(
     backend,
     processes,
@@ -489,9 +496,7 @@ def generate_loop_artifact(
         with TemporaryDirectory(prefix="pyamplicol-loop-generation-") as temporary:
             artifacts = []
             validation_values = {}
-            grouping = backend._run_config.process.flavor_blind and not (
-                correlators is not None and correlators.spin_correlations
-            )
+            grouping = _flavor_grouping_enabled(backend, correlators)
             programs, projections = [], []
             representatives = {
                 entry.request.name: entry.request.name for entry in context.expanded

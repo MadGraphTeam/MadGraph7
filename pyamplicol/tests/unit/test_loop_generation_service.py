@@ -108,6 +108,28 @@ def test_absent_correction_bound_does_not_rewrite_other_order_ceilings():
     assert "QCD" not in born and "QCD" not in loop
 
 
+@pytest.mark.parametrize("accuracy", ["full", "lc", "nlc"])
+def test_exact_flavor_request_keeps_unsupported_compositions_independent(accuracy):
+    from pyamplicol.generation.loop_service import (
+        _feature_blockers,
+        _flavor_grouping_enabled,
+    )
+
+    backend = GenerationBackend(
+        loop_config(
+            process={"loop_coupling_orders": ["QCD"], "flavor_blind": True},
+            color={"accuracy": accuracy, "contraction": "direct"},
+        ),
+        None,
+    )
+    processes = ProcessSet((ProcessRequest.parse("g g > g g"),))
+    assert not _feature_blockers(backend, processes)
+    assert _flavor_grouping_enabled(backend, None) == (accuracy == "full")
+    assert not _flavor_grouping_enabled(
+        backend, CorrelatorConfig(spin_correlations=((1,),))
+    )
+
+
 def test_dry_run_transports_joint_selection_to_one_graph_plan(monkeypatch):
     from pyamplicol.loops.graphs import GraphSelectionConvention
     from pyamplicol.loops.orders import (
