@@ -321,3 +321,20 @@ example README. Those dependencies are not part of pyAmpliCol's core install.
 The integration example uses MadSpace's massless two-beam scattering flux and
 rejects massive incoming legs; this is a limitation of that example, not of the
 UMAMI provider.
+
+## Versioned virtual extension (source delivery)
+
+The loop development source also provides an explicitly versioned
+[pyAmpliCol UMAMI virtual extension](../../rust/loop-reduction/sdk/umami/README.md).
+It reuses UMAMI's column-major batch layout and offset/count/stride conventions
+while returning all Born/virtual squared orders, all three Laurent coefficients
+and mandatory point statuses. It makes one bulk call to the shared virtual SDK,
+with optional resolved helicities and explicit verification/rescue.
+
+This is a pyAmpliCol extension, not standard UMAMI virtual interoperability.
+It adds separate versioned symbols and keys; the tree ABI described above is
+unchanged. Signed virtual values are never sampled as probabilities, and the
+extension does not replace `UMAMI_OUT_MATRIX_ELEMENT` with a finite-only value.
+The current delivery is source-level; ordinary generated `API/umami` bundles do
+not yet include it. Correlations and mapped-process channels remain unsupported
+in this extension.

@@ -134,3 +134,8 @@ Both exercise sparse IDs, real numerical failures with compact rows, explicit
 DoubleFloat verification, empty batches, exact parameter JSON and result
 lifetimes. They call no Python interpreter. These wrappers are source delivery;
 this does not yet add them to ordinary wheel/SDK release bundles.
+
+The [versioned pyAmpliCol UMAMI virtual extension](umami/README.md) transports
+these same outputs using UMAMI's bulk offset/count/stride layout. Its separate
+keys expose every squared order and Laurent coefficient, with mandatory lane
+statuses and no probability or finite-only tree fallback.
