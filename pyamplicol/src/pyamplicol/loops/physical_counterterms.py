@@ -168,8 +168,8 @@ class NativeModelVirtualProgram:
         from .physical_color import project_physical_color, split_color_grades
         from .scalar_incidence import scalar_alias_incidence, scalar_grade_term_mask
 
-        if formal_nc is not None or r2_strategy == "direct":
-            bare.require_single_order("formal or direct model counterterm assembly")
+        if r2_strategy == "direct":
+            bare.require_single_order("direct model counterterm assembly")
         self.bare = bare
         self._evaluator_states = {}
         self._prepared_model = None
@@ -566,7 +566,23 @@ class NativeModelVirtualProgram:
                 for value in row
             ]
             self.color_projection = project_physical_color(
-                bare, formal_nc, rows, self.color_accuracy
+                bare,
+                formal_nc,
+                rows,
+                self.color_accuracy,
+                additional_pairs=[
+                    (left_order, right_order)
+                    for current in (*self.currents, *self.field_currents)
+                    for right_order in (
+                        current.insertion.graph.order
+                        if isinstance(current, _CountertermCurrent)
+                        else current.insertion.order,
+                    )
+                    for left_order, row in zip(
+                        bare.born_term_orders, current.color_weights, strict=True
+                    )
+                    for _ in row
+                ],
             )
             values = iter(self.color_projection.additional_rows)
             for current in (*self.currents, *self.field_currents):

@@ -1523,6 +1523,33 @@ parameter cancellations.
 
 `NativeModelVirtualProgram` uses these grade-aware masks in place of its blanket
 rejection of mixed-grade, multi-term insertions. The source-model continuation
-gate and single-order physical projection boundary remain in place; incidence
-and local zero propagation are not by themselves a general-Nc or multi-order
-projection certificate.
+gate remains in place; incidence and local zero propagation are not by themselves
+a general-Nc model certificate.
+
+### Projection by squared coupling sector
+
+The cold physical projection now uses the existing exact order-pair catalogue.
+A rectangular Born–loop matrix cell belongs to the sector of its left Born order
+and right loop order; a Born matrix cell similarly belongs to its Born squared
+order. Counterterm and external-field rows supply the left order and their
+actual insertion graph order explicitly. Missing pairings are zeroed and cannot
+set a sector's leading degree. Each virtual sector combines its bare, UV, R2,
+field and epsilon rows before selecting a common structural degree. Born sector
+degrees are independent, and structurally zero sectors retain `None` on their
+original catalogue axis.
+
+The right insertion order is established before projection: source preparation
+groups every actual CT entry by vertex, loop-particle-group and exact coupling
+order, and `_rule_orders` checks every native coupling in each resulting rule.
+Graph snapshots sum these homogeneous vertex orders; matching removes only the
+auxiliary CT insertion tag. A focused source control checks one vertex with
+multiple coupling orders and loop groups, preventing a representative coupling
+from silently determining the whole rule's order.
+
+Projection reassembles the same rectangular matrices and recompiles the existing
+weight evaluators. It does not duplicate coherent currents or create another
+numerical engine. `PhysicalColorProjection.born_degrees` and `virtual_degrees`
+retain the catalogue-aligned degree vectors; the older singular degree fields
+are set only for a single corresponding sector. Retained/artifact transport of
+these projected states and source-model continuation remain separate integration
+requirements before public source LC/NLC can be enabled.

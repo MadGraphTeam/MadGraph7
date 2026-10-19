@@ -24,6 +24,8 @@ class PhysicalColorProjection:
     born_degree: int | None
     virtual_degree: int | None
     additional_rows: tuple[Any, ...]
+    born_degrees: tuple[int | None, ...] = ()
+    virtual_degrees: tuple[int | None, ...] = ()
 
 
 def expand_color_conditionals(expression, nc):
@@ -127,29 +129,94 @@ def split_color_grades(expressions, nc):
     return result
 
 
-def project_physical_color(bare, nc, additional_rows, accuracy):
+def project_physical_color(
+    bare, nc, additional_rows, accuracy, *, additional_pairs=None
+):
     """Project exact unaveraged rows, then bind Nc=3 and physical averages.
 
     Additional rows include *both* their model scalar color invariants and
     tensor overlaps, e.g. ``Nc**grade * Born_CT_overlap`` after scalar grading.
     They are returned without an average for the caller's native contraction.
+    Each metric cell belongs to the squared-order sector of its exact amplitude
+    pair. Additional rows supply those same ordered pairs explicitly for a
+    multi-order process. Bare, UV, R2 and field rows share one leading degree per
+    virtual sector; Born sectors have their own independent degrees.
     This seam does not infer a model's SU(Nc) continuation or alias incidence.
     """
     from symbolica import E
 
-    bare.require_single_order("formal physical color projection")
     accuracy = ColorAccuracy(accuracy)
+    additional_rows = tuple(tuple(row) for row in additional_rows)
+    if additional_pairs is None:
+        if additional_rows and len(bare.order_layout.virtual) != 1:
+            raise ValueError(
+                "multi-order additional colour rows require exact order pairs"
+            )
+        additional_owners = (0,) * len(additional_rows)
+    else:
+        additional_pairs = tuple(additional_pairs)
+        if len(additional_pairs) != len(additional_rows):
+            raise ValueError("additional colour rows and order pairs differ")
     space = SUNColorSpace(nc)
     born = space.rectangular(bare.born_color_tensors, bare.born_color_tensors)
     loop = space.rectangular(bare.born_color_tensors, bare.loop_color_tensors)
-    born_plan = prepare_color_projection(nc, [[value] for row in born for value in row])
+    born_pairs = {
+        pair: index
+        for index, sector in enumerate(bare.order_layout.born)
+        for pair in sector.pairs
+    }
+    virtual_pairs = {
+        (pair.born, pair.loop): index
+        for index, sector in enumerate(bare.order_layout.virtual)
+        for pair in sector.pairs
+    }
+    loop_orders = tuple(
+        graph.order
+        for graph, finals in zip(bare.loop_graphs, bare.loop_finals, strict=True)
+        for _ in finals
+    )
+    if len(loop_orders) != len(bare.loop_color_tensors):
+        raise ValueError("loop colour terms and amplitude orders differ")
+    born_owners = tuple(
+        born_pairs[left, right]
+        for left in bare.born_term_orders
+        for right in bare.born_term_orders
+    )
+    loop_owners = tuple(
+        virtual_pairs.get((left, right))
+        for left in bare.born_term_orders
+        for right in loop_orders
+    )
+    if additional_pairs is not None:
+        additional_owners = tuple(virtual_pairs.get(pair) for pair in additional_pairs)
+
+    def project(rows, owners, count):
+        projected = [E("0")] * len(rows)
+        degrees = []
+        for sector in range(count):
+            indices = [index for index, owner in enumerate(owners) if owner == sector]
+            plan = prepare_color_projection(
+                nc,
+                [
+                    [expand_color_conditionals(sum(rows[index], E("0")), nc)]
+                    for index in indices
+                ],
+            )
+            degrees.append(plan.leading_degree)
+            for index, value in zip(indices, plan.project(accuracy), strict=True):
+                projected[index] = value
+        return tuple(projected), tuple(degrees)
+
+    projected_born, born_degrees = project(
+        [[value] for row in born for value in row],
+        born_owners,
+        len(bare.order_layout.born),
+    )
     loop_rows = [[value] for row in loop for value in row]
     rows = [*loop_rows, *additional_rows]
-    virtual_plan = prepare_color_projection(
-        nc, [[expand_color_conditionals(sum(row, E("0")), nc)] for row in rows]
+    projected_virtual, virtual_degrees = project(
+        rows, (*loop_owners, *additional_owners), len(bare.order_layout.virtual)
     )
-    projected_born = born_plan.project(accuracy)
-    projected_virtual = virtual_plan.project(accuracy)
     width = len(bare.born_colors)
     loops = len(bare.loop_color_tensors)
 
@@ -164,11 +231,18 @@ def project_physical_color(bare, nc, additional_rows, accuracy):
         ],
     )
     bare.color_accuracy = accuracy.value
-    bare.born_color_degree = born_plan.leading_degree
-    bare.virtual_color_degree = virtual_plan.leading_degree
+    bare.born_color_degrees = born_degrees
+    bare.virtual_color_degrees = virtual_degrees
+    bare.born_color_degree = born_degrees[0] if len(born_degrees) == 1 else None
+    bare.virtual_color_degree = (
+        virtual_degrees[0] if len(virtual_degrees) == 1 else None
+    )
+    bare._formal_color_projected = True
     return PhysicalColorProjection(
         accuracy.value,
-        born_plan.leading_degree,
-        virtual_plan.leading_degree,
+        bare.born_color_degree,
+        bare.virtual_color_degree,
         tuple(value.replace(nc, 3) for value in projected_virtual[len(loop_rows) :]),
+        born_degrees,
+        virtual_degrees,
     )

@@ -314,24 +314,47 @@ def test_explicit_pair_masks_include_both_mixed_interferences(setup, native):
     )
 
 
-def test_unextended_completions_reject_multiple_orders_upfront(setup, native):
+def test_unextended_direct_completions_reject_multiple_orders_upfront(setup, native):
     from symbolica import S
 
-    from pyamplicol.loops.physical_color import project_physical_color
     from pyamplicol.loops.physical_counterterms import NativeModelVirtualProgram
 
     program = _program(setup, native, reduction_engine="fast")
-    with pytest.raises(NotImplementedError, match="formal or direct model"):
+    with pytest.raises(NotImplementedError, match="direct model"):
         NativeModelVirtualProgram(
-            program, (), source_bindings=(), formal_nc=S("order_test::Nc")
+            program,
+            (),
+            source_bindings=(),
+            formal_nc=S("order_test::Nc"),
+            r2_strategy="direct",
         )
-    with pytest.raises(NotImplementedError, match="formal physical color"):
-        project_physical_color(program, S("order_test::Nc"), [], "full")
     with pytest.raises(NotImplementedError, match="multi-order dimensional"):
         _program(setup, native, dimensional_numerators=True)
     with pytest.raises(ArithmeticError, match="point, order, family, status"):
         program.evaluate_ordered_decimal(
             setup[3][:1], ["-1"], model_values=["0.118", "132.507", "173"]
+        )
+
+
+def test_formal_full_colour_preserves_every_bare_mixed_order(setup, native):
+    from symbolica import S
+
+    from pyamplicol.loops.physical_color import project_physical_color
+
+    program = _program(setup, native, reduction_engine="fast")
+    points, scales, parameters = setup[3][:1], ["1000000"], ["0.118", "132.507", "173"]
+    expected = program.evaluate_ordered_decimal(points, scales, model_values=parameters)
+    projection = project_physical_color(program, S("order_test::Nc"), (), "full")
+    actual = program.evaluate_ordered_decimal(points, scales, model_values=parameters)
+    assert len(projection.born_degrees) == len(actual.orders.born) == 3
+    assert len(projection.virtual_degrees) == len(actual.orders.virtual) == 4
+    assert len(set(projection.virtual_degrees)) > 1
+    for component in ("born", "virtual"):
+        np.testing.assert_allclose(
+            getattr(actual, component).astype(float),
+            getattr(expected, component).astype(float),
+            rtol=3e-12,
+            atol=1e-14,
         )
 
 
