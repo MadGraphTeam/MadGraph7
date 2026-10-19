@@ -124,7 +124,7 @@ def test_preserves_laurent_references_ct_indices_and_loop_groups() -> None:
     assert captured.capabilities["ghost_particles"] == ("gh",)
     assert captured.capabilities["goldstone_particles"] == ("G0",)
     assert captured.capabilities["perturbative_orders"] == ("QCD",)
-    assert captured.capabilities["loop_runtime_supported"] is False
+    assert "loop_runtime_supported" not in captured.capabilities
     assert captured.capabilities["model_r2_complete"] is None
     assert captured.metadata["regularization_scheme"] == "declared-test-scheme"
 
@@ -228,6 +228,8 @@ def test_capture_precedes_tree_loader_loss(tmp_path: Path, monkeypatch) -> None:
     source = _write_ufo(tmp_path / "before_loss", "g**2")
 
     class TreeModel:
+        raw_ufo_error = None
+
         def wrap_indices_in_lorentz_structures(self):
             pass
 
@@ -235,9 +237,17 @@ def test_capture_precedes_tree_loader_loss(tmp_path: Path, monkeypatch) -> None:
             return '{"name":"tree-only","propagators":[]}'
 
     def normalize(*_args, **_kwargs):
-        # Simulate destructive loss at the normalization boundary itself.
-        sys.modules["before_loss"].all_CTparameters[0].value.clear()
-        return TreeModel(), {}
+        from ufo_model_loader.raw import (
+            capture_raw_ufo_model,
+            imported_ufo_module,
+        )
+
+        # The authoritative loader captures before deriving its tree view.
+        model = TreeModel()
+        with imported_ufo_module(source) as module:
+            model.raw_ufo = capture_raw_ufo_model(module)
+            module.all_CTparameters[0].value.clear()
+        return model, {}
 
     monkeypatch.setattr(commands, "load_model", normalize)
     monkeypatch.setattr(loading, "_classify_external_propagators", lambda _model: {})
@@ -285,7 +295,7 @@ def test_numeric_source_precision_is_not_certified(tmp_path: Path) -> None:
     )
     assert model.capabilities["expression_strings_preserved"] is True
     assert model.capabilities["numeric_literal_source_preserved"] is False
-    assert model.capabilities["arbitrary_precision_inputs_validated"] is False
+    assert "arbitrary_precision_inputs_validated" not in model.capabilities
 
 
 def _write_literal_ufo(path: Path, declarations: str, *, constructor_suffix="") -> Path:
@@ -355,7 +365,7 @@ def test_direct_literals_retain_sixty_digits_and_laurent_coefficients(
     rounded = Fraction(float(digits))
     assert expression != E(f"{rounded.numerator}/{rounded.denominator}")
     assert model.capabilities["numeric_literal_source_preserved"] is True
-    assert model.capabilities["arbitrary_precision_inputs_validated"] is False
+    assert "arbitrary_precision_inputs_validated" not in model.capabilities
     restored = RawLoopModel.from_dict(json.loads(json.dumps(model.to_dict())))
     assert restored.exact_value("parameters", 0) == model.exact_value("parameters", 0)
 
@@ -613,6 +623,10 @@ def test_compiled_model_serialization_retains_raw_sidecar(tmp_path: Path) -> Non
     )
     assert restored.raw_loop_model.to_dict() == raw.to_dict()
     payload = compiled.to_dict()
+    # Retained internal development artifacts use the same source records.
+    payload["raw_loop_model"]["kind"] = "pyamplicol-raw-loop-model"
+    legacy = CompiledModel.from_dict(payload, validate_fingerprint=False)
+    assert legacy.raw_loop_model.to_dict() == raw.to_dict()
     del payload["raw_loop_model"]
     assert (
         CompiledModel.from_dict(payload, validate_fingerprint=False).raw_loop_model

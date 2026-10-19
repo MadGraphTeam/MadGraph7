@@ -35,6 +35,9 @@ from pyamplicol.models.loading import (
 
 
 class _SerializedModel:
+    raw_ufo = None
+    raw_ufo_error = None
+
     propagators: tuple[object, ...] = ()
 
     def wrap_indices_in_lorentz_structures(self) -> None:

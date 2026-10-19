@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 from collections.abc import Iterator, Mapping
-from contextlib import ExitStack, contextmanager
+from contextlib import contextmanager
 from copy import copy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -308,9 +308,9 @@ class CompiledModel:
             raise ValueError("compiled model issues must be a list")
         raw_loop_model = None
         if payload.get("raw_loop_model") is not None:
-            from .loop_import import RawLoopModel
+            from .loop_import import raw_loop_model_from_dict
 
-            raw_loop_model = RawLoopModel.from_dict(
+            raw_loop_model = raw_loop_model_from_dict(
                 _mapping(payload["raw_loop_model"], "raw_loop_model")
             )
         return CompiledModel(
@@ -459,9 +459,9 @@ def compile_model_source(
             for name, value in card.items()
         }
         if worker_payload.get("raw_loop_model") is not None:
-            from .loop_import import RawLoopModel
+            from .loop_import import raw_loop_model_from_dict
 
-            raw_loop_model = RawLoopModel.from_dict(
+            raw_loop_model = raw_loop_model_from_dict(
                 _mapping(worker_payload["raw_loop_model"], "raw_loop_model")
             )
         raw_loop_import_error = worker_payload.get("raw_loop_import_error")
@@ -797,41 +797,39 @@ def _load_external_model(
     # These imports intentionally live inside the execution boundary so package
     # import, metadata inspection, and built-in-SM planning stay dependency-light.
     _require_ufo_model_loader()
-    with _sanitized_model_environment(), ExitStack() as import_scope:
+    with _sanitized_model_environment():
         from ufo_model_loader.commands import load_model
         from ufo_model_loader.common import JSONLook
 
         restriction = _loader_restriction_name(source, options.restriction)
-        raw_loop_model = None
-        raw_loop_import_error = None
-        if source.is_dir():
-            from .loop_import import (
-                capture_raw_loop_model,
-                imported_ufo_module,
-                raw_restriction,
-            )
-
-            module = import_scope.enter_context(imported_ufo_module(source))
-            try:
-                raw_loop_model = capture_raw_loop_model(
-                    module,
-                    name=source.name,
-                    restriction=raw_restriction(source, restriction),
-                )
-            except (TypeError, ValueError) as error:
-                # Extra UFO metadata ignored by the normalized tree loader must
-                # not reject a tree model. Keep the failure explicit and omit
-                # the entire sidecar; strict load_raw_loop_model still raises.
-                raw_loop_import_error = str(error)
         model, parameter_card = load_model(
             str(source),
             restriction,
             options.simplify,
             wrap_indices_in_lorentz_structures=False,
+            # Loop counterterms belong to the exact source program. A tree
+            # projection need not parse or evaluate their finite coefficients.
+            include_counterterm_finite_parts=not source.is_dir(),
         )
+        from .loop_import import adapt_raw_ufo_model
+
+        raw_loop_model = None
+        raw_loop_import_error = model.raw_ufo_error
+        if model.raw_ufo is not None:
+            try:
+                raw_loop_model = adapt_raw_ufo_model(model.raw_ufo)
+            except (TypeError, ValueError) as error:
+                # Invalid loop declarations do not reject a usable tree view,
+                # but cannot silently acquire a complete loop source.
+                raw_loop_import_error = str(error)
         propagator_sources = _classify_external_propagators(model)
         model.wrap_indices_in_lorentz_structures()
         model_payload = json.loads(model.to_json(JSONLook.COMPACT))
+        # The existing compiled-model field owns the source once. The loader's
+        # JSON carries it for interchange; the normalized tree payload does not
+        # duplicate it in a pyAmpliCol compiled artifact.
+        model_payload.pop("raw_ufo", None)
+        model_payload.pop("raw_ufo_error", None)
         raw_propagators = model_payload.get("propagators", [])
         if not isinstance(raw_propagators, list):
             raise ValueError("serialized model propagators must be a list")
