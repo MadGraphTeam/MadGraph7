@@ -8,11 +8,13 @@ publish source-owned loop PACBIN instructions in the ordinary transactional
 artifact. `Runtime.load` reads that artifact through its checked native loader;
 Python does not reconstruct the graphs or run a second numerical implementation.
 
-The currently published lane is full colour, inclusive or resolved helicities,
-model-supplied R2 plus UV, with JIT coefficient kernels. Double, DoubleFloat and
-arbitrary precision use the saved exact source expressions. Public LC/NLC publication,
-rectangular FFT, correlations, flavour aliases and standalone
-virtual SDK bundles remain separate integration work. The compiler has no
+The source-model lane uses model-supplied R2 plus UV, inclusive or resolved
+helicities, and JIT coefficient kernels. Double, DoubleFloat and arbitrary
+precision use the saved exact source expressions. Full colour needs no formal
+continuation. LC/NLC requests require explicit source colour data in the model
+bundle, as described in `LOOP_SOURCE_COLOR_DATA.md`; missing coverage fails.
+Rectangular FFT, correlations, flavour aliases and automatic generation of
+standalone virtual SDK bundles remain separate integration work. The compiler has no
 process-name dispatch or artificial multiplicity limit; actual tensor, scalar,
 rank and reducer domain checks can still reject a request.
 
@@ -109,8 +111,9 @@ resolved = runtime.evaluate_resolved(points, mu_r2="1000000")
 print(resolved.total().finite)  # sum helicities; preserve orders and poles
 ```
 
-Resolved output carries the physical helicity axis and one contracted full-colour
-component named `full`. Every helicity keeps the incoming spin average from the
+Full-colour resolved output carries the physical helicity axis and one contracted
+component named `full`; NLC uses `nlc`. LC uses the saved canonical Born-tensor
+partition and can have several signed, potentially overcomplete components. Every helicity keeps the incoming spin average from the
 inclusive result. Components are signed Born–loop interferences; they are not
 probabilities. Summing helicities and colour preserves each squared order and all
 three Laurent coefficients.
@@ -157,8 +160,9 @@ and exact interference pairing remain authoritative afterward.
 Dry-run prepares source/local kernels and graph orders and reports Born, loop and
 family counts, squared-order catalogues, conventions and pending public features.
 It does not compile numerical numerator programs. Its coverage explicitly marks
-numerator and reducer checks as deferred, so a successful dry-run is not a claim
-that every later tensor or integral domain is supported.
+numerator and reducer checks as deferred. Formal-colour process coverage and LC
+canonicalization are also deferred, so a successful dry-run is not a claim that
+every later tensor or integral domain is supported.
 
 With `generation.validation.post_build_validation=true`, generation evaluates the
 source program on the configured sample points, then loads and evaluates the

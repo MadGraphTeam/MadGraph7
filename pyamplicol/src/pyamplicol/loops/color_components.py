@@ -98,7 +98,15 @@ def prepare_born_color_components(tensors: Sequence[Any]) -> BornColorComponents
             raise ValueError(
                 "Born colour tensors have different physical external ports"
             )
-        canonical = tensor.canonize().to_expression()
+        try:
+            canonical = tensor.canonize().to_expression()
+        except ValueError as error:
+            raise NotImplementedError(
+                f"canonical Born colour component {index} is unavailable: "
+                "the tensor dependency could not canonicalize this tensor while "
+                "preserving its physical external ports. A compatible dependency "
+                "implementation is required; the tensor was not merged or dropped"
+            ) from error
         require_exact_numbers(canonical)
         groups.setdefault(canonical, []).append(index)
     # The dependency's canonical printer fixes symbol-name ordering, including

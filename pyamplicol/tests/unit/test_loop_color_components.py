@@ -271,3 +271,23 @@ def test_weighted_numerator_anchors_stay_complex_before_integration():
     # The zero ordinary overlap remains an explicit anchor; an inserted colour
     # operator may make that direction nonzero in a future observable plan.
     assert result.columns == 3
+
+
+def test_failed_dependency_canonicalization_has_actionable_capability_error(
+    monkeypatch,
+):
+    import symbolica.community.tensor as tensor
+
+    class UnsupportedTensor:
+        axes = ()
+
+        def canonize(self):
+            raise ValueError("typed external duality changed")
+
+    monkeypatch.setattr(tensor, "TensorExpression", UnsupportedTensor)
+    with pytest.raises(
+        NotImplementedError, match="compatible dependency implementation"
+    ) as failure:
+        prepare_born_color_components((UnsupportedTensor(),))
+    assert isinstance(failure.value.__cause__, ValueError)
+    assert "typed external duality" in str(failure.value.__cause__)

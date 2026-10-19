@@ -208,3 +208,222 @@ def test_shared_resource_cores_are_not_rejected_as_tree_tuning():
         _feature_blockers(backend, ProcessSet((ProcessRequest.parse("g g > g g"),)))
         == ()
     )
+
+
+def _colour_backend(monkeypatch, accuracy, declaration):
+    """Transport fixture: no tensor/graph numerical work at this boundary."""
+    from pyamplicol.generation import loop_service as service
+    from pyamplicol.generation.service import _ResolvedModel
+    from pyamplicol.models.loop_declaration import (
+        LoopModelDeclaration,
+        LoopSchemeDeclaration,
+    )
+
+    scheme = LoopSchemeDeclaration(
+        "HV", "4d", "source", "source", "real", "source", "fixture"
+    )
+    loop = LoopModelDeclaration(scheme, ("QCD", "QED"), True, True)
+    backend = GenerationBackend(
+        loop_config(color={"accuracy": accuracy, "contraction": "direct"}), None
+    )
+    compiled = SimpleNamespace(raw_loop_model=object())
+    resolved = _ResolvedModel(source=None, model=None, compiled=compiled)
+    for name in ("_resolve_model_for_plan", "_resolve_model"):
+        monkeypatch.setattr(backend, name, lambda *_: resolved)
+    monkeypatch.setattr(backend, "_artifact_model", lambda *_: compiled)
+    monkeypatch.setattr(backend, "_detect_symbolica_license", lambda: None)
+    monkeypatch.setattr(
+        backend, "_apply_symbolica_resource_policy", lambda *a, **kw: None
+    )
+    monkeypatch.setattr(
+        service, "resolve_loop_model_declaration", lambda *a, **kw: loop
+    )
+    monkeypatch.setattr(service, "with_loop_model_declaration", lambda value, _: value)
+    monkeypatch.setattr(
+        service, "resolve_loop_color_declaration", lambda _: declaration(scheme)
+    )
+    monkeypatch.setattr(
+        "pyamplicol.models.external.CompiledUFOModel", lambda _: object()
+    )
+    return backend, scheme
+
+
+@pytest.mark.parametrize("accuracy", ["lc", "nlc"])
+def test_public_colour_missing_declaration_is_actionable_in_plan_and_generate(
+    accuracy, monkeypatch, tmp_path
+):
+    backend, _ = _colour_backend(monkeypatch, accuracy, lambda _: None)
+    processes = ProcessSet((ProcessRequest.parse("g g > g g"),))
+    plan = backend.plan(processes)
+    assert plan.estimated_coverage["color_accuracy"] == accuracy
+    assert not plan.estimated_coverage["source_colour_declared"]
+    assert len(plan.unsupported_features) == 1
+    assert "with_loop_color_declaration" in plan.unsupported_features[0]
+    output = tmp_path / "missing-declaration"
+    with pytest.raises(GenerationError, match="with_loop_color_declaration"):
+        backend.generate(processes, output)
+    assert not output.exists()
+
+
+def test_public_colour_scheme_mismatch_fails_before_preparation(monkeypatch):
+    from dataclasses import replace
+
+    backend, _ = _colour_backend(
+        monkeypatch,
+        "lc",
+        lambda scheme: SimpleNamespace(
+            scheme=replace(scheme, dimensional_regularization="FDH")
+        ),
+    )
+    monkeypatch.setattr(
+        "pyamplicol.generation.loop_service.prepare_loop_request_model",
+        lambda *a, **kw: pytest.fail("mismatched scheme reached source preparation"),
+    )
+    plan = backend.plan(ProcessSet((ProcessRequest.parse("g g > g g"),)))
+    assert plan.unsupported_features == (
+        "source colour continuation and effective loop scheme differ",
+    )
+
+
+def test_colour_owner_is_bound_once_per_actual_inferred_order_scope(monkeypatch):
+    from pyamplicol.generation import loop_service as service
+
+    backend, _ = _colour_backend(
+        monkeypatch, "nlc", lambda scheme: SimpleNamespace(scheme=scheme)
+    )
+    requests = ProcessSet(
+        tuple(
+            ProcessRequest.parse(text, name=name)
+            for name, text in (
+                ("dy", "u u~ > e- e+"),
+                ("dy2", "d d~ > e- e+"),
+                ("gg", "g g > g g"),
+            )
+        )
+    )
+    entries = tuple(
+        SimpleNamespace(request=request, process_ir=index)
+        for index, request in enumerate(requests.requests)
+    )
+    monkeypatch.setattr(backend, "_expand_process_set", lambda *a: entries)
+    monkeypatch.setattr(
+        service,
+        "infer_minimal_coupling_order_limits",
+        lambda index, **kw: {"QED": 2, "QCD": 0} if index < 2 else {"QCD": 2, "QED": 0},
+    )
+    fixed = {"lhv": ("1", "0")}
+    monkeypatch.setattr(service, "source_color_fixed_parameters", lambda *a: fixed)
+    prepared_calls, colour_calls = [], []
+
+    def prepare(*args, **kwargs):
+        owner = SimpleNamespace(scope=kwargs)
+        prepared_calls.append(owner)
+        return owner
+
+    def colour(owner, data, *, scheme):
+        continuation = SimpleNamespace(owner=owner, data=data, scheme=scheme)
+        colour_calls.append(continuation)
+        return owner, continuation
+
+    monkeypatch.setattr(service, "prepare_loop_request_model", prepare)
+    monkeypatch.setattr(service, "prepare_declared_source_color", colour)
+    context = service._prepare(backend, requests, None, planning=True, phase=None)
+    assert len(prepared_calls) == len(colour_calls) == 2
+    assert context.prepared[0] is context.prepared[1]
+    assert context.source_colors[0] is context.source_colors[1]
+    assert context.prepared[2] is not context.prepared[0]
+    assert all(
+        c.owner is p
+        for c, p in zip(context.source_colors, context.prepared, strict=True)
+    )
+    assert all(p.scope["fixed_parameters"] is fixed for p in context.prepared)
+    assert context.prepared[0].scope["loop_order_bounds"] == {
+        "QED": (0, 2),
+        "QCD": (0, 2),
+    }
+    assert context.prepared[2].scope["loop_order_bounds"] == {
+        "QCD": (0, 4),
+        "QED": (0, 0),
+    }
+    plan = service._plan_result(backend, requests, (), context=context)
+    assert plan.estimated_coverage["source_colour_declared"] is True
+    assert plan.estimated_coverage["formal_colour_process_coverage_checked"] is False
+
+
+def test_full_colour_keeps_original_source_path_without_reading_colour_data(
+    monkeypatch,
+):
+    from pyamplicol.generation import loop_service as service
+
+    backend, _ = _colour_backend(
+        monkeypatch,
+        "full",
+        lambda _: pytest.fail("full colour consumed formal declaration"),
+    )
+    requests = ProcessSet((ProcessRequest.parse("g g > g g"),))
+    entry = SimpleNamespace(request=requests.requests[0], process_ir=object())
+    monkeypatch.setattr(backend, "_expand_process_set", lambda *a: (entry,))
+    monkeypatch.setattr(
+        service, "infer_minimal_coupling_order_limits", lambda *a, **kw: {"QCD": 2}
+    )
+    calls = []
+    monkeypatch.setattr(
+        service,
+        "prepare_loop_request_model",
+        lambda *a, **kw: calls.append(kw) or object(),
+    )
+    monkeypatch.setattr(
+        service,
+        "prepare_declared_source_color",
+        lambda *a, **kw: pytest.fail("full colour bound continuation"),
+    )
+    context = service._prepare(backend, requests, None, planning=False, phase=None)
+    assert calls[0]["fixed_parameters"] is None
+    assert context.source_colors == (None,)
+    assert context.color_declaration is None
+
+
+def test_colour_required_constant_cannot_undo_an_actual_restriction_card(
+    monkeypatch, tmp_path
+):
+    from pyamplicol.generation import loop_service as service
+    from pyamplicol.loops.compiler import prepare_loop_request_model
+    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+    from pyamplicol.models.loop_import import load_raw_loop_model
+
+    from .test_loop_model_restrictions import source as restriction_source
+
+    # Use the existing exact UFO/card fixture: MASS 991 is fixed to zero.
+    path = restriction_source.__wrapped__(tmp_path)
+    raw = load_raw_loop_model(path)
+    backend, _ = _colour_backend(
+        monkeypatch,
+        "nlc",
+        lambda scheme: LoopColorDeclaration(
+            scheme=scheme,
+            formal_symbol="Nc",
+            parameter_identities={},
+            kernel_keys=(),
+            field_keys=(),
+            scheme_parameter_values={"M": "1"},
+        ),
+    )
+    compiled = SimpleNamespace(raw_loop_model=raw)
+    monkeypatch.setattr(backend, "_artifact_model", lambda *_: compiled)
+    requests = ProcessSet((ProcessRequest.parse("g g > g g"),))
+    entry = SimpleNamespace(request=requests.requests[0], process_ir=object())
+    monkeypatch.setattr(backend, "_expand_process_set", lambda *a: (entry,))
+    monkeypatch.setattr(
+        service, "infer_minimal_coupling_order_limits", lambda *a, **kw: {}
+    )
+    monkeypatch.setattr(
+        service,
+        "prepare_loop_request_model",
+        lambda model, **kwargs: prepare_loop_request_model(
+            model.raw_loop_model, **kwargs
+        ),
+    )
+    plan = backend.plan(requests)
+    assert plan.unsupported_features == (
+        "fixed parameter 'M' contradicts the source restriction",
+    )

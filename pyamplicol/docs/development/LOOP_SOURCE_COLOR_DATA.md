@@ -10,7 +10,8 @@ expressions and model capabilities remain intact.
 This is model input, not a certificate inferred from a model name. In particular,
 the presence of parameters called `CA`, `CF` or `Ncol` does not admit every
 effective tensor. A model provider must declare the actual continued entries.
-The public generation service still requires its separate admission integration.
+Public generation resolves these data for LC/NLC requests. Full-colour requests
+retain their original source path and do not require or consume this continuation.
 
 ## Data contract
 
@@ -76,3 +77,31 @@ checked by the process compiler.
 A full-colour request without this declaration retains its original preparation
 path. This data boundary adds neither a model-name dispatch nor a new numerical
 engine, artifact manifest, coupling-selection policy or multiplicity limit.
+
+## Public request integration
+
+Set `[color] accuracy = "lc"` or `"nlc"` in the usual generation card. The service
+resolves the complete declaration from the compiled model bundle, checks its
+scheme against the effective loop declaration, and passes required constants
+through the existing exact restriction/fixed-value boundary. A source restriction
+cannot be silently undone. One continuation belongs to each actual prepared
+order-scope owner; source entries from different preparations are never mixed.
+
+The compiler checks selected ordinary, UV/R2 and field coverage, then saves the
+actual projected instructions and accuracy in the existing artifact. LC resolved
+outputs carry signed canonical Born-tensor components; NLC uses a contracted
+component. The leading degree is shared across the complete squared-order sector
+before those Born rows are partitioned.
+
+Dry-run reports the requested accuracy and whether source colour data are present.
+It explicitly defers process-wide formal-colour coverage, numerator/reducer checks
+and LC canonicalization. A missing declaration identifies the
+`with_loop_color_declaration` preparation helper. A dependency canonicalization
+that changes physical ports fails explicitly; it never supplies a guessed
+partition.
+
+See `examples/loop/source_colour` for concrete source data covering the validated
+Drell–Yan and four-gluon QCD controls. That example does not declare every entry
+of the supplied model. The README separates the ordinary installed package proof
+from the corrected isolated FeynKit/Community proof needed by affected open
+fundamental tensors.

@@ -24,6 +24,11 @@ from pyamplicol.loops.graphs import build_loop_process
 from pyamplicol.loops.physical_orders import PhysicalOrderLayout
 from pyamplicol.loops.portable import write_loop_pacbin
 from pyamplicol.loops.request import prepare_loop_external_request
+from pyamplicol.loops.source_color_declaration import (
+    prepare_declared_source_color,
+    source_color_fixed_parameters,
+)
+from pyamplicol.models.loop_color_declaration import resolve_loop_color_declaration
 from pyamplicol.models.loop_declaration import (
     resolve_loop_model_declaration,
     with_loop_model_declaration,
@@ -38,11 +43,6 @@ from .validation import build_process_validation_point
 def _feature_blockers(backend, processes):
     run = backend._run_config
     reasons = []
-    if run.color.accuracy != "full":
-        reasons.append(
-            "public loop generation currently requires color.accuracy='full'; "
-            "LC/NLC publication is not integrated"
-        )
     if run.color.contraction == "symmetric-group-fft":
         reasons.append(
             "public loop generation does not yet publish rectangular FFT "
@@ -146,6 +146,8 @@ class _LoopContext:
     expanded: tuple
     prepared: tuple
     corrections: tuple[str, ...]
+    source_colors: tuple
+    color_declaration: Any = None
 
 
 def _prepare(backend, processes, source, *, planning, phase):
@@ -169,12 +171,30 @@ def _prepare(backend, processes, source, *, planning, phase):
     )
     declaration.require_declared_completion(strategy="model")
     compiled = with_loop_model_declaration(compiled, declaration)
+    color_data = None
+    fixed_parameters = None
+    if run.color.accuracy in ("lc", "nlc"):
+        color_data = resolve_loop_color_declaration(compiled.raw_loop_model)
+        if color_data is None:
+            raise GenerationError(
+                "LC/NLC loop generation requires explicit source colour data in "
+                "the prepared model; attach a LoopColorDeclaration with "
+                "with_loop_color_declaration. Model names or numerical CA/CF "
+                "values do not define a formal-colour continuation"
+            )
+        if color_data.scheme != declaration.scheme:
+            raise GenerationError(
+                "source colour continuation and effective loop scheme differ"
+            )
+        fixed_parameters = source_color_fixed_parameters(
+            compiled.raw_loop_model, color_data
+        )
     from pyamplicol.models.external import CompiledUFOModel
 
     resolved = replace(resolved, compiled=compiled, model=CompiledUFOModel(compiled))
     expanded = backend._expand_process_set(processes, resolved, phase)
     backend._apply_symbolica_resource_policy(license_state, process_count=len(expanded))
-    cache, prepared = {}, []
+    cache, prepared, source_colors = {}, [], []
     for entry in expanded:
         limits = backend._coupling_order_limits
         if run.process.coupling_order_policy == "minimal":
@@ -189,11 +209,30 @@ def _prepare(backend, processes, source, *, planning, phase):
         key = tuple(sorted(limits.items()))
         if key not in cache:
             born, loop = _order_bounds(limits, corrections)
-            cache[key] = prepare_loop_request_model(
-                compiled, born_order_bounds=born, loop_order_bounds=loop
+            current = prepare_loop_request_model(
+                compiled,
+                born_order_bounds=born,
+                loop_order_bounds=loop,
+                fixed_parameters=fixed_parameters,
             )
-        prepared.append(cache[key])
-    return _LoopContext(resolved, declaration, expanded, tuple(prepared), corrections)
+            color = None
+            if color_data is not None:
+                current, color = prepare_declared_source_color(
+                    current, color_data, scheme=declaration.scheme
+                )
+            cache[key] = current, color
+        current, color = cache[key]
+        prepared.append(current)
+        source_colors.append(color)
+    return _LoopContext(
+        resolved,
+        declaration,
+        expanded,
+        tuple(prepared),
+        corrections,
+        tuple(source_colors),
+        color_data,
+    )
 
 
 def _graph_plan(prepared, entry, corrections):
@@ -242,7 +281,12 @@ def _plan_result(backend, processes, blockers, *, context=None, coverage=()):
             "available_r2_strategies": ("model",),
             "arithmetic": ("double", "double-double", "arbitrary"),
             "epsilon_powers": (0, -1, -2),
-            "color_accuracy": "full",
+            "color_accuracy": backend._run_config.color.accuracy,
+            "source_colour_declared": bool(context and context.color_declaration),
+            "formal_colour_process_coverage_checked": False,
+            "canonical_born_components_checked": False
+            if backend._run_config.color.accuracy == "lc"
+            else None,
             "correlations": False,
             "resolved": True,
             "api_bundle": False,
@@ -315,8 +359,13 @@ def generate_loop_artifact(
                 "Compiling complete loop instructions",
                 total=len(context.expanded),
             ) as phase:
-                for index, (prepared, entry) in enumerate(
-                    zip(context.prepared, context.expanded, strict=True)
+                for index, (prepared, entry, source_color) in enumerate(
+                    zip(
+                        context.prepared,
+                        context.expanded,
+                        context.source_colors,
+                        strict=True,
+                    )
                 ):
                     program = prepared.compile(
                         entry.process_ir.initial_pdgs,
@@ -324,6 +373,8 @@ def generate_loop_artifact(
                         selected_corrections=context.corrections,
                         reduction_engine="fast",
                         coefficient_engine="jit",
+                        source_color=source_color,
+                        color_accuracy=backend._run_config.color.accuracy,
                     )
                     path = Path(temporary) / f"{entry.request.name}.pacbin"
                     write_loop_pacbin(program.virtual, path, resolved=True)
@@ -344,6 +395,7 @@ def generate_loop_artifact(
                             expression=entry.request.expression,
                             external_pdgs=program.source_bare.external_request.external_pdgs,
                             loop_runtime_path=path,
+                            color_accuracy=backend._run_config.color.accuracy,
                             metadata=LoopExecutionMetadata(
                                 scheme=context.declaration.scheme,
                                 orders=program.virtual.bare.order_layout,
@@ -352,6 +404,7 @@ def generate_loop_artifact(
                                 arithmetic=("double", "double-double", "arbitrary"),
                                 source_owned=True,
                                 resolved=True,
+                                color_accuracy=backend._run_config.color.accuracy,
                             ),
                             validation_point=point,
                             generation_filters={
@@ -490,6 +543,7 @@ def _validate_artifact(backend, output, context, artifacts, validation_values):
             or result.sectors != artifact.metadata.orders.virtual
             or result.born_orders
             != tuple(sector.order for sector in artifact.metadata.orders.born)
+            or result.color_accuracy != artifact.metadata.color_accuracy
         ):
             raise GenerationError(
                 "virtual validation returned incompatible Laurent/order axes"
