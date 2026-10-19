@@ -447,3 +447,120 @@ def test_resolved_evaluation_preserves_decimal_precision() -> None:
     )
     assert resolved.total() == (Decimal("4.00"),)
     assert resolved.color_accuracy == resolved.accuracy == "lc"
+
+
+def _virtual_backend():
+    from pyamplicol.api.virtual_results import (
+        ResolvedVirtualEvaluation,
+        VirtualLaneDiagnostic,
+    )
+    from pyamplicol.config import R2Strategy
+    from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector
+    from pyamplicol.loops.strategy import R2Selection
+
+    # Two sectors, independent Born/virtual colour axes and a coefficient whose
+    # final digits disappear if the facade coerces through Python complex.
+    exact = Decimal("1.000000000000000000000000000000000000000000000000000000000001")
+    born = (("QCD", 2),)
+    sectors = (
+        VirtualOrderSector((("QCD", 6),), (BornLoopPair(born, (("QCD", 4),)),)),
+        VirtualOrderSector(
+            (("QCD", 4), ("QED", 2)),
+            (BornLoopPair(born, (("QCD", 2), ("QED", 2))),),
+        ),
+    )
+    resolved = ResolvedVirtualEvaluation(
+        born_values=((((Decimal("3"), Decimal("4")),),),),
+        values=(
+            (
+                ((((exact, Decimal("-2"), Decimal("3")),),)),
+                ((((Decimal("-4"), Decimal("5"), Decimal("-6")),),)),
+            ),
+        ),
+        born_orders=((("QCD", 4),),),
+        sectors=sectors,
+        diagnostics=(VirtualLaneDiagnostic("success", "arbitrary", 256, False),),
+        r2=R2Selection(R2Strategy.AUTO, R2Strategy.MODEL, "only complete branch"),
+        helicity_ids=("h0",),
+        born_color_ids=("b0", "b1"),
+        virtual_color_ids=("v0",),
+        color_accuracy="full",
+    )
+
+    class VirtualBackend(_RuntimeBackend):
+        execution_mode = "loop_recurrence"
+        contribution_kind = "virtual"
+
+        def __init__(self):
+            super().__init__()
+            self.resolved = resolved
+            self.ordinary = resolved.total()
+
+        def evaluate(self, momenta, **options):
+            self.selectors = options
+            return self.ordinary
+
+        def evaluate_resolved(self, momenta, **options):
+            self.selectors = options
+            return self.resolved
+
+    return VirtualBackend(), exact
+
+
+def test_virtual_facade_preserves_orders_poles_precision_and_explicit_options():
+    backend, exact = _virtual_backend()
+    runtime = Runtime(backend)
+    scales = (Decimal("1000000.0000000000000000000001"),)
+    result = runtime.evaluate_with_prec(
+        [[]], 70, arithmetic="arbitrary", mu_r2=scales, r2_strategy="model"
+    )
+    assert runtime.execution_mode == "loop_recurrence"
+    assert runtime.contribution_kind == "virtual"
+    assert result is backend.ordinary
+    assert result.shape == (1, 2, 3)
+    assert result.finite[0][0] == exact
+    assert result.single_pole == ((Decimal("-2"), Decimal("5")),)
+    assert result.double_pole == ((Decimal("3"), Decimal("-6")),)
+    assert backend.selectors["mu_r2"] is scales
+    assert backend.selectors["precision"] == 70
+    assert backend.selectors["arithmetic"] == "arbitrary"
+    assert backend.selectors["r2_strategy"] == "model"
+    resolved = runtime.evaluate_resolved_with_prec([[]], 70, arithmetic="arbitrary")
+    assert resolved is backend.resolved
+    assert resolved.total() == result
+    runtime.evaluate([[]], helicity_by_point=("h0",))
+    assert backend.selectors["helicity_by_point"] == ("h0",)
+    parameters = {"aS": Decimal("0.11800000000000000000000001")}
+    runtime.set_model_parameters(parameters)
+    assert backend.parameters == parameters
+
+
+def test_virtual_facade_rejects_scalar_or_mislabeled_results():
+    backend, _ = _virtual_backend()
+    runtime = Runtime(backend)
+    backend.ordinary = (3.0,)
+    with pytest.raises(EvaluationError, match="VirtualEvaluation"):
+        runtime.evaluate([[]])
+    backend.resolved = ResolvedEvaluation((((3.0,),),), ("h0",), ("c0",))
+    with pytest.raises(EvaluationError, match="ResolvedVirtualEvaluation"):
+        runtime.evaluate_resolved([[]])
+    backend.contribution_kind = "tree"
+    with pytest.raises(EvaluationError, match="inconsistent contribution"):
+        runtime.evaluate([[]])
+    backend.contribution_kind = "virtual"
+    with pytest.raises(CompatibilityError, match="virtual correlation"):
+        runtime.evaluate_correlated([[]])
+
+
+def test_optional_loop_inputs_do_not_change_legacy_backend_calls():
+    backend = _PreSelectorRuntimeBackend()
+    runtime = Runtime(backend)
+    assert runtime.contribution_kind == "tree"
+    assert runtime.evaluate([[]]) == (3.0 + 0j,)
+    assert set(backend.selectors) == {"helicities", "color_flows", "precision"}
+    with pytest.raises(CompatibilityError, match="evaluation options"):
+        runtime.evaluate([[]], arithmetic="double-double")
+    with pytest.raises(CompatibilityError, match="require a virtual runtime"):
+        runtime.evaluate([[]], mu_r2="1000000")
+    with pytest.raises(ValueError, match="arithmetic"):
+        runtime.evaluate([[]], arithmetic="quad")

@@ -35,8 +35,10 @@ from pyamplicol import (
     ProcessRequest,
     ProcessSet,
     ResolvedEvaluation,
+    ResolvedVirtualEvaluation,
     RunConfig,
     Runtime,
+    VirtualEvaluation,
     WarmUpResult,
     benchmark,
     generate,
@@ -109,7 +111,7 @@ def exercise_runtime(artifact: Path) -> None:
     assert_type(runtime.artifact_id, str)
     assert_type(
         runtime.execution_mode,
-        Literal["compiled", "eager", "recurrence", "on-the-fly"],
+        Literal["compiled", "eager", "recurrence", "on-the-fly", "loop_recurrence"],
     )
     assert_type(runtime.inspect(), Mapping[str, object])
     physics = runtime.physics
@@ -120,11 +122,11 @@ def exercise_runtime(artifact: Path) -> None:
             helicities=physics.helicities,
             color_flows=physics.color_flows,
         ),
-        tuple[complex | Decimal, ...],
+        tuple[complex | Decimal, ...] | VirtualEvaluation,
     )
     resolved = runtime.evaluate_resolved(MOMENTA, precision=32)
-    assert_type(resolved, ResolvedEvaluation)
-    assert_type(resolved.total(), tuple[complex | Decimal, ...])
+    assert_type(resolved, ResolvedEvaluation | ResolvedVirtualEvaluation)
+    assert_type(resolved.total(), tuple[complex | Decimal, ...] | VirtualEvaluation)
     runtime.set_model_parameters(PARAMETERS)
     runtime.set_model_parameter("normalization.alpha_s_me_check", 0.119)
     runtime.mute_warnings()
@@ -294,5 +296,10 @@ def exercise_protocols(
     assert_type(generator.plan(processes), GenerationPlan)
     assert_type(generator.generate(processes, "artifact"), GenerationResult)
     assert_type(runtime.physics, ProcessPhysics)
-    assert_type(runtime.evaluate(MOMENTA), Sequence[complex | Decimal])
-    assert_type(runtime.evaluate_resolved(MOMENTA), ResolvedEvaluation)
+    assert_type(
+        runtime.evaluate(MOMENTA), Sequence[complex | Decimal] | VirtualEvaluation
+    )
+    assert_type(
+        runtime.evaluate_resolved(MOMENTA),
+        ResolvedEvaluation | ResolvedVirtualEvaluation,
+    )

@@ -688,6 +688,65 @@ For controlled, multi-process comparisons and report generation, use
 
 ## Handle ownership and warnings
 
+### Development virtual artifacts
+
+Source-owned loop artifacts can be loaded through the same `Runtime.load`
+entry point when the development `_loop_reduction.NativeVirtualRuntime`
+extension is installed. Directory and direct `artifact.json` paths are accepted.
+The native loader checks the selected process, payloads, coupling orders and
+declared scheme before binding the saved numerical program. Model imports and
+graph generation are not needed to evaluate a saved artifact.
+
+```python
+from pyamplicol import Runtime
+
+runtime = Runtime.load("virtual-artifact", process="gg")
+result = runtime.evaluate(
+    momenta,                         # [point, external leg, E/px/py/pz]
+    mu_r2="1000000",                 # scalar or one positive value per point
+    arithmetic="double-double",      # DoubleFloat; distinct from arbitrary precision
+    r2_strategy="model",
+)
+finite = result.finite               # [point, squared coupling order]
+single_pole = result.single_pole
+double_pole = result.double_pole
+qcd = result.for_order((("QCD", 6),))
+summed = result.sum_orders()          # explicit order sum; retains all three poles
+```
+
+The ordinary virtual result is a `VirtualEvaluation`, with Born shape
+`[point, born_squared_order]` and virtual shape
+`[point, virtual_squared_order, epsilon]`; epsilon powers are `(0, -1, -2)`.
+Values include physical couplings and the declared normalization. High-precision
+output uses `Decimal`, preserving the native carrier's digits. Use
+`arithmetic="arbitrary", precision=70` for 70 decimal digits; when arithmetic is
+omitted, precision 16 chooses double and other digit counts choose arbitrary
+precision. Explicit `double` and `double-double` select their fixed carriers.
+
+Decimal strings and `Decimal` inputs avoid a binary64 conversion. Named model
+parameter updates accept real values or exact `(real, imaginary)` pairs and are
+atomic. Changing arithmetic recomputes from saved exact inputs. `clear()` releases
+numerical workspaces while preserving parameters. `mu_r2` is currently required
+explicitly; it is the renormalization scale squared, not the extra-dimensional
+loop-momentum variable.
+
+This delivery path currently admits full-colour, inclusive source artifacts
+with model-supplied R2 and UV. `auto` therefore chooses `model`; requesting an
+absent direct branch raises. Resolved output, selectors, correlations, mappings
+and automatic rescue are not yet available through this path. A successful lane
+reports `accuracy_established=False` until a separate accuracy check is available.
+Scheme metadata records a declaration, not certification of arbitrary models.
+`inspect()` exposes conventions, capabilities, exact parameter overrides and
+available arithmetic; evaluator-derived parameter defaults are not materialized
+as `physics.model_parameters` yet.
+
+Public generation/command integration and normal wheel/SDK delivery remain
+separate development gates. The native development build still depends on the
+pending self-contained NinjaRS packaging revision. These limitations do not
+apply to existing tree artifact evaluation.
+
+### Shared handle state
+
 Parameter and warning state belongs to one runtime handle. Do not invoke the
 same mutable handle concurrently. Independent handles may execute on separate
 threads.

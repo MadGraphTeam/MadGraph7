@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from pyamplicol._internal.versions import (
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
     EAGER_RUNTIME_LAYOUT_F64_CAPABILITY,
+    LOOP_RUNTIME_CAPABILITY,
     ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_RUNTIME_CAPABILITY,
@@ -31,7 +32,7 @@ from pyamplicol.api.errors import (
     DependencyError,
     EvaluationError,
 )
-from pyamplicol.api.protocols import ModelParameters, Momenta
+from pyamplicol.api.protocols import ModelParameters, Momenta, RuntimeBackend
 from pyamplicol.api.results import (
     ColorFlow,
     ContractedColorComponent,
@@ -1753,21 +1754,40 @@ def load_runtime_backend(
     process: str | None = None,
     model_parameters: ModelParameters | None = None,
     mute_warnings: bool = False,
-) -> RusticolRuntimeBackend:
+) -> RuntimeBackend:
     """Load a schema-v3 artifact without importing the extension during discovery."""
 
     path = Path(os.fspath(artifact)).expanduser().resolve(strict=False)
     parameters = dict(model_parameters) if model_parameters is not None else None
-    module = _load_native_module()
+    manifest_root = (
+        path.parent if path.name == MANIFEST_NAME and path.is_file() else path
+    )
     # Rusticol is the authoritative runtime loader and verifies every declared
     # payload before returning.  Parse the manifest here only for the Python
     # adapter's selector-contract checks; hashing it again would add a complete
     # extra pass over large compact eager containers.
     manifest = (
-        load_manifest(path, verify_payloads=False)
-        if (path / MANIFEST_NAME).is_file()
+        load_manifest(manifest_root, verify_payloads=False)
+        if (manifest_root / MANIFEST_NAME).is_file()
         else None
     )
+    if (
+        manifest is not None
+        and LOOP_RUNTIME_CAPABILITY in cast(
+            tuple[str, ...], manifest.runtime["required_runtime_capabilities"]
+        )
+    ):
+        from .virtual import VirtualRuntimeBackend
+
+        # This is only a dispatch hint. The virtual native loader authenticates
+        # all payloads and resolves the requested process authoritatively.
+        return VirtualRuntimeBackend(
+            path,
+            process=process,
+            model_parameters=parameters,
+            mute_warnings=mute_warnings,
+        )
+    module = _load_native_module()
     runtime = _invoke(
         module,
         module.Runtime.load,

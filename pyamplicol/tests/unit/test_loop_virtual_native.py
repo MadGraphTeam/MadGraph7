@@ -22,8 +22,14 @@ def test_native_virtual_clear_keeps_parameter_owner_and_immutable_results():
     assert handle.r2_strategy == "model"
     assert handle.arithmetic == "double" and handle.precision_bits == 53
 
-    fixture = Path(__file__).resolve().parents[2] / "tools/loop_reference/gluon_scattering_qcd.json"
-    point = [[str(value) for value in leg] for leg in json.loads(fixture.read_text())["points"][0]]
+    fixture = (
+        Path(__file__).resolve().parents[2]
+        / "tools/loop_reference/gluon_scattering_qcd.json"
+    )
+    point = [
+        [str(value) for value in leg]
+        for leg in json.loads(fixture.read_text())["points"][0]
+    ]
     first = handle.evaluate([point], ["1000000"], point_ids=[71])
     retained = first.component_batches[0].to_decimal()
     assert first.point_ids == [71]
@@ -32,7 +38,9 @@ def test_native_virtual_clear_keeps_parameter_owner_and_immutable_results():
 
     state = handle.source_state
     old = state.snapshot()
-    revision = handle.set_model_parameters({"aS": ["0.121000000000000000000000000001", "0"]})
+    revision = handle.set_model_parameters(
+        {"aS": ["0.121000000000000000000000000001", "0"]}
+    )
     assert revision == 1
     changed = handle.evaluate([point], ["1000000"], point_ids=[71])
     assert changed.source_revision == 1
@@ -43,13 +51,16 @@ def test_native_virtual_clear_keeps_parameter_owner_and_immutable_results():
     handle.clear()
     assert handle.source_revision == 1
     for requested in ("direct", "off"):
-        with pytest.raises(ValueError, match="R2|r2_strategy"):
+        with pytest.raises(ValueError, match=r"R2|r2_strategy"):
             handle.evaluate([], [], r2_strategy=requested)
     # Updates after clear must still target the original parameter owner.
     assert handle.source_state.snapshot().revision == 1
     assert handle.evaluate([], [], r2_strategy="model").source_revision == 1
     after = handle.evaluate([point], ["1000000"], point_ids=[71])
-    assert after.component_batches[0].to_decimal() == changed.component_batches[0].to_decimal()
+    assert (
+        after.component_batches[0].to_decimal()
+        == changed.component_batches[0].to_decimal()
+    )
     assert first.component_batches[0].to_decimal() == retained
     assert state.update({"aS": ["0.123000000000000000000000000001", "0"]}).revision == 2
     assert handle.source_revision == 2

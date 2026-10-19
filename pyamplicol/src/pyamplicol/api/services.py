@@ -16,6 +16,7 @@ from pyamplicol.config import (
     BenchmarkConfig,
     ConfigResolution,
     GenerationConfig,
+    R2Strategy,
     RunConfig,
 )
 from pyamplicol.reporting import ProgressSink
@@ -36,6 +37,7 @@ from .protocols import (
     Momenta,
     RuntimeBackend,
     RuntimeLoader,
+    ScalarInput,
 )
 from .requests import ModelSource, ProcessRequest, ProcessSet
 from .results import (
@@ -48,6 +50,7 @@ from .results import (
     ResolvedEvaluation,
     WarmUpResult,
 )
+from .virtual_results import ResolvedVirtualEvaluation, VirtualEvaluation
 
 _generator_factory: GeneratorFactory | None = None
 _runtime_loader: RuntimeLoader | None = None
@@ -340,7 +343,20 @@ class Runtime:
     """Typed Python facade for one process in a generated Rusticol artifact."""
 
     def __init__(self, backend: RuntimeBackend) -> None:
-        if not isinstance(backend, RuntimeBackend):
+        # Python 3.11 runtime Protocol checks invoke properties. Match the
+        # static lookup used by newer Python versions, preserving lazy physics.
+        if not all(
+            inspect.getattr_static(backend, name, None) is not None
+            for name in (
+                "physics",
+                "evaluate",
+                "evaluate_resolved",
+                "set_model_parameters",
+                "clear",
+                "mute_warnings",
+                "unmute_warnings",
+            )
+        ):
             raise TypeError("Runtime backend does not implement RuntimeBackend")
         self._backend = backend
 
@@ -409,15 +425,45 @@ class Runtime:
     @property
     def execution_mode(
         self,
-    ) -> Literal["compiled", "eager", "recurrence", "on-the-fly"]:
+    ) -> Literal["compiled", "eager", "recurrence", "on-the-fly", "loop_recurrence"]:
         """Native execution lane authenticated while loading the artifact."""
 
         value = getattr(self._backend, "execution_mode", None)
-        if value not in {"compiled", "eager", "recurrence", "on-the-fly"}:
+        if value not in {
+            "compiled",
+            "eager",
+            "recurrence",
+            "on-the-fly",
+            "loop_recurrence",
+        }:
             raise EvaluationError(
                 "runtime backend does not expose a valid execution mode"
             )
-        return cast(Literal["compiled", "eager", "recurrence", "on-the-fly"], value)
+        return cast(
+            Literal["compiled", "eager", "recurrence", "on-the-fly", "loop_recurrence"],
+            value,
+        )
+
+    @property
+    def contribution_kind(self) -> Literal["tree", "virtual"]:
+        """Observable kind declared by the loaded backend.
+
+        Existing injected tree backends may omit this additive capability.
+        The loop execution lane always requires virtual result semantics.
+        """
+        mode = getattr(self._backend, "execution_mode", None)
+        kind = getattr(
+            self._backend,
+            "contribution_kind",
+            "virtual" if mode == "loop_recurrence" else "tree",
+        )
+        if kind not in {"tree", "virtual"} or (
+            mode is not None and (mode == "loop_recurrence") != (kind == "virtual")
+        ):
+            raise EvaluationError(
+                "runtime backend has inconsistent contribution metadata"
+            )
+        return cast(Literal["tree", "virtual"], kind)
 
     def inspect(self) -> Mapping[str, object]:
         """Return compact authenticated runtime metadata and live cache state.
@@ -477,12 +523,21 @@ class Runtime:
         helicity_by_point: Sequence[str | HelicityConfiguration] | None = None,
         color_flow_by_point: Sequence[str | ColorFlow] | None = None,
         precision: int = 16,
-    ) -> tuple[complex | Decimal, ...]:
-        """Return one fully summed matrix element for every input point.
+        arithmetic: Literal["double", "double-double", "arbitrary"] | None = None,
+        mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
+        r2_strategy: R2Strategy | str | None = None,
+    ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
+        """Return tree values or a typed Born-loop interference result.
+
+        Virtual results retain their squared-order and Laurent axes; no finite
+        coefficient or coupling-order sum is selected implicitly.
 
         Selectors accept stable string IDs or the typed objects exposed by
         :attr:`physics`. Precision 16 uses the native f64 path; larger values
-        use the retained high-precision evaluator state when available.
+        use the retained high-precision evaluator state when arithmetic is
+        omitted. Explicit ``arithmetic`` selects double, DoubleFloat or arbitrary
+        precision. Virtual runtimes accept scalar or per-point positive ``mu_r2``
+        and an available ``r2_strategy``; exact inputs are forwarded unchanged.
         """
 
         helicity_ids = _selector_ids(
@@ -512,12 +567,16 @@ class Runtime:
                 "color_flows and color_flow_by_point are mutually exclusive"
             )
         precision = _validate_precision(precision)
+        contribution = self.contribution_kind
+        options = self._evaluation_options(arithmetic, mu_r2, r2_strategy)
+        self._require_evaluation_options(self._backend.evaluate, options)
         if point_helicity_ids is None and point_color_ids is None:
             values = self._backend.evaluate(
                 momenta,
                 helicities=helicity_ids,
                 color_flows=color_ids,
                 precision=precision,
+                **options,
             )
         else:
             operation = self._backend.evaluate
@@ -538,10 +597,52 @@ class Runtime:
                 helicity_by_point=point_helicity_ids,
                 color_flow_by_point=point_color_ids,
                 precision=precision,
+                **options,
             )
+        if contribution == "virtual":
+            if not isinstance(values, VirtualEvaluation) or values.correlated:
+                raise EvaluationError(
+                    "virtual runtime backend returned an invalid ordinary "
+                    "VirtualEvaluation"
+                )
+            return values
+        if isinstance(values, VirtualEvaluation):
+            raise EvaluationError("tree runtime backend returned a virtual result")
         return tuple(
             value if isinstance(value, Decimal) else complex(value) for value in values
         )
+
+    def _evaluation_options(
+        self,
+        arithmetic: str | None,
+        mu_r2: ScalarInput | Sequence[ScalarInput] | None,
+        r2_strategy: R2Strategy | str | None,
+    ) -> dict[str, object]:
+        """Forward explicit options without changing old backend call signatures."""
+        options: dict[str, object] = {}
+        if arithmetic is not None:
+            if arithmetic not in {"double", "double-double", "arbitrary"}:
+                raise ValueError("unknown evaluation arithmetic")
+            options["arithmetic"] = arithmetic
+        if mu_r2 is not None:
+            options["mu_r2"] = mu_r2
+        if r2_strategy is not None:
+            options["r2_strategy"] = R2Strategy(r2_strategy).value
+        if self.contribution_kind != "virtual" and (
+            mu_r2 is not None or r2_strategy is not None
+        ):
+            raise CompatibilityError("mu_r2 and r2_strategy require a virtual runtime")
+        return options
+
+    @staticmethod
+    def _require_evaluation_options(
+        operation: object, options: Mapping[str, object]
+    ) -> None:
+        if options and not _accepts_keyword_arguments(operation, *options):
+            raise CompatibilityError(
+                "runtime backend does not support the requested evaluation options: "
+                + ", ".join(options)
+            )
 
     def warm_up(
         self,
@@ -622,12 +723,18 @@ class Runtime:
         *,
         helicities: Sequence[str | HelicityConfiguration] | None = None,
         color_flows: Sequence[str | ColorFlow] | None = None,
-    ) -> tuple[complex | Decimal, ...]:
+        arithmetic: Literal["double", "double-double", "arbitrary"] | None = None,
+        mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
+        r2_strategy: R2Strategy | str | None = None,
+    ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         return self.evaluate(
             momenta,
             helicities=helicities,
             color_flows=color_flows,
             precision=precision,
+            arithmetic=arithmetic,
+            mu_r2=mu_r2,
+            r2_strategy=r2_strategy,
         )
 
     def evaluate_resolved(
@@ -637,15 +744,23 @@ class Runtime:
         helicities: Sequence[str | HelicityConfiguration] | None = None,
         color_flows: Sequence[str | ColorFlow] | None = None,
         precision: int = 16,
-    ) -> ResolvedEvaluation:
+        arithmetic: Literal["double", "double-double", "arbitrary"] | None = None,
+        mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
+        r2_strategy: R2Strategy | str | None = None,
+    ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         """Return physical values resolved by helicity and color component.
 
         LC output has shape ``(point, helicity, color_flow)``. NLC/full output
         has shape ``(point, helicity, 1)`` because color is already contracted.
-        Summing the non-point axes reproduces :meth:`evaluate`.
+        For tree results, summing the non-point axes reproduces :meth:`evaluate`.
+        Virtual results additionally retain squared-order and Laurent axes;
+        their ``total()`` sums only the helicity and colour axes.
         """
 
         precision = _validate_precision(precision)
+        contribution = self.contribution_kind
+        options = self._evaluation_options(arithmetic, mu_r2, r2_strategy)
+        self._require_evaluation_options(self._backend.evaluate_resolved, options)
         result = self._backend.evaluate_resolved(
             momenta,
             helicities=_selector_ids(
@@ -659,7 +774,15 @@ class Runtime:
                 name="color-flow",
             ),
             precision=precision,
+            **options,
         )
+        if contribution == "virtual":
+            if not isinstance(result, ResolvedVirtualEvaluation) or result.correlated:
+                raise EvaluationError(
+                    "virtual runtime backend returned an invalid ordinary "
+                    "ResolvedVirtualEvaluation"
+                )
+            return result
         if not isinstance(result, ResolvedEvaluation):
             raise EvaluationError(
                 "runtime backend returned an invalid ResolvedEvaluation"
@@ -673,12 +796,18 @@ class Runtime:
         *,
         helicities: Sequence[str | HelicityConfiguration] | None = None,
         color_flows: Sequence[str | ColorFlow] | None = None,
-    ) -> ResolvedEvaluation:
+        arithmetic: Literal["double", "double-double", "arbitrary"] | None = None,
+        mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
+        r2_strategy: R2Strategy | str | None = None,
+    ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         return self.evaluate_resolved(
             momenta,
             helicities=helicities,
             color_flows=color_flows,
             precision=precision,
+            arithmetic=arithmetic,
+            mu_r2=mu_r2,
+            r2_strategy=r2_strategy,
         )
 
     def _diagnostic_project_onshell(
@@ -712,6 +841,10 @@ class Runtime:
         self._backend.set_model_parameters(dict(mapping))
 
     def _correlator_catalogue(self) -> CorrelatorCatalogue:
+        if self.contribution_kind == "virtual":
+            raise CompatibilityError(
+                "public virtual correlation dispatch is not integrated yet"
+            )
         catalogue: CorrelatorCatalogue | None = getattr(
             self, "_correlated_catalogue", None
         )
