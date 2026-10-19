@@ -34,6 +34,8 @@ def _plan(*, change=None, fixed=None, yukawa=False):
         ("yd", "external", "0"),
         ("ys", "external", "0"),
         ("MU_R", "external", "1000"),
+        ("CD", "internal", "3"),
+        ("CS", "internal", "3"),
     ):
         parameters[name] = Record(name=name, nature=nature, type="real", value=value)
     module.all_parameters = list(parameters.values())
@@ -131,12 +133,93 @@ def _plan(*, change=None, fixed=None, yukawa=False):
         module.all_CTvertices[2].loop_particles[0].pop()
     elif change == "field":
         particles["s"].counterterm[(1, 0, 0)][0] = "g**2/3"
+    elif change == "formal-uv":
+        for suffix in ("D", "S"):
+            couplings["U" + suffix].value[2] = "g**3*C" + suffix
+    elif change in ("formal-field", "formal-diagnostic", "formal-field-zero"):
+        if change != "formal-field-zero":
+            for name, suffix in (("d", "D"), ("s", "S")):
+                particles[name].counterterm[(1, 0, 0)][0] = "g**2*C" + suffix
+        if change == "formal-diagnostic":
+            parameters["CS"].value = "3 + 0*(1 if yd < 0 else 2)"
+        elif change == "formal-field-zero":
+            for name, suffix in (("d", "D"), ("s", "S")):
+                particles[name].counterterm[(1, 0, 0)][2] = "g**2*(C" + suffix + "-3)"
     raw = capture_raw_loop_model(module)
     structure = build_covariant_structure(raw, fixed_parameters=fixed)
     source = build_loop_model(raw, scalar_program=structure.scalars)
     prepared = prepare_counterterm_model(source, structure.native)
     names = ("VD", "VS", "YD", "YS") if yukawa else ("VD", "VS")
     return RetainedFlavorPlan(structure, prepared, names, ("QCD",))
+
+
+def _formal_plan(plan, *, unequal=False):
+    from symbolica import S
+
+    from pyamplicol.loops.source_color import SourceColorContinuation
+    from pyamplicol.loops.wavefunction import prepare_external_field_rules
+    from pyamplicol.models.loop_declaration import LoopSchemeDeclaration
+
+    source = plan.counterterms.source
+    nc = S("flavour_proof_test::Nc")
+    color = SourceColorContinuation(
+        source,
+        nc,
+        {"CD": nc, "CS": nc + (nc - 3 if unequal else 0)},
+        frozenset(entry.key for entry in source.kernels),
+        frozenset(
+            (field.particle_id, field.correction, field.loop_group_index)
+            for field in prepare_external_field_rules(source)
+        ),
+        LoopSchemeDeclaration(
+            "HV", "4d", "none", "explicit", "real", "none", "synthetic"
+        ),
+    )
+    return replace(plan, source_color=color)
+
+
+@pytest.mark.parametrize(
+    "change,match",
+    [
+        ("formal-uv", "Laurent"),
+        ("formal-field", "external-field"),
+        ("formal-field-zero", "external-field"),
+    ],
+)
+def test_formal_symmetry_does_not_follow_from_equal_nc3_values(change, match):
+    plan = _plan(change=change)
+    assert prove_flavor_relabeling(plan, SWAP).species
+    assert prove_flavor_relabeling(_formal_plan(plan), SWAP).species
+    with pytest.raises(ValueError, match=match):
+        prove_flavor_relabeling(_formal_plan(plan, unequal=True), SWAP)
+
+
+def test_formal_field_proof_preserves_active_source_diagnostics():
+    plan = _formal_plan(_plan(change="formal-diagnostic"))
+    with pytest.raises(ValueError, match="external-field"):
+        prove_flavor_relabeling(plan, SWAP)
+
+
+def test_formal_proof_requires_owned_complete_declaration_and_scheme():
+    from symbolica import E
+
+    plan = _formal_plan(_plan())
+    other = _formal_plan(_plan())
+    with pytest.raises(ValueError, match="retained source owner"):
+        replace(plan, source_color=other.source_color)
+    for field in ("kernel_keys", "field_keys"):
+        incomplete = replace(plan.source_color, **{field: frozenset()})
+        with pytest.raises(NotImplementedError, match="no declared"):
+            prove_flavor_relabeling(replace(plan, source_color=incomplete), SWAP)
+    wrong_scheme = replace(plan.source_color, scheme_parameter_values={"CD": E("4")})
+    with pytest.raises(ValueError, match="must remain fixed"):
+        prove_flavor_relabeling(replace(plan, source_color=wrong_scheme), SWAP)
+    guarded = _formal_plan(_plan(change="formal-diagnostic"))
+    guarded_scheme = replace(
+        guarded.source_color, scheme_parameter_values={"CS": E("3")}
+    )
+    with pytest.raises(ValueError, match="inactive source diagnostics"):
+        prove_flavor_relabeling(replace(guarded, source_color=guarded_scheme), SWAP)
 
 
 def test_exact_retained_plan_preserves_full_laurent_groups_and_source_owners():
@@ -200,7 +283,15 @@ def test_permutation_source_ownership_and_unproved_domains_reject():
 
 
 @pytest.mark.parametrize(
-    "kind", ["ordinary", "counterterm", "prepared-ordinary", "propagator", "coupling"]
+    "kind",
+    [
+        "ordinary",
+        "counterterm",
+        "prepared-ordinary",
+        "propagator",
+        "coupling",
+        "coupling-order",
+    ],
 )
 def test_actual_prepared_native_overrides_cannot_hide_behind_equal_source(kind):
     from symbolica.community import hepkit as hep
@@ -210,7 +301,7 @@ def test_actual_prepared_native_overrides_cannot_hide_behind_equal_source(kind):
     plan = _plan()
     native = (
         plan.counterterms.native
-        if kind in ("counterterm", "prepared-ordinary")
+        if kind in ("counterterm", "prepared-ordinary", "coupling-order")
         else plan.structure.native
     )
     payload = json.loads(native.to_json())
@@ -238,6 +329,15 @@ def test_actual_prepared_native_overrides_cannot_hide_behind_equal_source(kind):
         )
         payload["lorentz_structures"].append(new)
         rule["lorentz_structures"][0] = new["name"]
+    elif kind == "coupling-order":
+        selected = next(
+            rule for rule in plan.counterterms.rules.values() if 3 in rule.particle_pdgs
+        )
+        alias = selected.couplings[0][0]
+        coupling = next(item for item in payload["couplings"] if item["name"] == alias)
+        coupling["orders"] = [
+            [name, power + (name == "QCD")] for name, power in coupling["orders"]
+        ]
     elif kind == "propagator":
         prop = next(item for item in payload["propagators"] if item["particle"] == "s")
         prop["numerator"] = "2*(" + prop["numerator"] + ")"
@@ -245,7 +345,7 @@ def test_actual_prepared_native_overrides_cannot_hide_behind_equal_source(kind):
         coupling = next(item for item in payload["couplings"] if item["name"] == "G")
         coupling["expression"] = "2*(" + coupling["expression"] + ")"
     changed = hep.Model.from_json(json.dumps(payload))
-    if kind in ("counterterm", "prepared-ordinary"):
+    if kind in ("counterterm", "prepared-ordinary", "coupling-order"):
         prepared = replace(plan.counterterms, native=changed)
         changed_plan = replace(plan, counterterms=prepared)
     else:

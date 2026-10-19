@@ -18,8 +18,9 @@ from functools import cache
 from typing import Any
 
 from .graphs import _rule_orders, _species_orders
-from .model_expressions import epsilon_symbol, parse_exact_ufo
+from .model_expressions import LaurentExpression, epsilon_symbol, parse_exact_ufo
 from .scalar_bindings import prepare_scalar_bindings
+from .source_color import SourceColorContinuation
 from .wavefunction import prepare_external_field_rules
 
 
@@ -37,6 +38,7 @@ class RetainedFlavorPlan:
     counterterms: Any = field(repr=False)
     ordinary_rules: tuple[str, ...]
     correction_names: tuple[str, ...]
+    source_color: SourceColorContinuation | None = field(default=None, repr=False)
 
     def __post_init__(self):
         source = self.counterterms.source
@@ -46,6 +48,14 @@ class RetainedFlavorPlan:
             or source.scalar_program is not self.structure.scalars
         ):
             raise ValueError("flavour proof requires one retained source/scalar owner")
+        if self.source_color is not None and (
+            not isinstance(self.source_color, SourceColorContinuation)
+            or self.source_color.model is not source
+            or self.source_color.model.scalar_program is not self.structure.scalars
+        ):
+            raise ValueError(
+                "flavour colour continuation requires the retained source owner"
+            )
         rules, corrections = tuple(self.ordinary_rules), tuple(self.correction_names)
         available = {rule.name for rule in self.structure.native.vertex_rules}
         if not rules or len(set(rules)) != len(rules) or not set(rules) <= available:
@@ -108,6 +118,69 @@ def _alternatives(alternatives, relabel):
             tuple(sorted(relabel.get(pdg, pdg) for pdg in alt)) for alt in alternatives
         )
     )
+
+
+def _whole_rule_aliases(rule, model):
+    """Check the factory's whole replacement, without an entrywise UFO pairing."""
+    from symbolica.community import hepkit as hep
+
+    from .counterterms import _TAG
+
+    continuation = rule.whole_rule_continuation
+    if continuation is None:
+        if rule.native_coefficients:
+            raise ValueError("native coefficients lack their whole-rule owner")
+        return {}
+    if Counter(map(id, rule.entries)) != Counter(map(id, continuation.source_entries)):
+        raise ValueError("whole-rule source entries or multiplicities differ")
+    native = model.vertex_rule(rule.name)
+    terms, coefficients = continuation.terms, rule.native_coefficients
+    if (
+        len(coefficients) != len(terms)
+        or len({name for name, _ in coefficients}) != len(coefficients)
+        or len(native.color_structures) != len(terms)
+        or len(native.lorentz_structures) != len(terms)
+        or len(native.couplings) != len(terms)
+    ):
+        raise ValueError("whole-rule native coefficient/tensor coverage differs")
+    for index, ((alias, value), term) in enumerate(
+        zip(coefficients, terms, strict=True)
+    ):
+        if (
+            value != term.coefficient
+            or tuple(native.particles) != term.kernel.particle_names
+            or len(term.kernel.leg_half_edges) != len(native.particles)
+        ):
+            raise ValueError("whole-rule coefficient or ordered ports differ")
+        if tuple(native.couplings[index]) != tuple(
+            alias if column == index else None for column in range(len(terms))
+        ):
+            raise ValueError("whole-rule native alias slots differ")
+        coupling = model.coupling(alias)
+        if coupling.expression != value or tuple(
+            sorted(coupling.orders.items())
+        ) != tuple(sorted((*rule.order, (_TAG, 1)))):
+            raise ValueError("whole-rule native coefficient or coupling orders differ")
+        color, lorentz = (
+            term.kernel.color.to_expression(),
+            term.kernel.lorentz.to_expression(),
+        )
+        # The same dependency-owned port renaming used by prepare_counterterm_model.
+        for leg, half in enumerate(term.kernel.leg_half_edges, 1):
+            port = hep.Symbols.half_edge()(half, 1)
+            local = hep.Symbols.ufo_index()(1, leg)
+            color, lorentz = color.replace(port, local), lorentz.replace(port, local)
+        actual_lorentz = model.lorentz_structure(native.lorentz_structures[index])
+        if (
+            _canonical(native.color_structures[index]) != _canonical(color)
+            or _canonical(actual_lorentz.structure) != _canonical(lorentz)
+            or tuple(actual_lorentz.spins)
+            != tuple(model.particle(name).spin for name in native.particles)
+        ):
+            raise ValueError(
+                "whole-rule native tensors differ from the owned continuation"
+            )
+    return dict(coefficients)
 
 
 def prove_flavor_relabeling(
@@ -209,6 +282,14 @@ def prove_flavor_relabeling(
     )
     entries = [entry for values in ordinary.values() for entry in values]
     entries += [entry for rule in counterterms for entry in rule.entries]
+    whole_aliases = {
+        rule.name: _whole_rule_aliases(rule, plan.counterterms.native)
+        for rule in counterterms
+    }
+    if any(whole_aliases.values()) and plan.source_color is None:
+        raise ValueError(
+            "whole-rule flavour proof requires its formal source continuation"
+        )
 
     outputs = {}
     for entry in entries:
@@ -225,20 +306,24 @@ def prove_flavor_relabeling(
             for particle in payload["particles"]
             for key in ("mass", "width")
         )
+    ordinary_parameters = set(parameter_names)
+    propagator_symbols = {
+        symbol
+        for model in native_models
+        for propagator in model.propagators
+        for value in (propagator.numerator, propagator.denominator)
+        for symbol in value.get_all_symbols()
+    }
     field_symbols = {
         symbol
         for rule in fields
         for value in (rule.coefficient.expression, rule.diagnostic)
         for symbol in value.get_all_symbols()
     }
-    field_symbols.update(
-        symbol
-        for model in native_models
-        for propagator in model.propagators
-        for value in (propagator.numerator, propagator.denominator)
-        for symbol in value.get_all_symbols()
-    )
+    field_symbols.update(propagator_symbols)
     for record in raw.collections["parameters"]:
+        if S(f"UFO::{record['name']}") in propagator_symbols:
+            ordinary_parameters.add(record["name"])
         if S(f"UFO::{record['name']}") in field_symbols:
             parameter_names.add(record["name"])
     for name in sorted(parameter_names):
@@ -249,6 +334,71 @@ def prove_flavor_relabeling(
         program=structure.scalars,
         fixed_parameters=structure.fixed_parameters,
     )
+    field_names = {}
+    if plan.source_color is not None:
+        color = plan.source_color
+        color.require_kernels(entry.key for entry in entries)
+        color.require_fields(
+            (rule.particle_id, rule.correction, rule.loop_group_index)
+            for rule in fields
+        )
+        color.require_whole_rules(counterterms, binding)
+        ordinary_outputs = tuple(
+            dict.fromkeys(
+                [
+                    (entry.coupling.name, power)
+                    for values in ordinary.values()
+                    for entry in values
+                    for power in _powers(entry.coupling.value.expression)
+                ]
+                + [(name, 0) for name in sorted(ordinary_parameters)]
+            )
+        )
+        color.require_ordinary_scalars(
+            prepare_scalar_bindings(
+                raw,
+                ordinary_outputs,
+                program=structure.scalars,
+                fixed_parameters=structure.fixed_parameters,
+            )
+        )
+        anonymous = {}
+        for index, rule in enumerate(fields):
+            if rule.source_terms is None:
+                raise ValueError(
+                    "formal field symmetry requires the owned source terms"
+                )
+            name = f"loop_flavour_field_{index}"
+            field_names[id(rule)] = name
+            anonymous[name] = {"kind": "laurent", "terms": rule.source_terms}
+            for power in _powers(rule.coefficient.expression):
+                outputs[name, power] = None
+        for name in color.scheme_parameter_values:
+            outputs[name, 0] = None
+        binding = color.formal_scalars(
+            tuple(outputs),
+            program=structure.scalars,
+            fixed_parameters=structure.fixed_parameters,
+            anonymous_definitions=anonymous,
+            exact_outputs={
+                (name, power): LaurentExpression(expression).coefficient(power)
+                for aliases in whole_aliases.values()
+                for name, expression in aliases.items()
+                for power in _powers(expression)
+            },
+        )
+        # Scheme equality alone must not discard an active source diagnostic.
+        if color.scheme_parameter_values:
+            schemes = prepare_scalar_bindings(
+                raw,
+                tuple((name, 0) for name in color.scheme_parameter_values),
+                program=structure.scalars,
+                fixed_parameters=structure.fixed_parameters,
+            )
+            if any(value.diagnostic != 0 for value in schemes.expressions):
+                raise ValueError(
+                    "flavour scheme ties require inactive source diagnostics"
+                )
     resolved = dict(zip(binding.outputs, binding.expressions, strict=True))
 
     @cache
@@ -411,7 +561,7 @@ def prove_flavor_relabeling(
             "flavour permutation changes retained ordinary tensors or couplings"
         )
 
-    def native_rule_signature(model, name, aliases, permutation):
+    def native_rule_signature(model, name, aliases, permutation, whole=None):
         rule = model.vertex_rule(name)
         pdgs = tuple(model.particle(name).pdg_code for name in rule.particles)
         slots = []
@@ -419,15 +569,25 @@ def prove_flavor_relabeling(
             for lorentz_index, alias in enumerate(row):
                 if alias is None:
                     continue
-                entry = aliases.get(alias)
-                if entry is None:
-                    raise ValueError(
-                        "prepared native coupling lacks its source binding"
-                    )
                 coupling = model.coupling(alias)
-                if coupling.expression != entry.coupling.value.expression:
-                    raise ValueError(
-                        "prepared native coupling overrides its source binding"
+                if whole:
+                    if alias not in whole:
+                        raise ValueError(
+                            "whole-rule coupling lacks its owned coefficient"
+                        )
+                    value_signature = scalar(alias, _powers(whole[alias]))
+                else:
+                    entry = aliases.get(alias)
+                    if entry is None:
+                        raise ValueError(
+                            "prepared native coupling lacks its source binding"
+                        )
+                    if coupling.expression != entry.coupling.value.expression:
+                        raise ValueError(
+                            "prepared native coupling overrides its source binding"
+                        )
+                    value_signature = scalar(
+                        entry.coupling.name, _powers(entry.coupling.value.expression)
                     )
                 lorentz = model.lorentz_structure(
                     rule.lorentz_structures[lorentz_index]
@@ -439,11 +599,8 @@ def prove_flavor_relabeling(
                         resolve_native(rule.color_structures[color_index]),
                         tuple(lorentz.spins),
                         resolve_native(lorentz.structure),
-                        tuple(sorted(coupling.orders)),
-                        scalar(
-                            entry.coupling.name,
-                            _powers(entry.coupling.value.expression),
-                        ),
+                        tuple(sorted(coupling.orders.items())),
+                        value_signature,
                     )
                 )
         return tuple(permutation.get(pdg, pdg) for pdg in pdgs), tuple(slots)
@@ -466,6 +623,7 @@ def prove_flavor_relabeling(
             )
 
     def counterterm_signature(rule, permutation):
+        continuation = rule.whole_rule_continuation
         return (
             rule.kind,
             tuple(permutation.get(pdg, pdg) for pdg in rule.particle_pdgs),
@@ -473,9 +631,21 @@ def prove_flavor_relabeling(
             rule.perturbation_type,
             rule.vertex_spinor_frame,
             _alternatives(rule.alternatives, permutation),
+            None
+            if continuation is None
+            else (
+                continuation.scheme,
+                _canonical(continuation.nc),
+                _canonical(continuation.gauge_coupling),
+                continuation.contribution,
+            ),
             tuple(sorted(basis(entry) for entry in rule.entries)),
             native_rule_signature(
-                plan.counterterms.native, rule.name, dict(rule.couplings), permutation
+                plan.counterterms.native,
+                rule.name,
+                dict(rule.couplings),
+                permutation,
+                whole_aliases[rule.name],
             ),
         )
 
@@ -498,6 +668,16 @@ def prove_flavor_relabeling(
         parameter_values.append((S(f"UFO::{record['name']}"), value))
 
     def field_signature(rule, permutation):
+        if plan.source_color is not None:
+            return (
+                permutation.get(rule.pdg, rule.pdg),
+                rule.spin,
+                rule.color,
+                rule.correction,
+                rule.order,
+                _alternatives(rule.alternatives, permutation),
+                scalar(field_names[id(rule)], _powers(rule.coefficient.expression)),
+            )
         value, diagnostic = rule.coefficient.expression, rule.diagnostic
         for symbol, replacement in parameter_values:
             if (

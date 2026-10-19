@@ -116,6 +116,38 @@ def continuation(source):
     )
 
 
+def test_cold_formal_expressions_preserve_diagnostics_without_certifying_grading(
+    source,
+):
+    from dataclasses import replace
+
+    declared = continuation(source)
+    outputs = (("colour_error", 0),)
+    original = prepare_scalar_bindings(
+        source,
+        outputs,
+        program=declared.model.scalar_program,
+        semantic_parameters=declared.parameter_identities,
+    )
+    formal = declared.formal_scalars(outputs, program=declared.model.scalar_program)
+    assert formal.expressions == original.expressions
+    assert declared.nc in formal.expressions[0].diagnostic.get_all_symbols()
+    with pytest.raises(NotImplementedError, match="Nc-dependent active diagnostic"):
+        declared.scalars(outputs, program=declared.model.scalar_program)
+    changed = replace(
+        declared,
+        parameter_identities={
+            **declared.parameter_identities,
+            "CA": declared.nc + (declared.nc - 3),
+        },
+    )
+    other = changed.formal_scalars(outputs, program=declared.model.scalar_program)
+    assert formal.expressions[0].diagnostic != other.expressions[0].diagnostic
+    assert formal.expressions[0].diagnostic.replace(
+        declared.nc, 3
+    ) == other.expressions[0].diagnostic.replace(declared.nc, 3)
+
+
 def test_continuation_checks_all_ordinary_values_and_keeps_diagnostics(source):
     declared = continuation(source)
     ordinary = prepare_scalar_bindings(source, (("safe", 0), ("safeCA", 0)))

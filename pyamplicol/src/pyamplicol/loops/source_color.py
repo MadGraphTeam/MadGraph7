@@ -243,6 +243,33 @@ class SourceColorContinuation:
             exact_outputs=exact_outputs,
         )
 
+    def formal_scalars(
+        self,
+        outputs,
+        *,
+        program,
+        fixed_parameters=None,
+        anonymous_definitions=None,
+        exact_outputs=None,
+    ):
+        """Exact paired expressions for cold proofs, without an execution layout.
+
+        Diagnostics remain complete, including any symbolic Nc dependence.
+        Numerical colour execution must still use scalars and its grading gates.
+        """
+        if program.library.raw is not self.model.raw:
+            raise ValueError("formal colour and scalar source owners differ")
+        return prepare_source_color_formal(
+            self.model.raw,
+            outputs,
+            nc=self.nc,
+            parameter_identities=self.parameter_identities,
+            program=program,
+            fixed_parameters=fixed_parameters,
+            anonymous_definitions=anonymous_definitions,
+            exact_outputs=exact_outputs,
+        )
+
     def require_ordinary_scalars(self, plan):
         """Current ordinary currents require Nc-independent couplings and masses.
 
@@ -281,7 +308,7 @@ class SourceColorScalarPlan:
     columns: tuple[tuple[int, ...], ...]
 
 
-def prepare_source_color_scalars(
+def prepare_source_color_formal(
     raw,
     outputs,
     *,
@@ -403,6 +430,33 @@ def prepare_source_color_scalars(
                 ),
             ),
         )
+    return formal
+
+
+def prepare_source_color_scalars(
+    raw,
+    outputs,
+    *,
+    nc,
+    parameter_identities,
+    program=None,
+    fixed_parameters=None,
+    anonymous_definitions=None,
+    exact_outputs=None,
+):
+    """Prepare an executable colour grading from exact paired source expressions."""
+    from symbolica import E
+
+    formal = prepare_source_color_formal(
+        raw,
+        outputs,
+        nc=nc,
+        parameter_identities=parameter_identities,
+        program=program,
+        fixed_parameters=fixed_parameters,
+        anonymous_definitions=anonymous_definitions,
+        exact_outputs=exact_outputs,
+    )
     for output, expression in zip(formal.outputs, formal.expressions, strict=True):
         if nc in expression.diagnostic.get_all_symbols():
             raise NotImplementedError(

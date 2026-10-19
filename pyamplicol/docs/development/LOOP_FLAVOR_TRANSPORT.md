@@ -38,6 +38,35 @@ original exact source inputs. The independently generated member is an admission
 and validation input, not a second mutable numerical state consulted during
 mapped evaluation.
 
+## Formal-colour species prerequisite
+
+`RetainedFlavorPlan.source_color` optionally retains the actual
+`SourceColorContinuation`. Its cold proof requires every ordinary, UV/R2 and
+field rule in the retained request scope, including declared scheme ties and
+all Laurent powers. It compares exact formal values and active diagnostics;
+equality after substituting Nc=3 cannot establish the symmetry.
+
+Whole-rule R2 replacements retain their original complete UFO group and their
+separate native coefficient/tensor slots. The proof checks every alias, ordered
+port, coefficient, coupling power, tensor and source multiplicity against the
+owned replacement. It does not assume entrywise correspondence: the loop_sm
+four-gluon replacements have 28/29 original entries and 12/24 native terms.
+
+The source-colour `formal_scalars` API exposes the same checked paired source
+expressions before numerical grading. This lets the cold proof compare heavy
+counterterm diagnostics whose opaque source-helper arguments contain Nc. The
+existing `scalars` execution API still rejects unsupported Nc-dependent
+diagnostics and performs its unchanged colour grading. A cold symmetry proof is
+not a numerical grading certificate.
+
+The complete declared loop_sm QCD request model passes exact d/s symmetry over
+9 ordinary rules, 64 UV/R2 rules and 6 external-field rules. Independent tests
+reject altered replacement tensors/aliases/orders, unequal symbolic colour
+continuations with equal Nc=3 values, hidden positive-epsilon coefficients and
+different active diagnostics. Projected process transport remains a separate
+gate: actual common degrees, signed LC component axes and source catalogs must
+be proved for the independently generated members before public reuse.
+
 ## Saved artifacts and public selection
 
 For virtual generation, `process.flavor_blind = true` requests exact candidate
