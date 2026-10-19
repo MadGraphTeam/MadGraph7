@@ -39,6 +39,7 @@ def _directed(monkeypatch):
     def evaluate(points, scales, *, partial, r2_strategy, spin_vectors=None):
         calls.append((points, scales, partial, r2_strategy))
         return SimpleNamespace(
+            requested_point_ids=list(range(len(points))),
             point_ids=list(range(len(points))),
             r2_strategy="model",
             failures=handle.failures,

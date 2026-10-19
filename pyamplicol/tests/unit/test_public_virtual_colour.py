@@ -271,6 +271,7 @@ def _transport_backend(monkeypatch, accuracy="lc"):
     def evaluate(points, scales, *, resolved, r2_strategy):
         rows = len(points) * (2 * len(component_ids) if resolved else 1)
         return SimpleNamespace(
+            requested_point_ids=list(range(len(points))),
             point_ids=list(range(len(points))),
             r2_strategy="model",
             failures=handle.failures,

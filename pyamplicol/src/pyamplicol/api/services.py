@@ -587,6 +587,7 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
+        on_failure: Literal["raise", "return"] = "raise",
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         """Return tree values or a typed Born-loop interference result.
 
@@ -601,7 +602,11 @@ class Runtime:
         arbitrary precision. Virtual runtimes retain their loaded arithmetic
         and R2 defaults when omitted, and accept scalar or per-point positive
         ``mu_r2``; exact inputs are forwarded unchanged. An explicit ``stability``
-        policy enables native verification/subset rescue; omission adds no retries.
+        policy replaces the load-time verification/subset-rescue policy for this
+        call. With neither policy there are no hidden precision retries.
+        ``on_failure="return"`` retains numerical failures as ``None`` at their
+        original point positions, with typed diagnostics; the default raises.
+        Invalid inputs and unsupported capabilities still raise.
         """
 
         helicity_ids = _selector_ids(
@@ -636,7 +641,9 @@ class Runtime:
             else precision
         )
         contribution = self.contribution_kind
-        options = self._evaluation_options(arithmetic, mu_r2, r2_strategy, stability)
+        options = self._evaluation_options(
+            arithmetic, mu_r2, r2_strategy, stability, on_failure
+        )
         self._require_evaluation_options(self._backend.evaluate, options)
         if point_helicity_ids is None and point_color_ids is None:
             values = self._backend.evaluate(
@@ -686,9 +693,18 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None,
         r2_strategy: R2Strategy | str | None,
         stability: VirtualStabilityPolicy | None = None,
+        on_failure: Literal["raise", "return"] = "raise",
     ) -> dict[str, object]:
         """Forward explicit options without changing old backend call signatures."""
         options: dict[str, object] = {}
+        if on_failure not in {"raise", "return"}:
+            raise ValueError("on_failure must be 'raise' or 'return'")
+        if on_failure == "return":
+            if self.contribution_kind != "virtual":
+                raise CompatibilityError(
+                    "partial-value return requires a virtual runtime"
+                )
+            options["on_failure"] = on_failure
         if arithmetic is not None:
             if arithmetic not in {"double", "double-double", "arbitrary"}:
                 raise ValueError("unknown evaluation arithmetic")
@@ -802,6 +818,7 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
+        on_failure: Literal["raise", "return"] = "raise",
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         return self.evaluate(
             momenta,
@@ -812,6 +829,7 @@ class Runtime:
             mu_r2=mu_r2,
             r2_strategy=r2_strategy,
             stability=stability,
+            on_failure=on_failure,
         )
 
     def evaluate_resolved(
@@ -825,6 +843,7 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
+        on_failure: Literal["raise", "return"] = "raise",
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         """Return physical values resolved by helicity and color component.
 
@@ -833,6 +852,8 @@ class Runtime:
         For tree results, summing the non-point axes reproduces :meth:`evaluate`.
         Virtual results additionally retain squared-order and Laurent axes;
         their ``total()`` sums only the helicity and colour axes.
+        ``on_failure="return"`` preserves failed point entries and diagnostics
+        through that sum, as in :meth:`evaluate`.
         Omitted precision uses the runtime's load-time default, or 16 when the
         backend has no precision default, as in :meth:`evaluate`.
         """
@@ -843,7 +864,9 @@ class Runtime:
             else precision
         )
         contribution = self.contribution_kind
-        options = self._evaluation_options(arithmetic, mu_r2, r2_strategy, stability)
+        options = self._evaluation_options(
+            arithmetic, mu_r2, r2_strategy, stability, on_failure
+        )
         self._require_evaluation_options(self._backend.evaluate_resolved, options)
         result = self._backend.evaluate_resolved(
             momenta,
@@ -884,6 +907,7 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
+        on_failure: Literal["raise", "return"] = "raise",
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         return self.evaluate_resolved(
             momenta,
@@ -894,6 +918,7 @@ class Runtime:
             mu_r2=mu_r2,
             r2_strategy=r2_strategy,
             stability=stability,
+            on_failure=on_failure,
         )
 
     def _diagnostic_project_onshell(
@@ -1010,6 +1035,7 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
+        on_failure: Literal["raise", "return"] = "raise",
     ) -> tuple[_pyamplicol.CorrelatedValue, ...] | VirtualEvaluation:
         """Evaluate a generation-time colour ID with the current spin vectors.
 
@@ -1025,8 +1051,12 @@ class Runtime:
         (at most 31 output digits); tree defaults use arbitrary precision.
         Decimal spin inputs (including complex-component pairs) retain their
         digits until conversion into the requested arithmetic.
+        ``on_failure`` follows :meth:`evaluate`, preserving complex successful
+        values and unavailable whole-point entries.
         """
-        options = self._evaluation_options(arithmetic, mu_r2, r2_strategy, stability)
+        options = self._evaluation_options(
+            arithmetic, mu_r2, r2_strategy, stability, on_failure
+        )
         if self.contribution_kind == "virtual":
             operation = self._virtual_correlation_operation("evaluate_correlated")
             self._require_evaluation_options(operation, options)
@@ -1069,6 +1099,7 @@ class Runtime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
+        on_failure: Literal["raise", "return"] = "raise",
     ) -> (
         dict[str, tuple[_pyamplicol.CorrelatedValue, ...]]
         | dict[str, VirtualEvaluation]
@@ -1085,8 +1116,12 @@ class Runtime:
         and Laurent axes. Saved joint massless-gluon spin classes compose with
         those histories. Resolved-history output remains unavailable.
         Arithmetic and Decimal spin inputs follow :meth:`evaluate_correlated`.
+        With ``on_failure="return"``, distinct source assignments can have
+        different failure masks; every labelled result retains input positions.
         """
-        options = self._evaluation_options(arithmetic, mu_r2, r2_strategy, stability)
+        options = self._evaluation_options(
+            arithmetic, mu_r2, r2_strategy, stability, on_failure
+        )
         if self.contribution_kind == "virtual":
             operation = self._virtual_correlation_operation("evaluate_correlated_many")
             self._require_evaluation_options(operation, options)

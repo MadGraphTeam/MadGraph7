@@ -15,7 +15,7 @@ from decimal import Decimal, InvalidOperation
 from numbers import Integral, Real
 from pathlib import Path
 from threading import RLock
-from typing import Any, Literal, cast
+from typing import Any, Literal, TypeVar, cast
 
 from pyamplicol.api.errors import (
     ArtifactError,
@@ -82,7 +82,9 @@ def _verification_diagnostic(value: dict[str, Any]) -> VirtualVerificationDiagno
     )
 
 
-def _stability_input(policy: VirtualStabilityPolicy | None):
+def _stability_input(
+    policy: VirtualStabilityPolicy | None,
+) -> tuple[list[tuple[str, int | None]], str, str, bool] | None:
     if policy is None:
         return None
     if not isinstance(policy, VirtualStabilityPolicy):
@@ -224,6 +226,19 @@ def _rows(
     return tuple(
         tuple(values[start : start + width]) for start in range(0, len(values), width)
     )
+
+
+_PointValue = TypeVar("_PointValue")
+
+
+def _scatter_points(
+    values: tuple[_PointValue, ...], point_ids: tuple[int, ...], count: int
+) -> tuple[_PointValue | None, ...]:
+    """Assemble output positions; numerical execution remains one native batch."""
+    result: list[_PointValue | None] = [None] * count
+    for point, value in zip(point_ids, values, strict=True):
+        result[point] = value
+    return tuple(result)
 
 
 class VirtualRuntimeBackend:
@@ -606,6 +621,7 @@ class VirtualRuntimeBackend:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: str | None = None,
         stability: VirtualStabilityPolicy | None = None,
+        on_failure: Literal["raise", "return"] = "raise",
     ) -> VirtualEvaluation:
         return cast(
             VirtualEvaluation,
@@ -618,6 +634,7 @@ class VirtualRuntimeBackend:
                 mu_r2=mu_r2,
                 r2_strategy=r2_strategy,
                 stability=stability,
+                on_failure=on_failure,
                 resolved=False,
             ),
         )
@@ -633,10 +650,13 @@ class VirtualRuntimeBackend:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: str | None = None,
         stability: VirtualStabilityPolicy | None = None,
+        on_failure: Literal["raise", "return"] = "raise",
         resolved: bool,
         directed: bool = False,
         spin_vectors: dict[int, list[list[list[str]]]] | None = None,
     ) -> VirtualEvaluation | ResolvedVirtualEvaluation | dict[str, VirtualEvaluation]:
+        if on_failure not in {"raise", "return"}:
+            raise ValueError("on_failure must be 'raise' or 'return'")
         histories = self._saved_color_correlations() if directed else ()
         if directed and resolved:
             raise CompatibilityError("resolved directed virtual output is unavailable")
@@ -690,7 +710,7 @@ class VirtualRuntimeBackend:
                 if stability is None:
                     self._native = candidate
             verification: tuple[VirtualVerificationDiagnostic, ...] = ()
-            if effective_policy is None:
+            if policy_input is None:
                 result = _invoke(
                     self._module,
                     native.evaluate_directed if directed else native.evaluate_partial,
@@ -727,7 +747,9 @@ class VirtualRuntimeBackend:
                     _verification_diagnostic(x)
                     for x in json.loads(verified.diagnostics_json)
                 )
-                if tuple(x.point_id for x in verification) != tuple(range(len(points))):
+                if any(type(x.point_id) is not int for x in verification) or tuple(
+                    x.point_id for x in verification
+                ) != tuple(range(len(points))):
                     raise EvaluationError("native verification identities differ")
             failures = tuple(
                 VirtualFailureDiagnostic(
@@ -744,7 +766,7 @@ class VirtualRuntimeBackend:
                 )
                 for item in result.failures
             )
-            if failures:
+            if failures and on_failure == "raise":
                 failed_points = sorted({item.point_id for item in failures})
                 raise EvaluationError(
                     "unrecovered virtual numerical failures at points "
@@ -756,29 +778,50 @@ class VirtualRuntimeBackend:
                 )
             helicity_count = len(self._metadata["plan"]["helicities"])
             color_count = len(self._color_ids)
-            count = len(points) * (helicity_count * color_count if resolved else 1)
+            requested_ids = tuple(result.requested_point_ids)
+            successful_ids = tuple(result.point_ids)
+            successful = set(successful_ids)
+            failures_by_point: dict[int, list[VirtualFailureDiagnostic]] = {}
+            for failure in failures:
+                failures_by_point.setdefault(failure.point_id, []).append(failure)
             if (
-                list(result.point_ids) != list(range(len(points)))
+                any(type(point) is not int for point in requested_ids + successful_ids)
+                or requested_ids != tuple(range(len(points)))
+                or successful_ids
+                != tuple(point for point in requested_ids if point in successful)
+                or set(failures_by_point) != set(requested_ids) - successful
                 or result.r2_strategy != "model"
             ):
                 raise EvaluationError(
                     "native virtual result has inconsistent lane or strategy metadata"
                 )
+            if verification and any(
+                item.status
+                not in {"success", "rescued", "failed", "accuracy-not-established"}
+                or (item.status in {"success", "rescued"})
+                != (item.point_id in successful)
+                for item in verification
+            ):
+                raise EvaluationError("native verification acceptance differs")
+            rows_per_point = helicity_count * color_count if resolved else 1
+            count = len(successful_ids) * rows_per_point
+            if len(result.statuses) != count:
+                raise EvaluationError("native virtual reduction status count differs")
             failed = [
                 (
                     {
-                        "point": lane // (helicity_count * color_count),
+                        "point": successful_ids[lane // rows_per_point],
                         "helicity": f"h{lane // color_count % helicity_count}",
                         "color_component": self._color_ids[lane % color_count],
                     }
                     if resolved
-                    else {"point": lane},
+                    else {"point": successful_ids[lane]},
                     statuses,
                 )
                 for lane, statuses in enumerate(result.statuses)
                 if any(status != "success" for _, status in statuses)
             ]
-            if len(result.statuses) != count or failed:
+            if failed:
                 raise EvaluationError(
                     f"unrecovered virtual reduction failures: {failed}"
                 )
@@ -814,16 +857,23 @@ class VirtualRuntimeBackend:
             )
             diagnostics = tuple(
                 VirtualLaneDiagnostic(
-                    cast(Literal["success", "rescued"], verification[i].status)
+                    verification[i].status
                     if verification
-                    else "success",
+                    else "success"
+                    if i in successful
+                    else "failed",
                     cast(Literal["double", "double-double", "arbitrary"], arithmetic),
                     native.precision_bits,
                     verification[i].accuracy_established if verification else False,
                     verification[i].detail
                     if verification
-                    else "successful initial evaluation; accuracy not established",
+                    else (
+                        "successful initial evaluation; accuracy not established"
+                        if i in successful
+                        else "unrecovered virtual numerical failure"
+                    ),
                     verification[i] if verification else None,
+                    tuple(failures_by_point.get(i, ())),
                 )
                 for i in range(len(points))
             )
@@ -838,16 +888,27 @@ class VirtualRuntimeBackend:
                 self._last_requested = requested
                 return {
                     history.id: VirtualEvaluation(
-                        tuple(
-                            row[
-                                j * len(self._born_orders) : (j + 1)
-                                * len(self._born_orders)
-                            ]
-                            for row in born
+                        _scatter_points(
+                            tuple(
+                                row[
+                                    j * len(self._born_orders) : (j + 1)
+                                    * len(self._born_orders)
+                                ]
+                                for row in born
+                            ),
+                            successful_ids,
+                            len(points),
                         ),
-                        tuple(
-                            row[j * len(self._sectors) : (j + 1) * len(self._sectors)]
-                            for row in values
+                        _scatter_points(
+                            tuple(
+                                row[
+                                    j * len(self._sectors) : (j + 1)
+                                    * len(self._sectors)
+                                ]
+                                for row in values
+                            ),
+                            successful_ids,
+                            len(points),
                         ),
                         self._born_orders,
                         self._sectors,
@@ -861,35 +922,45 @@ class VirtualRuntimeBackend:
             if resolved:
                 output: VirtualEvaluation | ResolvedVirtualEvaluation = (
                     ResolvedVirtualEvaluation(
-                        tuple(
+                        _scatter_points(
                             tuple(
                                 tuple(
                                     tuple(
-                                        born[
-                                            (p * helicity_count + h) * color_count + c
-                                        ][order]
-                                        for c in range(color_count)
+                                        tuple(
+                                            born[
+                                                (p * helicity_count + h) * color_count
+                                                + c
+                                            ][order]
+                                            for c in range(color_count)
+                                        )
+                                        for h in range(helicity_count)
                                     )
-                                    for h in range(helicity_count)
+                                    for order in range(len(self._born_orders))
                                 )
-                                for order in range(len(self._born_orders))
-                            )
-                            for p in range(len(points))
+                                for p in range(len(successful_ids))
+                            ),
+                            successful_ids,
+                            len(points),
                         ),
-                        tuple(
+                        _scatter_points(
                             tuple(
                                 tuple(
                                     tuple(
-                                        values[
-                                            (p * helicity_count + h) * color_count + c
-                                        ][order]
-                                        for c in range(color_count)
+                                        tuple(
+                                            values[
+                                                (p * helicity_count + h) * color_count
+                                                + c
+                                            ][order]
+                                            for c in range(color_count)
+                                        )
+                                        for h in range(helicity_count)
                                     )
-                                    for h in range(helicity_count)
+                                    for order in range(len(self._sectors))
                                 )
-                                for order in range(len(self._sectors))
-                            )
-                            for p in range(len(points))
+                                for p in range(len(successful_ids))
+                            ),
+                            successful_ids,
+                            len(points),
                         ),
                         self._born_orders,
                         self._sectors,
@@ -903,8 +974,8 @@ class VirtualRuntimeBackend:
                 )
             else:
                 output = VirtualEvaluation(
-                    born,
-                    values,
+                    _scatter_points(born, successful_ids, len(points)),
+                    _scatter_points(values, successful_ids, len(points)),
                     self._born_orders,
                     self._sectors,
                     diagnostics,

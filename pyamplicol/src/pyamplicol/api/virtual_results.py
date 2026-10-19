@@ -156,15 +156,24 @@ class VirtualVerificationDiagnostic:
 class VirtualLaneDiagnostic:
     """Accuracy is explicit; a finite output is not an accuracy certificate."""
 
-    status: Literal["success", "rescued", "unsupported", "failed"]
+    status: Literal[
+        "success", "rescued", "unsupported", "failed", "accuracy-not-established"
+    ]
     arithmetic: Literal["double", "double-double", "arbitrary"]
     precision_bits: int
     accuracy_established: bool
     detail: str = ""
     verification: VirtualVerificationDiagnostic | None = None
+    failures: tuple[VirtualFailureDiagnostic, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.status not in {"success", "rescued", "unsupported", "failed"}:
+        if self.status not in {
+            "success",
+            "rescued",
+            "unsupported",
+            "failed",
+            "accuracy-not-established",
+        }:
             raise ValueError("unknown virtual lane status")
         if self.arithmetic not in {"double", "double-double", "arbitrary"}:
             raise ValueError("unknown virtual arithmetic")
@@ -181,6 +190,12 @@ class VirtualLaneDiagnostic:
             raise ValueError(f"{self.arithmetic} delivers {fixed_bits} precision bits")
         if not self.valid and self.accuracy_established:
             raise ValueError("a failed or unsupported lane cannot establish accuracy")
+        failures = tuple(self.failures)
+        if any(not isinstance(item, VirtualFailureDiagnostic) for item in failures):
+            raise TypeError("lane failures require VirtualFailureDiagnostic records")
+        if self.valid and failures:
+            raise ValueError("valid lanes cannot retain unrecovered failures")
+        object.__setattr__(self, "failures", failures)
 
     @property
     def valid(self) -> bool:
