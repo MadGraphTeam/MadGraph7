@@ -176,11 +176,9 @@ def test_tree_cli_keeps_legacy_load_and_evaluation_defaults(tmp_path, monkeypatc
     assert DefaultCliServices().evaluate(
         config, CallbackProgressSink(lambda _: None)
     ) == (1.0,)
-    assert calls["load"]["precision"] is None
-    assert calls["load"]["arithmetic"] is None
-    assert calls["load"]["r2_strategy"] is None
+    assert set(calls["load"]) == {"process", "model_parameters"}
     assert calls["evaluate"]["precision"] == 40
-    assert calls["evaluate"]["mu_r2"] is None
+    assert set(calls["evaluate"]) == {"precision", "helicities", "color_flows"}
 
 
 def test_virtual_scale_errors_and_nonfinite_json_are_explicit(tmp_path, monkeypatch):

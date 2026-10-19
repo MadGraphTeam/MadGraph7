@@ -6,12 +6,14 @@ import os
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from decimal import DecimalException
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar
 
 if TYPE_CHECKING:
+    from pyamplicol.api.virtual_results import VirtualStabilityPolicy
     from pyamplicol.models.loop_declaration import (
         LoopModelDeclaration,
         LoopSchemeDeclaration,
@@ -966,6 +968,69 @@ class EvaluatorConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class EvaluationStabilityConfig:
+    higher: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
+    relative_tolerance: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+    absolute_tolerance: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+    verify_successful: bool = field(default=False, metadata=_setting("bool"))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "higher",
+            _tuple_of_strings(self.higher, "evaluation.stability.higher"),
+        )
+        self.to_policy()
+
+    def to_policy(self) -> VirtualStabilityPolicy | None:
+        """Translate configuration text to the existing virtual policy contract."""
+        prefix = "evaluation.stability"
+        if type(self.verify_successful) is not bool:
+            raise ConfigurationError(f"{prefix}.verify_successful must be a boolean")
+        if not self.higher:
+            if (
+                self.relative_tolerance is not None
+                or self.absolute_tolerance is not None
+                or self.verify_successful
+            ):
+                raise ConfigurationError(f"{prefix} options require higher levels")
+            return None
+        if self.relative_tolerance is None or self.absolute_tolerance is None:
+            raise ConfigurationError(
+                f"{prefix} requires both relative_tolerance and absolute_tolerance"
+            )
+        from pyamplicol.api.virtual_results import (
+            VirtualArithmeticSpec,
+            VirtualStabilityPolicy,
+        )
+
+        levels = []
+        try:
+            for token in self.higher:
+                if token in ("double", "double-double"):
+                    levels.append(VirtualArithmeticSpec(token))
+                elif re.fullmatch(r"arbitrary:[0-9]+", token):
+                    levels.append(VirtualArithmeticSpec("arbitrary", int(token[10:])))
+                else:
+                    raise ValueError(
+                        f"invalid higher carrier {token!r}; use double, double-double "
+                        "or arbitrary:<positive decimal digits>"
+                    )
+            return VirtualStabilityPolicy(
+                tuple(levels),
+                self.relative_tolerance,
+                self.absolute_tolerance,
+                self.verify_successful,
+            )
+        except (TypeError, ValueError, DecimalException) as error:
+            raise ConfigurationError(f"{prefix}: {error}") from error
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluationConfig:
     artifact: Path | None = field(
         default=None, metadata=_setting("path", nullable=True)
@@ -983,6 +1048,12 @@ class EvaluationConfig:
         default=None, metadata=_setting("path", nullable=True)
     )
     resolved: bool = field(default=False, metadata=_setting("bool"))
+    on_failure: Literal["raise", "return"] = field(
+        default="raise", metadata=_setting("str", choices=("raise", "return"))
+    )
+    stability: EvaluationStabilityConfig = field(
+        default_factory=EvaluationStabilityConfig, metadata=_section()
+    )
     helicity_ids: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
     color_flow_ids: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
     model_parameters: Path | None = field(
@@ -1017,6 +1088,14 @@ class EvaluationConfig:
             )
         if not isinstance(self.resolved, bool):
             raise ConfigurationError("evaluation.resolved must be a boolean")
+        if self.on_failure not in ("raise", "return"):
+            raise ConfigurationError(
+                "evaluation.on_failure must be 'raise' or 'return'"
+            )
+        if not isinstance(self.stability, EvaluationStabilityConfig):
+            raise ConfigurationError(
+                "evaluation.stability must be an EvaluationStabilityConfig"
+            )
         object.__setattr__(
             self,
             "helicity_ids",

@@ -436,10 +436,37 @@ high-precision values are decimal strings. Neither format silently sums orders
 or divides by the Born result. A successful lane can still report
 `accuracy_established: false`.
 
-The current saved source-artifact path supports inclusive full colour and model
-$R_2$ plus UV. Resolved output, selectors, correlations and rescue remain separate
-integration requirements and fail explicitly when requested. Only strategies
-present in the artifact may be selected; `auto` currently resolves to `model`.
+For configured numerical verification and rescue, name each higher carrier and
+both exact agreement tolerances:
+
+```console
+pyamplicol evaluate artifacts/virtual --momenta points.json --mu-r2 1000000 \
+  --arithmetic double --stability-higher arbitrary:60 \
+  --stability-higher arbitrary:80 --stability-relative-tolerance 1e-8 \
+  --stability-absolute-tolerance 1e-20 --on-failure return --json
+```
+
+The policy applies before model parameter binding, so a numerical source-binding
+failure can also be rescued. Higher levels are ordered explicit `double`,
+`double-double` or `arbitrary:DIGITS` specifications; the native runtime checks
+that actual precision increases from the requested carrier. Rescue requires two
+successful complete results and agreement after conversion to the requested
+output arithmetic. Add `--verify-successful` to also check initially successful
+points; `--no-verify-successful` overrides that setting in a card. No policy is
+enabled by default, and incomplete policy settings are errors.
+
+`--on-failure raise` is the default. `--on-failure return` preserves successful
+points and returns an unavailable whole-point row for each unrecovered numerical
+failure: `null` in JSON, with its failure and verification diagnostics. An actual
+zero remains a numerical zero. Malformed inputs and unsupported capabilities
+remain errors. Both inclusive and `--resolved` evaluation use these options;
+resolved axes follow the artifact's retained layout. The policy and failure
+options require virtual evaluation and are rejected on other commands, including
+`profile`; configuration inspection can still display them.
+
+Only strategies and observables present in the artifact may be selected. This
+CLI path covers ordinary and resolved evaluation; directed/grouped correlation
+commands remain a separate integration requirement.
 
 ## Profile
 

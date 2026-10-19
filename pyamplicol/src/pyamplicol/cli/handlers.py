@@ -69,6 +69,13 @@ def dispatch(
 ) -> object:
     """Dispatch a typed config without importing a concrete domain backend."""
 
+    if config.action != "evaluate" and (
+        config.evaluation.stability.higher or config.evaluation.on_failure != "raise"
+    ):
+        raise ConfigurationError(
+            "evaluation.stability and evaluation.on_failure options "
+            "require the evaluate action"
+        )
     if config.action == "generate":
         return (
             services.plan(config, progress)
@@ -394,14 +401,18 @@ class DefaultCliServices:
         artifact = config.evaluation.artifact
         virtual = _virtual_artifact_hint(artifact)
         evaluation = config.evaluation
+        stability = evaluation.stability.to_policy()
         if not virtual and (
             evaluation.arithmetic is not None
             or evaluation.mu_r2 is not None
             or evaluation.mu_r2_file is not None
             or config.loop.r2_strategy != "auto"
+            or stability is not None
+            or evaluation.on_failure != "raise"
         ):
             raise ConfigurationError(
-                "arithmetic, mu_r2 and r2_strategy options require a virtual artifact; "
+                "arithmetic, mu_r2, r2_strategy, stability and on_failure options "
+                "require a virtual artifact; "
                 "tree precision is selected with --precision"
             )
         parameters: ModelParameters | None = None
@@ -432,9 +443,16 @@ class DefaultCliServices:
                 artifact,
                 process=config.evaluation.process,
                 model_parameters=parameters,
-                arithmetic=evaluation.arithmetic if virtual else None,
-                precision=evaluation.precision if virtual else None,
-                r2_strategy=config.loop.r2_strategy if virtual else None,
+                **(
+                    {
+                        "arithmetic": evaluation.arithmetic,
+                        "precision": evaluation.precision,
+                        "r2_strategy": config.loop.r2_strategy,
+                        "stability": stability,
+                    }
+                    if virtual
+                    else {}
+                ),
             ),
         )
         operation = (
@@ -445,7 +463,11 @@ class DefaultCliServices:
             precision=evaluation.precision,
             helicities=evaluation.helicity_ids or None,
             color_flows=evaluation.color_flow_ids or None,
-            mu_r2=scales if virtual else None,
+            **(
+                {"mu_r2": scales, "on_failure": evaluation.on_failure}
+                if virtual
+                else {}
+            ),
         )
 
     def benchmark(self, config: RunConfig, progress: ProgressSink) -> object:

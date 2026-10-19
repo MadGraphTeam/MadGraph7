@@ -557,6 +557,49 @@ def _add_evaluation_options(
     if include_artifact:
         parser.add_argument("artifact", type=Path, nargs="?", default=None)
     parser.add_argument(
+        "--on-failure",
+        dest="evaluation.on_failure",
+        choices=("raise", "return"),
+        default=argparse.SUPPRESS,
+        help=(
+            "virtual numerical failures: raise or return unavailable rows "
+            "with diagnostics"
+        ),
+    )
+    parser.add_argument(
+        "--stability-higher",
+        dest="evaluation.stability.higher",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="CARRIER",
+        help=(
+            "ordered rescue level: double, double-double or arbitrary:DIGITS; "
+            "repeat for each level"
+        ),
+    )
+    parser.add_argument(
+        "--stability-relative-tolerance",
+        dest="evaluation.stability.relative_tolerance",
+        default=argparse.SUPPRESS,
+        metavar="EXACT_VALUE",
+    )
+    parser.add_argument(
+        "--stability-absolute-tolerance",
+        dest="evaluation.stability.absolute_tolerance",
+        default=argparse.SUPPRESS,
+        metavar="EXACT_VALUE",
+    )
+    parser.add_argument(
+        "--verify-successful",
+        dest="evaluation.stability.verify_successful",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "also compare initially successful virtual results across "
+            "configured precisions"
+        ),
+    )
+    parser.add_argument(
         "--process",
         dest="evaluation.process",
         default=argparse.SUPPRESS,

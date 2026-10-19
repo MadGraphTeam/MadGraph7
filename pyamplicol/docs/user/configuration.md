@@ -481,6 +481,38 @@ JSON entries. No `[process].loop_coupling_orders` declaration is needed to load
 an existing virtual artifact. See [virtual CLI evaluation](command-line-interface.md#saved-virtual-artifacts)
 for output shapes and currently available features.
 
+Optional virtual verification and partial numerical returns use the same policy
+as the Python runtime:
+
+```toml
+[evaluation]
+artifact = "artifacts/virtual"
+momenta = "data/points.json"
+arithmetic = "double"
+mu_r2 = "1000000"
+on_failure = "return"         # default: "raise"
+
+[evaluation.stability]
+higher = ["arbitrary:60", "arbitrary:80"]
+relative_tolerance = "1e-8"
+absolute_tolerance = "1e-20"
+verify_successful = false
+```
+
+The policy is bound before the model parameters. `higher` is an ordered list of
+`double`, `double-double`, or `arbitrary:DIGITS`; only arbitrary arithmetic takes
+a digit suffix. Quote both tolerance strings to preserve their exact values.
+Higher levels require both tolerances, and policy fields without higher levels
+are rejected. Native admission checks increasing actual precision; configuration
+does not infer a carrier from a digit count.
+
+The default empty `[evaluation.stability]` enables no verification or rescue.
+With `on_failure = "return"`, numerical failures become unavailable whole-point
+rows with diagnostics (`null` in JSON); valid zero values remain zero. Invalid
+inputs and unsupported features still raise errors. These settings apply only to
+virtual `evaluate`, including resolved output, and are not silently used by
+profiling or generation.
+
 The model-parameter card is a flat JSON object:
 
 ```json
