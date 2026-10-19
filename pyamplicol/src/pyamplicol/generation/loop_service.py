@@ -76,11 +76,6 @@ def _feature_blockers(backend, processes):
             "public source-model generation currently supports model R2 rules; "
             "direct R2 is unavailable"
         )
-    if run.generation.emit_api_bundle:
-        reasons.append(
-            "virtual SDK bundles are not integrated; set "
-            "generation.emit_api_bundle=false for the Python/shared native runtime"
-        )
     if run.generation.relation_discovery.mode != "off":
         reasons.append(
             "tree numerical current relation discovery "
@@ -289,7 +284,7 @@ def _plan_result(backend, processes, blockers, *, context=None, coverage=()):
             else None,
             "correlations": False,
             "resolved": True,
-            "api_bundle": False,
+            "api_bundle": True,
             "process_count": len(coverage),
             "processes": tuple(coverage),
             "model_declaration": context.declaration.to_dict() if context else None,

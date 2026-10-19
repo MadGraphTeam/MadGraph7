@@ -13,8 +13,8 @@ helicities, and JIT coefficient kernels. Double, DoubleFloat and arbitrary
 precision use the saved exact source expressions. Full colour needs no formal
 continuation. LC/NLC requests require explicit source colour data in the model
 bundle, as described in `LOOP_SOURCE_COLOR_DATA.md`; missing coverage fails.
-Rectangular FFT, correlations, flavour aliases and automatic generation of
-standalone virtual SDK bundles remain separate integration work. The compiler has no
+Rectangular FFT, correlations and flavour aliases remain separate integration
+work. The compiler has no
 process-name dispatch or artificial multiplicity limit; actual tensor, scalar,
 rank and reducer domain checks can still reject a request.
 
@@ -68,7 +68,7 @@ model_convention = "loop_sm lhv=1 supplied QCD rules"
 
 [generation]
 output = "artifacts/dy-virtual"
-emit_api_bundle = false
+emit_api_bundle = true
 
 [generation.validation]
 post_build_validation = true
@@ -121,6 +121,17 @@ three Laurent coefficients.
 Use decimal strings or decimal values for exact high-precision inputs. Runtime
 load chooses the arithmetic before binding parameter overrides. Omitting explicit
 arithmetic retains the runtime's configured defaults.
+
+With `generation.emit_api_bundle=true`, the same transaction publishes examples
+for Python, C, C++, Fortran, Rust and the explicitly versioned pyAmpliCol virtual
+UMAMI extension under `API/`. They use the ordinary installed SDK and one native
+bulk evaluation. Run a native example with `make run ARGS='dy 1000000 resolved'`
+from its language directory; Python accepts `--resolved` instead. The scale is
+always supplied at evaluation. Every example retains coupling-order catalogues,
+all three Laurent coefficients and lane diagnostics. Resolved signed components
+are not sampling weights. See the emitted `API/README.md` for exact-input and
+explicit verification options. Tree UMAMI provider headers are not generated for
+virtual artifacts.
 
 ## Source preparation and declarations
 

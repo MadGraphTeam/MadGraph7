@@ -968,7 +968,6 @@ def write_schema_v3_artifact(
     existing = load_manifest(output) if mode == "append" else None
     if existing is not None:
         _reject_legacy_eager_append(existing)
-    hook = api_bundle_hook or _default_api_bundle_hook()
     requested_config = _config_payload(configuration.requested)
     effective_config = _config_payload(configuration.effective)
     bundle_requested = _bundle_requested(configuration.effective)
@@ -976,6 +975,9 @@ def write_schema_v3_artifact(
         process for process in processes if isinstance(process, LoopProcessArtifact)
     )
     has_loop = bool(loop_processes)
+    hook = api_bundle_hook or _default_api_bundle_hook(
+        contribution_kind="virtual" if has_loop else "tree"
+    )
     if has_loop and len(loop_processes) != len(processes):
         raise ValueError("tree and virtual processes cannot share an artifact yet")
     if existing is not None:
@@ -999,10 +1001,9 @@ def write_schema_v3_artifact(
                 )
                 if physics.get("metadata", {}).get("scheme") != asdict(scheme):
                     raise ValueError("loop append requires the same declared scheme")
-        if bundle_requested or process_groups is not None:
+        if process_groups is not None:
             raise ValueError(
-                "loop artifact API bundles and process-group mappings "
-                "are not admitted yet"
+                "loop artifact process-group mappings are not admitted yet"
             )
     existing_bundle = _existing_bundle_path(existing)
     can_emit_bundle = hook is not None or existing_bundle is not None
@@ -1278,7 +1279,9 @@ def write_schema_v3_artifact(
         )
         if payload_hook is not None:
             extensions.update(payload_hook(builder))
-        if bundle_requested and hook is not None:
+        if bundle_requested and hook is not None and not has_loop:
+            # Virtual templates call the versioned SDK bulk extension directly.
+            # Standard tree UMAMI provider headers assume positive flow weights.
             _write_umami_bundle(
                 builder,
                 processes=processes,
@@ -5421,12 +5424,16 @@ def _extensions(
     return result
 
 
-def _default_api_bundle_hook() -> ApiBundleHook | None:
+def _default_api_bundle_hook(
+    *, contribution_kind: Literal["tree", "virtual"] = "tree"
+) -> ApiBundleHook | None:
     try:
         from pyamplicol.artifacts.api_bundle import emit_api_bundle
     except ImportError:
         return None
-    return cast("ApiBundleHook", emit_api_bundle)
+    return lambda builder, points: emit_api_bundle(
+        builder, points, contribution_kind=contribution_kind
+    )
 
 
 def _call_api_bundle_hook(
