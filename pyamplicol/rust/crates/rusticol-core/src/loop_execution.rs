@@ -873,7 +873,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 .iter()
                 .chain(input.spin_sources.values().flatten().flatten())
             {
-                crate::source_scalar::decimal_rational(value).map_err(invalid)?;
+                crate::source_scalar::decimal_rational(value).map_err(|error| invalid(&error))?;
             }
             if points != 0 {
                 return Err(LoopStepError::Numerical(
