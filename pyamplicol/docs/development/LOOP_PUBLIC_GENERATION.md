@@ -8,10 +8,10 @@ publish source-owned loop PACBIN instructions in the ordinary transactional
 artifact. `Runtime.load` reads that artifact through its checked native loader;
 Python does not reconstruct the graphs or run a second numerical implementation.
 
-The currently published lane is full colour, inclusive helicities, model-supplied
-R2 plus UV, with JIT coefficient kernels. Double, DoubleFloat and arbitrary
-precision use the saved exact source expressions. Public LC/NLC publication,
-rectangular FFT, correlations, flavour aliases, resolved output and standalone
+The currently published lane is full colour, inclusive or resolved helicities,
+model-supplied R2 plus UV, with JIT coefficient kernels. Double, DoubleFloat and
+arbitrary precision use the saved exact source expressions. Public LC/NLC publication,
+rectangular FFT, correlations, flavour aliases and standalone
 virtual SDK bundles remain separate integration work. The compiler has no
 process-name dispatch or artificial multiplicity limit; actual tensor, scalar,
 rank and reducer domain checks can still reject a request.
@@ -105,7 +105,15 @@ runtime = Runtime.load(artifact.output, arithmetic="arbitrary", precision=70)
 values = runtime.evaluate(points, mu_r2="1000000")
 print(values.finite, values.single_pole, values.double_pole)
 print(values.sectors)  # squared coupling orders and contributing Born/loop pairs
+resolved = runtime.evaluate_resolved(points, mu_r2="1000000")
+print(resolved.total().finite)  # sum helicities; preserve orders and poles
 ```
+
+Resolved output carries the physical helicity axis and one contracted full-colour
+component named `full`. Every helicity keeps the incoming spin average from the
+inclusive result. Components are signed Born–loop interferences; they are not
+probabilities. Summing helicities and colour preserves each squared order and all
+three Laurent coefficients.
 
 Use decimal strings or decimal values for exact high-precision inputs. Runtime
 load chooses the arithmetic before binding parameter overrides. Omitting explicit

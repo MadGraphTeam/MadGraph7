@@ -181,6 +181,7 @@ def write_loop_pacbin(program, destination, *, resolved=False):
         bare._make_born_projector(
             (bare.born_metric,),
             helicities=bare.helicities[:1],
+            real_result=True,
             _record_name="helicity_born_projector",
         )
         family_projectors = []

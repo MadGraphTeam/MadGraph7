@@ -244,7 +244,7 @@ def _plan_result(backend, processes, blockers, *, context=None, coverage=()):
             "epsilon_powers": (0, -1, -2),
             "color_accuracy": "full",
             "correlations": False,
-            "resolved": False,
+            "resolved": True,
             "api_bundle": False,
             "process_count": len(coverage),
             "processes": tuple(coverage),
@@ -326,7 +326,7 @@ def generate_loop_artifact(
                         coefficient_engine="jit",
                     )
                     path = Path(temporary) / f"{entry.request.name}.pacbin"
-                    write_loop_pacbin(program.virtual, path)
+                    write_loop_pacbin(program.virtual, path, resolved=True)
                     validation = backend._generation_config.validation
                     point = build_process_validation_point(
                         entry.process_ir,
@@ -351,6 +351,7 @@ def generate_loop_artifact(
                                 available_r2_strategies=("model",),
                                 arithmetic=("double", "double-double", "arbitrary"),
                                 source_owned=True,
+                                resolved=True,
                             ),
                             validation_point=point,
                             generation_filters={

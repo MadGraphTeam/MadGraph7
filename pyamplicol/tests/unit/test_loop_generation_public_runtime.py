@@ -4,6 +4,7 @@
 import io
 import json
 import os
+from decimal import Decimal, localcontext
 
 import pytest
 
@@ -80,6 +81,7 @@ def test_real_public_virtual_cli_plan_never_compiles_numerators(
     assert code == 0, stderr.getvalue()
     plan = json.loads(stdout.getvalue())
     assert plan["unsupported_features"] == []
+    assert plan["estimated_coverage"]["resolved"] is True
     assert not output.exists()
     processes = plan["estimated_coverage"]["processes"]
     assert {row["key"] for row in processes} == {"dy", "gg"}
@@ -164,3 +166,44 @@ def test_real_public_generation_roundtrips_two_processes_and_cli(public_request)
             assert tuple(
                 float(value) for value in values.values[0][0]
             ) == pytest.approx(records[process_id].values[0][0], rel=1e-9, abs=1e-14)
+
+
+def test_real_public_generation_publishes_resolved_drell_yan(public_request):
+    from pyamplicol.api.virtual_results import ResolvedVirtualEvaluation
+
+    card, output = public_request
+    process = ProcessSet((ProcessRequest.parse("u u~ > e- e+", name="dy"),))
+    result = Generator(resolve_config(card)).generate(process, output)
+    assert len(result.processes.requests) == 1
+    point = [
+        [500, 0, 0, 500],
+        [500, 0, 0, -500],
+        [500, 300, 0, 400],
+        [500, -300, 0, -400],
+    ]
+    for arithmetic, precision, tolerance in (
+        ("double", 16, "3e-11"),
+        ("double-double", 32, "3e-25"),
+        ("arbitrary", 70, "1e-58"),
+    ):
+        runtime = Runtime.load(
+            output, arithmetic=arithmetic, precision=precision, process="dy"
+        )
+        assert runtime.inspect()["resolved"] is True
+        inclusive = runtime.evaluate([point], mu_r2="1000000")
+        resolved = runtime.evaluate_resolved([point], mu_r2="1000000")
+        assert isinstance(resolved, ResolvedVirtualEvaluation)
+        assert resolved.shape == (1, 1, 16, 1, 3)
+        assert resolved.born_shape == (1, 1, 16, 1)
+        assert resolved.virtual_color_ids == resolved.born_color_ids == ("full",)
+        total = resolved.total()
+        with localcontext() as context:
+            context.prec = 100
+            for a, b in zip(
+                (total.born_values[0][0], *total.values[0][0]),
+                (inclusive.born_values[0][0], *inclusive.values[0][0]),
+                strict=True,
+            ):
+                assert abs(Decimal(a) - Decimal(b)) <= Decimal(tolerance) * max(
+                    abs(Decimal(b)), Decimal("1")
+                )
