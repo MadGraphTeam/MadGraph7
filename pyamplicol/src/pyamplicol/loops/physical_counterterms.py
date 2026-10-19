@@ -295,6 +295,17 @@ class NativeModelVirtualProgram:
                     for item in external_fields
                 )
                 source_color.require_ordinary_scalars(source_state.plan)
+                source_color.require_whole_rules(
+                    (item.rule for item in self.insertions), source_state.plan
+                )
+            elif any(
+                item.rule.whole_rule_continuation is not None
+                for item in self.insertions
+            ):
+                raise ValueError(
+                    "whole-rule source coefficients require their explicit "
+                    "colour continuation"
+                )
 
             from types import SimpleNamespace
 
@@ -357,6 +368,14 @@ class NativeModelVirtualProgram:
                         for power in (0, -1, -2)
                     }
                     | {(name, power) for name in anonymous for power in (0, -1, -2)}
+                    | {
+                        (name, 0)
+                        for name in (
+                            source_color.scheme_parameter_values
+                            if source_color is not None
+                            else ()
+                        )
+                    }
                 )
             )
             scalar_options = dict(
@@ -368,11 +387,21 @@ class NativeModelVirtualProgram:
                 plan = prepare_scalar_bindings(raw, outputs, **scalar_options)
                 source_expressions = plan
             else:
-                source_color_scalars = source_color.scalars(outputs, **scalar_options)
+                exact_outputs = {
+                    (name, power): value if power == 0 else E("0")
+                    for item in self.insertions
+                    for name, value in item.rule.native_coefficients
+                    for power in (0, -1, -2)
+                }
+                source_color_scalars = source_color.scalars(
+                    outputs, exact_outputs=exact_outputs, **scalar_options
+                )
                 plan = source_color_scalars.coefficients
                 source_expressions = source_color_scalars.formal
             self.source_scale_view = NativeScaleBindings(source_state, plan)
-            source_positions = {output: index for index, output in enumerate(outputs)}
+            source_positions = {
+                output: index for index, output in enumerate(source_expressions.outputs)
+            }
         elif any(item.rule.vertex_spinor_frame is not None for item in self.insertions):
             raise ValueError("source/native counterterm vertex frames differ")
         if source_color is not None and source_color_scalars is None:
@@ -431,7 +460,7 @@ class NativeModelVirtualProgram:
             )
             if space is not None:
                 scalar_alias_incidence(
-                    dag, recurrence.final_nodes, rule.coupling_symbols
+                    dag, recurrence.final_nodes, rule.active_coupling_symbols
                 )
             if space is None:
                 weights = tuple(
@@ -456,8 +485,12 @@ class NativeModelVirtualProgram:
             for power in (0, -1, -2):
                 columns = (
                     tuple(
-                        source_positions[entry.coupling.name, power]
-                        for _, entry in insertion.rule.couplings
+                        source_positions[name, power]
+                        for name in (
+                            (name for name, _ in rule.native_coefficients)
+                            if rule.whole_rule_continuation is not None
+                            else (entry.coupling.name for _, entry in rule.couplings)
+                        )
                     )
                     if self.source_scale_view is not None
                     else ()
@@ -465,7 +498,7 @@ class NativeModelVirtualProgram:
                 substitutions = (
                     tuple(
                         zip(
-                            insertion.rule.coupling_symbols,
+                            insertion.rule.active_coupling_symbols,
                             (
                                 source_expressions.expressions[index]
                                 for index in columns
@@ -530,7 +563,7 @@ class NativeModelVirtualProgram:
                         else scalar_grade_term_mask(
                             dag,
                             recurrence.final_nodes,
-                            rule.coupling_symbols,
+                            rule.active_coupling_symbols,
                             coefficients,
                         )
                     )

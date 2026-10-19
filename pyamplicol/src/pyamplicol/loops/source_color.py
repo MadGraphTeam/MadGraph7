@@ -8,7 +8,7 @@ particular, fixed-SU3 effective tensors need their own model-supplied extension.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Any
 
@@ -36,6 +36,8 @@ class SourceColorContinuation:
     kernel_keys: frozenset[tuple[Any, ...]]
     field_keys: frozenset[tuple[int, str, int]]
     scheme: LoopSchemeDeclaration
+    whole_rule_continuations: tuple[Any, ...] = ()
+    scheme_parameter_values: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         from symbolica import AtomType, Expression
@@ -70,6 +72,85 @@ class SourceColorContinuation:
             "parameter_identities",
             MappingProxyType(dict(self.parameter_identities)),
         )
+        from .qcd_r2_color import QCDR2Continuation
+
+        continuations = tuple(self.whole_rule_continuations)
+        if any(not isinstance(item, QCDR2Continuation) for item in continuations):
+            raise TypeError(
+                "whole-rule colour continuation requires checked model input"
+            )
+        if len({item.key for item in continuations}) != len(continuations):
+            raise ValueError("duplicate whole-rule colour continuation")
+        for item in continuations:
+            if (
+                item.nc != self.nc
+                or item.scheme != self.scheme.dimensional_regularization
+            ):
+                raise ValueError(
+                    "whole-rule colour continuation and declared Nc/scheme differ"
+                )
+            if any(
+                not any(entry is owned for owned in self.model.kernels)
+                for entry in item.source_entries
+            ):
+                raise ValueError(
+                    "whole-rule colour continuation belongs to another source"
+                )
+        if not isinstance(self.scheme_parameter_values, Mapping):
+            raise TypeError("scheme parameter ties require a mapping")
+        object.__setattr__(self, "whole_rule_continuations", continuations)
+        object.__setattr__(
+            self,
+            "scheme_parameter_values",
+            MappingProxyType(dict(self.scheme_parameter_values)),
+        )
+
+    def require_whole_rules(self, rules, scalar_plan):
+        """Check actual applied rules and structural scheme ties before projection."""
+        for rule in rules:
+            actual = rule.whole_rule_continuation
+            expected = next(
+                (
+                    item
+                    for item in self.whole_rule_continuations
+                    if item.key
+                    == (
+                        rule.entries[0].collection,
+                        rule.entries[0].vertex_id,
+                        rule.entries[0].loop_group_index,
+                        rule.order,
+                    )
+                ),
+                None,
+            )
+            if actual is not expected:
+                raise ValueError(
+                    "prepared counterterm and declared whole-rule continuation differ"
+                )
+        if not self.scheme_parameter_values:
+            return
+        from .exact import require_exact_numbers
+
+        original = prepare_scalar_bindings(
+            self.model.raw,
+            tuple((name, 0) for name in self.scheme_parameter_values),
+            program=scalar_plan.program,
+            fixed_parameters=scalar_plan.fixed_parameters,
+        )
+        parameters = {p["name"] for p in self.model.raw.collections["parameters"]}
+        for (name, expected), expression in zip(
+            self.scheme_parameter_values.items(), original.expressions, strict=True
+        ):
+            if name not in parameters:
+                raise ValueError("scheme ties require ordinary source parameters")
+            require_exact_numbers(expected)
+            if expected.get_all_symbols(False):
+                raise ValueError("scheme parameter ties must be exact constants")
+            if (expression.value - expected).together().expand() != 0:
+                raise ValueError(
+                    f"scheme parameter {name!r} must remain fixed at {expected}; "
+                    "use the shared source fixed_parameters for an external tie"
+                )
 
     def require_kernels(self, keys):
         for key in keys:
@@ -98,8 +179,7 @@ class SourceColorContinuation:
         selected = tuple(
             entry
             for entry in self.model.kernels
-            if entry.kind == "tree"
-            and (entry.vertex_name, entry.order) in rules
+            if entry.kind == "tree" and (entry.vertex_name, entry.order) in rules
         )
         missing = rules - {(entry.vertex_name, entry.order) for entry in selected}
         if missing:
@@ -138,7 +218,13 @@ class SourceColorContinuation:
         )
 
     def scalars(
-        self, outputs, *, program, fixed_parameters=None, anonymous_definitions=None
+        self,
+        outputs,
+        *,
+        program,
+        fixed_parameters=None,
+        anonymous_definitions=None,
+        exact_outputs=None,
     ):
         if program.library.raw is not self.model.raw:
             raise ValueError("formal colour and scalar source owners differ")
@@ -150,6 +236,7 @@ class SourceColorContinuation:
             program=program,
             fixed_parameters=fixed_parameters,
             anonymous_definitions=anonymous_definitions,
+            exact_outputs=exact_outputs,
         )
 
     def require_ordinary_scalars(self, plan):
@@ -199,6 +286,7 @@ def prepare_source_color_scalars(
     program=None,
     fixed_parameters=None,
     anonymous_definitions=None,
+    exact_outputs=None,
 ):
     """Retain explicit named invariants before recursive scalar substitution.
 
@@ -208,13 +296,55 @@ def prepare_source_color_scalars(
     Diagnostics and helper ownership are preserved, never algebraically
     interpreted as colour powers or dropped when a value coefficient vanishes.
     """
-    from symbolica import AtomType, E, Expression
+    from symbolica import AtomType, E, Expression, Replacement, S
 
     if not isinstance(nc, Expression) or nc.get_type() != AtomType.Var:
         raise TypeError("Nc must be an exact symbolic variable")
     if not isinstance(parameter_identities, Mapping):
         raise TypeError("semantic colour identities require a mapping")
     identities = dict(parameter_identities)
+    outputs = tuple(outputs)
+    if exact_outputs is not None and not isinstance(exact_outputs, Mapping):
+        raise TypeError("prepared scalar outputs require an exact-expression mapping")
+    exact_outputs = dict(exact_outputs or {})
+    source_symbols = {
+        S(f"UFO::{record['name']}"): record["name"]
+        for record in raw.collections["parameters"]
+    }
+    source_names = {
+        record["name"]
+        for collection in ("parameters", "counterterm_parameters", "couplings")
+        for record in raw.collections[collection]
+    }
+    from .exact import require_exact_numbers
+
+    dependencies = set()
+    for output, expression in exact_outputs.items():
+        if (
+            not isinstance(output, tuple)
+            or len(output) != 2
+            or not isinstance(output[0], str)
+            or not output[0]
+            or type(output[1]) is not int
+            or output in outputs
+            or output[0] in source_names
+        ):
+            raise ValueError(
+                "prepared scalar outputs require distinct name/power pairs"
+            )
+        require_exact_numbers(expression)
+        symbols = set(expression.get_all_symbols(False))
+        unknown = symbols - {nc, S("symbolica::pi")} - source_symbols.keys()
+        if unknown:
+            raise ValueError(
+                "prepared scalar coefficient has unbound symbols: " + repr(unknown)
+            )
+        dependencies.update(
+            source_symbols[symbol] for symbol in symbols & source_symbols.keys()
+        )
+    outputs = tuple(
+        dict.fromkeys((*outputs, *((name, 0) for name in sorted(dependencies))))
+    )
     formal = prepare_scalar_bindings(
         raw,
         outputs,
@@ -250,6 +380,25 @@ def prepare_source_color_scalars(
                 raise ValueError(
                     f"semantic colour identity for {name!r} differs from source at Nc=3"
                 )
+    if exact_outputs:
+        resolved = dict(zip(formal.outputs, formal.expressions, strict=True))
+        substitutions = [
+            Replacement(S(f"UFO::{name}"), resolved[name, 0].value)
+            for name in dependencies
+        ]
+        # Every referenced source output remains in the same evaluated plan,
+        # carrying its original diagnostic independently of the new value.
+        formal = replace(
+            formal,
+            outputs=(*formal.outputs, *exact_outputs),
+            expressions=(
+                *formal.expressions,
+                *(
+                    ScalarExpression(value.replace_multiple(substitutions), E("0"))
+                    for value in exact_outputs.values()
+                ),
+            ),
+        )
     for output, expression in zip(formal.outputs, formal.expressions, strict=True):
         if nc in expression.diagnostic.get_all_symbols():
             raise NotImplementedError(

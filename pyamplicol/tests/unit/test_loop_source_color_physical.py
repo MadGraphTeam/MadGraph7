@@ -306,3 +306,124 @@ def test_source_external_fields_keep_their_colour_grade(tmp_path):
             assert any(
                 Decimal(pair[0]) != 0 for pair in actual.uv_external_fields.to_decimal()
             )
+
+
+@pytest.fixture(scope="module")
+def four_gluon_programs(tmp_path_factory):
+    symbolica = pytest.importorskip("symbolica")
+    pytest.importorskip("_loop_reduction")
+    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
+    if not path or not symbolica.is_licensed():
+        pytest.skip("licensed NLO source required")
+    from symbolica import E
+
+    from pyamplicol.loops.compiler import prepare_loop_request_model
+    from pyamplicol.loops.portable import write_loop_pacbin
+    from pyamplicol.loops.qcd_source_color import prepare_loop_sm_four_gluon_color
+    from pyamplicol.models.loop_import import load_raw_loop_model
+
+    original = prepare_loop_request_model(
+        load_raw_loop_model(path),
+        born_order_bounds={"QCD": 2, "QED": 0},
+        loop_order_bounds={"QCD": 4, "QED": 0},
+        fixed_parameters={"MB": "0"},
+    )
+    options = dict(
+        selected_corrections=["QCD"],
+        parameters={"aS": "0.118", "MT": "173", "MU_R": "1000"},
+        reduction_engine="fast",
+        coefficient_engine="jit",
+    )
+    dense = original.compile((21, 21), (21, 21), **options).virtual
+    prepared, continued = prepare_loop_sm_four_gluon_color(
+        original, declaration(original)
+    )
+    assert continued.scheme_parameter_values["lhv"] == E("1")
+    assert len(continued.whole_rule_continuations) == 2
+    assert (
+        prepared.counterterms.source_entries_complete
+        == original.counterterms.source_entries_complete
+    )
+    result = {"dense": dense}
+    for accuracy in ("full", "lc", "nlc"):
+        program = prepared.compile(
+            (21, 21),
+            (21, 21),
+            source_color=continued,
+            color_accuracy=accuracy,
+            **options,
+        ).virtual
+        assert any(
+            item.rule.whole_rule_continuation is not None for item in program.insertions
+        )
+        saved = tmp_path_factory.mktemp(f"source-4g-{accuracy}") / "plan.pacbin"
+        write_loop_pacbin(program, saved, resolved=True)
+        result[accuracy] = program, saved
+    return result
+
+
+@pytest.mark.parametrize(
+    "mode,precision,tolerance,bit",
+    [
+        ("double", None, "2e-10", 20),
+        ("double-double", None, "2e-24", 70),
+        ("arbitrary", 70, "2e-55", 160),
+    ],
+)
+def test_complete_four_gluon_source_continuation(
+    four_gluon_programs, mode, precision, tolerance, bit
+):
+    from pyamplicol.loops.portable import PortableLoopPlan
+
+    points = json.loads(
+        (
+            Path(__file__).resolve().parents[2]
+            / "tools/loop_reference/gluon_scattering_qcd.json"
+        ).read_text(),
+        parse_float=str,
+        parse_int=str,
+    )["points"][:1]
+    options = dict(arithmetic=mode, precision=precision)
+    dense = (
+        four_gluon_programs["dense"]
+        .rebind(**options)
+        .evaluate_ordered_native(points, ["1000000"])
+    )
+    scale = max(abs(Decimal(pair[0])) for pair in dense.born.to_decimal())
+    for accuracy in ("full", "lc", "nlc"):
+        retained, saved = four_gluon_programs[accuracy]
+        program = retained.rebind(**options)
+        loaded = PortableLoopPlan.open(saved).bind(**options)
+        actual = loaded.evaluate_ordered_native(points, ["1000000"])
+        expected = program.evaluate_ordered_native(points, ["1000000"])
+        for a, b in zip(
+            actual.component_batches, expected.component_batches, strict=True
+        ):
+            close(a, b, tolerance, scale_floor=scale)
+        if accuracy == "full":
+            for a, b in zip(
+                actual.component_batches, dense.component_batches, strict=True
+            ):
+                close(a, b, tolerance, scale_floor=scale)
+        assert loaded.color_projection.virtual_degrees == (5,)
+        assert loaded.color_projection.born_degrees == (4,)
+        # Independent leading-colour counting for four external adjoints:
+        # Born has Nc^4-Nc^2 and its universal double pole Nc^5-Nc^3.
+        ratio = Decimal(9) / 8 if accuracy == "lc" else Decimal(1)
+        close(actual.born, dense.born, tolerance, ratio, scale_floor=scale)
+        close(
+            actual.virtual.take_columns([2]), dense.virtual.take_columns([2]),
+            tolerance, ratio, scale_floor=scale,
+        )
+        with localcontext() as context:
+            context.prec = 100
+            alpha = str(Decimal("0.118") + Decimal(2) ** (-bit))
+        loaded.bare.model_state.update({"aS": alpha})
+        program.bare.model_state.update({"aS": alpha})
+        updated = loaded.evaluate_ordered_native(points, ["1000000"])
+        assert updated.virtual.to_decimal() != actual.virtual.to_decimal()
+        expected_update = program.evaluate_ordered_native(points, ["1000000"])
+        for a, b in zip(
+            updated.component_batches, expected_update.component_batches, strict=True
+        ):
+            close(a, b, tolerance, scale_floor=scale)

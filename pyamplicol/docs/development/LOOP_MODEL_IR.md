@@ -1649,3 +1649,41 @@ field renormalization: the heavy-flavour contribution is absent at LC and
 retained at NLC, and its graded source columns survive PACBIN loading. Vanishing
 Laurent components are compared at Born scale to account for cancellation
 roundoff, without discarding any returned coefficient.
+
+### Binding whole-rule colour input to a source process
+
+The source coefficient consumer keeps the original CT coupling outputs in its
+paired scalar plan when a checked whole rule is substituted. Every original
+active diagnostic is evaluated even if none of the new coefficients uses the
+old value. Replacement aliases select separate exact local coefficients. Their
+referenced ordinary source parameters are resolved by the existing scalar
+frontend and remain diagnostic-bearing outputs of the same source owner;
+neither source defaults nor intermediate values pass through binary64.
+
+The complete formal plan is graded once. Counterterm recurrence incidence uses
+the active replacement aliases, while matching, loop alternatives, coupling
+orders and signs continue to use the original rule. This retains per-species
+eligibility and avoids assigning guessed Nc factors to the original numerical
+four-gluon coefficient table. Saved plans carry the resulting ordinary
+coefficient evaluator bytes and column maps, with no separate numerical path.
+
+`SourceColorContinuation` now checks the identity of every actually applied
+whole-rule input against the declaration. Scheme parameter ties use the existing
+shared `fixed_parameters` mechanism: a required value must hold symbolically over
+the entire runtime input domain. An external scheme parameter must therefore be
+fixed during preparation, and an attempted update is rejected atomically. An
+internal expression must reduce to the required value with the same fixed map.
+Scheme declarations alone cannot establish these ties.
+
+The explicit `qcd_source_color.prepare_loop_sm_four_gluon_color` profile supplies
+the source names `G` and `lhv`, always requires HV with `lhv=1`, and runs whole
+tensor/scalar/species conformance on each selected four-adjoint-vector R2 group.
+It preserves all unrelated caller declarations and original CT evidence. Model
+display names do not grant admission, and this helper gives no certificate to
+unrelated rules. It returns the prepared model with the checked native rules and
+the matching source colour declaration; those objects must be used together.
+
+These remain internal prepared-model interfaces. Public LC still requires its
+signed Born-component observable contract, and a generic model needs declared,
+validated continuation for every selected ordinary, UV, rational and field
+structure before projection is available.

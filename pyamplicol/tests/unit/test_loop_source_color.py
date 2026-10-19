@@ -171,9 +171,23 @@ def test_partial_ordinary_rule_mapping_requires_every_nonzero_entry(source):
     def entry(index, name):
         record = source.record("couplings", name)
         return KernelBasisEntry(
-            "vertices", 0, "two_term_rule", "tree", index, 0, None,
-            (), (), "1", 0, "scalar", "1", None,
-            program.definitions["couplings", record["id"]], order, program,
+            "vertices",
+            0,
+            "two_term_rule",
+            "tree",
+            index,
+            0,
+            None,
+            (),
+            (),
+            "1",
+            0,
+            "scalar",
+            "1",
+            None,
+            program.definitions["couplings", record["id"]],
+            order,
+            program,
         )
 
     first = entry(0, "GCplain")
@@ -203,6 +217,70 @@ def test_partial_ordinary_rule_mapping_requires_every_nonzero_entry(source):
                 current.require_ordinary_kernels(
                     (("two_term_rule", order),), ("GCplain",), scalar_plan=plan
                 )
+
+
+def test_scheme_tie_uses_shared_fixed_inputs_and_rejects_mutation(source):
+    from dataclasses import replace
+
+    from symbolica import E
+
+    declared = replace(continuation(source), scheme_parameter_values={"a": E("1")})
+    owner = prepare_scalar_bindings(
+        source, (("GCplain", 0),), program=declared.model.scalar_program
+    )
+    with pytest.raises(ValueError, match=r"scheme parameter.*must remain fixed"):
+        declared.require_whole_rules((), owner)
+    fixed = prepare_scalar_bindings(
+        source, (("GCplain", 0),), program=owner.program, fixed_parameters={"a": "1"}
+    )
+    declared.require_whole_rules((), fixed)
+    pytest.importorskip("_loop_reduction")
+    runtime = NativeScalarBindings(fixed)
+    before = runtime.snapshot()
+    with pytest.raises(ValueError, match="fixed"):
+        runtime.update({"z": "3", "a": "2"})
+    assert runtime.snapshot() is before
+
+
+def test_exact_replacement_outputs_share_source_values_and_diagnostics(source):
+    from symbolica import E, S
+
+    nc = S("source_colour_test::Nc")
+    plan = prepare(
+        source,
+        (("GCplain", 0),),
+        exact_outputs={
+            ("replacement", 0): nc * S("UFO::safe") ** 2 / S("symbolica::pi"),
+            ("replacement", -1): E("0"),
+        },
+    )
+    assert ("safe", 0) in plan.formal.outputs
+    guarded = plan.formal.expressions[plan.formal.outputs.index(("safe", 0))]
+    assert guarded.diagnostic != 0
+    index = plan.formal.outputs.index(("replacement", 0))
+    assert (
+        plan.formal.expressions[index].value
+        - nc * guarded.value**2 / S("symbolica::pi")
+    ).expand() == 0
+    pytest.importorskip("_loop_reduction")
+    owner = NativeScalarBindings(plan.coefficients)
+    old = owner.snapshot()
+    with pytest.raises(ArithmeticError, match="active diagnostics"):
+        owner.update({"MU_R": "4"})
+    assert owner.snapshot() is old
+    owner.update({"MU_R": "4", "z": "2"})
+    assert owner.revision == 1
+    with pytest.raises(ValueError, match="unbound symbols"):
+        prepare(
+            source, (("GCplain", 0),), exact_outputs={("bad_exact", 0): S("hidden")}
+        )
+    # The old value's guard remains active even when no new coefficient uses it.
+    guarded = prepare(
+        source, (("zero", 0),), exact_outputs={("independent_replacement", 0): nc}
+    )
+    with pytest.raises(ArithmeticError, match="active diagnostics"):
+        NativeScalarBindings(guarded.coefficients)
+    NativeScalarBindings(guarded.coefficients, parameters={"z": "2"})
 
 
 def test_exact_grades_keep_laurent_axes_and_owning_program(source):
