@@ -128,7 +128,10 @@ def test_complete_formal_full_matches_independent_complex_history_reference(
         )
         reference.source_state.update({"aS": (alpha, "0")})
         snapshot = model.bare.model_state.snapshot()
-        for joint, plan in {(): prepared, **retained["classes"][key]}.items():
+        classes = {
+            joint: plan for joint, plan in retained["classes"][key].items() if joint
+        }
+        for joint, plan in {(): prepared, **classes}.items():
             vectors = {leg: [a if leg == 3 else b] for leg in joint}
             actual = plan.bind(model).evaluate_decimal(
                 point,
