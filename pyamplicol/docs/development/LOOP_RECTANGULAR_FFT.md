@@ -1,9 +1,12 @@
 # Rectangular Born–loop colour contraction
 
-The first implementation boundary extends the existing native symmetric-group
-transform with a complex adjoint and a normalized inverse. It does **not** yet
-connect FFT colour contraction to the loop scheduler or advertise public loop
-FFT support.
+Certified ordinary and resolved NLC/full-colour loop artifacts now connect the
+existing symmetric-group transform to the shared dual-Born weight schedule.
+Binary64 uses the certified rectangular transform plus all direct residuals;
+DoubleFloat and arbitrary precision execute the original exact direct map.
+UV, model R2, external fields and Born-square contractions remain complete and
+direct. LC and correlated/source FFT composition remain separate feature gates.
+This is feature acceptance, with no new speed or benchmark claim.
 
 The transform in `recurrence/symmetric_group_fft.rs` uses real orthogonal Young
 representations and the convention
@@ -60,7 +63,7 @@ explicit dense representation matrices, test both round-trip directions,
 exercise trivial groups and changing batch tails, and retain existing forward
 transform checks.
 
-## Loop integration still required
+## Shared runtime boundary
 
 Raw Born amplitudes and loop coefficients meet in `loop_execution.rs` before
 the family projector. The shared exact dual-Born schedule described below now
@@ -81,8 +84,8 @@ Formal Nc projection retains the existing common structural degree and exact
 weights. Binary64 FFT binding happens only after that projection. DoubleFloat
 and arbitrary precision use genuine exact-input direct evaluation until their
 own transform implementation exists, and report the actual algorithm. Saved
-plans, precision rescue, runtime policy and physical comparisons are required
-before exposing public `auto`, `direct` or forced FFT behaviour.
+plans, precision rescue and public policy use the same operation and report the
+actual selected bank, as described below.
 
 The dependency audit found the required index renaming, canonicalization,
 conjugation and formal colour operations in FeynKit/Community. Their source,
@@ -160,9 +163,10 @@ An actual declared-model gluon LC owner additionally passes its six signed Born
 components and 16 helicities through weighted and original saved native schedules
 in all three carriers, with empty/singleton/tail rows and inclusive reconstruction.
 
-This establishes the shared scheduling seam. Rectangular Fourier execution and
-truthful public policy selection remain subsequent work; the presence of a
-dual-weight descriptor does not imply that an FFT was performed.
+The exact schedule remains the high-precision implementation and numerical
+oracle for the rectangular operation. A dual-weight descriptor alone does not
+imply FFT execution: its optional certified rectangle and the actual arithmetic
+select the operation.
 
 ## Formal metric ownership and actual process certificates
 
@@ -201,3 +205,72 @@ matrices from its actual tensors using its already-proved common degree P=5;
 the Nc=3 comparison is only a binding consistency check. No production path
 attempts to recover missing formal data. This is a cold feature certificate,
 not a native Fourier execution or speed result.
+
+
+## Public selection, saved execution and diagnostics
+
+The existing `[color] contraction` setting accepts `direct`, `auto` and
+`symmetric-group-fft`. For ordinary/resolved full or NLC requests, cold generation
+searches actual compatible adjoint-port actions and requires at least one
+nonzero regular kernel after the declared projection and normalization. Born
+and loop orbits remain independent. A wholly residual or zero-kernel rectangle
+cannot satisfy a forced request. An explicitly requested unsupported loop basis
+is rejected; tree DDM and trace certificates are not reused.
+
+Full-colour `auto` may continue directly when no formal continuation is declared,
+when the declaration explicitly lacks a selected kernel/field capability, or when
+no eligible action is proved. Missing selected coverage is a typed capability
+outcome. A fallback recompiles from the untouched prepared model with identical
+physical inputs; it cannot reuse partly graded tensors or counterterms. Malformed
+declarations, mismatched owners and algebra errors remain hard failures. LC/NLC
+still require their existing complete formal continuation. LC `auto` remains
+direct and retains the originally requested `auto` in diagnostics. Forced LC FFT
+remains unsupported.
+
+Declared correlations retain their existing literal direct path in this slice;
+forced correlated FFT is rejected. No ordinary certificate is copied onto an
+unproved inserted-operator or spin-source bank. A future composition must prove
+its actual bank and both interference directions separately.
+
+The existing `exact-dual-born-v1` record optionally carries a typed
+`rectangular-regular-orbits-v1` descriptor and a Symbolica exact constant-state
+reference. It stores actual absolute-order aliases, independent regular orbits,
+ordered direction/sector banks, kernels and all residual pairs. Core validation
+checks exact one-time coverage and shapes before binding. Normalization applies
+Nc=3 and the existing initial average exactly once after formal projection.
+Repeated resolved exports keep their local helicity projector separate from the
+three ordinary model evaluator roles even after prepared-cache invalidation.
+
+Prepared Python and saved native consumers bind the same `DualBornWeights`
+operation. Binary64 evaluates constant kernels in its own arithmetic and uses
+the existing native transform/inverse workspaces. DD/AP never round these
+constants through binary64: they bind the original exact evaluator. Empty rows,
+changing batch sizes, opaque original IDs and parameter updates preserve the
+normal execution semantics.
+
+`Runtime.inspect()["color_contraction"]` reports the operation for each available
+ordinary, resolved, directed and source bank in the handle's actual arithmetic.
+Python lane diagnostics and standalone SDK JSON name the initial choice
+`primary_color_contraction`; each verification attempt separately exposes its
+`color_contraction`. Thus a binary64 FFT primary followed by exact AP rescue is
+explicitly distinguishable from a rescued result computed through FFT. A forced
+eligible artifact permits this documented exact high-precision fallback.
+
+The actual retained four-gluon controls have six Born and 258 loop columns.
+The selected NLC S2 action has two/45 regular Born/loop orbits, 90 kernels and
+1,062 residual alias pairs. The independently prepared full-colour action has
+two/54 regular orbits, 108 kernels and 360 residual pairs. Their exact symbolic
+rectangles and direct weight states agree before execution; full-colour source
+preparation uses the authorized corrected Community package and does not imply
+that every publicly published package already contains that dependency fix.
+
+The executable controls compare every complete Born, bare, UV, R2, external-field,
+order and Laurent component, both ordinary and resolved layouts, all three
+carriers, exact saved weights, changing row counts and original IDs. Independent
+noncentral S3 controls exercise complex aliasing, multiple direction/component
+banks and mixed-order scatter. Native malformed-coverage checks, repeated-export
+admission, graph-free Python binding, public artifact loading and standalone SDK
+output cover the transport boundaries. Subset scale-underflow rescue checks the
+primary FFT metadata and each exact AP attempt. Existing performance table
+measurements retain their original snapshot identities; this schedule is not
+retimed by these correctness controls.

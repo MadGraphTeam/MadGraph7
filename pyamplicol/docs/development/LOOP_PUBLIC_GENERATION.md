@@ -14,8 +14,10 @@ precision use the saved exact source expressions. Full colour needs no formal
 continuation. LC/NLC requests require explicit source colour data in the model
 bundle, as described in `LOOP_SOURCE_COLOR_DATA.md`; missing coverage fails.
 Full-colour QCD colour histories use the grouped complex virtual path described
-below. Rectangular FFT, spin-source admission and flavour aliases remain separate
-integration work. The compiler has no
+below. Ordinary/resolved NLC and full-colour artifacts can use a certified
+rectangular FFT; see `LOOP_RECTANGULAR_FFT.md` for the actual per-bank policy and
+exact high-precision fallback. Correlated FFT remains a separate integration
+gate. The compiler has no
 process-name dispatch or artificial multiplicity limit; actual tensor, scalar,
 rank and reducer domain checks can still reject a request.
 
@@ -25,6 +27,21 @@ settings, recurrence tile/workspace settings and output chunking are rejected
 with their setting paths until those controls are connected. Shared resource
 cores, validation, model inputs and backend selection retain their normal checks.
 Changing these options is not a way to set a limit on process size.
+
+## Colour contraction selection
+
+Use `color.contraction = "auto"` to use a proved rectangular operation when the
+selected ordinary/resolved bank supports it, `"direct"` for the exact baseline,
+or `"symmetric-group-fft"` to require a genuine binary64 transform. Full-colour
+FFT needs a complete declared formal continuation; ordinary full-colour direct
+evaluation does not. A typed unavailable continuation can make full `auto` choose
+direct, while malformed declarations remain errors. LC `auto` stays direct;
+forced LC and correlated/source FFT remain unsupported. Exact DD/AP evaluations
+and rescue use the direct map and report that choice explicitly.
+
+`Runtime.inspect()["color_contraction"]` describes actual bank operations. Result
+`primary_color_contraction` identifies the initial attempt; verification attempts
+carry their own `color_contraction`, so AP rescue is never labelled as FFT.
 
 ## A usable card
 
