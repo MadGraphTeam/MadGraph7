@@ -370,9 +370,10 @@ controls test execution transport, not physics accuracy.
 
 ## Explicit cross-precision verification and rescue
 
-`Runtime.evaluate` and `evaluate_resolved`, including their precision-specific
-wrappers, accept an optional `VirtualStabilityPolicy`. Omitting it performs no
-extra precision evaluations. For example:
+`Runtime.load` accepts an optional retained `VirtualStabilityPolicy`, applied
+before exact source binding. Ordinary, resolved, directed and spin evaluations
+use it unless the call supplies an explicit replacement. Without either policy,
+evaluation performs no extra precision work. For example:
 
 ```python
 from pyamplicol import VirtualArithmeticSpec, VirtualStabilityPolicy
@@ -384,7 +385,8 @@ policy = VirtualStabilityPolicy(
     absolute_tolerance="1e-20",
     verify_successful=False,
 )
-result = runtime.evaluate(points, mu_r2=scales, stability=policy)
+runtime = Runtime.load(artifact, stability=policy)
+result = runtime.evaluate(points, mu_r2=scales)
 ```
 
 The native coordinator validates actual increasing precision bits: double has
@@ -419,9 +421,21 @@ programs, without merging previous retry state or publishing a parameter
 update. Native retries select original decimal momentum/scale rows; they never
 promote the rounded primary buffers. Higher workspaces are cached by explicit
 carrier/precision and cleared by `clear`, while source parameter state remains.
-The existing whole-handle global-binding limitation still applies: source-owner
-construction must succeed, and a lower-carrier overflow during construction or
-parameter update is not automatically rescued.
+With a configured policy, a numerical primary source-binding failure can retain
+the exact overrides and defaults when a configured higher realization succeeds.
+That admission establishes no amplitude accuracy: the ordinary complete-result
+agreement and output-conversion checks still apply. Failed source snapshots
+expose their failure stage but refuse numerical `arguments` and `values` access.
+Malformed inputs and unsupported settings remain errors. Parameter updates
+validate before publishing; a rejected update preserves the previous revision.
+
+An arithmetic-changing call supplies its explicit policy before constructing
+the alternate source owner. The alternate handle is local to the call, so it
+cannot replace the original runtime's retained policy. `clear` releases work
+buffers while preserving exact parameter state and policy. Standalone Rust,
+C, C++ and Fortran expose additive policy-bearing open operations and retain
+binary64 result carriers. Raw native complete-result operations reject a
+configured policy rather than silently discard verification diagnostics.
 
 Each public lane can carry a `VirtualVerificationDiagnostic` with original
 point ID, attempted carriers/bits, numerical failures, comparison precision,
@@ -430,6 +444,19 @@ failures without making the completed call fail. Unresolved points populate
 `EvaluationError.failures` and `EvaluationError.verification`; successful
 numerical attempts without accepted agreement are distinguished as
 `accuracy-not-established`. No unavailable values are filled with zeros or NaNs.
+
+The source-binding transport control adds an overflowing exponential diagnostic
+to an existing real-input guard, leaving all saved physical instructions and
+scalar values unchanged. Public resolved LC components and complex joint-spin
+results agree with their unmodified controls after AP60/AP80 rescue. The native
+owner tests cover eager rejection, exact snapshot ownership, atomic updates and
+policy replacement; a standalone Rust control checks the ordinary physical
+result and owned rescue diagnostics. Focused C, C++, Fortran and installed Rust
+clients exercise the new policy-bearing open operation and empty-result lifetime.
+These are correctness controls, not performance measurements or new physics
+certification. The separate live-producer stability helper retains its existing
+scope pending its own source-binding integration.
+
 ## Signed LC Born components
 
 The plan's optional `born_color_components` record is the sole partition
