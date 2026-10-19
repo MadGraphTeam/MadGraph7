@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Opt-in declarations for tree-level colour and spin correlations.
+"""Opt-in declarations for colour and spin correlations.
 
 Colour connections are ordered and use all-outgoing colour charges. External
 legs keep the process's one-based labels; negative labels are convenient for
