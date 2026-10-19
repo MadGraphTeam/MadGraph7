@@ -407,6 +407,40 @@ by `inspect`. Flow selection is LC-only; NLC and full-color artifacts expose a
 contracted color output and accept helicity selection only. More examples are
 in [Runtime and Selectors](runtime-and-selectors.md).
 
+### Saved virtual artifacts
+
+The artifact selects the virtual execution lane; loading it does not require
+repeating its loop coupling orders. Supply the renormalization scale squared:
+
+```console
+pyamplicol evaluate artifacts/virtual --process gg --momenta points.json \
+  --mu-r2 1000000 --arithmetic double --r2-strategy model --json
+```
+
+`--arithmetic` accepts `double`, `double-double` (DoubleFloat) or `arbitrary`.
+For arbitrary precision, add `--precision 70`, for example. These choices apply
+before model parameters are bound. Without an explicit arithmetic choice, the
+existing precision convention applies: 16 digits selects double; other requested
+precisions select arbitrary precision. DoubleFloat is always selected explicitly.
+
+Use `--mu-r2-file scales.json` for one positive scale squared per point, instead
+of `--mu-r2`. A scale file such as `[1000000, "900000.0000000000000000001"]`
+accepts JSON numbers or strings. Virtual momenta, parameter and scale files
+preserve decimal digits before native arithmetic conversion. Parameter pairs
+`[real, imaginary]` also preserve their exact inputs.
+
+Human output lists every Born and virtual squared coupling order and all three
+coefficients, with contributing Born–loop pairs and per-point diagnostics. JSON
+adds explicit `epsilon_powers: [0, -1, -2]`, coefficient names and shape metadata;
+high-precision values are decimal strings. Neither format silently sums orders
+or divides by the Born result. A successful lane can still report
+`accuracy_established: false`.
+
+The current saved source-artifact path supports inclusive full colour and model
+$R_2$ plus UV. Resolved output, selectors, correlations and rescue remain separate
+integration requirements and fail explicitly when requested. Only strategies
+present in the artifact may be selected; `auto` currently resolves to `model`.
+
 ## Profile
 
 The profiler measures the same optimized total path as `Runtime.evaluate()`:

@@ -569,6 +569,36 @@ def _add_evaluation_options(
         default=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--arithmetic",
+        dest="evaluation.arithmetic",
+        choices=("double", "double-double", "arbitrary"),
+        default=argparse.SUPPRESS,
+        help="virtual numerical carrier, selected before model parameter binding",
+    )
+    scales = parser.add_mutually_exclusive_group()
+    scales.add_argument(
+        "--mu-r2",
+        dest="evaluation.mu_r2",
+        default=argparse.SUPPRESS,
+        metavar="EXACT_VALUE",
+        help="positive renormalization scale squared, supplied as exact text",
+    )
+    scales.add_argument(
+        "--mu-r2-file",
+        dest="evaluation.mu_r2_file",
+        type=Path,
+        default=argparse.SUPPRESS,
+        metavar="JSON",
+        help="per-point scale-squared JSON list; numbers and strings retain precision",
+    )
+    parser.add_argument(
+        "--r2-strategy",
+        dest="loop.r2_strategy",
+        choices=("auto", "model", "direct"),
+        default=argparse.SUPPRESS,
+        help="select a complete R2 strategy present in the virtual artifact",
+    )
+    parser.add_argument(
         "--resolved",
         dest="evaluation.resolved",
         action=argparse.BooleanOptionalAction,

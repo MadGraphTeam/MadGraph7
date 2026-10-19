@@ -972,6 +972,16 @@ class EvaluationConfig:
     )
     process: str | None = field(default=None, metadata=_setting("str", nullable=True))
     precision: int = field(default=16, metadata=_setting("int"))
+    arithmetic: Literal["double", "double-double", "arbitrary"] | None = field(
+        default=None,
+        metadata=_setting(
+            "str", nullable=True, choices=("double", "double-double", "arbitrary")
+        ),
+    )
+    mu_r2: str | None = field(default=None, metadata=_setting("str", nullable=True))
+    mu_r2_file: Path | None = field(
+        default=None, metadata=_setting("path", nullable=True)
+    )
     resolved: bool = field(default=False, metadata=_setting("bool"))
     helicity_ids: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
     color_flow_ids: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
@@ -989,6 +999,22 @@ class EvaluationConfig:
         object.__setattr__(
             self, "precision", _integer(self.precision, "evaluation.precision")
         )
+        if self.arithmetic is not None and (
+            not isinstance(self.arithmetic, str)
+            or self.arithmetic not in {"double", "double-double", "arbitrary"}
+        ):
+            raise ConfigurationError("evaluation.arithmetic has an unknown carrier")
+        if self.mu_r2 is not None and (
+            not isinstance(self.mu_r2, str) or not self.mu_r2.strip()
+        ):
+            raise ConfigurationError("evaluation.mu_r2 must be nonempty exact text")
+        object.__setattr__(
+            self, "mu_r2_file", _path(self.mu_r2_file, "evaluation.mu_r2_file")
+        )
+        if self.mu_r2 is not None and self.mu_r2_file is not None:
+            raise ConfigurationError(
+                "evaluation.mu_r2 and evaluation.mu_r2_file are mutually exclusive"
+            )
         if not isinstance(self.resolved, bool):
             raise ConfigurationError("evaluation.resolved must be a boolean")
         object.__setattr__(

@@ -224,6 +224,15 @@ process = "d d~ > g z g"
 precision = 16
 # evaluation.resolved: Return physical resolved components. Default false.
 resolved = true
+# evaluation.arithmetic: Virtual carrier selected before binding parameters.
+# Default null; explicit choices double, double-double, arbitrary.
+# arithmetic = "arbitrary"
+# evaluation.mu_r2: Positive virtual renormalization scale squared, as exact text.
+# Default null. Mutually exclusive with mu_r2_file.
+# mu_r2 = "1000000"
+# evaluation.mu_r2_file: Per-point scale-squared JSON list; numbers or exact text.
+# Default null. Paths are relative to this card.
+# mu_r2_file = "data/scales.json"
 # evaluation.helicity_ids: Stable physical helicity selectors. Default empty.
 helicity_ids = []
 # evaluation.color_flow_ids: Stable LC flow selectors. Default empty.

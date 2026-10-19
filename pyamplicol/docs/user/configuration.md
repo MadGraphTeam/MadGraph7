@@ -457,6 +457,30 @@ progress = "off"                # auto, tty, log, off
 `helicity_ids` and `color_flow_ids` may be added under `[evaluation]`. Empty
 lists mean complete retained coverage.
 
+For a saved virtual artifact, use the same card with `resolved = false` and
+explicit scale input. The optional arithmetic choice applies before model
+parameter binding:
+
+```toml
+[evaluation]
+artifact = "artifacts/virtual"
+process = "gg"
+momenta = "data/points.json"
+arithmetic = "arbitrary"        # double, double-double, arbitrary
+precision = 70
+mu_r2 = "1000000"              # exact text, positive scale squared
+# mu_r2_file = "data/scales.json"  # alternative: one exact value per point
+
+[loop]
+r2_strategy = "model"          # auto or an available complete artifact strategy
+```
+
+`mu_r2` and `mu_r2_file` are mutually exclusive. Quote scalar `mu_r2` in TOML
+to preserve its decimal value exactly. The scale file accepts numeric or string
+JSON entries. No `[process].loop_coupling_orders` declaration is needed to load
+an existing virtual artifact. See [virtual CLI evaluation](command-line-interface.md#saved-virtual-artifacts)
+for output shapes and currently available features.
+
 The model-parameter card is a flat JSON object:
 
 ```json

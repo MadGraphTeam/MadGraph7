@@ -28,10 +28,25 @@ from .utilities import UtilityInvocation, example_card, execute_utility
 
 
 def _json_value(value: object) -> object:
+    from pyamplicol.api.virtual_results import (
+        ResolvedVirtualEvaluation,
+        VirtualEvaluation,
+    )
+
     if is_dataclass(value) and not isinstance(value, type):
-        return {
+        result = {
             item.name: _json_value(getattr(value, item.name)) for item in fields(value)
         }
+        if isinstance(value, (VirtualEvaluation, ResolvedVirtualEvaluation)):
+            result.update(
+                contribution_kind="virtual",
+                epsilon_powers=list(value.epsilon_powers),
+                coefficient_names=["finite", "single_pole", "double_pole"],
+                normalization="Cepsilon=(4*pi)^epsilon/Gamma(1-epsilon)",
+                shape=list(value.shape),
+                born_shape=list(value.born_shape),
+            )
+        return result
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, Mapping):

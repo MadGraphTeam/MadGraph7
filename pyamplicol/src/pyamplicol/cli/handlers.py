@@ -5,6 +5,7 @@ import json
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import fields, replace
+from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
 
@@ -19,6 +20,7 @@ from pyamplicol.reporting import (
 
 if TYPE_CHECKING:
     from pyamplicol.api import ModelSource, ProcessSet
+    from pyamplicol.api.protocols import ModelParameters, Momenta, ScalarInput
     from pyamplicol.artifacts.inspection import (
         ArtifactInspection,
         ArtifactProcessInspection,
@@ -116,13 +118,38 @@ def _process_set(config: RunConfig) -> ProcessSet:
         raise ConfigurationError(str(exc)) from exc
 
 
-def _read_json(path: Path) -> object:
+def _read_json(path: Path, *, exact: bool = False) -> object:
     try:
+        if exact:
+
+            def reject_constant(value: str) -> object:
+                raise ValueError(f"nonfinite JSON number {value}")
+
+            return json.loads(
+                path.read_text(encoding="utf-8"),
+                parse_float=Decimal,
+                parse_constant=reject_constant,
+            )
         return json.loads(path.read_text(encoding="utf-8"))
     except OSError as exc:
         raise ConfigurationError(f"cannot read {path}: {exc}") from exc
-    except json.JSONDecodeError as exc:
+    except ValueError as exc:
         raise ConfigurationError(f"invalid JSON in {path}: {exc}") from exc
+
+
+def _virtual_artifact_hint(path: Path) -> bool:
+    """Choose CLI ingress only; the native loader checks the artifact itself."""
+    from pyamplicol._internal.versions import LOOP_RUNTIME_CAPABILITY
+    from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
+
+    path = path.expanduser().resolve(strict=False)
+    root = path.parent if path.name == MANIFEST_NAME and path.is_file() else path
+    if not (root / MANIFEST_NAME).is_file():
+        return False
+    manifest = load_manifest(root, verify_payloads=False)
+    return LOOP_RUNTIME_CAPABILITY in cast(
+        tuple[str, ...], manifest.runtime["required_runtime_capabilities"]
+    )
 
 
 def _load_process_output(
@@ -359,48 +386,61 @@ class DefaultCliServices:
             raise ConfigurationError("evaluate requires evaluation.artifact")
         if config.evaluation.momenta is None:
             raise ConfigurationError("evaluate requires evaluation.momenta")
-        parameters: (
-            Mapping[
-                str,
-                complex
-                | float
-                | int
-                | list[float | int]
-                | tuple[float | int, float | int],
-            ]
-            | None
-        ) = None
+        artifact = config.evaluation.artifact
+        virtual = _virtual_artifact_hint(artifact)
+        evaluation = config.evaluation
+        if not virtual and (
+            evaluation.arithmetic is not None
+            or evaluation.mu_r2 is not None
+            or evaluation.mu_r2_file is not None
+            or config.loop.r2_strategy != "auto"
+        ):
+            raise ConfigurationError(
+                "arithmetic, mu_r2 and r2_strategy options require a virtual artifact; "
+                "tree precision is selected with --precision"
+            )
+        parameters: ModelParameters | None = None
         if config.evaluation.model_parameters is not None:
-            raw_parameters = _read_json(config.evaluation.model_parameters)
+            raw_parameters = _read_json(
+                config.evaluation.model_parameters, exact=virtual
+            )
             if not isinstance(raw_parameters, Mapping):
                 raise ConfigurationError("model parameter JSON must be an object")
-            parameters = raw_parameters
-        momenta = _read_json(config.evaluation.momenta)
+            parameters = cast("ModelParameters", raw_parameters)
+        momenta = _read_json(config.evaluation.momenta, exact=virtual)
         if not isinstance(momenta, list):
             raise ConfigurationError("momenta JSON must be a point list")
+        scales: ScalarInput | list[ScalarInput] | None = evaluation.mu_r2
+        if evaluation.mu_r2_file is not None:
+            raw_scales = _read_json(evaluation.mu_r2_file, exact=True)
+            if not isinstance(raw_scales, list):
+                raise ConfigurationError("mu_r2 JSON must be a per-point scale list")
+            scales = cast("list[ScalarInput]", raw_scales)
+        if virtual and scales is None:
+            raise ConfigurationError(
+                "virtual evaluation requires --mu-r2 or --mu-r2-file"
+            )
         runtime = _load_process_output(
-            config.evaluation.artifact,
+            artifact,
             progress,
             lambda: Runtime.load(
-                config.evaluation.artifact,
+                artifact,
                 process=config.evaluation.process,
                 model_parameters=parameters,
+                arithmetic=evaluation.arithmetic if virtual else None,
+                precision=evaluation.precision if virtual else None,
+                r2_strategy=config.loop.r2_strategy if virtual else None,
             ),
         )
-        selectors = {
-            "helicities": config.evaluation.helicity_ids or None,
-            "color_flows": config.evaluation.color_flow_ids or None,
-        }
-        if config.evaluation.resolved:
-            return runtime.evaluate_resolved(
-                momenta,
-                precision=config.evaluation.precision,
-                **selectors,
-            )
-        return runtime.evaluate(
-            momenta,
-            precision=config.evaluation.precision,
-            **selectors,
+        operation = (
+            runtime.evaluate_resolved if evaluation.resolved else runtime.evaluate
+        )
+        return operation(
+            cast("Momenta", momenta),
+            precision=evaluation.precision,
+            helicities=evaluation.helicity_ids or None,
+            color_flows=evaluation.color_flow_ids or None,
+            mu_r2=scales if virtual else None,
         )
 
     def benchmark(self, config: RunConfig, progress: ProgressSink) -> object:
