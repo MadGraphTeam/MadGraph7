@@ -71,6 +71,7 @@ pub struct Runtime {
     native: VirtualRuntime,
     shape: Shape,
     color_components: Vec<String>,
+    born_anchored_color: bool,
     history_ids: Vec<String>,
     spin_classes: Vec<Vec<usize>>,
 }
@@ -109,6 +110,7 @@ impl Runtime {
             native,
             shape,
             color_components,
+            born_anchored_color: plan.born_color_components.is_some(),
             history_ids,
             spin_classes: plan
                 .spin_projections
@@ -136,7 +138,7 @@ impl Runtime {
             "correlated_layout":"point/history/order/epsilon; complex binary64",
             "color_accuracy":self.native.metadata().color_accuracy,
             "color_components":self.color_components,
-            "color_component_semantics":if self.native.metadata().color_accuracy == "lc" {
+            "color_component_semantics":if self.born_anchored_color {
                 "signed canonical Born tensor groups, potentially overcomplete; not sampling probabilities"
             } else { "contracted colour" },
             "available_r2_strategies": self.native.metadata().available_r2_strategies,

@@ -102,14 +102,16 @@ def write_loop_pacbin(
             resolved
             or directed.bare.spin_layout is not None
             or program.r2_strategy != "model"
-            or getattr(bare, "color_accuracy", "full") != "full"
         ):
             raise NotImplementedError(
                 "saved directed projections currently require inclusive physical "
-                "helicities, full colour and model R2; provide spin classes separately "
-                "through spin_directed; resolved/projected-colour and direct-R2 "
+                "helicities and model R2; provide spin classes separately "
+                "through spin_directed; resolved and direct-R2 "
                 "transport remain unsupported"
             )
+        from .physical_correlations import directed_color_convention
+
+        convention = directed_color_convention(bare, directed.bare.histories)
     if spin_directed:
         classes = []
         for item in spin_directed:
@@ -359,12 +361,11 @@ def write_loop_pacbin(
             }
         )
     if directed is not None:
-        from pyamplicol.color.connections import COLOR_CONNECTION_CONVENTION
 
         def directed_data(value):
             return {
                 "kind": "directed-complex",
-                "convention": COLOR_CONNECTION_CONVENTION,
+                "convention": convention,
                 "color_legs": [
                     (leg.label, leg.representation) for leg in value.bare.color_legs
                 ],

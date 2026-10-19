@@ -326,8 +326,14 @@ def _check_correlators(backend, correlators):
 
     if not isinstance(correlators, CorrelatorConfig):
         raise TypeError("correlators must be a CorrelatorConfig")
-    if backend._run_config.color.accuracy != "full":
-        raise GenerationError("virtual colour histories currently require full colour")
+    if backend._run_config.color.accuracy != "full" and (
+        correlators.all_color_through_order is not None
+        or any(item.bra or item.ket for item in correlators.color_correlations)
+    ):
+        raise GenerationError(
+            "projected virtual colour currently supports identity histories only; "
+            "ordered LC/NLC operator banks remain unsupported"
+        )
 
 
 def _prepare_directed(program, declarations):

@@ -73,3 +73,24 @@ def test_fixed_full_colour_and_unsupported_incomplete_projection_are_distinct():
         require_directed_model_scope(model, charged)
     with pytest.raises(ValueError, match="no formal projection"):
         require_directed_model_scope(_owner("lc", projected=False), identity)
+
+
+@pytest.mark.parametrize("accuracy", ["lc", "nlc"])
+def test_public_preflight_accepts_identity_sources_without_operator_banks(accuracy):
+    from pyamplicol.api.errors import GenerationError
+    from pyamplicol.color.correlator_matrices import ColorCorrelator
+    from pyamplicol.correlators import CorrelatorConfig
+    from pyamplicol.generation.loop_service import _check_correlators
+
+    backend = SimpleNamespace(
+        _run_config=SimpleNamespace(color=SimpleNamespace(accuracy=accuracy))
+    )
+    _check_correlators(backend, CorrelatorConfig(spin_correlations=((3,), (3, 4))))
+    _check_correlators(
+        backend, CorrelatorConfig(color_correlations=(ColorCorrelator("identity"),))
+    )
+    with pytest.raises(GenerationError, match="identity histories"):
+        _check_correlators(
+            backend,
+            CorrelatorConfig(color_correlations=(ColorCorrelator.dipole("T", 1, 2),)),
+        )

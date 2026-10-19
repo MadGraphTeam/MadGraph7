@@ -98,6 +98,37 @@ def test_tree_and_virtual_colour_metadata_keep_distinct_semantics():
         replace(tree, reduction=PhysicsReduction("born-anchored-interference", ()))
 
 
+def test_virtual_lc_contracted_identity_observable_has_no_born_anchors():
+    contracted = replace(
+        _physics(),
+        contribution_kind="virtual",
+        color_kind="contracted-color",
+        color_flows=(),
+        contracted_color_components=(ContractedColorComponent("lc", 0, "lc"),),
+        reduction=PhysicsReduction("contracted-color", ()),
+    )
+    assert contracted.color_ids == ("lc",)
+    assert not contracted.color_flows
+    assert not contracted.born_anchored_color_components
+    for changes in (
+        {"contracted_color_components": ()},
+        {
+            "contracted_color_components": (
+                ContractedColorComponent("lc", 0, "lc"),
+                ContractedColorComponent("extra", 1, "extra"),
+            )
+        },
+        {"born_anchored_color_components": _anchors()},
+        {"color_flows": _physics().color_flows},
+    ):
+        with pytest.raises(ValueError, match="one inclusive color component"):
+            replace(contracted, **changes)
+    with pytest.raises(ValueError, match="reduction kind"):
+        replace(
+            contracted, reduction=PhysicsReduction("born-anchored-interference", ())
+        )
+
+
 @pytest.mark.parametrize("members", [(), (0, 0), (-1,), (True,)])
 def test_anchor_members_are_exact_indices(members):
     with pytest.raises(ValueError):
@@ -379,6 +410,47 @@ def test_artifact_colour_declaration_requires_matching_native_partition():
             metadata.validate_plan(bad)
     with pytest.raises(ValueError, match="resolved canonical Born"):
         replace(metadata, resolved=False).validate_plan(plan)
+    from pyamplicol.loops.physical_correlations import PROJECTED_IDENTITY_CONVENTION
+
+    directed = {
+        "kind": "directed-complex",
+        "convention": PROJECTED_IDENTITY_CONVENTION,
+        "histories": [{"id": "born", "bra": [], "ket": []}],
+    }
+    for accuracy in ("lc", "nlc", "full"):
+        inclusive = replace(
+            metadata, color_accuracy=accuracy, resolved=False, correlations=True
+        )
+        projected = {
+            **plan,
+            "color_projection": {"accuracy": accuracy},
+            "helicity_projection": None,
+            "born_color_components": None,
+            "directed_projection": directed,
+        }
+        inclusive.validate_plan(projected)
+        for invalid in (
+            {**projected, "born_color_components": plan["born_color_components"]},
+            {**projected, "helicity_projection": {}},
+            {
+                **projected,
+                "directed_projection": {
+                    **directed,
+                    "convention": "su3-literal-tau-physical-charge-all-outgoing-v1",
+                },
+            },
+            {
+                **projected,
+                "directed_projection": {
+                    **directed,
+                    "histories": [
+                        {"id": "T", "bra": [{"emitter": 1}], "ket": [{"emitter": 1}]}
+                    ],
+                },
+            },
+        ):
+            with pytest.raises(ValueError):
+                inclusive.validate_plan(invalid)
     for accuracy in ("nlc", "full"):
         adjusted = {**plan, "color_projection": {"accuracy": accuracy}}
         with pytest.raises(ValueError, match="require LC"):

@@ -43,8 +43,9 @@ column-major convention. For example, inclusive virtual values are addressed by
 The header specifies all layouts. Epsilon indices `0,1,2` mean finite,
 single pole and double pole. Born and virtual catalogue orderings are independent.
 Resolved helicities retain the incoming spin average and sum to the inclusive
-result. LC colour components are signed Born-anchored interference contributions;
-NLC/full have one contracted component. Shape and catalogue metadata determine
+result. Resolved LC colour components are signed Born-anchored interference
+contributions; inclusive projected identity correlations and NLC/full have one
+contracted component. Shape and catalogue metadata determine
 their counts and identities, never a positive-probability interpretation.
 
 Pass `count`, `stride` and `offset`, with `offset + count <= stride`, plus the

@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 pub const LOOP_RUNTIME_MEMBER: &str = "schedule/loop-runtime-v3.json";
+pub const PROJECTED_IDENTITY_CONVENTION: &str = "sun-graded-identity-all-outgoing-v1";
 type Order = Vec<(String, u32)>;
 
 macro_rules! record {
@@ -774,16 +775,25 @@ impl LoopRuntimePlan {
                     &mut shape,
                 )?;
             }
+            let colour_scope = match projection.convention.as_str() {
+                "su3-literal-tau-physical-charge-all-outgoing-v1" => {
+                    self.color_projection.is_none()
+                }
+                PROJECTED_IDENTITY_CONVENTION => {
+                    self.color_projection.is_some()
+                        && projection
+                            .histories
+                            .iter()
+                            .all(|h| h.bra.is_empty() && h.ket.is_empty())
+                }
+                _ => false,
+            };
             require(
                 projection.kind == "directed-complex"
-                    && projection.convention == "su3-literal-tau-physical-charge-all-outgoing-v1"
+                    && colour_scope
                     && self.r2_strategy == "model"
                     && self.helicity_projection.is_none()
-                    && self.born_color_components.is_none()
-                    && self
-                        .color_projection
-                        .as_ref()
-                        .is_none_or(|p| p.accuracy == "full"),
+                    && self.born_color_components.is_none(),
                 "unsupported directed projection kind/convention or spin/resolved/colour/R2 domain",
             )?;
             require(

@@ -433,12 +433,20 @@ class ProcessPhysics:
             raise ValueError("contribution kind must be tree or virtual")
         virtual_lc = self.contribution_kind == "virtual" and self.color_accuracy == "lc"
         if virtual_lc:
-            if not anchors or color_flows or contracted:
-                raise ValueError(
-                    "virtual LC requires signed Born anchors, not colour flows"
-                )
-            if self.color_kind != "born-anchored-interference":
-                raise ValueError("virtual LC colour kind must describe Born anchors")
+            if self.color_kind == "contracted-color":
+                if len(contracted) != 1 or anchors or color_flows:
+                    raise ValueError(
+                        "contracted virtual LC requires one inclusive color component"
+                    )
+            else:
+                if not anchors or color_flows or contracted:
+                    raise ValueError(
+                        "virtual LC requires signed Born anchors, not colour flows"
+                    )
+                if self.color_kind != "born-anchored-interference":
+                    raise ValueError(
+                        "virtual LC colour kind must describe Born anchors"
+                    )
         elif anchors:
             raise ValueError("Born anchors apply only to virtual LC metadata")
         elif self.color_accuracy == "lc" and not color_flows:
@@ -452,7 +460,7 @@ class ProcessPhysics:
         if not isinstance(reduction, PhysicsReduction):
             raise TypeError("reduction must be PhysicsReduction metadata")
         expected_reduction = (
-            "born-anchored-interference"
+            self.color_kind
             if virtual_lc
             else "lc-diagonal"
             if self.color_accuracy == "lc"
@@ -495,7 +503,10 @@ class ProcessPhysics:
     def color_ids(self) -> tuple[str, ...]:
         components: tuple[ColorComponent, ...] = (
             self.born_anchored_color_components
-            if self.contribution_kind == "virtual" and self.color_accuracy == "lc"
+            if self.contribution_kind == "virtual"
+            and self.color_kind == "born-anchored-interference"
+            else self.contracted_color_components
+            if self.contribution_kind == "virtual"
             else self.color_flows
             if self.color_accuracy == "lc"
             else self.contracted_color_components

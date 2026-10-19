@@ -472,7 +472,11 @@ def test_colour_required_constant_cannot_undo_an_actual_restriction_card(
 @pytest.mark.parametrize(
     "sections,declarations,message",
     [
-        ({"color": {"accuracy": "lc"}}, CorrelatorConfig(), "full colour"),
+        (
+            {"color": {"accuracy": "lc"}},
+            CorrelatorConfig.all_color(through_order=1),
+            "identity histories",
+        ),
         ({}, object(), "CorrelatorConfig"),
     ],
 )

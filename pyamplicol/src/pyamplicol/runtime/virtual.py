@@ -540,7 +540,7 @@ class VirtualRuntimeBackend:
                         "signed, potentially overcomplete canonical Born tensor "
                         "groups; "
                         "not sampling probabilities"
-                        if self._color_accuracy == "lc"
+                        if metadata["plan"].get("born_color_components") is not None
                         else "one contracted colour component"
                     ),
                     "source_revision": self._native.source_revision,

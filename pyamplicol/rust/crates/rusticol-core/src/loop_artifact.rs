@@ -4,7 +4,8 @@
 //! Scheme records are explicit declarations; loading does not certify physics.
 
 use crate::loop_runtime::{
-    LoadedLoopRuntime, ModelBinding, OrderLayout, StateLeg, load_loop_runtime_reader,
+    LoadedLoopRuntime, ModelBinding, OrderLayout, StateLeg, PROJECTED_IDENTITY_CONVENTION,
+    load_loop_runtime_reader,
 };
 use crate::{ArtifactSelection, PayloadRole, RusticolError, RusticolResult, VerifiedArtifact};
 use serde::{Deserialize, Serialize};
@@ -224,7 +225,13 @@ pub fn load_loop_artifact(
             && metadata.interference == "2*Re(conj(Born)*loop)"
             && matches!(metadata.color_accuracy.as_str(), "full" | "nlc" | "lc")
             && (metadata.color_accuracy != "lc"
-                || (metadata.resolved && plan.born_color_components.is_some()))
+                || (metadata.resolved && plan.born_color_components.is_some())
+                || (metadata.correlations
+                    && !metadata.resolved
+                    && plan.born_color_components.is_none()
+                    && plan.directed_projection.as_ref().is_some_and(|p| {
+                        p.convention == PROJECTED_IDENTITY_CONVENTION
+                    })))
             && metadata.scheme_status == "declared-not-certified"
             && metadata.correlations == plan.directed_projection.is_some()
             && metadata.resolved == plan.helicity_projection.is_some()

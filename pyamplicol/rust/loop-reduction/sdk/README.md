@@ -62,10 +62,11 @@ records retain failures and attempt history. Global source-parameter binding
 failures can still precede this subset rescue and remain function errors.
 
 Inclusive output axes are `[point,order,epsilon]`. Resolved output adds helicity
-and colour-component axes before epsilon. LC components are signed coherent
-interferences anchored to canonical groups of Born tensors, potentially
-overcomplete; NLC/full retain one contracted component. The saved plan supplies
-component IDs and Born-column memberships. Summing helicity and component axes
+and colour-component axes before epsilon. Resolved LC components are signed
+coherent interferences anchored to canonical groups of Born tensors, potentially
+overcomplete. Inclusive projected identity correlations and NLC/full retain one
+contracted component. The saved plan supplies component IDs and, for resolved LC,
+Born-column memberships. Summing helicity and component axes
 reconstructs the inclusive result. Helicity rows retain the inclusive initial spin
 average. Failures and precision rescue operate on whole original physical points,
 including every component and squared order in the agreement check.

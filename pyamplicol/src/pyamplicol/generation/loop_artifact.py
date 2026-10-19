@@ -76,10 +76,8 @@ class LoopExecutionMetadata:
             raise TypeError("loop resolved/correlation capabilities must be booleans")
         if self.partial_results is not False:
             raise ValueError("loop artifact public partial results are unavailable")
-        if self.correlations and (self.color_accuracy != "full" or self.resolved):
-            raise ValueError(
-                "directed loop artifacts require full colour and inclusive projection"
-            )
+        if self.correlations and self.resolved:
+            raise ValueError("directed loop artifacts require inclusive projection")
 
     def validate_plan(self, plan):
         if self.correlations != (plan.get("directed_projection") is not None):
@@ -92,14 +90,33 @@ class LoopExecutionMetadata:
             raise ValueError(
                 "loop artifact colour accuracy differs from the validated plan"
             )
+        from pyamplicol.loops.physical_correlations import (
+            PROJECTED_IDENTITY_CONVENTION,
+        )
+
+        directed = plan.get("directed_projection")
+        projected_identity = (
+            self.correlations
+            and projection is not None
+            and directed["kind"] == "directed-complex"
+            and directed["convention"] == PROJECTED_IDENTITY_CONVENTION
+            and bool(directed["histories"])
+            and all(
+                not item["bra"] and not item["ket"] for item in directed["histories"]
+            )
+        )
+        if self.correlations and projection is not None and not projected_identity:
+            raise ValueError("projected correlation requires an identity descriptor")
         partition = plan.get("born_color_components")
-        if self.color_accuracy == "lc":
+        if self.color_accuracy == "lc" and not projected_identity:
             if partition is None or not self.resolved:
                 raise ValueError(
                     "LC loop artifacts require resolved canonical Born components"
                 )
         elif partition is not None:
-            raise ValueError("Born colour components require LC loop accuracy")
+            raise ValueError(
+                "Born colour components require LC ordinary resolved output"
+            )
         if type(self.resolved) is not bool or self.resolved != (
             plan.get("helicity_projection") is not None
         ):
