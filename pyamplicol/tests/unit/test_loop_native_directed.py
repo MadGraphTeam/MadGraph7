@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 """One native call evaluates saved complex histories and exact-input rescue."""
 
+import io
 import json
 import os
 from decimal import Decimal, localcontext
@@ -21,7 +22,9 @@ def directed_plan():
     if not path:
         pytest.skip("set PYAMPLICOL_NATIVE_DIRECTED_PACBIN to the source uudd control")
     fixture = Path(__file__).resolve().parents[2] / "tools/loop_reference/uudd_qcd.json"
-    return Path(path), json.loads(fixture.read_text(), parse_float=str)["points"][:2]
+    return Path(path), json.loads(fixture.read_text(), parse_float=str, parse_int=str)[
+        "points"
+    ][:2]
 
 
 def _blocks(result):
@@ -232,3 +235,64 @@ def test_directed_subset_rescue_keeps_every_complex_cross_term(directed_plan):
     )
     assert empty.result.point_ids == [] and json.loads(empty.diagnostics_json) == []
     assert empty.result.history_ids == result.history_ids
+
+
+def test_saved_history_labels_select_their_complex_output_columns(
+    directed_plan, tmp_path
+):
+    """A distinguishable saved assembly checks labels, not correlated physics.
+
+    Swapping the ordered/swapped columns or a first/second output block fails
+    this control even though conjugation-only physical checks might still pass.
+    The original currents/reducer execute; only final assembly bytes are replaced.
+    """
+    import _loop_reduction as native
+    from symbolica import E, S
+
+    from pyamplicol.generation.evaluator_container import (
+        PacbinMemberSource,
+        PacbinReader,
+        write_pacbin_atomic,
+    )
+    from pyamplicol.loops.physical import _saved
+
+    path, points = directed_plan
+    plan = json.loads(native.PortableLoopPlan(str(path)).metadata_json())
+    histories = plan["directed_projection"]["histories"]
+    sectors = len(plan["order_layout"]["virtual"])
+    width = len(histories) * sectors * 3
+    pairs = [
+        (
+            1000 * block + 100 * history + 10 * order + pole + 1,
+            -1000 * block - 100 * history - 10 * order - pole - 7,
+        )
+        for block in range(7)
+        for history in range(len(histories))
+        for order in range(sectors)
+        for pole in range(3)
+    ]
+    parameters = [S(f"directed_column_control::input{i}") for i in range(8 * width)]
+    state = _saved([E(str(re)) + E("1i") * E(str(im)) for re, im in pairs], parameters)
+    destination = tmp_path / "labeled-assembly.pacbin"
+    with PacbinReader.open(path) as reader:
+        members = [
+            PacbinMemberSource(
+                member.logical_path,
+                member.kind,
+                io.BytesIO(
+                    state
+                    if member.logical_path == plan["directed_projection"]["assemble"]
+                    else reader.read_member(member.logical_path, length=member.length)
+                ),
+            )
+            for member in reader.members
+        ]
+    write_pacbin_atomic(destination, members)
+    runtime = native.NativeLoopProgram(str(destination), reduction_engine="fast")
+    result = runtime.evaluate_directed(points[:1], ["1000000"], point_ids=[2**64 - 1])
+    assert result.history_ids == [item["id"] for item in histories]
+    outputs = [result.component_batches[index] for index in (0, 2, 3, 4, 5)]
+    outputs += [result.directed_first, result.directed_second]
+    for block, output in enumerate(outputs):
+        actual = [(Decimal(re), Decimal(im)) for re, im in output.to_decimal()]
+        assert actual == pairs[block * width : (block + 1) * width]

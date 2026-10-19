@@ -17,9 +17,10 @@ dimensional-remainder epsilon sectors survive persistence, with UV currents and
 external fields retained and model R2 excluded. Source-owned model-R2 plans retain
 one scalar owner and ordinary/CT scale views, including anonymous external-field
 coefficients. Explicitly continued full/LC/NLC model-rule colour projections are
-persisted with their structural sector degrees. Source dimensional/direct and
-native correlated execution remain outside this boundary. Source-owned precision
-verification/rescue is explicit and uses the native coordinator described below.
+persisted with their structural sector degrees. Source dimensional/direct
+execution remains outside this boundary. Saved full-colour directed kernels use
+explicit native mode selection. Source-owned precision verification/rescue is
+explicit and uses the native coordinator described below.
 
 ### Cold directed projections
 
@@ -45,11 +46,48 @@ uses `history-0`, `history-1`, etc.; these are column labels, never point IDs.
 
 This cold format currently requires full colour, model R2 and inclusive physical
 helicities. Spin sources, resolved directed output and LC/NLC directed projection
-remain unimplemented. Old readers reject the unknown optional field; readers
-which know it validate the descriptor, while both ordinary Python binding and
-the ordinary native executor explicitly refuse execution until the native
-directed scheduler is connected. No public correlated capability is enabled by
-the presence of these saved states.
+remain unimplemented. Old readers reject the unknown optional field. The legacy
+Python binder continues to reject these plans. The shared native executor binds
+both ordinary and directed projectors and selects the observable explicitly;
+ordinary evaluation still uses its original kernels. Public correlated
+capabilities require matching artifact metadata, not just extra saved states.
+
+### Native directed execution and verification
+
+`NativeLoopProgram.evaluate_directed` executes all saved histories in one native
+call. Physical state/current/source-scalar work is shared with ordinary execution.
+Each family reduces channels in history-major, paired-direction, squared-order
+order; complex conjugation of the second term occurs in the prepared
+post-integration kernel. UV, R2 and external-field kernels retain both directions.
+There is no point loop or numerical colour contraction in Python.
+
+The result retains six ordinary component batches, with Born columns
+`history × born_order` and virtual columns `history × virtual_order × epsilon`.
+Its explicit `observable_kind="directed-complex"`, `history_ids`, `directed_first`
+and `directed_second` preserve the meaning of these wider columns. Totals contain
+25 values per history: one Born total and eight Laurent triples, including both
+cross terms. Ordinary results have no directed fields and keep their existing
+19-value totals. Physical point IDs are opaque; internal numerical rows remain
+dense, with no multiplication of caller IDs by the history count.
+
+Partial execution removes complete failed physical points and maps reducer
+failures to the original point, history, direction, order and denominator family.
+Earlier state/scalar failures remain typed at their applicable stage. Survivor
+replay uses the same immutable source snapshot. The explicit
+`evaluate_directed_verified` path compares every complex per-order component,
+both cross terms and the per-history totals, then rescues failing points from
+original exact inputs through the existing precision policy. Successful retries
+retain earlier diagnostic attempts. Empty/all-failed outputs preserve all widths.
+
+Actual source QCD controls pass in double, DoubleFloat and AP70, including exact
+parameter changes, retained snapshots, nonzero imaginary ordered histories,
+swapped-history conjugation, Casimir factors and independent analytic Born/UV
+checks. Maximum-u64 identities, mixed early/reduction failures and AP60/AP80
+subset rescue pass. A distinguishable complex saved-assembly control checks
+history labels and first/second output placement. These are execution/conformance
+controls; sharing evaluator bytes is not an independent general correlated
+physics oracle. Spin sources, resolved directed output, projected-colour directed
+output, flavour mappings and public generation composition remain separate gates.
 
 ## Persisted data
 
