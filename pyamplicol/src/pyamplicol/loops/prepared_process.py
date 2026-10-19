@@ -286,7 +286,6 @@ class PreparedBareProcess:
         view._evaluator_states = dict(self.evaluator_states)
         for name in (
             "born_projector",
-            "dual_born_weights",
             "postprocess",
             "zero_poles",
             "sum_order_values",
@@ -326,6 +325,7 @@ class PreparedBareProcess:
         )
         view.color_space = PhysicalColorSpace()
         view._color_metrics_revision = self.color_metrics_revision
+        view.dual_born_weights = view.weight_plan.bind(view)
         view._prepared_process = self
         return view
 

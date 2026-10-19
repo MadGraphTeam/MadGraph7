@@ -35,6 +35,7 @@ from pyamplicol.api.virtual_results import (
     LaurentCoefficients,
     ResolvedVirtualEvaluation,
     VirtualArithmeticSpec,
+    VirtualColorContraction,
     VirtualEvaluation,
     VirtualFailureDiagnostic,
     VirtualLaneDiagnostic,
@@ -75,6 +76,7 @@ def _verification_diagnostic(value: dict[str, Any]) -> VirtualVerificationDiagno
                 attempt["agreement"],
                 attempt["conversion_agreement"],
                 tuple(VirtualFailureDiagnostic(**item) for item in attempt["failures"]),
+                VirtualColorContraction(**attempt["color_contraction"]),
             )
             for attempt in value["attempts"]
         ),
@@ -578,6 +580,9 @@ class VirtualRuntimeBackend:
                     ),
                     "source_revision": self._native.source_revision,
                     "arithmetic": self._native.arithmetic,
+                    "color_contraction": json.loads(
+                        self._native.color_contraction_json
+                    ),
                     "supported_arithmetics": metadata["physics"]["arithmetic"],
                     "default_arithmetic": self.default_arithmetic,
                     "default_precision": self.default_precision,
@@ -855,6 +860,9 @@ class VirtualRuntimeBackend:
                 )
                 for row in virtual
             )
+            color_contraction = VirtualColorContraction(
+                **json.loads(result.primary_color_contraction_json)
+            )
             diagnostics = tuple(
                 VirtualLaneDiagnostic(
                     verification[i].status
@@ -874,6 +882,7 @@ class VirtualRuntimeBackend:
                     ),
                     verification[i] if verification else None,
                     tuple(failures_by_point.get(i, ())),
+                    color_contraction,
                 )
                 for i in range(len(points))
             )

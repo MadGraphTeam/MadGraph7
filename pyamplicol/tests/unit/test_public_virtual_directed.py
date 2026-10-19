@@ -42,6 +42,7 @@ def _directed(monkeypatch):
             requested_point_ids=list(range(len(points))),
             point_ids=list(range(len(points))),
             r2_strategy="model",
+            primary_color_contraction_json=handle.weight_operation_json,
             failures=handle.failures,
             statuses=[[] for _ in points],
             born=batch(len(points), 4),

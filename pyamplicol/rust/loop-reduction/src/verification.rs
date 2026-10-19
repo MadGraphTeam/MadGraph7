@@ -130,6 +130,7 @@ impl SourceBindingValidation {
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct VerificationAttempt {
+    pub color_contraction: rusticol_core::loop_runtime::ColorWeightExecution,
     pub arithmetic: ArithmeticSpec,
     pub precision_bits: u32,
     pub numerical_success: bool,
@@ -224,6 +225,7 @@ fn record(
             .ok_or_else(|| invalid("foreign verification point"))?
             .attempts
             .push(VerificationAttempt {
+                color_contraction: result.primary_color_contraction.clone(),
                 arithmetic: spec.clone(),
                 precision_bits: spec.bits()?,
                 numerical_success: successful.contains(id),
@@ -593,6 +595,7 @@ pub fn evaluate_observable_verified(
     }
     Ok(VerifiedLoopResult {
         result: CompleteLoopResult {
+            primary_color_contraction: primary.primary_color_contraction,
             requested_point_ids: inputs.point_ids.clone(),
             point_ids: merged.ids().to_vec(),
             born,

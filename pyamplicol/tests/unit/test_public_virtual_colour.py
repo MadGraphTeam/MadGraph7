@@ -245,6 +245,13 @@ def _transport_backend(monkeypatch, accuracy="lc"):
             },
         },
     }
+    operation = dict(
+        requested="direct",
+        algorithm="direct",
+        reason="exact direct weight schedule",
+        regular_kernels=0,
+        direct_residual_entries=0,
+    )
     handle = SimpleNamespace(
         arithmetic="arbitrary",
         precision=70,
@@ -253,6 +260,10 @@ def _transport_backend(monkeypatch, accuracy="lc"):
         source_revision=0,
         parameter_overrides={},
         metadata_json=lambda: json.dumps(data),
+        color_contraction_json=json.dumps(
+            {"ordinary": operation, "resolved": operation}
+        ),
+        weight_operation_json=json.dumps(operation),
         failures=[],
     )
 
@@ -274,6 +285,7 @@ def _transport_backend(monkeypatch, accuracy="lc"):
             requested_point_ids=list(range(len(points))),
             point_ids=list(range(len(points))),
             r2_strategy="model",
+            primary_color_contraction_json=handle.weight_operation_json,
             failures=handle.failures,
             statuses=[[] for _ in range(rows)],
             born=batch(rows, 2),

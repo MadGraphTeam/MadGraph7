@@ -433,6 +433,10 @@ impl From<&LoopLaneFailure> for NativeLoopFailure {
 #[pymethods]
 impl NativeCompleteLoopResult {
     #[getter]
+    fn primary_color_contraction_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.0.primary_color_contraction).map_err(error)
+    }
+    #[getter]
     fn observable_kind(&self) -> &'static str {
         if self.0.directed.is_some() {
             "directed-complex"

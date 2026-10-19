@@ -5,6 +5,7 @@
 //! complete Born/loop-interference coordinator for validated internal plans.
 
 mod batch;
+mod dual_weights;
 mod exact;
 mod physical;
 mod portable;
@@ -243,6 +244,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     exact::register(module)?;
     states::register(module)?;
     module.add_class::<CoefficientEvaluator>()?;
+    dual_weights::register(module)?;
     module.add_class::<PolynomialPlan>()?;
     module.add_function(wrap_pyfunction!(massless_spinors_decimal, module)?)?;
     Ok(())

@@ -20,6 +20,10 @@ from .scalar_bindings import ScalarBindingPlan, prepare_scalar_bindings
 from .scalar_frontend import ScalarExpression
 
 
+class SourceColorCapabilityUnavailable(NotImplementedError):
+    """A valid source model lacks a selected formal-colour capability."""
+
+
 @dataclass(frozen=True, slots=True)
 class SourceColorContinuation:
     """Explicit source-owned model data, not an inferred model certificate.
@@ -155,7 +159,7 @@ class SourceColorContinuation:
     def require_kernels(self, keys):
         for key in keys:
             if key not in self.kernel_keys:
-                raise NotImplementedError(
+                raise SourceColorCapabilityUnavailable(
                     f"selected source kernel {key!r} has no declared "
                     "formal-colour continuation"
                 )
@@ -163,7 +167,7 @@ class SourceColorContinuation:
     def require_fields(self, keys):
         for key in keys:
             if key not in self.field_keys:
-                raise NotImplementedError(
+                raise SourceColorCapabilityUnavailable(
                     f"selected source particle field {key!r} has no declared "
                     "formal-colour continuation"
                 )
@@ -254,7 +258,7 @@ class SourceColorContinuation:
                 continue
             for output, column in zip(plan.outputs, columns, strict=True):
                 if formal.coefficients.expressions[column].value != 0:
-                    raise NotImplementedError(
+                    raise SourceColorCapabilityUnavailable(
                         f"selected ordinary scalar {output!r} depends on Nc; "
                         "ordinary source-current colour grading is not yet supported"
                     )

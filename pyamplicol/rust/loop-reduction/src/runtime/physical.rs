@@ -45,8 +45,12 @@ impl PhysicalBackend {
     }
 }
 impl LoopBackend for PhysicalBackend {
+    fn arithmetic(&self) -> &str {
+        &self.arithmetic
+    }
     type Batch = Arc<Batch>;
     type Evaluator = CoefficientEvaluator;
+    type DualBornWeights = DualBornWeights;
     type ExactEvaluator = ExactPolynomialEvaluator;
     type Schedule = CoefficientPlan;
     // Reducer variants contain sizable inline dependency workspaces. Keep the
@@ -54,6 +58,32 @@ impl LoopBackend for PhysicalBackend {
     type Reducer = Box<PolynomialPlan>;
     fn evaluator(&self, state: &[u8]) -> RusticolResult<Self::Evaluator> {
         CoefficientEvaluator::new(state, &self.arithmetic, self.precision).map_err(runtime_error)
+    }
+    fn dual_born_weights(
+        &self,
+        state: &[u8],
+        rectangle: Option<&rusticol_core::loop_runtime::RectangularDualWeights>,
+        constants: Option<&[u8]>,
+        columns: &[[usize; 3]],
+    ) -> RusticolResult<Self::DualBornWeights> {
+        DualBornWeights::new(
+            state,
+            rectangle,
+            constants,
+            columns,
+            &self.arithmetic,
+            self.precision,
+        )
+        .map_err(runtime_error)
+    }
+    fn evaluate_dual_born_weights(
+        weights: &mut Self::DualBornWeights,
+        input: &Arc<Batch>,
+    ) -> RusticolResult<Arc<Batch>> {
+        weights
+            .evaluate_batch(input)
+            .map(Arc::new)
+            .map_err(runtime_error)
     }
     fn exact_evaluator(&self, state: &[u8]) -> RusticolResult<Self::ExactEvaluator> {
         ExactPolynomialEvaluator::new(state).map_err(runtime_error)

@@ -135,11 +135,26 @@ impl VirtualRuntime {
             "initial_average": self.artifact.runtime.plan().initial_average,
             "physics": self.metadata(),
             "plan": self.artifact.runtime.plan(),
+            "color_contraction": self.color_contraction_metadata(),
         }))
         .map_err(|e| RusticolError::serialization(e.to_string()))
     }
     pub fn plan_metadata_json(&self) -> RusticolResult<String> {
         self.artifact.runtime.metadata_json()
+    }
+    pub fn color_contraction_metadata(&self) -> serde_json::Value {
+        let plan = self.artifact.runtime.plan();
+        serde_json::json!({
+            "scope": "bare-loop dual Born weights; Born-square and UV/R2/field contractions remain direct",
+            "arithmetic": self.arithmetic,
+            "ordinary": plan.color_weight_execution(&self.arithmetic, false, false, None),
+            "resolved": plan.helicity_projection.as_ref().map(|_| plan.color_weight_execution(&self.arithmetic, true, false, None)),
+            "directed": plan.directed_projection.as_ref().map(|_| plan.color_weight_execution(&self.arithmetic, false, true, None)),
+            "spin_sources": plan.spin_projections.iter().flatten().enumerate().map(|(i,p)| serde_json::json!({
+                "legs": p.legs,
+                "operation": plan.color_weight_execution(&self.arithmetic, false, true, Some(i)),
+            })).collect::<Vec<_>>(),
+        })
     }
     pub fn arithmetic(&self) -> &str {
         &self.arithmetic

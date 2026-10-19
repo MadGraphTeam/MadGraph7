@@ -159,6 +159,7 @@ impl Runtime {
             "correlated_resolved":false,
             "correlated_layout":"point/history/order/epsilon; complex binary64",
             "color_accuracy":self.native.metadata().color_accuracy,
+            "color_contraction":self.native.color_contraction_metadata(),
             "color_components":self.color_components,
             "color_component_semantics":if self.born_anchored_color {
                 "signed canonical Born tensor groups, potentially overcomplete; not sampling probabilities"
@@ -400,6 +401,7 @@ fn diagnostics(
         "failures":result.failures, "verification":verification,
         "reduction_statuses":result.statuses,
         "source_revision":result.source_revision, "r2_strategy":result.r2_strategy,
+        "primary_color_contraction":result.primary_color_contraction,
     }))
     .map_err(serialization)?;
     Ok((statuses, diagnostics_json))

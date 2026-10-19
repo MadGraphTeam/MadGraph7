@@ -10,6 +10,7 @@ from pyamplicol.loops.color_components import prepare_born_color_components
 from pyamplicol.loops.dual_weights import (
     prepare_certified_dual_born_weights,
     prepare_dual_born_weights,
+    select_dual_born_weights,
 )
 from pyamplicol.loops.physical_color import project_physical_color
 from pyamplicol.loops.physical_process import NativeBareProcessProgram
@@ -163,3 +164,37 @@ def test_numerical_replacement_preflight_is_atomic(formal_owner):
             bare.set_color_metrics(born, loop)
         assert bare.formal_color_metrics is formal
         formal.require_owner(bare)
+
+
+def test_actual_action_selection_serializes_exact_ordered_domains(formal_owner):
+    bare, nc, labels = formal_owner
+    project_physical_color(bare, nc, (), "nlc")
+    selected = select_dual_born_weights(bare, "auto")
+    assert selected.requested_contraction == "auto"
+    assert selected.color_certificate is not None
+    descriptor, constants = selected.runtime_rectangle(bare)
+    assert constants and descriptor["degree"] == 2
+    assert sum(len(a["columns"]) for a in descriptor["born_aliases"]) == 5
+    assert sum(len(a["columns"]) for a in descriptor["loop_aliases"]) == 6
+    assert descriptor["banks"] == [(0, 0), (0, 1), (0, 2)]
+    assert descriptor["kernels"] and descriptor["residuals"]
+    assert selected.state == prepare_dual_born_weights(bare).state
+    assert select_dual_born_weights(bare, "auto", labels=()).color_certificate is None
+    with pytest.raises(ValueError, match="no nonzero regular rectangle"):
+        select_dual_born_weights(bare, "symmetric-group-fft", labels=())
+    bare._color_metrics_revision += 1
+    with pytest.raises(ValueError, match="projection owner"):
+        select_dual_born_weights(bare, "auto", labels=labels)
+    bare.formal_color_metrics = None
+    assert "no retained formal" in select_dual_born_weights(bare, "auto").direct_reason
+    with pytest.raises(ValueError, match="no retained formal"):
+        select_dual_born_weights(bare, "symmetric-group-fft")
+
+
+def test_lc_auto_keeps_requested_policy_and_direct_public_selection(formal_owner):
+    bare, nc, _ = formal_owner
+    project_physical_color(bare, nc, (), "lc")
+    selected = select_dual_born_weights(bare, "auto")
+    assert selected.requested_contraction == "auto"
+    assert selected.color_certificate is None
+    assert "LC automatic" in selected.direct_reason

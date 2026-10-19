@@ -15,11 +15,24 @@ use std::sync::Arc;
 pub trait LoopBackend {
     type Batch: Clone;
     type Evaluator;
+    type DualBornWeights;
     type ExactEvaluator;
     type Schedule;
     type Reducer;
+    fn arithmetic(&self) -> &str;
 
     fn evaluator(&self, state: &[u8]) -> RusticolResult<Self::Evaluator>;
+    fn dual_born_weights(
+        &self,
+        state: &[u8],
+        rectangle: Option<&crate::loop_runtime::RectangularDualWeights>,
+        constants: Option<&[u8]>,
+        columns: &[[usize; 3]],
+    ) -> RusticolResult<Self::DualBornWeights>;
+    fn evaluate_dual_born_weights(
+        weights: &mut Self::DualBornWeights,
+        input: &Self::Batch,
+    ) -> RusticolResult<Self::Batch>;
     fn exact_evaluator(&self, state: &[u8]) -> RusticolResult<Self::ExactEvaluator>;
     fn schedule(
         &self,
@@ -173,6 +186,7 @@ impl LoopInputs {
 /// finite, single pole, double pole. Components are full, bare, UV, R2, local UV,
 /// and external fields. Values remain in their requested native arithmetic.
 pub struct CompleteLoopResult<T> {
+    pub primary_color_contraction: crate::loop_runtime::ColorWeightExecution,
     pub requested_point_ids: Vec<u64>,
     /// Successful original physical IDs, one per point in both inclusive and
     /// resolved output. Numerical batches use dense rows in point/helicity/colour
@@ -310,7 +324,7 @@ struct FamilyWorkspace<B: LoopBackend> {
 struct HelicityWorkspace<B: LoopBackend> {
     born: B::Evaluator,
     counterterms: B::Evaluator,
-    dual_born_weights: Option<B::Evaluator>,
+    dual_born_weights: Option<B::DualBornWeights>,
 }
 
 struct SourceWorkspace<B: LoopBackend> {
@@ -321,7 +335,7 @@ struct SourceWorkspace<B: LoopBackend> {
 
 struct DirectedWorkspace<B: LoopBackend> {
     born: B::Evaluator,
-    dual_born_weights: Option<B::Evaluator>,
+    dual_born_weights: Option<B::DualBornWeights>,
     postprocess: B::Evaluator,
     counterterms: B::Evaluator,
     assemble: B::Evaluator,
@@ -341,7 +355,7 @@ pub struct LoopExecutor<B: LoopBackend> {
     schedules: Vec<B::Schedule>,
     families: Vec<FamilyWorkspace<B>>,
     bare: BTreeMap<String, B::Evaluator>,
-    dual_born_weights: Option<B::Evaluator>,
+    dual_born_weights: Option<B::DualBornWeights>,
     model: BTreeMap<String, B::Evaluator>,
     counterterms: Vec<Option<B::Evaluator>>,
     fields: Vec<Option<B::Evaluator>>,
@@ -430,6 +444,17 @@ impl<B: LoopBackend> LoopExecutor<B> {
             })
             .transpose()?;
         let eval = |name: &str| backend.evaluator(loaded.evaluator_state(name)?);
+        let bind_weights = |w: &crate::loop_runtime::DualBornWeights| {
+            backend.dual_born_weights(
+                loaded.evaluator_state(&w.state)?,
+                w.rectangular.as_ref(),
+                w.constants_state
+                    .as_ref()
+                    .map(|name| loaded.evaluator_state(name))
+                    .transpose()?,
+                &w.columns,
+            )
+        };
         let schedules = plan
             .schedules
             .iter()
@@ -519,7 +544,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
                     dual_born_weights: projection
                         .dual_born_weights
                         .as_ref()
-                        .map(|w| eval(&w.state))
+                        .map(&bind_weights)
                         .transpose()?,
                 })
             })
@@ -530,7 +555,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 dual_born_weights: projection
                     .dual_born_weights
                     .as_ref()
-                    .map(|w| eval(&w.state))
+                    .map(&bind_weights)
                     .transpose()?,
                 postprocess: eval(&projection.postprocess)?,
                 counterterms: eval(&projection.counterterms)?,
@@ -561,7 +586,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
         let dual_born_weights = plan
             .dual_born_weights
             .as_ref()
-            .map(|w| eval(&w.state))
+            .map(&bind_weights)
             .transpose()?;
         Ok(Self {
             loaded,
@@ -902,6 +927,12 @@ impl<B: LoopBackend> LoopExecutor<B> {
             let width = count(count(3, plan.order_layout.r#virtual.len())?, histories)?;
             let component = empty(width)?;
             return Ok(CompleteLoopResult {
+                primary_color_contraction: plan.color_weight_execution(
+                    self.backend.arithmetic(),
+                    resolved,
+                    directed,
+                    spin_index,
+                ),
                 requested_point_ids: vec![],
                 point_ids: vec![],
                 born: empty(count(plan.order_layout.born.len(), histories)?)?,
@@ -1170,7 +1201,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
             self.dual_born_weights.as_mut()
         };
         let dual_weights = weight_evaluator
-            .map(|evaluator| B::evaluate(evaluator, &born_amplitudes))
+            .map(|evaluator| B::evaluate_dual_born_weights(evaluator, &born_amplitudes))
             .transpose()?;
         if let Some(weights) = &dual_weights {
             check_finite::<B>(
@@ -1640,6 +1671,12 @@ impl<B: LoopBackend> LoopExecutor<B> {
             &mut failures,
         )?;
         Ok(CompleteLoopResult {
+            primary_color_contraction: plan.color_weight_execution(
+                self.backend.arithmetic(),
+                resolved,
+                directed,
+                spin_index,
+            ),
             requested_point_ids,
             point_ids: accepted,
             born,

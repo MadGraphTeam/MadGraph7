@@ -130,6 +130,34 @@ class VirtualStabilityPolicy:
 
 
 @dataclass(frozen=True, slots=True)
+class VirtualColorContraction:
+    """Selected bare-loop dual-weight operation in one arithmetic attempt.
+
+    Born-square and counterterm contractions remain direct. A failed attempt
+    need not reach the selected stage; this is not an execution-time counter.
+    """
+
+    requested: Literal["auto", "direct", "symmetric-group-fft"]
+    algorithm: Literal["direct", "symmetric-group-fft"]
+    reason: str
+    regular_kernels: int = 0
+    direct_residual_entries: int = 0
+
+    def __post_init__(self) -> None:
+        if self.requested not in {"auto", "direct", "symmetric-group-fft"}:
+            raise ValueError("unknown requested colour contraction")
+        if self.algorithm not in {"direct", "symmetric-group-fft"}:
+            raise ValueError("unknown effective colour contraction")
+        if any(
+            type(n) is not int or n < 0
+            for n in (self.regular_kernels, self.direct_residual_entries)
+        ):
+            raise ValueError("colour operation counts must be nonnegative integers")
+        if self.algorithm == "symmetric-group-fft" and self.regular_kernels == 0:
+            raise ValueError("FFT colour operation requires actual regular kernels")
+
+
+@dataclass(frozen=True, slots=True)
 class VirtualVerificationAttempt:
     arithmetic: VirtualArithmeticSpec
     precision_bits: int
@@ -138,6 +166,7 @@ class VirtualVerificationAttempt:
     agreement: bool | None = None
     conversion_agreement: bool | None = None
     failures: tuple[VirtualFailureDiagnostic, ...] = ()
+    color_contraction: VirtualColorContraction | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,6 +194,9 @@ class VirtualLaneDiagnostic:
     detail: str = ""
     verification: VirtualVerificationDiagnostic | None = None
     failures: tuple[VirtualFailureDiagnostic, ...] = ()
+    # The initial attempt; rescued evaluations retain their actual later
+    # operations in verification.attempts.
+    primary_color_contraction: VirtualColorContraction | None = None
 
     def __post_init__(self) -> None:
         if self.status not in {

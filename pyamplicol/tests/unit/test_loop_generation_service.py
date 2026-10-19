@@ -539,3 +539,121 @@ def test_cold_directed_completion_uses_the_authoritative_producer_scope(correcti
     ):
         with pytest.raises(NotImplementedError, match="EW correlation coverage"):
             operation()
+
+
+@pytest.mark.parametrize("failure", ["coverage", "owner"])
+def test_full_auto_missing_colour_capability_uses_fresh_direct_owner(
+    monkeypatch, failure
+):
+    from pyamplicol.generation import loop_service as service
+    from pyamplicol.loops.source_color import SourceColorCapabilityUnavailable
+
+    backend = GenerationBackend(
+        loop_config(color={"accuracy": "full", "contraction": "auto"}), None
+    )
+    original, continuation, direct_result = object(), object(), object()
+    context = SimpleNamespace(
+        resolved=SimpleNamespace(compiled=original), corrections=("QCD",)
+    )
+    bounds = dict(born_order_bounds={"QCD": (0, 2)}, loop_order_bounds={"QCD": (0, 4)})
+    calls = []
+
+    def compile_formal(*args, **options):
+        assert options["source_color"] is continuation
+        if failure == "owner":
+            raise ValueError("source colour and scalar program owners differ")
+        raise SourceColorCapabilityUnavailable(
+            "selected kernel has no declared continuation"
+        )
+
+    prepared = SimpleNamespace(scope=SimpleNamespace(**bounds), compile=compile_formal)
+
+    def prepare_direct(compiled, **options):
+        assert compiled is original and options == bounds
+        calls.append("fresh")
+
+        def compile_direct(*args, **kwargs):
+            assert args == ((21, 21), (21, 21))
+            assert kwargs["source_color"] is None and kwargs["color_accuracy"] == "full"
+            assert kwargs["selected_corrections"] == ("QCD",)
+            return direct_result
+
+        return SimpleNamespace(compile=compile_direct)
+
+    monkeypatch.setattr(service, "prepare_loop_request_model", prepare_direct)
+    entry = SimpleNamespace(
+        process_ir=SimpleNamespace(initial_pdgs=(21, 21), final_pdgs=(21, 21))
+    )
+    if failure == "coverage":
+        result, reason = service._compile_color_operation(
+            backend, context, prepared, entry, continuation
+        )
+        assert (
+            result is direct_result
+            and "no declared continuation" in reason
+            and calls == ["fresh"]
+        )
+    else:
+        with pytest.raises(ValueError, match="owners differ"):
+            service._compile_color_operation(
+                backend, context, prepared, entry, continuation
+            )
+        assert calls == []
+
+
+def test_loop_fft_policy_admits_only_actual_basis_and_ordinary_banks():
+    from pyamplicol.generation.loop_service import _check_correlators, _feature_blockers
+
+    requests = ProcessSet((ProcessRequest.parse("g g > g g"),))
+    for contraction in ("auto", "symmetric-group-fft"):
+        backend = GenerationBackend(
+            loop_config(color={"accuracy": "full", "contraction": contraction}), None
+        )
+        assert not _feature_blockers(backend, requests)
+        if contraction == "symmetric-group-fft":
+            with pytest.raises(GenerationError, match="certified ordinary/resolved"):
+                _check_correlators(backend, CorrelatorConfig())
+    backend = GenerationBackend(
+        loop_config(
+            color={"accuracy": "full", "contraction": "auto", "fft_basis": "trace"}
+        ),
+        None,
+    )
+    assert any(
+        "trace-basis conversion" in x for x in _feature_blockers(backend, requests)
+    )
+
+
+@pytest.mark.parametrize(
+    "accuracy,contraction",
+    [("full", "symmetric-group-fft"), ("nlc", "auto"), ("lc", "auto")],
+)
+def test_missing_formal_coverage_does_not_fallback_for_forced_or_projected(
+    monkeypatch, accuracy, contraction
+):
+    from pyamplicol.generation import loop_service as service
+    from pyamplicol.loops.source_color import SourceColorCapabilityUnavailable
+
+    backend = GenerationBackend(
+        loop_config(color={"accuracy": accuracy, "contraction": contraction}), None
+    )
+
+    def reject(*args, **kwargs):
+        raise SourceColorCapabilityUnavailable("selected formal field is unavailable")
+
+    monkeypatch.setattr(
+        service,
+        "prepare_loop_request_model",
+        lambda *a, **kw: pytest.fail("unexpected fallback"),
+    )
+    entry = SimpleNamespace(
+        process_ir=SimpleNamespace(initial_pdgs=(21, 21), final_pdgs=(21, 21))
+    )
+    with pytest.raises(SourceColorCapabilityUnavailable, match="formal field"):
+        service._compile_color_operation(
+            backend,
+            SimpleNamespace(corrections=("QCD",)),
+            SimpleNamespace(compile=reject),
+            entry,
+            object(),
+        )

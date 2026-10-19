@@ -177,6 +177,10 @@ impl NativeVirtualRuntime {
     fn metadata_json(&self) -> PyResult<String> {
         self.0.metadata_json().map_err(native_error)
     }
+    #[getter]
+    fn color_contraction_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.0.color_contraction_metadata()).map_err(native_error)
+    }
     fn plan_metadata_json(&self) -> PyResult<String> {
         self.0.plan_metadata_json().map_err(native_error)
     }

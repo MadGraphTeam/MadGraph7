@@ -84,8 +84,138 @@ impl ScalarBinding {
 record!(Counterterm { kind: String, schedule: usize, scalar: ScalarBinding, input_columns: Vec<usize> });
 record!(DualBornWeights {
     kind: String, state: String, columns: Vec<[usize; 3]>,
-    term_graphs: Vec<usize>, family_columns: Vec<Vec<usize>>
+    term_graphs: Vec<usize>, family_columns: Vec<Vec<usize>>,
+    rectangular: Option<RectangularDualWeights>, constants_state: Option<String>,
+    requested_contraction: Option<String>, direct_reason: Option<String>
 });
+record!(ColorWeightAlias { columns: Vec<usize>, order: Order });
+record!(RectangularDualWeights {
+    kind: String, degree: usize,
+    born_aliases: Vec<ColorWeightAlias>, loop_aliases: Vec<ColorWeightAlias>,
+    born_orbits: Vec<Vec<usize>>, loop_orbits: Vec<Vec<usize>>,
+    banks: Vec<[usize; 2]>, kernels: Vec<[usize; 3]>, residuals: Vec<[usize; 3]>
+});
+/// Selected bare-loop dual-weight operation. Born-square and UV/R2/field
+/// contractions remain direct; failed lanes need not reach the selected stage.
+record!(ColorWeightExecution {
+    requested: String,
+    algorithm: String,
+    reason: String,
+    regular_kernels: usize,
+    direct_residual_entries: usize
+});
+
+impl RectangularDualWeights {
+    pub fn group_order(&self) -> RusticolResult<usize> {
+        (1..=self.degree).try_fold(1, product)
+    }
+
+    pub fn constant_count(&self) -> RusticolResult<usize> {
+        sum([
+            product(self.kernels.len(), self.group_order()?)?,
+            self.residuals.len(),
+        ]
+        .into_iter())
+    }
+
+    /// Structural admission shared by saved plans and prepared Python binding.
+    /// Tensor equivariance is proved cold; no numerical fit recreates that proof.
+    pub fn validate(&self, born_width: usize, columns: &[[usize; 3]]) -> RusticolResult<()> {
+        require(
+            self.kind == "rectangular-regular-orbits-v1" && self.degree > 1,
+            "invalid rectangular dual weight kind/degree",
+        )?;
+        let group = self.group_order()?;
+        require(
+            !self.kernels.is_empty() && !self.banks.is_empty() && unique(&self.banks),
+            "rectangular weights require distinct banks and actual regular kernels",
+        )?;
+        let loop_width = sum(self.loop_aliases.iter().map(|a| a.columns.len()))?;
+        require(
+            !columns.is_empty() && unique(columns) && columns.iter().all(|c| c[2] < loop_width),
+            "invalid rectangular output columns",
+        )?;
+        for (aliases, width) in [
+            (&self.born_aliases, born_width),
+            (&self.loop_aliases, loop_width),
+        ] {
+            let all: Vec<_> = aliases
+                .iter()
+                .flat_map(|a| a.columns.iter().copied())
+                .collect();
+            require(
+                aliases
+                    .iter()
+                    .all(|a| !a.columns.is_empty() && order(&a.order))
+                    && all.len() == width
+                    && unique(&all)
+                    && indices(&all, width),
+                "rectangular aliases must partition original ordered columns",
+            )?;
+        }
+        for (orbits, aliases) in [
+            (&self.born_orbits, &self.born_aliases),
+            (&self.loop_orbits, &self.loop_aliases),
+        ] {
+            let all: Vec<_> = orbits.iter().flatten().copied().collect();
+            require(
+                unique(&all)
+                    && indices(&all, aliases.len())
+                    && orbits.iter().all(|o| o.len() == group),
+                "rectangular regular orbits must be disjoint and full sized",
+            )?;
+            require(
+                orbits
+                    .iter()
+                    .all(|o| o.iter().all(|&i| aliases[i].order == aliases[o[0]].order)),
+                "rectangular action changes absolute coupling order",
+            )?;
+        }
+        let requested: BTreeSet<_> = columns.iter().map(|c| [c[0], c[1]]).collect();
+        require(
+            requested == self.banks.iter().copied().collect(),
+            "rectangular banks differ from weight direction/sector keys",
+        )?;
+        let mut covered = BTreeSet::new();
+        for &[bank, born, loop_] in &self.kernels {
+            require(
+                bank < self.banks.len()
+                    && born < self.born_orbits.len()
+                    && loop_ < self.loop_orbits.len(),
+                "rectangular kernel index out of range",
+            )?;
+            for &i in &self.born_orbits[born] {
+                for &j in &self.loop_orbits[loop_] {
+                    require(
+                        covered.insert((bank, i, j)),
+                        "rectangular alias pair covered twice",
+                    )?;
+                }
+            }
+        }
+        for &[bank, i, j] in &self.residuals {
+            require(
+                bank < self.banks.len()
+                    && i < self.born_aliases.len()
+                    && j < self.loop_aliases.len(),
+                "rectangular residual index out of range",
+            )?;
+            require(
+                covered.insert((bank, i, j)),
+                "rectangular alias pair covered twice",
+            )?;
+        }
+        require(
+            covered.len()
+                == product(
+                    self.banks.len(),
+                    product(self.born_aliases.len(), self.loop_aliases.len())?,
+                )?,
+            "rectangular alias pair coverage is incomplete",
+        )?;
+        Ok(())
+    }
+}
 record!(HelicityProjection {
     born: String, families: Vec<String>, counterterms: String,
     dual_born_weights: Option<DualBornWeights>
@@ -132,12 +262,41 @@ record!(LoopRuntimePlan {
 });
 
 impl DualBornWeights {
+    pub fn execution(&self, arithmetic: &str) -> ColorWeightExecution {
+        let fft = arithmetic == "double" && self.rectangular.is_some();
+        ColorWeightExecution {
+            requested: self
+                .requested_contraction
+                .clone()
+                .unwrap_or_else(|| "direct".into()),
+            algorithm: if fft { "symmetric-group-fft" } else { "direct" }.into(),
+            reason: if fft {
+                "certified rectangular bare-loop weights with exact direct residuals".into()
+            } else if self.rectangular.is_some() {
+                "exact higher-precision direct contraction".into()
+            } else {
+                self.direct_reason
+                    .clone()
+                    .unwrap_or_else(|| "exact direct weight schedule".into())
+            },
+            regular_kernels: self
+                .rectangular
+                .as_ref()
+                .filter(|_| fft)
+                .map_or(0, |r| r.kernels.len()),
+            direct_residual_entries: self
+                .rectangular
+                .as_ref()
+                .filter(|_| fft)
+                .map_or(0, |r| r.residuals.len()),
+        }
+    }
     fn validate(
         &self,
         directions: usize,
         born_width: usize,
         loop_widths: &[usize],
-        sectors: usize,
+        sectors: &[VirtualSector],
         families: &[Family],
         shape: &mut impl FnMut(&str, usize, usize) -> RusticolResult<()>,
     ) -> RusticolResult<()> {
@@ -161,11 +320,62 @@ impl DualBornWeights {
         }
         require(
             self.columns.iter().all(|&[direction, sector, term]| {
-                direction < directions && sector < sectors && term < self.term_graphs.len()
+                direction < directions && sector < sectors.len() && term < self.term_graphs.len()
             }),
             "dual Born weight key out of range",
         )?;
         shape(&self.state, born_width, self.columns.len())?;
+        let requested = self.requested_contraction.as_deref().unwrap_or("direct");
+        require(
+            matches!(requested, "auto" | "direct" | "symmetric-group-fft"),
+            "invalid dual Born contraction policy",
+        )?;
+        match (&self.rectangular, &self.constants_state) {
+            (Some(rectangle), Some(state)) => {
+                require(
+                    requested != "direct",
+                    "direct weights contain an active transform",
+                )?;
+                rectangle.validate(born_width, &self.columns)?;
+                require(
+                    rectangle
+                        .loop_aliases
+                        .iter()
+                        .map(|a| a.columns.len())
+                        .sum::<usize>()
+                        == self.term_graphs.len(),
+                    "rectangular loop aliases differ from physical term domain",
+                )?;
+                let keys: BTreeSet<_> = self.columns.iter().copied().collect();
+                for &[direction, sector] in &rectangle.banks {
+                    for alias in &rectangle.loop_aliases {
+                        let eligible = rectangle.born_aliases.iter().any(|born| {
+                            sectors[sector]
+                                .pairs
+                                .iter()
+                                .any(|p| p.born == born.order && p.r#loop == alias.order)
+                        });
+                        require(
+                            alias
+                                .columns
+                                .iter()
+                                .all(|&term| keys.contains(&[direction, sector, term]) == eligible),
+                            "rectangular weight columns differ from absolute order eligibility",
+                        )?;
+                    }
+                }
+                shape(state, 0, rectangle.constant_count()?)?;
+            }
+            (None, None) => require(
+                requested != "symmetric-group-fft",
+                "forced FFT has no certified rectangle",
+            )?,
+            _ => {
+                return Err(invalid(
+                    "rectangular weights and exact constants must be supplied together",
+                ));
+            }
+        }
         for (family, selected) in families.iter().zip(&self.family_columns) {
             let expected = self
                 .columns
@@ -187,6 +397,43 @@ impl DualBornWeights {
 }
 
 impl LoopRuntimePlan {
+    pub fn color_weight_execution(
+        &self,
+        arithmetic: &str,
+        resolved: bool,
+        directed: bool,
+        spin_index: Option<usize>,
+    ) -> ColorWeightExecution {
+        let selected = if directed {
+            if let Some(index) = spin_index {
+                self.spin_projections
+                    .as_ref()
+                    .and_then(|p| p.get(index))
+                    .and_then(|p| p.directed.dual_born_weights.as_ref())
+            } else {
+                self.directed_projection
+                    .as_ref()
+                    .and_then(|p| p.dual_born_weights.as_ref())
+            }
+        } else if resolved {
+            self.helicity_projection
+                .as_ref()
+                .and_then(|p| p.dual_born_weights.as_ref())
+        } else {
+            self.dual_born_weights.as_ref()
+        };
+        selected.map_or_else(
+            || ColorWeightExecution {
+                requested: "direct".into(),
+                algorithm: "direct".into(),
+                reason: "original exact projector schedule".into(),
+                regular_kernels: 0,
+                direct_residual_entries: 0,
+            },
+            |w| w.execution(arithmetic),
+        )
+    }
+
     pub fn directed_projections(&self) -> impl Iterator<Item = (&DirectedProjection, usize)> {
         self.directed_projection
             .iter()
@@ -677,7 +924,14 @@ impl LoopRuntimePlan {
         let b = self.order_layout.born.len();
         let v = self.order_layout.r#virtual.len();
         if let Some(weights) = &self.dual_born_weights {
-            weights.validate(1, born_width, &loop_widths, v, &self.families, &mut shape)?;
+            weights.validate(
+                1,
+                born_width,
+                &loop_widths,
+                &self.order_layout.r#virtual,
+                &self.families,
+                &mut shape,
+            )?;
         }
         if let Some(classes) = &self.spin_projections {
             let ordinary = self
@@ -772,7 +1026,7 @@ impl LoopRuntimePlan {
                     product(2, projection.histories.len())?,
                     born_width,
                     &loop_widths,
-                    v,
+                    &self.order_layout.r#virtual,
                     &self.families,
                     &mut shape,
                 )?;
@@ -945,7 +1199,7 @@ impl LoopRuntimePlan {
                     components,
                     born_width,
                     &loop_widths,
-                    v,
+                    &self.order_layout.r#virtual,
                     &self.families,
                     &mut shape,
                 )?;

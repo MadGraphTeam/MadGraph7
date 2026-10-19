@@ -43,10 +43,10 @@ from .validation import build_process_validation_point
 def _feature_blockers(backend, processes):
     run = backend._run_config
     reasons = []
-    if run.color.contraction == "symmetric-group-fft":
+    if run.resolved_color.contraction != "direct" and run.color.fft_basis != "adjoint":
         reasons.append(
-            "public loop generation does not yet publish rectangular FFT "
-            "contraction; use color.contraction='direct' or 'auto'"
+            "loop FFT currently certifies the actual tensor columns under adjoint-port "
+            "actions; the requested trace-basis conversion is unavailable"
         )
     selection = backend._process_selection
     if any(
@@ -141,7 +141,7 @@ class _LoopContext:
     color_declaration: Any = None
 
 
-def _prepare(backend, processes, source, *, planning, phase):
+def _prepare(backend, processes, source, *, planning, phase, consider_fft=True):
     license_state = backend._detect_symbolica_license()
     backend._apply_symbolica_resource_policy(license_state)
     resolved = (
@@ -164,22 +164,26 @@ def _prepare(backend, processes, source, *, planning, phase):
     compiled = with_loop_model_declaration(compiled, declaration)
     color_data = None
     fixed_parameters = None
-    if run.color.accuracy in ("lc", "nlc"):
+    projected = run.color.accuracy in ("lc", "nlc")
+    if projected or (consider_fft and run.resolved_color.contraction != "direct"):
         color_data = resolve_loop_color_declaration(compiled.raw_loop_model)
-        if color_data is None:
+        if color_data is None and (
+            projected or run.color.contraction == "symmetric-group-fft"
+        ):
             raise GenerationError(
-                "LC/NLC loop generation requires explicit source colour data in "
+                "LC/NLC or forced FFT loop generation requires explicit source colour data in "
                 "the prepared model; attach a LoopColorDeclaration with "
                 "with_loop_color_declaration. Model names or numerical CA/CF "
                 "values do not define a formal-colour continuation"
             )
-        if color_data.scheme != declaration.scheme:
+        if color_data is not None and color_data.scheme != declaration.scheme:
             raise GenerationError(
                 "source colour continuation and effective loop scheme differ"
             )
-        fixed_parameters = source_color_fixed_parameters(
-            compiled.raw_loop_model, color_data
-        )
+        if color_data is not None:
+            fixed_parameters = source_color_fixed_parameters(
+                compiled.raw_loop_model, color_data
+            )
     from pyamplicol.models.external import CompiledUFOModel
 
     resolved = replace(resolved, compiled=compiled, model=CompiledUFOModel(compiled))
@@ -273,6 +277,8 @@ def _plan_result(backend, processes, blockers, *, context=None, coverage=()):
             "arithmetic": ("double", "double-double", "arbitrary"),
             "epsilon_powers": (0, -1, -2),
             "color_accuracy": backend._run_config.color.accuracy,
+            "requested_color_contraction": backend._run_config.color.contraction,
+            "rectangular_color_process_coverage_checked": False,
             "source_colour_declared": bool(context and context.color_declaration),
             "formal_colour_process_coverage_checked": False,
             "canonical_born_components_checked": False
@@ -326,6 +332,11 @@ def _check_correlators(backend, correlators):
 
     if not isinstance(correlators, CorrelatorConfig):
         raise TypeError("correlators must be a CorrelatorConfig")
+    if backend._run_config.color.contraction == "symmetric-group-fft":
+        raise GenerationError(
+            "forced rectangular FFT requires certified ordinary/resolved banks; "
+            "inserted colour/spin source banks currently use exact direct contraction"
+        )
     if backend._run_config.color.accuracy != "full" and (
         correlators.all_color_through_order is not None
         or any(item.bra or item.ket for item in correlators.color_correlations)
@@ -499,6 +510,39 @@ def _flavor_grouping_outcome(backend, correlators, *, reused=False):
     }
 
 
+def _compile_color_operation(backend, context, prepared, entry, source_color):
+    """A valid missing full-colour continuation falls back through a fresh owner."""
+    from pyamplicol.loops.source_color import SourceColorCapabilityUnavailable
+
+    accuracy = backend._run_config.color.accuracy
+    requested = backend._run_config.resolved_color.contraction
+
+    def compile_owned(owner, color):
+        return owner.compile(
+            entry.process_ir.initial_pdgs,
+            entry.process_ir.final_pdgs,
+            selected_corrections=context.corrections,
+            reduction_engine="fast",
+            coefficient_engine="jit",
+            source_color=color,
+            color_accuracy=accuracy,
+        )
+
+    try:
+        return compile_owned(prepared, source_color), None
+    except SourceColorCapabilityUnavailable as unavailable:
+        if accuracy != "full" or requested != "auto" or source_color is None:
+            raise
+        # Start from the original compiled source, not any partly graded model,
+        # scalar owner, counterterms or tensors from the rejected continuation.
+        direct = prepare_loop_request_model(
+            context.resolved.compiled,
+            born_order_bounds=prepared.scope.born_order_bounds,
+            loop_order_bounds=prepared.scope.loop_order_bounds,
+        )
+        return compile_owned(direct, None), str(unavailable)
+
+
 def generate_loop_artifact(
     backend,
     processes,
@@ -530,6 +574,7 @@ def generate_loop_artifact(
                 model or backend._configured_model_source(),
                 planning=False,
                 phase=phase,
+                consider_fft=correlators is None,
             )
         with TemporaryDirectory(prefix="pyamplicol-loop-generation-") as temporary:
             artifacts = []
@@ -553,14 +598,17 @@ def generate_loop_artifact(
                         strict=True,
                     )
                 ):
-                    program = prepared.compile(
-                        entry.process_ir.initial_pdgs,
-                        entry.process_ir.final_pdgs,
-                        selected_corrections=context.corrections,
-                        reduction_engine="fast",
-                        coefficient_engine="jit",
-                        source_color=source_color,
-                        color_accuracy=backend._run_config.color.accuracy,
+                    program, color_fallback = _compile_color_operation(
+                        backend, context, prepared, entry, source_color
+                    )
+                    from pyamplicol.loops.dual_weights import (
+                        configure_dual_born_weights,
+                    )
+
+                    configure_dual_born_weights(
+                        program.virtual,
+                        backend._run_config.color.contraction.value,
+                        unavailable_reason=color_fallback,
                     )
                     path = Path(temporary) / f"{entry.request.name}.pacbin"
                     directed, histories, spin_directed = (

@@ -215,6 +215,14 @@ def write_loop_pacbin(
         return {"kind": "source_columns", "columns": columns}
 
     def dual_weights(value, selections):
+        rectangle = value.runtime_rectangle(bare)
+        requested = value.requested_contraction
+        reason = value.direct_reason
+        if value is not bare.weight_plan and rectangle is None:
+            requested = bare.weight_plan.requested_contraction
+            reason = (
+                reason or "this observable has no certified rectangular colour bank"
+            )
         return {
             "kind": "exact-dual-born-v1",
             "state": state(value.state),
@@ -225,6 +233,10 @@ def write_loop_pacbin(
                 for _ in terms
             ],
             "family_columns": selections,
+            "rectangular": None if rectangle is None else rectangle[0],
+            "constants_state": None if rectangle is None else state(rectangle[1]),
+            "requested_contraction": requested,
+            "direct_reason": reason,
         }
 
     data = {
@@ -315,10 +327,12 @@ def write_loop_pacbin(
             _record_name="helicity_born_projector",
         )
         family_projectors = []
-        from .dual_weights import prepare_dual_born_weights
+        from .dual_weights import select_dual_born_weights
 
-        resolved_weights = prepare_dual_born_weights(
-            bare, None if components is None else components.mask_bra(bare.loop_metric)
+        resolved_weights = select_dual_born_weights(
+            bare,
+            bare.weight_plan.requested_contraction,
+            resolved=components is not None,
         )
         selections = []
         for family in prepared.bare.families:
@@ -656,9 +670,18 @@ class PortableLoopPlan:
         for name, reference in data["bare_evaluators"].items():
             setattr(bare, name, evaluator(reference))
         weights = data.get("dual_born_weights")
-        bare.dual_born_weights = (
-            None if weights is None else evaluator(weights["state"])
-        )
+        if weights is not None and weights.get("rectangular") is not None:
+            bare.dual_born_weights = backend.DualBornWeights(
+                state(weights["state"]),
+                json.dumps(weights["rectangular"]),
+                state(weights["constants_state"]),
+                weights["columns"],
+                **options,
+            )
+        else:
+            bare.dual_born_weights = (
+                None if weights is None else evaluator(weights["state"])
+            )
         born_widths = tuple(
             len(data["schedules"][i]["output_slots"]) for i in data["born"]["schedules"]
         )
