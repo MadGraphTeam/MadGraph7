@@ -119,6 +119,9 @@ reference checks, AP60/AP80 subset rescue and `clear`. An unchanged standalone
 Rust source API loads the fresh artifact and checks the longitudinal result and
 owned source labels.
 
+The ordered-history checks are internal reconstruction and homogeneity controls;
+the independent provider comparisons select the identity colour history.
+
 This certifies the exercised stable W+ QCD cases. It does not certify W− physics,
 Z axial closed-loop sums, electroweak corrections, complex external masses or
 massive-vector LC/NLC composition. Recola only supplies an independent oracle for
