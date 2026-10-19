@@ -89,13 +89,13 @@ def test_grade_mask_never_drops_other_alias_in_same_tensor_term(primitives):
     dag, (g1, g2), add = primitives
     first = add("mixed", g1 + g2)
     second = add("only g2", g2)
-    incidence = scalar_alias_incidence(dag, (first, second), (g1, g2))
+    scalar_alias_incidence(dag, (first, second), (g1, g2))
     nc = S("incidence_test::Nc")
     # A degree-one scalar is present only in g1. The second term's high-degree
     # overlap must not enter the structural leading degree of this grade.
     from symbolica import E
 
-    active = scalar_grade_term_mask(incidence, (E("1"), E("0")))
+    active = scalar_grade_term_mask(dag, (first, second), (g1, g2), (E("1"), E("0")))
     rows = [
         [nc * weight if keep else E("0")]
         for weight, keep in zip((nc**2 - 1, nc**4), active, strict=True)
@@ -103,4 +103,63 @@ def test_grade_mask_never_drops_other_alias_in_same_tensor_term(primitives):
     projection = prepare_color_projection(nc, rows)
     assert projection.leading_degree == 3
     assert projection.project("lc") == (nc**3, E("0"))
-    assert scalar_grade_term_mask(incidence, (E("0"), E("1"))) == (True, True)
+    assert scalar_grade_term_mask(dag, (first, second), (g1, g2), (E("0"), E("1"))) == (
+        True,
+        True,
+    )
+
+
+def test_exact_grade_cancellation_cannot_set_leading_colour_degree(primitives):
+    from symbolica import E, S
+
+    from pyamplicol.loops.color_projection import prepare_color_projection
+
+    dag, (g1, g2), add = primitives
+    current = add("ordinary shared current", S("incidence_test::J"))
+    cancelled = add("two cancelling aliases", g1 + g2, (current,))
+    propagated = add("bridge", E("2"), (cancelled,))
+    retained = add("lower-colour contribution", g1, (current,))
+    scalar_alias_incidence(dag, (propagated, retained), (g1, g2))
+    mask = scalar_grade_term_mask(
+        dag, (propagated, retained), (g1, g2), (E("1"), E("-1"))
+    )
+    assert mask == (False, True)
+    nc = S("incidence_test::Nc")
+    projection = prepare_color_projection(
+        nc,
+        [
+            [weight if active else E("0")]
+            for weight, active in zip((nc**5, nc**2), mask, strict=True)
+        ],
+    )
+    assert projection.leading_degree == 2
+    assert projection.project("lc") == projection.project("nlc") == (E("0"), nc**2)
+
+
+def test_equal_local_components_share_reference_for_downstream_cancellation(primitives):
+    from symbolica import E, S
+    from symbolica.community import tensor as t
+
+    dag, (g1, g2), _ = primitives
+    x = S("incidence_test::J")
+    slot = t.Representation.mink(4)(S("incidence_test::mu"))
+    vector = dag.add(
+        "aliased vector",
+        t.Tensor.dense(
+            t.TensorName("incidence_test::vector")(slot),
+            [g1 * x, g2 * x, E("0"), E("0")],
+        ),
+    )
+    output = dag.add(
+        "Minkowski difference",
+        t.Tensor.dense(
+            t.TensorName("incidence_test::projector")(slot.dual()),
+            [E("1"), E("1"), E("0"), E("0")],
+        ),
+        (vector,),
+    )
+    scalar_alias_incidence(dag, (output,), (g1, g2))
+    assert scalar_grade_term_mask(dag, (output,), (g1, g2), (E("1"), E("1"))) == (
+        False,
+    )
+    assert scalar_grade_term_mask(dag, (output,), (g1, g2), (E("1"), E("2"))) == (True,)

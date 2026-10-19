@@ -1511,13 +1511,18 @@ have degree one in the selected insertion aliases; zero outputs are accepted.
 Nonpolynomial alias/input dependence and alias-independent or nonlinear
 contamination fail with the offending kernel/output identity.
 
-Local cancellations are exact. The proof treats distinct upstream currents as
-independent rather than expanding a whole graph, so its support can retain an
-alias whose contributions cancel only after whole-current substitution. Such
-conservative support never removes a valid contribution. A colour term shared
-by multiple aliases is retained for every grade supplied by any of those
-aliases. `NativeModelVirtualProgram` now masks only tensor columns proved
-unreachable from the nonzero aliases of a grade, replacing its blanket rejection
-of mixed-grade, multi-term insertions. The source-model continuation gate and
-single-order physical projection boundary remain in place; incidence is not by
-itself a general-Nc or multi-order projection certificate.
+Incidence support alone must not set the leading colour degree: different
+nonzero alias coefficients may cancel within a tensor term. A separate exact
+grade pass substitutes their values into each local kernel before collecting it,
+propagates proven-zero components, and uses canonical references for equal local
+expressions with equal dependencies. Thus `(g1+g2)*J` vanishes for a grade with
+coefficients `(1,-1)` and cannot set a spurious leading degree. No nonzero
+whole-current expression is expanded into a downstream kernel. Distinct remaining
+currents define structural support independently of numerical helicity or
+parameter cancellations.
+
+`NativeModelVirtualProgram` uses these grade-aware masks in place of its blanket
+rejection of mixed-grade, multi-term insertions. The source-model continuation
+gate and single-order physical projection boundary remain in place; incidence
+and local zero propagation are not by themselves a general-Nc or multi-order
+projection certificate.

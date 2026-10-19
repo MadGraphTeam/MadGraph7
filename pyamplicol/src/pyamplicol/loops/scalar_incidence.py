@@ -141,14 +141,66 @@ def scalar_alias_incidence(dag, output_nodes, aliases):
     return tuple(incidence)
 
 
-def scalar_grade_term_mask(incidence, coefficients):
-    """Keep tensor terms reached by a nonzero alias in this scalar grade."""
-    coefficients = tuple(coefficients)
-    active = {index for index, value in enumerate(coefficients) if value != 0}
-    if any(
-        type(index) is not int or not 0 <= index < len(coefficients)
-        for support in incidence
-        for index in support
-    ):
+def scalar_grade_term_mask(dag, output_nodes, aliases, coefficients):
+    """Remove outputs proved zero after exact local grade substitution.
+
+    The caller first establishes degree-one alias incidence. Substituting each
+    grade separately then catches cancellations between different aliases in one
+    local tensor. Proven zeros propagate, and equal local expressions with equal
+    dependency references share a canonical reference. Nonzero current formulas
+    are never substituted into downstream kernels. Remaining distinct currents
+    define structural support independently of numerical parameter/helicity
+    cancellations; this is not a whole-current symbolic identity solver.
+    """
+    from symbolica import AtomType, E, Replacement, S
+
+    from .exact import require_exact_numbers
+
+    aliases, coefficients = tuple(aliases), tuple(coefficients)
+    if len(aliases) != len(coefficients):
         raise ValueError("scalar incidence and coefficient layouts differ")
-    return tuple(bool(support & active) for support in incidence)
+    for coefficient in coefficients:
+        require_exact_numbers(coefficient)
+        if set(coefficient.get_all_symbols(False)) & set(aliases):
+            raise ValueError("scalar grade coefficients retain counterterm aliases")
+    replacements = tuple(
+        Replacement(alias, coefficient)
+        for alias, coefficient in zip(aliases, coefficients, strict=True)
+    )
+    output_nodes = tuple(output_nodes)
+    required = set(output_nodes)
+    for index in range(len(dag.nodes) - 1, -1, -1):
+        if index in required:
+            required.update(dag.nodes[index].dependencies)
+    references, canonical, reference_symbols = {}, {}, set()
+    for index, node in enumerate(dag.nodes):
+        if index not in required:
+            continue
+        inputs = tuple(
+            Replacement(
+                S(f"loop_coefficient::input_{position}_{column}"),
+                references[dependency][column],
+            )
+            for position, dependency in enumerate(node.dependencies)
+            for column in range(len(dag.nodes[dependency].output_labels))
+        )
+        outputs = []
+        for original in node.expressions:
+            expression = (
+                original.replace_multiple(replacements)
+                .replace_multiple(inputs)
+                .together()
+                .expand()
+            )
+            if expression.get_type() == AtomType.Num or expression in reference_symbols:
+                reference = expression
+            else:
+                if expression not in canonical:
+                    canonical[expression] = S(
+                        f"loop_grade_incidence::current_{len(canonical)}"
+                    )
+                    reference_symbols.add(canonical[expression])
+                reference = canonical[expression]
+            outputs.append(reference)
+        references[index] = tuple(outputs)
+    return tuple(references[index] != (E("0"),) for index in output_nodes)

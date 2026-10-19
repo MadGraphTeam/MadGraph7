@@ -369,13 +369,10 @@ class NativeModelVirtualProgram:
                 external_color_tensor(insertion.graph, term.color)
                 for term in recurrence.terms
             )
-            alias_incidence = (
-                None
-                if space is None
-                else scalar_alias_incidence(
+            if space is not None:
+                scalar_alias_incidence(
                     dag, recurrence.final_nodes, rule.coupling_symbols
                 )
-            )
             if space is None:
                 weights = tuple(
                     tuple(value / bare.initial_average for value in row)
@@ -450,7 +447,12 @@ class NativeModelVirtualProgram:
                     active_terms = (
                         None
                         if degree is None
-                        else scalar_grade_term_mask(alias_incidence, coefficients)
+                        else scalar_grade_term_mask(
+                            dag,
+                            recurrence.final_nodes,
+                            rule.coupling_symbols,
+                            coefficients,
+                        )
                     )
                     self.currents.append(
                         _CountertermCurrent(
