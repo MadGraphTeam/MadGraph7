@@ -863,9 +863,17 @@ pub(super) fn validate_consistent_source_ir(
         source_ir_by_momentum_slot.insert(source.input_momentum_slot, source.source_ir.clone());
     }
 
-    let identity = &source.source_ir.identity;
+    validate_canonical_source_ir(source_ir_by_canonical_id, index, &source.source_ir)
+}
+
+fn validate_canonical_source_ir(
+    source_ir_by_canonical_id: &mut BTreeMap<String, GenericSourceIrManifest>,
+    index: usize,
+    source_ir: &GenericSourceIrManifest,
+) -> RusticolResult<()> {
+    let identity = &source_ir.identity;
     if let Some(canonical) = source_ir_by_canonical_id.get(&identity.canonical_id)
-        && canonical != &source.source_ir
+        && canonical != source_ir
     {
         return Err(RusticolError::artifact(format!(
             "generic source {index} disagrees with canonical SourceIR metadata for oriented particle {:?}",
@@ -877,7 +885,7 @@ pub(super) fn validate_consistent_source_ir(
     }
     source_ir_by_canonical_id
         .entry(identity.canonical_id.clone())
-        .or_insert_with(|| source.source_ir.clone());
+        .or_insert_with(|| source_ir.clone());
     Ok(())
 }
 
@@ -917,30 +925,45 @@ fn validate_antiparticle_identity_pair(
     Ok(())
 }
 
-pub(crate) fn validate_loop_vector_source(
-    leg: usize,
-    value: &Value,
-    pdg: i32,
+pub(crate) fn validate_loop_vector_sources<'a>(
+    sources: impl IntoIterator<Item = (usize, &'a Value, i32, bool)>,
 ) -> RusticolResult<()> {
-    let source: GenericSourceIrManifest = serde_json::from_value(value.clone())
-        .map_err(|error| RusticolError::artifact(format!("loop source {leg} SourceIR: {error}")))?;
+    let mut canonical = BTreeMap::new();
+    let mut by_leg = BTreeMap::new();
+    for (leg, value, pdg, massless) in sources {
+        let source: GenericSourceIrManifest = serde_json::from_value(value.clone())
+            .map_err(|error| RusticolError::artifact(format!("loop source {leg} SourceIR: {error}")))?;
+        validate_loop_vector_source(leg, &source, pdg, massless)?;
+        if let Some(previous) = by_leg.insert(leg, source.clone())
+            && previous != source
+        {
+            return Err(RusticolError::artifact(format!(
+                "loop source {leg} differs across saved joint classes"
+            )));
+        }
+        validate_canonical_source_ir(&mut canonical, leg, &source)?;
+    }
+    Ok(())
+}
+
+fn validate_loop_vector_source(
+    leg: usize,
+    source: &GenericSourceIrManifest,
+    pdg: i32,
+    massless: bool,
+) -> RusticolResult<()> {
     validate_crossing_ir(leg, "declared", &source.crossing)?;
     let identity = &source.identity;
+    validate_source_identity(leg, identity)?;
+    let helicities: &[i32] = if massless { &[-1, 1] } else { &[-1, 0, 1] };
     if source.wavefunction_family != GenericWavefunctionFamilyManifest::Vector
         || source.statistics != GenericParticleStatisticsManifest::Boson
         || source.component_dimension != 4
         || source.basis != "lorentz-vector"
         || identity.pdg_label != pdg
-        || identity.anti_pdg_label != pdg
-        || !identity.self_conjugate
-        || identity.orientation != GenericSourceOrientationManifest::SelfConjugate
-        || identity.canonical_id.is_empty()
-        || identity.species_id.is_empty()
-        || identity.canonical_id != identity.anti_canonical_id
-        || identity.display_name.is_empty()
-        || identity.display_name != identity.anti_display_name
-        || source.states.len() != 2
-        || ![-1, 1].iter().all(|&helicity| {
+        || (identity.self_conjugate && identity.display_name != identity.anti_display_name)
+        || source.states.len() != helicities.len()
+        || !helicities.iter().all(|&helicity| {
             source.states.iter().any(|state| {
                 state.helicity == helicity
                     && state.chirality == 0
@@ -949,18 +972,16 @@ pub(crate) fn validate_loop_vector_source(
         })
     {
         return Err(RusticolError::artifact(format!(
-            "loop source {leg} differs from its neutral massless-vector SourceIR"
+            "loop source {leg} differs from its physical vector SourceIR"
         )));
     }
     Ok(())
 }
 
-pub(super) fn validate_source_wavefunction_metadata(
+fn validate_source_identity(
     index: usize,
-    source: &GenericSourceRecordManifest,
+    identity: &GenericParticleIdentityIrManifest,
 ) -> RusticolResult<()> {
-    let source_ir = &source.source_ir;
-    let identity = &source_ir.identity;
     if identity.canonical_id.is_empty()
         || identity.species_id.is_empty()
         || identity.anti_canonical_id.is_empty()
@@ -987,7 +1008,16 @@ pub(super) fn validate_source_wavefunction_metadata(
             "generic source {index} orientation is inconsistent with its antiparticle relation"
         )));
     }
+    Ok(())
+}
 
+pub(super) fn validate_source_wavefunction_metadata(
+    index: usize,
+    source: &GenericSourceRecordManifest,
+) -> RusticolResult<()> {
+    let source_ir = &source.source_ir;
+    let identity = &source_ir.identity;
+    validate_source_identity(index, identity)?;
     if source_ir.component_dimension == 0
         || source_ir.states.is_empty()
         || source_ir.basis.is_empty()

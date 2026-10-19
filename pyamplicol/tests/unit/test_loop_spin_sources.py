@@ -141,7 +141,7 @@ def test_spin_source_declarations_shape_precision_and_failure_ids(bare):
         plan.prepare_native({3: foreign}, [0])
     with pytest.raises(ValueError):
         plan.prepare_native({3: foreign}, [])
-    with pytest.raises(NotImplementedError, match="massless external vector"):
+    with pytest.raises(NotImplementedError, match="external vector"):
         NativeSpinSourcePlan(bare, ((1,),))
     # Create nonfinite values through a native dependency evaluator so every
     # arithmetic carrier exercises the same checked source boundary.
@@ -169,7 +169,7 @@ def test_model_source_contract_owner_states_and_crossing_phase(bare):
     source = bare.source_contracts[21]
     with pytest.raises(ValueError, match="model-owned SourceIR"):
         NativeSpinSourcePlan(bare, ((3,),), source_contracts={})
-    with pytest.raises(ValueError, match="neutral massless-vector"):
+    with pytest.raises(ValueError, match="physical vector"):
         NativeSpinSourcePlan(
             bare,
             ((3,),),

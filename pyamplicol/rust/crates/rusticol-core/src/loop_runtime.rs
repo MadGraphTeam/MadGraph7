@@ -689,6 +689,7 @@ impl LoopRuntimePlan {
                 unique(&classes.iter().map(|p| &p.legs).collect::<Vec<_>>()),
                 "duplicate saved joint spin class",
             )?;
+            let mut vector_sources = Vec::new();
             for class in classes {
                 require(
                     !class.legs.is_empty()
@@ -696,24 +697,24 @@ impl LoopRuntimePlan {
                         && class.legs.iter().all(|&leg| {
                             leg > 0
                                 && leg <= legs
-                                && self.state_legs[leg - 1].massless
                                 && matches!(
                                     self.state_legs[leg - 1].kind.as_str(),
                                     "epsilon" | "epsilon_bar"
                                 )
                         }),
-                    "saved spin class requires ordered physical massless vector ports",
+                    "saved spin class requires ordered physical vector ports",
                 )?;
                 require(
                     class.source_contracts.len() == class.legs.len(),
                     "spin source contract count differs",
                 )?;
                 for (&leg, source) in class.legs.iter().zip(&class.source_contracts) {
-                    crate::engine::validate_loop_vector_source(
+                    vector_sources.push((
                         leg,
                         source,
                         self.external_pdgs[leg - 1],
-                    )?;
+                        self.state_legs[leg - 1].massless,
+                    ));
                     require(
                         self.state_legs[leg - 1].kind
                             == if self.state_legs[leg - 1].incoming {
@@ -763,6 +764,7 @@ impl LoopRuntimePlan {
                     "spin and ordinary directed history columns differ",
                 )?;
             }
+            crate::engine::validate_loop_vector_sources(vector_sources)?;
         }
         for (projection, projection_h) in self.directed_projections() {
             if let Some(weights) = &projection.dual_born_weights {

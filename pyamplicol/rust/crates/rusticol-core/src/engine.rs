@@ -1548,7 +1548,7 @@ struct GenericSourceIrManifest {
 
 // Reuse the existing typed tree SourceIR parser/validation for saved loop ports;
 // loop execution itself consumes the retained exact phase evaluator.
-pub(crate) use validation::validate_loop_vector_source;
+pub(crate) use validation::validate_loop_vector_sources;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]

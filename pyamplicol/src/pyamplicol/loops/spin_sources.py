@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Literal massless-vector sources using the model-owned tree source contract."""
+"""Literal vector sources using the model-owned physical source contract."""
 
 from __future__ import annotations
 
@@ -63,12 +63,18 @@ class NativeSpinSourcePlan:
             if (
                 leg not in edges
                 or bare.state_kinds[leg - 1] not in {"epsilon", "epsilon_bar"}
-                or not bare.state_layout.legs[leg - 1].massless
             ):
                 raise NotImplementedError(
-                    "spin source bridge requires a massless external vector"
+                    "spin source bridge requires an external vector"
                 )
             pdg = edges[leg].particle_pdg
+            particle = edges[leg].particle
+            orientation = (
+                "self-conjugate"
+                if particle.is_self_antiparticle
+                else "antiparticle" if particle.is_antiparticle else "particle"
+            )
+            helicities = bare.state_layout.legs[leg - 1].helicities
             expected_kind = (
                 "epsilon" if bare.state_layout.legs[leg - 1].incoming else "epsilon_bar"
             )
@@ -83,20 +89,22 @@ class NativeSpinSourcePlan:
                 )
             if (
                 source.identity.pdg_label != pdg
-                or not source.identity.self_conjugate
+                or source.identity.anti_pdg_label != particle.antiparticle.pdg_code
+                or source.identity.orientation != orientation
+                or source.identity.self_conjugate != particle.is_self_antiparticle
                 or source.statistics != "boson"
                 or source.wavefunction_family != "vector"
                 or source.component_dimension != 4
                 or source.basis != "lorentz-vector"
-                or len(source.states) != 2
-                or {state.helicity for state in source.states} != {-1, 1}
+                or len(source.states) != len(helicities)
+                or {state.helicity for state in source.states} != set(helicities)
                 or any(
                     state.chirality != 0 or state.spin_state != state.helicity
                     for state in source.states
                 )
             ):
                 raise ValueError(
-                    "source contract differs from the neutral massless-vector ports"
+                    "source contract differs from the physical vector ports"
                 )
             source_irs[leg] = source
             crossing = (
