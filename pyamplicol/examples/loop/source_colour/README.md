@@ -26,6 +26,15 @@ loop group for crossed `d W+ > u g` and outgoing `d u~ > W- g`. Their coverage
 comes from actual request inventories, not inferred charge conjugation. This is
 QCD/model-rule colour data, not an EW-correction or massive CMS certificate.
 
+The declaration also covers every ordinary, UV/R2 and external-field rule in
+the retained zero-QED QCD request model. The quark additions keep the separate
+physical loop groups: fundamental `T`/`Identity` tensors, explicit Ncol/CA/CF/TF
+factors, and the original c/b/t mass logarithms and conditional diagnostics.
+They include the quark two-point R2, qqg UV/R2, heavy mass and heavy field terms.
+This complete local-rule scope supports exact symbolic flavour-symmetry checks;
+it does not by itself certify process transport, signed LC component axes or
+spin-source mappings.
+
 From the checkout, with the normal native extension installed or staged:
 
 ```sh
