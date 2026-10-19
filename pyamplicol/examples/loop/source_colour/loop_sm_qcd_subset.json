@@ -484,6 +484,20 @@
       0,
       0,
       0
+    ],
+    [
+      "vertices",
+      43,
+      0,
+      0,
+      null
+    ],
+    [
+      "counterterm_vertices",
+      36,
+      0,
+      0,
+      0
     ]
   ],
   "field_keys": [
