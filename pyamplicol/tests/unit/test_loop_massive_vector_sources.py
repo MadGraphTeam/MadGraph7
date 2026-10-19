@@ -98,7 +98,9 @@ def _scale(vector, real, imaginary):
     ]
 
 
-@pytest.mark.parametrize("direction,leg", [("outgoing", 3), ("incoming", 2)])
+@pytest.mark.parametrize(
+    "direction,leg", [("outgoing", 3), ("incoming", 2), ("negative", 3)]
+)
 @pytest.mark.parametrize(
     "arithmetic,precision,engine,tolerance,bit",
     [
@@ -119,6 +121,19 @@ def test_charged_three_state_sources_and_exact_replay(
         str(root / f"{direction}-ordinary.pacbin"), **options
     )
     point = json.loads((root / f"{direction}-ordinary.json").read_text())["point"]
+    descriptor = json.loads(runtime.metadata_json())
+    contract = next(
+        saved["source_contracts"][saved["legs"].index(leg)]
+        for saved in descriptor["spin_projections"]
+        if leg in saved["legs"]
+    )
+    assert contract["identity"]["orientation"] == (
+        "antiparticle" if direction == "negative" else "particle"
+    )
+    assert contract["identity"]["pdg_label"] == (-24 if direction == "negative" else 24)
+    assert contract["identity"]["anti_pdg_label"] == (
+        24 if direction == "negative" else -24
+    )
     vectors = _wavefunctions(
         native, point, leg, [-1, 0, 1], direction == "incoming", options
     )
@@ -208,7 +223,7 @@ def test_charged_three_state_sources_and_exact_replay(
             )
 
 
-@pytest.mark.parametrize("direction", ["outgoing", "incoming"])
+@pytest.mark.parametrize("direction", ["outgoing", "incoming", "negative"])
 def test_public_charged_sources_match_independent_physical_projection(
     massive_sources, direction
 ):

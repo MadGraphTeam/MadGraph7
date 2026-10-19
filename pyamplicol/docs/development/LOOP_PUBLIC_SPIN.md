@@ -2,7 +2,7 @@
 
 The existing correlated API accepts declared singleton or joint vector source
 classes for QCD, with complete model-rule R2 and UV. Validated cases include
-photons/gluons and the stable real-mass W+ controls described below. Full-colour fixed-Nc
+photons/gluons and the stable real-mass W± controls described below. Full-colour fixed-Nc
 kernels support the admitted ordered colour histories. Formally projected LC/NLC
 kernels support identity histories as described below. Generation
 uses `CorrelatorConfig(spin_correlations=((3,), (4,), (3, 4)))`; the labels are the
@@ -59,8 +59,8 @@ returns complex values; DoubleFloat and arbitrary precision preserve decimal
 real/imaginary components. `inspect()["spin_correlations"]` lists the actual saved
 classes. Ordinary `evaluate` is independent of the spin setter.
 
-Resolved correlated output, nonidentity LC/NLC colour histories, charge-conjugate
-W− controls, neutral massive/chiral source cases and general EW corrections remain
+Resolved correlated output, nonidentity LC/NLC colour histories,
+neutral massive/chiral source cases and general EW corrections remain
 unvalidated follow-ups. The independently
 proved full-colour identity-order d/s flavour reuse is described in
 `LOOP_FLAVOR_TRANSPORT.md`; formal-colour flavour reuse is a separate requirement.
@@ -94,7 +94,7 @@ additional massive-vector or EW-correction certification.
 
 ## Stable charged massive-vector controls
 
-The actual model-owned W+ SourceIR now passes through the same source preparation
+The actual model-owned W± SourceIR now passes through the same source preparation
 and saved-runtime path. No vector wavefunction formula was added: dependency
 wavefunctions supply all three states, including the longitudinal state. Saved
 loading also reuses the existing canonical and reciprocal antiparticle identity
@@ -102,16 +102,20 @@ checks across source classes. A three-state contract cannot be relabelled as a
 massless state space; contradictory identities are rejected.
 
 Complete full-colour QCD controls cover `u d~ -> W+ g` and crossed `d W+ -> u g`,
-with zero W width and matched exact input parameters. Ordinary Born and all three
+plus charge-conjugate `d u~ -> W- g`, with zero W width and matched exact input
+parameters. Ordinary Born and all three
 loop coefficients agree with MadLoop. Independent Recola coherent projections
 use its own massive wavefunctions and three-state amplitude columns, rather than
 its two-state public spin-projection helper. The outgoing/incoming maximum
 relative differences are approximately `2.9e-13` and `3.2e-9`; these are binary64
-physics comparisons. Fixed-helicity MadLoop/Recola controls also agree, with the
+physics comparisons. The W− coherent result agrees to approximately `4.3e-13`,
+and its ordinary result agrees with MadLoop to `4.8e-15`. Its actual model
+antiparticle orientation and reciprocal PDG labels are retained, without deriving
+phases from the PDG sign. Fixed-helicity MadLoop/Recola controls also agree, with the
 incoming spin average translated explicitly.
 
 Native double, DoubleFloat and AP70 controls reconstruct every complete component
-from the three W states and the six joint W/gluon states, retaining both directed
+for all three processes from the three W states and the six joint W/gluon states, retaining both directed
 interference terms and ordered histories. They exercise exact source changes
 below binary64 resolution, arbitrary literal complex vectors, parameter snapshots,
 empty/tail batches and original point IDs. Public saved artifacts pass coherent
@@ -122,7 +126,7 @@ owned source labels.
 The ordered-history checks are internal reconstruction and homogeneity controls;
 the independent provider comparisons select the identity colour history.
 
-This certifies the exercised stable W+ QCD cases. It does not certify W− physics,
+This certifies the exercised stable W± QCD cases. It does not certify
 Z axial closed-loop sums, electroweak corrections, complex external masses or
 massive-vector LC/NLC composition. Recola only supplies an independent oracle for
 the physical three-state subspace. Arbitrary nontransverse source behavior is
