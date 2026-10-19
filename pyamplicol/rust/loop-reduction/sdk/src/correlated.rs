@@ -10,6 +10,48 @@ pub struct Complex64 {
     pub imag: f64,
 }
 
+/// Literal complex sources in row/selected-leg/component order. `legs` use
+/// one-based physical labels. One row broadcasts; otherwise one row per point.
+/// No component is conjugated, normalized or projected by this transport.
+#[derive(Clone, Copy)]
+pub struct SpinSources<'a> {
+    pub legs: &'a [usize],
+    pub values: &'a [Complex64],
+}
+impl SpinSources<'_> {
+    fn exact(&self, points: usize) -> RusticolResult<BTreeMap<usize, Vec<[String; 2]>>> {
+        let width = product(&[self.legs.len(), 4])?;
+        if self.values.len() != width && self.values.len() != product(&[points, width])? {
+            return Err(invalid(
+                "spin vectors require one row or one row per physical point",
+            ));
+        }
+        let values = self
+            .values
+            .iter()
+            .map(|value| Ok([exact_double(value.real)?, exact_double(value.imag)?]))
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let mut sources = BTreeMap::new();
+        for (column, &leg) in self.legs.iter().enumerate() {
+            if leg == 0 || sources.contains_key(&leg) {
+                return Err(invalid("spin source legs must be unique one-based labels"));
+            }
+            let source = (0..points)
+                .flat_map(|row| {
+                    let base = if values.len() == width {
+                        4 * column
+                    } else {
+                        row * width + 4 * column
+                    };
+                    values[base..base + 4].iter().cloned()
+                })
+                .collect();
+            sources.insert(leg, source);
+        }
+        Ok(sources)
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CorrelatedShape {
@@ -29,6 +71,7 @@ pub struct CorrelatedEvaluation {
     pub virtual_values: Vec<Complex64>,
     pub shape: CorrelatedShape,
     pub history_ids: Vec<String>,
+    pub spin_legs: Vec<usize>,
     pub diagnostics_json: String,
 }
 
@@ -40,6 +83,13 @@ impl Runtime {
     }
     pub fn correlation_histories_json(&self) -> RusticolResult<String> {
         serde_json::to_string(&self.history_ids).map_err(serialization)
+    }
+    /// Declared joint sets, with the same one-based source labels as input.
+    pub fn spin_correlation_classes(&self) -> &[Vec<usize>] {
+        &self.spin_classes
+    }
+    pub fn spin_correlation_classes_json(&self) -> RusticolResult<String> {
+        serde_json::to_string(&self.spin_classes).map_err(serialization)
     }
     pub fn correlated_shape(&self) -> CorrelatedShape {
         CorrelatedShape {
@@ -83,6 +133,53 @@ impl Runtime {
         policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<CorrelatedEvaluation> {
         let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
+        self.evaluate_correlated_inputs(inputs, strategy, policy)
+    }
+    /// Additive binary64 source ingress; the old method always uses ordinary states.
+    pub fn evaluate_correlated_with_sources(
+        &mut self,
+        momenta: &[f64],
+        point_ids: &[u64],
+        scales: &[f64],
+        sources: SpinSources<'_>,
+        strategy: Option<&str>,
+        policy: Option<&VerificationPolicy>,
+    ) -> RusticolResult<CorrelatedEvaluation> {
+        self.evaluate_correlated_decimal_with_sources(
+            momenta
+                .iter()
+                .map(|&v| exact_double(v))
+                .collect::<RusticolResult<_>>()?,
+            point_ids.to_vec(),
+            scales
+                .iter()
+                .map(|&v| exact_double(v))
+                .collect::<RusticolResult<_>>()?,
+            sources.exact(point_ids.len())?,
+            strategy,
+            policy,
+        )
+    }
+    /// Exact per-point complex pairs are retained for optional precision replay.
+    pub fn evaluate_correlated_decimal_with_sources(
+        &mut self,
+        momenta: Vec<String>,
+        point_ids: Vec<u64>,
+        scales: Vec<String>,
+        sources: BTreeMap<usize, Vec<[String; 2]>>,
+        strategy: Option<&str>,
+        policy: Option<&VerificationPolicy>,
+    ) -> RusticolResult<CorrelatedEvaluation> {
+        let mut inputs = self.prepare_inputs(momenta, point_ids, scales)?;
+        inputs.spin_sources = sources;
+        self.evaluate_correlated_inputs(inputs, strategy, policy)
+    }
+    fn evaluate_correlated_inputs(
+        &mut self,
+        inputs: LoopInputs,
+        strategy: Option<&str>,
+        policy: Option<&VerificationPolicy>,
+    ) -> RusticolResult<CorrelatedEvaluation> {
         let (result, verification) = match policy {
             Some(policy) => {
                 let output = self
@@ -164,8 +261,12 @@ impl CorrelatedEvaluation {
             virtual_values,
             shape,
             history_ids: history_ids.to_vec(),
+            spin_legs: directed.spin_legs.clone(),
             diagnostics_json,
         })
+    }
+    pub fn spin_legs_json(&self) -> RusticolResult<String> {
+        serde_json::to_string(&self.spin_legs).map_err(serialization)
     }
     pub fn histories_json(&self) -> RusticolResult<String> {
         serde_json::to_string(&self.history_ids).map_err(serialization)

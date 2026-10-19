@@ -62,9 +62,9 @@ static UmamiStatus evaluate_bulk(int correlated,
     if ((input_count && (!input_keys || !inputs || !input_capacities)) ||
         (output_count && (!output_keys || !outputs || !output_capacities)))
         return fail(UMAMI_ERROR, "missing UMAMI key/pointer/capacity arrays");
-    const void *in[4] = {NULL,NULL,NULL,NULL};
+    const void *in[7] = {NULL,NULL,NULL,NULL,NULL,NULL,NULL};
     void *out[3] = {NULL,NULL,NULL};
-    size_t in_capacity[4] = {0,0,0,0}, out_capacity[3] = {0,0,0};
+    size_t in_capacity[7] = {0,0,0,0,0,0,0}, out_capacity[3] = {0,0,0};
     unsigned in_present = 0, out_present = 0;
     for (size_t i=0;i<input_count;i++) {
         unsigned slot;
@@ -73,8 +73,13 @@ static UmamiStatus evaluate_bulk(int correlated,
         case PYAMPLICOL_UMAMI_V1_IN_MU_R2: slot=1; break;
         case PYAMPLICOL_UMAMI_V1_IN_MU_R2_SCALAR: slot=2; break;
         case PYAMPLICOL_UMAMI_V1_IN_POINT_ID: slot=3; break;
+        case PYAMPLICOL_UMAMI_V1_IN_SPIN_LEGS: slot=4; break;
+        case PYAMPLICOL_UMAMI_V1_IN_SPIN_VECTORS: slot=5; break;
+        case PYAMPLICOL_UMAMI_V1_IN_SPIN_VECTORS_SCALAR: slot=6; break;
         default: return fail(UMAMI_ERROR_UNSUPPORTED_INPUT, "unsupported virtual-extension input key");
         }
+        if (slot>=4 && !correlated)
+            return fail(UMAMI_ERROR_UNSUPPORTED_INPUT,"spin sources require correlated evaluation");
         if (in_present & (1u<<slot)) return fail(UMAMI_ERROR, "duplicate virtual-extension input key");
         in_present |= 1u<<slot; in[slot]=inputs[i]; in_capacity[slot]=input_capacities[i];
     }
@@ -98,6 +103,23 @@ static UmamiStatus evaluate_bulk(int correlated,
         }
         if (out_present & (1u<<slot)) return fail(UMAMI_ERROR, "duplicate virtual-extension output key");
         out_present |= 1u<<slot; out[slot]=outputs[i]; out_capacity[slot]=output_capacities[i];
+    }
+    unsigned spin_keys=in_present & (16u|32u|64u);
+    if (spin_keys && (spin_keys!=(16u|32u) && spin_keys!=(16u|64u)))
+        return fail(UMAMI_ERROR,"spin legs require exactly one scalar or per-event vector input");
+    size_t source_legs=spin_keys ? in_capacity[4] : 0;
+    size_t source_width, source_count;
+    if (!product(source_legs,4,&source_width) || !product(source_width,count,&source_count))
+        return fail(UMAMI_ERROR,"spin source layout overflows size_t");
+    if (spin_keys && !buffer_valid(in[4],in_capacity[4],source_legs,sizeof(size_t),_Alignof(size_t)))
+        return fail(UMAMI_ERROR,"invalid spin leg buffer");
+    if (spin_keys && count) {
+        unsigned slot=(spin_keys & 32u) ? 5 : 6;
+        size_t required_sources;
+        if (!product(source_width,slot==5 ? stride : 1,&required_sources) ||
+            !buffer_valid(in[slot],in_capacity[slot],required_sources,sizeof(rusticol_virtual_complex64),
+                _Alignof(rusticol_virtual_complex64)))
+            return fail(UMAMI_ERROR,"invalid or short spin vector buffer");
     }
     if ((in_present & 6u) == 6u) return fail(UMAMI_ERROR, "provide one scale input, not both scalar and per-event");
     if (count && (!(in_present & 1u) || !(in_present & 6u)))
@@ -155,11 +177,15 @@ static UmamiStatus evaluate_bulk(int correlated,
     double *scales=array(count,sizeof(double));
     uint64_t *ids=array(count,sizeof(uint64_t)), *success_ids=NULL;
     uint32_t *statuses=array(count,sizeof(uint32_t));
+    rusticol_virtual_complex64 *source_values=array(source_count,sizeof(rusticol_virtual_complex64));
     void *born=NULL, *virtual_values=NULL;
     void *result=NULL;
     UmamiStatus status=UMAMI_SUCCESS;
     if (count && (!momenta || !scales || !ids || !statuses)) {
         status=fail(UMAMI_ERROR,"unable to allocate virtual bulk input buffers"); goto done;
+    }
+    if (source_count && !source_values) {
+        status=fail(UMAMI_ERROR,"unable to allocate spin source input buffer"); goto done;
     }
     for (size_t p=0;p<count;p++) {
         size_t event=offset+p;
@@ -169,13 +195,23 @@ static UmamiStatus evaluate_bulk(int correlated,
                     ((const double*)in[0])[event+stride*(leg+shape.external_count*component)];
         scales[p]=in_present & 2u ? ((const double*)in[1])[event] : ((const double*)in[2])[0];
         ids[p]=in_present & 8u ? ((const uint64_t*)in[3])[event] : (uint64_t)event;
+        if (spin_keys) {
+            const rusticol_virtual_complex64 *vectors=in[(spin_keys & 32u) ? 5 : 6];
+            for (size_t leg=0;leg<source_legs;leg++) for (size_t component=0;component<4;component++) {
+                size_t column=leg+source_legs*component;
+                source_values[p*source_width+4*leg+component]=vectors[(spin_keys & 32u) ? event+stride*column : column];
+            }
+        }
     }
     rusticol_virtual_batch_request request={momenta,momentum_count,count,ids,scales,count,resolved,
         options ? options->r2_strategy : NULL, options ? options->verification_json : NULL};
     rusticol_virtual_result_shape_info result_shape={0};
     if (correlated) {
         rusticol_virtual_correlated_result *typed=NULL;
-        if (rusticol_virtual_evaluate_correlated(handle,&request,&typed)) { status=native_failure(); goto done; }
+        rusticol_virtual_spin_sources sources={in[4],source_legs,source_values,source_count};
+        int evaluation=spin_keys ? rusticol_virtual_evaluate_correlated_with_sources(handle,&request,&sources,&typed)
+            : rusticol_virtual_evaluate_correlated(handle,&request,&typed);
+        if (evaluation) { status=native_failure(); goto done; }
         result=typed;
         rusticol_virtual_correlated_result_shape_info axes;
         if (rusticol_virtual_correlated_result_shape(typed,&axes)) { status=native_failure(); goto done; }
@@ -270,7 +306,7 @@ done:
         else rusticol_virtual_result_free(result);
     }
     free(momenta); free(scales); free(ids); free(statuses);
-    free(success_ids); free(born); free(virtual_values);
+    free(success_ids); free(born); free(virtual_values); free(source_values);
     return status;
 }
 
@@ -304,5 +340,14 @@ UmamiStatus pyamplicol_umami_virtual_v1_supported_correlated_outputs(const int *
     static const int supported[]={PYAMPLICOL_UMAMI_V1_OUT_CORRELATED_BORN,
         PYAMPLICOL_UMAMI_V1_OUT_CORRELATED_VIRTUAL,PYAMPLICOL_UMAMI_V1_OUT_STATUS};
     if (!keys || !count) return fail(UMAMI_ERROR,"null supported-output query output");
+    *keys=supported; *count=sizeof(supported)/sizeof(supported[0]); return UMAMI_SUCCESS;
+}
+
+UmamiStatus pyamplicol_umami_virtual_v1_supported_correlated_inputs(const int **keys, size_t *count) {
+    static const int supported[]={UMAMI_IN_MOMENTA,PYAMPLICOL_UMAMI_V1_IN_MU_R2,
+        PYAMPLICOL_UMAMI_V1_IN_MU_R2_SCALAR,PYAMPLICOL_UMAMI_V1_IN_POINT_ID,
+        PYAMPLICOL_UMAMI_V1_IN_SPIN_LEGS,PYAMPLICOL_UMAMI_V1_IN_SPIN_VECTORS,
+        PYAMPLICOL_UMAMI_V1_IN_SPIN_VECTORS_SCALAR};
+    if (!keys || !count) return fail(UMAMI_ERROR,"null supported-input query output");
     *keys=supported; *count=sizeof(supported)/sizeof(supported[0]); return UMAMI_SUCCESS;
 }

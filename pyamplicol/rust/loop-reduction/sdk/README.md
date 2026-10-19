@@ -165,9 +165,10 @@ are never summed implicitly. Query ordered history IDs before interpreting this
 axis; the SDK query returns IDs, not a second convention for colour-leg labels.
 The native saved plan remains the authority for the exact ordered operations.
 
-The active scope is inclusive physical helicities, full colour and model-rule
-R2. Correlated resolved output, spin sources, LC/NLC composition and mappings
-remain unavailable. Capability inspection reports whether the artifact actually
+The active scope is inclusive spectator helicities, full colour and model-rule
+R2. Saved massless-gluon source classes additionally accept literal complex
+vectors through `evaluate_correlated_with_sources`. Correlated resolved output,
+LC/NLC composition and mappings remain unavailable. Capability inspection reports whether the artifact actually
 contains directed kernels. The same handle still supports ordinary evaluation.
 
 C uses the explicit pair `rusticol_virtual_complex64 { real, imag }` and a separate
@@ -195,3 +196,33 @@ AP60/AP80 rescue. `examples/client_correlated.{c,cpp,f90,rs}` exercise the
 standalone wrappers; the C client also validates UMAMI offset/stride transport,
 failed-row sentinels and short-buffer rejection. These are correctness controls,
 not benchmark timing measurements.
+
+## Saved joint spin sources
+
+Query `spin_correlation_classes_json` for the exact joint sets available in an
+artifact. Each source label is a one-based physical leg. A call selects a complete
+saved joint class; it does not silently combine singleton classes. There is no
+fixed bound on the number of classes or selected legs. The current source-kernel
+certification covers external massless gluons in the full-colour QCD model-rule
+path. Ordinary `evaluate_correlated` still selects ordinary external states.
+
+Safe Rust uses borrowed `SpinSources { legs, values }`. C uses
+`rusticol_virtual_spin_sources` with the same explicit complex pairs as outputs.
+C++, and the packaged Rust wrapper, take leg and complex-vector slices. Vectors
+are laid out in row/selected-leg/Lorentz-component order, with four components
+per leg. Supply one row to broadcast or one row per physical point. Components
+are used literally: no normalization, conjugation or transverse projection is
+applied. Only the saved SourceIR crossing phase transforms them.
+
+Fortran appends optional `spin_legs` and `spin_vectors` to `evaluate_correlated`;
+both must be present together. Vectors have dimensions `(4, selected_leg, row)`.
+Every wrapper borrows sources only for its synchronous native call. Exact copies
+of the binary64 components survive compaction and optional high-precision replay.
+The standalone output remains binary64. The owned result records its selected
+source labels (`spin_legs_json` in wrappers, `spin_legs` in the Cargo API).
+
+`PYAMPLICOL_VIRTUAL_SPIN_ARTIFACT` runs the retained source transport control in
+`tests/spin_runtime.rs`. The `examples/client_spin.{c,cpp,f90,rs}` clients exercise
+the same saved artifact without regenerating diagrams. The C client additionally
+checks UMAMI source offset/stride layouts, literal complex scaling, short buffers
+and output/result lifetimes.

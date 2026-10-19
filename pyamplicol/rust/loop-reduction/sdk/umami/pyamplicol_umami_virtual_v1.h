@@ -20,7 +20,10 @@ extern "C" {
 enum pyamplicol_umami_virtual_v1_input_key {
     PYAMPLICOL_UMAMI_V1_IN_MU_R2 = 0x50410001, /* double[stride] */
     PYAMPLICOL_UMAMI_V1_IN_MU_R2_SCALAR = 0x50410002, /* double[1], broadcasts */
-    PYAMPLICOL_UMAMI_V1_IN_POINT_ID = 0x50410003 /* uint64_t[stride], optional */
+    PYAMPLICOL_UMAMI_V1_IN_POINT_ID = 0x50410003, /* uint64_t[stride], optional */
+    PYAMPLICOL_UMAMI_V1_IN_SPIN_LEGS = 0x50410004, /* size_t[L], capacity defines L */
+    PYAMPLICOL_UMAMI_V1_IN_SPIN_VECTORS = 0x50410005, /* complex pair[stride*L*4] */
+    PYAMPLICOL_UMAMI_V1_IN_SPIN_VECTORS_SCALAR = 0x50410006 /* complex pair[L*4], broadcasts */
 };
 enum pyamplicol_umami_virtual_v1_output_key {
     PYAMPLICOL_UMAMI_V1_OUT_BORN = 0x50410001, /* double, all Born squared orders */
@@ -91,6 +94,15 @@ UmamiStatus pyamplicol_umami_virtual_v1_evaluate(
  * Empty/failed/outside-slice slots obey the same rules as ordinary evaluation.
  * The optional owned diagnostic result uses the correlated SDK free function.
  */
+/* Correlated input adds optional SPIN_LEGS and exactly one SPIN_VECTORS key.
+ * The leg list capacity is its exact length L, with one-based physical labels.
+ * Per-point vectors use value[event + stride*(selected_leg + L*component)];
+ * scalar/broadcast vectors use value[selected_leg + L*component]. Components
+ * are literal complex pairs; no conjugation or normalization is performed.
+ * Input vectors and labels are borrowed only for the call. Ordinary evaluation
+ * rejects these keys. Class support comes from SDK spin_correlation_classes_json.
+ */
+UmamiStatus pyamplicol_umami_virtual_v1_supported_correlated_inputs(const int **keys, size_t *count);
 UmamiStatus pyamplicol_umami_virtual_v1_supported_correlated_outputs(const int **keys, size_t *count);
 UmamiStatus pyamplicol_umami_virtual_v1_evaluate_correlated(
     rusticol_virtual_handle *handle, size_t count, size_t stride, size_t offset,

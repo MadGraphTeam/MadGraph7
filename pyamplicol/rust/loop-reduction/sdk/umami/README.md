@@ -145,4 +145,31 @@ are shared with ordinary transport. `examples/client_correlated.c` validates
 both complex components, nonzero offsets, sparse maximum uint64 IDs, failed
 rows, padding sentinels and independent owned diagnostics against the same
 standalone result. Spin and resolved/projected-colour correlation composition
-remain separate capabilities.
+remain separately declared capabilities.
+
+### Joint spin-vector inputs
+
+The correlated operation also accepts the saved massless-gluon source classes
+reported by `rusticol_virtual_spin_correlation_classes_json`. Query
+`pyamplicol_umami_virtual_v1_supported_correlated_inputs` for its input-key list.
+Supply `PYAMPLICOL_UMAMI_V1_IN_SPIN_LEGS` (`size_t[L]`, one-based labels) together
+with exactly one of these explicit complex-pair arrays:
+
+| Input | Capacity | Address |
+|---|---|---|
+| `PYAMPLICOL_UMAMI_V1_IN_SPIN_VECTORS` | `stride * L * 4` | `event + stride * (selected_leg + L * component)` |
+| `PYAMPLICOL_UMAMI_V1_IN_SPIN_VECTORS_SCALAR` | `L * 4` | `selected_leg + L * component` |
+
+The leg-buffer capacity is exactly `L`, not spare allocation capacity. Other
+capacities retain their usual minimum-buffer meaning. Sources are borrowed only
+for the call; literal complex pairs are copied into the existing native batch.
+No conjugation, normalization or projection is applied. Every point selects the
+same joint class, while values may differ by event. Unused event slots are not
+read. Empty calls still validate supplied source labels against the saved class.
+The owned result supplies `rusticol_virtual_correlated_result_spin_legs_json`.
+
+The ordinary real operation rejects these source keys. Missing/duplicate keys,
+both scalar and per-event sources, short buffers and unsupported classes produce
+errors before output writes. There is no arbitrary source-count limit. The active
+scope remains full-colour QCD with model R2 and declared massless-gluon sources;
+resolved, LC/NLC and flavour-mapped source composition are not claimed here.

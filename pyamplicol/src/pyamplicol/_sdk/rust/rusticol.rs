@@ -85,6 +85,7 @@ pub mod virtual_amplitudes {
         pub virtual_values: Vec<Complex64>,
         pub diagnostics_json: String,
         pub histories_json: String,
+        pub spin_legs_json: String,
     }
     #[repr(C)]
     #[derive(Clone, Copy, Default)]
@@ -280,6 +281,18 @@ pub mod virtual_amplitudes {
             })?;
             Ok(value)
         }
+        /// Joint one-based source classes actually present in the saved artifact.
+        pub fn spin_correlation_classes_json(&self) -> Result<String> {
+            read_string_checked(
+                |out, len, needed| unsafe {
+                    // SAFETY: helper owns the writable queried buffer.
+                    ffi::rusticol_virtual_spin_correlation_classes_json(
+                        self.handle.as_ptr(), out, len, needed,
+                    )
+                },
+                check,
+            )
+        }
         /// One native grouped call; history IDs and both complex components survive.
         pub fn evaluate_correlated(
             &mut self,
@@ -287,6 +300,35 @@ pub mod virtual_amplitudes {
             point_count: usize,
             point_ids: Option<&[u64]>,
             mu_r2: &[f64],
+            strategy: Option<&str>,
+            verification_json: Option<&str>,
+        ) -> Result<CorrelatedEvaluation> {
+            self.evaluate_correlated_inputs(momenta, point_count, point_ids, mu_r2, None,
+                strategy, verification_json)
+        }
+        /// Literal complex vectors in row/selected-leg/component order. One row
+        /// broadcasts, or supply one row per point. Legs are one-based labels.
+        pub fn evaluate_correlated_with_sources(
+            &mut self,
+            momenta: &[f64],
+            point_count: usize,
+            point_ids: Option<&[u64]>,
+            mu_r2: &[f64],
+            legs: &[usize],
+            vectors: &[Complex64],
+            strategy: Option<&str>,
+            verification_json: Option<&str>,
+        ) -> Result<CorrelatedEvaluation> {
+            self.evaluate_correlated_inputs(momenta, point_count, point_ids, mu_r2,
+                Some((legs, vectors)), strategy, verification_json)
+        }
+        fn evaluate_correlated_inputs(
+            &mut self,
+            momenta: &[f64],
+            point_count: usize,
+            point_ids: Option<&[u64]>,
+            mu_r2: &[f64],
+            sources: Option<(&[usize], &[Complex64])>,
             strategy: Option<&str>,
             verification_json: Option<&str>,
         ) -> Result<CorrelatedEvaluation> {
@@ -305,14 +347,23 @@ pub mod virtual_amplitudes {
                 verification_json: optional_pointer(&verification),
             };
             let mut result = ptr::null_mut();
-            // SAFETY: inputs stay borrowed, output is initialized by the native call.
-            check(unsafe {
-                ffi::rusticol_virtual_evaluate_correlated(
-                    self.handle.as_ptr(),
-                    &request,
-                    &mut result,
-                )
-            })?;
+            if let Some((legs, vectors)) = sources {
+                let pairs: Vec<_> = vectors.iter().map(|v| ComplexPair { real: v.re, imag: v.im }).collect();
+                let sources = ffi::SpinSources { legs: legs.as_ptr(), leg_count: legs.len(),
+                    values: pairs.as_ptr(), value_count: pairs.len() };
+                // SAFETY: all input slices remain borrowed through the single call;
+                // explicit pairs avoid assuming the Rust complex memory layout.
+                check(unsafe { ffi::rusticol_virtual_evaluate_correlated_with_sources(
+                    self.handle.as_ptr(), &request, &sources, &mut result,
+                ) })?;
+            } else {
+                // SAFETY: inputs stay borrowed, output is initialized by the native call.
+                check(unsafe {
+                    ffi::rusticol_virtual_evaluate_correlated(
+                        self.handle.as_ptr(), &request, &mut result,
+                    )
+                })?;
+            }
             let result = OwnedCorrelatedResult(NonNull::new(result).ok_or_else(|| {
                 Error::new(
                     ErrorKind::InvalidResponse,
@@ -426,6 +477,13 @@ pub mod virtual_amplitudes {
                 unsafe { ffi::rusticol_virtual_correlated_result_diagnostics_json(handle, out, len, needed) },
                 check,
             )?;
+            let spin_legs_json = read_string_checked(
+                |out, len, needed| unsafe {
+                    // SAFETY: helper owns the writable queried buffer.
+                    ffi::rusticol_virtual_correlated_result_spin_legs_json(handle, out, len, needed)
+                },
+                check,
+            )?;
             Ok(CorrelatedEvaluation {
                 shape,
                 requested_point_ids,
@@ -435,6 +493,7 @@ pub mod virtual_amplitudes {
                 virtual_values,
                 diagnostics_json,
                 histories_json,
+                spin_legs_json,
             })
         }
     }
@@ -506,7 +565,26 @@ pub mod virtual_amplitudes {
             pub r2_strategy: *const c_char,
             pub verification_json: *const c_char,
         }
+        #[repr(C)]
+        pub(super) struct SpinSources {
+            pub legs: *const usize,
+            pub leg_count: usize,
+            pub values: *const ComplexPair,
+            pub value_count: usize,
+        }
         extern "C" {
+            pub(super) fn rusticol_virtual_evaluate_correlated_with_sources(
+                handle: *mut c_void,
+                request: *const BatchRequest,
+                sources: *const SpinSources,
+                output: *mut *mut c_void,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_spin_correlation_classes_json(
+                handle: *const c_void, out: *mut c_char, len: usize, needed: *mut usize,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_correlated_result_spin_legs_json(
+                handle: *const c_void, out: *mut c_char, len: usize, needed: *mut usize,
+            ) -> c_int;
             pub(super) fn rusticol_virtual_correlated_shape(
                 handle: *const c_void,
                 output: *mut CorrelatedShape,

@@ -3,7 +3,7 @@
 //! existing native executor; neither links Python or implements loop reduction.
 mod correlated;
 mod ffi;
-pub use correlated::{Complex64, CorrelatedEvaluation, CorrelatedShape};
+pub use correlated::{Complex64, CorrelatedEvaluation, CorrelatedShape, SpinSources};
 pub use ffi::*;
 use rusticol_core::loop_execution::{CompleteLoopResult, LoopInputs};
 use rusticol_core::loop_runtime::LoopRuntimePlan;
@@ -72,6 +72,7 @@ pub struct Runtime {
     shape: Shape,
     color_components: Vec<String>,
     history_ids: Vec<String>,
+    spin_classes: Vec<Vec<usize>>,
 }
 
 impl Runtime {
@@ -109,6 +110,12 @@ impl Runtime {
             shape,
             color_components,
             history_ids,
+            spin_classes: plan
+                .spin_projections
+                .iter()
+                .flatten()
+                .map(|class| class.legs.clone())
+                .collect(),
         })
     }
     pub fn shape(&self) -> Shape {
@@ -124,6 +131,7 @@ impl Runtime {
             "arithmetic":["double"], "epsilon_powers":[0,-1,-2],
             "resolved": self.native.metadata().resolved, "correlations":self.native.metadata().correlations,
             "correlation_histories":self.history_ids,
+            "spin_correlation_classes":self.spin_classes,
             "correlated_resolved":false,
             "correlated_layout":"point/history/order/epsilon; complex binary64",
             "color_accuracy":self.native.metadata().color_accuracy,

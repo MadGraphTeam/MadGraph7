@@ -137,6 +137,15 @@ pub struct BatchRequest {
     pub verification_json: *const c_char,
 }
 
+/// Borrowed source rows, separate from BatchRequest to preserve its ABI.
+#[repr(C)]
+pub struct SpinSourceRequest {
+    pub legs: *const usize,
+    pub leg_count: usize,
+    pub values: *const Complex64,
+    pub value_count: usize,
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ResultShape {
@@ -284,6 +293,11 @@ runtime_json!(rusticol_virtual_capabilities_json, capabilities_json);
 runtime_json!(
     rusticol_virtual_correlation_histories_json,
     correlation_histories_json
+);
+
+runtime_json!(
+    rusticol_virtual_spin_correlation_classes_json,
+    spin_correlation_classes_json
 );
 
 // Common batch shape, opaque point identities and verification policy ingress.
@@ -484,6 +498,39 @@ pub unsafe extern "C" fn rusticol_virtual_evaluate_correlated(
         Ok(())
     })
 }
+/// Both requests are borrowed only for this call. Exact copies own replay input.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_evaluate_correlated_with_sources(
+    handle: *mut VirtualHandle,
+    request: *const BatchRequest,
+    sources: *const SpinSourceRequest,
+    output: *mut *mut CorrelatedResult,
+) -> c_int {
+    guard(|| unsafe {
+        let output = mutable(output)?;
+        *output = ptr::null_mut();
+        let request = reference(request)?;
+        if request.resolved != 0 {
+            return Err(bad("resolved directed correlations are unavailable"));
+        }
+        let sources = reference(sources)?;
+        let handle = mutable(handle)?;
+        let (ids, policy) = request_arguments(&handle.0, request)?;
+        let result = handle.0.evaluate_correlated_with_sources(
+            values(request.momenta, request.momentum_count)?,
+            &ids,
+            values(request.mu_r2, request.scale_count)?,
+            SpinSources {
+                legs: values(sources.legs, sources.leg_count)?,
+                values: values(sources.values, sources.value_count)?,
+            },
+            text(request.r2_strategy)?,
+            policy.as_ref(),
+        )?;
+        *output = Box::into_raw(Box::new(CorrelatedResult(result)));
+        Ok(())
+    })
+}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rusticol_virtual_correlated_shape(
     handle: *const VirtualHandle,
@@ -593,6 +640,23 @@ pub unsafe extern "C" fn rusticol_virtual_correlated_result_histories_json(
     guard(|| unsafe {
         json_string(
             &reference(result)?.0.histories_json()?,
+            output,
+            capacity,
+            needed,
+        )
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_correlated_result_spin_legs_json(
+    result: *const CorrelatedResult,
+    output: *mut c_char,
+    capacity: usize,
+    needed: *mut usize,
+) -> c_int {
+    guard(|| unsafe {
+        json_string(
+            &reference(result)?.0.spin_legs_json()?,
             output,
             capacity,
             needed,

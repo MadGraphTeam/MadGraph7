@@ -130,6 +130,9 @@ public:
     std::string histories_json() const {
         return virtual_detail::json(handle_.get(), rusticol_virtual_correlated_result_histories_json);
     }
+    std::string spin_legs_json() const {
+        return virtual_detail::json(handle_.get(), rusticol_virtual_correlated_result_spin_legs_json);
+    }
 };
 
 class VirtualRuntime {
@@ -169,6 +172,30 @@ public:
     }
     std::string correlation_histories_json() const {
         return virtual_detail::json(handle_.get(), rusticol_virtual_correlation_histories_json);
+    }
+    std::string spin_correlation_classes_json() const {
+        return virtual_detail::json(handle_.get(), rusticol_virtual_spin_correlation_classes_json);
+    }
+    // Input components are literal complex values, row/selected-leg/component.
+    CorrelatedVirtualEvaluation evaluate_correlated_with_sources(
+                               const std::vector<double> &momenta, std::size_t point_count,
+                               const std::vector<double> &mu_r2,
+                               const std::vector<std::size_t> &legs,
+                               const std::vector<std::complex<double>> &vectors,
+                               const std::vector<std::uint64_t> &point_ids = {},
+                               const std::optional<std::string> &r2_strategy = std::nullopt,
+                               const std::optional<std::string> &verification_json = std::nullopt) {
+        if (!point_ids.empty() && point_ids.size() != point_count)
+            throw VirtualError("point_ids must have one entry per input point");
+        std::vector<rusticol_virtual_complex64> pairs; pairs.reserve(vectors.size());
+        for (const auto &value : vectors) pairs.push_back({value.real(), value.imag()});
+        rusticol_virtual_spin_sources sources{legs.data(), legs.size(), pairs.data(), pairs.size()};
+        rusticol_virtual_batch_request request{momenta.data(), momenta.size(), point_count,
+            point_ids.empty() ? nullptr : point_ids.data(), mu_r2.data(), mu_r2.size(), 0,
+            virtual_detail::optional_string(r2_strategy), virtual_detail::optional_string(verification_json)};
+        rusticol_virtual_correlated_result *p = nullptr;
+        virtual_detail::check(rusticol_virtual_evaluate_correlated_with_sources(handle_.get(), &request, &sources, &p));
+        return CorrelatedVirtualEvaluation(p);
     }
     CorrelatedVirtualEvaluation evaluate_correlated(const std::vector<double> &momenta, std::size_t point_count,
                                const std::vector<double> &mu_r2,

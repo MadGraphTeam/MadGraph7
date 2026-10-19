@@ -110,6 +110,18 @@ int rusticol_virtual_result_diagnostics_json(const rusticol_virtual_result *, ch
  */
 typedef struct CorrelatedResult rusticol_virtual_correlated_result;
 typedef struct { double real, imag; } rusticol_virtual_complex64;
+/* Literal sources: values[row][selected_leg][component], four complex Lorentz
+ * components. One row broadcasts, or supply point_count rows. Labels are
+ * one-based physical legs and form one saved joint class. No normalization or
+ * conjugation is applied. All storage is borrowed only during the call. */
+typedef struct {
+  const size_t *legs;
+  size_t leg_count;
+  const rusticol_virtual_complex64 *values;
+  size_t value_count;
+} rusticol_virtual_spin_sources;
+int rusticol_virtual_spin_correlation_classes_json(const rusticol_virtual_handle *, char *, size_t, size_t *);
+
 typedef struct {
   size_t histories, born_orders, virtual_orders, epsilon_count;
 } rusticol_virtual_correlated_shape_info;
@@ -121,6 +133,7 @@ int rusticol_virtual_correlated_shape(const rusticol_virtual_handle *, rusticol_
 /* Ordered history IDs only; no second colour-operation label convention. */
 int rusticol_virtual_correlation_histories_json(const rusticol_virtual_handle *, char *, size_t, size_t *);
 int rusticol_virtual_evaluate_correlated(rusticol_virtual_handle *, const rusticol_virtual_batch_request *, rusticol_virtual_correlated_result **);
+int rusticol_virtual_evaluate_correlated_with_sources(rusticol_virtual_handle *, const rusticol_virtual_batch_request *, const rusticol_virtual_spin_sources *, rusticol_virtual_correlated_result **);
 int rusticol_virtual_correlated_result_free(rusticol_virtual_correlated_result *);
 int rusticol_virtual_correlated_result_shape(const rusticol_virtual_correlated_result *, rusticol_virtual_correlated_result_shape_info *);
 /* Born [successful_point,history,born_order]; loop
@@ -135,6 +148,7 @@ int rusticol_virtual_correlated_result_copy_successful_ids(const rusticol_virtua
 int rusticol_virtual_correlated_result_copy_statuses(const rusticol_virtual_correlated_result *, uint32_t *, size_t);
 int rusticol_virtual_correlated_result_diagnostics_json(const rusticol_virtual_correlated_result *, char *, size_t, size_t *);
 int rusticol_virtual_correlated_result_histories_json(const rusticol_virtual_correlated_result *, char *, size_t, size_t *);
+int rusticol_virtual_correlated_result_spin_legs_json(const rusticol_virtual_correlated_result *, char *, size_t, size_t *);
 #ifdef __cplusplus
 }
 #endif

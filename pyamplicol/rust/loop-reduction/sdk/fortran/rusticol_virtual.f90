@@ -35,7 +35,7 @@ module rusticol_virtual
     complex(c_double), allocatable :: virtual_values(:,:,:,:) ! epsilon, order, history, point
     integer(c_int64_t), allocatable :: requested_ids(:), successful_ids(:)
     integer(c_int32_t), allocatable :: statuses(:)
-    character(:), allocatable :: diagnostics_json, histories_json
+    character(:), allocatable :: diagnostics_json, histories_json, spin_legs_json
   end type
   type, bind(C) :: c_batch_request
     type(c_ptr) :: momenta
@@ -44,6 +44,12 @@ module rusticol_virtual
     integer(c_size_t) :: scale_count
     integer(c_int32_t) :: resolved
     type(c_ptr) :: r2_strategy, verification_json
+  end type
+  type, bind(C) :: c_spin_sources
+    type(c_ptr) :: legs
+    integer(c_size_t) :: leg_count
+    type(c_ptr) :: values
+    integer(c_size_t) :: value_count
   end type
   ! Fortran arrays reverse the C axes without reordering numerical values.
   ! Inclusive results retain singleton colour/helicity dimensions.
@@ -79,6 +85,7 @@ module rusticol_virtual
     procedure :: evaluate
     procedure :: evaluate_correlated
     procedure :: correlation_histories_json
+    procedure :: spin_correlation_classes_json
   end type
   public :: virtual_last_error
   interface
@@ -188,6 +195,31 @@ module rusticol_virtual
       type(c_ptr), value :: handle
       type(c_batch_request), intent(in) :: request
       type(c_ptr) :: output
+      integer(c_int) :: value
+    end function
+    function c_correlated_sources(handle, request, sources, output) &
+        bind(C, name="rusticol_virtual_evaluate_correlated_with_sources") result(value)
+      import
+      type(c_ptr), value :: handle
+      type(c_batch_request), intent(in) :: request
+      type(c_spin_sources), intent(in) :: sources
+      type(c_ptr) :: output
+      integer(c_int) :: value
+    end function
+    function c_spin_legs_json(handle, output, capacity, needed) &
+        bind(C, name="rusticol_virtual_correlated_result_spin_legs_json") result(value)
+      import
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
+      integer(c_size_t) :: needed
+      integer(c_int) :: value
+    end function
+    function c_spin_classes_json(handle, output, capacity, needed) &
+        bind(C, name="rusticol_virtual_spin_correlation_classes_json") result(value)
+      import
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
+      integer(c_size_t) :: needed
       integer(c_int) :: value
     end function
     function c_correlated_shape(handle, output) bind(C, name="rusticol_virtual_correlated_result_shape") result(value)
@@ -430,6 +462,10 @@ contains
       status=c_correlation_histories(handle,c_null_ptr,0_c_size_t,n)
     case(5)
       status=c_correlated_histories(handle,c_null_ptr,0_c_size_t,n)
+    case(7)
+      status=c_spin_legs_json(handle,c_null_ptr,0_c_size_t,n)
+    case(8)
+      status=c_spin_classes_json(handle,c_null_ptr,0_c_size_t,n)
     case(6)
       status=c_correlated_diagnostics(handle,c_null_ptr,0_c_size_t,n)
     end select
@@ -446,6 +482,10 @@ contains
       status=c_correlation_histories(handle,c_loc(buffer),n,n)
     case(5)
       status=c_correlated_histories(handle,c_loc(buffer),n,n)
+    case(7)
+      status=c_spin_legs_json(handle,c_loc(buffer),n,n)
+    case(8)
+      status=c_spin_classes_json(handle,c_loc(buffer),n,n)
     case(6)
       status=c_correlated_diagnostics(handle,c_loc(buffer),n,n)
     end select
@@ -481,6 +521,15 @@ contains
     character(:), allocatable :: text
     integer(c_int) :: status
     text=read_json(handle_of(self),4,status)
+    call finish(status,ierr)
+  end function
+
+  function spin_correlation_classes_json(self,ierr) result(text)
+    class(virtual_runtime), intent(in) :: self
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable :: text
+    integer(c_int) :: status
+    text=read_json(handle_of(self),8,status)
     call finish(status,ierr)
   end function
 
@@ -601,7 +650,8 @@ contains
     end if
     call finish(status,ierr,error_message=error_message)
   end subroutine
-  subroutine evaluate_correlated(self,momenta,mu_r2,output,point_ids,r2_strategy,verification_json,ierr,error_message)
+  subroutine evaluate_correlated(self,momenta,mu_r2,output,point_ids,r2_strategy,verification_json, &
+      ierr,error_message,spin_legs,spin_vectors)
     class(virtual_runtime), intent(inout) :: self
     real(c_double), contiguous, target, intent(in) :: momenta(:,:,:), mu_r2(:)
     type(virtual_correlated_evaluation), intent(out) :: output
@@ -609,6 +659,10 @@ contains
     character(*), optional, intent(in) :: r2_strategy, verification_json
     integer(c_int), optional, intent(out) :: ierr
     character(:), allocatable, optional, intent(out) :: error_message
+    integer(c_size_t), contiguous, target, optional, intent(in) :: spin_legs(:)
+    complex(c_double), contiguous, optional, intent(in) :: spin_vectors(:,:,:) ! component, selected leg, row
+    type(complex_pair), allocatable, target :: source_pairs(:,:,:)
+    type(c_spin_sources) :: sources
     type(c_batch_request) :: request
     type(c_ptr) :: result_handle, destination
     type(virtual_shape) :: axes
@@ -649,7 +703,26 @@ contains
     if (present(verification_json)) then
       verification=cstring(verification_json); request%verification_json=c_loc(verification)
     end if
-    status=c_correlated_evaluate(handle_of(self),request,result_handle)
+    if (present(spin_legs).neqv.present(spin_vectors)) then
+      call finish(VIRTUAL_INVALID_ARGUMENT,ierr,'spin_legs and spin_vectors must be supplied together',error_message)
+      return
+    end if
+    if (present(spin_legs)) then
+      if (size(spin_vectors,1,kind=c_size_t)/=4 .or. &
+          size(spin_vectors,2,kind=c_size_t)/=size(spin_legs,kind=c_size_t)) then
+        call finish(VIRTUAL_INVALID_ARGUMENT,ierr,'spin_vectors must have shape (4,selected_leg,row)',error_message)
+        return
+      end if
+      allocate(source_pairs(4,size(spin_legs,kind=c_size_t),size(spin_vectors,3,kind=c_size_t)))
+      source_pairs%real=real(spin_vectors,kind=c_double); source_pairs%imag=aimag(spin_vectors)
+      sources%legs=c_null_ptr; sources%values=c_null_ptr
+      sources%leg_count=size(spin_legs,kind=c_size_t); sources%value_count=size(source_pairs,kind=c_size_t)
+      if (sources%leg_count>0) sources%legs=c_loc(spin_legs)
+      if (sources%value_count>0) sources%values=c_loc(source_pairs)
+      status=c_correlated_sources(handle_of(self),request,sources,result_handle)
+    else
+      status=c_correlated_evaluate(handle_of(self),request,result_handle)
+    end if
     if (status/=VIRTUAL_OK) then
       call finish(status,ierr,error_message=error_message); return
     end if
@@ -688,6 +761,7 @@ contains
       end if
       if (status==VIRTUAL_OK) value%diagnostics_json=read_json(result_handle,6,status)
       if (status==VIRTUAL_OK) value%histories_json=read_json(result_handle,5,status)
+      if (status==VIRTUAL_OK) value%spin_legs_json=read_json(result_handle,7,status)
     end if
     ! Free regardless of copy/query failures; report the original function status.
     ignored=c_correlated_free(result_handle)
@@ -700,6 +774,7 @@ contains
       call move_alloc(value%statuses,output%statuses)
       call move_alloc(value%diagnostics_json,output%diagnostics_json)
       call move_alloc(value%histories_json,output%histories_json)
+      call move_alloc(value%spin_legs_json,output%spin_legs_json)
     end if
     call finish(status,ierr,error_message=error_message)
   end subroutine
