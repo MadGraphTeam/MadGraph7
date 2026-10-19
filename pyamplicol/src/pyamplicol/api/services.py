@@ -1075,8 +1075,9 @@ class Runtime:
         ``None`` vectors inherit its initial state and ``{}`` selects physical
         helicities. Each result tuple follows the input point order.
         Virtual requests select declared full-colour histories from one native
-        batch; values retain complex coupling-order and Laurent axes. Spin and
-        resolved-history composition are not available in that saved domain.
+        batch per distinct source assignment; values retain complex coupling-order
+        and Laurent axes. Saved joint massless-gluon spin classes compose with
+        those histories. Resolved-history output remains unavailable.
         Arithmetic and Decimal spin inputs follow :meth:`evaluate_correlated`.
         """
         options = self._evaluation_options(arithmetic, mu_r2, r2_strategy, stability)

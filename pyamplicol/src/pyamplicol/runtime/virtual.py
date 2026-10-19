@@ -53,6 +53,10 @@ from pyamplicol.loops.correlation_labels import public_color_history
 from pyamplicol.loops.native import load_loop_native
 from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector, canonical_order
 from pyamplicol.loops.strategy import R2Selection
+from pyamplicol.runtime.correlated_exact import (
+    _copy_spin_vectors,
+    _prepare_spin_vectors,
+)
 
 
 def _verification_diagnostic(value: dict[str, Any]) -> VirtualVerificationDiagnostic:
@@ -285,6 +289,13 @@ class VirtualRuntimeBackend:
             )
             for item in orders["virtual"]
         )
+        self._spin_vectors: dict[int, object] = {}
+
+    def _spin_classes(self) -> tuple[tuple[int, ...], ...]:
+        return tuple(
+            tuple(item["legs"])
+            for item in self._metadata["plan"].get("spin_projections", ()) or ()
+        )
 
     def _saved_color_correlations(self) -> tuple[ColorCorrelator, ...]:
         descriptor = self._metadata["plan"].get("directed_projection")
@@ -328,13 +339,16 @@ class VirtualRuntimeBackend:
         self, vectors: Mapping[int, object] | None
     ) -> None:
         self.available_color_correlations()
-        if vectors is not None and not isinstance(vectors, Mapping):
-            raise TypeError("spin vectors must map public leg labels to vectors")
-        if vectors:
-            raise CompatibilityError(
-                "saved virtual directed kernels currently require physical "
-                "helicities; spin sources are unavailable"
-            )
+        copied = self._copy_spin_vectors(vectors)
+        with self._lock:
+            self._spin_vectors = copied
+
+    def _copy_spin_vectors(
+        self, vectors: Mapping[int, object] | None
+    ) -> dict[int, object]:
+        if vectors and not self._spin_classes():
+            raise CompatibilityError("this artifact has no saved joint spin sources")
+        return _copy_spin_vectors(vectors, self._spin_classes())
 
     def evaluate_correlated(
         self, momenta: Momenta, *, color_correlation: str = "born", **kwargs: Any
@@ -350,6 +364,12 @@ class VirtualRuntimeBackend:
         if not isinstance(requests, Mapping):
             raise TypeError("correlated requests must be a mapping")
         selected = dict(requests)
+        with self._lock:
+            snapshot = dict(self._spin_vectors)
+        assignments: dict[tuple[object, ...], dict[int, list[list[list[str]]]]] = {}
+        routes: dict[str, tuple[object, ...]] = {}
+        classes = self._spin_classes()
+        allowed = tuple(sorted({leg for group in classes for leg in group}))
         for label, request in selected.items():
             if not isinstance(label, str) or not label:
                 raise ValueError("correlated request labels must be nonempty strings")
@@ -360,17 +380,55 @@ class VirtualRuntimeBackend:
                     "undeclared virtual colour correlation "
                     f"{request.color_correlation!r}"
                 )
-            self.set_spin_correlation_vectors(request.spin_vectors)
+            vectors = self._copy_spin_vectors(
+                snapshot if request.spin_vectors is None else request.spin_vectors,
+            )
+            prepared = _prepare_spin_vectors(
+                vectors, allowed_legs=allowed, point_count=len(momenta)
+            )
+            # Keep class identity even for an empty batch. Decimal tuples retain
+            # exact input values, signed zero and requested literal precision.
+            key = (
+                tuple(sorted(vectors)),
+                tuple(
+                    tuple(
+                        (leg, tuple((a.as_tuple(), b.as_tuple()) for a, b in wave))
+                        for leg, wave in sorted(point.items())
+                    )
+                    for point in prepared
+                ),
+            )
+            assignments.setdefault(
+                key,
+                {
+                    leg: [
+                        [[str(real), str(imag)] for real, imag in point[leg]]
+                        for point in prepared
+                    ]
+                    for leg in sorted(vectors)
+                },
+            )
+            routes[label] = key
         if not selected:
             return {}
-        # The native operation evaluates every saved history in one shared pass.
-        # Python only selects named output columns; it never contracts amplitudes.
-        result = cast(
-            dict[str, VirtualEvaluation],
-            self._evaluate(momenta, resolved=False, directed=True, **kwargs),
-        )
+        # Each distinct source assignment executes a full native event batch,
+        # sharing all requested histories. No Python event-evaluation loop.
+        with self._lock:
+            results = {
+                key: cast(
+                    dict[str, VirtualEvaluation],
+                    self._evaluate(
+                        momenta,
+                        resolved=False,
+                        directed=True,
+                        spin_vectors=vectors,
+                        **kwargs,
+                    ),
+                )
+                for key, vectors in assignments.items()
+            }
         return {
-            label: result[aliases[request.color_correlation]]
+            label: results[routes[label]][aliases[request.color_correlation]]
             for label, request in selected.items()
         }
 
@@ -468,6 +526,7 @@ class VirtualRuntimeBackend:
                         "Bdagger K_BL L + Ldagger K_LB B; "
                         "ordered histories may be complex"
                     ),
+                    "spin_correlations": self._spin_classes(),
                     "resolved_color_components": list(self._color_ids)
                     if metadata["physics"].get("resolved")
                     else [],
@@ -551,6 +610,7 @@ class VirtualRuntimeBackend:
         stability: VirtualStabilityPolicy | None = None,
         resolved: bool,
         directed: bool = False,
+        spin_vectors: dict[int, list[list[list[str]]]] | None = None,
     ) -> VirtualEvaluation | ResolvedVirtualEvaluation | dict[str, VirtualEvaluation]:
         histories = self._saved_color_correlations() if directed else ()
         if directed and resolved:
@@ -605,7 +665,11 @@ class VirtualRuntimeBackend:
                     points,
                     scales,
                     r2_strategy=requested.value,
-                    **({"partial": True} if directed else {"resolved": resolved}),
+                    **(
+                        {"partial": True, "spin_vectors": spin_vectors}
+                        if directed
+                        else {"resolved": resolved}
+                    ),
                 )
             else:
                 if not isinstance(stability, VirtualStabilityPolicy):
@@ -621,7 +685,11 @@ class VirtualRuntimeBackend:
                     stability.relative_tolerance,
                     stability.absolute_tolerance,
                     r2_strategy=requested.value,
-                    **({} if directed else {"resolved": resolved}),
+                    **(
+                        {"spin_vectors": spin_vectors}
+                        if directed
+                        else {"resolved": resolved}
+                    ),
                     verify_successful=stability.verify_successful,
                 )
                 result = verified.result
@@ -687,6 +755,7 @@ class VirtualRuntimeBackend:
             if directed and (
                 result.observable_kind != "directed-complex"
                 or result.history_ids != [item.id for item in histories]
+                or result.spin_legs != sorted(spin_vectors or {})
             ):
                 raise EvaluationError("native directed history catalogue differs")
             history_count = len(histories) if directed else 1

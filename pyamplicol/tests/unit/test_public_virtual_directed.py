@@ -36,7 +36,7 @@ def _directed(monkeypatch):
             ],
         )
 
-    def evaluate(points, scales, *, partial, r2_strategy):
+    def evaluate(points, scales, *, partial, r2_strategy, spin_vectors=None):
         calls.append((points, scales, partial, r2_strategy))
         return SimpleNamespace(
             point_ids=list(range(len(points))),
@@ -47,6 +47,7 @@ def _directed(monkeypatch):
             component_batches=[batch(len(points), 18)] * 6,
             observable_kind="directed-complex",
             history_ids=["born", "x"],
+            spin_legs=sorted(spin_vectors or {}),
         )
 
     handle.evaluate_directed = evaluate

@@ -179,6 +179,45 @@ def _prepare_spin_vectors(
     return result
 
 
+def _copy_spin_vectors(
+    vectors: Mapping[int, object] | None,
+    spin_correlations: Sequence[Sequence[int]],
+) -> dict[int, object]:
+    """Copy and validate setter inputs without rounding or mutating prior state."""
+    spin_legs = tuple(sorted({leg for group in spin_correlations for leg in group}))
+    if vectors is None:
+        vectors = {}
+    if not isinstance(vectors, Mapping):
+        raise EvaluationError("spin vectors must map public leg labels to vectors")
+    legs = tuple(vectors)
+    if any(type(leg) is not int for leg in legs):
+        raise EvaluationError("spin-vector legs must be positive integer labels")
+    if legs and tuple(sorted(legs)) not in spin_correlations:
+        raise EvaluationError("this joint spin-correlation class was not declared")
+    frozen: dict[int, object] = {}
+
+    def freeze(value: object) -> object:
+        if isinstance(value, Sequence) and not isinstance(value, str | bytes):
+            return tuple(freeze(item) for item in value)
+        return value
+
+    for leg, value in vectors.items():
+        if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+            raise EvaluationError("spin vectors must be four-vectors or a batch")
+        vector = tuple(freeze(item) for item in value)
+        if not vector:
+            raise EvaluationError("a spin-vector batch must contain at least one point")
+        broadcast = _is_spin_vector(vector)
+        # Validate before replacing the old state; a failed setter is atomic.
+        _prepare_spin_vectors(
+            {leg: vector},
+            allowed_legs=spin_legs,
+            point_count=1 if broadcast else len(vector),
+        )
+        frozen[leg] = vector
+    return frozen
+
+
 def _fill_correlated_sources(
     state: list[_ComplexDecimal],
     point: Sequence[tuple[Decimal, Decimal, Decimal, Decimal]],
