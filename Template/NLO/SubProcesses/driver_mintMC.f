@@ -1037,8 +1037,6 @@ c For sum=0, determine nFKSprocess so that the soft limit gives a non-zero Born
      $        ,rwgt,vol1,vector_size)
 
 
-c The nbody contributions
-         nbody=.true.
 c The n-body FKS configuration of each lane (the first one of its sampled
 c group, which has the soft singularity) is lane_nbody(ivec).
 
@@ -1068,6 +1066,14 @@ c The batched real matrix elements (the part offloaded to MadMatrix)
          nFKS_picked_nbody=lane_nbody(ivec)
          vol1=lane_vol1(ivec)
          born_vol1=lane_born_vol1(ivec)
+c The nbody contributions. Every lane starts them like a new point: the
+c n+1-body loop of the previous lane left nbody=.false., and with that
+c setfksfactor (in update_fks_dir) gives the Born the symmetry factor of
+c the real emission (2 for two final-state gluons, as in q q~ > e+ e- g g
+c or g g > t t~ g g), doubling the Born, virtual and integrated
+c counterterms of every lane but the first.
+         nbody=.true.
+         calculatedBorn=.false.
          call update_fks_dir(nFKS_picked_nbody)
          MCcntcalled=MCcnt_vec(ivec)
          vegas_wgt=vegas_wgt_vec(ivec)
