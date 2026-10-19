@@ -1,9 +1,10 @@
 # Complete history-family colour projection
 
-The internal directed preparation can project nonidentity colour histories on
-actual formally continued model-rule owners. Saved/public transport is a
-separate integration gate; the existing identity-only public admission remains
-in force until that gate is complete.
+Directed preparation and saved/public evaluation can project nonidentity colour
+histories on actual formally continued model-rule owners. The saved descriptor
+identifies each complete family and its sector degrees; it must agree across
+ordinary and source-class preparations. The independently validated production
+domain remains model-rule QCD, with the stable outgoing W+ control below.
 
 For a fixed operation order and final typed colour-role set, the structural
 leading degree comes from the complete compatible history family. It does not
@@ -48,6 +49,23 @@ without new graph generation. Its identity, complete one-emission dipoles and
 physical-gluon split exercise every complete component and all Laurent
 coefficients. This one-colour physical owner supplements the rectangular cold
 oracle; it does not independently certify a nonzero anti-Hermitian observable.
+
+The cold artifact is evaluated in double, DoubleFloat and 70-digit arbitrary
+precision against retained producer results, covering every component and both
+directed terms for ordinary, W-source, gluon-source and joint-source classes.
+Typed-history corruption controls check active labels, fresh labels, physical
+gluon retirement, family identity and degree axes. Labels remain opaque; the
+controls include the maximum unsigned native point identifier.
+
+Public LC/NLC artifacts preserve contracted colour shape (one component),
+coupling-order and Laurent axes, grouped histories and the three declared
+source classes. A scale that underflows in double triggers recovery only for
+the failing lane from its original exact inputs. Empty/tail reuse and `clear`
+retain the same observable contract. One standalone binary64 Rust client checks
+the actual artifact, source scaling, owned history/source labels and shape;
+this is a transport check, not another independent physics reference. Ordinary
+LC resolved artifacts retain their separate signed canonical-component
+requirements.
 
 Projected flavour reuse requires its own exact continuation proof, including
 the actual directed family/degree/bank and source contracts. It is not inferred
