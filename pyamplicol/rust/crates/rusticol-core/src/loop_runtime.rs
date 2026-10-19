@@ -389,16 +389,25 @@ impl LoopRuntimePlan {
                 self.r2_strategy == "model"
                     && !self.dimensional_numerators
                     && matches!(self.model_binding, ModelBinding::Source { .. })
-                    && self.color_projection.is_none()
-                    && self.spin_projections.is_none(),
-                "flavour transport requires source-owned full colour and model R2 without spin sources",
+                    && self.color_projection.is_none(),
+                "flavour transport requires source-owned full colour and model R2",
             )?;
             let mut ids = BTreeSet::new();
             for member in members {
                 let map: BTreeMap<_, _> = member.species.iter().copied().collect();
                 let targets: BTreeSet<_> = map.values().copied().collect();
+                // Identity-port source transport keeps every selected vector
+                // species fixed. Its typed SourceIR is checked below as usual.
+                let source_ports_fixed = self.spin_projections.iter().flatten().all(|class| {
+                    class.legs.iter().all(|leg| {
+                        leg.checked_sub(1)
+                            .and_then(|index| self.external_pdgs.get(index))
+                            .is_some_and(|pdg| map.get(pdg).unwrap_or(pdg) == pdg)
+                    })
+                });
                 require(
-                    !member.process_id.trim().is_empty()
+                    source_ports_fixed
+                        && !member.process_id.trim().is_empty()
                         && !member.expression.trim().is_empty()
                         && ids.insert(&member.process_id)
                         && member.external_pdgs.len() == legs

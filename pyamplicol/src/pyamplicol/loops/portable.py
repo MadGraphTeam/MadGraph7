@@ -60,10 +60,6 @@ def write_loop_pacbin(
 
         if any(not isinstance(item, AdmittedFlavorMember) for item in flavor_members):
             raise TypeError("saved flavour members require exact source admission")
-        if spin_directed:
-            raise NotImplementedError(
-                "saved flavour and spin-source composition is not yet certified"
-            )
         if len({item.member.process_id for item in flavor_members}) != len(
             flavor_members
         ):
@@ -252,7 +248,8 @@ def write_loop_pacbin(
     }
     if flavor_members:
         data["admitted_flavor_members"] = [
-            item.for_program(program) for item in flavor_members
+            item.for_program(program, spin_directed=spin_directed)
+            for item in flavor_members
         ]
     projection = color_projection_metadata(bare)
     if projection is not None:
