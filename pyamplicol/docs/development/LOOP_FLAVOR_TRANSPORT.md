@@ -195,7 +195,7 @@ physics generation or native build is required.
 This is a full-colour, model-R2 source-program feature. LC/NLC transport and
 nonidentity external permutations remain uncertified. Saved member selection uses the shared native artifact loader; it introduces no new
 manifest or hash.
-The species proof still explicitly rejects unsupported whole-rule analytic
-continuation and diagnostic-bearing parameter substitutions; these require the
-existing continuation/paired-scalar lowering interfaces before those domains can
-be admitted. The validated fixed-full-colour control does not use those paths.
+The original fixed-full-colour control does not use formal whole-rule or paired
+diagnostic lowering. Those paths are covered by the separately owned formal
+prerequisite above; unsupported dimensional continuations and unproved scheme
+changes remain outside its certified domain.

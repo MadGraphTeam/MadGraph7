@@ -109,7 +109,7 @@ def test_absent_correction_bound_does_not_rewrite_other_order_ceilings():
 
 
 @pytest.mark.parametrize("accuracy", ["full", "lc", "nlc"])
-def test_exact_flavor_request_keeps_unsupported_compositions_independent(accuracy):
+def test_exact_flavor_request_attempts_proof_for_each_accuracy(accuracy):
     from pyamplicol.generation.loop_service import (
         _feature_blockers,
         _flavor_grouping_enabled,
@@ -125,14 +125,41 @@ def test_exact_flavor_request_keeps_unsupported_compositions_independent(accurac
     )
     processes = ProcessSet((ProcessRequest.parse("g g > g g"),))
     assert not _feature_blockers(backend, processes)
-    assert _flavor_grouping_enabled(backend, None) == (accuracy == "full")
+    assert _flavor_grouping_enabled(backend, None)
     assert _flavor_grouping_enabled(
         backend, CorrelatorConfig(spin_correlations=((1,),))
-    ) == (accuracy == "full")
+    )
     outcome = _flavor_grouping_outcome(backend, None)
     assert outcome["requested"] and not outcome["reuse_applied"]
-    assert outcome["transport_checked"] == (accuracy == "full")
+    assert outcome["transport_checked"]
     assert outcome["independent_reason"]
+
+
+@pytest.mark.parametrize("correlated", [False, True])
+@pytest.mark.parametrize("error", [NotImplementedError, ValueError])
+def test_flavor_partition_only_falls_back_for_optional_capability(
+    monkeypatch, correlated, error
+):
+    from types import SimpleNamespace
+
+    from pyamplicol.generation.loop_service import _prepare_flavor_color_components
+    from pyamplicol.loops import color_components
+
+    bare = SimpleNamespace(
+        born_color_components=None, born_color_tensors=(), _prepared_process=None
+    )
+    model = SimpleNamespace(color_accuracy="lc", bare=bare, _prepared_model=None)
+
+    def unavailable(_):
+        raise error("unavailable canonical tensor")
+
+    monkeypatch.setattr(color_components, "prepare_born_color_components", unavailable)
+    if correlated and error is NotImplementedError:
+        _prepare_flavor_color_components(model, correlated=True)
+        assert bare.born_color_components is None
+    else:
+        with pytest.raises(error, match="unavailable canonical tensor"):
+            _prepare_flavor_color_components(model, correlated=correlated)
 
 
 def test_dry_run_transports_joint_selection_to_one_graph_plan(monkeypatch):

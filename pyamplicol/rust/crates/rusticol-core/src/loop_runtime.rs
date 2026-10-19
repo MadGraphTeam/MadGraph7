@@ -877,10 +877,28 @@ impl LoopRuntimePlan {
             require(
                 self.r2_strategy == "model"
                     && !self.dimensional_numerators
-                    && matches!(self.model_binding, ModelBinding::Source { .. })
-                    && self.color_projection.is_none(),
-                "flavour transport requires source-owned full colour and model R2",
+                    && matches!(self.model_binding, ModelBinding::Source { .. }),
+                "flavour transport requires source-owned model R2",
             )?;
+            if self.color_projection.is_some() {
+                require(
+                    self.directed_projection
+                        .iter()
+                        .chain(
+                            self.spin_projections
+                                .iter()
+                                .flatten()
+                                .map(|class| &class.directed),
+                        )
+                        .all(|projection| {
+                            projection
+                                .histories
+                                .iter()
+                                .all(|history| history.bra.is_empty() && history.ket.is_empty())
+                        }),
+                    "projected flavour transport requires identity colour histories",
+                )?;
+            }
             let mut ids = BTreeSet::new();
             for member in members {
                 let map: BTreeMap<_, _> = member.species.iter().copied().collect();

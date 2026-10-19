@@ -413,6 +413,7 @@ def _group_exact_flavors(context, programs, projections=None):
                 prepared.counterterms,
                 tuple(rule.name for rule in prepared.structure.native.vertex_rules),
                 context.corrections,
+                program.virtual.source_color,
             )
             mapping = LegMapping(
                 tuple(range(len(entry.process_ir.legs))), False, "exact-loop-species"
@@ -473,10 +474,7 @@ def _group_exact_flavors(context, programs, projections=None):
 
 def _flavor_grouping_enabled(backend, correlators):
     """Unsupported transport composition keeps normal independent generation."""
-    return (
-        backend._run_config.process.flavor_blind
-        and backend._run_config.color.accuracy == "full"
-    )
+    return backend._run_config.process.flavor_blind
 
 
 def _flavor_grouping_outcome(backend, correlators, *, reused=False):
@@ -485,16 +483,38 @@ def _flavor_grouping_outcome(backend, correlators, *, reused=False):
     checked = _flavor_grouping_enabled(backend, correlators)
     reason = None
     if requested and not reused:
-        if backend._run_config.color.accuracy != "full":
-            reason = "projected-colour flavour transport is not certified"
-        else:
-            reason = "no exact identity-port member was admitted"
+        reason = "no exact identity-port member was admitted"
     return {
         "requested": requested,
         "transport_checked": checked,
         "reuse_applied": reused,
         "independent_reason": reason,
     }
+
+
+def _prepare_flavor_color_components(program, *, correlated=False):
+    """Attach the existing LC axes before capturing any observable owner."""
+    if program.color_accuracy != "lc":
+        return
+    bare = program.bare
+    if bare.born_color_components is not None:
+        return
+    if bare._prepared_process is not None or program._prepared_model is not None:
+        raise ValueError(
+            "flavour colour components must precede prepared observable capture"
+        )
+    from pyamplicol.loops.color_components import prepare_born_color_components
+
+    try:
+        components = prepare_born_color_components(bare.born_color_tensors)
+    except NotImplementedError:
+        # Optional reuse cannot make an otherwise valid contracted source
+        # observable unavailable. Admission retains the independent process;
+        # ordinary resolved LC still requires this partition at export.
+        if correlated:
+            return
+        raise
+    bare.born_color_components = components
 
 
 def _compile_color_operation(backend, context, prepared, entry, source_color):
@@ -597,6 +617,10 @@ def generate_loop_artifact(
                         backend._run_config.color.contraction.value,
                         unavailable_reason=color_fallback,
                     )
+                    if grouping:
+                        _prepare_flavor_color_components(
+                            program.virtual, correlated=correlators is not None
+                        )
                     path = Path(temporary) / f"{entry.request.name}.pacbin"
                     directed, histories, spin_directed = (
                         (None, (), ())

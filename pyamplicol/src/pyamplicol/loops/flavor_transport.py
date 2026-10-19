@@ -20,10 +20,10 @@ from .physical_source import NativeSourceModelProgram
 from .request import LoopExternalRequest, prepare_loop_external_request
 
 
-def _color_owner(proof, source):
+def _color_owner(proof, model):
     """Retain the actual projection and declaration, never an Nc=3 inference."""
-    model, bare = source.virtual, source.virtual.bare
-    captured = source.prepared
+    bare = model.bare
+    captured = model.prepared
     metadata, bare_metadata = dict(captured.metadata), dict(captured.bare.metadata)
     continuation = proof.plan.source_color
     if (
@@ -161,7 +161,7 @@ def _request(proof, source):
         or bare.initial_average != request.initial_average
     ):
         raise ValueError("flavour transport request differs from its actual currents")
-    return request, _color_owner(proof, source)
+    return request, _color_owner(proof, source.virtual)
 
 
 def _directed_pair(representative, member, left, right):
@@ -545,6 +545,7 @@ class AdmittedFlavorMember:
             raise ValueError(
                 "flavour admission belongs to another saved representative"
             )
+        _color_owner(self.transport.symmetry, program)
         expected = {
             item.bare.spin_layout.legs: item
             for item in self.transport.representative_spin
