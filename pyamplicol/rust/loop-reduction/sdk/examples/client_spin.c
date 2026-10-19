@@ -113,6 +113,30 @@ int main(int argc,char **argv) {
     check(rusticol_virtual_correlated_result_free(details));
     assert(pyamplicol_umami_virtual_v1_evaluate(runtime,0,0,0,2,source_keys,empty_sources,empty_capacities,
         0,NULL,NULL,NULL,NULL,NULL)==UMAMI_ERROR_UNSUPPORTED_INPUT);
+    /* Two distinct sources expose selected-leg/component transposition mistakes. */
+    size_t joint_legs[]={4,3};
+    rusticol_virtual_complex64 joint_values[]={{.1,.2},{.3,-.4},{.5,.6},{.7,-.8},{0,0},{.8,0},{0,1},{-.6,0}};
+    request=(rusticol_virtual_batch_request){point,16,1,&id,&scale,1,0,NULL,NULL};
+    sources=(rusticol_virtual_spin_sources){joint_legs,2,joint_values,8};
+    check(rusticol_virtual_evaluate_correlated_with_sources(runtime,&request,&sources,&details));
+    rusticol_virtual_complex64 joint_expected[9],joint_scalar[8],joint_soa[stride*8];
+    check(rusticol_virtual_correlated_result_copy_virtual(details,joint_expected,9));
+    check(rusticol_virtual_correlated_result_spin_legs_json(details,labels,sizeof labels,&needed));
+    assert(strcmp(labels,"[3,4]")==0);
+    check(rusticol_virtual_correlated_result_free(details)); details=NULL;
+    for(size_t i=0;i<stride*8;i++) joint_soa[i]=(rusticol_virtual_complex64){NAN,NAN};
+    for(size_t l=0;l<2;l++) for(size_t c=0;c<4;c++) {
+        joint_scalar[l+2*c]=joint_values[4*l+c];
+        joint_soa[3+stride*(l+2*c)]=joint_values[4*l+c];
+    }
+    inputs[3]=joint_legs; ic[3]=2;
+    for(unsigned layout=0;layout<2;layout++) {
+        ik[4]=layout ? PYAMPLICOL_UMAMI_V1_IN_SPIN_VECTORS : PYAMPLICOL_UMAMI_V1_IN_SPIN_VECTORS_SCALAR;
+        inputs[4]=layout ? joint_soa : joint_scalar; ic[4]=layout ? stride*8 : 8;
+        assert(pyamplicol_umami_virtual_v1_evaluate_correlated(runtime,1,stride,3,5,ik,inputs,ic,
+            2,ok,outputs,oc,NULL,NULL)==UMAMI_SUCCESS);
+        for(size_t e=0;e<3;e++) for(size_t h=0;h<3;h++) near(output[3+stride*(h+3*e)],joint_expected[3*h+e]);
+    }
     check(rusticol_virtual_clear(runtime)); check(rusticol_virtual_free(runtime));
     check(rusticol_virtual_correlated_result_spin_legs_json(result,labels,sizeof labels,&needed)); assert(strcmp(labels,"[3]")==0);
     check(rusticol_virtual_correlated_result_copy_virtual(result,packed,9));
