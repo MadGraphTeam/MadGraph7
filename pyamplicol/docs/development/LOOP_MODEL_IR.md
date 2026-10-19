@@ -1502,3 +1502,22 @@ incidence on local tensor terms, a common structural degree per squared-order
 sector across bare/UV/R2 and all pole coefficients, and a formal continuation of
 every selected effective rule. In particular, the fixed-Nc four-gluon R2 source
 cannot be generalized by substituting its named CA/CF parameters alone.
+
+`scalar_alias_incidence` supplies the next preparation boundary for counterterm
+colour grading. It asks Symbolica to collect each existing local coefficient
+kernel in its counterterm aliases and input placeholders, then propagates only
+alias support and homogeneous degree through the DAG. Final scalar outputs must
+have degree one in the selected insertion aliases; zero outputs are accepted.
+Nonpolynomial alias/input dependence and alias-independent or nonlinear
+contamination fail with the offending kernel/output identity.
+
+Local cancellations are exact. The proof treats distinct upstream currents as
+independent rather than expanding a whole graph, so its support can retain an
+alias whose contributions cancel only after whole-current substitution. Such
+conservative support never removes a valid contribution. A colour term shared
+by multiple aliases is retained for every grade supplied by any of those
+aliases. `NativeModelVirtualProgram` now masks only tensor columns proved
+unreachable from the nonzero aliases of a grade, replacing its blanket rejection
+of mixed-grade, multi-term insertions. The source-model continuation gate and
+single-order physical projection boundary remain in place; incidence is not by
+itself a general-Nc or multi-order projection certificate.

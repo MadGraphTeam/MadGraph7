@@ -166,6 +166,7 @@ class NativeModelVirtualProgram:
 
         from .color_bilinears import SUNColorSpace, external_color_tensor
         from .physical_color import project_physical_color, split_color_grades
+        from .scalar_incidence import scalar_alias_incidence, scalar_grade_term_mask
 
         if formal_nc is not None or r2_strategy == "direct":
             bare.require_single_order("formal or direct model counterterm assembly")
@@ -368,6 +369,13 @@ class NativeModelVirtualProgram:
                 external_color_tensor(insertion.graph, term.color)
                 for term in recurrence.terms
             )
+            alias_incidence = (
+                None
+                if space is None
+                else scalar_alias_incidence(
+                    dag, recurrence.final_nodes, rule.coupling_symbols
+                )
+            )
             if space is None:
                 weights = tuple(
                     tuple(value / bare.initial_average for value in row)
@@ -438,16 +446,12 @@ class NativeModelVirtualProgram:
                     if space is None
                     else split_color_grades(expressions, formal_nc)
                 )
-                if (
-                    space is not None
-                    and len(recurrence.terms) > 1
-                    and (len(grades) != 1 or any(value == 0 for value in grades[0][1]))
-                ):
-                    raise NotImplementedError(
-                        "mixed-grade multi-term counterterms require an exact "
-                        "coupling-to-term incidence proof"
-                    )
                 for degree, coefficients in grades:
+                    active_terms = (
+                        None
+                        if degree is None
+                        else scalar_grade_term_mask(alias_incidence, coefficients)
+                    )
                     self.currents.append(
                         _CountertermCurrent(
                             insertion,
@@ -459,7 +463,12 @@ class NativeModelVirtualProgram:
                             weights
                             if degree is None
                             else tuple(
-                                tuple(formal_nc**degree * value for value in row)
+                                tuple(
+                                    formal_nc**degree * value if active else E("0")
+                                    for value, active in zip(
+                                        row, active_terms, strict=True
+                                    )
+                                )
                                 for row in weights
                             ),
                             coefficients,
