@@ -1571,3 +1571,37 @@ declared accuracy with the saved descriptor: the current full-only public
 boundary cannot hide an LC/NLC projection. Source-model continuation and public
 resolved LC's signed Born-component contract remain integration requirements
 before public source LC/NLC can be enabled.
+
+### Explicit four-gluon QCD rational continuation
+
+`qcd_r2_color.prepare_qcd_four_gluon_r2` supplies a whole-rule HV continuation
+from [2007.03713, Eqs. 5.30–5.38](https://arxiv.org/abs/2007.03713v2), using
+`Tr(Ta Tb)=delta_ab/2`. Its scalar coefficients carry formal Nc, while native
+fundamental/adjoint tensors retain the physical source port frame for the
+existing `SUNColorSpace` lift. The library performs tensor construction and
+contraction; pyAmpliCol declares the published local rule.
+
+Preparation requires an explicit source group, gauge-coupling expression,
+contribution (`gauge` or `fundamental-dirac`) and HV convention. It compares the
+complete original source tensor at Nc=3, including scalar coefficients. Both
+source and replacement lie in the checked three-metric-product span; every
+SU(3) colour component of three independent Lorentz components is compared
+exactly. The active 57-entry UFO gives 24,576 component agreements. A separate
+formal-Nc test uses [0903.0356, Fig. 2](https://arxiv.org/abs/0903.0356v2), a
+different published decomposition, rather than reusing the implementation.
+
+The immutable record is keyed by original collection, vertex, loop group and
+order. It retains the original entry objects, including source diagnostics and
+all loop alternatives. One Dirac fundamental species per alternative and the
+complete Yang–Mills gauge/ghost contribution are this local rule's certified
+domain; the single-species requirement is not a general loop-group capacity
+limit. No Nf aggregate or per-entry substitution is inferred, and source/model
+names play no role in conformance. A partial group, incompatible species,
+changed scalar normalization or unsupported scheme fails explicitly.
+
+This preparation does not yet alter process counterterm generation. Integration
+must bind the replacement once per eligible original group while retaining the
+original scalar diagnostics and species multiplicities. It must enforce HV,
+including any adjustable source scheme parameter, and combine all sector
+contributions before colour projection. Local Nc=3 agreement alone is not
+broader model, UV or scheme certification.
