@@ -3,7 +3,8 @@
 These examples use the supplied MadLoop 3.7.0 `models/loop_sm` source, model R2
 rules and UV counterterms in its declared HV convention. The JSON is explicit
 provider-style model input for the actual ordinary, UV, R2 and external-field
-entries used by the Drell–Yan and four-gluon QCD controls. It does **not** declare
+entries used by the Drell–Yan, four-gluon and stable outgoing W+ plus gluon QCD
+controls. It does **not** declare
 a universal SM continuation. Other processes work only when every selected rule
 and field has declared coverage and passes the compiler's actual capability checks.
 Neither the service nor this declaration selects implementations by process name.
@@ -14,6 +15,14 @@ the checked general-Nc HV tensors. Each recipe proves complete equality to its
 actual source tensor at Nc=3 and retains the source loop species and diagnostics.
 The mandatory `lhv=1` tie is proved through the existing exact source owner.
 Unrelated fixed-Nc effective rules are deliberately absent from this input.
+
+The charged-current addition keeps the actual `d~ u W-` tree and R2 source
+entries selected by `u d~ > W+ g`, plus the selected u/d two-point and gluon
+UV/R2 entries. Their elementary fundamental `Identity`/`T` tensors and explicit
+Ncol, CA and TF dependence use the same declared continuation. Loop-particle
+groups, mass-dependent logarithms and field keys are unchanged. W− requires its
+separate conjugate source entries and is not covered by this addition. This is
+QCD/model-rule colour data, not an EW-correction or massive CMS certificate.
 
 From the checkout, with the normal native extension installed or staged:
 

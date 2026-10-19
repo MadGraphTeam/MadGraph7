@@ -2,7 +2,8 @@
 """Prepare the supplied MadLoop 3.7.0 source with explicit QCD colour model data.
 
 This example input declares only the source entries used by the validated
-Drell-Yan and four-gluon QCD controls. It is not a complete SM continuation.
+Drell-Yan, four-gluon and outgoing W+ plus gluon QCD controls. It is not a
+complete SM continuation.
 """
 
 import argparse
