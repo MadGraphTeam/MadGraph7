@@ -16,6 +16,9 @@ use std::slice;
 
 mod correlated;
 
+/// Additive virtual Rust API and C symbols share this archive's numerical core.
+pub use rusticol_loop_sdk as virtual_api;
+
 #[allow(non_camel_case_types)]
 type size_t = usize;
 

@@ -28,6 +28,7 @@ num-rational.workspace = true
 num-traits.workspace = true
 pyo3.workspace = true
 rusticol-core = { path = "../rusticol-core", default-features = false, features = ["f64-compiled", "f64-symjit", "python-generation-bridge"] }
+rusticol-loop-python = { path = "../../loop-reduction/python" }
 serde_json.workspace = true
 sha2.workspace = true
 

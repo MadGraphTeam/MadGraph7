@@ -249,15 +249,10 @@ def _transport_backend(monkeypatch, accuracy="lc"):
         )
 
     handle.evaluate_partial = evaluate
-    original = virtual.importlib.import_module
     monkeypatch.setattr(
-        virtual.importlib,
-        "import_module",
-        lambda name: (
-            SimpleNamespace(NativeVirtualRuntime=lambda *a, **kw: handle)
-            if name == "_loop_reduction"
-            else original(name)
-        ),
+        virtual,
+        "load_loop_native",
+        lambda: SimpleNamespace(NativeVirtualRuntime=lambda *a, **kw: handle),
     )
     return virtual.VirtualRuntimeBackend(
         Path("fixture"), arithmetic="arbitrary", precision=70

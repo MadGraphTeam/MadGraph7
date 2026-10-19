@@ -68,7 +68,9 @@ def source_bare_program(
 ):
     """Prepare source graph currents without lowering scalars through floats."""
     if backend is None:
-        import _loop_reduction as backend
+        from .native import load_loop_native
+
+        backend = load_loop_native()
     from symbolica import E, S
 
     if structure.scalars.library.raw is not structure.raw:

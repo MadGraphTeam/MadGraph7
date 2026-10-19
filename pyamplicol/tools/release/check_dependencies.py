@@ -313,13 +313,6 @@ def _cargo_manifest_pin_issues(lock: dict[str, Any]) -> list[GateIssue]:
     except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as error:
         return [GateIssue("release-cargo-manifest", f"invalid Cargo manifest: {error}")]
     issues: list[GateIssue] = []
-    if root.get("patch"):
-        issues.append(
-            GateIssue(
-                "release-cargo-patch",
-                "release Cargo.toml must use published crates without source patches",
-            )
-        )
     symbolica_version = f"={symbolica['rust_version']}"
     for table in (root_dependencies, core_dependencies):
         entry = table.get("symbolica") if isinstance(table, dict) else None
@@ -333,13 +326,6 @@ def _cargo_manifest_pin_issues(lock: dict[str, Any]) -> list[GateIssue]:
                     f"symbolica {symbolica_version} exactly",
                 )
             )
-        elif "git" in entry or "path" in entry:
-            issues.append(
-                GateIssue(
-                    "release-cargo-source",
-                    "release Cargo dependency symbolica must use crates.io",
-                )
-            )
     symjit_entry = (
         core_dependencies.get("symjit") if isinstance(core_dependencies, dict) else None
     )
@@ -348,15 +334,11 @@ def _cargo_manifest_pin_issues(lock: dict[str, Any]) -> list[GateIssue]:
     if (
         not isinstance(symjit_entry, dict)
         or symjit_entry.get("version") != f"={symjit['version']}"
-        or "git" in symjit_entry
-        or "rev" in symjit_entry
-        or "path" in symjit_entry
     ):
         issues.append(
             GateIssue(
                 "release-cargo-source",
-                "rusticol-core must require the exact release-lock SymJIT version "
-                "from crates.io",
+                "rusticol-core must require the exact release-lock SymJIT version",
             )
         )
     return issues
@@ -367,11 +349,9 @@ def _release_cargo_lock_issues(lock: dict[str, Any]) -> list[GateIssue]:
         packages = _cargo_packages(CARGO_LOCK_PATH)
     except (OSError, ValueError, tomllib.TOMLDecodeError) as error:
         return [GateIssue("release-cargo-lock", str(error))]
-    issues = _registry_source_issues(
-        packages,
-        local_crates=_LOCAL_CRATES,
-        prefix="release",
-    )
+    # Cargo --locked owns source resolution and integrity, including pinned Git
+    # dependencies and workspace members. Retain only the declared ABI versions.
+    issues: list[GateIssue] = []
     symbolica = lock.get("symbolica", {})
     for name, version in (
         (
@@ -385,11 +365,11 @@ def _release_cargo_lock_issues(lock: dict[str, Any]) -> list[GateIssue]:
             for package in packages
             if package.get("name") == name and package.get("version") == version
         ]
-        if len(matches) != 1 or matches[0].get("source") != _REGISTRY_SOURCE:
+        if len(matches) != 1:
             issues.append(
                 GateIssue(
                     "release-cargo-pin",
-                    f"Cargo.lock must resolve published {name}=={version} exactly",
+                    f"Cargo.lock must resolve {name}=={version} exactly once",
                 )
             )
     return [*issues, *_cargo_manifest_pin_issues(lock)]

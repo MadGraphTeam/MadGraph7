@@ -142,10 +142,12 @@ class LoopProcessArtifact:
 
 def loop_process_payloads(process: LoopProcessArtifact, staged_plan: Path):
     """Validate the staged snapshot through core before publishing its metadata."""
-    import _loop_reduction
+    from pyamplicol.loops.native import load_loop_native
+
+    backend = load_loop_native()
 
     plan = json.loads(
-        _loop_reduction.PortableLoopPlan(str(staged_plan)).metadata_json()
+        backend.PortableLoopPlan(str(staged_plan)).metadata_json()
     )
     process.metadata.validate_plan(plan)
     if list(process.external_pdgs) != plan["external_pdgs"]:

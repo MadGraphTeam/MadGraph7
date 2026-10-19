@@ -7,7 +7,6 @@ one complete batch, including source parameters, counterterms and reduction.
 
 from __future__ import annotations
 
-import importlib
 import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from copy import deepcopy
@@ -20,7 +19,6 @@ from typing import Any, Literal, cast
 from pyamplicol.api.errors import (
     ArtifactError,
     CompatibilityError,
-    DependencyError,
     EvaluationError,
 )
 from pyamplicol.api.protocols import ModelParameters, Momenta, ScalarInput
@@ -44,6 +42,7 @@ from pyamplicol.api.virtual_results import (
     VirtualVerificationDiagnostic,
 )
 from pyamplicol.config import R2Strategy
+from pyamplicol.loops.native import load_loop_native
 from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector, canonical_order
 from pyamplicol.loops.strategy import R2Selection
 
@@ -229,18 +228,7 @@ class VirtualRuntimeBackend:
         initial_arithmetic = arithmetic or (
             "double" if self.default_precision == 16 else "arbitrary"
         )
-        try:
-            module = importlib.import_module("_loop_reduction")
-        except ImportError as error:
-            raise DependencyError(
-                "the native _loop_reduction extension is unavailable"
-            ) from error
-        if not hasattr(module, "NativeVirtualRuntime"):
-            raise DependencyError(
-                "the native _loop_reduction extension lacks source virtual artifact "
-                "support; "
-                "rebuild it with NativeVirtualRuntime"
-            )
+        module = load_loop_native()
         self._module = module
         self._lock = RLock()
         self._native = _invoke(

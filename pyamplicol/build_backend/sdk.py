@@ -21,6 +21,28 @@ SDK_SOURCES = (
     ("rust/crates/rusticol-capi/include/rusticol.h", "include/rusticol.h"),
     ("rust/crates/rusticol-capi/include/rusticol.hpp", "include/rusticol.hpp"),
     ("rust/crates/rusticol-capi/fortran/rusticol.f90", "fortran/rusticol.f90"),
+    (
+        "rust/loop-reduction/sdk/include/rusticol_virtual.h",
+        "include/rusticol_virtual.h",
+    ),
+    (
+        "rust/loop-reduction/sdk/include/rusticol_virtual.hpp",
+        "include/rusticol_virtual.hpp",
+    ),
+    (
+        "rust/loop-reduction/sdk/fortran/rusticol_virtual.f90",
+        "fortran/rusticol_virtual.f90",
+    ),
+    (
+        "rust/loop-reduction/sdk/umami/pyamplicol_umami_virtual_v1.h",
+        "include/pyamplicol_umami_virtual_v1.h",
+    ),
+    (
+        "rust/loop-reduction/sdk/umami/pyamplicol_umami_virtual_v1.c",
+        "umami/pyamplicol_umami_virtual_v1.c",
+    ),
+    ("src/pyamplicol/assets/api_templates/umami/umami.h", "include/umami.h"),
+    ("src/pyamplicol/assets/api_templates/umami/UMAMI_LICENSE", "umami/UMAMI_LICENSE"),
 )
 RUST_SDK_SOURCE = "src/pyamplicol/_sdk/rust/rusticol.rs"
 RUST_SDK_WORKSPACE_MEMBER = "rust/crates/rusticol-capi"
@@ -302,7 +324,9 @@ def _native_c_compiler(target: str) -> list[str]:
     raise RuntimeError("a C compiler is required to validate the Rusticol SDK")
 
 
-def _c_api_exports(header: Path) -> tuple[str, ...]:
+def _c_api_exports(
+    header: Path, required_abi: str = "rusticol_abi_version"
+) -> tuple[str, ...]:
     exports = tuple(
         dict.fromkeys(
             re.findall(
@@ -311,7 +335,7 @@ def _c_api_exports(header: Path) -> tuple[str, ...]:
             )
         )
     )
-    if not exports or "rusticol_abi_version" not in exports:
+    if not exports or required_abi not in exports:
         raise RuntimeError(
             f"Rusticol C header declares no complete public ABI: {header}"
         )
@@ -344,14 +368,21 @@ def _validate_archive_linkage(
     header: Path,
     link: Mapping[str, Any],
     target: str,
+    virtual_header: Path | None = None,
 ) -> None:
     """Link and execute a probe that references every declared C ABI export."""
 
     exports = _c_api_exports(header)
+    includes = '#include "rusticol.h"'
+    version_check = "rusticol_abi_version() == RUSTICOL_ABI_VERSION"
+    if virtual_header is not None:
+        exports += _c_api_exports(virtual_header, "rusticol_virtual_abi_version")
+        includes += '\n#include "rusticol_virtual.h"'
+        version_check += " && rusticol_virtual_abi_version() == 1u"
     entries = ",\n".join(f"    (rusticol_probe_fn){name}" for name in exports)
     source = f"""\
 #include <stdint.h>
-#include \"rusticol.h\"
+{includes}
 
 typedef void (*rusticol_probe_fn)(void);
 static rusticol_probe_fn volatile rusticol_api[] = {{
@@ -359,8 +390,7 @@ static rusticol_probe_fn volatile rusticol_api[] = {{
 }};
 
 int main(void) {{
-    uint32_t (*abi_version)(void) = (uint32_t (*)(void))rusticol_api[0];
-    return abi_version() == RUSTICOL_ABI_VERSION ? 0 : 1;
+    return ({version_check}) && rusticol_api[0] != 0 ? 0 : 1;
 }}
 """
     with tempfile.TemporaryDirectory(prefix="pyamplicol-sdk-link-") as temporary:
@@ -374,6 +404,7 @@ int main(void) {{
             "-O0",
             "-I",
             str(header.parent),
+            *(["-I", str(virtual_header.parent)] if virtual_header is not None else []),
             str(probe_source),
             str(archive),
             *_native_link_flags(link, target),
@@ -520,6 +551,7 @@ def build_sdk(root: Path, target_dir: Path) -> Path:
     _validate_archive_linkage(
         archive,
         header=root / "rust/crates/rusticol-capi/include/rusticol.h",
+        virtual_header=root / "rust/loop-reduction/sdk/include/rusticol_virtual.h",
         link=link,
         target=target,
     )

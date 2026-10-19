@@ -1,4 +1,4 @@
-# Standalone virtual SDK (source delivery)
+# Standalone virtual SDK
 
 These additive Rust/C/C++/Fortran interfaces call the same `VirtualRuntime` used by the Python
 facade. It reads ordinary verified process artifacts and needs no Python process,
@@ -7,37 +7,42 @@ unchanged. All interfaces return physical Born–loop interference, all generate
 squared coupling orders, and finite/single/double poles. Loop amplitudes squared
 and loop-induced production remain unsupported.
 
-Build inside the already configured loop consumer workspace:
+The ordinary package builds the tree and virtual APIs into one
+`librusticol_capi.a`. Its existing `_sdk` bundle carries the virtual C/C++ headers,
+Fortran module, UMAMI extension sources and the dependency-free safe Rust wrapper.
+Use `rusticol-config` to obtain that installation's include path, archive and
+platform link flags. There is one native build identity and one link manifest.
+The Python facade uses the loop module registered inside `pyamplicol._rusticol`;
+it does not load a separately installed companion extension.
+
+A source build of the combined archive is:
 
 ```sh
-cargo build --manifest-path rust/loop-reduction/Cargo.toml -p rusticol-loop-sdk
+cargo build --locked -p rusticol-capi
 ```
 
-The target produces `librusticol_loop_sdk.a`, `librusticol_loop_sdk.so` (platform
-equivalent elsewhere) and a safe Rust `rlib`. C declarations are in
-`include/rusticol_virtual.h`; Rust callers use `rusticol_loop_sdk::Runtime` and
-owned `Evaluation` results. `examples/client.c` demonstrates batched C use with a
-resolved gluon-scattering control. On the tested Linux host its static link is:
+C declarations are in `include/rusticol_virtual.h`. The packaged single-file Rust
+wrapper exposes `rusticol::virtual_amplitudes::Runtime` and owned `Evaluation`
+values without a Cargo or Python dependency. Its native mixed-order control is
+`examples/client.rs`. Direct source Cargo consumers can instead depend on
+`rusticol-loop-sdk`, which provides the same shared runtime in its safe Rust API;
+its standalone archive remains available for loop-only developer clients.
+Do not link both archives into one client.
+
+For example, on the tested Linux host:
 
 ```sh
-cc -std=c11 examples/client.c -Iinclude /path/to/librusticol_loop_sdk.a \
+cc -std=c11 examples/client.c -Iinclude /path/to/librusticol_capi.a \
   -ldl -lpthread -lm -o client
 ./client /path/to/resolved-gg-source-artifact
 ```
 
-Those system libraries describe this tested host, not a portable release link
-manifest. The dependency archives include their required GMP/MPFR code. A shared
-library client can instead link `-lrusticol_loop_sdk` with its runtime search path.
-
-This source target currently remains in the loop consumer workspace. Its
-validated dependency set uses installable pinned Git sources. Ordinary wheel
-and SDK bundle integration is still a separate delivery step. No optional
-path dependency has been added to the ordinary tree workspace. The current build
-links the existing Symbolica/NinjaRS/master providers and their normal native
-libraries; it does not link the PyO3 crate. Correlation and mapped-process calls
-remain unavailable. A prepared, explicitly continued source-colour plan can be
-loaded with LC/NLC metadata; public generation still needs a prepared-model
-ingress for that continuation and remains gated.
+Those system libraries describe this tested host; use the installed SDK link
+metadata on another platform. The archive includes the required GMP/MPFR code
+and the existing Symbolica/NinjaRS/master providers. It does not link PyO3 or
+require a Python interpreter. Correlation and mapped-process calls remain
+unavailable. A prepared, explicitly continued source-colour plan can be loaded
+with LC/NLC metadata; generation requires its declared model continuation.
 
 `Runtime::evaluate` accepts binary64 inputs and returns binary64 numerical rows.
 It preserves every finite input's exact value for optional higher-precision
@@ -92,7 +97,7 @@ vectors retain the C axis order, and result ownership survives runtime moves,
 For example, from this directory:
 
 ```sh
-c++ -std=c++17 examples/client.cpp -Iinclude /path/to/librusticol_loop_sdk.a \
+c++ -std=c++17 examples/client.cpp -Iinclude /path/to/librusticol_capi.a \
   -ldl -lpthread -lm -o client-cpp
 ./client-cpp /path/to/resolved-gg-source-artifact gg
 ```
@@ -131,7 +136,7 @@ nonnegative Fortran IDs have the same numeric interpretation in both languages.
 ```sh
 gfortran -std=f2018 -c fortran/rusticol_virtual.f90
 gfortran -std=f2018 examples/client.f90 rusticol_virtual.o \
-  /path/to/librusticol_loop_sdk.a -ldl -lpthread -lm -o client-fortran
+  /path/to/librusticol_capi.a -ldl -lpthread -lm -o client-fortran
 ./client-fortran /path/to/resolved-gg-source-artifact gg
 ```
 
@@ -140,8 +145,8 @@ with process `uudd`. Their three-order inclusive values check the committed
 MadLoop control, and each order's resolved helicity sum reconstructs all poles.
 Both exercise sparse IDs, real numerical failures with compact rows, explicit
 DoubleFloat verification, empty batches, exact parameter JSON and result
-lifetimes. They call no Python interpreter. These wrappers are source delivery;
-this does not yet add them to ordinary wheel/SDK release bundles.
+lifetimes. They call no Python interpreter. The ordinary SDK bundle includes
+these wrappers alongside the same combined archive.
 
 The [versioned pyAmpliCol UMAMI virtual extension](umami/README.md) transports
 these same outputs using UMAMI's bulk offset/count/stride layout. Its separate

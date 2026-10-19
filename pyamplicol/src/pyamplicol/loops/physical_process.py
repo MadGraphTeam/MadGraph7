@@ -211,7 +211,9 @@ class NativeBareProcessProgram:
         backend: Any = None,
     ):
         if backend is None:
-            import _loop_reduction as backend
+            from .native import load_loop_native
+
+            backend = load_loop_native()
         from symbolica import E, S
         from symbolica.community import tensor as t
 

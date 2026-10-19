@@ -230,6 +230,11 @@ fn massless_spinors_decimal(
 
 #[pymodule]
 fn _loop_reduction(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    register(module)
+}
+
+/// Register the same native loop core in the ordinary pyAmpliCol extension.
+pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     runtime::register_scalar_primitives();
     portable::register(module)?;
     physical::register(module)?;

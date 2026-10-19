@@ -1,6 +1,409 @@
 // SPDX-License-Identifier: 0BSD
 // Dependency-free safe Rust 2021 bindings for Rusticol C ABI v1.
 
+/// Additive binary64 Born–loop interfaces, using the same installed archive.
+pub mod virtual_amplitudes {
+    use super::{
+        checked_cstring, optional_cstring, optional_pointer, path_cstring, read_string_checked,
+        Error, ErrorKind, Result,
+    };
+    use std::{
+        ffi::{c_char, c_int, c_void, CStr},
+        marker::PhantomData,
+        path::Path,
+        ptr::{self, NonNull},
+        rc::Rc,
+    };
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct Shape {
+        pub external_count: usize,
+        pub born_orders: usize,
+        pub virtual_orders: usize,
+        pub helicities: usize,
+        pub born_color_components: usize,
+        pub virtual_color_components: usize,
+        pub epsilon_count: usize,
+        pub resolved_available: u32,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct ResultShape {
+        pub requested_points: usize,
+        pub successful_points: usize,
+        pub born_values: usize,
+        pub virtual_values: usize,
+        pub resolved: u32,
+        pub axes: Shape,
+    }
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum PointStatus {
+        Success,
+        Verified,
+        Rescued,
+        Failed,
+        AccuracyNotEstablished,
+    }
+    /// Owned compact values, with independent order catalogues in runtime metadata.
+    /// Resolved axes are point/order/helicity/colour/epsilon; Born omits epsilon.
+    pub struct Evaluation {
+        pub shape: ResultShape,
+        pub requested_point_ids: Vec<u64>,
+        pub successful_point_ids: Vec<u64>,
+        pub statuses: Vec<PointStatus>,
+        pub born: Vec<f64>,
+        pub virtual_values: Vec<f64>,
+        pub diagnostics_json: String,
+    }
+    /// Exclusive runtime; it is neither Send nor Sync and cannot be cloned.
+    pub struct Runtime {
+        handle: NonNull<c_void>,
+        shape: Shape,
+        _exclusive: PhantomData<Rc<()>>,
+    }
+    impl Runtime {
+        pub fn open(
+            path: impl AsRef<Path>,
+            process: Option<&str>,
+            parameters_json: Option<&str>,
+            strategy: Option<&str>,
+        ) -> Result<Self> {
+            // SAFETY: no borrowed inputs are involved in this version query.
+            if unsafe { ffi::rusticol_virtual_abi_version() } != 1 {
+                return Err(Error::new(
+                    ErrorKind::AbiMismatch,
+                    "unsupported virtual ABI",
+                ));
+            }
+            let path = path_cstring(path.as_ref(), "virtual artifact")?;
+            let process = optional_cstring(process, "process")?;
+            let parameters = optional_cstring(parameters_json, "exact parameters JSON")?;
+            let strategy = optional_cstring(strategy, "R2 strategy")?;
+            let mut handle = ptr::null_mut();
+            // SAFETY: owned strings and handle output live for the full call.
+            check(unsafe {
+                ffi::rusticol_virtual_open(
+                    path.as_ptr(),
+                    optional_pointer(&process),
+                    optional_pointer(&parameters),
+                    optional_pointer(&strategy),
+                    &mut handle,
+                )
+            })?;
+            let mut runtime = Self {
+                handle: NonNull::new(handle).ok_or_else(|| {
+                    Error::new(
+                        ErrorKind::InvalidResponse,
+                        "virtual open returned a null handle",
+                    )
+                })?,
+                shape: Shape::default(),
+                _exclusive: PhantomData,
+            };
+            // SAFETY: the runtime owns a live handle and writable shape.
+            check(unsafe {
+                ffi::rusticol_virtual_shape(runtime.handle.as_ptr(), &mut runtime.shape)
+            })?;
+            Ok(runtime)
+        }
+        pub fn shape(&self) -> Shape {
+            self.shape
+        }
+        pub fn metadata_json(&self) -> Result<String> {
+            read_string_checked(
+                |out, count, needed| {
+                    // SAFETY: helper supplies writable buffers; handle is borrowed live.
+                    unsafe {
+                        ffi::rusticol_virtual_metadata_json(
+                            self.handle.as_ptr(),
+                            out,
+                            count,
+                            needed,
+                        )
+                    }
+                },
+                check,
+            )
+        }
+        pub fn capabilities_json(&self) -> Result<String> {
+            read_string_checked(
+                |out, count, needed| {
+                    // SAFETY: helper supplies writable buffers; handle is borrowed live.
+                    unsafe {
+                        ffi::rusticol_virtual_capabilities_json(
+                            self.handle.as_ptr(),
+                            out,
+                            count,
+                            needed,
+                        )
+                    }
+                },
+                check,
+            )
+        }
+        pub fn update_parameters_json(&mut self, changes: &str) -> Result<u64> {
+            let changes = checked_cstring(changes, "exact parameter changes JSON")?;
+            let mut revision = 0;
+            // SAFETY: exclusive live handle and owned JSON; revision is writable.
+            check(unsafe {
+                ffi::rusticol_virtual_update_parameters(
+                    self.handle.as_ptr(),
+                    changes.as_ptr(),
+                    &mut revision,
+                )
+            })?;
+            Ok(revision)
+        }
+        pub fn clear(&mut self) -> Result<()> {
+            // SAFETY: exclusive access to a live handle.
+            check(unsafe { ffi::rusticol_virtual_clear(self.handle.as_ptr()) })
+        }
+        /// One native bulk call. Binary64 inputs retain exact values in retries.
+        /// No verification runs unless its exact JSON policy is explicitly supplied.
+        #[allow(clippy::too_many_arguments)]
+        pub fn evaluate(
+            &mut self,
+            momenta: &[f64],
+            point_count: usize,
+            point_ids: Option<&[u64]>,
+            mu_r2: &[f64],
+            resolved: bool,
+            strategy: Option<&str>,
+            verification_json: Option<&str>,
+        ) -> Result<Evaluation> {
+            let expected = point_count
+                .checked_mul(self.shape.external_count)
+                .and_then(|n| n.checked_mul(4))
+                .ok_or_else(|| {
+                    Error::new(
+                        ErrorKind::SizeOverflow,
+                        "virtual momentum dimensions overflow",
+                    )
+                })?;
+            if momenta.len() != expected || point_ids.is_some_and(|ids| ids.len() != point_count) {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "virtual point/momentum dimensions differ",
+                ));
+            }
+            let strategy = optional_cstring(strategy, "R2 strategy")?;
+            let verification = optional_cstring(verification_json, "verification JSON")?;
+            let request = ffi::BatchRequest {
+                momenta: momenta.as_ptr(),
+                momentum_count: momenta.len(),
+                point_count,
+                point_ids: point_ids.map_or(ptr::null(), |ids| ids.as_ptr()),
+                mu_r2: mu_r2.as_ptr(),
+                scale_count: mu_r2.len(),
+                resolved: u32::from(resolved),
+                r2_strategy: optional_pointer(&strategy),
+                verification_json: optional_pointer(&verification),
+            };
+            let mut result = ptr::null_mut();
+            // SAFETY: buffers and strings remain borrowed for this one bulk call.
+            check(unsafe {
+                ffi::rusticol_virtual_evaluate(self.handle.as_ptr(), &request, &mut result)
+            })?;
+            let result = OwnedResult(NonNull::new(result).ok_or_else(|| {
+                Error::new(
+                    ErrorKind::InvalidResponse,
+                    "virtual evaluation returned null",
+                )
+            })?);
+            result.copy()
+        }
+    }
+    impl Drop for Runtime {
+        fn drop(&mut self) {
+            // SAFETY: this is the sole owner; runtime cannot be cloned.
+            unsafe {
+                ffi::rusticol_virtual_free(self.handle.as_ptr());
+            }
+        }
+    }
+    struct OwnedResult(NonNull<c_void>);
+    impl OwnedResult {
+        fn copy(&self) -> Result<Evaluation> {
+            let handle = self.0.as_ptr();
+            let mut shape = ResultShape::default();
+            // SAFETY: owned live result with writable shape.
+            check(unsafe { ffi::rusticol_virtual_result_shape(handle, &mut shape) })?;
+            let requested_point_ids = copy_values(shape.requested_points, |out, len|
+                // SAFETY: helper allocates len correctly typed writable elements.
+                unsafe { ffi::rusticol_virtual_result_copy_requested_ids(handle, out, len) })?;
+            let successful_point_ids = copy_values(shape.successful_points, |out, len|
+                // SAFETY: helper allocates len correctly typed writable elements.
+                unsafe { ffi::rusticol_virtual_result_copy_successful_ids(handle, out, len) })?;
+            let statuses = copy_values(shape.requested_points, |out, len|
+                // SAFETY: helper allocates len correctly typed writable elements.
+                unsafe { ffi::rusticol_virtual_result_copy_statuses(handle, out, len) })?
+            .into_iter()
+            .map(|status| match status {
+                0 => Ok(PointStatus::Success),
+                1 => Ok(PointStatus::Verified),
+                2 => Ok(PointStatus::Rescued),
+                3 => Ok(PointStatus::Failed),
+                4 => Ok(PointStatus::AccuracyNotEstablished),
+                _ => Err(Error::new(
+                    ErrorKind::InvalidResponse,
+                    "unknown virtual point status",
+                )),
+            })
+            .collect::<Result<Vec<_>>>()?;
+            let born = copy_values(shape.born_values, |out, len|
+                // SAFETY: helper allocates len correctly typed writable elements.
+                unsafe { ffi::rusticol_virtual_result_copy_born(handle, out, len) })?;
+            let virtual_values = copy_values(shape.virtual_values, |out, len|
+                // SAFETY: helper allocates len correctly typed writable elements.
+                unsafe { ffi::rusticol_virtual_result_copy_virtual(handle, out, len) })?;
+            let diagnostics_json = read_string_checked(
+                |out, len, needed|
+                // SAFETY: helper allocates the queried writable string buffer.
+                unsafe { ffi::rusticol_virtual_result_diagnostics_json(handle, out, len, needed) },
+                check,
+            )?;
+            Ok(Evaluation {
+                shape,
+                requested_point_ids,
+                successful_point_ids,
+                statuses,
+                born,
+                virtual_values,
+                diagnostics_json,
+            })
+        }
+    }
+    impl Drop for OwnedResult {
+        fn drop(&mut self) {
+            // SAFETY: evaluation copied values out; this is the sole C result owner.
+            unsafe {
+                ffi::rusticol_virtual_result_free(self.0.as_ptr());
+            }
+        }
+    }
+    fn copy_values<T: Default + Clone>(
+        len: usize,
+        getter: impl FnOnce(*mut T, usize) -> c_int,
+    ) -> Result<Vec<T>> {
+        let mut values = vec![T::default(); len];
+        check(getter(values.as_mut_ptr(), len))?;
+        Ok(values)
+    }
+    fn check(status: c_int) -> Result<()> {
+        if status == 0 {
+            return Ok(());
+        }
+        let kind = match status {
+            1 => ErrorKind::InvalidArgument,
+            2 => ErrorKind::BufferTooSmall,
+            3 => ErrorKind::Runtime,
+            4 => ErrorKind::Panic,
+            other => ErrorKind::UnknownStatus(other),
+        };
+        // SAFETY: the ABI returns a thread-local borrowed NUL-terminated string.
+        let error = unsafe { ffi::rusticol_virtual_last_error_message() };
+        let message = if error.is_null() {
+            format!("virtual call failed with status {status}")
+        } else {
+            unsafe { CStr::from_ptr(error) }
+                .to_string_lossy()
+                .into_owned()
+        };
+        Err(Error::new(kind, message))
+    }
+    mod ffi {
+        use super::{c_char, c_int, c_void, ResultShape, Shape};
+        #[repr(C)]
+        pub(super) struct BatchRequest {
+            pub momenta: *const f64,
+            pub momentum_count: usize,
+            pub point_count: usize,
+            pub point_ids: *const u64,
+            pub mu_r2: *const f64,
+            pub scale_count: usize,
+            pub resolved: u32,
+            pub r2_strategy: *const c_char,
+            pub verification_json: *const c_char,
+        }
+        extern "C" {
+            pub(super) fn rusticol_virtual_abi_version() -> u32;
+            pub(super) fn rusticol_virtual_last_error_message() -> *const c_char;
+            pub(super) fn rusticol_virtual_open(
+                path: *const c_char,
+                process: *const c_char,
+                parameters: *const c_char,
+                strategy: *const c_char,
+                output: *mut *mut c_void,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_free(handle: *mut c_void) -> c_int;
+            pub(super) fn rusticol_virtual_clear(handle: *mut c_void) -> c_int;
+            pub(super) fn rusticol_virtual_shape(
+                handle: *const c_void,
+                output: *mut Shape,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_update_parameters(
+                handle: *mut c_void,
+                changes: *const c_char,
+                revision: *mut u64,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_metadata_json(
+                handle: *const c_void,
+                out: *mut c_char,
+                len: usize,
+                needed: *mut usize,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_capabilities_json(
+                handle: *const c_void,
+                out: *mut c_char,
+                len: usize,
+                needed: *mut usize,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_evaluate(
+                handle: *mut c_void,
+                request: *const BatchRequest,
+                output: *mut *mut c_void,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_result_free(handle: *mut c_void) -> c_int;
+            pub(super) fn rusticol_virtual_result_shape(
+                handle: *const c_void,
+                out: *mut ResultShape,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_result_copy_born(
+                handle: *const c_void,
+                out: *mut f64,
+                len: usize,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_result_copy_virtual(
+                handle: *const c_void,
+                out: *mut f64,
+                len: usize,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_result_copy_requested_ids(
+                handle: *const c_void,
+                out: *mut u64,
+                len: usize,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_result_copy_successful_ids(
+                handle: *const c_void,
+                out: *mut u64,
+                len: usize,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_result_copy_statuses(
+                handle: *const c_void,
+                out: *mut u32,
+                len: usize,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_result_diagnostics_json(
+                handle: *const c_void,
+                out: *mut c_char,
+                len: usize,
+                needed: *mut usize,
+            ) -> c_int;
+        }
+    }
+}
+
 use std::any::Any;
 use std::error;
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
@@ -1226,9 +1629,16 @@ fn last_error_message(original_status: c_int) -> String {
         .unwrap_or_else(|| format!("Rusticol C ABI call failed with status {original_status}"))
 }
 
-fn read_string(mut getter: impl FnMut(*mut c_char, usize, *mut usize) -> c_int) -> Result<String> {
+fn read_string(getter: impl FnMut(*mut c_char, usize, *mut usize) -> c_int) -> Result<String> {
+    read_string_checked(getter, check)
+}
+
+fn read_string_checked(
+    mut getter: impl FnMut(*mut c_char, usize, *mut usize) -> c_int,
+    checker: impl Fn(c_int) -> Result<()>,
+) -> Result<String> {
     let mut required = 0;
-    check(getter(ptr::null_mut(), 0, &mut required))?;
+    checker(getter(ptr::null_mut(), 0, &mut required))?;
     if required == 0 {
         return Err(Error::new(
             ErrorKind::InvalidResponse,
@@ -1237,7 +1647,7 @@ fn read_string(mut getter: impl FnMut(*mut c_char, usize, *mut usize) -> c_int) 
     }
     let mut buffer = vec![0_u8; required];
     let mut copied_required = required;
-    check(getter(
+    checker(getter(
         buffer.as_mut_ptr().cast(),
         buffer.len(),
         &mut copied_required,

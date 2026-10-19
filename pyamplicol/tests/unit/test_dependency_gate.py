@@ -114,29 +114,35 @@ def test_release_toolchain_and_manylinux_image_are_exactly_pinned() -> None:
     assert module._toolchain_issues(module._load_lock()) == []
 
 
-def test_release_cargo_lock_rejects_candidate_path_resolution(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    published_cargo,
-) -> None:
+def test_release_cargo_sources_are_owned_by_locked_cargo(published_cargo) -> None:
     module = published_cargo
-    contaminated = tmp_path / "Cargo.lock"
-    text = module.CARGO_LOCK_PATH.read_text(encoding="utf-8")
-    marker = (
-        'name = "symbolica"\n'
-        f'version = "{module._load_lock()["symbolica"]["rust_version"]}"\n'
-        'source = "registry+https://github.com/rust-lang/crates.io-index"\n'
+    path = module.CARGO_LOCK_PATH
+    original = path.read_text(encoding="utf-8")
+    path.write_text(
+        original.replace(
+            f'source = "{module._REGISTRY_SOURCE}"',
+            'source = "git+https://example.invalid/dependency?rev='
+            + "a" * 40
+            + "#"
+            + "a" * 40
+            + '"',
+            1,
+        )
+        + '\n[[package]]\nname = "additional-workspace-member"\nversion = "0.1.0"\n'
     )
-    assert marker in text
-    contaminated.write_text(text.replace(marker, marker.rsplit("source", 1)[0], 1))
-    monkeypatch.setattr(module, "CARGO_LOCK_PATH", contaminated)
-    codes = {
+    root = module.ROOT / "Cargo.toml"
+    root.write_text(
+        root.read_text()
+        + '\n[patch.crates-io]\nsymbolica = { '
+        + 'git = "https://example.invalid/dependency", rev = "'
+        + "a" * 40
+        + '" }\n'
+    )
+    assert module._release_cargo_lock_issues(module._load_lock()) == []
+    path.write_text(original.replace('name = "symbolica"', 'name = "wrong-name"'))
+    assert {
         issue.code for issue in module._release_cargo_lock_issues(module._load_lock())
-    }
-    assert codes == {
-        "release-cargo-nonregistry",
-        "release-cargo-pin",
-    }
+    } == {"release-cargo-pin"}
 
 
 def test_candidate_gate_fails_closed_before_contributor_install(

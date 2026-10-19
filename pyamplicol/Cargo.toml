@@ -5,9 +5,11 @@ members = [
   "rust/crates/rusticol-core",
   "rust/crates/rusticol-python",
   "rust/crates/rusticol-capi",
+  "rust/loop-reduction",
+  "rust/loop-reduction/python",
+  "rust/loop-reduction/sdk",
 ]
 exclude = [
-  "rust/loop-reduction",
   "TMP_FIXED_SYMJIT",
   "TMP_FIXED_SPENSO",
 ]
@@ -46,9 +48,10 @@ wide = "1.7"
 # NinjaRS's tested integration fork. Keep the numerical and graph crates on
 # the same revision as Symbolica; these fixes are not all merged upstream yet.
 [patch.crates-io]
-symbolica = { git = "https://github.com/ValentinHirschi/symbolica", rev = "e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8" }
-numerica = { git = "https://github.com/ValentinHirschi/symbolica", rev = "e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8" }
-graphica = { git = "https://github.com/ValentinHirschi/symbolica", rev = "e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8" }
+symbolica = { git = "https://github.com/alphal00p/symbolica.git", rev = "e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8" }
+numerica = { git = "https://github.com/alphal00p/symbolica.git", rev = "e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8" }
+graphica = { git = "https://github.com/alphal00p/symbolica.git", rev = "e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8" }
+symbolica-typst-plugin = { git = "https://github.com/symbolica-dev/symbolica-typst-plugin", rev = "57b7455b37c30f4f87353c0073e49f5225e937ab" }
 
 [profile.release]
 codegen-units = 1

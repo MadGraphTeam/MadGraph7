@@ -1750,6 +1750,8 @@ def test_sdk_build_references_the_python_owned_safe_rust_wrapper(
     assert not stale.exists()
     assert not (staging / "rust" / "rusticol.rs").exists()
     assert (ROOT / sdk.RUST_SDK_SOURCE).is_file()
+    for _, destination in sdk.SDK_SOURCES:
+        assert (staging / destination).is_file()
     contract = backend.load_native_build_contract(ROOT)["sdk"]
     assert commands == [
         [

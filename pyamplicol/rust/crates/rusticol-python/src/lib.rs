@@ -2240,6 +2240,9 @@ fn json_value_to_python(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
 
 #[pymodule]
 fn _rusticol(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    let loop_module = PyModule::new(module.py(), "_loop")?;
+    _loop_reduction::register(&loop_module)?;
+    module.add_submodule(&loop_module)?;
     module.add("RusticolError", module.py().get_type::<RusticolError>())?;
     module.add("ArtifactError", module.py().get_type::<ArtifactError>())?;
     module.add(
