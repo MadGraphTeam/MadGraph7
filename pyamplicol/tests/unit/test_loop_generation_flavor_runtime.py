@@ -84,6 +84,58 @@ def test_identical_pdg_requests_remain_independent_without_species_admission():
     assert representatives == {"first": "first", "second": "second"}
 
 
+@pytest.mark.parametrize("error", [ValueError, NotImplementedError])
+def test_unavailable_public_member_admission_retains_independent_generation(
+    monkeypatch, error
+):
+    from pyamplicol.generation.loop_service import _group_exact_flavors
+    from pyamplicol.loops import flavor_mappings, flavor_transport
+
+    # Control-flow test only: actual rule/source proof has separate controls.
+    structure = SimpleNamespace(native=SimpleNamespace(vertex_rules=()))
+    requests = tuple(
+        SimpleNamespace(external_pdgs=(pdg, -pdg, 21, 21)) for pdg in (1, 3)
+    )
+    programs = tuple(
+        SimpleNamespace(
+            source_bare=SimpleNamespace(structure=structure, external_request=request)
+        )
+        for request in requests
+    )
+    context = SimpleNamespace(
+        expanded=tuple(
+            SimpleNamespace(
+                request=SimpleNamespace(name=name, expression=expression),
+                process_ir=SimpleNamespace(legs=(0, 1, 2, 3)),
+            )
+            for name, expression in (("ddgg", "d d~ > g g"), ("ssgg", "s s~ > g g"))
+        ),
+        prepared=(SimpleNamespace(structure=structure, counterterms=None),) * 2,
+        corrections=("QCD",),
+    )
+    monkeypatch.setattr(flavor_mappings, "RetainedFlavorPlan", lambda *_: None)
+    monkeypatch.setattr(flavor_mappings, "prove_flavor_relabeling", lambda *_: None)
+    monkeypatch.setattr(
+        flavor_transport.IdentityFlavorTransport,
+        "admit",
+        lambda *_args, **_kwargs: SimpleNamespace(member_request=requests[1]),
+    )
+    checked = []
+
+    def unavailable(transport, member):
+        checked.append(member.expression)
+        raise error("external spelling has no consistent source/native admission")
+
+    monkeypatch.setattr(flavor_transport, "AdmittedFlavorMember", unavailable)
+    retained, admissions, representatives, groups = _group_exact_flavors(
+        context, programs
+    )
+    assert checked == ["s s~ > g g"]
+    assert retained == [0, 1] and admissions == {}
+    assert representatives == {"ddgg": "ddgg", "ssgg": "ssgg"}
+    assert set(groups.groups) == {"ddgg", "ssgg"}
+
+
 @pytest.fixture(scope="module")
 def model_path(tmp_path_factory):
     source = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")

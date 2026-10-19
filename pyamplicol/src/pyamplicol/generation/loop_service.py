@@ -432,23 +432,22 @@ def _group_exact_flavors(context, programs, projections=None):
                 transport = IdentityFlavorTransport.admit(
                     symmetry, candidate, program, mapping, **sources
                 )
+                member = GroupMember.identity(
+                    replace(
+                        grouping_process(
+                            name,
+                            entry.request.expression,
+                            transport.member_request.external_pdgs,
+                        ),
+                        generated=False,
+                    )
+                ).related(mapping, factor=1, basis=GroupingBasis.EXACT_LOOP_FLAVOR)
+                admission = AdmittedFlavorMember(transport, member)
             except (ValueError, NotImplementedError):
-                # Incompatible masses, couplings, schemes or unproved local
-                # structures mean independent generation, never approximate reuse.
+                # Incompatible masses, couplings, schemes, external aliases or
+                # unproved structures keep independent generation.
                 continue
-            member = GroupMember.identity(
-                replace(
-                    grouping_process(
-                        name,
-                        entry.request.expression,
-                        transport.member_request.external_pdgs,
-                    ),
-                    generated=False,
-                )
-            ).related(mapping, factor=1, basis=GroupingBasis.EXACT_LOOP_FLAVOR)
-            admissions.setdefault(previous, []).append(
-                AdmittedFlavorMember(transport, member)
-            )
+            admissions.setdefault(previous, []).append(admission)
             representatives[name] = context.expanded[previous].request.name
             break
         else:
