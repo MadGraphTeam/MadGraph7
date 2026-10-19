@@ -35,10 +35,16 @@ concurrency:
   cancel-in-progress: true
 
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
-
+  # The full bundle below skips same-repository PR events, so give the MC@NLO
+  # regression a focused PR check in addition to its push-run coverage.
+  nlo_mc_lane_state_pr:
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
+    steps:
+      - uses: actions/checkout@v5
+      - name: "NLO MC per-lane state"
+        run: ./tests/test_manager.py -t0 TestMCLaneState
 
   unittest_bundle_1:
     # former jobs, run one after the other: test_additional_unittest unittest_0
